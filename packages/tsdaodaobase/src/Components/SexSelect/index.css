@@ -1,0 +1,23 @@
+.wk-sex-select {
+    width: 100%;
+    height: 100%;
+}
+
+.wk-sex-select-item {
+    background-color: white;
+    height: 50px;
+    width: 100%;
+    background-color: var(--wk-color-item);
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.wk-sex-select-item .checked {
+    color: var(--wk-color-theme);
+    margin-left: 40px;
+}
+
+.wk-sex-select-item .sex {
+    margin-left: 20px;
+}

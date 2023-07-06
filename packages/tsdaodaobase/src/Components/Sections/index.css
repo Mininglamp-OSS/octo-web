@@ -1,0 +1,31 @@
+.wk-sections {
+    
+}
+
+.wk-section {
+  margin-top: 10px;
+}
+
+.wk-section:first-child {
+  margin-top: 0px;
+}
+
+.wk-section-rows {
+
+}
+
+.wk-section-title {
+  padding: 5px 15px;
+  color: var( --wk-color-font-tip);
+  font-size: 13px;
+}
+
+.wk-section-row {
+
+}
+
+.wk-section-subtitle {
+  padding: 5px 15px;
+  color: var( --wk-color-font-tip);
+  font-size: 13px;
+}

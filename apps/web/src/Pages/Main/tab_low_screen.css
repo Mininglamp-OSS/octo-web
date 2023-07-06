@@ -1,0 +1,29 @@
+.wk-main-tab {
+    width: 100%;
+    height: 100%;
+    background-color: white;
+    position: relative;
+    border-top: 1px solid rgb(0 0 0 / 5%);
+}
+.wk-main-tab-content {
+    width: 100%;
+    height: 100%;
+}
+.wk-main-tab-content ul{
+    margin-bottom: 0px;
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+
+.wk-main-tab-content ul li {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    cursor: pointer;
+}
+
+.wk-main-tab-content ul li img {
+    width: 28px;
+}

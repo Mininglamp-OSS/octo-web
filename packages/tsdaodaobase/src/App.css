@@ -1,0 +1,151 @@
+
+
+ :root {
+    --wk-color-theme: #E46342;
+    --wk-color-secondary: rgba(246, 246, 246);
+    --wk-color-secondary-2:  rgba(246, 246, 246);
+    --wk-color-hover: #eee;
+    /* 提示类型的字体颜色 */
+    --wk-color-font-tip: rgb(170,170,170);
+    --wk-width-layout-content-left: 300px;
+    --wk-wdith-conversation-list: var(--wk-width-layout-content-left);
+    /* --wk-height-chat-search: 65px; */
+    --wk-height-chat-search: 64px;
+    --wk-height-chat-conversation-header: 64px;
+    --wk-wdith-chat-channelsetting: 340px;
+    --wk-layer-transition: 300ms cubic-bezier(0.33,1,0.68,1);
+    --wk-slide-transition: 450ms cubic-bezier(0.25, 1, 0.5, 1);
+
+    --wk-line: 1px solid #eee;
+    --wk-line-color:  #eee;
+
+    --wk-color-item: white;
+    --wk-text-item:  rgba(9,30,66,.87);
+
+    --wk-message-item: white;
+    --wk-message-color: #0F0F0F;
+  }
+
+  *, *:before, *:after {
+    box-sizing: inherit;
+  }
+
+  body[theme-mode=dark] {
+    --wk-color-secondary: #0F0F0F;
+    --wk-color-secondary-2: rgb(33,33,33);
+    --wk-line: 1px solid rgb(255,255,255,0.1);
+    --wk-line-color: rgb(255,255,255,0.1);
+    --wk-color-item: rgb(33,33,33);
+    --wk-text-item: white;
+    color: white !important;
+
+    --wk-message-item: #0F0F0F;
+    --wk-message-color: white;
+
+  }
+
+  /* ::-webkit-scrollbar-thumb:window-inactive {
+    background:rgba(255,0,0,0.4);
+  } */
+
+html {
+    height: 100%;
+    box-sizing: border-box;
+}
+  
+  body {
+    height: 100%;
+    margin: 0;
+    margin: 0;
+    /* font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif; */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen,Ubuntu,Fira Sans,Droid Sans,Cantarell,sans-serif; */
+    font-family: "Roboto",-apple-system,BlinkMacSystemFont,"Apple Color Emoji","Helvetica Neue",sans-serif;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    background: var( --background-color);
+    color: rgba(9,30,66,.87) ;
+  }
+
+  div {
+    outline:none; /** 让div没有焦点边框 不加这个 第一次打开Modal会聚焦**/
+  }
+  
+  #root {
+    height: 100%;
+  }
+  
+  code {
+    font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  }
+  
+  
+  .page {
+    width: 100%;
+    height: 100%;
+    background-color: rgb(236, 239, 243);
+  }
+  
+  .pageContent {
+    padding: 0px 40px;
+    overflow-y: auto;
+  }
+  
+    .pageContent.space {
+        padding-top: 40px;
+        width: 100%;
+        height: 100%;
+    }
+  
+  @font-face {
+    font-family: "icomoon";
+    src: url("./assets/fonts/icomoon.woff2");
+  }
+  
+  [class^=icon-], [class*=" icon-"] {
+    font-family: "icomoon" !important;
+    speak: none;
+    font-style: normal;
+    font-weight: normal;
+    font-variant: normal;
+    text-transform: none;
+    line-height: 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  
+  
+  ul {
+      list-style-type: none;
+      margin-block-start: 0px;
+      margin-block-end: 0px;
+      margin-inline-start: 0px;
+      margin-inline-end: 0px;
+      padding-inline-start: 0px;
+  }
+  
+
+
+  .wk-loading {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    padding: 15px 0px;
+  }
+
+  .wk-text-oneline {
+    display: inline-block;
+    white-space: nowrap;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  body[theme-mode=dark] .semi-badge-count {
+    color: white;
+  }

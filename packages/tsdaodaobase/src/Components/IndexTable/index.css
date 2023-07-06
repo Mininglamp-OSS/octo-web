@@ -1,0 +1,128 @@
+
+.wk-indextable {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+.wk-indextable-section-title {
+    background-color: var(--wk-color-secondary);
+    margin-left: 15px;
+}
+
+.wk-indextable-item {
+    display: flex;
+    align-items: center;
+    padding: 15px 15px 15px 0px;
+    cursor: pointer;
+}
+
+body[theme-mode=dark] .wk-indextable-item {
+    background-color: var(--wk-color-secondary);
+}
+
+.wk-indextable-item:hover {
+    background-color: var(--wk-color-hover);
+}
+
+.wk-indextable-item-avatar img {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+}
+
+.wk-indextable-item-name {
+    margin-left: 15px;
+}
+
+body[theme-mode=dark]  .wk-indextable-item-name {
+    color: white;
+}
+
+.wk-indextable-search {
+    padding: 10px 0px;
+    display: flex;
+    overflow: hidden;
+    width: 100%;
+    background-color: #f4f4f5;
+    z-index: 10;
+}
+
+body[theme-mode=dark] .wk-indextable-search  {
+    background-color: var(--wk-color-secondary-2);
+}
+
+.wk-indextable-item-index {
+    width: 50px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 500;
+}
+
+body[theme-mode=dark] .wk-indextable-item-index {
+    color: white;
+}
+
+.wk-indextable-checkbox {
+    margin-right: 10px;
+}
+
+.wk-indextable-search-box {
+    display: flex;
+    min-width: 100px;
+    height: 50px;
+    background-color: #f4f4f5;
+}
+
+body[theme-mode=dark] .wk-indextable-search-box  {
+    background-color: var(--wk-color-secondary-2);
+}
+
+.wk-indextable-selected-box {
+    display: flex;
+    overflow-x: scroll;
+}
+
+.wk-indextable-search-icon {
+    display: flex;
+    align-items: center;
+    margin-left: 20px;
+}
+
+.wk-indextable-search-input {
+    margin-left: -20px;
+    max-width: 100px;
+}
+
+.wk-indextable-search-input input {
+    flex: 1 1;
+    height: 32px;
+    font-size: 12px;
+    line-height: 18px;
+    background-color: transparent;
+    color: #1f2329;
+    outline: none;
+    border: none;
+    height: 100%;
+    padding-left: 25px;
+}
+
+body[theme-mode=dark] .wk-indextable-search-input input {
+    color: white;
+}
+
+.wk-indextable-select-user {
+    padding: 0px 5px;
+    cursor: pointer;
+}
+
+.wk-indextable-search .wk-indextable-select-user img{
+    border-radius: 50%;
+}
+
+.wk-indextable-contacts {
+    width: 100%;
+    height: calc(100% - 70px);
+    overflow-y: auto;
+}

@@ -1,0 +1,91 @@
+
+.wk-channelqrcode {
+    width: 100%;
+    height: 100%;
+    padding: 15px;
+}
+
+.wk-channelqrcode-box {
+    width: 100%;
+    background-color: var(--wk-color-item);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    flex-direction: column;
+}
+
+.wk-channelqrcode-info-avatar {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wk-channelqrcode-info-avatar img {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+}
+
+.wk-channelqrcode-qrcode {
+    width: 250px;
+    height: 250px;
+    display: flex;
+    justify-content: center;
+}
+
+.wk-channelqrcode-expire {
+    font-size: 12px;
+    color: #666;
+    text-align: center;
+    padding: 20px 0px;
+}
+
+.wk-channelqrcode-info-name {
+    text-align: center;
+    color: var(--wk-text-item);;
+}
+
+.wk-channelqrcode-qrcode-box {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    position: relative;
+    margin-top: 20px;
+}
+
+.wk-channelqrcode-qrcode-mask {
+    position: absolute;
+    top: 0px;
+    width: 100%;
+    height: 100%;
+    background-color: rgb(255, 255, 255,0.98);
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+
+}
+
+body[theme-mode=dark] .wk-channelqrcode-qrcode-mask {
+    background-color: rgb(0, 0, 0,0.98);
+}
+
+.wk-channelqrcode-qrcode-mask p {
+    font-size: 18px;
+    margin-bottom: 0px;
+    color: #666;
+}
+
+.wk-channelqrcode-qrcode-loading {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

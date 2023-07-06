@@ -1,0 +1,13 @@
+{
+  "name": "@tsdaodao/login",
+  "version": "1.0.0",
+  "main": "src/index.tsx",
+  "dependencies": {
+    "@tsdaodao/base": "*",
+    "@types/node-forge": "^1.0.0",
+    "@types/qrcode.react": "^1.0.2",
+    "axios": "^0.25.0",
+    "keypair": "^1.0.4",
+    "qrcode.react": "^1.0.1"
+  }
+}

@@ -1,0 +1,41 @@
+
+.wk-smalltableedit {
+    overflow-y: auto;
+    width: 100%;
+    height: 100%;
+}
+
+.wk-smalltableedit-content-item{
+    display: flex;
+    padding: 5px 15px;
+    background-color: var(--wk-color-item);
+}
+
+.wk-smalltableedit-content-item-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+
+.wk-smalltableedit-content-item-avatar img {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+}
+
+.wk-smalltableedit-content-item-name {
+    margin-left: 15px;
+    max-width: 200px;
+    line-height: 40px;
+    color: var(--wk-text-item);
+   
+}
+
+.wk-smalltableedit-content-item-action {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    cursor: pointer;
+}

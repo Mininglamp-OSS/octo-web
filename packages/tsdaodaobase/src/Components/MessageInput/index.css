@@ -1,0 +1,201 @@
+
+.wk-messageinput-box {
+    background: #fff;
+    width: 100%;
+    height: 100%;
+    position: relative;
+
+    box-shadow: 0.3rem -0.2rem 0.8rem 0.05rem rgb(114 114 114 / 5%);
+    border-left: none;
+}
+
+body[theme-mode=dark] .wk-messageinput-box {
+    background-color: var(--wk-color-secondary);
+}
+
+/* .wk-messageinput-box:hover {
+     box-shadow: 0 0 10px rgb(0 0 0 / 15%)
+} */
+
+.wk-messageinput-inputbox {
+    height: 77px;
+    width: 100%;
+    padding: 0px 15px 15px 15px;
+    box-sizing: border-box;
+}
+
+.wk-messageinput-input {
+    height: 100%;
+    width: 100%;
+    border: none;
+    color: #333;
+    font-size: 14px;
+    overflow-y: scroll;
+    display: inline-block;
+    -webkit-user-modify: read-write-plaintext-only;
+    outline: none;
+}
+
+body[theme-mode=dark] .wk-messageinput-input {
+    color: white;
+}
+
+.wk-messageinput-input textarea {
+    outline: none;
+    border: none;
+}
+
+.wk-messageinput-input:empty:before {
+        content: attr(data-placeholder);
+        position: absolute;
+        color: #a9a9a9;
+}
+
+.wk-messageinput-bar {
+    height: 40px;
+    width: 100%;
+    display: flex;
+    top: 0px;
+}
+
+.wk-messageinput-tabs {
+    height: 100%;
+    width: 50%;
+}
+
+.wk-messageinput-toolbar {
+    height: 100%;
+    width: 50%;
+    display: flex;
+    justify-content: space-between;
+}
+
+.wk-messageinput-actionbox {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    margin-left: 10px;
+}
+
+.wk-messageinput-actionitem {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.wk-messageinput-sendbtn {
+    height: 28px;
+    width: 32px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: linear-gradient(180deg,#92a2b1 4.39%,#7b8e9f 94.46%);
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.wk-messageinput-hasValue {
+    background-color: var(--wk-color-theme);
+}
+
+
+.wk-messageinput-member {
+    height: 100%;
+    width: 100%;
+    padding: 0 16px;
+    align-items: center;
+    box-sizing: border-box;
+    display: flex;
+}
+
+.wk-messageinput-iconbox {
+    margin-right: 8px;
+}
+
+.wk-messageinput-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+}
+
+.wk-messageinput-selected {
+    color: #fff;
+    /* background-color: #1264a3; */
+}
+
+.quickReplyPanel {
+    position: absolute;
+    box-shadow: 1px -1px 12px -2px rgb(0 0 0 / 28%);
+    max-height: 400px;
+    overflow-x: hidden;
+    bottom: 0;
+    background-color: white;
+    width: 100%;
+    border-radius: 4px;
+}
+
+    .quickReplyPanel ul {
+        margin: 0;
+        padding: 0;
+    }
+
+        .quickReplyPanel ul li {
+            list-style-type: none;
+            height: 60px;
+            border-bottom: 1px solid rgba(9,30,66,.12);
+            cursor: pointer;
+        }
+
+.quickReplyItem {
+}
+
+    .quickReplyItem :hover {
+        background-color: #f4f5f7;
+    }
+
+
+.quickReplySelect {
+    background-color: #5d657a !important;
+    color: #fff !important;
+}
+
+.wk-messageinput-header {
+}
+
+.wk-messageinput-reply {
+    margin: 10px 10px 0px 10px;
+    background-color: #f5f6f7;
+    display: flex;
+    color: #8f959e;
+    align-items: center;
+}
+
+.wk-messageinput-closeicon {
+    margin: 0px 6px;
+    cursor: pointer;
+}
+
+.wk-messageinput-replycontent {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    height: 22px;
+}
+
+.wk-messageinput-input__control {
+    background-color: white;
+}
+
+body[theme-mode=dark]  .wk-messageinput-input__control {
+    background-color: var(--wk-color-secondary-2);
+}
+
+.wk-messageinput-input__suggestions {
+    background-color: var(--wk-color-item);
+}
+
+body[theme-mode=dark] .wk-messageinput-input__input {
+    color: white;
+}

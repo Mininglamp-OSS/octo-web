@@ -1,0 +1,52 @@
+
+
+:root {
+    --wk-height-viewqueueheader: 50px;
+}
+
+.wk-viewqueueheader {
+    background-color: var(--wk-color-secondary);
+    height: var(--wk-height-viewqueueheader);
+    width: 100%;
+    position: relative;
+}
+
+.wk-viewqueueheader-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wk-viewqueueheader-content-title {
+    font-size: 17px;
+    font-weight: 500;
+    max-width: 200px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+body[theme-mode=dark] .wk-viewqueueheader-content-title {
+    color: white;
+}
+
+.wk-viewqueueheader-back {
+    position: absolute;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 0px 15px;
+}
+
+.wk-viewqueueheader-back img {
+    width: 10px;
+    height: 15px;
+}
+
+.wk-viewqueueheader-content-action {
+    position: absolute;
+    right: 15px;
+}

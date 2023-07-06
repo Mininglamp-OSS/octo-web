@@ -1,0 +1,50 @@
+
+
+.wk-newfriend {
+    width: 100%;
+    height: 100%;
+    border-right: var(--wk-line);
+}
+
+.wk-newfriend-content {
+    height: calc(100% - var( --wk-height-viewqueueheader));
+    width: 100%;
+   
+}
+
+.wk-newfriend-content  li {
+    display: flex;
+    width: 100%;
+    height: 80px;
+    background-color: var(--wk-color-item);
+    align-items: center;
+}
+
+
+.wk-newfriend-content-avatar {
+   margin-left: 15px;
+}
+
+.wk-newfriend-content-avatar img{
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+}
+
+.wk-newfriend-content-title {
+    margin-left: 15px;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--wk-text-item);
+}
+
+.wk-newfriend-content-title-remark {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+}
+
+.wk-newfriend-content-action {
+    margin-right: 10px;
+    margin-left: auto;
+}

@@ -1,0 +1,50 @@
+
+
+.wk-message-split-box {
+    width: 85%;
+    margin: 0 auto;
+    padding: 20px;
+    text-align: center;
+    display: table;
+}
+
+.wk-message-split-content {
+    color: rgba(9,30,66,.74);
+    padding: 5px 8px 0;
+    white-space: nowrap;
+    width: auto;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.wk-message-split-line1 {
+    background-image: -webkit-gradient(linear,0 0,0 100%,from(transparent),to(rgba(9,30,66,.12)));
+    background-image: -webkit-linear-gradient(360deg,transparent,rgba(9,30,66,.12));
+    background-image: -moz-linear-gradient(360deg,transparent,rgba(9,30,66,.12));
+    background-image: -o-linear-gradient(360deg,transparent,rgba(9,30,66,.12));
+    background-image: linear-gradient(360deg,transparent,rgba(9,30,66,.12));
+    background-position: 0 0,0 100%;
+    background-repeat: no-repeat;
+    -moz-background-size: 100% 1px;
+    background-size: 100% 1px;
+    top: 13px;
+    width: 50%;
+    display: table-cell;
+    position: relative;
+}
+
+.wk-message-split-line2 {
+    background-image: -webkit-gradient(linear,0 0,0 100%,from(#c5d0d5),to(transparent));
+    background-image: -webkit-linear-gradient(360deg,rgba(9,30,66,.12),transparent);
+    background-image: -moz-linear-gradient(360deg,rgba(9,30,66,.12),transparent);
+    background-image: -o-linear-gradient(360deg,rgba(9,30,66,.12),transparent);
+    background-image: linear-gradient(360deg,rgba(9,30,66,.12),transparent);
+    background-position: 0 0,0 100%;
+    background-repeat: no-repeat;
+    -moz-background-size: 100% 1px;
+    background-size: 100% 1px;
+    top: 13px;
+    width: 50%;
+    display: table-cell;
+    position: relative;
+}

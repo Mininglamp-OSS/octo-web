@@ -1,0 +1,29 @@
+
+:root {
+    --wk-height-navheader: 64px;
+}
+
+.wk-navheader {
+   
+    height: var(--wk-height-navheader);
+    width: 100%;
+    background-color: var(--wk-color-secondary);
+}
+
+.wk-navheader-content {
+    padding: 0px 20px;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.wk-navheader-content-left-title {
+    font-size: 24px;
+    font-weight: 500;
+}
+
+body[theme-mode=dark] .wk-navheader-content-left-title {
+    color: white;
+} 

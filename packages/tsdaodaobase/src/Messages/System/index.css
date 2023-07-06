@@ -1,0 +1,14 @@
+
+.wk-message-system {
+    padding: 10px 20px;
+    width: 85%;
+    margin: 0 auto;
+    text-align: center;
+    margin-top: 15px;
+    font-size: 12px;
+    color: rgba(9,30,66,.87);
+    white-space:  pre-line;
+}
+body[theme-mode=dark] .wk-message-system  {
+    color: #999;
+}

@@ -1,0 +1,57 @@
+
+
+.wk-mergeforwards {
+    width: 300px;
+    background-color: var(--wk-message-item);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+
+
+.wk-mergeforwards-content {
+    padding: 10px 10px 0px 10px;
+    color: black;
+
+}
+
+.wk-mergeforwards-content-title {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--wk-message-color);
+}
+
+.wk-mergeforwards-content-items {
+    padding-bottom: 5px;
+}
+
+.wk-mergeforwards-content-items .wk-mergeforwards-content-item {
+    white-space: nowrap;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    color: #999 !important;
+}
+
+.wk-mergeforwards-content-tip {
+    display: flex;
+    justify-content: space-between;
+    color: #999 !important;
+    font-size: 13px;
+    padding: 2px 0px;
+}
+
+.wk-mergeforwards-content-tip p {
+    margin-bottom: 0px;
+}
+
+.wk-mergeforwards-content-tip p:last-child {
+    margin-top: -4px;
+}
+
+.wk-mergeforwards-content-line {
+    width: 100%;
+    background-color: var(--wk-line-color);
+    height: 1px;
+}

@@ -1,0 +1,129 @@
+
+
+
+.wk-conversationselect {
+    max-height: 600px;
+    overflow: hidden;
+}
+
+.wk-conversationselect-content {
+    display: flex;
+    padding: 10px 10px 10px 0px;
+    cursor: pointer;
+    align-items: center;
+}
+
+.wk-conversationselect-content-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 64px;
+    width: 100%;
+    background: var(--wk-color-secondary);
+    font-weight: bold;
+    font-size: 17px;
+}
+
+.wk-conversationselect-content-searchBox {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 57px;
+    padding-left: 20px;
+    flex-wrap: wrap;
+    overflow: auto;
+    max-height: 400px;
+}
+
+.wk-conversationselect-content-selectedChannel {
+    display: flex;
+    flex-wrap: wrap;
+    overflow-y: auto;
+}
+
+.wk-conversationselect-content-selectedAvatar {
+    padding: 2px;
+    cursor: pointer;
+}
+
+
+.wk-conversationselect-content-searchContent {
+    display: flex;
+    min-width: 200px;
+    height: 50px;
+}
+
+.wk-conversationselect-content-searchContent input {
+    flex: 1 1;
+    height: 32px;
+    font-size: 12px;
+    line-height: 18px;
+    background-color: transparent;
+    color: #1f2329;
+    padding: 0;
+    outline: none;
+    border: none;
+    height: 100%;
+}
+
+.wk-conversationselect-content-searchIcon {
+    display: flex;
+    align-items: center;
+}
+
+.wk-conversationselect-content-searchInput {
+    margin-left: 10px;
+    max-width: 100px;
+}
+
+.wk-conversationselect-content-box {
+    padding: 0px 20px;
+    max-height: 400px;
+    overflow: auto;
+}
+
+
+.wk-conversationselect-content-header {
+    background: var(--wk-color-secondary);
+    font-weight: 400;
+    font-size: 13px;
+    padding: 0 18px;
+    line-height: 25px;
+}
+
+.wk-conversationselect-content-list {
+
+}
+
+.wk-conversationselect-content-box-data {
+    display: flex;
+    margin-left: 10px;
+}
+
+.wk-conversationselect-content-box-name {
+    margin-left: 10px;
+    display: flex;
+    align-items: center;
+}
+
+
+.wk-conversationselect-footer {
+    background: var(--wk-color-secondary);
+    height: 100px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.wk-conversationselect-okBtn {
+    cursor: pointer;
+    width: 160px;
+    border-radius: 8px;
+    height: 40px;
+    background-color: var(--wk-color-theme);
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}

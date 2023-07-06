@@ -1,0 +1,29 @@
+
+.wk-friendadd .wk-search-box{
+    border-radius: 0px;
+    background-color: white;
+   margin: 0px 15px;
+}
+
+.wk-friendadd .wk-search-input {
+    max-width: 100%;
+}
+
+.wk-friendadd .wk-search-input input {
+    width: 250px;
+}
+
+.wk-friendadd-content-qrcode {
+    margin-top: 10px;
+    text-align: center;
+}
+
+body[theme-mode=dark] .wk-friendadd-content-qrcode  {
+    color: white;
+}
+
+.wk-friendadd-content-qrcode img {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}

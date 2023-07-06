@@ -1,0 +1,108 @@
+
+
+.wk-popupmenus {
+    background-color: white;
+    border-radius: 4px;
+    box-shadow: -5px 5px 20px 0px #eee, 
+    0px 20px 20px -15px #eee;
+    display: flex;
+    height: 30px;
+    align-items: center;
+    padding: 0px 0px;
+}
+.wk-popupmenus-item {
+    align-items: center;
+    display: flex;
+    margin: 10px 10px 10px 0px;
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+}
+.wk-popupmenus-item:first-child {
+    margin-left: 10px;
+}
+
+
+
+.wk-popupmenus-comment {
+      /* webpackIgnore: true */
+    background-image: url(./icons/comment.png);
+    background-size: cover;
+
+}
+
+.wk-popupmenus-comment:hover {
+    background-image: url('./icons/comment-hover.png');
+}
+
+.wk-popupmenus-like {
+    background-image: url('./icons/like.png');
+    background-size: cover;
+}
+
+.wk-popupmenus-like:hover {
+    background-image: url('./icons/like-hover.png');
+}
+
+.wk-popupmenus-forward {
+    background-image: url('./icons/forward.png');
+    background-size: cover;
+}
+
+.wk-popupmenus-forward:hover {
+    background-image: url('./icons/forward-hover.png');
+    background-size: cover;
+}
+
+.wk-popupmenus-delete {
+    background-image: url('./icons/delete.png');
+    background-size: cover;
+}
+
+.wk-popupmenus-delete:hover {
+    background-image: url('./icons/delete-hover.png');
+    background-size: cover;
+}
+
+.wk-popupmenus-mulselect {
+    background-image: url('./icons/mulselect.png');
+    background-size: cover;
+}
+
+.wk-popupmenus-mulselect:hover {
+    background-image: url('./icons/mulselect-hover.png');
+    background-size: cover;
+}
+
+.wk-popupmenus-revoke {
+    background-image: url('./icons/revoke.png');
+    background-size: cover;
+}
+
+.wk-popupmenus-revoke:hover {
+    background-image: url('./icons/revoke-hover.png');
+    background-size: cover;
+}
+
+.wk-popupmenus-favorites {
+    background-image: url('./icons/favorites.png');
+    background-size: cover;
+}
+
+.wk-popupmenus-favorites:hover {
+    background-image: url('./icons/favorites-hover.png');
+    background-size: cover;
+}
+
+.wk-popupmenus-copy {
+    background-image: url('./icons/copy.png');
+    background-size: cover;
+    width: 16px;
+    height: 16px;
+}
+
+.wk-popupmenus-copy:hover {
+    background-image: url('./icons/copy-hover.png');
+    background-size: cover;
+}
+

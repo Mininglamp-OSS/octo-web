@@ -1,0 +1,43 @@
+.wk-message-card {
+    background-color: white;
+    width: 300px;
+    cursor: pointer;
+    border-radius: 8px;
+}
+
+body[theme-mode=dark] .wk-message-card {
+    background-color: var(--wk-color-secondary);
+}
+
+
+.wk-message-card-content {
+    display: flex;
+    padding: 10px;
+    align-items: center;
+}
+
+.wk-message-card-content-name {
+    margin-left: 20px;
+    color: var(--wk-text-item);
+
+}
+
+.wk-message-card-bottom {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0px 10px 5px 10px;
+} 
+
+.wk-message-card-bottom-flag {
+    font-size: 12px;
+    color: #999;
+}
+
+.wk-message-card-bottom-time {
+    position: absolute;
+    right: 10px;
+    top: -5px;
+    color: #999 !important;
+}

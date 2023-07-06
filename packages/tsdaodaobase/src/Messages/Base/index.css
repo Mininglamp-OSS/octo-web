@@ -1,0 +1,434 @@
+:root {
+    --wk-width-max-message: 540px;
+}
+
+.wk-message-base {
+    width: 100%;
+    height: 100%;
+    display: flex;
+}
+
+.wk-message-base-check-open {
+
+}
+
+.wk-message-base-send, .wk-message-base-recv {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+
+.wk-message-base-send {
+    align-items: flex-end;
+    margin-right: 5px;
+}
+
+.wk-message-base-recv {
+    margin-left: 15px;
+    transform: translate3d(0, 0, 0);
+    transition: transform var(--wk-layer-transition);
+}
+
+.wk-message-base-check-open .wk-message-base-recv {
+    transform: translate3d(30px, 0, 0);
+}
+
+.senderName {
+    color: rgba(9,30,66,.74);
+    font-size: 12px;
+    font-weight: 400;
+    /* text-transform: capitalize; */
+    padding-bottom: 1px;
+}
+
+.senderAvatar {
+    width: 34px;
+    height: 34px;
+    cursor: pointer;
+    position: absolute;
+    left: 0;
+    bottom: 5px;
+}
+
+.senderAvatar img {
+    width: 34px;
+    height: 34px;
+    border-radius: 34px;
+}
+
+.wk-message-base-box {
+    display: flex;
+    align-items: center;
+    position: relative;
+}
+
+.wk-message-base-send .wk-message-base-box {
+    flex-direction: row-reverse;
+    justify-content: center;
+    margin-left: 0px;
+    margin-right: 10px;
+}
+
+.wk-message-base-send .senderName {
+    padding-right: 41px;
+}
+
+.wk-message-base-recv .senderName {
+    padding-left: 41px;
+}
+
+.wk-message-base-send .senderAvatar {
+    display: none;
+    text-align: center;
+}
+
+.wk-message-base-bubble-box {
+    display: flex;
+    position: relative;
+}
+
+.wk-message-base-bubble-box.recv {
+    margin-left: 40px;
+}
+
+.wk-message-base-bubble {
+    color: rgba(9,30,66,.87);
+    display: flex;
+    /* margin-bottom: 4px; */
+    padding: 8px 10px;
+    position: relative;
+    word-wrap: break-word;
+    max-width: var(--wk-width-max-message);
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    box-shadow: 0 1px 2px rgba(114,114,114,0.25098);
+    font-size: 15px;
+}
+
+.wk-message-base-bubble-box.hide .wk-message-base-bubble {
+    padding: 0px;
+}
+
+body[theme-mode=dark] .wk-message-base-bubble {
+    box-shadow: none;
+}
+
+@media screen and (max-width: 640px)  {
+    .wk-message-base-bubble {
+        max-width: calc(100vw - 80px);
+    }
+}
+
+.wk-message-base-bubble-box.send .wk-message-base-bubble {
+    background-color: var(--wk-color-theme) ;
+    border-radius: 0.75rem 0.75rem 0rem 0.75rem;
+    color: white;
+}
+
+.wk-message-base-bubble-box.recv .wk-message-base-bubble {
+    border-radius: 0.75rem 0.75rem 0.75rem 0rem;
+    background-color: white ;
+    color: black;
+}
+
+body[theme-mode=dark] .wk-message-base-bubble-box.recv .wk-message-base-bubble  {
+    color: white;
+}
+
+body[theme-mode=dark] .wk-message-base-bubble-box.recv .wk-message-base-bubble {
+    background-color: var(--wk-color-secondary);
+}
+
+.wk-message-base-bubble-box.send.middle .wk-message-base-bubble {
+    border-radius: 0.75rem 0.375rem 0.375rem 0.75rem;
+}
+
+.wk-message-base-bubble-box.send.first .wk-message-base-bubble {
+    border-radius: 0.75rem 0.75rem 0.375rem 0.75rem;
+}
+
+.wk-message-base-bubble-box.recv.middle .wk-message-base-bubble {
+    border-radius: 0.375rem 0.75rem 0.75rem 0.375rem;
+}
+
+.wk-message-base-bubble-box.recv.first .wk-message-base-bubble {
+    border-radius: 0.75rem 0.75rem 0.75rem 0.375rem;
+}
+
+.wk-message-base-bubble-box.hide .wk-message-base-bubble {
+    background-color: transparent !important;
+    box-shadow: none;
+}
+
+
+.svgAppendix {
+    display: none;
+    overflow: hidden;
+    position: absolute;
+    width: 0.5625rem;
+    height: 1.125rem;
+    font-size: 1rem !important;
+    bottom: -1px;
+}
+
+
+.wk-message-base-bubble-box.last .svgAppendix {
+    display: block;
+}
+
+.wk-message-base-bubble-box.single .svgAppendix {
+    display: block;
+}
+
+
+.wk-message-base-bubble-box.send .svgAppendix {
+    right: -0.551rem;
+}
+
+.wk-message-base-bubble-box.recv .svgAppendix {
+    left: -0.52rem;
+}
+
+.wk-message-base-bubble-box.send .svgAppendix .corner {
+    fill: var(--wk-color-theme);
+}
+
+.wk-message-base-bubble-box.recv .svgAppendix .corner {
+    fill: white;
+}
+
+
+body[theme-mode=dark] .wk-message-base-bubble-box.recv .svgAppendix .corner  {
+    fill: var(--wk-color-secondary);
+}
+
+/* .wk-message-base-recv .wk-message-base-bubble {
+    margin-left: 5px;
+    background-color: #bedbf5;
+}
+
+.wk-message-base-send .wk-message-base-bubble {
+    margin-right: 5px;
+    background-color: #fff;
+    box-shadow: -1px 1px 1px rgba(0,0,0,.12);
+    color: rgba(9,30,66,.87) !important;
+    border-radius: 20px 4px 8px 20px;
+}*/
+
+
+
+.messageNameBox {
+    display: flex;
+    margin-bottom: 1px;
+}
+
+.wk-message-base-send .messageNameBox {
+    flex-direction: row-reverse;
+    justify-content: end;
+}
+
+.wk-message-base-recv .messageNameBox {
+    flex-direction: row;
+}
+
+/*.messageTime {
+    color: rgba(9,30,66,.74);
+    font-size: 12px;
+    font-weight: 400;
+    text-transform: capitalize;
+    display: none;
+}
+
+.wk-message-base-send:hover .messageTime {
+    display: block;
+}
+
+.wk-message-base-recv:hover .messageTime {
+    display: block;
+}
+
+.wk-message-base-recv .messageTime {
+    margin-left: 8px;
+}
+
+.wk-message-base-send .messageTime {
+    margin-right: 8px;
+}*/
+
+
+
+.wk-message-base-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.popupMenusContaner {
+    display: none;
+}
+
+.wk-message-base-box:hover .popupMenusContaner {
+    display: block;
+}
+
+
+.wk-message-base-checkBox {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transform: translate3d(-10px, 0, 0);
+    transition: transform var(--wk-layer-transition);
+}
+
+.wk-message-base-check-open {
+    cursor: pointer;
+}
+
+.wk-message-base-check-open .wk-message-base-checkBox{
+    transform: translate3d(25px, 0, 0);
+   
+}
+
+.wk-message-base-checkBox .wk-check {
+    position: absolute;
+    bottom: 10px;
+}
+
+.wk-message-base-send .checkBox {
+    left: auto;
+    right: -30px;
+}
+
+
+.wk-message-base-send .wk-message-base-box.checked {
+    margin-left: 0;
+    margin-right: 30px;
+}
+
+.wk-message-base-recv .wk-message-base-box.checked .senderAvatar {
+    left: -30px;
+}
+
+.replyBox {
+    width: 100%;
+}
+
+.reply {
+    position: relative;
+    color: #666;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 12px;
+    margin-bottom: 4px;
+    max-width: 100%;
+    white-space: pre-wrap;
+    white-space: -moz-pre-wrap;
+    white-space: -pre-wrap;
+    white-space: -o-pre-wrap;
+    word-wrap: break-word;
+}
+
+.reply::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    border-radius: 50px;
+    background-color: var(--wk-color-theme);
+}
+
+.messageMeta {
+    position: relative;
+    top: 0.375rem;
+    bottom: auto !important;
+    float: right;
+    line-height: 1;
+    height: 19px;
+    margin-left: 0.4375rem;
+    margin-right: -0.2rem;
+}
+
+.wk-message-base-bubble-box.send .messageMeta {
+    top: 0rem;
+}
+
+.messageTime {
+    margin-inline-end: 0.1875rem;
+    font-size: .75rem;
+    white-space: nowrap;
+}
+
+.wk-message-base-bubble-box.recv .messageTime {
+    color: rgb(104, 108, 114,0.75);
+}
+
+.wk-message-base-bubble-box.send .messageTime {
+    color: rgb(255, 255, 255,0.75);
+}
+
+.textTitle {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: calc(var(--message-text-size, 1rem) - .125rem);
+    font-weight: 500;
+    color: var(--accent-color);
+    unicode-bidi: plaintext;
+    display: flex;
+}
+
+.icon-message-read::before {
+    content: "";
+    position: absolute;
+    bottom: -4px;
+    color: rgb(255,255,255,0.7);
+}
+
+.icon-message-succeeded::before {
+    content: "";
+    position: absolute;
+    bottom: -4px;
+    color: rgb(255,255,255,0.7);
+}
+
+.icon-message-pending::before {
+    content: "";
+    position: absolute;
+    bottom: -4px;
+}
+
+.messageStatus {
+    width: 1.19rem;
+    height: 1.19rem;
+    overflow: hidden;
+    display: inline-block;
+    line-height: 1;
+    margin-left: -0.1875rem;
+    font-size: 1.1875rem;
+    border-radius: 0.625rem;
+}
+
+.messageFail {
+    cursor: pointer;
+}
+
+.messageFail img {
+    width: 20px;
+    height: 20px;
+    margin-left: 10px;
+}
+
+.wk-message-error-reason {
+    font-size: 13px;
+    margin-right: 10px;
+    margin-top: 5px;
+    color: var(--wk-color-font-tip);
+}

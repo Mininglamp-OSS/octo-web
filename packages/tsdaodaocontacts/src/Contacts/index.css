@@ -1,0 +1,92 @@
+
+.wk-contacts {
+    width: 100%;
+    height: 100%;
+    --wk-height-contacts-content-header:50px;
+    border-right: var(--wk-line);
+}
+
+.wk-contacts-content-header {
+    width: 100%;
+    padding: 0px 10px;
+    background-color: var(--wk-color-secondary);
+}
+
+.wk-contacts-content {
+    width: 100%;
+    height: calc( 100% - var(--wk-height-navheader));
+    overflow: auto;
+}
+
+.wk-contacts-content-contacts {
+    width: 100%;
+}
+
+.wk-contacts-section {
+
+}
+
+.wk-contacts-section-list {
+    padding: 0px 5px;
+    background-color: var(--wk-color-item);
+}
+
+
+.wk-contacts-section-item-index {
+    width: 50px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 500;
+}
+
+body[theme-mode=dark] .wk-contacts-section-item-index  {
+    color: white;
+}
+
+.wk-contacts-section-item {
+    display: flex;
+    align-items: center;
+    padding: 15px 15px 15px 0px;
+    cursor: pointer;
+}
+
+body[theme-mode=dark] .wk-contacts-section-item  {
+    background-color: var(--wk-color-secondary-2);
+}
+
+/* .wk-contacts-section-item:hover {
+    background-color: var(--wk-color-hover);
+    border-radius: 10px;
+} */
+
+.wk-contacts-section-item-selected {
+    background-color: var(--wk-color-theme);
+    color: white;
+    border-radius: 10px;
+}
+
+.wk-contacts-section-item-avatar img {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+}
+
+
+.wk-contacts-section-item-name {
+    margin-left: 15px;
+}
+
+body[theme-mode=dark] .wk-contacts-section-item-name {
+    color: white;
+}
+
+.wk-contacts-content-fnc {
+    width: 100%;
+}
+
+.wk-contacts-content-header .wk-search-box{
+
+    background-color: white;
+    width: 100%;
+    border-radius: 4px;
+}

@@ -1,0 +1,13 @@
+
+.wk-meinfo {
+    background-color: var(--wk-color-secondary);
+    position: relative;
+    --wk-height-userInfo-footer: 60px;
+    --wk-height-userInfo-nav: 44px;
+    width: 100%;
+    height: 100%;
+}
+
+.wk-meinfo-sections {
+    
+}

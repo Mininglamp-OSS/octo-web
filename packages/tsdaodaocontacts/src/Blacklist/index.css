@@ -1,0 +1,32 @@
+
+
+.wk-blacklist {
+
+}
+
+.wk-blacklist-content ul li {
+    height: 80px;
+    width: 100%;
+    background-color: var(--wk-color-item);
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+
+.wk-blacklist-content-avatar {
+    margin-left: 15px;
+}
+
+.wk-blacklist-content-avatar img{
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+}
+
+.wk-blacklist-content-title {
+    margin-left: 15px;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--wk-text-item);
+}

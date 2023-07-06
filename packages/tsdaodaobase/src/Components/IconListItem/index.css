@@ -1,0 +1,36 @@
+
+.wk-iconlistitem {
+    background-color: white;
+    height: 70px;
+    width: 100%;
+    cursor: pointer;
+    position: relative;
+}
+
+.wk-iconlistitem-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding: 0px 20px;
+}
+
+.wk-iconlistitem-content-icon img {
+    width: 32px;
+    height: 32px;
+}
+
+.wk-iconlistitem-content-title {
+    font-size: 14px;
+    font-weight: 500;
+    margin-left: 15px;
+}
+
+body[theme-mode=dark] .wk-iconlistitem-content-title {
+    color: white;
+}
+
+.wk-iconlistitem-content-badge {
+    position: absolute;
+    right: 15px;
+}
