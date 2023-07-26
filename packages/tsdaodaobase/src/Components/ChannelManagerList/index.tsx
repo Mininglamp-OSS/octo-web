@@ -1,5 +1,5 @@
 import { Popconfirm, Toast } from "@douyinfe/semi-ui";
-import { Channel, ChannelTypePerson } from "wukongimjssdk/lib/sdk";
+import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import React from "react";
 import { Component, ReactNode } from "react";
 import WKApp from "../../App";

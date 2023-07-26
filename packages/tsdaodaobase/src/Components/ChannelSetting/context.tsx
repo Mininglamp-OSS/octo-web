@@ -1,4 +1,4 @@
-import { Channel, ChannelInfo, Subscriber } from "wukongimjssdk/lib/sdk";
+import { Channel, ChannelInfo, Subscriber } from "wukongimjssdk";
 import { GroupRole } from "../../Service/Const";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import ConversationContext from "../Conversation/context";

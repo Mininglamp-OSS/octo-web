@@ -1,4 +1,4 @@
-import { MediaMessageContent, MessageContent } from "wukongimjssdk/lib/sdk"
+import { MediaMessageContent, MessageContent } from "wukongimjssdk"
 import React from "react"
 import "./index.css"
 import WaveCanvas from "../../Components/WaveCanvas"

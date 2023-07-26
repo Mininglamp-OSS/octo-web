@@ -1,4 +1,4 @@
-import { Channel, ChannelTypePerson, WKSDK, Message, MessageContentType, ConversationAction, ChannelTypeGroup, ChannelInfo,CMDContent, MessageText  } from "wukongimjssdk/lib/sdk";
+import { Channel, ChannelTypePerson, WKSDK, Message, MessageContentType, ConversationAction, ChannelTypeGroup, ChannelInfo,CMDContent, MessageText  } from "wukongimjssdk";
 import React, { ElementType } from "react";
 import WKApp, { FriendApply, FriendApplyState, ThemeMode } from "./App";
 import ChannelQRCode from "./Components/ChannelQRCode";

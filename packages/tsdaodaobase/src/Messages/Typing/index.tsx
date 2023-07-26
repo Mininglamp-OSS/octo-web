@@ -1,4 +1,4 @@
-import { MessageContent } from "wukongimjssdk/lib/sdk"
+import { MessageContent } from "wukongimjssdk"
 import React from "react"
 import { BeatLoader } from "react-spinners"
 import { MessageContentTypeConst } from "../../Service/Const"

@@ -1,6 +1,6 @@
 import WKSDK from "wukongimjssdk";
-import { ChannelInfoListener } from "wukongimjssdk/lib/channel_manager";
-import { Channel, ChannelInfo, ChannelTypePerson, MessageStatus } from "wukongimjssdk/lib/model";
+import { ChannelInfoListener } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelTypePerson, MessageStatus } from "wukongimjssdk";
 import { Component, CSSProperties, HTMLProps } from "react";
 import './index.css'
 import { BubblePosition, MessageWrap } from "../../Service/Model";

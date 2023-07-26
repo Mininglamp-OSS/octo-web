@@ -1,4 +1,4 @@
-import { Channel, ChannelInfo, ConversationExtra, Message } from "wukongimjssdk/lib/sdk";
+import { Channel, ChannelInfo, ConversationExtra, Message } from "wukongimjssdk";
 import { APIResp } from "../APIClient";
 
 export type ContactsChangeListener = () => void;

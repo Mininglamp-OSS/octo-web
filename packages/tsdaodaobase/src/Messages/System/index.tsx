@@ -1,4 +1,4 @@
-import { SystemContent } from "wukongimjssdk/lib/sdk"
+import { SystemContent } from "wukongimjssdk"
 import React from "react"
 import { MessageCell } from "../MessageCell"
 import  './index.css'

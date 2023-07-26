@@ -11,8 +11,8 @@ import { ConversationWrap } from "../../Service/Model";
 import WKApp, { ThemeMode } from "../../App";
 import ChannelSetting from "../../Components/ChannelSetting";
 import classNames from "classnames";
-import { Channel, ChannelInfo, WKSDK } from "wukongimjssdk/lib/sdk";
-import { ChannelInfoListener } from "wukongimjssdk/lib/channel_manager";
+import { Channel, ChannelInfo, WKSDK } from "wukongimjssdk";
+import { ChannelInfoListener } from "wukongimjssdk";
 import { ChatMenus } from "../../App";
 import ConversationContext from "../../Components/Conversation/context";
 

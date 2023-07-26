@@ -1,5 +1,5 @@
-import { Setting } from "wukongimjssdk/lib/proto"
-import { Channel, ChannelInfo, ChannelTypePerson, Conversation, WKSDK, Message, MessageContentType, MessageStatus,MessageText } from "wukongimjssdk/lib/sdk"
+import { Setting } from "wukongimjssdk"
+import { Channel, ChannelInfo, ChannelTypePerson, Conversation, WKSDK, Message, MessageContentType, MessageStatus,MessageText } from "wukongimjssdk"
 import WKApp from "../App"
 import { MessageContentTypeConst, MessageReasonCode, OrderFactor } from "./Const"
 import { DefaultEmojiService } from "./EmojiService"

@@ -1,4 +1,4 @@
-import { UnknownContent } from "wukongimjssdk/lib/sdk";
+import { UnknownContent } from "wukongimjssdk";
 import React from "react";
 import MessageBase from "../Base";
 import { MessageCell } from "../MessageCell";

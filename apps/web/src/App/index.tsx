@@ -3,7 +3,7 @@ import { ContactsList } from '@tsdaodao/contacts';
 import React from 'react';
 import './index.css';
 import AppLayout from '../Layout';
-import { WKSDK } from 'wukongimjssdk/lib/sdk';
+import { WKSDK } from 'wukongimjssdk';
 function App() {
   registerMenus()
   return (

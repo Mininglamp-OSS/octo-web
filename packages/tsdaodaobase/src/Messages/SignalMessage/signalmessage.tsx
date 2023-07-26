@@ -1,4 +1,4 @@
-import { MessageSignalContent } from "wukongimjssdk/lib/sdk"
+import { MessageSignalContent } from "wukongimjssdk"
 import React from "react"
 import MessageBase from "../Base"
 import { MessageCell } from "../MessageCell"

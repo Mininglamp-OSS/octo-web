@@ -3,7 +3,7 @@ import { MentionsInput, Mention, SuggestionDataItem } from 'react-mentions'
 import ConversationContext from "../Conversation/context";
 import clazz from 'classnames';
 import './mention.css'
-import { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk/lib/sdk";
+import { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 import hotkeys from 'hotkeys-js';
 import WKApp from "../../App";
 import "./index.css"

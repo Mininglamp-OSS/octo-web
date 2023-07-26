@@ -1,4 +1,4 @@
-import { WKSDK,Channel, ChannelInfo } from "wukongimjssdk/lib/sdk";
+import { WKSDK,Channel, ChannelInfo } from "wukongimjssdk";
 import { Component } from "react";
 import Checkbox from "../Checkbox";
 import { animateScroll } from 'react-scroll';

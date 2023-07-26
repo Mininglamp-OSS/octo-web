@@ -1,6 +1,6 @@
 import { Button } from "@douyinfe/semi-ui";
 import axios from "axios";
-import { Channel } from "wukongimjssdk/lib/sdk";
+import { Channel } from "wukongimjssdk";
 import React from "react";
 import { Component } from "react";
 import WKApp from "../../App";

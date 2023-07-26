@@ -1,4 +1,4 @@
-import { Channel, ChannelTypeGroup, ChannelTypePerson, ConversationAction, WKSDK, Mention, Message, MessageContent, Reminder, ReminderType, Reply,MessageText } from "wukongimjssdk/lib/sdk";
+import { Channel, ChannelTypeGroup, ChannelTypePerson, ConversationAction, WKSDK, Mention, Message, MessageContent, Reminder, ReminderType, Reply,MessageText } from "wukongimjssdk";
 import React, { Component, HTMLProps } from "react";
 import Provider from "../../Service/Provider";
 import ConversationVM from "./vm";

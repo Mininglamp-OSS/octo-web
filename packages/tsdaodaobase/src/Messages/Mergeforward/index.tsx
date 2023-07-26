@@ -1,6 +1,6 @@
 import { Modal } from "@douyinfe/semi-ui"
-import { ChannelInfoListener } from "wukongimjssdk/lib/channel_manager"
-import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContent } from "wukongimjssdk/lib/sdk"
+import { ChannelInfoListener } from "wukongimjssdk"
+import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContent } from "wukongimjssdk"
 import React from "react"
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList"
 import { MessageContentTypeConst } from "../../Service/Const"

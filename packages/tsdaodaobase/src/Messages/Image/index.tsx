@@ -1,4 +1,4 @@
-import { MediaMessageContent } from "wukongimjssdk/lib/sdk"
+import { MediaMessageContent } from "wukongimjssdk"
 import React from "react"
 import WKApp from "../../App"
 import { MessageContentTypeConst } from "../../Service/Const"

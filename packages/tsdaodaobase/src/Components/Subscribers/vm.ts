@@ -1,4 +1,4 @@
-import { Subscriber } from "wukongimjssdk/lib/sdk";
+import { Subscriber } from "wukongimjssdk";
 import { GroupRole } from "../../Service/Const";
 import WKApp from "../../App";
 import { ProviderListener } from "../../Service/Provider";

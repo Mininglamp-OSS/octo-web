@@ -11,8 +11,8 @@ import { ListItemAvatar } from "../ListItemAvatar";
 import axios from "axios";
 import { Toast } from "@douyinfe/semi-ui";
 import WKSDK from "wukongimjssdk";
-import { ChannelInfoListener } from "wukongimjssdk/lib/channel_manager";
-import { ChannelInfo, ChannelTypePerson } from "wukongimjssdk/lib/model";
+import { ChannelInfoListener } from "wukongimjssdk";
+import { ChannelInfo, ChannelTypePerson } from "wukongimjssdk";
 export class MeInfoVM extends ProviderListener {
 
     channelInfoListener!:ChannelInfoListener

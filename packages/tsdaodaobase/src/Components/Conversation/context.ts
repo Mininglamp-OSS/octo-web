@@ -1,4 +1,4 @@
-import { Channel, Message, MessageContent } from "wukongimjssdk/lib/sdk";
+import { Channel, Message, MessageContent } from "wukongimjssdk";
 import { MessageInputContext } from "../MessageInput";
 
 

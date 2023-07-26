@@ -1,4 +1,4 @@
-import { Channel, WKSDK, Message } from "wukongimjssdk/lib/sdk";
+import { Channel, WKSDK, Message } from "wukongimjssdk";
 import WKApp from "./App";
 import React, { Component, ReactNode } from "react";
 import { ChatContentPage } from "./Pages/Chat";

@@ -1,4 +1,4 @@
-import { Channel, Conversation, Message, MessageExtra, PullMode } from "wukongimjssdk/lib/sdk"
+import { Channel, Conversation, Message, MessageExtra, PullMode } from "wukongimjssdk"
 
 
 export class SyncMessageOptions {

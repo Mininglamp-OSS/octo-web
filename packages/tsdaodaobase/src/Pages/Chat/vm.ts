@@ -1,8 +1,8 @@
 import WKSDK from "wukongimjssdk";
-import { ChannelInfoListener } from "wukongimjssdk/lib/channel_manager";
-import { ConnectStatus, ConnectStatusListener } from "wukongimjssdk/lib/connect_manager";
-import { ConversationAction, ConversationListener } from "wukongimjssdk/lib/conversation_manager";
-import { Channel, ChannelInfo, Conversation, Message } from "wukongimjssdk/lib/sdk";
+import { ChannelInfoListener } from "wukongimjssdk";
+import { ConnectStatus, ConnectStatusListener } from "wukongimjssdk";
+import { ConversationAction, ConversationListener } from "wukongimjssdk";
+import { Channel, ChannelInfo, Conversation, Message } from "wukongimjssdk";
 import WKApp, { MessageDeleteListener } from "../../App";
 import { ConversationWrap } from "../../Service/Model";
 import { ProviderListener } from "../../Service/Provider";

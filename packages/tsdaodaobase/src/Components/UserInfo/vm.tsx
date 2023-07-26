@@ -1,5 +1,5 @@
-import { ChannelInfoListener, SubscriberChangeListener } from "wukongimjssdk/lib/channel_manager";
-import { Channel, ChannelInfo, ChannelTypePerson, WKSDK, Subscriber } from "wukongimjssdk/lib/sdk";
+import { ChannelInfoListener, SubscriberChangeListener } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelTypePerson, WKSDK, Subscriber } from "wukongimjssdk";
 import { Section } from "../../Service/Section";
 import { ProviderListener } from "../../Service/Provider";
 import WKApp from "../../App";

@@ -1,4 +1,4 @@
-import { Channel } from "wukongimjssdk/lib/model";
+import { Channel } from "wukongimjssdk";
 import React from "react";
 import { Component, CSSProperties } from "react";
 import WKApp from "../../App";

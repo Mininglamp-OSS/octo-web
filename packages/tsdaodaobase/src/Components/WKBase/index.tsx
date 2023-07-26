@@ -1,5 +1,5 @@
 import { Modal } from "@douyinfe/semi-ui";
-import { Channel } from "wukongimjssdk/lib/sdk";
+import { Channel } from "wukongimjssdk";
 import React, { Component, HTMLProps, ReactNode } from "react";
 import ConversationSelect from "../ConversationSelect";
 import UserInfo from "../UserInfo";

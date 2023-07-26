@@ -1,4 +1,4 @@
-import { Channel, ChannelTypePerson, WKSDK, MessageContent } from "wukongimjssdk/lib/sdk";
+import { Channel, ChannelTypePerson, WKSDK, MessageContent } from "wukongimjssdk";
 import React from "react";
 import WKApp from "../../App";
 import { MessageContentTypeConst } from "../../Service/Const";

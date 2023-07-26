@@ -4,19 +4,19 @@ import MenusManager from "./Service/Menus";
 import { EndpointManager, IModule, ModuleManager } from "./Service/Module";
 import { ProviderListener } from "./Service/Provider";
 import RouteManager, { ContextRouteManager } from "./Service/Route";
-import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContentType } from "wukongimjssdk/lib/sdk";
+import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContentType } from "wukongimjssdk";
 import { IConversationProvider } from "./Service/DataSource/DataProvider";
 import MessageManager from "./Service/MessageManager";
 import { DefaultEmojiService, EmojiService } from "./Service/EmojiService";
 import SectionManager, { Row, Section } from "./Service/Section";
 import { EndpointCategory } from "./Service/Const";
 import { DataSource } from "./Service/DataSource/DataSource";
-import { ConnectAddrCallback } from "wukongimjssdk/lib/provider";
+import { ConnectAddrCallback } from "wukongimjssdk";
 
 import 'animate.css';
 import "./App.css"
 import RouteContext from "./Service/Context";
-import { ConnectStatus } from "wukongimjssdk/lib/connect_manager";
+import { ConnectStatus } from "wukongimjssdk";
 import { WKBaseContext } from "./Components/WKBase";
 import StorageService from "./Service/StorageService";
 import axios from "axios";

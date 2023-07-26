@@ -1,5 +1,5 @@
 import { Toast } from "@douyinfe/semi-ui";
-import { Channel } from "wukongimjssdk/lib/model";
+import { Channel } from "wukongimjssdk";
 import WKApp from "../App";
 
 

@@ -1,6 +1,6 @@
 import WKSDK from "wukongimjssdk";
-import { ChannelInfoListener } from "wukongimjssdk/lib/channel_manager";
-import { Channel, ChannelInfo, ChannelTypePerson } from "wukongimjssdk/lib/sdk";
+import { ChannelInfoListener } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelTypePerson } from "wukongimjssdk";
 import React, { Component } from "react";
 import { ConversationWrap, MessageWrap } from "../../Service/Model";
 import { getTimeStringAutoShort2 } from '../../Utils/time'

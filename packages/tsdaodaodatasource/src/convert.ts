@@ -1,6 +1,6 @@
 import BigNumber from "bignumber.js";
-import { Setting } from "wukongimjssdk/lib/proto";
-import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra } from "wukongimjssdk/lib/sdk";
+import { Setting } from "wukongimjssdk";
+import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra } from "wukongimjssdk";
 
 
 export class Convert {

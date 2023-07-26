@@ -1,4 +1,4 @@
-import { MessageContent } from "wukongimjssdk/lib/model";
+import { MessageContent } from "wukongimjssdk";
 import React from "react";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { MessageCell } from "../MessageCell";

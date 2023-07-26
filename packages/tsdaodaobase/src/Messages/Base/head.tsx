@@ -1,4 +1,4 @@
-import { Channel, ChannelTypePerson,WKSDK } from "wukongimjssdk/lib/sdk";
+import { Channel, ChannelTypePerson,WKSDK } from "wukongimjssdk";
 import React from "react";
 import { Component } from "react";
 import { BubblePosition, MessageWrap } from "../../Service/Model";

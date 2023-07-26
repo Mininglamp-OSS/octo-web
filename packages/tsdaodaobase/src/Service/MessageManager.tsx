@@ -1,4 +1,4 @@
-import { MessageContentType } from "wukongimjssdk/lib/sdk"
+import { MessageContentType } from "wukongimjssdk"
 import { ElementType } from "react"
 
 

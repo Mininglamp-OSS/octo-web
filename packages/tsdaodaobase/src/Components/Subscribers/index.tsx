@@ -1,4 +1,4 @@
-import { Channel, WKSDK, Subscriber } from "wukongimjssdk/lib/sdk";
+import { Channel, WKSDK, Subscriber } from "wukongimjssdk";
 import React from "react";
 import { Component } from "react";
 import Provider from "../../Service/Provider";

@@ -1,6 +1,6 @@
 import { GroupRole, IModule, WKApp } from "@tsdaodao/base"
-import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, Conversation, WKSDK, Message, Subscriber, ConversationExtra, Reminder } from "wukongimjssdk/lib/sdk";
-import { MessageTask } from "wukongimjssdk/lib/task";
+import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, Conversation, WKSDK, Message, Subscriber, ConversationExtra, Reminder } from "wukongimjssdk";
+import { MessageTask } from "wukongimjssdk";
 import { version } from "prettier";
 import { ConversationProvider } from "./conversation";
 import { Convert } from "./convert";

@@ -6,7 +6,7 @@ import { toSimplized } from "@tsdaodao/base";
 import { getPinyin } from "@tsdaodao/base";
 import classnames from "classnames";
 import { Toast } from "@douyinfe/semi-ui";
-import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk/lib/sdk";
+import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import { ContactsListManager } from "../Service/ContactsListManager";
 import { Card } from "@tsdaodao/base/src/Messages/Card";
 

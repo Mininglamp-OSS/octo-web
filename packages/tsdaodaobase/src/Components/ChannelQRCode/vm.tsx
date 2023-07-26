@@ -1,4 +1,4 @@
-import { Channel } from "wukongimjssdk/lib/sdk";
+import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";
 import { ChannelQrcodeResp } from "../../Service/DataSource/DataSource";
 import { ProviderListener } from "../../Service/Provider";

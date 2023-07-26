@@ -1,6 +1,6 @@
 import { IConversationProvider, WKApp, SyncMessageOptions } from "@tsdaodao/base";
 import axios from "axios";
-import { Conversation, Message, Channel, MessageExtra } from "wukongimjssdk/lib/sdk";
+import { Conversation, Message, Channel, MessageExtra } from "wukongimjssdk";
 import { Convert } from "./convert";
 
 export class ConversationProvider implements IConversationProvider {

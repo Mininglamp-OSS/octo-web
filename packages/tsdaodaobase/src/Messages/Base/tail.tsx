@@ -1,4 +1,4 @@
-import { MessageStatus } from "wukongimjssdk/lib/sdk";
+import { MessageStatus } from "wukongimjssdk";
 import moment from "moment";
 import React from "react";
 import { Component, CSSProperties } from "react";

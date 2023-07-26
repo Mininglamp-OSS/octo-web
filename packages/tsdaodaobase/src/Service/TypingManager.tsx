@@ -1,4 +1,4 @@
-import { Channel, Message } from "wukongimjssdk/lib/sdk";
+import { Channel, Message } from "wukongimjssdk";
 import WKApp from "../App";
 import { TypingContent } from "../Messages/Typing";
 

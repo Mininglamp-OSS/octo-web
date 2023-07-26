@@ -1,4 +1,4 @@
-import { MessageContent } from "wukongimjssdk/lib/sdk";
+import { MessageContent } from "wukongimjssdk";
 import moment from 'moment'
 import React from "react";
 import { MessageContentTypeConst } from "../../Service/Const";
