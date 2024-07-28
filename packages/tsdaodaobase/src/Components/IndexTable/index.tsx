@@ -1,10 +1,11 @@
-import { Checkbox } from "@douyinfe/semi-ui/lib/es/checkbox";
+import { Checkbox } from "@douyinfe/semi-ui";
 import React, { Component } from "react";
 import { getPinyin } from "../../Utils/pinYin";
 import { toSimplized } from "../../Utils/t2s";
-import "./index.css";
 import { IconSearchStroked } from "@douyinfe/semi-icons";
 import { animateScroll, scroller } from "react-scroll";
+
+import "./index.css";
 
 export class IndexTableItem {
   id!: string;

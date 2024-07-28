@@ -45,7 +45,7 @@ export default class ContactsModule implements IModule {
     WKApp.endpoints.registerContactsHeader("friends.new", (param: any) => {
       return (
         <IconListItem
-          badge={ WKApp.shared.getFriendApplysUnreadCount() }
+          badge={WKApp.shared.getFriendApplysUnreadCount()}
           title="新朋友"
           icon={require("./assets/friend_new.png")}
           backgroudColor={"var(--wk-color-secondary)"}
@@ -111,8 +111,15 @@ export default class ContactsModule implements IModule {
       "contacts.organizational.group.add",
       (param) => {
         const channel = param.channel as any;
+        const disableSelectList = param.disableSelectList as
+          | string[]
+          | undefined;
         return (
-          <OrganizationalGroupNew channel={channel} render={param.render} />
+          <OrganizationalGroupNew
+            channel={channel}
+            disableSelectList={disableSelectList}
+            render={param.render}
+          />
         );
       }
     );
@@ -121,6 +128,9 @@ export default class ContactsModule implements IModule {
       "contacts.organizational.layer",
       (param) => {
         const channel = param.channel as any;
+        const disableSelectList = param.disableSelectList as
+          | string[]
+          | undefined;
         const div = document.createElement("div");
         const ref: any = React.createRef();
         document.body.appendChild(div);
@@ -135,6 +145,7 @@ export default class ContactsModule implements IModule {
           <OrganizationalGroupNew
             ref={ref}
             channel={channel}
+            disableSelectList={disableSelectList}
             remove={remove}
           />,
           div

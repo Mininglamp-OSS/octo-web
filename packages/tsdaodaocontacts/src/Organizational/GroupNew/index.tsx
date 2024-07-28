@@ -23,6 +23,7 @@ interface IPorpsOrganizationalGroupNew {
     channelID: string;
     channelType: number;
   };
+  disableSelectList?: string[];
   showAdd?: boolean;
   render?: JSX.Element;
   remove?: () => void;
@@ -406,6 +407,18 @@ export class OrganizationalGroupNew extends Component<
     }
   }
 
+  isDisableItem(id: string) {
+    const { disableSelectList } = this.props;
+    if (disableSelectList && disableSelectList.length > 0) {
+      for (const disableSelect of disableSelectList) {
+        if (disableSelect === id) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   render(): ReactNode {
     const isDark = WKApp.config.themeMode === ThemeMode.dark;
     const {
@@ -536,6 +549,7 @@ export class OrganizationalGroupNew extends Component<
                           <Checkbox
                             key={friend.uid}
                             value={friend.uid}
+                            disabled={this.isDisableItem(friend.uid)}
                             className="friend-opt-item"
                           >
                             <WKAvatar

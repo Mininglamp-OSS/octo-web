@@ -3,11 +3,13 @@ import React from "react";
 import { Component } from "react";
 import Provider from "../../Service/Provider";
 import WKApp from "../../App";
-import "./index.css";
 import { SubscribersVM } from "./vm";
 import IndexTable, { IndexTableItem } from "../IndexTable";
 import WKBase, { WKBaseContext } from "../WKBase";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
+import { ChannelSettingRouteData } from "../../Components/ChannelSetting/context";
+
+import "./index.css";
 
 export interface SubscribersProps {
   context: RouteContext<any>;
@@ -43,6 +45,10 @@ export class Subscribers extends Component<SubscribersProps> {
 
   render() {
     const { context, onAdd, onRemove, channel } = this.props;
+    const data = context.routeData() as ChannelSettingRouteData;
+    const disableSelectList = data.subscribers.map((subscriber) => {
+      return subscriber.uid;
+    });
     return (
       <Provider
         create={() => {
@@ -79,6 +85,7 @@ export class Subscribers extends Component<SubscribersProps> {
                   {vm.showAdd()
                     ? WKApp.endpoints.organizationalTool(
                       channel,
+                      disableSelectList,
                       <div className="wk-subscribers-item">
                         <img
                           src={require("./assets/icon_add_more_gray.png")}
