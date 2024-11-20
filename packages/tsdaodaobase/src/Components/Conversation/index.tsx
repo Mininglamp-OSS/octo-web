@@ -6,10 +6,10 @@ import "./index.css"
 import { MessageWrap } from "../../Service/Model";
 import WKApp from "../../App";
 import { RevokeCell } from "../../Messages/Revoke";
-import { EndpointID, MessageContentTypeConst } from "../../Service/Const";
+import {  MessageContentTypeConst } from "../../Service/Const";
 import ConversationContext from "./context";
 import MessageInput, { MentionModel, MessageInputContext } from "../MessageInput";
-import ContextMenus, { ContextMenusContext, ContextMenusData } from "../ContextMenus";
+import ContextMenus, { ContextMenusContext } from "../ContextMenus";
 import classNames from "classnames";
 import WKAvatar from "../WKAvatar";
 import { IconClose } from "@douyinfe/semi-icons";
@@ -115,6 +115,7 @@ export class Conversation extends Component<ConversationProps> implements Conver
         })
     }
 
+    // 显示用户信息
     showUser(uid: string) {
         let fromChannel: Channel | undefined
         let vercode: string | undefined
@@ -128,6 +129,7 @@ export class Conversation extends Component<ConversationProps> implements Conver
         WKApp.shared.baseContext.showUserInfo(uid, fromChannel, vercode)
     }
 
+    // 回复消息
     reply(message: Message): void {
         if (message.fromUID !== WKApp.loginInfo.uid) {
             const channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
@@ -149,6 +151,7 @@ export class Conversation extends Component<ConversationProps> implements Conver
         return this.vm.channel
     }
 
+    // 显示消息上下文菜单
     showContextMenus(message: Message, event: React.MouseEvent) {
         this.vm.selectMessage = message
         this.contextMenusContext.show(event)
@@ -283,6 +286,7 @@ export class Conversation extends Component<ConversationProps> implements Conver
         this.uploadReadedIfNeed()
     }
 
+    // 上传已读数据
     uploadReadedIfNeed() {
         const viewport = document.getElementById(this.vm.messageContainerId)
         const visiableMessages = this.allVisiableMessages(viewport)
@@ -298,6 +302,7 @@ export class Conversation extends Component<ConversationProps> implements Conver
 
     }
 
+    // 更新已读位置和提醒项
     updateBrowseToMessageSeqAndReminderDoneIfNeed() {
         const viewport = document.getElementById(this.vm.messageContainerId)
 
@@ -306,6 +311,7 @@ export class Conversation extends Component<ConversationProps> implements Conver
         this.updateReminderDoneIfNeed(viewport) // 更新提醒项
     }
 
+    // 更新已预览的位置
     updateBrowseToMessageSeq(viewport: HTMLElement | null) {
         const lastVisiableMessage = this.lastVisiableMessage(viewport) // 当前UI显示的最后一条可见的消息
         if (lastVisiableMessage && lastVisiableMessage.messageSeq > this.vm.browseToMessageSeq) { // 如果当前UI显示的最后一条消息大于已预览到的最新消息，则更新未读数
@@ -314,8 +320,7 @@ export class Conversation extends Component<ConversationProps> implements Conver
         }
     }
 
-
-
+    // 更新提醒项
     updateReminderDoneIfNeed(viewport: HTMLElement | null) {
         if (!this.vm.messages || this.vm.messages.length === 0) {
             return
@@ -388,6 +393,8 @@ export class Conversation extends Component<ConversationProps> implements Conver
             }
         }
     }
+
+    // 获取第一个可见的消息
     firstVisiableMessage(vp: HTMLElement | null) {
         if (!this.vm.messages || this.vm.messages.length === 0) {
             return
@@ -491,10 +498,18 @@ export class Conversation extends Component<ConversationProps> implements Conver
                                     return this.messageUI(message, last)
                                 })
                             }
+
+                            {/* 位置view */}
                             <ConversationPositionView onScrollToBottom={async () => {
                                 return this.vm.onDownArrow()
                             }} onReminder={(reminder) => {
-                                return this.vm.syncMessages(reminder.messageSeq)
+                                return this.vm.syncMessages(reminder.messageSeq,()=>{
+                                    const newMessageWrap = this.vm.findMessageWithMessageSeq(reminder.messageSeq)
+                                    if (newMessageWrap) {
+                                        newMessageWrap.locateRemind = true // 设置为闪烁提醒
+                                        this.vm.notifyListener()
+                                    }
+                                })
                             }} showScrollToBottom={vm.showScrollToBottomBtn || false} unreadCount={vm.unreadCount} reminders={vm.currentConversation?.reminders?.filter(r => !r.done)}>
 
                             </ConversationPositionView>

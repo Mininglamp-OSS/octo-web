@@ -1,5 +1,6 @@
 import React from "react";
 import { Component, ReactNode } from "react";
+import WKSDK, { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 
 import {
   Modal,
@@ -15,12 +16,19 @@ import { BasicTreeNodeData } from "@douyinfe/semi-foundation/lib/cjs/tree/founda
 import { WKApp, ThemeMode, WKViewQueueHeader } from "@tsdaodao/base";
 import WKAvatar from "@tsdaodao/base/src/Components/WKAvatar";
 import "./index.css";
+import { SuperGroup } from "@tsdaodao/base/src/Utils/const";
+
+export enum OrganizationalGroupNewAction {
+  createGroup, // 创建群聊
+  AddMember // 添加成员
+}
 
 interface IPorpsOrganizationalGroupNew {
   channel: {
     channelID: string;
     channelType: number;
   };
+  action: OrganizationalGroupNewAction;
   showAdd?: boolean;
   render?: JSX.Element;
   remove?: () => void;
@@ -67,7 +75,8 @@ export class OrganizationalGroupNew extends Component<
   }
 
   componentDidMount(): void {
-    this.getFriendData();
+    // this.getFriendData();
+
   }
 
   // 获取加入公司
@@ -284,18 +293,63 @@ export class OrganizationalGroupNew extends Component<
     const newOpt = this.state.optPersonnelData.filter((item) => {
       return item.uid !== uid;
     });
+    const { friendData } = this.state
+    friendData.map((item) => {
+      if (item.uid == uid) {
+        item.checked = false
+      }
+    })
     this.setState({
       optPersonnelData: [...newOpt],
+      friendData: [...friendData]
     });
   }
 
-  getFriendData() {
+  async getFriendData() {
+
+
+    let subscribers = new Array<Subscriber>();
+
+    // 群聊
+    if (this.props.channel.channelID.trim() != "") {
+      const channel = new Channel(this.props.channel.channelID, this.props.channel.channelType)
+
+      // 个人聊天，对方不可选
+      if (this.props.channel.channelType == ChannelTypePerson) {
+        const sub = new Subscriber()
+        sub.uid = this.props.channel.channelID
+        subscribers.push(sub)
+      } else {
+        // 群聊
+        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel); // 获取频道信息
+        if (channelInfo?.orgData?.group_type == SuperGroup) {
+          subscribers = await WKApp.dataSource.channelDataSource.subscribers(channel, {
+            limit: 5000,
+            page: 1
+          })
+        } else {
+          await WKSDK.shared().channelManager.syncSubscribes(channel); // 同步订阅者
+          subscribers = WKSDK.shared().channelManager.getSubscribes(channel); // 获取订阅者
+        }
+      }
+
+    }
+
+    let subscriberUids = new Array<string>()
+    if (subscribers) {
+      subscriberUids = subscribers.map((item) => {
+        return item.uid;
+      })
+    }
+
     const setFriendData: any[] = [];
     WKApp.dataSource.contactsList.map((item) => {
-      setFriendData.push({
-        name: item.name,
-        uid: item.uid,
-      });
+      if (!subscriberUids.includes(item.uid)) {
+        setFriendData.push({
+          name: item.name,
+          uid: item.uid,
+        });
+      }
     });
     this.setState({
       friendData: [...setFriendData],
@@ -303,16 +357,32 @@ export class OrganizationalGroupNew extends Component<
     });
   }
 
-  onFriendChange(value: string[]) {
+  onFriendChange(values: string[]) {
     const getFriendOpt: any[] = [];
     const { friendData, optPersonnelData } = this.state;
-    value.map((i) => {
-      friendData.map((y) => {
-        if (i == y.uid) {
-          getFriendOpt.push(y);
+
+    for (const item of friendData) {
+      let exist = false;
+      for (const value of values) {
+        if (value == item.uid) {
+          exist = true;
+          break
         }
-      });
-    });
+      }
+      if (exist) {
+        item.checked = true
+        getFriendOpt.push(item);
+      } else {
+        item.checked = false
+        // 删除已选中的
+        for (let i = 0; i < optPersonnelData.length; i++) {
+          if (optPersonnelData[i].uid == item.uid) {
+            optPersonnelData.splice(i, 1);
+            break;
+          }
+        }
+      }
+    }
 
     const newPersonnelData = [...getFriendOpt, ...optPersonnelData];
 
@@ -325,6 +395,7 @@ export class OrganizationalGroupNew extends Component<
     );
     this.setState({
       optPersonnelData: [...uniqueArr],
+      friendData: [...friendData]
     });
   }
 
@@ -338,6 +409,7 @@ export class OrganizationalGroupNew extends Component<
   onShowModal() {
     const { channelType } = this.props.channel;
     // this.getJoinOrganization();
+    this.getFriendData();
     this.setState({
       showModal: true,
       optTitle: channelType === 1 ? "创建群" : "请选择联系人",
@@ -365,21 +437,34 @@ export class OrganizationalGroupNew extends Component<
     });
 
     // 创建群
-    if (channel.channelType == 1) {
-      await WKApp.dataSource.channelDataSource.createChannel([
-        ...getOptPersonnelData,
-        channel.channelID,
-      ]);
+    if (this.props.action == OrganizationalGroupNewAction.createGroup) {
+
+      try {
+        await WKApp.dataSource.channelDataSource.createChannel([
+          ...getOptPersonnelData,
+        ])
+      } catch (error: any) {
+        Toast.error(error.msg);
+        return
+      }
     }
     // 添加联系人
-    if (channel.channelType == 2) {
-      await WKApp.dataSource.channelDataSource.addSubscribers(
-        channel,
-        getOptPersonnelData
-      );
+    if (this.props.action == OrganizationalGroupNewAction.AddMember) {
+      try {
+        await WKApp.dataSource.channelDataSource.addSubscribers(
+          channel,
+          getOptPersonnelData
+        );
+      } catch (error: any) {
+        Toast.error(error.msg);
+        return
+      }
+
     }
     this.onCancel();
   }
+
+
 
   onChangeSearch(value: string) {
     const { friendSearchData, isFriend } = this.state;
@@ -522,6 +607,9 @@ export class OrganizationalGroupNew extends Component<
                   <div className="friend-opt-main">
                     <CheckboxGroup
                       style={{ width: "100%" }}
+                      value={optPersonnelData.map((item) => {
+                        return item.uid;
+                      })}
                       onChange={(value) => {
                         this.onFriendChange(value);
                       }}

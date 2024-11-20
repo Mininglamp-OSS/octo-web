@@ -166,6 +166,8 @@ export default class ConversationVM extends ProviderListener {
             }
         }
     }
+
+    // 删除消息
     async deleteMessages(deletedMessages: Message[]): Promise<void> {
         if (!deletedMessages || deletedMessages.length === 0) {
             return
@@ -176,11 +178,14 @@ export default class ConversationVM extends ProviderListener {
         this.deleteMessagesFromLocal(deletedMessages)
     }
 
+    // 撤回消息
     async revokeMessage(message: Message): Promise<void> {
 
         return WKApp.conversationProvider.revokeMessage(message)
 
     }
+
+    // 仅仅删除本地消息
     async deleteMessagesFromLocal(deletedMessages: Message[]): Promise<void> {
 
         let messages = this.messagesOfOrigin
@@ -213,6 +218,8 @@ export default class ConversationVM extends ProviderListener {
         this.messagesOfOrigin = newMessages
         this.refreshMessages(newMessages)
     }
+
+    // 移除发送中的消息
     removeSendingMessageIfNeed(clientSeq: number, channel: Channel) {
 
         let sending = ConversationVM.sendQueue.get(channel.getChannelKey())
@@ -230,6 +237,7 @@ export default class ConversationVM extends ProviderListener {
     }
 
 
+    // 取消所有消息的选中
     unCheckAllMessages() {
         let hasChange = false
         for (const message of this.messages) {

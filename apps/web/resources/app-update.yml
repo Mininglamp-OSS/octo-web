@@ -1,0 +1,3 @@
+provider: generic
+url: https://api.example.com/
+updaterCacheDirName: '@tsdaodaoweb-updater'

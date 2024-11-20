@@ -12,7 +12,7 @@ import { FriendAdd } from "./FriendAdd";
 import GroupSave from "./GroupSave";
 import { NewFriend } from "./NewFriend";
 import { ContactsListManager } from "./Service/ContactsListManager";
-import { OrganizationalGroupNew } from "./Organizational/GroupNew/index";
+import { OrganizationalGroupNew, OrganizationalGroupNewAction } from "./Organizational/GroupNew/index";
 
 export default class ContactsModule implements IModule {
   id(): string {
@@ -112,7 +112,7 @@ export default class ContactsModule implements IModule {
       (param) => {
         const channel = param.channel as any;
         return (
-          <OrganizationalGroupNew channel={channel} render={param.render} />
+          <OrganizationalGroupNew channel={channel} render={param.render} action={OrganizationalGroupNewAction.AddMember} />
         );
       }
     );
@@ -136,6 +136,7 @@ export default class ContactsModule implements IModule {
             ref={ref}
             channel={channel}
             remove={remove}
+            action={OrganizationalGroupNewAction.createGroup}
           />,
           div
         );

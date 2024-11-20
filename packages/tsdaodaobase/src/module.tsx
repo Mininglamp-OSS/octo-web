@@ -84,11 +84,13 @@ import { SubscriberList } from "./Components/Subscribers/list";
 export default class BaseModule implements IModule {
   messageTone?: Howl;
 
+  messageNotification?: Notification //  消息通知
+  messageNotificationTimeoutId?: number
+
   id(): string {
     return "base";
   }
   init(): void {
-
 
     APIClient.shared.logoutCallback = () => {
       WKApp.shared.logout();
@@ -229,8 +231,9 @@ export default class BaseModule implements IModule {
           cmdContent.param.from_name
         );
       } else if (cmdContent.cmd === "groupAvatarUpdate") {
+        // 改变群头像缓存
         WKApp.shared.changeChannelAvatarTag(new Channel(param.group_no, ChannelTypeGroup));
-        // 群头像更新
+        // 通过触发channelInfoListener来更新UI
         WKSDK.shared().channelManager.fetchChannelInfo(
           new Channel(param.group_no, ChannelTypeGroup)
         );
@@ -450,31 +453,42 @@ export default class BaseModule implements IModule {
       return;
     }
     if (window.Notification && Notification.permission !== "denied") {
-      const notify = new Notification(
+
+      if (this.messageNotification) {
+        if (this.messageNotificationTimeoutId) {
+          clearTimeout(this.messageNotificationTimeoutId)
+        }
+        this.messageNotification.close()
+      }
+
+      this.messageNotification = new Notification(
         channelInfo ? channelInfo.orgData.displayName : "通知",
         {
           body: description,
           icon: WKApp.shared.avatarChannel(message.channel),
           lang: "zh-CN",
-          tag: "tag",
+          tag: "message",
           // renotify: true,
         }
       );
 
-      notify.onclick = () => {
-        notify.close();
+
+      this.messageNotification.onclick = () => {
+        this.messageNotification?.close();
         window.focus();
         WKApp.endpoints.showConversation(message.channel);
       };
-      notify.onshow = () => {
-        //5秒后关闭消息框
-        setTimeout(function () {
-          notify.close();
-        }, 5000);
+      this.messageNotification.onshow = () => {
+        console.log("显示通知");
       };
-      notify.onclose = () => {
+      this.messageNotification.onclose = () => {
         console.log("通知关闭");
       };
+      // 5秒后关闭消息框
+      const self = this
+      this.messageNotificationTimeoutId = window.setTimeout(function () {
+        self.messageNotification?.close();
+      }, 5000);
     }
   }
 
@@ -538,8 +552,8 @@ export default class BaseModule implements IModule {
           }`),
         onClick: () => {
           const channel: any = {
-            channelID: localStorage.uid,
-            channelType: 1,
+            channelID: "",
+            channelType: 0,
           };
           WKApp.endpoints.organizationalLayer(channel);
         },

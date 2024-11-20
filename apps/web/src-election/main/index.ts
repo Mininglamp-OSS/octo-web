@@ -5,6 +5,7 @@ import {
   globalShortcut,
   ipcMain,
   nativeImage as NativeImage,
+  systemPreferences,
   Menu,
   Tray,
 } from "electron";
@@ -15,6 +16,7 @@ import { join } from "path";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
 import TSDD_FONFIG from "./confing";
+import checkUpdate from './update';
 
 let forceQuit = false;
 let mainWindow: any;
@@ -29,8 +31,7 @@ let isFullScreen = false;
 let isOsx = process.platform === "darwin";
 let isWin = !isOsx;
 
-const isDevelopment = process.env.NODE_ENV === "development";
-
+const isDevelopment = process.env.NODE_ENV !== "production";
 
 
 let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
@@ -189,7 +190,15 @@ let trayMenu: Electron.MenuItemConstructorOptions[] = [
   },
 ];
 
-function updateTray(unread = 0): any {
+
+/**
+ * 设置主窗口任务栏闪烁、系统托盘图闪烁及Mac端消息未读消息
+ * @param unread Mac端消息未读消息
+ * @param isFlash 是否闪烁 true为闪烁，false为取消
+ * @returns
+ */
+let flashTimer: any = null;
+function updateTray(unread = 0, isFlash= false): any {
   settings.showOnTray = true;
 
   // linux 系统不支持 tray
@@ -225,7 +234,23 @@ function updateTray(unread = 0): any {
         tray.setTitle(unread > 0 ? " " + unread : "");
       }
 
-      tray.setImage(trayIcon);
+      mainWindow.flashFrame(isFlash);
+      //设置系统托盘闪烁
+      if(isFlash){
+        clearInterval(flashTimer)
+		    let flag = false
+        flashTimer = setInterval(() => {
+          flag = !flag
+          if(flag){
+            tray.setImage(NativeImage.createEmpty());
+          }else{
+            tray.setImage(trayIcon);
+          }
+      },500)
+      }else{
+        tray.setImage(trayIcon);
+        clearInterval(flashTimer);
+      }
     });
   } else {
     if (!tray) return;
@@ -253,6 +278,8 @@ function regShortcut() {
     );
     screenshots.startCapture();
   });
+
+
   // 打开所有窗口控制台
   globalShortcut.register("ctrl+shift+i", () => {
     let windows = BrowserWindow.getAllWindows();
@@ -264,8 +291,8 @@ const createMainWindow = async () => {
   const NODE_ENV = process.env.NODE_ENV;
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   mainWindow = new BrowserWindow({
-    width: 960,
-    height: 600,
+    width: 1200,
+    height: 800,
     minWidth: 960,
     minHeight: 600,
     // frame: true, // * app边框(包括关闭,全屏,最小化按钮的导航栏) @false: 隐藏
@@ -313,8 +340,39 @@ const createMainWindow = async () => {
     screenshots.startCapture();
   });
 
+  ipcMain.on("get-media-access-status", async (event, mediaType: 'camera' | 'microphone')=>{
+    console.log(mediaType)
+    //检测麦克风权限是否开启
+    const getMediaAccessStatus = systemPreferences.getMediaAccessStatus(mediaType);
+    if(getMediaAccessStatus !== 'granted'){
+      //请求麦克风权限
+      if (mediaType === 'camera' ||  mediaType === 'microphone') {
+        await systemPreferences.askForMediaAccess(mediaType);
+        return systemPreferences.getMediaAccessStatus(mediaType);
+      }
+    }
+    return getMediaAccessStatus;
+  })
+  // 会话未读消息消息数量托盘提醒
+  ipcMain.on("conversation-anager-unread-count", (event, num) => {
+    const isFlag = num > 0 && isWin ? true : false;
+    updateTray(num, isFlag);
+  });
+
+  ipcMain.on("restart-app",()=>{
+    restartApp()
+  })
+
   createMenu();
+  // 检查更新
+  checkUpdate(mainWindow)
 };
+
+// 重启应用
+function restartApp() {
+  app.relaunch();
+  app.exit(0);
+}
 
 function onDeepLink(url: string) {
   console.log("onOpenDeepLink", url);
@@ -322,7 +380,7 @@ function onDeepLink(url: string) {
 }
 
 app.setName(TSDD_FONFIG.name);
-isDevelopment && app.dock && app.dock.setIcon(logo);
+// isDevelopment && app.dock && app.dock.setIcon(logo);
 app.on("open-url", (event, url) => {
   onDeepLink(url);
 });
@@ -377,8 +435,7 @@ app.on("ready", () => {
       screenShotWindowId = 0;
     }
   };
-
-  // 截图添加快捷键esc
+  // 截图esc快捷键
   screenshots.on('windowCreated', ($win) => {
     $win.on('focus', () => {
       globalShortcut.register('esc', () => {
@@ -443,6 +500,7 @@ app.on("before-quit", () => {
 
   tray.destroy();
   tray = null;
+  globalShortcut.unregisterAll();
 });
 
 // 除了 macOS 外，当所有窗口都被关闭的时候退出程序。 macOS窗口全部关闭时,dock中程序不会退出

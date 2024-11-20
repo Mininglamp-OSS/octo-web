@@ -110,7 +110,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         this.setState({
             emojis: this.emojiService.getAllEmoji()
         })
-        this.requestStickerCategory()
+        // this.requestStickerCategory()
     }
 
     requestStickerCategory() {

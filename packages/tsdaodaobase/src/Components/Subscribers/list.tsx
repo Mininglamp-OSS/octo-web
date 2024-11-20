@@ -4,8 +4,6 @@ import { SubscriberListVM } from "./list_vm";
 import React from "react";
 import { IconSearchStroked } from "@douyinfe/semi-icons";
 import "./list.css";
-import { Input } from "@douyinfe/semi-ui";
-import { ChannelAvatar } from "../ChannelAvatar";
 import WKApp from "../../App";
 import WKSDK, { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 import WKAvatar from "../WKAvatar";

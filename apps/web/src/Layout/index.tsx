@@ -4,7 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 // import Provider from "limbase/src/Service/Provider";
 import { MainPage } from "../Pages/Main";
 import { Notification as NotificationUI, Button } from '@douyinfe/semi-ui';
-import { UpdateManifest, checkUpdate, installUpdate } from '@tauri-apps/api/updater'
+import { checkUpdate, installUpdate, UpdateManifest } from '@tauri-apps/api/updater'
 import { relaunch } from '@tauri-apps/api/process'
 import { os } from "@tauri-apps/api";
 
@@ -48,7 +48,7 @@ export default class AppLayout extends Component {
                     await installUpdate()
                 }
                 this.showUpdateUI(manifest)
-                
+
             }
             console.log("manifest---->", manifest)
         } catch (error) {
@@ -66,7 +66,7 @@ export default class AppLayout extends Component {
                     <div style={{ marginTop: 8 }}>
                         <Button onClick={ async () => {
                            // install complete, restart app
-                           if(await os.platform() !== "darwin") { 
+                           if(await os.platform() !== "darwin") {
                                 await installUpdate()
                             }
                           await relaunch()
@@ -97,9 +97,7 @@ export default class AppLayout extends Component {
                 }
                 return loginComponent
             }
-            console.log("goto main---->")
             return <WKBase onContext={(ctx) => {
-                console.log("goto main----111>", ctx)
                 WKApp.shared.baseContext = ctx
             }}>
                 <MainPage />

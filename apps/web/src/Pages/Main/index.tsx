@@ -24,9 +24,9 @@ export class MainContentLeft extends Component<MainContentLeftProps, MainContent
 
         return <>
             {
-                vm.historyRoutePaths.map((routePath,i) => {
+                vm.historyRoutePaths.map((routePath, i) => {
                     const cpt = WKApp.route.get(routePath)
-                    return <div key={i} style={{"display":routePath === vm.currentMenus?.routePath?"block":"none","width":"100%","height":"100%"}}>
+                    return <div key={i} style={{ "display": routePath === vm.currentMenus?.routePath ? "block" : "none", "width": "100%", "height": "100%" }}>
                         {cpt}
                     </div>
                 })
@@ -46,35 +46,35 @@ export class MainPage extends Component {
                 //     return <TabLowScreen vm={vm}></TabLowScreen>
                 // }
                 return <TabNormalScreen vm={vm} />
-            }} contentLeft={<MainContentLeft vm={vm}/>} onRightContext={(context)=>{
-                WKApp.routeRight.setPush = (view)=>{
+            }} contentLeft={<MainContentLeft vm={vm} />} onRightContext={(context) => {
+                WKApp.routeRight.setPush = (view) => {
                     context.push(view)
                 }
                 WKApp.routeRight.setReplaceToRoot = (view) => {
                     context.replaceToRoot(view)
                 }
-                WKApp.routeRight.setPop = ()=> {
+                WKApp.routeRight.setPop = () => {
                     context.pop()
                 }
                 WKApp.routeRight.setPopToRoot = () => {
                     context.popToRoot()
                 }
-            }} onLeftContext={(context)=>{
-                WKApp.routeLeft.setPush = (view)=>{
+            }} onLeftContext={(context) => {
+                WKApp.routeLeft.setPush = (view) => {
                     context.push(view)
                 }
                 WKApp.routeLeft.setReplaceToRoot = (view) => {
                     context.replaceToRoot(view)
                 }
-                WKApp.routeLeft.setPop = ()=> {
+                WKApp.routeLeft.setPop = () => {
                     context.pop()
                 }
                 WKApp.routeLeft.setPopToRoot = () => {
                     context.popToRoot()
                 }
-            }} contentRight={ <div className="wk-chat-empty">
-            <img src={require("./assets/start_chat.svg").default} alt=""></img>
-        </div>} />
+            }} contentRight={<div className="wk-chat-empty">
+                <img src={require("./assets/start_chat.svg").default} alt=""></img>
+            </div>} />
         }}>
 
         </Provider>

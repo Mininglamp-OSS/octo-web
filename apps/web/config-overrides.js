@@ -1,4 +1,4 @@
-var path = require('path')
+var path = require('path');
 const { override, babelInclude, addWebpackPlugin, overrideDevServer } = require('customize-cra')
 const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
 const TerserPlugin = require("terser-webpack-plugin");

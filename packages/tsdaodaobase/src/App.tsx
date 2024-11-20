@@ -389,7 +389,6 @@ export default class WKApp extends ProviderListener {
     if (channel) {
       myAvatarTag = `channelAvatarTag:${channel.channelType}${channel.channelID}`;
     }
-    console.log('changeChannelAvatarTag0----->')
     const t = new Date().getTime();
     WKApp.loginInfo.setStorageItem(myAvatarTag, `${t}`);
   }
