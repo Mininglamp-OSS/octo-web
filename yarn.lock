@@ -1253,6 +1253,85 @@
   resolved "https://registry.npmmirror.com/@discoveryjs/json-ext/-/json-ext-0.5.7.tgz"
   integrity sha512-dBVuXR082gk3jsFp7Rd/JI4kytwGHecnCoTtXFb7DB6CNHp4rg5k1bhg0nWdLGLnOV71lmDzGQaLMy8iPLY0pw==
 
+"@octo/base@*", "@octo/base@file:/home/yu/dmwork-web/packages/dmworkbase":
+  version "1.0.0"
+  resolved "file:packages/dmworkbase"
+  dependencies:
+    "@douyinfe/semi-ui" "^2.24.2"
+    "@lottiefiles/lottie-player" "^1.5.5"
+    "@types/qrcode.react" "^1.0.2"
+    "@types/react-color" "^3.0.6"
+    "@types/react-mentions" "^4.1.5"
+    "@types/react-scroll" "^1.8.3"
+    animate.css "^4.1.1"
+    axios "^0.25.0"
+    benz-amr-recorder "^1.1.3"
+    classnames "^2.3.1"
+    hotkeys-js "^3.8.7"
+    mitt "^3.0.1"
+    moment "^2.29.3"
+    qrcode.react "^1.0.1"
+    react "^17.0.2"
+    react-avatar-editor "^13.0.0"
+    react-mentions "^4.3.1"
+    react-scroll "^1.8.4"
+    react-spinners "^0.11.0"
+    react-viewer "^3.2.2"
+    sensitive-word-tool "^1.1.9"
+    wukongimjssdk "^1.2.11"
+
+"@octo/contacts@*", "@octo/contacts@file:/home/yu/dmwork-web/packages/dmworkcontacts":
+  version "1.0.0"
+  resolved "file:packages/dmworkcontacts"
+  dependencies:
+    "@octo/base" "*"
+    axios "^0.25.0"
+    classnames "^2.3.1"
+
+"@octo/datasource@*", "@octo/datasource@file:/home/yu/dmwork-web/packages/dmworkdatasource":
+  version "1.0.0"
+  resolved "file:packages/dmworkdatasource"
+  dependencies:
+    "@octo/base" "*"
+    axios "^0.25.0"
+
+"@octo/login@*", "@octo/login@file:/home/yu/dmwork-web/packages/dmworklogin":
+  version "1.0.0"
+  resolved "file:packages/dmworklogin"
+  dependencies:
+    "@octo/base" "*"
+    "@types/node-forge" "^1.0.0"
+    "@types/qrcode.react" "^1.0.2"
+    axios "^0.25.0"
+    keypair "^1.0.4"
+    qrcode.react "^1.0.1"
+
+"@octo/web@file:/home/yu/dmwork-web/apps/web":
+  version "1.0.6"
+  resolved "file:apps/web"
+  dependencies:
+    "@octo/base" "*"
+    "@octo/contacts" "*"
+    "@octo/datasource" "*"
+    "@octo/login" "*"
+    "@tauri-apps/api" "^1.5.0"
+    "@types/react-lazyload" "^3.2.0"
+    "@types/react-mentions" "^4.1.5"
+    "@types/react-virtualized" "^9.21.22"
+    classnames "^2.3.1"
+    electron-log "^5.1.2"
+    electron-screenshots "^0.5.26"
+    electron-updater "^6.1.8"
+    howler "^2.2.4"
+    react "^17.0.2"
+    react-app-rewired "^2.1.8"
+    react-lazyload "^3.2.0"
+    react-mentions "^4.3.1"
+    react-virtualized "^9.22.5"
+    react-virtuoso "^4.5.0"
+    tmp "^0.2.2"
+    web-vitals "^2.1.4"
+
 "@dnd-kit/accessibility@^3.1.0":
   version "3.1.0"
   resolved "https://registry.npmmirror.com/@dnd-kit/accessibility/-/accessibility-3.1.0.tgz"
@@ -2350,6 +2429,11 @@
   resolved "https://registry.npmjs.org/@tauri-apps/cli-linux-x64-gnu/-/cli-linux-x64-gnu-1.6.3.tgz"
   integrity sha512-Uvi7M+NK3tAjCZEY1WGel+dFlzJmqcvu3KND+nqa22762NFmOuBIZ4KJR/IQHfpEYqKFNUhJfCGnpUDfiC3Oxg==
 
+"@tauri-apps/cli-linux-x64-musl@1.6.3":
+  version "1.6.3"
+  resolved "https://registry.npmjs.org/@tauri-apps/cli-linux-x64-musl/-/cli-linux-x64-musl-1.6.3.tgz"
+  integrity sha512-rc6B342C0ra8VezB/OJom9j/N+9oW4VRA4qMxS2f4bHY2B/z3J9NPOe6GOILeg4v/CV62ojkLsC3/K/CeF3fqQ==
+
 "@tauri-apps/cli@^1.5.0":
   version "1.6.3"
   resolved "https://registry.npmmirror.com/@tauri-apps/cli/-/cli-1.6.3.tgz"
@@ -2438,85 +2522,6 @@
   version "0.2.0"
   resolved "https://registry.npmmirror.com/@trysound/sax/-/sax-0.2.0.tgz"
   integrity sha512-L7z9BgrNEcYyUYtF+HaEfiS5ebkh9jXqbszz7pC0hRBPaatV0XjSD3+eHrpqFemQfgwiFF0QPIarnIihIDn7OA==
-
-"@tsdaodao/base@*", "@tsdaodao/base@file:/home/yu/dmwork-web/packages/tsdaodaobase":
-  version "1.0.0"
-  resolved "file:packages/tsdaodaobase"
-  dependencies:
-    "@douyinfe/semi-ui" "^2.24.2"
-    "@lottiefiles/lottie-player" "^1.5.5"
-    "@types/qrcode.react" "^1.0.2"
-    "@types/react-color" "^3.0.6"
-    "@types/react-mentions" "^4.1.5"
-    "@types/react-scroll" "^1.8.3"
-    animate.css "^4.1.1"
-    axios "^0.25.0"
-    benz-amr-recorder "^1.1.3"
-    classnames "^2.3.1"
-    hotkeys-js "^3.8.7"
-    mitt "^3.0.1"
-    moment "^2.29.3"
-    qrcode.react "^1.0.1"
-    react "^17.0.2"
-    react-avatar-editor "^13.0.0"
-    react-mentions "^4.3.1"
-    react-scroll "^1.8.4"
-    react-spinners "^0.11.0"
-    react-viewer "^3.2.2"
-    sensitive-word-tool "^1.1.9"
-    wukongimjssdk "^1.2.11"
-
-"@tsdaodao/contacts@*", "@tsdaodao/contacts@file:/home/yu/dmwork-web/packages/tsdaodaocontacts":
-  version "1.0.0"
-  resolved "file:packages/tsdaodaocontacts"
-  dependencies:
-    "@tsdaodao/base" "*"
-    axios "^0.25.0"
-    classnames "^2.3.1"
-
-"@tsdaodao/datasource@*", "@tsdaodao/datasource@file:/home/yu/dmwork-web/packages/tsdaodaodatasource":
-  version "1.0.0"
-  resolved "file:packages/tsdaodaodatasource"
-  dependencies:
-    "@tsdaodao/base" "*"
-    axios "^0.25.0"
-
-"@tsdaodao/login@*", "@tsdaodao/login@file:/home/yu/dmwork-web/packages/tsdaodaologin":
-  version "1.0.0"
-  resolved "file:packages/tsdaodaologin"
-  dependencies:
-    "@tsdaodao/base" "*"
-    "@types/node-forge" "^1.0.0"
-    "@types/qrcode.react" "^1.0.2"
-    axios "^0.25.0"
-    keypair "^1.0.4"
-    qrcode.react "^1.0.1"
-
-"@tsdaodao/web@file:/home/yu/dmwork-web/apps/web":
-  version "1.0.6"
-  resolved "file:apps/web"
-  dependencies:
-    "@tauri-apps/api" "^1.5.0"
-    "@tsdaodao/base" "*"
-    "@tsdaodao/contacts" "*"
-    "@tsdaodao/datasource" "*"
-    "@tsdaodao/login" "*"
-    "@types/react-lazyload" "^3.2.0"
-    "@types/react-mentions" "^4.1.5"
-    "@types/react-virtualized" "^9.21.22"
-    classnames "^2.3.1"
-    electron-log "^5.1.2"
-    electron-screenshots "^0.5.26"
-    electron-updater "^6.1.8"
-    howler "^2.2.4"
-    react "^17.0.2"
-    react-app-rewired "^2.1.8"
-    react-lazyload "^3.2.0"
-    react-mentions "^4.3.1"
-    react-virtualized "^9.22.5"
-    react-virtuoso "^4.5.0"
-    tmp "^0.2.2"
-    web-vitals "^2.1.4"
 
 "@types/acorn@^4.0.0":
   version "4.0.6"
@@ -10150,6 +10155,11 @@ node-screenshots-linux-x64-gnu@0.2.1:
   version "0.2.1"
   resolved "https://registry.npmjs.org/node-screenshots-linux-x64-gnu/-/node-screenshots-linux-x64-gnu-0.2.1.tgz"
   integrity sha512-P2h511my2JytMSAW8+uvO+lGj1BwapERWbC6i56u5WbLIy/zgT1SQwNvcZNbPE8sxb1q8pqF3MerLcftnW0f+w==
+
+node-screenshots-linux-x64-musl@0.2.1:
+  version "0.2.1"
+  resolved "https://registry.npmjs.org/node-screenshots-linux-x64-musl/-/node-screenshots-linux-x64-musl-0.2.1.tgz"
+  integrity sha512-+B37/VYzH86ywWyF9XkYYicyf/BTan4TADsmxPlK+a/UHHZEnp1YjEM66sBIQTIVhVhv1DC6YUv9AppBpoV9AA==
 
 node-screenshots@^0.2.1:
   version "0.2.1"
