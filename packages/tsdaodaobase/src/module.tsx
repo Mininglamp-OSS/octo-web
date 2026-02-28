@@ -34,6 +34,7 @@ import { Card, CardCell } from "./Messages/Card";
 import { GifCell, GifContent } from "./Messages/Gif";
 import { HistorySplitCell, HistorySplitContent } from "./Messages/HistorySplit";
 import { ImageCell, ImageContent } from "./Messages/Image";
+import { FileCell, FileContent } from "./Messages/File";
 import { JoinOrganizationCell, JoinOrganizationContent } from "./Messages/JoinOrganization";
 import {
   SignalMessageCell,
@@ -78,6 +79,7 @@ import APIClient from "./Service/APIClient";
 import { ChannelAvatar } from "./Components/ChannelAvatar";
 import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
 import ImageToolbar from "./Components/ImageToolbar";
+import FileToolbar from "./Components/FileToolbar";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { SubscriberList } from "./Components/Subscribers/list";
 import GlobalSearch from "./Components/GlobalSearch";
@@ -121,6 +123,8 @@ export default class BaseModule implements IModule {
             return JoinOrganizationCell;
           case MessageContentTypeConst.smallVideo: // 小视频
             return VideoCell;
+          case MessageContentTypeConst.file: // 文件
+            return FileCell;
           case MessageContentTypeConst.historySplit: // 历史消息风格线
             return HistorySplitCell;
           case MessageContentTypeConst.time: // 时间消息
@@ -148,6 +152,7 @@ export default class BaseModule implements IModule {
     );
 
     WKSDK.shared().register(MessageContentType.image, () => new ImageContent()); // 图片
+    WKSDK.shared().register(MessageContentTypeConst.file, () => new FileContent()); // 文件
 
     WKSDK.shared().register(MessageContentTypeConst.card, () => new Card()); // 名片
     WKSDK.shared().register(
@@ -487,6 +492,14 @@ export default class BaseModule implements IModule {
           icon={require("./assets/toolbars/func_upload_image.svg").default}
           conversationContext={ctx}
         ></ImageToolbar>
+      );
+    });
+    WKApp.endpoints.registerChatToolbar("chattoolbar.file", (ctx) => {
+      return (
+        <FileToolbar
+          icon={require("./assets/toolbars/func_upload_file.svg").default}
+          conversationContext={ctx}
+        ></FileToolbar>
       );
     });
   }

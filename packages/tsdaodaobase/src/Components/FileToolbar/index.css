@@ -1,0 +1,152 @@
+.wk-filetoolbar-content {
+    padding: 10px;
+}
+
+.wk-filetoolbar-content-icon img {
+    width: 20px;
+    height: 20px;
+}
+
+.wk-filetoolbar-content-icon {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+}
+
+.wk-filedialog {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: fixed;
+    z-index: 100;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    -webkit-app-region: no-drag;
+}
+
+.wk-filedialog-mask {
+    position: absolute;
+    background-color: rgba(0, 0, 0, 0.3);
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+}
+
+.wk-filedialog-content {
+    width: 420px;
+    position: relative;
+    padding: 28px;
+    background: var(--wk-color-item);
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.wk-filedialog-content-close {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    top: 28px;
+    right: 28px;
+    text-align: center;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 1;
+}
+
+.wk-filedialog-content-close svg {
+    fill: var(--wk-text-item);
+    width: 14px;
+    height: 14px;
+}
+
+.wk-filedialog-content-title {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.wk-filedialog-content-body {
+    width: 100%;
+    margin-top: 28px;
+}
+
+.wk-filedialog-preview {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    background-color: rgb(247, 247, 247);
+    border-radius: 8px;
+    gap: 12px;
+}
+
+body[theme-mode=dark] .wk-filedialog-preview {
+    background-color: var(--wk-color-secondary);
+}
+
+.wk-filedialog-preview-icon {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wk-filedialog-preview-icon-label {
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.wk-filedialog-preview-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.wk-filedialog-preview-name {
+    font-size: 14px;
+    color: var(--wk-text-item);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wk-filedialog-preview-size {
+    font-size: 12px;
+    color: var(--wk-color-font-tip);
+}
+
+.wk-filedialog-footer {
+    margin-top: 28px;
+    justify-content: flex-end;
+    display: flex;
+}
+
+.wk-filedialog-footer button {
+    background-color: #fff;
+    border: 1px solid #dee0e3;
+    color: #1f2329;
+    border-radius: 4px;
+    height: 32px;
+    min-width: 100px;
+    padding: 0 16px;
+    cursor: pointer;
+}
+
+.wk-filedialog-footer-okbtn {
+    margin-left: 16px;
+    color: white !important;
+    border: none !important;
+}

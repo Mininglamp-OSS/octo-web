@@ -1,0 +1,104 @@
+.wk-message-file {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    min-width: 260px;
+    max-width: 320px;
+    gap: 10px;
+}
+
+.wk-message-file-icon {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wk-message-file-icon-label {
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.wk-message-file-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.wk-message-file-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--wk-text-item);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+}
+
+.wk-message-file-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--wk-color-font-tip);
+}
+
+.wk-message-file-ext {
+    padding: 0 4px;
+    border-radius: 2px;
+    background-color: rgba(99, 102, 241, 0.1);
+    color: var(--wk-color-theme);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.6;
+}
+
+.wk-message-file-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.wk-message-file-action {
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--wk-color-theme);
+    transition: background-color 0.2s;
+}
+
+.wk-message-file-action:hover {
+    background-color: rgba(99, 102, 241, 0.1);
+}
+
+.wk-message-base-bubble-box.send .wk-message-file-name {
+    color: #fff;
+}
+
+.wk-message-base-bubble-box.send .wk-message-file-meta {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.wk-message-base-bubble-box.send .wk-message-file-ext {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+.wk-message-base-bubble-box.send .wk-message-file-action {
+    color: #fff;
+}
+
+.wk-message-base-bubble-box.send .wk-message-file-action:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
