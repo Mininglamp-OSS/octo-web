@@ -249,17 +249,22 @@
     display: flex;
     gap: 8px;
     align-items: center;
-    width: 100%;
+    width: 286px;
+    max-width: calc(100vw - 60px);
+    margin: 0 auto 12px auto;
+    box-sizing: border-box;
 }
 .wk-login-content-form-code-row input {
     flex: 1;
     display: inline-block !important;
     width: auto !important;
     min-width: 0;
+    margin-bottom: 0 !important;
 }
 .wk-login-content-form-code-btn {
-    min-width: 110px;
+    min-width: 100px;
     white-space: nowrap;
     height: 42px;
     flex-shrink: 0;
+    font-size: 14px;
 }
