@@ -39,6 +39,23 @@ export class Conversation extends Component<ConversationProps> implements Conver
         this.state = {
         }
         this._beforeUnloadHandler = () => {
+            // Use sendBeacon for reliable delivery during page unload
+            if (this.vm && this.vm.needSetUnread) {
+                const apiURL = WKApp.apiClient.config.apiURL
+                const url = `${apiURL}conversation/clearUnread`
+                const data = JSON.stringify({
+                    channel_id: this.props.channel.channelID,
+                    channel_type: this.props.channel.channelType,
+                    unread: this.vm.unreadCount > 0 ? this.vm.unreadCount : 0,
+                })
+                const token = WKApp.loginInfo.token || ''
+                fetch(url, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'token': token },
+                    body: data,
+                    keepalive: true,
+                })
+            }
             this.dealloc()
         }
     }
@@ -192,7 +209,7 @@ export class Conversation extends Component<ConversationProps> implements Conver
             this.uploadReadedIfNeed()
         }
 
-        // this.vm.markUnread()
+        this.vm.markUnread()
 
     }
 
