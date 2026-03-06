@@ -275,6 +275,15 @@ export default class ConversationVM extends ProviderListener {
                 return
             }
             if (action == ConversationAction.update) {
+                // 如果本地已读位置比服务端更新（browseToMessageSeq >= lastMessage.messageSeq），
+                // 说明用户已读完消息，不应该被服务端的旧未读数覆盖
+                if (this.lastMessage && this.browseToMessageSeq >= this.lastMessage.messageSeq) {
+                    if (conversation.unread > 0) {
+                        // 有意直接修改 conversation.unread（side effect），
+                        // 确保 SDK 缓存的 Conversation 对象与本地已读状态保持一致
+                        conversation.unread = 0
+                    }
+                }
                 this.unreadCount = conversation.unread
             }
         }
@@ -780,6 +789,10 @@ export default class ConversationVM extends ProviderListener {
             if (conversation) {
                 conversation.unread = this.unreadCount
                 WKSDK.shared().conversationManager.notifyConversationListeners(conversation, ConversationAction.update)
+            }
+            // 未读数变为0时立即同步到服务端，防止会话列表同步时拿到旧的未读数
+            if (this.unreadCount === 0 && oldUnreadCount > 0) {
+                WKApp.conversationProvider.markConversationUnread(this.channel, 0)
             }
         }
 
