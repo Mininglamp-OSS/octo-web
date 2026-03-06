@@ -47,6 +47,7 @@ export default class AppLayout extends Component {
 
             }
         } catch (error) {
+            console.error('Update check failed:', error);
         }
     }
 
