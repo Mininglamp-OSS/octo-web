@@ -48,6 +48,14 @@ export class TextCell extends MessageCell {
         if(link.indexOf("http") !== 0) {
             link = "http://" + link
         }
+        try {
+            const parsed = new URL(link);
+            if (!['http:', 'https:'].includes(parsed.protocol)) {
+                return <span key={`${message.clientMsgNo}-link-${k}`}>{part.text}</span>
+            }
+        } catch {
+            return <span key={`${message.clientMsgNo}-link-${k}`}>{part.text}</span>
+        }
         return <a  key={`${message.clientMsgNo}-link-${k}`} href={link} target="__blank">{part.text}</a>
     }
 

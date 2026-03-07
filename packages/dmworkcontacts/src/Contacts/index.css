@@ -91,3 +91,76 @@ body[theme-mode=dark] .wk-contacts-section-item-name {
     width: 100%;
     border-radius: 4px;
 }
+/* 通讯录分组菜单 */
+.wk-contacts-menu {
+    padding: 12px;
+}
+.wk-contacts-menu-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    margin-bottom: 8px;
+    background: var(--wk-color-item, #f8f9fa);
+    border-radius: 8px;
+}
+.wk-contacts-menu-space-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+}
+.wk-contacts-menu-space-name {
+    font-size: 15px;
+    font-weight: 600;
+}
+.wk-contacts-menu-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.wk-contacts-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.wk-contacts-menu-item:hover {
+    background: var(--wk-color-hover, #f0f0f0);
+}
+.wk-contacts-menu-item-icon {
+    font-size: 20px;
+    margin-right: 12px;
+    width: 28px;
+    text-align: center;
+}
+.wk-contacts-menu-item-label {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+}
+.wk-contacts-menu-item-count {
+    font-size: 12px;
+    color: #999;
+    margin-right: 4px;
+}
+.wk-contacts-menu-item-arrow {
+    color: #ccc;
+    font-size: 18px;
+}
+.wk-contacts-list-back {
+    padding: 8px 12px;
+    cursor: pointer;
+    color: var(--wk-color-theme, #6366F1);
+    font-size: 14px;
+}
+.wk-contacts-list-back:hover {
+    opacity: 0.7;
+}

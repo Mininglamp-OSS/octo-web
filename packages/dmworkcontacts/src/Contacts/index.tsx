@@ -16,6 +16,8 @@ import { Space, SpaceMember, SpaceService } from "@octo/base/src/Service/SpaceSe
 
 const SpaceRoleLabels: Record<number, string> = { 1: '创建者', 2: '管理员', 3: '成员' }
 
+type ContactsView = 'menu' | 'members' | 'bots' | 'groups'
+
 export class ContactsState {
     indexList: string[] = []
     indexItemMap: Map<string, Contacts[]> = new Map()
@@ -26,6 +28,7 @@ export class ContactsState {
     botDetailUid?: string // Bot 详情弹窗
     botDetailVisible: boolean = false
     botGroupCollapsed: boolean = false
+    currentView: ContactsView = 'menu'
 }
 
 export default class ContactsList extends Component<any, ContactsState> {
@@ -127,8 +130,17 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     private rebuildIndexFromSpaceMembers(members: SpaceMember[]) {
-        const { keyword } = this.state
-        const filtered = members.filter((m) => {
+        const { keyword, currentView } = this.state
+
+        // 按 view 过滤
+        let viewFiltered = members
+        if (currentView === 'members') {
+            viewFiltered = members.filter(m => m.robot !== 1)
+        } else if (currentView === 'bots') {
+            viewFiltered = members.filter(m => m.robot === 1)
+        }
+
+        const filtered = viewFiltered.filter((m) => {
             if (!keyword || keyword === "") return true
             return m.name.indexOf(keyword) !== -1
         })
@@ -333,37 +345,89 @@ export default class ContactsList extends Component<any, ContactsState> {
         </div>
 
     }
+    renderMenuView() {
+        const space = this.state.currentSpace
+        const memberCount = this.state.spaceMembers.filter(m => m.robot !== 1).length
+        const botCount = this.state.spaceMembers.filter(m => m.robot === 1).length
+
+        return (
+            <div className="wk-contacts-menu">
+                {space && (
+                    <div className="wk-contacts-menu-header">
+                        <div className="wk-contacts-menu-space-icon" style={{
+                            backgroundColor: ['#667eea','#764ba2','#f093fb','#4facfe','#43e97b','#fa709a'][space.name.charCodeAt(0) % 6],
+                        }}>
+                            {space.name.charAt(0)}
+                        </div>
+                        <span className="wk-contacts-menu-space-name">{space.name}</span>
+                    </div>
+                )}
+                <div className="wk-contacts-menu-list">
+                    <div className="wk-contacts-menu-item" onClick={() => {
+                        this.setState({ currentView: 'members' }, () => this.rebuildIndex())
+                    }}>
+                        <span className="wk-contacts-menu-item-icon">👥</span>
+                        <span className="wk-contacts-menu-item-label">组织内联系人</span>
+                        <span className="wk-contacts-menu-item-count">{memberCount}</span>
+                        <span className="wk-contacts-menu-item-arrow">›</span>
+                    </div>
+                    <div className="wk-contacts-menu-item" onClick={() => {
+                        this.setState({ currentView: 'bots' }, () => this.rebuildIndex())
+                    }}>
+                        <span className="wk-contacts-menu-item-icon">🤖</span>
+                        <span className="wk-contacts-menu-item-label">Bot</span>
+                        <span className="wk-contacts-menu-item-count">{botCount}</span>
+                        <span className="wk-contacts-menu-item-arrow">›</span>
+                    </div>
+                    <div className="wk-contacts-menu-item" onClick={() => {
+                        this.setState({ currentView: 'groups' })
+                    }}>
+                        <span className="wk-contacts-menu-item-icon">👥</span>
+                        <span className="wk-contacts-menu-item-label">我的群组</span>
+                        <span className="wk-contacts-menu-item-arrow">›</span>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    renderListView() {
+        const { indexList, currentView } = this.state
+        const viewTitle = currentView === 'members' ? '联系人' : currentView === 'bots' ? 'Bot' : '我的群组'
+
+        return (
+            <>
+                <div className="wk-contacts-list-back" onClick={() => this.setState({ currentView: 'menu', keyword: undefined })}>
+                    <span>‹ 返回</span>
+                </div>
+                <div className="wk-contacts-content-header">
+                    <Search placeholder={`搜索${viewTitle}`} onChange={(v) => {
+                        this.setState({ keyword: v }, () => this.rebuildIndex())
+                    }}></Search>
+                </div>
+                <div className="wk-contacts-content-contacts">
+                    {indexList.map((indexName) => this.sectionUI(indexName))}
+                </div>
+            </>
+        )
+    }
+
     render() {
-        const { indexList } = this.state
+        const { currentView, currentSpace } = this.state
+        const isMenuView = currentView === 'menu' && !!currentSpace
+
         return <WKBase onContext={(baseCtx) => {
             this.baseContext = baseCtx
         }}>
             <div className="wk-contacts">
-                <WKNavMainHeader title={this.state.currentSpace ? `${this.state.currentSpace.name} - 成员` : "联系人"}></WKNavMainHeader>
+                <WKNavMainHeader title={
+                    isMenuView ? "通讯录" :
+                    currentView === 'members' ? '联系人' :
+                    currentView === 'bots' ? 'Bot' :
+                    currentView === 'groups' ? '我的群组' : '联系人'
+                }></WKNavMainHeader>
                 <div className="wk-contacts-content">
-                    <div className="wk-contacts-content-header">
-                        <Search placeholder="搜索" onChange={(v) => {
-                            this.setState({
-                                keyword: v
-                            }, () => {
-                                this.rebuildIndex()
-                            })
-                        }}></Search>
-                    </div>
-                    {!this.state.currentSpace && <div className="wk-contacts-content-fnc">
-                        {
-                            WKApp.endpoints.contactsHeaders().map((view, i) => {
-                                return <div key={i}>{view}</div>
-                            })
-                        }
-                    </div>}
-                    <div className="wk-contacts-content-contacts">
-                        {
-                            indexList.map((indexName) => {
-                                return this.sectionUI(indexName)
-                            })
-                        }
-                    </div>
+                    {isMenuView ? this.renderMenuView() : this.renderListView()}
                 </div>
                 <ContextMenus onContext={(context: ContextMenusContext) => {
                     this.contextMenusContext = context
