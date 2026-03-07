@@ -11,6 +11,7 @@ import InputStyle from "./defaultStyle";
 import {IconSend} from '@douyinfe/semi-icons';
 import { Notification, Button } from '@douyinfe/semi-ui';
 import SlashCommandMenu, { BotCommand } from "../SlashCommandMenu";
+import AiBadge from "../AiBadge";
 
 
 const MAX_MESSAGE_LENGTH = 5000;
@@ -430,15 +431,13 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
                             ) => {
                                 return (
                                     <div className={clazz("wk-messageinput-member", focused ? "wk-messageinput-selected" : null)}>
-                                        <div className="wk-messageinput-iconbox wk-avatar-wrapper">
+                                        <div className="wk-messageinput-iconbox">
                                             <img alt="" className="wk-messageinput-icon" style={{ width: `24px`, height: `24px`, borderRadius: `24px` }} src={(suggestion as MemberSuggestionDataItem).icon} />
-                                            {(suggestion as MemberSuggestionDataItem).isBot && (
-                                                <div className="wk-avatar-bot-badge">
-                                                    <img src="./identity_icon/robot.png" alt="bot" className="wk-avatar-bot-badge-icon" />
-                                                </div>
-                                            )}
                                         </div>
-                                        <div><strong>{highlightedDisplay}</strong></div>
+                                        <div>
+                                            <strong>{highlightedDisplay}</strong>
+                                            {(suggestion as MemberSuggestionDataItem).isBot && <AiBadge size="small" />}
+                                        </div>
                                     </div>
                                 )
                             }}

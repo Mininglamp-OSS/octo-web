@@ -12,6 +12,7 @@ import { UserInfoRouteData, UserInfoVM } from "./vm";
 import FriendApplyUI from "../FriendApply";
 import RouteContext, { FinishButtonContext } from "../../Service/Context";
 import { Image } from '@douyinfe/semi-ui';
+import AiBadge from "../AiBadge";
 
 
 export interface UserInfoProps extends HTMLProps<any> {
@@ -105,17 +106,13 @@ export default class UserInfo extends Component<UserInfoProps> {
                             </div> : (<>
                                 <div className="wk-userinfo-header">
                                     <div className="wk-userinfo-user">
-                                        <div className="wk-userinfo-user-avatar wk-avatar-wrapper">
+                                        <div className="wk-userinfo-user-avatar">
                                             <Image src={WKApp.shared.avatarUser(uid)}></Image>
-                                            {vm.channelInfo?.orgData?.robot === 1 && (
-                                                <div className="wk-avatar-bot-badge">
-                                                    <img src="./identity_icon/robot.png" alt="bot" className="wk-avatar-bot-badge-icon" />
-                                                </div>
-                                            )}
                                         </div>
                                         <div className="wk-userinfo-user-info">
                                             <div className="wk-userinfo-user-info-name">
                                                 {vm.displayName()}
+                                                {vm.channelInfo?.orgData?.robot === 1 && <AiBadge />}
                                             </div>
                                             <div className="wk-userinfo-user-info-others">
                                                 <ul>
