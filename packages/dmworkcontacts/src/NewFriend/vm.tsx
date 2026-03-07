@@ -32,7 +32,12 @@ export class NewFriendVM extends ProviderListener {
     WKApp.dataSource.commonDataSource
       .friendSure(apply.token || "")
       .then(() => {
-        apply.status = FriendApplyState.accepted;
+        // Use immutable update pattern - update friendApplys array with new object
+        this.friendApplys = this.friendApplys.map(item =>
+          item.to_uid === apply.to_uid
+            ? { ...item, status: FriendApplyState.accepted }
+            : item
+        );
         // WKApp.shared.updateFriendApply(apply);
         this.delFriendApply(apply);
         this.sureLoading = false;

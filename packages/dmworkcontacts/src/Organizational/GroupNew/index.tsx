@@ -391,23 +391,19 @@ export class OrganizationalGroupNew extends Component<
     const { friendData } = this.state;
     let { optPersonnelData } = this.state;
 
-    for (const item of friendData) {
-      let exist = false;
-      for (const value of values) {
-        if (value === item.uid) {
-          exist = true;
-          break
-        }
-      }
-      if (exist) {
-        item.checked = true
-        getFriendOpt.push(item);
+    // Use immutable update pattern - create new objects instead of mutating
+    const newFriendData = friendData.map(item => {
+      const isSelected = values.includes(item.uid);
+      if (isSelected) {
+        const updatedItem = { ...item, checked: true };
+        getFriendOpt.push(updatedItem);
+        return updatedItem;
       } else {
-        item.checked = false
-        // 删除已选中的
+        // Remove from optPersonnelData if unchecked
         optPersonnelData = optPersonnelData.filter(p => p.uid !== item.uid);
+        return { ...item, checked: false };
       }
-    }
+    });
 
     const newPersonnelData = [...getFriendOpt, ...optPersonnelData];
 
@@ -420,7 +416,7 @@ export class OrganizationalGroupNew extends Component<
     );
     this.setState({
       optPersonnelData: [...uniqueArr],
-      friendData: [...friendData]
+      friendData: newFriendData
     });
   }
 

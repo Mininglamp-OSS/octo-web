@@ -59,18 +59,20 @@ export default class ContactsList extends Component<any, ContactsState> {
             if(channelInfo.channel.channelType !== ChannelTypePerson) {
                 return
             }
-            //是否包含
-            let exist = false
-            WKApp.dataSource.contactsList.forEach((v)=>{
-                if(v.uid === channelInfo.channel.channelID) {
-                    exist = true
-                    v.name = channelInfo.title
-                    v.remark = channelInfo?.orgData?.remark
-                    return
+            // Use immutable update pattern - replace object instead of mutating properties
+            const idx = WKApp.dataSource.contactsList.findIndex(
+                (v) => v.uid === channelInfo.channel.channelID
+            )
+            if (idx !== -1) {
+                // Create new object instead of mutating the existing one
+                WKApp.dataSource.contactsList[idx] = {
+                    ...WKApp.dataSource.contactsList[idx],
+                    name: channelInfo.title,
+                    remark: channelInfo?.orgData?.remark
                 }
-            })
-            if(exist && !this.state.currentSpace) {
-                this.rebuildIndex()
+                if (!this.state.currentSpace) {
+                    this.rebuildIndex()
+                }
             }
         }
 
