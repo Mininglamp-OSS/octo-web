@@ -78,6 +78,7 @@ export class ChatVM extends ProviderListener {
 
     set selectedSpace(v: Space | undefined) {
         this._selectedSpace = v
+        WKApp.mittBus.emit('space-changed', v)
         if (v) {
             this.loadSpaceMembers(v.space_id)
         } else {

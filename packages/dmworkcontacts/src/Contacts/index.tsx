@@ -11,12 +11,17 @@ import { ContactsListManager } from "../Service/ContactsListManager";
 import { Card } from "@octo/base/src/Messages/Card";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
+import { Space, SpaceMember, SpaceService } from "@octo/base/src/Service/SpaceService";
+
+const SpaceRoleLabels: Record<number, string> = { 1: '创建者', 2: '管理员', 3: '成员' }
 
 export class ContactsState {
     indexList: string[] = []
     indexItemMap: Map<string, Contacts[]> = new Map()
     keyword?: string
     selectedItem?: Contacts // 被选中的联系人
+    currentSpace?: Space
+    spaceMembers: SpaceMember[] = []
 }
 
 export default class ContactsList extends Component<any, ContactsState> {
@@ -24,18 +29,22 @@ export default class ContactsList extends Component<any, ContactsState> {
     channelInfoListener!: ChannelInfoListener
     contextMenusContext!: ContextMenusContext
     baseContext!: WKBaseContext
+    private spaceChangedHandler!: (space: any) => void
     constructor(props: any) {
         super(props)
 
         this.state = {
             indexList: [],
-            indexItemMap: new Map()
+            indexItemMap: new Map(),
+            spaceMembers: [],
         }
     }
     componentDidMount() {
 
         this.contactsChangeListener = () => {
-            this.rebuildIndex()
+            if (!this.state.currentSpace) {
+                this.rebuildIndex()
+            }
         }
 
         this.channelInfoListener = (channelInfo:ChannelInfo)=>{
@@ -48,14 +57,28 @@ export default class ContactsList extends Component<any, ContactsState> {
                 if(v.uid === channelInfo.channel.channelID) {
                     exist = true
                     v.name = channelInfo.title
-                    v.remark = channelInfo?.orgData?.remark 
+                    v.remark = channelInfo?.orgData?.remark
                     return
                 }
             })
-            if(exist) {
+            if(exist && !this.state.currentSpace) {
                 this.rebuildIndex()
             }
         }
+
+        this.spaceChangedHandler = (space: any) => {
+            const sp = space as Space | undefined
+            if (sp) {
+                this.setState({ currentSpace: sp }, () => {
+                    this.loadSpaceMembers(sp.space_id)
+                })
+            } else {
+                this.setState({ currentSpace: undefined, spaceMembers: [] }, () => {
+                    this.rebuildIndex()
+                })
+            }
+        }
+        WKApp.mittBus.on('space-changed', this.spaceChangedHandler)
 
         WKApp.dataSource.addContactsChangeListener(this.contactsChangeListener)
 
@@ -72,10 +95,45 @@ export default class ContactsList extends Component<any, ContactsState> {
         ContactsListManager.shared.setRefreshList = undefined
         WKApp.dataSource.removeContactsChangeListener(this.contactsChangeListener)
         WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
+        WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
+    }
+
+    private async loadSpaceMembers(spaceId: string) {
+        try {
+            const members = await SpaceService.shared.getMembers(spaceId, 1, 10000)
+            this.setState({ spaceMembers: members }, () => {
+                this.rebuildIndexFromSpaceMembers(members)
+            })
+        } catch {
+            this.setState({ spaceMembers: [] })
+        }
+    }
+
+    private rebuildIndexFromSpaceMembers(members: SpaceMember[]) {
+        const { keyword } = this.state
+        const filtered = members.filter((m) => {
+            if (!keyword || keyword === "") return true
+            return m.name.indexOf(keyword) !== -1
+        })
+        const contacts: Contacts[] = filtered.map((m) => {
+            const c = new Contacts()
+            c.uid = m.uid
+            c.name = m.name
+            c.avatar = m.avatar
+            c.follow = 1
+            c.robot = false
+            ;(c as any)._spaceRole = m.role
+            return c
+        })
+        this.buildIndex(contacts)
     }
 
     rebuildIndex() {
-        this.buildIndex(this.contactsList())
+        if (this.state.currentSpace && this.state.spaceMembers.length > 0) {
+            this.rebuildIndexFromSpaceMembers(this.state.spaceMembers)
+        } else if (!this.state.currentSpace) {
+            this.buildIndex(this.contactsList())
+        }
     }
 
     contactsList() {
@@ -172,6 +230,18 @@ export default class ContactsList extends Component<any, ContactsState> {
                             <div className="wk-contacts-section-item-name">
                                 {name}
                                 {item.robot && <AiBadge />}
+                                {(item as any)._spaceRole && (item as any)._spaceRole <= 2 && (
+                                    <span className="wk-contacts-role-badge" style={{
+                                        marginLeft: 6,
+                                        fontSize: 11,
+                                        padding: '1px 6px',
+                                        borderRadius: 3,
+                                        backgroundColor: (item as any)._spaceRole === 1 ? 'var(--wk-color-theme, #6366F1)' : '#f0ad4e',
+                                        color: '#fff',
+                                    }}>
+                                        {SpaceRoleLabels[(item as any)._spaceRole] || ''}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     })
@@ -186,7 +256,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             this.baseContext = baseCtx
         }}>
             <div className="wk-contacts">
-                <WKNavMainHeader title="联系人"></WKNavMainHeader>
+                <WKNavMainHeader title={this.state.currentSpace ? `${this.state.currentSpace.name} - 成员` : "联系人"}></WKNavMainHeader>
                 <div className="wk-contacts-content">
                     <div className="wk-contacts-content-header">
                         <Search placeholder="搜索" onChange={(v) => {
@@ -197,13 +267,13 @@ export default class ContactsList extends Component<any, ContactsState> {
                             })
                         }}></Search>
                     </div>
-                    <div className="wk-contacts-content-fnc">
+                    {!this.state.currentSpace && <div className="wk-contacts-content-fnc">
                         {
                             WKApp.endpoints.contactsHeaders().map((view, i) => {
                                 return <div key={i}>{view}</div>
                             })
                         }
-                    </div>
+                    </div>}
                     <div className="wk-contacts-content-contacts">
                         {
                             indexList.map((indexName) => {
