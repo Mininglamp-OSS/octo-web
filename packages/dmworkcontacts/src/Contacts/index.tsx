@@ -11,6 +11,7 @@ import { ContactsListManager } from "../Service/ContactsListManager";
 import { Card } from "@octo/base/src/Messages/Card";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
+import BotDetailModal from "@octo/base/src/Components/BotDetailModal";
 import { Space, SpaceMember, SpaceService } from "@octo/base/src/Service/SpaceService";
 
 const SpaceRoleLabels: Record<number, string> = { 1: '创建者', 2: '管理员', 3: '成员' }
@@ -22,6 +23,8 @@ export class ContactsState {
     selectedItem?: Contacts // 被选中的联系人
     currentSpace?: Space
     spaceMembers: SpaceMember[] = []
+    botDetailUid?: string // Bot 详情弹窗
+    botDetailVisible: boolean = false
 }
 
 export default class ContactsList extends Component<any, ContactsState> {
@@ -228,6 +231,11 @@ export default class ContactsList extends Component<any, ContactsState> {
                             name = item.remark
                         }
                         return <div key={item.uid} className={classnames("wk-contacts-section-item", WKApp.shared.openChannel?.channelType === ChannelTypePerson && WKApp.shared.openChannel?.channelID === item.uid ? "wk-contacts-section-item-selected" : undefined)} onClick={() => {
+                            if (item.robot) {
+                                // Bot: 弹出详情弹窗
+                                this.setState({ botDetailUid: item.uid, botDetailVisible: true })
+                                return
+                            }
                             const spaceId = WKApp.shared.currentSpaceId
                             const channelId = spaceId ? `s${spaceId}_${item.uid}` : item.uid
                             const channel = new Channel(channelId, ChannelTypePerson)
@@ -321,6 +329,15 @@ export default class ContactsList extends Component<any, ContactsState> {
                         }, "分享名片")
                     }
                 }]} />
+                <BotDetailModal
+                    uid={this.state.botDetailUid || ""}
+                    visible={this.state.botDetailVisible}
+                    onClose={() => this.setState({ botDetailVisible: false })}
+                    onChat={(channel) => {
+                        WKApp.endpoints.showConversation(channel)
+                        this.setState({ botDetailVisible: false })
+                    }}
+                />
             </div>
         </WKBase>
     }
