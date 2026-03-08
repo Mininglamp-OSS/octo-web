@@ -5,6 +5,7 @@ import MainVM from "./vm";
 import { TabNormalScreen } from "./tab_normal_screen";
 import { Space, SpaceService } from "@octo/base/src/Service/SpaceService";
 import SpaceCreate from "@octo/base/src/Components/SpaceCreate";
+import ConnectionStatus from "@octo/base/src/Components/ConnectionStatus";
 import { Toast } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import classNames from "classnames";
@@ -109,6 +110,7 @@ export class MainContentLeft extends Component<MainContentLeftProps, MainContent
                         </div>
                     )}
                 </div>
+                <ConnectionStatus />
             </div>
             {/* 路由内容 */}
             <div style={{ flex: 1, overflow: 'hidden' }}>
