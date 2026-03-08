@@ -29,6 +29,7 @@ export interface ConversationProps {
 export class Conversation extends Component<ConversationProps> implements ConversationContext {
     // 缓存各会话的引用/回复状态，切换会话时保留
     private static replyStateCache: Map<string, { message: Message, handlerType: number }> = new Map()
+    private static readonly REPLY_STATE_CACHE_MAX_SIZE = 50
     vm!: ConversationVM
     contextMenusContext!: ContextMenusContext
     avatarMenusContext!: ContextMenusContext // 点击头像弹出的菜单
@@ -241,6 +242,13 @@ export class Conversation extends Component<ConversationProps> implements Conver
                 message: this.vm.currentReplyMessage,
                 handlerType: this.vm.currentHandlerType,
             })
+            // Evict oldest entries when cache exceeds max size
+            if (Conversation.replyStateCache.size > Conversation.REPLY_STATE_CACHE_MAX_SIZE) {
+                const firstKey = Conversation.replyStateCache.keys().next().value
+                if (firstKey !== undefined) {
+                    Conversation.replyStateCache.delete(firstKey)
+                }
+            }
         } else {
             Conversation.replyStateCache.delete(channelKey)
         }
