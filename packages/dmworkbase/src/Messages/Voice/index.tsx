@@ -172,6 +172,9 @@ export class VoiceCell extends MessageCell<any,VoiceCellState> {
         if (message.voiceBuff) {
             player.initWithArrayBuffer(message.voiceBuff).then(() => {
                 player.play();
+            }).catch((error: Error) => {
+                console.error('Failed to decode AMR audio:', error);
+                this.setState({ playStatus: playStatusWaitPlay });
             });
         } else {
             this.setState({ playStatus: playStatusDownloading });
@@ -185,6 +188,11 @@ export class VoiceCell extends MessageCell<any,VoiceCellState> {
                 message.voiceBuff = xhr.response;
                 player.initWithArrayBuffer(xhr.response).then(() => {
                     player.play();
+                }).catch((error: Error) => {
+                    console.error('Failed to decode AMR audio:', error);
+                    if (voicePlayerManager.isActiveComponent(this)) {
+                        this.setState({ playStatus: playStatusWaitPlay });
+                    }
                 });
             };
             xhr.onerror = () => {
