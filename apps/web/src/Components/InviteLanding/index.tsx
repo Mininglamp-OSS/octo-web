@@ -87,6 +87,11 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
         try {
             await WKApp.apiClient.post(`/space/join`, { invite_code: this.props.inviteCode });
             Toast.success("加入成功！");
+            const spaceId = this.state.info?.space_id;
+            if (spaceId) {
+                localStorage.setItem('currentSpaceId', spaceId);
+                WKApp.shared.currentSpaceId = spaceId;
+            }
             this.redirectToClean();
         } catch (e: any) {
             Toast.error(e?.msg || "加入失败");
@@ -174,6 +179,12 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
         } catch (e) {
             Toast.error("网络错误，加入失败");
             return;
+        }
+        // 设置 currentSpaceId，避免刷新后 SpaceGate 竞态导致选择器不显示
+        const spaceId = this.state.info?.space_id;
+        if (spaceId) {
+            localStorage.setItem('currentSpaceId', spaceId);
+            WKApp.shared.currentSpaceId = spaceId;
         }
         this.redirectToClean();
     }
