@@ -451,8 +451,8 @@ export default class ContactsList extends Component<any, ContactsState> {
                     {count > 0 && <span className="wk-contacts-accordion-count">({count})</span>}
                 </div>
                 {isExpanded && (
-                    <div className="wk-contacts-accordion-body" style={section === 'members' ? { position: 'relative' } : undefined}>
-                        {section === 'members' ? (() => {
+                    <div className="wk-contacts-accordion-body" style={(section === 'members' || section === 'bots') ? { position: 'relative' } : undefined}>
+                        {(section === 'members' || section === 'bots') ? (() => {
                             const grouped = this.groupByLetter(items)
                             const letters = Array.from(grouped.keys())
                             return (
