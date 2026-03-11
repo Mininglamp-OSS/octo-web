@@ -4,6 +4,8 @@
     height: 100%;
     --wk-height-contacts-content-header:50px;
     border-right: var(--wk-line);
+    overflow: hidden;
+    position: relative;
 }
 
 .wk-contacts-content-header {
@@ -256,6 +258,7 @@ body[theme-mode=dark] .wk-contacts-section-item  {
     position: sticky;
     top: 0;
     z-index: 1;
+    contain: layout;
 }
 
 /* 右侧字母索引条 */
@@ -271,6 +274,7 @@ body[theme-mode=dark] .wk-contacts-section-item  {
     z-index: 2;
     margin-top: -100%;
     pointer-events: none;
+    contain: layout;
 }
 .wk-contacts-letter-index-item {
     font-size: 10px;
