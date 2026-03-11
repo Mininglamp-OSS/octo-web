@@ -124,7 +124,7 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
                 <div style={{
                     background: "white", borderRadius: 16, padding: "48px 40px",
                     textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
-                    minWidth: 360, maxWidth: 420, color: "#333",
+                    minWidth: 360, maxWidth: 420, color: "#333333",
                 }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>👋</div>
                     <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 8px" }}>欢迎使用 DMWork！</h2>

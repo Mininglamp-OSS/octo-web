@@ -14,6 +14,7 @@
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
     min-width: 320px;
     max-width: 400px;
+    color: #333;
 }
 
 .invite-landing-icon {
@@ -55,6 +56,7 @@
     border-radius: 8px !important;
     background-color: #5b6abf !important;
     border-color: #5b6abf !important;
+    color: #FFFFFF !important;
 }
 
 .invite-landing-btn:hover {
