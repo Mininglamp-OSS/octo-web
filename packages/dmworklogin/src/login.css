@@ -1,178 +1,540 @@
+/* ========================================
+   Split-screen Login Layout
+   Left: Brand panel | Right: Form panel
+   ======================================== */
+
+/* ---- Semi Design token overrides for login page ---- */
 .wk-login {
+    --semi-color-primary: var(--wk-color-theme, #6366F1);
+    --semi-color-primary-hover: color-mix(in srgb, var(--wk-color-theme, #6366F1) 85%, black);
+    --semi-color-primary-active: color-mix(in srgb, var(--wk-color-theme, #6366F1) 75%, black);
+
     display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100%;
+    min-height: 100vh;
     width: 100%;
-    padding: 40px 0 50px;
     position: absolute;
     top: 0;
     left: 0;
-    overflow-y: auto;
-    background-color: rgb(255, 255, 255);
+    overflow: hidden;
+    background-color: #f5f6fa;
+}
+
+/* ---- Left brand panel ---- */
+.wk-login-brand {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 55%;
+    min-height: 100vh;
+    padding: 60px 64px;
     box-sizing: border-box;
+    background: linear-gradient(135deg, var(--wk-color-theme, #3370ff) 0%, #5b8cff 60%, #8ab4ff 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+/* 背景装饰圆形 */
+.wk-login-brand::before {
+    content: '';
+    position: absolute;
+    width: 500px;
+    height: 500px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    top: -120px;
+    right: -100px;
+    pointer-events: none;
+}
+.wk-login-brand::after {
+    content: '';
+    position: absolute;
+    width: 350px;
+    height: 350px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    bottom: -80px;
+    left: -60px;
+    pointer-events: none;
+}
+
+.wk-login-brand-logo-top {
+    position: absolute;
+    top: 40px;
+    left: 56px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 2;
+}
+
+.wk-login-brand-inner {
+    max-width: 440px;
+    width: 100%;
+    position: relative;
+    z-index: 1;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.wk-login-brand-logo {
+    display: none;
+}
+
+.wk-login-brand-logo img {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+}
+
+.wk-login-brand-logo-name {
+    font-size: 24px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.5px;
+}
+
+.wk-login-brand-headline {
+    font-size: 40px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.25;
+    margin-bottom: 12px;
+}
+
+.wk-login-brand-subline {
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.82);
+    line-height: 1.65;
+    margin-bottom: 36px;
+}
+
+.wk-login-brand-features {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.wk-login-brand-feature {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.wk-login-brand-feature-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.wk-login-brand-feature-text {
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 500;
+}
+
+/* ---- Chat bubble decoration ---- */
+.wk-login-brand-chat {
+    position: absolute;
+    bottom: 36px;
+    left: 64px;
+    right: 64px;
+    max-width: 380px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 2;
+}
+
+.wk-login-brand-chat-bubble {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    animation: chatFadeIn 0.4s ease forwards;
+    opacity: 0;
+}
+
+.wk-login-brand-chat-bubble:nth-child(1) { animation-delay: 0.2s; }
+.wk-login-brand-chat-bubble:nth-child(2) { animation-delay: 0.5s; }
+.wk-login-brand-chat-bubble:nth-child(3) { animation-delay: 0.8s; }
+
+@keyframes chatFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.wk-login-brand-chat-bubble--right {
+    flex-direction: row-reverse;
+}
+
+.wk-login-brand-chat-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.25);
+    border: 1px solid rgba(255,255,255,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.wk-login-brand-chat-content {
+    max-width: 240px;
+}
+
+.wk-login-brand-chat-name {
+    font-size: 11px;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 3px;
+    padding-left: 10px;
+}
+
+.wk-login-brand-chat-text {
+    background: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(8px);
+    border-radius: 12px 12px 12px 2px;
+    padding: 9px 14px;
+    font-size: 13px;
+    color: #fff;
+    line-height: 1.5;
+}
+
+.wk-login-brand-chat-bubble--right .wk-login-brand-chat-text {
+    background: rgba(255, 255, 255, 0.9);
+    color: #1a1a2e;
+    border-radius: 12px 12px 2px 12px;
+}
+
+/* ---- Right form panel ---- */
+.wk-login-panel {
+    width: 45%;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    box-sizing: border-box;
+    padding: 40px 48px;
+    overflow-y: auto;
+}
+
+.wk-login-panel .wk-login-content {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 0;
 }
 
 .wk-login-content {
-    position: relative;
     width: 100%;
+    max-width: 360px;
 }
 
+/* ---- Logo (inside form panel, mobile fallback) ---- */
 .wk-login-content-logo {
+    display: none;
     align-items: center;
-    display: flex;
-    height: 120px;
     justify-content: center;
-    min-width: 100%;
-    width: 120px;
+    margin-bottom: 24px;
 }
 
 .wk-login-content-logo img {
-    width: 75px;
-    height: 75px;
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
 }
 
+/* ---- Slogan / panel title ---- */
 .wk-login-content-slogan {
-    color: rgba(0, 0, 0, 1);
-    font-size: 36px;
-    font-weight: 450;
-    line-height: 40px;
-    margin-bottom: 45px;
-    margin-top: 24px;
-    text-align: center;
+    color: #1a1a2e;
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-bottom: 8px;
+    text-align: left;
 }
 
+.wk-login-content-slogan-sub {
+    color: #8a8fa8;
+    font-size: 14px;
+    margin-bottom: 32px;
+    text-align: left;
+}
+
+/* ---- Form ---- */
 .wk-login-content-form {
-    margin-top: 32px;
+    margin-top: 0;
 }
 
 .wk-login-content-form input {
-    border: 1px solid rgba(0, 0, 0, .20);
-    border-radius: 4px;
-    color: rgba(0, 0, 0, 1);
+    border: 1.5px solid #e4e6ef;
+    border-radius: 10px;
+    color: #1a1a2e;
     display: block;
     font-family: Helvetica Neue, Segoe UI, Helvetica, Arial, sans-serif;
-    font-size: 18px;
-    height: 42px;
-    margin-bottom: 12px;
-    margin-left: auto;
-    margin-right: auto;
+    font-size: 15px;
+    height: 46px;
+    margin-bottom: 14px;
+    width: 100%;
     padding: 0 16px;
-    width: 286px;
-    max-width: calc(100vw - 60px);
     box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    background: #fafbfc;
+    outline: none;
+}
+
+.wk-login-content-form input:focus {
+    border-color: var(--wk-color-theme, #3370ff);
+    box-shadow: 0 0 0 3px rgba(51, 112, 255, 0.12);
+    background: #fff;
+}
+
+.wk-login-content-form input::placeholder {
+    color: #b0b4c8;
+    line-height: normal;
+}
+
+.wk-login-content-form input::-webkit-input-placeholder {
+    line-height: normal;
 }
 
 .wk-login-content-form-buttons {
     display: flex;
     align-items: center;
     justify-content: center;
+    margin-top: 20px;
 }
 
-
 .wk-login-content-form-ok {
-    border-radius: 50px;
-    display: flex;
-    align-items: center;
-    margin-left: auto;
-    margin-right: auto;
-    font-size: 16px;
-    padding: 9.5px 20px;
-    margin-top: 24px;
+    width: 100% !important;
+    border-radius: 10px !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    height: 46px !important;
+    letter-spacing: 0.3px;
 }
 
 .wk-login-content-form-others {
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
-    margin-top: 40px;
-    width: 320px;
-    max-width: calc(100vw - 40px);
-}
-
-.wk-login-content-form-scanlogin {
-    color: #929292;
-    font-size: 15px;
-    font-weight: normal;
-    text-align: center;
-    cursor: pointer;
-}
-
-.wk-login-content-form-switch {
-    color: var(--wk-color-theme);
-    font-size: 15px;
-    font-weight: normal;
-    text-align: center;
-    cursor: pointer;
-    margin-top: 16px;
-}
-
-.wk-login-footer {
-    color: #262626;
-    font-size: 16px;
-    font-weight: 400;
-
-    bottom: 0;
-    margin-bottom: 66px;
-    position: absolute;
-    text-align: center;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    margin-top: 20px;
+    gap: 0;
     width: 100%;
 }
 
-.wk-login-footer ul {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 0px;
+.wk-login-content-form-others > * + * {
+    padding-left: 16px;
+    margin-left: 16px;
+    border-left: 1px solid #e4e6ef;
 }
 
-.wk-login-footer ul li {
-    margin-left: 40px;
+.wk-login-content-form-scanlogin {
+    color: #8a8fa8;
+    font-size: 14px;
+    cursor: pointer;
+    transition: color 0.15s;
 }
 
+.wk-login-content-form-scanlogin:hover {
+    color: var(--wk-color-theme, #3370ff);
+}
+
+.wk-login-content-form-switch {
+    color: var(--wk-color-theme, #3370ff);
+    font-size: 14px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: opacity 0.15s;
+}
+
+.wk-login-content-form-switch:hover {
+    opacity: 0.75;
+}
+
+/* ---- phonelogin wrapper ---- */
 .wk-login-content-phonelogin {
-    margin: 0 auto;
+    width: 100%;
 }
 
+/* ---- QR scan panel ---- */
 .wk-login-content-scanlogin {
     display: none;
     align-items: center;
     justify-content: center;
     flex-direction: column;
+    width: 100%;
 }
 
 .wk-login-content-scanlogin-show {
     display: flex;
+    margin: 0;
+    padding: 20px 0;
+}
+
+/* ---- QR card ---- */
+.wk-login-qr-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #f8f9ff;
+    border: 1.5px solid #eef0f8;
+    border-radius: 20px;
+    padding: 28px 32px 20px;
+    margin-bottom: 24px;
+    width: 280px;
+}
+
+.wk-login-qr-tip {
+    font-size: 13px;
+    color: #8a8fa8;
+    margin-top: 14px;
+    text-align: center;
+}
+
+/* ---- Steps horizontal ---- */
+.wk-login-qr-steps {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    margin-bottom: 24px;
+    width: 300px;
+    background: transparent;
+    border-radius: 0;
+    padding: 0 8px;
+}
+
+.wk-login-qr-step-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.wk-login-qr-step-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: #fff;
+    border: 1.5px solid #e8eaf6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--wk-color-theme, #6366F1);
+    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.08);
+    flex-shrink: 0;
+}
+
+.wk-login-qr-step-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #1a1a2e;
+    text-align: center;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.wk-login-qr-step-desc {
+    font-size: 11px;
+    color: #8a8fa8;
+    text-align: center;
+    line-height: 1.4;
+    word-break: keep-all;
+    white-space: nowrap;
+}
+
+.wk-login-qr-step-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 36px;
+    flex-shrink: 0;
+    width: 16px;
+}
+
+/* ---- QR code wrap ---- */
+.wk-login-content-scanlogin-qrcode-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1a1a2e;
+    text-align: center;
+    margin-bottom: 6px;
+    margin-top: 0;
+}
+
+.wk-login-content-scanlogin-qrcode-subtitle {
+    font-size: 13px;
+    color: #8a8fa8;
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.wk-login-content-scanlogin-qrcode-wrap {
+    width: 180px;
+    height: 180px;
+    border: 1.5px solid #e4e8f5;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: #fff;
+    overflow: hidden;
+}
+
+/* loading placeholder */
+.wk-login-content-scanlogin-qrcode-wrap::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        45deg,
+        #f0f2f7,
+        #f0f2f7 2px,
+        transparent 2px,
+        transparent 10px
+    );
+    opacity: 0.5;
 }
 
 .wk-login-content-scanlogin-qrcode {
-    width: 280px;
-    height: 280px;
+    width: 176px;
+    height: 176px;
     position: relative;
-
     opacity: 0;
-    transform: scale(0);
-    transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1),opacity 300ms;
-   
+    transform: scale(0.8);
+    transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 300ms;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.wk-login-content-scanlogin-show .wk-login-content-scanlogin-qrcode{
+.wk-login-content-scanlogin-show .wk-login-content-scanlogin-qrcode {
     opacity: 1;
     transform: scale(1);
 }
 
 .wk-login-content-scanlogin-qrcode-avatar {
-   
-   position: absolute;
-   top: 50%;
-   left: 50%;
-   margin-top: -30px;
-   margin-left: -30px;
-
-   opacity: 0;
-   transform: scale(0);
-   transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1),opacity 300ms;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    margin-top: -24px;
+    margin-left: -24px;
+    opacity: 0;
+    transform: scale(0);
+    transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 300ms;
+    z-index: 2;
 }
-
 
 .wk-login-content-scanlogin-qrcode-avatar-show {
     opacity: 1;
@@ -180,22 +542,34 @@
 }
 
 .wk-login-content-scanlogin-qrcode-avatar img {
-    width: 60px;
-    height: 60px;
-   border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 
-.wk-login-content-scanlogin-qrcode-title {
-    margin-top: 30px;
-    color: rgba(9,30,66,.87);
+.wk-login-content-scanlogin-qrcode-desc {
+    width: 204px;
+    text-align: left;
+    align-self: center;
+}
+
+.wk-login-content-scanlogin-qrcode-desc ul {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+    counter-reset: item;
 }
 
 .wk-login-content-scanlogin-qrcode-desc li {
     counter-increment: item;
     text-align: left;
-    margin: 0.75rem 0;
+    margin: 10px 0;
     display: flex;
-    color: rgba(9,30,66,.87);
+    align-items: center;
+    color: #5a607a;
+    font-size: 14px;
 }
 
 .wk-login-content-scanlogin-qrcode-desc li::before {
@@ -203,57 +577,82 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    min-width: 1.375rem;
-    height: 1.375rem;
+    min-width: 22px;
+    height: 22px;
     padding: 0;
-    margin: 0 0.75rem 0 0;
-    background: var(--wk-color-theme);
+    margin: 0 10px 0 0;
+    background: var(--wk-color-theme, #3370ff);
     border-radius: 50%;
-    font-size: smaller;
+    font-size: 12px;
     color: #fff;
-}
-
-.wk-login-footer-buttons button{
-    background-color: transparent;
-    color: var(--wk-color-theme);
-    outline: none !important;
-    border: 0;
-    height: 3.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.625rem;
-    cursor: pointer;
+    flex-shrink: 0;
 }
 
 .wk-login-content-scanlogin-qrcode-expire {
-    width: 100%;
-    height: 100%;
     position: absolute;
-    top: 0;
-    left: 0;
-    background-color: rgb(255, 255,255,0.95);
+    inset: 0;
+    background-color: rgba(255, 255, 255, 0.95);
     display: flex;
     align-items: center;
     flex-direction: column;
     justify-content: center;
+    border-radius: 14px;
+    z-index: 3;
+}
+
+.wk-login-content-scanlogin-qrcode-expire p {
+    font-size: 13px;
+    color: #5a607a;
+    margin-bottom: 10px;
 }
 
 .wk-login-content-scanlogin-qrcode-expire img {
-    width: 50px;
-    height: 50px;
+    width: 36px;
+    height: 36px;
     cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s;
 }
-/* 验证码行 */
+
+.wk-login-content-scanlogin-qrcode-expire img:hover {
+    opacity: 1;
+}
+
+.wk-login-footer-buttons {
+    margin-top: 20px;
+}
+
+.wk-login-footer-buttons button {
+    background-color: transparent;
+    color: var(--wk-color-theme, #3370ff);
+    outline: none !important;
+    border: 1.5px solid var(--wk-color-theme, #3370ff);
+    border-radius: 8px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 20px;
+    cursor: pointer;
+    font-size: 14px;
+    opacity: 0.75;
+    transition: opacity 0.15s;
+}
+
+.wk-login-footer-buttons button:hover {
+    opacity: 1;
+}
+
+/* ---- 验证码行 ---- */
 .wk-login-content-form-code-row {
     display: flex;
     gap: 8px;
     align-items: center;
-    width: 286px;
-    max-width: calc(100vw - 60px);
-    margin: 0 auto 12px auto;
+    width: 100%;
+    margin-bottom: 14px;
     box-sizing: border-box;
 }
+
 .wk-login-content-form-code-row input {
     flex: 1;
     display: inline-block !important;
@@ -261,39 +660,96 @@
     min-width: 0;
     margin-bottom: 0 !important;
 }
+
 .wk-login-content-form-code-btn {
-    min-width: 100px;
+    min-width: 96px;
     white-space: nowrap;
-    height: 42px;
+    height: 46px !important;
     flex-shrink: 0;
-    font-size: 14px;
+    font-size: 13px !important;
+    border-radius: 10px !important;
+    color: var(--wk-color-theme, #3370ff) !important;
+    border-color: var(--wk-color-theme, #3370ff) !important;
 }
 
-/* Download App Button */
+/* ---- Invite banner ---- */
+.wk-login-invite-banner {
+    background: #f0f4ff;
+    border: 1px solid #d0deff;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    text-align: center;
+    color: #3370ff;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+/* ---- Download button ---- */
 .wk-login-content-download {
     text-align: center;
-    margin-top: 20px;
-    padding-top: 16px;
-    border-top: 1px solid #f0f0f0;
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid #eef0f5;
 }
 
 .wk-login-download-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 8px 20px;
-    background: linear-gradient(135deg, #34a853 0%, #2d9348 100%);
-    color: #fff !important;
+    gap: 6px;
+    padding: 8px 18px;
+    background: transparent;
+    color: var(--wk-color-theme, #3370ff) !important;
+    border: 1.5px solid var(--wk-color-theme, #3370ff);
     border-radius: 20px;
     font-size: 13px;
     text-decoration: none;
     transition: all 0.2s;
-    box-shadow: 0 2px 8px rgba(52, 168, 83, 0.3);
 }
 
 .wk-login-download-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(52, 168, 83, 0.4);
+    opacity: 0.8;
     text-decoration: none;
-    color: #fff !important;
+}
+
+/* ---- Footer ---- */
+.wk-login-footer {
+    color: #8a8fa8;
+    font-size: 13px;
+    margin-top: 32px;
+    text-align: center;
+}
+
+/* ========================================
+   Responsive: mobile collapse to single col
+   ======================================== */
+@media (max-width: 768px) {
+    .wk-login {
+        flex-direction: column;
+        overflow-y: auto;
+        min-height: 100vh;
+    }
+
+    .wk-login-brand {
+        display: none;
+    }
+
+    .wk-login-panel {
+        width: 100%;
+        min-height: 100vh;
+        padding: 40px 24px;
+    }
+
+    .wk-login-content-logo {
+        display: flex;
+    }
+
+    .wk-login-content-slogan {
+        text-align: center;
+    }
+
+    .wk-login-content-slogan-sub {
+        text-align: center;
+    }
 }
