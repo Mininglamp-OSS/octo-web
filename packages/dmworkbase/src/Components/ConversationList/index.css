@@ -156,6 +156,7 @@
     display: flex;
     align-items: center;
     margin-left: auto;
+    white-space: nowrap;
 }
 
 .wk-conversationlist-item-lastmsg {
@@ -208,6 +209,7 @@
     right: -10px;
     bottom: -5px;
     border-radius: var(--wk-r-md);
+    white-space: nowrap;
 }
 
 .wk-onlinestatusbadge-empty.wk-onlinestatusbadge {
@@ -226,6 +228,7 @@
     padding: 0;
     font-size: 12px;
     color: var(--wk-color-success);
+    white-space: nowrap;
 }
 
 .wk-onlinestatusbadge-empty .wk-onlinestatusbadge-content {
