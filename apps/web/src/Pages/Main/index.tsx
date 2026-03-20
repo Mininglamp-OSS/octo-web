@@ -2,6 +2,7 @@ import { WKApp, WKLayout, Provider } from "@octo/base";
 import React, { Component } from "react";
 import "./index.css"
 import MainVM from "./vm";
+import { EmptyStateIllustration } from "./EmptyStateIllustration";
 import { TabNormalScreen } from "./tab_normal_screen";
 import { Space, SpaceService } from "@octo/base";
 import { SpaceCreate, ConnectionStatus } from "@octo/base";
@@ -200,9 +201,7 @@ export class MainPage extends Component {
                 WKApp.routeLeft.setPopToRoot = () => {
                     context.popToRoot()
                 }
-            }} contentRight={<div className="wk-chat-empty">
-                <img src={require("./assets/start_chat.svg").default} alt=""></img>
-            </div>} />
+            }} contentRight={<EmptyStateIllustration />} />
         }}>
 
         </Provider>
