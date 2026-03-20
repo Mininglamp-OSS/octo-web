@@ -10,6 +10,9 @@ import {
   CMDContent,
   MessageText,
   Subscriber,
+  Task,
+  TaskStatus,
+  MessageStatus,
 } from "wukongimjssdk";
 import React, { ElementType } from "react";
 import { Smile, Scissors, ImagePlus, Paperclip } from "lucide-react";
@@ -77,6 +80,7 @@ import { UserInfoRouteData } from "./Components/UserInfo/vm";
 import { IconAlertCircle } from "@douyinfe/semi-icons";
 import { TypingManager } from "./Service/TypingManager";
 import APIClient from "./Service/APIClient";
+import ConversationVM from "./Components/Conversation/vm";
 import { ChannelAvatar } from "./Components/ChannelAvatar";
 import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
 import ImageToolbar from "./Components/ImageToolbar";
@@ -400,6 +404,31 @@ export default class BaseModule implements IModule {
           WKApp.loginInfo.sex = channelInfo.orgData.sex;
           WKApp.loginInfo.save();
         }
+      }
+    });
+
+    // 全局订阅 taskManager：上传失败时把 sendQueue 里对应消息标为 Fail 并触发 UI 刷新
+    // 放在 module.init() 里保证只注册一次，避免多 ConversationVM 实例重复处理
+    WKSDK.shared().taskManager.addListener((task: Task) => {
+      if (task.status !== TaskStatus.fail && task.status !== TaskStatus.cancel) return;
+
+      const msgTask = task as any; // MessageTask 有 message 属性
+      const msg = msgTask.message;
+      if (!msg) return;
+
+      const channelKey = msg.channel?.getChannelKey?.();
+      if (!channelKey) return;
+
+      const sending = ConversationVM.sendQueue.get(channelKey);
+      if (!sending) return;
+
+      const idx = sending.findIndex((m) => m.clientMsgNo === msg.clientMsgNo);
+      if (idx !== -1) {
+        // 先标记失败状态，再移除，避免消息直接消失
+        sending[idx].status = MessageStatus.Fail;
+        sending.splice(idx, 1);
+        // 通过 mittBus 通知对应 ConversationVM 刷新
+        WKApp.mittBus.emit("task-upload-failed", { channelKey });
       }
     });
 

@@ -114,3 +114,41 @@
 .wk-message-base-bubble-box.send .wk-message-file-caption {
     color: #fff;
 }
+
+/* 上传进度条 */
+.wk-message-file--uploading,
+.wk-message-file--failed {
+    opacity: 0.9;
+}
+
+.wk-message-file-progress-bar {
+    height: 4px;
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 6px 0 2px;
+}
+
+.wk-message-file-progress-fill {
+    height: 100%;
+    background-color: var(--wk-color-primary, #5b6abf);
+    border-radius: 2px;
+    transition: width 0.2s ease;
+}
+
+.wk-message-file-progress-text {
+    font-size: 11px;
+    color: var(--wk-text-item-second, #999);
+}
+
+.wk-message-base-bubble-box.send .wk-message-file-progress-bar {
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+.wk-message-base-bubble-box.send .wk-message-file-progress-fill {
+    background-color: #fff;
+}
+
+.wk-message-base-bubble-box.send .wk-message-file-progress-text {
+    color: rgba(255, 255, 255, 0.8);
+}

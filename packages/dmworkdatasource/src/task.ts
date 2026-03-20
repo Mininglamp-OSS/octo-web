@@ -44,13 +44,18 @@ export class MediaMessageUploadTask extends MessageTask {
    async uploadFile(file:File,uploadURL:string) {
         const param = new FormData();
         param.append("file", file);
+        // 动态超时：每 MB 预留 10 秒，最低 2 分钟兜底
+        const fileSizeMB = file.size / (1024 * 1024);
+        const timeoutMs = Math.max(2 * 60 * 1000, fileSizeMB * 10 * 1000);
         const resp = await axios.post(uploadURL,param,{
             headers: { "Content-Type": "multipart/form-data" },
             signal: (this.controller = new AbortController()).signal,
+            timeout: timeoutMs,
             onUploadProgress: e => {
-                const completeProgress = ((e.loaded / e.total) | 0);
-                this._progress = completeProgress
-                this.update()
+                if (e.total && e.total > 0) {
+                    this._progress = Math.round((e.loaded / e.total) * 100);
+                    this.update()
+                }
             }
         }).catch(error => {
             this.status = TaskStatus.fail
@@ -86,8 +91,9 @@ export class MediaMessageUploadTask extends MessageTask {
         }
         this.update()
     }
+    /** 返回上传进度整数百分比（0~100） */
     progress(): number {
-        return this._progress??0
+        return this._progress ?? 0
     }
 
 }

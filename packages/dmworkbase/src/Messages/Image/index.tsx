@@ -1,4 +1,4 @@
-import { MediaMessageContent } from "wukongimjssdk"
+import { MediaMessageContent, WKSDK, Task, TaskStatus } from "wukongimjssdk"
 import React from "react"
 import WKApp from "../../App"
 import { MessageContentTypeConst } from "../../Service/Const"
@@ -52,15 +52,38 @@ export class ImageContent extends MediaMessageContent {
 
 interface ImageCellState {
     showPreview: boolean
+    uploadProgress: number
+    uploadStatus: TaskStatus | null
 }
 
 export class ImageCell extends MessageCell<any, ImageCellState> {
+    private _taskListener = (task: Task) => {
+        const { message } = this.props
+        if (task.id !== message.clientMsgNo) return
+        this.setState({ uploadProgress: task.progress(), uploadStatus: task.status })
+    }
 
     constructor(props: any) {
         super(props)
         this.state = {
             showPreview: false,
+            uploadProgress: 0,
+            uploadStatus: null,
         }
+    }
+
+    componentDidMount() {
+        const { message } = this.props
+        const taskMgr = WKSDK.shared().taskManager as any
+        const task: Task | undefined = taskMgr.taskMap?.get(message.clientMsgNo)
+        if (task) {
+            this.setState({ uploadProgress: task.progress(), uploadStatus: task.status })
+        }
+        WKSDK.shared().taskManager.addListener(this._taskListener)
+    }
+
+    componentWillUnmount() {
+        WKSDK.shared().taskManager.removeListener(this._taskListener)
     }
 
     imageScale(orgWidth: number, orgHeight: number, maxWidth = 250, maxHeight = 250) {
@@ -109,18 +132,60 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
 
     render() {
         const { message, context } = this.props
-        const { showPreview } = this.state
+        const { showPreview, uploadProgress, uploadStatus } = this.state
         const content = message.content as ImageContent
         let scaleSize = this.imageScale(content.width, content.height);
         const imageURL = this.getImageSrc(content) || ""
+
+        const isUploading =
+            uploadStatus !== null &&
+            uploadStatus !== TaskStatus.success &&
+            uploadStatus !== TaskStatus.fail &&
+            uploadStatus !== TaskStatus.cancel
+
+        const pct = Math.round(uploadProgress)
+
         return <MessageBase context={context} message={message}>
-            <div style={{ cursor: "pointer" }}>
-                <div style={{ width: scaleSize.width, height: scaleSize.height }} onClick={() => {
-                    this.setState({
-                        showPreview: !this.state.showPreview,
-                    })
-                }}>
+            <div style={{ cursor: isUploading ? "default" : "pointer" }}>
+                <div style={{ position: "relative", width: scaleSize.width, height: scaleSize.height }}
+                    onClick={() => { if (!isUploading) this.setState({ showPreview: !showPreview }) }}>
                     {this.getImageElement()}
+                    {/* 上传进度覆盖层 */}
+                    {isUploading && (
+                        <div style={{
+                            position: "absolute", inset: 0,
+                            background: "rgba(0,0,0,0.45)",
+                            borderRadius: 5,
+                            display: "flex", flexDirection: "column",
+                            alignItems: "center", justifyContent: "center",
+                            gap: 8,
+                        }}>
+                            <div style={{ width: "70%", height: 4, background: "rgba(255,255,255,0.3)", borderRadius: 2, overflow: "hidden" }}>
+                                <div style={{ height: "100%", width: `${pct}%`, background: "#fff", borderRadius: 2, transition: "width 0.2s ease" }} />
+                            </div>
+                            <span style={{ color: "#fff", fontSize: 12 }}>{pct}%</span>
+                        </div>
+                    )}
+                    {/* 上传失败覆盖层 */}
+                    {uploadStatus === TaskStatus.fail && (
+                        <div style={{
+                            position: "absolute", inset: 0,
+                            background: "rgba(0,0,0,0.5)",
+                            borderRadius: 5,
+                            display: "flex", flexDirection: "column",
+                            alignItems: "center", justifyContent: "center",
+                            gap: 6,
+                            cursor: "pointer",
+                        }} onClick={(e) => {
+                            e.stopPropagation()
+                            const taskMgr = WKSDK.shared().taskManager as any
+                            const task: Task | undefined = taskMgr.taskMap?.get(message.clientMsgNo)
+                            task?.start()
+                        }}>
+                            <span style={{ color: "#fff", fontSize: 22 }}>⚠️</span>
+                            <span style={{ color: "#fff", fontSize: 11 }}>上传失败，点击重试</span>
+                        </div>
+                    )}
                 </div>
                 {content.caption && (
                     <div className="wk-image-caption" style={{ maxWidth: scaleSize.width, marginTop: '4px', fontSize: '14px', color: 'var(--wk-text-item)', wordBreak: 'break-word' }}>

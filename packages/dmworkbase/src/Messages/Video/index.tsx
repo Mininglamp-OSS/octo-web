@@ -1,4 +1,4 @@
-import { MessageContent } from "wukongimjssdk";
+import { MessageContent, WKSDK, Task, TaskStatus } from "wukongimjssdk";
 import React from "react";
 import WKApp from "../../App";
 import MessageBase from "../Base";
@@ -34,24 +34,39 @@ export class VideoContent extends MessageContent {
 }
 
 interface VideoCellState {
-    playProgress: number // 播放进度
+    playProgress: number    // 播放进度（秒）
+    uploadProgress: number  // 上传进度 0~1
+    uploadStatus: TaskStatus | null
 }
 
 export class VideoCell extends MessageCell<any, VideoCellState> {
+    private _taskListener = (task: Task) => {
+        const { message } = this.props
+        if (task.id !== message.clientMsgNo) return
+        this.setState({ uploadProgress: task.progress(), uploadStatus: task.status })
+    }
 
     constructor(props: any) {
         super(props)
         this.state = {
             playProgress: 0,
+            uploadProgress: 0,
+            uploadStatus: null,
         }
-
     }
+
     componentDidMount() {
-
-
+        const { message } = this.props
+        const taskMgr = WKSDK.shared().taskManager as any
+        const task: Task | undefined = taskMgr.taskMap?.get(message.clientMsgNo)
+        if (task) {
+            this.setState({ uploadProgress: task.progress(), uploadStatus: task.status })
+        }
+        WKSDK.shared().taskManager.addListener(this._taskListener)
     }
 
     componentWillUnmount() {
+        WKSDK.shared().taskManager.removeListener(this._taskListener)
     }
 
     secondFormat(second: number): string {
@@ -101,29 +116,68 @@ export class VideoCell extends MessageCell<any, VideoCellState> {
     }
     render() {
         const { message, context } = this.props
-        const { playProgress } = this.state
+        const { playProgress, uploadProgress, uploadStatus } = this.state
         const content = message.content as VideoContent
         const actSize = this.videoScale(content.width, content.height)
-        return <MessageBase hiddeBubble={true} message={message} context={context}>
 
-            <div className="wk-message-video" style={{ width: actSize.width, height: '100%' }}>
+        const isUploading =
+            uploadStatus !== null &&
+            uploadStatus !== TaskStatus.success &&
+            uploadStatus !== TaskStatus.fail &&
+            uploadStatus !== TaskStatus.cancel
+
+        const pct = Math.round(uploadProgress)
+
+        return <MessageBase hiddeBubble={true} message={message} context={context}>
+            <div className="wk-message-video" style={{ width: actSize.width, height: '100%', position: "relative" }}>
                 <div className="wk-message-video-content">
                     <span className="wk-message-video-content-time">{this.secondFormat(content.second - playProgress)}</span>
                     <div className="wk-message-video-content-video">
                         <video poster={WKApp.dataSource.commonDataSource.getImageURL(content.cover)} width={actSize.width} height={actSize.height} controls onTimeUpdate={(evet) => {
                             const video = evet.target as HTMLVideoElement
-                            this.setState({
-                                playProgress: video.currentTime,
-                            })
+                            this.setState({ playProgress: video.currentTime })
                         }} onEnded={() => {
-                            this.setState({
-                                playProgress: 0,
-                            })
+                            this.setState({ playProgress: 0 })
                         }}>
                             <source src={WKApp.dataSource.commonDataSource.getFileURL(content.url)} type="video/mp4" />
                         </video>
                     </div>
                 </div>
+
+                {/* 上传进度覆盖层 */}
+                {isUploading && (
+                    <div style={{
+                        position: "absolute", inset: 0,
+                        background: "rgba(0,0,0,0.5)",
+                        display: "flex", flexDirection: "column",
+                        alignItems: "center", justifyContent: "center",
+                        gap: 8,
+                    }}>
+                        <div style={{ width: "70%", height: 4, background: "rgba(255,255,255,0.3)", borderRadius: 2, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${pct}%`, background: "#fff", borderRadius: 2, transition: "width 0.2s ease" }} />
+                        </div>
+                        <span style={{ color: "#fff", fontSize: 12 }}>{pct}%</span>
+                    </div>
+                )}
+
+                {/* 上传失败覆盖层 */}
+                {uploadStatus === TaskStatus.fail && (
+                    <div style={{
+                        position: "absolute", inset: 0,
+                        background: "rgba(0,0,0,0.55)",
+                        display: "flex", flexDirection: "column",
+                        alignItems: "center", justifyContent: "center",
+                        gap: 6,
+                        cursor: "pointer",
+                    }} onClick={() => {
+                        const taskMgr = WKSDK.shared().taskManager as any
+                        const task: Task | undefined = taskMgr.taskMap?.get(message.clientMsgNo)
+                        task?.start()
+                    }}>
+                        <span style={{ color: "#fff", fontSize: 22 }}>⚠️</span>
+                        <span style={{ color: "#fff", fontSize: 11 }}>上传失败，点击重试</span>
+                    </div>
+                )}
             </div>
         </MessageBase>
     }
