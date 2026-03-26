@@ -2,10 +2,6 @@
   "name": "octo-web",
   "private": true,
   "version": "1.5.0",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
     "dev": "turbo run dev --parallel",
     "dev-ele": "turbo run dev-ele --parallel",
@@ -32,7 +28,6 @@
     "turbo": "2.2.1",
     "vitest": "^4.1.1"
   },
-  "packageManager": "yarn@1.22.19",
   "engines": {
     "node": ">=18.0.0",
     "yarn": ">=1.22.19"
@@ -42,5 +37,6 @@
     "lucide-react": "^0.577.0",
     "pinyin-pro": "^3.28.0",
     "zxcvbn": "^4.4.2"
-  }
+  },
+  "packageManager": "pnpm@10.32.0"
 }

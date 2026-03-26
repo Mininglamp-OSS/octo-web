@@ -9,14 +9,14 @@ import  { LoginModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
 
-const apiURL = process.env.REACT_APP_API_URL || "https://api.example.com/v1/"
+const apiURL = import.meta.env.VITE_API_URL || "https://api.example.com/v1/"
 
 if((window as any).__TAURI_IPC__) { // tauri环境
   WKApp.apiClient.config.apiURL = apiURL
 }else if((window as any)?.__POWERED_ELECTRON__){
   WKApp.apiClient.config.apiURL = apiURL
 }else{
-  if(process.env.NODE_ENV === "development") {
+  if(import.meta.env.DEV) {
     WKApp.apiClient.config.apiURL = apiURL
   }else {
     WKApp.apiClient.config.apiURL = "/api/v1/" // 正式环境地址 (通用打包镜像，用此相对地址),打包出来的镜像可以通过API_URL环境变量来修改API地址
@@ -26,7 +26,7 @@ if((window as any).__TAURI_IPC__) { // tauri环境
 WKApp.apiClient.config.tokenCallback = ()=> {
   return WKApp.loginInfo.token
 }
-WKApp.config.appVersion = `${process.env.REACT_APP_VERSION || "0.0.0"}`
+WKApp.config.appVersion = `${import.meta.env.VITE_VERSION || "0.0.0"}`
 WKApp.config.appName = "Octo"
 
 WKApp.loginInfo.load() // 加载登录信息

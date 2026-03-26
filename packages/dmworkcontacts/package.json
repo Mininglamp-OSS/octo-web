@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "src/index.tsx",
   "dependencies": {
-    "@octo/base": "*",
+    "@octo/base": "workspace:*",
     "axios": "^0.25.0",
     "classnames": "^2.3.1"
   }

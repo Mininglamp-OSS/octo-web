@@ -1,11 +1,9 @@
 FROM node:20.9.0 as builder
 WORKDIR /app
-RUN curl -o- -L https://yarnpkg.com/install.sh | bash
-# RUN yarn config set registry https://registry.npm.taobao.org -g
-# RUN npm config set registry https://registry.npm.taobao.org
+RUN npm install -g pnpm@10
 COPY . .
 RUN git config --global url."https://github.com/".insteadOf "git+ssh://git@github.com/" && git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
-RUN yarn install && yarn build
+RUN pnpm install --frozen-lockfile && pnpm build
 
 FROM nginx:latest
 COPY --from=builder /app/docker-entrypoint.sh /docker-entrypoint2.sh 
