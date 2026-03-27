@@ -5,10 +5,21 @@ import MainVM from "./vm";
 import { EmptyStateIllustration } from "./EmptyStateIllustration";
 import { TabNormalScreen } from "./tab_normal_screen";
 import { Space, SpaceService } from "@octo/base";
-import { SpaceCreate, ConnectionStatus } from "@octo/base";
+import { SpaceCreate, ConnectionStatus, JoinSpaceModal } from "@octo/base";
+import { useJoinSpace } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import classNames from "classnames";
+
+/** hook 包装组件，供 Class 组件内使用 */
+function InternalJoinModal({ visible, onClose, onSuccess }: {
+    visible: boolean;
+    onClose: () => void;
+    onSuccess: (spaceId: string) => void;
+}) {
+    const joinProps = useJoinSpace({ onClose, onSuccess });
+    return <JoinSpaceModal visible={visible} {...joinProps} />;
+}
 
 
 export interface MainContentLeftProps {
@@ -20,7 +31,8 @@ export interface MainContentLeftState {
 interface MainContentLeftFullState {
     allSpaces: Space[];
     showSpaceDropdown: boolean;
-showSpaceCreate: boolean;
+    showSpaceCreate: boolean;
+    showJoinSpace: boolean;
 }
 
 export class MainContentLeft extends Component<MainContentLeftProps, MainContentLeftFullState>{
@@ -30,6 +42,7 @@ export class MainContentLeft extends Component<MainContentLeftProps, MainContent
             allSpaces: [],
             showSpaceDropdown: false,
             showSpaceCreate: false,
+            showJoinSpace: false,
         }
     }
 
@@ -129,9 +142,13 @@ export class MainContentLeft extends Component<MainContentLeftProps, MainContent
                                 );
                             })}
                             <div className="wk-global-topbar-dropdown-divider"></div>
+                            <div className="wk-global-topbar-dropdown-item" onClick={() => this.setState({ showSpaceDropdown: false, showJoinSpace: true })}>
+                                <span className="wk-global-topbar-space-icon" style={{ backgroundColor: 'rgba(0,184,148,0.1)', color: '#00B894', width: 24, height: 24, fontSize: 14 }}>↩</span>
+                                <span style={{ flex: 1, color: '#0a9e7e' }}>加入 Space</span>
+                            </div>
                             <div className="wk-global-topbar-dropdown-item" onClick={() => this.setState({ showSpaceDropdown: false, showSpaceCreate: true })}>
-                                <span className="wk-global-topbar-space-icon" style={{ backgroundColor: '#e0e0e0', color: '#666', width: 24, height: 24, fontSize: 14 }}>+</span>
-                                <span style={{ flex: 1, color: '#5b6abf' }}>加入 / 创建 Space</span>
+                                <span className="wk-global-topbar-space-icon" style={{ backgroundColor: 'rgba(124,92,252,0.08)', color: '#7C5CFC', width: 24, height: 24, fontSize: 14 }}>+</span>
+                                <span style={{ flex: 1, color: '#6B4FD8' }}>创建 Space</span>
                             </div>
                         </div>
                     )}
@@ -154,9 +171,22 @@ export class MainContentLeft extends Component<MainContentLeftProps, MainContent
                 }}
                 onSuccess={() => {
                     this.setState({ showSpaceCreate: false });
-                    // 刷新 Space 列表
                     SpaceService.shared.getMySpaces().then(spaces => {
                         this.setState({ allSpaces: spaces });
+                    }).catch(() => {});
+                }}
+            />
+            <InternalJoinModal
+                visible={this.state.showJoinSpace}
+                onClose={() => this.setState({ showJoinSpace: false })}
+                onSuccess={(spaceId) => {
+                    this.setState({ showJoinSpace: false });
+                    SpaceService.shared.getMySpaces().then(spaces => {
+                        this.setState({ allSpaces: spaces });
+                        // 切换到新加入的 Space
+                        WKApp.shared.currentSpaceId = spaceId;
+                        localStorage.setItem("currentSpaceId", spaceId);
+                        WKApp.shared.notifyListener();
                     }).catch(() => {});
                 }}
             />
