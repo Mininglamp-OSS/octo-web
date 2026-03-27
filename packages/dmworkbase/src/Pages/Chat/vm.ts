@@ -8,7 +8,7 @@ import { ConversationWrap } from "../../Service/Model";
 import { ProviderListener } from "../../Service/Provider";
 import { animateScroll, scroller } from 'react-scroll';
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
-import { shouldSkipChannelForSpace } from "../../Service/SpaceService";
+import { shouldSkipChannelForSpace, shouldSkipSystemBotConversation } from "../../Service/SpaceService";
 import { EndpointID } from "../../Service/Const";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import { Space, SpaceService } from "../../Service/SpaceService";
@@ -177,6 +177,9 @@ export class ChatVM extends ProviderListener {
                 if (shouldSkipChannelForSpace(conversation.channel)) {
                     return
                 }
+                if (shouldSkipSystemBotConversation(conversation)) {
+                    return
+                }
                 if (conversation.lastMessage?.content && conversation.lastMessage?.contentType === MessageContentType.text) {
                     conversation.lastMessage.content.text = ProhibitwordsService.shared.filter(conversation.lastMessage?.content.text)
                 }
@@ -185,6 +188,9 @@ export class ChatVM extends ProviderListener {
             } else if (action === ConversationAction.update) {
                 // Space 过滤：忽略不属于当前 Space 的会话更新
                 if (shouldSkipChannelForSpace(conversation.channel)) {
+                    return
+                }
+                if (shouldSkipSystemBotConversation(conversation)) {
                     return
                 }
                 const existConversation = this.findConversation(conversation.channel)
@@ -342,6 +348,9 @@ export class ChatVM extends ProviderListener {
                 if (shouldSkipChannelForSpace(conversation.channel)) {
                     continue
                 }
+                if (shouldSkipSystemBotConversation(conversation)) {
+                    continue
+                }
                 conversationWraps.push(new ConversationWrap(conversation))
             }
         }
@@ -361,6 +370,9 @@ export class ChatVM extends ProviderListener {
             for (const conversation of conversations) {
                 // Space 过滤：复用共享函数（含 channelSpaceMap 缓存）
                 if (shouldSkipChannelForSpace(conversation.channel)) {
+                    continue
+                }
+                if (shouldSkipSystemBotConversation(conversation)) {
                     continue
                 }
                 if (conversation.lastMessage?.content && conversation.lastMessage?.contentType == MessageContentType.text) {

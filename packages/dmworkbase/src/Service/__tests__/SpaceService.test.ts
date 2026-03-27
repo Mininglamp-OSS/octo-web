@@ -90,3 +90,44 @@ describe("shouldSkipChannelForSpace prefix logic", () => {
         expect(wouldFilterByPrefix(`s${otherSpaceId}_group1`)).toBe(true)
     })
 })
+
+// Test shouldSkipSystemBotConversation logic in isolation
+// The real function depends on WKApp.shared.currentSpaceId, so we replicate the algorithm here
+describe("shouldSkipSystemBotConversation logic", () => {
+    const SYSTEM_BOTS = new Set(["botfather"])
+    const currentSpaceId = SPACE_ID
+    const otherSpaceId = "00000000000000000000000000000000"
+
+    // Mirrors the logic from SpaceService.shouldSkipSystemBotConversation
+    function wouldSkipSystemBot(
+        channelID: string | undefined,
+        spaceId: string | undefined,
+        activeSpaceId: string | undefined,
+    ): boolean {
+        if (!activeSpaceId) return false
+        if (!SYSTEM_BOTS.has(channelID as string)) return false
+        if (!spaceId) return false
+        return spaceId !== activeSpaceId
+    }
+
+    it("does not skip when no currentSpaceId is active", () => {
+        expect(wouldSkipSystemBot("botfather", otherSpaceId, undefined)).toBe(false)
+    })
+
+    it("does not skip non-system-bot conversations", () => {
+        expect(wouldSkipSystemBot("alice", otherSpaceId, currentSpaceId)).toBe(false)
+        expect(wouldSkipSystemBot("some_bot", otherSpaceId, currentSpaceId)).toBe(false)
+    })
+
+    it("does not skip botfather when lastMessage has no space_id (backward compat)", () => {
+        expect(wouldSkipSystemBot("botfather", undefined, currentSpaceId)).toBe(false)
+    })
+
+    it("does not skip botfather when space_id matches current space", () => {
+        expect(wouldSkipSystemBot("botfather", currentSpaceId, currentSpaceId)).toBe(false)
+    })
+
+    it("skips botfather when space_id does not match current space", () => {
+        expect(wouldSkipSystemBot("botfather", otherSpaceId, currentSpaceId)).toBe(true)
+    })
+})
