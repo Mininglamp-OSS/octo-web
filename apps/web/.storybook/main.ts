@@ -4,6 +4,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import commonjs from 'vite-plugin-commonjs'
 import tsconfigPaths from 'vite-tsconfig-paths'
+import postcssImport from 'postcss-import'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -23,6 +24,11 @@ const config: StorybookConfig = {
   framework: '@storybook/react-vite',
   viteFinal: (config) =>
     mergeConfig(config, {
+      css: {
+        postcss: {
+          plugins: [postcssImport()],
+        },
+      },
       plugins: [
         commonjs(),
         tsconfigPaths({ root: path.resolve(__dirname, '../../../') }),
