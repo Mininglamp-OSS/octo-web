@@ -8,7 +8,7 @@ import { ConversationWrap } from "../../Service/Model";
 import { ProviderListener } from "../../Service/Provider";
 import { animateScroll, scroller } from 'react-scroll';
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
-import { shouldSkipChannelForSpace, hasSpacePrefix } from "../../Service/SpaceService";
+import { shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, hasSpacePrefix } from "../../Service/SpaceService";
 import { EndpointID } from "../../Service/Const";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import { Space, SpaceService } from "../../Service/SpaceService";
@@ -197,6 +197,10 @@ export class ChatVM extends ProviderListener {
                 if (shouldSkipChannelForSpace(conversation.channel)) {
                     return
                 }
+                // 1:1 私聊消息级 Space 过滤
+                if (shouldSkipPersonConversationForSpace(conversation)) {
+                    return
+                }
                 if (conversation.lastMessage?.content && conversation.lastMessage?.contentType === MessageContentType.text) {
                     conversation.lastMessage.content.text = ProhibitwordsService.shared.filter(conversation.lastMessage?.content.text)
                 }
@@ -205,6 +209,12 @@ export class ChatVM extends ProviderListener {
             } else if (action === ConversationAction.update) {
                 // Space 过滤：忽略不属于当前 Space 的会话更新
                 if (shouldSkipChannelForSpace(conversation.channel)) {
+                    return
+                }
+                // 1:1 私聊消息级 Space 过滤
+                if (shouldSkipPersonConversationForSpace(conversation)) {
+                    // 如果已存在于列表中，移除它（防止旧的匹配会话被跨 Space 消息污染）
+                    this.removeConversation(conversation.channel)
                     return
                 }
                 const existConversation = this.findConversation(conversation.channel)
@@ -381,6 +391,10 @@ export class ChatVM extends ProviderListener {
                 if (shouldSkipChannelForSpace(conversation.channel)) {
                     continue
                 }
+                // 1:1 私聊消息级 Space 过滤
+                if (shouldSkipPersonConversationForSpace(conversation)) {
+                    continue
+                }
                 conversationWraps.push(new ConversationWrap(conversation))
             }
         }
@@ -400,6 +414,10 @@ export class ChatVM extends ProviderListener {
             for (const conversation of conversations) {
                 // Space 过滤：复用共享函数（含 channelSpaceMap 缓存）
                 if (shouldSkipChannelForSpace(conversation.channel)) {
+                    continue
+                }
+                // 1:1 私聊消息级 Space 过滤
+                if (shouldSkipPersonConversationForSpace(conversation)) {
                     continue
                 }
                 if (conversation.lastMessage?.content && conversation.lastMessage?.contentType == MessageContentType.text) {
