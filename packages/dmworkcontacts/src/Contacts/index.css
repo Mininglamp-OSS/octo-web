@@ -239,9 +239,9 @@
     padding: var(--wk-sp-1) 0;
 }
 
-/* 全部联系人列表 - 可滚动 */
+/* 全部联系人列表 - 固定高度可滚动（虚拟列表需要） */
 .wk-contacts-all-list {
-    max-height: calc(100vh - 320px);
+    height: calc(100vh - 320px);
     overflow-y: auto;
 }
 

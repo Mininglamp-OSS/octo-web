@@ -1,11 +1,11 @@
-import React from "react";
-import { Component, createRef } from "react";
+import React, { useRef } from "react";
+import { Component } from "react";
 import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
 import classnames from "classnames";
-import { Toast } from "@douyinfe/semi-ui";
+import { Toast, Modal } from "@douyinfe/semi-ui";
 import { ChevronRight, ChevronDown, Users, Bot, UsersRound, Search as SearchIcon } from "lucide-react";
 
 import { Channel, ChannelTypePerson, ChannelTypeGroup, WKSDK, ChannelInfoListener, ChannelInfo } from "wukongimjssdk";
@@ -14,12 +14,87 @@ import { Card } from "@octo/base/src/Messages/Card";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import BotDetailModal from "@octo/base/src/Components/BotDetailModal";
+import UserInfo from "@octo/base/src/Components/UserInfo";
 import GroupCard from "@octo/base/src/Components/GroupCard";
 import { Space, SpaceMember, SpaceService } from "@octo/base/src/Service/SpaceService";
 import { debounce } from "@octo/base/src/Utils/rateLimit";
-import { Virtualizer } from "@tanstack/virtual-core";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 const SpaceRoleLabels: Record<number, string> = { 1: '创建者', 2: '管理员', 3: '成员' }
+
+const ITEM_HEIGHT = 44
+const LETTER_HEADER_HEIGHT = 24
+
+function getItemLetter(item: Contacts): string {
+    let name = (item.name || '').replace(/\*\*/g, '')
+    if (item.remark && item.remark !== "") name = item.remark
+    const py = getPinyin(toSimplized(name)).toUpperCase()
+    let letter = (py && py[0]) || '#'
+    if (!/[A-Z]/.test(letter)) letter = '#'
+    return letter
+}
+
+interface VirtualContactListProps {
+    items: Contacts[]
+    renderItem: (item: Contacts) => React.ReactNode
+}
+
+function VirtualContactList({ items, renderItem }: VirtualContactListProps) {
+    const parentRef = useRef<HTMLDivElement>(null)
+
+    const virtualizer = useVirtualizer({
+        count: items.length,
+        getScrollElement: () => parentRef.current,
+        estimateSize: (index: number) => {
+            if (index === 0) return ITEM_HEIGHT + LETTER_HEADER_HEIGHT
+            const curr = items[index]
+            const prev = items[index - 1]
+            if (curr && prev && getItemLetter(curr) !== getItemLetter(prev)) {
+                return ITEM_HEIGHT + LETTER_HEADER_HEIGHT
+            }
+            return ITEM_HEIGHT
+        },
+        overscan: 15,
+    })
+
+    return (
+        <div ref={parentRef} className="wk-contacts-all-list">
+            <div style={{ height: virtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
+                {virtualizer.getVirtualItems().map(virtualItem => {
+                    const item = items[virtualItem.index]
+                    if (!item) return null
+
+                    let showLetter = false
+                    let letter = getItemLetter(item)
+                    if (virtualItem.index === 0) {
+                        showLetter = true
+                    } else {
+                        const prev = items[virtualItem.index - 1]
+                        if (getItemLetter(prev) !== letter) {
+                            showLetter = true
+                        }
+                    }
+
+                    return (
+                        <div
+                            key={item.uid}
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                transform: `translateY(${virtualItem.start}px)`,
+                            }}
+                        >
+                            {showLetter && <div className="wk-contacts-letter-header">{letter}</div>}
+                            {renderItem(item)}
+                        </div>
+                    )
+                })}
+            </div>
+        </div>
+    )
+}
 
 export class ContactsState {
     keyword?: string
@@ -41,6 +116,10 @@ export class ContactsState {
     isSearching: boolean = false
     searchContacts: any[] = []
     searchGroups: any[] = []
+
+    // 人的名片弹窗
+    userInfoUid?: string
+    userInfoVisible: boolean = false
 
     // Bot 详情弹窗
     botDetailUid?: string
@@ -65,9 +144,6 @@ export default class ContactsList extends Component<any, ContactsState> {
     contextMenusContext!: ContextMenusContext
     baseContext!: WKBaseContext
     private spaceChangedHandler!: (space: any) => void
-
-    private virtualListRef = createRef<HTMLDivElement>()
-    private virtualizer?: Virtualizer<HTMLDivElement, Element>
     private flatItems: Contacts[] = []
 
     constructor(props: any) {
@@ -126,9 +202,6 @@ export default class ContactsList extends Component<any, ContactsState> {
         WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
         WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
         this.debouncedSearch.cancel()
-        if (this.virtualizer) {
-            this.virtualizer = undefined
-        }
     }
 
     private async loadAllData(spaceId: string) {
@@ -152,7 +225,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     private rebuildIndex() {
-        const { spaceMembers, filterMode, keyword } = this.state
+        const { spaceMembers, filterMode } = this.state
         const myUID = WKApp.loginInfo.uid || ""
 
         let filtered = spaceMembers.filter(m => m.uid !== myUID)
@@ -213,42 +286,8 @@ export default class ContactsList extends Component<any, ContactsState> {
             return a.localeCompare(b)
         })
 
-        // 构建虚拟列表用的扁平数组
         this.flatItems = items
-        this.initVirtualizer(items.length)
-
         this.setState({ indexList, indexItemMap })
-    }
-
-    private initVirtualizer(count: number) {
-        const el = this.virtualListRef.current
-        if (!el) {
-            // 延迟初始化
-            this.virtualizer = undefined
-            return
-        }
-
-        const ITEM_HEIGHT = 44
-        const LETTER_HEADER_HEIGHT = 24
-        this.virtualizer = new Virtualizer({
-            count,
-            getScrollElement: () => this.virtualListRef.current,
-            estimateSize: (index: number) => {
-                // 首行或字母切换行需要加上 letter header 高度
-                if (index === 0) return ITEM_HEIGHT + LETTER_HEADER_HEIGHT
-                const curr = this.flatItems[index]
-                const prev = this.flatItems[index - 1]
-                if (curr && prev && this.getItemLetter(curr) !== this.getItemLetter(prev)) {
-                    return ITEM_HEIGHT + LETTER_HEADER_HEIGHT
-                }
-                return ITEM_HEIGHT
-            },
-            overscan: 15,
-            onChange: () => {
-                this.forceUpdate()
-            },
-        })
-        this.virtualizer._didMount()
     }
 
     private debouncedSearch = debounce((keyword: string) => {
@@ -263,7 +302,7 @@ export default class ContactsList extends Component<any, ContactsState> {
 
         const contacts = spaceMembers
             .filter(m => m.uid !== myUID)
-            .filter(m => m.name.toLowerCase().includes(kw))
+            .filter(m => m.name.replace(/\*\*/g, '').toLowerCase().includes(kw))
 
         const groups = (myGroups || [])
             .filter((g: any) => g.name && g.name.toLowerCase().includes(kw))
@@ -288,14 +327,6 @@ export default class ContactsList extends Component<any, ContactsState> {
         const willExpand = this.state.expandedSection !== section
         this.setState({
             expandedSection: willExpand ? section : null,
-        }, () => {
-            // 展开全部联系人时初始化虚拟列表
-            if (willExpand && section === 'allContacts') {
-                setTimeout(() => {
-                    this.initVirtualizer(this.flatItems.length)
-                    this.forceUpdate()
-                }, 50)
-            }
         })
     }
 
@@ -309,8 +340,13 @@ export default class ContactsList extends Component<any, ContactsState> {
             WKApp.endpoints.showConversation(new Channel(uid, ChannelTypePerson))
             return
         }
-        // 人：弹出名片
-        this.baseContext.showUserInfo(uid)
+        // 人：弹出名片（劫持全局 hideUserInfo 以确保弹窗关闭）
+        const origHide = WKApp.shared.baseContext.hideUserInfo.bind(WKApp.shared.baseContext)
+        WKApp.shared.baseContext.hideUserInfo = () => {
+            this.setState({ userInfoVisible: false })
+            WKApp.shared.baseContext.hideUserInfo = origHide
+        }
+        this.setState({ userInfoUid: uid, userInfoVisible: true })
     }
 
     private handleGroupClick = (groupNo: string, name?: string, memberCount?: number) => {
@@ -515,7 +551,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     renderAllContactsSection() {
-        const { expandedSection, indexList, indexItemMap, spaceMembers } = this.state
+        const { expandedSection, spaceMembers } = this.state
         const isExpanded = expandedSection === 'allContacts'
         const myUID = WKApp.loginInfo.uid || ""
         const totalCount = spaceMembers.filter(m => m.uid !== myUID).length
@@ -526,14 +562,12 @@ export default class ContactsList extends Component<any, ContactsState> {
                 {isExpanded && (
                     <>
                         {this.renderFilterChips()}
-                        <div className="wk-contacts-accordion-body wk-contacts-all-list" ref={this.virtualListRef}>
-                            {totalCount === 0 ? (
-                                <div className="wk-contacts-empty">
-                                    <Users size={28} className="wk-contacts-empty-icon" />
-                                    <div className="wk-contacts-empty-text">当前 Space 还没有成员</div>
-                                </div>
-                            ) : this.renderContactListWithLetters()}
-                        </div>
+                        {totalCount === 0 ? (
+                            <div className="wk-contacts-empty">
+                                <Users size={28} className="wk-contacts-empty-icon" />
+                                <div className="wk-contacts-empty-text">当前 Space 还没有成员</div>
+                            </div>
+                        ) : this.renderContactListWithLetters()}
                     </>
                 )}
             </div>
@@ -543,80 +577,31 @@ export default class ContactsList extends Component<any, ContactsState> {
     renderContactListWithLetters() {
         const { indexList, indexItemMap } = this.state
 
-        // 如果虚拟列表已初始化且有足够多的项目，使用虚拟滚动
-        if (this.virtualizer && this.flatItems.length > 100) {
-            return this.renderVirtualList()
+        // 大量联系人用虚拟列表（函数组件 + useVirtualizer）
+        if (this.flatItems.length > 100) {
+            return (
+                <VirtualContactList
+                    items={this.flatItems}
+                    renderItem={(item) => this.renderContactItem(item)}
+                />
+            )
         }
 
         // 少量项目直接渲染
-        return indexList.map(letter => {
-            const items = indexItemMap.get(letter)
-            if (!items || items.length === 0) return null
-            return (
-                <div key={letter}>
-                    <div className="wk-contacts-letter-header">{letter}</div>
-                    {items.map(item => this.renderContactItem(item))}
-                </div>
-            )
-        })
-    }
-
-    renderVirtualList() {
-        if (!this.virtualizer) return null
-        const virtualItems = this.virtualizer.getVirtualItems()
-        const totalSize = this.virtualizer.getTotalSize()
-
         return (
-            <div style={{ height: totalSize, width: '100%', position: 'relative' }}>
-                {virtualItems.map(virtualItem => {
-                    const item = this.flatItems[virtualItem.index]
-                    if (!item) return null
-
-                    // 检查是否是该字母分组的第一个项目
-                    let showLetter = false
-                    let letter = ''
-                    if (virtualItem.index === 0) {
-                        showLetter = true
-                    } else {
-                        const prev = this.flatItems[virtualItem.index - 1]
-                        const currLetter = this.getItemLetter(item)
-                        const prevLetter = this.getItemLetter(prev)
-                        if (currLetter !== prevLetter) {
-                            showLetter = true
-                        }
-                        letter = currLetter
-                    }
-                    if (virtualItem.index === 0) {
-                        letter = this.getItemLetter(item)
-                    }
-
+            <div className="wk-contacts-accordion-body">
+                {indexList.map(letter => {
+                    const items = indexItemMap.get(letter)
+                    if (!items || items.length === 0) return null
                     return (
-                        <div
-                            key={item.uid}
-                            style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                width: '100%',
-                                transform: `translateY(${virtualItem.start}px)`,
-                            }}
-                        >
-                            {showLetter && <div className="wk-contacts-letter-header">{letter}</div>}
-                            {this.renderContactItem(item)}
+                        <div key={letter}>
+                            <div className="wk-contacts-letter-header">{letter}</div>
+                            {items.map(item => this.renderContactItem(item))}
                         </div>
                     )
                 })}
             </div>
         )
-    }
-
-    private getItemLetter(item: Contacts): string {
-        let name = (item.name || '').replace(/\*\*/g, '')
-        if (item.remark && item.remark !== "") name = item.remark
-        const py = getPinyin(toSimplized(name)).toUpperCase()
-        let letter = (py && py[0]) || '#'
-        if (!/[A-Z]/.test(letter)) letter = '#'
-        return letter
     }
 
     renderContactItem(item: Contacts) {
@@ -637,7 +622,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                 <div className="wk-contacts-section-item-name">
                     {name}
                     {item.robot === true && <AiBadge />}
-                    {(item as any)._spaceRole && (item as any)._spaceRole <= 2 && (
+                    {(item as any)._spaceRole != null && (item as any)._spaceRole > 0 && (item as any)._spaceRole <= 2 && (
                         <span className={`wk-contacts-role-badge wk-contacts-role-badge--${(item as any)._spaceRole === 1 ? 'owner' : 'admin'}`}>
                             {SpaceRoleLabels[(item as any)._spaceRole] || ''}
                         </span>
@@ -675,7 +660,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                     }} menus={[{
                         title: "查看资料", onClick: () => {
                             const { selectedItem } = this.state
-                            this.baseContext.showUserInfo(selectedItem?.uid || "")
+                            this.setState({ userInfoUid: selectedItem?.uid || "", userInfoVisible: true })
                         }
                     }, {
                         title: "分享给朋友...", onClick: () => {
@@ -694,6 +679,22 @@ export default class ContactsList extends Component<any, ContactsState> {
                             }, "分享名片")
                         }
                     }]} />
+
+                    <Modal
+                        title={null}
+                        visible={this.state.userInfoVisible}
+                        onCancel={() => this.setState({ userInfoVisible: false })}
+                        footer={null}
+                        width={400}
+                        className="wk-base-modal-userinfo wk-base-modal"
+                    >
+                        {this.state.userInfoUid && (
+                            <UserInfo
+                                uid={this.state.userInfoUid}
+                                onClose={() => this.setState({ userInfoVisible: false })}
+                            />
+                        )}
+                    </Modal>
 
                     <BotDetailModal
                         uid={this.state.botDetailUid || ""}

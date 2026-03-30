@@ -314,9 +314,6 @@ importers:
       '@tanstack/react-virtual':
         specifier: ^3.13.23
         version: 3.13.23(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      '@tanstack/virtual-core':
-        specifier: ^3.13.23
-        version: 3.13.23
       classnames:
         specifier: ^2.3.1
         version: 2.5.1
