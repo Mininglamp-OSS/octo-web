@@ -1,11 +1,11 @@
-import React, { useRef } from "react";
+import React, { useRef, useState, useCallback } from "react";
 import { Component } from "react";
 import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
 import classnames from "classnames";
-import { Toast, Modal } from "@douyinfe/semi-ui";
+import { Toast, Modal, Tooltip } from "@douyinfe/semi-ui";
 import { ChevronRight, ChevronDown, Users, Bot, UsersRound, Search as SearchIcon } from "lucide-react";
 
 import { Channel, ChannelTypePerson, ChannelTypeGroup, WKSDK, ChannelInfoListener, ChannelInfo } from "wukongimjssdk";
@@ -19,6 +19,25 @@ import GroupCard from "@octo/base/src/Components/GroupCard";
 import { Space, SpaceMember, SpaceService } from "@octo/base/src/Service/SpaceService";
 import { debounce } from "@octo/base/src/Utils/rateLimit";
 import { useVirtualizer } from "@tanstack/react-virtual";
+
+function OverflowTooltip({ text, children }: { text: string; children: React.ReactNode }) {
+    const [visible, setVisible] = useState(false)
+    const textRef = useRef<HTMLSpanElement>(null)
+    const onEnter = useCallback(() => {
+        if (textRef.current && textRef.current.scrollWidth > textRef.current.clientWidth) {
+            setVisible(true)
+        }
+    }, [])
+    const onLeave = useCallback(() => setVisible(false), [])
+    return (
+        <Tooltip content={text} position="right" trigger="custom" visible={visible}>
+            <div className="wk-contacts-section-item-name" onMouseEnter={onEnter} onMouseLeave={onLeave}>
+                <span ref={textRef} className="wk-contacts-section-item-text">{text}</span>
+                {children}
+            </div>
+        </Tooltip>
+    )
+}
 
 const SpaceRoleLabels: Record<number, string> = { 1: '创建者', 2: '管理员', 3: '成员' }
 
@@ -107,6 +126,7 @@ export class ContactsState {
 
     // 数据源
     myBots: any[] = []
+    spaceBots: any[] = []
     myGroups: any[] = []
 
     // 筛选
@@ -206,14 +226,16 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     private async loadAllData(spaceId: string) {
         try {
-            const [members, myBots, myGroups] = await Promise.all([
+            const [members, myBots, spaceBots, myGroups] = await Promise.all([
                 SpaceService.shared.getMembers(spaceId, 1, 10000),
                 WKApp.apiClient.get("/robot/my_bots", { param: { space_id: spaceId } }).catch(() => []),
+                WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).catch(() => []),
                 WKApp.apiClient.get(`/group/my?space_id=${spaceId}`).catch(() => []),
             ])
             this.setState({
                 spaceMembers: members || [],
                 myBots: myBots || [],
+                spaceBots: spaceBots || [],
                 myGroups: myGroups || [],
                 loading: false,
             }, () => {
@@ -225,32 +247,70 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     private rebuildIndex() {
-        const { spaceMembers, filterMode } = this.state
+        const { spaceMembers, spaceBots, filterMode } = this.state
         const myUID = WKApp.loginInfo.uid || ""
 
-        let filtered = spaceMembers.filter(m => m.uid !== myUID)
+        let items: Contacts[]
 
-        // 筛选
         if (filterMode === 'bots') {
-            filtered = filtered.filter(m => m.robot === 1)
+            // "只看 AI"：使用 space_bots 展示企业内所有 AI
+            const allBots = spaceBots || []
+            // 用 spaceMembers 中已有的 bot uid 集合判断是否已是成员
+            const memberUids = new Set(spaceMembers.filter(m => m.robot === 1).map(m => m.uid))
+            items = allBots
+                .filter((b: any) => b.uid !== myUID)
+                .map((b: any) => {
+                    const c = new Contacts()
+                    c.uid = b.uid
+                    c.name = b.name || b.uid
+                    c.avatar = b.avatar || ""
+                    c.robot = true
+                    c.follow = (b.status === 'added' || memberUids.has(b.uid)) ? 1 : 0
+                    ;(c as any)._botStatus = b.status // "added" | "pending" | "not_added"
+                    ;(c as any)._description = b.description
+                    return c
+                })
         } else if (filterMode === 'humans') {
-            filtered = filtered.filter(m => m.robot !== 1)
+            const filtered = spaceMembers.filter(m => m.uid !== myUID && m.robot !== 1)
+            items = filtered.map(m => {
+                const c = new Contacts()
+                c.uid = m.uid
+                c.name = m.name
+                c.avatar = m.avatar || ""
+                c.follow = 1
+                c.robot = false
+                ;(c as any)._spaceRole = m.role
+                return c
+            })
+        } else {
+            // "全部"：spaceMembers + spaceBots 中不在 members 里的 AI
+            const memberUids = new Set(spaceMembers.map(m => m.uid))
+            const memberItems: Contacts[] = spaceMembers
+                .filter(m => m.uid !== myUID)
+                .map(m => {
+                    const c = new Contacts()
+                    c.uid = m.uid
+                    c.name = m.name
+                    c.avatar = m.avatar || ""
+                    c.follow = 1
+                    c.robot = m.robot === 1
+                    ;(c as any)._spaceRole = m.role
+                    return c
+                })
+            // 补充 spaceBots 中未出现在 members 的 AI
+            const extraBots: Contacts[] = (spaceBots || [])
+                .filter((b: any) => b.uid !== myUID && !memberUids.has(b.uid))
+                .map((b: any) => {
+                    const c = new Contacts()
+                    c.uid = b.uid
+                    c.name = b.name || b.uid
+                    c.avatar = b.avatar || ""
+                    c.robot = true
+                    c.follow = 0
+                    return c
+                })
+            items = [...memberItems, ...extraBots]
         }
-
-        // 搜索（非搜索模式下不过滤）
-        // 搜索模式由 debouncedSearch 处理，这里只构建索引
-
-        // 转为 Contacts 对象
-        const items: Contacts[] = filtered.map(m => {
-            const c = new Contacts()
-            c.uid = m.uid
-            c.name = m.name
-            c.avatar = m.avatar || ""
-            c.follow = 1
-            c.robot = m.robot === 1
-            ;(c as any)._spaceRole = m.role
-            return c
-        })
 
         // 按拼音排序
         items.sort((a, b) => {
@@ -296,13 +356,20 @@ export default class ContactsList extends Component<any, ContactsState> {
             return
         }
 
-        const { spaceMembers, myGroups } = this.state
+        const { spaceMembers, spaceBots, myGroups } = this.state
         const myUID = WKApp.loginInfo.uid || ""
         const kw = keyword.toLowerCase()
 
-        const contacts = spaceMembers
+        const memberUids = new Set(spaceMembers.map(m => m.uid))
+        const memberResults = spaceMembers
             .filter(m => m.uid !== myUID)
             .filter(m => m.name.replace(/\*\*/g, '').toLowerCase().includes(kw))
+        // spaceBots 中不在 members 里的 AI 也参与搜索
+        const extraBotResults = (spaceBots || [])
+            .filter((b: any) => b.uid !== myUID && !memberUids.has(b.uid))
+            .filter((b: any) => (b.name || '').toLowerCase().includes(kw))
+            .map((b: any) => ({ ...b, robot: 1 }))
+        const contacts = [...memberResults, ...extraBotResults]
 
         const groups = (myGroups || [])
             .filter((g: any) => g.name && g.name.toLowerCase().includes(kw))
@@ -444,10 +511,9 @@ export default class ContactsList extends Component<any, ContactsState> {
                                 <div className="wk-contacts-section-item-avatar">
                                     <WKAvatar channel={new Channel(g.group_no, ChannelTypeGroup)} />
                                 </div>
-                                <div className="wk-contacts-section-item-name">
-                                    {g.name}
+                                <OverflowTooltip text={g.name}>
                                     <span className="wk-contacts-group-tag">群</span>
-                                </div>
+                                </OverflowTooltip>
                             </div>
                         ))}
                     </div>
@@ -463,9 +529,9 @@ export default class ContactsList extends Component<any, ContactsState> {
                 <span className={classnames("wk-contacts-chip", filterMode === 'all' && "active")}
                     onClick={() => this.handleFilterChange('all')}>全部</span>
                 <span className={classnames("wk-contacts-chip", filterMode === 'bots' && "active")}
-                    onClick={() => this.handleFilterChange('bots')}>只看 AI</span>
+                    onClick={() => this.handleFilterChange('bots')}>AI</span>
                 <span className={classnames("wk-contacts-chip", filterMode === 'humans' && "active")}
-                    onClick={() => this.handleFilterChange('humans')}>只看人类</span>
+                    onClick={() => this.handleFilterChange('humans')}>人类</span>
             </div>
         )
     }
@@ -504,10 +570,9 @@ export default class ContactsList extends Component<any, ContactsState> {
                                 <div className="wk-contacts-section-item-avatar">
                                     <WKAvatar channel={new Channel(g.group_no, ChannelTypeGroup)} />
                                 </div>
-                                <div className="wk-contacts-section-item-name">
-                                    {g.name}
+                                <OverflowTooltip text={g.name}>
                                     <span className="wk-contacts-group-tag">群</span>
-                                </div>
+                                </OverflowTooltip>
                             </div>
                         ))}
                     </div>
@@ -551,10 +616,9 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     renderAllContactsSection() {
-        const { expandedSection, spaceMembers } = this.state
+        const { expandedSection } = this.state
         const isExpanded = expandedSection === 'allContacts'
-        const myUID = WKApp.loginInfo.uid || ""
-        const totalCount = spaceMembers.filter(m => m.uid !== myUID).length
+        const totalCount = this.flatItems.length
 
         return (
             <div className="wk-contacts-accordion">
@@ -607,7 +671,6 @@ export default class ContactsList extends Component<any, ContactsState> {
     renderContactItem(item: Contacts) {
         let name = (item.name || '').replace(/\*\*/g, '')
         if (item.remark && item.remark !== "") name = item.remark
-
         return (
             <div key={item.uid} className={classnames("wk-contacts-section-item",
                 WKApp.shared.openChannel?.channelType === ChannelTypePerson && WKApp.shared.openChannel?.channelID === item.uid ? "wk-contacts-section-item-selected" : undefined
@@ -619,15 +682,14 @@ export default class ContactsList extends Component<any, ContactsState> {
                 <div className="wk-contacts-section-item-avatar">
                     <WKAvatar channel={new Channel(item.uid, ChannelTypePerson)} />
                 </div>
-                <div className="wk-contacts-section-item-name">
-                    {name}
+                <OverflowTooltip text={name}>
                     {item.robot === true && <AiBadge />}
                     {(item as any)._spaceRole != null && (item as any)._spaceRole > 0 && (item as any)._spaceRole <= 2 && (
                         <span className={`wk-contacts-role-badge wk-contacts-role-badge--${(item as any)._spaceRole === 1 ? 'owner' : 'admin'}`}>
                             {SpaceRoleLabels[(item as any)._spaceRole] || ''}
                         </span>
                     )}
-                </div>
+                </OverflowTooltip>
             </div>
         )
     }
@@ -699,7 +761,16 @@ export default class ContactsList extends Component<any, ContactsState> {
                     <BotDetailModal
                         uid={this.state.botDetailUid || ""}
                         visible={this.state.botDetailVisible}
-                        onClose={() => this.setState({ botDetailVisible: false })}
+                        onClose={() => {
+                            this.setState({ botDetailVisible: false })
+                            // 关闭后刷新 spaceBots 状态
+                            const spaceId = WKApp.shared.currentSpaceId
+                            if (spaceId) {
+                                WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).then((res: any) => {
+                                    this.setState({ spaceBots: res || [] }, () => this.rebuildIndex())
+                                }).catch(() => {})
+                            }
+                        }}
                         onChat={(channel) => {
                             WKApp.endpoints.showConversation(channel)
                             this.setState({ botDetailVisible: false })
