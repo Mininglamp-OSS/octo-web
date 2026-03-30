@@ -5,6 +5,7 @@ export interface UseVoiceInputOptions {
     maxDuration?: number
     onTranscribed?: (text: string) => void
     onError?: (error: Error) => void
+    getChatContext?: () => string | undefined
 }
 
 export interface UseVoiceInputReturn {
@@ -25,7 +26,7 @@ function getSupportedMimeType(): string {
 }
 
 export default function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInputReturn {
-    const { maxDuration = 60, onTranscribed, onError } = options
+    const { maxDuration = 60, onTranscribed, onError, getChatContext } = options
 
     const [isRecording, setIsRecording] = useState(false)
     const [isTranscribing, setIsTranscribing] = useState(false)
@@ -125,7 +126,8 @@ export default function useVoiceInput(options: UseVoiceInputOptions = {}): UseVo
 
             setIsTranscribing(true)
             try {
-                const result = await VoiceService.shared.transcribe(blob, contextTextRef.current)
+                const chatContext = getChatContext?.()
+                const result = await VoiceService.shared.transcribe(blob, contextTextRef.current, chatContext)
                 if (result.text && onTranscribed) {
                     onTranscribed(result.text)
                 }

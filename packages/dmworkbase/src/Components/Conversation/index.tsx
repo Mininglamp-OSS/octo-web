@@ -659,7 +659,17 @@ export class Conversation extends Component<ConversationProps> implements Conver
 
                             <MessageInput botCommands={botCommands} members={this.vm.subscribers.filter((s) => s.uid !== WKApp.loginInfo.uid)} onContext={(ctx) => {
                                 this._messageInputContext = ctx
-                            }} toolbar={this.chatToolbarUI()} context={this} onSend={async (text: string, mention?: MentionModel) => {
+                            }} toolbar={this.chatToolbarUI()} context={this} getChatContext={() => {
+                                const messages = this.vm.messagesOfOrigin
+                                if (!messages || messages.length === 0) return undefined
+                                const last20 = messages.slice(-20)
+                                const lines = last20.map(m => {
+                                    const senderName = m.from?.title || m.fromUID
+                                    const text = m.content?.text || ''
+                                    return `[${senderName}]: ${text}`
+                                })
+                                return lines.join('\n')
+                            }} onSend={async (text: string, mention?: MentionModel) => {
                                 const content = new MessageText(text)
                                 if (mention) {
                                     const mn = new Mention()

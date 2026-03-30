@@ -117,5 +117,37 @@ describe("VoiceService", () => {
             const audioBlob = new Blob(["data"], { type: "audio/webm" })
             await expect(VoiceService.shared.transcribe(audioBlob)).rejects.toThrow("Transcription failed")
         })
+
+        it("should include chat_context when provided", async () => {
+            const mockResult = { text: "hello", model: "whisper-1" }
+            vi.mocked(APIClient.shared.post).mockResolvedValue(mockResult)
+
+            const audioBlob = new Blob(["audio-data"], { type: "audio/webm;codecs=opus" })
+            await VoiceService.shared.transcribe(audioBlob, undefined, "[Alice]: hi\n[Bob]: hello")
+
+            const [, formData] = vi.mocked(APIClient.shared.post).mock.calls[0]
+            expect((formData as FormData).get("chat_context")).toBe("[Alice]: hi\n[Bob]: hello")
+        })
+
+        it("should not include chat_context when not provided", async () => {
+            vi.mocked(APIClient.shared.post).mockResolvedValue({ text: "hi", model: "whisper-1" })
+
+            const audioBlob = new Blob(["audio-data"], { type: "audio/webm;codecs=opus" })
+            await VoiceService.shared.transcribe(audioBlob, "some context")
+
+            const [, formData] = vi.mocked(APIClient.shared.post).mock.calls[0]
+            expect((formData as FormData).get("chat_context")).toBeNull()
+        })
+
+        it("should include both context_text and chat_context when both provided", async () => {
+            vi.mocked(APIClient.shared.post).mockResolvedValue({ text: "hi", model: "whisper-1" })
+
+            const audioBlob = new Blob(["audio-data"], { type: "audio/webm;codecs=opus" })
+            await VoiceService.shared.transcribe(audioBlob, "input text", "[Alice]: hi")
+
+            const [, formData] = vi.mocked(APIClient.shared.post).mock.calls[0]
+            expect((formData as FormData).get("context_text")).toBe("input text")
+            expect((formData as FormData).get("chat_context")).toBe("[Alice]: hi")
+        })
     })
 })

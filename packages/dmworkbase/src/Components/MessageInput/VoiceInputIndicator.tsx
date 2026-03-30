@@ -6,6 +6,7 @@ import "./voiceInput.css"
 interface VoiceInputIndicatorProps {
     onTranscribed: (text: string) => void
     getCurrentText?: () => string | undefined
+    getChatContext?: () => string | undefined
 }
 
 function formatDuration(seconds: number): string {
@@ -14,7 +15,7 @@ function formatDuration(seconds: number): string {
     return `${m}:${s.toString().padStart(2, "0")}`
 }
 
-export default function VoiceInputIndicator({ onTranscribed, getCurrentText }: VoiceInputIndicatorProps) {
+export default function VoiceInputIndicator({ onTranscribed, getCurrentText, getChatContext }: VoiceInputIndicatorProps) {
     const {
         isRecording,
         isTranscribing,
@@ -25,6 +26,7 @@ export default function VoiceInputIndicator({ onTranscribed, getCurrentText }: V
         isVoiceEnabled,
     } = useVoiceInput({
         onTranscribed,
+        getChatContext,
         onError: (error) => {
             if (error.message.includes("denied") || error.message.includes("Permission") || error.message.includes("NotAllowedError")) {
                 Toast.error("Please allow microphone access")

@@ -39,6 +39,7 @@ interface MessageInputProps extends HTMLProps<any>{
     onContext?: (ctx: MessageInputContext) => void
     topView?: JSX.Element
     botCommands?: BotCommand[]
+    getChatContext?: () => string | undefined
 }
 
 interface MessageInputState {
@@ -390,6 +391,7 @@ export default class MessageInput extends Component<MessageInputProps, MessageIn
                                     this.insertText(text)
                                 }}
                                 getCurrentText={() => this.state.value}
+                                getChatContext={this.props.getChatContext}
                             />
 
                             {/* <div className="wk-messageinput-actionitem" style={{ cursor: "pointer" }} onClick={() => {
