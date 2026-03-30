@@ -221,6 +221,10 @@ export class ChatVM extends ProviderListener {
                 const existConversation = this.findConversation(conversation.channel)
                 if (existConversation) {
                     existConversation.conversation = conversation
+                    // WS 更新后清除缓存的 spaceLastMessage，让 getter 读取实时 lastMessage (#783)
+                    if (conversation.extra) {
+                        conversation.extra.spaceLastMessage = undefined
+                    }
                     if (existConversation.lastMessage?.content && existConversation.lastMessage?.contentType === MessageContentType.text) {
                         existConversation.lastMessage.content.text = ProhibitwordsService.shared.filter(existConversation.lastMessage?.content.text)
                     }
