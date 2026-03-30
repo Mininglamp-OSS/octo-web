@@ -8,6 +8,7 @@ import WKApp from "../../App";
 import WKSDK, { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 import WKAvatar, { isBot } from "../WKAvatar";
 import AiBadge from "../AiBadge";
+import BotDetailModal from "../BotDetailModal";
 import { Checkbox } from "@douyinfe/semi-ui/lib/es/checkbox";
 import { Tag } from "@douyinfe/semi-ui";
 import { GroupRole } from "../../Service/Const";
@@ -24,6 +25,8 @@ export interface SubscriberListProps {
 
 export interface SubscriberListState {
   selectedList: Subscriber[];
+  botDetailUid: string;
+  botDetailVisible: boolean;
 }
 
 export class SubscriberList extends Component<
@@ -34,6 +37,8 @@ export class SubscriberList extends Component<
     super(props);
     this.state = {
       selectedList: [],
+      botDetailUid: "",
+      botDetailVisible: false,
     };
   }
 
@@ -102,6 +107,11 @@ export class SubscriberList extends Component<
   onItemClick = (subscriber: Subscriber) => {
     const { canSelect } = this.props;
     if (!canSelect) {
+      // #105: Bot 成员点击弹 BotDetailModal 而非 UserInfo
+      if (isBot(subscriber.uid)) {
+        this.setState({ botDetailUid: subscriber.uid, botDetailVisible: true });
+        return;
+      }
       WKApp.shared.baseContext.showUserInfo(subscriber.uid, this.props.channel);
       return;
     }
@@ -162,6 +172,7 @@ export class SubscriberList extends Component<
   render() {
     const { canSelect } = this.props;
     return (
+      <>
       <Provider
         create={() => {
           return new SubscriberListVM(this.props.channel, this.props.filter);
@@ -241,6 +252,16 @@ export class SubscriberList extends Component<
           );
         }}
       ></Provider>
+      <BotDetailModal
+        uid={this.state.botDetailUid}
+        visible={this.state.botDetailVisible}
+        onClose={() => this.setState({ botDetailVisible: false })}
+        onChat={(channel) => {
+          WKApp.endpoints.showConversation(channel);
+          this.setState({ botDetailVisible: false });
+        }}
+      />
+      </>
     );
   }
 }

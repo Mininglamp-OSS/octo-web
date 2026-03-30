@@ -6,6 +6,7 @@
     "@octo/base": "workspace:*",
     "@douyinfe/semi-foundation": "^2.93.0",
     "@douyinfe/semi-ui": "^2.93.0",
+    "@tanstack/react-virtual": "^3.13.23",
     "classnames": "^2.3.1",
     "lucide-react": "^0.577.0",
     "react": "^17.0.2",

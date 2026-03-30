@@ -3,6 +3,8 @@ import { ReactNode } from "react";
 import ItemContacts from "./item-contacts";
 import WKApp from "../../App";
 import { isBot } from "../WKAvatar";
+import BotDetailModal from "../BotDetailModal";
+import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import "./tab-contacts.css"
 
 interface TabContactsProps {
@@ -11,8 +13,16 @@ interface TabContactsProps {
     onClick?: (item: any) => void;
 }
 
-export default class TabContacts extends Component<TabContactsProps> {
+interface TabContactsState {
+    botDetailUid: string;
+    botDetailVisible: boolean;
+}
 
+export default class TabContacts extends Component<TabContactsProps, TabContactsState> {
+    state: TabContactsState = {
+        botDetailUid: "",
+        botDetailVisible: false,
+    };
 
     render(): ReactNode {
         return <div className="wk-tab-contacts">
@@ -27,6 +37,11 @@ export default class TabContacts extends Component<TabContactsProps> {
                     avatar={WKApp.shared.avatarUser(item.channel_id)}
                     isBot={isBot(item.channel_id)}
                     onClick={()=>{
+                        // #106: Bot 搜索结果点击弹名片
+                        if (isBot(item.channel_id)) {
+                            this.setState({ botDetailUid: item.channel_id, botDetailVisible: true });
+                            return;
+                        }
                         if(this.props.onClick) {
                             this.props.onClick(item)
                         }
@@ -34,6 +49,15 @@ export default class TabContacts extends Component<TabContactsProps> {
                     />
                 })
             }
+            <BotDetailModal
+                uid={this.state.botDetailUid}
+                visible={this.state.botDetailVisible}
+                onClose={() => this.setState({ botDetailVisible: false })}
+                onChat={(channel) => {
+                    WKApp.endpoints.showConversation(channel);
+                    this.setState({ botDetailVisible: false });
+                }}
+            />
         </div>
     }
 }

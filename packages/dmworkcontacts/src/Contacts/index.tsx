@@ -1,366 +1,174 @@
 import React from "react";
-import { Component } from "react";
-import { Contacts, ContactsChangeListener, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, WKNavMainHeader, Search, UserRelation, ErrorBoundary } from "@octo/base"
+import { Component, createRef } from "react";
+import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
 import classnames from "classnames";
 import { Toast } from "@douyinfe/semi-ui";
-import { ChevronRight, ChevronDown, Users, Bot, UsersRound } from "lucide-react";
+import { ChevronRight, ChevronDown, Users, Bot, UsersRound, Search as SearchIcon } from "lucide-react";
 
-import { Channel, ChannelTypePerson, ChannelTypeGroup, WKSDK,ChannelInfoListener,ChannelInfo } from "wukongimjssdk";
+import { Channel, ChannelTypePerson, ChannelTypeGroup, WKSDK, ChannelInfoListener, ChannelInfo } from "wukongimjssdk";
 import { ContactsListManager } from "../Service/ContactsListManager";
 import { Card } from "@octo/base/src/Messages/Card";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import BotDetailModal from "@octo/base/src/Components/BotDetailModal";
+import GroupCard from "@octo/base/src/Components/GroupCard";
 import { Space, SpaceMember, SpaceService } from "@octo/base/src/Service/SpaceService";
+import { debounce } from "@octo/base/src/Utils/rateLimit";
+import { Virtualizer } from "@tanstack/virtual-core";
 
 const SpaceRoleLabels: Record<number, string> = { 1: '创建者', 2: '管理员', 3: '成员' }
 
 export class ContactsState {
-    indexList: string[] = []
-    indexItemMap: Map<string, Contacts[]> = new Map()
     keyword?: string
-    selectedItem?: Contacts // 被选中的联系人
+    selectedItem?: Contacts
     currentSpace?: Space
     spaceMembers: SpaceMember[] = []
-    botDetailUid?: string // Bot 详情弹窗
-    botDetailVisible: boolean = false
-    hoveredLetter: string | null = null
-    currentView: 'all' | 'members' | 'bots' = 'all'
-    botGroupCollapsed: boolean = false
+
     // 手风琴展开状态
-    expandedSection: 'members' | 'bots' | 'groups' | null = null
+    expandedSection: 'groups' | 'myBots' | 'allContacts' | null = 'allContacts'
+
+    // 数据源
+    myBots: any[] = []
     myGroups: any[] = []
+
+    // 筛选
+    filterMode: 'all' | 'bots' | 'humans' = 'all'
+
+    // 搜索
+    isSearching: boolean = false
+    searchContacts: any[] = []
+    searchGroups: any[] = []
+
+    // Bot 详情弹窗
+    botDetailUid?: string
+    botDetailVisible: boolean = false
+
+    // 群聊名片弹窗
+    groupCardVisible: boolean = false
+    groupCardGroupNo?: string
+    groupCardName?: string
+    groupCardMemberCount?: number
+
+    // 字母索引
+    indexList: string[] = []
+    indexItemMap: Map<string, Contacts[]> = new Map()
+
+    // 加载
+    loading: boolean = true
 }
 
 export default class ContactsList extends Component<any, ContactsState> {
-    contactsChangeListener!: ContactsChangeListener
     channelInfoListener!: ChannelInfoListener
     contextMenusContext!: ContextMenusContext
     baseContext!: WKBaseContext
     private spaceChangedHandler!: (space: any) => void
+
+    private scrollContainerRef = createRef<HTMLDivElement>()
+    private virtualListRef = createRef<HTMLDivElement>()
+    private virtualizer?: Virtualizer<HTMLDivElement, Element>
+    private flatItems: Contacts[] = []
+
     constructor(props: any) {
         super(props)
-
         this.state = new ContactsState()
     }
+
     componentDidMount() {
-
-        this.contactsChangeListener = () => {
-            if (!this.state.currentSpace) {
-                this.rebuildIndex()
-            }
-        }
-
-        this.channelInfoListener = (channelInfo:ChannelInfo)=>{
-            if(channelInfo.channel.channelType !== ChannelTypePerson) {
-                return
-            }
-            // Use immutable update pattern - replace object instead of mutating properties
-            const idx = WKApp.dataSource.contactsList.findIndex(
-                (v) => v.uid === channelInfo.channel.channelID
+        this.channelInfoListener = (channelInfo: ChannelInfo) => {
+            if (channelInfo.channel.channelType !== ChannelTypePerson) return
+            const idx = this.state.spaceMembers.findIndex(
+                (m) => m.uid === channelInfo.channel.channelID
             )
             if (idx !== -1) {
-                // Create new object instead of mutating the existing one
-                WKApp.dataSource.contactsList[idx] = {
-                    ...WKApp.dataSource.contactsList[idx],
-                    name: channelInfo.title,
-                    remark: channelInfo?.orgData?.remark
-                }
-                if (!this.state.currentSpace) {
-                    this.rebuildIndex()
-                }
+                const members = [...this.state.spaceMembers]
+                members[idx] = { ...members[idx], name: channelInfo.title }
+                this.setState({ spaceMembers: members }, () => this.rebuildIndex())
             }
         }
 
         this.spaceChangedHandler = (space: any) => {
             const sp = space as Space | undefined
             if (sp) {
-                this.setState({ currentSpace: sp, myGroups: [] }, () => {
-                    this.loadSpaceMembers(sp.space_id)
-                    // 如果群组已展开，重新加载
-                    if (this.state.expandedSection === 'groups') {
-                        this.loadMyGroups()
-                    }
+                this.setState({ currentSpace: sp, myGroups: [], myBots: [], loading: true }, () => {
+                    this.loadAllData(sp.space_id)
                 })
             } else {
-                this.setState({ currentSpace: undefined, spaceMembers: [] }, () => {
-                    this.rebuildIndex()
-                })
+                this.setState({ currentSpace: undefined, spaceMembers: [], myBots: [], myGroups: [] })
             }
         }
         WKApp.mittBus.on('space-changed', this.spaceChangedHandler)
-
-        WKApp.dataSource.addContactsChangeListener(this.contactsChangeListener)
-
-        // Space 模式：首次加载时自动拉取 Space 成员
-        const spaceId = WKApp.shared.currentSpaceId
-        if (spaceId && !this.state.currentSpace) {
-            SpaceService.shared.getMySpaces().then((spaces) => {
-                const sp = spaces.find((s) => s.space_id === spaceId)
-                if (sp) {
-                    this.setState({ currentSpace: sp }, () => {
-                        this.loadSpaceMembers(sp.space_id)
-                    })
-                }
-            }).catch(() => {})
-        }
-
-        this.rebuildIndex()
-
         WKSDK.shared().channelManager.addListener(this.channelInfoListener)
 
         ContactsListManager.shared.setRefreshList = () => {
             this.setState({})
         }
+
+        // 首次加载
+        const spaceId = WKApp.shared.currentSpaceId
+        if (spaceId) {
+            SpaceService.shared.getMySpaces().then((spaces) => {
+                const sp = spaces.find((s) => s.space_id === spaceId)
+                if (sp) {
+                    this.setState({ currentSpace: sp }, () => {
+                        this.loadAllData(sp.space_id)
+                    })
+                }
+            }).catch(() => { this.setState({ loading: false }) })
+        } else {
+            this.setState({ loading: false })
+        }
     }
 
     componentWillUnmount() {
         ContactsListManager.shared.setRefreshList = undefined
-        WKApp.dataSource.removeContactsChangeListener(this.contactsChangeListener)
         WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
         WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
+        if (this.virtualizer) {
+            this.virtualizer = undefined
+        }
     }
 
-    private async loadSpaceMembers(spaceId: string) {
+    private async loadAllData(spaceId: string) {
         try {
-            const members = await SpaceService.shared.getMembers(spaceId, 1, 10000)
-            this.setState({ spaceMembers: members }, () => {
-                this.rebuildIndexFromSpaceMembers(members)
+            const [members, myBots, myGroups] = await Promise.all([
+                SpaceService.shared.getMembers(spaceId, 1, 10000),
+                WKApp.apiClient.get("/robot/my_bots", { param: { space_id: spaceId } }).catch(() => []),
+                WKApp.apiClient.get(`/group/my?space_id=${spaceId}`).catch(() => []),
+            ])
+            this.setState({
+                spaceMembers: members || [],
+                myBots: myBots || [],
+                myGroups: myGroups || [],
+                loading: false,
+            }, () => {
+                this.rebuildIndex()
             })
         } catch {
-            this.setState({ spaceMembers: [] })
+            this.setState({ loading: false })
         }
     }
 
-    private rebuildIndexFromSpaceMembers(members: SpaceMember[]) {
-        const { keyword, currentView } = this.state
-
-        // 过滤掉自己
+    private rebuildIndex() {
+        const { spaceMembers, filterMode, keyword } = this.state
         const myUID = WKApp.loginInfo.uid || ""
-        let viewFiltered = members.filter(m => m.uid !== myUID)
 
-        // 按 view 过滤
-        if (currentView === 'members') {
-            viewFiltered = viewFiltered.filter(m => m.robot !== 1)
-        } else if (currentView === 'bots') {
-            viewFiltered = viewFiltered.filter(m => m.robot === 1)
+        let filtered = spaceMembers.filter(m => m.uid !== myUID)
+
+        // 筛选
+        if (filterMode === 'bots') {
+            filtered = filtered.filter(m => m.robot === 1)
+        } else if (filterMode === 'humans') {
+            filtered = filtered.filter(m => m.robot !== 1)
         }
 
-        const filtered = viewFiltered.filter((m) => {
-            if (!keyword || keyword === "") return true
-            return m.name.indexOf(keyword) !== -1
-        })
+        // 搜索（非搜索模式下不过滤）
+        // 搜索模式由 debouncedSearch 处理，这里只构建索引
 
-        // 分离 Bot 和普通成员
-        const bots: Contacts[] = []
-        const users: Contacts[] = []
-        for (const m of filtered) {
-            const c = new Contacts()
-            c.uid = m.uid
-            c.name = m.name
-            c.avatar = m.avatar
-            c.follow = 1
-            c.robot = m.robot === 1
-            ;(c as any)._spaceRole = m.role
-            if (c.robot) {
-                bots.push(c)
-            } else {
-                users.push(c)
-            }
-        }
-
-        // Bot 排序：BotFather 固定第一，其余按名称
-        bots.sort((a, b) => {
-            if (a.uid === 'botfather') return -1
-            if (b.uid === 'botfather') return 1
-            return a.name.localeCompare(b.name)
-        })
-
-        // 构建索引：先 Bot 分组，再成员字母分组
-        const indexItemMap = new Map<string, Contacts[]>()
-        const indexList: string[] = []
-
-        if (bots.length > 0) {
-            indexItemMap.set('🤖 AI', bots)
-            indexList.push('🤖 AI')
-        }
-
-        // 成员按字母分组
-        for (const item of users) {
-            let name = (item.name || '').replace(/\*\*/g, '')
-            if (item.remark && item.remark !== "") name = item.remark
-            let pinyinNick = getPinyin(toSimplized(name)).toUpperCase()
-            let indexName = !pinyinNick || /[^a-z]/i.test(pinyinNick[0]) ? "#" : pinyinNick[0]
-            let existItems = indexItemMap.get(indexName)
-            if (!existItems) {
-                existItems = []
-                indexList.push(indexName)
-            }
-            existItems.push(item)
-            indexItemMap.set(indexName, existItems)
-        }
-
-        // 字母排序（Bot 分组已在最前）
-        const botIdx = indexList.indexOf('🤖 AI')
-        const rest = indexList.filter(i => i !== '🤖 AI').sort((a, b) => {
-            if (a === "#") return 1
-            if (b === "#") return -1
-            return a.localeCompare(b)
-        })
-        const sorted = botIdx >= 0 ? ['🤖 AI', ...rest] : rest
-
-        this.setState({ indexList: sorted, indexItemMap })
-    }
-
-    rebuildIndex() {
-        if (this.state.currentSpace && this.state.spaceMembers.length > 0) {
-            this.rebuildIndexFromSpaceMembers(this.state.spaceMembers)
-        } else if (!this.state.currentSpace) {
-            this.buildIndex(this.contactsList())
-        }
-    }
-
-    contactsList() {
-        const { keyword } = this.state
-        return WKApp.dataSource.contactsList.filter((v) => {
-            if (v.status === UserRelation.blacklist) {
-                return false
-            }
-            if (v.follow !== 1) {
-                return false
-            }
-            if (!keyword || keyword === "") {
-                return true
-            }
-
-            if (v.remark && v.remark !== "") {
-                if (v.remark.indexOf(keyword) !== -1) {
-                    return true
-                }
-            }
-
-            return v.name.indexOf(keyword) !== -1
-        })
-    }
-
-    buildIndex(contacts: Contacts[]) {
-        const indexItemMap = new Map<string, Contacts[]>()
-        let indexList = []
-        for (const item of contacts) {
-            let name = (item.name || '').replace(/\*\*/g, '')
-            if (item.remark && item.remark !== "") {
-                name = item.remark
-            }
-
-            let pinyinNick = getPinyin(toSimplized(name)).toUpperCase();
-            let indexName = !pinyinNick || /[^a-z]/i.test(pinyinNick[0]) ? "#" : pinyinNick[0];
-
-            let existItems = indexItemMap.get(indexName)
-            if (!existItems) {
-                existItems = []
-                indexList.push(indexName)
-            }
-            existItems.push(item)
-            indexItemMap.set(indexName, existItems)
-        }
-        indexList = indexList.sort((a, b) => {
-            if (a === "#") {
-                return -1
-            }
-            if (b === "#") {
-                return 1
-            }
-            return a.localeCompare(b)
-        })
-        this.setState({
-            indexList: indexList,
-            indexItemMap: indexItemMap,
-        })
-    }
-
-    _handleContextMenu(item: Contacts, event: React.MouseEvent) {
-        this.contextMenusContext.show(event)
-        this.setState({
-            selectedItem: item,
-        })
-    }
-
-    sectionUI(indexName: string) {
-        const { indexItemMap, botGroupCollapsed } = this.state
-        const { canSelect } = this.props
-        const items = indexItemMap.get(indexName)
-        const isBotGroup = indexName === '🤖 AI'
-
-        return <div key={indexName} className="wk-contacts-section">
-            {isBotGroup && (
-                <div className="wk-contacts-accordion-header" onClick={() => this.setState({ botGroupCollapsed: !botGroupCollapsed })}>
-                    <span className="wk-contacts-accordion-arrow">{botGroupCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}</span>
-                    <span className="wk-contacts-accordion-icon"><Bot size={16} /></span>
-                    <span className="wk-contacts-accordion-label">AI</span>
-                    {items && items.length > 0 && <span className="wk-contacts-accordion-count">({items.length})</span>}
-                </div>
-            )}
-            <div className="wk-contacts-section-list" style={isBotGroup && botGroupCollapsed ? { display: 'none' } : undefined}>
-                {
-                    items?.map((item, i) => {
-                        let name = (item.name || '').replace(/\*\*/g, '')
-                        if (item.remark && item.remark !== "") {
-                            name = item.remark
-                        }
-                        return <div key={item.uid} className={classnames("wk-contacts-section-item", WKApp.shared.openChannel?.channelType === ChannelTypePerson && WKApp.shared.openChannel?.channelID === item.uid ? "wk-contacts-section-item-selected" : undefined)} onClick={() => {
-                            if (item.robot === true && item.uid !== 'botfather') {
-                                // 非系统 Bot: 弹出详情弹窗
-                                this.setState({ botDetailUid: item.uid, botDetailVisible: true })
-                                return
-                            }
-                            // WuKongIM DM 只认裸 uid，不加 Space 前缀
-                            const channel = new Channel(item.uid, ChannelTypePerson)
-                            WKApp.endpoints.showConversation(channel)
-                            this.setState({})
-                        }} onContextMenu={(e) => {
-                            this._handleContextMenu(item, e)
-                        }}>
-                            <div className="wk-contacts-section-item-index">
-                                {i === 0 && !isBotGroup ? indexName : ""}
-                            </div>
-                            <div className="wk-contacts-section-item-avatar">
-                                <WKAvatar channel={new Channel(item.uid, ChannelTypePerson)}></WKAvatar>
-                            </div>
-                            <div className="wk-contacts-section-item-name">
-                                {name}
-                                {item.robot === true && <AiBadge />}
-                                {(item as any)._spaceRole && (item as any)._spaceRole <= 2 && (
-                                    <span className={`wk-contacts-role-badge wk-contacts-role-badge--${(item as any)._spaceRole === 1 ? 'owner' : 'admin'}`}>
-                                        {SpaceRoleLabels[(item as any)._spaceRole] || ''}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    })
-                }
-            </div>
-        </div>
-
-    }
-    getFilteredMembers(section: 'members' | 'bots'): Contacts[] {
-        const { keyword, spaceMembers } = this.state
-        const filtered = (spaceMembers || [])
-            .filter(m => section === 'bots' ? m.robot === 1 : m.robot !== 1)
-            .filter(m => !keyword || m.name.indexOf(keyword) !== -1)
-
-        // BotFather 置顶
-        if (section === 'bots') {
-            filtered.sort((a, b) => {
-                if (a.uid === 'botfather') return -1
-                if (b.uid === 'botfather') return 1
-                return a.name.localeCompare(b.name)
-            })
-        }
-
-        return filtered.map(m => {
+        // 转为 Contacts 对象
+        const items: Contacts[] = filtered.map(m => {
             const c = new Contacts()
             c.uid = m.uid
             c.name = m.name
@@ -370,146 +178,240 @@ export default class ContactsList extends Component<any, ContactsState> {
             ;(c as any)._spaceRole = m.role
             return c
         })
-    }
 
-    groupByLetter(items: Contacts[]): Map<string, Contacts[]> {
-        const map = new Map<string, Contacts[]>()
+        // 按拼音排序
+        items.sort((a, b) => {
+            const na = (a.remark || a.name || '').replace(/\*\*/g, '')
+            const nb = (b.remark || b.name || '').replace(/\*\*/g, '')
+            const pa = getPinyin(toSimplized(na)).toUpperCase()
+            const pb = getPinyin(toSimplized(nb)).toUpperCase()
+            return pa.localeCompare(pb)
+        })
+
+        // 构建字母分组索引
+        const indexItemMap = new Map<string, Contacts[]>()
+        const indexList: string[] = []
+
         for (const item of items) {
             let name = (item.name || '').replace(/\*\*/g, '')
             if (item.remark && item.remark !== "") name = item.remark
-            const firstChar = name[0] || ''
-            const py = getPinyin(toSimplized(firstChar)).toUpperCase()
+            const py = getPinyin(toSimplized(name)).toUpperCase()
             let letter = (py && py[0]) || '#'
             if (!/[A-Z]/.test(letter)) letter = '#'
-            if (!map.has(letter)) map.set(letter, [])
-            map.get(letter)!.push(item)
+
+            if (!indexItemMap.has(letter)) {
+                indexItemMap.set(letter, [])
+                indexList.push(letter)
+            }
+            indexItemMap.get(letter)!.push(item)
         }
-        // Sort keys: A-Z then #
-        const sorted = new Map<string, Contacts[]>()
-        const keys = Array.from(map.keys()).sort((a, b) => {
+
+        // 排序字母：A-Z, # 排最后
+        indexList.sort((a, b) => {
             if (a === '#') return 1
             if (b === '#') return -1
             return a.localeCompare(b)
         })
-        for (const k of keys) sorted.set(k, map.get(k)!)
-        return sorted
+
+        // 构建虚拟列表用的扁平数组
+        this.flatItems = items
+        this.initVirtualizer(items.length)
+
+        this.setState({ indexList, indexItemMap })
     }
 
-    toggleSection = (section: 'members' | 'bots' | 'groups') => {
+    private initVirtualizer(count: number) {
+        const el = this.virtualListRef.current
+        if (!el) {
+            // 延迟初始化
+            this.virtualizer = undefined
+            return
+        }
+
+        const ITEM_HEIGHT = 44
+        const LETTER_HEADER_HEIGHT = 24
+        this.virtualizer = new Virtualizer({
+            count,
+            getScrollElement: () => this.virtualListRef.current,
+            estimateSize: (index: number) => {
+                // 首行或字母切换行需要加上 letter header 高度
+                if (index === 0) return ITEM_HEIGHT + LETTER_HEADER_HEIGHT
+                const curr = this.flatItems[index]
+                const prev = this.flatItems[index - 1]
+                if (curr && prev && this.getItemLetter(curr) !== this.getItemLetter(prev)) {
+                    return ITEM_HEIGHT + LETTER_HEADER_HEIGHT
+                }
+                return ITEM_HEIGHT
+            },
+            overscan: 15,
+            onChange: () => {
+                this.forceUpdate()
+            },
+        })
+        this.virtualizer._didMount()
+    }
+
+    private debouncedSearch = debounce((keyword: string) => {
+        if (!keyword || keyword.trim() === '') {
+            this.setState({ isSearching: false, searchContacts: [], searchGroups: [] })
+            return
+        }
+
+        const { spaceMembers, myGroups } = this.state
+        const myUID = WKApp.loginInfo.uid || ""
+        const kw = keyword.toLowerCase()
+
+        const contacts = spaceMembers
+            .filter(m => m.uid !== myUID)
+            .filter(m => m.name.toLowerCase().includes(kw))
+
+        const groups = (myGroups || [])
+            .filter((g: any) => g.name && g.name.toLowerCase().includes(kw))
+
+        this.setState({
+            isSearching: true,
+            searchContacts: contacts,
+            searchGroups: groups,
+        })
+    }, 300)
+
+    private handleSearchChange = (value: string) => {
+        this.setState({ keyword: value })
+        this.debouncedSearch(value)
+    }
+
+    private handleClearSearch = () => {
+        this.setState({ keyword: '', isSearching: false, searchContacts: [], searchGroups: [] })
+    }
+
+    private toggleSection = (section: 'groups' | 'myBots' | 'allContacts') => {
         const willExpand = this.state.expandedSection !== section
         this.setState({
             expandedSection: willExpand ? section : null,
-            keyword: undefined,
         }, () => {
-            if (willExpand && section === 'groups') {
-                this.loadMyGroups()
+            // 展开全部联系人时初始化虚拟列表
+            if (willExpand && section === 'allContacts') {
+                setTimeout(() => {
+                    this.initVirtualizer(this.flatItems.length)
+                    this.forceUpdate()
+                }, 50)
             }
         })
     }
 
-    loadMyGroups() {
-        const spaceId = WKApp.shared.currentSpaceId
-        if (!spaceId) return
-        WKApp.apiClient.get(`/group/my?space_id=${spaceId}`).then((data: any) => {
-            this.setState({ myGroups: data || [] })
-        }).catch(() => {})
+    private handleContactClick = (uid: string, isBot: boolean) => {
+        if (isBot && uid !== 'botfather') {
+            this.setState({ botDetailUid: uid, botDetailVisible: true })
+            return
+        }
+        if (uid === 'botfather') {
+            // BotFather 直接进聊天
+            WKApp.endpoints.showConversation(new Channel(uid, ChannelTypePerson))
+            return
+        }
+        // 人：弹出名片
+        this.baseContext.showUserInfo(uid)
     }
 
-    renderAccordionSection(section: 'members' | 'bots' | 'groups', icon: React.ReactNode, label: string) {
-        const { expandedSection, spaceMembers } = this.state
-        const isExpanded = expandedSection === section
-        const members = spaceMembers || []
-        const groups = this.state.myGroups || []
-        const count = section === 'bots'
-            ? members.filter(m => m.robot === 1).length
-            : section === 'members'
-            ? members.filter(m => m.robot !== 1).length
-            : section === 'groups'
-            ? groups.length
-            : 0
+    private handleGroupClick = (groupNo: string, name?: string, memberCount?: number) => {
+        this.setState({ groupCardVisible: true, groupCardGroupNo: groupNo, groupCardName: name, groupCardMemberCount: memberCount })
+    }
 
-        const items = (section === 'members' || section === 'bots') ? this.getFilteredMembers(section) : []
+    private handleFilterChange = (mode: 'all' | 'bots' | 'humans') => {
+        this.setState({ filterMode: mode }, () => {
+            this.rebuildIndex()
+        })
+    }
+
+    _handleContextMenu(item: Contacts, event: React.MouseEvent) {
+        this.contextMenusContext.show(event)
+        this.setState({ selectedItem: item })
+    }
+
+    // ─── Render Helpers ─────────────────────────────
+
+    renderBotFatherBanner() {
+        return (
+            <div className="wk-contacts-botfather-banner" onClick={() => {
+                WKApp.endpoints.showConversation(new Channel("botfather", ChannelTypePerson))
+            }}>
+                <div className="wk-contacts-botfather-avatar">
+                    <WKAvatar channel={new Channel("botfather", ChannelTypePerson)} />
+                </div>
+                <div className="wk-contacts-botfather-info">
+                    <div className="wk-contacts-botfather-name">BotFather</div>
+                    <div className="wk-contacts-botfather-desc">创建和管理你的 AI 机器人</div>
+                </div>
+                <ChevronRight size={16} color="rgba(255,255,255,0.6)" />
+            </div>
+        )
+    }
+
+    renderSearchBox() {
+        return (
+            <div className="wk-contacts-search">
+                <div className="wk-contacts-search-input">
+                    <SearchIcon size={14} className="wk-contacts-search-icon" />
+                    <input
+                        type="text"
+                        placeholder="搜索通讯录"
+                        value={this.state.keyword || ''}
+                        onChange={(e) => this.handleSearchChange(e.target.value)}
+                    />
+                    {this.state.keyword && (
+                        <span className="wk-contacts-search-clear" onClick={this.handleClearSearch}>&times;</span>
+                    )}
+                </div>
+            </div>
+        )
+    }
+
+    renderSearchResults() {
+        const { searchContacts, searchGroups } = this.state
+
+        if (searchContacts.length === 0 && searchGroups.length === 0) {
+            return (
+                <div className="wk-contacts-empty">
+                    <SearchIcon size={28} className="wk-contacts-empty-icon" />
+                    <div className="wk-contacts-empty-text">没有找到相关联系人</div>
+                </div>
+            )
+        }
 
         return (
-            <div className="wk-contacts-accordion" key={section}>
-                <div className="wk-contacts-accordion-header" onClick={() => this.toggleSection(section)}>
-                    <span className="wk-contacts-accordion-arrow">{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
-                    <span className="wk-contacts-accordion-icon">{icon}</span>
-                    <span className="wk-contacts-accordion-label">{label}</span>
-                    {count > 0 && <span className="wk-contacts-accordion-count">({count})</span>}
-                </div>
-                {isExpanded && (
-                    <div className="wk-contacts-accordion-body">
-                        {(section === 'members' || section === 'bots') ? (() => {
-                            // 按拼音排序，不显示字母分组头和索引条
-                            const sorted = [...items].sort((a, b) => {
-                                const na = (a.remark || a.name || '').replace(/\*\*/g, '')
-                                const nb = (b.remark || b.name || '').replace(/\*\*/g, '')
-                                const pa = getPinyin(toSimplized(na)).toUpperCase()
-                                const pb = getPinyin(toSimplized(nb)).toUpperCase()
-                                return pa.localeCompare(pb)
-                            })
-                            return (
-                                <>
-                                    {sorted.map((item) => {
-                                        let name = (item.name || '').replace(/\*\*/g, '')
-                                        if (item.remark && item.remark !== "") name = item.remark
-                                        return (
-                                            <div key={item.uid} className="wk-contacts-section-item" onClick={() => {
-                                                if (item.robot === true && item.uid !== 'botfather') {
-                                                    this.setState({ botDetailUid: item.uid, botDetailVisible: true })
-                                                    return
-                                                }
-                                                WKApp.endpoints.showConversation(new Channel(item.uid, ChannelTypePerson))
-                                            }}>
-                                                <div className="wk-contacts-section-item-avatar">
-                                                    <WKAvatar channel={new Channel(item.uid, ChannelTypePerson)}></WKAvatar>
-                                                </div>
-                                                <div className="wk-contacts-section-item-name">
-                                                    {name}
-                                                    {item.robot === true && <AiBadge />}
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                </>
-                            )
-                        })() : items.map((item) => {
-                            let name = (item.name || '').replace(/\*\*/g, '')
-                            if (item.remark && item.remark !== "") name = item.remark
-                            return (
-                                <div key={item.uid} className="wk-contacts-section-item" onClick={() => {
-                                    if (item.robot === true && item.uid !== 'botfather') {
-                                        this.setState({ botDetailUid: item.uid, botDetailVisible: true })
-                                        return
-                                    }
-                                    WKApp.endpoints.showConversation(new Channel(item.uid, ChannelTypePerson))
-                                }}>
-                                    <div className="wk-contacts-section-item-avatar">
-                                        <WKAvatar channel={new Channel(item.uid, ChannelTypePerson)}></WKAvatar>
-                                    </div>
-                                    <div className="wk-contacts-section-item-name">
-                                        {name}
-                                        {item.robot === true && <AiBadge />}
-                                    </div>
-                                </div>
-                            )
-                        })}
-                        {section === 'groups' && (this.state.myGroups || []).length === 0 && (
-                            <div className="wk-contacts-empty">
-                                <UsersRound size={28} className="wk-contacts-empty-icon" />
-                                <div className="wk-contacts-empty-text">暂无群组</div>
-                                <div className="wk-contacts-empty-sub">在对话中创建群组后会显示在这里</div>
-                            </div>
-                        )}
-                        {section === 'groups' && (this.state.myGroups || []).map((g: any) => (
-                            <div key={g.group_no} className="wk-contacts-section-item" onClick={() => {
-                                WKApp.endpoints.showConversation(new Channel(g.group_no, ChannelTypeGroup))
+            <div className="wk-contacts-search-results">
+                {searchContacts.length > 0 && (
+                    <div className="wk-contacts-search-section">
+                        <div className="wk-contacts-search-section-title">联系人</div>
+                        {searchContacts.map((m: any) => (
+                            <div key={m.uid} className="wk-contacts-section-item" onClick={() => {
+                                this.handleContactClick(m.uid, m.robot === 1)
                             }}>
                                 <div className="wk-contacts-section-item-avatar">
-                                    <WKAvatar channel={new Channel(g.group_no, ChannelTypeGroup)}></WKAvatar>
+                                    <WKAvatar channel={new Channel(m.uid, ChannelTypePerson)} />
                                 </div>
-                                <div className="wk-contacts-section-item-name">{g.name}</div>
+                                <div className="wk-contacts-section-item-name">
+                                    {m.name}
+                                    {m.robot === 1 && <AiBadge />}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {searchGroups.length > 0 && (
+                    <div className="wk-contacts-search-section">
+                        <div className="wk-contacts-search-section-title">群聊</div>
+                        {searchGroups.map((g: any) => (
+                            <div key={g.group_no} className="wk-contacts-section-item" onClick={() => {
+                                this.handleGroupClick(g.group_no, g.name, g.member_count)
+                            }}>
+                                <div className="wk-contacts-section-item-avatar">
+                                    <WKAvatar channel={new Channel(g.group_no, ChannelTypeGroup)} />
+                                </div>
+                                <div className="wk-contacts-section-item-name">
+                                    {g.name}
+                                    <span className="wk-contacts-group-tag">群</span>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -518,54 +420,303 @@ export default class ContactsList extends Component<any, ContactsState> {
         )
     }
 
+    renderFilterChips() {
+        const { filterMode } = this.state
+        return (
+            <div className="wk-contacts-filters">
+                <span className={classnames("wk-contacts-chip", filterMode === 'all' && "active")}
+                    onClick={() => this.handleFilterChange('all')}>全部</span>
+                <span className={classnames("wk-contacts-chip", filterMode === 'bots' && "active")}
+                    onClick={() => this.handleFilterChange('bots')}>只看 AI</span>
+                <span className={classnames("wk-contacts-chip", filterMode === 'humans' && "active")}
+                    onClick={() => this.handleFilterChange('humans')}>只看人类</span>
+            </div>
+        )
+    }
+
+    renderAccordionHeader(section: 'groups' | 'myBots' | 'allContacts', icon: React.ReactNode, label: string, count: number) {
+        const isExpanded = this.state.expandedSection === section
+        return (
+            <div className="wk-contacts-accordion-header" onClick={() => this.toggleSection(section)}>
+                <span className="wk-contacts-accordion-arrow">{isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
+                <span className="wk-contacts-accordion-icon">{icon}</span>
+                <span className="wk-contacts-accordion-label">{label}</span>
+                {count > 0 && <span className="wk-contacts-accordion-count">({count})</span>}
+            </div>
+        )
+    }
+
+    renderGroupsSection() {
+        const { expandedSection, myGroups } = this.state
+        const isExpanded = expandedSection === 'groups'
+        const groups = myGroups || []
+
+        return (
+            <div className="wk-contacts-accordion">
+                {this.renderAccordionHeader('groups', <UsersRound size={16} />, '群聊', groups.length)}
+                {isExpanded && (
+                    <div className="wk-contacts-accordion-body">
+                        {groups.length === 0 ? (
+                            <div className="wk-contacts-empty">
+                                <UsersRound size={28} className="wk-contacts-empty-icon" />
+                                <div className="wk-contacts-empty-text">还没有群聊，去创建一个吧</div>
+                            </div>
+                        ) : groups.map((g: any) => (
+                            <div key={g.group_no} className="wk-contacts-section-item" onClick={() => {
+                                this.handleGroupClick(g.group_no, g.name, g.member_count)
+                            }}>
+                                <div className="wk-contacts-section-item-avatar">
+                                    <WKAvatar channel={new Channel(g.group_no, ChannelTypeGroup)} />
+                                </div>
+                                <div className="wk-contacts-section-item-name">
+                                    {g.name}
+                                    <span className="wk-contacts-group-tag">群</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        )
+    }
+
+    renderMyBotsSection() {
+        const { expandedSection, myBots } = this.state
+        const isExpanded = expandedSection === 'myBots'
+        const bots = myBots || []
+
+        return (
+            <div className="wk-contacts-accordion">
+                {this.renderAccordionHeader('myBots', <Bot size={16} />, '已添加 AI', bots.length)}
+                {isExpanded && (
+                    <div className="wk-contacts-accordion-body">
+                        {bots.length === 0 ? (
+                            <div className="wk-contacts-empty">
+                                <Bot size={28} className="wk-contacts-empty-icon" />
+                                <div className="wk-contacts-empty-text">还没有添加 AI，去全部联系人里看看</div>
+                            </div>
+                        ) : bots.map((bot: any) => (
+                            <div key={bot.uid} className="wk-contacts-section-item" onClick={() => {
+                                this.handleContactClick(bot.uid, true)
+                            }}>
+                                <div className="wk-contacts-section-item-avatar">
+                                    <WKAvatar channel={new Channel(bot.uid, ChannelTypePerson)} />
+                                </div>
+                                <div className="wk-contacts-section-item-name">
+                                    {bot.name || bot.uid}
+                                    <AiBadge />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        )
+    }
+
+    renderAllContactsSection() {
+        const { expandedSection, indexList, indexItemMap, spaceMembers } = this.state
+        const isExpanded = expandedSection === 'allContacts'
+        const myUID = WKApp.loginInfo.uid || ""
+        const totalCount = spaceMembers.filter(m => m.uid !== myUID).length
+
+        return (
+            <div className="wk-contacts-accordion">
+                {this.renderAccordionHeader('allContacts', <Users size={16} />, '全部联系人', totalCount)}
+                {isExpanded && (
+                    <>
+                        {this.renderFilterChips()}
+                        <div className="wk-contacts-accordion-body wk-contacts-all-list" ref={this.virtualListRef}>
+                            {totalCount === 0 ? (
+                                <div className="wk-contacts-empty">
+                                    <Users size={28} className="wk-contacts-empty-icon" />
+                                    <div className="wk-contacts-empty-text">当前 Space 还没有成员</div>
+                                </div>
+                            ) : this.renderContactListWithLetters()}
+                        </div>
+                    </>
+                )}
+            </div>
+        )
+    }
+
+    renderContactListWithLetters() {
+        const { indexList, indexItemMap } = this.state
+
+        // 如果虚拟列表已初始化且有足够多的项目，使用虚拟滚动
+        if (this.virtualizer && this.flatItems.length > 100) {
+            return this.renderVirtualList()
+        }
+
+        // 少量项目直接渲染
+        return indexList.map(letter => {
+            const items = indexItemMap.get(letter)
+            if (!items || items.length === 0) return null
+            return (
+                <div key={letter}>
+                    <div className="wk-contacts-letter-header">{letter}</div>
+                    {items.map(item => this.renderContactItem(item))}
+                </div>
+            )
+        })
+    }
+
+    renderVirtualList() {
+        if (!this.virtualizer) return null
+        const virtualItems = this.virtualizer.getVirtualItems()
+        const totalSize = this.virtualizer.getTotalSize()
+
+        return (
+            <div style={{ height: totalSize, width: '100%', position: 'relative' }}>
+                {virtualItems.map(virtualItem => {
+                    const item = this.flatItems[virtualItem.index]
+                    if (!item) return null
+
+                    // 检查是否是该字母分组的第一个项目
+                    let showLetter = false
+                    let letter = ''
+                    if (virtualItem.index === 0) {
+                        showLetter = true
+                    } else {
+                        const prev = this.flatItems[virtualItem.index - 1]
+                        const currLetter = this.getItemLetter(item)
+                        const prevLetter = this.getItemLetter(prev)
+                        if (currLetter !== prevLetter) {
+                            showLetter = true
+                        }
+                        letter = currLetter
+                    }
+                    if (virtualItem.index === 0) {
+                        letter = this.getItemLetter(item)
+                    }
+
+                    return (
+                        <div
+                            key={item.uid}
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                transform: `translateY(${virtualItem.start}px)`,
+                            }}
+                        >
+                            {showLetter && <div className="wk-contacts-letter-header">{letter}</div>}
+                            {this.renderContactItem(item)}
+                        </div>
+                    )
+                })}
+            </div>
+        )
+    }
+
+    private getItemLetter(item: Contacts): string {
+        let name = (item.name || '').replace(/\*\*/g, '')
+        if (item.remark && item.remark !== "") name = item.remark
+        const py = getPinyin(toSimplized(name)).toUpperCase()
+        let letter = (py && py[0]) || '#'
+        if (!/[A-Z]/.test(letter)) letter = '#'
+        return letter
+    }
+
+    renderContactItem(item: Contacts) {
+        let name = (item.name || '').replace(/\*\*/g, '')
+        if (item.remark && item.remark !== "") name = item.remark
+
+        return (
+            <div key={item.uid} className={classnames("wk-contacts-section-item",
+                WKApp.shared.openChannel?.channelType === ChannelTypePerson && WKApp.shared.openChannel?.channelID === item.uid ? "wk-contacts-section-item-selected" : undefined
+            )} onClick={() => {
+                this.handleContactClick(item.uid, item.robot === true)
+            }} onContextMenu={(e) => {
+                this._handleContextMenu(item, e)
+            }}>
+                <div className="wk-contacts-section-item-avatar">
+                    <WKAvatar channel={new Channel(item.uid, ChannelTypePerson)} />
+                </div>
+                <div className="wk-contacts-section-item-name">
+                    {name}
+                    {item.robot === true && <AiBadge />}
+                    {(item as any)._spaceRole && (item as any)._spaceRole <= 2 && (
+                        <span className={`wk-contacts-role-badge wk-contacts-role-badge--${(item as any)._spaceRole === 1 ? 'owner' : 'admin'}`}>
+                            {SpaceRoleLabels[(item as any)._spaceRole] || ''}
+                        </span>
+                    )}
+                </div>
+            </div>
+        )
+    }
+
     render() {
-        const { currentSpace } = this.state
+        const { isSearching } = this.state
 
         return <WKBase onContext={(baseCtx) => {
             this.baseContext = baseCtx
         }}>
             <ErrorBoundary moduleName="通讯录">
-            <div className="wk-contacts">
-                {/* 标题由全局顶栏提供 */}
-                <div className="wk-contacts-content">
-                    {this.renderAccordionSection('members', <Users size={16} />, '组织内联系人')}
-                    {this.renderAccordionSection('bots', <Bot size={16} />, 'AI')}
-                    {this.renderAccordionSection('groups', <UsersRound size={16} />, '我的群组')}
-                </div>
-                <ContextMenus onContext={(context: ContextMenusContext) => {
-                    this.contextMenusContext = context
-                }} menus={[{
-                    title: "查看资料", onClick: () => {
-                        const { selectedItem } = this.state
-                        this.baseContext.showUserInfo(selectedItem?.uid || "")
-                    }
-                }, {
-                    title: "分享给朋友...", onClick: () => {
-                        WKApp.shared.baseContext.showConversationSelect((channels: Channel[]) => {
+                <div className="wk-contacts">
+                    <div className="wk-contacts-content">
+                        {this.renderBotFatherBanner()}
+                        {this.renderSearchBox()}
+
+                        {isSearching ? (
+                            this.renderSearchResults()
+                        ) : (
+                            <>
+                                {this.renderGroupsSection()}
+                                {this.renderMyBotsSection()}
+                                {this.renderAllContactsSection()}
+                            </>
+                        )}
+                    </div>
+
+                    <ContextMenus onContext={(context: ContextMenusContext) => {
+                        this.contextMenusContext = context
+                    }} menus={[{
+                        title: "查看资料", onClick: () => {
                             const { selectedItem } = this.state
-                            if (channels && channels.length > 0) {
-                                for (const channel of channels) {
-                                    const card = new Card()
-                                    card.uid = selectedItem?.uid || ""
-                                    card.name = selectedItem?.name || ""
-                                    card.vercode = selectedItem?.vercode||""
-                                    WKSDK.shared().chatManager.send(card, channel)
+                            this.baseContext.showUserInfo(selectedItem?.uid || "")
+                        }
+                    }, {
+                        title: "分享给朋友...", onClick: () => {
+                            WKApp.shared.baseContext.showConversationSelect((channels: Channel[]) => {
+                                const { selectedItem } = this.state
+                                if (channels && channels.length > 0) {
+                                    for (const channel of channels) {
+                                        const card = new Card()
+                                        card.uid = selectedItem?.uid || ""
+                                        card.name = selectedItem?.name || ""
+                                        card.vercode = selectedItem?.vercode || ""
+                                        WKSDK.shared().chatManager.send(card, channel)
+                                    }
+                                    Toast.success("分享成功！")
                                 }
-                                Toast.success("分享成功！")
-                            }
-                        }, "分享名片")
-                    }
-                }]} />
-                <BotDetailModal
-                    uid={this.state.botDetailUid || ""}
-                    visible={this.state.botDetailVisible}
-                    onClose={() => this.setState({ botDetailVisible: false })}
-                    onChat={(channel) => {
-                        WKApp.endpoints.showConversation(channel)
-                        this.setState({ botDetailVisible: false })
-                    }}
-                />
-            </div>
+                            }, "分享名片")
+                        }
+                    }]} />
+
+                    <BotDetailModal
+                        uid={this.state.botDetailUid || ""}
+                        visible={this.state.botDetailVisible}
+                        onClose={() => this.setState({ botDetailVisible: false })}
+                        onChat={(channel) => {
+                            WKApp.endpoints.showConversation(channel)
+                            this.setState({ botDetailVisible: false })
+                        }}
+                    />
+
+                    <GroupCard
+                        groupNo={this.state.groupCardGroupNo || ""}
+                        name={this.state.groupCardName}
+                        memberCount={this.state.groupCardMemberCount}
+                        visible={this.state.groupCardVisible}
+                        onClose={() => this.setState({ groupCardVisible: false })}
+                        onEnterChat={(channel) => {
+                            WKApp.endpoints.showConversation(channel)
+                            this.setState({ groupCardVisible: false })
+                        }}
+                    />
+                </div>
             </ErrorBoundary>
         </WKBase>
     }

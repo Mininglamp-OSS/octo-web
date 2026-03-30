@@ -1,0 +1,40 @@
+.wk-group-card-modal .semi-modal-body {
+    padding: 0 !important;
+}
+.wk-group-card-content {
+    padding: 24px;
+}
+.wk-group-card-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 16px;
+}
+.wk-group-card-header .wk-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--wk-r-md, 10px);
+}
+.wk-group-card-name {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.wk-group-card-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: var(--wk-r-xs, 4px);
+    font-size: 10px;
+    font-weight: 500;
+    background: var(--wk-bg-active, #E2E3EA);
+    color: var(--wk-text-secondary, #5C6070);
+}
+.wk-group-card-meta {
+    font-size: 13px;
+    color: var(--wk-text-tertiary, #999);
+    margin-top: 4px;
+}

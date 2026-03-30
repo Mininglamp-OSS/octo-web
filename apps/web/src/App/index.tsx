@@ -1,8 +1,7 @@
 import { ChatPage, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
-import { BotStore } from '@octo/base';
 import React from 'react';
-import { MessageSquare, Users, Bot } from 'lucide-react';
+import { MessageSquare, Users } from 'lucide-react';
 import './index.css';
 import AppLayout from '../Layout';
 import { WKSDK } from 'wukongimjssdk';
@@ -70,22 +69,12 @@ async function registerMenus() {
     return m
   }, 4000)
 
-  WKApp.menus.register("bots", (_param) => {
-    return new Menus("bots", "/bots", "AI",
-      <Bot size={24} strokeWidth={1.5} color='#999' />,
-      <Bot size={24} strokeWidth={2} color='#5b6abf' fill='#5b6abf' />)
-  }, 3000)
-
   WKApp.route.register("/", () => {
     return <ChatPage></ChatPage>
   })
 
   WKApp.route.register("/contacts", () => {
     return <ContactsList></ContactsList>
-  })
-
-  WKApp.route.register("/bots", () => {
-    return <BotStore />
   })
 
 }
