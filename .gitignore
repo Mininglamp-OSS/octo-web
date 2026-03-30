@@ -41,3 +41,4 @@ icons.iconset
 .debug-screenshots/
 scripts/debug.js
 debug-storybook.log
+.gstack/

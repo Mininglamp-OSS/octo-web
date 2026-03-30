@@ -1292,6 +1292,8 @@ export default class ConversationVM extends ProviderListener {
                 obj.space_id = spaceId
                 return obj
             }
+            // 同步 contentObj，让本地回显也通过 filterPersonMessagesBySpace (#784)
+            content.contentObj = { ...(content.contentObj || {}), space_id: spaceId }
         }
         const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel)
         let setting = new Setting()
