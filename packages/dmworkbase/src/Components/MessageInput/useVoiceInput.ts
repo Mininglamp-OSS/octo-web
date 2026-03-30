@@ -37,6 +37,7 @@ export default function useVoiceInput(options: UseVoiceInputOptions = {}): UseVo
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const streamRef = useRef<MediaStream | null>(null)
     const contextTextRef = useRef<string | undefined>(undefined)
+    const stopFnRef = useRef<(contextText?: string) => void>(() => {})
 
     // Fetch voice config on mount
     useEffect(() => {
@@ -90,7 +91,7 @@ export default function useVoiceInput(options: UseVoiceInputOptions = {}): UseVo
                 const elapsed = Math.floor((Date.now() - startTime) / 1000)
                 setDuration(elapsed)
                 if (elapsed >= maxDuration) {
-                    stopRecordingAndTranscribe()
+                    stopFnRef.current()
                 }
             }, 1000)
         } catch (err) {
@@ -139,6 +140,8 @@ export default function useVoiceInput(options: UseVoiceInputOptions = {}): UseVo
 
         recorder.stop()
     }, [cleanup, onTranscribed, onError])
+
+    stopFnRef.current = stopRecordingAndTranscribe
 
     const cancelRecording = useCallback(() => {
         const recorder = mediaRecorderRef.current
