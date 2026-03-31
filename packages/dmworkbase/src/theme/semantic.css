@@ -78,7 +78,7 @@
   --wk-r-lg:   14px;
   --wk-r-xl:   20px;
   --wk-r-full: 9999px;
-  --wk-radius-full: 50%; /* circle — for avatars and circular elements */
+  --wk-r-circle: 50%; /* circle — for avatars; distinct from --wk-r-full (9999px pill shape) */
 
   /* ── Animation ── */
   --wk-ease:        cubic-bezier(0.16, 1, 0.3, 1);

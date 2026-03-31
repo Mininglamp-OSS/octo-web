@@ -89,10 +89,18 @@ export default class MergeforwardMessageList extends Component<MergeforwardMessa
         return ""
     }
 
+    private cachedRootStyle?: CSSStyleDeclaration
+
+    private getRootStyle(): CSSStyleDeclaration {
+        if (!this.cachedRootStyle) {
+            this.cachedRootStyle = getComputedStyle(document.documentElement)
+        }
+        return this.cachedRootStyle
+    }
+
     getFileExtColor(extension: string): string {
         const ext = (extension || "").toLowerCase()
-        // CSS 变量在 JS 里取运行时值
-        const style = getComputedStyle(document.documentElement)
+        const style = this.getRootStyle()
         switch (ext) {
             case "pdf": return style.getPropertyValue("--wk-color-danger").trim() || "#EF4444"
             case "doc": case "docx": return style.getPropertyValue("--wk-color-info").trim() || "#3B82F6"
