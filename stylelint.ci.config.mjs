@@ -13,5 +13,7 @@ export default {
     '**/dist/**',
     '**/build/**',
     '**/.storybook/**',
+    '**/theme/**',        // token 定义文件，原始色值合法
+    '**/App.css',         // 全局变量定义，原始色值合法
   ],
 }
