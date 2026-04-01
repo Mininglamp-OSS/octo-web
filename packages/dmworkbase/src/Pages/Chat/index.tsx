@@ -275,47 +275,33 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         </div>
                       )}
                     </div>
-                    <div style={{ marginRight: '4px', alignItems: 'center', display: 'flex' }}>
-                      <NavSignalBadge />
-                    </div>
-                    <div
-                      style={{ marginRight: '20px', alignItems: 'center', display: 'flex', cursor: 'pointer' }}
-                      onClick={() => {
-                        vm.showGlobalSearch = true;
-                      }}
-                    >
-                      <Search size={16} color="var(--wk-text-tertiary)" className="wk-chat-header-icon" />
-                    </div>
-                    <Popover
-                      onClickOutSide={() => {
-                        vm.showAddPopover = false;
-                      }}
-                      className="wk-chat-popover"
-                      position="bottomRight"
-                      visible={vm.showAddPopover}
-                      showArrow={false}
-                      trigger="custom"
-                      content={
-                        <ChatMenusPopover
-                          onItem={() => {
-                            vm.showAddPopover = false;
-                          }}
-                        ></ChatMenusPopover>
-                      }
-                    >
+                    <div className="wk-chat-header-actions">
+                      <NavSignalBadge showText />
                       <div
-                        className="wk-chat-search-add"
-                        style={{ alignItems: 'center', display: 'flex' }}
-                        onClick={() => {
-                          vm.showAddPopover = !vm.showAddPopover;
-                        }}
+                        className="wk-chat-header-btn"
+                        onClick={() => { vm.showGlobalSearch = true; }}
                       >
-                        <Plus size={16} color="var(--wk-text-tertiary)" className="wk-chat-header-icon" />
+                        <Search size={16} />
                       </div>
-                      {/* <Button icon={<IconPlus></IconPlus>} onClick={() => {
-                                    vm.showAddPopover = true
-                                }}></Button> */}
-                    </Popover>
+                      <Popover
+                        onClickOutSide={() => { vm.showAddPopover = false; }}
+                        className="wk-chat-popover"
+                        position="bottomRight"
+                        visible={vm.showAddPopover}
+                        showArrow={false}
+                        trigger="custom"
+                        content={
+                          <ChatMenusPopover onItem={() => { vm.showAddPopover = false; }} />
+                        }
+                      >
+                        <div
+                          className="wk-chat-header-btn"
+                          onClick={() => { vm.showAddPopover = !vm.showAddPopover; }}
+                        >
+                          <Plus size={16} />
+                        </div>
+                      </Popover>
+                    </div>
                   </div>
                   {/* SpaceList 已移至侧边栏 */}
                   <div className="wk-chat-conversation-list">

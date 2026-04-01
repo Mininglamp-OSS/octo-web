@@ -9,7 +9,11 @@ interface NavSignalBadgeState {
     showTooltip: boolean
 }
 
-export default class NavSignalBadge extends Component<{}, NavSignalBadgeState> {
+interface NavSignalBadgeProps {
+    showText?: boolean
+}
+
+export default class NavSignalBadge extends Component<NavSignalBadgeProps, NavSignalBadgeState> {
     private statusListener: any
     private pingTimer: any
 
@@ -101,14 +105,19 @@ export default class NavSignalBadge extends Component<{}, NavSignalBadgeState> {
 
     render() {
         const { status, latency, showTooltip } = this.state
+        const { showText } = this.props
         const connected = status === ConnectStatus.Connected
         const connecting = status === ConnectStatus.Connecting
         const bars = this.getBars(latency, connected)
         const color = this.getColor(latency, connected, connecting)
 
+        const labelText = connected && latency !== null
+            ? `${latency}ms`
+            : connecting ? "连接中" : "已断开"
+
         return (
             <div
-                className={`wk-navrail__signal${connecting ? " wk-navrail__signal--blink" : ""}`}
+                className={`wk-navrail__signal${connecting ? " wk-navrail__signal--blink" : ""}${showText ? " wk-navrail__signal--with-text" : ""}`}
                 onClick={this.handleClick}
                 onMouseEnter={() => this.setState({ showTooltip: true })}
                 onMouseLeave={() => this.setState({ showTooltip: false })}
@@ -119,6 +128,11 @@ export default class NavSignalBadge extends Component<{}, NavSignalBadgeState> {
                     <rect x="6" y="7" width="3" height="9" rx="0.5" fill={bars >= 2 ? color : "var(--wk-border-default)"} />
                     <rect x="11" y="3" width="3" height="13" rx="0.5" fill={bars >= 3 ? color : "var(--wk-border-default)"} />
                 </svg>
+                {showText && (
+                    <span style={{ fontSize: 11, color, marginLeft: 2, fontVariantNumeric: 'tabular-nums' }}>
+                        {labelText}
+                    </span>
+                )}
                 {showTooltip && (
                     <div className="wk-navrail__signal-tooltip">
                         <div>状态：{connected ? "已连接" : connecting ? "连接中" : "已断开"}</div>

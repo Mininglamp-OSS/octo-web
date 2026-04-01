@@ -32,6 +32,32 @@
     color: var(--text-primary);
 }
 
+/* 右侧操作按钮区 */
+.wk-chat-header-actions {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.wk-chat-header-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--wk-r-sm);
+    cursor: pointer;
+    color: var(--wk-text-tertiary);
+    transition: background 0.15s, color 0.15s;
+}
+
+.wk-chat-header-btn:hover {
+    background: var(--wk-bg-hover);
+    color: var(--wk-text-primary);
+}
+
 .wk-chat-header-icon {
     transition: color 0.15s;
 }
@@ -44,18 +70,20 @@
     position: relative;
     bottom: auto;
     right: auto;
-    width: 16px;
-    height: 16px;
+    height: 28px;
     border: none;
     background: transparent;
     border-radius: var(--wk-r-sm);
-    cursor: default;
+    padding: 0 var(--wk-sp-1);
+    flex-direction: row;
+    gap: 3px;
     flex-shrink: 0;
 }
 
 .wk-chat-search .wk-navrail__signal svg {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
 }
 
 .wk-chat-search .wk-navrail__signal-tooltip {
