@@ -172,7 +172,7 @@ body[theme-mode=dark] .wk-conversation-content {
     height: 28px;
     border-radius: var(--wk-r-sm, 6px);
     border: 1px solid var(--wk-border-subtle);
-    background: white;
+    background: var(--wk-bg-base);
     color: var(--wk-text-secondary);
     cursor: pointer;
     display: flex;
