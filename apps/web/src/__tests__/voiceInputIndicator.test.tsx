@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from "vitest"
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest"
 import React from "react"
 import { render, act } from "@testing-library/react"
 
@@ -265,5 +265,177 @@ describe("VoiceInput - error classification", () => {
 
     it("should fallback to default message for empty error", () => {
         expect(classifyError(new Error(""))).toBe("Voice transcription failed")
+    })
+})
+
+// --- Test long-press ShiftLeft detection logic ---
+// This mirrors the logic in VoiceInputIndicator's keyboard handler
+describe("VoiceInput - long-press ShiftLeft detection", () => {
+    let shiftTimer: ReturnType<typeof setTimeout> | null = null
+    let shiftRecording = false
+    let startRecording: ReturnType<typeof vi.fn>
+    let stopRecordingAndTranscribe: ReturnType<typeof vi.fn>
+    let isRecording: boolean
+    let isTranscribing: boolean
+
+    function clearShiftTimer() {
+        if (shiftTimer !== null) {
+            clearTimeout(shiftTimer)
+            shiftTimer = null
+        }
+    }
+
+    function handleKeyDown(e: { code: string; repeat: boolean; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }) {
+        // Existing shortcut takes priority
+        if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.code === "Space") {
+            if (!isRecording && !isTranscribing) {
+                startRecording()
+            }
+            return
+        }
+
+        // Long-press ShiftLeft
+        if (e.code === "ShiftLeft" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            if (!isRecording && !isTranscribing && shiftTimer === null) {
+                shiftTimer = setTimeout(() => {
+                    shiftTimer = null
+                    shiftRecording = true
+                    startRecording()
+                }, 500)
+            }
+            return
+        }
+
+        // Any other key cancels the timer (ignore repeated ShiftLeft from auto-repeat)
+        if (shiftTimer !== null && e.code !== "ShiftLeft") {
+            clearShiftTimer()
+        }
+    }
+
+    function handleKeyUp(e: { code: string; key: string }) {
+        if (e.code === "ShiftLeft" && shiftTimer !== null) {
+            clearShiftTimer()
+            return
+        }
+
+        if (e.code === "ShiftLeft" && shiftRecording && isRecording) {
+            shiftRecording = false
+            stopRecordingAndTranscribe()
+            return
+        }
+
+        if (!isRecording) return
+        if (e.key === "Shift" || e.key === "Meta" || e.key === "Control") {
+            if (shiftRecording) return
+            stopRecordingAndTranscribe()
+        }
+    }
+
+    beforeEach(() => {
+        vi.useFakeTimers()
+        shiftTimer = null
+        shiftRecording = false
+        isRecording = false
+        isTranscribing = false
+        startRecording = vi.fn()
+        stopRecordingAndTranscribe = vi.fn()
+    })
+
+    afterEach(() => {
+        clearShiftTimer()
+        vi.useRealTimers()
+    })
+
+    it("should start 500ms timer when ShiftLeft is pressed", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(shiftTimer).not.toBeNull()
+        expect(startRecording).not.toHaveBeenCalled()
+    })
+
+    it("should NOT start recording if ShiftLeft released before 500ms", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        vi.advanceTimersByTime(300)
+        handleKeyUp({ code: "ShiftLeft", key: "Shift" })
+        expect(startRecording).not.toHaveBeenCalled()
+        expect(shiftTimer).toBeNull()
+    })
+
+    it("should start recording after holding ShiftLeft for 500ms", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        vi.advanceTimersByTime(500)
+        expect(startRecording).toHaveBeenCalledTimes(1)
+        expect(shiftRecording).toBe(true)
+    })
+
+    it("should stop recording when ShiftLeft is released after recording started", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        vi.advanceTimersByTime(500)
+        isRecording = true // simulate that recording started
+        handleKeyUp({ code: "ShiftLeft", key: "Shift" })
+        expect(stopRecordingAndTranscribe).toHaveBeenCalledTimes(1)
+        expect(shiftRecording).toBe(false)
+    })
+
+    it("should cancel timer when another key is pressed during 500ms wait", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(shiftTimer).not.toBeNull()
+        // Press 'a' while holding Shift
+        handleKeyDown({ code: "KeyA", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(shiftTimer).toBeNull()
+        vi.advanceTimersByTime(500)
+        expect(startRecording).not.toHaveBeenCalled()
+    })
+
+    it("should NOT trigger on ShiftRight", () => {
+        handleKeyDown({ code: "ShiftRight", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(shiftTimer).toBeNull()
+        vi.advanceTimersByTime(500)
+        expect(startRecording).not.toHaveBeenCalled()
+    })
+
+    it("should still allow Shift+Cmd+Space shortcut", () => {
+        handleKeyDown({ code: "Space", repeat: false, metaKey: true, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(startRecording).toHaveBeenCalledTimes(1)
+    })
+
+    it("should NOT trigger when already recording", () => {
+        isRecording = true
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(shiftTimer).toBeNull()
+        vi.advanceTimersByTime(500)
+        expect(startRecording).not.toHaveBeenCalled()
+    })
+
+    it("should NOT trigger when transcribing", () => {
+        isTranscribing = true
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(shiftTimer).toBeNull()
+        vi.advanceTimersByTime(500)
+        expect(startRecording).not.toHaveBeenCalled()
+    })
+
+    it("should not cancel timer on repeated ShiftLeft keydown from auto-repeat", () => {
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(shiftTimer).not.toBeNull()
+        // OS auto-repeat fires repeat=true events while holding the key
+        handleKeyDown({ code: "ShiftLeft", repeat: true, metaKey: false, ctrlKey: false, altKey: false, shiftKey: true })
+        // Timer should still be active
+        expect(shiftTimer).not.toBeNull()
+        vi.advanceTimersByTime(500)
+        expect(startRecording).toHaveBeenCalledTimes(1)
+    })
+
+    it("should NOT trigger when modifier keys are held", () => {
+        // ShiftLeft with Cmd held
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: true, ctrlKey: false, altKey: false, shiftKey: true })
+        expect(shiftTimer).toBeNull()
+
+        // ShiftLeft with Ctrl held
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: true, altKey: false, shiftKey: true })
+        expect(shiftTimer).toBeNull()
+
+        // ShiftLeft with Alt held
+        handleKeyDown({ code: "ShiftLeft", repeat: false, metaKey: false, ctrlKey: false, altKey: true, shiftKey: true })
+        expect(shiftTimer).toBeNull()
     })
 })

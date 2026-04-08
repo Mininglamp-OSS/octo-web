@@ -1,4 +1,4 @@
-import React, { useEffect } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { Toast } from "@douyinfe/semi-ui"
 import useVoiceInput from "./useVoiceInput"
 import "./voiceInput.css"
@@ -36,37 +36,114 @@ export default function VoiceInputIndicator({ onTranscribed, getCurrentText, get
         },
     })
 
-    // Keyboard shortcut: Shift + Cmd/Ctrl + Space
+    // Refs to avoid closure staleness in timer/keyboard callbacks
+    const startRecordingRef = useRef(startRecording)
+    startRecordingRef.current = startRecording
+    const stopRecordingRef = useRef(stopRecordingAndTranscribe)
+    stopRecordingRef.current = stopRecordingAndTranscribe
+    const isRecordingRef = useRef(isRecording)
+    isRecordingRef.current = isRecording
+    const isTranscribingRef = useRef(isTranscribing)
+    isTranscribingRef.current = isTranscribing
+
+    // Long-press ShiftLeft state
+    const shiftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const shiftRecordingRef = useRef(false)
+    const [isPreparing, setIsPreparing] = useState(false)
+
+    const clearShiftTimer = () => {
+        if (shiftTimerRef.current !== null) {
+            clearTimeout(shiftTimerRef.current)
+            shiftTimerRef.current = null
+        }
+        setIsPreparing(false)
+    }
+
+    // Keyboard shortcut: Shift + Cmd/Ctrl + Space, and long-press ShiftLeft
     useEffect(() => {
         if (!isVoiceEnabled) return
 
         const handleKeyDown = (e: KeyboardEvent) => {
+            // Existing shortcut: Shift+Cmd/Ctrl+Space
             if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.code === "Space") {
-                if (!isRecording && !isTranscribing) {
+                if (!isRecordingRef.current && !isTranscribingRef.current) {
                     e.preventDefault()
-                    startRecording()
+                    startRecordingRef.current()
+                }
+                return
+            }
+
+            // Long-press ShiftLeft: start 500ms timer
+            if (e.code === "ShiftLeft" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                if (!isRecordingRef.current && !isTranscribingRef.current && shiftTimerRef.current === null) {
+                    setIsPreparing(true)
+                    shiftTimerRef.current = setTimeout(() => {
+                        shiftTimerRef.current = null
+                        setIsPreparing(false)
+                        shiftRecordingRef.current = true
+                        startRecordingRef.current()
+                    }, 500)
+                }
+                return
+            }
+
+            // Any other key pressed while waiting cancels the timer
+            // Ignore: repeated ShiftLeft, other modifier keys (IME may fire these),
+            // and composition events from input methods
+            if (shiftTimerRef.current !== null && e.code !== "ShiftLeft") {
+                // Don't cancel for modifier keys or composition — IME switching
+                // on Shift often fires synthetic modifier/process events
+                const isModifier = e.code.startsWith("Shift") || e.code.startsWith("Control")
+                    || e.code.startsWith("Alt") || e.code.startsWith("Meta")
+                    || e.key === "Process" || e.key === "Unidentified" || e.isComposing
+                if (!isModifier) {
+                    clearShiftTimer()
                 }
             }
         }
 
         const handleKeyUp = (e: KeyboardEvent) => {
-            if (!isRecording) return
-            // Stop recording when any modifier key is released
-            if (e.key === "Shift" || e.key === "Meta" || e.key === "Control") {
+            // ShiftLeft released while timer is pending: cancel (normal Shift press)
+            if (e.code === "ShiftLeft" && shiftTimerRef.current !== null) {
+                clearShiftTimer()
+                return
+            }
+
+            // ShiftLeft released after long-press recording started: stop recording
+            if (e.code === "ShiftLeft" && shiftRecordingRef.current && isRecordingRef.current) {
+                shiftRecordingRef.current = false
                 e.preventDefault()
                 const contextText = getCurrentText?.()
-                stopRecordingAndTranscribe(contextText)
+                stopRecordingRef.current(contextText)
+                return
             }
+
+            if (!isRecordingRef.current) return
+            // Stop recording when any modifier key is released (existing Shift+Cmd+Space flow)
+            if (e.key === "Shift" || e.key === "Meta" || e.key === "Control") {
+                // Don't stop if this was a long-press ShiftLeft release handled above
+                if (shiftRecordingRef.current) return
+                e.preventDefault()
+                const contextText = getCurrentText?.()
+                stopRecordingRef.current(contextText)
+            }
+        }
+
+        const handleBlurWhilePreparing = () => {
+            clearShiftTimer()
         }
 
         window.addEventListener("keydown", handleKeyDown)
         window.addEventListener("keyup", handleKeyUp)
+        window.addEventListener("blur", handleBlurWhilePreparing)
 
         return () => {
             window.removeEventListener("keydown", handleKeyDown)
             window.removeEventListener("keyup", handleKeyUp)
+            window.removeEventListener("blur", handleBlurWhilePreparing)
+            clearShiftTimer()
         }
-    }, [isVoiceEnabled, isRecording, isTranscribing, startRecording, stopRecordingAndTranscribe, getCurrentText])
+    }, [isVoiceEnabled, getCurrentText])
 
     // Window blur: auto-stop recording
     useEffect(() => {
@@ -106,6 +183,14 @@ export default function VoiceInputIndicator({ onTranscribed, getCurrentText, get
                 >
                     Cancel
                 </button>
+            </div>
+        )
+    }
+
+    if (isPreparing) {
+        return (
+            <div className="wk-voice-indicator wk-voice-preparing">
+                <span className="wk-voice-label">Hold for voice...</span>
             </div>
         )
     }

@@ -62,3 +62,8 @@
 .wk-voice-transcribing {
     color: var(--text-secondary);
 }
+
+.wk-voice-preparing {
+    color: var(--text-tertiary, #999);
+    opacity: 0.7;
+}
