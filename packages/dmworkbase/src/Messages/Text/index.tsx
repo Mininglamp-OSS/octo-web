@@ -56,6 +56,17 @@ export class TextCell extends MessageCell {
         return <a  key={`${message.clientMsgNo}-link-${k}`} href={link} target="__blank">{part.text}</a>
     }
 
+    isLargeCustomEmoji(): boolean {
+        const parts = this.props.message.parts
+        const emojiParts = parts?.filter((p: Part) => p.type === PartType.emoji) ?? []
+        const nonEmojiParts = parts?.filter((p: Part) => p.type !== PartType.emoji) ?? []
+        if (emojiParts.length === 1 && nonEmojiParts.length === 0) {
+            const emojiUrl = WKApp.emojiService.getImage(emojiParts[0].text)
+            return !!(emojiUrl && emojiUrl.includes("/emoji/custom_"))
+        }
+        return false
+    }
+
     getRenderMessageText() {
         const { message, context } = this.props
 
@@ -94,6 +105,20 @@ export class TextCell extends MessageCell {
             || parts?.map((p: Part) => p.text).join("")
             || ""
 
+        // 判断是否「只有一个自定义表情」：仅有一个 emoji part，无其他内容，且是 custom_ 图片
+        const emojiParts = parts?.filter((p: Part) => p.type === PartType.emoji) ?? []
+        const nonEmojiParts = parts?.filter((p: Part) => p.type !== PartType.emoji) ?? []
+        if (emojiParts.length === 1 && nonEmojiParts.length === 0) {
+            const emojiUrl = WKApp.emojiService.getImage(emojiParts[0].text)
+            if (emojiUrl && emojiUrl.includes("/emoji/custom_")) {
+                return (
+                    <span className="wk-message-text-richemoji wk-message-text-richemoji--large">
+                        <img alt={emojiParts[0].text} src={emojiUrl} width={120} height={120} />
+                    </span>
+                )
+            }
+        }
+
         return (
             <MarkdownContent
                 content={plainText}
@@ -107,7 +132,9 @@ export class TextCell extends MessageCell {
 
     render() {
         const { message, context } = this.props
-        return <MessageBase message={message} context={context} onBubble={() => {
+        const largeEmoji = this.isLargeCustomEmoji()
+        const bubbleStyle = largeEmoji ? { background: "transparent", boxShadow: "none", padding: 0 } : undefined
+        return <MessageBase message={message} context={context} bubbleStyle={bubbleStyle} onBubble={() => {
         }}>
 
             {

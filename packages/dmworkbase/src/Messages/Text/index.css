@@ -44,6 +44,11 @@ body[theme-mode=dark] .wk-message-text-recv {
     height: 22px;
 }
 
+.wk-message-text-richemoji--large img {
+    width: 120px;
+    height: 120px;
+}
+
 .wk-message-text-reply {
     display: flex;
     color: rgb(0, 0, 0,0.5);
