@@ -1,4 +1,4 @@
-import { Modal } from "@douyinfe/semi-ui"
+import WKModal from "../../Components/WKModal"
 import { ChannelInfoListener } from "wukongimjssdk"
 import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContent } from "wukongimjssdk"
 import React from "react"
@@ -180,13 +180,13 @@ export class MergeforwardCell extends MessageCell<any,MergeforwardCellState> {
                 </div>
             </div>
         </div>
-        <Modal className="wk-base-modal"  visible={showList} footer={null} onCancel={()=>{
+        <WKModal className="wk-base-modal" visible={showList} onCancel={()=>{
             this.setState({
                 showList: false,
             })
         }}>
             <MergeforwardMessageList mergeforwardContent={content}></MergeforwardMessageList>
-        </Modal>
+        </WKModal>
         </MessageBase>
     }
 }

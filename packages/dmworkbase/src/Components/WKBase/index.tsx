@@ -1,4 +1,5 @@
 import { Modal } from "@douyinfe/semi-ui";
+import WKModal from "../WKModal";
 import { Channel } from "wukongimjssdk";
 import React, { Component, HTMLProps, ReactNode } from "react";
 import ConversationSelect from "../ConversationSelect";
@@ -172,14 +173,10 @@ export default class WKBase
     return (
       <div className="wk-base">
         {this.props.children}
-        <Modal
-          width={400}
-          footer={null}
-          closeIcon={<div></div>}
+        <WKModal
           className="wk-base-modal-userinfo wk-base-modal"
           visible={showUserInfo}
-          mask={false}
-          centered
+          options={{ mask: false, closable: false }}
           onCancel={() => {
             this.setState({
               showUserInfo: false,
@@ -200,14 +197,12 @@ export default class WKBase
               }}
             ></UserInfo>
           ) : undefined}
-        </Modal>
+        </WKModal>
 
-        <Modal
+        <WKModal
           className="wk-base-modal"
-          width={400}
-          footer={null}
           visible={showConversationSelect}
-          mask={false}
+          options={{ mask: false }}
           onCancel={() => {
             this.setState({
               showConversationSelect: false,
@@ -225,24 +220,22 @@ export default class WKBase
             }}
             title={conversationSelectTitle}
           ></ConversationSelect>
-        </Modal>
+        </WKModal>
 
-        <Modal
+        <WKModal
           title={alertTitle}
           visible={this.state.showAlert}
-          onOk={() => {
-            if (onAlertOk) {
-              onAlertOk();
-            }
-            this.cancelAlert();
+          onCancel={() => { this.cancelAlert(); }}
+          options={{ maskClosable: false }}
+          footerConfig={{
+            onOk: () => {
+              if (onAlertOk) { onAlertOk(); }
+              this.cancelAlert();
+            },
           }}
-          onCancel={() => {
-            this.cancelAlert();
-          }}
-          maskClosable={false}
         >
           {alertContent}
-        </Modal>
+        </WKModal>
         <Modal
           closable={this.state.globalModalOptions?.closable}
           className={this.state.globalModalOptions?.className}
@@ -254,14 +247,11 @@ export default class WKBase
           {this.state.globalModalOptions?.body}
         </Modal>
         {/* 加入组织 */}
-        <Modal
+        <WKModal
           visible={showJoinOrgInfo}
-          width={400}
           title="加入组织"
           className="wk-base-modal-join-org"
-          footer={null}
-          mask={false}
-          centered
+          options={{ mask: false }}
           onCancel={() => {
             this.setState({
               showJoinOrgInfo: false,
@@ -278,7 +268,7 @@ export default class WKBase
               style={{ width: "100%", height: "100%", border: "none" }}
             ></iframe>
           )}
-        </Modal>
+        </WKModal>
       </div>
     );
   }

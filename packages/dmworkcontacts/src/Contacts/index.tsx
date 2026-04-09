@@ -1,11 +1,11 @@
 import React, { useRef, useState, useCallback } from "react";
 import { Component } from "react";
-import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary } from "@octo/base"
+import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
 import classnames from "classnames";
-import { Toast, Modal, Tooltip } from "@douyinfe/semi-ui";
+import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import { ChevronRight, ChevronDown, Users, Bot, UsersRound, Search as SearchIcon } from "lucide-react";
 
 import { Channel, ChannelTypePerson, ChannelTypeGroup, WKSDK, ChannelInfoListener, ChannelInfo } from "wukongimjssdk";
@@ -760,12 +760,10 @@ export default class ContactsList extends Component<any, ContactsState> {
                         }
                     }]} />
 
-                    <Modal
+                    <WKModal
                         title={null}
                         visible={this.state.userInfoVisible}
                         onCancel={() => this.setState({ userInfoVisible: false })}
-                        footer={null}
-                        width={400}
                         className="wk-base-modal-userinfo wk-base-modal"
                     >
                         {this.state.userInfoUid && (
@@ -774,7 +772,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                                 onClose={() => this.setState({ userInfoVisible: false })}
                             />
                         )}
-                    </Modal>
+                    </WKModal>
 
                     <BotDetailModal
                         uid={this.state.botDetailUid || ""}

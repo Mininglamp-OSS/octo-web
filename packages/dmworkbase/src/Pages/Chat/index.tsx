@@ -4,8 +4,9 @@ import ConversationList, { ConvFilter } from "../../Components/ConversationList"
 import Provider from "../../Service/Provider";
 import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
-import { Spin, Modal, Popover } from "@douyinfe/semi-ui";
+import { Spin, Popover } from "@douyinfe/semi-ui";
 import WKButton from "../../Components/WKButton";
+import WKModal from "../../Components/WKModal";
 import { Search, Plus } from "lucide-react";
 import { ChatVM, handleGlobalSearchClick } from "./vm";
 import "./index.css";
@@ -411,14 +412,12 @@ export default class ChatPage extends Component<any, ChatPageState> {
                   this.spaceListRef?.loadSpaces();
                 }}
               />
-              <Modal
+              <WKModal
+                size="full"
                 visible={vm.showGlobalSearch}
-                closeOnEsc={true}
                 onCancel={() => {
                   vm.showGlobalSearch = false
                 }}
-                footer={null}
-                width="80%"
                 >
                 <div style={{ marginTop: '30px' }}>
                   <ErrorBoundary moduleName="搜索">
@@ -429,10 +428,10 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     }}/>
                   </ErrorBoundary>
                 </div>
-              </Modal>
+              </WKModal>
 
               {/* 附件未发送切换会话确认弹窗 */}
-              <Modal
+              <WKModal
                 visible={!!this.state.pendingConfirm}
                 title="有未发送的附件"
                 footer={
@@ -455,13 +454,12 @@ export default class ChatPage extends Component<any, ChatPageState> {
                   </div>
                 }
                 onCancel={() => this.setState({ pendingConfirm: null })}
-                closable={false}
-                centered
+                options={{ closable: false }}
               >
                 <p style={{ margin: 0, color: 'var(--wk-text-secondary)', fontSize: 'var(--wk-text-size-md)' }}>
                   切换会话后，未发送的附件将被丢弃，是否继续？
                 </p>
-              </Modal>
+              </WKModal>
             </div>
           );
         }}

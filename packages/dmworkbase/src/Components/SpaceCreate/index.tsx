@@ -1,5 +1,6 @@
 import React, { Component } from "react";
-import { Modal, Toast } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
+import WKModal from "../WKModal";
 import WKInput from "../WKInput";
 import { SpaceService } from "../../Service/SpaceService";
 import WKButton from "../WKButton";
@@ -65,13 +66,10 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
         const { name, description, loading, inviteUrl } = this.state;
 
         return (
-            <Modal
+            <WKModal
                 title={inviteUrl ? "邀请成员" : "创建 Space"}
                 visible={visible}
                 onCancel={this.handleClose}
-                closeOnEsc
-                footer={null}
-                width={420}
             >
                 {inviteUrl ? (
                     <div className="wk-spacecreate-invite">
@@ -112,7 +110,7 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                         </div>
                     </div>
                 )}
-            </Modal>
+            </WKModal>
         );
     }
 }

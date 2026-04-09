@@ -1,5 +1,5 @@
 import React from "react";
-import { Modal } from "@douyinfe/semi-ui";
+import WKModal from "../WKModal";
 import WKButton from "../WKButton";
 import WKInput from "../WKInput";
 import "./index.css";
@@ -47,13 +47,10 @@ export default function JoinSpaceModal({
         inviteInfo.member_count >= inviteInfo.max_users;
 
     return (
-        <Modal
+        <WKModal
             title="加入 Space"
             visible={visible}
             onCancel={onCancel}
-            footer={null}
-            width={400}
-            closable
         >
             {step === "input" && (
                 <div className="wk-join-space-modal">
@@ -117,6 +114,6 @@ export default function JoinSpaceModal({
                     </div>
                 </div>
             )}
-        </Modal>
+        </WKModal>
     );
 }

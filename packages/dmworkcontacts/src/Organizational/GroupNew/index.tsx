@@ -3,7 +3,6 @@ import { Component, ReactNode } from "react";
 import WKSDK, { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 
 import {
-  Modal,
   Button,
   Space,
   Tree,
@@ -13,7 +12,7 @@ import {
   Toast,
 } from "@douyinfe/semi-ui";
 import { BasicTreeNodeData } from "@douyinfe/semi-foundation/lib/cjs/tree/foundation";
-import { WKApp, ThemeMode, WKViewQueueHeader } from "@octo/base";
+import { WKApp, ThemeMode, WKViewQueueHeader, WKModal } from "@octo/base";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import "./index.css";
 import { SuperGroup } from "@octo/base/src/Utils/const";
@@ -574,14 +573,11 @@ export class OrganizationalGroupNew extends Component<
           </div>
         )}
 
-        <Modal
-          width={640}
+        <WKModal
+          size="lg"
           className="wk-main-modal-organizational-group-new"
-          footer={null}
-          closeIcon={<div></div>}
           visible={showModal}
-          centered
-          maskClosable={false}
+          options={{ closable: false, maskClosable: false }}
           onCancel={() => {
             this.onCancel();
           }}
@@ -766,7 +762,7 @@ export class OrganizationalGroupNew extends Component<
               </Space>
             </div>
           </div>
-        </Modal>
+        </WKModal>
       </div>
     );
   }

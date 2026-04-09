@@ -5,7 +5,8 @@ import MessageBase from "../Base"
 import WKApp from "../../App"
 import { FileContent } from "./FileContent"
 import { WKSDK, Task, TaskStatus } from "wukongimjssdk"
-import { Toast, Modal } from "@douyinfe/semi-ui"
+import { Toast } from "@douyinfe/semi-ui"
+import WKModal from "../../Components/WKModal"
 import MarkdownContent from "../Text/MarkdownContent"
 
 export { FileContent } from "./FileContent"
@@ -360,12 +361,11 @@ export class FileCell extends MessageCell<any, FileCellState> {
                         </div>
                     )}
                 </div>
-                <Modal
+                <WKModal
                     className="wk-base-modal"
                     visible={this.state.textPreviewVisible}
                     title={this.state.textPreviewName}
-                    footer={null}
-                    width={720}
+                    size="lg"
                     onCancel={() => this.setState({ textPreviewVisible: false })}
                 >
                     <div className="wk-text-file-preview">
@@ -375,7 +375,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
                             <pre className="wk-text-file-preview-plain">{this.state.textPreviewContent}</pre>
                         )}
                     </div>
-                </Modal>
+                </WKModal>
             </MessageBase>
         )
     }

@@ -1,5 +1,6 @@
 import React, { Component } from "react";
-import { Modal, Button, Spin, Toast, Input } from "@douyinfe/semi-ui";
+import { Button, Spin, Toast, Input } from "@douyinfe/semi-ui";
+import WKModal from "../WKModal";
 import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import WKApp from "../../App";
 import WKAvatar from "../WKAvatar";
@@ -143,12 +144,10 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         } catch {}
 
         return (
-            <Modal
+            <WKModal
                 title={null}
                 visible={visible}
                 onCancel={onClose}
-                footer={null}
-                width={380}
                 className="wk-bot-detail-modal"
             >
                 {loading ? (
@@ -228,7 +227,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                         )}
                     </div>
                 )}
-            </Modal>
+            </WKModal>
         );
     }
 }

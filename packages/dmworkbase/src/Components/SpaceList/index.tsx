@@ -1,6 +1,7 @@
 import React, { Component } from "react";
 import { IconPlus, IconSearch, IconLink } from "@douyinfe/semi-icons";
-import { Spin, Modal, Toast, Tooltip } from "@douyinfe/semi-ui";
+import { Spin, Toast, Tooltip } from "@douyinfe/semi-ui";
+import WKModal from "../WKModal";
 import { Space, SpaceService } from "../../Service/SpaceService";
 import SpaceItem from "../SpaceItem";
 import ActionListItem from "../ActionListItem";
@@ -116,10 +117,9 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
                 />
 
                 {/* 邀请他人弹窗 */}
-                <Modal
+                <WKModal
                     title={`邀请加入「${inviteSpaceName}」`}
                     visible={showInviteModal}
-                    footer={null}
                     onCancel={() => this.setState({ showInviteModal: false, inviteCode: "" })}
                 >
                     <div className="wk-spacelist-invite-modal">
@@ -132,7 +132,7 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
                             📋 复制邀请链接
                         </button>
                     </div>
-                </Modal>
+                </WKModal>
 
                 {loading ? (
                     <div className="wk-spacelist-loading">

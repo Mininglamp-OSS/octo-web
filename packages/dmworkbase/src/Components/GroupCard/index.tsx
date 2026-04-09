@@ -1,5 +1,6 @@
 import React, { Component } from "react";
-import { Modal, Button, Spin } from "@douyinfe/semi-ui";
+import { Button, Spin } from "@douyinfe/semi-ui";
+import WKModal from "../WKModal";
 import { Channel, ChannelTypeGroup, WKSDK } from "wukongimjssdk";
 import WKAvatar from "../WKAvatar";
 import "./index.css";
@@ -66,12 +67,10 @@ export default class GroupCard extends Component<GroupCardProps, GroupCardState>
         const { loading, name, memberCount } = this.state;
 
         return (
-            <Modal
+            <WKModal
                 title={null}
                 visible={visible}
                 onCancel={onClose}
-                footer={null}
-                width={380}
                 className="wk-group-card-modal"
             >
                 {loading ? (
@@ -100,7 +99,7 @@ export default class GroupCard extends Component<GroupCardProps, GroupCardState>
                         </Button>
                     </div>
                 )}
-            </Modal>
+            </WKModal>
         );
     }
 }

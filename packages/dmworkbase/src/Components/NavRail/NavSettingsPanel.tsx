@@ -1,7 +1,8 @@
 import WKApp, { ThemeMode } from "../../App";
 import classnames from "classnames";
 import React, { Component } from "react";
-import { Badge, Modal, Toast, Progress, Button } from "@douyinfe/semi-ui";
+import { Badge, Toast, Progress, Button } from "@douyinfe/semi-ui";
+import WKModal from "../WKModal";
 
 export interface NavSettingsPanelProps {
     settingSelected: boolean;
@@ -87,23 +88,19 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps> {
                 </ul>
 
                 {/* 版本信息 Modal */}
-                <Modal
+                <WKModal
                     title="检测到新版本信息"
                     visible={showNewVersion}
-                    footer={null}
                     onCancel={() => onSetShowNewVersion(false)}
                 >
                     {lastVersionInfo && <VersionCheckView lastVersion={lastVersionInfo} />}
-                </Modal>
+                </WKModal>
 
                 {/* 更新进度 Modal */}
-                <Modal
+                <WKModal
                     title="检测更新"
                     visible={showAppVersion}
-                    centered
-                    closeOnEsc={false}
-                    maskClosable={false}
-                    bodyStyle={{ overflow: "auto", height: 200 }}
+                    options={{ maskClosable: false }}
                     onCancel={() => { onSetShowAppVersion(false); onNotifyListener(); }}
                     footer={showAppUpdateOperation ? (
                         <>
@@ -112,6 +109,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps> {
                         </>
                     ) : undefined}
                 >
+                    <div style={{ overflow: "auto", height: 200 }}>
                     {lastVersionInfo && (
                         <div className="wk-versioncheckview">
                             <div className="wk-versioncheckview-content">
@@ -128,7 +126,8 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps> {
                     {showAppUpdate && (
                         <Progress percent={appUpdateProgress} style={{ height: "8px" }} showInfo aria-label="update progress" />
                     )}
-                </Modal>
+                    </div>
+                </WKModal>
             </>
         );
     }
