@@ -24,6 +24,25 @@ const config: StorybookConfig = {
   framework: '@storybook/react-vite',
   viteFinal: (config) =>
     mergeConfig(config, {
+      optimizeDeps: {
+        include: [
+          '@douyinfe/semi-ui/lib/es/checkbox',
+          '@lottiefiles/lottie-player/dist/tgs-player',
+          '@tanstack/react-virtual',
+          '@tauri-apps/api',
+          '@tauri-apps/api/event',
+          '@tauri-apps/api/process',
+          '@tauri-apps/api/updater',
+          'benz-amr-recorder',
+          'bignumber.js',
+          'howler',
+          'qrcode.react',
+          'react-avatar-editor',
+          'react-dom',
+          'web-vitals',
+          'zxcvbn',
+        ],
+      },
       css: {
         postcss: {
           plugins: [postcssImport()],
