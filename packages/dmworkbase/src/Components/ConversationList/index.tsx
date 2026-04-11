@@ -448,44 +448,114 @@ export default class ConversationList extends Component<ConversationListProps, C
             <ContextMenus onContext={(ctx) => {
                 this.contextMenusContext = ctx
             }} menus={(() => {
-                const extraMenus = this.props.extraContextMenus ? this.props.extraContextMenus(selectConversationWrap) : []
-                const baseMenus = [
-                    {
+                const conv = selectConversationWrap
+                const channelInfo = conv?.channelInfo
+                const channel = conv?.channel
+                const extraMenus = this.props.extraContextMenus ? this.props.extraContextMenus(conv) : []
+
+                const menus: any[] = []
+
+                // 1. 标为已读（有未读时显示）
+                if (conv && conv.unread > 0) {
+                    menus.push({
                         title: "标为已读",
                         icon: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
-                    },
-                    {
-                        title: "关闭聊天窗口",
-                        icon: "M18 6 6 18 M6 6l12 12",
                         onClick: () => {
-                            Modal.confirm({
-                                title: '确认关闭',
-                                content: '确定要关闭此聊天窗口吗？',
-                                okText: '确定',
-                                cancelText: '取消',
-                                onOk: () => { this.onCloseChat(selectConversationWrap?.channel!) },
+                            if (!channel) return
+                            const apiURL = WKApp.apiClient.config.apiURL
+                            const token = WKApp.loginInfo.token || ""
+                            fetch(`${apiURL}conversation/clearUnread`, {
+                                method: "PUT",
+                                headers: { "Content-Type": "application/json", token },
+                                body: JSON.stringify({
+                                    channel_id: channel.channelID,
+                                    channel_type: channel.channelType,
+                                    unread: 0,
+                                }),
                             })
                         }
-                    },
-                    ...(extraMenus.length > 0 ? [{
+                    })
+                }
+
+                // 2. 移到分组（仅群聊，且有分组数据时显示）
+                if (extraMenus.length > 0) {
+                    menus.push({
                         title: "移到分组",
                         icon: "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
                         children: extraMenus,
-                    }] : []),
-                    {
-                        title: selectConversationWrap?.channelInfo?.top ? "取消置顶" : "置顶",
-                        icon: "M12 2L2 7l10 5 10-5-10-5z M2 17l10 5 10-5 M2 12l10 5 10-5",
-                        onClick: () => {
-                            if (selectConversationWrap?.channelInfo) this.onTop(selectConversationWrap.channelInfo)
-                        }
-                    },
-                    { separator: true } as any,
-                    {
-                        title: "更多",
-                        icon: "M12 12m-1 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0 M12 5m-1 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0 M12 19m-1 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0",
-                    },
-                ]
-                return baseMenus
+                    })
+                }
+
+                // 3. 置顶 / 取消置顶
+                menus.push({
+                    title: channelInfo?.top ? "取消置顶" : "置顶",
+                    icon: "M12 2L2 7l10 5 10-5-10-5z M2 17l10 5 10-5 M2 12l10 5 10-5",
+                    onClick: () => { if (channelInfo) this.onTop(channelInfo) }
+                })
+
+                // 4. 免打扰 / 关闭免打扰
+                menus.push({
+                    title: channelInfo?.mute ? "关闭免打扰" : "开启免打扰",
+                    icon: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9 M13.73 21a2 2 0 0 1-3.46 0",
+                    onClick: () => { if (channelInfo) this.onMute(channelInfo) }
+                })
+
+                // 5. 分隔线
+                menus.push({ separator: true })
+
+                // 6. 关闭聊天窗口
+                menus.push({
+                    title: "关闭聊天窗口",
+                    icon: "M18 6 6 18 M6 6l12 12",
+                    onClick: () => {
+                        Modal.confirm({
+                            title: '确认关闭',
+                            content: '确定要关闭此聊天窗口吗？',
+                            okText: '确定',
+                            cancelText: '取消',
+                            onOk: () => { this.onCloseChat(channel!) },
+                        })
+                    }
+                })
+
+                // 7. 更多（子菜单：清空聊天记录 / 关闭并清空）
+                menus.push({
+                    title: "更多",
+                    icon: "M12 12m-1 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0 M12 5m-1 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0 M12 19m-1 0a1 1 0 1 0 2 0 1 1 0 1 0-2 0",
+                    children: [
+                        {
+                            title: "清空聊天记录",
+                            danger: true,
+                            onClick: () => {
+                                Modal.confirm({
+                                    title: '确认清空',
+                                    content: '确定要清空所有聊天记录吗？此操作不可撤销。',
+                                    okText: '确定',
+                                    cancelText: '取消',
+                                    onOk: () => { this.onClearMessages(channel!) },
+                                })
+                            }
+                        },
+                        {
+                            title: "关闭窗口并清空记录",
+                            danger: true,
+                            onClick: () => {
+                                Modal.confirm({
+                                    title: '确认关闭并清空',
+                                    content: '确定要关闭窗口并清空所有聊天记录吗？此操作不可撤销。',
+                                    okText: '确定',
+                                    cancelText: '取消',
+                                    onOk: () => {
+                                        this.onCloseChat(channel!)
+                                        this.onClearMessages(channel!)
+                                    },
+                                })
+                            }
+                        },
+                    ]
+                })
+
+                return menus
             })()} />
         </div>
     }
