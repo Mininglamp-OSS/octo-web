@@ -741,7 +741,7 @@ export default class ConversationVM extends ProviderListener {
             }
         }, {})
 
-        if (this.channel.channelType === ChannelTypeGroup) {
+        if (this.channel.channelType === ChannelTypeGroup || this.channel.channelType === ChannelTypeCommunityTopic) {
 
             // 加载频道信息
             this.channelInfo = WKSDK.shared().channelManager.getChannelInfo(this.channel)
