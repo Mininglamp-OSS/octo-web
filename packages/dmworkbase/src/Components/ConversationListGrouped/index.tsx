@@ -87,12 +87,36 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
     )
     const groupConvMap = new Map(groupConversations.map(c => [c.channel.channelID, c]))
 
+    // Thread conv: parentGroupNo → list
+    const threadConvsByParent = new Map<string, ConversationWrap[]>()
+    for (const conv of conversations) {
+        if (conv.channel.channelType !== ChannelTypeGroup) continue
+        // skip groups, only threads below
+    }
+    for (const conv of conversations) {
+        const parentGroupNo = conv.channelInfo?.orgData?.parentGroupNo
+        if (parentGroupNo) {
+            const list = threadConvsByParent.get(parentGroupNo) || []
+            list.push(conv)
+            threadConvsByParent.set(parentGroupNo, list)
+        }
+    }
+
     const categorizedGroupNos = new Set(
         categories.flatMap(cat => (cat.groups || []).map(g => g.group_no))
     )
-    const ungroupedConvs = groupConversations.filter(
-        c => !categorizedGroupNos.has(c.channel.channelID)
-    )
+    const ungroupedGroupNos = groupConversations
+        .filter(c => !categorizedGroupNos.has(c.channel.channelID))
+        .map(c => c.channel.channelID)
+    const ungroupedConvs: ConversationWrap[] = []
+    for (const groupNo of ungroupedGroupNos) {
+        const groupConv = groupConvMap.get(groupNo)
+        if (groupConv) {
+            ungroupedConvs.push(groupConv)
+            const threads = threadConvsByParent.get(groupNo) || []
+            ungroupedConvs.push(...threads)
+        }
+    }
 
     // 构建「移到分组」子菜单（含 ✓ 标识 + 新建分组入口）
     const buildExtraContextMenus = (conv: ConversationWrap | undefined): ContextMenusData[] => {
@@ -128,9 +152,16 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
     )
 
     const categoriesForView = categories.map(cat => {
-        const catConvs = (cat.groups || [])
-            .map(g => groupConvMap.get(g.group_no))
-            .filter((c): c is ConversationWrap => c !== undefined)
+        const catConvs: ConversationWrap[] = []
+        for (const g of (cat.groups || [])) {
+            const groupConv = groupConvMap.get(g.group_no)
+            if (groupConv) {
+                catConvs.push(groupConv)
+                // 해당 그룹의 thread conv도 포함
+                const threads = threadConvsByParent.get(g.group_no) || []
+                catConvs.push(...threads)
+            }
+        }
         const groupCount = (cat.groups || []).length
         const unreadCount = catConvs.reduce((sum, c) => sum + (c.unread || 0), 0)
         return {
