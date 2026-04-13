@@ -113,6 +113,20 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
     this.setState({ view: "list" })
   }
 
+  private handleOpenFullView = () => {
+    const { vmState } = this.state
+    const thread = vmState.thread
+    if (!thread?.channel_id) return
+    this.setState({ showMoreMenu: false })
+    try {
+      const threadChannel = new Channel(thread.channel_id, ChannelTypeCommunityTopic)
+      WKApp.endpoints.showConversation(threadChannel)
+      this.props.onClose()
+    } catch {
+      Toast.error('打开失败，请重试')
+    }
+  }
+
   private handleEditThread = () => {
     const { vmState } = this.state
     const thread = vmState.thread
@@ -300,6 +314,11 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
               showArrow={false}
               content={
                 <div className="wk-thread-more-menu">
+                  {vmState.thread?.channel_id && (
+                    <div className="wk-thread-more-menu-item" onClick={this.handleOpenFullView}>
+                      在完整视图打开
+                    </div>
+                  )}
                   <div className="wk-thread-more-menu-item" onClick={this.handleEditThread}>
                     编辑子区名称
                   </div>
