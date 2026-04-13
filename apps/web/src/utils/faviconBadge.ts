@@ -39,17 +39,17 @@ function drawBadge(ctx: CanvasRenderingContext2D, text: string, size: number): v
   const isLong     = text.length > 2   // "99+"
   const isTwoDigit = text.length === 2
 
-  const badgeH = size * 0.50
-  const ry     = badgeH / 2  // 圆角半径 = 高度一半（胶囊形）
+  const badgeH = size * 0.60
+  const ry     = badgeH / 2  // 圆角半径 = 高度一半（完整胶囊）
 
-  // 宽度：撑满整个图标宽度
+  // 宽度撑满图标全宽
   const rx = size / 2
 
-  // 贴右下角，水平居中于图标
+  // 贴底部，水平居中
   const cx = size / 2
   const cy = size - ry
 
-  // 圆角矩形（胶囊形）
+  // 圆角矩形
   const x1 = cx - rx, y1 = cy - ry
   const x2 = cx + rx, y2 = cy + ry
 
@@ -67,8 +67,8 @@ function drawBadge(ctx: CanvasRenderingContext2D, text: string, size: number): v
   ctx.fillStyle = BADGE_COLOR
   ctx.fill()
 
-  // 数字：字号尽可能大，撑满角标高度
-  const fontSize = Math.round(ry * 1.5)
+  // 数字：字号最大化，900 粗细
+  const fontSize = Math.round(badgeH * 0.80)
   ctx.font = `900 ${fontSize}px system-ui, -apple-system, sans-serif`
   ctx.fillStyle    = BADGE_TEXT_COLOR
   ctx.textAlign    = 'center'
