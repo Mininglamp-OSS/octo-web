@@ -2,190 +2,171 @@
  * faviconBadge.ts
  * 在浏览器 Tab favicon 上叠加未读数角标，同步更新 document.title 前缀。
  *
- * 实现参考 Tinycon（业界最广泛引用的 favicon badge 库）核心算法：
- * - canvas 尺寸 = 16 × devicePixelRatio，与浏览器显示尺寸一致，避免降采样模糊
- * - 角标为圆角矩形，底部/右部贴齐 canvas 边缘
- * - 字体 bold arial，textAlign=right / textBaseline=top
- * - 同步修改 document.title 前缀作为兜底（Safari/IE 不支持 Canvas 时仍有效）
+ * 设计原则：
+ * - canvas 尺寸跟随原始 favicon 尺寸（64px ICO → 64px canvas）
+ * - 角标高度 = canvas 高度的 35%，位于右下角，不超出边界
+ * - 圆角矩形 + 粗字体，无描边
+ * - document.title 前缀作为兜底
  */
 
-const BADGE_BG = '#F03D25'
-const BADGE_FG = '#ffffff'
+const BADGE_BG  = '#F03D25'
+const BADGE_FG  = '#ffffff'
 const FALLBACK_BG = '#5b6abf'
 
-// devicePixelRatio 感知（Retina 屏用 2x）
-const r = Math.ceil(typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1)
-const SIZE = 16 * r   // canvas 边长，与 favicon 显示尺寸一致
+// 角标占图标高度的比例（0~1）
+const BADGE_HEIGHT_RATIO = 0.36
 
 let originalFaviconHref: string | null = null
 let originalTitle: string | null = null
-let canvas: HTMLCanvasElement | null = null
 
 // ── DOM helpers ──────────────────────────────────────────────────────────────
 
-function getFaviconLink(): HTMLLinkElement {
-  // 移除旧的，重新插入（部分浏览器需要替换节点才刷新）
-  const existing = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
-  if (existing) return existing
-  const link = document.createElement('link')
-  link.rel = 'icon'
-  document.head.appendChild(link)
-  return link
-}
-
 function setFaviconHref(url: string) {
-  // 替换节点而非修改 href，Safari 需要这样才刷新
-  const old = document.querySelector('link[rel~="icon"]')
-  if (old) old.parentNode?.removeChild(old)
+  // 移除旧节点再插入，Safari 需要替换节点才刷新
+  document.querySelectorAll('link[rel~="icon"]').forEach(el => el.remove())
   const link = document.createElement('link')
-  link.rel = 'icon'
+  link.rel  = 'icon'
   link.type = 'image/png'
   link.href = url
   document.head.appendChild(link)
 }
 
-function getCanvas(): HTMLCanvasElement {
-  if (!canvas) {
-    canvas = document.createElement('canvas')
-    canvas.width = SIZE
-    canvas.height = SIZE
-  }
-  return canvas
+function getOriginalFaviconHref(): string {
+  const link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
+  return link?.getAttribute('href') || '/favicon.ico'
 }
 
 // ── 保存原始状态 ───────────────────────────────────────────────────────────
 
 function saveOriginals() {
   if (originalFaviconHref === null) {
-    const link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
-    originalFaviconHref = link?.getAttribute('href') || '/favicon.ico'
+    originalFaviconHref = getOriginalFaviconHref()
   }
   if (originalTitle === null) {
     originalTitle = document.title
   }
 }
 
-// ── 角标绘制（Tinycon 算法）──────────────────────────────────────────────────
+// ── 角标绘制 ─────────────────────────────────────────────────────────────────
 
-function drawBubble(ctx: CanvasRenderingContext2D, label: string) {
-  const len = label.length - 1
+/**
+ * 在 canvas 右下角绘制红色圆角矩形角标
+ * @param ctx  canvas 2d context
+ * @param text 显示文字，如 "3" / "18" / "99+"
+ * @param size canvas 边长（px）
+ */
+function drawBadge(ctx: CanvasRenderingContext2D, text: string, size: number) {
+  const bh     = Math.round(size * BADGE_HEIGHT_RATIO)  // 角标高度
+  const radius = bh / 2                                  // 圆角 = 高度一半 → 胶囊形
 
-  // 角标尺寸：宽随位数增长，高固定
-  const bw = 7 * r + 6 * r * len
-  const bh = 9 * r
+  // 字体大小：撑满高度的 70%
+  const fontSize = Math.round(bh * 0.70)
+  ctx.font = `bold ${fontSize}px system-ui, arial, sans-serif`
 
-  // 贴齐右边和底边
-  const top    = SIZE - bh
-  const left   = SIZE - bw - r
-  const bottom = SIZE
-  const right  = SIZE
-  const radius = 2 * r
+  // 先量文字宽度，动态确定角标宽度（保证文字不被截断）
+  const textW  = ctx.measureText(text).width
+  const bw     = Math.max(bh, textW + radius * 1.2)  // 最小宽 = 高（正圆），宽时按文字撑开
 
-  ctx.fillStyle   = BADGE_BG
-  ctx.strokeStyle = BADGE_BG
-  ctx.lineWidth   = r
+  // 贴右下角，允许超出 canvas 边界 25%（模拟 iOS 角标悬浮效果）
+  const overhang = Math.round(bh * 0.25)
+  const x  = size - bw + overhang   // 左边缘
+  const y  = size - bh + overhang   // 上边缘
+  const x2 = size + overhang        // 右边缘（可超出）
+  const y2 = size + overhang        // 下边缘（可超出）
 
   // 圆角矩形
+  ctx.fillStyle = BADGE_BG
   ctx.beginPath()
-  ctx.moveTo(left + radius, top)
-  ctx.quadraticCurveTo(left, top, left, top + radius)
-  ctx.lineTo(left, bottom - radius)
-  ctx.quadraticCurveTo(left, bottom, left + radius, bottom)
-  ctx.lineTo(right - radius, bottom)
-  ctx.quadraticCurveTo(right, bottom, right, bottom - radius)
-  ctx.lineTo(right, top + radius)
-  ctx.quadraticCurveTo(right, top, right - radius, top)
+  ctx.moveTo(x + radius, y)
+  ctx.lineTo(x2 - radius, y)
+  ctx.quadraticCurveTo(x2, y, x2, y + radius)
+  ctx.lineTo(x2, y2 - radius)
+  ctx.quadraticCurveTo(x2, y2, x2 - radius, y2)
+  ctx.lineTo(x + radius, y2)
+  ctx.quadraticCurveTo(x, y2, x, y2 - radius)
+  ctx.lineTo(x, y + radius)
+  ctx.quadraticCurveTo(x, y, x + radius, y)
   ctx.closePath()
   ctx.fill()
 
-  // 底部阴影线（增加立体感）
-  ctx.beginPath()
-  ctx.strokeStyle = 'rgba(0,0,0,0.3)'
-  ctx.moveTo(left + radius / 2, bottom)
-  ctx.lineTo(right - radius / 2, bottom)
-  ctx.stroke()
-
-  // 数字文字
+  // 文字居中
   ctx.fillStyle    = BADGE_FG
-  ctx.textAlign    = 'right'
-  ctx.textBaseline = 'top'
-  // webkit 字体略细，加 bold 补偿
-  ctx.font = `bold ${10 * r}px arial`
-  ctx.fillText(label, r === 2 ? 29 : 15, 6 * r)
+  ctx.textAlign    = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(text, x + bw / 2, y + bh / 2)
 }
 
-function renderWithBadge(img: HTMLImageElement | null, label: string): string {
-  const c = getCanvas()
-  const ctx = c.getContext('2d')!
-
-  ctx.clearRect(0, 0, SIZE, SIZE)
+function renderBadge(img: HTMLImageElement | null, text: string, size: number): string {
+  const canvas = document.createElement('canvas')
+  // 扩展 canvas 一点，让超出部分可见
+  const overhang = Math.round(size * BADGE_HEIGHT_RATIO * 0.25)
+  canvas.width  = size + overhang
+  canvas.height = size + overhang
+  const ctx = canvas.getContext('2d')!
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
 
   if (img) {
-    ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, SIZE, SIZE)
+    ctx.drawImage(img, 0, 0, size, size)
   } else {
-    // 兜底：品牌色圆角矩形背景
-    const rad = SIZE * 0.18
+    const rad = size * 0.18
     ctx.fillStyle = FALLBACK_BG
     ctx.beginPath()
-    ctx.moveTo(rad, 0); ctx.lineTo(SIZE - rad, 0)
-    ctx.quadraticCurveTo(SIZE, 0, SIZE, rad)
-    ctx.lineTo(SIZE, SIZE - rad)
-    ctx.quadraticCurveTo(SIZE, SIZE, SIZE - rad, SIZE)
-    ctx.lineTo(rad, SIZE)
-    ctx.quadraticCurveTo(0, SIZE, 0, SIZE - rad)
+    ctx.moveTo(rad, 0); ctx.lineTo(size - rad, 0)
+    ctx.quadraticCurveTo(size, 0, size, rad)
+    ctx.lineTo(size, size - rad)
+    ctx.quadraticCurveTo(size, size, size - rad, size)
+    ctx.lineTo(rad, size)
+    ctx.quadraticCurveTo(0, size, 0, size - rad)
     ctx.lineTo(0, rad)
     ctx.quadraticCurveTo(0, 0, rad, 0)
     ctx.closePath()
     ctx.fill()
   }
 
-  drawBubble(ctx, label)
-  return c.toDataURL('image/png')
+  drawBadge(ctx, text, size)
+  return canvas.toDataURL('image/png')
 }
 
-// ── title 前缀（兜底 + 辅助） ────────────────────────────────────────────────
+// ── title 前缀 ────────────────────────────────────────────────────────────────
 
-function setTitleBadge(count: number) {
+function setTitlePrefix(count: number) {
   if (originalTitle === null) return
-  // 剥掉旧前缀
   const base = originalTitle.replace(/^\(\d+\+?\)\s*/, '')
   document.title = `(${count > 99 ? '99+' : count}) ${base}`
 }
 
-function clearTitleBadge() {
-  if (originalTitle !== null) {
-    document.title = originalTitle
-  }
+function clearTitlePrefix() {
+  if (originalTitle !== null) document.title = originalTitle
 }
 
-// ── 公开 API ─────────────────────────────────────────────────────────────────
+// ── 公开 API ──────────────────────────────────────────────────────────────────
 
 export function setFaviconBadge(count: number): void {
   if (typeof document === 'undefined') return
 
   saveOriginals()
+  setTitlePrefix(count)
 
   const label = count > 99 ? '99+' : String(count)
+  const src   = originalFaviconHref || '/favicon.ico'
 
-  // 同步更新 title
-  setTitleBadge(count)
-
-  // 如果不支持 canvas，title 前缀已经够用了
-  if (!getCanvas().getContext) return
-
-  const src = originalFaviconHref || '/favicon.ico'
   const img = new Image()
   img.crossOrigin = 'anonymous'
-  img.onload  = () => setFaviconHref(renderWithBadge(img, label))
-  img.onerror = () => setFaviconHref(renderWithBadge(null, label))
+
+  const render = (loadedImg: HTMLImageElement | null) => {
+    // 使用图片自身尺寸（64px ICO 就用 64），没有就用 64
+    const size = loadedImg ? Math.max(loadedImg.naturalWidth, loadedImg.naturalHeight, 64) : 64
+    setFaviconHref(renderBadge(loadedImg, label, size))
+  }
+
+  img.onload  = () => render(img)
+  img.onerror = () => render(null)
   img.src = src
 }
 
 export function clearFaviconBadge(): void {
   if (typeof document === 'undefined') return
-
-  clearTitleBadge()
-
-  const href = originalFaviconHref || '/favicon.ico'
-  setFaviconHref(href)
+  clearTitlePrefix()
+  setFaviconHref(originalFaviconHref || '/favicon.ico')
 }
