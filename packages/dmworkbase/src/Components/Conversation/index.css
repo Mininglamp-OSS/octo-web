@@ -69,16 +69,18 @@ body[theme-mode=dark] .wk-conversation-content {
     width: 32px;
     height: 32px;
     flex-shrink: 0;
+    margin-top: 2px;
+    overflow: visible;
 }
 
 .wk-message-item-fold-session-avatar > * {
     display: block;
-    width: 100%;
-    height: 100%;
 }
 
 .wk-message-item-fold-session-avatar-icon {
-    object-fit: contain;
+    width: 32px;
+    height: 32px;
+    max-width: none;
 }
 
 .wk-message-item-fold-session-card {
