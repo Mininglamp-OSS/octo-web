@@ -567,29 +567,18 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     position: relative;
 }
 
-/* L连接线：left = 44px（# icon 中心），width 4px */
+/* overflow 控件的竖线上半段（从顶部到中间，连接上方子区） */
 .wk-conv-compact-thread-overflow::after {
     content: '';
     position: absolute;
     left: 30px;
     top: 0;
     height: 50%;
-    width: 10px;
-    border-left: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
-    border-bottom: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
-    border-bottom-left-radius: 3px;
-}
-
-/* 展开态：overflow 控件下方有额外子区时，自身下半段也要有竖线 */
-.wk-conv-compact-thread-overflow--expanded::before {
-    content: '';
-    position: absolute;
-    left: 30px;
-    top: 50%;
-    bottom: 0;
     width: 1.5px;
     background: var(--wk-border-default, rgba(0,0,0,0.12));
 }
+
+/* 展开态控件置底，不需要下方延伸线 */
 
 .wk-conv-compact-thread-overflow:hover {
     color: var(--wk-brand-primary, #7C5CFC);

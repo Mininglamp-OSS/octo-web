@@ -42,6 +42,13 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
     conversationWrap, selected, onClick, onContextMenu, hasThreads,
 }) => {
     const channelInfo = conversationWrap.channelInfo
+    // channelInfo 未加载时主动拉取，加载完触发 re-render
+    React.useEffect(() => {
+        if (!channelInfo) {
+            WKSDK.shared().channelManager.fetchChannelInfo(conversationWrap.channel)
+        }
+    }, [conversationWrap.channel.channelID])
+
     const isThread = conversationWrap.channel.channelType === ChannelTypeCommunityTopic
 
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
