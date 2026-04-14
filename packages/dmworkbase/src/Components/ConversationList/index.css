@@ -532,10 +532,10 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 .wk-conv-compact-item--thread::after {
     content: '';
     position: absolute;
-    left: 35px;
+    left: 20px;
     top: 0;
     height: 50%;
-    width: 5px;
+    width: 20px;
     border-left: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
     border-bottom: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
     border-bottom-left-radius: 3px;
@@ -546,7 +546,7 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 .wk-conv-compact-item--thread:has(+ .wk-conv-compact-thread-overflow)::before {
     content: '';
     position: absolute;
-    left: 35px;
+    left: 20px;
     top: 50%;
     bottom: 0;
     width: 1.5px;
@@ -571,10 +571,10 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 .wk-conv-compact-thread-overflow::after {
     content: '';
     position: absolute;
-    left: 35px;
+    left: 20px;
     top: 0;
     height: 50%;
-    width: 5px;
+    width: 20px;
     border-left: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
     border-bottom: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
     border-bottom-left-radius: 3px;
@@ -584,7 +584,7 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 .wk-conv-compact-thread-overflow--expanded::before {
     content: '';
     position: absolute;
-    left: 35px;
+    left: 20px;
     top: 50%;
     bottom: 0;
     width: 1.5px;
@@ -610,7 +610,7 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     content: '';
     position: absolute;
     /* # icon 中心位置：drag-handle 默认隐藏(0) + icon-container padding(8) + icon/2(9) = 17px */
-    left: 35px;
+    left: 20px;
     /* 从 item 中间往下 */
     top: 50%;
     bottom: -1px; /* 延伸到下一个 item 顶部 */
