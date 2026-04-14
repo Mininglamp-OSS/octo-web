@@ -652,13 +652,9 @@ export default class ConversationList extends Component<ConversationListProps, C
                     }
                 })
 
-                // 3. 移到分组（仅群聊，且有分组数据时显示）
+                // 3. 额外菜单项（移出分组 / 移到分组等，由上层通过 extraContextMenus 传入）
                 if (extraMenus.length > 0) {
-                    menus.push({
-                        title: "移到分组",
-                        icon: "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
-                        children: extraMenus,
-                    })
+                    menus.push(...extraMenus)
                 }
 
                 // 4. 置顶 / 取消置顶
