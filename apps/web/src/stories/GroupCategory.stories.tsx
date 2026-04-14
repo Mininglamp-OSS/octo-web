@@ -12,7 +12,7 @@ import MoveToGroupMenu from '../../../../packages/dmworkbase/src/Components/Move
 import CategorySection from '../../../../packages/dmworkbase/src/Components/CategorySection'
 import UngroupedSection from '../../../../packages/dmworkbase/src/Components/UngroupedSection'
 import CategoryEmptyState from '../../../../packages/dmworkbase/src/Components/CategoryEmptyState'
-import CategoryManagePanel from '../../../../packages/dmworkbase/src/Components/CategoryManagePanel'
+
 import ConversationListWithCategory from '../../../../packages/dmworkbase/src/Components/ConversationListWithCategory'
 
 // ── ModalShell：模拟弹窗外壳（直接在 Story 渲染，不用 Portal）──
@@ -419,86 +419,6 @@ export const CategoryEmptyStateStory: StoryObj = {
     <Wrap width={320}>
       <CategoryEmptyState onCreateCategory={() => alert('新建分组')} />
     </Wrap>
-  ),
-}
-
-// ══════════════════════════════════════════════
-// 10. CategoryManagePanel
-// ══════════════════════════════════════════════
-
-const MOCK_CATEGORIES = [
-  { id: '1', name: '工作', groupCount: 3 },
-  { id: '2', name: '生活', groupCount: 4 },
-  { id: '3', name: '项目 A', groupCount: 1 },
-  { id: '4', name: '学习', groupCount: 0 },
-]
-
-export const CategoryManagePanelDefault: StoryObj = {
-  name: 'CategoryManagePanel / 默认列表态',
-  render: () => {
-    const [visible, setVisible] = useState(true)
-    return (
-      <div>
-        <button onClick={() => setVisible(true)}>打开管理面板</button>
-        <CategoryManagePanel
-          visible={visible}
-          categories={MOCK_CATEGORIES}
-          onClose={() => setVisible(false)}
-          onRename={async (id, name) => { console.log('rename', id, name) }}
-          onDelete={(id) => console.log('delete', id)}
-          onReorder={(ids) => console.log('reorder', ids)}
-          onCreateCategory={() => console.log('create category')}
-        />
-      </div>
-    )
-  },
-}
-
-export const CategoryManagePanelRenameFail: StoryObj = {
-  name: 'CategoryManagePanel / 重命名保存失败态',
-  render: () => (
-    <ModalShell title="管理分组" width={400}>
-      <div>
-        {/* 第一项：重命名失败态（静态展示） */}
-        <div style={{
-          display: 'flex', alignItems: 'center', minHeight: 52, padding: '8px 0',
-          gap: 10, background: 'var(--wk-bg-hover)', borderRadius: 6, paddingLeft: 4, paddingRight: 8,
-          flexWrap: 'wrap',
-        }}>
-          <span style={{ color: 'var(--wk-text-tertiary)', fontSize: 16, cursor: 'grab', flexShrink: 0 }}>⠿</span>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-            <input
-              defaultValue="工作（修改中）"
-              style={{
-                flex: 1, height: 28, padding: '0 8px', minWidth: 0,
-                border: '1px solid var(--wk-color-error)',
-                borderRadius: 6, fontSize: 13,
-                fontFamily: 'var(--wk-font-sans)',
-                color: 'var(--wk-text-primary)',
-                background: 'var(--wk-bg-surface)',
-                outline: 'none',
-              }}
-              readOnly
-            />
-            <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-              <button style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--wk-text-secondary)' }}>✓</button>
-              <button style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--wk-text-secondary)' }}>✗</button>
-            </div>
-          </div>
-          <div style={{ width: '100%', paddingLeft: 26, fontSize: 11, color: 'var(--wk-color-error)', marginTop: -4, paddingBottom: 4 }}>
-            保存失败
-          </div>
-        </div>
-        {/* 其余项正常态 */}
-        {MOCK_CATEGORIES.slice(1).map(item => (
-          <div key={item.id} style={{ display: 'flex', alignItems: 'center', height: 48, gap: 10 }}>
-            <span style={{ color: 'var(--wk-text-tertiary)', fontSize: 16 }}>⠿</span>
-            <span style={{ flex: 1, fontSize: 13, color: 'var(--wk-text-primary)' }}>{item.name}</span>
-            <span style={{ fontSize: 12, color: 'var(--wk-text-tertiary)' }}>{item.groupCount} 个群聊</span>
-          </div>
-        ))}
-      </div>
-    </ModalShell>
   ),
 }
 
