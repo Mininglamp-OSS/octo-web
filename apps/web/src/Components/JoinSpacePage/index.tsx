@@ -69,13 +69,13 @@ export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
             const status = result?.status;
 
             if (status === "NEED_APPROVAL" || status === "PENDING") {
-                // 审批状态：关闭当前页，触发全局钩子，由 Layout 统一渲染审批结果页
+                // 审批状态：先调 onSuccess 离开 JoinSpacePage，再触发钩子渲染审批结果页
+                // 顺序保证 Layout 先切出 JoinSpacePage，再渲染 JoinApprovalResult，避免中间态
+                onSuccess();
                 WKApp.endpoints.onJoinApproval(
                     status === "NEED_APPROVAL" ? "need_approval" : "pending",
                     inviteInfo.invite_code
                 );
-                // 调 onSuccess 让 Layout 离开 JoinSpacePage（Layout 会先渲染 joinApproval 页）
-                onSuccess();
                 return;
             }
 

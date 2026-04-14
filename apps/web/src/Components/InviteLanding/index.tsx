@@ -1,5 +1,6 @@
 import React, { Component } from "react";
 import { WKApp } from "@octo/base";
+import type { JoinSpaceStatus } from "@octo/base";
 import { Button, Spin, Toast } from "@douyinfe/semi-ui";
 import "./index.css";
 
@@ -113,7 +114,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
                 throw new Error(err.msg || "加入失败");
             }
             const result = await resp.json().catch(() => ({}));
-            const status = result?.status;
+            const status: JoinSpaceStatus | undefined = result?.status;
 
             if (status === "NEED_APPROVAL" || status === "PENDING") {
                 // 审批状态：触发全局钩子，Layout 统一渲染审批结果页
