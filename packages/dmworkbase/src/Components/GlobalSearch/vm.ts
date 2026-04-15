@@ -7,7 +7,7 @@ import { debounce } from "../../Utils/rateLimit";
 
 export default class GlobalSearchVM extends ProviderListener {
     // 选中的tab组件
-    private _selectedTabKey = "all";
+    private _selectedTabKey = "contacts";
 
     public page = 1 // 当前页码
     public limit = 20 // 每页条数
@@ -30,7 +30,6 @@ export default class GlobalSearchVM extends ProviderListener {
             ];
         }
         return [
-            { tab: '聊天', itemKey: 'all' },
             { tab: '联系人', itemKey: 'contacts' },
             { tab: '群组', itemKey: 'groups' },
             { tab: '文件', itemKey: 'files' },

@@ -6,9 +6,10 @@
 .wk-ungrouped-section__header {
     display: flex;
     align-items: center;
-    height: 32px;
-    padding: 0 8px;
-    gap: 4px;
+    padding: 6px 8px;
+    gap: 8px;
+    border-radius: 6px;
+    box-sizing: border-box;
 }
 
 .wk-ungrouped-section__title {

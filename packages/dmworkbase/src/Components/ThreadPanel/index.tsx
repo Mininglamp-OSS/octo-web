@@ -101,12 +101,19 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
   }
 
   private handleThreadClick = (thread: Thread) => {
-    // 子区列表点击 → 进入完整视图（参考 Discord 逻辑）
-    if (thread.channel_id) {
-      const threadChannel = new Channel(thread.channel_id, ChannelTypeCommunityTopic)
-      WKApp.endpoints.showConversation(threadChannel)
-      this.props.onClose()
-    }
+    // 子区列表点击 → 在面板内切换到 detail 视图，不切主窗口
+    this.setState({
+      view: "detail",
+      vmState: {
+        ...this.state.vmState,
+        thread,
+        loading: true,
+        replies: [],
+        hasMore: false,
+        error: null,
+      },
+    })
+    this.initVM(thread.short_id)
   }
 
   private handleBackToList = () => {

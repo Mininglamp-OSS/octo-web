@@ -429,17 +429,7 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     background: rgba(124,92,252,0.06);
 }
 
-.wk-conv-compact-item--selected::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 60%;
-    border-radius: 0 2px 2px 0;
-    background: linear-gradient(135deg, var(--wk-brand-from, #7C5CFC), var(--wk-brand-to, #00D4AA));
-}
+
 
 /* 旧式 padding，已在下方的 position:relative 版本合并，保留 fallback */
 
@@ -530,7 +520,7 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     padding-left: 40px;
 }
 
-/* L连接线：left = 44px（# icon 中心 = 35 + 9），width = 4px，子区 padding-left: 48px */
+/* L 转角（带弧度）：从中间到底部，border-left + border-bottom */
 .wk-conv-compact-item--thread::after {
     content: '';
     position: absolute;
@@ -538,12 +528,12 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     top: 0;
     height: 50%;
     width: 10px;
-    border-left: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
-    border-bottom: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
+    border-left: 1px solid var(--wk-border-default, rgba(0,0,0,0.12));
+    border-bottom: 1px solid var(--wk-border-default, rgba(0,0,0,0.12));
     border-bottom-left-radius: 3px;
 }
 
-/* 子区间延伸竖线（├── 效果），最后一个子区（后面是 overflow 或无线）不延伸 */
+/* 竖线延伸：从中间到底部，衔接下一个子区的 ::after 顶部 */
 .wk-conv-compact-item--thread:has(+ .wk-conv-compact-item--thread)::before,
 .wk-conv-compact-item--thread:has(+ .wk-conv-compact-thread-overflow)::before {
     content: '';
@@ -551,7 +541,7 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     left: 30px;
     top: 50%;
     bottom: 0;
-    width: 1.5px;
+    width: 1px;
     background: var(--wk-border-default, rgba(0,0,0,0.12));
 }
 
@@ -569,7 +559,7 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     position: relative;
 }
 
-/* overflow 控件：L 形（上方竖线 + 水平线），连接上方子区 */
+/* overflow 控件：L 转角（带弧度），和子区 ::after 保持一致 */
 .wk-conv-compact-thread-overflow::after {
     content: '';
     position: absolute;
@@ -577,8 +567,8 @@ body[theme-mode=dark] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
     top: 0;
     height: 50%;
     width: 10px;
-    border-left: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
-    border-bottom: 1.5px solid var(--wk-border-default, rgba(0,0,0,0.12));
+    border-left: 1px solid var(--wk-border-default, rgba(0,0,0,0.12));
+    border-bottom: 1px solid var(--wk-border-default, rgba(0,0,0,0.12));
     border-bottom-left-radius: 3px;
 }
 

@@ -52,14 +52,8 @@ async function registerMenus() {
       }
     }
 
-    m.badge = badge;
-
-    // 同步更新浏览器 Tab favicon 角标
-    if (badge > 0) {
-      setFaviconBadge(badge)
-    } else {
-      clearFaviconBadge()
-    }
+    // badge 和 favicon 角标已下线
+    clearFaviconBadge()
 
     if ((window as any).__POWERED_ELECTRON__) {
       (window as any).ipc.send("conversation-anager-unread-count", badge);

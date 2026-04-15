@@ -35,6 +35,14 @@ export default class TabAll extends Component<TabAllProps> {
         return <div className="wk-tab-all" onScroll={this.handleScroll}>
 
             {
+                !this.props.searchResult && !this.props.keyword && (
+                    <div style={{ textAlign: 'center', color: 'var(--wk-text-tertiary, #9498A8)', padding: '48px 0', fontSize: '13px' }}>
+                        输入关键词开始搜索
+                    </div>
+                )
+            }
+
+            {
                 existMessages ? (
                     <Section title="消息">
                         {

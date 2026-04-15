@@ -250,12 +250,10 @@ export class ChatContentPage extends Component<
                                   }
                                 }}
                               >
-                                <HashIcon size={11} />
                                 {WKSDK.shared().channelManager.getChannelInfo(new Channel(channelInfo.orgData.parentGroupNo, ChannelTypeGroup))?.title || channelInfo.orgData.parentGroupNo}
                               </span>
                               <span className="wk-chat-conversation-header-separator">›</span>
                               <span className="wk-chat-conversation-header-thread-name">
-                                <ThreadIcon size={12} color="currentColor" />
                                 {channelInfo?.orgData?.displayName}
                               </span>
                             </>

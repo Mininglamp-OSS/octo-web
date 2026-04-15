@@ -20,7 +20,7 @@ const UngroupedSectionInner: React.FC<UngroupedSectionProps> = ({ children }) =>
             className={`wk-ungrouped-section${isOver ? ' wk-ungrouped-section--drop-over' : ''}`}
         >
             <div className="wk-ungrouped-section__header">
-                <span className="wk-ungrouped-section__title">未分组群聊</span>
+                <span className="wk-ungrouped-section__title">默认分组</span>
             </div>
             <div>{children}</div>
         </div>
@@ -30,7 +30,7 @@ const UngroupedSectionInner: React.FC<UngroupedSectionProps> = ({ children }) =>
 const UngroupedSectionStatic: React.FC<UngroupedSectionProps> = ({ children }) => (
     <div className="wk-ungrouped-section">
         <div className="wk-ungrouped-section__header">
-            <span className="wk-ungrouped-section__title">未分组群聊</span>
+            <span className="wk-ungrouped-section__title">默认分组</span>
         </div>
         <div>{children}</div>
     </div>
