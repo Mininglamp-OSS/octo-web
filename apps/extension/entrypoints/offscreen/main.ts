@@ -444,12 +444,25 @@ function registerListeners(): void {
 
   listenersRegistered = true;
 
+  // conversationListener 触发时 SDK 的 unread 计数可能还未更新（慢一拍），
+  // debounce 300ms 让 SDK 先完成内部状态更新再读取
+  let badgeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  function scheduleBadgeUpdate(): void {
+    if (badgeDebounceTimer !== null) {
+      clearTimeout(badgeDebounceTimer);
+    }
+    badgeDebounceTimer = setTimeout(() => {
+      badgeDebounceTimer = null;
+      void updateBadgeFromConversations();
+    }, 300);
+  }
+
   sdk.conversationManager.addConversationListener(() => {
-    void updateBadgeFromConversations();
+    scheduleBadgeUpdate();
   });
 
   sdk.channelManager.addListener(() => {
-    void updateBadgeFromConversations();
+    scheduleBadgeUpdate();
   });
 
   sdk.chatManager.addMessageListener((message) => {

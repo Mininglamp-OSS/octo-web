@@ -12,6 +12,7 @@ import StorageService from '@octo/base/src/Service/StorageService';
 import { LoginModule } from '@octo/login';
 import { DataSourceModule } from '@octo/datasource';
 import { ContactsModule } from '@octo/contacts';
+import { version as pkgVersion } from '../../../web/package.json';
 import { Channel, ChannelTypePerson, WKSDK } from 'wukongimjssdk';
 import App from '../../../web/src/App';
 import {
@@ -42,7 +43,7 @@ StorageService.shared.removeItem = (key) => localStorage.removeItem(key);
 const apiURL = normalizeApiURL(DEFAULT_API_URL);
 WKApp.apiClient.config.apiURL = apiURL;
 WKApp.apiClient.config.tokenCallback = () => WKApp.loginInfo.token;
-WKApp.config.appVersion = '0.0.0.1';
+WKApp.config.appVersion = pkgVersion;
 WKApp.config.appName = 'Octo';
 
 WKApp.loginInfo.load();

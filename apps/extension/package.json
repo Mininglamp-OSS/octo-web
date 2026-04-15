@@ -1,6 +1,6 @@
 {
-  "name": "Octo 仅供演示",
-  "description": "仅供演示",
+  "name": "Octo 插件端",
+  "description": "Octo 插件端",
   "private": true,
   "version": "0.0.0.1",
   "type": "module",
