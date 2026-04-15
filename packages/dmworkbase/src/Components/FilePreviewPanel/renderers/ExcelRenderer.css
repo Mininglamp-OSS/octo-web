@@ -75,7 +75,7 @@
 /* Content area - 表格主体 */
 .wk-file-preview-excel-renderer__content {
   flex: 1;
-  overflow: hidden;
+  overflow: hidden; /* TableVirtuoso 自带滚动容器，避免嵌套滚动 */
   min-height: 0;
 }
 
@@ -85,9 +85,8 @@
 }
 
 .wk-file-preview-excel-renderer__virtual-table table {
-  width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .wk-file-preview-excel-renderer__th {
@@ -100,7 +99,10 @@
   border-bottom: 1px solid var(--wk-border-subtle);
   text-align: left;
   white-space: nowrap;
+  min-width: 100px;
   max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wk-file-preview-excel-renderer__td {
@@ -110,7 +112,10 @@
   color: var(--wk-text-primary);
   padding: 0 var(--wk-sp-3);
   border-bottom: 1px solid var(--wk-border-subtle);
+  min-width: 100px;
   max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wk-file-preview-excel-renderer__virtual-table tr:hover .wk-file-preview-excel-renderer__td {
@@ -159,5 +164,5 @@
 
 .wk-file-preview-excel-renderer__tab--active {
   background: var(--wk-brand-primary);
-  color: var(--wk-text-on-brand);
+  color: var(--wk-color-white);
 }

@@ -1,34 +1,7 @@
-/* TooltipCell - 单元格截断 Tooltip */
+/* TooltipCell - 单元格截断样式 */
 
 .wk-excel-tooltip-cell {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.wk-excel-tooltip-cell__wrapper {
-  position: relative;
-}
-
-.wk-excel-tooltip-cell__wrapper .wk-excel-tooltip-cell__popup {
-  display: none;
-  position: absolute;
-  z-index: 50;
-  bottom: 100%;
-  left: 0;
-  margin-bottom: var(--wk-sp-1);
-  max-width: 400px;
-  max-height: 400px;
-  overflow-y: auto;
-  word-break: break-word;
-  padding: var(--wk-sp-2) var(--wk-sp-3);
-  background: var(--wk-bg-tooltip, var(--wk-gray-900));
-  color: var(--wk-text-on-tooltip, var(--wk-text-inverse));
-  font-size: var(--wk-text-size-sm);
-  border-radius: var(--wk-r-sm);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-
-.wk-excel-tooltip-cell__wrapper:hover .wk-excel-tooltip-cell__popup {
-  display: block;
 }

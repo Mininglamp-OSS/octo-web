@@ -9,6 +9,7 @@ import postcssImport from 'postcss-import'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const config: StorybookConfig = {
+  staticDirs: ['../public'],
   stories: [
     '../src/**/*.mdx',
     '../src/**/*.stories.@(js|jsx|mjs|ts|tsx)',

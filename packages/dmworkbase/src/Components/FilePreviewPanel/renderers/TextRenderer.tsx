@@ -1,55 +1,38 @@
 import React from "react";
 import { BaseRendererProps } from "../types";
-import { useFileContent } from "../hooks/useFileContent";
-import "./TextRenderer.css";
+import { useCodeRenderer } from "./useCodeRenderer";
+import CodeRendererBase from "./CodeRendererBase";
 
 export interface TextRendererProps extends BaseRendererProps {}
 
 /**
  * 纯文本渲染器
  * 支持 txt, log, ini, conf, cfg 格式
+ *
+ * 文件大小分级处理：
+ * - < 30KB: 纯文本渲染
+ * - 30KB ~ 100KB: 纯文本渲染
+ * - > 100KB: 不渲染，提示下载
  */
 const TextRenderer: React.FC<TextRendererProps> = ({ file, onError }) => {
-  const { content, loading, error, reload } = useFileContent({
-    url: file.url,
-  });
-
-  if (loading) {
-    return (
-      <div className="wk-file-preview-text-renderer wk-file-preview-text-renderer--loading">
-        <div className="wk-file-preview-text-renderer__spinner" />
-        <span>加载中...</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    onError?.(error);
-    return (
-      <div className="wk-file-preview-text-renderer wk-file-preview-text-renderer--error">
-        <span>{error}</span>
-        <button
-          className="wk-file-preview-text-renderer__retry"
-          onClick={reload}
-        >
-          重试
-        </button>
-      </div>
-    );
-  }
-
-  if (content === null) {
-    return (
-      <div className="wk-file-preview-text-renderer wk-file-preview-text-renderer--empty">
-        <span>暂无内容</span>
-      </div>
-    );
-  }
+  const { loading, error, reload, renderMode, formattedContent, fileSize, contentSize } =
+    useCodeRenderer(file, {
+      language: "text",
+      enableHighlight: false,
+    });
 
   return (
-    <div className="wk-file-preview-text-renderer">
-      <div className="wk-file-preview-text-renderer__content">{content}</div>
-    </div>
+    <CodeRendererBase
+      file={file}
+      renderMode={renderMode}
+      formattedContent={formattedContent}
+      language="text"
+      loading={loading}
+      error={error}
+      onReload={reload}
+      fileSize={fileSize}
+      contentSize={contentSize}
+    />
   );
 };
 

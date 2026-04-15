@@ -1,22 +1,21 @@
 import React, { useState, useMemo, useCallback } from "react";
+import { TableVirtuoso } from "react-virtuoso";
 import SyntaxHighlighter from "react-syntax-highlighter";
 import { BaseRendererProps } from "../types";
-import { useFileContent } from "../hooks/useFileContent";
+import { useCodeRenderer } from "./useCodeRenderer";
+import { TooltipCell } from "./TooltipCell";
 import {
   ViewMode,
   ColumnConfig,
   parseJsonl,
   formatJsonl,
-  renderCellContent,
   extractColumns,
   countJsonlLines,
-  codeTheme,
-  codeDarkTheme,
-  getLineNumberStyle,
-  getCodeCustomStyle,
-  codeTagStyle,
 } from "./json-utils";
+import { formatFileSize } from "../config";
+import CodeRendererBase from "./CodeRendererBase";
 import "./JsonlRenderer.css";
+import "./code-highlight.css";
 
 export interface JsonlRendererProps extends BaseRendererProps {}
 
@@ -24,20 +23,22 @@ export interface JsonlRendererProps extends BaseRendererProps {}
  * JSONL 渲染器
  * 支持代码视图（格式化 JSONL）和表格视图
  * JSONL 格式：每行是一个独立的 JSON 对象
+ * 使用虚拟滚动高效渲染大数据量
+ *
+ * 文件大小分级处理（复用 config.ts 统一阈值）：
+ * - < 30KB: 语法高亮渲染
+ * - 30KB ~ 100KB: 纯文本渲染
+ * - > 100KB: 不渲染，提示下载
  */
 const JsonlRenderer: React.FC<JsonlRendererProps> = ({ file, onError }) => {
-  const { content, loading, error, reload } = useFileContent({
-    url: file.url,
-  });
+  const { loading, error, reload, renderMode, content, fileSize, contentSize } =
+    useCodeRenderer(file, {
+      language: "json",
+      enableHighlight: true,
+      formatter: (rawContent: string) => formatJsonl(rawContent),
+    });
 
   const [viewMode, setViewMode] = useState<ViewMode>("table");
-  const [page, setPage] = useState(0);
-  const pageSize = 100;
-
-  // 检测当前主题模式
-  const isDarkMode =
-    typeof document !== "undefined" &&
-    document.body.getAttribute("theme-mode") === "dark";
 
   // 解析 JSONL 数据
   const tableData = useMemo(() => {
@@ -61,45 +62,44 @@ const JsonlRenderer: React.FC<JsonlRendererProps> = ({ file, onError }) => {
     return countJsonlLines(content || "");
   }, [content]);
 
-  // 分页数据
-  const totalPages = Math.ceil(tableData.length / pageSize);
-  const startRow = page * pageSize;
-  const endRow = Math.min(startRow + pageSize, tableData.length);
-  const visibleRows = tableData.slice(startRow, endRow);
-
-  // 切换视图时重置分页
+  // 切换视图
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
-    setPage(0);
   }, []);
 
   // 判断是否可以显示表格视图
-  const canShowTable = tableData.length > 0 && columns.length > 0;
+  // 如果只有一个 "value" 列，说明是简单类型数组，不适合表格展示
+  const canShowTable =
+    tableData.length > 0 &&
+    columns.length > 0 &&
+    !(columns.length === 1 && columns[0].key === "value");
 
-  if (loading) {
-    return (
-      <div className="wk-file-preview-jsonl-renderer wk-file-preview-jsonl-renderer--loading">
-        <div className="wk-file-preview-jsonl-renderer__spinner" />
-        <span>加载中...</span>
-      </div>
-    );
+  // 渲染单元格内容
+  const renderCellContent = (value: unknown): string => {
+    if (value === null || value === undefined) return "-";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  };
+
+  // 复用 CodeRendererBase 处理边界状态（too-large / loading / error）
+  const baseProps = {
+    file,
+    renderMode,
+    formattedContent: formattedJsonl,
+    language: "json",
+    loading,
+    error,
+    onReload: reload,
+    fileSize,
+    contentSize,
+  };
+
+  // loading / error / too-large 状态复用 CodeRendererBase
+  if (loading || error || renderMode === "too-large") {
+    return <CodeRendererBase {...baseProps} />;
   }
 
-  if (error) {
-    onError?.(error);
-    return (
-      <div className="wk-file-preview-jsonl-renderer wk-file-preview-jsonl-renderer--error">
-        <span>{error}</span>
-        <button
-          className="wk-file-preview-jsonl-renderer__retry"
-          onClick={reload}
-        >
-          重试
-        </button>
-      </div>
-    );
-  }
-
+  // 内容为空
   if (content === null || tableData.length === 0) {
     return (
       <div className="wk-file-preview-jsonl-renderer wk-file-preview-jsonl-renderer--empty">
@@ -108,6 +108,7 @@ const JsonlRenderer: React.FC<JsonlRendererProps> = ({ file, onError }) => {
     );
   }
 
+  // 正常渲染：工具栏 + 表格/代码视图
   return (
     <div className="wk-file-preview-jsonl-renderer">
       {/* 工具栏 */}
@@ -168,101 +169,69 @@ const JsonlRenderer: React.FC<JsonlRendererProps> = ({ file, onError }) => {
         </div>
       </div>
 
-      {/* 表格视图 */}
+      {/* 表格视图 - 使用虚拟滚动 */}
       {viewMode === "table" && canShowTable && (
-        <>
-          <div className="wk-file-preview-jsonl-renderer__table-wrapper">
-            <table className="wk-file-preview-jsonl-renderer__table">
-              <thead>
-                <tr>
-                  <th className="wk-file-preview-jsonl-renderer__row-num">#</th>
-                  {columns.map((col) => (
-                    <th key={col.key} title={col.title}>
-                      {col.title}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.map((row, rowIdx) => (
-                  <tr key={startRow + rowIdx}>
-                    <td className="wk-file-preview-jsonl-renderer__row-num">
-                      {startRow + rowIdx + 1}
-                    </td>
-                    {columns.map((col) => (
-                      <td key={col.key} title={renderCellContent(row[col.key])}>
-                        {renderCellContent(row[col.key])}
-                      </td>
-                    ))}
-                  </tr>
+        <div className="wk-file-preview-jsonl-renderer__content">
+          <TableVirtuoso
+            data={tableData}
+            className="wk-file-preview-jsonl-renderer__virtual-table"
+            fixedHeaderContent={() => (
+              <tr>
+                {columns.map((col) => (
+                  <th key={col.key} className="wk-file-preview-jsonl-renderer__th">
+                    <TooltipCell content={col.title} />
+                  </th>
                 ))}
-              </tbody>
-            </table>
+              </tr>
+            )}
+            itemContent={(_index, row) => (
+              <>
+                {columns.map((col) => (
+                  <td key={col.key} className="wk-file-preview-jsonl-renderer__td">
+                    <TooltipCell content={renderCellContent(row[col.key])} />
+                  </td>
+                ))}
+              </>
+            )}
+          />
+          {/* 底部信息栏 */}
+          <div className="wk-file-preview-jsonl-renderer__footer">
+            <span className="wk-file-preview-jsonl-renderer__row-count">
+              共 {tableData.length} 行
+            </span>
           </div>
-
-          {/* 分页 */}
-          {tableData.length > pageSize && (
-            <div className="wk-file-preview-jsonl-renderer__pagination">
-              <span className="wk-file-preview-jsonl-renderer__page-info">
-                显示 {startRow + 1}-{endRow} 行，共 {tableData.length} 行
-              </span>
-              <div className="wk-file-preview-jsonl-renderer__page-controls">
-                <button
-                  className="wk-file-preview-jsonl-renderer__page-btn"
-                  disabled={page === 0}
-                  onClick={() => setPage(0)}
-                >
-                  首页
-                </button>
-                <button
-                  className="wk-file-preview-jsonl-renderer__page-btn"
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  上一页
-                </button>
-                <span className="wk-file-preview-jsonl-renderer__page-current">
-                  {page + 1} / {totalPages}
-                </span>
-                <button
-                  className="wk-file-preview-jsonl-renderer__page-btn"
-                  disabled={page >= totalPages - 1}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  下一页
-                </button>
-                <button
-                  className="wk-file-preview-jsonl-renderer__page-btn"
-                  disabled={page >= totalPages - 1}
-                  onClick={() => setPage(totalPages - 1)}
-                >
-                  末页
-                </button>
-              </div>
-            </div>
-          )}
-        </>
+        </div>
       )}
 
       {/* 代码视图 */}
       {viewMode === "code" && (
-        <div className="wk-file-preview-jsonl-renderer__code-container">
-          <SyntaxHighlighter
-            language="json"
-            style={(isDarkMode ? codeDarkTheme : codeTheme) as any}
-            showLineNumbers
-            lineNumberStyle={getLineNumberStyle(isDarkMode)}
-            customStyle={getCodeCustomStyle(isDarkMode)}
-            codeTagProps={{ style: codeTagStyle }}
-          >
-            {formattedJsonl}
-          </SyntaxHighlighter>
+        <div className="wk-file-preview-jsonl-renderer__code-container wk-code-highlight-container">
+          {renderMode === "highlight" ? (
+            <SyntaxHighlighter
+              language="json"
+              useInlineStyles={false}
+              showLineNumbers
+            >
+              {formattedJsonl}
+            </SyntaxHighlighter>
+          ) : (
+            <>
+              <div className="wk-file-preview-jsonl-renderer__plain-hint">
+                文件较大（{formatFileSize(contentSize)}），已禁用语法高亮
+              </div>
+              <pre className="wk-file-preview-jsonl-renderer__pre">
+                <code className="wk-file-preview-jsonl-renderer__code">
+                  {formattedJsonl}
+                </code>
+              </pre>
+            </>
+          )}
         </div>
       )}
 
       {/* 表格视图不可用时的提示 */}
       {viewMode === "table" && !canShowTable && (
-        <div className="wk-file-preview-jsonl-renderer__empty">
+        <div className="wk-file-preview-jsonl-renderer__empty-content">
           <span>无法从 JSONL 数据中提取表格结构</span>
           <button
             className="wk-file-preview-jsonl-renderer__switch-btn"

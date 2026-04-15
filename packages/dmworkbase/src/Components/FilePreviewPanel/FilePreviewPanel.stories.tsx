@@ -285,29 +285,18 @@ End of file.
     size: 4096,
   },
   csv: {
-    url:
-      "data:text/csv;base64," +
-      btoaUnicode(`姓名,年龄,城市,职业
-张三,28,北京,工程师
-李四,35,上海,设计师
-王五,42,广州,教师
-赵六,31,深圳,医生
-孙七,26,杭州,律师
-周八,39,成都,会计
-吴九,33,武汉,销售
-郑十,45,南京,经理
-${Array.from({ length: 2000 }, (_, i) =>
-  `员工${i + 1},${20 + (i % 40)},城市${i % 10},职业${i % 20}`
-).join("\n")}`),
+    // 100行测试数据，包含短/中/长备注测试tooltip（本地文件）
+    url: "/samples/employees.csv",
     name: "员工名单.csv",
     extension: "csv",
-    size: 512,
+    size: 2754,
   },
   excel: {
-    url: "https://example.com/sample.xlsx",
+    // 真实xlsx文件，包含两个工作表
+    url: "/samples/report.xlsx",
     name: "数据报表.xlsx",
     extension: "xlsx",
-    size: 10240,
+    size: 4500,
   },
   html: {
     url:
@@ -374,9 +363,7 @@ const InteractiveTemplate = () => {
   );
   const [isOpen, setIsOpen] = useState(true);
 
-  const fileTypes = Object.keys(mockFiles).filter(
-    (type) => type !== "csv" && type !== "excel"
-  );
+  const fileTypes = Object.keys(mockFiles);
 
   return (
     <div style={{ display: "flex", height: "100vh", width: "100%" }}>
@@ -504,24 +491,8 @@ export const CodePreview: Story = {
   },
 };
 
-// JSON 预览 - 基础对象
+// JSON 预览 - 支持嵌套对象和数组数据的表格视图
 export const JsonPreview: Story = {
-  args: {
-    file: mockFiles.json,
-    onClose: () => console.log("Close clicked"),
-  },
-  parameters: {
-    docs: {
-      description: {
-        story:
-          "JSON 文件预览，支持代码视图和表格视图切换。基础 JSON 对象会在表格中显示为单行。",
-      },
-    },
-  },
-};
-
-// JSON 预览 - 数组数据（支持表格视图）
-export const JsonArrayPreview: Story = {
   args: {
     file: mockFiles.jsonArray,
     onClose: () => console.log("Close clicked"),
@@ -530,7 +501,7 @@ export const JsonArrayPreview: Story = {
     docs: {
       description: {
         story:
-          "JSON 数组数据预览，可切换到表格视图查看结构化数据。支持从嵌套结构中智能提取数组。",
+          "JSON 文件预览，支持代码视图和表格视图切换。嵌套 JSON 中的数组会被智能提取并以表格展示。",
       },
     },
   },
@@ -658,6 +629,7 @@ export const ExcelPreview: Story = {
   },
 };
 
+
 // 长文件名
 export const LongFileName: Story = {
   args: {
@@ -673,6 +645,129 @@ export const LongFileName: Story = {
     docs: {
       description: {
         story: "长文件名会被截断并显示省略号。",
+      },
+    },
+  },
+};
+
+// ============================================================
+// 大文件处理测试
+// ============================================================
+
+// 生成指定大小的 Blob URL
+function createBlobUrl(targetSizeKB: number): string {
+  const line = '// This is a line of code that repeats to create large file content for testing purposes.\n';
+  const lineSize = new Blob([line]).size;
+  const targetSize = targetSizeKB * 1024;
+  const repeatCount = Math.ceil(targetSize / lineSize);
+  const content = Array(repeatCount).fill(line).join('');
+  const blob = new Blob([content], { type: 'text/plain' });
+  return URL.createObjectURL(blob);
+}
+
+// 小文件 - 语法高亮渲染 (< 30KB)
+const SmallFileTemplate = () => {
+  const [url, setUrl] = React.useState<string | null>(null);
+  
+  React.useEffect(() => {
+    const blobUrl = createBlobUrl(10);
+    setUrl(blobUrl);
+    return () => URL.revokeObjectURL(blobUrl);
+  }, []);
+
+  if (!url) return null;
+  
+  return (
+    <FilePreviewPanel
+      file={{
+        url,
+        name: "small-file.ts",
+        extension: "ts",
+        size: 10 * 1024,
+      }}
+      onClose={() => console.log("Close clicked")}
+    />
+  );
+};
+
+export const CodeSmallFile: Story = {
+  render: () => <SmallFileTemplate />,
+  parameters: {
+    docs: {
+      description: {
+        story: "小文件（10KB）- 使用语法高亮渲染。阈值：< 30KB。",
+      },
+    },
+  },
+};
+
+// 中等文件 - 纯文本渲染 (30KB ~ 100KB)
+const MediumFileTemplate = () => {
+  const [url, setUrl] = React.useState<string | null>(null);
+  
+  React.useEffect(() => {
+    const blobUrl = createBlobUrl(50);
+    setUrl(blobUrl);
+    return () => URL.revokeObjectURL(blobUrl);
+  }, []);
+
+  if (!url) return null;
+  
+  return (
+    <FilePreviewPanel
+      file={{
+        url,
+        name: "medium-file.ts",
+        extension: "ts",
+        size: 50 * 1024,
+      }}
+      onClose={() => console.log("Close clicked")}
+    />
+  );
+};
+
+export const CodeMediumFile: Story = {
+  render: () => <MediumFileTemplate />,
+  parameters: {
+    docs: {
+      description: {
+        story: "中等文件（50KB）- 禁用语法高亮，纯文本渲染。阈值：30KB ~ 100KB。",
+      },
+    },
+  },
+};
+
+// 大文件 - 不渲染，提示下载 (> 100KB)
+const LargeFileTemplate = () => {
+  const [url, setUrl] = React.useState<string | null>(null);
+  
+  React.useEffect(() => {
+    const blobUrl = createBlobUrl(150);
+    setUrl(blobUrl);
+    return () => URL.revokeObjectURL(blobUrl);
+  }, []);
+
+  if (!url) return null;
+  
+  return (
+    <FilePreviewPanel
+      file={{
+        url,
+        name: "large-file.ts",
+        extension: "ts",
+        size: 150 * 1024,
+      }}
+      onClose={() => console.log("Close clicked")}
+    />
+  );
+};
+
+export const CodeLargeFile: Story = {
+  render: () => <LargeFileTemplate />,
+  parameters: {
+    docs: {
+      description: {
+        story: "大文件（150KB）- 不渲染，显示「文件太大，可下载」提示。阈值：> 100KB。",
       },
     },
   },

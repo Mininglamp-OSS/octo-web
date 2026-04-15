@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
+import { Tooltip } from "@douyinfe/semi-ui";
 import "./TooltipCell.css";
 
 interface TooltipCellProps {
@@ -25,20 +26,19 @@ export function TooltipCell({ content }: TooltipCellProps) {
     return () => window.removeEventListener("resize", checkTruncation);
   }, [content]);
 
+  const cellContent = (
+    <div ref={ref} className="wk-excel-tooltip-cell">
+      {content}
+    </div>
+  );
+
   if (!isTruncated) {
-    return (
-      <div ref={ref} className="wk-excel-tooltip-cell">
-        {content}
-      </div>
-    );
+    return cellContent;
   }
 
   return (
-    <div className="wk-excel-tooltip-cell__wrapper">
-      <div ref={ref} className="wk-excel-tooltip-cell">
-        {content}
-      </div>
-      <div className="wk-excel-tooltip-cell__popup">{content}</div>
-    </div>
+    <Tooltip content={content} position="top" showArrow>
+      {cellContent}
+    </Tooltip>
   );
 }

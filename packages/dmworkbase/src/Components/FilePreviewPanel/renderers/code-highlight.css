@@ -1,0 +1,109 @@
+/**
+ * 共享代码高亮样式
+ * 用于 CodeRenderer、JsonRenderer、JsonlRenderer 的代码视图
+ * 使用 Token 变量，支持亮色/暗色主题
+ */
+
+/* 基础样式 */
+.wk-code-highlight-container {
+  background: var(--wk-bg-base);
+}
+
+.wk-code-highlight-container .hljs {
+  background: var(--wk-bg-base);
+  color: var(--wk-text-primary);
+  padding: var(--wk-sp-2);
+  font-family: "SF Mono", Monaco, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 行号 */
+.wk-code-highlight-container .linenumber {
+  color: var(--wk-text-tertiary);
+  user-select: none;
+}
+
+/* 注释 */
+.wk-code-highlight-container .hljs-comment,
+.wk-code-highlight-container .hljs-quote {
+  color: var(--wk-text-tertiary);
+  font-style: italic;
+}
+
+/* 关键词 */
+.wk-code-highlight-container .hljs-keyword,
+.wk-code-highlight-container .hljs-selector-tag,
+.wk-code-highlight-container .hljs-literal {
+  color: var(--wk-text-accent);
+  font-weight: 500;
+}
+
+/* 类型、标题 */
+.wk-code-highlight-container .hljs-title,
+.wk-code-highlight-container .hljs-section,
+.wk-code-highlight-container .hljs-type {
+  color: var(--wk-color-info);
+  font-weight: 500;
+}
+
+/* 属性名 */
+.wk-code-highlight-container .hljs-name,
+.wk-code-highlight-container .hljs-attribute,
+.wk-code-highlight-container .hljs-attr,
+.wk-code-highlight-container .hljs-params {
+  color: var(--wk-color-info);
+}
+
+/* 字符串 */
+.wk-code-highlight-container .hljs-string,
+.wk-code-highlight-container .hljs-template-variable,
+.wk-code-highlight-container .hljs-doctag {
+  color: var(--wk-color-success);
+}
+
+/* 数字 */
+.wk-code-highlight-container .hljs-number {
+  color: var(--wk-color-warning);
+}
+
+/* 正则、符号 */
+.wk-code-highlight-container .hljs-regexp,
+.wk-code-highlight-container .hljs-symbol,
+.wk-code-highlight-container .hljs-link {
+  color: var(--wk-text-accent);
+}
+
+/* 变量 */
+.wk-code-highlight-container .hljs-variable {
+  color: var(--wk-color-info);
+}
+
+/* 标点符号 */
+.wk-code-highlight-container .hljs-punctuation {
+  color: var(--wk-text-tertiary);
+}
+
+/* 新增/删除 */
+.wk-code-highlight-container .hljs-addition {
+  background: var(--wk-color-success-bg);
+}
+
+.wk-code-highlight-container .hljs-deletion {
+  background: var(--wk-color-error-bg);
+}
+
+/* 元信息 */
+.wk-code-highlight-container .hljs-meta {
+  color: var(--wk-text-tertiary);
+  font-style: italic;
+}
+
+/* 强调 */
+.wk-code-highlight-container .hljs-emphasis {
+  font-style: italic;
+}
+
+.wk-code-highlight-container .hljs-strong {
+  font-weight: bold;
+}

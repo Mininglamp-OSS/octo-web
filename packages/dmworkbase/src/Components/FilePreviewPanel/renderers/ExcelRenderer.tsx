@@ -257,14 +257,7 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ file, onError }) => {
     <div className="wk-file-preview-excel-renderer">
       {/* 表格内容区 */}
       <div className="wk-file-preview-excel-renderer__content">
-        {sheets.map((sheet, index) => (
-          <div
-            key={sheet.name}
-            style={{ display: index === activeSheet ? "contents" : "none" }}
-          >
-            <SheetTable sheetData={sheet} />
-          </div>
-        ))}
+        <SheetTable sheetData={sheets[activeSheet]} />
       </div>
 
       {/* 底部信息栏：行数 + 工作表切换 */}

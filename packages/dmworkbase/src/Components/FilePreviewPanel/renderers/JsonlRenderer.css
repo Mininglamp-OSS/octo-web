@@ -1,10 +1,10 @@
-/* JSONL Renderer - JSONL 格式化/表格视图渲染器样式 */
+/* JSONL Renderer - JSONL 格式化/表格视图渲染器样式（虚拟滚动版） */
 
 .wk-file-preview-jsonl-renderer {
-  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--wk-bg-base);
+  height: 100%;
   overflow: hidden;
 }
 
@@ -62,10 +62,6 @@
   background: var(--wk-bg-hover);
 }
 
-.wk-file-preview-jsonl-renderer__retry:active {
-  background: var(--wk-bg-active);
-}
-
 /* Empty state */
 .wk-file-preview-jsonl-renderer--empty {
   display: flex;
@@ -101,7 +97,7 @@
   align-items: center;
   padding: var(--wk-sp-1) var(--wk-sp-2);
   background: var(--wk-brand-primary);
-  color: var(--wk-text-on-brand);
+  color: var(--wk-color-white);
   font-size: var(--wk-text-size-xs);
   font-weight: 600;
   border-radius: var(--wk-r-xs);
@@ -144,12 +140,12 @@
 
 .wk-file-preview-jsonl-renderer__view-btn--active {
   background: var(--wk-brand-primary);
-  color: var(--wk-text-on-brand);
+  color: var(--wk-color-white);
 }
 
 .wk-file-preview-jsonl-renderer__view-btn--active:hover {
   background: var(--wk-brand-primary);
-  color: var(--wk-text-on-brand);
+  color: var(--wk-color-white);
 }
 
 .wk-file-preview-jsonl-renderer__view-btn:disabled {
@@ -168,93 +164,85 @@
   flex-shrink: 0;
 }
 
-/* Code view - 代码视图 */
-.wk-file-preview-jsonl-renderer__code-container {
+/* Content area - 表格主体 */
+.wk-file-preview-jsonl-renderer__content {
   flex: 1;
-  height: 100%;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
 
-.wk-file-preview-jsonl-renderer__code {
-  height: 100%;
-  overflow: auto;
-}
-
-.wk-file-preview-jsonl-renderer__code pre {
-  margin: 0;
-  padding: var(--wk-sp-4);
-  background: var(--wk-bg-base);
-  font-family: "SF Mono", Monaco, "Cascadia Code", Consolas, monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre;
-  overflow-x: auto;
-}
-
-/* Table view - 表格视图 */
-.wk-file-preview-jsonl-renderer__table-wrapper {
+/* Virtual table (react-virtuoso) */
+.wk-file-preview-jsonl-renderer__virtual-table {
   flex: 1;
-  overflow: auto;
-  padding: var(--wk-sp-2);
+  min-height: 0;
 }
 
-.wk-file-preview-jsonl-renderer__table {
-  width: 100%;
+.wk-file-preview-jsonl-renderer__virtual-table table {
   border-collapse: collapse;
-  font-size: var(--wk-text-size-sm);
-  font-family: var(
-    --wk-font-family-mono,
-    ui-monospace,
-    SFMono-Regular,
-    "SF Mono",
-    Menlo,
-    Consolas,
-    monospace
-  );
+  table-layout: auto;
 }
 
-.wk-file-preview-jsonl-renderer__table th,
-.wk-file-preview-jsonl-renderer__table td {
-  padding: var(--wk-sp-2) var(--wk-sp-3);
+.wk-file-preview-jsonl-renderer__th {
+  height: 40px;
+  background: var(--wk-bg-elevated);
+  font-size: var(--wk-text-size-xs);
+  font-weight: 500;
+  color: var(--wk-text-primary);
+  padding: 0 var(--wk-sp-3);
+  border-bottom: 1px solid var(--wk-border-subtle);
   text-align: left;
-  border: 1px solid var(--wk-border-subtle);
   white-space: nowrap;
+  min-width: 100px;
   max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.wk-file-preview-jsonl-renderer__table th {
-  background: var(--wk-bg-elevated);
-  color: var(--wk-text-primary);
-  font-weight: 600;
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-.wk-file-preview-jsonl-renderer__table td {
+.wk-file-preview-jsonl-renderer__td {
+  height: 40px;
   background: var(--wk-bg-base);
+  font-size: var(--wk-text-size-sm);
   color: var(--wk-text-primary);
+  padding: 0 var(--wk-sp-3);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  min-width: 100px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.wk-file-preview-jsonl-renderer__table tr:hover td {
+.wk-file-preview-jsonl-renderer__virtual-table tr:hover .wk-file-preview-jsonl-renderer__td {
   background: var(--wk-bg-hover);
 }
 
-/* Row number column - 行号列 */
-.wk-file-preview-jsonl-renderer__row-num {
-  width: 50px;
-  min-width: 50px;
-  text-align: center;
-  color: var(--wk-text-tertiary);
+/* Footer - 底部信息栏 */
+.wk-file-preview-jsonl-renderer__footer {
+  display: flex;
+  align-items: center;
+  padding: var(--wk-sp-2) var(--wk-sp-4);
   background: var(--wk-bg-elevated);
-  font-size: var(--wk-text-size-xs);
-  user-select: none;
+  border-top: 1px solid var(--wk-border-subtle);
+  flex-shrink: 0;
 }
 
-/* Empty state for table view */
-.wk-file-preview-jsonl-renderer__empty {
+.wk-file-preview-jsonl-renderer__row-count {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-secondary);
+}
+
+/* Code view - 代码视图 */
+.wk-file-preview-jsonl-renderer__code-container {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* 代码高亮样式已移至 code-highlight.css */
+
+/* Empty content state */
+.wk-file-preview-jsonl-renderer__empty-content {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -280,85 +268,76 @@
   background: var(--wk-bg-hover);
 }
 
-/* Pagination - 分页 */
-.wk-file-preview-jsonl-renderer__pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* 大文件提示条 */
+.wk-file-preview-jsonl-renderer__plain-hint {
   padding: var(--wk-sp-2) var(--wk-sp-4);
   background: var(--wk-bg-elevated);
-  border-top: 1px solid var(--wk-border-subtle);
-  flex-shrink: 0;
-  gap: var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
 }
 
-.wk-file-preview-jsonl-renderer__page-info {
-  font-size: var(--wk-text-size-xs);
+/* 纯文本渲染 */
+.wk-file-preview-jsonl-renderer__pre {
+  margin: 0;
+  padding: var(--wk-sp-4);
+  background: var(--wk-bg-base);
+  min-height: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.wk-file-preview-jsonl-renderer__code {
+  font-family: "SF Mono", Monaco, "Cascadia Code", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--wk-text-primary);
+  white-space: pre;
+  display: block;
+}
+
+/* Too large state - 文件太大 */
+.wk-file-preview-jsonl-renderer--too-large {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--wk-sp-4);
   color: var(--wk-text-secondary);
 }
 
-.wk-file-preview-jsonl-renderer__page-controls {
-  display: flex;
+.wk-file-preview-jsonl-renderer__large-file-icon {
+  width: 64px;
+  height: 64px;
+  color: var(--wk-text-tertiary);
+}
+
+.wk-file-preview-jsonl-renderer__large-file-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.wk-file-preview-jsonl-renderer__large-file-text {
+  font-size: var(--wk-text-size-md);
+  color: var(--wk-text-secondary);
+}
+
+.wk-file-preview-jsonl-renderer__download-btn {
+  display: inline-flex;
   align-items: center;
   gap: var(--wk-sp-2);
-}
-
-.wk-file-preview-jsonl-renderer__page-btn {
-  padding: var(--wk-sp-1) var(--wk-sp-2);
-  border: 1px solid var(--wk-border-default);
-  background: var(--wk-bg-base);
-  color: var(--wk-text-primary);
-  font-size: var(--wk-text-size-xs);
+  padding: var(--wk-sp-2) var(--wk-sp-4);
+  background: var(--wk-brand-primary);
+  color: var(--wk-color-white);
+  border: none;
   border-radius: var(--wk-r-sm);
+  font-size: var(--wk-text-size-sm);
+  text-decoration: none;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.15s;
 }
 
-.wk-file-preview-jsonl-renderer__page-btn:hover:not(:disabled) {
-  background: var(--wk-bg-hover);
-}
-
-.wk-file-preview-jsonl-renderer__page-btn:active:not(:disabled) {
-  background: var(--wk-bg-active);
-}
-
-.wk-file-preview-jsonl-renderer__page-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.wk-file-preview-jsonl-renderer__page-current {
-  font-size: var(--wk-text-size-xs);
-  color: var(--wk-text-secondary);
-  padding: 0 var(--wk-sp-2);
-}
-
-/* Dark mode */
-body[theme-mode="dark"] .wk-file-preview-jsonl-renderer {
-  background: #1a1a1a;
-}
-
-body[theme-mode="dark"] .wk-file-preview-jsonl-renderer__table th,
-body[theme-mode="dark"] .wk-file-preview-jsonl-renderer__table td {
-  border-color: #333;
-}
-
-body[theme-mode="dark"] .wk-file-preview-jsonl-renderer__table th {
-  background: #252525;
-}
-
-body[theme-mode="dark"] .wk-file-preview-jsonl-renderer__table td {
-  background: #1a1a1a;
-}
-
-body[theme-mode="dark"] .wk-file-preview-jsonl-renderer__table tr:hover td {
-  background: #252525;
-}
-
-body[theme-mode="dark"] .wk-file-preview-jsonl-renderer__row-num {
-  background: #252525;
-}
-
-body[theme-mode="dark"] .wk-file-preview-jsonl-renderer__code pre {
-  background: #1a1a1a;
+.wk-file-preview-jsonl-renderer__download-btn:hover {
+  background: var(--wk-brand-primary-hover);
 }

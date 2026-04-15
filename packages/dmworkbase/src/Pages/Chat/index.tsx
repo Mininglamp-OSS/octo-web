@@ -579,6 +579,7 @@ export class ChatContentPage extends Component<
         {/* 文件预览面板 */}
         {previewFile && (
           <FilePreviewPanel
+            key={previewFile.url}
             file={previewFile}
             onClose={() => {
               this.setState({ previewFile: null });
