@@ -33,6 +33,7 @@ interface IPorpsOrganizationalGroupNew {
   remove?: () => void;
   autoShow?: boolean;
   defaultCategoryId?: string;
+  onSuccess?: () => void;
 }
 
 interface ISateOrganizationalGroupNew {
@@ -465,6 +466,7 @@ export class OrganizationalGroupNew extends Component<
           [...getOptPersonnelData],
           { categoryId: this.props.defaultCategoryId }
         )
+        this.props.onSuccess?.()
       } catch (error: any) {
         Toast.error(error.msg);
         return

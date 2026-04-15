@@ -26,7 +26,6 @@ export interface ChatConversationListProps {
     onThreadOverflowClick: (groupNo: string) => void
     /** 外部触发「新建分组」Modal（如顶部 + 按钮），调用后 Modal 显示 */
     onOpenCreateCategoryRef?: React.MutableRefObject<(() => void) | null>
-    onCreateGroupInCategory?: (categoryId: string) => void
 }
 
 const ChatConversationList: React.FC<ChatConversationListProps> = ({
@@ -37,7 +36,6 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
     onClearMessages,
     onThreadOverflowClick,
     onOpenCreateCategoryRef,
-    onCreateGroupInCategory,
 }) => {
     const {
         categories,
@@ -112,7 +110,12 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                         const groupMenu = menus.find((m: any) => m.key === 'start-group')
                         if (groupMenu?.onClick) groupMenu.onClick()
                     }}
-                    onCreateGroupInCategory={onCreateGroupInCategory}
+                    onCreateGroupInCategory={(categoryId: string) => {
+                        WKApp.endpoints.organizationalLayer(
+                            { channelID: "", channelType: 0 } as any,
+                            { defaultCategoryId: categoryId, onSuccess: reload }
+                        )
+                    }}
                 />
             ) : (
                 <ConversationList

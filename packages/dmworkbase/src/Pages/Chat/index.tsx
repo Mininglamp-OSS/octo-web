@@ -701,12 +701,6 @@ export default class ChatPage extends Component<any, ChatPageState> {
                               WKApp.endpoints.showConversation(new Channel(groupNo, ChannelTypeGroup))
                             }
                           }}
-                          onCreateGroupInCategory={(categoryId: string) => {
-                            WKApp.endpoints.organizationalLayer(
-                              { channelID: "", channelType: 0 } as any,
-                              { defaultCategoryId: categoryId }
-                            )
-                          }}
                         />
                       </ErrorBoundary>
                     )}

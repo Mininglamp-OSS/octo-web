@@ -251,10 +251,11 @@ export class EndpointCommon {
     );
   }
 
-  organizationalLayer(channel: Channel, options?: { defaultCategoryId?: string }): void {
+  organizationalLayer(channel: Channel, options?: { defaultCategoryId?: string; onSuccess?: () => void }): void {
     return EndpointManager.shared.invoke(EndpointCategory.organizationalLayer, {
       channel: channel,
       defaultCategoryId: options?.defaultCategoryId,
+      onSuccess: options?.onSuccess,
     });
   }
 

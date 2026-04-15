@@ -105,6 +105,7 @@ export default class ContactsModule implements IModule {
       (param) => {
         const channel = param.channel as any;
         const defaultCategoryId = param.defaultCategoryId as string | undefined;
+        const onSuccess = param.onSuccess as (() => void) | undefined;
         const div = document.createElement("div");
         document.body.appendChild(div);
 
@@ -120,6 +121,7 @@ export default class ContactsModule implements IModule {
             action={OrganizationalGroupNewAction.createGroup}
             autoShow={true}
             defaultCategoryId={defaultCategoryId}
+            onSuccess={onSuccess}
           />,
           div
         );
