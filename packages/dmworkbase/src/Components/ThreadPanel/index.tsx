@@ -140,6 +140,8 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
     if (!thread) return
     this.setState({ showMoreMenu: false })
 
+    // 延迟弹窗，等 Popover 完全关闭后再触发，避免 Modal 被 Popover 关闭事件误关
+    setTimeout(() => {
     let newName = thread.name
     Modal.confirm({
       title: "编辑子区名称",
@@ -191,6 +193,7 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
         }
       },
     })
+    }, 100)
   }
 
   private handleDeleteThread = () => {
@@ -199,6 +202,7 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
     if (!thread) return
     this.setState({ showMoreMenu: false })
 
+    setTimeout(() => {
     Modal.confirm({
       title: `删除子区「${thread.name}」？`,
       icon: null,
@@ -220,6 +224,7 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
         }
       },
     })
+    }, 100)
   }
 
   private handleCreateThread = () => {

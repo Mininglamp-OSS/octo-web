@@ -227,6 +227,10 @@ export class ChannelDataSource implements IChannelDataSource {
         return WKApp.apiClient.delete(`groups/${groupNo}/threads/${shortId}`)
     }
 
+    async threadUpdate(groupNo: string, shortId: string, data: { name: string }): Promise<void> {
+        return WKApp.apiClient.put(`groups/${groupNo}/threads/${shortId}`, data)
+    }
+
     async threadJoin(shortId: string): Promise<void> {
         return WKApp.apiClient.post(`threads/${shortId}/join`)
     }

@@ -1668,18 +1668,60 @@ export default class BaseModule implements IModule {
       (context) => {
         const data = context.routeData() as ChannelSettingRouteData;
         const channel = data.channel;
-        const channelInfo = data.channelInfo;
         if (channel.channelType !== ChannelTypeCommunityTopic) {
           return undefined;
         }
         const threadInfo = parseThreadChannelId(channel.channelID);
+
+        // data.channelInfo 由 ChannelSettingVM 通过 channelInfoListener 维护：
+        // vm.didMount → fetchChannelInfo(channel) → channelInfoCallback（子区分支）
+        // → title = thread.name → notifyListeners → reloadChannelInfo → routeData.channelInfo 更新
+        // sections() 重跑时 data.channelInfo 已有正确数据，直接读即可。
+        const channelInfo = data.channelInfo;
+        const threadName = channelInfo?.title;
+
+        // 权限：只有创建者或群管理者可以修改名称
+        const thread = channelInfo?.orgData?.thread as any;
+        const isCreator = thread?.creator_uid === WKApp.loginInfo.uid;
+        const isManagerOrOwner = data.isManagerOrCreatorOfMe;
+        const canEdit = isCreator || isManagerOrOwner;
+
         const rows = new Array<Row>();
         rows.push(
           new Row({
             cell: ListItem,
             properties: {
               title: "子区名称",
-              subTitle: channelInfo?.title,
+              subTitle: threadName,
+              onClick: () => {
+                if (!threadInfo) return;
+                if (!canEdit) {
+                  Toast.warning("只有子区创建者或群管理者才能修改名称");
+                  return;
+                }
+                this.inputEditPush(
+                  context,
+                  threadName || "",
+                  async (value: string) => {
+                    try {
+                      await WKApp.dataSource.channelDataSource.threadUpdate(
+                        threadInfo.groupNo,
+                        threadInfo.shortId,
+                        { name: value }
+                      );
+                    } catch (err: any) {
+                      Toast.error(err?.msg || "保存失败，请重试");
+                      return; // 失败时 inputEditPush 正常关闭，不刷新缓存
+                    }
+                    // 清除缓存后重新拉取，拿到新数据再刷新 UI
+                    WKSDK.shared().channelManager.deleteChannelInfo(channel);
+                    await WKSDK.shared().channelManager.fetchChannelInfo(channel);
+                    data.refresh();
+                  },
+                  "子区名称",
+                  50
+                );
+              },
             },
           })
         );

@@ -317,6 +317,9 @@ export interface IChannelDataSource {
     updateThreadMd(groupNo: string, shortId: string, content: string): Promise<{ version: number }>
     deleteThreadMd(groupNo: string, shortId: string): Promise<void>
 
+    // 子区信息
+    threadUpdate(groupNo: string, shortId: string, data: { name: string }): Promise<void>
+
     setBotAdmin(channel: Channel, uid: string): Promise<void>
     removeBotAdmin(channel: Channel, uid: string): Promise<void>
 }
