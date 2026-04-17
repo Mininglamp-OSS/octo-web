@@ -50,7 +50,7 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
 
   constructor(props: ThreadPanelProps) {
     super(props)
-    const savedWidth = restoreThreadWidth()
+    const savedWidth = clampThreadWidth(restoreThreadWidth(), window.innerWidth)
     this.lastPanelWidth = savedWidth
 
     this.state = {
@@ -85,6 +85,10 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
   componentWillUnmount() {
     document.removeEventListener('mousemove', this.onPanelDragMove)
     document.removeEventListener('mouseup', this.onPanelDragEnd)
+    if (this.state.isDragging) {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
   }
 
   // ── Splitter drag for thread panel width ──
