@@ -50,11 +50,11 @@ export function persistWidth(width: number): void {
 // ── Right (thread) panel helpers ──
 
 export function getMaxThreadWidth(containerWidth: number): number {
-    return getMaxWidth(containerWidth, THREAD_MIN_WIDTH, THREAD_MAX_WIDTH, 0.45)
+    return getMaxWidth(containerWidth, THREAD_MIN_WIDTH, THREAD_MAX_WIDTH, 0.65)
 }
 
 export function clampThreadWidth(width: number, containerWidth: number): number {
-    return clampWidth(width, containerWidth, THREAD_MIN_WIDTH, THREAD_MAX_WIDTH, 0.45)
+    return clampWidth(width, containerWidth, THREAD_MIN_WIDTH, THREAD_MAX_WIDTH, 0.65)
 }
 
 export function restoreThreadWidth(): number {

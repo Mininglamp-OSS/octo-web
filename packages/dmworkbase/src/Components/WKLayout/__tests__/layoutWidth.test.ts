@@ -85,13 +85,13 @@ describe('layoutWidth', () => {
             })
 
             it('clamps above dynamic maximum', () => {
-                // container=1000 → 1000*0.45=450 < 811
-                expect(clampThreadWidth(600, 1000)).toBe(450)
+                // container=1000 → 1000*0.65=650 < 811
+                expect(clampThreadWidth(700, 1000)).toBe(650)
             })
 
             it('caps at THREAD_MAX_WIDTH for wide containers', () => {
-                // 2000*0.45=900 > 811
-                expect(clampThreadWidth(900, 2000)).toBe(THREAD_MAX_WIDTH)
+                // 1400*0.65=910 > 811
+                expect(clampThreadWidth(900, 1400)).toBe(THREAD_MAX_WIDTH)
             })
 
             it('passes through valid values', () => {
