@@ -6,7 +6,6 @@ import {  MessageTask, TaskStatus } from "wukongimjssdk";
 interface UploadCredentials {
     uploadUrl: string
     downloadUrl: string
-    method: string
     contentType: string
     contentDisposition?: string
     key: string
@@ -28,12 +27,17 @@ export class MediaMessageUploadTask extends MessageTask {
     async start(): Promise<void> {
         const mediaContent = this.message.content as MediaMessageContent
         if(mediaContent.file) {
-            const fileName = this.getUUID();
-            const path = `/${this.message.channel.channelType}/${this.message.channel.channelID}/${fileName}${mediaContent.extension??""}`
-            const credentials = await this.getUploadCredentials(mediaContent.file, path)
-            if(credentials) {
-                await this.uploadFile(mediaContent.file, credentials)
-            }else{
+            try {
+                const fileName = this.getUUID();
+                const path = `/${this.message.channel.channelType}/${this.message.channel.channelID}/${fileName}${mediaContent.extension ?? ""}`
+                const credentials = await this.getUploadCredentials(mediaContent.file, path)
+                if(credentials) {
+                    await this.uploadFile(mediaContent.file, credentials)
+                }else{
+                    this.status = TaskStatus.fail
+                    this.update()
+                }
+            } catch {
                 this.status = TaskStatus.fail
                 this.update()
             }
@@ -67,13 +71,19 @@ export class MediaMessageUploadTask extends MessageTask {
                 }
             }
         }).catch(error => {
-            this.status = TaskStatus.fail
-            this.update()
+            // Don't overwrite cancel/restart status — abort triggers catch too
+            if (this.status !== TaskStatus.cancel && this.status !== TaskStatus.processing) {
+                this.status = TaskStatus.fail
+                this.update()
+            }
         })
-        if(resp) {
+        if(resp && resp.status >= 200 && resp.status < 300) {
             const mediaContent = this.message.content as MediaMessageContent
             mediaContent.remoteUrl = credentials.downloadUrl
             this.status = TaskStatus.success
+            this.update()
+        } else if(resp) {
+            this.status = TaskStatus.fail
             this.update()
         }
     }
@@ -81,10 +91,11 @@ export class MediaMessageUploadTask extends MessageTask {
     // 获取预签名直传凭证（COS 直传）
     async getUploadCredentials(file: File, path: string): Promise<UploadCredentials | undefined> {
         const contentType = file.type || "application/octet-stream"
+        const fileName = file.name || 'file'
         const result = await WKApp.apiClient.get(
-            `file/upload/credentials?path=${encodeURIComponent(path)}&type=chat&filename=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(contentType)}`
+            `file/upload/credentials?path=${encodeURIComponent(path)}&type=chat&filename=${encodeURIComponent(fileName)}&contentType=${encodeURIComponent(contentType)}`
         )
-        if(result && result.uploadUrl) {
+        if(result && result.uploadUrl && result.downloadUrl) {
             return result as UploadCredentials
         }
     }
@@ -106,7 +117,11 @@ export class MediaMessageUploadTask extends MessageTask {
         return this._progress ?? 0
     }
 
-    /** 重试上传：防重入 + 取消上一个请求，再重置状态重新 start() */
+    /**
+     * 重试上传：防重入 + 取消上一个请求，再重置状态重新 start()。
+     * Note: expiredTime is not checked here because start() always re-fetches
+     * fresh credentials via getUploadCredentials, so stale tokens are never reused.
+     */
     async restart(): Promise<void> {
         if (this.status === TaskStatus.processing) return // 防重入
         this.controller?.abort() // 取消上一个请求（如有）

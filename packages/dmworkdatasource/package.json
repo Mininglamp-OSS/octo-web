@@ -2,6 +2,9 @@
   "name": "@octo/datasource",
   "version": "1.0.0",
   "main": "src/index.tsx",
+  "scripts": {
+    "test": "vitest run"
+  },
   "dependencies": {
     "@octo/base": "workspace:*",
     "axios": "^0.25.0",
