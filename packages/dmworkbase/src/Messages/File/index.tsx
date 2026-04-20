@@ -258,13 +258,23 @@ export class FileCell extends MessageCell<any, FileCellState> {
     }
 
     handleTextPreview = async (url: string, name: string, extension: string) => {
+        const TEXT_PREVIEW_LIMIT = 5 * 1024 * 1024 // 5MB
         try {
             const response = await fetch(url)
             if (!response.ok) {
                 Toast.error("文件预览失败")
                 return
             }
+            const contentLength = parseInt(response.headers.get('Content-Length') || '0', 10)
+            if (contentLength > TEXT_PREVIEW_LIMIT) {
+                alert('File too large to preview')
+                return
+            }
             const buffer = await response.arrayBuffer()
+            if (buffer.byteLength > TEXT_PREVIEW_LIMIT) {
+                alert('File too large to preview')
+                return
+            }
             const text = new TextDecoder("utf-8").decode(buffer)
             this.setState({
                 textPreviewVisible: true,

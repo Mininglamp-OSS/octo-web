@@ -161,8 +161,9 @@ describe('downloadFile', () => {
             expect(clickedAnchors).toHaveLength(1)
             expect(clickedAnchors[0].download).toBe('report.pdf')
             expect(clickedAnchors[0].href).toBe('https://cdn.example.com/file.pdf')
-            // Should NOT have target="_blank"
-            expect(clickedAnchors[0].target).toBe('')
+            // Cross-origin fallback should open in new tab to avoid navigating away
+            expect(clickedAnchors[0].target).toBe('_blank')
+            expect(clickedAnchors[0].rel).toBe('noopener')
         })
 
         it('should fallback to anchor-click on HTTP error', async () => {
@@ -423,12 +424,22 @@ describe('downloadFile', () => {
 })
 
 describe('fallbackAnchorDownload', () => {
-    it('should create anchor with download attribute and no target', () => {
+    it('should set target="_blank" and rel="noopener" for cross-origin URLs', () => {
         fallbackAnchorDownload('https://cdn.example.com/hash_file.pdf', 'file.pdf')
 
         expect(clickedAnchors).toHaveLength(1)
         expect(clickedAnchors[0].download).toBe('file.pdf')
         expect(clickedAnchors[0].href).toBe('https://cdn.example.com/hash_file.pdf')
+        expect(clickedAnchors[0].target).toBe('_blank')
+        expect(clickedAnchors[0].rel).toBe('noopener')
+    })
+
+    it('should not set target for same-origin URLs', () => {
+        fallbackAnchorDownload(`${window.location.origin}/files/doc.pdf`, 'doc.pdf')
+
+        expect(clickedAnchors).toHaveLength(1)
+        expect(clickedAnchors[0].download).toBe('doc.pdf')
+        expect(clickedAnchors[0].href).toBe(`${window.location.origin}/files/doc.pdf`)
         expect(clickedAnchors[0].target).toBe('')
     })
 })

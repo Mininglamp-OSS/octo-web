@@ -72,7 +72,7 @@ export async function downloadFile(
                 const { done, value } = await reader.read();
                 if (done) break;
                 chunks.push(value);
-                received += value.length;
+                received += value.byteLength;
                 // Streaming byte limit: abort if actual data exceeds limit
                 if (received > limit) {
                     reader.cancel().catch(() => {});
@@ -114,14 +114,22 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 }
 
 /**
- * Fallback download via anchor-click (no new tab).
+ * Fallback download via anchor-click.
  * Used when fetch+Blob fails or for oversized files.
  * The filename hint works for same-origin; ignored for cross-origin.
+ * For cross-origin URLs, opens in a new tab to avoid navigating away from the app.
  */
 export function fallbackAnchorDownload(url: string, filename: string): void {
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename;  // Best-effort: works for same-origin, ignored for cross-origin
+    a.download = filename;
+    try {
+        const parsed = new URL(url, window.location.href);
+        if (parsed.origin !== window.location.origin) {
+            a.target = '_blank';
+            a.rel = 'noopener';
+        }
+    } catch { /* keep default */ }
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
