@@ -182,6 +182,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
                 }
                 // Text files: fetch and decode as UTF-8 to avoid CDN charset issues
                 const resp = await fetch(url)
+                if (!resp.ok) throw new Error(`Download failed: ${resp.status}`)
                 // Layer 2: Content-Length check (catches oversized files when content.size is 0)
                 const cl = resp.headers.get("Content-Length")
                 if (cl && parseInt(cl, 10) > BLOB_DOWNLOAD_SIZE_LIMIT) {

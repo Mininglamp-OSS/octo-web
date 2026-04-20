@@ -1,9 +1,10 @@
 import { isSafeUrl } from "./security";
 
-export const BLOB_DOWNLOAD_SIZE_LIMIT = 100 * 1024 * 1024; // 100 MB
+export const BLOB_DOWNLOAD_SIZE_LIMIT = 500 * 1024 * 1024; // 500 MB
 
 /**
- * Download a file with correct filename via fetch+Blob.
+ * Download a file with correct filename.
+ * Same-origin URLs use direct anchor download; cross-origin uses fetch+Blob.
  * Falls back to anchor-click on error or for oversized files.
  */
 export async function downloadFile(
@@ -11,6 +12,7 @@ export async function downloadFile(
     filename: string,
     opts?: {
         fileSize?: number;
+        sizeLimit?: number;
         onProgress?: (pct: number) => void;
         onStart?: () => void;
         onEnd?: () => void;
@@ -18,15 +20,28 @@ export async function downloadFile(
 ): Promise<void> {
     if (!url) return;
 
-    // Resolve relative paths to absolute (relative URLs are same-origin)
-    const resolvedUrl = url.startsWith("/")
-        ? window.location.origin + url
-        : url;
+    // Resolve any URL format (relative, absolute, etc.) to full absolute URL
+    let resolvedUrl: string;
+    try {
+        resolvedUrl = new URL(url, window.location.href).href;
+    } catch {
+        return; // Invalid URL
+    }
 
     if (!isSafeUrl(resolvedUrl)) return;
 
+    const limit = opts?.sizeLimit ?? BLOB_DOWNLOAD_SIZE_LIMIT;
+
+    // Same-origin: <a download> works natively, no need for fetch+blob
+    if (new URL(resolvedUrl).origin === window.location.origin) {
+        fallbackAnchorDownload(resolvedUrl, filename);
+        return;
+    }
+
+    // Cross-origin: fetch+blob to preserve filename
+
     // Pre-check: skip fetch entirely when caller provides known file size
-    if (opts?.fileSize && opts.fileSize > BLOB_DOWNLOAD_SIZE_LIMIT) {
+    if (opts?.fileSize && opts.fileSize > limit) {
         fallbackAnchorDownload(resolvedUrl, filename);
         return;
     }
@@ -39,7 +54,7 @@ export async function downloadFile(
         // Runtime Content-Length enforcement: abort before reading body
         const contentLengthStr = resp.headers.get("Content-Length");
         const declaredSize = contentLengthStr ? parseInt(contentLengthStr, 10) : NaN;
-        if (!isNaN(declaredSize) && declaredSize > BLOB_DOWNLOAD_SIZE_LIMIT) {
+        if (!isNaN(declaredSize) && declaredSize > limit) {
             if (resp.body) {
                 resp.body.cancel().catch(() => {});
             }
@@ -58,7 +73,7 @@ export async function downloadFile(
                 chunks.push(value);
                 received += value.length;
                 // Streaming byte limit: abort if actual data exceeds limit
-                if (received > BLOB_DOWNLOAD_SIZE_LIMIT) {
+                if (received > limit) {
                     reader.cancel().catch(() => {});
                     fallbackAnchorDownload(resolvedUrl, filename);
                     return;
@@ -72,7 +87,7 @@ export async function downloadFile(
         } else {
             // Fallback for environments without ReadableStream body
             const blob = await resp.blob();
-            if (blob.size > BLOB_DOWNLOAD_SIZE_LIMIT) {
+            if (blob.size > limit) {
                 fallbackAnchorDownload(resolvedUrl, filename);
                 return;
             }
