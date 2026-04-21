@@ -25,6 +25,7 @@ export interface MergeforwardMessageListProps {
 
 interface MergeforwardMessageListState {
     previewImgSrc: string | null
+    previewImageContent: ImageContent | null
 }
 
 export default class MergeforwardMessageList extends Component<MergeforwardMessageListProps, MergeforwardMessageListState> {
@@ -32,6 +33,7 @@ export default class MergeforwardMessageList extends Component<MergeforwardMessa
         super(props)
         this.state = {
             previewImgSrc: null,
+            previewImageContent: null,
         }
     }
 
@@ -146,7 +148,7 @@ export default class MergeforwardMessageList extends Component<MergeforwardMessa
            return <img
                style={{"width":`${size.width}px`,"height":`${size.height}px`,borderRadius:"var(--wk-r-xs, 4px)",cursor:"pointer"}}
                src={src}
-               onClick={() => this.setState({ previewImgSrc: src })}
+               onClick={() => this.setState({ previewImgSrc: src, previewImageContent: imageContent })}
            />
         }
         if (msg.contentType === MessageContentTypeConst.file) {
@@ -181,7 +183,7 @@ export default class MergeforwardMessageList extends Component<MergeforwardMessa
 
     render(): ReactNode {
         const { mergeforwardContent } = this.props
-        const { previewImgSrc } = this.state
+        const { previewImgSrc, previewImageContent } = this.state
         return <><div className="wk-mergeforwardmessagelist">
             <div className="wk-mergeforwardmessagelist-header">
                 <WKViewQueueHeader hideBack={true} title={this.getTitle(mergeforwardContent)}></WKViewQueueHeader>
@@ -235,9 +237,15 @@ export default class MergeforwardMessageList extends Component<MergeforwardMessa
         </div>
         <Lightbox
             open={!!previewImgSrc}
-            close={() => this.setState({ previewImgSrc: null })}
-            slides={previewImgSrc ? [{ src: previewImgSrc, alt: "", download: previewImgSrc }] : []}
+            close={() => this.setState({ previewImgSrc: null, previewImageContent: null })}
+            slides={previewImgSrc ? [{ src: previewImgSrc, alt: "" }] : []}
             plugins={[Download]}
+            download={{ download: ({ slide }) => {
+                if (slide?.src) {
+                    const name = previewImageContent?.name || "image.png"
+                    downloadFile(slide.src, name)
+                }
+            }}}
             carousel={{ finite: true }}
             controller={{ closeOnBackdropClick: true }}
             render={{
