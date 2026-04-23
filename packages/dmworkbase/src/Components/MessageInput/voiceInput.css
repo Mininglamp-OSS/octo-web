@@ -1,69 +1,114 @@
 .wk-voice-indicator {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    font-size: 12px;
-    color: var(--text-secondary);
-    height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  height: 28px;
 }
 
 .wk-voice-recording {
-    color: #e74c3c;
+  color: var(--wk-color-error);
 }
 
 .wk-voice-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: #e74c3c;
-    animation: wk-voice-blink 1s ease-in-out infinite;
-    flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--wk-color-error);
+  animation: wk-voice-blink 1s ease-in-out infinite;
+  flex-shrink: 0;
 }
 
 @keyframes wk-voice-blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 .wk-voice-spinner {
-    width: 12px;
-    height: 12px;
-    border: 2px solid var(--border-color);
-    border-top-color: var(--text-secondary);
-    border-radius: 50%;
-    animation: wk-voice-spin 0.6s linear infinite;
-    flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--text-secondary);
+  border-radius: 50%;
+  animation: wk-voice-spin 0.6s linear infinite;
+  flex-shrink: 0;
 }
 
 @keyframes wk-voice-spin {
-    to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .wk-voice-label {
-    white-space: nowrap;
+  white-space: nowrap;
 }
 
 .wk-voice-cancel {
-    background: none;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    color: var(--text-secondary);
-    font-size: 11px;
-    cursor: pointer;
-    padding: 2px 8px;
-    margin-left: 4px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 8px;
+  margin-left: 4px;
 }
 
 .wk-voice-cancel:hover {
-    background-color: var(--bg-hover);
+  background-color: var(--bg-hover);
 }
 
 .wk-voice-transcribing {
-    color: var(--text-secondary);
+  color: var(--text-secondary);
 }
 
 .wk-voice-preparing {
-    color: var(--text-tertiary, #999);
-    opacity: 0.7;
+  color: var(--text-tertiary, #999);
+  opacity: 0.7;
+}
+
+/* 语音按钮组：麦克风 + 下拉箭头 */
+.wk-voice-button-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.wk-voice-dropdown-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 24px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+}
+
+.wk-voice-dropdown-arrow:hover {
+  background-color: var(--bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+.wk-voice-dropdown-arrow:active {
+  opacity: 0.7;
+}
+
+.wk-voice-dropdown-triangle {
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-top: 4px solid var(--wk-icon-muted);
+}
+
+.wk-voice-dropdown-arrow:hover .wk-voice-dropdown-triangle {
+  border-top-color: var(--wk-text-primary);
 }

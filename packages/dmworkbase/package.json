@@ -13,6 +13,7 @@
     "@lottiefiles/lottie-player": "^1.5.5",
     "@tiptap/core": "3.22.2",
     "@tiptap/extension-mention": "^3.22.2",
+    "@tiptap/extension-placeholder": "^3.22.4",
     "@tiptap/pm": "^3.22.2",
     "@tiptap/react": "^3.22.2",
     "@tiptap/starter-kit": "^3.22.2",

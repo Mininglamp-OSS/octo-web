@@ -1,65 +1,158 @@
-import React, { Component, ReactNode } from "react"
-import ConversationContext from "../Conversation/context"
-import "./index.css"
+import React, { useRef, useState, useEffect } from "react";
+import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import ConversationContext from "../Conversation/context";
+import "./index.css";
+
+// 文件类型图标
+import defaultIcon from "../../assets/files/default.svg";
+import docIcon from "../../assets/files/doc.svg";
+import excelIcon from "../../assets/files/excel.svg";
+import gifIcon from "../../assets/files/gif.svg";
+import pdfIcon from "../../assets/files/pdf.svg";
+import videoIcon from "../../assets/files/video.svg";
+import zipIcon from "../../assets/files/zip.svg";
 
 interface AttachmentPreviewProps {
-    conversationContext: ConversationContext
-    files: File[]
+  conversationContext: ConversationContext;
+  files: File[];
 }
 
-function getFileIconInfo(file: File): { color: string; label: string } {
-    const dotIdx = file.name.lastIndexOf('.')
-    const ext = dotIdx > 0 ? file.name.substring(dotIdx + 1).toLowerCase() : ""
-    if (file.type.startsWith('image/')) return { color: "#1C1C23", label: "IMG" }
-    switch (ext) {
-        case "pdf": return { color: "#EF4444", label: "PDF" }
-        case "doc": case "docx": return { color: "#3B82F6", label: "DOC" }
-        case "xls": case "xlsx": return { color: "#22C55E", label: "XLS" }
-        case "ppt": case "pptx": return { color: "#F97316", label: "PPT" }
-        case "zip": case "rar": case "7z": return { color: "#EAB308", label: "ZIP" }
-        default: return { color: "#9CA3AF", label: "FILE" }
-    }
+function getFileIcon(file: File): string {
+  const dotIdx = file.name.lastIndexOf(".");
+  const ext = dotIdx > 0 ? file.name.substring(dotIdx + 1).toLowerCase() : "";
+
+  // 根据 MIME 类型或扩展名返回对应图标
+  if (
+    file.type.startsWith("video/") ||
+    ["mp4", "avi", "mov", "mkv", "webm"].includes(ext)
+  ) {
+    return videoIcon;
+  }
+  if (ext === "gif") {
+    return gifIcon;
+  }
+  if (ext === "pdf") {
+    return pdfIcon;
+  }
+  if (["doc", "docx"].includes(ext)) {
+    return docIcon;
+  }
+  if (["xls", "xlsx"].includes(ext)) {
+    return excelIcon;
+  }
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) {
+    return zipIcon;
+  }
+
+  return defaultIcon;
 }
 
 function formatFileSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default class AttachmentPreview extends Component<AttachmentPreviewProps> {
-    render(): ReactNode {
-        const { conversationContext, files } = this.props
-        if (!files || files.length === 0) return null
+const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
+  conversationContext,
+  files,
+}) => {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [showLeftArrow, setShowLeftArrow] = useState(false);
+  const [showRightArrow, setShowRightArrow] = useState(false);
 
-        return (
-            <div className="wk-attachment-preview">
-                <div className="wk-attachment-preview-list">
-                    {files.map((file, index) => {
-                        const iconInfo = getFileIconInfo(file)
-                        return (
-                            <div key={`${file.name}-${file.size}-${file.lastModified}-${index}`} className="wk-attachment-preview-item">
-                                <div className="wk-attachment-preview-icon" style={{ backgroundColor: iconInfo.color }}>
-                                    <span className="wk-attachment-preview-icon-label">{iconInfo.label}</span>
-                                </div>
-                                <div className="wk-attachment-preview-info">
-                                    <div className="wk-attachment-preview-name" title={file.name}>{file.name}</div>
-                                    <div className="wk-attachment-preview-size">{formatFileSize(file.size)}</div>
-                                </div>
-                                <button
-                                    className="wk-attachment-preview-remove"
-                                    onClick={() => conversationContext.removePendingAttachment(index)}
-                                    title="移除"
-                                >
-                                    <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M568.92 508.23l299.37-299.42a39.14 39.14 0 0 0 0-55.15l-1.64-1.64a39.14 39.14 0 0 0-55.09 0L512.19 451.84 212.77 151.91a39.14 39.14 0 0 0-55.09 0l-1.64 1.64a38.46 38.46 0 0 0 0 55.09l299.48 299.59-299.42 299.48a39.14 39.14 0 0 0 0 55.09l1.64 1.7a39.14 39.14 0 0 0 55.09 0l299.42-299.48 299.37 299.42a39.14 39.14 0 0 0 55.09 0l1.7-1.64a39.14 39.14 0 0 0 0-55.09L568.87 508.17z" />
-                                    </svg>
-                                </button>
-                            </div>
-                        )
-                    })}
-                </div>
+  // 检查是否需要显示滚动按钮
+  const checkScrollButtons = () => {
+    const el = listRef.current;
+    if (!el) return;
+
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setShowLeftArrow(scrollLeft > 0);
+    setShowRightArrow(scrollLeft + clientWidth < scrollWidth - 1);
+  };
+
+  useEffect(() => {
+    checkScrollButtons();
+    // 监听窗口大小变化
+    window.addEventListener("resize", checkScrollButtons);
+    return () => window.removeEventListener("resize", checkScrollButtons);
+  }, [files]);
+
+  const scrollLeft = () => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollBy({ left: -240, behavior: "smooth" });
+  };
+
+  const scrollRight = () => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollBy({ left: 240, behavior: "smooth" });
+  };
+
+  if (!files || files.length === 0) return null;
+
+  return (
+    <div className="wk-attachment-preview">
+      {showLeftArrow && (
+        <button
+          className="wk-attachment-scroll-btn wk-attachment-scroll-btn--left"
+          onClick={scrollLeft}
+          type="button"
+        >
+          <ChevronLeft size={16} />
+        </button>
+      )}
+
+      <div
+        className="wk-attachment-preview-list"
+        ref={listRef}
+        onScroll={checkScrollButtons}
+      >
+        {files.map((file, index) => (
+          <div
+            key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
+            className="wk-attachment-preview-item"
+          >
+            <div className="wk-attachment-preview-icon">
+              <img src={getFileIcon(file)} alt="file" />
             </div>
-        )
-    }
-}
+            <div className="wk-attachment-preview-info">
+              <div className="wk-attachment-preview-name-row">
+                <div className="wk-attachment-preview-name" title={file.name}>
+                  {file.name}
+                </div>
+                <button
+                  className="wk-attachment-preview-remove"
+                  onClick={() =>
+                    conversationContext.removePendingAttachment(index)
+                  }
+                  title="移除"
+                  type="button"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="wk-attachment-preview-size">
+                {formatFileSize(file.size)}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showRightArrow && (
+        <button
+          className="wk-attachment-scroll-btn wk-attachment-scroll-btn--right"
+          onClick={scrollRight}
+          type="button"
+        >
+          <ChevronRight size={16} />
+        </button>
+      )}
+    </div>
+  );
+};
+
+export default AttachmentPreview;
+export { AttachmentPreview };

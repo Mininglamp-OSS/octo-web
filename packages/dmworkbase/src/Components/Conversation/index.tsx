@@ -59,12 +59,13 @@ import { ImageContent } from "../../Messages/Image";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
-import AttachmentPreview from "../AttachmentPreview";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 
-const foldSessionAvatarIcon = new URL("./fold-session-avatar.svg", import.meta.url)
-  .href;
+const foldSessionAvatarIcon = new URL(
+  "./fold-session-avatar.svg",
+  import.meta.url
+).href;
 
 const FoldImage: React.FC<{ src: string }> = ({ src }) => {
   const [open, setOpen] = React.useState(false);
@@ -131,7 +132,11 @@ export class Conversation
   private _cachedSelectedText: string | null = null;
   private _beforeUnloadHandler: () => void;
   private _guardId: symbol = Symbol("pendingAttachmentGuard");
-  private onOpenThreadPanel?: (threadChannelId: string, threadName: string) => void;
+  private _addAttachmentFn?: (files: File[]) => void;
+  private onOpenThreadPanel?: (
+    threadChannelId: string,
+    threadName: string
+  ) => void;
 
   constructor(props: any) {
     super(props);
@@ -383,7 +388,8 @@ export class Conversation
   // ── Attachment Queue (#143 / #144) ──────────────────────────────────────
 
   getPendingAttachments(): File[] {
-    return this.vm.pendingAttachments;
+    // 从编辑器中获取附件文件
+    return this._messageInputContext?.getAttachmentFiles() || [];
   }
 
   addPendingAttachments(files: File[]): string | null {
@@ -405,13 +411,7 @@ export class Conversation
       "wsf",
       "ps1",
     ];
-    const current = this.vm.pendingAttachments;
     const incoming = Array.from(files);
-
-    // 检查数量上限
-    if (current.length + incoming.length > ConversationVM.MAX_ATTACHMENTS) {
-      return `最多只能同时发送 ${ConversationVM.MAX_ATTACHMENTS} 个文件`;
-    }
 
     // 检查类型黑名单
     for (const f of incoming) {
@@ -421,31 +421,21 @@ export class Conversation
       }
     }
 
-    // 检查总大小
-    const totalSize = [...current, ...incoming].reduce(
-      (sum, f) => sum + f.size,
-      0
-    );
-    if (totalSize > ConversationVM.MAX_TOTAL_SIZE) {
-      return `所有文件总大小不能超过 100MB`;
+    // 调用编辑器的 addAttachment 方法插入附件节点
+    if (this._addAttachmentFn) {
+      this._addAttachmentFn(incoming);
     }
-
-    // 同名文件检查由调用方（FileToolbar）负责弹提示，此处直接追加
-    this.vm.pendingAttachments = [...current, ...incoming];
-    this.vm.notifyListener();
     return null;
   }
 
-  removePendingAttachment(index: number): void {
-    const arr = [...this.vm.pendingAttachments];
-    arr.splice(index, 1);
-    this.vm.pendingAttachments = arr;
-    this.vm.notifyListener();
+  removePendingAttachment(_index: number): void {
+    // 附件现在由编辑器管理，通过编辑器节点删除
+    // 此方法保留以兼容接口，但不再需要手动调用
   }
 
   clearPendingAttachments(): void {
-    this.vm.pendingAttachments = [];
-    this.vm.notifyListener();
+    // 附件现在由编辑器管理，清空编辑器内容时会自动清除
+    // 此方法保留以兼容接口
   }
 
   channel(): Channel {
@@ -525,7 +515,7 @@ export class Conversation
 
     // 注册附件发送守卫：返回 false 表示有未发送附件，需弹确认
     WKApp.shared.pendingAttachmentGuard = () =>
-      this.vm.pendingAttachments.length === 0;
+      this.getPendingAttachments().length === 0;
     WKApp.shared.pendingAttachmentGuardId = this._guardId;
 
     if (this.vm.hasDraft()) {
@@ -558,10 +548,7 @@ export class Conversation
       WKApp.shared.pendingAttachmentGuard = undefined;
       WKApp.shared.pendingAttachmentGuardId = undefined;
     }
-    // 清空附件队列（用户已通过 Chat 层 confirm 确认丢弃）
-    if (this.vm.pendingAttachments.length > 0) {
-      this.vm.pendingAttachments = [];
-    }
+    // 附件现在由编辑器管理，组件卸载时编辑器会自动清理
     this.dealloc();
   }
   dealloc() {
@@ -861,7 +848,10 @@ export class Conversation
         )}
       >
         <div className="wk-message-item-fold-session-shell">
-          <div className="wk-message-item-fold-session-avatar" aria-hidden="true">
+          <div
+            className="wk-message-item-fold-session-avatar"
+            aria-hidden="true"
+          >
             <img
               className="wk-message-item-fold-session-avatar-icon"
               src={foldSessionAvatarIcon}
@@ -1372,17 +1362,8 @@ export class Conversation
                     ) : undefined}
                   </div>
                 </div>
-                <div className="wk-conversation-topview">
-                  {vm.currentReplyMessage ? (
-                    <ReplyView
-                      message={vm.currentReplyMessage}
-                      vm={vm}
-                      onClose={() => {
-                        vm.currentReplyMessage = undefined;
-                      }}
-                    ></ReplyView>
-                  ) : undefined}
-                </div>
+                {/* ReplyView 已移到 MessageInput 内部的 topView prop */}
+                <div className="wk-conversation-topview"></div>
                 <div
                   className={classNames(
                     "wk-conversation-multiplepanel",
@@ -1447,12 +1428,6 @@ export class Conversation
                       : undefined
                   }
                 >
-                  {vm.pendingAttachments.length > 0 && (
-                    <AttachmentPreview
-                      conversationContext={this}
-                      files={vm.pendingAttachments}
-                    />
-                  )}
                   <div
                     className="wk-conversation-footer-content"
                     style={
@@ -1468,10 +1443,24 @@ export class Conversation
                   >
                     <MessageInput
                       botCommands={botCommands}
-                      hasPendingAttachments={vm.pendingAttachments.length > 0}
+                      onAddAttachment={(addFn: (files: File[]) => void) => {
+                        // 存储 addAttachment 方法，供外部调用
+                        this._addAttachmentFn = addFn;
+                      }}
                       members={this.vm.subscribers.filter(
                         (s) => s.uid !== WKApp.loginInfo.uid
                       )}
+                      topView={
+                        vm.currentReplyMessage ? (
+                          <ReplyView
+                            message={vm.currentReplyMessage}
+                            vm={vm}
+                            onClose={() => {
+                              vm.currentReplyMessage = undefined;
+                            }}
+                          />
+                        ) : undefined
+                      }
                       onExpandChange={(expanded) => {
                         this.setState({ inputExpanded: expanded });
                       }}
@@ -1500,7 +1489,11 @@ export class Conversation
                               : undefined,
                         });
                       }}
-                      onSend={async (text: string, mention?: MentionModel) => {
+                      onSend={async (
+                        text: string,
+                        mention?: MentionModel,
+                        attachments?: { id: string; file: File }[]
+                      ) => {
                         const content = new MessageText(text);
                         if (mention) {
                           const mn = new Mention();
@@ -1543,13 +1536,11 @@ export class Conversation
                           vm.currentReplyMessage = undefined;
                         }
 
-                        // ── 附件队列发送 (#143 / #144) ──────────────
-                        const attachments = [...vm.pendingAttachments];
-                        if (attachments.length > 0) {
-                          // 先清空预览区，发送过程中不允许继续追加（防止重复）
-                          // 注意：清空在循环前，失败文件不会自动回滚到队列（设计如此，符合 IM 惯例）
-                          this.clearPendingAttachments();
-                          for (const file of attachments) {
+                        // ── 附件发送（从编辑器中提取） ──────────────
+                        const filesToSend =
+                          attachments?.map((a) => a.file) || [];
+                        if (filesToSend.length > 0) {
+                          for (const file of filesToSend) {
                             try {
                               if (file.type && file.type.startsWith("image/")) {
                                 const reader = new FileReader();
@@ -1857,49 +1848,40 @@ class ReplyView extends Component<ReplyViewProps> {
     const fromChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
       new Channel(message.fromUID, ChannelTypePerson)
     );
+    const isEdit = vm.currentHandlerType === 2;
+    const label = isEdit ? "编辑" : "回复";
+    const userName = fromChannelInfo?.title || "";
+    const messageText = message.remoteExtra?.isEdit
+      ? message.remoteExtra?.contentEdit?.conversationDigest
+      : message.content.conversationDigest;
+
     return (
-      <div className="wk-replyview">
-        <div className="wk-replyview-close">
-          {vm.currentHandlerType === 1 ? (
-            <IconReply className="wk-replyview-close-icon" />
-          ) : (
-            <IconEdit className="wk-replyview-close-icon" />
-          )}
-        </div>
-        <div className="wk-replyview-content">
-          <div className="wk-replyview-content-first">
-            <div className="wk-replyview-content-userinfo">
-              <div className="wk-replyview-content-userinfo-avatar">
-                <WKAvatar
-                  style={{ width: "24px", height: "24px", borderRadius: "50%" }}
-                  channel={new Channel(message.fromUID, ChannelTypePerson)}
-                ></WKAvatar>
-              </div>
-              <div className="wk-replyview-content-userinfo-name">
-                {fromChannelInfo?.title}
-                {fromChannelInfo?.orgData?.robot === 1 && (
-                  <AiBadge size="small" />
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="wk-replyview-content-second">
-            <div className="wk-replyview-content-msg">
-              {message.remoteExtra?.isEdit
-                ? message.remoteExtra?.contentEdit?.conversationDigest
-                : message.content.conversationDigest}
-            </div>
-          </div>
-        </div>
-        <div
-          className="wk-replyview-close"
+      <div className="wk-replyview-new">
+        <button
+          className="wk-replyview-new-close"
           onClick={() => {
             if (onClose) {
               onClose();
             }
           }}
         >
-          <IconClose className="wk-replyview-close-icon" />
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+        <div className="wk-replyview-new-divider"></div>
+        <div className="wk-replyview-new-content">
+          <span className="wk-replyview-new-label">{label}</span>
+          <span className="wk-replyview-new-name">{userName}：</span>
+          <span className="wk-replyview-new-text">{messageText}</span>
         </div>
       </div>
     );

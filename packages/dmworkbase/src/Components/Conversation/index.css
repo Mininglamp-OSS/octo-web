@@ -1,636 +1,713 @@
-
 :root {
-    --wk-conversation-footer: 120px;
-    --wk-height-conversation-replyview: 50px;
+  --wk-conversation-footer: 120px;
+  --wk-height-conversation-replyview: 50px;
 }
 
 .wk-conversation {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .wk-conversation-hasreply {
-
 }
 
 .wk-conversation-content {
-    width: 100%;
-    flex: 1;
-    min-height: 0; /* 必须，让 flex 子元素可以收缩 */
-    position: relative;
-    transition: opacity 150ms ease-out;
+  width: 100%;
+  flex: 1;
+  min-height: 0; /* 必须，让 flex 子元素可以收缩 */
+  position: relative;
+  transition: opacity 150ms ease-out;
 }
 
-body[theme-mode=dark] .wk-conversation-content {
-    background-color: var(--wk-color-secondary-2);
+body[theme-mode="dark"] .wk-conversation-content {
+  background-color: var(--wk-color-secondary-2);
 }
 
 .wk-conversation-hasreply .wk-conversation-content {
-    /* flex 布局下不需要 calc，由 flex: 1 自动计算 */
+  /* flex 布局下不需要 calc，由 flex: 1 自动计算 */
 }
 
 .wk-conversation-messages {
-    width: 100%;
-    height: 100%;
-    overflow-y: auto;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .wk-message-item {
-    width: 100%;
-    display: flex;
-    position: relative;
-
+  width: 100%;
+  display: flex;
+  position: relative;
 }
 
 .wk-message-item:has(.wk-message-system),
 .wk-message-item-system {
-    justify-content: center;
-    padding: var(--wk-sp-2) var(--wk-sp-4);
+  justify-content: center;
+  padding: var(--wk-sp-2) var(--wk-sp-4);
 }
 
 .wk-message-item-fold-session {
-    justify-content: flex-start;
-    padding: var(--wk-sp-2) 0;
+  justify-content: flex-start;
+  padding: var(--wk-sp-2) 0;
 }
 
 .wk-message-item-fold-session-shell {
-    width: 100%;
-    min-width: 0;
-    display: flex;
-    align-items: flex-start;
-    gap: var(--wk-sp-2);
-    margin-left: 15px;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-2);
+  margin-left: 15px;
 }
 
 .wk-message-item-fold-session-avatar {
-    width: 32px;
-    height: 32px;
-    flex-shrink: 0;
-    margin-top: 2px;
-    overflow: visible;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  overflow: visible;
 }
 
 .wk-message-item-fold-session-avatar > * {
-    display: block;
+  display: block;
 }
 
 .wk-message-item-fold-session-avatar-icon {
-    width: 32px;
-    height: 32px;
-    max-width: none;
+  width: 32px;
+  height: 32px;
+  max-width: none;
 }
 
 .wk-message-item-fold-session-card {
-    width: 100%;
-    flex: 1;
-    min-width: 0;
+  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 
 /* ── 折叠卡片展开区：紧凑列表样式 ── */
 .wk-fold-msg {
-    display: flex;
-    gap: var(--wk-sp-2);
-    align-items: flex-start;
-    padding: var(--wk-sp-2) 0;
+  display: flex;
+  gap: var(--wk-sp-2);
+  align-items: flex-start;
+  padding: var(--wk-sp-2) 0;
 }
 
 .wk-fold-msg-check-open {
-    cursor: pointer;
-    margin: 0 calc(var(--wk-sp-2) * -1);
-    padding-left: var(--wk-sp-2);
-    padding-right: var(--wk-sp-2);
-    border-radius: var(--wk-r-sm);
-    transition: background-color var(--wk-dur-fast) var(--wk-ease);
+  cursor: pointer;
+  margin: 0 calc(var(--wk-sp-2) * -1);
+  padding-left: var(--wk-sp-2);
+  padding-right: var(--wk-sp-2);
+  border-radius: var(--wk-r-sm);
+  transition: background-color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-fold-msg-check-open:hover {
-    background: color-mix(in srgb, var(--wk-brand-primary) 4%, transparent);
+  background: color-mix(in srgb, var(--wk-brand-primary) 4%, transparent);
 }
 
 .wk-fold-msg-selected {
-    background: color-mix(in srgb, var(--wk-brand-primary) 4%, transparent);
+  background: color-mix(in srgb, var(--wk-brand-primary) 4%, transparent);
 }
 
 .wk-fold-msg-check {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    min-height: 22px;
-    padding-top: 2px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+  padding-top: 2px;
 }
 
 .wk-fold-msg-checkbox {
-    gap: 0;
+  gap: 0;
 }
 
 .wk-fold-msg-checkbox .wk-checkbox__box {
-    border-radius: 50%;
-    border-width: 2px;
-    border-color: color-mix(in srgb, var(--wk-text-primary) 15%, transparent);
-    background: transparent;
+  border-radius: 50%;
+  border-width: 2px;
+  border-color: color-mix(in srgb, var(--wk-text-primary) 15%, transparent);
+  background: transparent;
 }
 
 .wk-fold-msg-checkbox:hover .wk-checkbox__box {
-    border-color: color-mix(in srgb, var(--wk-brand-primary) 40%, transparent);
+  border-color: color-mix(in srgb, var(--wk-brand-primary) 40%, transparent);
 }
 
 .wk-fold-msg-checkbox.wk-checkbox--checked .wk-checkbox__box {
-    background: var(--wk-brand-primary);
-    border-color: var(--wk-brand-primary);
+  background: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
 }
 
 .wk-fold-msg-checkbox .wk-checkbox__check {
-    width: 10px;
-    height: 10px;
+  width: 10px;
+  height: 10px;
 }
 
 .wk-fold-msg + .wk-fold-msg {
-    border-top: 1px solid var(--wk-border-subtle);
+  border-top: 1px solid var(--wk-border-subtle);
 }
 
 .wk-fold-msg-ava {
-    width: 22px;
-    height: 22px;
-    flex-shrink: 0;
-    border-radius: 4px;
-    overflow: hidden;
-    margin-top: 2px;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 2px;
 }
 
 .wk-fold-msg-ava > * {
-    display: block;
-    width: 100%;
-    height: 100%;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .wk-fold-msg-body {
-    flex: 1;
-    min-width: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 .wk-fold-msg-head {
-    display: flex;
-    align-items: center;
-    gap: var(--wk-sp-2);
-    margin-bottom: 1px;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  margin-bottom: 1px;
 }
 
 .wk-fold-msg-name {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--wk-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wk-text-primary);
 }
 
 .wk-fold-msg-time {
-    font-size: 10px;
-    color: var(--wk-text-tertiary);
+  font-size: 10px;
+  color: var(--wk-text-tertiary);
 }
 
 .wk-fold-msg-text {
-    font-size: 13px;
-    color: var(--wk-text-secondary);
-    line-height: 1.6;
+  font-size: 13px;
+  color: var(--wk-text-secondary);
+  line-height: 1.6;
 }
 
 .wk-fold-session-summary-loading {
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--wk-sp-4);
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--wk-sp-4);
 }
 
 /* 折叠内·文件卡片 */
 .wk-fold-file {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: var(--wk-bg-elevated);
-    border: 1px solid var(--wk-border-subtle);
-    border-radius: var(--wk-r-md, 10px);
-    padding: 8px 12px;
-    margin-top: 4px;
-    max-width: 360px;
-    cursor: pointer;
-    transition: background 200ms;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--wk-bg-elevated);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md, 10px);
+  padding: 8px 12px;
+  margin-top: 4px;
+  max-width: 360px;
+  cursor: pointer;
+  transition: background 200ms;
 }
 
 .wk-fold-file:hover {
-    background: var(--wk-bg-hover);
+  background: var(--wk-bg-hover);
 }
 
 .wk-fold-file-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: var(--wk-r-sm, 6px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--wk-text-inverse);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--wk-r-sm, 6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--wk-text-inverse);
 }
 
 .wk-fold-file-info {
-    flex: 1;
-    min-width: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 .wk-fold-file-name {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--wk-text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--wk-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wk-fold-file-size {
-    font-size: 11px;
-    color: var(--wk-text-tertiary);
+  font-size: 11px;
+  color: var(--wk-text-tertiary);
 }
 
 .wk-fold-file-dl {
-    width: 28px;
-    height: 28px;
-    border-radius: var(--wk-r-sm, 6px);
-    border: 1px solid var(--wk-border-subtle);
-    background: var(--wk-bg-base);
-    color: var(--wk-text-secondary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: all 200ms;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--wk-r-sm, 6px);
+  border: 1px solid var(--wk-border-subtle);
+  background: var(--wk-bg-base);
+  color: var(--wk-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 200ms;
 }
 
 .wk-fold-file-dl:hover {
-    border-color: var(--wk-brand-primary);
-    color: var(--wk-brand-primary);
-    background: var(--wk-brand-primary-subtle, color-mix(in srgb, var(--wk-brand-primary) 4%, transparent));
+  border-color: var(--wk-brand-primary);
+  color: var(--wk-brand-primary);
+  background: var(
+    --wk-brand-primary-subtle,
+    color-mix(in srgb, var(--wk-brand-primary) 4%, transparent)
+  );
 }
 
 /* 折叠内·图片 */
 .wk-fold-img {
-    margin-top: 4px;
-    max-width: 240px;
-    border-radius: var(--wk-r-md, 10px);
-    overflow: hidden;
-    border: 1px solid var(--wk-border-subtle);
-    cursor: pointer;
-    transition: box-shadow 200ms;
+  margin-top: 4px;
+  max-width: 240px;
+  border-radius: var(--wk-r-md, 10px);
+  overflow: hidden;
+  border: 1px solid var(--wk-border-subtle);
+  cursor: pointer;
+  transition: box-shadow 200ms;
 }
 
 .wk-fold-img:hover {
-    box-shadow: var(--wk-shadow-md);
+  box-shadow: var(--wk-shadow-md);
 }
 
 .wk-fold-img img {
-    display: block;
-    width: 100%;
-    height: auto;
-    object-fit: cover;
-    max-height: 180px;
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  max-height: 180px;
 }
 
-
 .wk-message-item-last {
-    margin-bottom: 15px;
+  margin-bottom: 15px;
 }
 
 .wk-conversation-dragover .wk-message-item {
-    pointer-events:none;
+  pointer-events: none;
 }
 
 .wk-conversation-footer {
-    width: 100%;
-    flex-shrink: 0;
-    display: flex;
-    justify-content: center;
-    flex-direction: column;
+  width: 100%;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  flex-direction: column;
 }
 
-
-
 .wk-conversation-footer-content {
-    width: 100%;
-    height: 100%;
+  width: 100%;
+  height: 100%;
 }
 
 .wk-conversation-chattoolbars {
-    height: 100%;
-    margin-bottom: 0px;
-    display: flex;
-    align-items: center;
-   
+  height: 100%;
+  margin-bottom: 0px;
+  display: flex;
+  align-items: center;
 }
 
 .wk-conversation-chattoolbars-item {
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
 }
 
-
-
 .wk-conversation-content-fileupload-mask {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    left: 0px;
-    top: 0px;
-    padding: 15px;
-
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  left: 0px;
+  top: 0px;
+  padding: 15px;
 }
 
 .wk-conversation-content-fileupload-mask-content {
-    width: 100%;
-    height: 100%;
-    border: 1px dashed var(--wk-border-default);
-    border-radius: 4px;
-    background-color: var(--wk-bg-overlay);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    font-weight: 500;
-    padding: 20px;
-
+  width: 100%;
+  height: 100%;
+  border: 1px dashed var(--wk-border-default);
+  border-radius: 4px;
+  background-color: var(--wk-bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 500;
+  padding: 20px;
 }
 
 .wk-replyview {
-    width: 100%;
-    height: 100%;
-    display: flex;
+  width: 100%;
+  height: 100%;
+  display: flex;
 }
 
 .wk-replyview-content {
-    flex: 1;
-    min-width: 0;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    margin-left: 15px;
-    overflow: hidden;
-    color: var(--wk-color-font-tip);
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin-left: 15px;
+  overflow: hidden;
+  color: var(--wk-color-font-tip);
 }
 
 .wk-replyview-content-msg {
-    display: inline-block;
-    white-space: nowrap;
-    width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  display: inline-block;
+  white-space: nowrap;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wk-replyview-content-first {
-    width: 100%;
-    margin-top: 2px;
+  width: 100%;
+  margin-top: 2px;
 }
 
 .wk-replyview-content-second {
-    margin-top: 2px;
+  margin-top: 2px;
 }
 
 .wk-replyview-content-userinfo {
-    display: flex;
+  display: flex;
 }
 
 .wk-replyview-content-userinfo-name {
-    display: flex;
-    align-items: center;
-    margin-left: 5px;
+  display: flex;
+  align-items: center;
+  margin-left: 5px;
 }
 
 .wk-conversation-topview {
-    transform: translate3d(0, 100%, 0);
-    transition: transform var(--wk-layer-transition);
-    background-color: var(--input-bg);
+  transform: translate3d(0, 100%, 0);
+  transition: transform var(--wk-layer-transition);
+  background-color: var(--input-bg);
 }
 
 .wk-conversation-hasreply .wk-conversation-topview {
-    transform: translate3d(0,  0, 0);
-    height: var(--wk-height-conversation-replyview);
-    box-shadow: var(--wk-shadow-xs);
-    border-left: none;
+  /* 引用已移到 MessageInput 内部，这里隐藏 */
+  display: none;
+}
+
+.wk-conversation-topview {
+  display: none;
+}
+
+/* 新版引用样式 */
+.wk-replyview-new {
+  display: flex;
+  align-items: center;
+  background-color: #f6f6f6;
+  padding: 6px 12px;
+  border-radius: 4px;
+  width: 100%;
+  border: 1px solid #e5e5e5;
+  box-sizing: border-box;
+}
+
+.wk-replyview-new-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  background-color: #b0b0b0;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.15s;
+}
+
+.wk-replyview-new-close:hover {
+  background-color: #888;
+}
+
+.wk-replyview-new-close svg {
+  width: 8px;
+  height: 8px;
+}
+
+.wk-replyview-new-divider {
+  flex-shrink: 0;
+  width: 1px;
+  height: 12px;
+  background-color: #d1d5db;
+  margin: 0 8px;
+}
+
+.wk-replyview-new-content {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #333;
+}
+
+.wk-replyview-new-label {
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.wk-replyview-new-name {
+  flex-shrink: 0;
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.wk-replyview-new-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #555;
 }
 
 .wk-conversation-hasreply .wk-messageinput-box {
-    box-shadow:none;
+  box-shadow: none;
 }
 
 .wk-replyview-close {
-    height: 100%;
-    padding: 0px 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    border-right: var(--wk-line);
-    cursor: pointer;
+  height: 100%;
+  padding: 0px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-right: var(--wk-line);
+  cursor: pointer;
 }
 
-
-
 .wk-conversation-multiplepanel {
-    background-color: transparent;
-    width: 100%;
-    z-index: 999;
-    flex-shrink: 0;
-    position: relative;
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height var(--wk-layer-transition);
+  background-color: transparent;
+  width: 100%;
+  z-index: 999;
+  flex-shrink: 0;
+  position: relative;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height var(--wk-layer-transition);
 }
 
 .wk-conversation-multiplepanel-show {
-    max-height: var(--wk-height-multiplepanel, 88px);
+  max-height: var(--wk-height-multiplepanel, 88px);
 }
 
 .wk-multiplepanel {
-    width: 100%;
-    height: 100%;
-    border-top: 1px solid var(--wk-border-subtle);
-    background: var(--wk-bg-base);
+  width: 100%;
+  height: 100%;
+  border-top: 1px solid var(--wk-border-subtle);
+  background: var(--wk-bg-base);
 }
 
 .wk-multiplepanel-content {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: var(--wk-sp-2);
-    padding: var(--wk-sp-3) calc(var(--wk-sp-4) + 40px) var(--wk-sp-3) var(--wk-sp-4);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-3) calc(var(--wk-sp-4) + 40px) var(--wk-sp-3)
+    var(--wk-sp-4);
 }
 
 .wk-multiplepanel-content-item {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    gap: var(--wk-sp-1);
-    margin-left: 0;
-    cursor: pointer;
-    padding: 6px 14px;
-    border-radius: var(--wk-r-sm);
-    border: 1px solid var(--wk-border-subtle);
-    background: var(--wk-bg-surface);
-    transition: background-color var(--wk-dur-fast) var(--wk-ease), border-color var(--wk-dur-fast) var(--wk-ease), color var(--wk-dur-fast) var(--wk-ease);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-1);
+  margin-left: 0;
+  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: var(--wk-r-sm);
+  border: 1px solid var(--wk-border-subtle);
+  background: var(--wk-bg-surface);
+  transition: background-color var(--wk-dur-fast) var(--wk-ease),
+    border-color var(--wk-dur-fast) var(--wk-ease),
+    color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-multiplepanel-content-item-icon {
-    background-color: transparent;
-    width: 14px;
-    height: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  background-color: transparent;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .wk-multiplepanel-content-item:hover {
-    background: var(--wk-bg-hover);
-    border-color: color-mix(in srgb, var(--wk-brand-primary) 12%, transparent);
+  background: var(--wk-bg-hover);
+  border-color: color-mix(in srgb, var(--wk-brand-primary) 12%, transparent);
 }
 
 .wk-multiplepanel-content-item:first-child {
-    background: var(--wk-brand-primary);
-    border-color: var(--wk-brand-primary);
-    color: var(--wk-text-inverse);
+  background: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+  color: var(--wk-text-inverse);
 }
 
 .wk-multiplepanel-content-item:first-child:hover {
-    background: color-mix(in srgb, var(--wk-brand-primary) 92%, var(--wk-text-inverse));
-    border-color: color-mix(in srgb, var(--wk-brand-primary) 92%, var(--wk-text-inverse));
+  background: color-mix(
+    in srgb,
+    var(--wk-brand-primary) 92%,
+    var(--wk-text-inverse)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--wk-brand-primary) 92%,
+    var(--wk-text-inverse)
+  );
 }
 
 .wk-multiplepanel-content-item-icon-svg {
-    width: 14px;
-    height: 14px;
-    fill: currentColor;
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
 }
 
 .wk-multiplepanel-content-item-icon svg {
-    width: 14px;
-    height: 14px;
+  width: 14px;
+  height: 14px;
 }
 
 .wk-multiplepanel-content-item-title {
-    color: currentColor;
-    font-size: var(--wk-text-size-sm);
-    margin-top: 0;
-    line-height: 1;
+  color: currentColor;
+  font-size: var(--wk-text-size-sm);
+  margin-top: 0;
+  line-height: 1;
 }
 
 .wk-multiplepanel-close {
-    position: absolute;
-    top: 50%;
-    right: var(--wk-sp-4);
-    left: auto;
-    transform: translateY(-50%);
-    padding: 6px;
-    cursor: pointer;
-    border-radius: var(--wk-r-sm);
-    color: var(--wk-text-secondary);
-    transition: background-color var(--wk-dur-fast) var(--wk-ease), color var(--wk-dur-fast) var(--wk-ease);
+  position: absolute;
+  top: 50%;
+  right: var(--wk-sp-4);
+  left: auto;
+  transform: translateY(-50%);
+  padding: 6px;
+  cursor: pointer;
+  border-radius: var(--wk-r-sm);
+  color: var(--wk-text-secondary);
+  transition: background-color var(--wk-dur-fast) var(--wk-ease),
+    color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-multiplepanel-close:hover {
-    background: var(--wk-bg-hover);
+  background: var(--wk-bg-hover);
 }
 
-
 .wk-conversationpositionview {
-    position: absolute;
-    bottom: 1.0rem;
-    right: 1.5rem;
+  position: absolute;
+  bottom: 1rem;
+  right: 1.5rem;
 }
 
 .wk-conversationpositionview ul {
-    margin-bottom: 0px;
+  margin-bottom: 0px;
 }
 
 .wk-conversationpositionview-item {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    background-color: var(--card-bg);
-   
-    box-shadow: var(--wk-shadow-sm);
-    color: var(--wk-text-secondary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transform: scale(0.5,0.5);
-    transition: transform .25s cubic-bezier(0.34, 1.56, 0.64, 1),opacity .2s ease;
-    opacity: 0;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background-color: var(--card-bg);
+
+  box-shadow: var(--wk-shadow-sm);
+  color: var(--wk-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transform: scale(0.5, 0.5);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.2s ease;
+  opacity: 0;
 }
 
 .wk-conversationpositionview-item img {
-    width: 20px;
-    height: 20px;
+  width: 20px;
+  height: 20px;
 }
 
-body[theme-mode=dark] .wk-conversationpositionview-item  {
-    background-color: var(--wk-color-secondary);
-    box-shadow: var(--wk-shadow-sm);
+body[theme-mode="dark"] .wk-conversationpositionview-item {
+  background-color: var(--wk-color-secondary);
+  box-shadow: var(--wk-shadow-sm);
 }
-
 
 .wk-conversationpositionview-item.wk-reveale {
-    transform: scale(1,1);
-    opacity: 1;
-    pointer-events: all;
+  transform: scale(1, 1);
+  opacity: 1;
+  pointer-events: all;
 }
 
 .wk-conversationpositionview-item i {
-    font-size: 1.75rem;
+  font-size: 1.75rem;
 }
 
 .icon-arrow-down::before {
-    content: "";
+  content: "";
 }
 
 .wk-conversationpositionview-item .wk-conversation-unread-count {
-    min-width: 1.5rem;
-    height: 1.5rem;
-    padding: 0 0.45rem;
-    border-radius: 0.75rem;
-    font-size: .875rem;
-    line-height: 1.5rem;
-    font-weight: 500;
-    text-align: center;
-    position: absolute;
-    top: -0.3rem;
-    right: -0.3rem;
-    background: var(--wk-color-danger);
-    color: var(--wk-text-inverse);
-    pointer-events: none;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.45rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+  font-weight: 500;
+  text-align: center;
+  position: absolute;
+  top: -0.3rem;
+  right: -0.3rem;
+  background: var(--wk-color-danger);
+  color: var(--wk-text-inverse);
+  pointer-events: none;
 }
 
 .wk-conversationpositionview ul li {
-    margin-top: 20px;
+  margin-top: 20px;
 }
 
 .wk-message-item-reminder {
-    animation:wk-message-item-reminder-move 2s;
-	-webkit-animation:wk-message-item-reminder-move 2s;
+  animation: wk-message-item-reminder-move 2s;
+  -webkit-animation: wk-message-item-reminder-move 2s;
 }
 
-@keyframes wk-message-item-reminder-move
-	{
-	to {background-color:var(--wk-color-theme);}
+@keyframes wk-message-item-reminder-move {
+  to {
+    background-color: var(--wk-color-theme);
+  }
 }
 
 /*Safari 和 Chrome:*/
-@-webkit-keyframes wk-message-item-reminder-move
-{
-	to {background-color:var(--wk-color-theme);}
+@-webkit-keyframes wk-message-item-reminder-move {
+  to {
+    background-color: var(--wk-color-theme);
+  }
 }
