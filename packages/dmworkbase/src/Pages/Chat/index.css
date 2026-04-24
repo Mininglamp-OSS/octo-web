@@ -1,734 +1,748 @@
 .wk-chat {
-    width: 100%;
-    height: 100%;
+  width: 100%;
+  height: 100%;
 }
 
 .wk-chat-content {
-    display: flex;
-    width: 100%;
-    height: 100%;
+  display: flex;
+  width: 100%;
+  height: 100%;
 }
 
 .wk-chat-content-left {
-    width: var(--wk-wdith-conversation-list);
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    background: var(--wk-bg-base);
+  width: var(--wk-wdith-conversation-list);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--wk-bg-base);
 }
 
 .wk-chat-search {
-    width: 100%;
-    padding: 12px;                     /* Figma: 12px all sides */
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-    height: 48px;                      /* Figma: 48px */
-    box-sizing: border-box;
+  width: 100%;
+  padding: 12px; /* Figma: 12px all sides */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  height: 48px; /* Figma: 48px */
+  box-sizing: border-box;
 }
 
 .wk-chat-search-add {
-    padding: 5px;
-    cursor: pointer;
-    color: var(--text-primary);
+  padding: 5px;
+  cursor: pointer;
+  color: var(--text-primary);
 }
 
 /* 右侧操作按钮区 */
 .wk-chat-header-actions {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;                          /* Figma: 8px */
-    flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px; /* Figma: 8px */
+  flex-shrink: 0;
 }
 
 .wk-chat-header-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;                       /* Figma: 16x16 */
-    height: 16px;
-    border-radius: 0;
-    cursor: pointer;
-    color: var(--wk-icon-muted);       /* Figma: 40% 透明 */
-    transition: color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px; /* Figma: 16x16 */
+  height: 16px;
+  border-radius: 0;
+  cursor: pointer;
+  color: var(--wk-icon-muted); /* Figma: 40% 透明 */
+  transition: color 0.15s;
 }
 
 .wk-chat-header-btn:hover {
-    color: var(--wk-icon-hover);
+  color: var(--wk-icon-hover);
 }
 
 .wk-chat-header-icon {
-    transition: color 0.15s;
+  transition: color 0.15s;
 }
 .wk-chat-header-icon:hover {
-    color: var(--text-primary) !important;
+  color: var(--text-primary) !important;
 }
 
 /* 信号塔在 header 里的 tooltip 位置 */
 .wk-chat-search .wk-navrail__signal {
-    position: relative;
-    bottom: auto;
-    right: auto;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    height: 28px;
-    border: none;
-    background: transparent;
-    border-radius: var(--wk-r-sm);
-    padding: 0 var(--wk-sp-1);
-    gap: 3px;
-    flex-shrink: 0;
-    cursor: default;
+  position: relative;
+  bottom: auto;
+  right: auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: var(--wk-r-sm);
+  padding: 0 var(--wk-sp-1);
+  gap: 3px;
+  flex-shrink: 0;
+  cursor: default;
 }
 
-
-
 .wk-chat-search .wk-navrail__signal svg {
-    width: 12px;
-    height: 12px;
-    flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 
 .wk-chat-search .wk-navrail__signal-tooltip {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    bottom: auto;
-    left: auto;
-    white-space: nowrap;
-    font-size: 11px;
-    line-height: 1.7;
-    min-width: 110px;
-    padding: var(--wk-sp-1-5) var(--wk-sp-2);
-    background: var(--wk-bg-elevated);
-    color: var(--wk-text-primary);
-    border-radius: var(--wk-r-md);
-    box-shadow: var(--wk-shadow-md);
-    z-index: 200;
-    pointer-events: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  bottom: auto;
+  left: auto;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.7;
+  min-width: 110px;
+  padding: var(--wk-sp-1-5) var(--wk-sp-2);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
+  border-radius: var(--wk-r-md);
+  box-shadow: var(--wk-shadow-md);
+  z-index: 200;
+  pointer-events: none;
 }
 
 /* ── Title Dropdown ── */
 /* Space 名称标题（替换原下拉菜单位置） */
 .wk-chat-space-name {
-    flex: 1;
-    min-width: 0;
-    font-size: 16px;                   /* Figma: 16px */
-    font-weight: 600;                  /* Figma: 600 */
-    color: var(--wk-text-primary);
-    letter-spacing: -0.01em;
-    line-height: 1.3;
-    padding: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  font-size: 16px; /* Figma: 16px */
+  font-weight: 600; /* Figma: 600 */
+  color: var(--wk-text-primary);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  padding: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wk-chat-title-dropdown {
-    position: relative;
-    flex: 1;
-    min-width: 0;
+  position: relative;
+  flex: 1;
+  min-width: 0;
 }
 
 .wk-chat-title-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--wk-text-primary, var(--text-primary));
-    cursor: pointer;
-    transition: color 0.15s;
-    letter-spacing: -0.01em;
-    line-height: 1.3;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--wk-text-primary, var(--text-primary));
+  cursor: pointer;
+  transition: color 0.15s;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
 }
 
 .wk-chat-title-btn:hover {
-    color: var(--wk-text-accent);
+  color: var(--wk-text-accent);
 }
 
 .wk-chat-title-btn-open {
-    color: var(--wk-text-accent);
+  color: var(--wk-text-accent);
 }
 
 .wk-chat-title-btn-open svg {
-    transform: rotate(180deg);
+  transform: rotate(180deg);
 }
 
 .wk-chat-title-btn svg {
-    transition: transform 0.2s cubic-bezier(0.16,1,0.3,1);
-    flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
 }
 
 .wk-chat-title-menu {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 0;
-    min-width: 160px;
-    background: var(--wk-bg-surface);
-    border: 1px solid var(--wk-black-alpha-08);
-    border-radius: var(--wk-r-md, 10px);
-    box-shadow: 0 8px 24px var(--wk-black-alpha-08);
-    padding: 4px;
-    z-index: 200;
-    animation: wkDropIn 0.18s cubic-bezier(0.16,1,0.3,1);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 160px;
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-black-alpha-08);
+  border-radius: var(--wk-r-md, 10px);
+  box-shadow: 0 8px 24px var(--wk-black-alpha-08);
+  padding: 4px;
+  z-index: 200;
+  animation: wkDropIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes wkDropIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .wk-chat-title-option {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 12px;
-    border-radius: var(--wk-r-sm, 6px);
-    cursor: pointer;
-    font-size: 13.5px;
-    font-weight: 500;
-    color: var(--wk-text-secondary);
-    transition: background 0.15s, color 0.15s;
-    /* button reset */
-    border: none;
-    background: none;
-    width: 100%;
-    text-align: left;
-    font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: var(--wk-r-sm, 6px);
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--wk-text-secondary);
+  transition: background 0.15s, color 0.15s;
+  /* button reset */
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
 }
 
 .wk-chat-title-option:hover {
-    background: var(--wk-bg-hover);
-    color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+  color: var(--wk-text-primary);
 }
 
 .wk-chat-title-option-active {
-    color: var(--wk-text-accent);
-    background: var(--wk-brand-tint-06);
+  color: var(--wk-text-accent);
+  background: var(--wk-brand-tint-06);
 }
 
 .wk-chat-title-option-icon {
-    width: 16px;
-    height: 16px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    color: inherit;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: inherit;
 }
 
 .wk-chat-conversation-list {
-    width: 100%;
-    flex: 1;
-    overflow-y: auto;
+  width: 100%;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .wk-chat-content-right {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  position: relative;
 }
 
-@media screen and (max-width: 640px)  {
-    .wk-chat-content-right {
-        width: 100%;
-        position: fixed;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        right: 0;
-        transform: translate3d(0, 0, 0);
-        transition: transform var(--wk-layer-transition);
-    }
+@media screen and (max-width: 640px) {
+  .wk-chat-content-right {
+    width: 100%;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    transform: translate3d(0, 0, 0);
+    transition: transform var(--wk-layer-transition);
+  }
 
-   .wk-chat-content:not(.wk-conversation-open) .wk-chat-content-right {
-        transform: translate3d(100vw, 0, 0);
-    }
+  .wk-chat-content:not(.wk-conversation-open) .wk-chat-content-right {
+    transform: translate3d(100vw, 0, 0);
+  }
 
-    .wk-chat-content-left {
-        width: 100%;
-    }
+  .wk-chat-content-left {
+    width: 100%;
+  }
 
-    .wk-chat-conversation-header-back {
-        display: flex !important;
-    }
+  .wk-chat-conversation-header-back {
+    display: flex !important;
+  }
 }
 
 .wk-chat-content-chat {
-    width: 100%;
-    height: 100%;
-    transition: width 150ms ease-in-out 0s;
+  width: 100%;
+  height: 100%;
+  transition: width 150ms ease-in-out 0s;
 }
 
 .wk-chat-content-chat-selection {
-    --wk-height-chat-conversation-header: 48px;
+  --wk-height-chat-conversation-header: 48px;
 }
 
 .wk-chat-content-right.wk-chat-channelsetting-open .wk-chat-content-chat {
-    width: calc(100% - var(--wk-wdith-chat-channelsetting));
+  width: calc(100% - var(--wk-wdith-chat-channelsetting));
 }
 
 .wk-chat-conversation {
-    width: 100%;
-    height: calc(100% - var(--wk-height-chat-conversation-header));
+  width: 100%;
+  height: calc(100% - var(--wk-height-chat-conversation-header));
 }
 
-
 .wk-chat-empty {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    height: 100%;
-    background-color: var(--wk-color-secondary);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  background-color: var(--wk-color-secondary);
 }
 
 .wk-chat-empty img {
-    height: 340px;
-    transform: scale(1.14);
+  height: 340px;
+  transform: scale(1.14);
 }
 
 .wk-chat-conversation-header {
-    height: 48px;                      /* Figma: 48px */
-    width: 100%;
-    background-color: var(--wk-bg-surface, #FFFFFF);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--wk-brand-tint-08); /* Figma: 底部描边 */
-    box-shadow: none;
-    z-index: 11;
-    padding: 12px 16px;                /* Figma: top:12 right:16 bottom:12 left:16 */
-    position: relative;
-    cursor: pointer;
-    box-sizing: border-box;
+  height: 48px; /* Figma: 48px */
+  width: 100%;
+  background-color: var(--wk-bg-surface, #ffffff);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--wk-brand-tint-08); /* Figma: 底部描边 */
+  box-shadow: none;
+  z-index: 11;
+  padding: 12px 16px; /* Figma: top:12 right:16 bottom:12 left:16 */
+  position: relative;
+  cursor: pointer;
+  box-sizing: border-box;
 }
 
 .wk-chat-conversation-header-selection {
-    background-color: var(--wk-bg-selection-header);
+  background-color: var(--wk-bg-selection-header);
 }
 
 .wk-chat-conversation-header-left {
-    display: flex;
-    align-items: center;
-    min-width: 0;
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 
 .wk-chat-conversation-header-back {
-    width: 40px;
-    height: 40px;
-    display: none;
-    position: relative;
-    justify-content: center;
-    align-items: center;
+  width: 40px;
+  height: 40px;
+  display: none;
+  position: relative;
+  justify-content: center;
+  align-items: center;
 }
 
 .wk-chat-conversation-header-back-icon {
-    position: absolute;
-    /* transform: rotate(-45deg); */
-    transform: rotate(180deg);
+  position: absolute;
+  /* transform: rotate(-45deg); */
+  transform: rotate(180deg);
 }
 
-.wk-chat-conversation-header-back-icon::before, .wk-chat-conversation-header-back-icon::after {
-    position: absolute;
-    left: 0;
-    top: 0;
-    content: "";
+.wk-chat-conversation-header-back-icon::before,
+.wk-chat-conversation-header-back-icon::after {
+  position: absolute;
+  left: 0;
+  top: 0;
+  content: "";
 }
 
 .wk-chat-conversation-header-back-icon::after {
-    transform: rotate(-45deg) scaleX(0.75) translate(0, 0.375rem);
+  transform: rotate(-45deg) scaleX(0.75) translate(0, 0.375rem);
 }
 
 .wk-chat-conversation-header-back-icon::before {
-    transform: rotate(45deg) scaleX(0.75) translate(0, -0.375rem);
+  transform: rotate(45deg) scaleX(0.75) translate(0, -0.375rem);
 }
 
-.wk-chat-conversation-header-back-icon, .wk-chat-conversation-header-back-icon::before, .wk-chat-conversation-header-back-icon::after {
-    width: 1.125rem;
-    height: 0.125rem;
-    border-radius: 0.125rem;
-    background-color: rgb(112,117,121); /* stylelint-disable-line */
-    transition: transform var(--wk-slide-transition);
+.wk-chat-conversation-header-back-icon,
+.wk-chat-conversation-header-back-icon::before,
+.wk-chat-conversation-header-back-icon::after {
+  width: 1.125rem;
+  height: 0.125rem;
+  border-radius: 0.125rem;
+  background-color: rgb(112, 117, 121); /* stylelint-disable-line */
+  transition: transform var(--wk-slide-transition);
 }
-
 
 .wk-chat-conversation-header-channel {
-    display: flex;
-    align-items: center;
+  display: flex;
+  align-items: center;
 }
 
 .wk-chat-conversation-header-channel-avatar img {
-    width: 28px;
-    height: 28px;
-    border-radius: 100px;
+  width: 28px;
+  height: 28px;
+  border-radius: 100px;
 }
 
 /* 群聊 header 的频道 icon（Figma: 16x16） */
 .wk-chat-conversation-header-channel-hash-icon {
-    width: 16px;
-    height: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--wk-icon-muted);       /* Figma: 30% 灰 */
-    flex-shrink: 0;
-    background: none;
-    border-radius: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wk-icon-muted); /* Figma: 30% 灰 */
+  flex-shrink: 0;
+  background: none;
+  border-radius: 0;
 }
 
 .wk-chat-conversation-header-channel-info {
-    display: flex;
-    align-items: center;
+  display: flex;
+  align-items: center;
 }
 
 .wk-chat-conversation-header-channel-info-name {
-    margin-left: 4px;                  /* Figma: gap=4 */
-    font-size: 14px;                   /* Figma: 14px */
-    font-weight: 500;                  /* Figma: 500 */
-    color: var(--wk-brand-primary);    /* Figma */
-    display: flex;
-    align-items: center;
-    gap: 4px;
+  margin-left: 4px; /* Figma: gap=4 */
+  font-size: 14px; /* Figma: 14px */
+  font-weight: 500; /* Figma: 500 */
+  color: var(--wk-brand-primary); /* Figma */
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* 面包屑容器 */
 .wk-chat-conversation-header-channel-info-name {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-wrap: nowrap;
-    overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 /* 父群组 badge：# icon + 群组名，可点击 */
 .wk-chat-conversation-header-parent-group {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    color: var(--wk-text-tertiary, #9498A8);
-    font-size: 13px;
-    font-weight: 400;
-    cursor: pointer;
-    transition: color 150ms;
-    white-space: nowrap;
-    flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--wk-text-tertiary, #9498a8);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: color 150ms;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .wk-chat-conversation-header-parent-group:hover {
-    color: var(--wk-text-secondary, #5C6070);
+  color: var(--wk-text-secondary, #5c6070);
 }
 
 .wk-chat-conversation-header-parent-group svg {
-    flex-shrink: 0;
-    opacity: 0.7;
+  flex-shrink: 0;
+  opacity: 0.7;
 }
 
 /* 分隔符 › */
 .wk-chat-conversation-header-separator {
-    color: var(--wk-text-quaternary, #C4C7D0);
-    font-size: 11px;
-    font-weight: 300;
-    flex-shrink: 0;
-    user-select: none;
-    margin: 0 1px;
+  color: var(--wk-text-quaternary, #c4c7d0);
+  font-size: 11px;
+  font-weight: 300;
+  flex-shrink: 0;
+  user-select: none;
+  margin: 0 1px;
 }
 
 /* 子区名称（当前频道）：🧵 icon + 名称，加粗 */
 .wk-chat-conversation-header-thread-name {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    color: var(--wk-text-primary, #1A1C24);
-    font-size: 13px;
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--wk-text-primary, #1a1c24);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wk-chat-conversation-header-content {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
 
 .wk-chat-conversation-header-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;                          /* Figma: 8px */
-    flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px; /* Figma: 8px */
+  flex-shrink: 0;
 }
 
 .wk-chat-conversation-selection-header {
-    display: flex;
-    align-items: center;
-    min-width: 0;
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 
 .wk-chat-conversation-selection-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--wk-brand-accent);
-    line-height: 1.3;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wk-brand-accent);
+  line-height: 1.3;
 }
 
 .wk-chat-conversation-selection-cancel {
-    border: none;
-    background: transparent;
-    color: var(--wk-text-secondary);
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 1;
-    padding: 8px 10px;
-    border-radius: var(--wk-r-sm);
-    cursor: pointer;
-    transition: background-color var(--wk-dur-fast) var(--wk-ease), color var(--wk-dur-fast) var(--wk-ease);
+  border: none;
+  background: transparent;
+  color: var(--wk-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 8px 10px;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+  transition: background-color var(--wk-dur-fast) var(--wk-ease),
+    color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-chat-conversation-selection-cancel:hover {
-    background: var(--wk-bg-hover);
+  background: var(--wk-bg-hover);
 }
 
 .wk-chat-conversation-selection-cancel:focus-visible {
-    outline: 2px solid var(--wk-border-glow);
-    outline-offset: 2px;
+  outline: 2px solid var(--wk-border-glow);
+  outline-offset: 2px;
 }
 
-.wk-chat-conversation-header-right  div {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    color: var(--wk-icon-default);
-    cursor: pointer;
-    border-radius: 6px;
-    transition: background 0.15s, color 0.15s;
+.wk-chat-conversation-header-right div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--wk-icon-default);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
 }
 
 .wk-chat-conversation-header-right div:hover {
-    color: var(--wk-text-strong);
-    background: var(--wk-brand-tint-06);
+  color: var(--wk-text-strong);
+  background: var(--wk-brand-tint-06);
 }
 
 .wk-chat-conversation-header-setting {
-    display: flex;
-    align-items: center;
+  display: flex;
+  align-items: center;
 }
 
 .wk-chat-channelsetting {
-    pointer-events: auto;
-    width: var(--wk-wdith-chat-channelsetting);
-    height: 100%;
-    transition: margin-right 150ms ease-in-out 0s;
-    position: absolute;
-    z-index: 99;
-    top: 0;
-    right: 0;
-    border-left: var(--wk-line);
-    margin-right: calc( 0px - var(--wk-wdith-chat-channelsetting));
-    background-color: var(--wk-color-secondary);
+  pointer-events: auto;
+  width: var(--wk-wdith-chat-channelsetting);
+  height: 100%;
+  transition: margin-right 150ms ease-in-out 0s;
+  position: absolute;
+  z-index: 99;
+  top: 0;
+  right: 0;
+  border-left: var(--wk-line);
+  margin-right: calc(0px - var(--wk-wdith-chat-channelsetting));
+  background-color: var(--wk-color-secondary);
 
-    box-shadow: 0 .25rem .5rem .125rem rgba(114,114,114,0.25098); /* stylelint-disable-line */
-    border-left: none;
+  box-shadow: 0 0.25rem 0.5rem 0.125rem rgba(114, 114, 114, 0.25098); /* stylelint-disable-line */
+  border-left: none;
 }
 
-
-body[theme-mode=dark] .wk-chat-channelsetting  {
-    box-shadow: 0 .25rem .5rem .125rem rgba(0,0,0,0.25098); /* stylelint-disable-line */
+body[theme-mode="dark"] .wk-chat-channelsetting {
+  box-shadow: 0 0.25rem 0.5rem 0.125rem rgba(0, 0, 0, 0.25098); /* stylelint-disable-line */
 }
-
-
 
 .wk-chat-content-right.wk-chat-channelsetting-open .wk-chat-content-chat {
-    width: 100%;
+  width: 100%;
 }
 
 .wk-chat-content-right.wk-chat-channelsetting-open .wk-chat-channelsetting {
-    margin-right: 0px;
+  margin-right: 0px;
 }
 
-/* Thread 面板打开时，ChannelSetting 向左移动 */
-.wk-chat-content-right.wk-chat-threadpanel-open.wk-chat-channelsetting-open .wk-chat-channelsetting {
-    right: var(--wk-width-thread-panel);
+/* ============================================
+   侧边面板布局（子区 + 文件预览共用）
+   ============================================ */
+
+/* 侧边面板打开时，ChannelSetting 向左移动 */
+.wk-chat-content-right.wk-chat-threadpanel-open.wk-chat-channelsetting-open
+  .wk-chat-channelsetting {
+  right: var(--wk-width-thread-panel);
 }
 
-/* 两个面板都打开时，聊天区宽度 */
-.wk-chat-content-right.wk-chat-threadpanel-open.wk-chat-channelsetting-open .wk-chat-content-chat {
-    width: calc(100% - var(--wk-wdith-chat-channelsetting) - var(--wk-width-thread-panel));
+/* 侧边面板 + 频道设置同时打开时，聊天区宽度 */
+.wk-chat-content-right.wk-chat-threadpanel-open.wk-chat-channelsetting-open
+  .wk-chat-content-chat {
+  width: calc(
+    100% - var(--wk-wdith-chat-channelsetting) - var(--wk-width-thread-panel)
+  );
 }
 
-/* 只有 Thread 面板打开时 */
-.wk-chat-content-right.wk-chat-threadpanel-open:not(.wk-chat-channelsetting-open) .wk-chat-content-chat {
-    width: calc(100% - var(--wk-width-thread-panel));
+/* 只有侧边面板打开时 */
+.wk-chat-content-right.wk-chat-threadpanel-open:not(
+    .wk-chat-channelsetting-open
+  )
+  .wk-chat-content-chat {
+  width: calc(100% - var(--wk-width-thread-panel));
 }
 
 .wk-chat-conversation-list-loading {
-    display: flex;
-    width: 100%;
-    justify-content: center;
-    align-items: center;
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
 }
 
 .wk-chatmenuspopover {
-    width: 100%;
-    height: 100%;
+  width: 100%;
+  height: 100%;
 }
 
 .wk-chatmenuspopover ul {
-    margin-bottom: 0px;
-    width: 100%;
-    height: 100%;
+  margin-bottom: 0px;
+  width: 100%;
+  height: 100%;
 }
 
-body[theme-mode=dark] .wk-chat-popover {
-    background-color: var(--wk-color-secondary);
-    color: var(--wk-color-white);
+body[theme-mode="dark"] .wk-chat-popover {
+  background-color: var(--wk-color-secondary);
+  color: var(--wk-color-white);
 }
 
 .wk-chatmenuspopover li {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    padding: 10px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 10px;
 }
 
 .wk-chatmenuspopover li:first-child {
-    margin-top: 0px;
+  margin-top: 0px;
 }
 
 .wk-chatmenuspopover-avatar {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .wk-chatmenuspopover li img {
-    width: 16px;
-    height: 16px;
-    max-width: 16px;
-    max-height: 16px;
-    object-fit: contain;
-    display: block;
+  width: 16px;
+  height: 16px;
+  max-width: 16px;
+  max-height: 16px;
+  object-fit: contain;
+  display: block;
 }
 
 .wk-chatmenuspopover-title {
-    margin-left: 10px;
-    font-size: 14px;
+  margin-left: 10px;
+  font-size: 14px;
 }
 
 .wk-chat-conversation-header-right-item {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--wk-icon-default);
-    cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wk-icon-default);
+  cursor: pointer;
 }
 
 .wk-chat-conversation-header-right-item svg,
 .wk-chat-conversation-header-right-item img {
-    width: 20px;
-    height: 20px;
+  width: 20px;
+  height: 20px;
 }
 
 .wk-conversation-header-mask {
-    background-color: rgb(0,0,0,0.0); /* stylelint-disable-line */
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    top: 0px;
-    border-radius: 100%;
+  background-color: rgb(0, 0, 0, 0); /* stylelint-disable-line */
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0px;
+  border-radius: 100%;
 }
 
 .wk-conversation-header-mask:hover {
-    background-color: rgb(0,0,0,0.1); /* stylelint-disable-line */
+  background-color: rgb(0, 0, 0, 0.1); /* stylelint-disable-line */
 }
 /* Space 切换下拉（会话页标题） */
 .wk-chat-space-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    min-width: 200px;
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    box-shadow: var(--wk-shadow-md);
-    z-index: 100;
-    padding: 4px;
-    margin-top: 4px;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: var(--wk-shadow-md);
+  z-index: 100;
+  padding: 4px;
+  margin-top: 4px;
 }
 .wk-chat-space-dropdown-item {
-    display: flex;
-    align-items: center;
-    padding: 6px 8px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 400;
-    height: 40px;
-    box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 400;
+  height: 40px;
+  box-sizing: border-box;
 }
 .wk-chat-space-dropdown-item:hover {
-    background: var(--bg-hover);
+  background: var(--bg-hover);
 }
 .wk-chat-space-dropdown-item-selected {
-    background: var(--bg-hover);
+  background: var(--bg-hover);
 }
 .wk-chat-space-dropdown-divider {
-    height: 1px;
-    background: var(--border-color);
-    margin: 4px 8px;
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 8px;
 }
 .wk-chat-space-invite-btn {
-    cursor: pointer;
-    font-size: 14px;
-    padding: 2px 4px;
-    border-radius: 4px;
-    opacity: 0.5;
-    transition: opacity 0.15s;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
 }
 .wk-chat-space-invite-btn:hover {
-    opacity: 1;
-    background: var(--wk-black-alpha-05);
+  opacity: 1;
+  background: var(--wk-black-alpha-05);
 }
 
 /* 空会话引导 */
 .wk-chat-empty-guide {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 20px;
-    text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
 }
 .wk-chat-empty-guide-btn {
-    padding: 8px 20px;
-    border-radius: 20px;
-    border: 1px solid var(--border-color);
-    font-size: 14px;
-    cursor: pointer;
-    background: var(--card-bg);
-    color: var(--text-primary);
-    font-weight: 500;
-    transition: border-color 0.15s, color 0.15s;
+  padding: 8px 20px;
+  border-radius: 20px;
+  border: 1px solid var(--border-color);
+  font-size: 14px;
+  cursor: pointer;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-weight: 500;
+  transition: border-color 0.15s, color 0.15s;
 }
 .wk-chat-empty-guide-btn:hover {
-    border-color: var(--accent);
-    color: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* 子区下拉菜单 */
@@ -752,28 +766,28 @@ body[theme-mode=dark] .wk-chat-popover {
 
 /* 群聊 Tab 下「创建分组」菜单项，对齐 ChatMenusPopover li 样式 */
 .wk-chat-menu-item {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    padding: 10px;
-    font-size: 13px;
-    color: var(--wk-text-primary, #1A1C24);
-    border-bottom: 1px solid var(--wk-border-subtle, rgba(0,0,0,0.05));
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 10px;
+  font-size: 13px;
+  color: var(--wk-text-primary, #1a1c24);
+  border-bottom: 1px solid var(--wk-border-subtle, rgba(0, 0, 0, 0.05));
 }
 
 .wk-chat-menu-item:hover {
-    background: var(--wk-bg-hover, rgba(0,0,0,0.04));
+  background: var(--wk-bg-hover, rgba(0, 0, 0, 0.04));
 }
 
 /* 子区 header 的 🧵 icon（无圆形背景，直接显示） */
 .wk-chat-conversation-header-channel-thread-icon {
-    width: 16px;
-    height: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--wk-icon-muted);
-    flex-shrink: 0;
-    background: none;
-    border-radius: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wk-icon-muted);
+  flex-shrink: 0;
+  background: none;
+  border-radius: 0;
 }

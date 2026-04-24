@@ -6,6 +6,10 @@ export interface FilePreviewInfo {
   name: string;
   extension: string;
   size?: number;
+  /** 来源频道 ID（用于判断是否在子区面板内触发） */
+  sourceChannelId?: string;
+  /** 来源频道类型 */
+  sourceChannelType?: number;
 }
 
 /** 渲染器状态数据（内部使用） */

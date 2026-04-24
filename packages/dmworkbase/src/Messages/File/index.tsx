@@ -401,19 +401,27 @@ export class FileCell extends MessageCell<any, FileCellState> {
   handlePreview = () => {
     const { message } = this.props;
     const content = message.content as FileContent;
+
     const url = this.getFileURL(content);
-    if (!url || !isSafeUrl(url)) return;
+
+    if (!url || !isSafeUrl(url)) {
+      return;
+    }
 
     const ext = getExtension(content.extension, content.name);
 
     // 优先使用右侧面板预览（支持的文件类型）
     if (canPreviewInPanel(ext, content.name)) {
-      WKApp.mittBus.emit("wk:file-preview", {
+      const previewData = {
         url,
         name: content.name || "未知文件",
         extension: ext,
         size: content.size,
-      });
+        // 携带来源频道信息（用于判断是否在子区面板内触发）
+        sourceChannelId: message.channel.channelID,
+        sourceChannelType: message.channel.channelType,
+      };
+      WKApp.mittBus.emit("wk:file-preview", previewData);
       return;
     }
 

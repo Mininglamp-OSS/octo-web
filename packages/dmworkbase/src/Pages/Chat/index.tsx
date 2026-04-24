@@ -57,8 +57,11 @@ export interface ChatContentPageState {
   showChannelSetting: boolean;
   selectionMode: boolean;
   selectedCount: number;
+  /** 子区面板是否显示 */
   showThreadPanel: boolean;
+  /** 当前选中的子区 */
   activeThread: Thread | null;
+  /** 文件预览信息（非空时显示文件预览面板） */
   previewFile: FilePreviewInfo | null;
 }
 export class ChatContentPage extends Component<
@@ -82,7 +85,46 @@ export class ChatContentPage extends Component<
   }
 
   private _onFilePreview = (file: FilePreviewInfo) => {
-    this.setState({ previewFile: file });
+    const { channel } = this.props;
+    const { showThreadPanel, activeThread } = this.state;
+
+    // 判断是否在子区面板内触发（群聊页面 + 子区面板打开 + 有活跃子区 + 来源是子区频道）
+    const isFromThreadPanel =
+      channel.channelType === ChannelTypeGroup &&
+      showThreadPanel &&
+      activeThread?.channel_id &&
+      file.sourceChannelType === ChannelTypeCommunityTopic &&
+      file.sourceChannelId === activeThread.channel_id;
+
+    if (isFromThreadPanel && activeThread?.channel_id) {
+      // 在子区面板内触发，切换到完整视图
+      // 设置 pending 状态，让子区频道页面处理
+      WKApp.shared.pendingFilePreview = {
+        url: file.url,
+        name: file.name,
+        extension: file.extension,
+        size: file.size,
+      };
+      // 关闭子区面板
+      this.setState({
+        showThreadPanel: false,
+        activeThread: null,
+        previewFile: null,
+      });
+      // 切换到子区完整视图
+      const threadChannel = new Channel(
+        activeThread.channel_id,
+        ChannelTypeCommunityTopic
+      );
+      WKApp.endpoints.showConversation(threadChannel);
+      return;
+    }
+
+    // 正常处理：打开文件预览，确保侧边面板打开（子区和文件预览共用一个壳子）
+    this.setState({
+      previewFile: file,
+      showThreadPanel: true, // 确保面板打开
+    });
   };
 
   componentDidMount() {
@@ -113,6 +155,7 @@ export class ChatContentPage extends Component<
           showThreadPanel: true,
           showChannelSetting: false,
           activeThread: detail.thread || null,
+          previewFile: null, // 关闭文件预览
         });
       }
     };
@@ -128,8 +171,26 @@ export class ChatContentPage extends Component<
 
     // 检查是否需要自动打开子区面板（查看全部子区）
     if (WKApp.shared.pendingThreadPanel === channel.channelID) {
-      this.setState({ showThreadPanel: true, activeThread: null });
+      this.setState({
+        showThreadPanel: true,
+        activeThread: null,
+        previewFile: null,
+      });
       WKApp.shared.pendingThreadPanel = undefined;
+    }
+
+    // 检查是否有待打开的文件预览（从子区面板切换过来）
+    if (WKApp.shared.pendingFilePreview) {
+      const pending = WKApp.shared.pendingFilePreview;
+      WKApp.shared.pendingFilePreview = undefined;
+      this.setState({
+        previewFile: {
+          url: pending.url,
+          name: pending.name,
+          extension: pending.extension,
+          size: pending.size,
+        },
+      });
     }
 
     // 子区：预先获取父群组信息
@@ -152,7 +213,7 @@ export class ChatContentPage extends Component<
   componentDidUpdate(prevProps: ChatContentPageProps) {
     const { channel } = this.props;
 
-    // 切换频道时消费 pendingThreadPanel
+    // 切换频道时消费 pendingThreadPanel 和 pendingFilePreview
     if (channel.channelID !== prevProps.channel.channelID) {
       // 打开全部子区列表
       if (WKApp.shared.pendingThreadPanel === channel.channelID) {
@@ -161,6 +222,22 @@ export class ChatContentPage extends Component<
           showThreadPanel: true,
           activeThread: null,
           showChannelSetting: false,
+          previewFile: null, // 关闭文件预览（互斥）
+        });
+        return;
+      }
+
+      // 检查是否有待打开的文件预览（从子区面板切换过来）
+      if (WKApp.shared.pendingFilePreview) {
+        const pending = WKApp.shared.pendingFilePreview;
+        WKApp.shared.pendingFilePreview = undefined;
+        this.setState({
+          previewFile: {
+            url: pending.url,
+            name: pending.name,
+            extension: pending.extension,
+            size: pending.size,
+          },
         });
         return;
       }
@@ -224,7 +301,7 @@ export class ChatContentPage extends Component<
         className={classNames(
           "wk-chat-content-right",
           showChannelSetting ? "wk-chat-channelsetting-open" : "",
-          showThreadPanel ? "wk-chat-threadpanel-open" : ""
+          showThreadPanel || previewFile ? "wk-chat-threadpanel-open" : ""
         )}
       >
         <div
@@ -244,7 +321,7 @@ export class ChatContentPage extends Component<
               if (selectionMode) {
                 return;
               }
-              // 群聊：点击 header 打开子区列表
+              // 群聊：点击 header 切换子区面板
               if (
                 !isThreadChannel &&
                 channel.channelType === ChannelTypeGroup &&
@@ -254,6 +331,7 @@ export class ChatContentPage extends Component<
                   showThreadPanel: !this.state.showThreadPanel,
                   activeThread: null,
                   showChannelSetting: false,
+                  previewFile: null, // 关闭文件预览
                 });
                 return;
               }
@@ -400,6 +478,7 @@ export class ChatContentPage extends Component<
                               showThreadPanel: true,
                               activeThread: null,
                               showChannelSetting: false,
+                              previewFile: null, // 关闭文件预览（互斥）
                             });
                           }}
                           title="子区"
@@ -414,6 +493,7 @@ export class ChatContentPage extends Component<
                         this.setState({
                           showChannelSetting: !this.state.showChannelSetting,
                           showThreadPanel: false,
+                          previewFile: null, // 关闭文件预览（互斥）
                         });
                       }}
                     >
@@ -460,6 +540,7 @@ export class ChatContentPage extends Component<
                     this.setState({
                       showThreadPanel: true,
                       showChannelSetting: false,
+                      previewFile: null, // 关闭文件预览（互斥）
                       activeThread: buildThreadStub(
                         threadInfo.shortId,
                         threadInfo.groupNo,
@@ -496,28 +577,37 @@ export class ChatContentPage extends Component<
           </ErrorBoundary>
         </div>
 
-        {/* 子区面板 - 仅群组且开启子区功能且打开时渲染 */}
+        {/* 统一侧边面板：子区 + 文件预览共用一个壳子（仅群聊） */}
         {!isThreadChannel &&
           channel.channelType === ChannelTypeGroup &&
           WKApp.remoteConfig.threadOn &&
-          showThreadPanel && (
+          (showThreadPanel || previewFile) && (
             <ThreadPanel
               groupNo={channel.channelID}
               thread={activeThread}
               onClose={() => {
-                this.setState({ showThreadPanel: false, activeThread: null });
+                this.setState({
+                  showThreadPanel: false,
+                  activeThread: null,
+                  previewFile: null,
+                });
               }}
               onThreadSelect={(thread) => {
                 this.setState({ activeThread: thread });
               }}
+              filePreview={previewFile}
+              onFilePreviewClose={() => {
+                this.setState({ previewFile: null });
+              }}
             />
           )}
 
-        {/* 文件预览面板 */}
-        {previewFile && (
-          <FilePreviewPanel
-            file={previewFile}
+        {/* 子区频道的文件预览（使用 ThreadPanel 壳子，获得拖拽功能） */}
+        {isThreadChannel && previewFile && (
+          <ThreadPanel
             onClose={() => this.setState({ previewFile: null })}
+            filePreview={previewFile}
+            onFilePreviewClose={() => this.setState({ previewFile: null })}
           />
         )}
       </div>

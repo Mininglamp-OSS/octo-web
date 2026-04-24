@@ -1,16 +1,36 @@
-import React, { Component } from "react"
-import { Channel, ChannelTypePerson, ChannelTypeGroup, WKSDK } from "wukongimjssdk"
-import { Modal, Toast, Spin, Popover } from "@douyinfe/semi-ui"
-import { Thread, ThreadStatus, buildThreadChannelId } from "../../Service/Thread"
-import { ThreadPanelVM, ThreadPanelState } from "./vm"
-import { X, Plus, ChevronDown, ArrowLeft, MoreHorizontal } from "lucide-react"
-import ThreadIcon from "../Icons/ThreadIcon"
-import classNames from "classnames"
-import { Conversation } from "../Conversation"
-import { ChannelTypeCommunityTopic, GroupRole } from "../../Service/Const"
-import { ErrorBoundary } from "../ErrorBoundary"
-import WKApp from "../../App"
-import { formatRelativeTime } from "../../Utils/time"
+import React, { Component } from "react";
+import {
+  Channel,
+  ChannelTypePerson,
+  ChannelTypeGroup,
+  WKSDK,
+} from "wukongimjssdk";
+import { Modal, Toast, Spin, Popover } from "@douyinfe/semi-ui";
+import {
+  Thread,
+  ThreadStatus,
+  buildThreadChannelId,
+} from "../../Service/Thread";
+import { ThreadPanelVM, ThreadPanelState } from "./vm";
+import {
+  X,
+  Plus,
+  ChevronDown,
+  ArrowLeft,
+  MoreHorizontal,
+  Download,
+  ExternalLink,
+} from "lucide-react";
+import ThreadIcon from "../Icons/ThreadIcon";
+import classNames from "classnames";
+import { Conversation } from "../Conversation";
+import { ChannelTypeCommunityTopic, GroupRole } from "../../Service/Const";
+import { ErrorBoundary } from "../ErrorBoundary";
+import WKApp from "../../App";
+import { formatRelativeTime } from "../../Utils/time";
+import { FilePreviewInfo } from "../FilePreviewPanel/types";
+import { fileRendererRegistry } from "../FilePreviewPanel/registry";
+import { getExtension } from "../FilePreviewPanel/types";
 import {
   SMALL_SCREEN_WIDTH,
   THREAD_DEFAULT_WIDTH,
@@ -18,43 +38,55 @@ import {
   clampThreadWidth,
   restoreThreadWidth,
   persistThreadWidth,
-} from "../WKLayout/layoutWidth"
-import "./index.css"
+} from "../WKLayout/layoutWidth";
+import "./index.css";
 
 export interface ThreadPanelProps {
-  groupNo: string
-  thread: Thread | null
-  onClose: () => void
-  onThreadSelect?: (thread: Thread) => void
-  onCreateThread?: () => void
+  /** 群组 ID，纯文件预览模式时可不传 */
+  groupNo?: string;
+  thread?: Thread | null;
+  onClose: () => void;
+  onThreadSelect?: (thread: Thread) => void;
+  onCreateThread?: () => void;
+  /** 文件预览信息，传入时渲染文件预览内容而非子区内容 */
+  filePreview?: FilePreviewInfo | null;
+  /** 关闭文件预览的回调 */
+  onFilePreviewClose?: () => void;
 }
 
 interface ThreadPanelComponentState {
-  view: "detail" | "list"
-  activeExpanded: boolean
-  archivedExpanded: boolean
-  vmState: ThreadPanelState
-  threads: Thread[]
-  threadsLoading: boolean
-  showMoreMenu: boolean
-  panelWidth: number
-  isDragging: boolean
+  view: "detail" | "list";
+  activeExpanded: boolean;
+  archivedExpanded: boolean;
+  vmState: ThreadPanelState;
+  threads: Thread[];
+  threadsLoading: boolean;
+  showMoreMenu: boolean;
+  panelWidth: number;
+  isDragging: boolean;
 }
 
-export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanelComponentState> {
-  private vm: ThreadPanelVM | null = null
-  private panelRef = React.createRef<HTMLDivElement>()
-  private dragStartX = 0
-  private dragStartWidth = 0
-  private lastPanelWidth = THREAD_DEFAULT_WIDTH
-  private cachedWindowWidth = 1920  // cached on drag start
-  private cachedLeftPanelWidth = 300  // cached on drag start
+export default class ThreadPanel extends Component<
+  ThreadPanelProps,
+  ThreadPanelComponentState
+> {
+  private vm: ThreadPanelVM | null = null;
+  private panelRef = React.createRef<HTMLDivElement>();
+  private dragStartX = 0;
+  private dragStartWidth = 0;
+  private lastPanelWidth = THREAD_DEFAULT_WIDTH;
+  private cachedWindowWidth = 1920; // cached on drag start
+  private cachedLeftPanelWidth = 300; // cached on drag start
 
   constructor(props: ThreadPanelProps) {
-    super(props)
-    const leftPanelWidth = this.getLeftPanelWidth()
-    const savedWidth = clampThreadWidth(restoreThreadWidth(), window.innerWidth, leftPanelWidth)
-    this.lastPanelWidth = savedWidth
+    super(props);
+    const leftPanelWidth = this.getLeftPanelWidth();
+    const savedWidth = clampThreadWidth(
+      restoreThreadWidth(),
+      window.innerWidth,
+      leftPanelWidth
+    );
+    this.lastPanelWidth = savedWidth;
 
     this.state = {
       view: props.thread ? "detail" : "list",
@@ -73,140 +105,162 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
       showMoreMenu: false,
       panelWidth: savedWidth,
       isDragging: false,
-    }
+    };
   }
 
   componentDidMount() {
-    this.loadThreads()
-    if (this.props.thread) {
-      this.initVM(this.props.thread.short_id)
+    // 纯文件预览模式时跳过子区相关逻辑
+    if (this.props.groupNo) {
+      this.loadThreads();
+      if (this.props.thread) {
+        this.initVM(this.props.thread.short_id);
+      }
     }
     // Set CSS variable on mount so chat area calc has the correct width
-    this.syncCssVariable(this.state.panelWidth)
+    this.syncCssVariable(this.state.panelWidth);
   }
 
   componentWillUnmount() {
-    document.removeEventListener('mousemove', this.onPanelDragMove)
-    document.removeEventListener('mouseup', this.onPanelDragEnd)
+    document.removeEventListener("mousemove", this.onPanelDragMove);
+    document.removeEventListener("mouseup", this.onPanelDragEnd);
     if (this.state.isDragging) {
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     }
   }
 
   // ── Helper to get left panel width from CSS variable or default ──
   private getLeftPanelWidth(): number {
     try {
-      const root = document.documentElement
-      const cssValue = getComputedStyle(root).getPropertyValue('--wk-wdith-conversation-list').trim()
+      const root = document.documentElement;
+      const cssValue = getComputedStyle(root)
+        .getPropertyValue("--wk-wdith-conversation-list")
+        .trim();
       if (cssValue) {
-        const parsed = parseInt(cssValue, 10)
-        if (!isNaN(parsed)) return parsed
+        const parsed = parseInt(cssValue, 10);
+        if (!isNaN(parsed)) return parsed;
       }
     } catch (_) {
       // Best-effort CSS variable read: silently fall through to default.
       // This is intentional — DOM access may fail in edge cases (SSR, tests).
       // Falls back to SPLITTER_DEFAULT_WIDTH; does not affect core functionality.
     }
-    return SPLITTER_DEFAULT_WIDTH
+    return SPLITTER_DEFAULT_WIDTH;
   }
 
   // ── Splitter drag for thread panel width ──
 
   private onPanelDragStart = (e: React.MouseEvent) => {
-    e.preventDefault()
-    this.dragStartX = e.clientX
-    this.dragStartWidth = this.lastPanelWidth
+    e.preventDefault();
+    this.dragStartX = e.clientX;
+    this.dragStartWidth = this.lastPanelWidth;
     // Cache window width and left panel width for max calculation
-    this.cachedWindowWidth = window.innerWidth
-    this.cachedLeftPanelWidth = this.getLeftPanelWidth()
-    this.setState({ isDragging: true })
-    document.addEventListener('mousemove', this.onPanelDragMove)
-    document.addEventListener('mouseup', this.onPanelDragEnd)
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-  }
+    this.cachedWindowWidth = window.innerWidth;
+    this.cachedLeftPanelWidth = this.getLeftPanelWidth();
+    this.setState({ isDragging: true });
+    document.addEventListener("mousemove", this.onPanelDragMove);
+    document.addEventListener("mouseup", this.onPanelDragEnd);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
 
   private onPanelDragMove = (e: MouseEvent) => {
     // Dragging LEFT edge: moving mouse left = wider panel
-    const delta = this.dragStartX - e.clientX
+    const delta = this.dragStartX - e.clientX;
     const newWidth = clampThreadWidth(
       this.dragStartWidth + delta,
       this.cachedWindowWidth,
       this.cachedLeftPanelWidth
-    )
-    this.lastPanelWidth = newWidth
+    );
+    this.lastPanelWidth = newWidth;
 
     // Direct DOM update — no React re-render during drag
-    const panel = this.panelRef.current
+    const panel = this.panelRef.current;
     if (panel) {
-      panel.style.width = newWidth + 'px'
+      panel.style.width = newWidth + "px";
       // Update CSS variable on parent for chat area calc
-      panel.parentElement?.style.setProperty('--wk-width-thread-panel', newWidth + 'px')
+      panel.parentElement?.style.setProperty(
+        "--wk-width-thread-panel",
+        newWidth + "px"
+      );
     }
-  }
+  };
 
   private onPanelDragEnd = () => {
-    document.removeEventListener('mousemove', this.onPanelDragMove)
-    document.removeEventListener('mouseup', this.onPanelDragEnd)
-    document.body.style.cursor = ''
-    document.body.style.userSelect = ''
-    this.setState({ panelWidth: this.lastPanelWidth, isDragging: false })
-    persistThreadWidth(this.lastPanelWidth)
-  }
+    document.removeEventListener("mousemove", this.onPanelDragMove);
+    document.removeEventListener("mouseup", this.onPanelDragEnd);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    this.setState({ panelWidth: this.lastPanelWidth, isDragging: false });
+    persistThreadWidth(this.lastPanelWidth);
+  };
 
   private onPanelDoubleClick = () => {
-    this.lastPanelWidth = THREAD_DEFAULT_WIDTH
-    this.setState({ panelWidth: THREAD_DEFAULT_WIDTH })
-    persistThreadWidth(THREAD_DEFAULT_WIDTH)
-    this.syncCssVariable(THREAD_DEFAULT_WIDTH)
-  }
+    this.lastPanelWidth = THREAD_DEFAULT_WIDTH;
+    this.setState({ panelWidth: THREAD_DEFAULT_WIDTH });
+    persistThreadWidth(THREAD_DEFAULT_WIDTH);
+    this.syncCssVariable(THREAD_DEFAULT_WIDTH);
+  };
 
   /** Keep --wk-width-thread-panel in sync so chat area calc stays correct */
   private syncCssVariable(width: number) {
-    const panel = this.panelRef.current
-    panel?.parentElement?.style.setProperty('--wk-width-thread-panel', width + 'px')
+    const panel = this.panelRef.current;
+    panel?.parentElement?.style.setProperty(
+      "--wk-width-thread-panel",
+      width + "px"
+    );
   }
 
   componentDidUpdate(prevProps: ThreadPanelProps) {
-    if (this.props.thread !== prevProps.thread) {
-      if (this.props.thread) {
-        this.setState({ view: "detail" })
-        this.initVM(this.props.thread.short_id)
-      } else {
-        this.setState({ view: "list" })
+    // 纯文件预览模式时跳过子区相关逻辑
+    if (this.props.groupNo) {
+      if (this.props.thread !== prevProps.thread) {
+        if (this.props.thread) {
+          this.setState({ view: "detail" });
+          this.initVM(this.props.thread.short_id);
+        } else {
+          this.setState({ view: "list" });
+        }
       }
-    }
-    if (this.props.groupNo !== prevProps.groupNo) {
-      this.loadThreads()
+      if (this.props.groupNo !== prevProps.groupNo) {
+        this.loadThreads();
+      }
     }
   }
 
   private initVM(threadShortId: string) {
+    if (!this.props.groupNo) return;
     const vm = new ThreadPanelVM(this.props.groupNo, threadShortId, (state) => {
       if (this.vm === vm) {
-        this.setState({ vmState: state })
+        this.setState({ vmState: state });
       }
-    })
-    this.vm = vm
-    vm.load()
+    });
+    this.vm = vm;
+    vm.load();
   }
 
   private async loadThreads() {
-    const { groupNo } = this.props
-    if (!groupNo) return
+    const { groupNo } = this.props;
+    // 纯文件预览模式时跳过
+    if (!groupNo) return;
 
-    this.setState({ threadsLoading: true })
+    this.setState({ threadsLoading: true });
     try {
-      const threads = await WKApp.dataSource.channelDataSource.threadList(groupNo, {
-        page_index: 1,
-        page_size: 100
-      })
+      const threads = await WKApp.dataSource.channelDataSource.threadList(
+        groupNo,
+        {
+          page_index: 1,
+          page_size: 100,
+        }
+      );
       // 按活跃时间倒序排序
-      threads.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-      this.setState({ threads, threadsLoading: false })
+      threads.sort(
+        (a, b) =>
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      );
+      this.setState({ threads, threadsLoading: false });
     } catch {
-      this.setState({ threadsLoading: false })
+      this.setState({ threadsLoading: false });
     }
   }
 
@@ -222,147 +276,156 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
         hasMore: false,
         error: null,
       },
-    })
-    this.initVM(thread.short_id)
-  }
+    });
+    this.initVM(thread.short_id);
+    // 同步状态到父组件，用于文件预览等功能判断当前活跃的子区
+    this.props.onThreadSelect?.(thread);
+  };
 
   private handleBackToList = () => {
-    this.setState({ view: "list" })
-  }
+    this.setState({ view: "list" });
+  };
 
   private handleOpenFullView = () => {
-    const { vmState } = this.state
-    const thread = vmState.thread
-    if (!thread?.channel_id) return
-    this.setState({ showMoreMenu: false })
+    const { vmState } = this.state;
+    const thread = vmState.thread;
+    if (!thread?.channel_id) return;
+    this.setState({ showMoreMenu: false });
     try {
-      const threadChannel = new Channel(thread.channel_id, ChannelTypeCommunityTopic)
-      WKApp.endpoints.showConversation(threadChannel)
-      this.props.onClose()
+      const threadChannel = new Channel(
+        thread.channel_id,
+        ChannelTypeCommunityTopic
+      );
+      WKApp.endpoints.showConversation(threadChannel);
+      this.props.onClose();
     } catch {
-      Toast.error('打开失败，请重试')
+      Toast.error("打开失败，请重试");
     }
-  }
+  };
 
   private canEditThread(thread: Thread): boolean {
-    const isCreator = thread.creator_uid === WKApp.loginInfo.uid
-    const groupChannel = new Channel(this.props.groupNo, ChannelTypeGroup)
-    const subscribers = WKSDK.shared().channelManager.getSubscribes(groupChannel)
-    const me = subscribers?.find(s => s.uid === WKApp.loginInfo.uid)
-    const isManagerOrOwner = me?.role === GroupRole.owner || me?.role === GroupRole.manager
-    return isCreator || isManagerOrOwner
+    const isCreator = thread.creator_uid === WKApp.loginInfo.uid;
+    const groupChannel = new Channel(this.props.groupNo, ChannelTypeGroup);
+    const subscribers =
+      WKSDK.shared().channelManager.getSubscribes(groupChannel);
+    const me = subscribers?.find((s) => s.uid === WKApp.loginInfo.uid);
+    const isManagerOrOwner =
+      me?.role === GroupRole.owner || me?.role === GroupRole.manager;
+    return isCreator || isManagerOrOwner;
   }
 
   private handleEditThread = () => {
-    const { vmState } = this.state
-    const thread = vmState.thread
-    if (!thread) return
-    this.setState({ showMoreMenu: false })
+    const { vmState } = this.state;
+    const thread = vmState.thread;
+    if (!thread) return;
+    this.setState({ showMoreMenu: false });
 
     // 延迟弹窗，等 Popover 完全关闭后再触发，避免 Modal 被 Popover 关闭事件误关
     setTimeout(() => {
-    let newName = thread.name
-    Modal.confirm({
-      title: "编辑子区名称",
-      icon: null,
-      okText: "保存",
-      cancelText: "取消",
-      content: (
-        <div>
-          <input
-            type="text"
-            defaultValue={thread.name}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              background: "var(--wk-bg-base)",
-              border: "1px solid var(--wk-border-default)",
-              borderRadius: "6px",
-              fontSize: "14px",
-              color: "var(--wk-text-primary)",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
-            onChange={(e) => { newName = e.target.value }}
-            autoFocus
-          />
-        </div>
-      ),
-      onOk: async () => {
-        if (!newName || newName.trim() === "") {
-          Toast.error("子区名称不能为空")
-          return
-        }
-        try {
-          await WKApp.dataSource.channelDataSource.threadUpdate(
-            this.props.groupNo,
-            thread.short_id,
-            { name: newName.trim() }
-          )
-          Toast.success("修改成功")
-          // 刷新左侧列表
-          this.loadThreads()
-          // 更新详情页标题
-          this.setState({
-            vmState: {
-              ...this.state.vmState,
-              thread: { ...thread, name: newName.trim() },
-            },
-          })
-          // 清除 SDK 缓存，刷新 Chat header 展示的子区名称
-          const threadChannel = new Channel(
-            buildThreadChannelId(this.props.groupNo, thread.short_id),
-            ChannelTypeCommunityTopic
-          )
-          WKSDK.shared().channelManager.deleteChannelInfo(threadChannel)
-          WKSDK.shared().channelManager.fetchChannelInfo(threadChannel)
-        } catch {
-          Toast.error("保存失败，请重试")
-        }
-      },
-    })
-    }, 100)
-  }
+      let newName = thread.name;
+      Modal.confirm({
+        title: "编辑子区名称",
+        icon: null,
+        okText: "保存",
+        cancelText: "取消",
+        content: (
+          <div>
+            <input
+              type="text"
+              defaultValue={thread.name}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: "var(--wk-bg-base)",
+                border: "1px solid var(--wk-border-default)",
+                borderRadius: "6px",
+                fontSize: "14px",
+                color: "var(--wk-text-primary)",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+              onChange={(e) => {
+                newName = e.target.value;
+              }}
+              autoFocus
+            />
+          </div>
+        ),
+        onOk: async () => {
+          if (!newName || newName.trim() === "") {
+            Toast.error("子区名称不能为空");
+            return;
+          }
+          try {
+            await WKApp.dataSource.channelDataSource.threadUpdate(
+              this.props.groupNo,
+              thread.short_id,
+              { name: newName.trim() }
+            );
+            Toast.success("修改成功");
+            // 刷新左侧列表
+            this.loadThreads();
+            // 更新详情页标题
+            this.setState({
+              vmState: {
+                ...this.state.vmState,
+                thread: { ...thread, name: newName.trim() },
+              },
+            });
+            // 清除 SDK 缓存，刷新 Chat header 展示的子区名称
+            const threadChannel = new Channel(
+              buildThreadChannelId(this.props.groupNo, thread.short_id),
+              ChannelTypeCommunityTopic
+            );
+            WKSDK.shared().channelManager.deleteChannelInfo(threadChannel);
+            WKSDK.shared().channelManager.fetchChannelInfo(threadChannel);
+          } catch {
+            Toast.error("保存失败，请重试");
+          }
+        },
+      });
+    }, 100);
+  };
 
   private handleDeleteThread = () => {
-    const { vmState } = this.state
-    const thread = vmState.thread
-    if (!thread) return
-    this.setState({ showMoreMenu: false })
+    const { vmState } = this.state;
+    const thread = vmState.thread;
+    if (!thread) return;
+    this.setState({ showMoreMenu: false });
 
     setTimeout(() => {
-    Modal.confirm({
-      title: `删除子区「${thread.name}」？`,
-      icon: null,
-      okText: "删除",
-      okType: "danger",
-      cancelText: "取消",
-      content: "删除后子区内所有消息将不可见，此操作不可恢复。",
-      onOk: async () => {
-        try {
-          await WKApp.dataSource.channelDataSource.threadDelete(
-            this.props.groupNo,
-            thread.short_id
-          )
-          Toast.success("子区已删除")
-          this.handleBackToList()
-          this.loadThreads()
-        } catch {
-          Toast.error("删除失败，请重试")
-        }
-      },
-    })
-    }, 100)
-  }
+      Modal.confirm({
+        title: `删除子区「${thread.name}」？`,
+        icon: null,
+        okText: "删除",
+        okType: "danger",
+        cancelText: "取消",
+        content: "删除后子区内所有消息将不可见，此操作不可恢复。",
+        onOk: async () => {
+          try {
+            await WKApp.dataSource.channelDataSource.threadDelete(
+              this.props.groupNo,
+              thread.short_id
+            );
+            Toast.success("子区已删除");
+            this.handleBackToList();
+            this.loadThreads();
+          } catch {
+            Toast.error("删除失败，请重试");
+          }
+        },
+      });
+    }, 100);
+  };
 
   private handleCreateThread = () => {
-    const { groupNo, onCreateThread } = this.props
+    const { groupNo, onCreateThread } = this.props;
     if (onCreateThread) {
-      onCreateThread()
-      return
+      onCreateThread();
+      return;
     }
 
-    let threadName = ""
+    let threadName = "";
     Modal.confirm({
       title: "创建子区",
       icon: null,
@@ -370,7 +433,13 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
       cancelText: "取消",
       content: (
         <div>
-          <div style={{ marginBottom: "8px", fontSize: "14px", color: "var(--wk-text-secondary)" }}>
+          <div
+            style={{
+              marginBottom: "8px",
+              fontSize: "14px",
+              color: "var(--wk-text-secondary)",
+            }}
+          >
             话题名称
           </div>
           <input
@@ -388,7 +457,7 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
               boxSizing: "border-box",
             }}
             onChange={(e) => {
-              threadName = e.target.value
+              threadName = e.target.value;
             }}
             autoFocus
           />
@@ -396,26 +465,93 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
       ),
       onOk: async () => {
         if (!threadName || threadName.trim() === "") {
-          Toast.error("话题名称不能为空")
-          return
+          Toast.error("话题名称不能为空");
+          return;
         }
         try {
-          await WKApp.dataSource.channelDataSource.threadCreate(groupNo, threadName.trim())
-          Toast.success("子区创建成功")
-          this.loadThreads()
+          await WKApp.dataSource.channelDataSource.threadCreate(
+            groupNo,
+            threadName.trim()
+          );
+          Toast.success("子区创建成功");
+          this.loadThreads();
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : "创建失败"
-          Toast.error(msg)
+          const msg = err instanceof Error ? err.message : "创建失败";
+          Toast.error(msg);
         }
       },
-    })
-  }
+    });
+  };
+
+  private handleFileDownload = () => {
+    const { filePreview } = this.props;
+    if (!filePreview) return;
+    const a = document.createElement("a");
+    a.href = filePreview.url;
+    a.download = filePreview.name || "file";
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  private handleFileOpenExternal = () => {
+    const { filePreview } = this.props;
+    if (!filePreview) return;
+    window.open(filePreview.url, "_blank");
+  };
 
   private renderHeader() {
-    const { onClose } = this.props
-    const { view, vmState, showMoreMenu } = this.state
-    const thread = vmState.thread
+    const { onClose, filePreview, onFilePreviewClose } = this.props;
+    const { view, vmState, showMoreMenu } = this.state;
+    const thread = vmState.thread;
 
+    // 文件预览模式的 header
+    if (filePreview) {
+      // 判断是否有子区可返回（groupNo 存在表示是从群聊的子区面板进入的）
+      const canReturnToThread = !!this.props.groupNo;
+
+      return (
+        <div className="wk-thread-panel-header">
+          {/* 返回子区按钮 - 仅在群聊的子区面板内打开文件预览时显示 */}
+          {canReturnToThread && (
+            <div
+              className="wk-thread-panel-header-btn"
+              onClick={onFilePreviewClose}
+              title="返回子区"
+            >
+              <ArrowLeft size={16} />
+            </div>
+          )}
+
+          <div className="wk-thread-panel-header-title">
+            <span title={filePreview.name}>{filePreview.name}</span>
+          </div>
+
+          <div className="wk-thread-panel-header-actions">
+            <div
+              className="wk-thread-panel-header-btn"
+              onClick={this.handleFileOpenExternal}
+              title="在新窗口打开"
+            >
+              <ExternalLink size={16} />
+            </div>
+            <div
+              className="wk-thread-panel-header-btn"
+              onClick={this.handleFileDownload}
+              title="下载"
+            >
+              <Download size={16} />
+            </div>
+            <div className="wk-thread-panel-header-btn" onClick={onClose}>
+              <X size={18} />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 子区模式的 header
     return (
       <div className="wk-thread-panel-header">
         {/* detail 视图：左侧返回按钮 */}
@@ -455,16 +591,25 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
               content={
                 <div className="wk-thread-more-menu">
                   {vmState.thread?.channel_id && (
-                    <div className="wk-thread-more-menu-item" onClick={this.handleOpenFullView}>
+                    <div
+                      className="wk-thread-more-menu-item"
+                      onClick={this.handleOpenFullView}
+                    >
                       在完整视图打开
                     </div>
                   )}
                   {vmState.thread && this.canEditThread(vmState.thread) && (
-                    <div className="wk-thread-more-menu-item" onClick={this.handleEditThread}>
+                    <div
+                      className="wk-thread-more-menu-item"
+                      onClick={this.handleEditThread}
+                    >
                       编辑子区名称
                     </div>
                   )}
-                  <div className="wk-thread-more-menu-item wk-thread-more-menu-item-danger" onClick={this.handleDeleteThread}>
+                  <div
+                    className="wk-thread-more-menu-item wk-thread-more-menu-item-danger"
+                    onClick={this.handleDeleteThread}
+                  >
                     删除子区
                   </div>
                 </div>
@@ -480,19 +625,27 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   private renderListView() {
-    const { threads, threadsLoading, activeExpanded, archivedExpanded } = this.state
+    const { threads, threadsLoading, activeExpanded, archivedExpanded } =
+      this.state;
 
-    const activeThreads = threads.filter(t => t.status === ThreadStatus.Active)
-    const archivedThreads = threads.filter(t => t.status === ThreadStatus.Archived)
+    const activeThreads = threads.filter(
+      (t) => t.status === ThreadStatus.Active
+    );
+    const archivedThreads = threads.filter(
+      (t) => t.status === ThreadStatus.Archived
+    );
 
     return (
       <div className="wk-thread-panel-list-view">
         {/* 新建子区按钮 */}
-        <div className="wk-thread-panel-create-btn" onClick={this.handleCreateThread}>
+        <div
+          className="wk-thread-panel-create-btn"
+          onClick={this.handleCreateThread}
+        >
           <Plus size={16} />
           <span>新建子区</span>
         </div>
@@ -507,7 +660,9 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
             <div className="wk-thread-panel-group">
               <div
                 className="wk-thread-panel-group-header"
-                onClick={() => this.setState({ activeExpanded: !activeExpanded })}
+                onClick={() =>
+                  this.setState({ activeExpanded: !activeExpanded })
+                }
               >
                 <ChevronDown
                   size={14}
@@ -523,7 +678,7 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
                   {activeThreads.length === 0 ? (
                     <div className="wk-thread-panel-empty">暂无活跃子区</div>
                   ) : (
-                    activeThreads.map(thread => this.renderThreadItem(thread))
+                    activeThreads.map((thread) => this.renderThreadItem(thread))
                   )}
                 </div>
               )}
@@ -534,20 +689,25 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
               <div className="wk-thread-panel-group">
                 <div
                   className="wk-thread-panel-group-header"
-                  onClick={() => this.setState({ archivedExpanded: !archivedExpanded })}
+                  onClick={() =>
+                    this.setState({ archivedExpanded: !archivedExpanded })
+                  }
                 >
                   <ChevronDown
                     size={14}
                     className={classNames(
                       "wk-thread-panel-group-arrow",
-                      !archivedExpanded && "wk-thread-panel-group-arrow-collapsed"
+                      !archivedExpanded &&
+                        "wk-thread-panel-group-arrow-collapsed"
                     )}
                   />
                   <span>已归档</span>
                 </div>
                 {archivedExpanded && (
                   <div className="wk-thread-panel-group-list">
-                    {archivedThreads.map(thread => this.renderThreadItem(thread))}
+                    {archivedThreads.map((thread) =>
+                      this.renderThreadItem(thread)
+                    )}
                   </div>
                 )}
               </div>
@@ -555,25 +715,25 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
           </>
         )}
       </div>
-    )
+    );
   }
 
   private getCreatorName(thread: Thread): string {
     if (thread.creator_name) {
-      return thread.creator_name
+      return thread.creator_name;
     }
     if (thread.creator_uid) {
       const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
         new Channel(thread.creator_uid, ChannelTypePerson)
-      )
-      return channelInfo?.title || thread.creator_uid
+      );
+      return channelInfo?.title || thread.creator_uid;
     }
-    return "未知"
+    return "未知";
   }
 
   private renderThreadItem(thread: Thread) {
-    const hasUnread = (thread.unread_count ?? 0) > 0
-    const creatorName = this.getCreatorName(thread)
+    const hasUnread = (thread.unread_count ?? 0) > 0;
+    const creatorName = this.getCreatorName(thread);
 
     return (
       <div
@@ -586,10 +746,13 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
             {hasUnread && <span className="wk-thread-panel-item-unread" />}
             <span className="wk-thread-panel-item-name">{thread.name}</span>
           </div>
-          <span className="wk-thread-panel-item-time">{formatRelativeTime(thread.updated_at)}</span>
+          <span className="wk-thread-panel-item-time">
+            {formatRelativeTime(thread.updated_at)}
+          </span>
         </div>
         <div className="wk-thread-panel-item-meta">
-          {thread.message_count || 0} 条回复 · 参与 {thread.member_count || 0} 人 · {creatorName} 发起
+          {thread.message_count || 0} 条回复 · 参与 {thread.member_count || 0}{" "}
+          人 · {creatorName} 发起
         </div>
         {thread.last_message_content && (
           <div className="wk-thread-panel-item-preview">
@@ -602,31 +765,30 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
           </div>
         )}
       </div>
-    )
+    );
   }
 
   private renderDetailView() {
-    const { vmState } = this.state
-    const { loading, thread } = vmState
+    const { vmState } = this.state;
+    const { loading, thread } = vmState;
 
     if (loading) {
       return (
         <div className="wk-thread-panel-loading">
           <Spin />
         </div>
-      )
+      );
     }
 
     if (!thread) {
-      return (
-        <div className="wk-thread-panel-empty">
-          未找到子区
-        </div>
-      )
+      return <div className="wk-thread-panel-empty">未找到子区</div>;
     }
 
     // 使用 Thread 的 channel_id 创建 Channel 对象
-    const threadChannel = new Channel(thread.channel_id, ChannelTypeCommunityTopic)
+    const threadChannel = new Channel(
+      thread.channel_id,
+      ChannelTypeCommunityTopic
+    );
 
     return (
       <div className="wk-thread-panel-conversation">
@@ -638,23 +800,47 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
           />
         </ErrorBoundary>
       </div>
-    )
+    );
+  }
+
+  private renderFilePreviewContent() {
+    const { filePreview } = this.props;
+    if (!filePreview) return null;
+
+    const ext = getExtension(filePreview.extension, filePreview.name);
+    const { renderer: Renderer } = fileRendererRegistry.getRenderer(ext);
+
+    const handleError = (error: string) => {
+      console.error("FilePreview error:", error);
+    };
+
+    return (
+      <div className="wk-thread-panel-file-preview">
+        <Renderer file={filePreview} onError={handleError} />
+      </div>
+    );
   }
 
   render() {
-    const { view, panelWidth, isDragging } = this.state
-    const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH
+    const { filePreview } = this.props;
+    const { view, panelWidth, isDragging } = this.state;
+    const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH;
 
-    const panelStyle = isSmallScreen ? undefined : {
-      width: `${panelWidth}px`,
-    }
+    const panelStyle = isSmallScreen
+      ? undefined
+      : {
+          width: `${panelWidth}px`,
+        };
 
     return (
       <div className="wk-thread-panel" ref={this.panelRef} style={panelStyle}>
         {/* Left-edge splitter for resizing — hidden on small screens */}
         {!isSmallScreen && (
           <div
-            className={classNames("wk-thread-panel-splitter", isDragging && "wk-thread-panel-splitter-active")}
+            className={classNames(
+              "wk-thread-panel-splitter",
+              isDragging && "wk-thread-panel-splitter-active"
+            )}
             onMouseDown={this.onPanelDragStart}
             onDoubleClick={this.onPanelDoubleClick}
           >
@@ -662,9 +848,14 @@ export default class ThreadPanel extends Component<ThreadPanelProps, ThreadPanel
           </div>
         )}
         {this.renderHeader()}
-        {view === "list" ? this.renderListView() : this.renderDetailView()}
+        {/* 根据 filePreview 决定渲染文件预览还是子区内容 */}
+        {filePreview
+          ? this.renderFilePreviewContent()
+          : view === "list"
+          ? this.renderListView()
+          : this.renderDetailView()}
         {isDragging && <div className="wk-thread-panel-drag-overlay" />}
       </div>
-    )
+    );
   }
 }

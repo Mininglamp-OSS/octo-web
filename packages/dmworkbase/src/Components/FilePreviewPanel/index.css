@@ -4,7 +4,9 @@
    ============================================ */
 
 .wk-file-preview-panel {
-  width: 400px;
+  pointer-events: auto;
+  /* 与 ThreadPanel 共享宽度变量，实现宽度一致 */
+  width: var(--wk-width-thread-panel);
   min-width: 360px;
   height: 100%;
   background: var(--wk-bg-surface);
@@ -12,6 +14,20 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* 绝对定位 + 滑入动画，与 ThreadPanel 保持一致 */
+  position: absolute;
+  z-index: 101;
+  top: 0;
+  right: 0;
+  transition: margin-right 150ms ease-in-out 0s;
+  margin-right: calc(0px - var(--wk-width-thread-panel));
+  box-shadow: var(--wk-shadow-md);
+}
+
+/* 打开状态 - 支持 filepreview-open 或 threadpanel-open（子区频道使用后者） */
+.wk-chat-content-right.wk-chat-filepreview-open .wk-file-preview-panel,
+.wk-chat-content-right.wk-chat-threadpanel-open .wk-file-preview-panel {
+  margin-right: 0;
 }
 
 /* Header */

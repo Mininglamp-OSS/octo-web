@@ -319,6 +319,20 @@ body[theme-mode="dark"] .wk-thread-panel {
   height: 100%;
 }
 
+/* 文件预览内容区 */
+.wk-thread-panel-file-preview {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wk-thread-panel-file-preview > * {
+  flex: 1;
+  min-height: 0;
+}
+
 .wk-thread-panel-conversation .wk-conversation-content {
   height: 100%;
 }
@@ -518,7 +532,7 @@ body[theme-mode="dark"] .wk-thread-panel {
   width: 12px;
   margin-left: -6px;
   cursor: col-resize;
-  z-index: 101;  /* just above .wk-thread-panel(z:100), below modals/tooltips(z:200+) */
+  z-index: 101; /* just above .wk-thread-panel(z:100), below modals/tooltips(z:200+) */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -528,7 +542,7 @@ body[theme-mode="dark"] .wk-thread-panel {
   width: 0;
   height: 100%;
   transition: width var(--wk-dur-fast) var(--wk-ease),
-              background var(--wk-dur-fast) var(--wk-ease);
+    background var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-thread-panel-splitter:hover .wk-thread-panel-splitter-line,

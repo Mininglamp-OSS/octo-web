@@ -15,6 +15,10 @@ export type MittEvents = {
     name: string;
     extension: string;
     size?: number;
+    /** 来源频道 ID（用于判断是否在子区面板内触发） */
+    sourceChannelId?: string;
+    /** 来源频道类型 */
+    sourceChannelType?: number;
   } | null;
 };
 import { EndpointCommon } from "./EndpointCommon";
@@ -278,6 +282,14 @@ export default class WKApp extends ProviderListener {
     channelId: string;
     name: string;
     shortId: string;
+  };
+
+  /** 待打开的文件预览，切换频道后由新页面消费 */
+  pendingFilePreview?: {
+    url: string;
+    name: string;
+    extension: string;
+    size?: number;
   };
 
   baseContext!: WKBaseContext; // DMWork基础上下文
