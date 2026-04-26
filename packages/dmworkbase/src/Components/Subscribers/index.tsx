@@ -9,6 +9,7 @@ import IndexTable, { IndexTableItem } from "../IndexTable";
 import WKBase, { WKBaseContext } from "../WKBase";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { SubscriberList } from "./list";
+import { Tag } from "@douyinfe/semi-ui";
 
 export interface SubscribersProps {
   context: RouteContext<any>;
@@ -21,6 +22,8 @@ export class Subscribers extends Component<SubscribersProps> {
   baseContext!: WKBaseContext;
 
   subscriberUI(subscriber: Subscriber) {
+    const isExternal = subscriber.orgData?.is_external === 1;
+    const sourceSpaceName = subscriber.orgData?.source_space_name;
     return (
       <div
         key={subscriber.uid}
@@ -38,6 +41,25 @@ export class Subscribers extends Component<SubscribersProps> {
         <div className="wk-subscribers-item-name">
           {subscriber.remark || subscriber.name}
         </div>
+        {isExternal && (
+          <>
+            <Tag
+              size="small"
+              color="purple"
+              className="wk-subscribers-item-external-tag"
+            >
+              外部
+            </Tag>
+            {sourceSpaceName && (
+              <span
+                className="wk-subscribers-item-source"
+                title={`来自 ${sourceSpaceName}`}
+              >
+                来自 {sourceSpaceName}
+              </span>
+            )}
+          </>
+        )}
       </div>
     );
   }
