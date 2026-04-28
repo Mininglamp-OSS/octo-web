@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
+import { X } from "lucide-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -23,7 +24,13 @@ import { ChatContextResult } from "../Conversation/chatContext";
 import { Maximize2, Minimize2 } from "lucide-react";
 import IconClick from "../IconClick";
 import mentionAllIcon from "./mention.png";
-import { AttachmentNode, AttachmentAttributes } from "./AttachmentNode";
+import {
+  AttachmentNode,
+  AttachmentAttributes,
+  getFileIcon,
+  formatFileSize,
+  videoPlayIcon,
+} from "./AttachmentNode";
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -75,7 +82,9 @@ interface MessageInputProps {
   onInputRef?: any;
   onInsertText?: (fnc: OnInsertFnc) => void;
   onAddMention?: (fnc: OnAddMentionFnc) => void;
-  onAddAttachment?: (fnc: (files: File[]) => void) => void;
+  onAddAttachment?: (
+    fnc: (files: File[], source?: "paste" | "upload") => void
+  ) => void;
   hideMention?: boolean;
   toolbar?: JSX.Element;
   onContext?: (ctx: MessageInputContext) => void;
@@ -160,9 +169,10 @@ function formatMentionTextV2(text: string): {
 export interface MessageInputContext {
   insertText: (text: string) => void;
   addMention: (uid: string, name: string) => void;
-  addAttachment: (files: File[]) => void;
+  addAttachment: (files: File[], source?: "paste" | "upload") => void;
   getAttachmentFiles: () => File[];
   text: () => string | undefined;
+  focus: () => void;
 }
 
 interface MemberInfo {
@@ -262,6 +272,30 @@ function extractMentionsFromEditor(editor: any): string {
   return stripInvisibleChars(result);
 }
 
+// 顶部附件区的附件项接口
+interface TopAttachmentItem {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  type: string;
+  previewUrl?: string;
+}
+
+// 判断是否为图片类型（模块级别函数）
+function isImageFileType(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  return ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext);
+}
+
+// 判断是否为视频类型（模块级别函数）
+function isVideoFileType(file: File): boolean {
+  if (file.type.startsWith("video/")) return true;
+  const ext = file.name.split(".").pop()?.toLowerCase() || "";
+  return ["mp4", "avi", "mov", "mkv", "webm"].includes(ext);
+}
+
 const MessageInput: React.FC<MessageInputProps> = (props) => {
   const [slashMenuVisible, setSlashMenuVisible] = useState(false);
   const [slashFilter, setSlashFilter] = useState("");
@@ -269,8 +303,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const previousScopeRef = useRef<string>("all");
-  // 附件文件映射：id -> File
+  // 附件文件映射：id -> File（用于编辑器内的粘贴图片）
   const attachmentFilesRef = useRef<Map<string, File>>(new Map());
+  // 顶部附件区的附件列表（非图片文件 + 上传的图片）
+  const [topAttachments, setTopAttachments] = useState<TopAttachmentItem[]>([]);
 
   // 动态生成 placeholder
   const placeholder = useMemo(() => {
@@ -422,19 +458,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     };
   }, []);
 
-  // 判断是否为图片类型
-  const isImageFile = (file: File): boolean => {
-    if (file.type.startsWith("image/")) return true;
-    const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    return ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext);
-  };
-
-  // 判断是否为视频类型
-  const isVideoFile = (file: File): boolean => {
-    if (file.type.startsWith("video/")) return true;
-    const ext = file.name.split(".").pop()?.toLowerCase() || "";
-    return ["mp4", "avi", "mov", "mkv", "webm"].includes(ext);
-  };
+  // 使用模块级别的函数
+  const isImageFile = isImageFileType;
+  const isVideoFile = isVideoFileType;
 
   // 为视频生成封面（截取第一帧）
   const generateVideoCover = (file: File): Promise<string | undefined> => {
@@ -475,41 +501,59 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     });
   };
 
-  // 插入附件到编辑器
+  // 插入附件
+  // source: 'paste' = 粘贴进来的图片（作为富文本元素混合在文本中）
+  // source: 'upload' = 通过上传按钮选择的文件（放在顶部附件区）
   const addAttachment = useCallback(
-    async (files: File[]) => {
-      if (!editor) return;
-
+    async (files: File[], source: "paste" | "upload" = "upload") => {
       for (const file of files) {
         const id = `${file.name}-${file.size}-${
           file.lastModified
         }-${Date.now()}`;
-        // 存储文件引用
-        attachmentFilesRef.current.set(id, file);
 
-        // 为图片生成预览 URL，为视频生成封面
-        let previewUrl: string | undefined;
-        if (isImageFile(file)) {
-          previewUrl = URL.createObjectURL(file);
-        } else if (isVideoFile(file)) {
-          previewUrl = await generateVideoCover(file);
+        // 判断是否为粘贴的图片（只有粘贴的图片才放入编辑器）
+        const isPastedImage = source === "paste" && isImageFile(file);
+
+        if (isPastedImage && editor) {
+          // 粘贴的图片：插入到编辑器作为富文本元素
+          attachmentFilesRef.current.set(id, file);
+          const previewUrl = URL.createObjectURL(file);
+
+          editor
+            .chain()
+            .focus()
+            .insertContent({
+              type: "attachment",
+              attrs: {
+                id,
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                previewUrl,
+                source: "paste",
+              },
+            })
+            .run();
+        } else {
+          // 其他所有附件（非图片文件 + 上传的图片）：放入顶部附件区
+          let previewUrl: string | undefined;
+          if (isImageFile(file)) {
+            previewUrl = URL.createObjectURL(file);
+          } else if (isVideoFile(file)) {
+            previewUrl = await generateVideoCover(file);
+          }
+
+          const item: TopAttachmentItem = {
+            id,
+            file,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            previewUrl,
+          };
+
+          setTopAttachments((prev) => [...prev, item]);
         }
-
-        // 插入附件节点到编辑器
-        editor
-          .chain()
-          .focus()
-          .insertContent({
-            type: "attachment",
-            attrs: {
-              id,
-              name: file.name,
-              size: file.size,
-              type: file.type,
-              previewUrl,
-            },
-          })
-          .run();
       }
 
       // 插入附件后切换到多行模式
@@ -517,6 +561,48 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     },
     [editor]
   );
+
+  // 移除顶部附件区的附件
+  const removeTopAttachment = useCallback((id: string) => {
+    setTopAttachments((prev) => {
+      const item = prev.find((a) => a.id === id);
+      if (item?.previewUrl) {
+        URL.revokeObjectURL(item.previewUrl);
+      }
+      return prev.filter((a) => a.id !== id);
+    });
+  }, []);
+
+  // 监听顶部附件区变化，更新多行模式状态
+  useEffect(() => {
+    if (topAttachments.length > 0) {
+      setIsMultiLine(true);
+    } else if (editor) {
+      // 当顶部附件区清空后，检查编辑器内是否仍需要多行模式
+      const text = editor.getText();
+      const json = editor.getJSON();
+      const paragraphs = json.content || [];
+      const hasMultipleParagraphs = paragraphs.length > 1;
+      const hasNewline = text.includes("\n");
+      const hasEditorAttachments =
+        extractAttachmentsFromEditor(editor).length > 0;
+      setIsMultiLine(
+        hasMultipleParagraphs || hasNewline || hasEditorAttachments
+      );
+    }
+  }, [topAttachments.length, editor]);
+
+  // 组件卸载时清理顶部附件区的预览 URL，避免内存泄漏
+  useEffect(() => {
+    return () => {
+      topAttachments.forEach((item) => {
+        if (item.previewUrl) {
+          URL.revokeObjectURL(item.previewUrl);
+        }
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 动态更新 placeholder
   useEffect(() => {
@@ -537,14 +623,20 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     }
   }, [addAttachment, props.onAddAttachment]);
 
-  // 获取编辑器中的附件文件
+  // 获取所有附件文件（编辑器内 + 顶部附件区）
   const getAttachmentFiles = useCallback((): File[] => {
-    if (!editor) return [];
-    const attachmentAttrs = extractAttachmentsFromEditor(editor);
-    return attachmentAttrs
-      .map((attr) => attachmentFilesRef.current.get(attr.id))
-      .filter((f): f is File => f !== undefined);
-  }, [editor]);
+    // 编辑器内的附件（粘贴的图片）
+    const editorFiles: File[] = editor
+      ? extractAttachmentsFromEditor(editor)
+          .map((attr) => attachmentFilesRef.current.get(attr.id))
+          .filter((f): f is File => f !== undefined)
+      : [];
+
+    // 顶部附件区的附件
+    const topFiles = topAttachments.map((a) => a.file);
+
+    return [...editorFiles, ...topFiles];
+  }, [editor, topAttachments]);
 
   // 导出 context 方法
   useEffect(() => {
@@ -558,6 +650,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         addAttachment,
         getAttachmentFiles,
         text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
+        focus: () => editor?.commands.focus(),
       });
     }
   }, [
@@ -609,9 +702,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       return;
     }
 
-    // 从编辑器提取附件
+    // 从编辑器提取附件（粘贴的图片）
     const attachmentAttrs = extractAttachmentsFromEditor(editor);
-    const attachments: AttachmentFile[] = attachmentAttrs
+    const editorAttachments: AttachmentFile[] = attachmentAttrs
       .map((attr) => {
         const file = attachmentFilesRef.current.get(attr.id);
         if (file) {
@@ -621,8 +714,15 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       })
       .filter((a): a is AttachmentFile => a !== null);
 
+    // 合并编辑器附件和顶部附件区附件
+    const topAttachmentFiles: AttachmentFile[] = topAttachments.map((a) => ({
+      id: a.id,
+      file: a.file,
+    }));
+    const allAttachments = [...editorAttachments, ...topAttachmentFiles];
+
     const hasText = text.trim() !== "";
-    const hasAttachments = attachments.length > 0;
+    const hasAttachments = allAttachments.length > 0;
 
     if (props.onSend && (hasText || hasAttachments)) {
       // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）
@@ -631,11 +731,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       props.onSend(
         content,
         mention,
-        attachments.length > 0 ? attachments : undefined
+        allAttachments.length > 0 ? allAttachments : undefined
       );
     }
 
-    // 清理附件文件引用和图片预览 URL
+    // 清理编辑器附件文件引用和图片预览 URL
     attachmentAttrs.forEach((attr) => {
       attachmentFilesRef.current.delete(attr.id);
       // 释放图片预览 URL，避免内存泄漏
@@ -644,13 +744,21 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       }
     });
 
+    // 清理顶部附件区
+    topAttachments.forEach((item) => {
+      if (item.previewUrl) {
+        URL.revokeObjectURL(item.previewUrl);
+      }
+    });
+    setTopAttachments([]);
+
     editor.commands.clearContent();
 
     if (expanded) {
       setExpanded(false);
       props.onExpandChange?.(false);
     }
-  }, [editor, expanded, props.onSend, props.onExpandChange]);
+  }, [editor, expanded, topAttachments, props.onSend, props.onExpandChange]);
 
   // 更新 sendRef
   useEffect(() => {
@@ -756,7 +864,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   // 检查编辑器内是否有内容或附件
   const editorAttachments = editor ? extractAttachmentsFromEditor(editor) : [];
   const hasValue =
-    (editor?.getText().length || 0) > 0 || editorAttachments.length > 0;
+    (editor?.getText().length || 0) > 0 ||
+    editorAttachments.length > 0 ||
+    topAttachments.length > 0;
 
   // 设置 inputRef
   useEffect(() => {
@@ -781,6 +891,78 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       >
         {/* 引用/编辑条在卡片内部 */}
         {topView && <div className="wk-messageinput-topview">{topView}</div>}
+
+        {/* 顶部附件区（非图片文件 + 上传的图片） */}
+        {topAttachments.length > 0 && (
+          <div className="wk-messageinput-top-attachments">
+            <div className="wk-messageinput-top-attachments-scroll">
+              {topAttachments.map((item) => {
+                const isImage = isImageFileType(item.file);
+                const isVideo = isVideoFileType(item.file);
+                const icon = getFileIcon(item.name, item.type);
+
+                // 顶部附件区所有类型都使用卡片样式（包括图片）
+                return (
+                  <div key={item.id} className="wk-attachment-node">
+                    <div className="wk-attachment-node-card">
+                      <div className="wk-attachment-node-icon">
+                        {isImage && item.previewUrl ? (
+                          // 图片：显示缩略图
+                          <img
+                            src={item.previewUrl}
+                            alt={item.name}
+                            draggable={false}
+                            className="wk-attachment-node-image-thumb"
+                          />
+                        ) : isVideo && item.previewUrl ? (
+                          // 视频：显示封面和播放图标
+                          <div className="wk-attachment-node-video-cover-wrapper">
+                            <img
+                              src={item.previewUrl}
+                              alt="video cover"
+                              draggable={false}
+                              className="wk-attachment-node-video-cover"
+                            />
+                            <img
+                              src={videoPlayIcon}
+                              alt="play"
+                              className="wk-attachment-node-video-play-icon"
+                              draggable={false}
+                            />
+                          </div>
+                        ) : (
+                          // 其他文件：显示文件图标
+                          <img src={icon} alt="file" draggable={false} />
+                        )}
+                      </div>
+                      <div className="wk-attachment-node-info">
+                        <div className="wk-attachment-node-name-row">
+                          <div
+                            className="wk-attachment-node-name"
+                            title={item.name}
+                          >
+                            {item.name}
+                          </div>
+                          <button
+                            className="wk-attachment-node-remove"
+                            onClick={() => removeTopAttachment(item.id)}
+                            type="button"
+                            title="移除"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                        <div className="wk-attachment-node-size">
+                          {formatFileSize(item.size)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* 输入行：输入框 + 按钮 */}
         <div

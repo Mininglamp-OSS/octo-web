@@ -322,6 +322,46 @@ export interface IChannelDataSource {
 
     setBotAdmin(channel: Channel, uid: string): Promise<void>
     removeBotAdmin(channel: Channel, uid: string): Promise<void>
+
+    /**
+     * 获取频道文件列表（图片/视频/文件聚合）
+     * @param channelId 频道ID
+     * @param channelType 频道类型 1=单聊 2=群聊
+     * @param options 可选参数
+     */
+    channelFiles(channelId: string, channelType: number, options?: {
+        category?: 'all' | 'document' | 'image' | 'video' | 'archive' | 'code'
+        keyword?: string
+        page?: number
+        limit?: number
+    }): Promise<ChannelFilesResp>
+}
+
+/** 频道文件项 */
+export interface ChannelFileItem {
+    message_id: number
+    message_seq: number
+    from_uid: string
+    from_name: string
+    channel_id: string
+    channel_type: number
+    category: string
+    name: string
+    url: string
+    size: number
+    width?: number
+    height?: number
+    duration?: number
+    timestamp: number
+}
+
+/** 频道文件列表响应 */
+export interface ChannelFilesResp {
+    total: number
+    page: number
+    limit: number
+    has_more: boolean
+    files: ChannelFileItem[]
 }
 
 export class ChannelQrcodeResp implements APIResp {

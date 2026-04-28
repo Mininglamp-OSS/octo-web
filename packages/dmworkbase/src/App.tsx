@@ -297,6 +297,9 @@ export default class WKApp extends ProviderListener {
     name: string;
     extension: string;
     size?: number;
+    messageId?: string;
+    sourceChannelId?: string;
+    sourceChannelType?: number;
   };
 
   baseContext!: WKBaseContext; // DMWork基础上下文

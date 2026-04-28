@@ -23,7 +23,10 @@ import { formatRelativeTime } from "../../Utils/time";
 import { FilePreviewInfo } from "../FilePreviewPanel/types";
 import { fileRendererRegistry } from "../FilePreviewPanel/registry";
 import { getExtension } from "../FilePreviewPanel/types";
-import FilePreviewHeader from "../FilePreviewPanel/FilePreviewHeader";
+import FilePreviewHeader, {
+  ConversationFile,
+} from "../FilePreviewPanel/FilePreviewHeader";
+import { FileListPanel } from "../FilePreviewPanel/FileListPanel";
 import { MarkdownRenderer } from "../FilePreviewPanel/renderers/MarkdownRenderer";
 import { HtmlRenderer } from "../FilePreviewPanel/renderers/HtmlRenderer";
 import {
@@ -49,6 +52,8 @@ export interface ThreadPanelProps {
   onFilePreviewClose?: () => void;
   /** 回复文件消息的回调，传入消息 ID */
   onReplyFile?: (messageId: string) => void;
+  /** 切换预览文件的回调（从文件列表选择其他文件时触发） */
+  onFilePreviewChange?: (file: FilePreviewInfo) => void;
 }
 
 interface ThreadPanelComponentState {
@@ -67,6 +72,12 @@ interface ThreadPanelComponentState {
   isTocOpen: boolean;
   /** Markdown TOC 是否可用（h2 ≥ 3） */
   isTocAvailable: boolean;
+  /** 对话内文件列表 */
+  conversationFiles: ConversationFile[];
+  /** 文件列表侧边面板是否打开 */
+  isFilePanelOpen: boolean;
+  /** 文件列表是否加载中 */
+  conversationFilesLoading: boolean;
 }
 
 export default class ThreadPanel extends Component<
@@ -111,6 +122,9 @@ export default class ThreadPanel extends Component<
       fileViewMode: "preview",
       isTocOpen: false,
       isTocAvailable: false,
+      conversationFiles: [],
+      isFilePanelOpen: false,
+      conversationFilesLoading: false,
     };
   }
 
@@ -121,6 +135,10 @@ export default class ThreadPanel extends Component<
       if (this.props.thread) {
         this.initVM(this.props.thread.short_id);
       }
+    }
+    // 文件预览模式时加载对话内文件列表
+    if (this.props.filePreview) {
+      this.loadConversationFiles();
     }
     // Set CSS variable on mount so chat area calc has the correct width
     this.syncCssVariable(this.state.panelWidth);
@@ -232,6 +250,22 @@ export default class ThreadPanel extends Component<
         this.loadThreads();
       }
     }
+    // 文件预览变化时处理文件列表
+    if (this.props.filePreview !== prevProps.filePreview) {
+      if (this.props.filePreview) {
+        // 只有当频道变化时才重新加载文件列表
+        const prevChannelId =
+          prevProps.filePreview?.sourceChannelId || prevProps.groupNo;
+        const currChannelId =
+          this.props.filePreview.sourceChannelId || this.props.groupNo;
+        if (prevChannelId !== currChannelId || !prevProps.filePreview) {
+          this.loadConversationFiles();
+        }
+      } else {
+        // 退出文件预览模式时清空文件列表
+        this.setState({ conversationFiles: [], isFilePanelOpen: false });
+      }
+    }
   }
 
   private initVM(threadShortId: string) {
@@ -243,6 +277,56 @@ export default class ThreadPanel extends Component<
     });
     this.vm = vm;
     vm.load();
+  }
+
+  /** 加载对话内文件列表 */
+  private async loadConversationFiles() {
+    const { filePreview, groupNo } = this.props;
+    if (!filePreview) return;
+
+    // 优先使用 filePreview 中的 sourceChannelId/sourceChannelType
+    // 其次使用 groupNo（如果在群聊/子区中）
+    let channelId = filePreview.sourceChannelId || groupNo || "";
+    let channelType =
+      filePreview.sourceChannelType ??
+      (groupNo ? ChannelTypeGroup : ChannelTypePerson);
+
+    if (!channelId) {
+      console.warn(
+        "[ThreadPanel] loadConversationFiles: no channelId available"
+      );
+      return;
+    }
+
+    this.setState({ conversationFilesLoading: true });
+    try {
+      const resp = await WKApp.dataSource.channelDataSource.channelFiles(
+        channelId,
+        channelType,
+        { limit: 100 }
+      );
+      const files: ConversationFile[] = resp.files
+        .map((f) => ({
+          id: String(f.message_id),
+          name: f.name,
+          extension: f.name.includes(".") ? f.name.split(".").pop() || "" : "",
+          url: f.url,
+          size: f.size,
+          isAiGenerated: false, // TODO: 后端暂无此字段
+          senderUid: f.from_uid,
+          senderName: f.from_name,
+          timestamp: f.timestamp,
+        }))
+        // 按 timestamp 升序排列（最早的在前面）
+        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      this.setState({
+        conversationFiles: files,
+        conversationFilesLoading: false,
+      });
+    } catch (err) {
+      console.error("[ThreadPanel] loadConversationFiles failed:", err);
+      this.setState({ conversationFilesLoading: false });
+    }
   }
 
   private async loadThreads() {
@@ -490,6 +574,28 @@ export default class ThreadPanel extends Component<
     });
   };
 
+  /** 文件选择回调：切换预览的文件（从 ConversationFile 构造 FilePreviewInfo） */
+  private handleFileSelect = (file: ConversationFile) => {
+    const { filePreview, onFilePreviewChange } = this.props;
+    if (!onFilePreviewChange) {
+      console.warn(
+        "[ThreadPanel] handleFileSelect: onFilePreviewChange not provided"
+      );
+      return;
+    }
+    // 构造 FilePreviewInfo 并调用回调
+    const newPreview: FilePreviewInfo = {
+      url: file.url,
+      name: file.name,
+      extension: file.extension,
+      size: file.size,
+      sourceChannelId: filePreview?.sourceChannelId,
+      sourceChannelType: filePreview?.sourceChannelType,
+      messageId: file.id, // ConversationFile.id 就是 message_id
+    };
+    onFilePreviewChange(newPreview);
+  };
+
   private renderHeader() {
     const { onClose, filePreview, onFilePreviewClose } = this.props;
     const { view, vmState, showMoreMenu, fileViewMode, isTocOpen } = this.state;
@@ -523,6 +629,9 @@ export default class ThreadPanel extends Component<
       // 判断是否为 Markdown 文件
       const isMarkdown = ["md", "markdown"].includes(ext);
 
+      // 判断是否为 HTML 文件（仅 HTML 文件显示"在新标签页打开"按钮）
+      const isHtml = ["html", "htm"].includes(ext);
+
       // 判断是否显示 TOC 按钮（仅 Markdown 预览模式且 h2 ≥ 3）
       const showTocButton =
         isMarkdown && fileViewMode === "preview" && this.state.isTocAvailable;
@@ -544,6 +653,12 @@ export default class ThreadPanel extends Component<
       return (
         <FilePreviewHeader
           file={filePreview}
+          conversationFiles={this.state.conversationFiles}
+          onFileSelect={this.handleFileSelect}
+          isFilePanelOpen={this.state.isFilePanelOpen}
+          onFilePanelToggle={() =>
+            this.setState({ isFilePanelOpen: !this.state.isFilePanelOpen })
+          }
           showBackButton={canReturnToThread}
           onBack={onFilePreviewClose}
           onClose={onClose}
@@ -554,6 +669,7 @@ export default class ThreadPanel extends Component<
           showTocButton={showTocButton}
           isTocOpen={isTocOpen}
           onTocToggle={() => this.setState({ isTocOpen: !isTocOpen })}
+          showOpenExternal={isHtml}
         />
       );
     }
@@ -873,7 +989,8 @@ export default class ThreadPanel extends Component<
 
   render() {
     const { filePreview } = this.props;
-    const { view, panelWidth, isDragging } = this.state;
+    const { view, panelWidth, isDragging, isFilePanelOpen, conversationFiles } =
+      this.state;
     const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH;
 
     const panelStyle = isSmallScreen
@@ -899,11 +1016,30 @@ export default class ThreadPanel extends Component<
         )}
         {this.renderHeader()}
         {/* 根据 filePreview 决定渲染文件预览还是子区内容 */}
-        {filePreview
-          ? this.renderFilePreviewContent()
-          : view === "list"
-          ? this.renderListView()
-          : this.renderDetailView()}
+        {filePreview ? (
+          <div
+            className={classNames(
+              "wk-thread-panel-file-content",
+              isFilePanelOpen && "wk-thread-panel-file-content--with-list"
+            )}
+          >
+            {/* 侧边文件列表面板 */}
+            {isFilePanelOpen && (
+              <FileListPanel
+                files={conversationFiles}
+                currentFileUrl={filePreview.url}
+                onFileSelect={this.handleFileSelect}
+                onClose={() => this.setState({ isFilePanelOpen: false })}
+              />
+            )}
+            {/* 文件预览内容 */}
+            {this.renderFilePreviewContent()}
+          </div>
+        ) : view === "list" ? (
+          this.renderListView()
+        ) : (
+          this.renderDetailView()
+        )}
         {isDragging && <div className="wk-thread-panel-drag-overlay" />}
       </div>
     );

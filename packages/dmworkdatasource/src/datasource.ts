@@ -1,4 +1,4 @@
-import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ChannelTypeCommunityTopic, buildThreadChannelId } from "@octo/base";
+import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp } from "@octo/base";
 import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContentType,ConversationExtra,Subscriber } from "wukongimjssdk";
 
 const MAX_GROUP_LIST_LIMIT = 100000;
@@ -296,6 +296,38 @@ export class ChannelDataSource implements IChannelDataSource {
             thread_md_updated_at: data.thread_md_updated_at,
             group_name: data.group_name,
             last_message_at: data.last_message_at,
+        }
+    }
+
+    async channelFiles(channelId: string, channelType: number, options?: {
+        category?: 'all' | 'document' | 'image' | 'video' | 'archive' | 'code'
+        keyword?: string
+        page?: number
+        limit?: number
+    }): Promise<ChannelFilesResp> {
+        const body: any = {
+            channel_id: channelId,
+            channel_type: channelType,
+        }
+        if (options?.category) {
+            body.category = options.category
+        }
+        if (options?.keyword) {
+            body.keyword = options.keyword
+        }
+        if (options?.page) {
+            body.page = options.page
+        }
+        if (options?.limit) {
+            body.limit = options.limit
+        }
+        const resp = await WKApp.apiClient.post('message/channel/files', body)
+        return {
+            total: resp?.total ?? 0,
+            page: resp?.page ?? 1,
+            limit: resp?.limit ?? 20,
+            has_more: resp?.has_more ?? false,
+            files: resp?.files ?? [],
         }
     }
 }

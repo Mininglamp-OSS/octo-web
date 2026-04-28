@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useMemo,
-} from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Viewer,
   Worker,
@@ -71,6 +65,9 @@ const ZOOM_OPTIONS = [
  * 6. 默认适应宽度
  */
 const PdfRenderer: React.FC<PdfRendererProps> = ({ file, onError }) => {
+  // 文件大小检查（超过 20MB 不渲染）- 必须在所有 hooks 之前
+  const isTooLarge = file.size && isFileTooLarge(file.size);
+
   // 侧边栏状态
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<SidebarTab>("thumbnails");
@@ -92,14 +89,17 @@ const PdfRenderer: React.FC<PdfRendererProps> = ({ file, onError }) => {
   // 容器 ref，用于键盘事件监听
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 使用 useMemo 稳定插件实例，避免每次渲染时重新创建
-  const thumbnailPluginInstance = useMemo(() => thumbnailPlugin(), []);
-  const bookmarkPluginInstance = useMemo(() => bookmarkPlugin(), []);
-  const zoomPluginInstance = useMemo(() => zoomPlugin(), []);
-  const pageNavigationPluginInstance = useMemo(
-    () => pageNavigationPlugin(),
-    []
-  );
+  // 使用 useRef 确保插件实例在组件生命周期内稳定
+  // 不使用 useMemo 是因为 @react-pdf-viewer 插件在 HMR/Strict Mode 下可能有兼容性问题
+  const thumbnailPluginRef = useRef(thumbnailPlugin());
+  const bookmarkPluginRef = useRef(bookmarkPlugin());
+  const zoomPluginRef = useRef(zoomPlugin());
+  const pageNavigationPluginRef = useRef(pageNavigationPlugin());
+
+  const thumbnailPluginInstance = thumbnailPluginRef.current;
+  const bookmarkPluginInstance = bookmarkPluginRef.current;
+  const zoomPluginInstance = zoomPluginRef.current;
+  const pageNavigationPluginInstance = pageNavigationPluginRef.current;
 
   // 从插件中提取组件和方法
   const { Thumbnails } = thumbnailPluginInstance;
@@ -108,21 +108,14 @@ const PdfRenderer: React.FC<PdfRendererProps> = ({ file, onError }) => {
   const { GoToNextPage, GoToPreviousPage, jumpToPage } =
     pageNavigationPluginInstance;
 
-  // 插件数组也需要稳定引用
-  const plugins = useMemo(
-    () => [
-      thumbnailPluginInstance,
-      bookmarkPluginInstance,
-      zoomPluginInstance,
-      pageNavigationPluginInstance,
-    ],
-    [
-      thumbnailPluginInstance,
-      bookmarkPluginInstance,
-      zoomPluginInstance,
-      pageNavigationPluginInstance,
-    ]
-  );
+  // 插件数组 - 使用 useRef 确保稳定引用
+  const pluginsRef = useRef([
+    thumbnailPluginInstance,
+    bookmarkPluginInstance,
+    zoomPluginInstance,
+    pageNavigationPluginInstance,
+  ]);
+  const plugins = pluginsRef.current;
 
   // 文档加载完成监听器
   const handleDocumentLoad = useCallback((e: DocumentLoadEvent) => {
@@ -130,9 +123,15 @@ const PdfRenderer: React.FC<PdfRendererProps> = ({ file, onError }) => {
     setIsLoading(false);
 
     // 检查 PDF 是否包含书签
-    e.doc.getOutline().then((outline) => {
-      setHasBookmarks(outline !== null && outline.length > 0);
-    });
+    e.doc
+      .getOutline()
+      .then((outline) => {
+        setHasBookmarks(Array.isArray(outline) && outline.length > 0);
+      })
+      .catch(() => {
+        // 获取书签失败时默认无书签
+        setHasBookmarks(false);
+      });
   }, []);
 
   // 页面变化监听器
@@ -260,12 +259,12 @@ const PdfRenderer: React.FC<PdfRendererProps> = ({ file, onError }) => {
   const workerUrl =
     "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
 
-  // 文件大小检查（超过 20MB 不渲染）- 移到 hooks 之后
-  if (file.size && isFileTooLarge(file.size)) {
+  // 文件大小检查（超过 20MB 不渲染）
+  if (isTooLarge) {
     return (
       <FileTooLarge
         fileName={file.name}
-        fileSize={file.size}
+        fileSize={file.size!}
         fileUrl={file.url}
       />
     );

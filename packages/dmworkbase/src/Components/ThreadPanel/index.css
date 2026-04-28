@@ -319,6 +319,29 @@ body[theme-mode="dark"] .wk-thread-panel {
   height: 100%;
 }
 
+/* 文件预览内容容器（包含侧边文件列表 + 预览区域） */
+.wk-thread-panel-file-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
+
+/* 侧边文件列表面板展开时的布局 */
+
+.wk-thread-panel-file-content--with-list > .wk-file-list-panel {
+  width: 30%;
+  min-width: 200px;
+  max-width: 300px;
+  flex-shrink: 0;
+}
+
+.wk-thread-panel-file-content--with-list > .wk-thread-panel-file-preview {
+  flex: 1;
+  min-width: 0;
+}
+
 /* 文件预览内容区 */
 .wk-thread-panel-file-preview {
   flex: 1;

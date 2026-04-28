@@ -136,7 +136,10 @@ export class Conversation
   private _cachedSelectedText: string | null = null;
   private _beforeUnloadHandler: () => void;
   private _guardId: symbol = Symbol("pendingAttachmentGuard");
-  private _addAttachmentFn?: (files: File[]) => void;
+  private _addAttachmentFn?: (
+    files: File[],
+    source?: "paste" | "upload"
+  ) => void;
   private onOpenThreadPanel?: (
     threadChannelId: string,
     threadName: string
@@ -394,6 +397,8 @@ export class Conversation
     }
     this.vm.currentHandlerType = handlerType;
     this.vm.currentReplyMessage = message;
+    // 自动聚焦输入框
+    this._messageInputContext?.focus();
   }
 
   setDragFileCallback(f: (file: File) => void): void {
@@ -407,7 +412,10 @@ export class Conversation
     return this._messageInputContext?.getAttachmentFiles() || [];
   }
 
-  addPendingAttachments(files: File[]): string | null {
+  addPendingAttachments(
+    files: File[],
+    source: "paste" | "upload" = "upload"
+  ): string | null {
     const BLOCKED_EXTENSIONS = [
       "exe",
       "bat",
@@ -438,7 +446,7 @@ export class Conversation
 
     // 调用编辑器的 addAttachment 方法插入附件节点
     if (this._addAttachmentFn) {
-      this._addAttachmentFn(incoming);
+      this._addAttachmentFn(incoming, source);
     }
     return null;
   }

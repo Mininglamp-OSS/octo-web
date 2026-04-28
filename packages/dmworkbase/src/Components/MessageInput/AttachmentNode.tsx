@@ -13,12 +13,25 @@ import videoIcon from "../../assets/files/video.svg";
 import zipIcon from "../../assets/files/zip.svg";
 import videoPlayIcon from "../../assets/files/video2.svg";
 
+// 导出图标供外部使用
+export {
+  defaultIcon,
+  docIcon,
+  excelIcon,
+  gifIcon,
+  pdfIcon,
+  videoIcon,
+  zipIcon,
+  videoPlayIcon,
+};
+
 export interface AttachmentAttributes {
   id: string;
   name: string;
   size: number;
   type: string;
   previewUrl?: string; // 图片预览 URL
+  source?: "paste" | "upload"; // 附件来源：粘贴 or 上传按钮
 }
 
 function isImageType(type: string, name: string): boolean {
@@ -35,7 +48,8 @@ function isVideoType(type: string, name: string): boolean {
   return ["mp4", "avi", "mov", "mkv", "webm"].includes(ext);
 }
 
-function getFileIcon(name: string, type: string): string {
+/** 根据文件名和类型获取文件图标（导出供复用） */
+export function getFileIcon(name: string, type: string): string {
   const dotIdx = name.lastIndexOf(".");
   const ext = dotIdx > 0 ? name.substring(dotIdx + 1).toLowerCase() : "";
 
@@ -64,7 +78,8 @@ function getFileIcon(name: string, type: string): string {
   return defaultIcon;
 }
 
-function formatFileSize(bytes: number): string {
+/** 格式化文件大小（导出供复用） */
+export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -190,6 +205,9 @@ export const AttachmentNode = Node.create({
       },
       previewUrl: {
         default: null,
+      },
+      source: {
+        default: "upload",
       },
     };
   },

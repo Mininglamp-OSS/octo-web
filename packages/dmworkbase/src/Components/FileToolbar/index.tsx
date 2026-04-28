@@ -52,15 +52,16 @@ export default class FileToolbar extends Component<FileToolbarProps> {
         event.preventDefault();
         // 每次粘贴时获取最新的 conversationContext，避免闭包捕获旧引用
         const { conversationContext } = this.props;
-        const err = conversationContext.addPendingAttachments(files);
+        // 粘贴来源标记为 'paste'
+        const err = conversationContext.addPendingAttachments(files, "paste");
         if (err) Toast.error(err);
       }
     };
     document.addEventListener("paste", this.pasteListen);
 
-    // 拖拽文件 → 入队
+    // 拖拽文件 → 入队（视为上传来源）
     conversationContext.setDragFileCallback((file: File) => {
-      const err = conversationContext.addPendingAttachments([file]);
+      const err = conversationContext.addPendingAttachments([file], "upload");
       if (err) Toast.error(err);
     });
   }
@@ -89,7 +90,8 @@ export default class FileToolbar extends Component<FileToolbarProps> {
       Toast.warning("包含同名文件，已追加到待发送列表");
     }
 
-    const err = conversationContext.addPendingAttachments(files);
+    // 通过上传按钮选择的文件，标记为 'upload'
+    const err = conversationContext.addPendingAttachments(files, "upload");
     if (err) {
       Toast.error(err);
     }

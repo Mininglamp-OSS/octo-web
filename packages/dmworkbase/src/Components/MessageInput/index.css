@@ -626,3 +626,53 @@
   height: auto;
   object-fit: contain;
 }
+
+/* ============================================
+   顶部附件区样式（非图片文件 + 上传的图片）
+   复用 .wk-attachment-node 样式
+   ============================================ */
+
+.wk-messageinput-top-attachments {
+  width: 100%;
+  margin-bottom: var(--wk-sp-2);
+  overflow: hidden;
+}
+
+.wk-messageinput-top-attachments-scroll {
+  display: flex;
+  flex-direction: row;
+  gap: var(--wk-sp-2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--wk-sp-1) 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--wk-border-default) transparent;
+}
+
+.wk-messageinput-top-attachments-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.wk-messageinput-top-attachments-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.wk-messageinput-top-attachments-scroll::-webkit-scrollbar-thumb {
+  background: var(--wk-border-default);
+  border-radius: 2px;
+}
+
+/* 顶部附件区的附件项不需要 inline 布局 */
+.wk-messageinput-top-attachments-scroll > .wk-attachment-node {
+  display: flex;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* 图片缩略图样式（在卡片内显示） */
+.wk-attachment-node-image-thumb {
+  width: var(--wk-sp-12);
+  height: var(--wk-sp-12);
+  object-fit: cover;
+  border-radius: var(--wk-r-sm);
+}
