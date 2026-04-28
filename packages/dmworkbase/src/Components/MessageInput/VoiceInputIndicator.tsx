@@ -21,12 +21,11 @@ const INDICATOR_HEIGHT = 48;
 const PREPARING_DELAY_MS = 300;
 const RECORDING_DELAY_MS = 500;
 
-// 模式配置
+// 模式配置 - 匹配 Figma 设计：语音输入 / 语音编辑
 const VOICE_MODES: { value: VoiceMode; label: string; description: string }[] =
   [
-    { value: "smart", label: "语音输入", description: "智能识别追加或编辑" },
-    { value: "append_only", label: "追加模式", description: "仅追加文字" },
-    { value: "edit_only", label: "编辑模式", description: "仅编辑现有文字" },
+    { value: "smart", label: "语音输入", description: "" },
+    { value: "edit_only", label: "语音编辑", description: "" },
   ];
 
 export default function VoiceInputIndicator({

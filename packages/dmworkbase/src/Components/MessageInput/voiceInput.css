@@ -261,25 +261,33 @@
   background-color: transparent;
 }
 
-/* 模式选择弹窗 */
+/* 模式选择弹窗 - 匹配 Figma 设计 */
 .wk-voice-mode-menu {
   position: absolute;
   bottom: calc(100% + 8px);
   right: 0;
-  min-width: 180px;
-  padding: var(--wk-sp-1) 0;
-  background-color: var(--wk-bg-surface);
-  border: 1px solid var(--wk-border-light);
-  border-radius: var(--wk-r-lg);
-  box-shadow: var(--wk-shadow-lg);
+  width: 160px;
+  padding: 4px 0;
+  background-color: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0px 4px 14px 0px rgba(0, 0, 0, 0.1),
+    0px 0px 1px 0px rgba(0, 0, 0, 0.3);
   z-index: 1000;
+}
+
+/* 暗色模式 */
+[theme-mode="dark"] .wk-voice-mode-menu {
+  background-color: var(--wk-bg-surface);
+  box-shadow: 0px 4px 14px 0px rgba(0, 0, 0, 0.3),
+    0px 0px 1px 0px rgba(255, 255, 255, 0.1);
 }
 
 .wk-voice-mode-item {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--wk-sp-2) var(--wk-sp-3);
+  flex-direction: row;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
   cursor: pointer;
   transition: background-color 0.15s;
 }
@@ -297,18 +305,22 @@
 }
 
 .wk-voice-mode-label {
-  font-size: var(--wk-text-size-sm);
-  font-weight: 500;
+  font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  color: #1c1c23;
+  line-height: 20px;
+}
+
+[theme-mode="dark"] .wk-voice-mode-label {
   color: var(--wk-text-primary);
-  line-height: 1.4;
 }
 
 .wk-voice-mode-item--active .wk-voice-mode-label {
   color: var(--wk-brand-primary);
 }
 
+/* 隐藏描述文字，只显示标签 */
 .wk-voice-mode-desc {
-  font-size: var(--wk-text-size-xs);
-  color: var(--wk-text-tertiary);
-  line-height: 1.4;
+  display: none;
 }
