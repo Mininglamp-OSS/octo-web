@@ -305,17 +305,20 @@ export default class ThreadPanel extends Component<
         channelType,
         { limit: 100 }
       );
-      const files: ConversationFile[] = resp.files.map((f) => ({
-        id: String(f.message_id),
-        name: f.name,
-        extension: f.name.includes(".") ? f.name.split(".").pop() || "" : "",
-        url: f.url,
-        size: f.size,
-        isAiGenerated: false, // TODO: 后端暂无此字段
-        senderUid: f.from_uid,
-        senderName: f.from_name,
-        timestamp: f.timestamp,
-      }));
+      const files: ConversationFile[] = resp.files
+        .map((f) => ({
+          id: String(f.message_id),
+          name: f.name,
+          extension: f.name.includes(".") ? f.name.split(".").pop() || "" : "",
+          url: f.url,
+          size: f.size,
+          isAiGenerated: false, // TODO: 后端暂无此字段
+          senderUid: f.from_uid,
+          senderName: f.from_name,
+          timestamp: f.timestamp,
+        }))
+        // 按 timestamp 升序排列（最早的在前面）
+        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
       this.setState({
         conversationFiles: files,
         conversationFilesLoading: false,
