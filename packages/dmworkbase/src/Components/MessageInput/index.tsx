@@ -1034,14 +1034,25 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                 const hasMention = /@\S+?(?=\s|$)/.test(text);
 
                 // 根据保存的选中文本内容查找当前文档中的位置
+                // 使用 ProseMirror doc.descendants 遍历，正确处理 mention 等原子节点
                 const findSelectionRange = (
                   searchText: string
                 ): { from: number; to: number } | null => {
-                  const docText = editor.getText();
-                  const index = docText.indexOf(searchText);
-                  if (index === -1) return null;
-                  // ProseMirror 的位置需要 +1（因为 doc 节点占位）
-                  return { from: index + 1, to: index + 1 + searchText.length };
+                  let found: { from: number; to: number } | null = null;
+                  editor.state.doc.descendants((node, pos) => {
+                    if (found) return false; // 已找到，停止遍历
+                    if (node.isText && node.text) {
+                      const idx = node.text.indexOf(searchText);
+                      if (idx !== -1) {
+                        found = {
+                          from: pos + idx,
+                          to: pos + idx + searchText.length,
+                        };
+                        return false; // 停止遍历
+                      }
+                    }
+                  });
+                  return found;
                 };
 
                 if (hasMention && props.members && props.members.length > 0) {
