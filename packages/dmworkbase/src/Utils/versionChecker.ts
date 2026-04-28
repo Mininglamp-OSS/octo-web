@@ -2,12 +2,12 @@
  * 版本检测工具
  *
  * 工作原理：
- *   - 当前版本：构建时由 Vite define 注入到 window.__APP_VERSION__
+ *   - 当前版本：构建时由 CI 通过 VITE_APP_VERSION 注入，Vite 编译期替换为 import.meta.env.VITE_APP_VERSION
  *   - 服务端版本：定期 fetch /version.json 获取
  *   - 两者不一致时调用 onNewVersion 回调
  *
  * 异常情况处理：
- *   - window.__APP_VERSION__ 未注入（本地开发/旧构建）→ 直接跳过，不检测
+ *   - VITE_APP_VERSION 未设置（本地开发）→ import.meta.env.VITE_APP_VERSION 为 undefined → 直接跳过，不检测
  *   - /version.json 404 或网络错误 → 指数退避重试，不影响正常使用
  *   - /version.json 格式非法 / 无 version 字段 → 视为无效，跳过此次检测
  *   - 页面切到后台时暂停轮询，切回来时立即检查
@@ -27,8 +27,8 @@ export function startVersionCheck(options: VersionCheckOptions): () => void {
     const { interval = 10 * 60 * 1000, maxBackoff = 60 * 60 * 1000, onNewVersion } = options
 
     // 当前版本未注入（本地开发或老构建）→ 跳过检测
-    const currentVersion = (window as any).__APP_VERSION__ as string | undefined
-    if (!currentVersion || currentVersion === 'unknown' || currentVersion === 'dev') {
+    const currentVersion = import.meta.env.VITE_APP_VERSION as string | undefined
+    if (!currentVersion || currentVersion === 'dev') {
         return () => {}
     }
 
@@ -137,8 +137,8 @@ export function startVersionCheck(options: VersionCheckOptions): () => void {
  * 返回 serverVersion（有新版本时）或 null（无新版本 / 检测失败）
  */
 export async function checkVersionOnce(): Promise<string | null> {
-    const currentVersion = (window as any).__APP_VERSION__ as string | undefined
-    if (!currentVersion || currentVersion === 'unknown' || currentVersion === 'dev') return null
+    const currentVersion = import.meta.env.VITE_APP_VERSION as string | undefined
+    if (!currentVersion || currentVersion === 'dev') return null
 
     try {
         const res = await fetch('/version.json?_=' + Date.now(), {
