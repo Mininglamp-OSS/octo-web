@@ -40,6 +40,18 @@ import {
 } from "../WKLayout/layoutWidth";
 import "./index.css";
 
+/** API 返回的文件数据结构 */
+interface ChannelFileResponse {
+  message_id: string | number;
+  name: string;
+  url: string;
+  size?: number;
+  category?: string;
+  from_uid?: string;
+  from_name?: string;
+  timestamp?: number;
+}
+
 export interface ThreadPanelProps {
   /** 群组 ID，纯文件预览模式时可不传 */
   groupNo?: string;
@@ -310,13 +322,13 @@ export default class ThreadPanel extends Component<
   }
 
   /** 将 API 返回的文件数据转换为 ConversationFile */
-  private mapFileToConversationFile(f: any): ConversationFile {
+  private mapFileToConversationFile(f: ChannelFileResponse): ConversationFile {
     return {
       id: String(f.message_id),
       name: f.name,
       extension: f.name.includes(".") ? f.name.split(".").pop() || "" : "",
       url: f.url,
-      size: f.category === "image" ? undefined : f.size, // 图片类型没有大小
+      size: f.size,
       isAiGenerated: false, // TODO: 后端暂无此字段
       senderUid: f.from_uid,
       senderName: f.from_name,

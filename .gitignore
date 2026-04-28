@@ -54,6 +54,7 @@ package-lock.json
 
 # AI/IDE 工件文件（不进仓库）
 .claude/
+.zed/
 .ftre/memory/
 .vscode/settings.json
 **/settings.local.json

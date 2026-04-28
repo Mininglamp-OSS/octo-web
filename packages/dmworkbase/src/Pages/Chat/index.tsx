@@ -641,53 +641,36 @@ export class ChatContentPage extends Component<
             />
           )}
 
-        {/* 子区频道的文件预览（使用 ThreadPanel 壳子，获得拖拽功能） */}
-        {isThreadChannel && previewFile && (
-          <ThreadPanel
-            onClose={() =>
-              this.setState({ previewFile: null, activePreviewMessageId: null })
-            }
-            filePreview={previewFile}
-            onFilePreviewClose={() =>
-              this.setState({ previewFile: null, activePreviewMessageId: null })
-            }
-            onReplyFile={(messageId) => {
-              // 触发回复功能，保持文件预览面板打开
-              this.conversationContext?.replyToMessageId?.(messageId);
-            }}
-            onFilePreviewChange={(file) => {
-              // 切换预览的文件
-              this.setState({
-                previewFile: file,
-                activePreviewMessageId: file.messageId || null,
-              });
-            }}
-          />
-        )}
-
-        {/* 私聊的文件预览（使用 ThreadPanel 壳子，获得拖拽功能） */}
-        {channel.channelType === ChannelTypePerson && previewFile && (
-          <ThreadPanel
-            onClose={() =>
-              this.setState({ previewFile: null, activePreviewMessageId: null })
-            }
-            filePreview={previewFile}
-            onFilePreviewClose={() =>
-              this.setState({ previewFile: null, activePreviewMessageId: null })
-            }
-            onReplyFile={(messageId) => {
-              // 触发回复功能，保持文件预览面板打开
-              this.conversationContext?.replyToMessageId?.(messageId);
-            }}
-            onFilePreviewChange={(file) => {
-              // 切换预览的文件
-              this.setState({
-                previewFile: file,
-                activePreviewMessageId: file.messageId || null,
-              });
-            }}
-          />
-        )}
+        {/* 子区频道或私聊的文件预览（使用 ThreadPanel 壳子，获得拖拽功能） */}
+        {(isThreadChannel || channel.channelType === ChannelTypePerson) &&
+          previewFile && (
+            <ThreadPanel
+              onClose={() =>
+                this.setState({
+                  previewFile: null,
+                  activePreviewMessageId: null,
+                })
+              }
+              filePreview={previewFile}
+              onFilePreviewClose={() =>
+                this.setState({
+                  previewFile: null,
+                  activePreviewMessageId: null,
+                })
+              }
+              onReplyFile={(messageId) => {
+                // 触发回复功能，保持文件预览面板打开
+                this.conversationContext?.replyToMessageId?.(messageId);
+              }}
+              onFilePreviewChange={(file) => {
+                // 切换预览的文件
+                this.setState({
+                  previewFile: file,
+                  activePreviewMessageId: file.messageId || null,
+                });
+              }}
+            />
+          )}
       </div>
     );
   }
