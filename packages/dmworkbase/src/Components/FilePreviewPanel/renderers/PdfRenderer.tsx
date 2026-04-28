@@ -255,9 +255,8 @@ const PdfRenderer: React.FC<PdfRendererProps> = ({ file, onError }) => {
     return `${Math.round(currentScale * 100)}%`;
   }, [currentZoomMode, currentScale]);
 
-  // PDF Worker URL - 使用 jsdelivr CDN（国内访问更快）
-  const workerUrl =
-    "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  // PDF Worker URL - 使用本地路径避免 CSP 阻止外部 CDN
+  const workerUrl = "/pdfjs/pdf.worker.min.js";
 
   // 文件大小检查（超过 20MB 不渲染）
   if (isTooLarge) {
