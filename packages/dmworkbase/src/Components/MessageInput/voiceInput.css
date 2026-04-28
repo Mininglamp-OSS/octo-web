@@ -1,4 +1,4 @@
-/* 语音按钮组 */
+/* 语音按钮组 - 联合按钮风格 */
 .wk-voice-button-group {
   position: relative;
   display: flex;
@@ -6,29 +6,43 @@
   height: 24px;
 }
 
-/* 语音按钮 */
+/* 语音按钮 - 左侧麦克风部分 */
 .wk-voice-button {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   cursor: pointer;
-  border-radius: 6px;
-  transition: background-color 0.15s;
+  border-radius: 4px 0 0 4px;
+  transition: background-color 0.15s, color 0.15s;
   color: var(--wk-icon-muted);
 }
 
 .wk-voice-button:hover {
   color: var(--wk-text-primary);
+  background-color: var(--wk-bg-hover);
 }
 
 .wk-voice-button:active {
   opacity: 0.7;
 }
 
+/* 激活态 - 淡紫色背景 + 紫色图标 */
+.wk-voice-button--active {
+  background-color: rgba(127, 59, 245, 0.05);
+  color: rgba(127, 59, 245, 0.8);
+}
+
+.wk-voice-button--active:hover {
+  background-color: rgba(127, 59, 245, 0.1);
+  color: rgba(127, 59, 245, 0.9);
+}
+
 .wk-voice-button--recording {
   background-color: var(--wk-voice-recording-bg);
   color: var(--wk-voice-recording-color);
+  border-radius: 4px 0 0 4px;
 }
 
 .wk-voice-button--disabled {
@@ -39,6 +53,7 @@
 
 .wk-voice-button--disabled:hover {
   color: var(--wk-icon-muted);
+  background-color: transparent;
 }
 
 .wk-voice-button--preparing {
@@ -206,18 +221,17 @@
   }
 }
 
-/* 下拉箭头 */
+/* 下拉箭头 - 右侧部分 */
 .wk-voice-dropdown-arrow {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: 12px;
   height: 24px;
   cursor: pointer;
   color: var(--wk-icon-muted);
-  border-radius: 4px;
+  border-radius: 0 4px 4px 0;
   transition: color 0.15s, background-color 0.15s;
-  margin-left: -2px;
 }
 
 .wk-voice-dropdown-arrow:hover {
@@ -225,9 +239,15 @@
   background-color: var(--wk-bg-hover);
 }
 
+/* 激活态 - 淡紫色背景 + 紫色图标 */
 .wk-voice-dropdown-arrow--active {
-  color: var(--wk-brand-primary);
-  background-color: var(--wk-bg-hover);
+  background-color: rgba(127, 59, 245, 0.05);
+  color: rgba(127, 59, 245, 0.8);
+}
+
+.wk-voice-dropdown-arrow--active:hover {
+  background-color: rgba(127, 59, 245, 0.1);
+  color: rgba(127, 59, 245, 0.9);
 }
 
 .wk-voice-dropdown-arrow--disabled {

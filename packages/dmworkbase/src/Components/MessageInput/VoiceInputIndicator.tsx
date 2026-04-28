@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Toast } from "@douyinfe/semi-ui";
-import { Mic, ChevronDown } from "lucide-react";
+import { Mic } from "lucide-react";
 import useVoiceInput from "./useVoiceInput";
 import "./voiceInput.css";
 import { ChatContextResult } from "../Conversation/chatContext";
@@ -538,11 +538,18 @@ export default function VoiceInputIndicator({
 
   // 默认状态：显示麦克风按钮和下拉箭头
   // PRD: 无网络时话筒 icon 置灰，点击时 Toast「网络不可用，无法使用语音功能」
+  // 激活态：菜单打开时，麦克风和箭头都显示激活样式（淡紫色背景 + 紫色图标）
+  const isActive = showModeMenu;
+
   return (
     <div className="wk-voice-button-group" ref={buttonGroupRef}>
       <div
         className={`wk-voice-button ${
-          !isOnline ? "wk-voice-button--disabled" : ""
+          !isOnline
+            ? "wk-voice-button--disabled"
+            : isActive
+            ? "wk-voice-button--active"
+            : ""
         }`}
         title={isOnline ? `${currentModeLabel} (长按 Shift)` : "网络不可用"}
         onClick={handleVoiceClick}
@@ -552,18 +559,25 @@ export default function VoiceInputIndicator({
       >
         <Mic size={18} color="currentColor" />
       </div>
-      {/* 下拉箭头 */}
+      {/* 下拉箭头 - 实心三角形 */}
       <div
         ref={dropdownArrowRef}
         className={`wk-voice-dropdown-arrow ${
-          !isOnline ? "wk-voice-dropdown-arrow--disabled" : ""
-        } ${showModeMenu ? "wk-voice-dropdown-arrow--active" : ""}`}
+          !isOnline
+            ? "wk-voice-dropdown-arrow--disabled"
+            : isActive
+            ? "wk-voice-dropdown-arrow--active"
+            : ""
+        }`}
         onClick={handleDropdownClick}
         role="button"
         tabIndex={isOnline ? 0 : -1}
         title="选择语音模式"
       >
-        <ChevronDown size={12} />
+        {/* 实心向下三角形 SVG */}
+        <svg width="6" height="4" viewBox="0 0 6 4" fill="currentColor">
+          <path d="M0.5 0.5L3 3.5L5.5 0.5H0.5Z" />
+        </svg>
       </div>
       {/* 模式选择弹窗 */}
       {showModeMenu && (
