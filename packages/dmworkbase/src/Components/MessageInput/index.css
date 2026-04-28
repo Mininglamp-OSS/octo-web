@@ -667,36 +667,10 @@
   position: relative;
 }
 
-/* 图片类型的删除按钮（覆盖在图片上） */
-.wk-messageinput-top-attachments-scroll
-  > .wk-attachment-node--image
-  .wk-messageinput-top-attachment-remove {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 18px;
-  height: 18px;
-  background: rgba(0, 0, 0, 0.6);
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  opacity: 0;
-  transition: opacity 0.15s;
-  padding: 0;
-}
-
-.wk-messageinput-top-attachments-scroll
-  > .wk-attachment-node--image:hover
-  .wk-messageinput-top-attachment-remove {
-  opacity: 1;
-}
-
-.wk-messageinput-top-attachments-scroll
-  > .wk-attachment-node--image
-  .wk-messageinput-top-attachment-remove:hover {
-  background: rgba(0, 0, 0, 0.8);
+/* 图片缩略图样式（在卡片内显示） */
+.wk-attachment-node-image-thumb {
+  width: var(--wk-sp-12);
+  height: var(--wk-sp-12);
+  object-fit: cover;
+  border-radius: var(--wk-r-sm);
 }

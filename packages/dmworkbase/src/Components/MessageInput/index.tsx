@@ -932,37 +932,21 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                 const isVideo = isVideoFileType(item.file);
                 const icon = getFileIcon(item.name, item.type);
 
-                // 图片类型：使用和编辑器内一样的图片预览样式
-                if (isImage && item.previewUrl) {
-                  return (
-                    <div
-                      key={item.id}
-                      className="wk-attachment-node wk-attachment-node--image"
-                    >
-                      <img
-                        src={item.previewUrl}
-                        alt={item.name}
-                        className="wk-attachment-node-image"
-                        draggable={false}
-                      />
-                      <button
-                        className="wk-messageinput-top-attachment-remove"
-                        onClick={() => removeTopAttachment(item.id)}
-                        type="button"
-                        title="移除"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  );
-                }
-
-                // 非图片类型：使用和编辑器内一样的文件卡片样式
+                // 顶部附件区所有类型都使用卡片样式（包括图片）
                 return (
                   <div key={item.id} className="wk-attachment-node">
                     <div className="wk-attachment-node-card">
                       <div className="wk-attachment-node-icon">
-                        {isVideo && item.previewUrl ? (
+                        {isImage && item.previewUrl ? (
+                          // 图片：显示缩略图
+                          <img
+                            src={item.previewUrl}
+                            alt={item.name}
+                            draggable={false}
+                            className="wk-attachment-node-image-thumb"
+                          />
+                        ) : isVideo && item.previewUrl ? (
+                          // 视频：显示封面和播放图标
                           <div className="wk-attachment-node-video-cover-wrapper">
                             <img
                               src={item.previewUrl}
@@ -978,6 +962,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                             />
                           </div>
                         ) : (
+                          // 其他文件：显示文件图标
                           <img src={icon} alt="file" draggable={false} />
                         )}
                       </div>
