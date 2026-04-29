@@ -62,6 +62,7 @@
     "yet-another-react-lightbox": "^3.30.0"
   },
   "devDependencies": {
+    "@storybook/test": "^8.6.18",
     "@testing-library/react": "^14.3.1",
     "@testing-library/user-event": "^14.6.1",
     "@types/react-avatar-editor": "^13.0.0",
