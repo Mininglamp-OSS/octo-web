@@ -7,9 +7,9 @@ import {
     Dropdown,
 } from "@douyinfe/semi-ui";
 import { IconMore, IconSend } from "@douyinfe/semi-icons";
-import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK } from "wukongimjssdk";
+import { Channel, ChannelTypeGroup, ChannelTypePerson, MessageText, WKSDK } from "wukongimjssdk";
 import WKApp from "@octo/base/src/App";
-import { SummaryCardContent } from "@octo/base/src/Messages/SummaryCard/SummaryCardContent";
+import { splitSummaryText } from "../utils/splitMessage";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import type {
@@ -327,24 +327,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     handleForwardToChat = () => {
         const { detail } = this.state;
-        if (!detail) return;
-        WKApp.shared.baseContext.showConversationSelect((channels: Channel[]) => {
-            const card = new SummaryCardContent();
-            card.taskId = detail.task_id;
-            card.taskNo = detail.task_no;
-            card.title = detail.title;
-            card.sourceCount = detail.summary_mode === 2 
-                ? (detail.participants?.length || 0) 
-                : (detail.sources?.length || 0);
-            card.totalMsgCount = detail.result?.total_msg_count || 0;
-            card.timeRangeStart = detail.time_range_start;
-            card.timeRangeEnd = detail.time_range_end;
-            card.summaryMode = detail.summary_mode;
-            card.spaceId = WKApp.shared.currentSpaceId || "";
-            for (const ch of channels) {
-                WKSDK.shared().chatManager.send(card, ch);
+        if (!detail?.result?.content?.trim()) return;
+        WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
+            try {
+                const chunks = splitSummaryText(detail.result!.content);
+                for (const ch of channels) {
+                    for (let i = 0; i < chunks.length; i++) {
+                        WKSDK.shared().chatManager.send(new MessageText(chunks[i]), ch);
+                        if (i < chunks.length - 1) {
+                            await new Promise((r) => setTimeout(r, 200));
+                        }
+                    }
+                }
+                Toast.success("已转发");
+            } catch {
+                Toast.error("转发失败");
             }
-            Toast.success("已转发");
         }, "转发到聊天");
     };
 
