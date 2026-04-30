@@ -114,10 +114,9 @@ export default defineConfig(({ mode }) => {
         },
         // Todo service API — must be before the general /api/ rule
         '/todo/api/v1': {
-          target: env.VITE_TODO_API_URL || 'http://localhost:8080',
+          target: env.VITE_TODO_API_URL || apiOrigin,
           changeOrigin: true,
           secure: false,
-          rewrite: (path: string) => path.replace(/^\/todo/, ''),
         },
         '/api/': {
           target: apiOrigin,
