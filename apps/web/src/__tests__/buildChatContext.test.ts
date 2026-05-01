@@ -407,6 +407,57 @@ describe("buildChatContext", () => {
         })
     })
 
+    describe("thread (ChannelTypeCommunityTopic) chat", () => {
+        const ChannelTypeCommunityTopic = 5
+
+        it("should collect all member names (same as group)", () => {
+            const subscribers = [
+                makeMember("u1", "Alice"),
+                makeMember("u2", "Bob"),
+            ]
+            const result = buildChatContext({
+                messages: [],
+                subscribers,
+                channelType: ChannelTypeCommunityTopic,
+                loginUID: LOGIN_UID,
+            })
+            expect(result.memberContext).toBe("聊天成员：Alice,Bob")
+            expect(result.chatContext).toBeUndefined()
+        })
+
+        it("should use strategy 2 (active senders) when >100 members", () => {
+            const subscribers: ChatContextMember[] = []
+            for (let i = 0; i < 150; i++) {
+                subscribers.push(makeMember(`u${i}`, `User${i}`))
+            }
+            const messages = [
+                makeMessage("u0", "hi", "User0"),
+                makeMessage("u5", "hello", "User5"),
+            ]
+            const result = buildChatContext({
+                messages,
+                subscribers,
+                channelType: ChannelTypeCommunityTopic,
+                loginUID: LOGIN_UID,
+            })
+            expect(result.memberContext).toContain("聊天成员：")
+            expect(result.memberContext).toContain("User0")
+            expect(result.memberContext).toContain("User5")
+            expect(result.memberContext).not.toContain("User1,")
+        })
+
+        it("should return undefined memberContext when subscribers is empty", () => {
+            const result = buildChatContext({
+                messages: [],
+                subscribers: [],
+                channelType: ChannelTypeCommunityTopic,
+                loginUID: LOGIN_UID,
+            })
+            expect(result.memberContext).toBeUndefined()
+            expect(result.chatContext).toBeUndefined()
+        })
+    })
+
     describe("edge cases", () => {
         it("should return empty result when no subscribers and no messages", () => {
             const result = buildChatContext({
