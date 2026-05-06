@@ -181,16 +181,16 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 <div className="summary-workbench-input-area">
                     <TextArea
                         value={topic}
-                        onChange={(val) => this.setState({ topic: val.slice(0, 500) })}
+                        onChange={(val) => this.setState({ topic: val.slice(0, 1000) })}
                         placeholder="输入你想总结的主题"
                         rows={4}
                         style={{ resize: "none", fontSize: 15 }}
                         autosize={false}
-                        maxLength={500}
+                        maxLength={1000}
                     />
-                    {topic.length >= 500 && (
+                    {topic.length >= 1000 && (
                         <div style={{ color: "var(--semi-color-danger)", fontSize: 12, marginTop: 4 }}>
-                            已达到 500 字符上限
+                            已达到 1000 字符上限
                         </div>
                     )}
 

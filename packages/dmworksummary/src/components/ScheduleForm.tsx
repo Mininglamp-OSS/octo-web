@@ -57,7 +57,17 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
         <div className="summary-schedule-form">
             <div className="summary-form-field">
                 <label>标题</label>
-                <Input value={title} onChange={setTitle} placeholder="定时总结标题" />
+                <Input
+                    value={title}
+                    onChange={(val) => setTitle(val.slice(0, 1000))}
+                    maxLength={1000}
+                    placeholder="定时总结标题"
+                />
+                {title.length >= 1000 && (
+                    <div style={{ color: "var(--semi-color-danger)", fontSize: 12, marginTop: 4 }}>
+                        已达到 1000 字符上限
+                    </div>
+                )}
             </div>
 
             <div className="summary-form-field">
