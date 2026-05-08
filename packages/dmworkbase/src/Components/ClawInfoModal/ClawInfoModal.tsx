@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Spin, Empty } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import ClawSessionItem from "../ClawSessionItem";
+import ClawOverviewTab from "../ClawOverviewTab/ClawOverviewTab";
+import ClawCoreFilesTab from "../ClawCoreFilesTab/ClawCoreFilesTab";
 import "./ClawInfoModal.css";
 
 export interface ClawInfoModalProps {
@@ -51,6 +53,22 @@ export interface AgentCardData {
     gateway_name: string;
     claw_id: string;
     process_status: string;
+    gateway_status?: string;
+    os_version?: string;
+    arch?: string;
+    disk_space_gb?: number;
+    memory_gb?: number;
+    app_data_dir?: string;
+    claw_version?: string;
+    admin_url?: string;
+    team_name?: string;
+    gateway_total_agents?: number;
+    gateway_alive_agents?: number;
+    nodejs_version?: string;
+    network_latency_ms?: number;
+    last_heartbeat_at?: string;
+    memory_retention_count?: number;
+    memory_retention_note?: string;
   };
 }
 
@@ -224,7 +242,7 @@ export default function ClawInfoModal({ botId, visible, onClose }: ClawInfoModal
       visible={visible}
       onCancel={onClose}
       title={null}
-      width={960}
+      size="full"
       className="claw-info-modal"
     >
       <div className="claw-info-container">
@@ -282,11 +300,35 @@ export default function ClawInfoModal({ botId, visible, onClose }: ClawInfoModal
         {/* Tab Content */}
         <div className="claw-info-content">
           {activeTab === "session" && renderSessionTab()}
-          {activeTab === "overview" && (
-            <div className="claw-info-placeholder">概览 Tab（待实现）</div>
+          {activeTab === "overview" && data?.runtime_info && (
+            <ClawOverviewTab
+              runtimeInfo={{
+                os_version: data.runtime_info.os_version || "—",
+                arch: data.runtime_info.arch || "—",
+                disk_space_gb: data.runtime_info.disk_space_gb || 0,
+                memory_gb: data.runtime_info.memory_gb || 0,
+                app_data_dir: data.runtime_info.app_data_dir || "—",
+                claw_version: data.runtime_info.claw_version || "—",
+                admin_url: data.runtime_info.admin_url || "—",
+                team_name: data.runtime_info.team_name || "—",
+                process_status: data.runtime_info.process_status,
+                gateway_status: data.runtime_info.gateway_status || "unknown",
+                gateway_name: data.runtime_info.gateway_name,
+                claw_id: data.runtime_info.claw_id,
+                gateway_total_agents: data.runtime_info.gateway_total_agents || 0,
+                gateway_alive_agents: data.runtime_info.gateway_alive_agents || 0,
+                nodejs_version: data.runtime_info.nodejs_version || "—",
+                network_latency_ms: data.runtime_info.network_latency_ms || 0,
+                last_heartbeat_at: data.runtime_info.last_heartbeat_at || "—",
+                memory_retention_count: data.runtime_info.memory_retention_count || 0,
+                memory_retention_note: data.runtime_info.memory_retention_note || "—",
+              }}
+              loading={loading}
+              onRecheck={loadAgentCard}
+            />
           )}
           {activeTab === "files" && (
-            <div className="claw-info-placeholder">核心文件 Tab（待实现）</div>
+            <ClawCoreFilesTab botId={botId} height="100%" />
           )}
         </div>
       </div>
