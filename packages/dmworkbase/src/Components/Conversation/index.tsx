@@ -333,23 +333,22 @@ export class Conversation
     // ── 所有 listener 在 sendMessage 之前注册，避免快速完成时错过事件 ──
 
     const taskListener = (task: any) => {
+      if (settled) return;
       if (
         task instanceof MessageTask &&
         clientSeq !== null &&
         task.message.clientSeq === clientSeq &&
         task.status === TaskStatus.fail
       ) {
-        // 上传失败，不需要等 ack
         done();
       }
-      // 上传成功时不 done()，等 ackListener 来触发
     };
     WKSDK.shared().taskManager.addListener(taskListener);
 
     let pendingAcks: any[] = [];
     const ackListener = (ackPacket: any) => {
+      if (settled) return;
       if (clientSeq === null) {
-        // ack 在 sendMessage await 期间到达，暂存等 clientSeq 赋值后补查
         pendingAcks.push(ackPacket);
         return;
       }
@@ -434,6 +433,7 @@ export class Conversation
     // 在 sendMessage 之前注册 listener，避免快速 ack 竞态
     let pendingAcks: any[] = [];
     const statusListener = (ackPacket: any) => {
+      if (settled) return;
       if (clientSeq === null) {
         pendingAcks.push(ackPacket);
         return;
