@@ -13,7 +13,7 @@ import TiptapMention from "@tiptap/extension-mention";
 import { createMentionSuggestion } from "./mentionSuggestion";
 import ConversationContext from "../Conversation/context";
 import clazz from "classnames";
-import WKSDK, { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
+import WKSDK, { Channel, ChannelInfo, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 import hotkeys from "hotkeys-js";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
@@ -34,6 +34,18 @@ import {
 } from "./AttachmentNode";
 
 const MAX_MESSAGE_LENGTH = 5000;
+
+// placeholder 格式化所需的平台快捷键标识（模块级常量，避免重复计算）
+const ALT_KEY = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌥' : 'Alt';
+
+/** 根据频道类型和名称生成 placeholder 文本 */
+function buildPlaceholder(channel: Channel, name: string): string {
+  if (channel.channelType === ChannelTypePerson) {
+    return name ? `对 ${name} 发送消息` : "发送消息";
+  } else {
+    return name ? `在 ${name} 中回复...  ${ALT_KEY}+↵ 创建任务` : `输入消息...  ${ALT_KEY}+↵ 创建任务`;
+  }
+}
 
 // 从编辑器中提取附件节点（纯函数，避免闭包问题）
 function extractAttachmentsFromEditor(
@@ -343,43 +355,42 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   // 顶部附件区的附件列表（非图片文件 + 上传的图片）
   const [topAttachments, setTopAttachments] = useState<TopAttachmentItem[]>([]);
 
-  // 动态生成 placeholder（channelInfo 异步加载后自动更新）
+  // 动态生成 placeholder（channelInfo 异步加载后通过 listener 自动更新）
   const [placeholder, setPlaceholder] = useState(() => {
     const channel = props.context.channel();
     const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
-    const name = channelInfo?.title || "";
-    const altKey = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌥' : 'Alt';
-    if (channel.channelType === ChannelTypePerson) {
-      return name ? `对 ${name} 发送消息` : "发送消息";
-    } else {
-      return name ? `在 ${name} 中回复...  ${altKey}+↵ 创建任务` : `输入消息...  ${altKey}+↵ 创建任务`;
-    }
+    return buildPlaceholder(channel, channelInfo?.title || "");
   });
 
   useEffect(() => {
     const channel = props.context.channel();
-    const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
-    const altKey = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌥' : 'Alt';
+    let aborted = false;
 
-    const updatePlaceholder = (name: string) => {
-      if (channel.channelType === ChannelTypePerson) {
-        setPlaceholder(name ? `对 ${name} 发送消息` : "发送消息");
-      } else {
-        setPlaceholder(name ? `在 ${name} 中回复...  ${altKey}+↵ 创建任务` : `输入消息...  ${altKey}+↵ 创建任务`);
-      }
+    const updateName = (name: string) => {
+      if (aborted) return;
+      setPlaceholder(buildPlaceholder(channel, name));
     };
 
-    if (channelInfo) {
-      updatePlaceholder(channelInfo.title || "");
+    // 监听 channelInfo 更新（SDK fetch 完成后会通知）
+    const listener = (channelInfo: ChannelInfo) => {
+      if (channelInfo.channel.isEqual(channel)) {
+        updateName(channelInfo.title || "");
+      }
+    };
+    WKSDK.shared().channelManager.addListener(listener);
+
+    // 检查本地缓存；没有则主动 fetch（fetch 完成后 listener 会收到通知）
+    const cached = WKSDK.shared().channelManager.getChannelInfo(channel);
+    if (cached) {
+      updateName(cached.title || "");
     } else {
-      // channelInfo 不在本地缓存中（陌生人/首次打开），主动 fetch
-      WKSDK.shared().channelManager.fetchChannelInfo(channel).then(() => {
-        const info = WKSDK.shared().channelManager.getChannelInfo(channel);
-        updatePlaceholder(info?.title || "");
-      }).catch(() => {
-        // fetch 失败保持默认 placeholder
-      });
+      WKSDK.shared().channelManager.fetchChannelInfo(channel).catch(() => {});
     }
+
+    return () => {
+      aborted = true;
+      WKSDK.shared().channelManager.removeListener(listener);
+    };
   }, [props.context]);
 
   const memberInfos = useMemo<MemberInfo[]>(() => {
