@@ -1,9 +1,16 @@
+/* ============================================================
+ * ChatMatterPanel — 频道侧边事项列表面板
+ *
+ * 视觉对齐原型 SidebarV5 卡片风格。
+ * 规范对齐 DEVELOPMENT.md §2 — 全部用 --wk-* token。
+ * ============================================================ */
+
 .wk-matter-chat-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background: var(--wk-bg-surface, #fff);
+  background: var(--wk-bg-surface);
   overflow: hidden;
 }
 
@@ -11,20 +18,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--wk-sp-3, 12px);
-  border-bottom: 1px solid var(--wk-border-default, #e5e5e5);
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-default);
 }
 
 .wk-matter-chat-panel__title {
-  font-size: var(--wk-text-size-md, 14px);
+  font-size: var(--wk-text-size-md);
   font-weight: 600;
-  color: var(--wk-text-primary, #1a1a1a);
-}
-
-.wk-matter-chat-panel__count {
-  font-size: var(--wk-text-size-xs, 12px);
-  color: var(--wk-text-tertiary, #999);
-  margin-left: var(--wk-sp-1, 4px);
+  color: var(--wk-text-primary);
 }
 
 .wk-matter-chat-panel__close {
@@ -35,136 +36,187 @@
   height: 28px;
   border: none;
   background: transparent;
-  color: var(--wk-text-tertiary, #999);
+  color: var(--wk-text-tertiary);
   cursor: pointer;
-  border-radius: var(--wk-r-xs, 4px);
-  font-size: 16px;
+  border-radius: var(--wk-r-sm);
+  font-size: var(--wk-text-size-xl);
 }
 
 .wk-matter-chat-panel__close:hover {
-  background: var(--wk-bg-hover, rgba(0, 0, 0, 0.05));
-}
-
-.wk-matter-chat-panel__body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--wk-sp-2, 8px);
-}
-
-.wk-matter-chat-panel__section {
-  margin-bottom: var(--wk-sp-3, 12px);
-}
-
-.wk-matter-chat-panel__section-title {
-  font-size: var(--wk-text-size-xs, 12px);
-  font-weight: 600;
-  color: var(--wk-text-tertiary, #999);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: var(--wk-sp-1, 4px);
-  padding: 0 var(--wk-sp-1, 4px);
+  background: var(--wk-bg-hover);
+  color: var(--wk-text-primary);
 }
 
 /* ─── Tabs ─────────────────────────────────────────────── */
 
 .wk-matter-chat-panel__tabs {
   display: flex;
-  border-bottom: 1px solid var(--wk-border-default, #e5e5e5);
-  padding: 0 var(--wk-sp-2, 8px);
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border-bottom: 1px solid var(--wk-border-subtle);
 }
 
 .wk-matter-chat-panel__tab {
-  flex: 1;
-  padding: 8px 4px;
+  padding: var(--wk-sp-1) var(--wk-sp-2);
   border: none;
   background: transparent;
-  color: var(--wk-text-tertiary, #999);
-  font-size: 13px;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
   font-weight: 500;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: color 150ms, border-color 150ms;
-  display: flex;
+  border-radius: var(--wk-r-sm);
+  transition: color var(--wk-dur-fast), background var(--wk-dur-fast);
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
+  gap: var(--wk-sp-1);
+}
+
+.wk-matter-chat-panel__tab:hover {
+  color: var(--wk-text-primary);
 }
 
 .wk-matter-chat-panel__tab--active {
-  color: var(--wk-brand-primary, #7C5CFC);
-  border-bottom-color: var(--wk-brand-primary, #7C5CFC);
-}
-
-.wk-matter-chat-panel__tab-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border-radius: 9px;
-  background: var(--wk-bg-base, #f0f0f0);
-  color: var(--wk-text-tertiary, #999);
-  font-size: 11px;
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
   font-weight: 600;
 }
 
-.wk-matter-chat-panel__tab--active .wk-matter-chat-panel__tab-count {
-  background: var(--wk-brand-tint-06, rgba(124, 92, 252, 0.1));
-  color: var(--wk-brand-primary, #7C5CFC);
+.wk-matter-chat-panel__tab-count {
+  font-size: var(--wk-text-size-tiny);
+  color: var(--wk-text-tertiary);
+  font-variant-numeric: tabular-nums;
 }
 
-/* ─── Empty ─────────────────────────────────────────────── */
+/* ─── Body ─────────────────────────────────────────────── */
+
+.wk-matter-chat-panel__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--wk-sp-2);
+}
 
 .wk-matter-chat-panel__empty {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--wk-sp-8, 32px) 0;
-  color: var(--wk-text-disabled, #bbb);
-  font-size: var(--wk-text-size-sm, 14px);
+  padding: var(--wk-sp-8) 0;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
 }
 
-.wk-matter-chat-panel__footer {
-  padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
-  border-top: 1px solid var(--wk-border-default, #e5e5e5);
+.wk-matter-chat-panel__archived {
+  margin-top: var(--wk-sp-3);
+  padding: 0 var(--wk-sp-3);
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
 }
 
-.wk-matter-chat-panel__quick-create {
-  display: flex;
-  gap: var(--wk-sp-2, 8px);
-}
+/* ─── V5 风格卡片 ─────────────────────────────────────── */
 
-.wk-matter-chat-panel__quick-input {
-  flex: 1;
-  padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
-  border: 1px solid var(--wk-border-default, #e5e5e5);
-  border-radius: var(--wk-r-xs, 4px);
-  background: var(--wk-bg-surface, #fff);
-  color: var(--wk-text-primary, #1a1a1a);
-  font-size: var(--wk-text-size-sm, 14px);
-  outline: none;
-}
-
-.wk-matter-chat-panel__quick-input::placeholder {
-  color: var(--wk-text-disabled, #bbb);
-}
-
-.wk-matter-chat-panel__quick-input:focus {
-  border-color: var(--wk-brand-primary, #7C5CFC);
-}
-
-.wk-matter-chat-panel__quick-btn {
-  padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
-  border: none;
-  border-radius: var(--wk-r-xs, 4px);
-  background: var(--wk-brand-primary, #7C5CFC);
-  color: #fff;
-  font-size: var(--wk-text-size-sm, 14px);
+.wk-matter-list-card {
+  width: 100%;
+  text-align: left;
+  padding: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  margin-bottom: var(--wk-sp-1);
+  border: 1px solid transparent;
+  background: transparent;
   cursor: pointer;
+  transition: background var(--wk-dur-fast), border-color var(--wk-dur-fast), box-shadow var(--wk-dur-fast);
 }
 
-.wk-matter-chat-panel__quick-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.wk-matter-list-card:hover {
+  background: var(--wk-bg-deep);
+  border-color: var(--wk-border-default);
+}
+
+.wk-matter-list-card--selected {
+  background: var(--wk-bg-deep);
+  border-color: var(--wk-border-strong);
+  box-shadow: var(--wk-shadow-sm);
+}
+
+.wk-matter-list-card__row1 {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  margin-bottom: var(--wk-sp-1);
+}
+
+.wk-matter-list-card__id {
+  font-family: var(--wk-font-mono);
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wk-matter-list-card__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-0-5);
+  font-size: var(--wk-text-size-tiny);
+  font-weight: 500;
+  padding: 1px var(--wk-sp-1-5);
+  border-radius: var(--wk-r-full);
+}
+
+.wk-matter-list-card__status--active {
+  background: var(--wk-color-info-bg);
+  color: var(--wk-color-info);
+}
+
+.wk-matter-list-card__status--done {
+  background: var(--wk-color-success-bg);
+  color: var(--wk-color-success);
+}
+
+.wk-matter-list-card__status--archived {
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+}
+
+.wk-matter-list-card__status-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: var(--wk-r-circle);
+  background: currentColor;
+}
+
+.wk-matter-list-card__ddl {
+  margin-left: auto;
+  font-size: var(--wk-text-size-tiny);
+  color: var(--wk-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wk-matter-list-card__title {
+  font-size: var(--wk-text-size-sm);
+  font-weight: 500;
+  color: var(--wk-text-primary);
+  line-height: 1.4;
+  margin-bottom: var(--wk-sp-1-5);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.wk-matter-list-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1-5);
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+}
+
+.wk-matter-list-card__creator {
+  color: var(--wk-text-secondary);
+}
+
+.wk-matter-list-card__sep {
+  color: var(--wk-border-default);
+}
+
+.wk-matter-list-card__channel {
+  color: var(--wk-text-tertiary);
 }
