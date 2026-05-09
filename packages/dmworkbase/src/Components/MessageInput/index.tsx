@@ -297,6 +297,8 @@ function formatMentionTextV2(text: string): {
 
 export interface MessageInputContext {
   insertText: (text: string) => void;
+  /** Restore draft content (replaces editor content, parses @[uid:label] to mention nodes) */
+  restoreDraft: (text: string) => void;
   addMention: (uid: string, name: string) => void;
   addAttachment: (files: File[], source?: "paste" | "upload") => void;
   getAttachmentFiles: () => File[];
@@ -427,6 +429,50 @@ function extractMentionsFromEditor(editor: any): string {
   }
 
   return stripInvisibleChars(result);
+}
+
+// 解析草稿文本中的 @[uid:label] 格式为 Tiptap 文档结构
+// 返回完整的 doc 内容，支持多行（每行一个 paragraph）
+function parseDraftToContent(
+  text: string
+): { type: "doc"; content: Array<{ type: "paragraph"; content: Array<{ type: string; text?: string; attrs?: { id: string; label: string } }> }> } {
+  const lines = text.split("\n");
+  const paragraphs = lines.map((line) => {
+    const nodes: Array<{ type: string; text?: string; attrs?: { id: string; label: string } }> = [];
+    
+    // 匹配 @[uid:label] 格式，uid和label可以包含除]外的任意字符
+    const regex = /@\[([^\]:]+):([^\]]+)\]/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(line)) !== null) {
+      const uid = match[1];
+      const label = match[2];
+      const matchStart = match.index;
+
+      // 添加匹配前的普通文本
+      if (matchStart > lastIndex) {
+        nodes.push({ type: "text", text: line.slice(lastIndex, matchStart) });
+      }
+
+      // 添加 mention 节点
+      nodes.push({
+        type: "mention",
+        attrs: { id: uid, label: label },
+      });
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // 添加剩余的普通文本
+    if (lastIndex < line.length) {
+      nodes.push({ type: "text", text: line.slice(lastIndex) });
+    }
+
+    return { type: "paragraph" as const, content: nodes };
+  });
+
+  return { type: "doc", content: paragraphs };
 }
 
 // 顶部附件区的附件项接口
@@ -868,6 +914,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     if (props.onContext) {
       props.onContext({
         insertText,
+        restoreDraft,
         addMention,
         addAttachment,
         getAttachmentFiles,
@@ -902,7 +949,23 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const insertText = useCallback(
     (text: string) => {
       if (editor) {
+        // 原样追加，不解析 @[uid:label]（与 main 行为一致）
+        // mention 格式的反序列化仅在 restoreDraft 中处理
         editor.commands.insertContent(text);
+        editor.commands.focus();
+      }
+    },
+    [editor]
+  );
+
+  // 专用于草稿恢复的方法，会替换整个编辑器内容
+  const restoreDraft = useCallback(
+    (text: string) => {
+      if (editor) {
+        // 解析草稿中的 @[uid:label] 格式为 Tiptap 文档结构
+        const content = parseDraftToContent(text);
+        // 使用 setContent 替换编辑器内容，避免重复插入
+        editor.commands.setContent(content);
         editor.commands.focus();
       }
     },
