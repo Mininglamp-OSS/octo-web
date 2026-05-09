@@ -30,6 +30,25 @@
   margin: 0;
 }
 
+.wk-mp-page-sidebar__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--wk-text-tertiary);
+  cursor: pointer;
+  border-radius: var(--wk-r-sm);
+  font-size: var(--wk-text-size-xl);
+}
+
+.wk-mp-page-sidebar__close:hover {
+  background: var(--wk-bg-hover);
+  color: var(--wk-text-primary);
+}
+
 .wk-mp-page-sidebar__new-btn {
   display: inline-flex;
   align-items: center;

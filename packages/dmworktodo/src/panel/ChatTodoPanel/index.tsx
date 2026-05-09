@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import type { Matter } from '../../bridge/types';
 import { useMatterList } from '../../hooks/useTodoList';
 import DetailPanel from '../../ui/DetailPanel';
-import './index.css';
+import '../../pages/MatterPage.css';
 
 export interface ChatMatterPanelProps {
   channelId: string;
@@ -11,19 +11,15 @@ export interface ChatMatterPanelProps {
   onClose: () => void;
 }
 
-type Tab = 'created' | 'all';
+type Tab = 'mine' | 'created' | 'all';
 
 /**
  * ChatMatterPanel — 频道侧边事项面板
  *
- * 视觉对齐原型 SidebarV5 的卡片风格：
- *   - M-ID + StatusBadge + DDL
- *   - 标题
- *   - creator + channel
+ * 复用 MatterPage sidebar 的 CSS class（wk-mp-page-sidebar / wk-mp-sidebar-card），
+ * 保证两处事项列表 UI 完全一致。
  *
- * Tab：我创建的 / 全部
- *
- * TODO(backend): "我关注的" tab 需要后端支持 favorited 查询
+ * TODO(backend): "我负责的" 需要 assignee_id 过滤
  * TODO(backend): 当前用 source_channel_id 过滤，后续改为 channel 关联查询
  */
 export default function ChatMatterPanel({
@@ -43,44 +39,45 @@ export default function ChatMatterPanel({
     pageSize: 100,
   });
 
-  // TODO(backend): creator_id 过滤需要知道当前用户 UID
-  const displayMatters = activeTab === 'all' ? matters : matters;
+  // TODO(backend): 按 tab 过滤
+  const displayMatters = matters;
 
   const channel = { channelId, channelType, name: channelName };
 
+  const TABS: Array<{ id: Tab; label: string }> = [
+    { id: 'mine', label: '我负责的' },
+    { id: 'created', label: '我创建的' },
+    { id: 'all', label: '全部' },
+  ];
+
   return (
-    <div className="wk-matter-chat-panel">
+    <div className="wk-mp-page-sidebar">
       {/* Header */}
       {!selectedMatterId && (
-        <div className="wk-matter-chat-panel__header">
-          <span className="wk-matter-chat-panel__title">事项</span>
-          <button type="button" className="wk-matter-chat-panel__close" onClick={onClose} aria-label="关闭">✕</button>
+        <div className="wk-mp-page-sidebar__header">
+          <h2 className="wk-mp-page-sidebar__title">事项</h2>
+          <button type="button" className="wk-mp-page-sidebar__close" onClick={onClose} aria-label="关闭">✕</button>
         </div>
       )}
 
       {/* Tabs */}
       {!selectedMatterId && (
-        <div className="wk-matter-chat-panel__tabs">
-          <button
-            type="button"
-            className={`wk-matter-chat-panel__tab${activeTab === 'created' ? ' wk-matter-chat-panel__tab--active' : ''}`}
-            onClick={() => setActiveTab('created')}
-          >
-            我创建的
-          </button>
-          {/* TODO(backend): 我关注的 tab */}
-          <button
-            type="button"
-            className={`wk-matter-chat-panel__tab${activeTab === 'all' ? ' wk-matter-chat-panel__tab--active' : ''}`}
-            onClick={() => setActiveTab('all')}
-          >
-            全部 <span className="wk-matter-chat-panel__tab-count">{matters.length}</span>
-          </button>
+        <div className="wk-mp-page-sidebar__tabs">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`wk-mp-page-sidebar__tab${activeTab === t.id ? ' is-active' : ''}`}
+              onClick={() => setActiveTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
       )}
 
       {/* Body */}
-      <div className="wk-matter-chat-panel__body">
+      <div className="wk-mp-page-sidebar__list">
         {selectedMatterId ? (
           <DetailPanel
             matterId={selectedMatterId}
@@ -91,12 +88,12 @@ export default function ChatMatterPanel({
           />
         ) : (
           <>
-            {loading && <div className="wk-matter-chat-panel__empty">加载中...</div>}
+            {loading && <div className="wk-mp-page-sidebar__empty">加载中...</div>}
             {!loading && displayMatters.length === 0 && (
-              <div className="wk-matter-chat-panel__empty">暂无事项</div>
+              <div className="wk-mp-page-sidebar__empty">暂无事项</div>
             )}
             {!loading && displayMatters.map((matter) => (
-              <MatterListCard
+              <SidebarCard
                 key={matter.id}
                 matter={matter}
                 selected={matter.id === selectedMatterId}
@@ -104,7 +101,10 @@ export default function ChatMatterPanel({
               />
             ))}
             {!loading && displayMatters.length > 0 && (
-              <div className="wk-matter-chat-panel__archived">已归档 (0) · 折叠展开</div>
+              <button type="button" className="wk-mp-page-sidebar__archived-toggle">
+                <span className="wk-mp-page-sidebar__archived-chev">▸</span>
+                已归档 (0)
+              </button>
             )}
           </>
         )}
@@ -113,12 +113,12 @@ export default function ChatMatterPanel({
   );
 }
 
-// ─── V5 风格卡片 ─────────────────────────────────────────
+// ─── 复用 MatterPage 的 SidebarCard 样式 ─────────────────
 
 const STATUS_MAP: Record<string, { label: string; className: string }> = {
-  open: { label: '进行中', className: 'wk-matter-list-card__status--active' },
-  done: { label: '已完成', className: 'wk-matter-list-card__status--done' },
-  archived: { label: '已归档', className: 'wk-matter-list-card__status--archived' },
+  open: { label: '进行中', className: 'wk-mp-sidebar-card__status--active' },
+  done: { label: '已完成', className: 'wk-mp-sidebar-card__status--done' },
+  archived: { label: '已归档', className: 'wk-mp-sidebar-card__status--archived' },
 };
 
 function formatDdl(deadline?: string): string {
@@ -127,13 +127,13 @@ function formatDdl(deadline?: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-function MatterListCard({
+function SidebarCard({
   matter,
   selected,
   onClick,
 }: {
   matter: Matter;
-  selected?: boolean;
+  selected: boolean;
   onClick: () => void;
 }) {
   const status = STATUS_MAP[matter.status] || STATUS_MAP.open;
@@ -142,32 +142,32 @@ function MatterListCard({
   return (
     <button
       type="button"
-      className={`wk-matter-list-card${selected ? ' wk-matter-list-card--selected' : ''}`}
+      className={`wk-mp-sidebar-card${selected ? ' is-selected' : ''}`}
       onClick={onClick}
     >
-      <div className="wk-matter-list-card__row1">
-        <span className="wk-matter-list-card__id">{matter.id.slice(0, 8)}</span>
-        <span className={`wk-matter-list-card__status ${status.className}`}>
-          <span className="wk-matter-list-card__status-dot" />
+      <div className="wk-mp-sidebar-card__row1">
+        <span className="wk-mp-sidebar-card__id">{matter.id.slice(0, 8)}</span>
+        <span className={`wk-mp-sidebar-card__status ${status.className}`}>
+          <span className="wk-mp-sidebar-card__status-dot" />
           {status.label}
         </span>
-        {ddl && <span className="wk-matter-list-card__ddl">DDL {ddl}</span>}
+        {ddl && <span className="wk-mp-sidebar-card__ddl">DDL {ddl}</span>}
       </div>
-      <div className="wk-matter-list-card__title">{matter.title}</div>
-      <div className="wk-matter-list-card__meta">
+      <div className="wk-mp-sidebar-card__title">{matter.title}</div>
+      <div className="wk-mp-sidebar-card__meta">
         {/* TODO: 用 UserName 组件解析 creator_id → 显示名 */}
-        <span className="wk-matter-list-card__creator">{matter.creator_id.slice(0, 6)}</span>
-        <span className="wk-matter-list-card__meta-label">创建</span>
+        <span className="wk-mp-sidebar-card__creator">{matter.creator_id.slice(0, 6)}</span>
+        <span className="wk-mp-sidebar-card__meta-label">创建</span>
         {matter.source_name && (
           <>
-            <span className="wk-matter-list-card__sep">·</span>
-            <span className="wk-matter-list-card__channel">#{matter.source_name}</span>
+            <span className="wk-mp-sidebar-card__sep">·</span>
+            <span className="wk-mp-sidebar-card__channel">#{matter.source_name}</span>
           </>
         )}
       </div>
       {/* TODO: owners 行需要后端返回 assignee 名字列表 */}
-      <div className="wk-matter-list-card__owners">
-        <span className="wk-matter-list-card__owners-label">负责</span>
+      <div className="wk-mp-sidebar-card__owners">
+        <span className="wk-mp-sidebar-card__owners-label">负责</span>
       </div>
     </button>
   );
