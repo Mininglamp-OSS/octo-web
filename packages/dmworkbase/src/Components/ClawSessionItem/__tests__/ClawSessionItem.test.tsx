@@ -8,8 +8,8 @@ describe("ClawSessionItem", () => {
     key: "octo:c_pipi_lux_01",
     status: "done" as const,
     channel: "Octo",
-    partyName: "团长",
-    partyId: "user:379800680b7a48fa8955e8d17f73c39c",
+    peerDisplayName: "Octo 产品管家",
+    peerName: "7edea73a3c334a5382c0e0b6f27adbe0",
     botName: "皮皮虾",
     botId: "pipixia_bot",
     model: "mlamp/claude-opus-4-7",
@@ -25,8 +25,8 @@ describe("ClawSessionItem", () => {
 
       // 验证对话方
       const partyElement = screen.getByTestId("claw-session-party-head");
-      expect(partyElement).toHaveTextContent("团长");
-      expect(partyElement).toHaveTextContent("user:379800680b7a48fa8955e8d17f73c39c");
+      expect(partyElement).toHaveTextContent("Octo 产品管家");
+      expect(partyElement).toHaveTextContent("7edea73a3c334a5382c0e0b6f27adbe0");
 
       // 验证模型
       expect(screen.getByTestId("claw-session-model")).toHaveTextContent(
@@ -255,13 +255,29 @@ describe("ClawSessionItem", () => {
   });
 
   describe("边界情况", () => {
-    it("没有 partyId 时只显示 partyName", () => {
-      const sessionWithoutId = { ...mockSession, partyId: undefined };
-      render(<ClawSessionItem session={sessionWithoutId} />);
+    it("只有 peerDisplayName 时显示单个字段", () => {
+      const sessionWithoutName = { ...mockSession, peerName: undefined };
+      render(<ClawSessionItem session={sessionWithoutName} />);
 
       const partyElement = screen.getByTestId("claw-session-party-head");
-      expect(partyElement).toHaveTextContent("团长");
-      expect(partyElement.textContent).not.toContain("user:");
+      expect(partyElement).toHaveTextContent("Octo 产品管家");
+      expect(partyElement.textContent).not.toContain("(");
+    });
+
+    it("只有 peerName 时显示单个字段", () => {
+      const sessionWithoutDisplay = { ...mockSession, peerDisplayName: undefined };
+      render(<ClawSessionItem session={sessionWithoutDisplay} />);
+
+      const partyElement = screen.getByTestId("claw-session-party-head");
+      expect(partyElement).toHaveTextContent("7edea73a3c334a5382c0e0b6f27adbe0");
+      expect(partyElement.textContent).not.toContain("(");
+    });
+
+    it("都没有时不展示对话方元素", () => {
+      const sessionWithoutPeer = { ...mockSession, peerDisplayName: undefined, peerName: undefined };
+      render(<ClawSessionItem session={sessionWithoutPeer} />);
+
+      expect(screen.queryByTestId("claw-session-party-head")).not.toBeInTheDocument();
     });
 
     it("上下文占用为 0 时应该正确显示", () => {

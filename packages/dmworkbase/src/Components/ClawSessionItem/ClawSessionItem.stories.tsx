@@ -26,7 +26,7 @@ export default meta;
 type Story = StoryObj<typeof ClawSessionItem>;
 
 /**
- * 默认状态（DONE）
+ * 默认状态（DONE - 两个字段都有）
  */
 export const Default: Story = {
   args: {
@@ -34,8 +34,8 @@ export const Default: Story = {
       key: "octo:c_pipi_lux_01",
       status: "done",
       channel: "Octo",
-      partyName: "团长",
-      partyId: "user:379800680b7a48fa8955e8d17f73c39c",
+      peerDisplayName: "Octo 产品管家",
+      peerName: "7edea73a3c334a5382c0e0b6f27adbe0",
       botName: "皮皮虾",
       botId: "pipixia_bot",
       model: "mlamp/claude-opus-4-7",
@@ -56,7 +56,7 @@ export const Running: Story = {
       key: "localhost:cli_term_01",
       status: "running",
       channel: "Localhost",
-      partyName: "openclaw chat",
+      peerDisplayName: "openclaw chat",
       partyId: "pid:2a7e8b1c",
       botName: "皮皮虾",
       botId: "pipixia_bot",
@@ -78,7 +78,7 @@ export const HighContext: Story = {
       key: "discord:1470015610489536542",
       status: "running",
       channel: "Discord",
-      partyName: "#square · LUO",
+      peerDisplayName: "#square · LUO",
       partyId: "user:1098193326743756812",
       botName: "皮皮虾",
       botId: "pipixia_bot",
@@ -100,7 +100,7 @@ export const Failed: Story = {
       key: "octo:c_task_01",
       status: "failed",
       channel: "Octo",
-      partyName: "团长", partyId: "user:379800680b7a48fa8955e8d17f73c39c",
+      peerDisplayName: "团长", peerName: "user:379800680b7a48fa8955e8d17f73c39c",
       botName: "皮皮虾",
       botId: "pipixia_bot",
       model: "mlamp/claude-opus-4-7",
@@ -121,7 +121,7 @@ export const Killed: Story = {
       key: "localhost:bg_job_02",
       status: "killed",
       channel: "Localhost",
-      partyName: "团长", partyId: "user:379800680b7a48fa8955e8d17f73c39c",
+      peerDisplayName: "团长", peerName: "user:379800680b7a48fa8955e8d17f73c39c",
       botName: "皮皮虾",
       botId: "pipixia_bot",
       model: "mlamp/claude-sonnet-4",
@@ -142,7 +142,7 @@ export const Timeout: Story = {
       key: "discord:1470015610489536999",
       status: "timeout",
       channel: "Discord",
-      partyName: "团长", partyId: "user:379800680b7a48fa8955e8d17f73c39c",
+      peerDisplayName: "团长", peerName: "user:379800680b7a48fa8955e8d17f73c39c",
       botName: "皮皮虾",
       botId: "pipixia_bot",
       model: "mlamp/claude-opus-4-7",
@@ -155,7 +155,7 @@ export const Timeout: Story = {
 };
 
 /**
- * 飞书渠道（无 partyId）
+ * 飞书渠道（只有 peerDisplayName）
  */
 export const Feishu: Story = {
   args: {
@@ -163,7 +163,7 @@ export const Feishu: Story = {
       key: "feishu:oc_x4a91",
       status: "done",
       channel: "飞书",
-      partyName: "明略 AI 小组",
+      peerDisplayName: "明略 AI 小组",
       botName: "皮皮虾",
       botId: "pipixia_bot",
       model: "mlamp/claude-opus-4-7",
@@ -171,6 +171,27 @@ export const Feishu: Story = {
       ctxMax: 200000,
       sessionId: "sess_fs_f3c9a7118b",
       lastMsg: "明天的周报帮我整理下，记得把 DMWork 进展写进去",
+    },
+  },
+};
+
+/**
+ * 只有 peerName（无 peerDisplayName）
+ */
+export const OnlyPeerName: Story = {
+  args: {
+    session: {
+      key: "localhost:unknown_user",
+      status: "done",
+      channel: "Localhost",
+      peerName: "unknown_user_7a3c9e1b",
+      botName: "皮皮虾",
+      botId: "pipixia_bot",
+      model: "mlamp/claude-sonnet-4",
+      ctxUsed: 5200,
+      ctxMax: 200000,
+      sessionId: "sess_local_unknown_u7a3",
+      lastMsg: "测试消息",
     },
   },
 };
@@ -184,7 +205,7 @@ export const Slack: Story = {
       key: "slack:C0912",
       status: "done",
       channel: "Slack",
-      partyName: "团长", partyId: "user:379800680b7a48fa8955e8d17f73c39c",
+      peerDisplayName: "团长", peerName: "user:379800680b7a48fa8955e8d17f73c39c",
       botName: "皮皮虾",
       botId: "pipixia_bot",
       model: "mlamp/claude-sonnet-4",
@@ -205,7 +226,7 @@ export const WebUI: Story = {
       key: "webui:console",
       status: "done",
       channel: "Web UI",
-      partyName: "团长", partyId: "user:379800680b7a48fa8955e8d17f73c39c",
+      peerDisplayName: "团长", peerName: "user:379800680b7a48fa8955e8d17f73c39c",
       botName: "皮皮虾",
       botId: "pipixia_bot",
       model: "mlamp/claude-sonnet-4",
@@ -228,7 +249,7 @@ export const MultipleCards: Story = {
           key: "octo:c_pipi_lux_01",
           status: "running",
           channel: "Octo",
-          partyName: "团长", partyId: "user:379800680b7a48fa8955e8d17f73c39c",
+          peerDisplayName: "团长", peerName: "user:379800680b7a48fa8955e8d17f73c39c",
           botName: "皮皮虾",
           botId: "pipixia_bot",
           model: "mlamp/claude-opus-4-7",
@@ -243,7 +264,7 @@ export const MultipleCards: Story = {
           key: "discord:1470015610489536542",
           status: "running",
           channel: "Discord",
-          partyName: "团长", partyId: "user:379800680b7a48fa8955e8d17f73c39c",
+          peerDisplayName: "团长", peerName: "user:379800680b7a48fa8955e8d17f73c39c",
           botName: "皮皮虾",
           botId: "pipixia_bot",
           model: "mlamp/claude-opus-4-7",
@@ -258,7 +279,7 @@ export const MultipleCards: Story = {
           key: "octo:g_botfather",
           status: "done",
           channel: "Octo",
-          partyName: "团长", partyId: "user:379800680b7a48fa8955e8d17f73c39c",
+          peerDisplayName: "团长", peerName: "user:379800680b7a48fa8955e8d17f73c39c",
           botName: "皮皮虾",
           botId: "pipixia_bot",
           model: "mlamp/claude-opus-4-7",
@@ -273,7 +294,7 @@ export const MultipleCards: Story = {
           key: "localhost:task_fail",
           status: "failed",
           channel: "Localhost",
-          partyName: "团长", partyId: "user:379800680b7a48fa8955e8d17f73c39c",
+          peerDisplayName: "团长", peerName: "user:379800680b7a48fa8955e8d17f73c39c",
           botName: "皮皮虾",
           botId: "pipixia_bot",
           model: "mlamp/claude-opus-4-7",
@@ -288,7 +309,7 @@ export const MultipleCards: Story = {
           key: "discord:timeout_01",
           status: "timeout",
           channel: "Discord",
-          partyName: "团长", partyId: "user:379800680b7a48fa8955e8d17f73c39c",
+          peerDisplayName: "团长", peerName: "user:379800680b7a48fa8955e8d17f73c39c",
           botName: "皮皮虾",
           botId: "pipixia_bot",
           model: "mlamp/claude-sonnet-4",

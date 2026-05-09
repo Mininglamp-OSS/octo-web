@@ -10,10 +10,10 @@ export interface ClawSessionItemProps {
     status: "running" | "done" | "failed" | "killed" | "timeout";
     /** 渠道名称（如 Octo、Discord、飞书） */
     channel: string;
-    /** 对话方展示名称（如"团长"） */
-    partyName: string;
-    /** 对话方 ID（如"user:379800680b7a48fa8955e8d17f73c39c"，可选） */
-    partyId?: string;
+    /** 对话方原始名称/ID（如"7edea73a3c334a5382c0e0b6f27adbe0"，可选） */
+    peerName?: string;
+    /** 对话方展示名称（如"Octo 产品管家"，可选） */
+    peerDisplayName?: string;
     /** Bot 显示名（如"皮皮虾"） */
     botName: string;
     /** Bot ID（如"pipixia_bot"） */
@@ -46,8 +46,8 @@ export default function ClawSessionItem({ session }: ClawSessionItemProps) {
     key,
     status,
     channel,
-    partyName,
-    partyId,
+    peerName,
+    peerDisplayName,
     botName,
     botId,
     model,
@@ -108,14 +108,16 @@ export default function ClawSessionItem({ session }: ClawSessionItemProps) {
         </span>
 
         {/* 对话方 */}
-        <span className="wk-session-party" data-testid="claw-session-party-head">
-          {partyName}
-          {partyId && (
-            <span className="wk-session-party-id">
-              ({partyId})
-            </span>
-          )}
-        </span>
+        {(peerDisplayName || peerName) && (
+          <span className="wk-session-party" data-testid="claw-session-party-head">
+            {peerDisplayName || peerName}
+            {peerDisplayName && peerName && (
+              <span className="wk-session-party-id">
+                ({peerName})
+              </span>
+            )}
+          </span>
+        )}
 
         {/* 展开/收起箭头 */}
         <svg
