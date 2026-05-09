@@ -25,7 +25,6 @@ export interface WKLayoutProps {
     contentRight?:JSX.Element
     onLeftContext?:(context:WKViewQueueContext)=>void
     onRightContext?:(context:WKViewQueueContext)=>void
-
 }
 
 interface WKLayoutState {
@@ -160,7 +159,10 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
         }
 
         const contentElement = <div
-            className={classNames("wk-layout-content", this.rightContext?.viewCount() > 0 ? "wk-layout-open" : undefined)}
+            className={classNames(
+                "wk-layout-content",
+                this.rightContext?.viewCount() > 0 ? "wk-layout-open" : undefined,
+            )}
             style={contentStyle}
         >
             <div className="wk-layout-content-left" style={leftStyle}>

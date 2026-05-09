@@ -17,6 +17,7 @@ export * from './Components/WKLayout'
 
 export * from './Components/Conversation/context'
 export type { default as ConversationContext} from './Components/Conversation/context'
+export { Conversation } from './Components/Conversation'
 export { default as Search } from './Components/Search'
 export { default as WKNavMainHeader } from './Components/WKNavHeader'
 export { default as WKViewQueueHeader } from './Components/WKViewQueueHeader'

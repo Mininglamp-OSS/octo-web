@@ -138,6 +138,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@dmwork/appbot':
+        specifier: workspace:*
+        version: link:../../packages/dmworkappbot
       '@octo/base':
         specifier: workspace:*
         version: link:../../packages/dmworkbase
@@ -298,6 +301,22 @@ importers:
       vite-tsconfig-paths:
         specifier: ^6.1.1
         version: 6.1.1(typescript@5.9.3)(vite@8.0.7(@types/node@20.19.39)(esbuild@0.27.7)(jiti@2.6.1))
+
+  packages/dmworkappbot:
+    dependencies:
+      '@octo/base':
+        specifier: workspace:*
+        version: link:../dmworkbase
+      wukongimjssdk:
+        specifier: ^1.3.5
+        version: 1.3.5
+    devDependencies:
+      react:
+        specifier: ^17.0.2
+        version: 17.0.2
+      react-dom:
+        specifier: ^17.0.2
+        version: 17.0.2(react@17.0.2)
 
   packages/dmworkbase:
     dependencies:

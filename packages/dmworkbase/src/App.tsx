@@ -655,6 +655,10 @@ export default class WKApp extends ProviderListener {
     const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
     if (channelInfo && channelInfo.logo && channelInfo.logo !== "") {
       let logo = channelInfo.logo;
+      // Data URIs are self-contained — return as-is without query params or URL rewriting
+      if (logo.startsWith('data:')) {
+        return logo;
+      }
       if (logo.indexOf("?") !== -1) {
         logo += "&v=" + avatarTag;
       } else {

@@ -48,6 +48,7 @@
     "test:storybook": "vitest run --config vitest.storybook.config.ts"
   },
   "dependencies": {
+    "@dmwork/appbot": "workspace:*",
     "@octo/base": "workspace:*",
     "@octo/contacts": "workspace:*",
     "@octo/datasource": "workspace:*",

@@ -10,6 +10,7 @@ import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
 import { MatterModule } from '@octo/todo';
 import { SummaryModule } from '@dmwork/summary';
+import { AppBotModule } from '@dmwork/appbot';
 import { version as pkgVersion } from '../package.json';
 
 // VITE_API_URL 只填 origin（协议+域名+端口），不要带路径
@@ -55,6 +56,7 @@ WKApp.shared.registerModule(new LoginModule()); // 登录模块
 WKApp.shared.registerModule(new ContactsModule()); // 联系模块
 WKApp.shared.registerModule(new MatterModule()); // Matter module
 WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块
+WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块
 
 WKApp.shared.startup() // app启动
 
