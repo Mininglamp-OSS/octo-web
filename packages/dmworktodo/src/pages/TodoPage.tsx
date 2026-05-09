@@ -3,6 +3,7 @@ import { WKApp } from '@octo/base';
 import type { Matter, MatterListParams } from '../bridge/types';
 import { useMatterList } from '../hooks/useTodoList';
 import MatterDetailPanel from '../panel/MatterDetailPanel';
+import SmartCreateModal from '../ui/SmartCreateModal';
 import './MatterPage.css';
 
 /**
@@ -88,13 +89,15 @@ export default function MatterPage() {
     return () => { WKApp.mittBus.off('space-changed', handler); };
   }, []);
 
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
   return (
     <div className="wk-mp-page-sidebar">
       {/* Header */}
       <div className="wk-mp-page-sidebar__header">
         <h2 className="wk-mp-page-sidebar__title">事项</h2>
         {/* TODO(interaction): 点击打开 SmartCreateModal（blank 模式，PRD §3） */}
-        <button type="button" className="wk-mp-page-sidebar__new-btn" disabled title="新建事项（即将上线）">
+        <button type="button" className="wk-mp-page-sidebar__new-btn" onClick={() => setShowCreateModal(true)} title="新建事项">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
@@ -157,6 +160,19 @@ export default function MatterPage() {
           </button>
         )}
       </div>
+
+      {/* SmartCreateModal */}
+      {showCreateModal && (
+        <SmartCreateModal
+          blank
+          onClose={() => setShowCreateModal(false)}
+          onCreate={(data) => {
+            // TODO(backend): 调用 createMatter API
+            console.log('[Matter] create:', data);
+            setShowCreateModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }
