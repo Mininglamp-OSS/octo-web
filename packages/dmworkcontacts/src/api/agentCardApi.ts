@@ -130,26 +130,3 @@ export async function getAgentCardFile(
     throw new Error(extractErrorMessage(err));
   }
 }
-
-/**
- * 健康检查 - GET /healthz
- * 统一使用 APIClient（与 getAgentCard/getAgentCardFile 保持一致）
- */
-export async function healthCheck(): Promise<{ status: string; service: string; version: string }> {
-  if (USE_MOCK) {
-    return Promise.resolve({
-      status: 'ok',
-      service: 'agent-card-server',
-      version: '1.0.0',
-    });
-  }
-
-  try {
-    const resp = await WKApp.apiClient.get<{ status: string; service: string; version: string }>(
-      '/healthz',
-    );
-    return resp.data;
-  } catch (err: unknown) {
-    throw new Error(extractErrorMessage(err));
-  }
-}
