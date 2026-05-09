@@ -32,6 +32,8 @@ import SummaryContent from "../components/SummaryContent";
 import CitationText from "../components/CitationText";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
+import MatterPickerModal from "../components/MatterPickerModal";
+import * as matterBridge from "../api/matterBridge";
 import SummaryEditor from "../components/SummaryEditor";
 
 interface SummaryDetailPageProps {
@@ -53,6 +55,8 @@ interface SummaryDetailPageState {
     lastKnownStatus?: number;
     expandedReports: Record<string, boolean>;
     isEditing: boolean;
+    showMatterPicker: boolean;
+    forwardingToMatter: boolean;
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
@@ -72,6 +76,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         scheduleConfig: null,
         expandedReports: {},
         isEditing: false,
+        showMatterPicker: false,
+        forwardingToMatter: false,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -465,6 +471,37 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }, '转发到聊天');
     };
 
+    handleForwardToMatter = () => {
+        const { detail } = this.state;
+        if (!detail || detail.status !== TaskStatus.COMPLETED) return;
+
+        const content = detail.result?.content;
+        if (!content?.trim()) {
+            Toast.warning('暂无可转发的内容');
+            return;
+        }
+
+        this.setState({ showMatterPicker: true });
+    };
+
+    handleMatterSelected = async (matterId: string, matterTitle: string) => {
+        const { detail } = this.state;
+        if (!detail) return;
+
+        const content = detail.result?.content;
+        if (!content?.trim()) return;
+
+        this.setState({ forwardingToMatter: true, showMatterPicker: false });
+        try {
+            await matterBridge.addComment(matterId, content);
+            Toast.success(`已转发到「${matterTitle}」`);
+        } catch (err: any) {
+            Toast.error(err.message || '转发失败');
+        } finally {
+            this.setState({ forwardingToMatter: false });
+        }
+    };
+
     renderProcessing() {
         return (
             <div className="summary-detail-processing" style={{ padding: "32px 0", textAlign: "center", color: "var(--semi-color-text-2)" }}>
@@ -733,6 +770,17 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 转发到聊天
                             </Button>
                         )}
+                        {detail && detail.status === TaskStatus.COMPLETED && (
+                            <Button
+                                theme="borderless"
+                                icon={<IconSend />}
+                                onClick={this.handleForwardToMatter}
+                                loading={this.state.forwardingToMatter}
+                                disabled={this.state.forwardingToMatter}
+                            >
+                                转发到 Matters
+                            </Button>
+                        )}
                         {menuItems.length > 0 && (
                             <Dropdown
                                 trigger="click"
@@ -877,6 +925,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     value={scheduleConfig || { period: "daily", time: "09:00" }}
                     onConfirm={this.handleScheduleSave}
                     onCancel={() => this.setState({ showScheduleConfig: false })}
+                />
+                <MatterPickerModal
+                    visible={this.state.showMatterPicker}
+                    onSelect={this.handleMatterSelected}
+                    onCancel={() => this.setState({ showMatterPicker: false })}
                 />
             </div>
         );
