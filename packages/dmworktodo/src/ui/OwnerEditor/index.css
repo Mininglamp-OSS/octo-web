@@ -102,6 +102,13 @@
   color: var(--wk-text-tertiary, #a1a1aa);
 }
 
+/* 次要提示 (候选人来源说明): 比主 hint 再淡一档, 且收窄 padding 避免视觉堆叠 */
+.wk-owner-editor__hint--sub {
+  padding-top: 0;
+  color: var(--wk-border-default, #d4d4d8);
+  font-size: 10.5px;
+}
+
 .wk-owner-editor__empty {
   padding: 12px 8px;
   font-size: 12px;

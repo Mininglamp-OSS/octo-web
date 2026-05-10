@@ -10,7 +10,11 @@ export type MatterStatus = "open" | "done" | "archived";
 
 /**
  * Matter — from model.Matter in matters service.
- * `assignees` is only present in MatterDetail responses (GET /matters/:id, POST /matters).
+ *
+ * 负责人字段 (assignees):
+ *   - 详情接口 GET /matters/:id 返回 MatterDetail, 必然带 assignees
+ *   - 列表接口 GET /matters 自 todos PR #36 起每项也带 assignees (空数组而非 null)
+ *   - 类型上保留 optional, 兼容历史接口或异常响应
  */
 export interface Matter {
   id: string;
@@ -104,8 +108,23 @@ export interface MatterListParams {
   status?: MatterStatus;
   assignee_id?: string;
   creator_id?: string;
+  /**
+   * 按来源频道过滤 (OR 扩展可见性):
+   * 后端在 visibility 子句里多加一条 OR: 当前用户在该 channel 且 matter 关联了该
+   * channel。返回结果是 "本群关联的 ∪ 我发起/我负责/我参与的" 并集, 不会缩小集合。
+   * 需要严格 "只要本群关联的", 用 channel_id。
+   */
   source_channel_id?: string;
+  /** 按来源频道类型 (matters.source_channel_type) 严格 AND 过滤 */
   source_channel_type?: number;
+  /**
+   * 严格按 channel 过滤 (AND): 只返回通过 matter_channels 关联到该 channel 的
+   * Matter。跟 source_channel_id 的关键区别是这条是 AND 而非 OR, 不会混入
+   * "我相关但跟本群无关" 的 Matter。后端同样做 IM 成员验证 (非群成员传了会被
+   * 忽略, 返回集合降级到可见性集合)。
+   * 匹配原型 PRD §11 "当前 channel/thread 关联的所有 Matter" 的语义。
+   */
+  channel_id?: string;
   q?: string;
   limit?: number;
   cursor?: string;

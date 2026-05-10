@@ -489,11 +489,12 @@ function GlobalMatterLinkMenu() {
       setChannelId(data.channelId);
       setChannelType(data.channelType);
       setMessages(data.messages || []);
-      // 按 channel 查询关联的 Matter 列表
+      // 按 channel 查询关联的 Matter 列表 (严格过滤, 同 ChatTodoPanel):
+      // 用 channel_id (PR #38) 而非 source_channel_id, 避免混入
+      // "我相关但跟本群无关" 的 Matter 污染选项列表。
       setLoading(true);
       listMatters({
-        source_channel_id: data.channelId,
-        source_channel_type: data.channelType,
+        channel_id: data.channelId,
         limit: 20,
       })
         .then((res) => {

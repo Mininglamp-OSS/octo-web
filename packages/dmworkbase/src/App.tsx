@@ -37,6 +37,12 @@ export type MittEvents = {
   'wk:open-create-matter-modal': { channelId: string; channelType: number; channelName?: string; prefillTitle?: string; prefillAssigneeUids?: string[]; clearOnConfirm?: boolean };
   /** After matter created from toolbar/Alt+Enter, send editor content then clear */
   'wk:matter-created-from-input': { channelId: string; channelType: number };
+  /**
+   * NavRail 菜单按钮被点击 (不论是切换到该菜单还是重复点击当前菜单)。
+   * 接收方可以据此刷新数据 — 同一路由长期挂载时用户重进菜单的场景下, 组件
+   * 不会自动 remount, 接收方需要主动 reload。
+   */
+  'wk:nav-menu-activated': { menuId: string };
   "summary-space-changed": undefined;
   /**
    * 频道头像发生变化（上传/更新）时广播。订阅者（例如 WKAvatar）可依据 channelID +

@@ -38,9 +38,13 @@ export default function ChatMatterPanel({
 
   const { matters, loading, reload } = useMatterList({
     initialFilters: {
-      source_channel_id: channelId,
-      // 固定传 2 (群组), 跟后端约定: 本面板场景下只关心群组 channel
-      source_channel_type: 2,
+      // 用 channel_id (todos PR #38) 严格按 channel 过滤:
+      //   - 只返回 matter_channels 关联了本 channel 的 Matter
+      //   - 跟 source_channel_id 的区别是 AND 而非 OR, 不会混入
+      //     "我相关但跟本群无关" 的 Matter
+      //   - 后端不需要 channel_type 配对参数 (matter_channels 唯一键是
+      //     (matter_id, channel_id), channel_type 冗余)
+      channel_id: channelId,
     },
     pageSize: 100,
   });

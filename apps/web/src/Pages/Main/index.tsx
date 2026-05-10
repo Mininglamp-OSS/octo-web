@@ -180,6 +180,10 @@ export class MainPage extends Component<{}, MainPageState> {
                                                 WKApp.routeRight.popToRoot();
                                             }
                                         }
+                                        // MainContentLeft 把已访问路由都挂在 DOM 里 (靠 display
+                                        // 切换可见性), 所以切回某个菜单时组件不会重新 mount。
+                                        // 发 mitt 事件通知依赖数据新鲜度的页面主动 reload。
+                                        WKApp.mittBus.emit("wk:nav-menu-activated", { menuId: menus.id });
                                     }}
                                     // 用户
                                     onAvatarClick={this.handleAvatarClick}

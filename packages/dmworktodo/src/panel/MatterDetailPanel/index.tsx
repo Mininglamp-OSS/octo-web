@@ -24,6 +24,7 @@ import { Toast } from "../../utils/toast";
 import UserName from "../../ui/UserName";
 import LinkChannelsModal from "../../ui/LinkChannelsModal";
 import OwnerEditor from "../../ui/OwnerEditor";
+import AnchorPopover from "../../ui/AnchorPopover";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import { WKApp } from "@octo/base";
@@ -52,17 +53,51 @@ export default function MatterDetailPanel({
 
   // Timeline
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const [expandedTimelines, setExpandedTimelines] = useState<Set<string>>(
     new Set(),
   );
-  const toggleTimeline = useCallback((chId: string) => {
-    setExpandedTimelines((prev) => {
-      const next = new Set(prev);
-      if (next.has(chId)) next.delete(chId);
-      else next.add(chId);
-      return next;
-    });
-  }, []);
+  // "查看原消息上下文" 弹框状态: 记录要查的消息 id 列表 + 所在 channel
+  const [anchor, setAnchor] = useState<{
+    channelId: string;
+    channelType: number;
+    channelName: string;
+    messageIds: string[];
+  } | null>(null);
+  // 拉取 timeline (matter 加载时 + 每次展开时都调, 保证数据新鲜)。
+  // 后端 GET /matters/:id/timeline 不支持按 channel 过滤, 返回整个 Matter
+  // 下的全量 timeline, 前端按 entry.channel_id 本地分配到各 channel 卡片。
+  const loadTimeline = useCallback(async () => {
+    if (!matterId) {
+      setTimeline([]);
+      return;
+    }
+    setTimelineLoading(true);
+    try {
+      const res = await listTimeline(matterId, { limit: 50 });
+      setTimeline(res.data || []);
+    } catch {
+      setTimeline([]);
+    } finally {
+      setTimelineLoading(false);
+    }
+  }, [matterId]);
+  const toggleTimeline = useCallback(
+    (chId: string) => {
+      setExpandedTimelines((prev) => {
+        const next = new Set(prev);
+        if (next.has(chId)) {
+          next.delete(chId);
+        } else {
+          next.add(chId);
+          // 每次展开时重新拉, 避免 matter 加载后新产生的 timeline 看不到
+          loadTimeline();
+        }
+        return next;
+      });
+    },
+    [loadTimeline],
+  );
   const [linkModalOpen, setLinkModalOpen] = useState(false);
 
   // Fetch matter
@@ -82,16 +117,10 @@ export default function MatterDetailPanel({
       .finally(() => setLoading(false));
   }, [matterId, channelId]);
 
-  // Fetch timeline when matter loads
+  // Fetch timeline when matter loads. 展开时还会再拉一次 (loadTimeline)。
   useEffect(() => {
-    if (!matterId) {
-      setTimeline([]);
-      return;
-    }
-    listTimeline(matterId, { limit: 50 })
-      .then((res) => setTimeline(res.data || []))
-      .catch(() => setTimeline([]));
-  }, [matterId]);
+    loadTimeline();
+  }, [loadTimeline]);
 
   // ── Handlers ──
 
@@ -247,14 +276,31 @@ export default function MatterDetailPanel({
     !!currentUid &&
     (matter.creator_id === currentUid ||
       assignees.some((a) => a.user_id === currentUid));
-  // 候选成员来源：优先 matter 的来源 channel（发起 channel），没有则回落到 Space 成员
-  const ownerCandidateChannel =
-    matter.source_channel_id && matter.source_channel_type !== undefined
-      ? {
-          channelId: matter.source_channel_id,
-          channelType: matter.source_channel_type,
-        }
-      : undefined;
+  // 候选成员来源: Matter 所有关联 channel 成员的并集 (PRD §5.1)。
+  //   - matter.channels 是通过 POST /matters/:id/channels 关联的所有群
+  //   - matter.source_channel 是创建时的发起群, 通常也在 matter.channels 里,
+  //     但为了兼容极端数据 (例如关联后又解绑了发起群) 再做一次 union
+  //   - 按 (channel_id, channel_type) 去重后传给 OwnerEditor
+  const ownerCandidateChannels = (() => {
+    const seen = new Set<string>();
+    const list: { channelId: string; channelType: number }[] = [];
+    const push = (id: string | undefined | null, type: number | undefined | null) => {
+      if (!id || type === undefined || type === null) return;
+      const key = `${id}:${type}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      list.push({ channelId: id, channelType: type });
+    };
+    for (const ch of matter.channels || []) {
+      push(ch.channel_id, ch.channel_type);
+    }
+    push(matter.source_channel_id, matter.source_channel_type);
+    return list;
+  })();
+
+  // 转发权限 (PRD §5.2 要点 [1]): 只给发起人 + 负责人, 关联成员按钮直接隐藏。
+  // 条件跟 canEditOwner 一致, 但语义上是两个独立规则, 分开命名避免耦合。
+  const canForward = canEditOwner;
 
   const formatDeadline = (d: string) => {
     const date = new Date(d);
@@ -305,26 +351,28 @@ export default function MatterDetailPanel({
                 setMatter(updated);
               }}
             />
-            <button
-              type="button"
-              className="wk-mp-header__action"
-              title="转发"
-              onClick={handleLinkChannel}
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
+            {canForward && (
+              <button
+                type="button"
+                className="wk-mp-header__action"
+                title="转发"
+                onClick={handleLinkChannel}
               >
-                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-                <polyline points="16 6 12 2 8 6" />
-                <line x1="12" y1="2" x2="12" y2="15" />
-              </svg>
-              转发
-            </button>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                  <polyline points="16 6 12 2 8 6" />
+                  <line x1="12" y1="2" x2="12" y2="15" />
+                </svg>
+                转发
+              </button>
+            )}
             <button
               type="button"
               className="wk-mp-header__close"
@@ -399,7 +447,7 @@ export default function MatterDetailPanel({
               <OwnerEditor
                 assignees={assignees}
                 canEdit={canEditOwner}
-                candidateChannel={ownerCandidateChannel}
+                candidateChannels={ownerCandidateChannels}
                 onToggle={handleToggleAssignee}
               />
               <span className="wk-mp-people__role">负责人</span>
@@ -477,43 +525,72 @@ export default function MatterDetailPanel({
                       暂无进展摘要（等待一键总结）
                     </div>
                   </div>
-                  {/* 展开时间线 */}
-                  {timeline.length > 0 && (
-                    <div className="wk-mp-channels__card-actions">
-                      <button
-                        type="button"
-                        className="wk-mp-channels__timeline-btn"
-                        onClick={() => toggleTimeline(ch.channel_id)}
+                  {/* 展开时间线: 按钮常显, 点击时 toggle 并 refetch。
+                      不再用 timeline.length > 0 做 gate, 否则空数据时
+                      用户连触发刷新的入口都没有 */}
+                  <div className="wk-mp-channels__card-actions">
+                    <button
+                      type="button"
+                      className="wk-mp-channels__timeline-btn"
+                      onClick={() => toggleTimeline(ch.channel_id)}
+                    >
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        style={{
+                          transform: expandedTimelines.has(ch.channel_id)
+                            ? "rotate(180deg)"
+                            : "none",
+                          transition: "transform 0.15s",
+                        }}
                       >
-                        <svg
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          style={{
-                            transform: expandedTimelines.has(ch.channel_id)
-                              ? "rotate(180deg)"
-                              : "none",
-                            transition: "transform 0.15s",
-                          }}
-                        >
-                          <polyline points="6 9 12 15 18 9" />
-                        </svg>
-                        {expandedTimelines.has(ch.channel_id)
-                          ? "收起时间线"
-                          : "展开时间线"}
-                      </button>
-                    </div>
-                  )}
-                  {expandedTimelines.has(ch.channel_id) && (
-                    <TimelinePanel
-                      entries={timeline.filter(
-                        (e) => e.channel_id === ch.channel_id || !e.channel_id,
-                      )}
-                    />
-                  )}
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                      {expandedTimelines.has(ch.channel_id)
+                        ? "收起时间线"
+                        : "展开时间线"}
+                    </button>
+                  </div>
+                  {expandedTimelines.has(ch.channel_id) &&
+                    (() => {
+                      const chEntries = timeline.filter(
+                        (e) =>
+                          e.channel_id === ch.channel_id || !e.channel_id,
+                      );
+                      if (timelineLoading && chEntries.length === 0) {
+                        return (
+                          <div className="wk-mp-empty-tab">
+                            正在加载时间线...
+                          </div>
+                        );
+                      }
+                      if (chEntries.length === 0) {
+                        return (
+                          <div className="wk-mp-empty-tab">
+                            本群暂无时间线记录
+                          </div>
+                        );
+                      }
+                      return (
+                        <TimelinePanel
+                          entries={chEntries}
+                          onShowAnchor={(entry) =>
+                            setAnchor({
+                              channelId: ch.channel_id,
+                              channelType: ch.channel_type,
+                              channelName:
+                                ch.channel_name ||
+                                ch.channel_id.slice(0, 8),
+                              messageIds: entry.source_msgs || [],
+                            })
+                          }
+                        />
+                      );
+                    })()}
                 </div>
               ))
             )}
@@ -532,7 +609,26 @@ export default function MatterDetailPanel({
             {timeline.length === 0 ? (
               <div className="wk-mp-empty-tab">暂无时间线记录</div>
             ) : (
-              <TimelinePanel entries={timeline} />
+              <TimelinePanel
+                entries={timeline}
+                onShowAnchor={(entry) => {
+                  // 改变记录 tab 下每条 entry 可能属于不同 channel,
+                  // 用 matter.channels 按 entry.channel_id 反查 channel_name
+                  if (!entry.channel_id || entry.channel_type === undefined) {
+                    return;
+                  }
+                  const ch = channels.find(
+                    (c) => c.channel_id === entry.channel_id,
+                  );
+                  setAnchor({
+                    channelId: entry.channel_id,
+                    channelType: entry.channel_type,
+                    channelName:
+                      ch?.channel_name || entry.channel_id.slice(0, 8),
+                    messageIds: entry.source_msgs || [],
+                  });
+                }}
+              />
             )}
           </div>
         )}
@@ -553,6 +649,17 @@ export default function MatterDetailPanel({
         onClose={() => setLinkModalOpen(false)}
         onLinked={handleLinked}
       />
+
+      {/* 原消息上下文弹框 */}
+      {anchor && (
+        <AnchorPopover
+          channelId={anchor.channelId}
+          channelType={anchor.channelType}
+          channelName={anchor.channelName}
+          messageIds={anchor.messageIds}
+          onClose={() => setAnchor(null)}
+        />
+      )}
     </main>
   );
 }
@@ -817,7 +924,17 @@ function formatTime(iso: string): string {
   });
 }
 
-function TimelinePanel({ entries }: { entries: TimelineEntry[] }) {
+function TimelinePanel({
+  entries,
+  onShowAnchor,
+}: {
+  entries: TimelineEntry[];
+  /**
+   * 点击 "查看原消息上下文" 时调用, 由父组件负责弹 AnchorPopover。
+   * 不传: 按钮 disabled (无法查看, 通常是条目没有 source_msgs 字段)。
+   */
+  onShowAnchor?: (entry: TimelineEntry) => void;
+}) {
   const [sortNewest, setSortNewest] = useState(true);
 
   // 排序
@@ -912,25 +1029,45 @@ function TimelinePanel({ entries }: { entries: TimelineEntry[] }) {
                       {e.attachments.length} 附件
                     </span>
                   )}
-                  {/* ↗ 原消息 */}
-                  <button
-                    type="button"
-                    className="wk-mp-tl__anchor-btn"
-                    title="查看原消息上下文"
-                    onClick={() => Toast.info("跳转到原消息")}
-                  >
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    </svg>
-                    ↗ 原消息
-                  </button>
+                  {/* ↗ 原消息: 只有 entry 带 source_msgs 时才可点 */}
+                  {(() => {
+                    const hasSource =
+                      !!onShowAnchor &&
+                      Array.isArray(e.source_msgs) &&
+                      e.source_msgs.length > 0;
+                    return (
+                      <button
+                        type="button"
+                        className="wk-mp-tl__anchor-btn"
+                        title={
+                          hasSource
+                            ? "查看原消息上下文"
+                            : "无原消息关联"
+                        }
+                        disabled={!hasSource}
+                        style={
+                          !hasSource
+                            ? { opacity: 0.4, cursor: "not-allowed" }
+                            : undefined
+                        }
+                        onClick={() => {
+                          if (hasSource && onShowAnchor) onShowAnchor(e);
+                        }}
+                      >
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                        </svg>
+                        ↗ 原消息
+                      </button>
+                    );
+                  })()}
                 </div>
               ))}
             </div>

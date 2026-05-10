@@ -54,13 +54,26 @@ export default function MatterPage() {
     [activeTab, myUid],
   );
 
-  const { matters, loading, hasMore, loadMore } = useMatterList({
+  const { matters, loading, hasMore, loadMore, reload } = useMatterList({
     initialFilters,
   });
 
   useEffect(() => {
     setTabCounts((prev) => ({ ...prev, [activeTab]: matters.length }));
   }, [matters.length, activeTab]);
+
+  // 点击 NavRail "事项" 按钮 → 强制刷新列表。
+  // 理由: MainContentLeft 把所有访问过的路由都挂着 (display 切换), 事项页切走
+  // 再切回时组件不会 remount, 数据会变陈旧。
+  useEffect(() => {
+    const handler = (data: { menuId: string }) => {
+      if (data?.menuId === "matter") reload();
+    };
+    WKApp.mittBus.on("wk:nav-menu-activated", handler);
+    return () => {
+      WKApp.mittBus.off("wk:nav-menu-activated", handler);
+    };
+  }, [reload]);
 
   // 分离活跃 vs 归档
   const activeMatters = useMemo(
