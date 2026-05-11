@@ -43,6 +43,9 @@ server {
         # /summary/api/v1/* to a static 503 so missing the smart-summary
         # service does not fail nginx startup.
         location /summary/api/v1/ {
+            # nginx's `return` defaults to text/html; this location is an
+            # API proxy so JSON clients expect application/json.
+            default_type application/json;
             if ($summary_api_url = "") {
                 return 503 '{"status":503,"msg":"smart-summary is not configured"}';
             }
@@ -50,7 +53,13 @@ server {
             # startup, so an unresolvable hostname no longer hard-fails the
             # whole container.
             resolver 127.0.0.11 ipv6=off valid=30s;
-            proxy_pass  $summary_api_url/api/v1/;
+            # When proxy_pass contains a variable, nginx does NOT do the
+            # usual location-prefix→URI swap — the URI after the host
+            # would be sent verbatim. Use a rewrite to produce the final
+            # upstream URI, then proxy_pass *without* a URI so nginx
+            # forwards the rewritten request as-is.
+            rewrite ^/summary/api/v1/(.*)$ /api/v1/$1 break;
+            proxy_pass  $summary_api_url;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
