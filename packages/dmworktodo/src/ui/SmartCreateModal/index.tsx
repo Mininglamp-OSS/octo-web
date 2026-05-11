@@ -37,6 +37,14 @@ function fromLocalDateString(s: string): Date {
   return new Date(yyyy, mm - 1, dd);
 }
 
+function getLocalTZOffset(): string {
+  const off = new Date().getTimezoneOffset();
+  const sign = off <= 0 ? "+" : "-";
+  const h = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const m = String(Math.abs(off) % 60).padStart(2, "0");
+  return `${sign}${h}:${m}`;
+}
+
 /**
  * SmartCreateModal — 新建事项 / 智能创建事项弹窗
  *
@@ -99,7 +107,7 @@ export default function SmartCreateModal({
         title: title.trim(),
         description: brief.trim() || undefined,
         assignee_ids: assigneeUids,
-        deadline: deadline ? `${deadline}T23:59:59+08:00` : undefined,
+        deadline: deadline ? `${deadline}T23:59:59${getLocalTZOffset()}` : undefined,
         source_channel_id: channel?.channelId,
         source_channel_type: channel?.channelType,
         source_msgs: sourceMsgs,

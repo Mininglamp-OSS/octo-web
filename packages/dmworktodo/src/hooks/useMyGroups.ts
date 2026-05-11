@@ -43,9 +43,9 @@ export function useMyGroups(): UseMyGroupsResult {
         const onSpaceChanged = () => {
             setSpaceId(WKApp.shared.currentSpaceId || '');
         };
-        WKApp.mittBus.on('wk:space-changed' as any, onSpaceChanged);
+        WKApp.mittBus.on('space-changed', onSpaceChanged);
         return () => {
-            WKApp.mittBus.off('wk:space-changed' as any, onSpaceChanged);
+            WKApp.mittBus.off('space-changed', onSpaceChanged);
         };
     }, []);
 
