@@ -549,12 +549,12 @@ textarea.wk-mp-goal__text--editing {
   display: inline-block;
   min-width: 64px;
   height: 0.85em;
-  border-radius: 3px;
+  border-radius: var(--wk-r-xs);
   background: linear-gradient(
     90deg,
-    var(--wk-bg-elevated, #f4f4f5) 0%,
-    var(--wk-bg-hover, #e4e4e7) 50%,
-    var(--wk-bg-elevated, #f4f4f5) 100%
+    var(--wk-bg-elevated) 0%,
+    var(--wk-bg-hover) 50%,
+    var(--wk-bg-elevated) 100%
   );
   background-size: 200% 100%;
   animation: wk-mp-skeleton-shimmer 1.2s ease-in-out infinite;
