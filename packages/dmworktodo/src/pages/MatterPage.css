@@ -321,7 +321,7 @@
 }
 
 .wk-mp-sidebar-card__meta-label {
-  color: var(--wk-border-default);
+  color: var(--wk-text-tertiary);
   font-size: var(--wk-text-size-xs);
 }
 
@@ -353,5 +353,5 @@
 }
 
 .wk-mp-sidebar-card__owners-label {
-  color: var(--wk-border-default);
+  color: var(--wk-text-tertiary);
 }
