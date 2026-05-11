@@ -13,6 +13,12 @@ server {
         listen       80;
         server_name  localhost;
 
+        # Propagate env-provided values down into nginx variables so they
+        # can be referenced from inside location blocks. envsubst substitutes
+        # these at container start; leaving an env blank yields an empty
+        # string that the corresponding location block tests for.
+        set $summary_api_url "${SUMMARY_API_URL}";
+
         # Security headers
         # Prevent clickjacking attacks
         add_header X-Frame-Options "SAMEORIGIN" always;
@@ -31,10 +37,20 @@ server {
         # HSTS - uncomment when full HTTPS chain is confirmed
         # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-        # Smart Summary backend — single prefix rule
+        # Smart Summary backend — optional.
+        # Set SUMMARY_API_URL (e.g. http://summary-api:8080) at container
+        # start to enable the in-app summariser. Leaving it blank routes
+        # /summary/api/v1/* to a static 503 so missing the smart-summary
+        # service does not fail nginx startup.
         location /summary/api/v1/ {
-            # summary-api: the summary service, configure via SUMMARY_API_HOST env or docker-compose service name
-            proxy_pass  http://summary-api:8080/api/v1/;
+            if ($summary_api_url = "") {
+                return 503 '{"status":503,"msg":"smart-summary is not configured"}';
+            }
+            # nginx resolves proxy_pass variables at request time, not at
+            # startup, so an unresolvable hostname no longer hard-fails the
+            # whole container.
+            resolver 127.0.0.11 ipv6=off valid=30s;
+            proxy_pass  $summary_api_url/api/v1/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
