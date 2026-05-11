@@ -85,11 +85,6 @@ export default function ClawOverviewTab({
             value={`${runtimeInfo.disk_space_gb.toFixed(1)} GB`}
           />
           <ClawConfigItem
-            icon={<HardDrive />}
-            label="内存"
-            value={`${runtimeInfo.memory_gb.toFixed(0)} GB`}
-          />
-          <ClawConfigItem
             icon={<FolderOpen />}
             label="应用数据目录"
             value={runtimeInfo.app_data_dir}

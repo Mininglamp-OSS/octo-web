@@ -1,5 +1,6 @@
 import React from 'react'
 import { Modal } from '@douyinfe/semi-ui'
+import { IconClose } from '@douyinfe/semi-icons'
 import WKButton from '../WKButton'
 import './index.css'
 
@@ -100,6 +101,10 @@ const WKModal: React.FC<WKModalProps> = ({
 
   const cls = ['wk-modal', className].filter(Boolean).join(' ')
 
+  // 当 title=null 且 closable=true 时，需要自定义关闭按钮
+  // 因为 Semi Modal 的关闭按钮依赖 header，title=null 时 header 不渲染导致按钮位置错位
+  const needCustomCloseBtn = title === null && closable
+
   return (
     <Modal
       visible={visible}
@@ -107,13 +112,22 @@ const WKModal: React.FC<WKModalProps> = ({
       title={title}
       width={width}
       footer={resolvedFooter}
-      closable={closable}
+      closable={needCustomCloseBtn ? false : closable} // 自定义关闭按钮时禁用 Semi 默认按钮
       maskClosable={maskClosable}
       mask={mask}
       closeOnEsc={closeOnEsc}
       centered
       className={cls}
     >
+      {needCustomCloseBtn && (
+        <button
+          className="wk-modal-custom-close-btn"
+          onClick={onCancel}
+          aria-label="关闭"
+        >
+          <IconClose />
+        </button>
+      )}
       {children}
     </Modal>
   )

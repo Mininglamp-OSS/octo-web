@@ -50,9 +50,6 @@ describe('ClawOverviewTab', () => {
     expect(screen.getByText('可写磁盘空间')).toBeInTheDocument();
     expect(screen.getByText('68.0 GB')).toBeInTheDocument();
 
-    expect(screen.getByText('内存')).toBeInTheDocument();
-    expect(screen.getByText('32 GB')).toBeInTheDocument();
-
     expect(screen.getByText('应用数据目录')).toBeInTheDocument();
     expect(screen.getByText('.octopush/octopush-58d651')).toBeInTheDocument();
 
@@ -86,7 +83,7 @@ describe('ClawOverviewTab', () => {
     expect(screen.getByText('Node.js')).toBeInTheDocument();
     expect(screen.getByText('v22.22.2')).toBeInTheDocument();
 
-    expect(screen.getAllByText('内存')[1]).toBeInTheDocument(); // 第二个"内存"是健康检查项
+    expect(screen.getByText('内存')).toBeInTheDocument();
     expect(screen.getByText('32GB')).toBeInTheDocument();
   });
 
@@ -153,8 +150,8 @@ describe('ClawOverviewTab', () => {
     // 磁盘空间保留 1 位小数
     expect(screen.getByText('128.6 GB')).toBeInTheDocument();
 
-    // 内存取整
-    expect(screen.getByText('16 GB')).toBeInTheDocument();
+    // 内存取整（只在健康检查 chip 中显示）
+    expect(screen.getByText('16GB')).toBeInTheDocument();
 
     // 延迟保留 2 位小数
     expect(screen.getByText('延迟 67.89ms')).toBeInTheDocument();

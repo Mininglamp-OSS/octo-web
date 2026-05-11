@@ -281,18 +281,8 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
       title={null}
       size="full"
       className="claw-info-modal"
-      options={{ closable: false }}
     >
       <div className="claw-info-container">
-        {/* 自定义关闭按钮 */}
-        <button
-          className="claw-info-close-btn"
-          onClick={onClose}
-          aria-label="关闭"
-          data-testid="claw-info-close"
-        >
-          <IconClose />
-        </button>
         {/* Header */}
         <div className="claw-info-header">
           <div className="claw-info-title-row">

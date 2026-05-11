@@ -7,37 +7,8 @@
   overflow: hidden;
 }
 
-/* 自定义关闭按钮（替代 Semi Modal 默认关闭按钮） */
-.claw-info-close-btn {
-  position: absolute;
-  top: 24px;
-  right: 24px;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  color: rgba(0, 0, 0, 0.45);
-  cursor: pointer;
-  border-radius: var(--wk-r-sm);
-  transition: all 0.15s ease;
-  padding: 0;
-}
-
-.claw-info-close-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: rgba(0, 0, 0, 0.65);
-}
-
-.claw-info-close-btn:active {
-  background: rgba(0, 0, 0, 0.1);
-}
-
 .claw-info-container {
-  position: relative; /* 为 absolute 定位的关闭按钮提供定位上下文 */
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 720px;

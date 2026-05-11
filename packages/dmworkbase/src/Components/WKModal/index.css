@@ -20,3 +20,32 @@
   gap: var(--wk-sp-2);
   padding: var(--wk-sp-4) var(--wk-sp-6) var(--wk-sp-6);
 }
+
+/* 自定义关闭按钮（用于 title=null 时） */
+.wk-modal-custom-close-btn {
+  position: absolute;
+  top: var(--wk-sp-6);
+  right: var(--wk-sp-6);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wk-sp-8);
+  height: var(--wk-sp-8);
+  border: none;
+  background: none;
+  color: var(--wk-icon-muted);
+  cursor: pointer;
+  border-radius: var(--wk-r-sm);
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.wk-modal-custom-close-btn:hover {
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-icon-hover);
+}
+
+.wk-modal-custom-close-btn:active {
+  background: var(--wk-brand-tint-10);
+}
