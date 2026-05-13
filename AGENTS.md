@@ -14,7 +14,7 @@
 
 ---
 
-## 新建 UI 组件：必须先写 Story 再接业务
+## 新建 UI 组件：建议先写 Story 再接业务
 
 ```
 1. 建组件文件（index.tsx + index.css）
@@ -45,6 +45,6 @@ Story 写法见 DEVELOPMENT.md 章节四、六。
 
 本项目采用分层结构：
 
-- `ui/` — UI 组件
+- `ui/` — UI 组件（新组件统一放这里，用 `pnpm gen:component` 生成）
 - `bridge/` — 数据桥接层（types.ts + use*.ts）
 - `Components/` / `Messages/` — 现有组件库

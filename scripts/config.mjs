@@ -29,18 +29,10 @@ const local = readJSON(resolve(ROOT, 'AGENTS.config.local.json'))
 export const ROOT_DIR = ROOT
 
 export const config = {
-  // 架构路径（从 AGENTS.config.json）
+  // 默认架构路径（作为 gen:component 脚手架默认值）
   uiDir: resolve(ROOT, project.ui_dir || 'packages/dmworkbase/src/ui/'),
   bridgeDir: resolve(ROOT, project.bridge_dir || 'packages/dmworkbase/src/bridge/'),
-  typesFile: resolve(ROOT, project.types_file || 'packages/dmworkbase/src/bridge/types.ts'),
   cssPrefix: project.css_prefix || 'wk',
-  darkMode: project.dark_mode ?? true,
-
-  // SDK 黑名单
-  sdkImports: project.sdk_imports || ['wukongimjssdk', 'WKApp', 'Service/'],
-
-  // 旧代码目录（禁止新增）
-  legacyDirs: (project.legacy_dirs || []).map(d => d.replace(/\/$/, '')),
 
   // 分支规范
   branchTypes: project.branch?.types || ['feat', 'fix', 'refactor', 'chore', 'docs', 'test'],
