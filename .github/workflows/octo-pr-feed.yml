@@ -1,0 +1,23 @@
+name: Octo PR Feed
+
+on:
+  pull_request:
+    types: [opened, closed, reopened, ready_for_review, review_requested]
+
+jobs:
+  notify:
+    uses: Mininglamp-OSS/.github/.github/workflows/octo-pr-feed.yml@main
+    with:
+      repo_name: ${{ github.event.repository.name }}
+      pr_number: ${{ github.event.pull_request.number }}
+      pr_title: ${{ github.event.pull_request.title }}
+      pr_url: ${{ github.event.pull_request.html_url }}
+      pr_author: ${{ github.event.pull_request.user.login }}
+      pr_merged: ${{ github.event.pull_request.merged }}
+      pr_additions: ${{ github.event.pull_request.additions }}
+      pr_deletions: ${{ github.event.pull_request.deletions }}
+      pr_changed_files: ${{ github.event.pull_request.changed_files }}
+      event_action: ${{ github.event.action }}
+      project_group_id: c6717c018f974c2793635f9fa2c0e629
+    secrets:
+      OCTO_BOT_TOKEN: ${{ secrets.OCTO_BOT_TOKEN }}
