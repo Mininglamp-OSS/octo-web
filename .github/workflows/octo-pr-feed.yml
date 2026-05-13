@@ -1,7 +1,7 @@
 name: Octo PR Feed
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, closed, reopened, ready_for_review, review_requested]
 
 jobs:
