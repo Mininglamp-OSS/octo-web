@@ -181,7 +181,16 @@ describe("useVoiceInput", () => {
   });
 
   it("should auto-stop recording after maxDuration timeout", async () => {
+    vi.mocked(VoiceService.shared.getConfig).mockResolvedValue({
+      enabled: true,
+      max_file_size: 3145728,
+    } as any);
+
     const { result } = renderHook(() => useVoiceInput({ maxDuration: 5 }));
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
 
     await act(async () => {
       await result.current.startRecording();
@@ -190,7 +199,7 @@ describe("useVoiceInput", () => {
     expect(result.current.isRecording).toBe(true);
 
     await act(async () => {
-      vi.advanceTimersByTime(5000);
+      await vi.advanceTimersByTimeAsync(5001);
     });
 
     // maxDuration timeout should have triggered stopRecordingAndTranscribe
@@ -661,6 +670,10 @@ describe("useVoiceInput - personal voice context", () => {
     });
 
     await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    await act(async () => {
       result.current.stopRecordingAndTranscribe();
     });
 
@@ -762,5 +775,156 @@ describe("useVoiceInput - personal voice context", () => {
     // After cancel, the voiceContextRef should remain null
     // because spaceId check fails. We verify indirectly:
     // next recording should query fresh context
+  });
+});
+
+describe("useVoiceInput - max duration config", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    setupMocks();
+    WKApp.shared.currentSpaceId = "test-space-id";
+    vi.mocked(VoiceService.shared.getVoiceContext).mockResolvedValue({
+      status: 200,
+      has_context: false,
+      context: "",
+      updated_at: "",
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it("should default to 60s when backend does not return max_duration", async () => {
+    vi.mocked(VoiceService.shared.getConfig).mockResolvedValue({
+      enabled: true,
+      max_file_size: 3145728,
+    });
+
+    const { result } = renderHook(() => useVoiceInput());
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(result.current.isRecording).toBe(true);
+
+    // Advance 59s — should still be recording
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(59000);
+    });
+    expect(result.current.isRecording).toBe(true);
+
+    // Advance past 60s — should auto-stop
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1001);
+    });
+    expect(result.current.isRecording).toBe(false);
+  });
+
+  it("should use backend max_duration when returned by getConfig", async () => {
+    vi.mocked(VoiceService.shared.getConfig).mockResolvedValue({
+      enabled: true,
+      max_duration: 30,
+      max_file_size: 3145728,
+    });
+
+    const { result } = renderHook(() => useVoiceInput());
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(result.current.isRecording).toBe(true);
+
+    // Advance 29s — should still be recording
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29000);
+    });
+    expect(result.current.isRecording).toBe(true);
+
+    // Advance past 30s — should auto-stop
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1001);
+    });
+    expect(result.current.isRecording).toBe(false);
+  });
+
+  it("should enforce safety floor of 5s when backend returns a smaller value", async () => {
+    vi.mocked(VoiceService.shared.getConfig).mockResolvedValue({
+      enabled: true,
+      max_duration: 2,
+      max_file_size: 3145728,
+    });
+
+    const { result } = renderHook(() => useVoiceInput());
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(result.current.isRecording).toBe(true);
+
+    // Advance 2s — should NOT stop (floor is 5s)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.isRecording).toBe(true);
+
+    // Advance to 4.9s — still recording
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2900);
+    });
+    expect(result.current.isRecording).toBe(true);
+
+    // Advance past 5s — should auto-stop
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(101);
+    });
+    expect(result.current.isRecording).toBe(false);
+  });
+
+  it("should allow explicit caller-passed maxDuration to override when no backend config", async () => {
+    vi.mocked(VoiceService.shared.getConfig).mockResolvedValue({
+      enabled: true,
+      max_file_size: 3145728,
+    });
+
+    const { result } = renderHook(() => useVoiceInput({ maxDuration: 10 }));
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(result.current.isRecording).toBe(true);
+
+    // Advance 9s — should still be recording
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(9000);
+    });
+    expect(result.current.isRecording).toBe(true);
+
+    // Advance past 10s — should auto-stop
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1001);
+    });
+    expect(result.current.isRecording).toBe(false);
   });
 });

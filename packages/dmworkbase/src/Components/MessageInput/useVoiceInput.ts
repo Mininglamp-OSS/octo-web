@@ -43,7 +43,7 @@ export default function useVoiceInput(
   options: UseVoiceInputOptions = {}
 ): UseVoiceInputReturn {
   const {
-    maxDuration = 300, // PRD: 最长录音时长 300 秒
+    maxDuration = 60, // PRD: 最长录音时长 60秒
     onTranscribed,
     onError,
     onRecordingFailed,
@@ -76,6 +76,7 @@ export default function useVoiceInput(
     useRef<Promise<VoiceContextResponse | null> | null>(null);
   const voiceContextSpaceIdRef = useRef<string>("");
   const maxFileSizeRef = useRef<number>(0);
+  const backendMaxDurationRef = useRef<number | null>(null);
   const backendEnabledRef = useRef(false);
 
   // Load local model config from localStorage on mount, then fetch voice config
@@ -95,6 +96,9 @@ export default function useVoiceInput(
         setIsVoiceEnabled(config.enabled || localAllowed);
         backendEnabledRef.current = config.enabled;
         maxFileSizeRef.current = config.max_file_size || 0;
+        if (config.max_duration != null) {
+          backendMaxDurationRef.current = config.max_duration;
+        }
         const localTimeout = config.local_timeout_ms ?? LOCAL_DEFAULT_TIMEOUT_MS;
 
         if (localAllowed) {
@@ -211,9 +215,13 @@ export default function useVoiceInput(
         startTimeRef.current = Date.now();
 
         // 使用 setTimeout 替代 setInterval 处理 maxDuration 自动停止
+        const effectiveDuration = Math.max(
+          5,
+          backendMaxDurationRef.current ?? maxDuration
+        );
         maxDurationTimeoutRef.current = setTimeout(() => {
           stopFnRef.current();
-        }, maxDuration * 1000);
+        }, effectiveDuration * 1000);
       } catch (err) {
         const error =
           err instanceof Error ? err : new Error("Microphone access denied");

@@ -5,7 +5,7 @@ export type VoiceMode = "smart" | "append_only" | "edit_only";
 
 export interface VoiceConfig {
   enabled: boolean;
-  max_duration: number;
+  max_duration?: number;
   max_file_size: number;
   local_enabled?: boolean;
   local_timeout_ms?: number;
