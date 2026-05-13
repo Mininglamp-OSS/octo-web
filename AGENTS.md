@@ -48,5 +48,3 @@ Story 写法见 DEVELOPMENT.md 章节四、六。
 - `ui/` — UI 组件
 - `bridge/` — 数据桥接层（types.ts + use*.ts）
 - `Components/` / `Messages/` — 现有组件库
-
-**项目路径配置：** `AGENTS.config.json`（根目录）
