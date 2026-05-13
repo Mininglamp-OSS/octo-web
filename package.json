@@ -18,7 +18,6 @@
     "lint:css:ci": "stylelint --config stylelint.ci.config.mjs --allow-empty-input",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "gen:component": "node scripts/gen-component.mjs",
-    "lint:architecture": "node scripts/lint-architecture.mjs",
     "new:worktree": "bash scripts/new-worktree.sh",
     "cleanup:worktree": "bash scripts/cleanup-worktree.sh"
   },
