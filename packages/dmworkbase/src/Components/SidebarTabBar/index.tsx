@@ -1,43 +1,43 @@
 import React from "react"
 import "./index.css"
 
-export type SidebarTab = 'group' | 'dm'
+export type SidebarTab = 'follow' | 'recent'
 
 export interface SidebarTabBarProps {
     activeTab: SidebarTab
-    groupUnread: number
-    dmUnread: number
+    followUnread: number
+    recentUnread: number
     onTabChange: (tab: SidebarTab) => void
 }
 
 const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
     activeTab,
-    groupUnread,
-    dmUnread,
+    followUnread,
+    recentUnread,
     onTabChange,
 }) => {
     return (
         <div className="wk-sidebar-tabbar">
             <div className="wk-sidebar-tabbar__container">
                 <button
-                    className={`wk-sidebar-tabbar__btn ${activeTab === 'group' ? 'wk-sidebar-tabbar__btn--active' : ''}`}
-                    onClick={() => onTabChange('group')}
+                    className={`wk-sidebar-tabbar__btn ${activeTab === 'follow' ? 'wk-sidebar-tabbar__btn--active' : ''}`}
+                    onClick={() => onTabChange('follow')}
                 >
-                    <span className="wk-sidebar-tabbar__label">群聊</span>
-                    {groupUnread > 0 && (
+                    <span className="wk-sidebar-tabbar__label">关注</span>
+                    {followUnread > 0 && (
                         <span className="wk-sidebar-tabbar__badge">
-                            {groupUnread > 99 ? '99+' : groupUnread}
+                            {followUnread > 99 ? '99+' : followUnread}
                         </span>
                     )}
                 </button>
                 <button
-                    className={`wk-sidebar-tabbar__btn ${activeTab === 'dm' ? 'wk-sidebar-tabbar__btn--active' : ''}`}
-                    onClick={() => onTabChange('dm')}
+                    className={`wk-sidebar-tabbar__btn ${activeTab === 'recent' ? 'wk-sidebar-tabbar__btn--active' : ''}`}
+                    onClick={() => onTabChange('recent')}
                 >
-                    <span className="wk-sidebar-tabbar__label">私聊</span>
-                    {dmUnread > 0 && (
+                    <span className="wk-sidebar-tabbar__label">最近</span>
+                    {recentUnread > 0 && (
                         <span className="wk-sidebar-tabbar__badge">
-                            {dmUnread > 99 ? '99+' : dmUnread}
+                            {recentUnread > 99 ? '99+' : recentUnread}
                         </span>
                     )}
                 </button>

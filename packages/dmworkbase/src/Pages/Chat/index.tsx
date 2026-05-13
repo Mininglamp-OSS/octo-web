@@ -794,9 +794,12 @@ const SIDEBAR_TAB_KEY = "wk_sidebar_active_tab";
 function getSavedTab(): SidebarTab {
   try {
     const v = localStorage.getItem(SIDEBAR_TAB_KEY);
-    if (v === "group" || v === "dm") return v;
+    // 兼容旧值：group → follow, dm → recent
+    if (v === "follow" || v === "recent") return v;
+    if (v === "group") return "follow";
+    if (v === "dm") return "recent";
   } catch {}
-  return "group";
+  return "follow";
 }
 
 interface ChatPageState {
@@ -841,8 +844,13 @@ export default class ChatPage extends Component<any, ChatPageState> {
     WKApp.mittBus.on("space-changed", this._onSpaceChanged);
 
     this._onSwitchTab = (tab: string) => {
-      if (tab === "group" || tab === "dm") {
+      // 兼容旧事件：group → follow, dm → recent
+      if (tab === "follow" || tab === "recent") {
         this._handleTabChange(tab as SidebarTab);
+      } else if (tab === "group") {
+        this._handleTabChange("follow");
+      } else if (tab === "dm") {
+        this._handleTabChange("recent");
       }
     };
     WKApp.mittBus.on("wk:switch-sidebar-tab", this._onSwitchTab);
@@ -894,7 +902,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
             list.push(c);
             threadsByParentForTab.set(parentGroupNo, list);
           }
-          const groupUnread = vm.conversations.reduce(
+          const followUnread = vm.conversations.reduce(
             (sum: number, c: ConversationWrap) => {
               // 只计群组，子区未读已通过父群组 totalUnread 汇总，不重复计入
               if (c.channel.channelType !== ChannelTypeGroup) return sum;
@@ -909,7 +917,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
             },
             0,
           );
-          const dmUnread = vm.conversations.reduce(
+          const recentUnread = vm.conversations.reduce(
             (sum: number, c: ConversationWrap) => {
               if (c.channel.channelType === ChannelTypePerson) {
                 return sum + (c.unread || 0);
@@ -919,7 +927,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
             0,
           );
           // filter 用于 ConversationList
-          const filter: ConvFilter = activeTab === "group" ? "group" : "dm";
+          const filter: ConvFilter = activeTab === "follow" ? "group" : "dm";
           return (
             <div className="wk-chat">
               <div
@@ -968,8 +976,8 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         trigger="custom"
                         content={
                           <div>
-                            {/* 群聊 Tab 下在顶部插入「创建分组」，对齐 ChatMenusPopover li 样式 */}
-                            {activeTab === "group" && (
+                            {/* 关注 Tab 下在顶部插入「创建分组」，对齐 ChatMenusPopover li 样式 */}
+                            {activeTab === "follow" && (
                               <div
                                 className="wk-chat-menu-item"
                                 onClick={() => {
@@ -1012,11 +1020,11 @@ export default class ChatPage extends Component<any, ChatPageState> {
                       </Popover>
                     </div>
                   </div>
-                  {/* 群聊/私聊 Tab Bar */}
+                  {/* 关注/最近 Tab Bar */}
                   <SidebarTabBar
                     activeTab={activeTab}
-                    groupUnread={groupUnread}
-                    dmUnread={dmUnread}
+                    followUnread={followUnread}
+                    recentUnread={recentUnread}
                     onTabChange={this._handleTabChange}
                   />
                   <div className="wk-chat-conversation-list">
