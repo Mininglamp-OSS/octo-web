@@ -7,7 +7,8 @@
  *   pnpm gen:component MessageBubble
  *   pnpm gen:component MessageBubble --ui-only  # 只生成 ui/，不生成 bridge/
  *
- * 路径由 AGENTS.config.json 的 ui_dir / bridge_dir 决定
+ * 路径由 AGENTS.config.json 中的 ui_dir / bridge_dir 决定（如果配置存在），
+ * 否则使用内置默认值。
  */
 
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs'

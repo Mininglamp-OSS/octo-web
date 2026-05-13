@@ -1,8 +1,8 @@
 /**
  * config.mjs — 统一配置读取
  *
- * 读取 AGENTS.config.json（项目级）+ AGENTS.config.local.json（个人环境）
- * 所有脚本通过 import { config } from './config.mjs' 使用
+ * 读取 AGENTS.config.json（仅 branch 配置）+ AGENTS.config.local.json（个人环境）
+ * 其他配置使用内置默认值。所有脚本通过 import { config } from './config.mjs' 使用
  */
 
 import { readFileSync, existsSync } from 'node:fs'

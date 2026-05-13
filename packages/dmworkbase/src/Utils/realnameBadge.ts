@@ -3,13 +3,11 @@
  *
  * 当前使用者：
  *   - bridge 路径：`src/bridge/message/useMessageRow.ts`
- *   - legacy 路径（例外申明）：`src/Messages/Base/index.tsx`（Round 4）
+ *   - legacy 路径：`src/Messages/Base/index.tsx`
  *
- * `src/Messages/Base/` 在 `AGENTS.config.json:legacy_dirs`。产品需求
- * 要求所有消息类型都要显徽章，Voice / Gif / Location / File / Video 还走
- * MessageBase，为避免功能分裂，按单点例外让 MessageBase 调用本 helper
- * （大范围 Messages/Base 重构仍走 "迁到新 MessageRow" 独立工程，本 helper
- * 无额外负担）。规则改动请同步两处。
+ * src/Messages/Base/ 中的某些消息类型（Voice / Gif / Location / File / Video）
+ * 仍走 MessageBase 而未迁到新 MessageRow。为避免功能分裂，两条路径需要调用本
+ * helper 保持一致的实名徽章判定逻辑。规则改动请同步两处。
  *
  * ## 规则（按顺序，短路）
  *

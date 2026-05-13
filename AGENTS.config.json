@@ -1,0 +1,6 @@
+{
+  "branch": {
+    "types": ["feat", "fix", "refactor", "chore", "docs", "test"],
+    "defaultBase": "origin/develop"
+  }
+}

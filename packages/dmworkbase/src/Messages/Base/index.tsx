@@ -344,9 +344,8 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     // channelInfo 未命中时不要把 fromUID（32 位 hex）当兜底名字显示给用户，
     // 留空等待 fetchChannelInfo 回包后由 channelInfoListener 触发重渲染。
     //
-    // Legacy dir 例外：本文件在
-    // `AGENTS.config.json:legacy_dirs` 但仍在生产渲染 Voice / Gif / Location /
-    // File / Video 等类型的气泡，需要和 bridge 路径保持同一视觉：
+    // 本文件仍在生产渲染 Voice / Gif / Location / File / Video 等类型的气泡，
+    // 需要和 bridge 路径保持同一视觉规则：
     //   自己发送的消息，groupMember 通常不含 self、channelInfo.orgData 也
     //   不带 real_name（self Person channelInfo 不下发这个字段），导致 self
     //   气泡永远显示 username 而非 "余嘉伟"。接入登录 payload 后，
@@ -412,10 +411,8 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
 
     // Epic dmwork-web#1169: 聊天气泡作者名旁的实名徽章。
     //
-    // Legacy dir 例外（见 PR description "Legacy Dir Exception
-    // Declaration" 段)：本目录 `Messages/` 已被 AGENTS.config.json 标为
-    // legacy_dirs，但 MessageBase 仍在生产渲染 Voice / Gif / Location / File /
-    // Video 等类型（尚未迁到新 MessageRow），产品需求要求所有消息类型气泡都显示
+    // 本目录 Messages/ 中的某些消息类型（Voice / Gif / Location / File / Video）
+    // 仍走 MessageBase 而未迁到新 MessageRow。产品需求要求所有消息类型气泡都显示
     // 徽章，因此这里必须和 bridge 路径走 **同一套** 判定规则。
     //
     // 共享 helper `shouldShowRealnameBadge` 的优先级：isAi → isBotConversation →

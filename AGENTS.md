@@ -23,7 +23,7 @@
 4. 再接入业务代码
 ```
 
-顺序不能颠倒。CI 会检查 story 覆盖，没有 story 的新组件 PR 不能合并。
+顺序不能颠倒。建议新组件总是包含 Story，在 Storybook 里手动验证。
 
 Story 写法见 DEVELOPMENT.md 章节四、六。
 
