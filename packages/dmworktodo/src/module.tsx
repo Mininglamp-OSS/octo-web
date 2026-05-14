@@ -652,8 +652,10 @@ function GlobalSmartCreateModal() {
   const [aiResult, setAiResult] = useState<
     { title?: string; description?: string; deadline?: string } | undefined
   >();
-  // extractMatter 已在后端创建事项，保存其 ID 用于后续编辑
-  const [extractedMatterId, setExtractedMatterId] = useState<string | null>(null);
+  // 使用 ref 存储 extractedMatterId，避免闭包竞态
+  const extractedMatterIdRef = React.useRef<string | null>(null);
+  // 标记弹窗是否已关闭，防止 extractMatter 异步返回后产生孤儿
+  const closedRef = React.useRef(false);
 
   useEffect(() => {
     const handler = async (data?: {
@@ -669,7 +671,8 @@ function GlobalSmartCreateModal() {
       setChannel(currentChannel);
       setMessages(currentMessages);
       setAiResult(undefined);
-      setExtractedMatterId(null);
+      extractedMatterIdRef.current = null;
+      closedRef.current = false;
       setOpen(true);
 
       if (currentMessages.length > 0 && currentChannel) {
@@ -688,13 +691,18 @@ function GlobalSmartCreateModal() {
               attachments: m.attachments || [],
             })),
           });
-          setExtractedMatterId(res.id);
+          // 用户在 extractMatter 期间关闭了弹窗 → 立即清理孤儿
+          if (closedRef.current) {
+            try { await deleteMatter(res.id); } catch {}
+            return;
+          }
+          extractedMatterIdRef.current = res.id;
           setAiResult({
             title: res.title,
             description: res.description,
             deadline: res.deadline
               ? new Date(
-                  String(res.deadline).length === 10
+                  res.deadline < 1e12
                     ? (res.deadline as number) * 1000
                     : res.deadline,
                 )
@@ -731,37 +739,52 @@ function GlobalSmartCreateModal() {
         attachments: m.attachments || [],
       })) : undefined}
       onClose={async () => {
+        // 用户主动取消：关闭弹窗 + 清理孤儿事项
+        closedRef.current = true;
         setOpen(false);
-        // P0: 用户关闭弹窗不确认时，清理 extractMatter 已创建的孤儿事项
-        if (extractedMatterId) {
-          try { await deleteMatter(extractedMatterId); } catch {}
-          setExtractedMatterId(null);
+        const idToDelete = extractedMatterIdRef.current;
+        extractedMatterIdRef.current = null;
+        if (idToDelete) {
+          try { await deleteMatter(idToDelete); } catch {}
         }
       }}
+      onConfirmSuccess={() => {
+        // 确认成功：关闭弹窗，不删除事项
+        closedRef.current = true;
+        extractedMatterIdRef.current = null;
+        setOpen(false);
+        WKApp.mittBus.emit("wk:exit-multiple-mode");
+      }}
       onConfirm={async (req) => {
-        if (extractedMatterId) {
+        const matterId = extractedMatterIdRef.current;
+        if (matterId) {
           // 后端在 extractMatter 时已创建事项，这里执行编辑
-          await updateMatter(extractedMatterId, {
+          await updateMatter(matterId, {
             title: req.title,
             description: req.description,
             deadline: req.deadline,
           });
           // 负责人 reconcile：对比当前 assignees，计算 add/remove
-          const detail = await getMatter(extractedMatterId);
+          const detail = await getMatter(matterId);
           const currentUids = new Set((detail.assignees || []).map(a => a.user_id));
           const desiredUids = new Set(req.assignee_ids || []);
           const toAdd = [...desiredUids].filter(uid => !currentUids.has(uid));
           const toRemove = [...currentUids].filter(uid => !desiredUids.has(uid));
-          await Promise.allSettled([
-            ...toAdd.map(uid => addAssignee(extractedMatterId, uid)),
-            ...toRemove.map(uid => removeAssignee(extractedMatterId, uid)),
+          const results = await Promise.allSettled([
+            ...toAdd.map(uid => addAssignee(matterId, uid)),
+            ...toRemove.map(uid => removeAssignee(matterId, uid)),
           ]);
+          const failed = results.filter(r => r.status === "rejected");
+          if (failed.length > 0) {
+            Toast.warning("事项已确认，部分负责人未能更新");
+          } else {
+            Toast.success("事项已确认");
+          }
         } else {
           // 空白新建模式（无 AI 提取），走正常创建流程
           await createMatter(req);
+          Toast.success("事项已创建");
         }
-        Toast.success("事项已确认");
-        WKApp.mittBus.emit("wk:exit-multiple-mode");
       }}
       channel={channel}
     />

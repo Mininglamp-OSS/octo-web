@@ -17,9 +17,11 @@ export interface SmartCreateModalProps {
   initialValues?: { title?: string; description?: string; deadline?: string };
   /** 智能总结所用的消息列表 */
   sourceMsgs?: ExtractMessage[];
-  /** 关闭弹窗 */
+  /** 用户主动关闭/取消弹窗（可能需要清理孤儿事项） */
   onClose: () => void;
-  /** 创建事项 */
+  /** 确认成功后关闭弹窗（不触发孤儿清理） */
+  onConfirmSuccess: () => void;
+  /** 创建/编辑事项 */
   onConfirm: (req: CreateMatterReq) => Promise<void>;
   /** 当前频道（用于 MemberPicker 获取成员列表） */
   channel?: { channelId: string; channelType: number; name?: string };
@@ -60,6 +62,7 @@ export default function SmartCreateModal({
   initialValues,
   sourceMsgs,
   onClose,
+  onConfirmSuccess,
   onConfirm,
   channel,
 }: SmartCreateModalProps) {
@@ -118,7 +121,7 @@ export default function SmartCreateModal({
         source_channel_type: channel?.channelType,
         source_msgs: sourceMsgs,
       });
-      onClose();
+      onConfirmSuccess();
     } catch {
       // 创建失败不关闭，让用户重试
     } finally {
@@ -134,7 +137,7 @@ export default function SmartCreateModal({
     channel,
     sourceMsgs,
     onConfirm,
-    onClose,
+    onConfirmSuccess,
   ]);
 
   // Enter 键确认
@@ -157,8 +160,8 @@ export default function SmartCreateModal({
       onCancel={onClose}
       footer={null}
       width={520}
-      closable={loading}
-      maskClosable={loading}
+      closable={true}
+      maskClosable={false}
       centered
       className="wk-smart-create-modal"
     >
