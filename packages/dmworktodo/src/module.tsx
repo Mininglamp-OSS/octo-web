@@ -784,10 +784,11 @@ function GlobalSmartCreateModal() {
           ]);
           const failed = results.filter(r => r.status === "rejected");
           if (failed.length > 0) {
-            Toast.warning("事项已确认，部分负责人未能更新");
-          } else {
-            Toast.success("事项已确认");
+            // 负责人是必填字段，reconcile 失败时 reject 让 modal 保持打开
+            Toast.error("负责人更新失败，请重试");
+            throw new Error("assignee reconciliation failed");
           }
+          Toast.success("事项已确认");
         } else {
           // 空白新建模式（无 AI 提取），走正常创建流程
           await createMatter(req);
