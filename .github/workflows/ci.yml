@@ -28,9 +28,7 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Lint
-        run: pnpm lint
-      - name: Lint CSS
-        run: pnpm lint:css:ci
+      # TODO: Re-enable lint steps once package-level lint scripts are wired up
+      # See: https://github.com/Mininglamp-OSS/octo-web/pull/22
       - name: Build
         run: pnpm build
