@@ -69,6 +69,7 @@ import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
+import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 
 /**
@@ -2228,6 +2229,24 @@ export class Conversation
                       getChatContext={async () => {
                         const { channel } = this.props;
                         await this.vm.ensureSubscribersLoaded();
+
+                        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+                        let groupName: string | undefined;
+                        let threadName: string | undefined;
+
+                        if (channel.channelType === ChannelTypeCommunityTopic) {
+                          threadName = channelInfo?.title;
+                          const parsed = parseThreadChannelId(channel.channelID);
+                          if (parsed) {
+                            const parentInfo = WKSDK.shared().channelManager.getChannelInfo(
+                              new Channel(parsed.groupNo, ChannelTypeGroup)
+                            );
+                            groupName = parentInfo?.title;
+                          }
+                        } else if (channel.channelType === ChannelTypeGroup) {
+                          groupName = channelInfo?.title;
+                        }
+
                         return buildChatContext({
                           messages: this.vm.messagesOfOrigin || [],
                           subscribers: this.vm.subscribers,
@@ -2239,6 +2258,8 @@ export class Conversation
                                   channel,
                                 ) as ChatContextChannelInfo | null)
                               : undefined,
+                          groupName,
+                          threadName,
                         });
                       }}
                       onSend={async (
