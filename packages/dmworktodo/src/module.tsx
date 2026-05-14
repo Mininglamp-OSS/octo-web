@@ -779,11 +779,13 @@ function GlobalSmartCreateModal() {
           const desiredUids = new Set(req.assignee_ids || []);
           const toAdd = [...desiredUids].filter(uid => !currentUids.has(uid));
           const toRemove = [...currentUids].filter(uid => !desiredUids.has(uid));
-          const results = await Promise.allSettled([
-            ...toAdd.map(uid => addAssignee(matterId, uid)),
-            ...toRemove.map(uid => removeAssignee(matterId, uid)),
-          ]);
-          const failed = results.filter(r => r.status === "rejected");
+          // 使用 Promise.all + catch 模式（兼容 es2019 target）
+          const ops = [
+            ...toAdd.map(uid => addAssignee(matterId, uid).then(() => null).catch((e: any) => e)),
+            ...toRemove.map(uid => removeAssignee(matterId, uid).then(() => null).catch((e: any) => e)),
+          ];
+          const results = await Promise.all(ops);
+          const failed = results.filter(r => r !== null);
           if (failed.length > 0) {
             // 负责人是必填字段，reconcile 失败时 reject 让 modal 保持打开
             Toast.error("负责人更新失败，请重试");
