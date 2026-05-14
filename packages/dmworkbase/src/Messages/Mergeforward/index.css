@@ -137,8 +137,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: var(--wk-size-icon-btn, 28px);
+    height: var(--wk-size-icon-btn, 28px);
     border: none;
     background: none;
     border-radius: var(--wk-r-sm, 6px);
@@ -148,6 +148,6 @@
 }
 
 .wk-mergeforward-modal-back-btn:hover {
-    background: var(--wk-bg-hover, rgba(28, 28, 35, 0.06));
+    background: var(--wk-bg-hover);
     color: var(--wk-text-primary);
 }
