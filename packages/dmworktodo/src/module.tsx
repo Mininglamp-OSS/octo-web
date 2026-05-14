@@ -674,6 +674,11 @@ function GlobalSmartCreateModal() {
       setMessages(currentMessages);
       setAiResult(undefined);
       setAiLoading(false);
+      // 清理上一个 session 遗留的已创建但未确认的 matter
+      const prevMatterId = extractedMatterIdRef.current;
+      if (prevMatterId) {
+        deleteMatter(prevMatterId).catch((e) => console.warn('[SmartCreate] prev session cleanup failed:', prevMatterId, e));
+      }
       extractedMatterIdRef.current = null;
       closedRef.current = false;
       sessionRef.current += 1;
