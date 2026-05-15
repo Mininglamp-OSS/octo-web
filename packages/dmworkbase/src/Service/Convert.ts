@@ -1,6 +1,6 @@
 import BigNumber from "bignumber.js";
 import { Setting } from "wukongimjssdk";
-import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra, Reply } from "wukongimjssdk";
+import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra, Reply, Mention } from "wukongimjssdk";
 import { displayName as resolveDisplayName } from "../Utils/displayName";
 import { MessageContentTypeConst } from "./Const";
 
@@ -45,14 +45,30 @@ export function applyMsgLevelExternalFields(target: any, msgMap: any): void {
 /**
  * SDK decode() 通常会设置基础字段（mention, reply, visibles, invisibles）
  * 但当绕过 decode() 直接调用 decodeJSONWithDepth 时，需要手动补充这些字段。
- * 不调用 reply.decode() 以避免虚拟调度导致的深度重置。
+ * 不调用 SDK decode() 以避免虚拟调度导致的深度重置，但需构建正确的 SDK 实例。
  */
-export function hydrateMessageBaseFields(messageContent: any, msgMap: any): void {
-    if (!msgMap) return
-    if (msgMap.mention !== undefined) messageContent.mention = msgMap.mention
-    if (msgMap.reply !== undefined) messageContent.reply = msgMap.reply
-    if (msgMap.visibles !== undefined) messageContent.visibles = msgMap.visibles
-    if (msgMap.invisibles !== undefined) messageContent.invisibles = msgMap.invisibles
+export function hydrateMessageBaseFields(messageContent: any, contentObj: any): void {
+    if (!contentObj) return
+
+    const mentionObj = contentObj["mention"]
+    if (mentionObj) {
+        const mention = new Mention()
+        mention.all = mentionObj["all"] === 1
+        if (mentionObj["uids"]) mention.uids = mentionObj["uids"]
+        messageContent.mention = mention
+    }
+
+    const replyObj = contentObj["reply"]
+    if (replyObj) {
+        const reply = new Reply()
+        // Safe: nested mergeForward inside reply.payload would start a fresh depth=0 budget
+        // but cannot exceed 8 levels before being truncated, so still bounded.
+        reply.decode(replyObj)
+        messageContent.reply = reply
+    }
+
+    if (contentObj["visibles"] !== undefined) messageContent.visibles = contentObj["visibles"]
+    if (contentObj["invisibles"] !== undefined) messageContent.invisibles = contentObj["invisibles"]
 }
 
 /**
