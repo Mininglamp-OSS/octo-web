@@ -261,27 +261,28 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
           <WKModal
             className="wk-base-modal wk-mergeforward-modal"
             width={480}
-            title={
-              this.state.canGoBack ? (
-                <span className="wk-mergeforward-modal-title-with-back">
-                  <button
-                    className="wk-mergeforward-modal-back-btn"
-                    type="button"
-                    aria-label="返回"
-                    onClick={() => this.goBackRef.current?.()}
-                  >
-                    <IconArrowLeft size="inherit" />
-                  </button>
-                  <span>{this.state.navTitle}</span>
-                </span>
-              ) : this.getTitle(content)
-            }
             visible={showList}
             onCancel={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
             footer={null}
             bodyStyle={{ padding: 0, maxHeight: 'calc(100vh - 160px - 56px)', overflowY: 'auto' }}
             style={{ maxHeight: 'calc(100vh - 160px)', overflow: 'hidden' }}
-            headerClassName="wk-mergeforward-modal-header"
+            header={
+              <div className="wk-mergeforward-modal-header">
+                {this.state.canGoBack ? (
+                  <span className="wk-mergeforward-modal-title-with-back">
+                    <button
+                      className="wk-mergeforward-modal-back-btn"
+                      type="button"
+                      aria-label="返回"
+                      onClick={() => this.goBackRef.current?.()}
+                    >
+                      <IconArrowLeft size="inherit" />
+                    </button>
+                    <span>{this.state.navTitle}</span>
+                  </span>
+                ) : this.getTitle(content)}
+              </div>
+            }
           >
             <MergeforwardMessageList
               mergeforwardContent={content}
@@ -328,28 +329,29 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
         <WKModal
           className="wk-base-modal wk-mergeforward-modal"
           width={480}
-          title={
-            this.state.canGoBack ? (
-              <span className="wk-mergeforward-modal-title-with-back">
-                <button
-                  className="wk-mergeforward-modal-back-btn"
-                  type="button"
-                  aria-label="返回"
-                  onClick={() => this.goBackRef.current?.()}
-                >
-                  <IconArrowLeft size="inherit" />
-                </button>
-                <span>{this.state.navTitle}</span>
-              </span>
-            ) : this.getTitle(content)
-          }
           visible={showList}
           onCancel={() => {
             this.setState({ showList: false, canGoBack: false, navTitle: "" });
           }}
           bodyStyle={{ padding: 0, maxHeight: 'calc(100vh - 160px - 56px)', overflowY: 'auto' }}
           style={{ maxHeight: 'calc(100vh - 160px)', overflow: 'hidden' }}
-          headerClassName="wk-mergeforward-modal-header"
+          header={
+            <div className="wk-mergeforward-modal-header">
+              {this.state.canGoBack ? (
+                <span className="wk-mergeforward-modal-title-with-back">
+                  <button
+                    className="wk-mergeforward-modal-back-btn"
+                    type="button"
+                    aria-label="返回"
+                    onClick={() => this.goBackRef.current?.()}
+                  >
+                    <IconArrowLeft size="inherit" />
+                  </button>
+                  <span>{this.state.navTitle}</span>
+                </span>
+              ) : this.getTitle(content)}
+            </div>
+          }
         >
           <MergeforwardMessageList
             mergeforwardContent={content}

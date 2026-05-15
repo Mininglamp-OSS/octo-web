@@ -75,18 +75,8 @@
  * Header: 56px，pad L/R 16，标题左+关闭右
  *
  * 样式通过 WKModal props (width/bodyStyle/style/headerClassName) 传入，
- * 不再直接覆盖 .semi-modal-* 内部类。
+ * 不直接覆盖 .semi-modal-* 内部类。
  */
-
-/* 恢复 Semi 关闭按钮（wk-base-modal 默认隐藏） */
-.wk-mergeforward-modal .semi-modal-close {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--wk-sp-6);
-    height: var(--wk-sp-6);
-    color: var(--wk-icon-default);
-}
 
 /* Header 样式（通过 headerClassName 传入） */
 .wk-mergeforward-modal-header {
@@ -96,12 +86,6 @@
     padding: 0 var(--wk-sp-4);
     border-bottom: 1px solid var(--wk-border-default);
     margin: 0;
-}
-
-/* body-wrapper margin 清零（配合 bodyStyle 使用） */
-.wk-mergeforward-modal .semi-modal-body-wrapper {
-    margin: 0;
-    padding: 0;
 }
 
 /* ── 返回按钮（嵌套合并转发导航） ── */
