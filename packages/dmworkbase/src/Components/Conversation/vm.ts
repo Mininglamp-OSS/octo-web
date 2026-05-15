@@ -1853,6 +1853,11 @@ export default class ConversationVM extends ProviderListener {
             // 2. media 上传后 SDK 把 remoteUrl/url 写到 sendContent（代理）上
             // 方案：先同步代理上的 media 属性回 content，再 swap encodeJSON 并调用原始 encode
             sendContent.encode = function () {
+                // 前置条件（swap-call-restore 安全性依赖）：
+                // 1. content.encode() 必须是同步的（无 await），否则 swap 窗口内可被其他调用打断
+                // 2. content.encode() 不会递归调用 ConversationVM.sendMessage
+                // 当前 SDK (wukongimjssdk 1.3.5) 满足这两个条件。
+                //
                 // 同步 media 上传后写入代理的属性回原始 content
                 // 跟踪 hasOwnProperty 以正确恢复（避免 own-property 泄漏）
                 const ownKeys = Object.getOwnPropertyNames(sendContent)
