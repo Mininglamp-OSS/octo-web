@@ -658,6 +658,8 @@ function GlobalSmartCreateModal() {
   const closedRef = React.useRef(false);
   // 每次打开递增的 session token，防止 overlapping requests 竞态
   const sessionRef = React.useRef(0);
+  // 标记是否正在提交（confirm 在飞），防止新 session 删除正在保存的 matter
+  const submittingRef = React.useRef(false);
 
   useEffect(() => {
     const handler = async (data?: {
@@ -675,8 +677,9 @@ function GlobalSmartCreateModal() {
       setAiResult(undefined);
       setAiLoading(false);
       // 清理上一个 session 遗留的已创建但未确认的 matter
+      // 如果当前正在 submitting，不删除（confirm 正在使用这个 matter）
       const prevMatterId = extractedMatterIdRef.current;
-      if (prevMatterId) {
+      if (prevMatterId && !submittingRef.current) {
         deleteMatter(prevMatterId).catch((e) => console.warn('[SmartCreate] prev session cleanup failed:', prevMatterId, e));
       }
       extractedMatterIdRef.current = null;
@@ -772,37 +775,41 @@ function GlobalSmartCreateModal() {
         WKApp.mittBus.emit("wk:exit-multiple-mode");
       }}
       onConfirm={async (req) => {
-        const matterId = extractedMatterIdRef.current;
-        if (matterId) {
-          // 后端在 extractMatter 时已创建事项，这里执行编辑
-          await updateMatter(matterId, {
-            title: req.title,
-            description: req.description,
-            deadline: req.deadline,
-          });
-          // 负责人 reconcile：对比当前 assignees，计算 add/remove
-          const detail = await getMatter(matterId);
-          const currentUids = new Set((detail.assignees || []).map(a => a.user_id));
-          const desiredUids = new Set(req.assignee_ids || []);
-          const toAdd = [...desiredUids].filter(uid => !currentUids.has(uid));
-          const toRemove = [...currentUids].filter(uid => !desiredUids.has(uid));
-          // 使用 Promise.all + catch 模式（兼容 es2019 target）
-          const ops = [
-            ...toAdd.map(uid => addAssignee(matterId, uid).then(() => null).catch((e: any) => e)),
-            ...toRemove.map(uid => removeAssignee(matterId, uid).then(() => null).catch((e: any) => e)),
-          ];
-          const results = await Promise.all(ops);
-          const failed = results.filter(r => r !== null);
-          if (failed.length > 0) {
-            // 负责人是必填字段，reconcile 失败时 reject 让 modal 保持打开
-            Toast.error("负责人更新失败，请重试");
-            throw new Error("assignee reconciliation failed");
+        submittingRef.current = true;
+        try {
+          const matterId = extractedMatterIdRef.current;
+          if (matterId) {
+            // 后端在 extractMatter 时已创建事项，这里执行编辑
+            await updateMatter(matterId, {
+              title: req.title,
+              description: req.description,
+              deadline: req.deadline,
+            });
+            // 负责人 reconcile：对比当前 assignees，计算 add/remove
+            const detail = await getMatter(matterId);
+            const currentUids = new Set((detail.assignees || []).map(a => a.user_id));
+            const desiredUids = new Set(req.assignee_ids || []);
+            const toAdd = [...desiredUids].filter(uid => !currentUids.has(uid));
+            const toRemove = [...currentUids].filter(uid => !desiredUids.has(uid));
+            // 使用 Promise.all + catch 模式（兼容 es2019 target）
+            const ops = [
+              ...toAdd.map(uid => addAssignee(matterId, uid).then(() => null).catch((e: any) => e)),
+              ...toRemove.map(uid => removeAssignee(matterId, uid).then(() => null).catch((e: any) => e)),
+            ];
+            const results = await Promise.all(ops);
+            const failed = results.filter(r => r !== null);
+            if (failed.length > 0) {
+              Toast.error("负责人更新失败，请重试");
+              throw new Error("assignee reconciliation failed");
+            }
+            Toast.success("事项已保存");
+          } else {
+            // 空白新建模式（无 AI 提取），走正常创建流程
+            await createMatter(req);
+            Toast.success("事项已创建");
           }
-          Toast.success("事项已保存");
-        } else {
-          // 空白新建模式（无 AI 提取），走正常创建流程
-          await createMatter(req);
-          Toast.success("事项已创建");
+        } finally {
+          submittingRef.current = false;
         }
       }}
       channel={channel}
