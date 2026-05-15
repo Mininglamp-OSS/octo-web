@@ -8,6 +8,7 @@ import {
 
 const ChannelTypePerson = 1
 const ChannelTypeGroup = 2
+const ChannelTypeCommunityTopic = 5
 
 const LOGIN_UID = "me"
 
@@ -274,8 +275,8 @@ describe("buildChatContext", () => {
         })
     })
 
-    describe("DM (person) chat", () => {
-        it("should inject partner name from channelInfo title", () => {
+    describe("DM (person) chat — skip memberContext", () => {
+        it("should NOT produce memberContext for DM", () => {
             const channelInfo: ChatContextChannelInfo = { title: "Alice" }
             const result = buildChatContext({
                 messages: [],
@@ -284,13 +285,26 @@ describe("buildChatContext", () => {
                 loginUID: LOGIN_UID,
                 channelInfo,
             })
-            expect(result.memberContext).toBe("聊天成员：Alice")
-            expect(result.chatContext).toBeUndefined()
+            expect(result.memberContext).toBeUndefined()
+            expect(result.channelType).toBe(ChannelTypePerson)
         })
 
-        it("should inject both title and remark when different", () => {
+        it("should prepend channel label from channelInfo title", () => {
+            const channelInfo: ChatContextChannelInfo = { title: "Alice" }
+            const messages = [makeMessage("alice_uid", "hi", "Alice")]
+            const result = buildChatContext({
+                messages,
+                subscribers: [],
+                channelType: ChannelTypePerson,
+                loginUID: LOGIN_UID,
+                channelInfo,
+            })
+            expect(result.memberContext).toBeUndefined()
+            expect(result.chatContext).toBe("私聊「Alice」\n[Alice]: hi")
+        })
+
+        it("should use orgData.remark as fallback for channel label", () => {
             const channelInfo: ChatContextChannelInfo = {
-                title: "Alice",
                 orgData: { remark: "小A" },
             }
             const result = buildChatContext({
@@ -300,14 +314,14 @@ describe("buildChatContext", () => {
                 loginUID: LOGIN_UID,
                 channelInfo,
             })
-            expect(result.memberContext).toBe("聊天成员：Alice,小A")
-            expect(result.chatContext).toBeUndefined()
+            expect(result.memberContext).toBeUndefined()
+            expect(result.chatContext).toBe("私聊「小A」")
         })
 
-        it("should not duplicate when remark equals title", () => {
+        it("should treat whitespace-only title as empty and fall back to remark", () => {
             const channelInfo: ChatContextChannelInfo = {
-                title: "Alice",
-                orgData: { remark: "Alice" },
+                title: "  ",
+                orgData: { remark: "小A" },
             }
             const result = buildChatContext({
                 messages: [],
@@ -316,11 +330,11 @@ describe("buildChatContext", () => {
                 loginUID: LOGIN_UID,
                 channelInfo,
             })
-            expect(result.memberContext).toBe("聊天成员：Alice")
-            expect(result.chatContext).toBeUndefined()
+            expect(result.memberContext).toBeUndefined()
+            expect(result.chatContext).toBe("私聊「小A」")
         })
 
-        it("should handle missing channelInfo", () => {
+        it("should handle missing channelInfo (no label, no memberContext)", () => {
             const result = buildChatContext({
                 messages: [],
                 subscribers: [],
@@ -332,25 +346,12 @@ describe("buildChatContext", () => {
             expect(result.chatContext).toBeUndefined()
         })
 
-        it("should skip whitespace-only title", () => {
-            const channelInfo: ChatContextChannelInfo = {
-                title: "  ",
-                orgData: { remark: "Nickname" },
-            }
-            const result = buildChatContext({
-                messages: [],
-                subscribers: [],
-                channelType: ChannelTypePerson,
-                loginUID: LOGIN_UID,
-                channelInfo,
-            })
-            expect(result.memberContext).toBe("聊天成员：Nickname")
-            expect(result.chatContext).toBeUndefined()
-        })
-
-        it("should append messages after partner name", () => {
+        it("should still build chatContext messages for DM", () => {
             const channelInfo: ChatContextChannelInfo = { title: "Alice" }
-            const messages = [makeMessage("alice_uid", "hi", "Alice")]
+            const messages = [
+                makeMessage("alice_uid", "你好", "Alice"),
+                makeMessage(LOGIN_UID, "嗯嗯", "Me"),
+            ]
             const result = buildChatContext({
                 messages,
                 subscribers: [],
@@ -358,8 +359,8 @@ describe("buildChatContext", () => {
                 loginUID: LOGIN_UID,
                 channelInfo,
             })
-            expect(result.memberContext).toBe("聊天成员：Alice")
-            expect(result.chatContext).toBe("[Alice]: hi")
+            expect(result.memberContext).toBeUndefined()
+            expect(result.chatContext).toBe("私聊「Alice」\n[Alice]: 你好\n[Me]: 嗯嗯")
         })
     })
 
@@ -408,8 +409,6 @@ describe("buildChatContext", () => {
     })
 
     describe("thread (ChannelTypeCommunityTopic) chat", () => {
-        const ChannelTypeCommunityTopic = 5
-
         it("should collect all member names (same as group)", () => {
             const subscribers = [
                 makeMember("u1", "Alice"),
@@ -458,6 +457,108 @@ describe("buildChatContext", () => {
         })
     })
 
+    describe("channel label", () => {
+        it("DM: chatContext starts with 私聊 label, no memberContext", () => {
+            const channelInfo: ChatContextChannelInfo = { title: "张三" }
+            const messages = [makeMessage("zhangsan", "你好", "张三")]
+            const result = buildChatContext({
+                messages,
+                subscribers: [],
+                channelType: ChannelTypePerson,
+                loginUID: LOGIN_UID,
+                channelInfo,
+            })
+            expect(result.memberContext).toBeUndefined()
+            expect(result.chatContext).toBe("私聊「张三」\n[张三]: 你好")
+            expect(result.channelType).toBe(1)
+        })
+
+        it("Group: chatContext starts with 群聊 label, has memberContext", () => {
+            const subscribers = [
+                makeMember("u1", "Alice"),
+                makeMember("u2", "Bob"),
+            ]
+            const messages = [makeMessage("u1", "hi", "Alice")]
+            const result = buildChatContext({
+                messages,
+                subscribers,
+                channelType: ChannelTypeGroup,
+                loginUID: LOGIN_UID,
+                groupName: "产品组",
+            })
+            expect(result.memberContext).toBe("聊天成员：Alice,Bob")
+            expect(result.chatContext).toBe("群聊「产品组」\n[Alice]: hi")
+            expect(result.channelType).toBe(2)
+        })
+
+        it("Thread: chatContext starts with 群聊+子区 label, has memberContext", () => {
+            const subscribers = [
+                makeMember("u1", "Alice"),
+                makeMember("u2", "Bob"),
+            ]
+            const messages = [makeMessage("u1", "hey", "Alice")]
+            const result = buildChatContext({
+                messages,
+                subscribers,
+                channelType: ChannelTypeCommunityTopic,
+                loginUID: LOGIN_UID,
+                groupName: "产品组",
+                threadName: "UI设计",
+            })
+            expect(result.memberContext).toBe("聊天成员：Alice,Bob")
+            expect(result.chatContext).toBe("群聊「产品组」- 子区「UI设计」\n[Alice]: hey")
+            expect(result.channelType).toBe(5)
+        })
+
+        it("Thread: only threadName provided (no groupName)", () => {
+            const subscribers = [makeMember("u1", "Alice")]
+            const result = buildChatContext({
+                messages: [],
+                subscribers,
+                channelType: ChannelTypeCommunityTopic,
+                loginUID: LOGIN_UID,
+                threadName: "UI设计",
+            })
+            expect(result.chatContext).toBe("子区「UI设计」")
+        })
+
+        it("backward compat: no groupName → no label line for group", () => {
+            const subscribers = [makeMember("u1", "Alice")]
+            const messages = [makeMessage("u1", "hi", "Alice")]
+            const result = buildChatContext({
+                messages,
+                subscribers,
+                channelType: ChannelTypeGroup,
+                loginUID: LOGIN_UID,
+            })
+            expect(result.memberContext).toBe("聊天成员：Alice")
+            expect(result.chatContext).toBe("[Alice]: hi")
+        })
+
+        it("backward compat: no groupName/threadName → no label line for thread", () => {
+            const subscribers = [makeMember("u1", "Alice")]
+            const messages = [makeMessage("u1", "hi", "Alice")]
+            const result = buildChatContext({
+                messages,
+                subscribers,
+                channelType: ChannelTypeCommunityTopic,
+                loginUID: LOGIN_UID,
+            })
+            expect(result.memberContext).toBe("聊天成员：Alice")
+            expect(result.chatContext).toBe("[Alice]: hi")
+        })
+
+        it("channelType is always set in result", () => {
+            const result = buildChatContext({
+                messages: [],
+                subscribers: [],
+                channelType: ChannelTypeGroup,
+                loginUID: LOGIN_UID,
+            })
+            expect(result.channelType).toBe(2)
+        })
+    })
+
     describe("edge cases", () => {
         it("should return empty result when no subscribers and no messages", () => {
             const result = buildChatContext({
@@ -483,7 +584,7 @@ describe("buildChatContext", () => {
             expect(result.chatContext).toBe("[User1]: hello")
         })
 
-        it("should handle unknown channel type (no name injection)", () => {
+        it("should handle unknown channel type (no name injection, no label)", () => {
             const subscribers = [makeMember("u1", "Alice")]
             const messages = [makeMessage("u1", "hello", "Alice")]
             const result = buildChatContext({

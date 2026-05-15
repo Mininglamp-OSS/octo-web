@@ -329,7 +329,8 @@ export default function useVoiceInput(
               personalContext,
               memberContext,
               recordingModeRef.current,
-              true
+              true,
+              chatCtxResult.channelType,
             );
             if (result.text && onTranscribed) {
               onTranscribed(result.text);
@@ -367,7 +368,8 @@ export default function useVoiceInput(
             personalContext,
             memberContext,
             recordingModeRef.current,
-            true
+            true,
+            chatCtxResult.channelType,
           );
           if (result.text && onTranscribed) {
             onTranscribed(result.text);

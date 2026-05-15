@@ -56,7 +56,8 @@ export default class VoiceService {
     personalContext?: string,
     memberContext?: string,
     mode?: VoiceMode,
-    skipLocal?: boolean
+    skipLocal?: boolean,
+    channelType?: number,
   ): Promise<TranscribeResult> {
     if (!skipLocal) {
       const localResult = await LocalModelService.shared.transcribe(audio, contextText, chatContext, personalContext, memberContext, mode);
@@ -82,6 +83,9 @@ export default class VoiceService {
     }
     if (mode) {
       formData.append("mode", mode);
+    }
+    if (channelType !== undefined) {
+      formData.append("channel_type", String(channelType));
     }
     return APIClient.shared.post("/voice/transcribe", formData);
   }

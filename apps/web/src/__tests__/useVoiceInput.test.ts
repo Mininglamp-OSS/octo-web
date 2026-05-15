@@ -325,6 +325,91 @@ describe("useVoiceInput - getChatContext", () => {
     });
   });
 
+  it("should pass channelType=1 (DM) to VoiceService.transcribe", async () => {
+    const getChatContext = vi.fn().mockReturnValue({
+      channelType: 1,
+      chatContext: "私聊「Alice」\n[Alice]: hi",
+    });
+    vi.mocked(VoiceService.shared.transcribe).mockResolvedValue({
+      text: "transcribed",
+      m: "whisper-1",
+    });
+
+    const { result } = renderHook(() =>
+      useVoiceInput({
+        getChatContext,
+        onTranscribed: vi.fn(),
+      })
+    );
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    await act(async () => {
+      result.current.stopRecordingAndTranscribe("input text");
+      await vi.runAllTimersAsync();
+    });
+
+    expect(VoiceService.shared.transcribe).toHaveBeenCalledWith(
+      expect.any(Blob),
+      "input text",
+      "私聊「Alice」\n[Alice]: hi",
+      undefined,
+      undefined,
+      "smart",
+      true,
+      1
+    );
+  });
+
+  it("should pass channelType=2 (group) to VoiceService.transcribe", async () => {
+    const getChatContext = vi.fn().mockReturnValue({
+      channelType: 2,
+      chatContext: "群聊「产品组」\n[Bob]: hey",
+      memberContext: "聊天成员：Bob",
+    });
+    vi.mocked(VoiceService.shared.transcribe).mockResolvedValue({
+      text: "transcribed",
+      m: "whisper-1",
+    });
+
+    const { result } = renderHook(() =>
+      useVoiceInput({
+        getChatContext,
+        onTranscribed: vi.fn(),
+      })
+    );
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    await act(async () => {
+      result.current.stopRecordingAndTranscribe();
+      await vi.runAllTimersAsync();
+    });
+
+    expect(VoiceService.shared.transcribe).toHaveBeenCalledWith(
+      expect.any(Blob),
+      undefined,
+      "群聊「产品组」\n[Bob]: hey",
+      undefined,
+      "聊天成员：Bob",
+      "smart",
+      true,
+      2
+    );
+  });
+
   it("should handle undefined getChatContext gracefully", async () => {
     const { result } = renderHook(() =>
       useVoiceInput({
@@ -516,7 +601,8 @@ describe("useVoiceInput - personal voice context", () => {
       "个人纠错词", // personalContext
       "聊天成员：Alice,Bob", // memberContext
       "smart", // mode
-      true // skipLocal
+      true, // skipLocal
+      undefined // channelType
     );
     expect(getChatContext).toHaveBeenCalled();
   });
@@ -557,7 +643,8 @@ describe("useVoiceInput - personal voice context", () => {
       undefined, // personalContext (has_context=false)
       "聊天成员：Alice,Bob", // memberContext
       "smart", // mode
-      true // skipLocal
+      true, // skipLocal
+      undefined // channelType
     );
     expect(getChatContext).toHaveBeenCalled();
   });
@@ -598,7 +685,8 @@ describe("useVoiceInput - personal voice context", () => {
       undefined, // personalContext (context 为空字符串，视为无)
       "聊天成员：Alice", // memberContext
       "smart", // mode
-      true // skipLocal
+      true, // skipLocal
+      undefined // channelType
     );
   });
 
@@ -635,7 +723,8 @@ describe("useVoiceInput - personal voice context", () => {
       undefined, // personalContext (API 失败，voiceContextRef 为 null)
       "聊天成员：Alice", // memberContext
       "smart", // mode
-      true // skipLocal
+      true, // skipLocal
+      undefined // channelType
     );
   });
 
@@ -694,7 +783,8 @@ describe("useVoiceInput - personal voice context", () => {
       "延迟到达的纠错词", // personalContext
       undefined, // memberContext (无 getChatContext)
       "smart", // mode
-      true // skipLocal
+      true, // skipLocal
+      undefined // channelType
     );
   });
 
