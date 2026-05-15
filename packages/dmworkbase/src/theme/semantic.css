@@ -18,6 +18,7 @@
   --wk-brand-gradient: var(--wk-brand-primary); /* 兼容：6+ 处引用，值=纯色 */
   --wk-brand-gradient-hover: var(--wk-brand-primary-hover);
   --wk-brand-gradient-subtle: rgba(28, 28, 35, 0.08);
+  --wk-brand-primary-ring: rgba(28, 28, 35, 0.2);
   --wk-brand-glow: rgba(28, 28, 35, 0.2);
 
   /* ── AI 功能色 / 链接色（紫色，仅用于 AI 相关元素） ── */
@@ -185,6 +186,7 @@
   --wk-text-primary: var(--wk-neutral-800); /* Figma: #1F2329 标题/组织名 */
   --wk-text-secondary: var(--wk-neutral-400); /* Figma: #555B61 */
   --wk-text-tertiary: var(--wk-neutral-300); /* Figma: #6B7075 */
+  --wk-text-disabled: var(--wk-neutral-200); /* 禁用态文字 */
   --wk-text-accent: var(
     --wk-purple-500
   ); /* Figma: #7F3BF5 AI链接/Thread（紫色点缀） */
@@ -271,6 +273,7 @@ body[theme-mode="dark"] {
   --wk-text-primary: #e4e6ed;
   --wk-text-secondary: var(--wk-neutral-300);
   --wk-text-tertiary: #7a7f96;
+  --wk-text-disabled: var(--wk-neutral-500); /* 暗色禁用态文字 */
   --wk-text-accent: var(--wk-purple-400); /* 暗色下用浅紫 */
   --wk-text-inverse: var(--wk-neutral-900);
 
