@@ -88,6 +88,7 @@ vi.mock("../../../bridge/message/useMergeforwardMessageUI", () => ({
   getMergeforwardMessageUI: () => null,
 }));
 vi.mock("../../../Components/WKModal", () => ({ default: () => null }));
+vi.mock("@douyinfe/semi-icons", () => ({ IconArrowLeft: () => null }));
 vi.mock("../index.css", () => ({}));
 
 import MergeforwardContent from "../index";

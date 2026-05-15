@@ -27,6 +27,9 @@ import MergeforwardCard from "../../ui/message/MergeforwardCard";
 
 import "./index.css";
 
+/** 嵌套合并转发最大导航深度 */
+const MAX_NESTED_DEPTH = 10;
+
 export interface MergeforwardMessageListProps {
   mergeforwardContent: MergeforwardContent;
   onClose?: () => void;
@@ -272,10 +275,11 @@ export default class MergeforwardMessageList extends Component<
       const previewMsgs = (nestedContent.msgs || []).slice(0, 4).map((m) => {
         const name = userNameMap.get(m.fromUID)
           || WKSDK.shared().channelManager.getChannelInfo(new Channel(m.fromUID, ChannelTypePerson))?.title
-          || m.content?.conversationDigest || "";
+          || "";
+        const digest = m.content?.conversationDigest || "";
         return {
           fromUID: m.fromUID,
-          digest: name ? `${name}: ${m.content?.conversationDigest || ""}` : (m.content?.conversationDigest || ""),
+          digest: name ? `${name}: ${digest}` : digest,
         };
       });
       return (
@@ -283,8 +287,8 @@ export default class MergeforwardMessageList extends Component<
           title={title}
           previewMsgs={previewMsgs}
           onClick={() => this.setState((prev) => {
-            if (prev.contentStack.length >= 10) {
-              console.warn('[MergeforwardMessageList] 嵌套层级已达上限(10)，无法继续展开');
+            if (prev.contentStack.length >= MAX_NESTED_DEPTH) {
+              console.warn(`[MergeforwardMessageList] 嵌套层级已达上限(${MAX_NESTED_DEPTH})，无法继续展开`);
               return null;
             }
             return { contentStack: [...prev.contentStack, nestedContent] };
