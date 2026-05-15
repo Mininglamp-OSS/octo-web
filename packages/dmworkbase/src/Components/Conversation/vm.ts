@@ -1854,23 +1854,29 @@ export default class ConversationVM extends ProviderListener {
             // 方案：先同步代理上的 media 属性回 content，再 swap encodeJSON 并调用原始 encode
             sendContent.encode = function () {
                 // 同步 media 上传后写入代理的属性回原始 content
+                // 跟踪 hasOwnProperty 以正确恢复（避免 own-property 泄漏）
                 const ownKeys = Object.getOwnPropertyNames(sendContent)
                 const saved: Record<string, any> = {}
+                const hadOwn: Record<string, boolean> = {}
                 for (const key of ownKeys) {
                     if (key === 'encodeJSON' || key === 'encode' || key === 'contentObj') continue
-                    saved[key] = (content as any)[key]
+                    hadOwn[key] = Object.prototype.hasOwnProperty.call(content, key)
+                    if (hadOwn[key]) saved[key] = (content as any)[key]
                         ; (content as any)[key] = (sendContent as any)[key]
                 }
                 // swap encodeJSON 让 space_id 注入生效
                 const savedEncodeJSON = content.encodeJSON
+                const hadOwnEncodeJSON = Object.prototype.hasOwnProperty.call(content, 'encodeJSON')
                 content.encodeJSON = sendContent.encodeJSON
                 try {
                     return content.encode.call(content)
                 } finally {
-                    content.encodeJSON = savedEncodeJSON
+                    if (hadOwnEncodeJSON) content.encodeJSON = savedEncodeJSON
+                    else delete (content as any).encodeJSON
                     // 恢复 content 上被同步的属性
-                    for (const key of Object.keys(saved)) {
-                        ; (content as any)[key] = saved[key]
+                    for (const key of Object.keys(hadOwn)) {
+                        if (hadOwn[key]) (content as any)[key] = saved[key]
+                        else delete (content as any)[key]
                     }
                 }
             }

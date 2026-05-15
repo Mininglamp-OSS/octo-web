@@ -260,12 +260,12 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
           </MessageRow>
           <WKModal
             className="wk-base-modal wk-mergeforward-modal"
-            width={480}
+            width="var(--mf-modal-width)"
             visible={showList}
             onCancel={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
             footer={null}
-            bodyStyle={{ padding: 0, maxHeight: 'calc(100vh - 160px - 56px)', overflowY: 'auto' }}
-            style={{ maxHeight: 'calc(100vh - 160px)', overflow: 'hidden' }}
+            bodyStyle={{ padding: 0, maxHeight: 'var(--mf-modal-body-max-height)', overflowY: 'auto' }}
+            style={{ maxHeight: 'var(--mf-modal-max-height)', overflow: 'hidden' }}
             header={
               <div className="wk-mergeforward-modal-header">
                 <span className="wk-mergeforward-modal-header-title">
@@ -338,13 +338,13 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
         </div>
         <WKModal
           className="wk-base-modal wk-mergeforward-modal"
-          width={480}
+          width="var(--mf-modal-width)"
           visible={showList}
           onCancel={() => {
             this.setState({ showList: false, canGoBack: false, navTitle: "" });
           }}
-          bodyStyle={{ padding: 0, maxHeight: 'calc(100vh - 160px - 56px)', overflowY: 'auto' }}
-          style={{ maxHeight: 'calc(100vh - 160px)', overflow: 'hidden' }}
+          bodyStyle={{ padding: 0, maxHeight: 'var(--mf-modal-body-max-height)', overflowY: 'auto' }}
+          style={{ maxHeight: 'var(--mf-modal-max-height)', overflow: 'hidden' }}
           header={
             <div className="wk-mergeforward-modal-header">
               <span className="wk-mergeforward-modal-header-title">
