@@ -146,18 +146,15 @@ export default function SmartCreateModal({
     onClose,
   ]);
 
-  // Enter 键确认
+  // Enter 键确认（Esc 由 Semi Modal 原生处理，无需重复）
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Enter" && !e.shiftKey && canCreate) {
         e.preventDefault();
         handleConfirm();
       }
-      if (e.key === "Escape" && !submitting) {
-        onClose();
-      }
     },
-    [handleConfirm, onClose, canCreate, submitting],
+    [handleConfirm, canCreate],
   );
 
   return (

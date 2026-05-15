@@ -710,6 +710,7 @@ function GlobalSmartCreateModal() {
           setAiResult({
             title: res.title,
             description: res.description,
+            // deadline: 值 < 1e12 为 unix 秒，>= 1e12 为 unix 毫秒
             deadline: res.deadline
               ? new Date(
                   res.deadline < 1e12
@@ -721,11 +722,12 @@ function GlobalSmartCreateModal() {
               : undefined,
           });
         } catch (e) {
-          if (sessionRef.current === currentSession) {
+          // 仅当用户未关闭弹窗且仍在当前 session 时才弹 toast
+          if (sessionRef.current === currentSession && !closedRef.current) {
             Toast.error("AI 提取失败，请手动填写");
           }
         } finally {
-          if (sessionRef.current === currentSession) {
+          if (sessionRef.current === currentSession && !closedRef.current) {
             setAiLoading(false);
           }
         }
