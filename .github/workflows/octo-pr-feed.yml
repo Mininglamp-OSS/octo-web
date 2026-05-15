@@ -8,7 +8,7 @@ permissions: {}  # GITHUB_TOKEN not used; lock down to minimum
 
 jobs:
   notify:
-    uses: Mininglamp-OSS/.github/.github/workflows/octo-pr-feed.yml@c6c51348fccac99161166dce1b52dec1063aeea2
+    uses: Mininglamp-OSS/.github/.github/workflows/octo-pr-feed.yml@v1
     with:
       repo_name: ${{ github.event.repository.name }}
       pr_number: ${{ github.event.pull_request.number }}
