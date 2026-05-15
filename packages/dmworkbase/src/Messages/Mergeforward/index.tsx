@@ -2,7 +2,7 @@ import WKModal from "../../Components/WKModal"
 import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContent } from "wukongimjssdk"
 import React from "react"
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList"
-import { MessageContentTypeConst, MAX_MERGE_FORWARD_DEPTH } from "../../Service/Const"
+import { MessageContentTypeConst, MAX_MERGE_FORWARD_DEPTH, mergeForwardState } from "../../Service/Const"
 import { applyMsgLevelExternalFields, hydrateMessageBaseFields } from "../../Service/Convert"
 import MessageBase from "../Base"
 import MessageTrail from "../Base/tail"
@@ -81,38 +81,45 @@ export default class MergeforwardContent extends MessageContent {
      * Resets per-message warning flag at depth 0.
      */
     decodeJSONWithDepth(content: any, depth: number) {
-        if (depth === 0) {
-            MergeforwardContent.depthWarningLogged = false
-            this._truncated = false
-        }
-        // Truncate at depth 8: depths 0-7 are decoded, depth 8+ are truncated.
-        // Real-world nesting is ≤ 3-4 levels; depth 8 provides headroom against pathological inputs
-        // while preventing stack overflow (typical limit is ~10k). At depth 8+, msgs is set to []
-        // and contentObj preserves the original payload for re-forwarding.
-        if (depth >= MergeforwardContent.MAX_MERGE_FORWARD_DEPTH) {
+        // Increment global decode depth to track recursion across SDK virtual dispatch calls
+        mergeForwardState.decodeDepth++
+        try {
+            if (depth === 0) {
+                MergeforwardContent.depthWarningLogged = false
+                this._truncated = false
+            }
+            // Truncate at global depth >= 8: depths 0-7 are decoded, depth 8+ are truncated.
+            // Real-world nesting is ≤ 3-4 levels; depth 8 provides headroom against pathological inputs
+            // while preventing stack overflow (typical limit is ~10k). At depth 8+, msgs is set to []
+            // and contentObj preserves the original payload for re-forwarding.
+            if (mergeForwardState.decodeDepth >= MAX_MERGE_FORWARD_DEPTH) {
+                this.channelType = content["channel_type"] || 0
+                this.users = MergeforwardContent.normalizeUsers(content["users"] || [])
+                this.msgs = []
+                this._truncated = true
+                if (!MergeforwardContent.depthWarningLogged) {
+                    console.warn('[MergeforwardContent] truncating nested forwards at depth', mergeForwardState.decodeDepth,
+                                'channelType:', content?.channel_type)
+                    MergeforwardContent.depthWarningLogged = true
+                }
+                return
+            }
+
             this.channelType = content["channel_type"] || 0
             this.users = MergeforwardContent.normalizeUsers(content["users"] || [])
-            this.msgs = []
-            this._truncated = true
-            if (!MergeforwardContent.depthWarningLogged) {
-                console.warn('[MergeforwardContent] truncating nested forwards at depth', depth,
-                            'channelType:', content?.channel_type)
-                MergeforwardContent.depthWarningLogged = true
-            }
-            return
-        }
+            let msgMaps = content["msgs"]
 
-        this.channelType = content["channel_type"] || 0
-        this.users = MergeforwardContent.normalizeUsers(content["users"] || [])
-        let msgMaps = content["msgs"]
-
-        let messages = new Array()
-        if (msgMaps && msgMaps.length > 0) {
-            for (const msgMap of msgMaps) {
-                messages.push(this.mapToMessage(msgMap, depth + 1))
+            let messages = new Array()
+            if (msgMaps && msgMaps.length > 0) {
+                for (const msgMap of msgMaps) {
+                    messages.push(this.mapToMessage(msgMap, depth + 1))
+                }
             }
+            this.msgs = messages
+        } finally {
+            // Always decrement on exit to maintain accurate global depth
+            mergeForwardState.decodeDepth--
         }
-        this.msgs = messages
     }
     encodeJSON() {
         // If truncated at depth 8+, contentObj holds the full original payload.
