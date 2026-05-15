@@ -798,7 +798,7 @@ function GlobalSmartCreateModal() {
             Toast.error("负责人更新失败，请重试");
             throw new Error("assignee reconciliation failed");
           }
-          Toast.success("事项已确认");
+          Toast.success("事项已保存");
         } else {
           // 空白新建模式（无 AI 提取），走正常创建流程
           await createMatter(req);
