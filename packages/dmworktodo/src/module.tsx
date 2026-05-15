@@ -660,6 +660,8 @@ function GlobalSmartCreateModal() {
   const sessionRef = React.useRef(0);
   // 标记是否正在提交（confirm 在飞），防止新 session 删除正在保存的 matter
   const submittingRef = React.useRef(false);
+  // 记录发起 confirm 的 session，onConfirmSuccess 只在匹配时生效
+  const confirmSessionRef = React.useRef(0);
 
   useEffect(() => {
     const handler = async (data?: {
@@ -768,13 +770,15 @@ function GlobalSmartCreateModal() {
         }
       }}
       onConfirmSuccess={() => {
-        // 确认成功：关闭弹窗，不删除事项
+        // 确认成功：仅当仍是发起 confirm 的 session 时才关闭弹窗
+        if (confirmSessionRef.current !== sessionRef.current) return;
         closedRef.current = true;
         extractedMatterIdRef.current = null;
         setOpen(false);
         WKApp.mittBus.emit("wk:exit-multiple-mode");
       }}
       onConfirm={async (req) => {
+        confirmSessionRef.current = sessionRef.current;
         submittingRef.current = true;
         try {
           const matterId = extractedMatterIdRef.current;
