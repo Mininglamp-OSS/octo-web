@@ -2,7 +2,7 @@ import BigNumber from "bignumber.js";
 import { Setting } from "wukongimjssdk";
 import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra, Reply, Mention } from "wukongimjssdk";
 import { displayName as resolveDisplayName } from "../Utils/displayName";
-import { MessageContentTypeConst, MAX_MERGE_FORWARD_DEPTH } from "./Const";
+import { MessageContentTypeConst, MAX_MERGE_FORWARD_DEPTH, mergeForwardState, DepthAwareContent } from "./Const";
 
 
 /**
@@ -47,16 +47,16 @@ export function applyMsgLevelExternalFields(target: any, msgMap: any): void {
  * We bypass SDK decode() to avoid virtual dispatch that would reset depth to 0.
  *
  * Mirrors wukongimjssdk@1.2.11 MessageContent.prototype.decode base-field logic.
- * If SDK updates its field handling, this must be kept in sync.
+ * If SDK updates its field handling (e.g., adds a new base field), this must be kept in sync.
+ * The field list is: mention, reply, visibles, invisibles. See wukongimjssdk source for current schema.
  *
- * WARNING: depth limit is per-merge-forward branch. Reply.decode() may recursively decode
- * reply.payload which could be a mergeForward, starting a fresh depth=0 budget per reply link
- * (via SDK MessageContent.decode() virtual dispatch). To prevent unbounded recursion, we skip
- * reply.decode() at and beyond depth 8 (MAX_MERGE_FORWARD_DEPTH), treating deep replies as
- * raw JSON. This prevents reply field mapping (fromName, messageSeq) at truncation boundaries,
- * but is necessary to avoid stack overflow on reply chains containing nested mergeForwards.
+ * WARNING: reply.decode() is gated on global mergeForwardState.decodeDepth to prevent
+ * unbounded recursion through reply chains containing nested mergeForwards. At and beyond
+ * MAX_MERGE_FORWARD_DEPTH, reply.decode() is skipped, treating deep replies as raw JSON.
+ * This prevents reply field mapping (fromName, messageSeq) at truncation boundaries,
+ * but is necessary to avoid stack overflow on deeply nested reply chains.
  */
-export function hydrateMessageBaseFields(messageContent: any, contentObj: any, depth: number = 0): void {
+export function hydrateMessageBaseFields(messageContent: any, contentObj: any): void {
     if (!contentObj) return
 
     const mentionObj = contentObj["mention"]
@@ -70,9 +70,9 @@ export function hydrateMessageBaseFields(messageContent: any, contentObj: any, d
     const replyObj = contentObj["reply"]
     if (replyObj) {
         const reply = new Reply()
-        // Only decode reply if depth < MAX_MERGE_FORWARD_DEPTH. Beyond the limit,
-        // skip reply.decode() to avoid recursing through mergeForward payloads in reply.payload.
-        if (depth < MAX_MERGE_FORWARD_DEPTH) {
+        // Only decode reply if global depth <= MAX_MERGE_FORWARD_DEPTH to allow all levels 0-7
+        // (counter 1-8) to decode reply. Level 8+ (counter 9+) are truncated.
+        if (mergeForwardState.decodeDepth <= MAX_MERGE_FORWARD_DEPTH) {
             reply.decode(replyObj)
         }
         messageContent.reply = reply
@@ -330,12 +330,12 @@ export class Convert {
             // Route merge-forward through depth-aware decoding to prevent stack overflow on nesting.
             // This enables correct field mapping (channel_type → channelType) while applying
             // the MAX_MERGE_FORWARD_DEPTH limit to prevent unbounded recursion.
-            if (contentType === MessageContentTypeConst.mergeForward && (messageContent as any).decodeJSONWithDepth) {
+            if (contentType === MessageContentTypeConst.mergeForward && (messageContent as unknown as DepthAwareContent).decodeJSONWithDepth) {
                 // Do NOT call SDK decode() as it would trigger virtual dispatch to decodeJSON(),
                 // resetting depth to 0 and causing unbounded recursion on deeply nested payloads.
-                // Instead, manually hydrate base fields and use depth-limited decode.
-                hydrateMessageBaseFields(messageContent, contentObj, 0)
-                const mf = messageContent as any
+                // Base fields (mention, reply) are hydrated inside decodeJSONWithDepth at depth=0,
+                // after global counter is incremented (counter=1), ensuring safe reply.decode() gate.
+                const mf = messageContent as unknown as DepthAwareContent
                 mf.contentObj = contentObj
                 mf.decodeJSONWithDepth(contentObj, 0)
             } else {

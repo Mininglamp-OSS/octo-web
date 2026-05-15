@@ -2,7 +2,7 @@ import WKModal from "../../Components/WKModal"
 import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContent } from "wukongimjssdk"
 import React from "react"
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList"
-import { MessageContentTypeConst, MAX_MERGE_FORWARD_DEPTH, mergeForwardState } from "../../Service/Const"
+import { MessageContentTypeConst, MAX_MERGE_FORWARD_DEPTH, mergeForwardState, DepthAwareContent } from "../../Service/Const"
 import { applyMsgLevelExternalFields, hydrateMessageBaseFields } from "../../Service/Convert"
 import MessageBase from "../Base"
 import MessageTrail from "../Base/tail"
@@ -85,14 +85,20 @@ export default class MergeforwardContent extends MessageContent {
         mergeForwardState.decodeDepth++
         try {
             if (depth === 0) {
+                // Reset state at entry point (top-level of this decode, whether first or re-decode).
+                // depth === 0 indicates entry to this instance's decoding, even if called from
+                // reply.decode() virtual dispatch (new instance created by SDK).
                 MergeforwardContent.depthWarningLogged = false
                 this._truncated = false
+                // Hydrate base fields now, after counter is incremented (counter >= 1).
+                // Gate in hydrateMessageBaseFields will protect reply.decode().
+                hydrateMessageBaseFields(this, content)
             }
-            // Truncate at global depth >= 8: depths 0-7 are decoded, depth 8+ are truncated.
+            // Truncate at global depth > 8: depths 0-7 are decoded, depth 8+ are truncated.
             // Real-world nesting is ≤ 3-4 levels; depth 8 provides headroom against pathological inputs
             // while preventing stack overflow (typical limit is ~10k). At depth 8+, msgs is set to []
             // and contentObj preserves the original payload for re-forwarding.
-            if (mergeForwardState.decodeDepth >= MAX_MERGE_FORWARD_DEPTH) {
+            if (mergeForwardState.decodeDepth > MAX_MERGE_FORWARD_DEPTH) {
                 this.channelType = content["channel_type"] || 0
                 this.users = MergeforwardContent.normalizeUsers(content["users"] || [])
                 this.msgs = []
@@ -125,6 +131,10 @@ export default class MergeforwardContent extends MessageContent {
         // If truncated at depth 8+, contentObj holds the full original payload.
         // Only return contentObj when truncation occurred, to avoid silently dropping mutations
         // to this.msgs / this.users / this.channelType that happened after decode.
+        //
+        // Precondition: Do not call SDK messageContent.encode() on a truncated instance;
+        // it will overwrite mention/reply with fresh empty instances (from hydrateMessageBaseFields'
+        // depth gate), silently stripping reply metadata. Use messageToMap() which prefers contentObj.
         if (this._truncated && this.contentObj) {
             return this.contentObj
         }
@@ -163,13 +173,13 @@ export default class MergeforwardContent extends MessageContent {
         // Use decodeJSONWithDepth with depth limit for nested mergeforward to prevent stack overflow.
         // This ensures inner messages retain full payload for re-forwarding.
         if (contentType === MessageContentTypeConst.mergeForward
-            && (messageContent as any).decodeJSONWithDepth) {
+            && (messageContent as unknown as DepthAwareContent).decodeJSONWithDepth) {
             // For nested merge-forward, do NOT call SDK decode() as it would reset depth to 0
             // via virtual dispatch to decodeJSON(). Instead, manually hydrate base fields,
             // then call decodeJSONWithDepth() directly to preserve depth tracking.
-            hydrateMessageBaseFields(messageContent, payloadObj, depth)
+            hydrateMessageBaseFields(messageContent, payloadObj)
             // Set contentObj for re-forward preservation, then use depth-limited decode
-            const mf = messageContent as any
+            const mf = messageContent as unknown as DepthAwareContent
             mf.contentObj = payloadObj
             mf.decodeJSONWithDepth(payloadObj, depth)
         } else {
