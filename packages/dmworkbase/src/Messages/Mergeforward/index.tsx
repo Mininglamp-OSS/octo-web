@@ -1,9 +1,9 @@
 import WKModal from "../../Components/WKModal"
-import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContent, Mention, Reply } from "wukongimjssdk"
+import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContent } from "wukongimjssdk"
 import React from "react"
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList"
 import { MessageContentTypeConst } from "../../Service/Const"
-import { applyMsgLevelExternalFields } from "../../Service/Convert"
+import { applyMsgLevelExternalFields, hydrateMessageBaseFields } from "../../Service/Convert"
 import MessageBase from "../Base"
 import MessageTrail from "../Base/tail"
 import { MessageCell } from "../MessageCell"
@@ -148,23 +148,7 @@ export default class MergeforwardContent extends MessageContent {
             // For nested merge-forward, do NOT call SDK decode() as it would reset depth to 0
             // via virtual dispatch to decodeJSON(). Instead, manually hydrate base fields,
             // then call decodeJSONWithDepth() directly to preserve depth tracking.
-
-            // Hydrate base message fields (mention, reply, visibles, invisibles) without triggering
-            // the SDK decode chain that would bypass our depth limit.
-            if (payloadObj.mention) {
-                const mention = new Mention()
-                mention.all = payloadObj.mention["all"] === 1
-                if (payloadObj.mention["uids"]) mention.uids = payloadObj.mention["uids"]
-                messageContent.mention = mention
-            }
-            if (payloadObj.reply) {
-                const reply = new Reply()
-                reply.decode(payloadObj.reply)  // Handles field mapping and nested content decode
-                messageContent.reply = reply
-            }
-            if (payloadObj.visibles !== undefined) messageContent.visibles = payloadObj.visibles
-            if (payloadObj.invisibles !== undefined) messageContent.invisibles = payloadObj.invisibles
-
+            hydrateMessageBaseFields(messageContent, payloadObj)
             // Set contentObj for re-forward preservation, then use depth-limited decode
             const mf = messageContent as any
             mf.contentObj = payloadObj

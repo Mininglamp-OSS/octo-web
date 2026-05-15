@@ -43,6 +43,19 @@ export function applyMsgLevelExternalFields(target: any, msgMap: any): void {
 }
 
 /**
+ * SDK decode() 通常会设置基础字段（mention, reply, visibles, invisibles）
+ * 但当绕过 decode() 直接调用 decodeJSONWithDepth 时，需要手动补充这些字段。
+ * 不调用 reply.decode() 以避免虚拟调度导致的深度重置。
+ */
+export function hydrateMessageBaseFields(messageContent: any, msgMap: any): void {
+    if (!msgMap) return
+    if (msgMap.mention !== undefined) messageContent.mention = msgMap.mention
+    if (msgMap.reply !== undefined) messageContent.reply = msgMap.reply
+    if (msgMap.visibles !== undefined) messageContent.visibles = msgMap.visibles
+    if (msgMap.invisibles !== undefined) messageContent.invisibles = msgMap.invisibles
+}
+
+/**
  * 内部工具：判定 home_space_id / name 是否需要兜底（空/未设置算需要）。
  */
 function needsHomeSpaceFields(target: any): { needId: boolean; needName: boolean } {
@@ -289,12 +302,14 @@ export class Convert {
             // contentType=mergeForward 的合并转发消息用专用的 decodeJSONWithDepth 处理
             // 这样既能调用正确的字段映射（channel_type→channelType），
             // 又能通过深度限制防止深层嵌套导致的栈溢出。
-            // For merge-forward at top level (depth=0), SDK decode() is safe and will trigger
-            // decodeJSON() → decodeJSONWithDepth(content, 0) via virtual dispatch.
-            // For nested merge-forward, mapToMessage avoids SDK decode() to prevent depth reset.
             if (contentType === MessageContentTypeConst.mergeForward && (messageContent as any).decodeJSONWithDepth) {
-                // SDK decode() will set contentObj and call our decodeJSON() which calls decodeJSONWithDepth
-                messageContent.decode(this.stringToUint8Array(JSON.stringify(contentObj)))
+                // Do NOT call SDK decode() as it would trigger virtual dispatch to decodeJSON(),
+                // resetting depth to 0 and causing unbounded recursion on deeply nested payloads.
+                // Instead, manually hydrate base fields and use depth-limited decode.
+                hydrateMessageBaseFields(messageContent, contentObj)
+                const mf = messageContent as any
+                mf.contentObj = contentObj
+                mf.decodeJSONWithDepth(contentObj, 0)
             } else {
                 messageContent.decode(this.stringToUint8Array(JSON.stringify(contentObj)))
             }
