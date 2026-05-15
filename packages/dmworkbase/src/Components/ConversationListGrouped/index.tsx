@@ -197,13 +197,12 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                             target_type: c.channel.channelType,
                             target_id: c.channel.channelID,
                         })
-                        // 群下面紧跟其已关注子区。必须按 followedKeys 过滤，否则 IM 缓存里
-                        // 仍活跃但已 unfollow 的子区会被塞进 sort payload，写穿后端的旧记录。
-                        // followedKeys 未传时退化到不过滤（与渲染分支一致）。
+                        // 群下面紧跟其已关注子区。followedChildThreadsByParent 已合并
+                        // IM 缓存（按 followedKeys 过滤）+ sidebar 自带的 sidebar-only
+                        // 关注子区（通过 parent_channel_id 反挂），保证拖父群时所有
+                        // 已关注的子区都进 sort payload，不会漏掉新关注但 IM 没缓存的。
                         if (c.channel.channelType === ChannelTypeGroup) {
-                            const childThreads = (threadConvsByParent.get(c.channel.channelID) || [])
-                                .filter(t => !followedKeys
-                                    || followedKeys.has(`${ChannelTypeCommunityTopic}::${t.channel.channelID}`))
+                            const childThreads = followedChildThreadsByParent.get(c.channel.channelID) || []
                             for (const t of childThreads) {
                                 sortItems.push({
                                     target_type: ChannelTypeCommunityTopic,
@@ -286,6 +285,43 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
             const list = threadConvsByParent.get(parentGroupNo) || []
             list.push(conv)
             threadConvsByParent.set(parentGroupNo, list)
+        }
+    }
+
+    // 把 sidebar item 解析成 ConversationWrap；IM SDK 缓存里没有时（新关注从未聊过）
+    // 现合成一个占位 conv，channelInfo 由 ChannelManager 异步补齐。同一份逻辑被
+    // categoriesForView 多个分支共用 + 下面的 followedChildThreadsByParent 也用。
+    const synthesizeFromItem = (it: SidebarItem): ConversationWrap => {
+        const conv = new Conversation()
+        conv.channel = new Channel(it.target_id, it.channel_type)
+        conv.unread = it.unread || 0
+        conv.timestamp = it.timestamp || 0
+        return new ConversationWrap(conv)
+    }
+
+    // 父群下「已关注子区」统一来源：合并 IM 缓存（按 followedKeys 过滤掉缓存里仍活跃
+    // 但 sidebar 已 unfollow 的）+ sidebar 自己列出的 target_type=5 项（含 IM 没缓存的，
+    // 通过 parent_channel_id 反挂父群）。渲染嵌套和拖父群 sort payload 共用，避免出现
+    // 「sidebar-only 关注子区不嵌父群、也不进 sort」的 bug。
+    const followedChildThreadsByParent = new Map<string, ConversationWrap[]>()
+    for (const [parentGroupNo, threads] of threadConvsByParent) {
+        const filtered = followedKeys
+            ? threads.filter(t => followedKeys.has(`${ChannelTypeCommunityTopic}::${t.channel.channelID}`))
+            : threads
+        if (filtered.length) followedChildThreadsByParent.set(parentGroupNo, filtered.slice())
+    }
+    if (itemsByCategory) {
+        for (const list of itemsByCategory.values()) {
+            for (const it of list) {
+                if (it.target_type !== 5) continue
+                const parentGroupNo = it.parent_channel_id
+                if (!parentGroupNo) continue
+                const existing = followedChildThreadsByParent.get(parentGroupNo) || []
+                if (existing.some(t => t.channel.channelID === it.target_id)) continue
+                const conv = threadConvByChannel.get(it.target_id) || synthesizeFromItem(it)
+                existing.push(conv)
+                followedChildThreadsByParent.set(parentGroupNo, existing)
+            }
         }
     }
 
@@ -429,17 +465,6 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         const sidebarKey = cat.is_default ? "" : (cat.category_id ?? "")
         const sidebarInCat = itemsByCategory?.get(sidebarKey) || []
 
-        // 把 sidebar item 解析成已存在的 ConversationWrap；如果 IM SDK 缓存里没有
-        // （新关注且从未聊过），就根据 sidebar item 现合成一个占位 Conversation —— 否则
-        // 关注列表里看不到该项。channelInfo 由 SDK ChannelManager 异步补齐。
-        const synthesizeFromItem = (it: SidebarItem): ConversationWrap => {
-            const conv = new Conversation()
-            conv.channel = new Channel(it.target_id, it.channel_type)
-            conv.unread = it.unread || 0
-            conv.timestamp = it.timestamp || 0
-            return new ConversationWrap(conv)
-        }
-
         if (cat.is_default) {
             // 关注 tab 不会走默认分组（上层已 filter）；保留兜底以防其它 caller 复用。
             catConvs = groupConversations.filter(c => !assignedGroupNos.has(c.channel.channelID))
@@ -457,25 +482,28 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
             // 每个 item 解析成 ConversationWrap，群下面紧跟其已关注子区。
             // 这样手动排序结果立即可见，且 DM/群混排顺序与后端一致。
             catConvs = []
+            // dedupe 用 ${target_type}::${target_id} 复合 key，避免 DM/群/子区
+            // 共享同一 raw id 时互相抑制（target_id 在不同表是各自命名空间）。
             const seenIds = new Set<string>()
+            const keyOf = (type: number, id: string) => `${type}::${id}`
             for (const it of sidebarInCat) {
-                if (seenIds.has(it.target_id)) continue
-                seenIds.add(it.target_id)
+                const itKey = keyOf(it.target_type, it.target_id)
+                if (seenIds.has(itKey)) continue
+                seenIds.add(itKey)
 
                 if (it.target_type === 1) {
                     catConvs.push(dmConvMap.get(it.target_id) || synthesizeFromItem(it))
                 } else if (it.target_type === 2) {
                     catConvs.push(groupConvMap.get(it.target_id) || synthesizeFromItem(it))
-                    // 父群下挂已关注子区：跟 followedKeys 求交，避免 IM 仍有活跃会话
-                    // 但 sidebar 已 unfollow 的子区被错误渲染。followedKeys 缺失时退化到不过滤。
-                    const childThreads = (threadConvsByParent.get(it.target_id) || [])
-                        .filter(t => !followedKeys
-                            || followedKeys.has(`${ChannelTypeCommunityTopic}::${t.channel.channelID}`))
+                    // 父群下挂已关注子区：来源已合并 IM 缓存（按 followedKeys 过滤）+ sidebar
+                    // 自带的 target_type=5 with parent_channel_id（含 IM 没缓存的关注子区）。
+                    const childThreads = (followedChildThreadsByParent.get(it.target_id) || [])
                         .slice()
                         .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
                     for (const t of childThreads) {
-                        if (!seenIds.has(t.channel.channelID)) {
-                            seenIds.add(t.channel.channelID)
+                        const tKey = keyOf(ChannelTypeCommunityTopic, t.channel.channelID)
+                        if (!seenIds.has(tKey)) {
+                            seenIds.add(tKey)
                             catConvs.push(t)
                         }
                     }
