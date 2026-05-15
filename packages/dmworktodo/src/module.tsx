@@ -809,6 +809,9 @@ function GlobalSmartCreateModal() {
               Toast.error("负责人更新失败，请重试");
               throw new Error("assignee reconciliation failed");
             }
+            // Matter 已完整保存 — 立即清除 orphan 追踪，防止并发新 session
+            // 在 submittingRef=false 和 onConfirmSuccess 之间的微任务窗口误删
+            extractedMatterIdRef.current = null;
             Toast.success("事项已保存");
           } else {
             // 空白新建模式（无 AI 提取），走正常创建流程
