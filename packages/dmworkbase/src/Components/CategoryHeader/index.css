@@ -1,10 +1,9 @@
 .wk-category-header {
     display: flex;
     align-items: center;
-    gap: 0;
-    padding: 4px;              /* Figma: 4px, 三角+文字从左 4px 开始 */
-    border-radius: 6px;    /* --r-sm */
-    height: 28px;          /* Figma: 28px */
+    gap: 4px;
+    padding: 8px 8px 2px;       /* design v3.1: 8/8/2 */
+    border-radius: 4px;
     box-sizing: border-box;
     cursor: pointer;
     user-select: none;
@@ -14,7 +13,8 @@
 }
 
 .wk-category-header:hover {
-    background: var(--wk-bg-hover);
+    background: transparent;
+    color: var(--wk-text-strong);
 }
 
 /* 空分组整行降透明度 */
@@ -92,23 +92,22 @@
     color: var(--wk-color-error);
 }
 
-/* 折叠箭头 */
+/* 折叠箭头 — design v3.1: 10x10 chev */
 .wk-category-header__arrow {
-    width: 16px;
-    height: 16px;
+    width: 10px;
+    height: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
     position: relative;
-    left: -4px;
     transition: transform 0.15s ease;
-    color: var(--wk-icon-muted);  /* Figma: 40% 透明度 */
+    color: var(--wk-icon-muted);
 }
 
 .wk-category-header__arrow svg {
-    width: 16px;
-    height: 16px;
+    width: 10px;
+    height: 10px;
 }
 
 /* 折叠态：箭头旋转 -90deg */
@@ -116,11 +115,11 @@
     transform: rotate(-90deg);
 }
 
-/* 分组名 */
+/* 分组名 — design v3.1: 11px, icon-default */
 .wk-category-header__name {
-    font-size: 12px;
-    font-weight: 400;                        /* Figma: 400 regular */
-    color: var(--wk-text-tertiary, #6B7075); /* Figma: 偏灰 */
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--wk-icon-default);
     flex: 1;
     letter-spacing: 0.01em;
     overflow: hidden;

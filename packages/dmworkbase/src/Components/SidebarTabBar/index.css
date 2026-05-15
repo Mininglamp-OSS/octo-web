@@ -6,19 +6,19 @@
     flex-shrink: 0;
 }
 
-/* pill 形容器 */
+/* pill 形容器（胶囊） */
 .wk-sidebar-tabbar__container {
     display: flex;
     align-items: center;
     background: var(--wk-bg-tab, rgba(52, 59, 58, 0.05));
-    border-radius: 6px;
+    border-radius: 9999px;
     padding: 3px;
     width: 100%;
     box-sizing: border-box;
     gap: 0;
 }
 
-/* Tab 按钮 */
+/* Tab 按钮（胶囊） */
 .wk-sidebar-tabbar__btn {
     display: inline-flex;
     align-items: center;
@@ -29,7 +29,7 @@
     border: none;
     outline: none;
     background: transparent;
-    border-radius: 4px;
+    border-radius: 9999px;
     color: var(--wk-icon-default, rgba(28, 28, 35, 0.6));
     font-size: 13px;
     font-weight: 500;

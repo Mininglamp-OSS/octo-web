@@ -164,6 +164,18 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         const channelID = d.channelID
         const channelType = d.channelType
 
+        // DM 跨分组移动：复用 followDM(peer_uid, category_id) 覆盖式更新（与右键菜单同实现）。
+        // 失败时让 onUnfollow reload 兜底回到原位。
+        const moveDmToCategory = async (peerUid: string, targetCatId: string) => {
+            try {
+                await FollowService.followDM({ peer_uid: peerUid, category_id: targetCatId })
+                onUnfollow?.()
+            } catch (err) {
+                console.error('移动 DM 到分组失败', err)
+                onUnfollow?.()
+            }
+        }
+
         // 分支 1：item → item，落在另一个会话上
         if (overType === 'item') {
             const sourceCatId = itemToCategory.get(String(active.id))
@@ -198,25 +210,30 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                     }
                     onSortFollowItems?.(sortItems)
                 }
-            } else if (channelType === ChannelTypeGroup && !isVirtualCategory(targetCatId)) {
-                // 跨分组：仅群可走 /groups/:group_no/category 移动
-                onMoveGroupToCategory(channelID, targetCatId)
+            } else if (!isVirtualCategory(targetCatId)) {
+                // 跨分组移动
+                if (channelType === ChannelTypeGroup) {
+                    onMoveGroupToCategory(channelID, targetCatId)
+                } else if (channelType === ChannelTypePerson) {
+                    moveDmToCategory(channelID, targetCatId)
+                }
             }
             return
         }
 
-        // 分支 2：item → 分组 header / drop area（仅群跨分组移动）
-        if (channelType !== ChannelTypeGroup) return
+        // 分支 2：item → 分组 header / drop area（群 + DM 跨分组移动；子区不支持）
+        if (channelType === ChannelTypeCommunityTopic) return
+        let targetCatId: string | undefined
         if (overId.startsWith('drop::cat::')) {
-            const targetCatId = overId.replace('drop::cat::', '')
-            if (targetCatId && !isVirtualCategory(targetCatId)) {
-                onMoveGroupToCategory(channelID, targetCatId)
-            }
+            targetCatId = overId.replace('drop::cat::', '')
         } else if (overId.startsWith('cat::')) {
-            const targetCatId = overId.replace('cat::', '')
-            if (targetCatId && !isVirtualCategory(targetCatId)) {
-                onMoveGroupToCategory(channelID, targetCatId)
-            }
+            targetCatId = overId.replace('cat::', '')
+        }
+        if (!targetCatId || isVirtualCategory(targetCatId)) return
+        if (channelType === ChannelTypeGroup) {
+            onMoveGroupToCategory(channelID, targetCatId)
+        } else if (channelType === ChannelTypePerson) {
+            moveDmToCategory(channelID, targetCatId)
         }
     }
     // ──────────────────────────────────────────────────────────────────────────
@@ -607,18 +624,10 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
             <SortableContext items={categoryIds} strategy={verticalListSortingStrategy}>
                 <ConversationListWithCategory
                     key={isLoading ? "loading" : categories.map(c => c.category_id).join(",")}
-                    categories={
-                        // categories 为空且无群聊时，传 [] 让 ConversationListWithCategory
-                        // 走 categories.length===0 分支，触发 hasNoGroups 空状态判断。
-                        // categories 为空但有群聊时，传虚拟默认分组（computeEffectiveCategories 兜底）正常渲染。
-                        categories.length === 0 && groupConversations.length === 0
-                            ? []
-                            : categoriesForView
-                    }
+                    categories={categoriesForView}
                     isLoading={isLoading}
                     error={error}
                     onRetry={onRetry}
-                    allConversations={ConvListWithMenu(conversations)}
                     onCreateCategory={onOpenCreateCategory}
                     hasNoGroups={categories.length === 0 && groupConversations.length === 0}
                     onStartGroup={onStartGroup}

@@ -47,6 +47,80 @@ import {
 import FilePreviewPanel, {
   FilePreviewInfo,
 } from "../../Components/FilePreviewPanel";
+import { useFollowSidebar } from "../../Hooks/useFollowSidebar";
+
+interface SidebarTabBarWithBadgesProps {
+  conversations: ConversationWrap[];
+  activeTab: SidebarTab;
+  onTabChange: (tab: SidebarTab) => void;
+}
+
+/**
+ * 复用 useFollowSidebar 取 followedKeys，按 PM #337 spec 计算 tab 角标：
+ * - 关注 tab：只计 sidebar 已关注项（DM + 群 + 群下已关注子区）
+ * - 最近 tab：计所有非勿扰会话（DM + 群 + 子区），与 recent tab filter='all' 一致
+ *   3 天不活跃过滤是前端临时方案，最终归后端 conversation sync，badge 不再重复。
+ *
+ * 子区勿扰判定：自身 mute 优先；未显式设置则继承父群组的 mute（与
+ * ConversationList / ConversationListGrouped 处的渲染逻辑保持一致），
+ * 否则父群已勿扰但子区未读仍计入 badge 会出现「角标 N 但列表里看不到任何未读」的错位。
+ *
+ * 这里独立调用一次 useFollowSidebar（ChatConversationList 内部还有一次）会产生重复
+ * /sidebar/sync 请求，是当前的小代价；后续可下沉 hook 或共享 Context 优化。
+ */
+const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
+  conversations,
+  activeTab,
+  onTabChange,
+}) => {
+  const { followedKeys } = useFollowSidebar();
+
+  const isEffectivelyMuted = (c: ConversationWrap): boolean => {
+    if (c.channelInfo?.mute) return true;
+    // 子区：未显式设置 mute 时继承父群组的勿扰状态
+    if (c.channel.channelType === ChannelTypeCommunityTopic) {
+      const parentGroupNo =
+        (c.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
+        parseThreadChannelId(c.channel.channelID)?.groupNo;
+      if (parentGroupNo) {
+        const parentInfo = WKSDK.shared().channelManager.getChannelInfo(
+          new Channel(parentGroupNo, ChannelTypeGroup),
+        );
+        if (parentInfo?.mute) return true;
+      }
+    }
+    return false;
+  };
+
+  const isFollowed = (c: ConversationWrap): boolean =>
+    followedKeys.has(`${c.channel.channelType}::${c.channel.channelID}`);
+
+  const followUnread = conversations.reduce(
+    (sum: number, c: ConversationWrap) => {
+      if (isEffectivelyMuted(c)) return sum;
+      if (!isFollowed(c)) return sum;
+      return sum + (c.unread || 0);
+    },
+    0,
+  );
+
+  const recentUnread = conversations.reduce(
+    (sum: number, c: ConversationWrap) => {
+      if (isEffectivelyMuted(c)) return sum;
+      return sum + (c.unread || 0);
+    },
+    0,
+  );
+
+  return (
+    <SidebarTabBar
+      activeTab={activeTab}
+      followUnread={followUnread}
+      recentUnread={recentUnread}
+      onTabChange={onTabChange}
+    />
+  );
+};
 
 export interface ChatContentPageProps {
   channel: Channel;
@@ -888,44 +962,6 @@ export default class ChatPage extends Component<any, ChatPageState> {
         }}
         render={(vm: ChatVM) => {
           const { activeTab } = this.state;
-          // 计算各 Tab 未读总数
-          // 预构建子区 Map，避免 O(n²)
-          const threadsByParentForTab = new Map<string, ConversationWrap[]>();
-          for (const c of vm.conversations) {
-            if (c.channel.channelType !== ChannelTypeCommunityTopic) continue;
-            if (c.channelInfo?.mute) continue;
-            const parentGroupNo =
-              (c.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
-              parseThreadChannelId(c.channel.channelID)?.groupNo;
-            if (!parentGroupNo) continue;
-            const list = threadsByParentForTab.get(parentGroupNo) || [];
-            list.push(c);
-            threadsByParentForTab.set(parentGroupNo, list);
-          }
-          const followUnread = vm.conversations.reduce(
-            (sum: number, c: ConversationWrap) => {
-              // 只计群组，子区未读已通过父群组 totalUnread 汇总，不重复计入
-              if (c.channel.channelType !== ChannelTypeGroup) return sum;
-              if (c.channelInfo?.mute) return sum;
-              const threads =
-                threadsByParentForTab.get(c.channel.channelID) ?? [];
-              const threadUnread = threads.reduce(
-                (s, t) => s + (t.unread || 0),
-                0,
-              );
-              return sum + (c.unread || 0) + threadUnread;
-            },
-            0,
-          );
-          const recentUnread = vm.conversations.reduce(
-            (sum: number, c: ConversationWrap) => {
-              if (c.channel.channelType === ChannelTypePerson) {
-                return sum + (c.unread || 0);
-              }
-              return sum;
-            },
-            0,
-          );
           // filter 用于 ConversationList
           // follow Tab 用 group（分组视图），recent Tab 用 all（所有会话混合）
           const filter: ConvFilter = activeTab === "follow" ? "group" : "all";
@@ -1022,10 +1058,9 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     </div>
                   </div>
                   {/* 关注/最近 Tab Bar */}
-                  <SidebarTabBar
+                  <SidebarTabBarWithBadges
+                    conversations={vm.conversations}
                     activeTab={activeTab}
-                    followUnread={followUnread}
-                    recentUnread={recentUnread}
                     onTabChange={this._handleTabChange}
                   />
                   <div className="wk-chat-conversation-list">

@@ -169,12 +169,6 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
           <WKAvatar
             key={avatarKey}
             channel={conversationWrap.channel}
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: "50%",
-              flexShrink: 0,
-            }}
           />
         )}
       </span>
@@ -471,6 +465,23 @@ export default class ConversationList extends Component<
     const avatarKey = WKApp.shared.getChannelAvatarTag(
       conversationWrap.channel
     );
+    const isThread =
+      conversationWrap.channel.channelType === ChannelTypeCommunityTopic;
+    // 非 compact（最近 tab）下子区按时间扁平展示，需要拿父频道 displayName 做面包屑、
+    // 父频道头像作为左侧图标。父群信息可能还没拉到，主动 fetch，依赖 channelListener 触发重渲染。
+    const parentGroupNo = isThread
+      ? (channelInfo?.orgData?.parentGroupNo as string | undefined) ||
+        parseThreadChannelId(conversationWrap.channel.channelID)?.groupNo
+      : undefined;
+    const parentChannel = parentGroupNo
+      ? new Channel(parentGroupNo, ChannelTypeGroup)
+      : undefined;
+    const parentChannelInfo = parentChannel
+      ? WKSDK.shared().channelManager.getChannelInfo(parentChannel)
+      : undefined;
+    if (parentChannel && !parentChannelInfo) {
+      WKSDK.shared().channelManager.fetchChannelInfo(parentChannel);
+    }
 
     // ── Compact 模式（群聊 Tab）：用 CompactGroupItem 函数组件（支持拖拽） ──
     if (compact) {
@@ -516,8 +527,23 @@ export default class ConversationList extends Component<
     const { select, onClick } = this.props;
     const typing = TypingManager.shared.getTyping(conversationWrap.channel);
     const selected = select && select.isEqual(conversationWrap.channel);
-    const isThread =
-      conversationWrap.channel.channelType === ChannelTypeCommunityTopic;
+    // 父群下的子区折叠到 thread-overflow（默认不展开），父群 badge 必须把
+    // 折叠中的子区未读一起显示，否则会出现「角标显示 N 但列表里看不到任何未读」。
+    // 已展开时 threadUnread 由调用处传 0，自然只显示父群自身。
+    const totalUnread = conversationWrap.unread + threadUnread;
+    // 子区静音继承父群（与 CompactGroupItem 保持一致）：显式设置看自身，未设置看父群
+    const threadRawMute = isThread
+      ? ((channelInfo?.orgData?.thread as any)?.mute as number | null | undefined)
+      : undefined;
+    const effectiveMute = isThread
+      ? threadRawMute != null
+        ? threadRawMute === 1
+        : !!parentChannelInfo?.mute
+      : !!channelInfo?.mute;
+    // 非 compact 下子区按 design v3.1 走扁平时间序，左侧用父频道头像，
+    // 不再套 .wk-conversationlist-item-thread（避免缩进 + 树形连接线视觉嵌套）。
+    const avatarChannel = isThread && parentChannel ? parentChannel : conversationWrap.channel;
+    const isDM = avatarChannel.channelType === ChannelTypePerson;
     return (
       <div
         key={conversationWrap.channel.getChannelKey()}
@@ -530,38 +556,49 @@ export default class ConversationList extends Component<
           "wk-conversationlist-item",
           selected ? "wk-conversationlist-item-selected" : undefined,
           channelInfo?.top ? "wk-conversationlist-item-top" : undefined,
-          conversationWrap.unread > 0
+          totalUnread > 0
             ? "wk-conversationlist-item-unread"
             : undefined,
-          isThread ? "wk-conversationlist-item-thread" : undefined
+          effectiveMute ? "wk-conversationlist-item-muted" : undefined,
+          isDM ? "wk-conversationlist-item-dm" : undefined
         )}
         onContextMenu={(e) => {
           this._handleContextMenu(conversationWrap, e);
         }}
       >
         <div className="wk-conversationlist-item-content">
-          {/* 子区不显示左侧图标区域 */}
-          {!isThread && (
-            <div className="wk-conversationlist-item-left">
-              <div className="wk-conversationlist-item-avatar-box">
-                <WKAvatar
-                  channel={conversationWrap.channel}
-                  key={avatarKey}
-                ></WKAvatar>
-                {hasThreads && (
-                  <div className="wk-conv-group-hash-badge">
-                    <GroupIcon size={10} />
-                  </div>
-                )}
-                {channelInfo && this.needShowOnlineStatus(channelInfo) ? (
-                  <OnlineStatusBadge
-                    tip={this.getOnlineTip(channelInfo)}
-                  ></OnlineStatusBadge>
-                ) : undefined}
-              </div>
+          <div className="wk-conversationlist-item-left">
+            <div className="wk-conversationlist-item-avatar-box">
+              <WKAvatar
+                channel={avatarChannel}
+                key={avatarKey}
+              ></WKAvatar>
+              {hasThreads && (
+                <div className="wk-conv-group-hash-badge">
+                  <GroupIcon size={10} />
+                </div>
+              )}
+              {!isThread && channelInfo && this.needShowOnlineStatus(channelInfo) ? (
+                <OnlineStatusBadge
+                  tip={this.getOnlineTip(channelInfo)}
+                ></OnlineStatusBadge>
+              ) : undefined}
+              {totalUnread > 0 && !effectiveMute && (
+                <span className="wk-conv-unread-num">
+                  {totalUnread > 99 ? "99+" : totalUnread}
+                </span>
+              )}
+              {totalUnread > 0 && effectiveMute && (
+                <span className="wk-conv-unread-dot" />
+              )}
             </div>
-          )}
+          </div>
           <div className="wk-conversationlist-item-right">
+            {isThread && parentChannelInfo?.orgData?.displayName && (
+              <div className="wk-conv-breadcrumb">
+                {parentChannelInfo.orgData.displayName}
+              </div>
+            )}
             <div className="wk-conversationlist-item-right-first-line">
               <div className="wk-conversationlist-item-name">
                 <h3>
@@ -594,32 +631,20 @@ export default class ConversationList extends Component<
                     src={channelInfo?.orgData.identityIcon}
                   ></img>
                 ) : undefined}
-                <div
-                  style={{
-                    width: "14px",
-                    height: "14px",
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                >
-                  {channelInfo?.mute && (
+                {effectiveMute && (
+                  <span className="wk-conv-mute-icon" aria-label="免打扰">
                     <svg
-                      className="icon"
                       viewBox="0 0 1131 1024"
-                      version="1.1"
-                      xmlns="http://www.w3.org/2000/svg"
-                      p-id="2755"
-                      width="14"
-                      height="14"
+                      width="11"
+                      height="11"
                     >
                       <path
                         d="M914.688 892.736L64 236.224l38.784-50.88L271.36 315.648a300.288 300.288 0 0 1 246.976-157.952v-33.28c0-16.64 13.504-30.08 30.08-30.08h2.304c16.576 0 30.08 13.44 30.08 30.08v32.96a299.776 299.776 0 0 1 284.928 299.136v294.272l45.504 58.624 48.768 37.696-45.312 45.632zM234.624 480.384l506.88 391.232H140.416l94.272-121.536-0.064-269.696z"
-                        fill="#bfbfbf"
-                        p-id="2756"
+                        fill="currentColor"
                       ></path>
                     </svg>
-                  )}
-                </div>
+                  </span>
+                )}
                 <div className="wk-conversationlist-item-time">
                   <span>
                     {getTimeStringAutoShort2(
@@ -657,24 +682,19 @@ export default class ConversationList extends Component<
                         );
                       })
                   : undefined}
+                {/* 静音 + 多条未读：预览前置 [N 条] 红字提示（design v3.1 低打扰） */}
+                {effectiveMute && totalUnread > 1 && !typing && (
+                  <span className="wk-conv-count-hint">
+                    [{totalUnread > 99 ? "99+" : totalUnread} 条]
+                  </span>
+                )}
                 {typing
                   ? this._getTypingUI(conversationWrap)
                   : this.lastContent(conversationWrap)}
               </div>
-              <div className="wk-conversationlist-item-reddot">
-                {conversationWrap.unread > 0 && !channelInfo?.mute ? (
-                  <span className="wk-conv-compact-badges">
-                    <span className="wk-conv-compact-badge">
-                      {conversationWrap.unread > 99
-                        ? "99+"
-                        : conversationWrap.unread}
-                    </span>
-                    {conversationWrap.isMentionMe && (
-                      <span className="wk-mention-badge">@我</span>
-                    )}
-                  </span>
-                ) : undefined}
-              </div>
+              {conversationWrap.isMentionMe && totalUnread > 0 && !effectiveMute && (
+                <span className="wk-mention-badge">@我</span>
+              )}
             </div>
           </div>
         </div>
@@ -735,6 +755,27 @@ export default class ConversationList extends Component<
       return channelInfo.orgData?.robot !== 1;
     }
     return true;
+  }
+
+  // 收集每个父群组下的子区列表（不重排），compact 模式下基于此再做嵌套；
+  // 非 compact（最近 tab）只用它给父群组打 hash badge / 算菜单展开态。
+  private buildThreadsByParent(
+    convs: ConversationWrap[]
+  ): Map<string, ConversationWrap[]> {
+    const threadsByParent = new Map<string, ConversationWrap[]>();
+    for (const conv of convs) {
+      if (conv.channel.channelType === ChannelTypeCommunityTopic) {
+        const parentGroupNo =
+          conv.channelInfo?.orgData?.parentGroupNo ||
+          parseThreadChannelId(conv.channel.channelID)?.groupNo;
+        if (parentGroupNo) {
+          const list = threadsByParent.get(parentGroupNo) || [];
+          list.push(conv);
+          threadsByParent.set(parentGroupNo, list);
+        }
+      }
+    }
+    return threadsByParent;
   }
 
   // 将子区放在父群组后面，默认全部收起（MAX_VISIBLE_THREADS=0），展开后显示全部
@@ -851,15 +892,32 @@ export default class ConversationList extends Component<
   }
 
   render() {
-    const { conversations, select } = this.props;
+    const { conversations, select, compact } = this.props;
     const { selectConversationWrap } = this.state;
 
     const filtered =
       conversations?.filter((c) => this.filterConversation(c)) ?? [];
 
-    // 先对整个列表分组子区，再分离置顶/最近（避免置顶群组和子区断开）
-    const { items: grouped, threadsByParent } =
-      this.groupThreadsWithParent(filtered);
+    // compact（关注 tab）：把子区按父群嵌套；
+    // 非 compact（最近 tab，design v3.1）：扁平按时间序，子区作为独立条目自带父频道面包屑。
+    type GroupedItem =
+      | ConversationWrap
+      | {
+          type: "thread-overflow";
+          parentGroupId: string;
+          count: number;
+          unreadCount: number;
+        };
+    let grouped: GroupedItem[];
+    let threadsByParent: Map<string, ConversationWrap[]>;
+    if (compact) {
+      const r = this.groupThreadsWithParent(filtered);
+      grouped = r.items;
+      threadsByParent = r.threadsByParent;
+    } else {
+      grouped = filtered;
+      threadsByParent = this.buildThreadsByParent(filtered);
+    }
     const groupedPinned = grouped.filter((item) => {
       if ("type" in item) return false;
       return (item as ConversationWrap).channelInfo?.top;
@@ -893,8 +951,8 @@ export default class ConversationList extends Component<
         const conv = item as ConversationWrap;
         if (conv.channelInfo?.top) {
           finalPinned.push(item);
-        } else if (conv.channel.channelType === ChannelTypeCommunityTopic) {
-          // 子区跟随父群组
+        } else if (compact && conv.channel.channelType === ChannelTypeCommunityTopic) {
+          // compact 嵌套语义：子区跟随父群组
           const parentGroupNo =
             conv.channelInfo?.orgData?.parentGroupNo ||
             parseThreadChannelId(conv.channel.channelID)?.groupNo;
@@ -910,7 +968,7 @@ export default class ConversationList extends Component<
     }
     }
 
-    const { onThreadOverflowClick, compact } = this.props;
+    const { onThreadOverflowClick } = this.props;
     const { expandedGroupIds } = this.state;
 
     const renderItem = (
