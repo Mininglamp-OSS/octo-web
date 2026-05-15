@@ -264,7 +264,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
             visible={showList}
             onCancel={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
             footer={null}
-            closable={false}
+            options={{ closable: false }}
             bodyStyle={{ padding: 0, maxHeight: 'var(--mf-modal-body-max-height)', overflowY: 'auto' }}
             style={{ maxHeight: 'var(--mf-modal-max-height)', overflow: 'hidden' }}
             header={
@@ -344,7 +344,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
           onCancel={() => {
             this.setState({ showList: false, canGoBack: false, navTitle: "" });
           }}
-          closable={false}
+          options={{ closable: false }}
           bodyStyle={{ padding: 0, maxHeight: 'var(--mf-modal-body-max-height)', overflowY: 'auto' }}
           style={{ maxHeight: 'var(--mf-modal-max-height)', overflow: 'hidden' }}
           header={
