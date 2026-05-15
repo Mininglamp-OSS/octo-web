@@ -47,7 +47,7 @@ export interface WKModalProps {
   style?: React.CSSProperties
   /** 透传给 Semi Modal body 的 style */
   bodyStyle?: React.CSSProperties
-  /** 透传给 Semi Modal header 的 className */
+  /** header 区域的 className（会包裹 title 渲染为自定义 header） */
   headerClassName?: string
   className?: string
   children?: React.ReactNode
@@ -117,11 +117,18 @@ const WKModal: React.FC<WKModalProps> = ({
   // 因为 Semi Modal 的关闭按钮依赖 header，title=null 时 header 不渲染导致按钮位置错位
   const needCustomCloseBtn = title === null && closable
 
+  // Semi Modal 不支持 headerClassName prop，需要用 header prop 渲染自定义 header
+  // 当传入 headerClassName 时，包裹 title 为自定义 header ReactNode
+  const customHeader = headerClassName && title !== null ? (
+    <div className={headerClassName}>{title}</div>
+  ) : undefined
+
   return (
     <Modal
       visible={visible}
       onCancel={onCancel}
-      title={title}
+      title={customHeader ? undefined : title}
+      header={customHeader}
       width={width}
       footer={resolvedFooter}
       closable={needCustomCloseBtn ? false : closable} // 自定义关闭按钮时禁用 Semi 默认按钮
@@ -132,7 +139,6 @@ const WKModal: React.FC<WKModalProps> = ({
       className={cls}
       style={style}
       bodyStyle={bodyStyle}
-      headerClassName={headerClassName}
     >
       {needCustomCloseBtn && (
         <button
