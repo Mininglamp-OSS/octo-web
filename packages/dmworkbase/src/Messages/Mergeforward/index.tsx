@@ -28,7 +28,7 @@ export default class MergeforwardContent extends MessageContent {
     channelType!: number
     users!: Array<MergeforwardUser>
     msgs!: Array<Message>
-
+    private static decodeDepth = 0
 
     constructor(channelType?: number, users?: Array<MergeforwardUser>, msgs?: Array<Message>) {
         super()
@@ -38,6 +38,18 @@ export default class MergeforwardContent extends MessageContent {
     }
 
     decodeJSON(content: any) {
+        // 增加递归深度
+        MergeforwardContent.decodeDepth++
+
+        // 深度超过 8 时，停止处理，避免栈溢出
+        if (MergeforwardContent.decodeDepth > 8) {
+            this.channelType = content["channel_type"] || 0
+            this.users = content["users"] || []
+            this.msgs = []
+            MergeforwardContent.decodeDepth--
+            return
+        }
+
         this.channelType = content["channel_type"] || 0
         const rawUsers: Array<MergeforwardUser> = content["users"] || []
         const seen = new Set<string>()
@@ -67,6 +79,9 @@ export default class MergeforwardContent extends MessageContent {
             }
         }
         this.msgs = messages
+
+        // 恢复递归深度
+        MergeforwardContent.decodeDepth--
     }
     encodeJSON() {
         let messageMaps = new Array()
@@ -100,14 +115,10 @@ export default class MergeforwardContent extends MessageContent {
             contentType = payloadObj.type
         }
         let messageContent = WKSDK.shared().getMessageContent(contentType)
-        // Use decode() instead of decodeJSON() to properly set contentObj
-        // This ensures inner messages retain full payload for re-forwarding
         const payloadData = new TextEncoder().encode(JSON.stringify(payloadObj))
         messageContent.decode(payloadData)
         message.content = messageContent
 
-        // dmwork-web#1069：合并转发内嵌消息同样需要透传外部来源字段，
-        // 否则转发历史中的外部成员发言会丢失 @SpaceName 头部标记。
         applyMsgLevelExternalFields(message, messageMap)
 
         return message

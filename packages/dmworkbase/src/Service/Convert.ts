@@ -2,47 +2,9 @@ import BigNumber from "bignumber.js";
 import { Setting } from "wukongimjssdk";
 import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra, Reply } from "wukongimjssdk";
 import { displayName as resolveDisplayName } from "../Utils/displayName";
+import MergeforwardContent from "../Messages/Mergeforward";
+import { MessageContentTypeConst } from "./Const";
 
-
-/**
- * 检测对象是否包含循环引用（在不触发栈溢出的前提下）。
- * 返回 true 表示检测到循环引用。
- */
-export function hasCircularReference(obj: any, depth = 0, maxDepth = 100, visited = new WeakSet()): boolean {
-    if (depth > maxDepth) return false
-    if (obj === null || typeof obj !== 'object') return false
-    if (visited.has(obj)) return true
-
-    visited.add(obj)
-    try {
-        for (const _key in obj) {
-            if (obj.hasOwnProperty(_key)) {
-                if (hasCircularReference(obj[_key], depth + 1, maxDepth, visited)) {
-                    return true
-                }
-            }
-        }
-    } catch (_e) {
-        return false
-    }
-    return false
-}
-
-/**
- * 将对象转换为 JSON 字符串，安全处理循环引用。
- */
-export function safeStringify(obj: any): string {
-    const seen = new WeakSet()
-    return JSON.stringify(obj, (_key, value) => {
-        if (typeof value === 'object' && value !== null) {
-            if (seen.has(value)) {
-                return '[Circular]'
-            }
-            seen.add(value)
-        }
-        return value
-    })
-}
 
 /**
  * 将服务端 msg-level 外部来源字段从原始 JSON map 透传到目标对象上。
@@ -325,14 +287,14 @@ export class Convert {
         }
         const messageContent = WKSDK.shared().getMessageContent(contentType)
         if (contentObj) {
-            // contentType 11 (合并转发) 的 payload 已经是完整的对象结构
-            // SDK 的 decode 对这种深层嵌套结构会栈溢出，直接复制属性即可
-            if (contentType === 11 && typeof contentObj === 'object') {
-                Object.assign(messageContent, contentObj)
+            // contentType=mergeForward 的合并转发消息用专用的 decodeJSON 处理
+            // 这样既能调用正确的字段映射（channel_type→channelType），
+            // 又能通过深度限制防止深层嵌套导致的栈溢出
+            if (contentType === MessageContentTypeConst.mergeForward) {
+                const mergeforwardContent = messageContent as MergeforwardContent
+                mergeforwardContent.decodeJSON(contentObj)
             } else {
-                // 其他类型正常通过 SDK 的 decode 处理
-                const contentStr = safeStringify(contentObj)
-                messageContent.decode(this.stringToUint8Array(contentStr))
+                messageContent.decode(this.stringToUint8Array(JSON.stringify(contentObj)))
             }
         }
         message.content = messageContent
