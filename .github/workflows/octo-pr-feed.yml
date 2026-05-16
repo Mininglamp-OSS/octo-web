@@ -4,7 +4,8 @@ on:
   pull_request_target:
     types: [opened, closed, reopened, ready_for_review, review_requested]
 
-permissions: {}  # GITHUB_TOKEN not used; lock down to minimum
+permissions:
+  contents: read
 
 jobs:
   notify:
