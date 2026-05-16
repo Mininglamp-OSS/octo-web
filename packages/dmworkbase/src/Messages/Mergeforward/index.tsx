@@ -37,6 +37,9 @@ export default class MergeforwardContent extends MessageContent {
   users!: Array<MergeforwardUser>;
   msgs!: Array<Message>;
 
+  private static decodeDepth: number = 0;
+  private static readonly MAX_MERGE_FORWARD_DEPTH = 8;
+
   constructor(
     channelType?: number,
     users?: Array<MergeforwardUser>,
@@ -49,38 +52,72 @@ export default class MergeforwardContent extends MessageContent {
   }
 
   decodeJSON(content: any) {
-    this.channelType = content["channel_type"] || 0;
-    const rawUsers: Array<MergeforwardUser> = content["users"] || [];
-    const seen = new Set<string>();
-    this.users = rawUsers
-      .filter((u) => {
-        if (seen.has(u.uid)) return false;
-        seen.add(u.uid);
-        return true;
-      })
-      .map((u) => {
-        // 透传外部来源字段；仅保留有效值避免噪音
-        const mapped: MergeforwardUser = { uid: u.uid, name: u.name };
-        if (u.is_external === 1 || u.is_external === 0) {
-          mapped.is_external = u.is_external;
-        }
-        if (
-          typeof u.source_space_name === "string" &&
-          u.source_space_name !== ""
-        ) {
-          mapped.source_space_name = u.source_space_name;
-        }
-        return mapped;
-      });
-    let msgMaps = content["msgs"];
-
-    let messages = new Array();
-    if (msgMaps && msgMaps.length > 0) {
-      for (const msgMap of msgMaps) {
-        messages.push(this.mapToMessage(msgMap));
+    MergeforwardContent.decodeDepth++;
+    try {
+      // 防止深层嵌套转发导致栈溢出
+      if (MergeforwardContent.decodeDepth > MergeforwardContent.MAX_MERGE_FORWARD_DEPTH) {
+        this.channelType = content["channel_type"] || 0;
+        // 即使 truncation 也要进行 users 去重和字段过滤，保持数据一致性
+        const rawUsers: Array<MergeforwardUser> = content["users"] || [];
+        const seen = new Set<string>();
+        this.users = rawUsers
+          .filter((u) => {
+            if (seen.has(u.uid)) return false;
+            seen.add(u.uid);
+            return true;
+          })
+          .map((u) => {
+            const mapped: MergeforwardUser = { uid: u.uid, name: u.name };
+            if (u.is_external === 1 || u.is_external === 0) {
+              mapped.is_external = u.is_external;
+            }
+            if (
+              typeof u.source_space_name === "string" &&
+              u.source_space_name !== ""
+            ) {
+              mapped.source_space_name = u.source_space_name;
+            }
+            return mapped;
+          });
+        this.msgs = [];
+        return;
       }
+
+      this.channelType = content["channel_type"] || 0;
+      const rawUsers: Array<MergeforwardUser> = content["users"] || [];
+      const seen = new Set<string>();
+      this.users = rawUsers
+        .filter((u) => {
+          if (seen.has(u.uid)) return false;
+          seen.add(u.uid);
+          return true;
+        })
+        .map((u) => {
+          // 透传外部来源字段；仅保留有效值避免噪音
+          const mapped: MergeforwardUser = { uid: u.uid, name: u.name };
+          if (u.is_external === 1 || u.is_external === 0) {
+            mapped.is_external = u.is_external;
+          }
+          if (
+            typeof u.source_space_name === "string" &&
+            u.source_space_name !== ""
+          ) {
+            mapped.source_space_name = u.source_space_name;
+          }
+          return mapped;
+        });
+      let msgMaps = content["msgs"];
+
+      let messages = new Array();
+      if (msgMaps && msgMaps.length > 0) {
+        for (const msgMap of msgMaps) {
+          messages.push(this.mapToMessage(msgMap));
+        }
+      }
+      this.msgs = messages;
+    } finally {
+      MergeforwardContent.decodeDepth--;
     }
-    this.msgs = messages;
   }
   encodeJSON() {
     let messageMaps = new Array();
@@ -118,11 +155,22 @@ export default class MergeforwardContent extends MessageContent {
       contentType = payloadObj.type;
     }
     let messageContent = WKSDK.shared().getMessageContent(contentType);
-    // Use decode() instead of decodeJSON() to properly set contentObj
-    // This ensures inner messages retain full payload for re-forwarding
-    const payloadData = new TextEncoder().encode(JSON.stringify(payloadObj));
-    messageContent.decode(payloadData);
-    message.content = messageContent;
+
+    if (contentType === MessageContentTypeConst.mergeForward && typeof (messageContent as any).decodeJSON === 'function') {
+      // 内层转发消息直接调用 decodeJSON，避免 SDK decode 的递归
+      // 手动设置 contentObj，保持与 SDK decode() 的对称性，确保 re-forward 时能从 contentObj 读取原始 payload
+      (messageContent as any).contentObj = payloadObj
+      (messageContent as any).decodeJSON(payloadObj);
+      message.content = messageContent;
+    } else {
+      // 其他消息类型使用标准 decode 路径
+      // Use decode() to properly set contentObj for re-forwarding
+      // NOTE: 通过 static decodeDepth 计数器，即使 SDK Reply.decode 处理 reply.payload 中的嵌套转发，
+      // 深度限制仍能正常工作（不会被绕过重置）。服务端应同时实现 payload 深度限制作为根本防护。
+      const payloadData = new TextEncoder().encode(JSON.stringify(payloadObj));
+      messageContent.decode(payloadData);
+      message.content = messageContent;
+    }
 
     // dmwork-web#1069：合并转发内嵌消息同样需要透传外部来源字段，
     // 否则转发历史中的外部成员发言会丢失 @SpaceName 头部标记。

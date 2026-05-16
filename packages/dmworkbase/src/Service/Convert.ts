@@ -2,6 +2,7 @@ import BigNumber from "bignumber.js";
 import { Setting } from "wukongimjssdk";
 import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra, Reply } from "wukongimjssdk";
 import { displayName as resolveDisplayName } from "../Utils/displayName";
+import { MessageContentTypeConst } from "./Const";
 
 
 /**
@@ -285,7 +286,15 @@ export class Convert {
         }
         const messageContent = WKSDK.shared().getMessageContent(contentType)
         if (contentObj) {
-            messageContent.decode(this.stringToUint8Array(JSON.stringify(contentObj)))
+            // 对合并转发消息直接调用 decodeJSON 以避免 SDK decode 中可能的无限递归
+            if (contentType === MessageContentTypeConst.mergeForward && typeof (messageContent as any).decodeJSON === 'function') {
+                // 手动设置 contentObj，保持与 SDK decode() 路径的对称性
+                // 这样 messageToMap() 中读 content.contentObj 时才能正确获取完整 payload
+                (messageContent as any).contentObj = contentObj
+                (messageContent as any).decodeJSON(contentObj)
+            } else {
+                messageContent.decode(this.stringToUint8Array(JSON.stringify(contentObj)))
+            }
         }
         message.content = messageContent
 
