@@ -458,9 +458,9 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
 
     // 兜底：后端 categories 为空（GH dmwork-org/dmwork-web#1044 旧账号场景）时，渲染一个
     // 虚拟「默认」分组，避免 groupConversations 整列消失。真实 categories 走原逻辑。
-    // 关注 tab 按 PM #337 spec 不展示默认分组（含真实 is_default 与虚拟兜底分组）。
+    // PM #337 历史数据迁移：真实 is_default 分组需要展示（旧数据在里面），虚拟兜底分组不展示。
     const effectiveCategories = computeEffectiveCategories(categories)
-        .filter(cat => !cat.is_default && !isVirtualCategory(cat.category_id))
+        .filter(cat => !isVirtualCategory(cat.category_id))
 
     // 用户视角的可见分组排序只动 effectiveCategories；提交 /categories/sort 时仍要把
     // 真实存在但被隐藏的默认分组带上，否则后端会误删 / useCategoryList 的本地重建会
@@ -473,11 +473,11 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
     const categoriesForView = effectiveCategories.map(cat => {
         let catConvs: ConversationWrap[]
 
-        const sidebarKey = cat.is_default ? "" : (cat.category_id ?? "")
+        const sidebarKey = cat.category_id ?? ""
         const sidebarInCat = itemsByCategory?.get(sidebarKey) || []
 
-        if (cat.is_default) {
-            // 关注 tab 不会走默认分组（上层已 filter）；保留兜底以防其它 caller 复用。
+        if (cat.is_default && !itemsByCategory) {
+            // 兜底：没有 sidebar 数据时（非关注 tab 或旧 caller），按 IM 会话列表渲染。
             catConvs = groupConversations.filter(c => !assignedGroupNos.has(c.channel.channelID))
             catConvs = catConvs.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
             const withThreads: ConversationWrap[] = []
