@@ -55,19 +55,28 @@ jobs:
           # Require strict semver per semver.org §9 (with mandatory leading 'v')
           # so metadata-action's type=semver actually matches. A loose regex
           # would let near-semver refs (e.g. 'vfoo', 'v01.2.3', 'v1.2.3-01',
-          # 'v1.2.3-..', 'v1.2.3+build..meta') reach the secret-bearing build
-          # job and push orphan digests before metadata-action quietly emits
-          # no tags — defeating the no-secret preflight intent.
+          # 'v1.2.3-..') reach the secret-bearing build job and push orphan
+          # digests before metadata-action quietly emits no tags — defeating
+          # the no-secret preflight intent.
           #
           # The regex below is the official semver.org regex (BRE/ERE form),
-          # prefixed with a literal 'v'. It rejects:
+          # prefixed with a literal 'v' and WITHOUT the optional +BUILD
+          # metadata suffix. Build metadata is rejected because
+          # metadata-action's {{version}}/{{major}}/{{major}}.{{minor}}
+          # patterns strip the +BUILD portion when computing Docker tag
+          # names, so v1.2.3 and v1.2.3+build.1 would both publish to
+          # :1.2.3 / :1.2 / :1 / :latest — two distinct git tags clobbering
+          # the same release aliases, breaking the no-clobber invariant.
+          #
+          # Rejects:
           #   - leading zeros in numeric identifiers (v01.2.3, v1.2.3-01)
-          #   - empty dot-separated identifiers (v1.2.3-.. , v1.2.3+a..b)
-          #   - characters outside [0-9A-Za-z.+-]
+          #   - empty dot-separated identifiers (v1.2.3-..)
+          #   - any +BUILD metadata (v1.2.3+build.1)
+          #   - characters outside [0-9A-Za-z.-]
           tag="${REF#refs/tags/}"
-          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$'
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'
           if ! printf '%s' "$tag" | grep -Eq "$semver"; then
-            echo "::error::tag '$tag' is not strict semver per semver.org (vMAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]); refusing to publish"
+            echo "::error::tag '$tag' is not strict semver per semver.org without +BUILD metadata (vMAJOR.MINOR.PATCH[-PRERELEASE]); refusing to publish"
             exit 1
           fi
           echo "OK: $REF"
