@@ -1,4 +1,4 @@
-import { ChatPage, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, t } from '@octo/base';
+import { ChatPage, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, RuntimesPage, t } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
 import React, { useEffect } from 'react';
 // lucide icons replaced with filled SVGs per Figma
@@ -8,6 +8,7 @@ import { WKSDK, ChannelTypePerson } from 'wukongimjssdk';
 import { setFaviconBadge, clearFaviconBadge } from '../utils/faviconBadge';
 import { ChatIcon } from '../Components/Icons/ChatIcon';
 import { ContactsIcon } from '../Components/Icons/ContactsIcon';
+import { RuntimesIcon } from '../Components/Icons/RuntimesIcon';
 import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
@@ -82,7 +83,10 @@ function useDeprecatedFriendApplyReddotCleanup() {
   }, [isLogined, uid])
 }
 
+let _menusRegistered = false
 async function registerMenus() {
+  if (_menusRegistered) return
+  _menusRegistered = true
 
   WKSDK.shared().conversationManager.addConversationListener(() => {
     WKApp.menus.refresh()
@@ -143,6 +147,58 @@ async function registerMenus() {
     return m
   }, 4000)
 
+  // Runtimes 菜单：按需显示（用户在当前 Space 有注册 daemon 才显示）
+  let hasRuntimes = false
+  // 三态：null=未确认（space 未就绪），true=确认有，false=确认无
+  let runtimesKnown: boolean | null = null
+  const checkRuntimes = async (): Promise<boolean> => {
+    const spaceId = WKApp.shared.currentSpaceId
+    if (!spaceId || !WKApp.loginInfo.isLogined()) {
+      if (!spaceId) return false
+      hasRuntimes = false
+      runtimesKnown = false
+      if (WKApp.route.currentPath === "/runtimes") {
+        WKApp.route.push("/")
+      }
+      WKApp.menus.refresh()
+      return true
+    }
+    try {
+      const resp = await WKApp.apiClient.get("/runtimes", { param: { space_id: spaceId } })
+      const had = hasRuntimes
+      hasRuntimes = resp.runtimes && resp.runtimes.length > 0
+      runtimesKnown = true
+      if (had !== hasRuntimes) {
+        if (!hasRuntimes && WKApp.route.currentPath === "/runtimes") {
+          WKApp.route.push("/")
+        }
+        WKApp.menus.refresh()
+      }
+      return true
+    } catch (err) {
+      console.warn('[runtimes] Failed to check runtimes:', err)
+      return false
+    }
+  }
+  WKApp.menus.register("runtimes", () => {
+    if (!hasRuntimes) return undefined as any
+    return new Menus("runtimes", "/runtimes", "Runtimes", <RuntimesIcon />, <RuntimesIcon />)
+  }, 7000)
+  const waitForSpace = (retries = 0) => {
+    if (WKApp.shared.currentSpaceId) {
+      checkRuntimes()
+    } else if (retries < 20) {
+      setTimeout(() => waitForSpace(retries + 1), 500)
+    }
+  }
+  waitForSpace()
+  WKApp.mittBus.on('space-changed', checkRuntimes)
+  setInterval(() => {
+    if (!hasRuntimes && WKApp.shared.currentSpaceId) {
+      checkRuntimes()
+    }
+  }, 15000)
+
   WKApp.menus.register("summary", (_context) => {
     const m = new Menus("summary", "/summary", t("app.nav.summary"), <SummaryIcon />, <SummaryIcon />)
     if (_summaryBadgeCount > 0) {
@@ -156,7 +212,7 @@ async function registerMenus() {
       }
     }
     return m
-  }, 5000)
+  }, 6000)
 
   WKApp.route.register("/", () => {
     return <ChatPage></ChatPage>
@@ -164,6 +220,31 @@ async function registerMenus() {
 
   WKApp.route.register("/contacts", () => {
     return <ContactsList></ContactsList>
+  })
+
+  WKApp.route.register("/runtimes", () => {
+    if (!hasRuntimes) {
+      if (runtimesKnown === null) {
+        const tryCheck = (retries = 0) => {
+          if (!WKApp.shared.currentSpaceId && retries < 20) {
+            setTimeout(() => tryCheck(retries + 1), 500)
+            return
+          }
+          checkRuntimes().then((ok) => {
+            if (hasRuntimes) {
+              WKApp.route.push("/runtimes")
+            } else if (ok && !hasRuntimes) {
+              WKApp.route.push("/")
+            }
+          })
+        }
+        tryCheck()
+        return <ChatPage />
+      }
+      WKApp.route.push("/")
+      return <ChatPage />
+    }
+    return <RuntimesPage />
   })
 
 }

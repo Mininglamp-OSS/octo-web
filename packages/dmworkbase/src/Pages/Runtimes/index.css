@@ -1,0 +1,691 @@
+/* ── List Panel (rendered in contentLeft) ── */
+.wk-rt-list {
+    height: 100%;
+    background: var(--card-bg);
+    display: flex;
+    flex-direction: column;
+}
+
+.wk-rt-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.wk-rt-list-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.wk-rt-list-count {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+.wk-rt-list-items {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.wk-rt-list-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background 0.15s;
+    gap: 10px;
+}
+
+.wk-rt-list-item:hover {
+    background: var(--bg-hover);
+}
+
+.wk-rt-list-item.selected {
+    background: var(--accent-light, rgba(91, 106, 191, 0.08));
+}
+
+.wk-rt-list-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.wk-rt-list-item-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wk-rt-list-item-sub {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 1px;
+}
+
+/* ── Provider Icon ── */
+.wk-rt-provider-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.wk-rt-provider-icon.large {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+}
+
+/* ── Status Dot ── */
+.wk-rt-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.wk-rt-status-dot.online {
+    background: #22c55e;
+}
+
+.wk-rt-status-dot.offline {
+    background: #d1d5db;
+}
+
+/* ── Right Detail Panel ── */
+.wk-rt-detail {
+    height: 100%;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: 24px;
+    background: var(--card-bg);
+    box-sizing: border-box;
+}
+
+.wk-rt-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.wk-rt-detail-title {
+    flex: 1;
+}
+
+.wk-rt-detail-title h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.wk-rt-detail-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ── Status Badge ── */
+.wk-rt-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.wk-rt-status-badge.online {
+    background: rgba(34, 197, 94, 0.1);
+    color: #16a34a;
+}
+
+.wk-rt-status-badge.offline {
+    background: rgba(107, 114, 128, 0.1);
+    color: #6b7280;
+}
+
+/* ── Detail Grid ── */
+.wk-rt-detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.wk-rt-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.wk-rt-field label {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-weight: 500;
+}
+
+.wk-rt-field span {
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.wk-rt-text-online {
+    color: #16a34a !important;
+}
+
+.wk-rt-text-offline {
+    color: #6b7280 !important;
+}
+
+/* ── Detail Section ── */
+.wk-rt-detail-section {
+    margin-bottom: 16px;
+}
+
+.wk-rt-detail-section label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.wk-rt-detail-section span {
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.wk-rt-mono {
+    font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+    font-size: 13px !important;
+}
+
+/* ── Metadata ── */
+/* ── Footer ── */
+.wk-rt-detail-footer {
+    display: flex;
+    gap: 24px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-light);
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+/* ── Delete Button ── */
+.wk-rt-btn-delete {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.wk-rt-btn-delete:hover {
+    background: #fee2e2;
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+.wk-rt-btn-delete:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ── Device Group (Level 1) ── */
+.wk-rt-device-group {
+    border-bottom: 1px solid var(--border-light);
+}
+
+.wk-rt-device-group:last-child {
+    border-bottom: none;
+}
+
+.wk-rt-device-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    cursor: pointer;
+    gap: 8px;
+    transition: background 0.15s;
+}
+
+.wk-rt-device-row:hover {
+    background: var(--bg-hover);
+}
+
+.wk-rt-expand-arrow {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    transition: transform 0.2s;
+    width: 14px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.wk-rt-expand-arrow.expanded {
+    transform: rotate(90deg);
+}
+
+.wk-rt-device-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.wk-rt-device-icon.large {
+    width: 40px;
+    height: 40px;
+}
+
+.wk-rt-device-info {
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.wk-rt-device-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wk-rt-device-sub {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 1px;
+}
+
+/* ── Agent Row (Level 2) ── */
+.wk-rt-agent-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px 8px 46px;
+    cursor: pointer;
+    gap: 10px;
+    transition: background 0.15s;
+}
+
+.wk-rt-agent-row:hover {
+    background: var(--bg-hover);
+}
+
+.wk-rt-agent-row.selected {
+    background: var(--accent-light, rgba(91, 106, 191, 0.08));
+}
+
+.wk-rt-provider-icon.small {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+/* ── Device Detail: agent list ── */
+.wk-rt-device-agent-list {
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.wk-rt-device-agent-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    gap: 10px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.wk-rt-device-agent-row:last-child {
+    border-bottom: none;
+}
+
+.wk-rt-device-agent-info {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.wk-rt-device-agent-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.wk-rt-device-agent-ver {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* ── Plugin Tags ── */
+.wk-rt-plugin-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.wk-rt-plugin-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+.wk-rt-plugin-ver {
+    color: var(--text-tertiary);
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+}
+
+/* ── Binding List (expanded under agent) ── */
+.wk-rt-clickable {
+    cursor: pointer;
+}
+
+.wk-rt-binding-list {
+    padding: 4px 12px 8px 52px;
+    background: var(--bg-secondary);
+}
+
+.wk-rt-binding-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    transition: background-color 150ms ease;
+}
+
+.wk-rt-binding-row + .wk-rt-binding-row {
+    margin-top: 2px;
+}
+
+.wk-rt-binding-row-bot:hover {
+    background: var(--bg-tertiary, rgba(0, 0, 0, 0.04));
+}
+
+/* Bot row: avatar + two-line text */
+.wk-rt-binding-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+}
+
+.wk-rt-binding-avatar-wrap .wk-avatar {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50%;
+    display: block;
+}
+
+.wk-rt-online-dot {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #22c55e;
+    border: 2px solid var(--bg-secondary, #fff);
+    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+}
+
+.wk-rt-binding-text {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    min-width: 0;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.wk-rt-binding-primary {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary, #111);
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.wk-rt-binding-row-bot .wk-rt-binding-avatar-wrap.wk-rt-clickable {
+    cursor: pointer;
+    transition: transform 120ms ease;
+}
+.wk-rt-binding-row-bot .wk-rt-binding-avatar-wrap.wk-rt-clickable:hover {
+    transform: scale(1.05);
+}
+
+.wk-rt-binding-primary.wk-rt-clickable {
+    cursor: pointer;
+    transition: color 120ms ease;
+}
+.wk-rt-binding-primary.wk-rt-clickable:hover {
+    color: var(--accent, #5b6abf);
+}
+
+.wk-rt-binding-mention {
+    font-size: 12px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    color: var(--text-secondary, #8b95a5);
+    cursor: pointer;
+    user-select: all;
+    padding: 1px 6px;
+    border-radius: 4px;
+    line-height: 1.4;
+    transition: background-color 120ms ease, color 120ms ease;
+}
+
+.wk-rt-binding-mention:hover {
+    background: var(--accent-soft, rgba(91, 106, 191, 0.12));
+    color: var(--accent, #5b6abf);
+}
+
+/* Fallback row (non-dmwork bot): inline channel chip + mention */
+.wk-rt-binding-row-legacy {
+    gap: 8px;
+}
+
+.wk-rt-binding-channel {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--bg-tertiary, rgba(0, 0, 0, 0.08));
+    color: var(--text-secondary);
+    text-transform: lowercase;
+    font-weight: 500;
+}
+
+/* ── Update Hint ── */
+.wk-rt-update-hint {
+    color: var(--text-secondary, #8b95a5);
+    font-weight: 400;
+    margin-left: 6px;
+    font-size: 13px;
+}
+
+/* ── Upgrade Button ── */
+.wk-rt-upgrade-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-secondary, #6b7280);
+    background: var(--bg-secondary, #f5f5f5);
+    border: 1px solid var(--border-light, #e5e5e5);
+    border-radius: 4px;
+    cursor: pointer;
+    vertical-align: baseline;
+    transition: background 0.2s ease, border-color 0.2s ease;
+    line-height: 1.3;
+}
+.wk-rt-upgrade-btn:hover {
+    background: var(--bg-hover, #ebebeb);
+    border-color: var(--border-medium, #d0d0d0);
+}
+.wk-rt-upgrade-btn:active {
+    background: var(--bg-active, #e0e0e0);
+}
+.wk-rt-upgrade-btn.disabled {
+    color: var(--text-disabled, #c0c0c0);
+    background: var(--bg-secondary, #f5f5f5);
+    border-color: var(--border-light, #e8e8e8);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+.wk-rt-upgrade-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    font-size: 11px;
+    font-weight: 400;
+    vertical-align: baseline;
+    line-height: 1.3;
+}
+.wk-rt-upgrade-status .upgrade-dot {
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+}
+.wk-rt-upgrade-status.progress {
+    color: var(--text-secondary, #8b95a5);
+}
+.wk-rt-upgrade-status.progress .upgrade-dot {
+    background: #3b82f6;
+    animation: upgradeDotPulse 1.2s ease-in-out infinite;
+}
+.wk-rt-upgrade-status.success {
+    color: #34a853;
+}
+.wk-rt-upgrade-status.success .upgrade-dot {
+    background: #34a853;
+}
+.wk-rt-upgrade-status.error {
+    color: #ea4335;
+    cursor: help;
+}
+.wk-rt-upgrade-status.error .upgrade-dot {
+    background: #ea4335;
+}
+@keyframes upgradeDotPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+}
+
+/* ── Ping Result ── */
+.wk-rt-ping-result {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.wk-rt-ping-result:hover {
+    opacity: 0.7;
+}
+
+.wk-rt-ping-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.wk-rt-ping-dot.idle {
+    background: #d1d5db;
+}
+
+.wk-rt-ping-dot.testing {
+    background: #f59e0b;
+    animation: wk-rt-pulse 1s infinite;
+}
+
+.wk-rt-ping-dot.done {
+    background: #22c55e;
+}
+
+.wk-rt-ping-dot.error {
+    background: #ef4444;
+}
+
+@keyframes wk-rt-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* ── Agent Badge ── */
+.wk-rt-agent-badge {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+}
+
+.wk-rt-default-tag {
+    font-size: 10px;
+    background: rgba(91, 106, 191, 0.1);
+    color: var(--accent, #5b6abf);
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 6px;
+    font-weight: 500;
+}
+
+/* ── Empty State ── */
+.wk-rt-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 200px;
+    color: var(--text-tertiary);
+    font-size: 13px;
+}
