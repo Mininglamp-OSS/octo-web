@@ -6,6 +6,8 @@ import {
   WKSDK,
   Message,
   MessageContent,
+  Mention,
+  Reply,
 } from "wukongimjssdk";
 import { IconArrowLeft, IconClose } from "@douyinfe/semi-icons";
 import React from "react";
@@ -37,7 +39,13 @@ export default class MergeforwardContent extends MessageContent {
   users!: Array<MergeforwardUser>;
   msgs!: Array<Message>;
 
+  // SAFETY: decodeJSON must remain fully synchronous; the static counter assumes
+  // no decode call yields the event loop before its try/finally completes.
   private static decodeDepth = 0;
+  // 8 matches the iOS/Android cap and is well above practical use (3–4 levels).
+  // Pure recursion at this depth (~36 frames) is far from V8's stack limit; the
+  // real overflow risk is payload-size in the SDK's String.fromCharCode.apply,
+  // which is fixed by the TextDecoder override in decode() below.
   private static readonly MAX_DECODE_DEPTH = 8;
 
   constructor(
@@ -55,12 +63,36 @@ export default class MergeforwardContent extends MessageContent {
     // The SDK's default MessageContent.decode() uses uint8ArrayToString which calls
     // String.fromCharCode.apply(null, data). For large merge-forward payloads this
     // overflows the call stack. Override to use TextDecoder which is safe for any size.
+    // All SDK metadata hydration steps are mirrored below to avoid regressions.
+    let contentObj: any;
     try {
-      this.contentObj = JSON.parse(new TextDecoder().decode(raw));
-      this.decodeJSON(this.contentObj);
+      contentObj = JSON.parse(new TextDecoder().decode(raw));
     } catch (_e) {
       this.contentObj = {};
+      this.channelType = 0;
+      this.users = [];
+      this.msgs = [];
+      return;
     }
+    this.contentObj = contentObj;
+    const mentionObj = contentObj["mention"];
+    if (mentionObj) {
+      const mention = new Mention();
+      mention.all = mentionObj["all"] === 1;
+      if (mentionObj["uids"]) {
+        mention.uids = mentionObj["uids"];
+      }
+      this.mention = mention;
+    }
+    const replyObj = contentObj["reply"];
+    if (replyObj) {
+      const reply = new Reply();
+      reply.decode(replyObj);
+      this.reply = reply;
+    }
+    this.visibles = contentObj["visibles"];
+    this.invisibles = contentObj["invisibles"];
+    this.decodeJSON(contentObj);
   }
 
   decodeJSON(content: any) {
@@ -90,13 +122,16 @@ export default class MergeforwardContent extends MessageContent {
 
     if (MergeforwardContent.decodeDepth >= MergeforwardContent.MAX_DECODE_DEPTH) {
       this.msgs = [];
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[MergeforwardContent] decode depth limit reached, inner msgs truncated");
+      }
       return;
     }
 
     MergeforwardContent.decodeDepth++;
     try {
-      let msgMaps = content["msgs"];
-      let messages = new Array();
+      const msgMaps = content["msgs"];
+      const messages: Message[] = [];
       if (msgMaps && msgMaps.length > 0) {
         for (const msgMap of msgMaps) {
           messages.push(this.mapToMessage(msgMap));
@@ -108,7 +143,7 @@ export default class MergeforwardContent extends MessageContent {
     }
   }
   encodeJSON() {
-    let messageMaps = new Array();
+    const messageMaps: any[] = [];
     if (this.msgs && this.msgs.length > 0) {
       for (const msg of this.msgs) {
         messageMaps.push(this.messageToMap(msg));
@@ -142,7 +177,7 @@ export default class MergeforwardContent extends MessageContent {
     if (payloadObj) {
       contentType = payloadObj.type;
     }
-    let messageContent = WKSDK.shared().getMessageContent(contentType);
+    const messageContent = WKSDK.shared().getMessageContent(contentType);
     // Use decode() to properly set contentObj and call decodeJSON().
     // For type=11 (MergeforwardContent), the overridden decode() uses TextDecoder
     // instead of the SDK's uint8ArrayToString, preventing call-stack overflow on large

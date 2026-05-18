@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => {
   class StubMessageContent {
@@ -58,6 +58,19 @@ vi.mock("wukongimjssdk", () => ({
   ChannelTypePerson: 1,
   Message: hoisted.StubMessage,
   MessageContent: hoisted.StubMessageContent,
+  Mention: class {
+    all: boolean = false;
+    uids: string[] = [];
+  },
+  Reply: class {
+    fromUID: string = "";
+    messageID: string = "";
+    content: any = null;
+    decode(data: any) {
+      this.fromUID = data?.from_uid ?? "";
+      this.messageID = data?.message_id ?? "";
+    }
+  },
   WKSDK: {
     shared: () => ({
       getMessageContent: hoisted.getMessageContent,
@@ -189,5 +202,99 @@ describe("MergeforwardContent depth limit", () => {
     const second = new MergeforwardContent();
     second.decodeJSON(createNestedMsgMap(4).payload);
     expect(second.msgs).toHaveLength(1);
+  });
+});
+
+describe("MergeforwardContent decode() SDK metadata hydration", () => {
+  it("preserves mention fields from payload", () => {
+    const raw = new TextEncoder().encode(JSON.stringify({
+      type: 11,
+      channel_type: 1,
+      users: [],
+      msgs: [],
+      mention: { all: 1, uids: ["u1", "u2"] },
+    }));
+    const content = new MergeforwardContent();
+    content.decode(raw);
+    expect(content.mention).toBeDefined();
+    expect(content.mention.all).toBe(true);
+    expect(content.mention.uids).toEqual(["u1", "u2"]);
+  });
+
+  it("preserves reply field from payload", () => {
+    const raw = new TextEncoder().encode(JSON.stringify({
+      type: 11,
+      channel_type: 1,
+      users: [],
+      msgs: [],
+      reply: { from_uid: "u1", message_id: "999" },
+    }));
+    const content = new MergeforwardContent();
+    content.decode(raw);
+    expect(content.reply).toBeDefined();
+    expect(content.reply.fromUID).toBe("u1");
+    expect(content.reply.messageID).toBe("999");
+  });
+
+  it("preserves visibles and invisibles from payload", () => {
+    const raw = new TextEncoder().encode(JSON.stringify({
+      type: 11,
+      channel_type: 1,
+      users: [],
+      msgs: [],
+      visibles: ["u1"],
+      invisibles: ["u2"],
+    }));
+    const content = new MergeforwardContent();
+    content.decode(raw);
+    expect(content.visibles).toEqual(["u1"]);
+    expect(content.invisibles).toEqual(["u2"]);
+  });
+
+  it("sets contentObj and decodes msgs on valid payload", () => {
+    const payload = { type: 11, channel_type: 2, users: [{ uid: "u1", name: "User1" }], msgs: [] };
+    const raw = new TextEncoder().encode(JSON.stringify(payload));
+    const content = new MergeforwardContent();
+    content.decode(raw);
+    expect(content.contentObj).toMatchObject({ type: 11 });
+    expect(content.msgs).toEqual([]);
+    expect(content.users).toHaveLength(1);
+  });
+
+  it("sets contentObj to {} and returns cleanly on invalid JSON", () => {
+    const raw = new TextEncoder().encode("not valid json {{{");
+    const content = new MergeforwardContent();
+    expect(() => content.decode(raw)).not.toThrow();
+    expect(content.contentObj).toEqual({});
+    // Safe defaults must be applied so downstream consumers don't hit undefined
+    expect(content.channelType).toBe(0);
+    expect(content.users).toEqual([]);
+    expect(content.msgs).toEqual([]);
+  });
+});
+
+describe("MergeforwardContent decode() Path 1 regression — TextDecoder, not String.fromCharCode.apply", () => {
+  it("does not call the SDK base MessageContent.decode (verifies TextDecoder path is active)", () => {
+    const baseDecode = vi.spyOn(hoisted.StubMessageContent.prototype, "decode");
+    const raw = new TextEncoder().encode(JSON.stringify({
+      type: 11, channel_type: 1, users: [], msgs: [],
+    }));
+    const content = new MergeforwardContent();
+    content.decode(raw);
+    expect(baseDecode).not.toHaveBeenCalled();
+    baseDecode.mockRestore();
+  });
+
+  it("handles a large payload (~200KB) without stack overflow", () => {
+    // String.fromCharCode.apply(null, data) overflows for large Uint8Arrays;
+    // TextDecoder handles them safely. Generate ~200KB by using many users.
+    const users = Array.from({ length: 8000 }, (_, i) => ({ uid: `u${i}`, name: `User ${i} `.repeat(3) }));
+    const raw = new TextEncoder().encode(JSON.stringify({
+      type: 11, channel_type: 2, users, msgs: [],
+    }));
+    expect(raw.length).toBeGreaterThan(200_000);
+    const content = new MergeforwardContent();
+    expect(() => content.decode(raw)).not.toThrow();
+    expect(content.users.length).toBeGreaterThan(0);
   });
 });
