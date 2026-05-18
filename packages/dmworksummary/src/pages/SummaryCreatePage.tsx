@@ -1,7 +1,6 @@
-import React, { Component } from "react";
+import React, { Component, createRef } from "react";
 import {
     Button,
-    TextArea,
     Toast,
     Typography,
     Tag,
@@ -9,6 +8,8 @@ import {
 } from "@douyinfe/semi-ui";
 import { IconPlus } from "@douyinfe/semi-icons";
 import WKApp from "@octo/base/src/App";
+import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
+import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import * as api from "../api/summaryApi";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
@@ -52,6 +53,8 @@ const TEMPLATE_ICONS: Record<string, string> = {
 };
 
 export default class SummaryCreatePage extends Component<SummaryCreatePageProps, SummaryCreatePageState> {
+    private textareaRef = createRef<HTMLTextAreaElement>();
+
     state: SummaryCreatePageState = {
         topic: "",
         templates: [],
@@ -96,6 +99,24 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     canSubmit(): boolean {
         return this.state.topic.trim().length > 0;
     }
+
+    handleVoiceTranscribed = (text: string, mode: ReplaceMode, savedRange?: SelectionRange) => {
+        if (mode === "all") {
+            this.setState({ topic: text.slice(0, 1000) });
+        } else if (mode === "selection" && savedRange) {
+            // Note: savedRange indices are from recording start; assumes input is read-only during recording
+            this.setState((prev) => {
+                const updated = prev.topic.slice(0, savedRange.from) + text + prev.topic.slice(savedRange.to);
+                return { topic: updated.slice(0, 1000) };
+            });
+        } else {
+            this.setState((prev) => {
+                const pos = savedRange?.from ?? prev.topic.length;
+                const updated = prev.topic.slice(0, pos) + text + prev.topic.slice(pos);
+                return { topic: updated.slice(0, 1000) };
+            });
+        }
+    };
 
     handleSubmit = async () => {
         const { topic, selectedChats, selectedMembers, scheduleConfig } = this.state;
@@ -179,15 +200,25 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
                 {/* Main input */}
                 <div className="summary-workbench-input-area">
-                    <TextArea
-                        value={topic}
-                        onChange={(val) => this.setState({ topic: val.slice(0, 1000) })}
-                        placeholder="输入你想总结的主题，例如：总结本周项目进展、整理客户反馈要点..."
-                        rows={4}
-                        style={{ resize: "none", fontSize: 15 }}
-                        autosize={false}
-                        maxLength={1000}
-                    />
+                    <div style={{ position: "relative" }}>
+                        <textarea
+                            ref={this.textareaRef}
+                            className="summary-workbench-textarea"
+                            value={topic}
+                            onChange={(e) => this.setState({ topic: e.target.value.slice(0, 1000) })}
+                            placeholder="输入你想总结的主题，例如：总结本周项目进展、整理客户反馈要点..."
+                            rows={4}
+                            maxLength={1000}
+                        />
+                        <VoiceInputButton
+                            inputRef={this.textareaRef}
+                            onTranscribed={this.handleVoiceTranscribed}
+                            getCurrentText={() => this.state.topic}
+                            showModeMenu
+                            size="sm"
+                            className="wk-vib--textarea-corner"
+                        />
+                    </div>
                     {topic.length >= 1000 && (
                         <div style={{ color: "var(--semi-color-warning)", fontSize: 12, marginTop: 4, padding: "0 12px 8px" }}>
                             已达到 1000 字符上限

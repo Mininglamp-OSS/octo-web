@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Modal, DatePicker } from '@douyinfe/semi-ui';
+import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';
 import type { CreateMatterReq } from '../../bridge/types';
 import MemberPicker from '../MemberPicker';
 import './index.css';
@@ -95,6 +96,7 @@ export default function CreateTaskModal({
 
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
   // 用 join 做稳定的 key，避免每次渲染新数组引用触发 effect（比 JSON.stringify 更轻量）
   const prefillAssigneeUidsKey = prefillAssigneeUids.join(',');
   // stablePrefillAssigneeUids：用 key 做稳定化，避免每次渲染新数组引用导致 isDirty useMemo 失效
@@ -228,16 +230,41 @@ export default function CreateTaskModal({
         {/* 事项名 */}
         <div className="wk-create-task-modal__field">
           <label className="wk-create-task-modal__label">事项名</label>
-          <input
-            ref={titleInputRef}
-            type="text"
-            className={`wk-create-task-modal__input${sendOnConfirm ? ' wk-create-task-modal__input--readonly' : ''}`}
-            placeholder="输入事项名称..."
-            value={title}
-            onChange={sendOnConfirm ? () => {} : (e) => setTitle(e.target.value)}
-            readOnly={sendOnConfirm}
-            autoFocus={false}
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <input
+              ref={titleInputRef}
+              type="text"
+              className={`wk-create-task-modal__input${sendOnConfirm ? ' wk-create-task-modal__input--readonly' : ''}`}
+              placeholder="输入事项名称..."
+              value={title}
+              onChange={sendOnConfirm ? () => {} : (e) => setTitle(e.target.value)}
+              readOnly={sendOnConfirm}
+              autoFocus={false}
+              style={{ flex: 1 }}
+            />
+            {!sendOnConfirm && (
+              <VoiceInputButton
+                inputRef={titleInputRef}
+                onTranscribed={(text, mode, savedRange) => {
+                  let newValue: string;
+                  if (mode === "all") {
+                    newValue = text;
+                  } else if (mode === "selection" && savedRange) {
+                    // Note: savedRange indices are from recording start; assumes input is read-only during recording
+                    const prev = title;
+                    newValue = prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to);
+                  } else {
+                    const prev = title;
+                    const pos = savedRange?.from ?? prev.length;
+                    newValue = prev.slice(0, pos) + text + prev.slice(pos);
+                  }
+                  setTitle(newValue.slice(0, 200));
+                }}
+                getCurrentText={() => title}
+                size="sm"
+              />
+            )}
+          </div>
         </div>
 
         {/* 负责人 */}
@@ -301,13 +328,36 @@ export default function CreateTaskModal({
           ) : (
             <>
               <label className="wk-create-task-modal__label">备注</label>
-              <textarea
-                className="wk-create-task-modal__textarea"
-                placeholder="添加事项备注..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-              />
+              <div style={{ position: "relative" }}>
+                <textarea
+                  ref={descRef}
+                  className="wk-create-task-modal__textarea"
+                  placeholder="添加事项备注..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                />
+                <VoiceInputButton
+                  inputRef={descRef}
+                  onTranscribed={(text, mode, savedRange) => {
+                    if (mode === "all") {
+                      setDescription(text);
+                    } else if (mode === "selection" && savedRange) {
+                      // Note: savedRange indices are from recording start; assumes input is read-only during recording
+                      setDescription(prev => prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to));
+                    } else {
+                      setDescription(prev => {
+                        const pos = savedRange?.from ?? prev.length;
+                        return prev.slice(0, pos) + text + prev.slice(pos);
+                      });
+                    }
+                  }}
+                  getCurrentText={() => description}
+                  showModeMenu
+                  size="sm"
+                  className="wk-vib--textarea-corner"
+                />
+              </div>
             </>
           )}
         </div>

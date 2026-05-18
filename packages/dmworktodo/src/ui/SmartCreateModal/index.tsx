@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Modal, DatePicker, Spin } from "@douyinfe/semi-ui";
 import { WKApp } from "@octo/base";
+import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
+import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import type { CreateMatterReq, ExtractMessage } from "../../bridge/types";
 import MemberPicker from "../MemberPicker";
 import { Toast } from "../../utils/toast";
@@ -74,6 +76,7 @@ export default function SmartCreateModal({
   const [submitting, setSubmitting] = useState(false);
 
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const briefRef = useRef<HTMLTextAreaElement>(null);
 
   // 打开时聚焦标题输入框，设置默认负责人
   useEffect(() => {
@@ -215,14 +218,36 @@ export default function SmartCreateModal({
               <label className="wk-smart-create-modal__label">
                 标题 <span className="wk-smart-create-modal__req">*</span>
               </label>
-              <input
-                ref={titleInputRef}
-                type="text"
-                className="wk-smart-create-modal__input"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="事件标题"
-              />
+              <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  className="wk-smart-create-modal__input"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="事件标题"
+                  style={{ flex: 1 }}
+                />
+                <VoiceInputButton
+                  inputRef={titleInputRef}
+                  onTranscribed={(text, mode, savedRange) => {
+                    if (mode === "all") {
+                      setTitle(text);
+                    } else if (mode === "selection" && savedRange) {
+                      // Note: savedRange indices are from recording start; assumes input is read-only during recording
+                      setTitle(prev => prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to));
+                    } else {
+                      setTitle(prev => {
+                        const pos = savedRange?.from ?? prev.length;
+                        return prev.slice(0, pos) + text + prev.slice(pos);
+                      });
+                    }
+                  }}
+                  getCurrentText={() => title}
+                  showModeMenu
+                  size="sm"
+                />
+              </div>
             </div>
 
             {/* 主要目标 */}
@@ -230,13 +255,36 @@ export default function SmartCreateModal({
               <label className="wk-smart-create-modal__label">
                 主要目标 <span className="wk-smart-create-modal__req">*</span>
               </label>
-              <textarea
-                className="wk-smart-create-modal__textarea"
-                value={brief}
-                onChange={(e) => setBrief(e.target.value)}
-                placeholder="一句话说清这件事"
-                rows={3}
-              />
+              <div style={{ position: "relative" }}>
+                <textarea
+                  ref={briefRef}
+                  className="wk-smart-create-modal__textarea"
+                  value={brief}
+                  onChange={(e) => setBrief(e.target.value)}
+                  placeholder="一句话说清这件事"
+                  rows={3}
+                />
+                <VoiceInputButton
+                  inputRef={briefRef}
+                  onTranscribed={(text, mode, savedRange) => {
+                    if (mode === "all") {
+                      setBrief(text);
+                    } else if (mode === "selection" && savedRange) {
+                      // Note: savedRange indices are from recording start; assumes input is read-only during recording
+                      setBrief(prev => prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to));
+                    } else {
+                      setBrief(prev => {
+                        const pos = savedRange?.from ?? prev.length;
+                        return prev.slice(0, pos) + text + prev.slice(pos);
+                      });
+                    }
+                  }}
+                  getCurrentText={() => brief}
+                  showModeMenu
+                  size="sm"
+                  className="wk-vib--textarea-corner"
+                />
+              </div>
             </div>
 
             {/* 负责人 */}

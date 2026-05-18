@@ -27,7 +27,7 @@ export default defineConfig({
     // to PR#1113.
     server: {
       deps: {
-        inline: [/@tiptap\/react/],
+        inline: [/@tiptap\/react/, /@douyinfe\/semi-icons/],
       },
     },
   },

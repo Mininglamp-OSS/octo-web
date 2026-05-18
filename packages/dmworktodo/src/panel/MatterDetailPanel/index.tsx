@@ -1,5 +1,6 @@
 ﻿import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { DatePicker } from "@douyinfe/semi-ui";
+import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type {
   MatterDetail,
   MatterStatus,
@@ -1816,6 +1817,7 @@ function ActivityPanel({
 
 function TimelineInput({ onSubmit }: { onSubmit: (content: string) => void }) {
   const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
   const handleSubmit = () => {
     if (!value.trim()) return;
     onSubmit(value);
@@ -1824,6 +1826,7 @@ function TimelineInput({ onSubmit }: { onSubmit: (content: string) => void }) {
   return (
     <div className="wk-mp-tl-input">
       <input
+        ref={inputRef}
         type="text"
         className="wk-mp-tl-input__field"
         placeholder="添加进展或评论..."
@@ -1832,6 +1835,23 @@ function TimelineInput({ onSubmit }: { onSubmit: (content: string) => void }) {
         onKeyDown={(e) => {
           if (e.key === "Enter") handleSubmit();
         }}
+      />
+      <VoiceInputButton
+        inputRef={inputRef}
+        onTranscribed={(text, mode, savedRange) => {
+          if (mode === "all") {
+            setValue(text);
+          } else if (mode === "selection" && savedRange) {
+            // Note: savedRange indices are from recording start; assumes input is read-only during recording
+            setValue((prev) => prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to));
+          } else {
+            setValue((prev) => {
+              const pos = savedRange?.from ?? prev.length;
+              return prev.slice(0, pos) + text + prev.slice(pos);
+            });
+          }
+        }}
+        size="sm"
       />
       <button
         type="button"
@@ -1857,6 +1877,8 @@ function EditableTitle({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setDraft(value);
@@ -1865,6 +1887,19 @@ function EditableTitle({
   useEffect(() => {
     if (editing) inputRef.current?.focus();
   }, [editing]);
+
+  useEffect(() => {
+    return () => {
+      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    };
+  }, []);
+
+  const cancelPendingCommit = () => {
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+  };
 
   const commit = async () => {
     const trimmed = draft.trim();
@@ -1884,21 +1919,51 @@ function EditableTitle({
 
   if (editing) {
     return (
-      <input
-        ref={inputRef}
-        className="wk-mp-header__title wk-mp-header__title--editing"
-        value={draft}
-        maxLength={500}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit();
-          if (e.key === "Escape") {
-            setDraft(value);
-            setEditing(false);
-          }
-        }}
-      />
+      <div ref={containerRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
+        <input
+          ref={inputRef}
+          className="wk-mp-header__title wk-mp-header__title--editing"
+          value={draft}
+          maxLength={500}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={(e) => {
+            if (containerRef.current?.contains(e.relatedTarget as Node)) return;
+            cancelPendingCommit();
+            commitTimerRef.current = setTimeout(commit, 200);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { cancelPendingCommit(); commit(); }
+            if (e.key === "Escape") {
+              cancelPendingCommit();
+              setDraft(value);
+              setEditing(false);
+            }
+          }}
+        />
+        <VoiceInputButton
+          inputRef={inputRef}
+          onRecordingStart={cancelPendingCommit}
+          onTranscribed={(text, mode, savedRange) => {
+            cancelPendingCommit();
+            let newValue: string;
+            if (mode === "all") {
+              newValue = text;
+            } else if (mode === "selection" && savedRange) {
+              // Note: savedRange indices are from recording start; assumes input is read-only during recording
+              newValue = draft.slice(0, savedRange.from) + text + draft.slice(savedRange.to);
+            } else {
+              const pos = savedRange?.from ?? draft.length;
+              newValue = draft.slice(0, pos) + text + draft.slice(pos);
+            }
+            setDraft(newValue.slice(0, 500));
+            // Refocus so next click-away triggers blur → commit
+            setTimeout(() => inputRef.current?.focus(), 0);
+          }}
+          getCurrentText={() => draft}
+          showModeMenu
+          size="sm"
+        />
+      </div>
     );
   }
 
@@ -1925,6 +1990,8 @@ function EditableDescription({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setDraft(value);
@@ -1933,11 +2000,23 @@ function EditableDescription({
   useEffect(() => {
     if (editing && textareaRef.current) {
       textareaRef.current.focus();
-      // 自动调整高度
       textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
     }
   }, [editing]);
+
+  useEffect(() => {
+    return () => {
+      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    };
+  }, []);
+
+  const cancelPendingCommit = () => {
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+  };
 
   const commit = async () => {
     const trimmed = draft.trim();
@@ -1957,25 +2036,55 @@ function EditableDescription({
 
   if (editing) {
     return (
-      <textarea
-        ref={textareaRef}
-        className="wk-mp-goal__text wk-mp-goal__text--editing"
-        value={draft}
-        maxLength={10000}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          // 动态调整高度
-          e.target.style.height = "auto";
-          e.target.style.height = e.target.scrollHeight + "px";
-        }}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            setDraft(value);
-            setEditing(false);
-          }
-        }}
-      />
+      <div ref={containerRef} style={{ position: "relative" }}>
+        <textarea
+          ref={textareaRef}
+          className="wk-mp-goal__text wk-mp-goal__text--editing"
+          value={draft}
+          maxLength={10000}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = e.target.scrollHeight + "px";
+          }}
+          onBlur={(e) => {
+            if (containerRef.current?.contains(e.relatedTarget as Node)) return;
+            cancelPendingCommit();
+            commitTimerRef.current = setTimeout(commit, 200);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              cancelPendingCommit();
+              setDraft(value);
+              setEditing(false);
+            }
+          }}
+        />
+        <VoiceInputButton
+          inputRef={textareaRef}
+          onRecordingStart={cancelPendingCommit}
+          onTranscribed={(text, mode, savedRange) => {
+            cancelPendingCommit();
+            let newValue: string;
+            if (mode === "all") {
+              newValue = text;
+            } else if (mode === "selection" && savedRange) {
+              // Note: savedRange indices are from recording start; assumes input is read-only during recording
+              newValue = draft.slice(0, savedRange.from) + text + draft.slice(savedRange.to);
+            } else {
+              const pos = savedRange?.from ?? draft.length;
+              newValue = draft.slice(0, pos) + text + draft.slice(pos);
+            }
+            setDraft(newValue.slice(0, 10000));
+            // Refocus so next click-away triggers blur → commit
+            setTimeout(() => textareaRef.current?.focus(), 0);
+          }}
+          getCurrentText={() => draft}
+          showModeMenu
+          size="sm"
+          className="wk-vib--textarea-corner"
+        />
+      </div>
     );
   }
 

@@ -106,28 +106,23 @@ export default class WKViewQueue extends Component<WKViewQueueProps, WKViewQueue
         })
     }
     pop(): void {
-       
-        const { viewCount,queues  } = this.state
-        if(queues.length === 0) {
-            return
-        }
-        this.setState({
-            status: WKViewQueueStatus.Pop,
-            viewCount: queues.length-1,
-        },()=>{
-            this.notifyRouteChange()
-        })
+        this.setState((prevState) => {
+            if (prevState.queues.length === 0) return null;
+            return {
+                status: WKViewQueueStatus.Pop,
+                viewCount: prevState.queues.length - 1,
+            };
+        }, () => {
+            this.notifyRouteChange();
+        });
     }
 
     poped() {
-        const {queues} = this.state
-        queues.splice(queues.length-1,1)
-        
-       this.setState({
-           queues:  queues,
-       },()=>{
-           this.notifyRouteChange()
-       })
+        this.setState((prevState) => ({
+            queues: prevState.queues.slice(0, -1),
+        }), () => {
+            this.notifyRouteChange();
+        });
     }
 
     popToRoot(): void {
@@ -141,12 +136,11 @@ export default class WKViewQueue extends Component<WKViewQueueProps, WKViewQueue
 
 
     push(view: JSX.Element): void {
-       const { queues,viewCount } = this.state
-       this.setState({
-           queues: [...queues,view],
-           viewCount:  queues.length + 1,
+       this.setState((prevState) => ({
+           queues: [...prevState.queues, view],
+           viewCount:  prevState.queues.length + 1,
            status: WKViewQueueStatus.Push,
-       },()=>{
+       }),()=>{
         this.notifyRouteChange()
        })
     }

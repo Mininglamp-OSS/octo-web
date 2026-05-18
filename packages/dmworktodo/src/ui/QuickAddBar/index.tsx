@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import * as api from '../../api/todoApi';
+import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';
 import type { CreateMatterReq, Matter } from '../../bridge/types';
 import CreateTaskModal from '../CreateTaskModal';
 import { Toast } from '../../utils/toast';
@@ -97,6 +98,23 @@ export default function QuickAddBar({
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={creating}
+        />
+        <VoiceInputButton
+          inputRef={inputRef}
+          onTranscribed={(text, mode, savedRange) => {
+            if (mode === "all") {
+              setTitle(text);
+            } else if (mode === "selection" && savedRange) {
+              // Note: savedRange indices are from recording start; assumes input is read-only during recording
+              setTitle((prev) => prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to));
+            } else {
+              setTitle((prev) => {
+                const pos = savedRange?.from ?? prev.length;
+                return prev.slice(0, pos) + text + prev.slice(pos);
+              });
+            }
+          }}
+          size="sm"
         />
         <button
           type="button"

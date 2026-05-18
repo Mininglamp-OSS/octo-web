@@ -3,6 +3,7 @@ import { X } from "lucide-react"
 import ThreadIcon from "../Icons/ThreadIcon"
 import classNames from "classnames"
 import WKApp from "../../App"
+import VoiceInputButton from "../VoiceInputButton"
 import "./index.css"
 
 export interface ThreadCreateModalProps {
@@ -23,6 +24,8 @@ export default class ThreadCreateModal extends Component<
   ThreadCreateModalProps,
   ThreadCreateModalState
 > {
+  private inputRef = React.createRef<HTMLInputElement>();
+
   constructor(props: ThreadCreateModalProps) {
     super(props)
     this.state = {
@@ -107,18 +110,41 @@ export default class ThreadCreateModal extends Component<
           </div>
 
           <div className="wk-thread-modal-body">
-            <input
-              className={classNames(
-                "wk-thread-modal-input",
-                error && "wk-thread-modal-input-error"
-              )}
-              type="text"
-              placeholder="输入话题名称"
-              value={name}
-              onChange={this.handleNameChange}
-              maxLength={50}
-              autoFocus
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <input
+                ref={this.inputRef}
+                className={classNames(
+                  "wk-thread-modal-input",
+                  error && "wk-thread-modal-input-error"
+                )}
+                type="text"
+                placeholder="输入话题名称"
+                value={name}
+                onChange={this.handleNameChange}
+                maxLength={50}
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <VoiceInputButton
+                inputRef={this.inputRef}
+                onTranscribed={(text, mode, savedRange) => {
+                  let newValue: string;
+                  if (mode === "all") {
+                    newValue = text;
+                  } else if (mode === "selection" && savedRange) {
+                    // Note: savedRange indices are from recording start; assumes input is read-only during recording
+                    const prev = this.state.name;
+                    newValue = prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to);
+                  } else {
+                    const prev = this.state.name;
+                    const pos = savedRange?.from ?? prev.length;
+                    newValue = prev.slice(0, pos) + text + prev.slice(pos);
+                  }
+                  this.setState({ name: newValue.slice(0, 50), error: null });
+                }}
+                size="sm"
+              />
+            </div>
             {error && <div className="wk-thread-modal-error">{error}</div>}
           </div>
 
