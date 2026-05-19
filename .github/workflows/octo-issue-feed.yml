@@ -8,7 +8,7 @@ permissions: {}
 
 jobs:
   notify:
-    uses: Mininglamp-OSS/.github/.github/workflows/octo-issue-feed.yml@main
+    uses: Mininglamp-OSS/.github/.github/workflows/octo-issue-feed.yml@v2
     with:
       repo_name: ${{ github.event.repository.name }}
       issue_number: ${{ github.event.issue.number }}
