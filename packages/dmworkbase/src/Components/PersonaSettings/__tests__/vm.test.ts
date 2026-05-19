@@ -252,10 +252,31 @@ describe("refreshActiveGrantCache (module-level)", () => {
         expect(hasAnyActiveGrant()).toBe(true)
     })
 
-    it("returns false when grants exist but none active+global_enabled", async () => {
+    // P1-2 (YUJ-1178): cache predicate is now "any active grant" — global_enabled
+    // is intentionally decoupled. A user who created a grant with global off and
+    // is only using per-channel scopes still has an active grant, so ChannelSetting
+    // toggle MUST be visible. This is the regression that the original
+    // `g.active && g.global_enabled` predicate caused.
+    it("returns true when a grant is active even if global_enabled=false (P1-2 regression guard)", async () => {
         hoisted.get.mockResolvedValueOnce([
             { id: 1, grantor_uid: "u1", grantee_bot_uid: "b1", mode: "auto", global_enabled: false, active: true },
         ])
+        const v = await refreshActiveGrantCache()
+        expect(v).toBe(true)
+        expect(hasAnyActiveGrant()).toBe(true)
+    })
+
+    it("returns false when no grants are active", async () => {
+        hoisted.get.mockResolvedValueOnce([
+            { id: 1, grantor_uid: "u1", grantee_bot_uid: "b1", mode: "auto", global_enabled: true, active: false },
+        ])
+        const v = await refreshActiveGrantCache()
+        expect(v).toBe(false)
+        expect(hasAnyActiveGrant()).toBe(false)
+    })
+
+    it("returns false when grants list is empty", async () => {
+        hoisted.get.mockResolvedValueOnce([])
         const v = await refreshActiveGrantCache()
         expect(v).toBe(false)
         expect(hasAnyActiveGrant()).toBe(false)
@@ -277,5 +298,32 @@ describe("refreshActiveGrantCache (module-level)", () => {
         resolve([])
         await Promise.all([p1, p2])
         expect(hoisted.get).toHaveBeenCalledTimes(1)
+    })
+
+    // YUJ-1178 nit: in-flight slot must be cleared on the error path too,
+    // otherwise the next call would observe a stale (but settled) promise.
+    it("clears in-flight slot on error so the next call can re-fetch", async () => {
+        hoisted.get.mockRejectedValueOnce({ status: 500, msg: "boom" })
+        await refreshActiveGrantCache()
+        expect(__testing.inFlightCount()).toBe(0)
+        // Next call must trigger a fresh GET, not return the previous (settled) promise.
+        hoisted.get.mockResolvedValueOnce([
+            { id: 1, grantor_uid: "u1", grantee_bot_uid: "b1", mode: "auto", global_enabled: false, active: true },
+        ])
+        const v2 = await refreshActiveGrantCache()
+        expect(v2).toBe(true)
+        expect(hoisted.get).toHaveBeenCalledTimes(2)
+    })
+
+    // YUJ-1178 nit: cache is bucketed by current grantor uid so that an SPA-internal
+    // account switch (if/when it lands) can't leak the previous user's answer.
+    it("buckets cache by grantor uid (multi-account safety)", () => {
+        __testing.setCacheForUid("alice", true)
+        __testing.setCacheForUid("bob", false)
+        expect(__testing.getCacheForUid("alice")).toBe(true)
+        expect(__testing.getCacheForUid("bob")).toBe(false)
+        clearPersonaActiveCache()
+        expect(__testing.getCacheForUid("alice")).toBeUndefined()
+        expect(__testing.getCacheForUid("bob")).toBeUndefined()
     })
 })

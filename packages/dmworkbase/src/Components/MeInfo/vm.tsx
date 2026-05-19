@@ -440,9 +440,16 @@ export class MeInfoVM extends ProviderListener {
         }))
 
         // 「我的分身」入口 — Persona Clone / AI On-Behalf-Of (PR-C, GH octo-web#46)。
-        // 严格按 RFC §7.1 复用 RoutePage + Section/Row DSL,零新路由:点击 Row
-        // 用 context.push 直接推 PersonaSettings 进当前 MeInfo 栈,与「我的二维码」
-        // 同款交互模式 —— pop 后回到本页保持上下文。
+        // 复用 RoutePage + Section/Row DSL：点击 Row 用 context.push 把 PersonaSettings
+        // 推进当前 MeInfo 栈，与「我的二维码」同款交互。注意 PersonaSettings 内部为了
+        // 承载 PersonaCreate / PersonaEdit 的子级跳转，会再创建一层 nested RoutePage
+        // 上下文（PR description 早期文案「zero new routes」并不精确：路由数量没变，
+        // 但是确实又多了一层 RouteContext 栈）。
+        //
+        // 因为存在 nested RoutePage，PersonaSettings 根页面那个「关闭」按钮回调走的是
+        // `this.props.onClose`，所以这里必须把 onClose 接到 MeInfo 当前栈的 pop 上，
+        // 否则进入分身页之后根级关闭按钮就成了 no-op，用户只能把整个 MeInfo 关掉
+        // 才能脱身（YUJ-1178 / PR #47 review 反馈 P1-1）。
         //
         // 设计取舍:这里**不** prefetch / 不查 active grant 状态,subTitle 故意留空,
         // 进入子页才拉数据(后端 PR-A 未 merge 时会 404, 子页 vm 已做 graceful empty
@@ -459,7 +466,7 @@ export class MeInfoVM extends ProviderListener {
                         title: "我的分身",
                         subTitle: "",
                         onClick: () => {
-                            context.push(<PersonaSettings />)
+                            context.push(<PersonaSettings onClose={() => context.pop()} />)
                         }
                     }
                 })

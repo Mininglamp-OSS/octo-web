@@ -300,12 +300,32 @@ export class PersonaEditVM extends ProviderListener {
  *   - 切换用户（loginInfo.uid 变化）时 clearPersonaActiveCache() 必须被调用
  *     —— v0 由调用方在 logout 时清理；ChannelSetting/vm.ts 也会在 didMount 时
  *     prefetch refresh，所以即使没清理也只是次轮过期。
+ *
+ * 多账号防泄漏（YUJ-1178 review nit）：cache 与 in-flight promise 都按 grantor uid
+ * 分桶，避免 SPA 内切换账号时把旧用户的结果返给新用户。当前 SPA logout 会 reload，
+ * 严格说不会触发；但 cache key 的成本几乎为零，作为防御性实现保留。匿名（uid 为空）
+ * 场景下统一用 "" 作为 key，行为与之前的模块单例一致。
+ *
+ * 语义说明（P1-2 修正，2026-05-19）：cache 的含义是「用户当前是否拥有任意 active
+ * grant」，不再耦合 global_enabled。global on/off 与 per-channel scope 的覆盖关系
+ * 属于 toggle 行为层（toggleOboScope），不应该作为渲染门把整个 toggle 隐藏。否则
+ * 新建分身默认 global_enabled=false 的用户进任何会话都看不到 toggle，与「用 per-
+ * channel scope 精确打开少数会话」的产品意图刚好相反。
  */
-let hasActiveGrantCache: boolean | undefined
-let hasActiveGrantPromise: Promise<boolean> | undefined
+const hasActiveGrantCacheByUid: Map<string, boolean> = new Map()
+const hasActiveGrantPromiseByUid: Map<string, Promise<boolean>> = new Map()
+
+/** 当前 grantor uid。WKApp.loginInfo 在测试环境下可能未挂载，使用 try/catch 兜底。 */
+function currentGrantorUid(): string {
+    try {
+        return (WKApp as any)?.loginInfo?.uid || ""
+    } catch {
+        return ""
+    }
+}
 
 export function hasAnyActiveGrant(): boolean | undefined {
-    return hasActiveGrantCache
+    return hasActiveGrantCacheByUid.get(currentGrantorUid())
 }
 
 /**
@@ -313,28 +333,40 @@ export function hasAnyActiveGrant(): boolean | undefined {
  * 同时进行的请求会被合流（共享同一个 in-flight promise）。
  * 失败时（包括后端 404）静默把缓存设为 false —— ChannelSetting toggle 不可见 ===
  * 用户没分身，行为安全。
+ *
+ * 错误清理（YUJ-1178 review nit）：finally 块保证 in-flight promise slot 被释放，
+ * 即便 cache 写入抛错也不会让后续调用永远拿到老 promise。
  */
 export function refreshActiveGrantCache(): Promise<boolean> {
-    if (hasActiveGrantPromise) return hasActiveGrantPromise
-    hasActiveGrantPromise = (async () => {
+    const uid = currentGrantorUid()
+    const inFlight = hasActiveGrantPromiseByUid.get(uid)
+    if (inFlight) return inFlight
+    const p: Promise<boolean> = (async () => {
         try {
             const res = await WKApp.apiClient.get<OboGrant[]>(`/v1/obo/grants`)
             const list = Array.isArray(res) ? res : []
-            hasActiveGrantCache = list.some((g) => g.active && g.global_enabled)
+            // P1-2: 仅看 active，不再耦合 global_enabled，否则纯 per-channel scope
+            // 模式下 toggle 永远不显示。
+            const v = list.some((g) => g.active)
+            hasActiveGrantCacheByUid.set(uid, v)
+            return v
         } catch {
-            hasActiveGrantCache = false
+            hasActiveGrantCacheByUid.set(uid, false)
+            return false
         } finally {
-            hasActiveGrantPromise = undefined
+            // 关键：不论 try / catch 走哪个分支，都必须清掉 in-flight slot，
+            // 否则后续调用会拿到一个已经 settle 的 promise（虽然行为正确，但语义混乱）。
+            hasActiveGrantPromiseByUid.delete(uid)
         }
-        return hasActiveGrantCache || false
     })()
-    return hasActiveGrantPromise
+    hasActiveGrantPromiseByUid.set(uid, p)
+    return p
 }
 
 /** 退出登录 / 切换账号时清缓存，避免别人看到旧用户的 toggle 状态。 */
 export function clearPersonaActiveCache(): void {
-    hasActiveGrantCache = undefined
-    hasActiveGrantPromise = undefined
+    hasActiveGrantCacheByUid.clear()
+    hasActiveGrantPromiseByUid.clear()
 }
 
 /**
@@ -342,9 +374,29 @@ export function clearPersonaActiveCache(): void {
  */
 export const __testing = {
     setCache(v: boolean | undefined): void {
-        hasActiveGrantCache = v
+        const uid = currentGrantorUid()
+        if (v === undefined) {
+            hasActiveGrantCacheByUid.delete(uid)
+        } else {
+            hasActiveGrantCacheByUid.set(uid, v)
+        }
     },
     getCache(): boolean | undefined {
-        return hasActiveGrantCache
+        return hasActiveGrantCacheByUid.get(currentGrantorUid())
+    },
+    /** 强制以指定 uid 写入 cache（多账号测试用）。 */
+    setCacheForUid(uid: string, v: boolean | undefined): void {
+        if (v === undefined) {
+            hasActiveGrantCacheByUid.delete(uid)
+        } else {
+            hasActiveGrantCacheByUid.set(uid, v)
+        }
+    },
+    getCacheForUid(uid: string): boolean | undefined {
+        return hasActiveGrantCacheByUid.get(uid)
+    },
+    /** 暴露 in-flight promise map size 用于断言泄漏。 */
+    inFlightCount(): number {
+        return hasActiveGrantPromiseByUid.size
     },
 }
