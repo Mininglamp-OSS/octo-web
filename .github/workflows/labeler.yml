@@ -1,0 +1,19 @@
+name: PR Labeler
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  label:
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-pr-labeler.yml@main
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      repo_owner: ${{ github.repository_owner }}
+      repo_name: ${{ github.event.repository.name }}
+    permissions:
+      issues: write
+      pull-requests: write
+    secrets: inherit
