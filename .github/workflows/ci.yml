@@ -39,12 +39,20 @@ jobs:
         id: filter
         if: github.event_name == 'pull_request'
         with:
+          # Positive patterns only — no negation, no predicate-quantifier needed.
+          # code=true when at least one changed file matches a source pattern.
+          # Docs-only PRs won't match any pattern -> code=false -> jobs skipped.
+          # (skipped jobs count as passing for required-check branch protection).
           filters: |
             code:
-              - '**'
-              - '!**/*.md'
-              - '!docs/**'
-              - '!.github/ISSUE_TEMPLATE/**'
+              - 'apps/**'
+              - 'packages/**'
+              - 'scripts/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig*.json'
+              - '*.config.*'
+              - '.github/workflows/**'
 
   build:
     needs: [changes]
