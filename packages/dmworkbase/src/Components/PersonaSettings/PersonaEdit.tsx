@@ -2,7 +2,7 @@ import React, { Component, ReactNode } from "react"
 import RouteContext from "../../Service/Context"
 import Provider, { IProviderListener } from "../../Service/Provider"
 import { Switch, Toast } from "@douyinfe/semi-ui"
-import { OboGrant, PersonaEditVM } from "./vm"
+import { OboGrant, OboScope, PersonaEditVM } from "./vm"
 
 /**
  * PersonaEdit — 单个 grant 的编辑页（mode + global toggle + scope 列表 + 删除）。
@@ -17,6 +17,23 @@ import { OboGrant, PersonaEditVM } from "./vm"
  *
  * 删除走二次确认（Toast.warning + 二次点击 5s 内才生效），不弹 Modal —— RoutePage
  * 上下文里 Modal 在桌面/移动端表现不一致，详见 RoutePage 的 didMount 注释。
+ *
+ * R4 P1 (YUJ-1206 / GH octo-web#47 review 2026-05-19 07:38)：scope 列表必须按
+ * `enabled` 分区显示，并让 remove 动作的文案与真实效果一致 —— 否则在 global=on
+ * 模式下，把一条 `{enabled:false}` 排除记录展示成「生效会话」+「删除」按钮，会
+ * 让用户以为「这里在替我代答」→ 点删除想停掉 → 实际删的是「排除条目」→ channel
+ * 反而**重新被启用**，用户意图被反转。这是 on-behalf-of 类功能里最危险的反向
+ * 操作，必须在 UI 层就消除歧义：
+ *
+ *   - 「包含」(`scope.enabled === true`)：当 global=off 时表示「分身在此处启用」，
+ *     remove → 「停止代答」（落回 global=off 即关闭）。当 global=on 时该条记录
+ *     与 global 重复（toggleOboScope 通常会自动 DELETE，但服务端历史数据可能残
+ *     留），此时隐藏冗余条目避免噪声。
+ *   - 「排除」(`scope.enabled === false`)：当 global=on 时表示「分身在此处静音」，
+ *     remove → 「恢复代答」（落回 global=on 即启用）。当 global=off 时该条记录
+ *     对生效集毫无贡献，此处直接隐藏避免误导用户。
+ *
+ * 测试覆盖见 `__tests__/PersonaEdit.test.tsx`。
  */
 interface PersonaEditProps {
     grant: OboGrant
@@ -75,7 +92,20 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
             <Provider
                 create={(): IProviderListener => new PersonaEditVM(grant)}
                 render={(vm: PersonaEditVM): ReactNode => {
-                    const showEmptyScope = !vm.loading && vm.scopes.length === 0
+                    // R4 P1: 严格按 enabled 分区。global=on 时 inclusion 与 global 重复，
+                    // 隐藏避免噪声；global=off 时 exclusion 对生效集无贡献，隐藏避免误导。
+                    const globalOn = !!vm.grant.global_enabled
+                    const inclusions: OboScope[] = vm.scopes.filter((s) => s.enabled !== false)
+                    const exclusions: OboScope[] = vm.scopes.filter((s) => s.enabled === false)
+                    const visibleScopes: OboScope[] = globalOn ? exclusions : inclusions
+                    const showEmptyScope = !vm.loading && visibleScopes.length === 0
+                    const sectionTitle = globalOn
+                        ? `已排除的会话 (${exclusions.length})`
+                        : `已启用的会话 (${inclusions.length})`
+                    const emptyHint = globalOn
+                        ? "暂无排除的会话\n请去具体会话的「设置 → 分身在此会话代答」关闭以将其排除"
+                        : "尚未启用任何会话\n请去具体会话的「设置 → 分身在此会话代答」开启"
+                    const removeLabel = globalOn ? "恢复代答" : "停止代答"
                     return (
                         <div className="wk-persona-edit">
                             {/* 基础信息 */}
@@ -103,11 +133,14 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                 </div>
                             </div>
 
-                            {/* Scope 列表 */}
+                            {/* Scope 列表（按 enabled 分区，文案 + 动作随 global 状态切换） */}
                             <div className="wk-persona-edit-section">
                                 <div className="wk-persona-edit-row">
-                                    <div className="wk-persona-edit-row-title">
-                                        生效会话 ({vm.scopes.length})
+                                    <div
+                                        className="wk-persona-edit-row-title"
+                                        data-testid="persona-edit-scope-title"
+                                    >
+                                        {sectionTitle}
                                     </div>
                                 </div>
                                 <div className="wk-persona-edit-scope-list">
@@ -126,21 +159,32 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                     )}
                                     {showEmptyScope && !vm.isBackendMissing && !vm.loadError && (
                                         <div className="wk-persona-edit-scope-empty">
-                                            尚未添加任何会话
-                                            <br />
-                                            请去具体会话的「设置 → 分身在此会话代答」开启
+                                            {emptyHint.split("\n").map((line, idx) => (
+                                                <React.Fragment key={idx}>
+                                                    {idx > 0 && <br />}
+                                                    {line}
+                                                </React.Fragment>
+                                            ))}
                                         </div>
                                     )}
-                                    {vm.scopes.map((s) => (
-                                        <div className="wk-persona-edit-scope-row" key={s.id}>
+                                    {visibleScopes.map((s) => (
+                                        <div
+                                            className="wk-persona-edit-scope-row"
+                                            key={s.id}
+                                            data-testid={`persona-edit-scope-row-${s.id}`}
+                                            data-scope-kind={
+                                                s.enabled === false ? "exclusion" : "inclusion"
+                                            }
+                                        >
                                             <span>
                                                 {s.channel_type === 2 ? "群聊" : "私聊"} · {s.channel_id}
                                             </span>
                                             <span
                                                 className="wk-persona-edit-scope-remove"
+                                                data-testid={`persona-edit-scope-remove-${s.id}`}
                                                 onClick={() => void vm.removeScope(s.id)}
                                             >
-                                                移除
+                                                {removeLabel}
                                             </span>
                                         </div>
                                     ))}

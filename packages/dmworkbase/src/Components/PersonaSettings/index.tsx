@@ -86,15 +86,22 @@ function PersonaListBody(props: { vm: PersonaSettingsVM; routeContext: RouteCont
 
     return (
         <div className="wk-persona-page">
-            <div className="wk-persona-actions">
-                <button
-                    className="wk-persona-add-btn"
-                    onClick={handleCreate}
-                    disabled={vm.loading}
-                >
-                    + 新建分身
-                </button>
-            </div>
+            {/*
+             * R4 非阻塞 (YUJ-1206 / GH octo-web#47 review 2026-05-19)：后端 404 时
+             * 隐藏「新建分身」按钮 —— 它点击后会试图 POST /v1/obo/grants，结果只能
+             * 报 Toast 错误，与上面「分身功能即将上线」文案自相矛盾。
+             */}
+            {!vm.isBackendMissing && (
+                <div className="wk-persona-actions">
+                    <button
+                        className="wk-persona-add-btn"
+                        onClick={handleCreate}
+                        disabled={vm.loading}
+                    >
+                        + 新建分身
+                    </button>
+                </div>
+            )}
 
             {vm.loading && (
                 <div className="wk-persona-loading">加载中...</div>
