@@ -29,10 +29,10 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      # docs_only=true means ALL changed files are documentation.
-      # For push events the paths-filter step is skipped; default to 'false'
-      # (not docs_only) so downstream jobs always run on direct main pushes.
-      docs_only: ${{ github.event_name == 'pull_request' && steps.filter.outputs.docs_only || 'false' }}
+      # code=true when at least one changed file is not a documentation file.
+      # For push events the paths-filter step is skipped; default to 'true'
+      # so downstream jobs always run on direct main pushes.
+      code: ${{ github.event_name == 'pull_request' && steps.filter.outputs.code || 'true' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         if: github.event_name == 'pull_request'
@@ -42,26 +42,26 @@ jobs:
         id: filter
         if: github.event_name == 'pull_request'
         with:
-          # predicate-quantifier: every means ALL changed files must satisfy the
-          # docs_only filter for it to be true. So docs_only=true only when every
-          # changed file is a markdown/doc/template file.
-          #
-          # This is the inverse pattern: instead of listing every code file type
-          # (impossible to enumerate completely), we only define what counts as
-          # pure documentation. Anything else automatically triggers CI because
-          # it won't match docs_only, so docs_only becomes false.
-          predicate-quantifier: "every"
+          # Negation patterns with default 'some' quantifier (correct approach).
+          # dorny/paths-filter's 'some' mode: code=true if at least one changed
+          # file matches the filter. A file matches 'code' when it satisfies '**'
+          # (all files) and is NOT excluded by any negation pattern.
+          # Result: code=false only when ALL changed files are docs/templates.
+          # Source: filter.ts:isMatch() uses patterns.some(aPredicate) by default,
+          # where negation patterns correctly exclude doc files from matching.
           filters: |
-            docs_only:
-              - "**/*.md"
-              - "docs/**"
-              - ".github/ISSUE_TEMPLATE/**"
+            code:
+              - '**'
+              - '!**/*.md'
+              - '!docs/**'
+              - '!.github/ISSUE_TEMPLATE/**'
+
 
   build:
     needs: [changes]
     if: |
       (github.event_name != 'pull_request' || !github.event.pull_request.draft) &&
-      needs.changes.outputs.docs_only != 'true'
+      needs.changes.outputs.code == 'true'
     name: Build
     runs-on: ubuntu-latest
     steps:
