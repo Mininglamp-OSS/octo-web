@@ -479,15 +479,29 @@ export class OrganizationalGroupNew extends Component<
     // 添加联系人
     if (this.props.action === OrganizationalGroupNewAction.AddMember) {
       try {
-        await WKApp.dataSource.channelDataSource.addSubscribers(
-          channel,
-          getOptPersonnelData
-        );
+        if (this.props.channel.channelType === ChannelTypePerson) {
+          // Starting group chat from a private chat:
+          // must create a new group first, then navigate to it
+          const uids = [
+            WKApp.loginInfo.uid || "",
+            this.props.channel.channelID,
+            ...getOptPersonnelData,
+          ];
+          const result = await WKApp.dataSource.channelDataSource.createChannel(uids);
+          if (result?.group_no) {
+            WKApp.endpoints.showConversation(new Channel(result.group_no, ChannelTypeGroup));
+          }
+        } else {
+          // Adding members to an existing group: original logic
+          await WKApp.dataSource.channelDataSource.addSubscribers(
+            channel,
+            getOptPersonnelData
+          );
+        }
       } catch (error: any) {
         Toast.error(error.msg);
-        return
+        return;
       }
-
     }
     this.onCancel();
   }
