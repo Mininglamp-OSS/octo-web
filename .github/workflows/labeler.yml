@@ -26,4 +26,3 @@ jobs:
       pull-requests: write
     # secrets: intentionally omitted — reusable-pr-labeler.yml uses only the
     # inherited GITHUB_TOKEN granted via the job-level permissions above.
-
