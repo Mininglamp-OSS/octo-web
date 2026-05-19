@@ -24,6 +24,13 @@ interface PersonaEditProps {
      * 删除成功后，由调用方负责 pop 出本子页 + reload 上一层列表。
      */
     onDeleted: () => void
+    /**
+     * grant 字段（global_enabled / mode）发生持久化变化时回调，让父级
+     * `PersonaSettingsVM.grants` 与服务端重新对齐。Round-2 review (Jerry-Xin)：
+     * 之前在 PersonaEdit 改 global_enabled 后返回列表，PersonaCard 仍显示旧
+     * `enabled` 状态，得重开页面才同步 —— 这里给父级一个回调让它 reload。
+     */
+    onChange?: () => void
 }
 
 interface PersonaEditState {
@@ -89,7 +96,9 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                     <div className="wk-persona-edit-row-title">全局开关</div>
                                     <Switch
                                         checked={vm.grant.global_enabled}
-                                        onChange={(v) => void vm.toggleGlobal(!!v)}
+                                        onChange={(v) => void vm.toggleGlobal(!!v).then((ok) => {
+                                            if (ok && this.props.onChange) this.props.onChange()
+                                        })}
                                     />
                                 </div>
                             </div>

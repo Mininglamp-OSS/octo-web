@@ -153,6 +153,11 @@ export class PersonaSettingsVM extends ProviderListener {
     /**
      * 创建一个新的 grant（默认 mode=auto, global_enabled=false）。
      * 创建后 caller 应：reload list → push 进 PersonaEdit 让用户继续配 scope。
+     *
+     * Round-2 nit（YUJ-1193 / yujiawei R2）：成功后清空 `myBots` 缓存，
+     * 让下一次 PersonaCreate mount 时 useEffect 的 `length === 0` 守卫真的触发
+     * `loadMyBots()` 重拉 —— 否则用户「+ 新建分身」→ 选 bot → 创建 → pop →
+     * 再「+ 新建分身」会看到刚绑过的 bot 还在 picker 里，导致 duplicate POST。
      */
     async createGrant(granteeBotUid: string): Promise<OboGrant | undefined> {
         try {
@@ -162,6 +167,10 @@ export class PersonaSettingsVM extends ProviderListener {
                 global_enabled: false,
             })
             await this.loadGrants()
+            // 已绑定的 bot 必须从下一次 PersonaCreate 的 picker 中消失：
+            // 清缓存让 useEffect 的 length===0 守卫重新触发 loadMyBots()。
+            this.myBots = []
+            this.notifyListener()
             return res as OboGrant
         } catch (e) {
             const msg = extractErrorMsg(e) || "创建分身失败"

@@ -53,6 +53,19 @@ export class ChannelSettingVM extends ProviderListener {
     private _oboBackendMissing = false
     /** 当前用户匹配本 channel 的第一个 active grant（v0 单用户最多 1 个，但保留扩展性）。 */
     private _activeGrantId?: number
+    /**
+     * 当前 active grant 的 global_enabled 标志。决定 toggle 在「无 per-channel scope」时
+     * 的初始 checked 状态以及关闭操作的语义：
+     *   - global=true + 无 scope → 实际生效中（checked=true），「关」需 POST enabled=false 作为排除。
+     *   - global=true + scope.enabled=false → 排除已存在（checked=false），「开」需 DELETE scope（回退到 global=true 生效）。
+     *   - global=false + 无 scope → 未启用（checked=false），「开」需 POST enabled=true。
+     *   - global=false + scope.enabled=true → 单点启用（checked=true），「关」需 DELETE scope。
+     *
+     * Round-2 P1（YUJ-1193）：原实现只看 `_oboScope.enabled` 而忽略 global，导致全局开启的
+     * 用户在每个 channel 里都看到 toggle=OFF（与实际行为相反），且 toggleOboScope(false) 在
+     * 无 scope 时直接 no-op，用户无法表达「全局开启但排除此会话」的意图。
+     */
+    private _activeGrantGlobalEnabled = false
 
     /**
      * unmount 守卫：异步 refreshActiveGrantCache / refreshOboScope 可能在 VM 已经
@@ -121,7 +134,13 @@ export class ChannelSettingVM extends ProviderListener {
         if (!this._oboScopeLoaded) return undefined
         if (this._activeGrantId === undefined) return undefined
 
-        const checked = !!(this._oboScope && this._oboScope.enabled)
+        // Round-2 P1（YUJ-1193）—— checked 必须同时考虑 grant.global_enabled：
+        //   - 若 per-channel scope 记录存在 → scope.enabled 覆盖 global（per-channel 是 override 层）
+        //   - 否则 → checked 跟随 global_enabled
+        // 旧实现只看 _oboScope.enabled，会让 global=true / 无 scope 场景显示 OFF，与事实相反。
+        const checked = this._oboScope
+            ? this._oboScope.enabled
+            : this._activeGrantGlobalEnabled
         return new Section({
             subtitle: "开启后，AI 分身会在此会话中以你的身份代答消息",
             rows: [
@@ -150,36 +169,63 @@ export class ChannelSettingVM extends ProviderListener {
     /**
      * 切换当前 channel 的 OBO scope。
      *
-     * 行为：
-     *   - 打开 → 若 _oboScope == null（不存在记录）POST /v1/obo/scopes 新增；
-     *           若已存在但 enabled=false，理论上应 PUT 但 v0 接口不支持 PATCH 单 scope
-     *           → 先 DELETE 再 POST。
-     *   - 关闭 → DELETE 当前 scope。
+     * 完整状态机（Round-2 P1, YUJ-1193）：
+     *   global=T, scope=null,           checked=T → click off → POST {enabled:false}（排除）
+     *   global=T, scope={enabled:T},    checked=T → click off → DELETE scope（冗余记录回收，仍 OFF? 不，global=T 反而是 ON）
+     *                                            实际上 global=T + scope=enabled=T 是冗余 ON 状态；click off 想要 OFF → DELETE 后效果仍是 global=T=ON，
+     *                                            所以正确语义是 DELETE 旧 scope + POST {enabled:false}。
+     *   global=T, scope={enabled:F},    checked=F → click on  → DELETE scope（回退到 global=T 即 ON）
+     *   global=F, scope=null,           checked=F → click on  → POST {enabled:true}
+     *   global=F, scope={enabled:T},    checked=T → click off → DELETE scope（global=F 即 OFF）
+     *   global=F, scope={enabled:F},    checked=F → click on  → DELETE + POST {enabled:true}
      *
-     * 任何错误都 Toast 提示并保持当前 _oboScope 不变（让 UI 回滚 toggle）。
+     * 简化原则：目标状态 effective === enable；如果删除当前 scope 后 global 即满足目标，则不再 POST；
+     * 否则 POST 一条 enabled=enable 的新 scope。
+     *
+     * 错误处理：任何步骤失败都 Toast + refreshOboScope() 回滚到服务端真值。
+     *
+     * 注意（task §1 spec #5）：调用结束后强制 refreshOboScope() 拉一次，把可能被 PersonaEdit
+     * 改过的 global_enabled 同步进来，避免 toggle 一直拿过期 _activeGrantGlobalEnabled。
      */
     private async toggleOboScope(enable: boolean): Promise<void> {
-        if (!this._activeGrantId) return
+        if (this._activeGrantId === undefined) return
         try {
-            if (enable) {
-                if (this._oboScope) {
-                    // 已存在但 disabled —— 先删后建（v0 简单语义，避免引入 PUT）。
-                    await WKApp.apiClient.delete(`/v1/obo/scopes/${this._oboScope.id}`)
+            if (this._oboScope) {
+                // 已有 scope 记录：先 DELETE，再视情况决定是否 POST。
+                await WKApp.apiClient.delete(`/v1/obo/scopes/${this._oboScope.id}`)
+                if (this._disposed) return
+                this._oboScope = null
+                if (enable !== this._activeGrantGlobalEnabled) {
+                    // global 不能直接表达 enable → 还需 POST 一条 override。
+                    const created = await WKApp.apiClient.post(`/v1/obo/scopes`, {
+                        grant_id: this._activeGrantId,
+                        channel_id: this.channel.channelID,
+                        channel_type: this.channel.channelType,
+                        enabled: enable,
+                    }) as OboScope
+                    if (this._disposed) return
+                    this._oboScope = created
                 }
+                // else: enable === global，删除 scope 之后 global 自动生效，无需 POST。
+            } else {
+                // 无 scope 记录：
+                //   enable === global → 已经匹配（理论上 UI 不应允许点击；保险起见 no-op）。
+                //   enable !== global → POST 一条 override（关闭=排除/打开=单点启用）。
+                if (enable === this._activeGrantGlobalEnabled) return
                 const created = await WKApp.apiClient.post(`/v1/obo/scopes`, {
                     grant_id: this._activeGrantId,
                     channel_id: this.channel.channelID,
                     channel_type: this.channel.channelType,
-                    enabled: true,
+                    enabled: enable,
                 }) as OboScope
+                if (this._disposed) return
                 this._oboScope = created
-            } else {
-                if (this._oboScope) {
-                    await WKApp.apiClient.delete(`/v1/obo/scopes/${this._oboScope.id}`)
-                }
-                this._oboScope = null
             }
+            // task §1 spec #5：toggle 结束后强制 refresh，picking up any external
+            // global_enabled 变化（如 PersonaEdit toggleGlobal）。
+            await this.refreshOboScope()
         } catch (e: any) {
+            if (this._disposed) return
             const msg = (e && typeof e === "object" && "msg" in e) ? (e as any).msg : "切换失败"
             Toast.error(typeof msg === "string" && msg.length > 0 ? msg : "切换失败")
             // 重新拉一次保持服务端真值
@@ -213,12 +259,16 @@ export class ChannelSettingVM extends ProviderListener {
             if (this._disposed) return
             if (!active) {
                 this._activeGrantId = undefined
+                this._activeGrantGlobalEnabled = false
                 this._oboScope = null
                 this._oboScopeLoaded = true
                 this.notifyListener()
                 return
             }
             this._activeGrantId = active.id
+            // Round-2 P1（YUJ-1193）：保留 global_enabled，否则 toggle 在 global=true /
+            // 无 scope 场景会渲染成 OFF，与服务端实际行为相反。
+            this._activeGrantGlobalEnabled = !!active.global_enabled
             const scopes = await WKApp.apiClient.get<OboScope[]>(`/v1/obo/grants/${active.id}/scopes`)
             if (this._disposed) return
             const arr: OboScope[] = Array.isArray(scopes) ? scopes : []

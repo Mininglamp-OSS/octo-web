@@ -150,6 +150,21 @@ describe("PersonaSettingsVM.createGrant", () => {
         expect(out).toBeUndefined()
         expect(hoisted.toastError).toHaveBeenCalledWith("bad")
     })
+
+    // Round-2 nit (yujiawei R2 / YUJ-1193): createGrant 成功后必须清掉 myBots，
+    // 否则用户「+ 新建分身 → 选 bot → 创建 → pop → 再 + 新建分身」时 PersonaCreate
+    // 的 useEffect `length===0` 守卫不再触发 loadMyBots，picker 里还能看到刚绑过
+    // 的 bot → duplicate POST。
+    it("clears myBots after successful create so the bot picker re-fetches next time", async () => {
+        const created = { id: 7, grantor_uid: "u1", grantee_bot_uid: "b1", mode: "auto", global_enabled: false, active: true }
+        hoisted.post.mockResolvedValueOnce(created)
+        hoisted.get.mockResolvedValueOnce([created])
+        const vm = new PersonaSettingsVM()
+        // 模拟用户已经浏览过 PersonaCreate，myBots 被填充
+        vm.myBots = [{ uid: "b1", name: "Bot 1" }, { uid: "b2", name: "Bot 2" }]
+        await vm.createGrant("b1")
+        expect(vm.myBots).toEqual([])
+    })
 })
 
 describe("PersonaSettingsVM.deleteGrant / updateGrant", () => {

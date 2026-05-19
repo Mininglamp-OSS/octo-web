@@ -75,6 +75,7 @@ function PersonaListBody(props: { vm: PersonaSettingsVM; routeContext: RouteCont
                                     routeContext.pop()
                                     void vm.loadGrants()
                                 }}
+                                onChange={() => void vm.loadGrants()}
                             />,
                         )
                     }
@@ -147,6 +148,7 @@ function PersonaListBody(props: { vm: PersonaSettingsVM; routeContext: RouteCont
                                         routeContext.pop()
                                         void vm.loadGrants()
                                     }}
+                                    onChange={() => void vm.loadGrants()}
                                 />,
                             )
                         }}

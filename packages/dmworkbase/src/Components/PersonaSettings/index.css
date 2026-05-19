@@ -6,31 +6,43 @@
  * 之所以不直接复用 BotStore 那个文件，是因为 PersonaSettings 的容器布局更宽
  * （PC 端要承担更长的元信息），共享 class 会让 BotStore 的横纵比变形。
  *
- * 字体大小 / spacing 故意取自 BotStore 同名变量，CSS 变量不下放到组件级。
+ * Round-2 review (lml2468 / Jerry-Xin)：DEVELOPMENT.md §「Token 使用规范」明确禁止
+ * 在组件级写裸色 / 裸 spacing / 裸 radius —— 本文件已迁移到 `var(--wk-*)` token，
+ * 个别仍以裸值兜底的 fallback 写法在每行注释里说明原因。
+ *
+ * Token 对照表（见 packages/dmworkbase/src/theme/semantic.css）：
+ *   colors  : --wk-bg-base / --wk-bg-surface / --wk-bg-elevated
+ *             --wk-text-primary / --wk-text-secondary / --wk-text-tertiary
+ *             --wk-brand-primary / --wk-color-success / --wk-color-danger
+ *             --wk-border-default
+ *   spacing : --wk-sp-1 (4px) / --wk-sp-2 (8px) / --wk-sp-3 (12px) / --wk-sp-4 (16px) / --wk-sp-6 (24px) / --wk-sp-8 (32px)
+ *   radius  : --wk-r-xs (3px) / --wk-r-sm (6px) / --wk-r-md (8px) / --wk-r-lg (16px)
+ *   text    : --wk-text-size-sm / --wk-text-size-base / --wk-text-size-md / --wk-text-size-lg / --wk-text-size-2xl
+ *   weight  : --wk-font-medium / --wk-font-semibold
  */
 
 .wk-persona-page {
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-secondary);
-    padding: 12px;
+    background: var(--wk-bg-base);
+    padding: var(--wk-sp-3);
     box-sizing: border-box;
     overflow-y: auto;
 }
 
 .wk-persona-actions {
-    margin-bottom: 12px;
+    margin-bottom: var(--wk-sp-3);
 }
 
 .wk-persona-add-btn {
     width: 100%;
-    padding: 10px 14px;
-    border-radius: 10px;
-    background: var(--accent, #4e6ef2);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 500;
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    border-radius: var(--wk-r-md);
+    background: var(--wk-brand-primary);
+    color: var(--wk-text-on-brand);
+    font-size: var(--wk-text-size-md);
+    font-weight: var(--wk-font-medium);
     cursor: pointer;
     border: none;
     transition: opacity 0.2s;
@@ -48,17 +60,17 @@
 .wk-persona-list {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--wk-sp-3);
 }
 
 /* Card — visual contract mirrors BotStore .wk-bot-card. */
 .wk-persona-card {
     display: flex;
     flex-direction: column;
-    padding: 14px;
-    background: var(--card-bg, #fff);
-    border-radius: 10px;
-    border: 1px solid var(--border-color, #eee);
+    padding: var(--wk-sp-3);
+    background: var(--wk-bg-surface);
+    border-radius: var(--wk-r-md);
+    border: 1px solid var(--wk-border-default);
     cursor: pointer;
     transition: transform 0.15s;
 }
@@ -72,93 +84,98 @@
     align-items: center;
 }
 
+/*
+ * 头像渐变沿用 BotStore 的紫色品牌渐变。--wk-brand-gradient 当前主题等同
+ * 纯色 brand-primary，不具备渐变层次，因此这里使用 `--wk-color-accent`
+ * 单色铺底，让 persona 头像与品牌 accent（紫）保持一致；不再写死 #667eea。
+ */
 .wk-persona-card-avatar {
     width: 40px;
     height: 40px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: #fff;
+    border-radius: var(--wk-r-md);
+    background: var(--wk-color-accent);
+    color: var(--wk-color-white);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
-    font-weight: 600;
+    font-size: var(--wk-text-size-2xl);
+    font-weight: var(--wk-font-semibold);
     flex-shrink: 0;
 }
 
 .wk-persona-card-info {
     flex: 1;
-    margin-left: 12px;
+    margin-left: var(--wk-sp-3);
     min-width: 0;
 }
 
 .wk-persona-card-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-primary);
+    font-size: var(--wk-text-size-lg);
+    font-weight: var(--wk-font-semibold);
+    color: var(--wk-text-primary);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--wk-sp-1-5);
 }
 
 .wk-persona-card-name-badge {
-    font-size: 10px;
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: rgba(102, 126, 234, 0.15);
-    color: #667eea;
-    font-weight: 500;
+    font-size: var(--wk-text-size-tiny);
+    padding: var(--wk-sp-0-5) var(--wk-sp-1-5);
+    border-radius: var(--wk-r-xs);
+    background: var(--wk-brand-tint-08);
+    color: var(--wk-color-accent);
+    font-weight: var(--wk-font-medium);
 }
 
 .wk-persona-card-sub {
-    font-size: 12px;
-    color: var(--text-tertiary, #888);
-    margin-top: 2px;
+    font-size: var(--wk-text-size-sm);
+    color: var(--wk-text-tertiary);
+    margin-top: var(--wk-sp-0-5);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .wk-persona-card-status {
-    margin-left: 8px;
-    font-size: 12px;
-    color: var(--text-tertiary, #888);
+    margin-left: var(--wk-sp-2);
+    font-size: var(--wk-text-size-sm);
+    color: var(--wk-text-tertiary);
 }
 
 .wk-persona-card-status.on {
-    color: #2ecc71;
+    color: var(--wk-color-success);
 }
 
 .wk-persona-card-status.off {
-    color: #c44;
+    color: var(--wk-color-danger);
 }
 
 .wk-persona-empty {
-    padding: 32px 0;
+    padding: var(--wk-sp-8) 0;
     text-align: center;
-    color: var(--text-tertiary, #888);
-    font-size: 13px;
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-base);
     line-height: 1.6;
 }
 
 .wk-persona-error {
-    padding: 24px 0;
+    padding: var(--wk-sp-6) 0;
     text-align: center;
-    color: var(--text-tertiary, #888);
-    font-size: 13px;
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-base);
 }
 
 .wk-persona-error-retry {
-    margin-top: 8px;
-    color: var(--accent, #4e6ef2);
+    margin-top: var(--wk-sp-2);
+    color: var(--wk-color-accent);
     cursor: pointer;
     text-decoration: underline;
 }
 
 .wk-persona-loading {
-    padding: 24px;
+    padding: var(--wk-sp-6);
     text-align: center;
-    color: var(--text-tertiary);
+    color: var(--wk-text-tertiary);
 }
 
 /* PersonaEdit subpage */
@@ -166,14 +183,14 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: var(--bg-secondary);
+    background: var(--wk-bg-base);
     overflow-y: auto;
 }
 
 .wk-persona-edit-section {
-    background: var(--card-bg, #fff);
-    margin: 12px;
-    border-radius: 10px;
+    background: var(--wk-bg-surface);
+    margin: var(--wk-sp-3);
+    border-radius: var(--wk-r-md);
     overflow: hidden;
 }
 
@@ -181,8 +198,8 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border-color, #f0f0f0);
+    padding: var(--wk-sp-3) var(--wk-sp-4);
+    border-bottom: 1px solid var(--wk-border-default);
 }
 
 .wk-persona-edit-row:last-child {
@@ -190,13 +207,13 @@
 }
 
 .wk-persona-edit-row-title {
-    font-size: 14px;
-    color: var(--text-primary);
+    font-size: var(--wk-text-size-md);
+    color: var(--wk-text-primary);
 }
 
 .wk-persona-edit-row-value {
-    font-size: 13px;
-    color: var(--text-tertiary, #888);
+    font-size: var(--wk-text-size-base);
+    color: var(--wk-text-tertiary);
 }
 
 .wk-persona-edit-scope-list {
@@ -208,10 +225,10 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border-color, #f0f0f0);
-    font-size: 13px;
-    color: var(--text-primary);
+    padding: var(--wk-sp-2) var(--wk-sp-4);
+    border-bottom: 1px solid var(--wk-border-default);
+    font-size: var(--wk-text-size-base);
+    color: var(--wk-text-primary);
 }
 
 .wk-persona-edit-scope-row:last-child {
@@ -220,35 +237,35 @@
 
 .wk-persona-edit-scope-remove {
     cursor: pointer;
-    color: #c44;
-    font-size: 12px;
+    color: var(--wk-color-danger);
+    font-size: var(--wk-text-size-sm);
 }
 
 .wk-persona-edit-scope-empty {
-    padding: 16px;
+    padding: var(--wk-sp-4);
     text-align: center;
-    color: var(--text-tertiary, #888);
-    font-size: 13px;
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-base);
 }
 
 .wk-persona-edit-danger {
-    margin: 24px 12px 12px;
-    padding: 12px;
+    margin: var(--wk-sp-6) var(--wk-sp-3) var(--wk-sp-3);
+    padding: var(--wk-sp-3);
     text-align: center;
-    background: var(--card-bg, #fff);
-    color: #c44;
-    border-radius: 10px;
+    background: var(--wk-bg-surface);
+    color: var(--wk-color-danger);
+    border-radius: var(--wk-r-md);
     cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--wk-text-size-md);
+    font-weight: var(--wk-font-medium);
 }
 
 /* PersonaCreate — bot picker */
 .wk-persona-create {
     display: flex;
     flex-direction: column;
-    padding: 12px;
-    gap: 8px;
+    padding: var(--wk-sp-3);
+    gap: var(--wk-sp-2);
     height: 100%;
     overflow-y: auto;
 }
@@ -256,25 +273,25 @@
 .wk-persona-create-row {
     display: flex;
     align-items: center;
-    padding: 12px;
-    border-radius: 10px;
-    background: var(--card-bg, #fff);
+    padding: var(--wk-sp-3);
+    border-radius: var(--wk-r-md);
+    background: var(--wk-bg-surface);
     cursor: pointer;
-    border: 1px solid var(--border-color, #eee);
+    border: 1px solid var(--wk-border-default);
 }
 
 .wk-persona-create-row:hover {
-    border-color: var(--accent, #4e6ef2);
+    border-color: var(--wk-brand-primary);
 }
 
 .wk-persona-create-row-name {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-primary);
+    font-size: var(--wk-text-size-md);
+    font-weight: var(--wk-font-medium);
+    color: var(--wk-text-primary);
 }
 
 .wk-persona-create-row-sub {
-    font-size: 12px;
-    color: var(--text-tertiary, #888);
-    margin-top: 2px;
+    font-size: var(--wk-text-size-sm);
+    color: var(--wk-text-tertiary);
+    margin-top: var(--wk-sp-0-5);
 }
