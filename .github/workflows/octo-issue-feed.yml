@@ -2,19 +2,19 @@ name: Octo Issue Feed
 
 on:
   issues:
-    types: [opened, closed, reopened, labeled]
+    types: [opened, reopened]
+
+permissions: {}
 
 jobs:
   notify:
-    uses: Mininglamp-OSS/.github/.github/workflows/octo-issue-feed.yml@v1
+    uses: Mininglamp-OSS/.github/.github/workflows/octo-issue-feed.yml@main
     with:
       repo_name: ${{ github.event.repository.name }}
       issue_number: ${{ github.event.issue.number }}
       issue_title: ${{ github.event.issue.title }}
       issue_url: ${{ github.event.issue.html_url }}
       issue_author: ${{ github.event.issue.user.login }}
-      issue_labels: ${{ toJson(github.event.issue.labels.*.name) }}
       event_action: ${{ github.event.action }}
-      project_group_id: c6717c018f974c2793635f9fa2c0e629
     secrets:
       OCTO_BOT_TOKEN: ${{ secrets.OCTO_BOT_TOKEN }}
