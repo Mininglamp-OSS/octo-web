@@ -29,9 +29,11 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      # code=true when at least one changed file is not a documentation file.
-      # For push events the paths-filter step is skipped; default to 'true'
-      # so downstream jobs always run on direct main pushes.
+      # code=true when at least one changed file matches the code filter.
+      # predicate-quantifier:every + negation patterns (no bare '**'):
+      # a file matches 'code' iff ALL negation patterns are satisfied
+      # (file is not a doc/template). code=false only when all changed files
+      # are docs/templates. Push events default to 'true'.
       code: ${{ github.event_name == 'pull_request' && steps.filter.outputs.code || 'true' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -42,16 +44,22 @@ jobs:
         id: filter
         if: github.event_name == 'pull_request'
         with:
-          # Negation patterns with default 'some' quantifier (correct approach).
-          # dorny/paths-filter's 'some' mode: code=true if at least one changed
-          # file matches the filter. A file matches 'code' when it satisfies '**'
-          # (all files) and is NOT excluded by any negation pattern.
-          # Result: code=false only when ALL changed files are docs/templates.
-          # Source: filter.ts:isMatch() uses patterns.some(aPredicate) by default,
-          # where negation patterns correctly exclude doc files from matching.
+          # predicate-quantifier: every — a file matches 'code' only when ALL
+          # negation patterns are satisfied (file is NOT a doc/template file).
+          #
+          # Validated by picomatch v4 unit test (same library used internally):
+          #   README.md:    !**/*.md=false → every=false → not match → code=false ✅
+          #   main.go:      all negations=true → every=true → match → code=true ✅
+          #   mixed PR:     main.go matches → code=true (some over changed files) ✅
+          #   .golangci.yml: all negations=true → every=true → CI runs ✅
+          #   Dockerfile:   all negations=true → CI runs ✅
+          #
+          # Do NOT add '**': picomatch('**') doesn't match dotfiles (.golangci.yml)
+          # causing them to incorrectly skip CI with the 'every' quantifier.
+          # Do NOT use 'some' + negation: '**' short-circuits some to true always.
+          predicate-quantifier: 'every'
           filters: |
             code:
-              - '**'
               - '!**/*.md'
               - '!docs/**'
               - '!.github/ISSUE_TEMPLATE/**'
