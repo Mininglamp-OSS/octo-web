@@ -97,9 +97,17 @@ class PersonaListBody extends Component<PersonaListBodyProps> {
                 onCreated={async (botUid) => {
                     const grant = await vm.createGrant(botUid)
                     if (grant) {
-                        // 创建后 pop 回列表 → 再 push 进 edit 让用户继续配 scope。
-                        routeContext.pop()
-                        routeContext.push(
+                        // 创建后用 replace 一步切到 edit —— 不能用 pop()+push()。
+                        // 历史教训 (YUJ-1348, 2026-05-19, Jerry-Xin review on 8145f420)：
+                        // 旧实现在 onCreated 里同帧调 `routeContext.pop()` + `routeContext.push(<PersonaEdit/>)`。
+                        // RoutePage.pop 只是把 status 改成 Pop 然后 setState 异步减 pushViewCount，
+                        // 同帧紧接着的 push 又会读到陈旧的 `this.state.pushViewCount` 再 +1；
+                        // WKViewQueue.pop 也得等动画结束才真正从 queues 里移除旧视图，
+                        // push 的新视图被追加到旧 queue 末尾。结果栈从期望的 list→edit
+                        // 错成 list→create→edit，从 edit 按返回会回到 create 选择器而不是
+                        // 列表，header 状态也跟着错乱。replace 是 RouteContext 上为
+                        // 「同位置换内容」语义专门加的原子操作，避免了上面整条 race。
+                        routeContext.replace(
                             <PersonaEdit
                                 grant={grant}
                                 onDeleted={() => {
@@ -123,8 +131,13 @@ class PersonaListBody extends Component<PersonaListBodyProps> {
                  * R4 非阻塞 (YUJ-1206 / GH octo-web#47 review 2026-05-19)：后端 404 时
                  * 隐藏「新建分身」按钮 —— 它点击后会试图 POST /v1/obo/grants，结果只能
                  * 报 Toast 错误，与上面「分身功能即将上线」文案自相矛盾。
+                 *
+                 * YUJ-1348 非阻塞 (Jerry-Xin review on 8145f420)：通用 `loadError` 也
+                 * 应隐藏 —— 列表没拉下来时用户对「已存在哪些 grant」是盲的，盲态下点
+                 * 创建容易产生重复 grant（同一个 bot 被绑两次）。先让用户走「重新加载」
+                 * 把列表拉回来，再让 add 按钮重新出现。
                  */}
-                {!vm.isBackendMissing && (
+                {!vm.isBackendMissing && !vm.loadError && (
                     <div className="wk-persona-actions">
                         <button
                             className="wk-persona-add-btn"
