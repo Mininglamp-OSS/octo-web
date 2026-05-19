@@ -1,0 +1,31 @@
+name: Release Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v1.4.0)"
+        required: true
+        type: string
+      validate_run_id:
+        description: "Required: successful CI run ID from the tagged commit as release evidence"
+        required: true
+        type: string
+      draft:
+        description: "Keep as draft instead of publishing"
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  publish:
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-release-publish.yml@main
+    with:
+      tag: ${{ inputs.tag }}
+      validate_run_id: ${{ inputs.validate_run_id }}
+      draft: ${{ inputs.draft }}
+    permissions:
+      contents: write
+      actions: read
