@@ -29,7 +29,10 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      code: ${{ github.event_name != 'pull_request' && 'true' || steps.filter.outputs.code }}
+      # docs_only=true means ALL changed files are documentation.
+      # For push events the paths-filter step is skipped; default to 'false'
+      # (not docs_only) so downstream jobs always run on direct main pushes.
+      docs_only: ${{ github.event_name == 'pull_request' && steps.filter.outputs.docs_only || 'false' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         if: github.event_name == 'pull_request'
@@ -39,26 +42,26 @@ jobs:
         id: filter
         if: github.event_name == 'pull_request'
         with:
-          # Positive patterns only — no negation, no predicate-quantifier needed.
-          # code=true when at least one changed file matches a source pattern.
-          # Docs-only PRs won't match any pattern -> code=false -> jobs skipped.
-          # (skipped jobs count as passing for required-check branch protection).
+          # predicate-quantifier: every means ALL changed files must satisfy the
+          # docs_only filter for it to be true. So docs_only=true only when every
+          # changed file is a markdown/doc/template file.
+          #
+          # This is the inverse pattern: instead of listing every code file type
+          # (impossible to enumerate completely), we only define what counts as
+          # pure documentation. Anything else automatically triggers CI because
+          # it won't match docs_only, so docs_only becomes false.
+          predicate-quantifier: "every"
           filters: |
-            code:
-              - 'apps/**'
-              - 'packages/**'
-              - 'scripts/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'tsconfig*.json'
-              - '*.config.*'
-              - '.github/workflows/**'
+            docs_only:
+              - "**/*.md"
+              - "docs/**"
+              - ".github/ISSUE_TEMPLATE/**"
 
   build:
     needs: [changes]
     if: |
       (github.event_name != 'pull_request' || !github.event.pull_request.draft) &&
-      needs.changes.outputs.code == 'true'
+      needs.changes.outputs.docs_only != 'true'
     name: Build
     runs-on: ubuntu-latest
     steps:
