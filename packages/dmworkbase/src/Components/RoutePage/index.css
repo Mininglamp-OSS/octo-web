@@ -176,7 +176,8 @@ body[theme-mode=dark] .wk-route-header-title-next {
 }
 
 /*
- * YUJ-1444 (2026-05-20) — Defensive net for "duplicate back arrow" P1.
+ * YUJ-1444 (2026-05-20) / YUJ-1447 (R3) — Defensive net for "duplicate back
+ * arrow" P1, scoped to nested RoutePage only.
  *
  * Architectural rule: at most ONE RoutePage in any ancestor chain. Pushed
  * subviews should never wrap themselves in another RoutePage — they should
@@ -189,27 +190,34 @@ body[theme-mode=dark] .wk-route-header-title-next {
  * side without modifying every offending child.
  *
  * This rule is the last line of defense: if a RoutePage is rendered inside
- * a `.wk-viewqueue-view` (i.e. it was push()'d into another view's queue
- * rather than rendered at the top of an overlay/modal), its own header is
- * hidden and the body slides up to fill the space.
+ * ANOTHER RoutePage's view queue, its own header is hidden and the body
+ * slides up to fill the space. The outer RoutePage retains its own header
+ * and back arrow, so the user sees exactly one ← per pushed subview.
  *
- * Why `.wk-viewqueue-view` specifically?
- *   - Top-level RoutePages (MeInfo modal root, Chat ChannelSetting overlay,
- *     etc.) sit directly under their portal/modal wrappers, NOT under
- *     `.wk-viewqueue-view`. They keep their header.
- *   - Subviews pushed via `RouteContext.push` are rendered inside
- *     WKViewQueue's `.wk-viewqueue-view` slots. Any RoutePage in there is
- *     by definition nested.
+ * Scoping (R3 fix — YUJ-1447):
+ *   The selector REQUIRES an outer `.wk-route` ancestor before the
+ *   `.wk-viewqueue-view`. This is critical because `WKLayout` also wraps
+ *   normal app content in `WKViewQueue` (i.e. a top-level `.wk-viewqueue-view`
+ *   without any enclosing `.wk-route`). Top-level RoutePages such as
+ *   `ChannelSetting`, `MeInfo`, `UserInfo` etc. live there and MUST keep
+ *   their headers. The earlier rule `.wk-viewqueue-view .wk-route ...` was
+ *   too broad and hid those headers globally — see PR #70 review.
+ *
+ *   With the `.wk-route` ancestor required, the rule only fires for a
+ *   RoutePage that is literally nested inside another RoutePage's queue
+ *   (e.g. `MeInfo` (RoutePage) pushes `PersonaSettings` which still renders
+ *   its own RoutePage in standalone/test mode). Only the outermost
+ *   RoutePage owns the header.
  *
  * If a future caller intentionally needs a nested RoutePage with its own
  * header (rare; usually wrong), opt out by adding `.wk-route-keep-header`
  * to the wk-route div via CSS modules / customRender of RoutePage.
  */
-.wk-viewqueue-view .wk-route:not(.wk-route-keep-header) > .wk-route-header {
+.wk-route .wk-viewqueue-view .wk-route:not(.wk-route-keep-header) > .wk-route-header {
     display: none;
 }
 
-.wk-viewqueue-view .wk-route:not(.wk-route-keep-header) > .wk-route-box {
+.wk-route .wk-viewqueue-view .wk-route:not(.wk-route-keep-header) > .wk-route-box {
     /* Header is gone; let the body fill the full vertical space. */
     height: 100%;
 }
