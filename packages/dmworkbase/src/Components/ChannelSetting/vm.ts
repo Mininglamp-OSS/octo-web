@@ -254,7 +254,7 @@ export class ChannelSettingVM extends ProviderListener {
     private async refreshOboScope(): Promise<void> {
         try {
             const grants = await WKApp.apiClient.get<OboGrant[]>(`obo/grants`)
-            const list: OboGrant[] = Array.isArray(grants) ? grants : []
+            const list: OboGrant[] = Array.isArray(grants) ? grants : ((grants as any)?.items ?? [])
             const active = list.find((g) => g.active)
             if (this._disposed) return
             if (!active) {
@@ -271,7 +271,7 @@ export class ChannelSettingVM extends ProviderListener {
             this._activeGrantGlobalEnabled = !!active.global_enabled
             const scopes = await WKApp.apiClient.get<OboScope[]>(`obo/grants/${active.id}/scopes`)
             if (this._disposed) return
-            const arr: OboScope[] = Array.isArray(scopes) ? scopes : []
+            const arr: OboScope[] = Array.isArray(scopes) ? scopes : ((scopes as any)?.items ?? [])
             const match = arr.find((s) =>
                 s.channel_id === this.channel.channelID && s.channel_type === this.channel.channelType,
             )
