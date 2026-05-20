@@ -19,6 +19,7 @@ import { SystemContent } from "wukongimjssdk";
 import { getFoldSessionExpandedMessages } from "./foldSessionSummary";
 import { getPulldownRestoredScrollTop } from "./historyScroll";
 import { applyMsgLevelExternalFieldsWithFallback } from "../../Service/Convert";
+import { wrapSendContentForInjection } from "./sendContentProxy";
 
 export interface FoldSessionParticipant {
     uid: string
@@ -1829,68 +1830,23 @@ export default class ConversationVM extends ProviderListener {
 
     // 发送消息
     async sendMessage(content: MessageContent, channel: Channel): Promise<Message> {
-        // DM 消息注入 space_id，让 BotFather 等 Bot 知道用户当前 Space
-        // 注意：不能直接修改传入的 content 对象，因为转发场景下同一个 content
-        // 可能被多次使用（多目标转发）或是原始消息的引用（单条转发）。
-        // 直接 monkey-patch 会污染原始消息的 content，导致后续操作异常。
-        let sendContent = content
+        // 发送前注入两类业务字段（详细原因见 sendContentProxy.ts header）：
+        //   1. space_id —— 仅 DM (ChannelTypePerson)，让 BotFather 等 Bot
+        //      知道用户当前 Space (#784)。
+        //   2. mention.humans / mention.ais —— 任意 channel（DM + Group）。
+        //      `wukongimjssdk@1.3.5` 的 `MessageContent.encode()` 丢弃 mention
+        //      的 humans/ais 三态字段。群聊里 @所有AI 后 server 收不到
+        //      `mention.ais=1`，AI bot 不响应（octo-web#62 / YUJ-1378）。
+        //
+        // wrapSendContentForInjection 不会污染原始 content（重要：转发场景
+        // 同一 content 可能被多目标复用，直接 monkey-patch 会有副作用）。
         const spaceId = WKApp.shared.currentSpaceId
-        if (spaceId && channel.channelType === ChannelTypePerson) {
-            // 创建一个轻量代理对象，继承原 content 的所有属性和方法，
-            // 仅覆盖 encodeJSON 和 contentObj 以注入 space_id。
-            // 安全前提：SDK 通过 encode()/encodeJSON() 序列化，不依赖 own-property 枚举。
-            sendContent = Object.create(content) as MessageContent
-            // 保存原始 encodeJSON 的引用（不 bind），通过 .call(this) 传递 receiver，
-            // 确保 media 上传后写入代理的 url/remoteUrl 能被正确读取。
-            const originalEncodeJSON = content.encodeJSON
-            sendContent.encodeJSON = function (this: any) {
-                const obj = originalEncodeJSON.call(this)
-                obj.space_id = spaceId
-                return obj
-            }
-            // encode() 覆盖：解决两个矛盾需求：
-            // 1. mention 实例级 encode 覆盖 bind 了 content，需要 encodeJSON 在 content 上
-            // 2. media 上传后 SDK 把 remoteUrl/url 写到 sendContent（代理）上
-            // 方案：先同步代理上的 media 属性回 content，再 swap encodeJSON 并调用原始 encode
-            sendContent.encode = function () {
-                // 前置条件（swap-call-restore 安全性依赖）：
-                // 1. content.encode() 必须是同步的（无 await），否则 swap 窗口内可被其他调用打断
-                // 2. content.encode() 不会递归调用 ConversationVM.sendMessage
-                // 当前 SDK (wukongimjssdk 1.3.5) 满足这两个条件。
-                //
-                // 同步 media 上传后写入代理的属性回原始 content
-                // 跟踪 hasOwnProperty 以正确恢复（避免 own-property 泄漏）
-                const ownKeys = Object.getOwnPropertyNames(sendContent)
-                const saved: Record<string, any> = {}
-                const hadOwn: Record<string, boolean> = {}
-                for (const key of ownKeys) {
-                    if (key === 'encodeJSON' || key === 'encode' || key === 'contentObj') continue
-                    hadOwn[key] = Object.prototype.hasOwnProperty.call(content, key)
-                    if (hadOwn[key]) saved[key] = (content as any)[key]
-                        ; (content as any)[key] = (sendContent as any)[key]
-                }
-                // swap encodeJSON 让 space_id 注入生效
-                const savedEncodeJSON = content.encodeJSON
-                const hadOwnEncodeJSON = Object.prototype.hasOwnProperty.call(content, 'encodeJSON')
-                content.encodeJSON = sendContent.encodeJSON
-                try {
-                    return content.encode.call(content)
-                } finally {
-                    if (hadOwnEncodeJSON) content.encodeJSON = savedEncodeJSON
-                    else delete (content as any).encodeJSON
-                    // 恢复 content 上被同步的属性
-                    for (const key of Object.keys(hadOwn)) {
-                        if (hadOwn[key]) (content as any)[key] = saved[key]
-                        else delete (content as any)[key]
-                    }
-                }
-            }
-            // 同步 contentObj，让本地回显也通过 filterPersonMessagesBySpace (#784)
-            // 当原始 contentObj 为空时（新创建的消息未经 decode），用 encodeJSON() 构建完整 payload，
-            // 避免本地回显的 contentObj 只有 { space_id } 导致 messageToMap 丢失实际内容。
-            const baseObj = content.contentObj || { ...content.encodeJSON(), type: content.contentType }
-            sendContent.contentObj = { ...baseObj, space_id: spaceId }
-        }
+        const mentionAny = content.mention as any
+        const sendContent = wrapSendContentForInjection(content, {
+            spaceId: channel.channelType === ChannelTypePerson ? spaceId : null,
+            mentionHumans: !!(mentionAny && mentionAny.humans),
+            mentionAis: !!(mentionAny && mentionAny.ais),
+        })
         const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel)
         let setting = new Setting()
         if (channelInfo?.orgData.receipt === 1) {
