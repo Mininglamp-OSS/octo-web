@@ -182,7 +182,16 @@
 .wk-persona-edit {
     display: flex;
     flex-direction: column;
+    /*
+     * YUJ-1435 (2026-05-20): 改用 min-height 而非 height —— 嵌入模式下
+     * (parent RouteContext) PersonaEdit 直接 push 到 MeInfo 的 stack，
+     * 父容器是 WKViewQueue 的滑动容器；用 height: 100% 会强制本组件等于父高，
+     * 但 width 没显式设置，flex 子项默认 shrink，可能让内部 section 变窄。
+     * 显式 width: 100% + box-sizing 兜底；overflow-y: auto 仍由本容器承担滚动。
+     */
+    width: 100%;
     height: 100%;
+    box-sizing: border-box;
     background: var(--wk-bg-base);
     overflow-y: auto;
 }
@@ -191,6 +200,21 @@
     background: var(--wk-bg-surface);
     margin: var(--wk-sp-3);
     border-radius: var(--wk-r-md);
+    /*
+     * YUJ-1435 Bug 2 (2026-05-20)：原本 overflow: hidden 是为了让 border-radius
+     * 切掉子行的右下角。但 PersonaEdit 是 `display: flex; flex-direction: column`
+     * 容器，flex 子项默认 `flex-shrink: 1`，当 scope rows 较多导致总内容高度超过
+     * 父容器时，**所有 section 会被等比例压扁**，紧接着 `overflow: hidden` 把
+     * 「全局开关」行的下半部分（含 Semi UI Switch 的实际像素高度 ≈ 28px）整体
+     * 裁掉 → 用户看到「文字被截，右侧 Switch 完全消失」的 P1 视觉 bug。
+     *
+     * 修复双管齐下：
+     *   1. `flex-shrink: 0` 让 section 保持自然高度，不被 flex 算法压缩；
+     *      多出的高度交给 `.wk-persona-edit` 的 `overflow-y: auto` 滚动承接。
+     *   2. 仍保留 `overflow: hidden` 维持圆角对 row border-bottom 的视觉裁切，
+     *      因为 (1) 已经避免了垂直压缩 → 不会再裁掉 Switch。
+     */
+    flex-shrink: 0;
     overflow: hidden;
 }
 
@@ -200,6 +224,16 @@
     align-items: center;
     padding: var(--wk-sp-3) var(--wk-sp-4);
     border-bottom: 1px solid var(--wk-border-default);
+    /*
+     * YUJ-1435 Bug 2 (2026-05-20)：显式 min-height 给 Switch 等控件留出垂直空间，
+     * 即使父级出现任何意外的高度约束也能保证 Switch 完整可见。Semi UI Switch
+     * 默认尺寸约 28×16，加 12px 上下 padding 后理论 52px 即可容纳；这里取 56px
+     * 与 RoutePage header 同高，视觉节奏更一致。
+     *
+     * 同时 `box-sizing: border-box` 保证 padding 不会把 min-height 顶到 80px。
+     */
+    box-sizing: border-box;
+    min-height: 56px;
 }
 
 .wk-persona-edit-row:last-child {
@@ -209,11 +243,27 @@
 .wk-persona-edit-row-title {
     font-size: var(--wk-text-size-md);
     color: var(--wk-text-primary);
+    /*
+     * YUJ-1435 Bug 2 (2026-05-20)：min-width: 0 + flex: 1 让 title 在长 bot 名/
+     * 长 channel id 场景下可以收缩 + 省略号，而不是把右侧的 Switch / 值文本
+     * 挤出可见区域。配合 .wk-persona-edit-row-value 的 ellipsis 实现完整截断。
+     */
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .wk-persona-edit-row-value {
     font-size: var(--wk-text-size-base);
     color: var(--wk-text-tertiary);
+    /* 右侧值文本：不抢占 title 的伸缩，但自身也允许长内容截断。 */
+    margin-left: var(--wk-sp-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
 }
 
 .wk-persona-edit-scope-list {

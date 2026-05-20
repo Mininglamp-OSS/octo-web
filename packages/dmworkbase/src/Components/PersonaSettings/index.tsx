@@ -26,6 +26,24 @@ interface PersonaSettingsProps {
      * 仍需要 close 钩子。两者兼容：未传 onClose 时复用 MeInfo 提供的栈即可。
      */
     onClose?: () => void
+    /**
+     * BUG-FIX (YUJ-1435, 2026-05-20)：当 PersonaSettings 是被父级 RouteContext
+     * （例如 MeInfo 的 RoutePage）`push` 进来时，父级已经在顶部渲染了一个 header +
+     * back arrow。若 PersonaSettings 内部再嵌一层 `RoutePage`，用户会看到两个
+     * 叠加的 ← 返回按钮（P1 视觉 bug）。
+     *
+     * 修复策略：当父级把它的 RouteContext 透传进来（`routeContext` 非 undefined），
+     * 本组件不再创建嵌套 RoutePage —— 直接把 PersonaCreate / PersonaEdit 子页面
+     * push 到父级的 stack 上，由父级唯一的 back arrow 统一管理「PersonaEdit →
+     * 分身列表 → MeInfo」整条路径的回退。这同时也消除了「点 PersonaEdit 上的
+     * outer back 直接关掉整个 PersonaSettings 跳过列表」的奇怪 UX（原因：outer
+     * back 弹的是父 stack 顶，而内部子页之前在 inner stack）。
+     *
+     * 当 `routeContext` 未传（独立测试 / 未来 settings panel 链路）时仍保留旧的
+     * 内嵌 RoutePage 行为，保证向后兼容。`PersonaSettings.test.tsx` 走的就是这条
+     * 路径，render(<PersonaSettings />) 不传 routeContext。
+     */
+    routeContext?: RouteContext<any>
 }
 
 export default class PersonaSettings extends Component<PersonaSettingsProps> {
@@ -34,6 +52,17 @@ export default class PersonaSettings extends Component<PersonaSettingsProps> {
             <Provider
                 create={(): IProviderListener => new PersonaSettingsVM()}
                 render={(vm: PersonaSettingsVM): ReactNode => {
+                    // 嵌入模式（YUJ-1435）：父级已提供 header + back arrow，
+                    // 直接渲染 body 并复用父级 RouteContext，避免双 ← 按钮。
+                    if (this.props.routeContext) {
+                        return (
+                            <PersonaListBody
+                                vm={vm}
+                                routeContext={this.props.routeContext}
+                            />
+                        )
+                    }
+                    // 独立模式：维持旧行为，自带 RoutePage（向后兼容 / 测试 / 模态化场景）。
                     return (
                         <RoutePage
                             title="我的分身"
