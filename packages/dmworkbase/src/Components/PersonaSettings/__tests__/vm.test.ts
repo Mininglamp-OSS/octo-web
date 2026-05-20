@@ -46,6 +46,11 @@ vi.mock("../../../App", () => ({
         shared: {
             currentSpaceId: "",
         },
+        // YUJ-1444: loadMyBots needs loginInfo.uid to filter `space_bots` by creator.
+        // Tests mutate this property directly to flip "logged in as alice" etc.
+        loginInfo: {
+            uid: "",
+        },
     },
     __esModule: true,
 }))
@@ -254,6 +259,163 @@ describe("PersonaEditVM", () => {
         const ok = await vm.deleteGrant()
         expect(ok).toBe(true)
         expect(hoisted.del).toHaveBeenCalledWith("obo/grants/99")
+    })
+})
+
+describe("PersonaSettingsVM.loadMyBots — Bug 3 (YUJ-1444): merges my_bots + owned space_bots", () => {
+    // 拿到模块默认导出的 mock，方便测试动态改 currentSpaceId / loginInfo.uid。
+    // 在所有 mock 注册之后再 import，保证拿到 vi.mock 注入的对象（不是真实 App）。
+    const getApp = async () => (await import("../../../App")).default as any
+
+    beforeEach(async () => {
+        const App = await getApp()
+        App.shared.currentSpaceId = ""
+        App.loginInfo.uid = ""
+    })
+
+    it("space_id absent: only calls /robot/my_bots, no /robot/space_bots", async () => {
+        // 模拟用户未进入任何 space —— 老路径：只问 my_bots。
+        hoisted.get.mockResolvedValueOnce([
+            { uid: "b1", name: "Bot 1" },
+        ])
+        const vm = new PersonaSettingsVM()
+        await vm.loadMyBots()
+        expect(hoisted.get).toHaveBeenCalledTimes(1)
+        expect(hoisted.get).toHaveBeenCalledWith("/robot/my_bots", undefined)
+        expect(vm.myBots.map((b) => b.uid)).toEqual(["b1"])
+    })
+
+    it("space_id present: queries BOTH /robot/my_bots AND /robot/space_bots", async () => {
+        const App = await getApp()
+        App.shared.currentSpaceId = "spaceA"
+        App.loginInfo.uid = "alice"
+
+        // my_bots 命中：用户已加好友的 bot
+        hoisted.get.mockResolvedValueOnce([
+            { uid: "friend_bot", name: "FriendBot" },
+        ])
+        // space_bots 命中：包含 alice 创建的 + 别人创建的；只有 alice 创建的应进入 picker
+        hoisted.get.mockResolvedValueOnce([
+            { uid: "owned_bot", name: "OwnedBot", creator_uid: "alice" },
+            { uid: "other_bot", name: "OtherBot", creator_uid: "bob" },
+        ])
+
+        const vm = new PersonaSettingsVM()
+        await vm.loadMyBots()
+
+        expect(hoisted.get).toHaveBeenCalledWith("/robot/my_bots", { param: { space_id: "spaceA" } })
+        expect(hoisted.get).toHaveBeenCalledWith("/robot/space_bots", { param: { space_id: "spaceA" } })
+
+        const uids = vm.myBots.map((b) => b.uid).sort()
+        // friend_bot 来自 my_bots; owned_bot 来自 space_bots(creator=alice); other_bot 被过滤掉
+        expect(uids).toEqual(["friend_bot", "owned_bot"])
+    })
+
+    it("filters out bots already granted to a persona", async () => {
+        const App = await getApp()
+        App.shared.currentSpaceId = "spaceA"
+        App.loginInfo.uid = "alice"
+
+        hoisted.get.mockResolvedValueOnce([
+            { uid: "b1", name: "Bot 1" },
+            { uid: "b2", name: "Bot 2" },
+        ])
+        hoisted.get.mockResolvedValueOnce([
+            { uid: "b3", name: "Bot 3", creator_uid: "alice" },
+        ])
+
+        const vm = new PersonaSettingsVM()
+        // 用户已经把 b1 绑给某个 persona —— picker 不应再列出 b1。
+        vm.grants = [
+            { id: 1, grantor_uid: "alice", grantee_bot_uid: "b1", mode: "auto", global_enabled: false, active: true },
+        ]
+        await vm.loadMyBots()
+        expect(vm.myBots.map((b) => b.uid).sort()).toEqual(["b2", "b3"])
+    })
+
+    it("dedupes bots that appear in BOTH my_bots and space_bots (intersection case)", async () => {
+        const App = await getApp()
+        App.shared.currentSpaceId = "spaceA"
+        App.loginInfo.uid = "alice"
+
+        // 同一个 bot 同时在 my_bots（已加好友）和 space_bots（alice 创建）出现 —— 必须去重。
+        hoisted.get.mockResolvedValueOnce([
+            { uid: "shared_bot", name: "Shared (from my_bots)" },
+        ])
+        hoisted.get.mockResolvedValueOnce([
+            { uid: "shared_bot", name: "Shared (from space_bots)", creator_uid: "alice" },
+        ])
+
+        const vm = new PersonaSettingsVM()
+        await vm.loadMyBots()
+        expect(vm.myBots).toHaveLength(1)
+        // 先到先得 → my_bots 的元数据胜出
+        expect(vm.myBots[0]).toMatchObject({ uid: "shared_bot", name: "Shared (from my_bots)" })
+    })
+
+    it("my_bots fails: still returns owned bots from space_bots (graceful degrade)", async () => {
+        const App = await getApp()
+        App.shared.currentSpaceId = "spaceA"
+        App.loginInfo.uid = "alice"
+
+        hoisted.get.mockRejectedValueOnce({ status: 500, msg: "my_bots boom" })
+        hoisted.get.mockResolvedValueOnce([
+            { uid: "owned_only", name: "OwnedOnly", creator_uid: "alice" },
+        ])
+
+        const vm = new PersonaSettingsVM()
+        await vm.loadMyBots()
+        // 单端失败不弹 Toast — 这是 picker 子页，文案已能告知用户。
+        expect(hoisted.toastError).not.toHaveBeenCalled()
+        expect(vm.myBots.map((b) => b.uid)).toEqual(["owned_only"])
+    })
+
+    it("space_bots fails: still returns my_bots", async () => {
+        const App = await getApp()
+        App.shared.currentSpaceId = "spaceA"
+        App.loginInfo.uid = "alice"
+
+        hoisted.get.mockResolvedValueOnce([
+            { uid: "friend_only", name: "FriendOnly" },
+        ])
+        hoisted.get.mockRejectedValueOnce({ status: 500, msg: "space_bots boom" })
+
+        const vm = new PersonaSettingsVM()
+        await vm.loadMyBots()
+        expect(hoisted.toastError).not.toHaveBeenCalled()
+        expect(vm.myBots.map((b) => b.uid)).toEqual(["friend_only"])
+    })
+
+    it("both endpoints fail: myBots=[] without throwing or toasting", async () => {
+        const App = await getApp()
+        App.shared.currentSpaceId = "spaceA"
+        App.loginInfo.uid = "alice"
+
+        hoisted.get.mockRejectedValueOnce({ status: 500 })
+        hoisted.get.mockRejectedValueOnce({ status: 500 })
+
+        const vm = new PersonaSettingsVM()
+        await vm.loadMyBots()
+        expect(vm.myBots).toEqual([])
+        expect(hoisted.toastError).not.toHaveBeenCalled()
+        expect(vm.myBotsLoading).toBe(false)
+    })
+
+    it("loginInfo.uid empty: skips creator_uid filter (no owned bots claimed)", async () => {
+        // 边界：loginInfo 还没 ready 时，宁可空 picker 也不要把别人的 bot 列出来。
+        const App = await getApp()
+        App.shared.currentSpaceId = "spaceA"
+        App.loginInfo.uid = ""
+
+        hoisted.get.mockResolvedValueOnce([])
+        hoisted.get.mockResolvedValueOnce([
+            { uid: "owned_bot", name: "OwnedBot", creator_uid: "alice" },
+        ])
+
+        const vm = new PersonaSettingsVM()
+        await vm.loadMyBots()
+        // creator_uid 过滤无法判断「是不是我」→ 整段 ownedSpaceBots 留空，picker 空态。
+        expect(vm.myBots).toEqual([])
     })
 })
 

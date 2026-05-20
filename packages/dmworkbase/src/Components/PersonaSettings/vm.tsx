@@ -54,7 +54,11 @@ export interface OboScope {
 
 /**
  * MyBot — 用于「新建分身」时选择关联 bot 的下拉数据源。
- * 复用 /robot/my_bots（同 BotStore 页面）。
+ *
+ * 数据来源（YUJ-1444, 2026-05-20 后）：
+ *   - `/robot/my_bots`     —— 当前用户已加好友的 bot（含 botfather 撮合的 + 自动加好友的）
+ *   - `/robot/space_bots`  —— 当前 space 的 bot（仅取 creator_uid===me 的「我创建的」）
+ * 两端结果按 uid 合并去重，再剔除已经绑定 grant 的 uid。详见 loadMyBots()。
  */
 export interface MyBot {
     uid: string
@@ -152,24 +156,83 @@ export class PersonaSettingsVM extends ProviderListener {
     }
 
     /**
-     * 加载可关联的 bot 列表（从 /robot/my_bots 拉，过滤掉已被关联的）。
-     * 该接口在 BotStore 页面已经在用，PR-A 之前就可用，不存在 404 问题。
+     * 加载可关联的 bot 列表，过滤掉已被关联的。
+     *
+     * BUG-3 fix (YUJ-1444, 2026-05-20)：im-test 上用户报告「新建分身」picker 永远空。
+     * 根因是 `/robot/my_bots` 只返回当前用户**已加好友**的 bot —— 用户在 BotStore /
+     * 后台**创建**了 bot 但没把自己加为好友，这些 bot 不会出现在 `my_bots` 里。
+     *
+     * 修复：同时拉 `/robot/space_bots`（与 BotStore 页面同款），从中筛出
+     * `creator_uid === currentUid` 的「我创建的」bot，再与 `my_bots` 合并去重。
+     * 这覆盖了两个真实路径：
+     *   (a) 用户创建 + 自动加好友 → 出现在 my_bots（旧路径不变）
+     *   (b) 用户创建但未加好友（im-test 常见情况）→ 通过 space_bots + creator_uid
+     *       兜底进入 picker
+     *
+     * 错误降级：任一端点失败都用空数组兜底；两端都失败时 myBots=[]，UI 仍正确显示
+     * 「暂无可关联的 Bot」。不对单独失败弹 Toast —— 这是「设置子页」，picker 空时
+     * 用户能从文案得知，比 Toast 干扰更小；同时打 console.warn 便于线上排查。
      */
     async loadMyBots(): Promise<void> {
         this.myBotsLoading = true
         this.notifyListener()
         try {
             const spaceId = WKApp.shared.currentSpaceId
-            const res = await WKApp.apiClient.get<any[]>(
-                "/robot/my_bots",
-                spaceId ? { param: { space_id: spaceId } } : undefined,
-            )
-            const list: MyBot[] = Array.isArray(res)
-                ? res.map((b) => ({ uid: b.uid, name: b.name || b.uid, description: b.description }))
+            const myUid = ((WKApp as any)?.loginInfo?.uid) || ""
+
+            // 并发拉两端，单端失败不影响另一端。
+            const [myRes, spaceRes] = await Promise.all([
+                WKApp.apiClient.get<any[]>(
+                    "/robot/my_bots",
+                    spaceId ? { param: { space_id: spaceId } } : undefined,
+                ).catch((e) => {
+                    // 静默失败：picker 不强依赖 my_bots，space_bots 仍可补足。
+                    // eslint-disable-next-line no-console
+                    console.warn("[PersonaSettings] /robot/my_bots failed", e)
+                    return [] as any[]
+                }),
+                spaceId
+                    ? WKApp.apiClient.get<any[]>(
+                          "/robot/space_bots",
+                          { param: { space_id: spaceId } },
+                      ).catch((e) => {
+                          // eslint-disable-next-line no-console
+                          console.warn("[PersonaSettings] /robot/space_bots failed", e)
+                          return [] as any[]
+                      })
+                    : Promise.resolve([] as any[]),
+            ])
+
+            const myBotsRaw: any[] = Array.isArray(myRes) ? myRes : []
+            const spaceBotsRaw: any[] = Array.isArray(spaceRes) ? spaceRes : []
+
+            // space_bots 包含整个 space 的 bot：只取「当前用户创建的」，避免把别人的
+            // bot 列出来让用户误绑定。creator_uid 字段命名与 BotStore.BotInfo 一致。
+            const ownedSpaceBots = myUid
+                ? spaceBotsRaw.filter(
+                      (b) => b && typeof b === "object" && (b as any).creator_uid === myUid,
+                  )
                 : []
+
+            // 合并 + 去重（按 uid，先到先得；my_bots 优先因为已加好友的元数据更完整）。
+            const merged = new Map<string, MyBot>()
+            for (const b of [...myBotsRaw, ...ownedSpaceBots]) {
+                if (!b || typeof b !== "object") continue
+                const uid = (b as any).uid
+                if (!uid || merged.has(uid)) continue
+                merged.set(uid, {
+                    uid,
+                    name: (b as any).name || uid,
+                    description: (b as any).description,
+                })
+            }
+
             const grantedUids = new Set(this.grants.map((g) => g.grantee_bot_uid))
-            this.myBots = list.filter((b) => !grantedUids.has(b.uid))
+            this.myBots = Array.from(merged.values()).filter((b) => !grantedUids.has(b.uid))
         } catch (e) {
+            // 兜底：两端 catch 已经返回 []，这里只为捕获非预期同步异常。
+            // eslint-disable-next-line no-console
+            console.warn("[PersonaSettings] loadMyBots unexpected error", e)
             this.myBots = []
         } finally {
             this.myBotsLoading = false

@@ -175,5 +175,44 @@ body[theme-mode=dark] .wk-route-header-title-next {
     opacity: 1;
 }
 
+/*
+ * YUJ-1444 (2026-05-20) — Defensive net for "duplicate back arrow" P1.
+ *
+ * Architectural rule: at most ONE RoutePage in any ancestor chain. Pushed
+ * subviews should never wrap themselves in another RoutePage — they should
+ * accept the parent's RouteContext (via prop) and push their own children
+ * onto that shared stack. PersonaSettings, PersonaEdit etc. follow this rule.
+ *
+ * However, if a nested RoutePage slips in (third-party module, regression,
+ * or stale build with the pre-PR #69 PersonaSettings code), the user sees
+ * two stacked headers and two ← buttons. That's unfixable from the parent's
+ * side without modifying every offending child.
+ *
+ * This rule is the last line of defense: if a RoutePage is rendered inside
+ * a `.wk-viewqueue-view` (i.e. it was push()'d into another view's queue
+ * rather than rendered at the top of an overlay/modal), its own header is
+ * hidden and the body slides up to fill the space.
+ *
+ * Why `.wk-viewqueue-view` specifically?
+ *   - Top-level RoutePages (MeInfo modal root, Chat ChannelSetting overlay,
+ *     etc.) sit directly under their portal/modal wrappers, NOT under
+ *     `.wk-viewqueue-view`. They keep their header.
+ *   - Subviews pushed via `RouteContext.push` are rendered inside
+ *     WKViewQueue's `.wk-viewqueue-view` slots. Any RoutePage in there is
+ *     by definition nested.
+ *
+ * If a future caller intentionally needs a nested RoutePage with its own
+ * header (rare; usually wrong), opt out by adding `.wk-route-keep-header`
+ * to the wk-route div via CSS modules / customRender of RoutePage.
+ */
+.wk-viewqueue-view .wk-route:not(.wk-route-keep-header) > .wk-route-header {
+    display: none;
+}
+
+.wk-viewqueue-view .wk-route:not(.wk-route-keep-header) > .wk-route-box {
+    /* Header is gone; let the body fill the full vertical space. */
+    height: 100%;
+}
+
 
 

@@ -266,6 +266,33 @@
     max-width: 60%;
 }
 
+/*
+ * YUJ-1444 Bug 2 (2026-05-20)：Switch 等右侧控件的稳定容器。
+ *
+ * Semi UI <Switch> 在裸 flex 子项位置时，浏览器默认 `flex: 0 1 auto`，
+ * `flex-shrink: 1` 让它可能被压缩到不可见。PR #69 仅在外层 row / section
+ * 加了 flex-shrink: 0，但 Switch 本身仍可能被父行的 flex 算法挤压（尤其
+ * 当 title 用 `flex: 1` 抢占空间时）—— 表现为「关闭态时 Switch 显示一半」。
+ *
+ * 这里给 Switch 包一层固定 container：
+ *   - flex-shrink: 0 锁定容器不被压缩
+ *   - flex-basis: auto 让自然宽度生效
+ *   - display: flex + align-items: center 垂直居中（与 row 的 56px min-height 对齐）
+ *   - margin-left: var(--wk-sp-3) 与 row-value 同款，给 title 留呼吸感
+ *   - min-width 给 Semi Switch 的默认尺寸（44px 轨道 + 安全裕量）留底，
+ *     即便外层 row 因 ancestor overflow:hidden 出现错算也不会塌成 0
+ */
+.wk-persona-edit-row-control {
+    flex: 0 0 auto;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    margin-left: var(--wk-sp-3);
+    min-width: 44px;
+    /* 允许 Switch 的内部 ripple / focus ring 略微溢出而不被裁切。 */
+    overflow: visible;
+}
+
 .wk-persona-edit-scope-list {
     display: flex;
     flex-direction: column;

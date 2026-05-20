@@ -124,12 +124,22 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                 </div>
                                 <div className="wk-persona-edit-row">
                                     <div className="wk-persona-edit-row-title">全局开关</div>
-                                    <Switch
-                                        checked={vm.grant.global_enabled}
-                                        onChange={(v) => void vm.toggleGlobal(!!v).then((ok) => {
-                                            if (ok && this.props.onChange) this.props.onChange()
-                                        })}
-                                    />
+                                    {/*
+                                     * BUG-2 fix (YUJ-1444, 2026-05-20)：Semi UI <Switch> 是裸 flex 子项时，
+                                     * 浏览器对它应用默认 `flex-shrink: 1`，宽度可能被父行的 flex 算法压扁导致
+                                     * 「关闭态半截显示」。PR #69 只在 row / section 层加了 `flex-shrink: 0`，
+                                     * 但 Switch 自身仍可能被压缩；在这层包一个 `.wk-persona-edit-row-control`
+                                     * 把 Switch 的最终尺寸锁定在自然宽高，并 align-items: center 保证它垂直居中
+                                     * 在 56px 行内不被截。
+                                     */}
+                                    <div className="wk-persona-edit-row-control">
+                                        <Switch
+                                            checked={vm.grant.global_enabled}
+                                            onChange={(v) => void vm.toggleGlobal(!!v).then((ok) => {
+                                                if (ok && this.props.onChange) this.props.onChange()
+                                            })}
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
