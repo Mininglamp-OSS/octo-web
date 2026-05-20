@@ -329,7 +329,7 @@ const getWindowConfig = () => {
     autoHideMenuBar: isWin,
     webPreferences: {
       // 加载脚本
-      preload: join(__dirname, "..", "preload/index"),
+      preload: join(__dirname, "..", "preload", "index.js"),
       nodeIntegration: false,
       contextIsolation: true,
       devTools: true,
