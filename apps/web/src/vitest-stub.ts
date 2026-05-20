@@ -1,48 +1,42 @@
 // Production stub for vitest — prevents test framework from leaking into bundle
-// Why: packages/dmworkbase/src/Utils/__tests__/*.test.ts live inside src/ and
-// get pulled into the Vite build graph. Their `import { describe } from 'vitest'`
-// and bare `describe()` calls would crash at runtime without this stub.
+// Root cause: packages/dmworkbase/src/Utils/__tests__/*.test.ts live inside src/
+// and get pulled into Vite's build graph via transitive resolution.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const noop: any = (...args: any[]) => {
-  // If called like describe('name', fn), just call fn to avoid blocking
-  const fn = args.find(a => typeof a === 'function')
-  if (fn) try { fn() } catch { /* swallow test errors in prod */ }
+
+// Deep noop proxy: any property access or function call returns itself,
+// so chains like vi.fn().mockResolvedValue(...) never throw.
+const handler: ProxyHandler<any> = {
+  get: (_t, _p) => deepNoop,
+  apply: () => deepNoop,
 }
+const deepNoop: any = new Proxy(function () {}, handler)
 
-const noopProxy: any = new Proxy(noop, {
-  get: () => noop,
-  apply: (_t, _this, args) => {
-    const fn = args.find((a: any) => typeof a === 'function')
-    if (fn) try { fn() } catch { /* swallow */ }
-  },
-})
+export const vi = deepNoop
+export const expect = deepNoop
+export const describe = deepNoop
+export const it = deepNoop
+export const test = deepNoop
+export const suite = deepNoop
+export const bench = deepNoop
+export const assert = deepNoop
+export const beforeEach = deepNoop
+export const afterEach = deepNoop
+export const beforeAll = deepNoop
+export const afterAll = deepNoop
+export const onTestFailed = deepNoop
+export const onTestFinished = deepNoop
 
-export const vi = noopProxy
-export const expect = () => noopProxy
-export const describe = noop
-export const it = noop
-export const test = noop
-export const beforeEach = noop
-export const afterEach = noop
-export const beforeAll = noop
-export const afterAll = noop
-export const suite = noop
-export const bench = noop
-export const assert = noopProxy
-
-// Also set as globals in case test files use bare describe() without import
+// Set globals for bare describe()/it() usage (no import)
 if (typeof globalThis !== 'undefined') {
   const g = globalThis as any
-  if (!g.describe) g.describe = noop
-  if (!g.it) g.it = noop
-  if (!g.test) g.test = noop
-  if (!g.expect) g.expect = () => noopProxy
-  if (!g.beforeEach) g.beforeEach = noop
-  if (!g.afterEach) g.afterEach = noop
-  if (!g.beforeAll) g.beforeAll = noop
-  if (!g.afterAll) g.afterAll = noop
-  if (!g.vi) g.vi = noopProxy
+  const names = [
+    'describe', 'it', 'test', 'expect', 'vi', 'suite', 'bench',
+    'beforeEach', 'afterEach', 'beforeAll', 'afterAll', 'assert',
+  ]
+  for (const n of names) {
+    if (!g[n]) g[n] = deepNoop
+  }
 }
 
 export default {}
