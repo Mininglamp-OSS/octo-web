@@ -380,7 +380,8 @@ const createMainWindow = async () => {
   mainWindow = new BrowserWindow(getWindowConfig());
   mainWindow.center();
   mainWindow.once("ready-to-show", () => {
-    mainWindow.show(); // 显示窗口
+    mainWindow.setTitle('OCTO [build 0520-1632]');
+    mainWindow.show();
     mainWindow.focus();
   });
 
