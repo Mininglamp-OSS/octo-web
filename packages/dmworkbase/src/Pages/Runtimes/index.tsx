@@ -689,7 +689,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 runtime_id: runtimeId,
                 daemon_id: rt.daemon_id,
                 space_id: WKApp.shared.currentSpaceId,
-                component: "openclaw-channel-dmwork",
+                component: "octo",
             })
             await this.pollPluginUpgrade(initRes.task_id, runtimeId)
         } catch (err: any) {
@@ -772,7 +772,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 </span>
             )
         }
-        if (hasUpdate && pluginName === "openclaw-channel-dmwork") {
+        if (hasUpdate && pluginName === "octo") {
             return <span className="wk-rt-upgrade-btn" onClick={this.handlePluginUpgrade}>Upgrade</span>
         }
         return null
@@ -940,17 +940,17 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                         <span>{rt.device_name || "N/A"}</span>
                     </div>
                     {metadata && Array.isArray((metadata as any).plugins) && (() => {
-                        const dmworkPlugin = ((metadata as any).plugins as any[]).find((p: any) => p.name === "openclaw-channel-dmwork")
+                        const octoPlugin = ((metadata as any).plugins as any[]).find((p: any) => p.name === "octo")
                         const pluginHint = this.props.versionHints[rt.id]
-                        return dmworkPlugin ? (
+                        return octoPlugin ? (
                             <div className="wk-rt-field">
-                                <label>DMWork Plugin</label>
+                                <label>Octo Plugin</label>
                                 <span className="wk-rt-mono">
-                                    {dmworkPlugin.version}
+                                    {octoPlugin.version}
                                     {pluginHint?.plugin_has_update && (
                                         <span className="wk-rt-update-hint"> → {pluginHint.plugin_latest_version}</span>
                                     )}
-                                    {this.renderPluginUpgradeBtn("openclaw-channel-dmwork", pluginHint?.plugin_has_update)}
+                                    {this.renderPluginUpgradeBtn("octo", pluginHint?.plugin_has_update)}
                                 </span>
                             </div>
                         ) : null
@@ -1114,7 +1114,7 @@ export default class RuntimesPage extends Component<{}, RuntimesState> {
     showAgentDetail = (rt: AgentRuntime) => {
         this.setState({ selectedId: rt.id })
         this.selectedDaemonId = undefined
-        const pluginUpgrade = this.state.activeUpgrades[`${rt.id}:openclaw-channel-dmwork`]
+        const pluginUpgrade = this.state.activeUpgrades[`${rt.id}:octo`]
         const componentUpgrade = this.state.activeUpgrades[`${rt.id}:${rt.provider}`]
         WKApp.routeRight.replaceToRoot(
             <RuntimeDetail
