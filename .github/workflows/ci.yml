@@ -2,9 +2,17 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+    # converted_to_draft kept: creates "skipped" check entries satisfying required-check rules
     branches: [main]
+    # paths-ignore intentionally removed — use changes preflight job instead
+    # (workflow-level path filters deadlock required status checks for docs-only PRs)
   push:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".github/ISSUE_TEMPLATE/**"
 
 permissions:
   contents: read
@@ -14,7 +22,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      # code=true when at least one changed file matches the code filter.
+      # predicate-quantifier:every + negation patterns (no bare '**'):
+      # a file matches 'code' iff ALL negation patterns are satisfied
+      # (file is not a doc/template). code=false only when all changed files
+      # are docs/templates. Push events default to 'true'.
+      code: ${{ github.event_name == 'pull_request' && steps.filter.outputs.code || 'true' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@6852f92c20ea7fd3b0c25de3b5112db3a98da050 # v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          # predicate-quantifier: every — a file matches 'code' only when ALL
+          # negation patterns are satisfied (file is NOT a doc/template file).
+          #
+          # Validated by picomatch v4 unit test (same library used internally):
+          #   README.md:    !**/*.md=false → every=false → not match → code=false ✅
+          #   main.go:      all negations=true → every=true → match → code=true ✅
+          #   mixed PR:     main.go matches → code=true (some over changed files) ✅
+          #   .golangci.yml: all negations=true → every=true → CI runs ✅
+          #   Dockerfile:   all negations=true → CI runs ✅
+          #
+          # Do NOT add '**': picomatch('**') doesn't match dotfiles (.golangci.yml)
+          # causing them to incorrectly skip CI with the 'every' quantifier.
+          # Do NOT use 'some' + negation: '**' short-circuits some to true always.
+          predicate-quantifier: 'every'
+          filters: |
+            code:
+              - '!**/*.md'
+              - '!docs/**'
+              - '!.github/ISSUE_TEMPLATE/**'
+
+
   build:
+    needs: [changes]
+    if: |
+      (github.event_name != 'pull_request' || !github.event.pull_request.draft) &&
+      needs.changes.outputs.code == 'true'
     name: Build
     runs-on: ubuntu-latest
     steps:

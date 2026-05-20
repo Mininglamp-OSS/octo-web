@@ -1,0 +1,24 @@
+name: Octo CI Status
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+
+jobs:
+  notify:
+    uses: Mininglamp-OSS/.github/.github/workflows/octo-ci-status.yml@v1
+    with:
+      repo_name: ${{ github.event.workflow_run.repository.name }}
+      workflow_name: ${{ github.event.workflow_run.name }}
+      conclusion: ${{ github.event.workflow_run.conclusion }}
+      run_id: ${{ github.event.workflow_run.id }}
+      run_url: ${{ github.event.workflow_run.html_url }}
+      project_group_id: "c6717c018f974c2793635f9fa2c0e629"
+      workflow_id: ${{ github.event.workflow_run.workflow_id }}
+    secrets:
+      OCTO_BOT_TOKEN: ${{ secrets.OCTO_BOT_TOKEN }}

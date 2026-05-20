@@ -5,6 +5,22 @@
  * - parseMentionLegacy: renders mentions using uids + regex (v1 fallback)
  */
 
+// Render-side helpers are now imported from the production module so the
+// render-matrix tests exercise the same synthesis logic that ships in
+// Conversation.getMessageMentions, instead of a hand-maintained mirror.
+import {
+    buildMessageMentions as productionBuildMessageMentions,
+    readMentionFlags,
+    buildMentionDropdownItems,
+    MENTION_UID_HUMANS,
+    MENTION_UID_AIS,
+    MENTION_LABEL_HUMANS,
+    MENTION_LABEL_AIS,
+    type MentionRenderPart,
+    type MentionRenderFlags,
+    type MentionRenderInfo,
+} from '../../../../packages/dmworkbase/src/Utils/mentionRender'
+
 // ─── Type definitions ────────────────────────────────────────────
 
 interface MentionEntity {
@@ -657,3 +673,299 @@ describe('end-to-end: formatMentionTextV2 -> parseMentionWithEntities', () => {
         expect(parts![3].text).toBe('@陈皮皮');
     });
 });
+
+// ═════════════════════════════════════════════════════════════════
+// Three-state mention render matrix (PR-C / GH#58)
+//
+// Mirrors the production logic in:
+//   - packages/dmworkbase/src/Components/Conversation/index.tsx
+//     ::getMessageMentions  (synthesizes @所有人 / @所有AI MentionInfo entries
+//     so MarkdownContent applies the existing mention-highlight class)
+//
+// Matrix:
+//   humans=1                       → highlight @所有人
+//   ais=1                          → highlight @所有AI
+//   humans=1 + ais=1               → highlight @所有人 + @所有AI
+//   all=1 (legacy / server outbound double-write) → highlight @所有人
+// ═════════════════════════════════════════════════════════════════
+
+interface MentionInfo {
+    name: string
+    uid: string
+}
+
+interface RenderMention {
+    all?: boolean | number
+    humans?: number
+    ais?: number
+    uids?: string[]
+    entities?: MentionEntity[]
+}
+
+// Delegates to the production `buildMessageMentions` from
+// packages/dmworkbase/src/Utils/mentionRender. The test file's local
+// `PartType` enum starts at 0 (text) with `mention` at index 2, which
+// also matches the SDK's PartType.mention numeric value used by the
+// production caller — we pass that numeric value explicitly so the
+// helper does not have to import the SDK PartType.
+function buildMessageMentions(
+    baseParts: Array<{ type: PartType; text: string; data?: { uid?: string } }>,
+    mention?: RenderMention,
+): MentionInfo[] {
+    const parts: MentionRenderPart[] = baseParts.map((p) => ({
+        type: p.type as unknown as number,
+        text: p.text,
+        data: p.data,
+    }))
+    const flags: MentionRenderFlags | undefined = mention
+        ? { all: mention.all, humans: mention.humans, ais: mention.ais }
+        : undefined
+    return productionBuildMessageMentions(
+        parts,
+        flags,
+        PartType.mention as unknown as number,
+    ) as MentionInfo[]
+}
+
+describe('render matrix: three-state mention highlight (GH#58)', () => {
+    it('humans=1 only → highlights @所有人', () => {
+        const text = '通知 @所有人 准时集合'
+        const mentions = buildMessageMentions([], { humans: 1 })
+
+        const names = mentions.map((m) => m.name)
+        expect(names).toContain('@所有人')
+        expect(names).not.toContain('@所有AI')
+        // All synthesized highlights reuse the existing "@member" highlight
+        // pathway by setting uid='all' (mention-highlight class).
+        expect(mentions.every((m) => m.uid === 'all')).toBe(true)
+        // sanity: the literal "@所有人" text exists in the message body so
+        // MarkdownContent will actually match it.
+        expect(text.includes('@所有人')).toBe(true)
+    })
+
+    it('ais=1 only → highlights @所有AI', () => {
+        const text = '请 @所有AI 协助回答'
+        const mentions = buildMessageMentions([], { ais: 1 })
+
+        const names = mentions.map((m) => m.name)
+        expect(names).toContain('@所有AI')
+        expect(names).not.toContain('@所有人')
+        expect(mentions.every((m) => m.uid === 'all')).toBe(true)
+        expect(text.includes('@所有AI')).toBe(true)
+    })
+
+    it('humans=1 + ais=1 → highlights @所有人 + @所有AI', () => {
+        const text = '@所有人 + @所有AI 同步'
+        const mentions = buildMessageMentions([], { humans: 1, ais: 1 })
+
+        const names = mentions.map((m) => m.name)
+        expect(names).toContain('@所有人')
+        expect(names).toContain('@所有AI')
+        expect(mentions).toHaveLength(2)
+        expect(mentions.every((m) => m.uid === 'all')).toBe(true)
+    })
+
+    it('all=1 (legacy) → highlights @所有人 (server outbound rewrites all→humans, both must work)', () => {
+        const text = '@所有人 集合'
+        const mentions = buildMessageMentions([], { all: 1 })
+
+        const names = mentions.map((m) => m.name)
+        expect(names).toContain('@所有人')
+        expect(names).not.toContain('@所有AI')
+        expect(mentions[0].uid).toBe('all')
+    })
+
+    it('regression: undefined mention does not synthesize anything', () => {
+        const mentions = buildMessageMentions([], undefined)
+        expect(mentions).toHaveLength(0)
+    })
+
+    it('regression: @member parts coexist with synthetic @所有AI (no de-dup collision)', () => {
+        const parts = [
+            { type: PartType.mention, text: '@陈皮皮', data: { uid: 'uid_chen' } },
+        ]
+        const mentions = buildMessageMentions(parts, { ais: 1 })
+
+        expect(mentions).toHaveLength(2)
+        expect(mentions[0]).toEqual({ name: '@陈皮皮', uid: 'uid_chen' })
+        expect(mentions[1]).toEqual({ name: '@所有AI', uid: 'all' })
+    })
+
+    it('regression: edited content flags override original content (Conversation.getMessageMentions parity)', () => {
+        // Conversation.getMessageMentions reads mention flags from
+        // remoteExtra.contentEdit when message.remoteExtra.isEdit is true,
+        // matching the text source used by getMessageTextContent. Use
+        // readMentionFlags here to assert the same lookup precedence the
+        // production path performs.
+        const original = { mention: { humans: 1 } }
+        const edited = { mention: { ais: 1 } }
+        const editedFlags = readMentionFlags(edited)
+        expect(editedFlags).toEqual({ all: undefined, humans: undefined, ais: 1 })
+
+        const editedMentions = buildMessageMentions([], editedFlags)
+        const names = editedMentions.map((m) => m.name)
+        expect(names).toContain('@所有AI')
+        expect(names).not.toContain('@所有人')
+
+        // sanity: the original (non-edited) flags still synthesize @所有人
+        const originalFlags = readMentionFlags(original)
+        const originalMentions = buildMessageMentions([], originalFlags)
+        expect(originalMentions.map((m) => m.name)).toEqual(['@所有人'])
+    })
+
+    it('readMentionFlags falls back to contentObj.mention when SDK Mention is missing the new fields', () => {
+        // The wire payload arrives with humans/ais in `contentObj.mention`
+        // because the SDK does not yet declare those fields. The render
+        // path must still see them via the fallback branch.
+        const flags = readMentionFlags({ contentObj: { mention: { humans: 1, ais: 1 } } })
+        expect(flags).toEqual({ all: undefined, humans: 1, ais: 1 })
+    })
+
+    it('readMentionFlags returns undefined when content lacks any mention shape', () => {
+        expect(readMentionFlags(undefined)).toBeUndefined()
+        expect(readMentionFlags(null)).toBeUndefined()
+        expect(readMentionFlags({})).toBeUndefined()
+        expect(readMentionFlags({ contentObj: {} })).toBeUndefined()
+    })
+})
+
+// ═════════════════════════════════════════════════════════════════
+// PR #59 regression: @-mention dropdown keyboard selection
+//
+// Reproduces the blocking finding from Jerry-Xin's review: typing
+// `@Bob` then pressing Enter must select Bob (or whatever member
+// matches the filter), NOT the sticky `@所有人` broadcast item.
+//
+// Root cause was that the suggestion factory always prepended the
+// two sticky items ahead of `filteredMembers`. MentionList resets
+// `selectedIndex` to 0 whenever `props.items` changes, so Enter
+// always landed on `@所有人` (the prepended sticky) instead of the
+// typed-name match. Fix: hide sticky items when the query is
+// non-empty.
+// ═════════════════════════════════════════════════════════════════
+
+describe('@-mention dropdown keyboard selection (PR #59 regression)', () => {
+    const fakeMembers = [
+        { uid: 'uid_bob', name: 'Bob', orgData: { robot: 0 } },
+        { uid: 'uid_alice', name: 'Alice', orgData: { robot: 0 } },
+        { uid: 'uid_bot', name: 'Botzilla', orgData: { robot: 1 } },
+    ]
+
+    const stubResolvers = {
+        iconResolver: (m: { uid: string }) => `avatar://${m.uid}`,
+        externalResolver: (_: unknown) => ({ isExternal: false, sourceSpaceName: '' }),
+        stickyIcon: 'mention-all-icon',
+    }
+
+    it('empty query → sticky @所有人 + @所有AI prepended at index 0 and 1 (UX preserved)', () => {
+        const items = buildMentionDropdownItems({
+            query: '',
+            members: fakeMembers,
+            ...stubResolvers,
+        })
+
+        // Sticky items occupy the first two slots, followed by all members.
+        expect(items.length).toBe(2 + fakeMembers.length)
+        expect(items[0]).toMatchObject({
+            uid: MENTION_UID_HUMANS,
+            name: MENTION_LABEL_HUMANS,
+            isBot: false,
+        })
+        expect(items[1]).toMatchObject({
+            uid: MENTION_UID_AIS,
+            name: MENTION_LABEL_AIS,
+            isBot: true,
+        })
+        expect(items[2].uid).toBe('uid_bob')
+    })
+
+    it('typing @Bob then Enter → selects Bob, NOT the sticky @所有人', () => {
+        // MentionList's enterHandler calls selectItem(selectedIndex), and
+        // selectedIndex resets to 0 on every items change. Therefore
+        // items[0] IS the keyboard-Enter target. Asserting items[0] is
+        // exactly the typed member is the canonical regression guard.
+        const items = buildMentionDropdownItems({
+            query: 'Bob',
+            members: fakeMembers,
+            ...stubResolvers,
+        })
+
+        expect(items.length).toBe(1)
+        expect(items[0]).toMatchObject({ uid: 'uid_bob', name: 'Bob' })
+
+        // Triple-belt: no sticky leaks into the filtered list, regardless
+        // of where it sits.
+        expect(items.find((i) => i.uid === MENTION_UID_HUMANS)).toBeUndefined()
+        expect(items.find((i) => i.uid === MENTION_UID_AIS)).toBeUndefined()
+    })
+
+    it('case-insensitive filter still puts the typed member at index 0', () => {
+        const items = buildMentionDropdownItems({
+            query: 'alice',
+            members: fakeMembers,
+            ...stubResolvers,
+        })
+        expect(items[0]).toMatchObject({ uid: 'uid_alice', name: 'Alice' })
+        expect(items.length).toBe(1)
+    })
+
+    it('query with leading/trailing whitespace is treated as a filter (sticky still hidden)', () => {
+        const items = buildMentionDropdownItems({
+            query: '  Bob  ',
+            members: fakeMembers,
+            ...stubResolvers,
+        })
+        // Even with padding the user clearly typed a filter; sticky must
+        // not sneak back in or Enter would broadcast again.
+        expect(items.find((i) => i.uid === MENTION_UID_HUMANS)).toBeUndefined()
+        expect(items.find((i) => i.uid === MENTION_UID_AIS)).toBeUndefined()
+        expect(items[0]).toMatchObject({ uid: 'uid_bob' })
+    })
+
+    it('query matches zero members → empty list (no accidental sticky fallback to @所有人)', () => {
+        const items = buildMentionDropdownItems({
+            query: 'Zzz_no_such_member',
+            members: fakeMembers,
+            ...stubResolvers,
+        })
+        // No sticky, no match → empty. MentionList shows "没有找到成员"
+        // and Enter is a no-op (selectItem(0) on empty array → noop).
+        expect(items).toEqual([])
+    })
+
+    it('null members + empty query → sticky-only list (fallback path)', () => {
+        const items = buildMentionDropdownItems({
+            query: '',
+            members: null,
+            ...stubResolvers,
+        })
+        expect(items.length).toBe(2)
+        expect(items[0].uid).toBe(MENTION_UID_HUMANS)
+        expect(items[1].uid).toBe(MENTION_UID_AIS)
+    })
+
+    it('null members + non-empty query → empty list (no sticky, no crash)', () => {
+        const items = buildMentionDropdownItems({
+            query: 'Bob',
+            members: null,
+            ...stubResolvers,
+        })
+        // With sticky hidden during search and no members to filter, the
+        // dropdown is empty — matching the "没有找到成员" placeholder UX.
+        expect(items).toEqual([])
+    })
+
+    it('bot member surfaces with isBot=true (regression on isBot wiring)', () => {
+        const items = buildMentionDropdownItems({
+            query: 'Bot',
+            members: fakeMembers,
+            ...stubResolvers,
+        })
+        expect(items[0]).toMatchObject({ uid: 'uid_bot', name: 'Botzilla', isBot: true })
+    })
+})
+
+// Silence the unused-import warning for MentionRenderInfo: it is part of
+// the public surface tested by `buildMessageMentions` return-type checks
+// in the existing render-matrix `it` blocks above (TS inference).
+type _MentionRenderInfoUsed = MentionRenderInfo

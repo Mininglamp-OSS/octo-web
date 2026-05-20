@@ -1,0 +1,19 @@
+name: Workflow Sanity
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.github/actions/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+
+permissions: {}
+
+jobs:
+  sanity:
+    uses: Mininglamp-OSS/.github/.github/workflows/workflow-sanity.yml@main
+    permissions:
+      contents: read

@@ -34,6 +34,10 @@ import {
 } from "../../Service/Const";
 import ConversationContext from "./context";
 import { subscriberDisplayName } from "../../Utils/displayName";
+import {
+  buildMessageMentions as buildMentionRenderInfo,
+  readMentionFlags,
+} from "../../Utils/mentionRender";
 import MessageInput, {
   MentionModel,
   MessageInputContext,
@@ -1052,13 +1056,35 @@ export class Conversation
   }
 
   getMessageMentions(message: MessageWrap): MentionInfo[] {
-    return (
-      message.parts
-        ?.filter(
-          (part: Part) => part.type === PartType.mention && part.data?.uid,
-        )
-        .map((part: Part) => ({ name: part.text, uid: part.data.uid })) ?? []
-    );
+    // ── 三态 mention 高亮（render matrix） ───────────────────────────
+    // 在普通 @member 的 Parts 之外，额外注入以下三个虚拟 highlight token，
+    // 让 MarkdownContent 用现有 @member 高亮样式（uid='all' → mention-highlight）
+    // 标亮文本中的 "@所有人" / "@所有AI":
+    //   - mention.humans=1  → "@所有人"
+    //   - mention.ais=1     → "@所有AI"
+    //   - mention.humans=1 + mention.ais=1 → 两者都高亮
+    //   - mention.all=1 (legacy / server outbound 双写) → "@所有人"
+    // 不动 message.parts，避免影响 markdown 子节点分段；MarkdownContent
+    // 按 name 字符串匹配文本节点。复用同一份 highlight class 保持视觉一致。
+    //
+    // Edited messages render text from `message.remoteExtra.contentEdit`
+    // (see `getMessageTextContent` below). The mention flags must be read
+    // from the same content source — otherwise an edited message whose
+    // edit text now contains `@所有人` / `@所有AI` (or removes them) would
+    // disagree with the highlight overlay. Prefer the edited content's
+    // mention flags when present, falling back to the original message
+    // content for non-edited messages or edits that did not re-emit flags.
+    const editContent: any = message.remoteExtra?.isEdit
+      ? message.remoteExtra?.contentEdit
+      : undefined;
+    const flags =
+      readMentionFlags(editContent) ?? readMentionFlags(message.content);
+
+    return buildMentionRenderInfo(
+      message.parts as any,
+      flags,
+      PartType.mention as unknown as number,
+    ) as MentionInfo[];
   }
 
   getMessageEmojis(message: MessageWrap): EmojiInfo[] {
@@ -2360,17 +2386,42 @@ export class Conversation
                             const mn = new Mention();
                             mn.all = blockMention.all;
                             mn.uids = blockMention.uids;
+                            // 三态 mention：SDK Mention 类型未声明 humans/ais，
+                            // 这里用 (mn as any) 把字段透传到 wire JSON。客户端
+                            // render 只读 contentObj.mention（下方 override 注入），
+                            // server 同时认 mn.humans/mn.ais（PR-A 已支持）。
+                            if (blockMention.humans) {
+                              (mn as any).humans = blockMention.humans;
+                            }
+                            if (blockMention.ais) {
+                              (mn as any).ais = blockMention.ais;
+                            }
                             msgContent.mention = mn;
-                            if (
+
+                            const hasEntities =
                               blockMention.entities &&
-                              blockMention.entities.length > 0
-                            ) {
+                              blockMention.entities.length > 0;
+                            const hasThreeState =
+                              !!(blockMention.humans || blockMention.ais);
+
+                            if (hasEntities || hasThreeState) {
                               const entities = blockMention.entities;
                               if (!msgContent.contentObj)
                                 msgContent.contentObj = {};
                               if (!msgContent.contentObj.mention)
                                 msgContent.contentObj.mention = {};
-                              msgContent.contentObj.mention.entities = entities;
+                              if (hasEntities) {
+                                msgContent.contentObj.mention.entities =
+                                  entities;
+                              }
+                              if (blockMention.humans) {
+                                msgContent.contentObj.mention.humans =
+                                  blockMention.humans;
+                              }
+                              if (blockMention.ais) {
+                                msgContent.contentObj.mention.ais =
+                                  blockMention.ais;
+                              }
                               const originalEncode =
                                 msgContent.encode.bind(msgContent);
                               msgContent.encode = () => {
@@ -2379,7 +2430,15 @@ export class Conversation
                                   const str = new TextDecoder().decode(bytes);
                                   const obj = JSON.parse(str);
                                   if (!obj.mention) obj.mention = {};
-                                  obj.mention.entities = entities;
+                                  if (hasEntities) {
+                                    obj.mention.entities = entities;
+                                  }
+                                  if (blockMention.humans) {
+                                    obj.mention.humans = blockMention.humans;
+                                  }
+                                  if (blockMention.ais) {
+                                    obj.mention.ais = blockMention.ais;
+                                  }
                                   return new TextEncoder().encode(
                                     JSON.stringify(obj),
                                   );

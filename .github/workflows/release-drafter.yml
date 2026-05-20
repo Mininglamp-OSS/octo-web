@@ -1,0 +1,15 @@
+name: Release Drafter
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  draft:
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-release-drafter.yml@main
+    permissions:
+      contents: write
+      pull-requests: read
