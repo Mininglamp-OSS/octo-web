@@ -8,4 +8,4 @@ jobs:
   welcome:
     permissions:
       issues: write
-    uses: Mininglamp-OSS/.github/.github/workflows/issue-welcome.yml@v1
+    uses: Mininglamp-OSS/.github/.github/workflows/issue-welcome.yml@main
