@@ -5,6 +5,7 @@
   border-radius: var(--wk-r-lg);
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  height: 560px;
 }
 
 .wk-link-channels-modal .semi-modal-body-wrapper {
@@ -25,7 +26,7 @@
 .wk-lcm {
   display: flex;
   flex-direction: column;
-  height: 560px;
+  height: 100%;
   padding: 1px 0 1px 1px;
   background: var(--wk-bg-surface);
 }
@@ -68,6 +69,8 @@
 /* ─── Content (双栏) ─── */
 .wk-lcm__content {
   display: flex;
+  flex: 1;
+  min-height: 0;
   padding: 0 var(--wk-sp-4);
   border-bottom: 1px solid var(--wk-brand-tint-15);
 }
@@ -75,7 +78,6 @@
 /* ─── 左栏 ─── */
 .wk-lcm__left {
   width: 296px;
-  height: 537px;
   display: flex;
   flex-direction: column;
   gap: var(--wk-sp-1);
@@ -209,7 +211,6 @@
 /* ─── 右栏 ─── */
 .wk-lcm__right {
   width: 296px;
-  height: 537px;
   display: flex;
   flex-direction: column;
   gap: var(--wk-sp-1);
