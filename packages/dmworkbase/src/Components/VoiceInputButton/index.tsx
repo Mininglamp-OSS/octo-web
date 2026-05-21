@@ -5,6 +5,8 @@ import { Mic } from "lucide-react";
 import useTextareaVoice, { ReplaceMode, SelectionRange } from "./useTextareaVoice";
 import type { ChatContextResult } from "../Conversation/chatContext";
 import type { VoiceMode } from "../../Service/VoiceService";
+import VoiceFeedbackNotice from "../MessageInput/VoiceFeedbackNotice";
+import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState } from "../MessageInput/useSpaceFeedbackSetting";
 import "./index.css";
 
 const VOICE_MODES: { value: VoiceMode; label: string }[] = [
@@ -40,7 +42,9 @@ export default function VoiceInputButton({
   onRecordingStart,
 }: VoiceInputButtonProps) {
   const [showMenu, setShowMenu] = useState(false);
+  const [showFeedbackNotice, setShowFeedbackNotice] = useState(false);
   const buttonRef = useRef<HTMLDivElement>(null);
+  const { spaceSetting, voiceConfig, updateSetting } = useSpaceFeedbackSetting();
 
   const {
     isRecording,
@@ -198,6 +202,14 @@ export default function VoiceInputButton({
               Toast.warning("网络不可用，无法使用语音功能");
               return;
             }
+            const feedbackState = getSharedSpaceFeedbackState();
+            if (
+              feedbackState.spaceSetting?.voice_feedback_on === 1 &&
+              feedbackState.spaceSetting?.voice_feedback_notice_acked !== 1
+            ) {
+              setShowFeedbackNotice(true);
+              return;
+            }
             shiftRecordingRef.current = true;
             startRecordingRef.current("append_only");
           }, RECORDING_DELAY_MS);
@@ -283,6 +295,13 @@ export default function VoiceInputButton({
       return;
     }
     if (!inputRef.current) return;
+    if (
+      spaceSetting?.voice_feedback_on === 1 &&
+      spaceSetting?.voice_feedback_notice_acked !== 1
+    ) {
+      setShowFeedbackNotice(true);
+      return;
+    }
     onRecordingStart?.();
     startRecording("append_only");
   };
@@ -290,6 +309,13 @@ export default function VoiceInputButton({
   const handleModeSelect = (selectedMode: VoiceMode) => {
     setShowMenu(false);
     if (!canRecord || !inputRef.current) return;
+    if (
+      spaceSetting?.voice_feedback_on === 1 &&
+      spaceSetting?.voice_feedback_notice_acked !== 1
+    ) {
+      setShowFeedbackNotice(true);
+      return;
+    }
     onRecordingStart?.();
     startRecording(selectedMode);
   };
@@ -383,49 +409,71 @@ export default function VoiceInputButton({
     );
 
     return (
-      <Dropdown
-        trigger="hover"
-        position="topRight"
-        render={dropdownMenu}
-        visible={canRecord && !!inputRef.current ? showMenu : false}
-        onVisibleChange={setShowMenu}
-        spacing={4}
-      >
-        <div
-          className={rootClasses}
-          ref={buttonRef}
-          onClick={handleVoiceClick}
-          style={{ cursor: isDisabled ? "not-allowed" : "pointer" }}
+      <>
+        <Dropdown
+          trigger="hover"
+          position="topRight"
+          render={dropdownMenu}
+          visible={canRecord && !!inputRef.current ? showMenu : false}
+          onVisibleChange={setShowMenu}
+          spacing={4}
         >
           <div
-            className={`wk-vib__btn ${isDisabled ? "wk-vib__btn--disabled" : ""}`}
-            title={canRecord ? "语音输入" : "网络不可用"}
-            role="button"
-            tabIndex={isDisabled ? -1 : 0}
+            className={rootClasses}
+            ref={buttonRef}
+            onClick={handleVoiceClick}
+            style={{ cursor: isDisabled ? "not-allowed" : "pointer" }}
           >
-            <Mic size={iconSize} color="currentColor" />
+            <div
+              className={`wk-vib__btn ${isDisabled ? "wk-vib__btn--disabled" : ""}`}
+              title={canRecord ? "语音输入" : "网络不可用"}
+              role="button"
+              tabIndex={isDisabled ? -1 : 0}
+            >
+              <Mic size={iconSize} color="currentColor" />
+            </div>
           </div>
-        </div>
-      </Dropdown>
+        </Dropdown>
+        {showFeedbackNotice && (
+          <VoiceFeedbackNotice
+            onClose={() => {
+              setShowFeedbackNotice(false);
+              updateSetting({ voice_feedback_notice_acked: 1 });
+            }}
+            privacyUrl={voiceConfig?.feedback_privacy_url}
+          />
+        )}
+      </>
     );
   }
 
   return (
-    <div
-      className={rootClasses}
-      ref={buttonRef}
-      onClick={handleVoiceClick}
-      style={{ cursor: isDisabled ? "not-allowed" : "pointer" }}
-    >
+    <>
       <div
-        className={`wk-vib__btn ${isDisabled ? "wk-vib__btn--disabled" : ""}`}
-        title={canRecord ? "语音输入" : "网络不可用"}
-        role="button"
-        tabIndex={isDisabled ? -1 : 0}
+        className={rootClasses}
+        ref={buttonRef}
+        onClick={handleVoiceClick}
+        style={{ cursor: isDisabled ? "not-allowed" : "pointer" }}
       >
-        <Mic size={iconSize} color="currentColor" />
+        <div
+          className={`wk-vib__btn ${isDisabled ? "wk-vib__btn--disabled" : ""}`}
+          title={canRecord ? "语音输入" : "网络不可用"}
+          role="button"
+          tabIndex={isDisabled ? -1 : 0}
+        >
+          <Mic size={iconSize} color="currentColor" />
+        </div>
       </div>
-    </div>
+      {showFeedbackNotice && (
+        <VoiceFeedbackNotice
+          onClose={() => {
+            setShowFeedbackNotice(false);
+            updateSetting({ voice_feedback_notice_acked: 1 });
+          }}
+          privacyUrl={voiceConfig?.feedback_privacy_url}
+        />
+      )}
+    </>
   );
 }
 

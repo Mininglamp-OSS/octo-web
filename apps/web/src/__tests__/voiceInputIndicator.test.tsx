@@ -17,16 +17,57 @@ vi.mock("react-dom", async () => {
   };
 });
 
-// Mock Toast
+// Mock semi-ui and semi-icons
 vi.mock("@douyinfe/semi-ui", () => ({
   Toast: {
     error: vi.fn(),
     warning: vi.fn(),
   },
+  Dropdown: Object.assign(
+    (props: any) => props.children,
+    {
+      Menu: (props: any) => props.children,
+      Item: (props: any) => props.children,
+    }
+  ),
+}));
+vi.mock("@douyinfe/semi-icons", () => ({}));
+
+// Mock VoiceFeedbackNotice
+vi.mock("@octo/base/src/Components/MessageInput/VoiceFeedbackNotice", () => ({
+  default: (props: any) => {
+    const React = require("react");
+    return React.createElement("div", { className: "voice-feedback-notice" });
+  },
+}));
+
+// Mock useSpaceFeedbackSetting
+const mockSharedSpaceFeedbackState = {
+  spaceSetting: null as { voice_feedback_on?: number; voice_feedback_notice_acked?: number } | null,
+  loaded: false,
+  apiAvailable: false,
+};
+
+vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => ({
+  default: () => ({
+    spaceSetting: mockSharedSpaceFeedbackState.spaceSetting,
+    loaded: mockSharedSpaceFeedbackState.loaded,
+    apiAvailable: mockSharedSpaceFeedbackState.apiAvailable,
+    voiceConfig: null,
+    updateSetting: vi.fn(),
+  }),
+  getSharedSpaceFeedbackState: () => mockSharedSpaceFeedbackState,
 }));
 
 import VoiceInputIndicator from "@octo/base/src/Components/MessageInput/VoiceInputIndicator";
 import { Toast } from "@douyinfe/semi-ui";
+
+// Reset shared feedback state before each test
+beforeEach(() => {
+  mockSharedSpaceFeedbackState.spaceSetting = null;
+  mockSharedSpaceFeedbackState.loaded = false;
+  mockSharedSpaceFeedbackState.apiAvailable = false;
+});
 
 // Default mock return value for useVoiceInput
 function createMockHookReturn(overrides = {}) {
@@ -726,5 +767,136 @@ describe("VoiceInputIndicator - floating indicator", () => {
 
     const text = document.querySelector(".wk-voice-floating-text");
     expect(text?.textContent).toBe("转写中");
+  });
+});
+
+describe("VoiceInputIndicator - keyboard feedback notice", () => {
+  let startRecording: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    startRecording = vi.fn();
+
+    Object.defineProperty(navigator, "onLine", {
+      value: true,
+      writable: true,
+      configurable: true,
+    });
+
+    mockUseVoiceInput.mockReturnValue(
+      createMockHookReturn({
+        isVoiceEnabled: true,
+        startRecording,
+      })
+    );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it("Shift+Cmd+Space should show feedback notice when voice_feedback_on=1 and notice_acked=0", async () => {
+    mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 0,
+    };
+
+    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.keyDown(window, {
+        code: "Space",
+        shiftKey: true,
+        metaKey: true,
+        repeat: false,
+        ctrlKey: false,
+        altKey: false,
+      });
+    });
+
+    expect(startRecording).not.toHaveBeenCalled();
+    const notice = document.querySelector(".voice-feedback-notice");
+    expect(notice).toBeTruthy();
+  });
+
+  it("long-press ShiftLeft should show feedback notice when voice_feedback_on=1 and notice_acked=0", async () => {
+    mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 0,
+    };
+
+    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.keyDown(window, {
+        code: "ShiftLeft",
+        shiftKey: true,
+        repeat: false,
+        metaKey: false,
+        ctrlKey: false,
+        altKey: false,
+      });
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(startRecording).not.toHaveBeenCalled();
+    const notice = document.querySelector(".voice-feedback-notice");
+    expect(notice).toBeTruthy();
+  });
+
+  it("Shift+Cmd+Space should start recording normally when notice_acked=1", async () => {
+    mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 1,
+    };
+
+    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.keyDown(window, {
+        code: "Space",
+        shiftKey: true,
+        metaKey: true,
+        repeat: false,
+        ctrlKey: false,
+        altKey: false,
+      });
+    });
+
+    expect(startRecording).toHaveBeenCalled();
+    const notice = document.querySelector(".voice-feedback-notice");
+    expect(notice).toBeNull();
+  });
+
+  it("long-press ShiftLeft should start recording normally when notice_acked=1", async () => {
+    mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 1,
+    };
+
+    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.keyDown(window, {
+        code: "ShiftLeft",
+        shiftKey: true,
+        repeat: false,
+        metaKey: false,
+        ctrlKey: false,
+        altKey: false,
+      });
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(startRecording).toHaveBeenCalled();
+    const notice = document.querySelector(".voice-feedback-notice");
+    expect(notice).toBeNull();
   });
 });

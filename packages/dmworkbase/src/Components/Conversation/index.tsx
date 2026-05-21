@@ -75,6 +75,7 @@ import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
 import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
+import VoiceFeedback from "../../Service/VoiceFeedback";
 
 /**
  * 取消息的有效内容：如果消息被编辑过，返回编辑后的 contentEdit；否则返回原始 content
@@ -2295,6 +2296,8 @@ export class Conversation
                         topFiles?: { id: string; file: File }[],
                         editorBlocks?: EditorContentBlock[],
                       ) => {
+                        VoiceFeedback.shared()?.submitAll(text);
+
                         // ── 回复/编辑处理 ──────────────
                         let reply: Reply | undefined;
                         if (vm.currentReplyMessage) {

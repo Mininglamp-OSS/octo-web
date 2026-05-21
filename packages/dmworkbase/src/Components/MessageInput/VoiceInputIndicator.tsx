@@ -6,6 +6,8 @@ import useVoiceInput from "./useVoiceInput";
 import "./voiceInput.css";
 import { ChatContextResult } from "../Conversation/chatContext";
 import { VoiceMode } from "../../Service/VoiceService";
+import VoiceFeedbackNotice from "./VoiceFeedbackNotice";
+import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState } from "./useSpaceFeedbackSetting";
 
 type ReplaceMode = "all" | "selection" | "insert";
 
@@ -56,6 +58,8 @@ export default function VoiceInputIndicator({
 }: VoiceInputIndicatorProps) {
   // Voice mode menu state (不保存选中的模式，每次都是临时选择)
   const [showModeMenu, setShowModeMenu] = useState(false);
+  const [showFeedbackNotice, setShowFeedbackNotice] = useState(false);
+  const { spaceSetting, voiceConfig, updateSetting } = useSpaceFeedbackSetting();
 
   // Long-press ShiftLeft state
   const shiftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -271,6 +275,14 @@ export default function VoiceInputIndicator({
             Toast.warning("网络不可用，无法使用语音功能");
             return;
           }
+          const feedbackState = getSharedSpaceFeedbackState();
+          if (
+            feedbackState.spaceSetting?.voice_feedback_on === 1 &&
+            feedbackState.spaceSetting?.voice_feedback_notice_acked !== 1
+          ) {
+            setShowFeedbackNotice(true);
+            return;
+          }
           // 记录选中文本和位置
           const selectedText = getSelectedText?.();
           const selectionRange = getSelectionRange?.();
@@ -307,6 +319,15 @@ export default function VoiceInputIndicator({
             if (!isOnlineRef.current && !localAvailableRef.current) {
               Toast.warning("网络不可用，无法使用语音功能");
               setIsPreparing(false);
+              return;
+            }
+            const feedbackState = getSharedSpaceFeedbackState();
+            if (
+              feedbackState.spaceSetting?.voice_feedback_on === 1 &&
+              feedbackState.spaceSetting?.voice_feedback_notice_acked !== 1
+            ) {
+              setIsPreparing(false);
+              setShowFeedbackNotice(true);
               return;
             }
             shiftRecordingRef.current = true;
@@ -438,6 +459,14 @@ export default function VoiceInputIndicator({
   const handleModeSelect = (selectedMode: VoiceMode) => {
     setShowModeMenu(false);
 
+    if (
+      spaceSetting?.voice_feedback_on === 1 &&
+      spaceSetting?.voice_feedback_notice_acked !== 1
+    ) {
+      setShowFeedbackNotice(true);
+      return;
+    }
+
     // 直接用选中的模式开始录音（不保存到 state）
     if (canRecord) {
       // 记录开始录音时是否有选中文本、选中文本内容、位置和使用的模式
@@ -457,6 +486,13 @@ export default function VoiceInputIndicator({
 
     if (!canRecord) {
       Toast.warning("网络不可用，无法使用语音功能");
+      return;
+    }
+    if (
+      spaceSetting?.voice_feedback_on === 1 &&
+      spaceSetting?.voice_feedback_notice_acked !== 1
+    ) {
+      setShowFeedbackNotice(true);
       return;
     }
     // 点击麦克风 icon 固定使用语音输入模式
@@ -683,6 +719,7 @@ export default function VoiceInputIndicator({
   );
 
   return (
+    <>
     <Dropdown
       trigger="hover"
       position="topRight"
@@ -728,5 +765,15 @@ export default function VoiceInputIndicator({
         </div>
       </div>
     </Dropdown>
+    {showFeedbackNotice && (
+      <VoiceFeedbackNotice
+        onClose={() => {
+          setShowFeedbackNotice(false);
+          updateSetting({ voice_feedback_notice_acked: 1 });
+        }}
+        privacyUrl={voiceConfig?.feedback_privacy_url}
+      />
+    )}
+    </>
   );
 }

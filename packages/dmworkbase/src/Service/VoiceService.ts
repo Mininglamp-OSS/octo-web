@@ -11,11 +11,16 @@ export interface VoiceConfig {
   local_timeout_ms?: number;
   local_probe_url?: string;
   local_transcribe_url?: string;
+  feedback_url?: string;
+  feedback_privacy_url?: string;
+  engine?: string;
+  edit_mode?: string;
 }
 
 export interface TranscribeResult {
   text: string;
   m: string; // shortened model name from backend
+  request_id?: string;
 }
 
 export interface VoiceContextResponse {
@@ -58,6 +63,7 @@ export default class VoiceService {
     mode?: VoiceMode,
     skipLocal?: boolean,
     channelType?: number,
+    allowFeedback?: boolean,
   ): Promise<TranscribeResult> {
     if (!skipLocal) {
       const localResult = await LocalModelService.shared.transcribe(audio, contextText, chatContext, personalContext, memberContext, mode);
@@ -86,6 +92,9 @@ export default class VoiceService {
     }
     if (channelType !== undefined) {
       formData.append("channel_type", String(channelType));
+    }
+    if (allowFeedback !== undefined) {
+      formData.append("allow_feedback", String(allowFeedback));
     }
     return APIClient.shared.post("/voice/transcribe", formData);
   }

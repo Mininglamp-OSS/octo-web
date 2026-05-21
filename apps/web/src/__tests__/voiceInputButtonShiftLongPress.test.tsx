@@ -25,6 +25,32 @@ vi.mock("@douyinfe/semi-ui", () => ({
     Item: vi.fn(({ children }: any) => children),
   }),
 }));
+vi.mock("@douyinfe/semi-icons", () => ({}));
+
+const mockSharedSpaceFeedbackState = {
+  spaceSetting: null as { voice_feedback_on?: number; voice_feedback_notice_acked?: number } | null,
+  loaded: false,
+  apiAvailable: false,
+  loadedSpaceId: null as string | null,
+};
+
+vi.mock("@octo/base/src/Components/MessageInput/VoiceFeedbackNotice", () => ({
+  default: (props: any) => {
+    const React = require("react");
+    return React.createElement("div", { className: "voice-feedback-notice" });
+  },
+}));
+
+vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => ({
+  default: () => ({
+    spaceSetting: mockSharedSpaceFeedbackState.spaceSetting,
+    loaded: mockSharedSpaceFeedbackState.loaded,
+    apiAvailable: mockSharedSpaceFeedbackState.apiAvailable,
+    voiceConfig: null,
+    updateSetting: vi.fn(),
+  }),
+  getSharedSpaceFeedbackState: () => mockSharedSpaceFeedbackState,
+}));
 
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import { Toast } from "@douyinfe/semi-ui";
@@ -52,6 +78,10 @@ describe("VoiceInputButton - Left Shift long-press", () => {
     document.body.appendChild(textarea);
     inputRef = { current: textarea } as React.RefObject<HTMLTextAreaElement>;
     mockUseTextareaVoice.mockReturnValue(createMockReturn());
+    mockSharedSpaceFeedbackState.spaceSetting = null;
+    mockSharedSpaceFeedbackState.loaded = false;
+    mockSharedSpaceFeedbackState.apiAvailable = false;
+    mockSharedSpaceFeedbackState.loadedSpaceId = null;
     Object.defineProperty(navigator, "onLine", {
       value: true,
       writable: true,
@@ -390,5 +420,75 @@ describe("VoiceInputButton - Left Shift long-press", () => {
 
     // Should only start once
     expect(mockStart).toHaveBeenCalledTimes(1);
+  });
+
+  it("should show feedback notice instead of recording when notice not acked", () => {
+    mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 0,
+    };
+    mockSharedSpaceFeedbackState.loaded = true;
+    mockSharedSpaceFeedbackState.apiAvailable = true;
+
+    const mockStart = vi.fn();
+    mockUseTextareaVoice.mockReturnValue(
+      createMockReturn({ startRecording: mockStart })
+    );
+
+    const { container } = render(
+      <VoiceInputButton inputRef={inputRef} onTranscribed={vi.fn()} />
+    );
+
+    textarea.focus();
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          code: "ShiftLeft",
+          key: "Shift",
+          bubbles: true,
+        })
+      );
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(mockStart).not.toHaveBeenCalled();
+    const notice = container.querySelector(".voice-feedback-notice");
+    expect(notice).toBeTruthy();
+  });
+
+  it("should allow recording via long-press when notice already acked", () => {
+    mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 1,
+    };
+    mockSharedSpaceFeedbackState.loaded = true;
+    mockSharedSpaceFeedbackState.apiAvailable = true;
+
+    const mockStart = vi.fn();
+    mockUseTextareaVoice.mockReturnValue(
+      createMockReturn({ startRecording: mockStart })
+    );
+
+    render(<VoiceInputButton inputRef={inputRef} onTranscribed={vi.fn()} />);
+
+    textarea.focus();
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          code: "ShiftLeft",
+          key: "Shift",
+          bubbles: true,
+        })
+      );
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(mockStart).toHaveBeenCalledWith("append_only");
   });
 });

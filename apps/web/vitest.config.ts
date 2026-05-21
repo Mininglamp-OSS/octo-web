@@ -7,8 +7,10 @@ export default defineConfig({
   plugins: [react(), tsconfigPaths({ root: '../../' })],
   resolve: {
     alias: {
-      react: path.resolve(__dirname, 'node_modules/react'),
+      'react': path.resolve(__dirname, 'node_modules/react'),
       'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
+      '@douyinfe/semi-ui': path.resolve(__dirname, 'node_modules/@douyinfe/semi-ui'),
+      '@douyinfe/semi-icons': path.resolve(__dirname, 'node_modules/@douyinfe/semi-icons'),
     },
   },
   test: {
@@ -27,7 +29,7 @@ export default defineConfig({
     // to PR#1113.
     server: {
       deps: {
-        inline: [/@tiptap\/react/, /@douyinfe\/semi-icons/],
+        inline: [/@tiptap\/react/, /@douyinfe\/semi-icons/, /@douyinfe\/semi-ui/],
       },
     },
   },
