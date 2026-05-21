@@ -304,5 +304,63 @@ test.describe('OIDC bind page', () => {
       expect(calls.find((c) => c.endpoint === 'verify_password')).toBeDefined()
       expect(calls.find((c) => c.endpoint === 'confirm')).toBeDefined()
     })
+
+    test('R4: bind/create with pendingInviteCode hands off to AppLayout invite-join flow', async ({ page }) => {
+      await mockBindServer(page, 'happy_create')
+
+      // Mock the two AppLayout.onLogin invite endpoints. mockBindServer only
+      // intercepts /v1/auth/oidc/* so /api/v1/space/* falls through to be
+      // handled here. Predicate route — Playwright's `**/api/v1/...` glob
+      // matched inconsistently against the proxied URL; the URL-object
+      // predicate is unambiguous and reads against the post-baseURL path.
+      let inviteFetched = false
+      let joinPosted = false
+      await page.route((url) => url.pathname.startsWith('/api/v1/space/'), (route) => {
+        const url = route.request().url()
+        if (url.endsWith('/api/v1/space/invite/INVITE-XYZ')) {
+          inviteFetched = true
+          return route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ space_id: 'space-1', space_name: 'Demo Space' }),
+          })
+        }
+        if (url.endsWith('/api/v1/space/join')) {
+          joinPosted = true
+          return route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ status: 'ok', space_id: 'space-1' }),
+          })
+        }
+        return route.continue()
+      })
+
+      // Pre-seed localStorage like LoginVM.didMount would. Use page.evaluate
+      // rather than addInitScript — the latter re-runs on every navigation,
+      // including the post-bind /space/join → goMain reload, which would
+      // immediately re-set the key after AppLayout.onLogin's .then cleared it.
+      // returnTo=/contacts to prove the invite path overrides it.
+      await gotoBindPage(page, { token: TOKEN, returnTo: '/contacts' })
+      await page.evaluate(() => {
+        localStorage.setItem('pendingInviteCode', 'INVITE-XYZ')
+      })
+
+      await page.getByRole('button', { name: '使用 SSO 身份创建 Octo 账号' }).click()
+      // Give AppLayout.onLogin's fetch chain time to issue both calls and run
+      // the .then localStorage cleanup.
+      await page.waitForTimeout(800)
+
+      expect(inviteFetched).toBe(true)
+      expect(joinPosted).toBe(true)
+
+      // pendingInviteCode is cleared inside the /space/join .then in AppLayout
+      // (apps/web/src/Layout/index.tsx). Poll because the cleanup runs after
+      // the mocked response resolves, not synchronously with the request.
+      await expect.poll(
+        async () => page.evaluate(() => localStorage.getItem('pendingInviteCode')),
+        { timeout: 3000 },
+      ).toBeNull()
+    })
   })
 })

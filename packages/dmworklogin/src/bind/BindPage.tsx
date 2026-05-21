@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Button, Input, Spin, Toast } from '@douyinfe/semi-ui'
+import { WKApp } from '@octo/base'
 import {
   clearPendingOidcLogin,
   fetchHttpClient,
@@ -258,6 +259,60 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     }
   }
 
+  // PR #72 round-4 (Jerry-Xin): bind success must honour any pendingInviteCode
+  // set by LoginVM.didMount when the user arrived via /login?invite=X. The
+  // legacy LoginVM.loginSuccess routes that through WKApp.endpoints.callOnLogin
+  // → AppLayout.onLogin which handles /space/invite + /space/join + cleanup +
+  // navigation. We can't just call callOnLogin from /oidc/bind directly
+  // because AppLayout.onLogin computes basePath off window.location.pathname,
+  // which would send the user back to /oidc/bind — so we replaceState to '/'
+  // first.
+  //
+  // Validation matches LoginVM and AppLayout: pendingInviteCode must look like
+  // a safe slug. Anything else falls through to the plain returnTo navigation.
+  function finalizeBindSuccess(returnTo: string): void {
+    setStage({ kind: 'success' })
+
+    let pendingInvite: string | null = null
+    try {
+      pendingInvite = localStorage.getItem('pendingInviteCode')
+    } catch {
+      /* localStorage unavailable — treat as no invite */
+    }
+
+    if (pendingInvite && /^[a-zA-Z0-9_-]+$/.test(pendingInvite)) {
+      // Hand off to AppLayout.onLogin. It will:
+      //   1. fetch /space/invite/<code>, then /space/join
+      //   2. clear pendingInviteCode on success
+      //   3. compute basePath from location.pathname → goMain
+      // We replaceState pathname to '/' so basePath resolves to '/' instead of
+      // '/oidc/bind' (which would loop the user back to BindPage).
+      try {
+        window.history.replaceState({}, '', '/')
+      } catch {
+        /* noop: SSR / legacy host */
+      }
+      try {
+        WKApp.endpoints.callOnLogin()
+      } catch (e) {
+        console.warn('callOnLogin error suppressed:', e)
+        // Last-resort fallback so the user isn't stranded on the success stage.
+        window.location.replace('/')
+      }
+      return
+    }
+
+    // No invite — keep the original behaviour: short paint window then navigate
+    // to the originally-requested return_to.
+    window.setTimeout(() => {
+      try {
+        window.location.replace(returnTo)
+      } catch {
+        window.location.href = returnTo
+      }
+    }, 200)
+  }
+
   async function runConfirm(info: BindInfoResp): Promise<void> {
     // Read entryRef and validate the invariants *before* setStage so a stale
     // entryRef can't park the user on the confirming loader with no recovery.
@@ -279,16 +334,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       try { clearPendingOidcLogin() } catch { /* sessionStorage 不可用时静默 */ }
       // 写完登录态后 token 已无效 (后端 single-use consume), 直接清掉 ref.
       entryRef.current = null
-      setStage({ kind: 'success' })
-      // 200ms gives the success state one paint + a brief Toast visibility window
-      // before the full-page navigation tears down the React tree.
-      window.setTimeout(() => {
-        try {
-          window.location.replace(returnTo)
-        } catch {
-          window.location.href = returnTo
-        }
-      }, 200)
+      finalizeBindSuccess(returnTo)
     } catch (err) {
       // All confirm failures are terminal in errorMessages.ts — the confirming
       // loader has no surface to show an inline error, so handleError will
@@ -314,16 +360,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       applyLoginResp(data, 'oidc-bind-create')
       try { clearPendingOidcLogin() } catch { /* sessionStorage 不可用时静默 */ }
       entryRef.current = null
-      setStage({ kind: 'success' })
-      // 200ms gives the success state one paint before the navigation kicks in;
-      // mirrors runConfirm.
-      window.setTimeout(() => {
-        try {
-          window.location.replace(returnTo)
-        } catch {
-          window.location.href = returnTo
-        }
-      }, 200)
+      finalizeBindSuccess(returnTo)
     } catch (err) {
       // create failures are deterministic at bindCreateMax=1 — handleError routes
       // to fatal.
