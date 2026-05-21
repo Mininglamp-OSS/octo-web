@@ -83,10 +83,17 @@ test.describe('OIDC bind page', () => {
     // 等到信息加载完毕才检查, 确保 clearBindUrl 已经跑过且后续渲染没把 token 写进 DOM.
     await expect(page.getByText('Alice')).toBeVisible()
 
-    // 1) URL 的 query 段应被 replaceState 清空
+    // 1) URL bind-flow params must be wiped, but non-bind params (sid in
+    // particular — used by LoginInfo storage bucket selection) must survive.
+    // Updated for PR #72 round-3 fix where clearBindUrl preserves sid.
     const url = new URL(page.url())
-    expect(url.search).toBe('')
     expect(url.pathname).toBe('/oidc/bind')
+    const params = new URLSearchParams(url.search)
+    expect(params.has('token')).toBe(false)
+    expect(params.has('authcode')).toBe(false)
+    expect(params.has('return_to')).toBe(false)
+    expect(params.has('provider')).toBe(false)
+    expect(url.search).not.toContain(TOKEN)
 
     // 2) 渲染出的 HTML 不能包含 token 字面值
     const html = await page.content()

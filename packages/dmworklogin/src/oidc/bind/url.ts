@@ -73,28 +73,55 @@ export function sanitizeReturnTo(
   return value
 }
 
+// Query params that carry bind-flow data — only these get stripped by
+// clearBindUrl. Everything else (notably `sid`, which RouteManager injects
+// on pageshow and LoginInfo.getSID() reads back at save() time) is preserved.
+//
+// PR #72 round-3 review (Jerry-Xin): the previous implementation replaced
+// location with bare pathname, wiping sid and routing applyLoginResp().save()
+// to the empty-sid storage bucket — losing the just-created session on the
+// next reload.
+const BIND_QUERY_KEYS: ReadonlySet<string> = new Set([
+  'token',
+  'authcode',
+  'return_to',
+  'provider',
+])
+
 /**
- * clearBindUrl 从地址栏抹掉 bind 入口的 query 段.
+ * clearBindUrl scrubs bind-specific params from the address bar while
+ * preserving everything else (in particular `sid`, which the storage layer
+ * depends on).
  *
- * 目的:
- *  - 浏览器历史不留 token
- *  - 用户截图不暴露 token
- *  - Referer 不带 token 给下一跳
+ * Goals:
+ *  - browser history doesn't retain the token
+ *  - screenshots don't leak the token
+ *  - subsequent Referer headers don't carry the token
+ *  - sid + any other host-level params stay intact so the storage round-trip
+ *    (save → reload → load) reads from the same bucket
  *
- * 如果路由是 hash 模式 (location.pathname 不变, 路由在 location.hash 上),
- * 这里只清 search 段, 不动 hash. WKApp.route 默认是 path 模式; 真用 hash
- * 部署时 hash 里本来就没 token, 不影响.
+ * Hash-mode routing is unaffected: we only edit `location.search`, never
+ * `location.hash`. WKApp.route is path-mode today, so the hash is empty.
  *
- * 测试时可注入 historyApi 替换全局 window.history.
+ * `win` is injectable for tests.
  */
 export function clearBindUrl(
   win: Pick<Window, 'history' | 'location'> = window,
 ): void {
-  // replaceState 在 jsdom / 浏览器都有; 没有的话静默失败 — 这一步是 mitigation
-  // 不是 hard requirement, 不能因为它失败把 bind 流程整个挂掉.
   try {
-    win.history.replaceState({}, '', win.location.pathname)
+    const params = new URLSearchParams(win.location.search)
+    let mutated = false
+    for (const key of BIND_QUERY_KEYS) {
+      if (params.has(key)) {
+        params.delete(key)
+        mutated = true
+      }
+    }
+    if (!mutated) return
+    const remaining = params.toString()
+    const nextUrl = win.location.pathname + (remaining ? `?${remaining}` : '')
+    win.history.replaceState({}, '', nextUrl)
   } catch {
-    /* noop: 老浏览器或 SSR 容器无 history.replaceState */
+    /* noop: SSR / legacy host without history.replaceState */
   }
 }

@@ -16,6 +16,14 @@ export default class BindModule implements IModule {
     return 'BindModule'
   }
   init(): void {
+    // Assumption (PR #72 review yujiawei P2-3): the user arrives at /oidc/bind
+    // via the backend's full-page 302 from the OIDC callback, so init() always
+    // runs while window.location.search still has the bind params. If a future
+    // path ever routes to /oidc/bind via SPA navigation (no full reload), init
+    // won't fire again and the route factory will hand BindPage an empty
+    // snapshot — falling cleanly to the "链接无效" fatal stage rather than
+    // silently picking up stale params. Acceptable trade-off given the
+    // documented flow.
     if (typeof window !== 'undefined' && window.location.pathname === '/oidc/bind') {
       bindInitialSearch = window.location.search
     }

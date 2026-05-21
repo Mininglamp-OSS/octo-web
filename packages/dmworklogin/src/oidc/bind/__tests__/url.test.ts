@@ -110,14 +110,61 @@ describe('sanitizeReturnTo', () => {
 })
 
 describe('clearBindUrl', () => {
-  it('calls history.replaceState with pathname only', () => {
+  function makeWin(pathname: string, search: string) {
     const replaceState = vi.fn()
-    const win = {
-      history: { replaceState } as unknown as History,
-      location: { pathname: '/oidc/bind' } as Location,
+    return {
+      replaceState,
+      win: {
+        history: { replaceState } as unknown as History,
+        location: { pathname, search } as Location,
+      },
     }
+  }
+
+  it('strips bind-flow params (no other query) → bare pathname', () => {
+    const { win, replaceState } = makeWin(
+      '/oidc/bind',
+      '?token=tok&authcode=ac&return_to=/&provider=aegis',
+    )
     clearBindUrl(win)
     expect(replaceState).toHaveBeenCalledWith({}, '', '/oidc/bind')
+  })
+
+  // PR #72 round-3 critical (Jerry-Xin): RouteManager's pageshow handler can
+  // inject ?sid= before BindPage's useEffect runs. The previous clearBindUrl
+  // wiped sid too, routing applyLoginResp().save() to the empty-sid storage
+  // bucket and losing the session on next reload.
+  it('preserves sid alongside bind-param stripping', () => {
+    const { win, replaceState } = makeWin(
+      '/oidc/bind',
+      '?sid=abc123&token=tok&authcode=ac',
+    )
+    clearBindUrl(win)
+    expect(replaceState).toHaveBeenCalledWith({}, '', '/oidc/bind?sid=abc123')
+  })
+
+  it('preserves arbitrary non-bind params (forward-compat)', () => {
+    const { win, replaceState } = makeWin(
+      '/oidc/bind',
+      '?token=tok&debug=1&trace_id=xyz',
+    )
+    clearBindUrl(win)
+    const call = replaceState.mock.calls[0]
+    const newUrl = call[2] as string
+    expect(newUrl.startsWith('/oidc/bind?')).toBe(true)
+    const params = new URLSearchParams(newUrl.split('?')[1])
+    expect(params.has('token')).toBe(false)
+    expect(params.get('debug')).toBe('1')
+    expect(params.get('trace_id')).toBe('xyz')
+  })
+
+  it('no-ops when no bind params present', () => {
+    const { win, replaceState } = makeWin(
+      '/oidc/bind',
+      '?sid=abc',
+    )
+    clearBindUrl(win)
+    expect(replaceState).not.toHaveBeenCalled()
   })
 
   it('does not throw when history is unavailable', () => {

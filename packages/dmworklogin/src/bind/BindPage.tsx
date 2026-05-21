@@ -259,10 +259,16 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
   }
 
   async function runConfirm(info: BindInfoResp): Promise<void> {
-    setStage({ kind: 'confirming', info })
+    // Read entryRef and validate the invariants *before* setStage so a stale
+    // entryRef can't park the user on the confirming loader with no recovery.
+    // PR #72 review yujiawei P2-2.
     const token = entryRef.current?.token
     const returnTo = postLoginReturnTo(entryRef.current?.returnTo)
-    if (!token) return
+    if (!token) {
+      handleError('confirm', new Error('missing bind token'))
+      return
+    }
+    setStage({ kind: 'confirming', info })
     try {
       const resp = await confirmBind(fetchHttpClient, token, apiOpts())
       // login_resp 是 JSON-encoded string, JSON.parse 后与老 OIDC authstatus.result 同 schema.
@@ -292,10 +298,15 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
   }
 
   async function runCreate(info: BindInfoResp): Promise<void> {
-    setStage({ kind: 'creating', info })
+    // See runConfirm: validate before setStage so a stale entryRef can't park
+    // the user on the creating loader. PR #72 review yujiawei P2-2.
     const token = entryRef.current?.token
     const returnTo = postLoginReturnTo(entryRef.current?.returnTo)
-    if (!token) return
+    if (!token) {
+      handleError('create', new Error('missing bind token'))
+      return
+    }
+    setStage({ kind: 'creating', info })
     try {
       const resp = await createBind(fetchHttpClient, token, apiOpts())
       // 与 confirm 同 schema 同 builder, login_resp 直接 parseLoginResp + applyLoginResp.
