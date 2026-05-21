@@ -1396,37 +1396,47 @@ textarea.wk-mp-goal__text--editing {
   top: calc(100% + 4px);
   left: 0;
   z-index: 20;
-  min-width: 140px;
-  background: var(--wk-bg-surface, #fff);
-  border: 1px solid var(--wk-border-default, #e4e4e7);
-  border-radius: 6px;
-  box-shadow: var(--wk-shadow-lg, 0 8px 24px -6px rgb(0 0 0 / 0.12));
-  padding: 4px;
+  width: 184px;
+  background: var(--wk-bg-surface);
+  border-radius: var(--wk-r-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  padding: var(--wk-sp-1) 0;
 }
 
 .wk-mp-activity__filter-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: var(--wk-sp-2);
   width: 100%;
-  padding: 6px 10px;
+  height: 32px;
+  padding: 0 var(--wk-sp-2) 0 var(--wk-sp-2);
   border: none;
   background: transparent;
-  border-radius: 4px;
-  font-size: 12px;
-  color: var(--wk-text-primary, #18181b);
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-regular);
+  line-height: 20px;
+  color: var(--wk-text-primary);
   cursor: pointer;
   text-align: left;
-  transition: background 0.1s;
+  transition: background var(--wk-dur-fast);
 }
 
 .wk-mp-activity__filter-item:hover {
-  background: var(--wk-bg-hover, #f4f4f5);
+  background: var(--wk-bg-item-hover);
 }
 
 .wk-mp-activity__filter-item.is-active {
-  font-weight: 500;
+  font-weight: var(--wk-font-semibold);
+}
+
+.wk-mp-activity__filter-tick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--wk-icon-default);
 }
 
 /* ─── 响应式: 窄宽度适配 (container query) ─────────────────
