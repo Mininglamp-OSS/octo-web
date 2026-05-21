@@ -260,16 +260,21 @@ function MessageRow({
     const msg = result.data;
     return (
         <div className="wk-anchor-pop__msg">
-            <span className="wk-anchor-pop__msg-time">
-                {formatTime(msg.timestamp)}
-            </span>
-            <span className="wk-anchor-pop__msg-avatar">
-                {renderAvatar(msg.from_uid, 18)}
-            </span>
+            <div className="wk-anchor-pop__msg-header">
+                <span className="wk-anchor-pop__msg-user">
+                    <span className="wk-anchor-pop__msg-avatar">
+                        {renderAvatar(msg.from_uid, 20)}
+                    </span>
+                    <span className="wk-anchor-pop__msg-name">
+                        {renderUserName(msg.from_uid)}
+                    </span>
+                </span>
+                <span className="wk-anchor-pop__msg-time">
+                    {formatTime(msg.timestamp)}
+                </span>
+                <span className="wk-anchor-pop__msg-colon">：</span>
+            </div>
             <div className="wk-anchor-pop__msg-content">
-                <div className="wk-anchor-pop__msg-name">
-                    {renderUserName(msg.from_uid)}
-                </div>
                 <div className="wk-anchor-pop__msg-text">
                     {extractDisplayText(msg)}
                 </div>
