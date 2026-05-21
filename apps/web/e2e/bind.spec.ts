@@ -305,13 +305,13 @@ test.describe('OIDC bind page', () => {
       expect(calls.find((c) => c.endpoint === 'confirm')).toBeDefined()
     })
 
-    // PR #72 round-5 (yujiawei/Jerry-Xin P1): runConfirm / runCreate must
-    // persist the real IdP id into WKApp.loginInfo.loginProvider (= the URL
-    // ?provider= value, or FALLBACK_PROVIDER_ID when omitted) — NOT a synthetic
-    // 'oidc-bind' / 'oidc-bind-create' label. Downstream NavSettingsPanel +
+    // runConfirm / runCreate must persist the real IdP id into
+    // WKApp.loginInfo.loginProvider (= the URL ?provider= value, or
+    // FALLBACK_PROVIDER_ID when omitted) — NOT a synthetic 'oidc-bind' /
+    // 'oidc-bind-create' label. Downstream NavSettingsPanel +
     // realnameVerifyUrl + login.tsx reset-password all do
-    // providers.find(p => p.id === loginProvider) and would fail closed on the
-    // synthetic value.
+    // providers.find(p => p.id === loginProvider) and would fail closed on
+    // the synthetic value.
     //
     // Why we assert via sessionStorage (not localStorage): LoginInfo.save()
     // routes through StorageService.shared.setItem (sessionStorage primary,
@@ -357,7 +357,7 @@ test.describe('OIDC bind page', () => {
       })
     }
 
-    test('P1 round-5: confirm persists URL ?provider= (not synthetic "oidc-bind")', async ({ page }) => {
+    test('loginProvider persists URL ?provider= on confirm (not synthetic "oidc-bind")', async ({ page }) => {
       await mockBindServer(page, 'happy_password')
       await gotoBindPage(page, { token: TOKEN, returnTo: '/', provider: 'xming' })
       await stubLocationReplace(page)
@@ -380,7 +380,7 @@ test.describe('OIDC bind page', () => {
       expect(persisted).not.toBe('oidc-bind')
     })
 
-    test('P1 round-5: confirm falls back to FALLBACK_PROVIDER_ID when URL omits ?provider=', async ({ page }) => {
+    test('loginProvider falls back to FALLBACK_PROVIDER_ID when URL omits ?provider=', async ({ page }) => {
       await mockBindServer(page, 'happy_password')
       // Inline-build URL to omit provider (gotoBindPage defaults to 'aegis').
       const qs = new URLSearchParams({
@@ -405,7 +405,52 @@ test.describe('OIDC bind page', () => {
       expect(persisted).not.toBe('oidc-bind')
     })
 
-    test('P1 round-5: create persists URL ?provider= (not synthetic "oidc-bind-create")', async ({ page }) => {
+    // The token must not survive in the Back stack. Earlier rounds only
+    // verified the *current* URL was scrubbed, but RouteManager's pageshow
+    // handler push()s a new sid entry on top of the original token-bearing
+    // one (Route.tsx:48), and clearBindUrl in BindPage only replaces the
+    // *current* entry — so the token URL stays in history. BindModule.init
+    // does a synchronous history.replaceState before pageshow fires to fix
+    // this. Regression below navigates from a non-bind URL into
+    // /oidc/bind?token=, then walks the Back stack asserting no entry exposes
+    // the token.
+    test('history Back does not expose bind token', async ({ page }) => {
+      await mockBindServer(page, 'happy_password')
+      // Seed the history with a non-bind URL so the bind entry has somewhere
+      // to go Back to. '/' resolves under the dev server's vite root.
+      await page.goto('/')
+      await gotoBindPage(page, { token: TOKEN })
+      // Wait until BindPage rendered — proves init() + the cleanup ran.
+      await expect(page.getByText('Alice')).toBeVisible()
+
+      // Current URL must already be clean (existing invariant, kept here so
+      // the regression localizes the failure).
+      expect(page.url()).not.toContain(TOKEN)
+
+      // Walk the entire Back stack and assert no entry contains the token.
+      // Without the BindModule.init replaceState, the original
+      // `/oidc/bind?token=…` entry sits between the seed `/` and the
+      // RouteManager-pushed `/oidc/bind?sid=…` — goBack would land on it.
+      //
+      // RouteManager's popstate handler will pushState a sid URL on top of
+      // whatever the browser navigates back to, so we sample page.url()
+      // *immediately* after goBack (before further script work) AND read
+      // window.history.length to bound the walk. waitForLoadState('load')
+      // ensures the popstate-triggered work has settled.
+      for (let i = 0; i < 5; i += 1) {
+        const before = page.url()
+        expect(before).not.toContain(TOKEN)
+        const canGoBack = await page.evaluate(() => window.history.length > 1)
+        if (!canGoBack) break
+        const navigated = await page.goBack().catch(() => null)
+        if (navigated === null) break
+        await page.waitForLoadState('load').catch(() => undefined)
+        expect(page.url()).not.toContain(TOKEN)
+        if (page.url() === before) break // popstate looped — stop
+      }
+    })
+
+    test('loginProvider persists URL ?provider= on create (not synthetic "oidc-bind-create")', async ({ page }) => {
       await mockBindServer(page, 'happy_create')
       await gotoBindPage(page, { token: TOKEN, returnTo: '/', provider: 'xming' })
       await stubLocationReplace(page)

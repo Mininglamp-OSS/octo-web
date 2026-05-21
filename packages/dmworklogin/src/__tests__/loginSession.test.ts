@@ -40,10 +40,10 @@ beforeEach(() => {
 
 describe('applyLoginResp', () => {
   it('writes uid/token/provider and saves', () => {
-    // PR #72 round-5: 用真实 IdP id 而非 synthetic 'oidc-bind' 标签 —
-    // BindPage 现在传 entry.provider (resolveProvider 已对齐), 测试应当反映
-    // 真实合同, 不再锁死合成值. 下游 NavSettingsPanel/realnameVerifyUrl 按
-    // id 在 oidcProviders 中 find, synthetic 值会让 lookup 全部失败.
+    // 用真实 IdP id 而非 synthetic 'oidc-bind' 标签 — BindPage 传
+    // entry.provider (resolveProvider 已对齐), 测试反映真实合同, 不锁死合成值.
+    // 下游 NavSettingsPanel/realnameVerifyUrl 按 id 在 oidcProviders 中 find,
+    // synthetic 值会让 lookup 全部失败.
     applyLoginResp({ uid: 'u1', token: 'tok', app_id: 'a', name: 'Alice' }, 'aegis')
     expect(WKApp.loginInfo.uid).toBe('u1')
     expect(WKApp.loginInfo.token).toBe('tok')

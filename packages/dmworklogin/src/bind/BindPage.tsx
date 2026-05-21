@@ -329,7 +329,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       const resp = await confirmBind(fetchHttpClient, token, apiOpts())
       // login_resp 是 JSON-encoded string, JSON.parse 后与老 OIDC authstatus.result 同 schema.
       const data = parseLoginResp(resp.login_resp)
-      // PR #72 round-5: loginProvider 必须落到真实 IdP id, 下游 NavSettingsPanel /
+      // loginProvider 必须落到真实 IdP id, 下游 NavSettingsPanel /
       // realnameVerifyUrl / login.tsx reset-password 都按 id 在 oidcProviders 里
       // find, 写 'oidc-bind' 这种 synthetic 值会让所有 lookup fails closed.
       // 与 legacy login_vm.loginSuccess(pending.providerId) 对齐, 使用 entry.provider,
@@ -363,7 +363,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       const resp = await createBind(fetchHttpClient, token, apiOpts())
       // 与 confirm 同 schema 同 builder, login_resp 直接 parseLoginResp + applyLoginResp.
       const data = parseLoginResp(resp.login_resp)
-      // PR #72 round-5: 同 runConfirm — loginProvider 必须是真实 IdP id, 不是
+      // 同 runConfirm — loginProvider 必须是真实 IdP id, 不是
       // 'oidc-bind-create' 这种 synthetic 标签. 见 runConfirm 上方注释.
       applyLoginResp(data, entryRef.current?.provider || FALLBACK_PROVIDER_ID)
       try { clearPendingOidcLogin() } catch { /* sessionStorage 不可用时静默 */ }

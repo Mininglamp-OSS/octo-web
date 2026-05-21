@@ -26,6 +26,21 @@ export default class BindModule implements IModule {
     // documented flow.
     if (typeof window !== 'undefined' && window.location.pathname === '/oidc/bind') {
       bindInitialSearch = window.location.search
+      // Scrub the live URL *synchronously* here, before RouteManager's
+      // pageshow handler runs window.history.pushState to add the sid URL on
+      // top. If we wait for BindPage's useEffect, the current entry is
+      // already the sid URL (see Route.tsx push()), and replaceState there
+      // leaves the original `?token=...` entry behind in the Back stack —
+      // pressing Back exposes the bind token via address bar / referrer.
+      // The snapshot above keeps the params available to BindPage via prop,
+      // so wiping window.location.search is safe.
+      try {
+        window.history.replaceState({}, '', window.location.pathname)
+      } catch {
+        /* SSR / legacy host without history API — clearBindUrl in BindPage is
+           still defense-in-depth for the current entry, even if it can't fix
+           the back-stack leak. */
+      }
     }
     WKApp.route.register('/oidc/bind', (): JSX.Element => {
       return <BindPage initialSearch={bindInitialSearch} />
