@@ -13,7 +13,7 @@ categories:
   - title: "Bug Fixes"
     labels: [bug, fix]
   - title: "CI and Infrastructure"
-    labels: [ci, infra, dependencies-changed]
+    labels: [ci, infra, dependencies-changed, dependencies]
   - title: "Documentation"
     labels: [documentation, docs]
 exclude-labels: [skip-changelog]
