@@ -239,7 +239,7 @@
 
 .wk-login-content {
     width: 100%;
-    max-width: 360px;
+    max-width: 400px;
 }
 
 /* ---- Logo (inside form panel, mobile fallback) ---- */
@@ -259,17 +259,18 @@
 /* ---- Slogan / panel title ---- */
 .wk-login-content-slogan {
     color: var(--semi-color-text-0, #1a1a2e);
-    font-size: 26px;
+    font-size: 30px;
     font-weight: 700;
-    line-height: 1.3;
-    margin-bottom: 8px;
+    line-height: 1.25;
+    margin-bottom: 10px;
     text-align: left;
+    letter-spacing: -0.01em;
 }
 
 .wk-login-content-slogan-sub {
     color: var(--semi-color-text-2, #8a8fa8);
     font-size: 14px;
-    margin-bottom: 32px;
+    margin-bottom: 28px;
     text-align: left;
 }
 
@@ -937,17 +938,59 @@
     color: #fff;
 }
 
-.wk-login-content-sso-helper {
-    margin-top: 8px;
+/* 主按钮下方注释行: 行为 + IdP 信任锚单行展示, 用 · 分隔.
+   单行密度比两行小灰字叠放更清爽; trust 段单独可 hover 出 tooltip. */
+.wk-login-content-sso-meta {
+    margin-top: 10px;
     text-align: center;
     color: rgba(0, 0, 0, 0.45);
     font-size: 12px;
-    line-height: 1.5;
+    line-height: 1.6;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+.wk-login-content-sso-meta-sep {
+    color: rgba(0, 0, 0, 0.2);
+}
+.wk-login-content-sso-trust {
+    color: rgba(0, 0, 0, 0.45);
+    cursor: help;
+    user-select: none;
+    border-bottom: 1px dotted rgba(0, 0, 0, 0.18);
+    padding-bottom: 1px;
+    transition: color 120ms ease, border-color 120ms ease;
+}
+.wk-login-content-sso-trust:hover {
+    color: rgba(0, 0, 0, 0.75);
+    border-bottom-color: rgba(0, 0, 0, 0.45);
+}
+
+/* 默认折叠态: 单行小字链接, 紧贴信任锚下方, 不被下载按钮夹在中间 (P1 反馈).
+   主按钮 → 引导小字 → 信任锚 → "使用密码登录" → 下载客户端, 自上而下视觉降权. */
+.wk-login-content-legacy-toggle {
+    margin: 16px 0 0;
+    text-align: center;
+    font-size: 13px;
+    color: rgba(0, 0, 0, 0.55);
+}
+.wk-login-content-legacy-toggle a {
+    color: rgba(0, 0, 0, 0.7);
+    cursor: pointer;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+    padding-bottom: 1px;
+    transition: color 120ms ease, border-color 120ms ease;
+}
+.wk-login-content-legacy-toggle a:hover {
+    color: rgba(0, 0, 0, 0.95);
+    border-color: rgba(0, 0, 0, 0.4);
 }
 
 .wk-login-content-legacy-divider {
     position: relative;
-    margin: 40px 0 20px;
+    margin: 32px 0 20px;
     text-align: center;
     color: rgba(0, 0, 0, 0.4);
     font-size: 13px;
