@@ -55,6 +55,8 @@ package-lock.json
 
 # AI/IDE 工件文件（不进仓库）
 .kiro/settings/mcp.json
+**/figma-spec.md
+**/rawdata.txt
 .claude/
 .zed/
 .ftre/memory/
