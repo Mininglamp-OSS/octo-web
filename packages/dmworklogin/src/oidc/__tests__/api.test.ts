@@ -3,7 +3,7 @@ import { fetchAuthcode, fetchAuthStatus } from '../api'
 import type { OidcHttpClient } from '../api'
 
 function makeClient(impl: OidcHttpClient['get']): OidcHttpClient {
-  return { get: impl }
+  return { get: impl, post: vi.fn() }
 }
 
 describe('fetchAuthcode', () => {

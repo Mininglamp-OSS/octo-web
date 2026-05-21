@@ -21,6 +21,7 @@ export interface OidcRequestInit {
 
 export interface OidcHttpClient {
   get<T>(url: string, init?: OidcRequestInit): Promise<T>
+  post<T>(url: string, body: unknown, init?: OidcRequestInit): Promise<T>
 }
 
 const AUTHCODE_PATH = '/v1/user/thirdlogin/authcode'

@@ -24,6 +24,38 @@ function combineSignals(
 }
 
 /**
+ * OIDC bind 流程要按 HTTP status 分支处理 (400/401/409/410/429/500/503),
+ * 老 fetchHttpClient 把 status 字符串化丢失语义。保留 status + 解析 body.msg
+ * 让上层 UI 可以做错误码→文案映射。
+ */
+export class OidcBindHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly msg?: string,
+  ) {
+    super(msg ? `HTTP ${status}: ${msg}` : `HTTP ${status}`)
+    this.name = 'OidcBindHttpError'
+  }
+}
+
+// 后端约定 4xx/5xx 响应体: {"msg": "<英文短描述>"}.
+// thirdlogin 老端点不遵循此契约, 解析失败时返回 undefined 不抛.
+async function parseErrorMsg(resp: Response): Promise<string | undefined> {
+  const text = await resp.text().catch(() => '')
+  if (!text) return undefined
+  try {
+    const parsed = JSON.parse(text) as unknown
+    if (parsed && typeof parsed === 'object') {
+      const m = (parsed as Record<string, unknown>).msg
+      if (typeof m === 'string' && m !== '') return m
+    }
+  } catch {
+    /* 非 JSON 响应体 */
+  }
+  return text || undefined
+}
+
+/**
  * OIDC endpoints live at absolute paths like `/v1/...` and must bypass the
  * apiClient baseURL (which is `/api/...`). Use the global fetch.
  *
@@ -40,8 +72,28 @@ export const fetchHttpClient: OidcHttpClient = {
       signal,
     })
     if (!resp.ok) {
-      const body = await resp.text().catch(() => '')
-      throw new Error(`HTTP ${resp.status}: ${body || resp.statusText}`)
+      throw new OidcBindHttpError(resp.status, await parseErrorMsg(resp))
+    }
+    return (await resp.json()) as T
+  },
+  async post<T>(
+    url: string,
+    body: unknown,
+    init?: { signal?: AbortSignal },
+  ): Promise<T> {
+    const signal = combineSignals(init?.signal, DEFAULT_REQUEST_TIMEOUT_MS)
+    const resp = await fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body ?? {}),
+      signal,
+    })
+    if (!resp.ok) {
+      throw new OidcBindHttpError(resp.status, await parseErrorMsg(resp))
     }
     return (await resp.json()) as T
   },

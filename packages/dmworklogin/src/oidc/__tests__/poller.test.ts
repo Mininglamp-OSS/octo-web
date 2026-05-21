@@ -19,6 +19,7 @@ function makeClient(
       if (!next) throw new Error('No more queued responses')
       return next as never
     }),
+    post: vi.fn(),
   }
   return { client, calls }
 }
@@ -97,6 +98,7 @@ describe('pollAuthStatus', () => {
         if (!next) throw new Error('exhausted')
         return next as never
       }),
+      post: vi.fn(),
     }
     const result = await pollAuthStatus({
       client,
@@ -114,6 +116,7 @@ describe('pollAuthStatus', () => {
       get: vi.fn(async () => {
         throw new Error('network down')
       }),
+      post: vi.fn(),
     }
     await expect(
       pollAuthStatus({
@@ -143,6 +146,7 @@ describe('pollAuthStatus', () => {
         if (!next) throw new Error('exhausted')
         return next as never
       }),
+      post: vi.fn(),
     }
     const result = await pollAuthStatus({
       client,
@@ -166,6 +170,7 @@ describe('pollAuthStatus', () => {
           )
         }) as never
       }),
+      post: vi.fn(),
     }
     const promise = pollAuthStatus({
       client,
@@ -186,6 +191,7 @@ describe('pollAuthStatus', () => {
       get: vi.fn(async () => {
         throw new DOMException('aborted', 'AbortError')
       }),
+      post: vi.fn(),
     }
     ac.abort()
     await expect(

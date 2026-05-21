@@ -31,4 +31,4 @@ export {
 } from './poller'
 export type { PollAuthStatusOptions } from './poller'
 
-export { fetchHttpClient } from './http'
+export { fetchHttpClient, OidcBindHttpError } from './http'
