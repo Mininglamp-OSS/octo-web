@@ -1668,7 +1668,9 @@ function ActivityPanel({
   const filtered =
     filter === "all"
       ? activities
-      : activities.filter((a) => a.action === filter);
+      : filter === "channel_changed"
+        ? activities.filter((a) => a.action === "channel_linked" || a.action === "channel_unlinked")
+        : activities.filter((a) => a.action === filter);
   const sorted = [...filtered].sort((a, b) => {
     const ta = new Date(a.created_at).getTime();
     const tb = new Date(b.created_at).getTime();
@@ -1678,12 +1680,10 @@ function ActivityPanel({
   const FILTER_OPTIONS = [
     { id: "all", label: "全部类型" },
     { id: "created", label: "创建" },
-    { id: "title_changed", label: "标题变更" },
     { id: "description_changed", label: "目标变更" },
-    { id: "deadline_changed", label: "DDL 变更" },
+    { id: "deadline_changed", label: "DDL变更" },
     { id: "status_changed", label: "状态变更" },
-    { id: "channel_linked", label: "关联群变更" },
-    { id: "channel_unlinked", label: "关联群变更" },
+    { id: "channel_changed", label: "关联群变更" },
   ];
   const currentFilter =
     FILTER_OPTIONS.find((o) => o.id === filter) || FILTER_OPTIONS[0];
