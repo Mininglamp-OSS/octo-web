@@ -170,6 +170,37 @@ describe("PersonaSettingsVM.createGrant", () => {
         await vm.createGrant("b1")
         expect(vm.myBots).toEqual([])
     })
+
+    // v2 (octo-web#73): personaPrompt argument hits POST body when non-empty;
+    // empty / whitespace input is filtered so it doesn't overwrite the server's
+    // NULL default (fan-out logic distinguishes "" from NULL when assembling
+    // the system prompt).
+    it("sends persona_prompt in POST body when provided (v2 octo-web#73)", async () => {
+        const created = { id: 8, grantor_uid: "u1", grantee_bot_uid: "b1", mode: "auto", global_enabled: false, active: false }
+        hoisted.post.mockResolvedValueOnce(created)
+        hoisted.get.mockResolvedValueOnce([created])
+        const vm = new PersonaSettingsVM()
+        await vm.createGrant("b1", "用简洁专业的语气回复")
+        expect(hoisted.post).toHaveBeenCalledWith("obo/grants", {
+            grantee_bot_uid: "b1",
+            mode: "auto",
+            global_enabled: false,
+            persona_prompt: "用简洁专业的语气回复",
+        })
+    })
+
+    it("trims persona_prompt and omits when blank (v2 octo-web#73)", async () => {
+        // 用户没填 prompt → 不要把 "" 提交进 body 把后端 NULL 覆盖成 ''。
+        hoisted.post.mockResolvedValueOnce({})
+        hoisted.get.mockResolvedValueOnce([])
+        const vm = new PersonaSettingsVM()
+        await vm.createGrant("b1", "   ")
+        expect(hoisted.post).toHaveBeenCalledWith("obo/grants", {
+            grantee_bot_uid: "b1",
+            mode: "auto",
+            global_enabled: false,
+        })
+    })
 })
 
 describe("PersonaSettingsVM.deleteGrant / updateGrant", () => {
@@ -190,6 +221,22 @@ describe("PersonaSettingsVM.deleteGrant / updateGrant", () => {
         const ok = await vm.updateGrant(42, { global_enabled: true })
         expect(ok).toBe(true)
         expect(hoisted.put).toHaveBeenCalledWith("obo/grants/42", { global_enabled: true })
+    })
+
+    // v2 (octo-web#73): updateGrant now accepts `active` so PersonaCard toggle
+    // can flip it; backend (octo-server#108) performs mutual exclusion across
+    // the user's grants — the frontend just sends one PUT.
+    it("update accepts {active:true} and reloads list (backend handles mutex)", async () => {
+        hoisted.put.mockResolvedValueOnce({})
+        hoisted.get.mockResolvedValueOnce([
+            { id: 42, grantor_uid: "u1", grantee_bot_uid: "b1", mode: "auto", global_enabled: false, active: true },
+        ])
+        const vm = new PersonaSettingsVM()
+        const ok = await vm.updateGrant(42, { active: true })
+        expect(ok).toBe(true)
+        expect(hoisted.put).toHaveBeenCalledWith("obo/grants/42", { active: true })
+        // 必须 reload，因为后端 mutex 把别的 grant 改成 inactive 了，前端这里看不见。
+        expect(hoisted.get).toHaveBeenCalledWith("obo/grants")
     })
 
     it("delete returns false and toasts on error", async () => {
@@ -259,6 +306,58 @@ describe("PersonaEditVM", () => {
         const ok = await vm.deleteGrant()
         expect(ok).toBe(true)
         expect(hoisted.del).toHaveBeenCalledWith("obo/grants/99")
+    })
+
+    // v2 (octo-web#73): savePersonaForm puts persona_prompt + active in one round-trip
+    // and updates local grant optimistically. This is the primary write path for the
+    // PersonaEdit form's "保存" button.
+    describe("savePersonaForm (v2 octo-web#73)", () => {
+        it("PUTs persona_prompt + active together and updates local grant", async () => {
+            hoisted.put.mockResolvedValueOnce({})
+            const vm = new PersonaEditVM(grant)
+            const ok = await vm.savePersonaForm("用简洁专业的语气回复", true)
+            expect(ok).toBe(true)
+            expect(hoisted.put).toHaveBeenCalledWith("obo/grants/99", {
+                persona_prompt: "用简洁专业的语气回复",
+                active: true,
+            })
+            // 本地乐观更新：避免 UI 还显示旧值等到 reload。
+            expect(vm.grant.persona_prompt).toBe("用简洁专业的语气回复")
+            expect(vm.grant.active).toBe(true)
+        })
+
+        it("allows empty string prompt (user explicitly clearing previously set prompt)", async () => {
+            // 边界：编辑场景下空串不应被过滤 —— 用户的真实意图就是「清掉之前写的 prompt」。
+            // 这与 createGrant 的策略相反（创建时空串意味着「我还没填」→ 过滤）。
+            hoisted.put.mockResolvedValueOnce({})
+            const vm = new PersonaEditVM({ ...grant, persona_prompt: "old style" })
+            const ok = await vm.savePersonaForm("", false)
+            expect(ok).toBe(true)
+            expect(hoisted.put).toHaveBeenCalledWith("obo/grants/99", {
+                persona_prompt: "",
+                active: false,
+            })
+            expect(vm.grant.persona_prompt).toBe("")
+            expect(vm.grant.active).toBe(false)
+        })
+
+        it("omits active when not provided (prompt-only save)", async () => {
+            hoisted.put.mockResolvedValueOnce({})
+            const vm = new PersonaEditVM(grant)
+            await vm.savePersonaForm("hello")
+            expect(hoisted.put).toHaveBeenCalledWith("obo/grants/99", {
+                persona_prompt: "hello",
+            })
+            expect(vm.grant.active).toBe(grant.active) // unchanged
+        })
+
+        it("returns false + toasts on failure", async () => {
+            hoisted.put.mockRejectedValueOnce({ status: 500, msg: "save boom" })
+            const vm = new PersonaEditVM(grant)
+            const ok = await vm.savePersonaForm("x", true)
+            expect(ok).toBe(false)
+            expect(hoisted.toastError).toHaveBeenCalledWith("save boom")
+        })
     })
 })
 

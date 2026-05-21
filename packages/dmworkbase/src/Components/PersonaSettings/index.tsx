@@ -1,6 +1,7 @@
 import React, { Component, ReactNode } from "react"
 import RouteContext from "../../Service/Context"
 import Provider, { IProviderListener } from "../../Service/Provider"
+import { Switch } from "@douyinfe/semi-ui"
 import RoutePage from "../RoutePage"
 import { MyBot, OboGrant, PersonaSettingsVM } from "./vm"
 import PersonaEdit from "./PersonaEdit"
@@ -123,8 +124,11 @@ class PersonaListBody extends Component<PersonaListBodyProps> {
         routeContext.push(
             <PersonaCreate
                 vm={vm}
-                onCreated={async (botUid) => {
-                    const grant = await vm.createGrant(botUid)
+                onCreated={async (botUid, personaPrompt) => {
+                    // v2 (octo-web#73): persona_prompt 在创建时一并提交，省去创建后再
+                    // 进 edit 补填的回合数。空串由 vm.createGrant 内部过滤掉，不会污染
+                    // 后端的 NULL 默认。
+                    const grant = await vm.createGrant(botUid, personaPrompt)
                     if (grant) {
                         // 创建后用 replace 一步切到 edit —— 不能用 pop()+push()。
                         // 历史教训 (YUJ-1348, 2026-05-19, Jerry-Xin review on 8145f420)：
@@ -218,24 +222,37 @@ class PersonaListBody extends Component<PersonaListBodyProps> {
 
                 {/* 列表 */}
                 <div className="wk-persona-list">
-                    {vm.grants.map((g) => (
-                        <PersonaCard
-                            key={g.id}
-                            grant={g}
-                            onClick={() => {
-                                routeContext.push(
-                                    <PersonaEdit
-                                        grant={g}
-                                        onDeleted={() => {
-                                            routeContext.pop()
-                                            void vm.loadGrants()
-                                        }}
-                                        onChange={() => void vm.loadGrants()}
-                                    />,
-                                )
-                            }}
-                        />
-                    ))}
+                    {(() => {
+                        // v2 (octo-web#73)：当有任意 grant active=true 时，把非 active 的卡片
+                        // 视觉「dim」（降低不透明度）来强调「正在生效的只有这一个」。这与后端
+                        // mutex（同一用户最多一个 active grant）的产品语义直接对应；用户切换
+                        // 时也能立刻看出新的 active 行是谁。
+                        const anyActive = vm.grants.some((g) => g.active)
+                        return vm.grants.map((g) => (
+                            <PersonaCard
+                                key={g.id}
+                                grant={g}
+                                dimmed={anyActive && !g.active}
+                                onToggle={async (next) => {
+                                    // 后端在 PUT {active: true} 时自动 mutex 其它 grant，
+                                    // updateGrant 已经会 reload 整列表 → 卡片 active 状态自动同步。
+                                    await vm.updateGrant(g.id, { active: next })
+                                }}
+                                onClick={() => {
+                                    routeContext.push(
+                                        <PersonaEdit
+                                            grant={g}
+                                            onDeleted={() => {
+                                                routeContext.pop()
+                                                void vm.loadGrants()
+                                            }}
+                                            onChange={() => void vm.loadGrants()}
+                                        />,
+                                    )
+                                }}
+                            />
+                        ))
+                    })()}
                 </div>
             </div>
         )
@@ -243,17 +260,37 @@ class PersonaListBody extends Component<PersonaListBodyProps> {
 }
 
 /**
- * 卡片复用 BotStore 视觉：渐变头像 + 标题+badge + 副标题 + 状态点。
+ * 卡片复用 BotStore 视觉：渐变头像 + 标题+badge + 副标题 + 右侧 active 开关。
  * 不直接复用 BotStore/index.tsx 的 renderBotCard，是因为它带 BotInfo 专有的
  * `创建者` / `添加状态` 字段，对 persona 场景无意义。
+ *
+ * v2 (octo-web#73)：
+ *   - 右侧改为可点击的 Switch：开 → PUT {active: true}（后端 mutex 关其它），
+ *     关 → PUT {active: false}。开关 click 事件 stopPropagation，避免冒泡触发卡片
+ *     onClick 跳进 PersonaEdit。
+ *   - `dimmed` 由父级根据「列表里是否有任意 active grant」计算；非 active 卡片
+ *     opacity 调低，与 active 卡片形成对比，呼应「同一时刻只有一个生效」。
  */
-function PersonaCard(props: { grant: OboGrant; onClick: () => void }) {
-    const { grant, onClick } = props
+function PersonaCard(props: {
+    grant: OboGrant
+    dimmed?: boolean
+    onClick: () => void
+    onToggle: (next: boolean) => Promise<void> | void
+}) {
+    const { grant, dimmed, onClick, onToggle } = props
     const name = grant.grantee_bot_name || grant.grantee_bot_uid
     const initial = (name || "P").charAt(0).toUpperCase()
-    const enabled = grant.active && grant.global_enabled
+    const cardClass =
+        "wk-persona-card" +
+        (grant.active ? " wk-persona-card-active" : "") +
+        (dimmed ? " wk-persona-card-dimmed" : "")
     return (
-        <div className="wk-persona-card" onClick={onClick}>
+        <div
+            className={cardClass}
+            onClick={onClick}
+            data-testid={`persona-card-${grant.id}`}
+            data-active={grant.active ? "1" : "0"}
+        >
             <div className="wk-persona-card-header">
                 <div className="wk-persona-card-avatar">{initial}</div>
                 <div className="wk-persona-card-info">
@@ -262,28 +299,59 @@ function PersonaCard(props: { grant: OboGrant; onClick: () => void }) {
                         <span className="wk-persona-card-name-badge">分身</span>
                     </div>
                     <div className="wk-persona-card-sub">
-                        模式: {grant.mode === "draft" ? "草稿审批" : "自动回复"}
+                        {grant.persona_prompt && grant.persona_prompt.trim()
+                            ? grant.persona_prompt
+                            : "未设置回复风格"}
                     </div>
                 </div>
-                <span
-                    className={`wk-persona-card-status ${enabled ? "on" : "off"}`}
+                {/*
+                 * 开关容器拦截 click：Semi Switch 的 onChange 会在 input click 之后触发，
+                 * 但 click 还是会冒到外层 .wk-persona-card → onClick 把页面 push 到 Edit。
+                 * 用一个 wrapper stopPropagation，让 toggle 与「点卡片打开编辑」两条交互
+                 * 互不干扰；同时 Switch 的尺寸由 .wk-persona-card-toggle 锁定避免被压缩
+                 * （与 PersonaEdit row-control 同款防御）。
+                 */}
+                <div
+                    className="wk-persona-card-toggle"
+                    onClick={(e) => e.stopPropagation()}
+                    data-testid={`persona-card-toggle-${grant.id}`}
                 >
-                    {enabled ? "● 启用" : "○ 关闭"}
-                </span>
+                    <Switch
+                        checked={!!grant.active}
+                        onChange={(v: boolean) => void onToggle(!!v)}
+                    />
+                </div>
             </div>
         </div>
     )
 }
 
 /**
- * PersonaCreate —— bot 选择子页。从 vm.loadMyBots() 拉可用 bot 列表 + 过滤已绑定。
- * UX 简化：单击 bot 即创建，不再二次确认 —— 错误可在 PersonaEdit 里删除。
+ * PersonaCreate —— bot 选择子页 + persona_prompt 表单（v2, octo-web#73）。
+ *
+ * 交互：
+ *   1. 顶部一份「选择 bot」列表：点击某行 → 选中该 bot（高亮）。
+ *   2. 选中后下方启用 `persona_prompt` textarea + 「创建分身」按钮；用户填好后点
+ *      创建，触发 `onCreated(uid, prompt)`，由父级 `handleCreate` 走 createGrant
+ *      → replace 到 PersonaEdit。
+ *   3. 留空 prompt 也允许提交（创建无风格的 grant，等用户之后再补）。
+ *
+ * 设计取舍：
+ *   - 仍保留「点 bot 即完成选择」的轻量手感，不让 UX 变成「先勾选再提交」两步表单；
+ *     选中后下方表单原地展开。
+ *   - textarea 用原生 `<textarea>`（不依赖 Semi `TextArea`）的两个原因：
+ *     a) 现有 vm.test 已 mock semi-ui，引入更多 Semi 子组件会增加测试 mock 噪音；
+ *     b) 这是设置子页里一段简单的多行输入，原生足够，少一层 Semi 主题/portal 包装
+ *        在 RoutePage 容器里也更稳。
  */
 function PersonaCreate(props: {
     vm: PersonaSettingsVM
-    onCreated: (botUid: string) => void
+    onCreated: (botUid: string, personaPrompt: string) => Promise<void> | void
 }) {
     const { vm, onCreated } = props
+    const [selectedUid, setSelectedUid] = React.useState<string>("")
+    const [prompt, setPrompt] = React.useState<string>("")
+    const [submitting, setSubmitting] = React.useState<boolean>(false)
     // 第一次渲染时触发 loadMyBots（避免在 vm 构造里副作用）
     React.useEffect(() => {
         if (vm.myBots.length === 0 && !vm.myBotsLoading) {
@@ -291,6 +359,7 @@ function PersonaCreate(props: {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+    const selectedBot = vm.myBots.find((b) => b.uid === selectedUid)
     return (
         <div className="wk-persona-create">
             {vm.myBotsLoading && (
@@ -303,18 +372,59 @@ function PersonaCreate(props: {
                     请先去 AI 广场添加一个 bot
                 </div>
             )}
-            {vm.myBots.map((b: MyBot) => (
-                <div
-                    key={b.uid}
-                    className="wk-persona-create-row"
-                    onClick={() => onCreated(b.uid)}
-                >
-                    <div>
-                        <div className="wk-persona-create-row-name">{b.name}</div>
-                        <div className="wk-persona-create-row-sub">{b.uid}</div>
+            {vm.myBots.map((b: MyBot) => {
+                const active = b.uid === selectedUid
+                return (
+                    <div
+                        key={b.uid}
+                        className={
+                            "wk-persona-create-row" +
+                            (active ? " wk-persona-create-row-selected" : "")
+                        }
+                        onClick={() => setSelectedUid(b.uid)}
+                        data-testid={`persona-create-bot-${b.uid}`}
+                        data-selected={active ? "1" : "0"}
+                    >
+                        <div>
+                            <div className="wk-persona-create-row-name">{b.name}</div>
+                            <div className="wk-persona-create-row-sub">{b.uid}</div>
+                        </div>
                     </div>
+                )
+            })}
+
+            {/* v2 表单：选中 bot 后展开 prompt + 提交按钮 */}
+            {selectedBot && (
+                <div className="wk-persona-create-form">
+                    <div className="wk-persona-create-form-label">
+                        回复风格 prompt（可选）
+                    </div>
+                    <textarea
+                        className="wk-persona-create-prompt"
+                        placeholder="设置分身的回复风格，如：用简洁专业的语气回复"
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        rows={4}
+                        data-testid="persona-create-prompt"
+                    />
+                    <button
+                        className="wk-persona-add-btn"
+                        disabled={submitting}
+                        data-testid="persona-create-submit"
+                        onClick={async () => {
+                            if (submitting) return
+                            setSubmitting(true)
+                            try {
+                                await onCreated(selectedBot.uid, prompt)
+                            } finally {
+                                setSubmitting(false)
+                            }
+                        }}
+                    >
+                        {submitting ? "创建中..." : "创建分身"}
+                    </button>
                 </div>
-            ))}
+            )}
         </div>
     )
 }

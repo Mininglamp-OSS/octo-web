@@ -150,6 +150,44 @@
     color: var(--wk-color-danger);
 }
 
+/*
+ * v2 (octo-web#73) PersonaCard active toggle 容器。Semi <Switch> 在裸 flex 子项
+ * 位置同样会被父行的 flex 算法压扁（与 PersonaEdit row-control 同样根因），
+ * 这里给它一个固定 container：
+ *   - flex-shrink: 0 锁定容器不被 .wk-persona-card-info 的 flex:1 抢占；
+ *   - 阻断 pointer cursor 继承（外层卡片有 cursor: pointer），让 Switch
+ *     视觉上明确是「可点的开关」而非「卡片本身」；
+ *   - 自身的 click 在 JSX 里 stopPropagation，不会触发卡片 onClick → 跳进 Edit。
+ */
+.wk-persona-card-toggle {
+    flex: 0 0 auto;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    margin-left: var(--wk-sp-3);
+    min-width: 44px;
+    cursor: default;
+    overflow: visible;
+}
+
+/*
+ * v2: active 卡片高亮（左侧描边 + 略微凸起），其余 dimmed 卡片降低 opacity。
+ * 这是「同一时刻只有一个生效」mutex 语义最直观的视觉映射 —— 用户一眼能看出
+ * 「现在是哪个分身在替我回」。
+ */
+.wk-persona-card-active {
+    border-color: var(--wk-brand-primary);
+    box-shadow: 0 0 0 1px var(--wk-brand-primary) inset;
+}
+
+.wk-persona-card-dimmed {
+    opacity: 0.55;
+}
+
+.wk-persona-card-dimmed:hover {
+    opacity: 0.85;
+}
+
 .wk-persona-empty {
     padding: var(--wk-sp-8) 0;
     text-align: center;
@@ -293,6 +331,64 @@
     overflow: visible;
 }
 
+/*
+ * v2 (octo-web#73)：persona_prompt textarea 行用 column 布局而不是 row 默认的
+ * 「左标题右值」横排，因为 textarea 高度大于一行，横排会挤压标题宽度。
+ * 行内仍保留 padding 与 border-bottom 节奏，只是把 flex-direction 翻成 column。
+ */
+.wk-persona-edit-row-column {
+    flex-direction: column;
+    align-items: stretch;
+    /* min-height 给 textarea + 标题留出垂直呼吸空间，覆盖默认 56px */
+    min-height: auto;
+    gap: var(--wk-sp-2);
+    padding-top: var(--wk-sp-3);
+    padding-bottom: var(--wk-sp-3);
+}
+
+.wk-persona-edit-prompt {
+    width: 100%;
+    box-sizing: border-box;
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    border-radius: var(--wk-r-sm);
+    border: 1px solid var(--wk-border-default);
+    background: var(--wk-bg-base);
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-base);
+    font-family: inherit;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 80px;
+}
+
+.wk-persona-edit-prompt:focus {
+    outline: none;
+    border-color: var(--wk-brand-primary);
+}
+
+.wk-persona-edit-save-btn {
+    flex: 1;
+    width: 100%;
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    border-radius: var(--wk-r-md);
+    background: var(--wk-brand-primary);
+    color: var(--wk-text-on-brand);
+    font-size: var(--wk-text-size-md);
+    font-weight: var(--wk-font-medium);
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.wk-persona-edit-save-btn:hover {
+    opacity: 0.9;
+}
+
+.wk-persona-edit-save-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .wk-persona-edit-scope-list {
     display: flex;
     flex-direction: column;
@@ -358,6 +454,53 @@
 }
 
 .wk-persona-create-row:hover {
+    border-color: var(--wk-brand-primary);
+}
+
+/*
+ * v2 (octo-web#73)：PersonaCreate 改成「选 bot → 展开 prompt 表单 → 提交」两步流程。
+ * 选中的 bot 行用边框 + 浅色背景标识，与未选中行视觉区分清晰；下方表单区域留出
+ * 间距承接 prompt textarea + 提交按钮。
+ */
+.wk-persona-create-row-selected {
+    border-color: var(--wk-brand-primary);
+    background: var(--wk-brand-tint-08);
+}
+
+.wk-persona-create-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--wk-sp-2);
+    margin-top: var(--wk-sp-2);
+    padding: var(--wk-sp-3);
+    border-radius: var(--wk-r-md);
+    background: var(--wk-bg-surface);
+    border: 1px solid var(--wk-border-default);
+}
+
+.wk-persona-create-form-label {
+    font-size: var(--wk-text-size-sm);
+    color: var(--wk-text-secondary);
+    font-weight: var(--wk-font-medium);
+}
+
+.wk-persona-create-prompt {
+    width: 100%;
+    box-sizing: border-box;
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    border-radius: var(--wk-r-sm);
+    border: 1px solid var(--wk-border-default);
+    background: var(--wk-bg-base);
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-base);
+    font-family: inherit;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 80px;
+}
+
+.wk-persona-create-prompt:focus {
+    outline: none;
     border-color: var(--wk-brand-primary);
 }
 

@@ -52,10 +52,25 @@ interface PersonaEditProps {
 
 interface PersonaEditState {
     confirmDelete: boolean
+    /**
+     * v2 (octo-web#73)：表单本地状态。用 props.grant 做初值；用户在 textarea 里编辑
+     * 时只更新 state，直到点「保存」才 PUT —— 避免每次 onChange 都打一次后端。
+     * `active` 也走同样的本地态：用户切 toggle 后立即提交（active 是单一布尔，没有
+     * 「半成品」状态需要先暂存），但保存按钮也允许把当前未保存的 prompt 与 active
+     * 一次提交，便于「改 prompt 顺手切 active」的常见路径。
+     */
+    prompt: string
+    active: boolean
+    saving: boolean
 }
 
 export default class PersonaEdit extends Component<PersonaEditProps, PersonaEditState> {
-    state: PersonaEditState = { confirmDelete: false }
+    state: PersonaEditState = {
+        confirmDelete: false,
+        prompt: this.props.grant.persona_prompt || "",
+        active: !!this.props.grant.active,
+        saving: false,
+    }
     private confirmTimer?: ReturnType<typeof setTimeout>
 
     componentWillUnmount() {
@@ -86,6 +101,27 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
         })
     }
 
+    /**
+     * v2 (octo-web#73)：一次 PUT 提交 persona_prompt + active。
+     * 成功后调父级 onChange 让 PersonaSettingsVM 重拉列表 —— 后端在 active=true 时会
+     * mutex 其它 grant 的 active=false，本地这里看不见别人状态变化，必须 reload。
+     */
+    private handleSave = (vm: PersonaEditVM) => {
+        if (this.state.saving) return
+        this.setState({ saving: true })
+        void vm
+            .savePersonaForm(this.state.prompt, this.state.active)
+            .then((ok) => {
+                if (ok) {
+                    Toast.success("已保存")
+                    if (this.props.onChange) this.props.onChange()
+                }
+            })
+            .finally(() => {
+                this.setState({ saving: false })
+            })
+    }
+
     render(): ReactNode {
         const { grant } = this.props
         return (
@@ -108,13 +144,64 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                     const removeLabel = globalOn ? "恢复代答" : "停止代答"
                     return (
                         <div className="wk-persona-edit">
-                            {/* 基础信息 */}
+                            {/* 基础信息 + v2 表单（octo-web#73）：
+                                bot 名（只读）+ persona_prompt（可编辑）+ active toggle + 保存
+                                布局复用 Create 表单视觉风格，让用户在两条路径上拿到一致的填写体验。 */}
                             <div className="wk-persona-edit-section">
                                 <div className="wk-persona-edit-row">
                                     <div className="wk-persona-edit-row-title">关联 Bot</div>
-                                    <div className="wk-persona-edit-row-value">
+                                    <div
+                                        className="wk-persona-edit-row-value"
+                                        data-testid="persona-edit-bot-name"
+                                    >
                                         {vm.grant.grantee_bot_name || vm.grant.grantee_bot_uid}
                                     </div>
+                                </div>
+                                {/*
+                                 * persona_prompt textarea：纵向占整行，与「关联 Bot」/「启用」
+                                 * 的「左标题右值」横排不同，所以单独一个 column-row。
+                                 * 用原生 textarea 与 PersonaCreate 保持一致（避免引入额外 Semi 组件
+                                 * mock 噪音；Semi TextArea 在 RoutePage 容器里也偶发样式 portal 问题）。
+                                 */}
+                                <div className="wk-persona-edit-row wk-persona-edit-row-column">
+                                    <div className="wk-persona-edit-row-title">回复风格 prompt</div>
+                                    <textarea
+                                        className="wk-persona-edit-prompt"
+                                        placeholder="设置分身的回复风格，如：用简洁专业的语气回复"
+                                        value={this.state.prompt}
+                                        onChange={(e) =>
+                                            this.setState({ prompt: e.target.value })
+                                        }
+                                        rows={4}
+                                        data-testid="persona-edit-prompt"
+                                    />
+                                </div>
+                                <div className="wk-persona-edit-row">
+                                    <div className="wk-persona-edit-row-title">启用此分身</div>
+                                    <div className="wk-persona-edit-row-control">
+                                        {/*
+                                         * v2 (octo-web#73)：active 是 mutex 字段，后端在 PUT
+                                         * {active:true} 时会自动把同一用户其它 grant 的 active
+                                         * 置 false。前端只 toggle 自己的状态，剩下的依赖
+                                         * onChange → 父级 reload 把整列表拉回来对齐。
+                                         */}
+                                        <Switch
+                                            checked={this.state.active}
+                                            onChange={(v: boolean) =>
+                                                this.setState({ active: !!v })
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                                <div className="wk-persona-edit-row">
+                                    <button
+                                        className="wk-persona-edit-save-btn"
+                                        disabled={this.state.saving}
+                                        onClick={() => this.handleSave(vm)}
+                                        data-testid="persona-edit-save"
+                                    >
+                                        {this.state.saving ? "保存中..." : "保存"}
+                                    </button>
                                 </div>
                                 <div className="wk-persona-edit-row">
                                     <div className="wk-persona-edit-row-title">模式</div>

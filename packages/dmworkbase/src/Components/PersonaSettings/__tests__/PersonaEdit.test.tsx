@@ -29,7 +29,8 @@ const hoisted = vi.hoisted(() => {
     const put = vi.fn()
     const toastError = vi.fn()
     const toastWarning = vi.fn()
-    return { get, post, del, put, toastError, toastWarning }
+    const toastSuccess = vi.fn()
+    return { get, post, del, put, toastError, toastWarning, toastSuccess }
 })
 
 vi.mock("../../../App", () => ({
@@ -57,6 +58,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
     Toast: {
         error: hoisted.toastError,
         warning: hoisted.toastWarning,
+        success: hoisted.toastSuccess,
     },
 }))
 
@@ -89,6 +91,7 @@ beforeEach(() => {
     hoisted.put.mockReset()
     hoisted.toastError.mockReset()
     hoisted.toastWarning.mockReset()
+    hoisted.toastSuccess.mockReset()
 })
 
 afterEach(() => {
@@ -269,5 +272,130 @@ describe("PersonaEdit — remove action wiring (R4 P1 regression guard)", () => 
             "已排除的会话 (0)",
         )
         expect(screen.getByText(/暂无排除的会话/)).toBeInTheDocument()
+    })
+})
+
+/**
+ * v2 (octo-web#73) PersonaEdit form 测试 ——「reuse create form」：
+ *   - 关联 Bot 名只读展示
+ *   - persona_prompt textarea 用 grant.persona_prompt 预填
+ *   - 启用 toggle 用 grant.active 预填
+ *   - 「保存」按钮 → PUT 把 prompt + active 一并提交（savePersonaForm）
+ *   - 保存成功后调 onChange，让父级列表 reload 抓后端 mutex 之后的最新状态
+ *
+ * 这一组直接对应 issue task 3。textarea 用原生 <textarea>，所以无需额外 mock
+ * Semi TextArea —— fireEvent.change 即可触发 onChange。
+ */
+describe("PersonaEdit — v2 (octo-web#73) form (bot read-only + prompt + active)", () => {
+    it("pre-fills bot name + persona_prompt + active toggle from grant", async () => {
+        hoisted.get.mockResolvedValueOnce([])
+        render(
+            <PersonaEdit
+                grant={baseGrant({
+                    grantee_bot_name: "Demo Bot",
+                    persona_prompt: "已设置的风格",
+                    active: true,
+                })}
+                onDeleted={() => {}}
+            />,
+        )
+        await waitForScopesLoaded()
+        expect(screen.getByTestId("persona-edit-bot-name")).toHaveTextContent("Demo Bot")
+        const textarea = screen.getByTestId("persona-edit-prompt") as HTMLTextAreaElement
+        expect(textarea.value).toBe("已设置的风格")
+        // 第一个 Switch 是 v2 form 的「启用此分身」，第二个是旧 global toggle。
+        // 我们 stub Switch 渲染成 checkbox，所以两个都能查到 — 用顺序断言 v2 在前。
+        const switches = screen.getAllByTestId("persona-edit-global-switch")
+        expect(switches.length).toBeGreaterThanOrEqual(2)
+        expect((switches[0] as HTMLInputElement).checked).toBe(true)
+    })
+
+    it("falls back to bot uid when grantee_bot_name is missing (task 4 regression guard)", async () => {
+        hoisted.get.mockResolvedValueOnce([])
+        render(
+            <PersonaEdit
+                grant={baseGrant({
+                    grantee_bot_name: undefined,
+                    grantee_bot_uid: "27qFHDRBCJQ2c868c93_bot",
+                })}
+                onDeleted={() => {}}
+            />,
+        )
+        await waitForScopesLoaded()
+        expect(screen.getByTestId("persona-edit-bot-name")).toHaveTextContent(
+            "27qFHDRBCJQ2c868c93_bot",
+        )
+    })
+
+    it("uses the v2 textarea placeholder verbatim (issue body fixes the wording)", async () => {
+        hoisted.get.mockResolvedValueOnce([])
+        render(
+            <PersonaEdit
+                grant={baseGrant({ persona_prompt: "" })}
+                onDeleted={() => {}}
+            />,
+        )
+        await waitForScopesLoaded()
+        const textarea = screen.getByTestId("persona-edit-prompt")
+        // placeholder 文案直接来自 issue body — 不要再改，否则与 PersonaCreate 那条
+        // 视觉一致性就破了。
+        expect(textarea).toHaveAttribute(
+            "placeholder",
+            "设置分身的回复风格，如：用简洁专业的语气回复",
+        )
+    })
+
+    it("save button → PUT /v1/obo/grants/:id with persona_prompt + active in one call", async () => {
+        hoisted.get.mockResolvedValueOnce([])
+        hoisted.put.mockResolvedValueOnce({})
+        const onChange = vi.fn()
+        render(
+            <PersonaEdit
+                grant={baseGrant({ persona_prompt: "", active: false })}
+                onDeleted={() => {}}
+                onChange={onChange}
+            />,
+        )
+        await waitForScopesLoaded()
+
+        // 模拟用户编辑 textarea + 切换 active toggle
+        const textarea = screen.getByTestId("persona-edit-prompt") as HTMLTextAreaElement
+        fireEvent.change(textarea, { target: { value: "新的简洁风格" } })
+        const v2Switch = screen.getAllByTestId("persona-edit-global-switch")[0] as HTMLInputElement
+        fireEvent.click(v2Switch)
+
+        // 点保存
+        fireEvent.click(screen.getByTestId("persona-edit-save"))
+
+        await waitFor(() =>
+            expect(hoisted.put).toHaveBeenCalledWith("obo/grants/99", {
+                persona_prompt: "新的简洁风格",
+                active: true,
+            }),
+        )
+        // onChange 被调以提示父级 reload（mutex 影响其它行）
+        await waitFor(() => expect(onChange).toHaveBeenCalled())
+    })
+
+    it("save with cleared prompt sends empty string (user explicitly removed prompt)", async () => {
+        // 关键边界：与 create 的「空串过滤」相反，编辑里清空是合法语义。
+        hoisted.get.mockResolvedValueOnce([])
+        hoisted.put.mockResolvedValueOnce({})
+        render(
+            <PersonaEdit
+                grant={baseGrant({ persona_prompt: "old prompt", active: true })}
+                onDeleted={() => {}}
+            />,
+        )
+        await waitForScopesLoaded()
+        const textarea = screen.getByTestId("persona-edit-prompt") as HTMLTextAreaElement
+        fireEvent.change(textarea, { target: { value: "" } })
+        fireEvent.click(screen.getByTestId("persona-edit-save"))
+        await waitFor(() =>
+            expect(hoisted.put).toHaveBeenCalledWith("obo/grants/99", {
+                persona_prompt: "",
+                active: true,
+            }),
+        )
     })
 })

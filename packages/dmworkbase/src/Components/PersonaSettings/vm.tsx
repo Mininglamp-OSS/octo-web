@@ -27,6 +27,14 @@ import { extractErrorMsg } from "../../Service/APIClient"
 /**
  * Grant 主实体（grantor_uid 是当前用户自己；grantee_bot_uid 是代理 bot）。
  * mode === "auto" 是 v0 唯一支持的模式，"draft" 字段保留供 v1 草稿审批用。
+ *
+ * v2（octo-web#73 / octo-server#108）新增：
+ *   - `persona_prompt`：用户自定义的回复风格 prompt（中文），由 grantor 在 Create/Edit
+ *     表单里填写，POST/PUT 时携带；后端写入 grant 表 persona_prompt 字段，fan-out 时
+ *     拼到 system prompt 里影响 bot 回答风格。
+ *   - `active`：v1 已有字段，但在 v2 由「列表 toggle」直接驱动 —— 用户在 PersonaList
+ *     点开关 → 后端 mutex 自动把其他 grant 的 active 置为 false（同一用户最多 1 个
+ *     active grant 接管会话）。前端只需 PUT `{active: true|false}`，不必关心互斥逻辑。
  */
 export interface OboGrant {
     id: number
@@ -36,6 +44,11 @@ export interface OboGrant {
     mode: "auto" | "draft"
     global_enabled: boolean
     active: boolean
+    /**
+     * v2：自定义回复风格 prompt。可空（旧 grant 未填写时为 undefined / 空串）。
+     * 前端表单为可选填写，提交时若空则不放进 POST/PUT body（让后端保持 NULL/未改）。
+     */
+    persona_prompt?: string
     created_at?: number
     updated_at?: number
 }
@@ -244,18 +257,29 @@ export class PersonaSettingsVM extends ProviderListener {
      * 创建一个新的 grant（默认 mode=auto, global_enabled=false）。
      * 创建后 caller 应：reload list → push 进 PersonaEdit 让用户继续配 scope。
      *
+     * v2 (octo-web#73)：第二参数 personaPrompt 允许在创建时直接带上用户填写的回复风格。
+     * 留空（未传或空串）时不放进 POST body，等用户在 PersonaEdit 里再补，避免空串覆盖
+     * 后端的 NULL 默认（fan-out 拼 system prompt 时会忽略 NULL 而处理空串）。
+     *
      * Round-2 nit（YUJ-1193 / yujiawei R2）：成功后清空 `myBots` 缓存，
      * 让下一次 PersonaCreate mount 时 useEffect 的 `length === 0` 守卫真的触发
      * `loadMyBots()` 重拉 —— 否则用户「+ 新建分身」→ 选 bot → 创建 → pop →
      * 再「+ 新建分身」会看到刚绑过的 bot 还在 picker 里，导致 duplicate POST。
      */
-    async createGrant(granteeBotUid: string): Promise<OboGrant | undefined> {
+    async createGrant(granteeBotUid: string, personaPrompt?: string): Promise<OboGrant | undefined> {
         try {
-            const res = await WKApp.apiClient.post(`obo/grants`, {
+            // v2 (octo-web#73)：persona_prompt 可选；只有用户实际填写了非空内容时才放进 body，
+            // 否则空串会让后端把 NULL 覆盖成 ''，影响 fan-out 的 system prompt 拼装逻辑。
+            const body: Record<string, any> = {
                 grantee_bot_uid: granteeBotUid,
                 mode: "auto",
                 global_enabled: false,
-            })
+            }
+            const trimmed = (personaPrompt || "").trim()
+            if (trimmed) {
+                body.persona_prompt = trimmed
+            }
+            const res = await WKApp.apiClient.post(`obo/grants`, body)
             await this.loadGrants()
             // 已绑定的 bot 必须从下一次 PersonaCreate 的 picker 中消失：
             // 清缓存让 useEffect 的 length===0 守卫重新触发 loadMyBots()。
@@ -281,8 +305,20 @@ export class PersonaSettingsVM extends ProviderListener {
         }
     }
 
-    /** 切换 global_enabled 或 mode；服务端用 PATCH-like 语义合并。 */
-    async updateGrant(id: number, patch: Partial<Pick<OboGrant, "global_enabled" | "mode">>): Promise<boolean> {
+    /**
+     * 切换 global_enabled / mode / active / persona_prompt；服务端用 PATCH-like 语义合并。
+     *
+     * v2 (octo-web#73)：
+     *   - `active` 字段由列表 toggle 直接驱动。后端在 PUT `{active: true}` 时自动把当前
+     *     用户其它 grant 的 active 置为 false（mutex）——前端不需要预先调一遍 disable，
+     *     成功后 `loadGrants()` 会拉回新状态，UI 自然更新。
+     *   - `persona_prompt` 由 PersonaEdit 表单的「保存」按钮驱动，与 active 可以同一次
+     *     PUT 提交，减少往返。
+     */
+    async updateGrant(
+        id: number,
+        patch: Partial<Pick<OboGrant, "global_enabled" | "mode" | "active" | "persona_prompt">>,
+    ): Promise<boolean> {
         try {
             await WKApp.apiClient.put(`obo/grants/${id}`, patch)
             await this.loadGrants()
@@ -375,6 +411,38 @@ export class PersonaEditVM extends ProviderListener {
             return true
         } catch (e) {
             Toast.error(extractErrorMsg(e) || "切换失败")
+            return false
+        }
+    }
+
+    /**
+     * v2 (octo-web#73)：保存 PersonaEdit 表单 —— 一次 PUT 同时提交 persona_prompt + active。
+     *
+     * 入参语义：
+     *   - personaPrompt：始终发送，允许空串覆盖（用户主动清空 prompt 是合法的「恢复到无风格」操作）。
+     *     这与 createGrant 的「空串不放进 body」策略不同 —— 创建时空串意味着「我还没想好」，
+     *     编辑时空串意味着「我明确要清掉之前写的」。
+     *   - active：可选。提供时会让后端做 mutex（true 时把其它 grant active 置 false）。
+     *
+     * 成功后乐观更新本地 grant；caller 应额外调父级 onChange 让 PersonaSettingsVM.grants
+     * 与服务端重新对齐（后端 mutex 改了别的 grant 我们这里看不见）。
+     */
+    async savePersonaForm(personaPrompt: string, active?: boolean): Promise<boolean> {
+        try {
+            const body: Record<string, any> = { persona_prompt: personaPrompt }
+            if (typeof active === "boolean") {
+                body.active = active
+            }
+            await WKApp.apiClient.put(`obo/grants/${this.grant.id}`, body)
+            this.grant = {
+                ...this.grant,
+                persona_prompt: personaPrompt,
+                ...(typeof active === "boolean" ? { active } : {}),
+            }
+            this.notifyListener()
+            return true
+        } catch (e) {
+            Toast.error(extractErrorMsg(e) || "保存失败")
             return false
         }
     }
