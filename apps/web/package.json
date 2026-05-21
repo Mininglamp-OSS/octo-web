@@ -35,6 +35,8 @@
     "electron:build:linux-arm64": "electron-builder --linux --arm64 -c",
     "electron:build:all": "electron-builder -mw -c",
     "test": "vitest run",
+    "test:e2e:bind": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test -c e2e/bind.config.ts",
+    "test:e2e:bind:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
     "test:arch-builds": "./scripts/test-arch-builds.sh",
     "debug:build-structure": "./scripts/debug-build-structure.sh",
     "test:arch-specific": "./scripts/test-arch-specific-builds.sh",

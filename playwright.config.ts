@@ -4,6 +4,6 @@ export default defineConfig({
   timeout: 60000,
   use: {
     headless: true,
-    baseURL: 'https://im-test.xming.ai',
+    baseURL: 'https://im-test.deepminer.com.cn',
   },
 });

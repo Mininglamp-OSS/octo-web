@@ -7,6 +7,9 @@ node_modules
 
 # testing
 coverage
+test-results
+playwright-report
+.local-browsers
 
 # next.js
 .next/
