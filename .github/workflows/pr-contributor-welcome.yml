@@ -1,0 +1,19 @@
+name: PR Contributor Welcome
+
+on:
+  # pull_request_target runs in the context of the base repo so the GITHUB_TOKEN
+  # has write access even for fork PRs — required to post a welcome comment.
+  #
+  # SECURITY: the called reusable workflow does NOT check out any PR branch code;
+  # it only reads PR metadata via the GitHub API. This matches the pattern used
+  # by auto-add-to-project.yml and labeler.yml.
+  pull_request_target: # zizmor: ignore[dangerous-triggers] metadata-only automation; no PR code executed
+    types: [opened]
+
+permissions: {}
+
+jobs:
+  welcome:
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-pr-contributor-welcome.yml@main
+    permissions:
+      pull-requests: write
