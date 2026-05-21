@@ -3,10 +3,30 @@ import { mapBindError } from '../errorMessages'
 import { OidcBindHttpError } from '../../oidc/http'
 
 describe('mapBindError', () => {
-  it('treats non-Http errors as retryable network failure', () => {
+  it('treats non-Http errors as retryable on interactive endpoints', () => {
     const r = mapBindError('info', new Error('socket reset'))
     expect(r.terminal).toBe(false)
-    expect(r.retryable).toBe(true)
+    // (retryable field removed in round 2 — was set but never read)
+  })
+
+  // PR #72 review round 2 (Jerry-Xin): post-verify endpoints cannot show
+  // inlineError, so even non-HTTP failures (timeout, abort, parseLoginResp
+  // throw, applyLoginResp invariant throw) must terminate the flow.
+  it('treats non-Http errors as terminal on confirm/create endpoints', () => {
+    for (const ep of ['confirm', 'create'] as const) {
+      const r = mapBindError(ep, new Error('timeout'))
+      expect(r.terminal).toBe(true)
+      const r2 = mapBindError(ep, new SyntaxError('Unexpected token'))
+      expect(r2.terminal).toBe(true)
+    }
+  })
+
+  // PR #72 review round 2 (yujiawei): confirm 401 was still non-terminal,
+  // same stuck-spinner failure mode as B1 — reclassify as terminal.
+  it('confirm 401 is terminal (was non-terminal in round 1)', () => {
+    const r = mapBindError('confirm', new OidcBindHttpError(401))
+    expect(r.terminal).toBe(true)
+    expect(r.message).toMatch(/重新发起 SSO/)
   })
 
   it('flags 400/410 as terminal on any endpoint', () => {
@@ -18,10 +38,10 @@ describe('mapBindError', () => {
   it('flags 503/500 as retryable non-terminal on interactive endpoints', () => {
     const r5 = mapBindError('verify_password', new OidcBindHttpError(503))
     expect(r5.terminal).toBe(false)
-    expect(r5.retryable).toBe(true)
+    // retryable removed
     const r6 = mapBindError('verify_otp_check', new OidcBindHttpError(500))
     expect(r6.terminal).toBe(false)
-    expect(r6.retryable).toBe(true)
+    // retryable removed
   })
 
   // PR #72 review B1: confirm/create loader stages don't render inlineError,
@@ -59,10 +79,8 @@ describe('mapBindError', () => {
     expect(r.message).toMatch(/已绑定|SSO/)
   })
 
-  it('confirm 401 (not verified) is non-terminal', () => {
-    const r = mapBindError('confirm', new OidcBindHttpError(401))
-    expect(r.terminal).toBe(false)
-  })
+  // Superseded by the new "confirm 401 is terminal" test above (round 2).
+  // Kept here as a documentation breadcrumb of what the prior contract was.
 
   it('429 is non-terminal on verify_* endpoints (user can retry input)', () => {
     for (const ep of ['verify_password', 'verify_otp_send', 'verify_otp_check'] as const) {

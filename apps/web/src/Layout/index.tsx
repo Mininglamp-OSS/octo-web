@@ -247,6 +247,19 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             );
         }
 
+        // OIDC bind page must take precedence over the invite-landing branch
+        // below: if a future URL composition (deep link, stale cookie) ever puts
+        // ?invite= on a /oidc/bind URL, we must still render the bind page —
+        // otherwise the bind token gets silently dropped on the floor. Defense
+        // in depth even though no documented flow constructs such a URL today.
+        // PR #72 review yujiawei #2.
+        if (window.location.pathname === '/oidc/bind') {
+            const bindComponent = WKApp.route.get('/oidc/bind')
+            if (bindComponent) {
+                return bindComponent
+            }
+        }
+
         // 邀请链接检测
         const urlParams = new URLSearchParams(window.location.search);
         const inviteCode = urlParams.get("invite");
@@ -274,16 +287,6 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 }
             }
             return <InviteLanding inviteCode={inviteCode} />;
-        }
-
-        // OIDC 自助绑定页: 未登录态从后端 callback 302 进来, 不能走登录或主页
-        // 分支. 命中 /oidc/bind 直接渲染 BindModule 注册的组件; 绑定成功后
-        // BindPage 自身 navigate 到 return_to.
-        if (window.location.pathname === '/oidc/bind') {
-            const bindComponent = WKApp.route.get('/oidc/bind')
-            if (bindComponent) {
-                return bindComponent
-            }
         }
 
         return <Provider create={() => {

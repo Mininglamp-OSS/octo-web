@@ -11,8 +11,6 @@ export type BindEndpoint = 'info' | 'verify_password' | 'verify_otp_send' | 'ver
 export interface BindErrorDisplay {
   message: string
   terminal: boolean
-  // 503 / 5xx 时给重试按钮
-  retryable?: boolean
 }
 
 const DEFAULT: BindErrorDisplay = {
@@ -20,13 +18,26 @@ const DEFAULT: BindErrorDisplay = {
   terminal: false,
 }
 
+// confirm / create are post-verify endpoints: the BindPage loader stage cannot
+// surface inlineError. Any failure there (HTTP or non-HTTP — network timeout,
+// fetch abort, parseLoginResp JSON parse, applyLoginResp invariant throw) MUST
+// be terminal to avoid stranding the user on the spinner. PR #72 review round 2.
+function isPostVerifyEndpoint(endpoint: BindEndpoint): boolean {
+  return endpoint === 'confirm' || endpoint === 'create'
+}
+
 export function mapBindError(
   endpoint: BindEndpoint,
   err: unknown,
 ): BindErrorDisplay {
   if (!(err instanceof OidcBindHttpError)) {
-    // 网络层 / 反序列化失败. 不区分端点统一兜底.
-    return { message: '网络异常，请检查后重试', terminal: false, retryable: true }
+    // Non-HTTP failure (network/abort/parse/validate). Interactive endpoints
+    // can keep this retryable since their stage renders inlineError; post-verify
+    // endpoints must terminate so the user gets a "返回登录" CTA.
+    if (isPostVerifyEndpoint(endpoint)) {
+      return { message: '绑定失败，请重新发起 SSO 登录', terminal: true }
+    }
+    return { message: '网络异常，请检查后重试', terminal: false }
   }
   const s = err.status
 
@@ -44,8 +55,8 @@ export function mapBindError(
     || endpoint === 'verify_otp_send' || endpoint === 'verify_otp_check'
   if (fiveXX && isInteractive) {
     return s === 503
-      ? { message: '绑定服务暂不可用，请稍后重试', terminal: false, retryable: true }
-      : { message: '服务异常，请稍后重试', terminal: false, retryable: true }
+      ? { message: '绑定服务暂不可用，请稍后重试', terminal: false }
+      : { message: '服务异常，请稍后重试', terminal: false }
   }
 
   // 端点级语义
@@ -67,16 +78,15 @@ export function mapBindError(
       if (s === 429) return { message: '尝试次数过多，请稍后再试', terminal: false }
       return DEFAULT
     case 'confirm':
-      if (s === 401) return { message: '请先完成身份验证', terminal: false }
-      // 409 在 confirm 端点是 "identity 已绑定" — 实际是恢复路径成功的信号,
-      // 此时该用户的 OIDC autolink 已经能命中, 引导回登录即可.
+      // 409 在 confirm 端点是 "identity 已绑定" — 恢复路径成功的信号, OIDC
+      // autolink 下次会命中, 引导回登录即可.
       if (s === 409) return { message: '该账号已绑定，请返回登录页重新使用 SSO 登录', terminal: true }
-      // confirm 阶段的 429/500/503 都是 post-verify 失败: token 已被 CAS 推到
-      // consuming 中间态, BindPage 的 `confirming` loader 也不会渲染 inlineError.
-      // 必须 terminal 让用户重走 OIDC — PR #72 review B1.
+      // confirm 端点本质 post-verify: BindPage 的 `confirming` loader 不渲染
+      // inlineError. 所有失败 (401 / 429 / 5xx / 未识别) 一律 terminal 让用户
+      // 重走 OIDC — PR #72 review B1 + round 2.
+      if (s === 401) return { message: '请先完成身份验证，请重新发起 SSO 登录', terminal: true }
       if (s === 429) return { message: '尝试次数过多，请重新发起 SSO 登录', terminal: true }
       if (s === 500 || s === 503) return { message: '绑定失败，请重新发起 SSO 登录', terminal: true }
-      // 任何未识别状态也按 terminal — confirming loader 不能吃错误.
       return { message: '绑定失败，请重新发起 SSO 登录', terminal: true }
     case 'create':
       // PR#93: bindCreateMax = 1, 一次失败 token 即不可重用 → 429 必然 terminal.

@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Button, Input, Spin, Toast } from '@douyinfe/semi-ui'
-import { fetchHttpClient, OidcBindHttpError } from '../oidc'
-import { clearPendingOidcLogin } from '../oidc'
+import {
+  clearPendingOidcLogin,
+  fetchHttpClient,
+  OidcBindHttpError,
+} from '../oidc'
 import {
   fetchBindInfo,
   verifyBindPassword,
@@ -271,7 +274,8 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       // 写完登录态后 token 已无效 (后端 single-use consume), 直接清掉 ref.
       entryRef.current = null
       setStage({ kind: 'success' })
-      // 避免短暂的 success 闪屏: 给 200ms 让 Toast 看见再跳.
+      // 200ms gives the success state one paint + a brief Toast visibility window
+      // before the full-page navigation tears down the React tree.
       window.setTimeout(() => {
         try {
           window.location.replace(returnTo)
@@ -280,10 +284,10 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
         }
       }, 200)
     } catch (err) {
+      // All confirm failures are terminal in errorMessages.ts — the confirming
+      // loader has no surface to show an inline error, so handleError will
+      // route to the fatal stage with a "返回登录" CTA.
       handleError('confirm', err)
-      // confirm 失败要回退到能让用户再点 confirm 的 stage; 但 verify 状态后端是
-      // verified, 重新走 verify 会返 409. 最稳是直接落 fatal 让用户重走 OIDC.
-      // 唯一例外: 429 / 503 — 允许再试 confirm. handleError 已经按 terminal 标识区分.
     }
   }
 
@@ -300,6 +304,8 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       try { clearPendingOidcLogin() } catch { /* sessionStorage 不可用时静默 */ }
       entryRef.current = null
       setStage({ kind: 'success' })
+      // 200ms gives the success state one paint before the navigation kicks in;
+      // mirrors runConfirm.
       window.setTimeout(() => {
         try {
           window.location.replace(returnTo)
@@ -308,8 +314,8 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
         }
       }, 200)
     } catch (err) {
-      // create 端点的失败几乎全部 terminal (bindCreateMax=1; claims/conflict 都是确定性的).
-      // handleError 按 mapBindError 返回的 terminal 标识自动落 fatal vs inline.
+      // create failures are deterministic at bindCreateMax=1 — handleError routes
+      // to fatal.
       handleError('create', err)
     }
   }
