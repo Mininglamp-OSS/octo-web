@@ -116,6 +116,18 @@
   padding: 0;
 }
 
+.wk-anchor-pop__msg--clickable {
+  cursor: pointer;
+  border-radius: var(--wk-r-sm);
+  padding: var(--wk-sp-1);
+  margin: calc(-1 * var(--wk-sp-1));
+  transition: background var(--wk-dur-fast);
+}
+
+.wk-anchor-pop__msg--clickable:hover {
+  background: var(--wk-brand-tint-04);
+}
+
 .wk-anchor-pop__msg + .wk-anchor-pop__msg {
   border-top: none;
 }

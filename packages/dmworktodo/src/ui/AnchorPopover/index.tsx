@@ -211,22 +211,10 @@ export default function AnchorPopover({
                                 result={r}
                                 renderAvatar={renderAvatar}
                                 renderUserName={renderUserName}
+                                onJump={hasValidMessage ? handleJumpToMessage : undefined}
                             />
                         ))}
                 </div>
-
-                {/* 跳转到原消息链接：仅在有有效消息且提供了跳转回调时显示 */}
-                {hasValidMessage && (
-                    <div className="wk-anchor-pop__footer">
-                        <button
-                            type="button"
-                            className="wk-anchor-pop__jump-link"
-                            onClick={handleJumpToMessage}
-                        >
-                            ↗ 跳到原消息
-                        </button>
-                    </div>
-                )}
             </div>
         </>
     );
@@ -238,15 +226,19 @@ function MessageRow({
     result,
     renderAvatar,
     renderUserName,
+    onJump,
 }: {
     result: FetchResult;
     renderAvatar: (uid: string, size: number) => React.ReactNode;
     renderUserName: (uid: string) => React.ReactNode;
+    onJump?: () => void;
 }) {
     if (!result.ok) {
         return (
             <div className="wk-anchor-pop__msg wk-anchor-pop__msg--missing">
-                <span className="wk-anchor-pop__msg-time">—</span>
+                <div className="wk-anchor-pop__msg-header">
+                    <span className="wk-anchor-pop__msg-time">—</span>
+                </div>
                 <div className="wk-anchor-pop__msg-content">
                     <div className="wk-anchor-pop__msg-text wk-anchor-pop__msg-text--dim">
                         {result.reason === 'not_found'
@@ -259,7 +251,12 @@ function MessageRow({
     }
     const msg = result.data;
     return (
-        <div className="wk-anchor-pop__msg">
+        <div
+            className={`wk-anchor-pop__msg${onJump ? ' wk-anchor-pop__msg--clickable' : ''}`}
+            onClick={onJump}
+            role={onJump ? 'button' : undefined}
+            tabIndex={onJump ? 0 : undefined}
+        >
             <div className="wk-anchor-pop__msg-header">
                 <span className="wk-anchor-pop__msg-user">
                     <span className="wk-anchor-pop__msg-avatar">
