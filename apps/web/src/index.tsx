@@ -5,7 +5,7 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import  { BaseModule, WKApp } from '@octo/base';
-import  { LoginModule } from '@octo/login';
+import  { LoginModule, BindModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
 import { MatterModule } from '@octo/todo';
@@ -53,6 +53,7 @@ WKApp.loginInfo.load() // 加载登录信息
 WKApp.shared.registerModule(new BaseModule()); // 基础模块
 WKApp.shared.registerModule(new DataSourceModule()) // 数据源模块
 WKApp.shared.registerModule(new LoginModule()); // 登录模块
+WKApp.shared.registerModule(new BindModule()); // OIDC 自助绑定页 (/oidc/bind)
 WKApp.shared.registerModule(new ContactsModule()); // 联系模块
 WKApp.shared.registerModule(new MatterModule()); // Matter module
 WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块

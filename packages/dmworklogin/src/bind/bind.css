@@ -1,0 +1,241 @@
+/* OIDC 自助绑定页面 — 单卡片居中布局, 风格对齐 login 的浅灰背景但不复用 split-screen.
+   bind 页是一次性流程, 视觉上需要尽量简洁、把用户注意力锁在表单上, 所以不用左侧品牌墙. */
+
+.wk-bind {
+    display: flex;
+    min-height: 100vh;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow-y: auto;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    box-sizing: border-box;
+    background-color: var(--semi-color-bg-1, #f5f6fa);
+
+    /* 复用登录页的品牌色 token, 让 Semi primary 渲成黑色而不是默认蓝.
+       hover / active 颜色与 login.css 一致 (color-mix 已 fallback). */
+    --semi-color-primary: var(--wk-color-theme, #1C1C23);
+    --semi-color-primary-hover: #2A2A33;
+    --semi-color-primary-hover: color-mix(in srgb, var(--wk-color-theme, #1C1C23) 85%, black);
+    --semi-color-primary-active: #151519;
+    --semi-color-primary-active: color-mix(in srgb, var(--wk-color-theme, #1C1C23) 75%, black);
+}
+
+.wk-bind-card {
+    width: 100%;
+    max-width: 440px;
+    background: var(--semi-color-bg-0, #fff);
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+    padding: 32px 36px;
+    box-sizing: border-box;
+}
+
+.wk-bind-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--semi-color-text-0, #1C1C23);
+    margin: 0 0 8px;
+}
+
+.wk-bind-subtitle {
+    font-size: 14px;
+    color: var(--semi-color-text-2, #6B7280);
+    margin: 0 0 24px;
+    line-height: 1.5;
+}
+
+.wk-bind-identity {
+    background: var(--semi-color-fill-0, #F5F6FA);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 24px;
+    font-size: 13px;
+    color: var(--semi-color-text-1, #4B5563);
+}
+
+.wk-bind-identity-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+}
+
+.wk-bind-identity-row + .wk-bind-identity-row {
+    border-top: 1px solid var(--semi-color-border, rgba(0, 0, 0, 0.06));
+}
+
+.wk-bind-identity-label {
+    color: var(--semi-color-text-2, #6B7280);
+}
+
+.wk-bind-method-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+/* "或" 分隔条, 把主操作 (Create) 与次操作 (Verify) 视觉切开. 中间一段灰线
+   + 短文字, 比单纯空白更明确"这是另一条路径"而不是"重复选项". */
+.wk-bind-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 8px 0 12px;
+    color: var(--semi-color-text-2, #6B7280);
+    font-size: 12px;
+    line-height: 1;
+}
+.wk-bind-divider::before,
+.wk-bind-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--semi-color-border, rgba(0, 0, 0, 0.08));
+}
+
+.wk-bind-secondary-hint {
+    margin: 0 0 8px;
+    font-size: 12px;
+    color: var(--semi-color-text-2, #6B7280);
+    text-align: center;
+}
+
+/* 创建/绑定中的过场 loader. 之前 textAlign center + padding 20px 在大卡片里
+   显得 spinner 飘在上方 ("飞了"). 给一个明确容器: 整块垂直居中, spinner 与
+   文字间距固定, 卡片高度感保持. */
+.wk-bind-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 32px 8px;
+    min-height: 160px;
+    text-align: center;
+}
+
+.wk-bind-loader-title {
+    margin-top: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--semi-color-text-0, #1C1C23);
+}
+
+.wk-bind-loader-sub {
+    font-size: 12px;
+    color: var(--semi-color-text-2, #6B7280);
+    line-height: 1.5;
+}
+
+.wk-bind-field {
+    margin-bottom: 16px;
+}
+
+.wk-bind-field label {
+    display: block;
+    font-size: 13px;
+    color: var(--semi-color-text-1, #4B5563);
+    margin-bottom: 6px;
+}
+
+.wk-bind-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.wk-bind-actions > * {
+    flex: 1;
+}
+
+/* 错误提示按严重程度分层:
+   - soft: 401/429/输入错 — 用户可改后重试; 用暖橙色, 视觉重量低
+   - hard: 400/410/409 等 fatal — 必须重走 OIDC; 用 AA 合规深红
+   左 3px 色条强化"这是一段提示而不是装饰", 同时保持 padding-left 给文字呼吸. */
+.wk-bind-error {
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    border-left: 3px solid;
+}
+
+.wk-bind-error[data-severity="soft"] {
+    background: #FFF7ED;
+    color: #9A3412;        /* AA 8.0:1 on #FFF7ED */
+    border-left-color: #F97316;
+}
+
+.wk-bind-error[data-severity="hard"] {
+    background: #FEF2F2;
+    color: #991B1B;        /* AA 7.5:1 on #FEF2F2 — 比之前 #DC2626/#FEE2E2 (4.0:1) 通过 */
+    border-left-color: #DC2626;
+}
+
+/* 兼容老调用 (未来若漏写 data-severity 不至于完全无样式) */
+.wk-bind-error:not([data-severity]) {
+    background: #FEF2F2;
+    color: #991B1B;
+    border-left-color: #DC2626;
+}
+
+.wk-bind-footer {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--semi-color-border, rgba(0, 0, 0, 0.06));
+    font-size: 12px;
+    color: var(--semi-color-text-2, #6B7280);
+    text-align: center;
+}
+
+.wk-bind-footer a {
+    color: var(--semi-color-link, #3B82F6);
+    text-decoration: none;
+}
+
+.wk-bind-otp-hint {
+    font-size: 12px;
+    color: var(--semi-color-text-2, #6B7280);
+    margin-top: 6px;
+}
+
+/* ============================================================
+   主按钮 hover / active / focus 三态
+   ============================================================
+   黑按钮"按了没"的感知问题: 单纯改色觉察弱; 叠 transform + shadow
+   形成层次. transform 100ms 比 color 160ms 短, 先动再亮, 节律自然.
+   focus-visible 用紫色描边复用登录页品牌渐变端, 键盘可达. */
+.wk-bind .semi-button-primary {
+    transition:
+        background-color 160ms ease,
+        box-shadow 160ms ease,
+        transform 100ms ease;
+}
+.wk-bind .semi-button-primary:hover:not(:disabled):not(.semi-button-loading) {
+    box-shadow: 0 4px 12px rgba(28, 28, 35, 0.18);
+    transform: translateY(-1px);
+}
+.wk-bind .semi-button-primary:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
+}
+.wk-bind .semi-button-primary:focus-visible {
+    outline: 2px solid #7A5CFF;
+    outline-offset: 2px;
+}
+
+/* 次按钮 (返回 / 默认 theme) hover: 仅做边框加深 + 微抬, 不抢主按钮戏 */
+.wk-bind .semi-button:not(.semi-button-primary) {
+    transition: border-color 160ms ease, background-color 160ms ease, transform 100ms ease;
+}
+.wk-bind .semi-button:not(.semi-button-primary):hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+.wk-bind .semi-button:not(.semi-button-primary):active:not(:disabled) {
+    transform: translateY(0);
+}

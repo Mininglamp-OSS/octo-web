@@ -276,6 +276,16 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             return <InviteLanding inviteCode={inviteCode} />;
         }
 
+        // OIDC 自助绑定页: 未登录态从后端 callback 302 进来, 不能走登录或主页
+        // 分支. 命中 /oidc/bind 直接渲染 BindModule 注册的组件; 绑定成功后
+        // BindPage 自身 navigate 到 return_to.
+        if (window.location.pathname === '/oidc/bind') {
+            const bindComponent = WKApp.route.get('/oidc/bind')
+            if (bindComponent) {
+                return bindComponent
+            }
+        }
+
         return <Provider create={() => {
             return WKApp.shared
         }} render={(vm: WKApp): any => {
