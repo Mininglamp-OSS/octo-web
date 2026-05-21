@@ -33,11 +33,20 @@ export function mapBindError(
   // 跨端点共通: 400/410 一律 terminal — token 没救了.
   if (s === 400) return { message: '链接已失效，请重新发起登录', terminal: true }
   if (s === 410) return { message: '链接已过期，请重新发起登录', terminal: true }
-  if (s === 503) return { message: '绑定服务暂不可用，请稍后重试', terminal: false, retryable: true }
-  if (s === 500) return { message: '服务异常，请稍后重试', terminal: false, retryable: true }
   // 422 仅出现在 /bind/create: SSO claims 缺 verified email/phone — 后端无法构造账号.
   // 是 terminal: 这条 bind_token 上不会"突然有"邮箱/手机, 让用户走联系管理员路径.
   if (s === 422) return { message: 'SSO 身份信息不完整（缺邮箱或手机），无法自助创建账号', terminal: true }
+  // 500/503 不在这里 early-return: 交互端点 (info/verify_*) 还能重试, post-verify
+  // 端点 (confirm/create) 的 loader stage 不渲染 inlineError 必须 terminal —
+  // 见 PR #72 review B1. 下面 switch 按 endpoint 分别处理.
+  const fiveXX = s === 500 || s === 503
+  const isInteractive = endpoint === 'info' || endpoint === 'verify_password'
+    || endpoint === 'verify_otp_send' || endpoint === 'verify_otp_check'
+  if (fiveXX && isInteractive) {
+    return s === 503
+      ? { message: '绑定服务暂不可用，请稍后重试', terminal: false, retryable: true }
+      : { message: '服务异常，请稍后重试', terminal: false, retryable: true }
+  }
 
   // 端点级语义
   switch (endpoint) {
@@ -62,19 +71,23 @@ export function mapBindError(
       // 409 在 confirm 端点是 "identity 已绑定" — 实际是恢复路径成功的信号,
       // 此时该用户的 OIDC autolink 已经能命中, 引导回登录即可.
       if (s === 409) return { message: '该账号已绑定，请返回登录页重新使用 SSO 登录', terminal: true }
-      if (s === 429) return { message: '尝试次数过多，请稍后再试', terminal: false }
-      return DEFAULT
+      // confirm 阶段的 429/500/503 都是 post-verify 失败: token 已被 CAS 推到
+      // consuming 中间态, BindPage 的 `confirming` loader 也不会渲染 inlineError.
+      // 必须 terminal 让用户重走 OIDC — PR #72 review B1.
+      if (s === 429) return { message: '尝试次数过多，请重新发起 SSO 登录', terminal: true }
+      if (s === 500 || s === 503) return { message: '绑定失败，请重新发起 SSO 登录', terminal: true }
+      // 任何未识别状态也按 terminal — confirming loader 不能吃错误.
+      return { message: '绑定失败，请重新发起 SSO 登录', terminal: true }
     case 'create':
       // PR#93: bindCreateMax = 1, 一次失败 token 即不可重用 → 429 必然 terminal.
       if (s === 429) return { message: '已尝试创建账号，请重新发起 SSO 登录', terminal: true }
-      // 409 有两种 sentinel:
-      //   ErrBindStatusConflict — token 已过 issued (并发 verify/create 占用了)
-      //   ErrBindAlreadyBound — (issuer,sub) 唯一键撞了, identity 已存在
-      //   ErrBindCreateConflictNeedManual — claims 命中多个 dmwork 账号, 不能自助创建
-      // 三个对用户的下一步都不同, 但本期统一引导回登录 + 提示联系管理员的 fallback.
-      // 后端 msg 字段会给出区分, 但 UI 不读 msg (反枚举原则), 这里 terminal=true 即可.
+      // 409 有三种 sentinel (ErrBindStatusConflict / ErrBindAlreadyBound /
+      // ErrBindCreateConflictNeedManual), 用户下一步都是回登录, 反枚举原则下
+      // UI 不区分 msg 内容, 一律 terminal.
       if (s === 409) return { message: '账号信息冲突，请联系管理员或返回登录页重试', terminal: true }
       if (s === 401) return { message: '当前 SSO 身份无创建权限', terminal: true }
-      return DEFAULT
+      // create 的 500/503/未识别: 同 confirm 推理, terminal 防 spinner 死锁.
+      if (s === 500 || s === 503) return { message: '创建失败，请重新发起 SSO 登录', terminal: true }
+      return { message: '创建失败，请重新发起 SSO 登录', terminal: true }
   }
 }

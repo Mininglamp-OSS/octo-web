@@ -29,8 +29,11 @@ describe('parseBindEntryParams', () => {
     expect(parseBindEntryParams('?authcode=a&return_to=/')).toBeNull()
   })
 
-  it('returns null when authcode missing', () => {
-    expect(parseBindEntryParams('?token=t&return_to=/')).toBeNull()
+  it('accepts entry with token but no authcode (authcode is server-side only, PR #72 review B3)', () => {
+    const r = parseBindEntryParams('?token=t&return_to=/')
+    expect(r).not.toBeNull()
+    expect(r?.token).toBe('t')
+    expect(r?.authcode).toBe('')
   })
 
   it('falls back return_to to /', () => {
@@ -74,6 +77,35 @@ describe('sanitizeReturnTo', () => {
 
   it('rejects empty', () => {
     expect(sanitizeReturnTo('')).toBe('/')
+  })
+
+  // ---- regression: PR #72 Jerry-Xin review — sanitize must reject backslash
+  // variants. Browsers normalise `\` to `/` in URL parsing, so `/\evil.com`
+  // resolves to https://evil.com/ via the URL ctor. Both raw `\` and the
+  // URL-encoded `%5C` / `%5c` must be rejected.
+  it('rejects raw backslash injection', () => {
+    expect(sanitizeReturnTo('/\\evil.com')).toBe('/')
+    expect(sanitizeReturnTo('/\\\\evil.com')).toBe('/')
+    expect(sanitizeReturnTo('\\evil.com')).toBe('/')
+  })
+
+  it('rejects URL-encoded backslash injection', () => {
+    expect(sanitizeReturnTo('/%5Cevil.com')).toBe('/')
+    expect(sanitizeReturnTo('/%5cevil.com')).toBe('/')
+    expect(sanitizeReturnTo('/safe%5Cbut-encoded')).toBe('/')
+  })
+
+  // Defense-in-depth: even if some unicode same-shape char slips past the
+  // string-level checks, the URL ctor cross-origin check catches it.
+  it('rejects URLs whose parsed origin differs from page origin', () => {
+    const pageOrigin = 'http://localhost:3000'
+    // Same as cross-origin via raw backslash but exercised through the URL
+    // ctor branch by mocking the page origin.
+    expect(sanitizeReturnTo('http://evil.com/path', pageOrigin)).toBe('/')
+  })
+
+  it('accepts when parsed origin matches page origin (sanity)', () => {
+    expect(sanitizeReturnTo('/home', 'http://localhost:3000')).toBe('/home')
   })
 })
 

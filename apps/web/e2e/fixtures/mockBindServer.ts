@@ -21,6 +21,9 @@ export type BindScenario =
   | 'create_422'
   | 'create_429'
   | 'create_409_manual'
+  // PR #72 review fixes (B1, B2, W2)
+  | 'confirm_429_terminal'
+  | 'verify_password_409_advance'
 
 interface EndpointResp {
   status: number
@@ -226,6 +229,30 @@ const SCENARIOS: Record<BindScenario, ScenarioConfig> = {
     verify_otp_check: { status: 200, body: { status: 'verified' } },
     confirm: { status: 200, body: {} },
     create: { status: 409, body: { msg: 'account conflict needs manual resolution' } },
+  },
+  // PR #72 review B1 regression: confirm 429 must NOT leave the user on an
+  // infinite spinner — flow goes verify OK → confirming → 429 → fatal.
+  confirm_429_terminal: {
+    info: { status: 200, body: STANDARD_INFO },
+    verify_password: { status: 200, body: { status: 'verified' } },
+    verify_otp_send: { status: 200, body: { status: 'sent' } },
+    verify_otp_check: { status: 200, body: { status: 'verified' } },
+    confirm: { status: 429, body: { msg: 'rate_limited' } },
+    create: NEVER_HIT,
+  },
+  // PR #72 review W2 regression: verify_password 409 must auto-advance to
+  // confirm (token already verified server-side) instead of stranding user
+  // with an inline "请继续完成绑定" message and no action.
+  verify_password_409_advance: {
+    info: { status: 200, body: STANDARD_INFO },
+    verify_password: { status: 409, body: { msg: 'already_verified' } },
+    verify_otp_send: { status: 200, body: { status: 'sent' } },
+    verify_otp_check: { status: 200, body: { status: 'verified' } },
+    confirm: {
+      status: 200,
+      body: { status: 'ok', login_resp: STANDARD_LOGIN_RESP, uid: 'u-12345' },
+    },
+    create: NEVER_HIT,
   },
 }
 

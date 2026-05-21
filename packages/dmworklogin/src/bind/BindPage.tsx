@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Button, Input, Spin, Toast } from '@douyinfe/semi-ui'
-import { fetchHttpClient } from '../oidc'
+import { fetchHttpClient, OidcBindHttpError } from '../oidc'
 import { clearPendingOidcLogin } from '../oidc'
 import {
   fetchBindInfo,
@@ -192,6 +192,14 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     }
   }
 
+  // 后端 verify_* 返 409 = "session 已 verified 或更高"; 文档 §3.2 把它定为
+  // "用户已经通过了, 重复 verify 被 CAS 拒". 正确响应是直接 advance 到 confirm,
+  // 而不是给用户看 inline error "请继续完成绑定" — 那个文案承诺了"继续", 但
+  // 之前的实现只 setInlineError, 用户点"验证并绑定"又 409, 死循环. PR #72 W2.
+  function isVerifyAlreadyConsumed(err: unknown): boolean {
+    return err instanceof OidcBindHttpError && err.status === 409
+  }
+
   async function onSubmitPassword(): Promise<void> {
     if (stage.kind !== 'verify_password') return
     if (!identifier || !password) {
@@ -208,6 +216,11 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       setPassword('')
       await runConfirm(stage.info)
     } catch (err) {
+      if (isVerifyAlreadyConsumed(err)) {
+        setPassword('')
+        await runConfirm(stage.info)
+        return
+      }
       handleError('verify_password', err)
     } finally {
       setBusy(false)
@@ -216,8 +229,10 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
 
   async function onSubmitOtp(): Promise<void> {
     if (stage.kind !== 'verify_otp') return
-    if (!otp || otp.length < 4) {
-      setInlineError('请输入验证码')
+    // 后端短信验证码长度固定为 6 位 (BindService.VerifyOTPCheck);
+    // input 的 maxLength={6} 已经卡上限, 这里卡下限避免半截 OTP 提交后被 401.
+    if (!otp || otp.length < 6) {
+      setInlineError('请输入 6 位验证码')
       return
     }
     const token = entryRef.current?.token
@@ -229,6 +244,11 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       setOtp('')
       await runConfirm(stage.info)
     } catch (err) {
+      if (isVerifyAlreadyConsumed(err)) {
+        setOtp('')
+        await runConfirm(stage.info)
+        return
+      }
       handleError('verify_otp_check', err)
     } finally {
       setBusy(false)

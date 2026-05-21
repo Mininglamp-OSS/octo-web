@@ -265,4 +265,37 @@ test.describe('OIDC bind page', () => {
       await expect(page.getByRole('button', { name: '返回登录' })).toBeVisible()
     })
   })
+
+  // PR #72 reviewer regressions ===========================================
+  test.describe('PR #72 review fixes', () => {
+    test('B1: confirm 429 surfaces fatal screen, not infinite spinner', async ({ page }) => {
+      await mockBindServer(page, 'confirm_429_terminal')
+      await gotoBindPage(page, { token: TOKEN })
+
+      // Drive verify → confirm → 429 path
+      await page.getByRole('button', { name: '使用 Octo 密码验证' }).click()
+      await page.getByLabel(/Octo 账号/).fill('alice')
+      await page.locator('#bind-password').fill('pw-correct')
+      await page.getByRole('button', { name: '验证并绑定' }).click()
+
+      // Must reach a fatal screen with a recovery button — not stuck on spinner.
+      await expect(page.getByRole('button', { name: '返回登录' })).toBeVisible()
+      await expect(page.getByText(/重新发起 SSO|绑定失败/)).toBeVisible()
+    })
+
+    test('W2: verify_password 409 auto-advances to confirm (no inline dead-end)', async ({ page }) => {
+      const { calls } = await mockBindServer(page, 'verify_password_409_advance')
+      await gotoBindPage(page, { token: TOKEN, returnTo: '/' })
+
+      await page.getByRole('button', { name: '使用 Octo 密码验证' }).click()
+      await page.getByLabel(/Octo 账号/).fill('alice')
+      await page.locator('#bind-password').fill('pw-correct')
+      await page.getByRole('button', { name: '验证并绑定' }).click()
+
+      // verify returned 409 → BindPage should call confirm anyway and navigate.
+      await page.waitForURL((u) => u.pathname === '/', { timeout: 5000 })
+      expect(calls.find((c) => c.endpoint === 'verify_password')).toBeDefined()
+      expect(calls.find((c) => c.endpoint === 'confirm')).toBeDefined()
+    })
+  })
 })

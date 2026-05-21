@@ -15,13 +15,31 @@ describe('mapBindError', () => {
     expect(mapBindError('confirm', new OidcBindHttpError(410)).terminal).toBe(true)
   })
 
-  it('flags 503/500 as retryable non-terminal', () => {
+  it('flags 503/500 as retryable non-terminal on interactive endpoints', () => {
     const r5 = mapBindError('verify_password', new OidcBindHttpError(503))
     expect(r5.terminal).toBe(false)
     expect(r5.retryable).toBe(true)
-    const r6 = mapBindError('confirm', new OidcBindHttpError(500))
+    const r6 = mapBindError('verify_otp_check', new OidcBindHttpError(500))
     expect(r6.terminal).toBe(false)
     expect(r6.retryable).toBe(true)
+  })
+
+  // PR #72 review B1: confirm/create loader stages don't render inlineError,
+  // so any post-verify failure must be terminal to avoid stranding the user
+  // on an infinite spinner.
+  it('confirm 500/503/429 are terminal (no recovery from confirming stage)', () => {
+    for (const code of [429, 500, 503]) {
+      const r = mapBindError('confirm', new OidcBindHttpError(code))
+      expect(r.terminal).toBe(true)
+      expect(r.message).toMatch(/重新发起 SSO|绑定失败/)
+    }
+  })
+
+  it('create 500/503 are terminal (consistent with create 429)', () => {
+    for (const code of [500, 503]) {
+      const r = mapBindError('create', new OidcBindHttpError(code))
+      expect(r.terminal).toBe(true)
+    }
   })
 
   it('verify_password 401 is non-terminal with password-specific copy', () => {
@@ -46,8 +64,8 @@ describe('mapBindError', () => {
     expect(r.terminal).toBe(false)
   })
 
-  it('429 is non-terminal across endpoints', () => {
-    for (const ep of ['verify_password', 'verify_otp_send', 'verify_otp_check', 'confirm'] as const) {
+  it('429 is non-terminal on verify_* endpoints (user can retry input)', () => {
+    for (const ep of ['verify_password', 'verify_otp_send', 'verify_otp_check'] as const) {
       expect(mapBindError(ep, new OidcBindHttpError(429)).terminal).toBe(false)
     }
   })
@@ -78,8 +96,4 @@ describe('mapBindError', () => {
     expect(r.terminal).toBe(true)
   })
 
-  it('create 503/500 stays retryable', () => {
-    expect(mapBindError('create', new OidcBindHttpError(503)).retryable).toBe(true)
-    expect(mapBindError('create', new OidcBindHttpError(500)).retryable).toBe(true)
-  })
 })
