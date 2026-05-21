@@ -1165,8 +1165,8 @@ textarea.wk-mp-goal__text--editing {
 .wk-mp-activity__table-wrap {
   width: 100%;
   overflow-x: auto;
-  border: 1px solid var(--wk-brand-tint-15);
-  border-radius: var(--wk-r-md);
+  border: none;
+  border-radius: 0;
 }
 
 .wk-mp-activity__table {

@@ -1591,29 +1591,25 @@ function ActivityContent({ activity }: { activity: MatterActivity }) {
       );
     case "assignee_added":
       return (
-        <span className="wk-mp-activity__diff-row wk-mp-activity__diff-row--add">
-          <ActivityPlusIcon />
+        <span>
           <UserName uid={(detail.user_id as string) || ""} />
         </span>
       );
     case "assignee_removed":
       return (
-        <span className="wk-mp-activity__diff-row wk-mp-activity__diff-row--rm">
-          <ActivityMinusIcon />
+        <span>
           <UserName uid={(detail.user_id as string) || ""} />
         </span>
       );
     case "channel_linked":
       return (
-        <span className="wk-mp-activity__diff-row wk-mp-activity__diff-row--add">
-          <ActivityPlusIcon />
+        <span>
           #{(detail.channel_name as string) || (detail.channel_id as string) || ""}
         </span>
       );
     case "channel_unlinked":
       return (
-        <span className="wk-mp-activity__diff-row wk-mp-activity__diff-row--rm">
-          <ActivityMinusIcon />
+        <span>
           #{(detail.channel_id as string) || ""}
         </span>
       );
