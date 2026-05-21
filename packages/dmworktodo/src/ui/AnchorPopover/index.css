@@ -21,6 +21,8 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-3);
   overflow: hidden;
   animation: wk-anchor-pop-in 0.12s ease-out both;
 }
@@ -41,11 +43,10 @@
 
 /* ─── Header ─── */
 .wk-anchor-pop__head {
-  padding: var(--wk-sp-3);
-  border-bottom: 1px solid var(--wk-brand-tint-15);
+  padding: 0;
+  border-bottom: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--wk-sp-2);
   background: transparent;
   flex-shrink: 0;
@@ -62,36 +63,12 @@
   max-width: 325px;
 }
 
-.wk-anchor-pop__head-time {
-  font-size: var(--wk-text-size-md);
-  font-weight: var(--wk-font-regular);
-  line-height: 18px;
-  color: var(--wk-icon-default);
-  flex-shrink: 0;
-}
-
-.wk-anchor-pop__close {
-  width: 24px;
-  height: 24px;
-  border: none;
-  border-radius: var(--wk-r-xs);
-  background: transparent;
-  color: var(--wk-text-tertiary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background var(--wk-dur-fast), color var(--wk-dur-fast);
-}
-
-.wk-anchor-pop__close:hover {
-  background: var(--wk-bg-item-hover);
-  color: var(--wk-text-primary);
-}
+/* (close button removed — popover closes on mask click) */
 
 /* ─── Body ─── */
 .wk-anchor-pop__body {
-  padding: var(--wk-sp-3);
+  padding-top: var(--wk-sp-3);
+  border-top: 1px solid var(--wk-brand-tint-15);
   overflow-y: auto;
   flex: 1;
   min-height: 80px;
@@ -199,27 +176,4 @@
   font-style: italic;
 }
 
-/* ─── Footer ─── */
-.wk-anchor-pop__footer {
-  padding: var(--wk-sp-3);
-  border-top: 1px solid var(--wk-brand-tint-15);
-  flex-shrink: 0;
-}
-
-.wk-anchor-pop__jump-link {
-  border: none;
-  background: transparent;
-  color: var(--wk-icon-default);
-  font-size: var(--wk-text-size-md);
-  font-weight: var(--wk-font-regular);
-  cursor: pointer;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--wk-sp-1);
-  transition: color var(--wk-dur-fast);
-}
-
-.wk-anchor-pop__jump-link:hover {
-  color: var(--wk-text-primary);
-}
+/* (footer removed — jump via clicking message) */

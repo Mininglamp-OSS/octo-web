@@ -183,14 +183,6 @@ export default function AnchorPopover({
                     <span className="wk-anchor-pop__channel">
                         #{displayChannelName}
                     </span>
-                    <button
-                        type="button"
-                        className="wk-anchor-pop__close"
-                        onClick={onClose}
-                        aria-label="关闭"
-                    >
-                        ✕
-                    </button>
                 </div>
 
                 <div className="wk-anchor-pop__body" ref={bodyRef}>
