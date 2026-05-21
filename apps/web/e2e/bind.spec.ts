@@ -305,6 +305,119 @@ test.describe('OIDC bind page', () => {
       expect(calls.find((c) => c.endpoint === 'confirm')).toBeDefined()
     })
 
+    // PR #72 round-5 (yujiawei/Jerry-Xin P1): runConfirm / runCreate must
+    // persist the real IdP id into WKApp.loginInfo.loginProvider (= the URL
+    // ?provider= value, or FALLBACK_PROVIDER_ID when omitted) — NOT a synthetic
+    // 'oidc-bind' / 'oidc-bind-create' label. Downstream NavSettingsPanel +
+    // realnameVerifyUrl + login.tsx reset-password all do
+    // providers.find(p => p.id === loginProvider) and would fail closed on the
+    // synthetic value.
+    //
+    // Why we assert via sessionStorage (not localStorage): LoginInfo.save()
+    // routes through StorageService.shared.setItem (sessionStorage primary,
+    // localStorage only for the cross-tab whitelist token/uid/short_no/app_id/
+    // name/role/is_work/sex — login_provider is NOT in that whitelist, so it
+    // lives in sessionStorage only). See StorageService.tsx:1-31.
+    //
+    // Why we stub window.location.replace: finalizeBindSuccess schedules a
+    // location.replace(returnTo) ~200ms after save(). The outer beforeEach
+    // installs addInitScript clearing session+localStorage on every navigation,
+    // including that post-bind reload — so a naive read after waitForURL gets
+    // null. Stubbing replace lets save() persist while keeping us on /oidc/bind
+    // so the cleared-on-next-init storage stays intact.
+    async function readLoginProviderFromSession(
+      page: import('@playwright/test').Page,
+    ): Promise<string | null> {
+      // setStorageItemForSID writes 'login_provider' + sid, where sid comes
+      // from the live URL's ?sid= (LoginInfo.getSID, App.tsx:343). RouteManager
+      // injects sid on pageshow, so we read it back from the URL at assertion
+      // time rather than hardcoding.
+      return page.evaluate(() => {
+        const sid = new URLSearchParams(window.location.search).get('sid') ?? ''
+        return sessionStorage.getItem('login_provider' + sid)
+      })
+    }
+
+    async function stubLocationReplace(page: import('@playwright/test').Page): Promise<void> {
+      await page.evaluate(() => {
+        // Replace the method, not the whole location object (the latter is a
+        // browser-protected accessor and can't be reassigned in Chromium).
+        const noop = (): void => {
+          /* swallow navigation so storage observations stay on /oidc/bind */
+        }
+        try {
+          Object.defineProperty(window.location, 'replace', {
+            configurable: true,
+            value: noop,
+          })
+        } catch {
+          /* fallback: best-effort overwrite */
+          ;(window.location as unknown as { replace: () => void }).replace = noop
+        }
+      })
+    }
+
+    test('P1 round-5: confirm persists URL ?provider= (not synthetic "oidc-bind")', async ({ page }) => {
+      await mockBindServer(page, 'happy_password')
+      await gotoBindPage(page, { token: TOKEN, returnTo: '/', provider: 'xming' })
+      await stubLocationReplace(page)
+
+      await page.getByRole('button', { name: '使用 Octo 密码验证' }).click()
+      await page.getByLabel(/Octo 账号/).fill('alice')
+      await page.locator('#bind-password').fill('pw-correct')
+      await page.getByRole('button', { name: '验证并绑定' }).click()
+
+      // Wait for the success stage — by the time '绑定成功' renders, save() has
+      // already run synchronously in runConfirm just before finalizeBindSuccess.
+      await expect(page.getByText('绑定成功，正在跳转…')).toBeVisible()
+
+      // Storage key is 'login_provider' + sid. RouteManager's pageshow handler
+      // injects ?sid=... into /oidc/bind, and LoginInfo.setStorageItemForSID
+      // suffixes the sid onto every key so different tabs/sessions don't
+      // collide. Derive sid from the live URL rather than hardcoding.
+      const persisted = await readLoginProviderFromSession(page)
+      expect(persisted).toBe('xming')
+      expect(persisted).not.toBe('oidc-bind')
+    })
+
+    test('P1 round-5: confirm falls back to FALLBACK_PROVIDER_ID when URL omits ?provider=', async ({ page }) => {
+      await mockBindServer(page, 'happy_password')
+      // Inline-build URL to omit provider (gotoBindPage defaults to 'aegis').
+      const qs = new URLSearchParams({
+        token: TOKEN,
+        authcode: 'ac-fe-12345',
+        return_to: '/',
+      })
+      await page.goto(`/oidc/bind?${qs.toString()}`)
+      await stubLocationReplace(page)
+
+      await page.getByRole('button', { name: '使用 Octo 密码验证' }).click()
+      await page.getByLabel(/Octo 账号/).fill('alice')
+      await page.locator('#bind-password').fill('pw-correct')
+      await page.getByRole('button', { name: '验证并绑定' }).click()
+
+      await expect(page.getByText('绑定成功，正在跳转…')).toBeVisible()
+
+      const persisted = await readLoginProviderFromSession(page)
+      // FALLBACK_PROVIDER_ID is 'aegis' (api.ts:24). Keep the literal here to
+      // catch accidental changes to the fallback contract.
+      expect(persisted).toBe('aegis')
+      expect(persisted).not.toBe('oidc-bind')
+    })
+
+    test('P1 round-5: create persists URL ?provider= (not synthetic "oidc-bind-create")', async ({ page }) => {
+      await mockBindServer(page, 'happy_create')
+      await gotoBindPage(page, { token: TOKEN, returnTo: '/', provider: 'xming' })
+      await stubLocationReplace(page)
+
+      await page.getByRole('button', { name: '使用 SSO 身份创建 Octo 账号' }).click()
+      await expect(page.getByText('绑定成功，正在跳转…')).toBeVisible()
+
+      const persisted = await readLoginProviderFromSession(page)
+      expect(persisted).toBe('xming')
+      expect(persisted).not.toBe('oidc-bind-create')
+    })
+
     test('R4: bind/create with pendingInviteCode hands off to AppLayout invite-join flow', async ({ page }) => {
       await mockBindServer(page, 'happy_create')
 
