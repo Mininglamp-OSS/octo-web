@@ -4,12 +4,28 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "tuesday"
+      timezone: "Asia/Shanghai"
     commit-message:
       prefix: "chore(ci)"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    open-pull-requests-limit: 5
 
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "tuesday"
+      timezone: "Asia/Shanghai"
     commit-message:
       prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
