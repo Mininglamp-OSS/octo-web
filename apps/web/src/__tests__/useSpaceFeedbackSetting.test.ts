@@ -26,6 +26,7 @@ import WKApp from "@octo/base/src/App";
 import { getSpaceSetting } from "@octo/base/src/Service/SpaceSettingService";
 import {
   ensureVoiceFeedbackLoaded,
+  fetchAndApplySpaceSetting,
   getSharedSpaceFeedbackState,
   resetSharedSpaceSetting,
   setSharedSpaceSetting,
@@ -86,5 +87,23 @@ describe("useSpaceFeedbackSetting - spaceId isolation", () => {
     await ensureVoiceFeedbackLoaded();
 
     expect(mockGetSpaceSetting).toHaveBeenCalledTimes(1);
+  });
+
+  it("should discard stale response when space changes during fetch", async () => {
+    let resolveA: (value: any) => void;
+    const delayedPromise = new Promise<any>((resolve) => {
+      resolveA = resolve;
+    });
+    mockGetSpaceSetting.mockReturnValueOnce(delayedPromise);
+
+    const promise = fetchAndApplySpaceSetting("space-a", "https://feedback.test");
+
+    (WKApp.shared as any).currentSpaceId = "space-b";
+
+    resolveA!({ voice_feedback_on: 1, voice_feedback_notice_acked: 0 });
+    await promise;
+
+    const state = getSharedSpaceFeedbackState();
+    expect(state.loadedSpaceId).not.toBe("space-a");
   });
 });

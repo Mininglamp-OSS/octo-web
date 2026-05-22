@@ -66,6 +66,7 @@ export function subscribe(listener: () => void): () => void {
 export async function fetchAndApplySpaceSetting(spaceId: string, feedbackUrl?: string): Promise<void> {
   try {
     const setting = await getSpaceSetting(spaceId);
+    if (WKApp.shared.currentSpaceId !== spaceId) return;
     setSharedSpaceSetting(setting, true, spaceId);
 
     if (feedbackUrl && setting.voice_feedback_on === 1) {
@@ -78,6 +79,7 @@ export async function fetchAndApplySpaceSetting(spaceId: string, feedbackUrl?: s
       VoiceFeedback.shared()!.disable();
     }
   } catch (err: unknown) {
+    if (WKApp.shared.currentSpaceId !== spaceId) return;
     const status = (err as { status?: number })?.status;
     if (status === 404) {
       setSharedSpaceSetting(defaultSetting, false, spaceId);

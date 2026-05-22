@@ -23,14 +23,14 @@ export default function VoiceFeedbackNotice({
   const handleAck = useCallback(async () => {
     if (ackedRef.current) return;
     ackedRef.current = true;
-    onCloseRef.current();
     try {
       const spaceId = WKApp.shared.currentSpaceId;
       if (spaceId) {
         await ackFeedbackNotice(spaceId);
       }
+      onCloseRef.current();
     } catch {
-      // silent — next visit will re-trigger
+      ackedRef.current = false;
     }
   }, []);
 
@@ -73,7 +73,7 @@ export default function VoiceFeedbackNotice({
         </div>
       }
     >
-      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: "rgba(28,28,35,0.75)" }}>
+      <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: "var(--semi-color-text-2)" }}>
         我们会使用您的语音识别数据来改善识别质量。如果您不想参与，可以在 设置 → 语音质量改善计划 中关闭。
       </p>
     </WKModal>
