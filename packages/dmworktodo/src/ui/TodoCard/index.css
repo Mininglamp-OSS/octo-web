@@ -24,14 +24,14 @@
   background: var(--wk-bg-surface);
 }
 
-/* ─── Active / Selected 状�?─── */
+/* ─── Active / Selected 状态 ─── */
 .wk-matter-card--selected {
   background: var(--wk-bg-surface);
   border-color: var(--wk-color-accent);
   box-shadow: 0 4px 12px rgba(28, 28, 35, 0.04), 0 0 10px 1px rgba(28, 28, 35, 0.04);
 }
 
-/* ─── 第一行：状态标�?+ 日期 ─── */
+/* ─── 第一行：状态标签 + 日期 ─── */
 .wk-matter-card__row-1 {
   display: flex;
   justify-content: space-between;
@@ -113,7 +113,7 @@
   color: var(--wk-text-disabled);
 }
 
-/* ─── 第三行：创建�?+ 负责�?─── */
+/* ─── 第三行：创建人 + 负责人 ─── */
 .wk-matter-card__meta {
   display: flex;
   flex-direction: column;

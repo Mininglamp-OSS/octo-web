@@ -208,7 +208,10 @@ export default function AnchorPopover({
                                 result={r}
                                 renderAvatar={renderAvatar}
                                 renderUserName={renderUserName}
-                                onJump={hasValidMessage ? handleJumpToMessage : undefined}
+                                onJump={r.ok && onJumpToMessage ? () => {
+                                    onClose();
+                                    onJumpToMessage(r.data.message_seq);
+                                } : undefined}
                             />
                         ))}
                 </div>

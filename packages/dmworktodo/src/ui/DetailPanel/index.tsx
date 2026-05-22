@@ -128,14 +128,6 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
     finally { setSubmitting(false); }
   }, [matterId, newComment, submitting, loadComments]);
 
-  const handleDeleteComment = useCallback(async (commentId: string) => {
-    if (!window.confirm('删除这条评论？')) return;
-    try {
-      await api.deleteComment(matterId, commentId);
-      setComments((prev) => prev.filter((c) => c.id !== commentId));
-    } catch { Toast.error('删除评论失败'); }
-  }, [matterId]);
-
   const statusTag = matter ? (STATUS_TAG[matter.status] || STATUS_TAG.open) : STATUS_TAG.open;
 
   return (

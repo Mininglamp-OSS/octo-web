@@ -39,13 +39,13 @@
 }
 
 .wk-matter-side-panel__header-tag--blue {
-  background: #ebf9ff;
-  color: #005694;
+  background: var(--wk-status-active-bg);
+  color: var(--wk-status-active-text);
 }
 
 .wk-matter-side-panel__header-tag--green {
-  background: #ecf9ec;
-  color: #176221;
+  background: var(--wk-status-done-bg);
+  color: var(--wk-status-done-text);
 }
 
 .wk-matter-side-panel__header-tag--gray {

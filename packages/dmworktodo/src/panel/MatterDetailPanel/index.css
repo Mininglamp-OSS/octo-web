@@ -1,5 +1,5 @@
 /*
- * MatterDetailPanel �?严格对齐原型 v19
+ * MatterDetailPanel — 严格对齐原型 v19
  */
 
 /* ─── Main container ─────────────────────────────────── */
@@ -438,7 +438,7 @@ textarea.wk-mp-goal__text--editing {
   flex-shrink: 0;
 }
 
-/* ─── 创建�?/ 负责人（�?Figma 设计稿） ─────────────── */
+/* ─── 创建人 / 负责人（按 Figma 设计稿） ─────────────── */
 .wk-mp-people {
   margin-top: var(--wk-sp-2);
   padding: 0;
@@ -904,8 +904,8 @@ textarea.wk-mp-goal__text--editing {
   background: rgba(239, 68, 68, 0.06);
 }
 
-/* ─── Timeline Panel (对齐原型 v19 群内事件时间�? ────────── */
-/* ─── Timeline Panel（按 Figma 设计�?1411:11453�?────── */
+/* ─── Timeline Panel (对齐原型 v19 群内事件时间线) ────────── */
+/* ─── Timeline Panel（按 Figma 设计稿 1411:11453） ────── */
 .wk-mp-tl {
   margin-top: 0;
   padding: var(--wk-sp-6);
@@ -1101,7 +1101,7 @@ textarea.wk-mp-goal__text--editing {
   font-weight: var(--wk-font-regular);
 }
 
-/* 原消�?anchor button */
+/* 原消息 anchor button */
 .wk-mp-tl__anchor-btn {
   display: inline-flex;
   align-items: center;
@@ -1185,7 +1185,7 @@ textarea.wk-mp-goal__text--editing {
 }
 
 /* ─── Activity (变更记录) ─────────────────────────────── */
-/* ─── Activity (变更记录，按 Figma 设计�? ───────────── */
+/* ─── Activity (变更记录，按 Figma 设计稿) ───────────── */
 .wk-mp-activity {
   padding: 0 var(--wk-sp-4);
   display: flex;
@@ -1337,7 +1337,7 @@ textarea.wk-mp-goal__text--editing {
   border-bottom: none;
 }
 
-/* 目标变更�? 紫色左边�?+ 淡紫背景 (对齐原型 goal_change 高亮) */
+/* 目标变更行: 紫色左边框 + 淡紫背景 (对齐原型 goal_change 高亮) */
 .wk-mp-activity__row--goal {
   padding-left: 8px;
   border-left: 2px solid var(--wk-brand-primary, #7c3aed);
@@ -1480,10 +1480,10 @@ textarea.wk-mp-goal__text--editing {
   color: var(--wk-icon-default);
 }
 
-/* ─── 响应�? 窄宽度适配 (container query) ─────────────────
- * 事项详情面板作为可拖拽宽度的侧栏, 拖到 < 420px �?
+/* ─── 响应式: 窄宽度适配 (container query) ─────────────────
+ * 事项详情面板作为可拖拽宽度的侧栏, 拖到 < 420px 时:
  *   - inner padding 缩减
- *   - activity actor �?max-width 压到 80px 并强制省略号
+ *   - activity actor 列 max-width 压到 80px 并强制省略号
  *   - 关联群卡头部 meta 允许换行
  *   - tabs 在需要时支持横滚
  */

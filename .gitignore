@@ -57,6 +57,7 @@ package-lock.json
 .kiro/settings/mcp.json
 **/figma-spec.md
 **/rawdata.txt
+.kiro/handoff-*.md
 .claude/
 .zed/
 .ftre/memory/
