@@ -352,6 +352,24 @@ function PersonaCreate(props: {
     const [selectedUid, setSelectedUid] = React.useState<string>("")
     const [prompt, setPrompt] = React.useState<string>("")
     const [submitting, setSubmitting] = React.useState<boolean>(false)
+    // 让 VM 的 notifyListener 能驱动本组件重渲染（octo-web#95）。
+    //
+    // 历史背景：`PersonaCreate` 通过父级 `routeContext.push()` 推入 RoutePage 的
+    // WKViewQueue，于是它虽然在 `<Provider>` 的 React 子树里、但 JSX 已经被 WKViewQueue
+    // 捕获到自己的 state 里 —— Provider 在 `notifyListener` 时只 `setState({})` 触发
+    // 自身 render prop 重跑，并不会把新的 props 透传到已经被 WKViewQueue 缓存的
+    // `<PersonaCreate>` 节点。结果 `vm.loadMyBots()` 完成后 `vm.myBots` 已经填好，
+    // 但本组件不会重新读取 vm 上的字段，UI 永远卡在「暂无可关联的 Bot」空态。
+    //
+    // 修法：用 `ProviderListener.addListener` 这条 fan-out 通道（PR 同改 Provider.tsx）
+    // 显式订阅 VM 变化，命中时 `forceUpdate` 重读 `vm.myBots / vm.myBotsLoading`。
+    // 与 Provider 自带的 `listen()` 单插槽不冲突 —— Provider 走 callback，本组件走
+    // Set<listener> 旁路，互不覆盖。
+    const [, forceUpdate] = React.useReducer((x: number) => x + 1, 0)
+    React.useEffect(() => {
+        const unsubscribe = vm.addListener(() => forceUpdate())
+        return unsubscribe
+    }, [vm])
     // 第一次渲染时触发 loadMyBots（避免在 vm 构造里副作用）
     React.useEffect(() => {
         if (vm.myBots.length === 0 && !vm.myBotsLoading) {
@@ -431,4 +449,9 @@ function PersonaCreate(props: {
 
 // 重导出，方便测试和外部引用
 export { PersonaSettings }
+// PersonaCreate 单独导出供测试使用（octo-web#95 fan-out 回归测试需要直接挂载它，
+// 走完整的 routeContext.push 链路在 dmworkbase 这套 React 17 + RTL/react-dom 18
+// 混搭环境里会触发 invalid hook call —— 详见 PersonaSettings/__tests__/createRouteStack.test
+// 顶部注释解释了为什么这里要降级到 ReactDOM legacy render）。
+export { PersonaCreate }
 export { PersonaSettingsVM, PersonaEditVM, hasAnyActiveGrant, refreshActiveGrantCache, clearPersonaActiveCache } from "./vm"
