@@ -48,6 +48,15 @@ export interface ChatConversationListProps {
     onGroupCreated?: () => void
 }
 
+// 「+ 新建分组」入口在三个右键场景共用同一个 modal。建分类成功后,要把当时
+// 右键的会话(添加到关注)或群(移到分组)一并归入新分类,否则就是 bug:用户
+// 以为操作连贯,实际只建了空分类。modal 是无 conv 上下文的全局组件,通过这
+// 个 state 把上下文从右键现场带到 onConfirm。
+type PendingAction =
+    | { kind: 'followToNewCategory'; conv: ConversationWrap }
+    | { kind: 'moveGroupToNewCategory'; groupNo: string }
+    | null
+
 const ChatConversationList: React.FC<ChatConversationListProps> = ({
     conversations,
     filter,
@@ -167,20 +176,16 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
 
     const [createModalVisible, setCreateModalVisible] = useState(false)
 
-    // 「+ 新建分组」入口在三个右键场景共用同一个 modal。建分类成功后,要把当时
-    // 右键的会话(添加到关注)或群(移到分组)一并归入新分类,否则就是 bug:用户
-    // 以为操作连贯,实际只建了空分类。modal 是无 conv 上下文的全局组件,通过这
-    // 个 state 把上下文从右键现场带到 onConfirm。
-    type PendingAction =
-        | { kind: 'followToNewCategory'; conv: ConversationWrap }
-        | { kind: 'moveGroupToNewCategory'; groupNo: string }
-        | null
     const [pendingAction, setPendingAction] = useState<PendingAction>(null)
 
-    // 暴露「打开新建分组 Modal」给外层（如顶部 + 按钮）
+    // 暴露「打开新建分组 Modal」给外层（如顶部 + 按钮）。
+    // 顶部入口无右键上下文,必须先清 pendingAction,避免上次右键残留被误归入新分类。
     React.useEffect(() => {
         if (onOpenCreateCategoryRef) {
-            onOpenCreateCategoryRef.current = () => setCreateModalVisible(true)
+            onOpenCreateCategoryRef.current = () => {
+                setPendingAction(null)
+                setCreateModalVisible(true)
+            }
         }
         return () => {
             if (onOpenCreateCategoryRef) {
@@ -397,7 +402,10 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                     onDeleteCategory={handleDeleteCategory}
                     onSortCategories={sortCategories}
                     onMoveGroupToCategory={handleMoveGroupToCategory}
-                    onOpenCreateCategory={() => setCreateModalVisible(true)}
+                    onOpenCreateCategory={() => {
+                        setPendingAction(null)
+                        setCreateModalVisible(true)
+                    }}
                     onStartGroup={() => {
                         WKApp.endpoints.organizationalLayer(null, {
                             keepSidebarTab: true,
@@ -454,9 +462,14 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                             }
                         }
                         reloadAll()
-                    } finally {
+                        // 只有 createCategory 成功才关 modal。失败时让异常继续上抛,
+                        // 由 CreateCategoryModal 自身 catch 显示"创建失败,请重试"。
                         setPendingAction(null)
                         setCreateModalVisible(false)
+                    } catch (err) {
+                        // 失败也清理右键上下文,避免下次打开时挂着上次的 pending
+                        setPendingAction(null)
+                        throw err
                     }
                 }}
                 onCancel={() => {
