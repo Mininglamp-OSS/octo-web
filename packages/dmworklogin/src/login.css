@@ -12,6 +12,18 @@
     --semi-color-primary-active: #151519;
     --semi-color-primary-active: color-mix(in srgb, var(--wk-color-theme, #1C1C23) 75%, black);
 
+    /* SSO accent surface derives from brand theme; override
+       --wk-sso-accent at deploy time if SSO CTA needs to diverge from
+       --wk-color-theme. Translucent variants use color-mix so they
+       track the configured brand color in custom / dark themes. */
+    --wk-sso-accent: var(--wk-color-theme, #5b5be5);
+    --wk-sso-accent-soft: color-mix(in srgb, var(--wk-sso-accent) 80%, white);
+    --wk-sso-accent-strong: color-mix(in srgb, var(--wk-sso-accent) 85%, black);
+    --wk-sso-accent-shadow: color-mix(in srgb, var(--wk-sso-accent) 32%, transparent);
+    --wk-sso-accent-shadow-hover: color-mix(in srgb, var(--wk-sso-accent) 42%, transparent);
+    --wk-sso-accent-translucent: color-mix(in srgb, var(--wk-sso-accent) 45%, transparent);
+    --wk-sso-accent-dot-ring: color-mix(in srgb, var(--wk-sso-accent) 18%, transparent);
+
     display: flex;
     min-height: 100vh;
     width: 100%;
@@ -226,7 +238,7 @@
     justify-content: center;
     background: var(--semi-color-bg-0, #fff);
     box-sizing: border-box;
-    padding: 40px 48px;
+    padding: 72px 48px 64px;
     overflow-y: auto;
 }
 
@@ -237,9 +249,54 @@
     min-height: 0;
 }
 
+/* ---- Panel breadcrumb (top-left small label) ---- */
+.wk-login-panel-breadcrumb {
+    position: absolute;
+    top: 28px;
+    left: 48px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--semi-color-text-2, #8a8fa8);
+    user-select: none;
+}
+.wk-login-panel-breadcrumb-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--wk-sso-accent);
+    box-shadow: 0 0 0 3px var(--wk-sso-accent-dot-ring);
+}
+
+/* ---- Panel footer (bottom-center copyright + legal) ---- */
+.wk-login-panel-footer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--semi-color-text-2, #9aa0b6);
+}
+.wk-login-panel-footer a {
+    color: var(--semi-color-text-2, #9aa0b6);
+    text-decoration: none;
+    transition: color 120ms ease;
+}
+.wk-login-panel-footer a:hover {
+    color: var(--wk-sso-accent);
+}
+.wk-login-panel-footer-sep {
+    color: rgba(0, 0, 0, 0.15);
+}
+
 .wk-login-content {
     width: 100%;
-    max-width: 400px;
+    max-width: 520px;
 }
 
 /* ---- Logo (inside form panel, mobile fallback) ---- */
@@ -710,6 +767,27 @@
     line-height: 1.6;
 }
 
+/* ---- Download section divider ---- */
+.wk-login-content-download-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 36px 0 18px;
+    color: var(--semi-color-text-2, #9aa0b6);
+    font-size: 12px;
+}
+.wk-login-content-download-divider::before,
+.wk-login-content-download-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--semi-color-border, #eef0f5);
+}
+.wk-login-content-download-divider span {
+    flex-shrink: 0;
+    line-height: 1;
+}
+
 /* ---- Download button ---- */
 .wk-login-content-download {
     display: flex;
@@ -718,9 +796,6 @@
     align-items: center;
     gap: 8px;
     text-align: center;
-    margin-top: 32px;
-    padding-top: 20px;
-    border-top: 1px solid var(--semi-color-border, #eef0f5);
 }
 
 .wk-login-download-btn {
@@ -769,6 +844,22 @@
         width: 100% !important;
         min-height: 100vh;
         padding: 40px 24px;
+    }
+
+    /* On narrow viewports we collapse to a single scrollable column.
+       Keeping the footer absolutely positioned means tall flows
+       (register / reset password / QR / SSO + downloads) scroll
+       underneath it. Flip the breadcrumb + footer back into the
+       normal flow so they grow / shrink the panel naturally. */
+    .wk-login-panel-breadcrumb {
+        position: static;
+        justify-content: center;
+        margin-bottom: 16px;
+    }
+
+    .wk-login-panel-footer {
+        position: static;
+        margin-top: 32px;
     }
 
     .wk-login-content-logo {
@@ -914,58 +1005,67 @@
 /* ---- SSO-first layout ---- */
 .wk-login-panel .wk-login-content-sso-primary.semi-button {
     width: 100%;
-    height: 50px;
-    margin-top: 8px;
-    border-radius: 12px;
-    font-size: 16px;
+    height: 56px;
+    margin-top: 16px;
+    border-radius: 14px;
+    font-size: 17px;
     font-weight: 600;
     letter-spacing: 0.3px;
-    border: 1px solid #5b5be5;
-    background: #5b5be5;
-    color: #fff;
-    box-shadow: 0 4px 12px rgba(91, 91, 229, 0.25);
+    border: none;
+    background: linear-gradient(135deg, var(--wk-sso-accent-soft) 0%, var(--wk-sso-accent) 100%);
+    color: var(--semi-color-white, #fff);
+    box-shadow: 0 8px 24px var(--wk-sso-accent-shadow);
     transition: all 0.2s;
 }
 .wk-login-panel .wk-login-content-sso-primary.semi-button:hover,
 .wk-login-panel .wk-login-content-sso-primary.semi-button:focus {
-    background: #4848d4;
-    border-color: #4848d4;
-    box-shadow: 0 6px 16px rgba(91, 91, 229, 0.35);
+    background: linear-gradient(135deg, var(--wk-sso-accent) 0%, var(--wk-sso-accent-strong) 100%);
+    box-shadow: 0 10px 28px var(--wk-sso-accent-shadow-hover);
     transform: translateY(-1px);
 }
 .wk-login-panel .wk-login-content-sso-primary.semi-button .semi-button-content,
 .wk-login-panel .wk-login-content-sso-primary.semi-button span {
-    color: #fff;
+    color: var(--semi-color-white, #fff);
+}
+.wk-login-content-sso-primary-inner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+.wk-login-content-sso-primary-icon {
+    flex-shrink: 0;
+    color: var(--semi-color-white, #fff);
 }
 
-/* 主按钮下方注释行: 行为 + IdP 信任锚单行展示, 用 · 分隔.
-   单行密度比两行小灰字叠放更清爽; trust 段单独可 hover 出 tooltip. */
+/* 主按钮下方信任锚: 主题色小字 + shield 图标, 强化企业身份信号.
+   IdP 名用 <strong> 加重, 与 "企业级安全" 一起构成 trust 标签. */
 .wk-login-content-sso-meta {
-    margin-top: 10px;
+    margin-top: 14px;
     text-align: center;
-    color: rgba(0, 0, 0, 0.45);
-    font-size: 12px;
+    color: var(--wk-sso-accent);
+    font-size: 13px;
     line-height: 1.6;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-}
-.wk-login-content-sso-meta-sep {
-    color: rgba(0, 0, 0, 0.2);
-}
-.wk-login-content-sso-trust {
-    color: rgba(0, 0, 0, 0.45);
+    gap: 5px;
     cursor: help;
     user-select: none;
-    border-bottom: 1px dotted rgba(0, 0, 0, 0.18);
-    padding-bottom: 1px;
-    transition: color 120ms ease, border-color 120ms ease;
 }
-.wk-login-content-sso-trust:hover {
-    color: rgba(0, 0, 0, 0.75);
-    border-bottom-color: rgba(0, 0, 0, 0.45);
+.wk-login-content-sso-meta-icon {
+    color: var(--wk-sso-accent);
+    flex-shrink: 0;
+    margin-right: 2px;
+}
+.wk-login-content-sso-meta-brand {
+    color: var(--wk-sso-accent);
+    font-weight: 600;
+}
+.wk-login-content-sso-meta-sep {
+    color: var(--wk-sso-accent-translucent);
+    margin: 0 2px;
 }
 
 /* 默认折叠态: 单行小字链接, 紧贴信任锚下方, 不被下载按钮夹在中间 (P1 反馈).

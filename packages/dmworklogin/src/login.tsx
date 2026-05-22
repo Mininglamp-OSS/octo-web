@@ -392,6 +392,12 @@ class Login extends Component<any, LoginState> {
                 <div className="wk-login-panel">
                     {ENTERPRISE_SSO_ENABLED && <OidcResumeEffect vm={vm} />}
                     {ENTERPRISE_SSO_ENABLED && <OidcResumingOverlay vm={vm} />}
+                    {/* 右上小面包屑: 紫色圆点 + 当前登录目标. 给到达 /login 的人一个
+                        "我在哪 / 这个表单会把我送去哪" 的轻确认, 不抢主标题视觉权重. */}
+                    <div className="wk-login-panel-breadcrumb">
+                        <span className="wk-login-panel-breadcrumb-dot" />
+                        <span>登录到 {WKApp.config.appName || 'Octo'} · Web</span>
+                    </div>
                     <div className="wk-login-content">
                         {/* Mobile logo fallback */}
                         <div className="wk-login-content-logo">
@@ -406,12 +412,17 @@ class Login extends Component<any, LoginState> {
                         )}
                         <div className="wk-login-content-phonelogin" style={{ "display": vm.loginType === LoginType.phone ? "block" : "none" }}>
                             <div className="wk-login-content-slogan">欢迎回来</div>
-                            {/* hero 到 CTA 之间一行过渡. SSO 启用时点明渠道 (手机号或邮箱都行),
-                                避免用户误以为只能用邮箱; 与按钮 "登录 / 注册" 是动作 + 渠道的互补. */}
+                            {/* hero 到 CTA 之间两行过渡. SSO 启用时显式说明渠道 + 新用户行为,
+                                两行小字避免用户在主按钮前还需要猜 "点了会发生什么". */}
                             <div className="wk-login-content-slogan-sub">
-                                {ENTERPRISE_SSO_ENABLED && hasSsoProvider
-                                    ? '使用手机号或邮箱即可登录'
-                                    : '登录你的账号以继续'}
+                                {ENTERPRISE_SSO_ENABLED && hasSsoProvider ? (
+                                    <>
+                                        <div>使用 {ssoProvider!.name} 安全登录你的 {WKApp.config.appName || 'Octo'} 账号</div>
+                                        <div>新用户首次登录将自动创建账号</div>
+                                    </>
+                                ) : (
+                                    '登录你的账号以继续'
+                                )}
                             </div>
                             {ENTERPRISE_SSO_ENABLED && hasSsoProvider ? (
                                 // SSO 启用：OIDC provider 作为主 CTA. Aegis 等 IdP 品牌名
@@ -425,20 +436,29 @@ class Login extends Component<any, LoginState> {
                                         disabled={vm.oidcLoading || vm.oidcResuming}
                                         onClick={startSsoLogin}
                                     >
-                                        登录 / 注册
-                                    </Button>
-                                    {/* 主按钮下的注释块: helper(行为) + trust(IdP 来源)
-                                        合到同一行用 "·" 分隔, 避免两行小灰字相邻视觉糊成一团.
-                                        鼠标悬停 trust 段弹出 IdP 完整解释 (借浏览器 title). */}
-                                    <div className="wk-login-content-sso-meta">
-                                        <span>已有账号将自动登录，新用户将自动注册</span>
-                                        <span className="wk-login-content-sso-meta-sep">·</span>
-                                        <span
-                                            className="wk-login-content-sso-trust"
-                                            title={`${ssoProvider!.name} 是 Mininglamp 统一身份服务，登录后可在所有 Mininglamp 产品中通用`}
-                                        >
-                                            由 {ssoProvider!.name} 提供
+                                        <span className="wk-login-content-sso-primary-inner">
+                                            <svg className="wk-login-content-sso-primary-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                                <path d="M12 2 4 5v6c0 5 3.5 9.4 8 11 4.5-1.6 8-6 8-11V5l-8-3z" />
+                                                <path d="m9 12 2 2 4-4" />
+                                            </svg>
+                                            <span>使用 {ssoProvider!.name} 登录</span>
                                         </span>
+                                    </Button>
+                                    {/* 主按钮下方信任锚: shield 图标 + "身份认证由 X 提供 · 企业级安全".
+                                        紫色文案 + IdP 名加粗, 强化"这是企业统一身份, 不是普通登录"的
+                                        视觉信号; 鼠标悬停 trust 段弹出 IdP 完整解释 (借浏览器 title). */}
+                                    <div
+                                        className="wk-login-content-sso-meta"
+                                        title={`通过 ${ssoProvider!.name} 进行统一身份认证，登录后可在所有接入的产品中通用`}
+                                    >
+                                        <svg className="wk-login-content-sso-meta-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                            <path d="M12 2 4 5v6c0 5 3.5 9.4 8 11 4.5-1.6 8-6 8-11V5l-8-3z" />
+                                        </svg>
+                                        <span>身份认证由</span>
+                                        <strong className="wk-login-content-sso-meta-brand">{ssoProvider!.name}</strong>
+                                        <span>提供</span>
+                                        <span className="wk-login-content-sso-meta-sep">·</span>
+                                        <span>企业级安全</span>
                                     </div>
                                     {/* TODO(legacy-login-flag): 暂时隐藏本地密码登录入口, 等
                                         后端 PR 在 /v1/common/appconfig 暴露 legacy_password_login_off
@@ -451,6 +471,11 @@ class Login extends Component<any, LoginState> {
                                             handleLogin={handleLogin}
                                         />
                                     )}
+                                    {/* 下载入口前的分隔线: 两侧细线 + 中间文案,
+                                        从"主登录区"过渡到"也提供移动版"的次级 CTA. */}
+                                    <div className="wk-login-content-download-divider">
+                                        <span>也可下载移动版</span>
+                                    </div>
                                     <div className="wk-login-content-download">
                                         <AndroidDownloadButton />
                                         <IOSDownloadButton />
@@ -730,6 +755,10 @@ class Login extends Component<any, LoginState> {
                                 <button onClick={() => { vm.loginType = LoginType.phone }}>使用账号密码登录</button>
                             </div>
                         </div>
+                    </div>
+                    {/* 右下底栏: 版权, 固定在 panel 底部居中. */}
+                    <div className="wk-login-panel-footer">
+                        <span>© {new Date().getFullYear()} {WKApp.config.appName || 'Octo'}</span>
                     </div>
                 </div>{/* end wk-login-panel */}
             </div>
