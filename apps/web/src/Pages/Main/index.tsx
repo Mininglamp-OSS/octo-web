@@ -114,13 +114,25 @@ export class MainPage extends Component<{}, MainPageState> {
     }
 
     handleSpaceSelected = (spaceId: string) => {
+        // 同步更新 currentSpaceId 与持久化，并立刻 emit space-changed，
+        // 避免随后用户立即触发的"合并转发"等动作读到旧的 spaceId
+        // （此前这些更新都放在 getMySpaces().then 内，存在网络 race）。
+        WKApp.shared.currentSpaceId = spaceId;
+        localStorage.setItem("currentSpaceId", spaceId);
+        const existing = this.state.allSpaces.find(s => s.space_id === spaceId);
+        if (existing) {
+            WKApp.mittBus.emit("space-changed", existing);
+        }
+        WKApp.shared.notifyListener();
+
+        // 后台刷新 Space 列表（用户可能新加入/离开 Space），完成后再补一次
+        // 事件给那些以 Space 对象为入参的监听者（首次拿不到 existing 的情况）。
         SpaceService.shared.getMySpaces().then(spaces => {
             this.setState({ allSpaces: spaces, showJoinSpace: false });
-            WKApp.shared.currentSpaceId = spaceId;
-            localStorage.setItem("currentSpaceId", spaceId);
-            const target = spaces.find(s => s.space_id === spaceId);
-            if (target) WKApp.mittBus.emit("space-changed", target);
-            WKApp.shared.notifyListener();
+            if (!existing) {
+                const target = spaces.find(s => s.space_id === spaceId);
+                if (target) WKApp.mittBus.emit("space-changed", target);
+            }
         }).catch(() => {
             Toast.error("刷新 Space 列表失败，请手动刷新");
         });

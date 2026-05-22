@@ -418,6 +418,7 @@ export class ChatVM extends ProviderListener {
         this._pendingSpaceConversations.clear()
 
         const conversationWraps = new Array<ConversationWrap>()
+        const filteredForSdk = new Array<Conversation>()
         if (conversations && conversations.length > 0) {
             for (const conversation of conversations) {
                 // Space 过滤：复用共享函数（含 channelSpaceMap 缓存）
@@ -426,8 +427,13 @@ export class ChatVM extends ProviderListener {
                 }
                 if (shouldSkipPersonConversationForSpace(conversation)) continue
                 conversationWraps.push(new ConversationWrap(conversation))
+                filteredForSdk.push(conversation)
             }
         }
+        // 将过滤后的会话回填到 SDK 全局缓存，保证其它读取者（合并转发选择器、
+        // todo 等）在切换 Space 后能立刻读到当前 Space 的最近会话/子区，
+        // 而不是看到上一行被清空的空数组。
+        WKSDK.shared().conversationManager.conversations = filteredForSdk
         this.conversations = conversationWraps
         this.loading = false
 

@@ -216,10 +216,17 @@ export function useForwardModal(
 
         // 好友
         const friends = (await WKApp.dataSource.commonDataSource.searchFriends("")) ?? []
-        const fItems = friends.map((info: ChannelInfo) => {
-          channelMapRef.current.set(info.channel.channelID, info.channel)
-          return channelInfoToForwardItem(info)
-        })
+        // 按 channelID 去重：Space 模式下后端 space/{id}/members 可能返回同一
+        // uid 的多条记录（多角色等），不去重会触发 React duplicate key 警告。
+        const seen = new Set<string>()
+        const fItems: ForwardItem[] = []
+        for (const info of friends) {
+          const cid = info.channel.channelID
+          if (seen.has(cid)) continue
+          seen.add(cid)
+          channelMapRef.current.set(cid, info.channel)
+          fItems.push(channelInfoToForwardItem(info))
+        }
         setFriendItems(fItems)
       } finally {
         setLoading(false)
