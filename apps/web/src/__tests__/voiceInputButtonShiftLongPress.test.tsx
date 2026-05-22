@@ -41,15 +41,18 @@ vi.mock("@octo/base/src/Components/MessageInput/VoiceFeedbackNotice", () => ({
   },
 }));
 
+const mockVoiceConfig = { current: null as { feedback_url?: string } | null };
+
 vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => ({
   default: () => ({
     spaceSetting: mockSharedSpaceFeedbackState.spaceSetting,
     loaded: mockSharedSpaceFeedbackState.loaded,
     apiAvailable: mockSharedSpaceFeedbackState.apiAvailable,
-    voiceConfig: null,
+    voiceConfig: mockVoiceConfig.current,
     updateSetting: vi.fn(),
   }),
   getSharedSpaceFeedbackState: () => mockSharedSpaceFeedbackState,
+  getSharedVoiceConfig: () => mockVoiceConfig.current,
 }));
 
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -82,6 +85,7 @@ describe("VoiceInputButton - Left Shift long-press", () => {
     mockSharedSpaceFeedbackState.loaded = false;
     mockSharedSpaceFeedbackState.apiAvailable = false;
     mockSharedSpaceFeedbackState.loadedSpaceId = null;
+    mockVoiceConfig.current = null;
     Object.defineProperty(navigator, "onLine", {
       value: true,
       writable: true,
@@ -429,6 +433,7 @@ describe("VoiceInputButton - Left Shift long-press", () => {
     };
     mockSharedSpaceFeedbackState.loaded = true;
     mockSharedSpaceFeedbackState.apiAvailable = true;
+    mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
     const mockStart = vi.fn();
     mockUseTextareaVoice.mockReturnValue(
@@ -466,6 +471,7 @@ describe("VoiceInputButton - Left Shift long-press", () => {
     };
     mockSharedSpaceFeedbackState.loaded = true;
     mockSharedSpaceFeedbackState.apiAvailable = true;
+    mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
     const mockStart = vi.fn();
     mockUseTextareaVoice.mockReturnValue(

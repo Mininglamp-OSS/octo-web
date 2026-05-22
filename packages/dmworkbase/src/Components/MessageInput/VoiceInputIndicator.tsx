@@ -7,7 +7,7 @@ import "./voiceInput.css";
 import { ChatContextResult } from "../Conversation/chatContext";
 import { VoiceMode } from "../../Service/VoiceService";
 import VoiceFeedbackNotice from "./VoiceFeedbackNotice";
-import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState } from "./useSpaceFeedbackSetting";
+import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, getSharedVoiceConfig } from "./useSpaceFeedbackSetting";
 
 type ReplaceMode = "all" | "selection" | "insert";
 
@@ -276,7 +276,9 @@ export default function VoiceInputIndicator({
             return;
           }
           const feedbackState = getSharedSpaceFeedbackState();
+          const vc = getSharedVoiceConfig();
           if (
+            vc?.feedback_url &&
             feedbackState.spaceSetting?.voice_feedback_on === 1 &&
             feedbackState.spaceSetting?.voice_feedback_notice_acked !== 1
           ) {
@@ -322,7 +324,9 @@ export default function VoiceInputIndicator({
               return;
             }
             const feedbackState = getSharedSpaceFeedbackState();
+            const vc = getSharedVoiceConfig();
             if (
+              vc?.feedback_url &&
               feedbackState.spaceSetting?.voice_feedback_on === 1 &&
               feedbackState.spaceSetting?.voice_feedback_notice_acked !== 1
             ) {
@@ -460,6 +464,7 @@ export default function VoiceInputIndicator({
     setShowModeMenu(false);
 
     if (
+      voiceConfig?.feedback_url &&
       spaceSetting?.voice_feedback_on === 1 &&
       spaceSetting?.voice_feedback_notice_acked !== 1
     ) {
@@ -489,6 +494,7 @@ export default function VoiceInputIndicator({
       return;
     }
     if (
+      voiceConfig?.feedback_url &&
       spaceSetting?.voice_feedback_on === 1 &&
       spaceSetting?.voice_feedback_notice_acked !== 1
     ) {

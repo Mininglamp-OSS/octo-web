@@ -31,7 +31,7 @@ describe("VoiceFeedback", () => {
         modelText: "hello",
         source: "remote",
       });
-      instance!.onTextSubmit({ utteranceId: "u1", userText: "hello" });
+      instance!.submitAll("hello");
 
       const fetchMock = vi.mocked(fetch);
       const call = fetchMock.mock.calls.find(
@@ -64,7 +64,7 @@ describe("VoiceFeedback", () => {
         scene: "chat",
       });
 
-      fb.onTextSubmit({ utteranceId: "u1", userText: "hello world" });
+      fb.submitAll("hello world");
 
       const fetchMock = vi.mocked(fetch);
       const finalCall = fetchMock.mock.calls.find(
@@ -109,52 +109,6 @@ describe("VoiceFeedback", () => {
         (c) => typeof c[0] === "string" && c[0].includes("/local"),
       );
       expect(localCall).toBeUndefined();
-    });
-  });
-
-  describe("onTextSubmit", () => {
-    it("uploads final comparison and removes pending entry", () => {
-      VoiceFeedback.init("https://fb.test");
-      const fb = VoiceFeedback.shared()!;
-
-      fb.onTranscribeResult({
-        utteranceId: "u1",
-        modelText: "original text",
-        source: "remote",
-        requestId: "req-123",
-        scene: "chat",
-      });
-
-      fb.onTextSubmit({ utteranceId: "u1", userText: "edited text" });
-
-      const fetchMock = vi.mocked(fetch);
-      const finalCall = fetchMock.mock.calls.find(
-        (c) => typeof c[0] === "string" && c[0].includes("/final"),
-      );
-      expect(finalCall).toBeDefined();
-
-      const body = JSON.parse(finalCall![1]!.body as string);
-      expect(body.model_text).toBe("original text");
-      expect(body.user_text).toBe("edited text");
-      expect(body.request_id).toBe("req-123");
-      expect(body.scene).toBe("chat");
-      expect(body.source).toBe("remote");
-
-      fb.onTextSubmit({ utteranceId: "u1", userText: "again" });
-      const finalCalls = fetchMock.mock.calls.filter(
-        (c) => typeof c[0] === "string" && c[0].includes("/final"),
-      );
-      expect(finalCalls).toHaveLength(1);
-    });
-
-    it("is no-op when utteranceId does not exist", () => {
-      VoiceFeedback.init("https://fb.test");
-      const fb = VoiceFeedback.shared()!;
-
-      fb.onTextSubmit({ utteranceId: "nonexistent", userText: "text" });
-
-      const fetchMock = vi.mocked(fetch);
-      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 
@@ -242,9 +196,14 @@ describe("VoiceFeedback", () => {
       });
 
       vi.mocked(fetch).mockClear();
-      fb.onTextSubmit({ utteranceId: "u-expired", userText: "text" });
+      fb.submitAll("text");
 
-      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      const finalCalls = vi.mocked(fetch).mock.calls.filter(
+        (c) => typeof c[0] === "string" && (c[0] as string).includes("/final"),
+      );
+      expect(finalCalls).toHaveLength(1);
+      const body = JSON.parse(finalCalls[0][1]!.body as string);
+      expect(body.utterance_id).toBe("u-fresh");
     });
   });
 
@@ -286,10 +245,7 @@ describe("VoiceFeedback", () => {
         modelText: "text",
         source: "remote",
       });
-      VoiceFeedback.shared()?.onTextSubmit({
-        utteranceId: "u1",
-        userText: "text",
-      });
+      VoiceFeedback.shared()?.submitAll("text");
       VoiceFeedback.shared()?.submitAll("text");
 
       expect(vi.mocked(fetch)).not.toHaveBeenCalled();
@@ -311,7 +267,7 @@ describe("VoiceFeedback", () => {
 
       expect(vi.mocked(fetch)).not.toHaveBeenCalled();
 
-      fb.onTextSubmit({ utteranceId: "u1", userText: "hello" });
+      fb.submitAll("hello");
       expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     });
 
@@ -328,7 +284,7 @@ describe("VoiceFeedback", () => {
       fb.disable();
       vi.mocked(fetch).mockClear();
 
-      fb.onTextSubmit({ utteranceId: "u1", userText: "hello" });
+      fb.submitAll("hello");
       expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     });
 
@@ -371,7 +327,7 @@ describe("VoiceFeedback", () => {
         modelText: "hello",
         source: "remote",
       });
-      fb.onTextSubmit({ utteranceId: "u1", userText: "hello" });
+      fb.submitAll("hello");
 
       const fetchMock = vi.mocked(fetch);
       const finalCall = fetchMock.mock.calls.find(

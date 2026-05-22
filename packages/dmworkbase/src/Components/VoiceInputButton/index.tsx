@@ -6,7 +6,7 @@ import useTextareaVoice, { ReplaceMode, SelectionRange } from "./useTextareaVoic
 import type { ChatContextResult } from "../Conversation/chatContext";
 import type { VoiceMode } from "../../Service/VoiceService";
 import VoiceFeedbackNotice from "../MessageInput/VoiceFeedbackNotice";
-import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState } from "../MessageInput/useSpaceFeedbackSetting";
+import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, getSharedVoiceConfig } from "../MessageInput/useSpaceFeedbackSetting";
 import "./index.css";
 
 const VOICE_MODES: { value: VoiceMode; label: string }[] = [
@@ -202,8 +202,10 @@ export default function VoiceInputButton({
               Toast.warning("网络不可用，无法使用语音功能");
               return;
             }
+            const vc = getSharedVoiceConfig();
             const feedbackState = getSharedSpaceFeedbackState();
             if (
+              vc?.feedback_url &&
               feedbackState.spaceSetting?.voice_feedback_on === 1 &&
               feedbackState.spaceSetting?.voice_feedback_notice_acked !== 1
             ) {
@@ -296,6 +298,7 @@ export default function VoiceInputButton({
     }
     if (!inputRef.current) return;
     if (
+      voiceConfig?.feedback_url &&
       spaceSetting?.voice_feedback_on === 1 &&
       spaceSetting?.voice_feedback_notice_acked !== 1
     ) {
@@ -310,6 +313,7 @@ export default function VoiceInputButton({
     setShowMenu(false);
     if (!canRecord || !inputRef.current) return;
     if (
+      voiceConfig?.feedback_url &&
       spaceSetting?.voice_feedback_on === 1 &&
       spaceSetting?.voice_feedback_notice_acked !== 1
     ) {

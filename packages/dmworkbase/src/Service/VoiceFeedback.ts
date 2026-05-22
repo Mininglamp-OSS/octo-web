@@ -83,14 +83,6 @@ export default class VoiceFeedback {
     this.cleanExpired();
   }
 
-  onTextSubmit(params: { utteranceId: string; userText: string }): void {
-    const utterance = this.pending.get(params.utteranceId);
-    if (!utterance) return;
-
-    this.uploadFinal(utterance, params.userText).catch(() => {});
-    this.pending.delete(params.utteranceId);
-  }
-
   submitAll(userText: string): void {
     for (const entry of this.pending.values()) {
       this.uploadFinal(entry, userText).catch(() => {});

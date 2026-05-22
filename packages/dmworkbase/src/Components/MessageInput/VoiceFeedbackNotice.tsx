@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import WKButton from "../WKButton";
 import WKApp from "../../App";
@@ -31,6 +32,7 @@ export default function VoiceFeedbackNotice({
       onCloseRef.current();
     } catch {
       ackedRef.current = false;
+      Toast.error('确认失败，请重试');
     }
   }, []);
 

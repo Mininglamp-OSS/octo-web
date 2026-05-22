@@ -44,7 +44,7 @@ export default function NavVoiceFeedbackItem() {
     }
   }, [loading, spaceSetting, voiceConfig, updateSetting]);
 
-  if (!apiAvailable) return null;
+  if (!apiAvailable || !voiceConfig?.feedback_url) return null;
 
   const privacyUrl = voiceConfig?.feedback_privacy_url;
 

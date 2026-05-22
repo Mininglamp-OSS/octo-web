@@ -48,15 +48,18 @@ const mockSharedSpaceFeedbackState = {
   apiAvailable: false,
 };
 
+const mockVoiceConfig = { current: null as { feedback_url?: string } | null };
+
 vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => ({
   default: () => ({
     spaceSetting: mockSharedSpaceFeedbackState.spaceSetting,
     loaded: mockSharedSpaceFeedbackState.loaded,
     apiAvailable: mockSharedSpaceFeedbackState.apiAvailable,
-    voiceConfig: null,
+    voiceConfig: mockVoiceConfig.current,
     updateSetting: vi.fn(),
   }),
   getSharedSpaceFeedbackState: () => mockSharedSpaceFeedbackState,
+  getSharedVoiceConfig: () => mockVoiceConfig.current,
 }));
 
 import VoiceInputIndicator from "@octo/base/src/Components/MessageInput/VoiceInputIndicator";
@@ -67,6 +70,7 @@ beforeEach(() => {
   mockSharedSpaceFeedbackState.spaceSetting = null;
   mockSharedSpaceFeedbackState.loaded = false;
   mockSharedSpaceFeedbackState.apiAvailable = false;
+  mockVoiceConfig.current = null;
 });
 
 // Default mock return value for useVoiceInput
@@ -801,6 +805,7 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 0,
     };
+    mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
     render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
 
@@ -825,6 +830,7 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 0,
     };
+    mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
     render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
 
@@ -853,6 +859,7 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 1,
     };
+    mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
     render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
 
@@ -877,6 +884,7 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 1,
     };
+    mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
     render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
 

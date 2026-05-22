@@ -106,4 +106,33 @@ describe("useSpaceFeedbackSetting - spaceId isolation", () => {
     const state = getSharedSpaceFeedbackState();
     expect(state.loadedSpaceId).not.toBe("space-a");
   });
+
+  it("voiceFeedbackOn should be false when voice_feedback_on=1 but notice_acked=0 (race condition guard)", async () => {
+    mockGetConfig.mockResolvedValue({ feedback_url: "https://feedback.test" });
+    mockGetSpaceSetting.mockResolvedValueOnce({ voice_feedback_on: 1, voice_feedback_notice_acked: 0 });
+
+    (WKApp.shared as any).currentSpaceId = "space-a";
+    await ensureVoiceFeedbackLoaded();
+
+    const state = getSharedSpaceFeedbackState();
+    expect(state.spaceSetting?.voice_feedback_on).toBe(1);
+    expect(state.spaceSetting?.voice_feedback_notice_acked).toBe(0);
+
+    const allowFeedback =
+      (state.spaceSetting?.voice_feedback_on === 1 && state.spaceSetting?.voice_feedback_notice_acked === 1) ? 1 : 0;
+    expect(allowFeedback).toBe(0);
+  });
+
+  it("voiceFeedbackOn should be true when both voice_feedback_on=1 and notice_acked=1", async () => {
+    mockGetConfig.mockResolvedValue({ feedback_url: "https://feedback.test" });
+    mockGetSpaceSetting.mockResolvedValueOnce({ voice_feedback_on: 1, voice_feedback_notice_acked: 1 });
+
+    (WKApp.shared as any).currentSpaceId = "space-c";
+    await ensureVoiceFeedbackLoaded();
+
+    const state = getSharedSpaceFeedbackState();
+    const allowFeedback =
+      (state.spaceSetting?.voice_feedback_on === 1 && state.spaceSetting?.voice_feedback_notice_acked === 1) ? 1 : 0;
+    expect(allowFeedback).toBe(1);
+  });
 });

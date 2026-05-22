@@ -123,7 +123,7 @@ export default function useVoiceInput(
           fetchAndApplySpaceSetting(spaceId, config.feedback_url).then(() => {
             if (cancelled || spaceSeqRef.current !== seq) return;
             const st = getSharedSpaceFeedbackState();
-            voiceFeedbackOnRef.current = st.spaceSetting?.voice_feedback_on ?? 0;
+            voiceFeedbackOnRef.current = (st.spaceSetting?.voice_feedback_on === 1 && st.spaceSetting?.voice_feedback_notice_acked === 1) ? 1 : 0;
           });
         } else {
           VoiceFeedback.init(undefined);
@@ -178,7 +178,7 @@ export default function useVoiceInput(
         fetchAndApplySpaceSetting(newSpaceId, url).then(() => {
           if (spaceSeqRef.current !== seq) return;
           const st = getSharedSpaceFeedbackState();
-          voiceFeedbackOnRef.current = st.spaceSetting?.voice_feedback_on ?? 0;
+          voiceFeedbackOnRef.current = (st.spaceSetting?.voice_feedback_on === 1 && st.spaceSetting?.voice_feedback_notice_acked === 1) ? 1 : 0;
         });
       }
     };
@@ -191,7 +191,7 @@ export default function useVoiceInput(
   useEffect(() => {
     return subscribeSpaceFeedback(() => {
       const st = getSharedSpaceFeedbackState();
-      voiceFeedbackOnRef.current = st.spaceSetting?.voice_feedback_on ?? 0;
+      voiceFeedbackOnRef.current = (st.spaceSetting?.voice_feedback_on === 1 && st.spaceSetting?.voice_feedback_notice_acked === 1) ? 1 : 0;
     });
   }, []);
 
