@@ -59,7 +59,7 @@ export default function VoiceInputIndicator({
   // Voice mode menu state (不保存选中的模式，每次都是临时选择)
   const [showModeMenu, setShowModeMenu] = useState(false);
   const [showFeedbackNotice, setShowFeedbackNotice] = useState(false);
-  const { spaceSetting, voiceConfig, updateSetting } = useSpaceFeedbackSetting();
+  const { spaceSetting, loaded, voiceConfig, updateSetting } = useSpaceFeedbackSetting();
 
   // Long-press ShiftLeft state
   const shiftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -277,6 +277,9 @@ export default function VoiceInputIndicator({
           }
           const feedbackState = getSharedSpaceFeedbackState();
           const vc = getSharedVoiceConfig();
+          if (vc?.feedback_url && !feedbackState.loaded) {
+            return;
+          }
           if (
             vc?.feedback_url &&
             feedbackState.spaceSetting?.voice_feedback_on === 1 &&
@@ -325,6 +328,10 @@ export default function VoiceInputIndicator({
             }
             const feedbackState = getSharedSpaceFeedbackState();
             const vc = getSharedVoiceConfig();
+            if (vc?.feedback_url && !feedbackState.loaded) {
+              setIsPreparing(false);
+              return;
+            }
             if (
               vc?.feedback_url &&
               feedbackState.spaceSetting?.voice_feedback_on === 1 &&
@@ -463,6 +470,9 @@ export default function VoiceInputIndicator({
   const handleModeSelect = (selectedMode: VoiceMode) => {
     setShowModeMenu(false);
 
+    if (voiceConfig?.feedback_url && !loaded) {
+      return;
+    }
     if (
       voiceConfig?.feedback_url &&
       spaceSetting?.voice_feedback_on === 1 &&
@@ -491,6 +501,9 @@ export default function VoiceInputIndicator({
 
     if (!canRecord) {
       Toast.warning("网络不可用，无法使用语音功能");
+      return;
+    }
+    if (voiceConfig?.feedback_url && !loaded) {
       return;
     }
     if (

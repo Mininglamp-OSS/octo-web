@@ -55,6 +55,9 @@ export function setSharedSpaceSetting(setting: SpaceSetting | null, apiAvailable
 
 export function resetSharedSpaceSetting() {
   sharedState = { spaceSetting: null, loaded: false, apiAvailable: false, loadedSpaceId: null };
+  ensureInflightSpaceId = null;
+  inflightPromise = null;
+  configPromise = null;
   notify();
 }
 
@@ -90,35 +93,42 @@ export async function fetchAndApplySpaceSetting(spaceId: string, feedbackUrl?: s
 }
 
 let ensureInflightSpaceId: string | null = null;
+let inflightPromise: Promise<void> | null = null;
 let configPromise: Promise<VoiceConfig> | null = null;
 
-export async function ensureVoiceFeedbackLoaded(): Promise<void> {
+export function ensureVoiceFeedbackLoaded(): Promise<void> {
   const spaceId = WKApp.shared.currentSpaceId;
-  if (!spaceId) return;
+  if (!spaceId) return Promise.resolve();
 
-  if (sharedState.loaded && sharedState.apiAvailable && sharedState.loadedSpaceId === spaceId) return;
+  if (sharedState.loaded && sharedState.apiAvailable && sharedState.loadedSpaceId === spaceId) return Promise.resolve();
 
-  if (ensureInflightSpaceId === spaceId) return;
+  if (ensureInflightSpaceId === spaceId && inflightPromise) {
+    return inflightPromise;
+  }
 
   ensureInflightSpaceId = spaceId;
-  try {
-    if (!configPromise) {
-      configPromise = VoiceService.shared.getConfig();
-    }
-    const config = await configPromise;
-    if (WKApp.shared.currentSpaceId !== spaceId) return;
+  inflightPromise = (async () => {
+    try {
+      if (!configPromise) {
+        configPromise = VoiceService.shared.getConfig();
+      }
+      const config = await configPromise;
+      if (WKApp.shared.currentSpaceId !== spaceId) return;
 
-    if (config.feedback_url) {
-      setSharedVoiceConfig(config);
-      await fetchAndApplySpaceSetting(spaceId, config.feedback_url);
+      if (config.feedback_url) {
+        setSharedVoiceConfig(config);
+        await fetchAndApplySpaceSetting(spaceId, config.feedback_url);
+      }
+    } catch {
+      configPromise = null;
+    } finally {
+      if (ensureInflightSpaceId === spaceId) {
+        ensureInflightSpaceId = null;
+        inflightPromise = null;
+      }
     }
-  } catch {
-    configPromise = null; // allow retry on next call
-  } finally {
-    if (ensureInflightSpaceId === spaceId) {
-      ensureInflightSpaceId = null;
-    }
-  }
+  })();
+  return inflightPromise;
 }
 
 export async function toggleVoiceFeedback(

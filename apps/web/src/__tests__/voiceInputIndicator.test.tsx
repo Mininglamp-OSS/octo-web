@@ -805,6 +805,7 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 0,
     };
+    mockSharedSpaceFeedbackState.loaded = true;
     mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
     render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
@@ -830,6 +831,7 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 0,
     };
+    mockSharedSpaceFeedbackState.loaded = true;
     mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
     render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
@@ -859,6 +861,7 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 1,
     };
+    mockSharedSpaceFeedbackState.loaded = true;
     mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
     render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
@@ -884,6 +887,7 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 1,
     };
+    mockSharedSpaceFeedbackState.loaded = true;
     mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
     render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
@@ -904,6 +908,93 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
     });
 
     expect(startRecording).toHaveBeenCalled();
+    const notice = document.querySelector(".voice-feedback-notice");
+    expect(notice).toBeNull();
+  });
+});
+
+describe("VoiceInputIndicator - fail-closed when settings not loaded", () => {
+  let startRecording: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    startRecording = vi.fn();
+
+    Object.defineProperty(navigator, "onLine", {
+      value: true,
+      writable: true,
+      configurable: true,
+    });
+
+    mockSharedSpaceFeedbackState.spaceSetting = null;
+    mockSharedSpaceFeedbackState.loaded = false;
+    mockSharedSpaceFeedbackState.apiAvailable = false;
+    mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
+
+    mockUseVoiceInput.mockReturnValue(
+      createMockHookReturn({
+        isVoiceEnabled: true,
+        startRecording,
+      })
+    );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it("should NOT start recording on click when loaded=false and feedback_url exists", async () => {
+    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+
+    const button = document.querySelector(".wk-voice-button");
+    await act(async () => {
+      fireEvent.click(button!);
+    });
+
+    expect(startRecording).not.toHaveBeenCalled();
+    const notice = document.querySelector(".voice-feedback-notice");
+    expect(notice).toBeNull();
+  });
+
+  it("Shift+Cmd+Space should silently block when loaded=false", async () => {
+    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.keyDown(window, {
+        code: "Space",
+        shiftKey: true,
+        metaKey: true,
+        repeat: false,
+        ctrlKey: false,
+        altKey: false,
+      });
+    });
+
+    expect(startRecording).not.toHaveBeenCalled();
+    const notice = document.querySelector(".voice-feedback-notice");
+    expect(notice).toBeNull();
+  });
+
+  it("long-press ShiftLeft should silently block when loaded=false", async () => {
+    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.keyDown(window, {
+        code: "ShiftLeft",
+        shiftKey: true,
+        repeat: false,
+        metaKey: false,
+        ctrlKey: false,
+        altKey: false,
+      });
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(startRecording).not.toHaveBeenCalled();
     const notice = document.querySelector(".voice-feedback-notice");
     expect(notice).toBeNull();
   });

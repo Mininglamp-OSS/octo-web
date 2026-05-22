@@ -136,3 +136,46 @@ describe("useSpaceFeedbackSetting - spaceId isolation", () => {
     expect(allowFeedback).toBe(1);
   });
 });
+
+describe("ensureVoiceFeedbackLoaded - inflight promise deduplication", () => {
+  beforeEach(() => {
+    resetSharedSpaceSetting();
+    vi.clearAllMocks();
+    (WKApp.shared as any).currentSpaceId = "space-dedup";
+  });
+
+  it("should return the same promise for concurrent calls with same spaceId", async () => {
+    let resolveConfig: (value: any) => void;
+    const configDeferred = new Promise<any>((resolve) => {
+      resolveConfig = resolve;
+    });
+    mockGetConfig.mockReturnValue(configDeferred);
+    mockGetSpaceSetting.mockResolvedValue({ voice_feedback_on: 0, voice_feedback_notice_acked: 0 });
+
+    const p1 = ensureVoiceFeedbackLoaded();
+    const p2 = ensureVoiceFeedbackLoaded();
+
+    expect(p1).toBe(p2);
+
+    resolveConfig!({ feedback_url: "https://feedback.test" });
+    await p1;
+    await p2;
+
+    expect(mockGetConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it("should allow new call after previous completes", async () => {
+    mockGetConfig.mockResolvedValue({ feedback_url: "https://feedback.test" });
+    mockGetSpaceSetting.mockResolvedValue({ voice_feedback_on: 0, voice_feedback_notice_acked: 0 });
+
+    await ensureVoiceFeedbackLoaded();
+
+    (WKApp.shared as any).currentSpaceId = "space-dedup-2";
+    mockGetSpaceSetting.mockResolvedValue({ voice_feedback_on: 1, voice_feedback_notice_acked: 1 });
+
+    await ensureVoiceFeedbackLoaded();
+
+    const state = getSharedSpaceFeedbackState();
+    expect(state.loadedSpaceId).toBe("space-dedup-2");
+  });
+});

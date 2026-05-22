@@ -579,3 +579,94 @@ describe("VoiceInputButton - mode menu", () => {
     expect(mockStart).toHaveBeenCalled();
   });
 });
+
+describe("VoiceInputButton - fail-closed when settings not loaded", () => {
+  beforeEach(() => {
+    mockSharedSpaceFeedbackState.spaceSetting = null;
+    mockSharedSpaceFeedbackState.loaded = false;
+    mockSharedSpaceFeedbackState.apiAvailable = false;
+    mockSharedSpaceFeedbackState.loadedSpaceId = null;
+    mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
+    Object.defineProperty(navigator, "onLine", {
+      value: true,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should NOT call startRecording on click when loaded=false and feedback_url exists", async () => {
+    const mockStart = vi.fn();
+    mockUseTextareaVoice.mockReturnValue(
+      createMockReturn({ startRecording: mockStart })
+    );
+
+    render(
+      <VoiceInputButton
+        inputRef={createInputRef()}
+        onTranscribed={vi.fn()}
+      />
+    );
+
+    const root = document.querySelector(".wk-vib");
+    await act(async () => {
+      fireEvent.click(root!);
+    });
+
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it("should NOT call startRecording via mode menu when loaded=false and feedback_url exists", async () => {
+    const mockStart = vi.fn();
+    mockUseTextareaVoice.mockReturnValue(
+      createMockReturn({ startRecording: mockStart })
+    );
+
+    render(
+      <VoiceInputButton
+        inputRef={createInputRef()}
+        onTranscribed={vi.fn()}
+      />
+    );
+
+    const root = document.querySelector(".wk-vib");
+    await act(async () => {
+      fireEvent.click(root!);
+    });
+
+    expect(mockStart).not.toHaveBeenCalled();
+    const notice = document.querySelector(".voice-feedback-notice");
+    expect(notice).toBeNull();
+  });
+
+  it("should allow recording when loaded=true and feedback_url exists", async () => {
+    mockSharedSpaceFeedbackState.loaded = true;
+    mockSharedSpaceFeedbackState.apiAvailable = true;
+    mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_feedback_on: 0,
+      voice_feedback_notice_acked: 0,
+    };
+
+    const mockStart = vi.fn();
+    mockUseTextareaVoice.mockReturnValue(
+      createMockReturn({ startRecording: mockStart })
+    );
+
+    render(
+      <VoiceInputButton
+        inputRef={createInputRef()}
+        onTranscribed={vi.fn()}
+      />
+    );
+
+    const root = document.querySelector(".wk-vib");
+    await act(async () => {
+      fireEvent.click(root!);
+    });
+
+    expect(mockStart).toHaveBeenCalledWith("append_only");
+  });
+});

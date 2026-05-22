@@ -44,7 +44,7 @@ export default function VoiceInputButton({
   const [showMenu, setShowMenu] = useState(false);
   const [showFeedbackNotice, setShowFeedbackNotice] = useState(false);
   const buttonRef = useRef<HTMLDivElement>(null);
-  const { spaceSetting, voiceConfig, updateSetting } = useSpaceFeedbackSetting();
+  const { spaceSetting, loaded, voiceConfig, updateSetting } = useSpaceFeedbackSetting();
 
   const {
     isRecording,
@@ -204,6 +204,9 @@ export default function VoiceInputButton({
             }
             const vc = getSharedVoiceConfig();
             const feedbackState = getSharedSpaceFeedbackState();
+            if (vc?.feedback_url && !feedbackState.loaded) {
+              return;
+            }
             if (
               vc?.feedback_url &&
               feedbackState.spaceSetting?.voice_feedback_on === 1 &&
@@ -297,6 +300,9 @@ export default function VoiceInputButton({
       return;
     }
     if (!inputRef.current) return;
+    if (voiceConfig?.feedback_url && !loaded) {
+      return;
+    }
     if (
       voiceConfig?.feedback_url &&
       spaceSetting?.voice_feedback_on === 1 &&
@@ -312,6 +318,9 @@ export default function VoiceInputButton({
   const handleModeSelect = (selectedMode: VoiceMode) => {
     setShowMenu(false);
     if (!canRecord || !inputRef.current) return;
+    if (voiceConfig?.feedback_url && !loaded) {
+      return;
+    }
     if (
       voiceConfig?.feedback_url &&
       spaceSetting?.voice_feedback_on === 1 &&
