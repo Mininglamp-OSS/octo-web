@@ -410,8 +410,19 @@ export class ChatVM extends ProviderListener {
         this.loading = true
         this.notifyListener()
 
+        // 快照本次请求对应的 Space,sync 回来后比对 —— 快速 A→B→C 切换时,
+        // B 的回包可能晚于 C 的回包到达;如果直接写入会把 C 的 cache 覆盖成 B 的
+        // (甚至空数组,见 dmworkdatasource/module.ts 的 stale guard)。
+        const requestSpaceId = WKApp.shared.currentSpaceId
+
         // 先拉取数据，避免清空列表导致 UI 闪烁（fix #266）
         const conversations = await WKSDK.shared().conversationManager.sync({})
+
+        // 回来已经不是本次请求对应的 Space —— 当前 Space 自有更新一次 sync,
+        // 直接放弃本次结果。loading 留给新一次 sync 收尾,避免和 loading=false 冲突。
+        if (WKApp.shared.currentSpaceId !== requestSpaceId) {
+            return
+        }
 
         // _pendingSpaceConversations 是 ChatVM 自己的延迟队列,跟 SDK cache 无关,
         // 切 Space 时清掉避免旧 Space 排队中的 incoming 落入新 Space 视图。
