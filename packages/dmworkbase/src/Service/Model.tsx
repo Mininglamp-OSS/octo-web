@@ -510,9 +510,10 @@ export class MessageWrap {
                 continue
             }
 
-            // Defensive check: @all / @所有人 should not have personal entity
+            // Defensive check: broadcast tokens (@all / @所有人 / @所有AI)
+            // should not bind to personal entities.
             const mentionName = mentionText.slice(1)
-            if (mentionName.toLowerCase() === 'all' || mentionName === '所有人') {
+            if (mentionName.toLowerCase() === 'all' || mentionName === '所有人' || mentionName === '所有AI') {
                 parts.push(new Part(PartType.text, mentionText))
                 cursor = entity.offset + entity.length
                 continue
@@ -541,8 +542,12 @@ export class MessageWrap {
             const matchText = match[0]
             const mentionName = matchText.slice(1)
 
-            // Skip @all / @所有人 — these correspond to mentionAll, not individual uid
-            if (mentionName.toLowerCase() === 'all' || mentionName === '所有人') {
+            // Skip @all / @所有人 / @所有AI — these correspond to broadcast
+            // flags (mentionAll / humans / ais), not individual uid mentions.
+            // @所有AI was added for GH#100: client-side bot UID expansion puts
+            // routing UIDs into mention.uids, but the broadcast text token must
+            // not bind to any of them.
+            if (mentionName.toLowerCase() === 'all' || mentionName === '所有人' || mentionName === '所有AI') {
                 continue
             }
 
