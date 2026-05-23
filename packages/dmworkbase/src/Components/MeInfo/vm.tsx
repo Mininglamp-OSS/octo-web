@@ -17,7 +17,21 @@ import { ChannelInfo, ChannelTypePerson } from "wukongimjssdk";
 import { Convert } from "../../Service/Convert";
 import { isRealnameVerified } from "../../Utils/displayName";
 import { resolveRealnameVerifyUrl } from "./realnameVerifyUrl";
-import PersonaSettings from "../PersonaSettings";
+import ExperimentalFeatures from "../ExperimentalFeatures";
+
+/**
+ * 「实验性功能」入口在 MeInfo 默认隐藏 —— 通过连击「OCTO 号」行 5 次解锁
+ * （类似 Android 开发者模式）。解锁后写 localStorage flag，sections() 重新
+ * 渲染时读 flag 决定是否挂入口。
+ *
+ * - LAB_MODE_TAP_TARGET：触发解锁需要的连击次数。
+ * - LAB_MODE_TAP_WINDOW_MS：相邻两次点击的最大时间间隔（毫秒），超出则计数重置。
+ *   2000ms 对照 Android 开发者模式的 1500–2000ms 经验值，留一点余量给慢手用户。
+ * - LAB_MODE_STORAGE_KEY：localStorage key，独立命名空间避免和其它 flag 撞。
+ */
+const LAB_MODE_TAP_TARGET = 5;
+const LAB_MODE_TAP_WINDOW_MS = 2000;
+const LAB_MODE_STORAGE_KEY = "lab_mode_enabled";
 
 /**
  * MeInfoVM — 自己的「个人信息 / 设置」页面 ViewModel
@@ -61,6 +75,14 @@ export class MeInfoVM extends ProviderListener {
     channelInfoListener!:ChannelInfoListener
     /** 本页加载时主动拉取的自身 profile（含 realname_verified / real_name） */
     selfChannelInfo?: ChannelInfo
+
+    /**
+     * 「OCTO 号」行的连击解锁状态。实例变量即可 —— 不需要进 state，因为
+     * 中间过程不渲染 UI（只在第 N 次解锁的瞬间才 Toast + notifyListener）。
+     * 计数窗口逻辑见 LAB_MODE_TAP_WINDOW_MS 注释。
+     */
+    private labModeTapCount = 0
+    private labModeLastTapTime = 0
 
     didMount(): void {
         this.channelInfoListener = (channelInfo:ChannelInfo)=>{
@@ -374,7 +396,7 @@ export class MeInfoVM extends ProviderListener {
                         title: `${WKApp.config.appName}号`,
                         subTitle: WKApp.loginInfo.shortNo,
                         onClick: () => {
-
+                            this.handleShortNoTap()
                         }
                     }
                 }),
@@ -439,46 +461,85 @@ export class MeInfoVM extends ProviderListener {
             ]
         }))
 
-        // 「我的分身」入口 — Persona Clone / AI On-Behalf-Of (PR-C, GH octo-web#46)。
-        // 复用 RoutePage + Section/Row DSL：点击 Row 用 context.push 把 PersonaSettings
-        // 推进当前 MeInfo 栈，与「我的二维码」同款交互。
+        // 「我的分身」入口在 v1.x 收进「实验性功能」子页面（YUJ-1797 / GH octo-web#98）。
+        // MeInfo 默认不再直接挂入口；用户连击「OCTO 号」行 5 次解锁后写入
+        // localStorage flag，此处读 flag 决定是否挂入。子页面 ExperimentalFeatures
+        // 内部仍以 routeContext 透传方式 push PersonaSettings，与 YUJ-1435 的
+        // 「共享一根 back arrow」约束保持一致。
         //
-        // YUJ-1435 (2026-05-20)：把 MeInfo 自己的 RouteContext 透传给 PersonaSettings，
-        // 让其 PersonaCreate / PersonaEdit 等子页面直接 push 到 MeInfo 这一层 stack。
-        // 之前 PersonaSettings 内部自带一层 RoutePage，会与 MeInfo 这层叠两个 header
-        // → 用户看到两个 ← 返回按钮。透传后嵌套 RoutePage 不再渲染，仅留 MeInfo 这层
-        // header，整条「MeInfo → 分身列表 → 分身详情」走同一根 back arrow（语义也
-        // 更清晰：在详情页按返回先回列表，再按一次回 MeInfo）。
-        //
-        // 因为不再有嵌套 RoutePage，PersonaSettings 根级的 onClose 钩子在嵌入模式下
-        // 不会被触发（保留 prop 给未来 settings panel 模态化链路用）。push 时附带
-        // RouteContextConfig({ title: "我的分身" }) 让 MeInfo 的 header 标题正确切换。
-        //
-        // 设计取舍：这里**不** prefetch / 不查 active grant 状态，subTitle 故意留空，
-        // 进入子页才拉数据（后端 PR-A 未 merge 时会 404，子页 vm 已做 graceful empty
-        // 态）。原因：本页是高频入口（每次开 MeInfo 都跑 sections()），多塞一次 GET
-        // /v1/obo/grants 不划算；而且 PR-A merge 前每次都打 404，日志噪音难处理。
-        //
-        // Section 故意单独成 section（不并入「账号安全」），原因是 v1 之后这块会扩成
-        // 「我的分身 / 草稿审批 / 活动日志」三行，提前做好视觉分组占位。
-        sections.push(new Section({
-            rows: [
-                new Row({
-                    cell: ListItem,
-                    properties: {
-                        title: "我的分身",
-                        subTitle: "",
-                        onClick: () => {
-                            context.push(
-                                <PersonaSettings routeContext={context} />,
-                                new RouteContextConfig({ title: "我的分身" }),
-                            )
+        // 读 flag 失败（譬如禁用 localStorage 的隐私模式）按未解锁处理，不弹错误。
+        if (this.isLabModeEnabled()) {
+            sections.push(new Section({
+                rows: [
+                    new Row({
+                        cell: ListItem,
+                        properties: {
+                            title: "🧪 实验性功能",
+                            subTitle: "",
+                            onClick: () => {
+                                context.push(
+                                    <ExperimentalFeatures routeContext={context} />,
+                                    new RouteContextConfig({ title: "实验性功能" }),
+                                )
+                            }
                         }
-                    }
-                })
-            ]
-        }))
+                    })
+                ]
+            }))
+        }
 
         return sections
+    }
+
+    /**
+     * 「OCTO 号」行连击解锁实验性功能 —— 类似 Android 开发者模式。
+     *
+     * 计数语义：
+     *   - 与上次点击间隔 < LAB_MODE_TAP_WINDOW_MS → 计数 +1（连击保持）。
+     *   - 否则重置为 1（新一轮连击的第一下）。
+     *   - 达到 LAB_MODE_TAP_TARGET → 写 localStorage flag、Toast 成功、
+     *     调 notifyListener 触发 sections 重渲染，把入口挂出来；同时清零计数
+     *     避免再连击重复触发 Toast。
+     *
+     * 已解锁时直接 no-op：不重弹 Toast，避免反复点击噪音；用户若想关闭实验性
+     * 功能，目前没有 UI 入口（后续若需要可放在 ExperimentalFeatures 子页面里做开关）。
+     *
+     * localStorage 写入失败（隐私模式 / 配额满）静默吞掉 —— 用户最多体验到
+     * 「点 5 下没反应」，不阻塞主页面其它交互。
+     */
+    private handleShortNoTap() {
+        if (this.isLabModeEnabled()) {
+            return
+        }
+        const now = Date.now()
+        if (now - this.labModeLastTapTime < LAB_MODE_TAP_WINDOW_MS) {
+            this.labModeTapCount += 1
+        } else {
+            this.labModeTapCount = 1
+        }
+        this.labModeLastTapTime = now
+        if (this.labModeTapCount < LAB_MODE_TAP_TARGET) {
+            return
+        }
+        this.labModeTapCount = 0
+        try {
+            window.localStorage.setItem(LAB_MODE_STORAGE_KEY, "1")
+        } catch {
+            // 隐私模式 / 配额满 / 非浏览器宿主下静默降级 —— 不阻塞主流程。
+            return
+        }
+        Toast.success("已开启实验性功能 🧪")
+        this.notifyListener()
+    }
+
+    /**
+     * 读 localStorage 的 lab_mode flag。读失败（譬如沙箱）一律按未解锁处理。
+     */
+    private isLabModeEnabled(): boolean {
+        try {
+            return window.localStorage.getItem(LAB_MODE_STORAGE_KEY) === "1"
+        } catch {
+            return false
+        }
     }
 }
