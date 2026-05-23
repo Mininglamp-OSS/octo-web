@@ -435,7 +435,16 @@ export class MessageWrap {
         }
 
         if (mention.uids && Array.isArray(mention.uids) && mention.uids.length > 0) {
-            return this.parseMentionLegacy(text, mention.uids)
+            // GH#100: when mention.ais is set, mention.uids may contain
+            // server-expanded bot routing UIDs that have no corresponding
+            // @text token in the message. parseMentionLegacy binds UIDs
+            // to @-tokens by position, so extra routing UIDs would
+            // mis-bind to unrelated @-words. Skip legacy parsing when
+            // ais is present — the @所有AI pill is rendered separately
+            // by mentionRender.ts via the ais flag.
+            if (!(mention as any).ais) {
+                return this.parseMentionLegacy(text, mention.uids)
+            }
         }
 
         // mention.all：把文本中的 @所有人/@all 替换成 uid="all" 的 mention Part
