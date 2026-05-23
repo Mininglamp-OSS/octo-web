@@ -271,6 +271,25 @@ export default function MatterDetailPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadOutputs]);
 
+  // 订阅 wk:matter-updated: 关联群 link/unlink 后 matter.channels 会变,
+  // 后端 outputs 也可能因为 channel 变化产生新行 (LLM 路径) 或被遮罩
+  // (UI 层 channel-membership gate)。跟 activities 同样的处理: 收到事件
+  // 重拉 outputs 当前查询, 保证 tab 数据新鲜。
+  useEffect(() => {
+    if (!matterId) return;
+    const handler = (data: { matterId: string }) => {
+      if (data?.matterId === matterId) {
+        loadOutputs(undefined, outputsQuery);
+      }
+    };
+    WKApp.mittBus.on("wk:matter-updated", handler);
+    return () => {
+      WKApp.mittBus.off("wk:matter-updated", handler);
+    };
+    // 依赖 outputsQuery 让事件处理器拿到最新搜索词; loadOutputs 已经
+    // 是 useCallback 稳定引用 (依赖 matterId), 这里直接列出。
+  }, [matterId, loadOutputs, outputsQuery]);
+
   const handleOutputsSearch = useCallback(
     (q: string) => {
       // 注: setOutputsCursor 不需要在这里清, loadOutputs 收到非 cursor 调用会
@@ -299,20 +318,31 @@ export default function MatterDetailPanel({
   // 安全: 跟 Messages/File 的 handlePreview 一致, 通过 resolveAndGuardUrl
   // 一步走完 (getFileURL 解析相对路径 → isSafeUrl 拒绝危险协议)。后端
   // outputs 接口返回的 file_url 不可信, 必须验证。
+  //
+  // sourceChannelId 解析: MatterOutput.source_channel_id 是 matter_channels.id
+  // (UUID), 但 wk:file-preview 的消费者 (Pages/Chat._onFilePreview, ThreadPanel)
+  // 期待的是 IM channel_id。从 matter.channels 反查拿到真实 IM channel_id +
+  // channel_type 再传给 mittBus, 避免 thread-handoff 路径误判。找不到对应行
+  // (channel 已解关联 / 数据漂移) 时省略 sourceChannelId, 让 _onFilePreview
+  // 走正常预览分支。
   const handleOutputPreview = useCallback(
     (item: MatterOutput) => {
       const url = resolveAndGuardUrl(item.file_url);
       if (!url) return;
       const ext = getExtension("", item.file_name);
+      const matchedCh = (matter?.channels || []).find(
+        (ch) => ch.id === item.source_channel_id,
+      );
       WKApp.mittBus.emit("wk:file-preview", {
         url,
         name: item.file_name || "未知文件",
         extension: ext,
         size: item.file_size,
-        sourceChannelId: item.source_channel_id,
+        sourceChannelId: matchedCh?.channel_id,
+        sourceChannelType: matchedCh?.channel_type,
       });
     },
-    [],
+    [matter?.channels],
   );
 
   // 文件下载: 跟 Messages/File 的 handleDownload 一致的两步,

@@ -136,8 +136,12 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
   const [searchValue, setSearchValue] = useState(query);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 把外部 query 同步回输入框 (matter 切换时 panel 会清空 query 来重置)。
+  // 注: 用户正在输入时, 外部 query 已经是 trim 过的值, 直接覆盖会吃掉
+  // 用户输入的前后空格。所以只在 trimmed 不匹配时才覆盖, 让本地输入态
+  // 保留用户的原始空格不被 round-trip 撞掉 (review #97 yujiawei P2-3)。
   useEffect(() => {
-    setSearchValue(query);
+    setSearchValue((prev) => (prev.trim() === query ? prev : query));
   }, [query]);
 
   useEffect(() => {
