@@ -1,6 +1,8 @@
 import WKApp from "../App"
 import { ChannelTypePerson, ChannelTypeGroup, Channel, Conversation, Message, WKSDK } from "wukongimjssdk"
 import { hasSpacePrefix } from "./SpacePrefix"
+import { ChannelTypeCommunityTopic } from "./Const"
+import { parseThreadChannelId } from "./Thread"
 
 export type JoinSpaceStatus = "NEED_APPROVAL" | "PENDING"
 
@@ -109,13 +111,16 @@ function getMyMembershipSourceSpaceId(channel: Channel): string | undefined {
  * - 群聊（无前缀）→ 查 channelSpaceMap 缓存 → channelInfo.orgData.space_id
  * - 都未命中 → fail-closed（先跳过；channelInfo 回调拿到权威 space_id 后
  *              channelListener 会二次检查并补回）。
+ * - CommunityTopic（子区）→ 跟父群走（用父群 channelSpaceMap 缓存）。
+ *              父群缓存未命中 → fail-open（子区不能 fail-closed，否则永久隐藏）。
  *
- * GH octo-web#107: 由 fail-open 改为 fail-closed。fail-open 会让实时 WS
- * 推送的、归属其他 Space 的群短暂出现在当前 Space 视图（即使 channelInfo 后续
- * 把它移除）。新策略下，octo-server PR#154+ 的 conversation sync 已经在
- * channelSpaceMap / channelMySourceSpaceMap 里预填了权威值，命中率覆盖
- * 绝大多数场景；只有真正全新的 WS 推送会暂时被过滤，等 channelInfo 到达
- * 后通过 channelListener 的待定队列恢复显示。
+ * GH octo-web#107: 由 fail-open 改为 fail-closed（仅 Group 类型）。fail-open
+ * 会让实时 WS 推送的、归属其他 Space 的群短暂出现在当前 Space 视图（即使
+ * channelInfo 后续把它移除）。新策略下，octo-server PR#154+ 的 conversation
+ * sync 已经在 channelSpaceMap / channelMySourceSpaceMap 里预填了权威值，命中率
+ * 覆盖绝大多数场景；只有真正全新的 WS 推送会暂时被过滤，等 channelInfo 到达
+ * 后通过 channelListener 的待定队列恢复显示。Person / CommunityTopic 保持
+ * fail-open（私聊从来不过滤；子区不能在父群尚未确权时永久消失）。
  *
  * 外部群兼容：当群归属 Space 与当前 Space 不一致时，额外检查自己是否
  * 以"当前 Space"身份加入了该群（subscriber.orgData.source_space_id === currentSpaceId）。
@@ -161,7 +166,40 @@ export function shouldSkipChannelForSpace(channel: Channel): boolean {
         return true
     }
 
-    // 非 Person / 非 Group 频道 → fail-closed，避免泄漏。
+    // 子区（CommunityTopic）→ 跟父群走，fail-open。
+    // channelID 形如 `${groupNo}____${shortId}`，父群的 channelSpaceMap key
+    // 是 `${groupNo}_${ChannelTypeGroup}`。
+    // - 父群缓存命中 → 跟父群结论（父群在当前 Space → 子区也在）
+    // - 父群缓存未命中 → fail-open（return false），与改造前一致：子区
+    //   永远跟父群展示，避免 fail-closed 永久隐藏子区会话/通知。
+    if (channel.channelType === ChannelTypeCommunityTopic) {
+        const parsed = parseThreadChannelId(cid)
+        if (!parsed) return false
+        const parentKey = `${parsed.groupNo}_${ChannelTypeGroup}`
+        const parentSpaceId = WKApp.shared.channelSpaceMap.get(parentKey)
+        if (parentSpaceId) {
+            if (parentSpaceId === currentSpaceId) return false
+            // 父群归属其他 Space：检查我是否以当前 Space 身份加入父群（外部成员）
+            const parentChannel = new Channel(parsed.groupNo, ChannelTypeGroup)
+            if (getMyMembershipSourceSpaceId(parentChannel) === currentSpaceId) return false
+            return true
+        }
+        // 父群 channelInfo 兜底
+        const parentChannel = new Channel(parsed.groupNo, ChannelTypeGroup)
+        const parentInfo = WKSDK.shared().channelManager.getChannelInfo(parentChannel)
+        const parentInfoSpaceId = parentInfo?.orgData?.space_id
+        if (parentInfoSpaceId) {
+            WKApp.shared.channelSpaceMap.set(parentKey, parentInfoSpaceId)
+            if (parentInfoSpaceId === currentSpaceId) return false
+            if (getMyMembershipSourceSpaceId(parentChannel) === currentSpaceId) return false
+            return true
+        }
+        // 父群缓存 / channelInfo 都没有 → fail-open（子区跟父群，
+        // 父群 channelInfo 到达后由 channelListener 二次纠正）。
+        return false
+    }
+
+    // 非 Person / 非 Group / 非 CommunityTopic 频道 → fail-closed，避免泄漏。
     return true
 }
 
