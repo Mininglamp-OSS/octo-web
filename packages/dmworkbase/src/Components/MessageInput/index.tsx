@@ -323,7 +323,21 @@ function formatMentionTextV2(text: string): {
     mention.uids = uids.length > 0 ? uids : undefined;
     mention.entities = entities.length > 0 ? entities : undefined;
     if (humans) mention.humans = 1;
-    if (ais) mention.ais = 1;
+    if (ais) {
+      mention.ais = 1;
+      // GH#100: expand bot member UIDs into mention.uids so legacy adapter
+      // bots (which only check mention.uids, not mention.ais) still recognise
+      // the @所有AI broadcast. Messages go via WuKongIM SDK direct — they
+      // never hit the server REST API, so server-side expansion (octo-server
+      // PR#145) does not apply to client-sent messages.
+      const botUids = (membersRef.current ?? [])
+        .filter((m: any) => m.orgData?.robot === 1)
+        .map((m: any) => m.uid)
+        .filter((uid: string) => !uids.includes(uid));
+      if (botUids.length > 0) {
+        mention.uids = [...(mention.uids ?? []), ...botUids];
+      }
+    }
     return { content: result, mention };
   }
 
