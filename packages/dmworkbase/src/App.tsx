@@ -556,6 +556,10 @@ export default class WKApp extends ProviderListener {
   deviceId: string = ""; // 设备ID
   currentSpaceId: string = ""; // 当前选中的 Space ID
   channelSpaceMap: Map<string, string> = new Map(); // channelID_channelType → spaceID 缓存
+  // channelID_channelType → my source_space_id 缓存（仅在我作为外部成员加入该群时有值）
+  // 由 conversation sync 响应（octo-server PR#154 起携带 my_source_space_id）预填，
+  // 用于在 subscriber.orgData 未加载完成时避免 shouldSkipChannelForSpace 误过滤外部群。
+  channelMySourceSpaceMap: Map<string, string> = new Map();
   spaceChecked: boolean = false; // Space 检查是否完成
   deviceName: string = ""; // 设备名称
   deviceModel: string = ""; // 设备型号
@@ -751,6 +755,8 @@ export default class WKApp extends ProviderListener {
     WKApp.loginInfo.logout();
     localStorage.removeItem("currentSpaceId");
     this.currentSpaceId = "";
+    this.channelSpaceMap.clear();
+    this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
     window.location.reload();
   }

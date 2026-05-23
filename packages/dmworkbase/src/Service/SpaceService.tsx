@@ -73,11 +73,19 @@ export function getSpaceFilteredLastMessage(conversation: Conversation): Message
  *     在"群不在当前 Space"分支虽然比较等价，但字段语义交叉容易误用；
  *     与后端 DB 列名对齐使用 source_space_id 更直观。
  *
- * 依赖 channelManager 的订阅者缓存（getSubscribes）：
- *   - 未缓存或未找到自己 → 返回 undefined（调用方应退化到原有判定）
- *   - source_space_id 为空串（内部成员或历史数据）→ 返回 undefined
+ * 数据源优先级：
+ *   1) WKApp.shared.channelMySourceSpaceMap —— octo-server PR#154+ 由
+ *      conversation sync 响应的 my_source_space_id 字段预填，权威且即时。
+ *   2) channelManager 的订阅者缓存（getSubscribes）—— 老后端或缓存预热前兜底。
+ *      未缓存或未找到自己 → 返回 undefined（调用方应退化到原有判定）。
  */
 function getMyMembershipSourceSpaceId(channel: Channel): string | undefined {
+    if (!channel?.channelID) return undefined
+    // 优先读 channelMySourceSpaceMap（由 conversation sync 预填，无须等 subscribers 拉取）
+    const key = `${channel.channelID}_${channel.channelType}`
+    const cached = WKApp.shared.channelMySourceSpaceMap.get(key)
+    if (cached) return cached
+
     const myUid = WKApp.loginInfo?.uid
     if (!myUid) return undefined
     const subs = WKSDK.shared().channelManager.getSubscribes(channel)
@@ -85,7 +93,11 @@ function getMyMembershipSourceSpaceId(channel: Channel): string | undefined {
     const mine = subs.find((s: any) => s?.uid === myUid) as any
     if (!mine) return undefined
     const sourceId = mine.orgData?.source_space_id
-    if (typeof sourceId === "string" && sourceId.length > 0) return sourceId
+    if (typeof sourceId === "string" && sourceId.length > 0) {
+        // 回填 map，避免每次都走 subscribers 数组扫描
+        WKApp.shared.channelMySourceSpaceMap.set(key, sourceId)
+        return sourceId
+    }
     return undefined
 }
 
@@ -95,7 +107,15 @@ function getMyMembershipSourceSpaceId(channel: Channel): string | undefined {
  * - Person channel（私聊）→ 永远不过滤
  * - 有 Space 前缀（s{spaceId}_）的 channel → 前缀匹配
  * - 群聊（无前缀）→ 查 channelSpaceMap 缓存 → channelInfo.orgData.space_id
- * - 都未命中 → fail-open（放行，等 channelInfo 回调后再检查）
+ * - 都未命中 → fail-closed（先跳过；channelInfo 回调拿到权威 space_id 后
+ *              channelListener 会二次检查并补回）。
+ *
+ * GH octo-web#107: 由 fail-open 改为 fail-closed。fail-open 会让实时 WS
+ * 推送的、归属其他 Space 的群短暂出现在当前 Space 视图（即使 channelInfo 后续
+ * 把它移除）。新策略下，octo-server PR#154+ 的 conversation sync 已经在
+ * channelSpaceMap / channelMySourceSpaceMap 里预填了权威值，命中率覆盖
+ * 绝大多数场景；只有真正全新的 WS 推送会暂时被过滤，等 channelInfo 到达
+ * 后通过 channelListener 的待定队列恢复显示。
  *
  * 外部群兼容：当群归属 Space 与当前 Space 不一致时，额外检查自己是否
  * 以"当前 Space"身份加入了该群（subscriber.orgData.source_space_id === currentSpaceId）。
@@ -136,10 +156,13 @@ export function shouldSkipChannelForSpace(channel: Channel): boolean {
             if (getMyMembershipSourceSpaceId(channel) === currentSpaceId) return false
             return true
         }
-        // channelInfo 也没有 → fail-open，等 channelInfo 回调后 channelListener 会二次检查
+        // channelInfo 也没有 → fail-closed：暂时跳过。channelListener 拿到
+        // 权威 space_id 后会通过 _pendingSpaceConversations 把会话补回展示。
+        return true
     }
 
-    return false
+    // 非 Person / 非 Group 频道 → fail-closed，避免泄漏。
+    return true
 }
 
 /**

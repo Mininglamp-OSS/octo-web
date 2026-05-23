@@ -184,13 +184,18 @@ export class ChatVM extends ProviderListener {
                         const info = WKSDK.shared().channelManager.getChannelInfo(conversation.channel)
                         const sid = info?.orgData?.space_id
                             || conversation.channelInfo?.orgData?.space_id
+                            || (conversation as any).extra?.spaceId
                         if (sid) {
                             WKApp.shared.channelSpaceMap.set(key, sid)
                         } else if (WKApp.shared.currentSpaceId && !hasSpacePrefix(conversation.channel.channelID)) {
-                            // Fix: fail-open — 新群假定属于当前 Space，先展示
-                            // 建群 API 已带 space_id，channelInfo 异步返回后会补写正确值
-                            // 下次 Space 切换时 requestConversationList() 会用真实缓存重新过滤
-                            WKApp.shared.channelSpaceMap.set(key, WKApp.shared.currentSpaceId)
+                            // Fix #107: 改为 fail-closed —— 不再假定新群属于当前 Space。
+                            // sync 响应已携带 space_id 时上面就命中了；缓存仍未命中
+                            // 说明这是 WS 推送的全新群，channelInfo 尚未到达。
+                            // 与 update handler 一致：暂存到待定队列，等 channelInfoListener
+                            // 回调拿到权威 space_id 后再二次检查并展示。
+                            this._pendingSpaceConversations.set(key, conversation)
+                            WKSDK.shared().channelManager.fetchChannelInfo(conversation.channel)
+                            return
                         }
                     }
                 }
@@ -406,6 +411,31 @@ export class ChatVM extends ProviderListener {
         return sortAfter
     }
 
+    // 从 conversation sync 响应预填 channelSpaceMap / channelMySourceSpaceMap。
+    // octo-server PR#154+ 起 sync 会话条目携带 resolved space_id（群表权威值）和
+    // my_source_space_id（外部群成员的 source Space）。在过滤前预填两张缓存表，
+    // 可消除实时 WebSocket 消息到达时的 fail-open 竞态窗口。
+    // 字段缺失（老后端）时跳过，老路不受影响。
+    private prefillSpaceMapsFromSync(conversations: Conversation[]) {
+        for (const conv of conversations) {
+            if (conv.channel?.channelType !== ChannelTypeGroup) continue
+            const cid = conv.channel.channelID
+            if (!cid) continue
+            const key = `${cid}_${conv.channel.channelType}`
+            const extra: any = conv.extra
+            const sid = extra?.spaceId
+                || (conv as any).channelInfo?.orgData?.space_id
+                || WKSDK.shared().channelManager.getChannelInfo(conv.channel)?.orgData?.space_id
+            if (sid && !WKApp.shared.channelSpaceMap.has(key)) {
+                WKApp.shared.channelSpaceMap.set(key, sid)
+            }
+            const mySrc = extra?.mySourceSpaceId
+            if (mySrc) {
+                WKApp.shared.channelMySourceSpaceMap.set(key, mySrc)
+            }
+        }
+    }
+
     async requestConversationList() {
         this.loading = true
         this.notifyListener()
@@ -427,6 +457,13 @@ export class ChatVM extends ProviderListener {
         // _pendingSpaceConversations 是 ChatVM 自己的延迟队列,跟 SDK cache 无关,
         // 切 Space 时清掉避免旧 Space 排队中的 incoming 落入新 Space 视图。
         this._pendingSpaceConversations.clear()
+
+        // 在做 Space 过滤前，先把 sync 响应携带的 space_id / my_source_space_id
+        // 写入缓存。这样 shouldSkipChannelForSpace 命中率最大化，下游实时消息
+        // 也能立即用到，避免 fail-open 误展示其他 Space 的群。
+        if (conversations && conversations.length > 0) {
+            this.prefillSpaceMapsFromSync(conversations)
+        }
 
         const conversationWraps = new Array<ConversationWrap>()
         const filteredForSdk = new Array<Conversation>()
@@ -460,6 +497,11 @@ export class ChatVM extends ProviderListener {
     async reloadRequestConversationList() {
         const conversationWraps = new Array<ConversationWrap>()
         const conversations = await WKSDK.shared().conversationManager.sync({})
+        // 先按 sync 响应预填 channelSpaceMap / channelMySourceSpaceMap
+        // 再做 Space 过滤，避免老缓存缺失时落到 fail-closed 默认值。
+        if (conversations && conversations.length > 0) {
+            this.prefillSpaceMapsFromSync(conversations)
+        }
         if (conversations && conversations.length > 0) {
             for (const conversation of conversations) {
                 // Space 过滤：复用共享函数（含 channelSpaceMap 缓存）

@@ -299,11 +299,18 @@ export default class DataSourceModule implements IModule {
                 resp.conversations.forEach((conversationMap: any) => {
                     let model = Convert.toConversation(conversationMap);
                     conversations.push(model);
-                    // 填充 channelSpaceMap 缓存
+                    // 填充 channelSpaceMap / channelMySourceSpaceMap 缓存
+                    // octo-server PR#154+ 在 conversation sync 响应里携带 resolved space_id
+                    // （群表权威值）和 my_source_space_id（外部成员的 source Space）。
+                    // 老后端字段为空时跳过，仍走 channelInfo.orgData / subscriber 兜底。
+                    const key = `${conversationMap["channel_id"]}_${conversationMap["channel_type"]}`
                     const sid = conversationMap["space_id"]
                     if (sid) {
-                        const key = `${conversationMap["channel_id"]}_${conversationMap["channel_type"]}`
                         WKApp.shared.channelSpaceMap.set(key, sid)
+                    }
+                    const mySrc = conversationMap["my_source_space_id"]
+                    if (mySrc) {
+                        WKApp.shared.channelMySourceSpaceMap.set(key, mySrc)
                     }
                 });
                 const users = resp.users

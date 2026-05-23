@@ -210,6 +210,16 @@ export class Convert {
         conversation.extra.top = conversationMap["stick"]
         conversation.extra.categoryId = conversationMap["category_id"] ?? null
         conversation.extra.categorySort = conversationMap["category_sort"] ?? 0
+        // octo-server PR#154+：透传群表权威 space_id 与外部成员自己的 source space。
+        // 用于 ChatVM 在 sync 处理时预填 WKApp.shared.channelSpaceMap /
+        // channelMySourceSpaceMap，消除实时 WS 消息到达时的 fail-open 竞态窗口。
+        // 老后端没有该字段时为空，走原有 channelInfo.orgData / subscriber 路径。
+        if (typeof conversationMap["space_id"] === "string" && conversationMap["space_id"]) {
+            conversation.extra.spaceId = conversationMap["space_id"]
+        }
+        if (typeof conversationMap["my_source_space_id"] === "string" && conversationMap["my_source_space_id"]) {
+            conversation.extra.mySourceSpaceId = conversationMap["my_source_space_id"]
+        }
         // 后端返回的 per-Space 字段
         if (conversationMap["space_unread"] !== undefined && conversationMap["space_unread"] !== null) {
             conversation.extra.spaceUnread = conversationMap["space_unread"]
