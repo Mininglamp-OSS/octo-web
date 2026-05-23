@@ -389,7 +389,8 @@
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    margin-top: 20px;
+    margin-top: 24px;
+    margin-bottom: 8px;
     gap: 0;
     width: 100%;
 }

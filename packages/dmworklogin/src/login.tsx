@@ -512,6 +512,12 @@ class Login extends Component<any, LoginState> {
                                             忘记密码
                                         </div>
                                     </div>
+                                    {/* 与 SSO 分支一致: 下载入口前一条带文案的分隔线,
+                                        把"主登录区"和"也提供移动版"次级 CTA 分开,
+                                        避免按钮区 → 链接行 → 下载按钮 全部贴在一起. */}
+                                    <div className="wk-login-content-download-divider">
+                                        <span>也可下载移动版</span>
+                                    </div>
                                     <div className="wk-login-content-download">
                                         <AndroidDownloadButton />
                                         <IOSDownloadButton />
