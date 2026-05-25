@@ -28,7 +28,10 @@ import { Toast } from "../../utils/toast";
 import { toParentGroupNo } from "../../utils/channelId";
 import UserName from "../../ui/UserName";
 import LinkChannelsModal from "../../ui/LinkChannelsModal";
-import type { ChannelOption } from "../../ui/LinkChannelsModal";
+import type {
+  ChannelOption,
+  LoadChannelsResult,
+} from "../../ui/LinkChannelsModal";
 import OwnerEditor from "../../ui/OwnerEditor";
 import AnchorPopover from "../../ui/AnchorPopover";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
@@ -509,9 +512,13 @@ export default function MatterDetailPanel({
   // 群直接来自 /channel/groupSaveList; 子区是 per-group fetch /groups/:no/threads,
   // 用 4 路并发避免 N 个群 N 次串行 (用户可能在 20+ 个群)。
   // 子区只列活跃 (status=Active) 的; is_member 字段后端不一定填 (undefined),
-  // 所以宽松判断: 显式 false 才过滤掉。
-  // 单群子区拉取失败不阻断整体, 默默跳过 (那个群只能选群本身, 子区列不出)。
-  const loadChannelsForModal = useCallback(async (): Promise<ChannelOption[]> => {
+  // 所以宽松判断: 显式 false 才过滤掉 (避免把后端没填字段当作 "不可见"
+  // 而把整批子区都隐藏)。注: ThreadListVM 本身不做 is_member 过滤,
+  // 这里收紧一层是为了不把用户已退出的子区作为可关联候选。
+  // 单群子区拉取失败不阻断整体: 收集失败的群名上抛, 由 modal 在列表上方
+  // surface "部分子区加载失败" 警示, 用户可重试 (那个群仍能选群本身,
+  // 子区缺位)。
+  const loadChannelsForModal = useCallback(async (): Promise<LoadChannelsResult> => {
     const groups = await WKApp.dataSource.channelDataSource.groupSaveList();
     type GroupRow = {
       channelId: string;
@@ -531,14 +538,19 @@ export default function MatterDetailPanel({
       .filter((g) => !!g.channelId);
 
     // 并发拉每个群的子区 (channel_type=2 才有子区)。
-    // 失败的群直接给空数组, 不阻断别的群; 后端 threadList 已经在内部
-    // try-catch, 但保险起见再兜一层。
+    // 失败的群不阻断别的群: 记录失败的群名, 在 modal 上方 surface 警告。
     const groupNos = groupOptions
       .filter((g) => g.channelType === 2)
       .map((g) => g.channelId);
+    const groupNameByNo = new Map(
+      groupOptions
+        .filter((g) => g.channelType === 2)
+        .map((g) => [g.channelId, g.name]),
+    );
 
     const concurrency = 4;
     const threadsByGroup = new Map<string, ThreadType[]>();
+    const failedGroupNames: string[] = [];
     let cursor = 0;
     async function worker() {
       while (cursor < groupNos.length) {
@@ -546,15 +558,27 @@ export default function MatterDetailPanel({
         const no = groupNos[idx];
         try {
           // 必须传 page_index/page_size, 后端默认行为可能不分页 = 返回空。
-          // 跟 ThreadListVM 保持一致: 1 页 100 条 (单群 100+ 子区罕见, 够用)。
+          // page_size=100 是与 ThreadListVM 一致的取值; 单群 100+ 活跃子区
+          // 罕见, 真到了那天再做分页/加载更多 (见 #110 PR description
+          // Follow-up)。
           const list =
             await WKApp.dataSource.channelDataSource.threadList(no, {
               page_index: 1,
               page_size: 100,
             });
           threadsByGroup.set(no, list || []);
-        } catch {
+        } catch (err) {
+          // 不上抛: 一个群挂了不能让整个 picker 空白。但要记日志 + 收集失败
+          // 名字, 让 modal 上 surface 出来, 不然线上看起来跟 "这个群没子区"
+          // 一模一样, 没法 debug。
+          // eslint-disable-next-line no-console
+          console.warn(
+            "[MatterDetailPanel] threadList failed for group",
+            no,
+            err,
+          );
           threadsByGroup.set(no, []);
+          failedGroupNames.push(groupNameByNo.get(no) || no);
         }
       }
     }
@@ -583,7 +607,10 @@ export default function MatterDetailPanel({
         });
       }
     }
-    return result;
+    return {
+      channels: result,
+      threadLoadErrors: failedGroupNames.length ? failedGroupNames : undefined,
+    };
   }, []);
 
   const handleLinkChannelSubmit = useCallback(

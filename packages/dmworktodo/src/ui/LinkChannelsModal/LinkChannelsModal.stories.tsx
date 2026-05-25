@@ -2,9 +2,9 @@ import React from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
 import LinkChannelsModal from './index'
 import type { MatterChannel } from '../../bridge/types'
-import type { ChannelOption } from './index'
+import type { ChannelOption, LoadChannelsResult } from './index'
 
-const mockLoadChannels = async (): Promise<ChannelOption[]> => [
+const sampleChannels: ChannelOption[] = [
   { channelId: 'ch-001', channelType: 2, name: '产品负责人群', desc: '产品方向讨论', memberCount: 12 },
   { channelId: 'ch-001____t-001', channelType: 5, name: '需求评审', memberCount: 8, parentGroupName: '产品负责人群', parentGroupNo: 'ch-001' },
   { channelId: 'ch-001____t-002', channelType: 5, name: '设计稿走查', memberCount: 5, parentGroupName: '产品负责人群', parentGroupNo: 'ch-001' },
@@ -13,8 +13,12 @@ const mockLoadChannels = async (): Promise<ChannelOption[]> => [
   { channelId: 'ch-003', channelType: 2, name: '设计评审群', memberCount: 5 },
 ]
 
+const mockLoadChannels = async (): Promise<LoadChannelsResult> => ({
+  channels: sampleChannels,
+})
+
 // 群+子区数量超过 200 项的极端场景, 验证截断提示
-const mockLoadChannelsLarge = async (): Promise<ChannelOption[]> => {
+const mockLoadChannelsLarge = async (): Promise<LoadChannelsResult> => {
   const out: ChannelOption[] = []
   for (let i = 0; i < 30; i++) {
     out.push({
@@ -35,8 +39,20 @@ const mockLoadChannelsLarge = async (): Promise<ChannelOption[]> => {
       })
     }
   }
-  return out
+  return { channels: out }
 }
+
+// 部分群子区拉取失败的场景: surface 警告条 + 重试按钮
+const mockLoadChannelsPartialFailure = async (): Promise<LoadChannelsResult> => ({
+  channels: sampleChannels,
+  threadLoadErrors: ['运营周报群', '客户对接群'],
+})
+
+// 多群失败 (超过 ERROR_NAME_PREVIEW_LIMIT=3, 折叠成 "等 N 个" 文案)
+const mockLoadChannelsManyFailures = async (): Promise<LoadChannelsResult> => ({
+  channels: sampleChannels,
+  threadLoadErrors: ['运营周报群', '客户对接群', '渠道伙伴群', '法务对接群', 'HR 答疑群'],
+})
 
 const mockOnLinkChannel = async (_matterId: string, _channelId: string, _channelType: number, _channelName: string) => {
   // no-op for stories
@@ -154,6 +170,40 @@ export const ManyChannels: Story = {
     onClose: () => {},
     onLinked: () => {},
     loadChannels: mockLoadChannelsLarge,
+    onLinkChannel: mockOnLinkChannel,
+  },
+}
+
+/**
+ * 部分子区加载失败 — 列表上方 surface 警告条 + 重试按钮,
+ * 让用户知道为什么某些群"看起来没子区"。
+ */
+export const PartialThreadLoadFailure: Story = {
+  args: {
+    visible: true,
+    matterId: '8575cfce-e60a-4ee6-a3c5-7121cd46490d',
+    matterTitle: 'Octo 产品策略 PPT 打磨',
+    linkedChannels: [],
+    onClose: () => {},
+    onLinked: () => {},
+    loadChannels: mockLoadChannelsPartialFailure,
+    onLinkChannel: mockOnLinkChannel,
+  },
+}
+
+/**
+ * 多群失败折叠 — 超过 ERROR_NAME_PREVIEW_LIMIT 时, 警告文案折叠成
+ * "X、Y、Z 等 N 个群..." 避免横向溢出。
+ */
+export const ManyThreadLoadFailures: Story = {
+  args: {
+    visible: true,
+    matterId: '8575cfce-e60a-4ee6-a3c5-7121cd46490d',
+    matterTitle: 'Octo 产品策略 PPT 打磨',
+    linkedChannels: [],
+    onClose: () => {},
+    onLinked: () => {},
+    loadChannels: mockLoadChannelsManyFailures,
     onLinkChannel: mockOnLinkChannel,
   },
 }

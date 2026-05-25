@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Modal } from "@douyinfe/semi-ui";
-import { Channel } from "wukongimjssdk";
+import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import type { MatterChannel } from "../../bridge/types";
 import { Toast } from "../../utils/toast";
+import { CHANNEL_TYPE_COMMUNITY_TOPIC } from "../../utils/channelId";
 import "./LinkChannelsModal.css";
 
 /**
@@ -14,8 +15,11 @@ import "./LinkChannelsModal.css";
  */
 const VISIBLE_ROW_LIMIT = 200;
 
-/** 子区 (channel_type=5) 常量, 跟 utils/channelId.ts 保持一致 */
-const CHANNEL_TYPE_THREAD = 5;
+/**
+ * 部分子区加载失败时, 警告条最多列出几个父群名 (避免横向溢出)。
+ * 超出部分用 "等 N 个" 折叠。
+ */
+const ERROR_NAME_PREVIEW_LIMIT = 3;
 
 export interface ChannelOption {
   channelId: string;
@@ -36,6 +40,27 @@ export interface ChannelOption {
   parentGroupNo?: string;
 }
 
+/**
+ * loadChannels 的返回类型。
+ *
+ * 主路径 (`channels`) 永远是可用的候选列表; `threadLoadErrors` 只在
+ * 部分群子区拉取失败时非空, 列表渲染前会 surface "X 个群的子区加载失败"
+ * 警告条 + 重试按钮 — 之前这种失败被 catch 成空数组, 用户根本看不到。
+ */
+export interface LoadChannelsResult {
+  channels: ChannelOption[];
+  /** 子区加载失败的父群名 (用于警告条显示); 没失败时不传/空数组 */
+  threadLoadErrors?: string[];
+}
+
+/** 构造头像用的 Channel: 子区头像复用父群头像 (子区本身没头像) */
+function channelForAvatar(c: ChannelOption): Channel {
+  if (c.channelType === CHANNEL_TYPE_COMMUNITY_TOPIC && c.parentGroupNo) {
+    return new Channel(c.parentGroupNo, ChannelTypeGroup);
+  }
+  return new Channel(c.channelId, c.channelType);
+}
+
 export interface LinkChannelsModalProps {
   visible: boolean;
   matterId: string;
@@ -43,7 +68,7 @@ export interface LinkChannelsModalProps {
   linkedChannels: MatterChannel[];
   onClose: () => void;
   onLinked: () => void;
-  loadChannels: () => Promise<ChannelOption[]>;
+  loadChannels: () => Promise<LoadChannelsResult>;
   onLinkChannel: (matterId: string, channelId: string, channelType: number, channelName: string) => Promise<void>;
 }
 
@@ -60,21 +85,34 @@ export default function LinkChannelsModal({
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [channels, setChannels] = useState<ChannelOption[]>([]);
+  const [threadLoadErrors, setThreadLoadErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const reload = useCallback(() => {
+    setLoading(true);
+    setThreadLoadErrors([]);
+    loadChannels()
+      .then((res) => {
+        setChannels(res.channels);
+        setThreadLoadErrors(res.threadLoadErrors ?? []);
+      })
+      .catch(() => {
+        setChannels([]);
+        setThreadLoadErrors([]);
+      })
+      .finally(() => setLoading(false));
+  }, [loadChannels]);
 
   useEffect(() => {
     if (!visible) {
       setSearch("");
       setSelected([]);
+      setThreadLoadErrors([]);
       return;
     }
-    setLoading(true);
-    loadChannels()
-      .then((opts) => setChannels(opts))
-      .catch(() => setChannels([]))
-      .finally(() => setLoading(false));
-  }, [visible, loadChannels]);
+    reload();
+  }, [visible, reload]);
 
   const linkedIds = useMemo(
     () => new Set(linkedChannels.map((c) => c.channel_id)),
@@ -134,10 +172,10 @@ export default function LinkChannelsModal({
     }
   }, [selected, submitting, channels, matterId, onLinked, onClose, onLinkChannel]);
 
-  const selectedChannels = useMemo(
-    () => channels.filter((c) => selected.includes(c.channelId)),
-    [channels, selected],
-  );
+  const selectedChannels = useMemo(() => {
+    const sel = new Set(selected);
+    return channels.filter((c) => sel.has(c.channelId));
+  }, [channels, selected]);
 
   return (
     <Modal
@@ -182,6 +220,31 @@ export default function LinkChannelsModal({
               </div>
             </div>
 
+            {/* 子区加载警告条 (部分群的子区拉取失败时 surface) */}
+            {!loading && threadLoadErrors.length > 0 && (
+              <div className="wk-lcm__warn" role="alert">
+                <span className="wk-lcm__warn-icon" aria-hidden="true">!</span>
+                <span className="wk-lcm__warn-text">
+                  {threadLoadErrors.length === 1
+                    ? `"${threadLoadErrors[0]}" 的子区加载失败, 该群的子区暂不可选`
+                    : threadLoadErrors.length <= ERROR_NAME_PREVIEW_LIMIT
+                      ? `${threadLoadErrors.map((n) => `"${n}"`).join("、")} 的子区加载失败`
+                      : `${threadLoadErrors
+                          .slice(0, ERROR_NAME_PREVIEW_LIMIT)
+                          .map((n) => `"${n}"`)
+                          .join("、")} 等 ${threadLoadErrors.length} 个群的子区加载失败`}
+                </span>
+                <button
+                  type="button"
+                  className="wk-lcm__warn-retry"
+                  onClick={reload}
+                  disabled={loading}
+                >
+                  重试
+                </button>
+              </div>
+            )}
+
             {/* 列表 */}
             <div className="wk-lcm__list">
               {loading ? (
@@ -193,11 +256,8 @@ export default function LinkChannelsModal({
                   {visibleRows.map((c) => {
                     const isLinked = linkedIds.has(c.channelId);
                     const isSelected = selected.includes(c.channelId);
-                    const isThread = c.channelType === CHANNEL_TYPE_THREAD;
-                    // 子区头像复用父群头像 (子区本身没头像)
-                    const avatarChannel = isThread && c.parentGroupNo
-                      ? new Channel(c.parentGroupNo, 2)
-                      : new Channel(c.channelId, c.channelType);
+                    const isThread = c.channelType === CHANNEL_TYPE_COMMUNITY_TOPIC;
+                    const avatarChannel = channelForAvatar(c);
                     return (
                       <button
                         key={c.channelId}
@@ -254,10 +314,8 @@ export default function LinkChannelsModal({
               已选{selected.length}个会话
             </div>
             {selectedChannels.map((c) => {
-              const isThread = c.channelType === CHANNEL_TYPE_THREAD;
-              const avatarChannel = isThread && c.parentGroupNo
-                ? new Channel(c.parentGroupNo, 2)
-                : new Channel(c.channelId, c.channelType);
+              const isThread = c.channelType === CHANNEL_TYPE_COMMUNITY_TOPIC;
+              const avatarChannel = channelForAvatar(c);
               return (
                 <div key={c.channelId} className="wk-lcm__selected-item">
                   <WKAvatar

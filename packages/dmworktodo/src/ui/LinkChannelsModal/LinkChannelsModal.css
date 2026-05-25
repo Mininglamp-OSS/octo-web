@@ -119,6 +119,68 @@
   color: var(--wk-icon-muted);
 }
 
+/* ─── 子区加载警告条 ─── */
+/* 列表上方 surface "X 个群的子区加载失败" + 重试。靠 --wk-color-warning
+   token (亮/暗模式都有) 给暖色, 不硬编码。 */
+.wk-lcm__warn {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  margin: 0 var(--wk-sp-4) var(--wk-sp-2);
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  background: var(--wk-color-warning-bg);
+  border: 1px solid var(--wk-color-warning);
+  border-radius: var(--wk-r-sm);
+  font-size: var(--wk-text-size-sm);
+  line-height: 18px;
+  color: var(--wk-text-primary);
+}
+
+.wk-lcm__warn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--wk-r-full);
+  background: var(--wk-color-warning);
+  color: var(--wk-text-on-brand);
+  font-size: 11px;
+  font-weight: var(--wk-font-semibold);
+  line-height: 1;
+}
+
+.wk-lcm__warn-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.wk-lcm__warn-retry {
+  flex: none;
+  padding: 2px var(--wk-sp-2);
+  border: 1px solid var(--wk-color-warning);
+  border-radius: var(--wk-r-xs);
+  background: transparent;
+  color: var(--wk-color-warning);
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  line-height: 18px;
+  cursor: pointer;
+  transition: background var(--wk-dur-fast);
+}
+
+.wk-lcm__warn-retry:hover:not(:disabled) {
+  background: var(--wk-color-warning);
+  color: var(--wk-text-on-brand);
+}
+
+.wk-lcm__warn-retry:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ─── 列表 ─── */
 .wk-lcm__list {
   flex: 1;
