@@ -146,7 +146,7 @@
   border-radius: var(--wk-r-full);
   background: var(--wk-color-warning);
   color: var(--wk-text-on-brand);
-  font-size: 11px;
+  font-size: var(--wk-text-size-xs);
   font-weight: var(--wk-font-semibold);
   line-height: 1;
 }
@@ -159,7 +159,7 @@
 
 .wk-lcm__warn-retry {
   flex: none;
-  padding: 2px var(--wk-sp-2);
+  padding: var(--wk-sp-0-5) var(--wk-sp-2);
   border: 1px solid var(--wk-color-warning);
   border-radius: var(--wk-r-xs);
   background: transparent;
@@ -284,7 +284,7 @@
 
 .wk-lcm__item-thread-prefix {
   display: inline-block;
-  margin-right: 2px;
+  margin-right: var(--wk-sp-0-5);
   color: var(--wk-text-tertiary);
   font-weight: var(--wk-font-medium);
 }
