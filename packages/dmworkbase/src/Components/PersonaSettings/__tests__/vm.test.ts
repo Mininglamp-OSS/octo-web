@@ -361,7 +361,7 @@ describe("PersonaEditVM", () => {
     })
 })
 
-describe("PersonaSettingsVM.loadMyBots — Bug 3 (YUJ-1444): merges my_bots + owned space_bots", () => {
+describe("PersonaSettingsVM.loadMyBots — Bug 3 (YUJ-1444) + #111 (YUJ-1964): merges owned my_bots + owned space_bots", () => {
     // 拿到模块默认导出的 mock，方便测试动态改 currentSpaceId / loginInfo.uid。
     // 在所有 mock 注册之后再 import，保证拿到 vi.mock 注入的对象（不是真实 App）。
     const getApp = async () => (await import("../../../App")).default as any
@@ -374,8 +374,12 @@ describe("PersonaSettingsVM.loadMyBots — Bug 3 (YUJ-1444): merges my_bots + ow
 
     it("space_id absent: only calls /robot/my_bots, no /robot/space_bots", async () => {
         // 模拟用户未进入任何 space —— 老路径：只问 my_bots。
+        // 注意：自 #111 (YUJ-1964) 起 my_bots 也按 creator_uid 过滤，所以需要先登入。
+        const App = await getApp()
+        App.loginInfo.uid = "alice"
+
         hoisted.get.mockResolvedValueOnce([
-            { uid: "b1", name: "Bot 1" },
+            { uid: "b1", name: "Bot 1", creator_uid: "alice" },
         ])
         const vm = new PersonaSettingsVM()
         await vm.loadMyBots()
@@ -389,9 +393,11 @@ describe("PersonaSettingsVM.loadMyBots — Bug 3 (YUJ-1444): merges my_bots + ow
         App.shared.currentSpaceId = "spaceA"
         App.loginInfo.uid = "alice"
 
-        // my_bots 命中：用户已加好友的 bot
+        // my_bots 命中：用户已加好友的 bot（含 alice 创建 + 别人创建）。
+        // #111 (YUJ-1964): 别人创建的（friend_other）必须被过滤掉。
         hoisted.get.mockResolvedValueOnce([
-            { uid: "friend_bot", name: "FriendBot" },
+            { uid: "friend_bot", name: "FriendBot", creator_uid: "alice" },
+            { uid: "friend_other", name: "FriendOther", creator_uid: "bob" },
         ])
         // space_bots 命中：包含 alice 创建的 + 别人创建的；只有 alice 创建的应进入 picker
         hoisted.get.mockResolvedValueOnce([
@@ -406,8 +412,31 @@ describe("PersonaSettingsVM.loadMyBots — Bug 3 (YUJ-1444): merges my_bots + ow
         expect(hoisted.get).toHaveBeenCalledWith("/robot/space_bots", { param: { space_id: "spaceA" } })
 
         const uids = vm.myBots.map((b) => b.uid).sort()
-        // friend_bot 来自 my_bots; owned_bot 来自 space_bots(creator=alice); other_bot 被过滤掉
+        // friend_bot 来自 my_bots (creator=alice); owned_bot 来自 space_bots (creator=alice);
+        // friend_other / other_bot 都被 creator_uid 过滤掉。
         expect(uids).toEqual(["friend_bot", "owned_bot"])
+    })
+
+    it("#111 (YUJ-1964): filters my_bots entries NOT created by current user", async () => {
+        // 复现 bug：用户加了好友的 bot（创建者是别人）不应出现在「新建分身」picker。
+        // 老实现把整个 my_bots 列表灌进 picker，导致用户能选到别人的 bot 当作分身。
+        const App = await getApp()
+        App.shared.currentSpaceId = "spaceA"
+        App.loginInfo.uid = "alice"
+
+        hoisted.get.mockResolvedValueOnce([
+            { uid: "mine_friend", name: "MineFriend", creator_uid: "alice" },
+            { uid: "bob_bot", name: "BobBot", creator_uid: "bob" },
+            { uid: "carol_bot", name: "CarolBot", creator_uid: "carol" },
+            { uid: "legacy_no_creator", name: "LegacyNoCreator" }, // 兜底：缺 creator_uid 视为非自有
+        ])
+        hoisted.get.mockResolvedValueOnce([]) // space_bots 此处无关
+
+        const vm = new PersonaSettingsVM()
+        await vm.loadMyBots()
+
+        // 只有 mine_friend (creator=alice) 通过；别人创建的 + 缺字段的全部剔除。
+        expect(vm.myBots.map((b) => b.uid)).toEqual(["mine_friend"])
     })
 
     it("filters out bots already granted to a persona", async () => {
@@ -416,8 +445,8 @@ describe("PersonaSettingsVM.loadMyBots — Bug 3 (YUJ-1444): merges my_bots + ow
         App.loginInfo.uid = "alice"
 
         hoisted.get.mockResolvedValueOnce([
-            { uid: "b1", name: "Bot 1" },
-            { uid: "b2", name: "Bot 2" },
+            { uid: "b1", name: "Bot 1", creator_uid: "alice" },
+            { uid: "b2", name: "Bot 2", creator_uid: "alice" },
         ])
         hoisted.get.mockResolvedValueOnce([
             { uid: "b3", name: "Bot 3", creator_uid: "alice" },
@@ -437,9 +466,9 @@ describe("PersonaSettingsVM.loadMyBots — Bug 3 (YUJ-1444): merges my_bots + ow
         App.shared.currentSpaceId = "spaceA"
         App.loginInfo.uid = "alice"
 
-        // 同一个 bot 同时在 my_bots（已加好友）和 space_bots（alice 创建）出现 —— 必须去重。
+        // 同一个 bot 同时在 my_bots（alice 创建 + 已加好友）和 space_bots（alice 创建）出现 —— 必须去重。
         hoisted.get.mockResolvedValueOnce([
-            { uid: "shared_bot", name: "Shared (from my_bots)" },
+            { uid: "shared_bot", name: "Shared (from my_bots)", creator_uid: "alice" },
         ])
         hoisted.get.mockResolvedValueOnce([
             { uid: "shared_bot", name: "Shared (from space_bots)", creator_uid: "alice" },
@@ -469,13 +498,13 @@ describe("PersonaSettingsVM.loadMyBots — Bug 3 (YUJ-1444): merges my_bots + ow
         expect(vm.myBots.map((b) => b.uid)).toEqual(["owned_only"])
     })
 
-    it("space_bots fails: still returns my_bots", async () => {
+    it("space_bots fails: still returns owned my_bots", async () => {
         const App = await getApp()
         App.shared.currentSpaceId = "spaceA"
         App.loginInfo.uid = "alice"
 
         hoisted.get.mockResolvedValueOnce([
-            { uid: "friend_only", name: "FriendOnly" },
+            { uid: "friend_only", name: "FriendOnly", creator_uid: "alice" },
         ])
         hoisted.get.mockRejectedValueOnce({ status: 500, msg: "space_bots boom" })
 
@@ -506,14 +535,16 @@ describe("PersonaSettingsVM.loadMyBots — Bug 3 (YUJ-1444): merges my_bots + ow
         App.shared.currentSpaceId = "spaceA"
         App.loginInfo.uid = ""
 
-        hoisted.get.mockResolvedValueOnce([])
+        hoisted.get.mockResolvedValueOnce([
+            { uid: "friend_bot", name: "FriendBot", creator_uid: "alice" },
+        ])
         hoisted.get.mockResolvedValueOnce([
             { uid: "owned_bot", name: "OwnedBot", creator_uid: "alice" },
         ])
 
         const vm = new PersonaSettingsVM()
         await vm.loadMyBots()
-        // creator_uid 过滤无法判断「是不是我」→ 整段 ownedSpaceBots 留空，picker 空态。
+        // creator_uid 过滤无法判断「是不是我」→ 两端的 owned 集合都留空，picker 空态。
         expect(vm.myBots).toEqual([])
     })
 })

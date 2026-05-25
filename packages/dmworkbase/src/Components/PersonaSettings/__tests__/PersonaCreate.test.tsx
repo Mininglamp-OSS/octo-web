@@ -46,7 +46,9 @@ vi.mock("../../../App", () => ({
             put: hoisted.put,
         },
         shared: { currentSpaceId: "" },
-        loginInfo: { uid: "" },
+        // #111 (YUJ-1964): loadMyBots filters my_bots by creator_uid===loginInfo.uid;
+        // give a stable uid so mocked bots flagged with creator_uid: "me" pass through.
+        loginInfo: { uid: "me" },
     },
     __esModule: true,
 }))
@@ -101,7 +103,7 @@ describe("PersonaCreate — notifyListener fan-out (octo-web#95)", () => {
         // both spellings just in case.
         hoisted.get.mockImplementation((url: string) => {
             if (url === "/robot/my_bots" || url === "robot/my_bots") {
-                return Promise.resolve([{ uid: "bot-x", name: "Picker Bot X" }])
+                return Promise.resolve([{ uid: "bot-x", name: "Picker Bot X", creator_uid: "me" }])
             }
             if (url === "/robot/space_bots" || url === "robot/space_bots") {
                 return Promise.resolve([])
@@ -189,8 +191,8 @@ describe("PersonaCreate — notifyListener fan-out (octo-web#95)", () => {
             }
             if (url === "/robot/my_bots" || url === "robot/my_bots") {
                 return Promise.resolve([
-                    { uid: "bot-x", name: "Bot X" },
-                    { uid: "bot-y", name: "Bot Y" },
+                    { uid: "bot-x", name: "Bot X", creator_uid: "me" },
+                    { uid: "bot-y", name: "Bot Y", creator_uid: "me" },
                 ])
             }
             if (url === "/robot/space_bots" || url === "robot/space_bots") {

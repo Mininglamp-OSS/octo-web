@@ -68,8 +68,8 @@ export interface OboScope {
 /**
  * MyBot — 用于「新建分身」时选择关联 bot 的下拉数据源。
  *
- * 数据来源（YUJ-1444, 2026-05-20 后）：
- *   - `/robot/my_bots`     —— 当前用户已加好友的 bot（含 botfather 撮合的 + 自动加好友的）
+ * 数据来源（YUJ-1444, 2026-05-20 后；#111/YUJ-1964, 2026-05-25 收紧）：
+ *   - `/robot/my_bots`     —— 当前用户已加好友的 bot（仅取 creator_uid===me 的「我创建的」）
  *   - `/robot/space_bots`  —— 当前 space 的 bot（仅取 creator_uid===me 的「我创建的」）
  * 两端结果按 uid 合并去重，再剔除已经绑定 grant 的 uid。详见 loadMyBots()。
  */
@@ -182,6 +182,12 @@ export class PersonaSettingsVM extends ProviderListener {
      *   (b) 用户创建但未加好友（im-test 常见情况）→ 通过 space_bots + creator_uid
      *       兜底进入 picker
      *
+     * BUG (octo-web#111 / YUJ-1964, 2026-05-25)：上面 (a) 的「旧路径不变」会把
+     * `/robot/my_bots` 里**别人创建的**好友 bot（botfather 撮合后双向加好友的、
+     * 别人发的 bot 名片接受了的）也灌进 picker，让用户能把别人的 bot 错绑成自己
+     * 的分身。修复：对 `myBotsRaw` 也加 `creator_uid === myUid` 过滤，与
+     * space_bots 同款门槛——picker 永远只列「我创建的 bot」。
+     *
      * 错误降级：任一端点失败都用空数组兜底；两端都失败时 myBots=[]，UI 仍正确显示
      * 「暂无可关联的 Bot」。不对单独失败弹 Toast —— 这是「设置子页」，picker 空时
      * 用户能从文案得知，比 Toast 干扰更小；同时打 console.warn 便于线上排查。
@@ -219,6 +225,18 @@ export class PersonaSettingsVM extends ProviderListener {
             const myBotsRaw: any[] = Array.isArray(myRes) ? myRes : []
             const spaceBotsRaw: any[] = Array.isArray(spaceRes) ? spaceRes : []
 
+            // BUG (octo-web#111, YUJ-1964)：`/robot/my_bots` 返回当前用户**已加好友**
+            // 的所有 bot —— 包含别人创建的 bot（被 botfather 撮合自动加好友），
+            // 不只是「我创建的」。picker 必须只显示当前用户自己创建的 bot，否则
+            // 用户会误绑定别人的 bot 当作自己的分身。
+            // 修复：与 space_bots 同样按 `creator_uid === myUid` 过滤。后端已返回
+            // creator_uid 字段（与 BotStore.BotInfo 命名一致），不需要改后端。
+            const ownedMyBots = myUid
+                ? myBotsRaw.filter(
+                      (b) => b && typeof b === "object" && (b as any).creator_uid === myUid,
+                  )
+                : []
+
             // space_bots 包含整个 space 的 bot：只取「当前用户创建的」，避免把别人的
             // bot 列出来让用户误绑定。creator_uid 字段命名与 BotStore.BotInfo 一致。
             const ownedSpaceBots = myUid
@@ -229,7 +247,7 @@ export class PersonaSettingsVM extends ProviderListener {
 
             // 合并 + 去重（按 uid，先到先得；my_bots 优先因为已加好友的元数据更完整）。
             const merged = new Map<string, MyBot>()
-            for (const b of [...myBotsRaw, ...ownedSpaceBots]) {
+            for (const b of [...ownedMyBots, ...ownedSpaceBots]) {
                 if (!b || typeof b !== "object") continue
                 const uid = (b as any).uid
                 if (!uid || merged.has(uid)) continue
