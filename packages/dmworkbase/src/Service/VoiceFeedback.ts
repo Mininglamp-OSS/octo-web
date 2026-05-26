@@ -1,3 +1,14 @@
+export interface AsrParams {
+  contextText?: string;
+  chatContext?: string;
+  personalContext?: string;
+  memberContext?: string;
+  mode?: string;
+  channelType?: number;
+  model?: string;
+  allowFeedback?: boolean;
+}
+
 interface PendingUtterance {
   utteranceId: string;
   modelText: string;
@@ -6,6 +17,7 @@ interface PendingUtterance {
   scene?: string;
   audioBlob?: Blob;
   timestamp: number;
+  asrParams?: AsrParams;
 }
 
 export default class VoiceFeedback {
@@ -68,6 +80,7 @@ export default class VoiceFeedback {
     requestId?: string;
     scene?: string;
     audioBlob?: Blob;
+    asrParams?: AsrParams;
   }): void {
     if (this.disabled) return;
 
@@ -104,6 +117,14 @@ export default class VoiceFeedback {
           text: u.modelText,
           source: u.source,
           scene: u.scene || "",
+          context_text: u.asrParams?.contextText || "",
+          chat_context: u.asrParams?.chatContext || "",
+          personal_context: u.asrParams?.personalContext || "",
+          member_context: u.asrParams?.memberContext || "",
+          mode: u.asrParams?.mode || "",
+          channel_type: u.asrParams?.channelType ?? 0,
+          model: u.asrParams?.model || "",
+          allow_feedback: u.asrParams?.allowFeedback ?? false,
         }),
       );
       await fetch(`${this.feedbackUrl}/local`, {

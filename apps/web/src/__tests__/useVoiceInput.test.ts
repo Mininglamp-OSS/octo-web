@@ -1,6 +1,11 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
+const { mockOnTranscribeResult, mockLocalTranscribe } = vi.hoisted(() => ({
+  mockOnTranscribeResult: vi.fn(),
+  mockLocalTranscribe: vi.fn(),
+}));
+
 // Mock WKApp
 vi.mock("@octo/base/src/App", () => ({
   default: {
@@ -29,8 +34,46 @@ vi.mock("@octo/base/src/Service/VoiceService", () => {
   };
 });
 
+// Mock VoiceFeedback
+vi.mock("@octo/base/src/Service/VoiceFeedback", () => ({
+  default: {
+    init: vi.fn(),
+    destroy: vi.fn(),
+    shared: () => ({ onTranscribeResult: mockOnTranscribeResult }),
+  },
+}));
+
+// Mock LocalModelService
+vi.mock("@octo/base/src/Service/LocalModelService", () => ({
+  default: {
+    shared: {
+      config: { preferLocal: false, enabled: false },
+      loadConfig: vi.fn(),
+      updateConfig: vi.fn(),
+      probe: vi.fn().mockResolvedValue(false),
+      transcribe: mockLocalTranscribe,
+    },
+  },
+}));
+
+// Mock useSpaceFeedbackSetting helpers
+vi.mock(
+  "@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting",
+  () => ({
+    fetchAndApplySpaceSetting: vi.fn().mockResolvedValue(undefined),
+    resetSharedSpaceSetting: vi.fn(),
+    setSharedVoiceConfig: vi.fn(),
+    getSharedSpaceFeedbackState: () => ({
+      spaceSetting: { voice_feedback_on: 1, voice_feedback_notice_acked: 1 },
+    }),
+    getSharedVoiceConfig: () => null,
+    subscribe: vi.fn(() => vi.fn()),
+  }),
+);
+
 import WKApp from "@octo/base/src/App";
 import VoiceService from "@octo/base/src/Service/VoiceService";
+import LocalModelService from "@octo/base/src/Service/LocalModelService";
 import useVoiceInput from "@octo/base/src/Components/MessageInput/useVoiceInput";
 
 // Mock MediaRecorder
@@ -363,7 +406,8 @@ describe("useVoiceInput - getChatContext", () => {
       undefined,
       "smart",
       true,
-      1
+      1,
+      false
     );
   });
 
@@ -406,7 +450,8 @@ describe("useVoiceInput - getChatContext", () => {
       "聊天成员：Bob",
       "smart",
       true,
-      2
+      2,
+      false
     );
   });
 
@@ -602,7 +647,8 @@ describe("useVoiceInput - personal voice context", () => {
       "聊天成员：Alice,Bob", // memberContext
       "smart", // mode
       true, // skipLocal
-      undefined // channelType
+      undefined, // channelType
+      false // allowFeedback
     );
     expect(getChatContext).toHaveBeenCalled();
   });
@@ -644,7 +690,8 @@ describe("useVoiceInput - personal voice context", () => {
       "聊天成员：Alice,Bob", // memberContext
       "smart", // mode
       true, // skipLocal
-      undefined // channelType
+      undefined, // channelType
+      false // allowFeedback
     );
     expect(getChatContext).toHaveBeenCalled();
   });
@@ -686,7 +733,8 @@ describe("useVoiceInput - personal voice context", () => {
       "聊天成员：Alice", // memberContext
       "smart", // mode
       true, // skipLocal
-      undefined // channelType
+      undefined, // channelType
+      false // allowFeedback
     );
   });
 
@@ -724,7 +772,8 @@ describe("useVoiceInput - personal voice context", () => {
       "聊天成员：Alice", // memberContext
       "smart", // mode
       true, // skipLocal
-      undefined // channelType
+      undefined, // channelType
+      false // allowFeedback
     );
   });
 
@@ -784,7 +833,8 @@ describe("useVoiceInput - personal voice context", () => {
       undefined, // memberContext (无 getChatContext)
       "smart", // mode
       true, // skipLocal
-      undefined // channelType
+      undefined, // channelType
+      false // allowFeedback
     );
   });
 
@@ -1016,5 +1066,172 @@ describe("useVoiceInput - max duration config", () => {
       await vi.advanceTimersByTimeAsync(1001);
     });
     expect(result.current.isRecording).toBe(false);
+  });
+});
+
+describe("useVoiceInput - notifyFeedback asrParams", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    setupMocks();
+    WKApp.shared.currentSpaceId = "test-space-id";
+    vi.mocked(VoiceService.shared.getConfig).mockResolvedValue({
+      enabled: true,
+      max_duration: 60,
+      max_file_size: 3145728,
+      feedback_url: "https://fb.test",
+    } as any);
+    vi.mocked(VoiceService.shared.getVoiceContext).mockResolvedValue({
+      status: 200,
+      has_context: false,
+      context: "",
+      updated_at: "",
+    });
+    mockOnTranscribeResult.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it("should NOT pass asrParams for remote-only transcription", async () => {
+    vi.mocked(VoiceService.shared.transcribe).mockResolvedValue({
+      text: "remote text",
+      request_id: "req-1",
+      m: "whisper-1",
+    });
+
+    const { result } = renderHook(() =>
+      useVoiceInput({ onTranscribed: vi.fn() }),
+    );
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    await act(async () => {
+      result.current.stopRecordingAndTranscribe();
+      await vi.runAllTimersAsync();
+    });
+
+    expect(mockOnTranscribeResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelText: "remote text",
+        source: "remote",
+        requestId: "req-1",
+      }),
+    );
+    const callArg = mockOnTranscribeResult.mock.calls[0][0];
+    expect(callArg.asrParams).toBeUndefined();
+  });
+
+  it("should NOT pass asrParams when falling back to remote after local failure", async () => {
+    (LocalModelService.shared as any).config = {
+      preferLocal: true,
+      enabled: true,
+    };
+    mockLocalTranscribe.mockResolvedValue(null);
+    vi.mocked(VoiceService.shared.transcribe).mockResolvedValue({
+      text: "fallback text",
+      request_id: "req-2",
+      m: "whisper-1",
+    });
+
+    const { result } = renderHook(() =>
+      useVoiceInput({ onTranscribed: vi.fn() }),
+    );
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    await act(async () => {
+      result.current.stopRecordingAndTranscribe();
+      await vi.runAllTimersAsync();
+    });
+
+    expect(mockOnTranscribeResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelText: "fallback text",
+        source: "remote",
+        requestId: "req-2",
+      }),
+    );
+    const callArg = mockOnTranscribeResult.mock.calls[0][0];
+    expect(callArg.asrParams).toBeUndefined();
+
+    (LocalModelService.shared as any).config = {
+      preferLocal: false,
+      enabled: false,
+    };
+  });
+
+  it("should pass asrParams for local transcription", async () => {
+    (LocalModelService.shared as any).config = {
+      preferLocal: true,
+      enabled: true,
+    };
+    mockLocalTranscribe.mockResolvedValue({ text: "local text", m: "v3" });
+
+    const getChatContext = vi.fn().mockReturnValue({
+      chatContext: "chat-ctx",
+      memberContext: "member-ctx",
+      channelType: 2,
+    });
+
+    const { result } = renderHook(() =>
+      useVoiceInput({ onTranscribed: vi.fn(), getChatContext }),
+    );
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    await act(async () => {
+      result.current.stopRecordingAndTranscribe("ctx text");
+      await vi.runAllTimersAsync();
+    });
+
+    expect(mockOnTranscribeResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelText: "local text",
+        source: "local",
+        asrParams: expect.objectContaining({
+          chatContext: "chat-ctx",
+          memberContext: "member-ctx",
+          channelType: 2,
+          model: "v3",
+        }),
+      }),
+    );
+
+    (LocalModelService.shared as any).config = {
+      preferLocal: false,
+      enabled: false,
+    };
   });
 });

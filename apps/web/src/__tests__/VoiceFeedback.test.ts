@@ -233,6 +233,123 @@ describe("VoiceFeedback", () => {
       expect(metadata.utterance_id).toBe("u-scene");
       expect(metadata.source).toBe("local");
     });
+
+    it("includes asrParams fields in local upload metadata", () => {
+      VoiceFeedback.init("https://fb.test");
+      const fb = VoiceFeedback.shared()!;
+      const blob = new Blob(["data"], { type: "audio/webm" });
+
+      fb.onTranscribeResult({
+        utteranceId: "u-params",
+        modelText: "hello",
+        source: "local",
+        audioBlob: blob,
+        scene: "chat",
+        asrParams: {
+          contextText: "ctx",
+          chatContext: "chat-ctx",
+          personalContext: "personal-ctx",
+          memberContext: "member-ctx",
+          mode: "streaming",
+          channelType: 2,
+          model: "v3",
+          allowFeedback: true,
+        },
+      });
+
+      const fetchMock = vi.mocked(fetch);
+      const localCall = fetchMock.mock.calls.find(
+        (c) => typeof c[0] === "string" && c[0].includes("/local"),
+      );
+      expect(localCall).toBeDefined();
+
+      const formData = localCall![1]!.body as FormData;
+      const metadata = JSON.parse(formData.get("metadata") as string);
+      expect(metadata.context_text).toBe("ctx");
+      expect(metadata.chat_context).toBe("chat-ctx");
+      expect(metadata.personal_context).toBe("personal-ctx");
+      expect(metadata.member_context).toBe("member-ctx");
+      expect(metadata.mode).toBe("streaming");
+      expect(metadata.channel_type).toBe(2);
+      expect(metadata.model).toBe("v3");
+      expect(metadata.allow_feedback).toBe(true);
+    });
+    it("defaults metadata fields when asrParams is undefined", () => {
+      VoiceFeedback.init("https://fb.test");
+      const fb = VoiceFeedback.shared()!;
+      const blob = new Blob(["data"], { type: "audio/webm" });
+
+      fb.onTranscribeResult({
+        utteranceId: "u-no-params",
+        modelText: "hello",
+        source: "local",
+        audioBlob: blob,
+        scene: "chat",
+      });
+
+      const fetchMock = vi.mocked(fetch);
+      const localCall = fetchMock.mock.calls.find(
+        (c) => typeof c[0] === "string" && c[0].includes("/local"),
+      );
+      expect(localCall).toBeDefined();
+
+      const formData = localCall![1]!.body as FormData;
+      const metadata = JSON.parse(formData.get("metadata") as string);
+      expect(metadata.context_text).toBe("");
+      expect(metadata.chat_context).toBe("");
+      expect(metadata.personal_context).toBe("");
+      expect(metadata.member_context).toBe("");
+      expect(metadata.mode).toBe("");
+      expect(metadata.channel_type).toBe(0);
+      expect(metadata.model).toBe("");
+      expect(metadata.allow_feedback).toBe(false);
+    });
+  });
+
+  describe("uploadFinal payload", () => {
+    it("does not include asrParams fields in final upload", () => {
+      VoiceFeedback.init("https://fb.test");
+      const fb = VoiceFeedback.shared()!;
+
+      fb.onTranscribeResult({
+        utteranceId: "u-final",
+        modelText: "hello",
+        source: "remote",
+        scene: "chat",
+        asrParams: {
+          contextText: "ctx",
+          chatContext: "chat-ctx",
+          personalContext: "personal-ctx",
+          memberContext: "member-ctx",
+          mode: "streaming",
+          channelType: 2,
+          model: "v3",
+          allowFeedback: true,
+        },
+      });
+
+      vi.mocked(fetch).mockClear();
+      fb.submitAll("corrected text");
+
+      const fetchMock = vi.mocked(fetch);
+      const finalCall = fetchMock.mock.calls.find(
+        (c) => typeof c[0] === "string" && c[0].includes("/final"),
+      );
+      expect(finalCall).toBeDefined();
+
+      const body = JSON.parse(finalCall![1]!.body as string);
+      expect(body.utterance_id).toBe("u-final");
+      expect(body.model_text).toBe("hello");
+      expect(body.user_text).toBe("corrected text");
+      expect(body).not.toHaveProperty("context_text");
+      expect(body).not.toHaveProperty("chat_context");
+      expect(body).not.toHaveProperty("personal_context");
+      expect(body).not.toHaveProperty("member_context");
+      expect(body).not.toHaveProperty("mode");
+      expect(body).not.toHaveProperty("channel_type");
+      expect(body).not.toHaveProperty("model");
+      expect(body).not.toHaveProperty("allow_feedback");
+    });
   });
 
   describe("no-op when disabled", () => {

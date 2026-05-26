@@ -5,7 +5,7 @@ import VoiceService, {
   VoiceContextResponse,
   VoiceMode,
 } from "../../Service/VoiceService";
-import VoiceFeedback from "../../Service/VoiceFeedback";
+import VoiceFeedback, { type AsrParams } from "../../Service/VoiceFeedback";
 import LocalModelService, { LocalModelConfig } from "../../Service/LocalModelService";
 import WKApp from "../../App";
 import { ChatContextResult } from "../Conversation/chatContext";
@@ -316,7 +316,12 @@ export default function useVoiceInput(
         }
 
         setIsTranscribing(true);
-        const notifyFeedback = (text: string, source: "local" | "remote", requestId?: string) => {
+        const notifyFeedback = (
+          text: string,
+          source: "local" | "remote",
+          requestId?: string,
+          asrParams?: AsrParams,
+        ) => {
           if (voiceFeedbackOnRef.current !== 1) return;
           VoiceFeedback.shared()?.onTranscribeResult({
             utteranceId: utteranceIdRef.current,
@@ -325,6 +330,7 @@ export default function useVoiceInput(
             requestId,
             scene,
             audioBlob: source === "local" ? blob : undefined,
+            asrParams,
           });
         };
 
@@ -372,7 +378,16 @@ export default function useVoiceInput(
               );
             if (localResult) {
               if (localResult.text) {
-                notifyFeedback(localResult.text, "local");
+                notifyFeedback(localResult.text, "local", undefined, {
+                  contextText: contextTextRef.current,
+                  chatContext,
+                  personalContext,
+                  memberContext,
+                  mode: recordingModeRef.current,
+                  channelType: chatCtxResult.channelType,
+                  model: localResult.m,
+                  allowFeedback,
+                });
                 if (onTranscribed) onTranscribed(localResult.text);
               }
               return;
