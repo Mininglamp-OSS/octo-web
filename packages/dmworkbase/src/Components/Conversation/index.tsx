@@ -2347,7 +2347,10 @@ export class Conversation
                         }
 
                         // ── 辅助：发送单张图片（读取预览+宽高） ──────────────
-                        const sendImageFile = async (file: File) => {
+                        // 返回 true 表示消息已入队 / 发送; false 表示被预检拒绝、
+                        // 调用方应据此决定是否继续后续流程 (例如不要再补一条
+                        // 空回复消息: octo-web#119 review by Jerry-Xin)。
+                        const sendImageFile = async (file: File): Promise<boolean> => {
                           // 上传前预检：后端会对文件大小/类型做校验,失败时直接 Toast,
                           // 不要让本地气泡先进聊天框再显示失败 (octo-web#119)。
                           try {
@@ -2357,7 +2360,7 @@ export class Conversation
                           } catch (err) {
                             const msg = (err as { msg?: string })?.msg || "上传失败";
                             Toast.error(`图片「${file.name}」${msg}`);
-                            return;
+                            return false;
                           }
                           const reader = new FileReader();
                           const previewUrl = await new Promise<string>(
@@ -2370,7 +2373,7 @@ export class Conversation
                           );
                           if (!previewUrl) {
                             Toast.error(`图片「${file.name}」读取失败`);
-                            return;
+                            return false;
                           }
                           const { width, height } = await new Promise<{
                             width: number;
@@ -2389,10 +2392,11 @@ export class Conversation
                           await this.sendMediaAndWait(
                             new ImageContent(file, previewUrl, width, height),
                           );
+                          return true;
                         };
 
                         // ── 辅助：发送单个非图片文件 ──────────────
-                        const sendFileAttachment = async (file: File) => {
+                        const sendFileAttachment = async (file: File): Promise<boolean> => {
                           const name = file.name || "unknown";
                           const dotIndex = name.lastIndexOf(".");
                           const ext =
@@ -2403,11 +2407,12 @@ export class Conversation
                           } catch (err) {
                             const msg = (err as { msg?: string })?.msg || "上传失败";
                             Toast.error(`文件「${name}」${msg}`);
-                            return;
+                            return false;
                           }
                           await this.sendMediaAndWait(
                             new FileContent(file, name, ext, file.size),
                           );
+                          return true;
                         };
 
                         // ── 辅助：构建带 mention 的文本 MessageContent ──────────────
@@ -2490,14 +2495,20 @@ export class Conversation
                         };
 
                         // ── 第一阶段：发送顶部附件区的文件（优先级最高） ──────────────
+                        // anyMessageSent: 标记本次 onSend 是否实际入队过任何消息。
+                        // 若所有顶部附件 + 编辑器内容块都被预检拒绝,且没有文本块,
+                        // 则不应再补发空回复消息 (octo-web#119 review by Jerry-Xin)。
+                        let anyMessageSent = false;
                         const topFilesToSend = topFiles || [];
                         for (const { file } of topFilesToSend) {
                           try {
+                            let sent = false;
                             if (file.type && file.type.startsWith("image/")) {
-                              await sendImageFile(file);
+                              sent = await sendImageFile(file);
                             } else {
-                              await sendFileAttachment(file);
+                              sent = await sendFileAttachment(file);
                             }
+                            if (sent) anyMessageSent = true;
                           } catch (err) {
                             Toast.error(`文件「${file.name}」发送失败`);
                           }
@@ -2520,10 +2531,15 @@ export class Conversation
                                 }
                                 isFirstTextBlock = false;
                                 await this.sendTextAndWaitAck(msgContent);
+                                anyMessageSent = true;
                               } else if (block.type === "image") {
-                                await sendImageFile(block.file);
+                                if (await sendImageFile(block.file)) {
+                                  anyMessageSent = true;
+                                }
                               } else if (block.type === "file") {
-                                await sendFileAttachment(block.file);
+                                if (await sendFileAttachment(block.file)) {
+                                  anyMessageSent = true;
+                                }
                               }
                             } catch (err) {
                               console.error(
@@ -2533,8 +2549,10 @@ export class Conversation
                               Toast.error("消息发送失败");
                             }
                           }
-                          // 如果 reply 还没被消费（没有文本块），附加到一条空白消息
-                          if (reply) {
+                          // 如果 reply 还没被消费（没有文本块），附加到一条空白消息;
+                          // 但仅当本次确实发出了别的消息时,否则用户的所有附件都被
+                          // 预检拒绝、却仍收到一条孤立的空回复气泡 (#119 Jerry-Xin)。
+                          if (reply && anyMessageSent) {
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
                             await this.sendTextAndWaitAck(emptyContent);
@@ -2547,7 +2565,8 @@ export class Conversation
                               msgContent.reply = reply;
                             }
                             await this.sendTextAndWaitAck(msgContent);
-                          } else if (reply) {
+                          } else if (reply && anyMessageSent) {
+                            // 同上: 顶部附件全部被预检拒绝时不要补空回复
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
                             await this.sendTextAndWaitAck(emptyContent);

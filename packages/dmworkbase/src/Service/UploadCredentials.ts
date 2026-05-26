@@ -1,6 +1,5 @@
 import { Channel } from "wukongimjssdk"
-import WKApp from "../App"
-import { extractErrorMsg } from "./APIClient"
+import APIClient, { extractErrorMsg } from "./APIClient"
 
 /**
  * 上传前预检 file/upload/credentials。
@@ -28,19 +27,22 @@ export async function precheckUploadCredentials(
     const ext = extension ? `.${extension}` : ""
     const path = `/${channel.channelType}/${channel.channelID}/${genUploadUUID()}${ext}`
 
+    let result: { uploadUrl?: unknown; downloadUrl?: unknown } | undefined
     try {
-        const result = await WKApp.apiClient.get(
+        result = await APIClient.shared.get(
             `file/upload/credentials?path=${encodeURIComponent(path)}&type=chat&filename=${encodeURIComponent(fileName)}&contentType=${encodeURIComponent(contentType)}&fileSize=${fileSize}`,
         )
-        if (!result || !result.uploadUrl || !result.downloadUrl) {
-            throwWithMsg("响应缺少凭证字段")
-        }
     } catch (err) {
         const msg =
             extractErrorMsg(err) ||
             (err instanceof Error ? err.message : "") ||
             "上传失败"
         throwWithMsg(msg)
+    }
+
+    // 200 但响应缺字段时单独抛, 不要再被一个 catch 吞掉重写 (#135 review by lml2468)。
+    if (!result || typeof result.uploadUrl !== "string" || typeof result.downloadUrl !== "string") {
+        throwWithMsg("响应缺少凭证字段")
     }
 }
 
