@@ -11,8 +11,7 @@ import { WKApp, isSafeUrl } from "@octo/base";
  *      用 window.location.origin 拼一下兜底成绝对 URL。
  *   3. isSafeUrl 拒绝 javascript:/data:/file:/ftp: 等危险协议。
  *
- * 用在 OutputsPanel.handleDownload + MatterDetailPanel.handleOutputPreview
- * 两处, 避免代码漂移 (review #97 yujiawei P2 #3)。
+ * 用在 OutputsPanel + MatterDetailPanel 时间线附件预览 / 下载, 避免代码漂移。
  *
  * @returns 解析+校验通过的绝对 URL, 不通过返回 null
  */

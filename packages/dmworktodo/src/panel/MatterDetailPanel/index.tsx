@@ -52,6 +52,7 @@ import {
   formatFileSize,
 } from "@octo/base/src/Components/MessageInput/AttachmentNode";
 import { getExtension } from "@octo/base/src/Components/FilePreviewPanel/types";
+import { Eye, Download as DownloadIcon } from "lucide-react";
 import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
 import { useChannelName } from "../../hooks/useChannelName";
 import { useMyGroups } from "../../hooks/useMyGroups";
@@ -601,22 +602,15 @@ export default function MatterDetailPanel({
   );
 
   // ── 时间线附件: 解析 + 校验 URL ──
-  // 跟 dmworkbase/Messages/File.handleDownload / handlePreview 同一套两步:
+  // 复用 utils/fileUrl.resolveAndGuardUrl, 跟 dmworkbase/Messages/File
+  // 同一套两步:
   //   1. WKApp.dataSource.commonDataSource.getFileURL(rawUrl)  → 拿到完整路径
   //   2. 不是绝对 URL 则补 origin
   //   3. isSafeUrl 拒掉 javascript: / data: 等不安全协议
   //
-  // 安全考量同 PR #97: 后端如果将来返回相对路径或恶意 URL, 必须先校验
-  // 再 emit 预览事件 / 触发 anchor 下载, 避免 XSS / 钓鱼。
-  const resolveAttachmentUrl = useCallback((rawUrl: string): string | null => {
-    if (!rawUrl) return null;
-    let url = WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
-    if (url && !url.startsWith("http")) {
-      url = window.location.origin + "/" + url.replace(/^\//, "");
-    }
-    if (!url || !isSafeUrl(url)) return null;
-    return url;
-  }, []);
+  // 抽成独立 util 是为了:
+  //   - 单测可直接对 helper 加 case
+  //   - 跟 OutputsPanel 这类未来用同样安全模式的调用方共享一个真源
 
   // 预览附件: 仅在嵌入聊天侧边栏 (showClose=true) 时启用,
   // 因为只有 Pages/Chat 监听 wk:file-preview 事件并弹 FilePreviewPanel。
@@ -632,7 +626,7 @@ export default function MatterDetailPanel({
   //     "id 有 / type 没有" 半截信息导致下游分支判断错误。
   const handlePreviewAttachment = useCallback(
     (att: TimelineAttachment, entry: TimelineEntry) => {
-      const url = resolveAttachmentUrl(att.file_url);
+      const url = resolveAndGuardUrl(att.file_url);
       if (!url) return;
       const name = att.file_name || "未知文件";
       const ext = getExtension("", name);
@@ -655,14 +649,14 @@ export default function MatterDetailPanel({
         sourceChannelType,
       });
     },
-    [resolveAttachmentUrl, matter],
+    [matter],
   );
 
   // 下载附件: 嵌入和独立模式都启用, 沿用 dmworkbase/Utils/download.downloadFile,
   // 内部已带 isSafeUrl 二次保险 + presigned cross-origin 处理。
   const handleDownloadAttachment = useCallback(
     async (att: TimelineAttachment) => {
-      const url = resolveAttachmentUrl(att.file_url);
+      const url = resolveAndGuardUrl(att.file_url);
       if (!url) return;
       try {
         await downloadFile(url, att.file_name || "file");
@@ -670,7 +664,7 @@ export default function MatterDetailPanel({
         Toast.error("下载失败");
       }
     },
-    [resolveAttachmentUrl],
+    [],
   );
 
   // ── 负责人 toggle：添加或移除 assignee，成功后拉取最新 matter ──
@@ -1786,10 +1780,7 @@ export function TimelinePanel({
                                           onPreviewAttachment(att, e)
                                         }
                                       >
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                          <circle cx="12" cy="12" r="3" />
-                                        </svg>
+                                        <Eye size={14} aria-hidden="true" />
                                       </button>
                                     )}
                                     {onDownloadAttachment && (
@@ -1802,11 +1793,7 @@ export function TimelinePanel({
                                           onDownloadAttachment(att, e)
                                         }
                                       >
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                          <polyline points="7 10 12 15 17 10" />
-                                          <line x1="12" y1="15" x2="12" y2="3" />
-                                        </svg>
+                                        <DownloadIcon size={14} aria-hidden="true" />
                                       </button>
                                     )}
                                   </span>
