@@ -10,6 +10,8 @@ import {
   listFlows,
 } from "../api/flowApi";
 import type { ExecutionStatus, Flow, FlowStatus } from "../types/flow";
+import FlowEditorPage from "./FlowEditorPage";
+import FlowExecutionsPage from "./FlowExecutionsPage";
 
 const STATUS_COLOR: Record<FlowStatus, "grey" | "green" | "amber"> = {
   draft: "grey",
@@ -44,12 +46,18 @@ export default function FlowListPage() {
     load();
   }, [load]);
 
+  // 注意：列表页 (`/flow`) 由模块菜单 onPress 通过 `WKApp.routeRight.replaceToRoot`
+  // 挂在右侧主区域，下面的子页面也必须通过同一个 routeRight 推进，否则 `WKApp.route.push`
+  // 仅会调用 `restContent`，没有任何 listener 把它渲染出来 → 点击列表项无反应
+  // (YUJ-2070, Bug 2)。统一沿用 SummaryListPage 的 popToRoot + push 范式。
   const openEditor = (id: string) => {
-    WKApp.route.push("/flow/edit", { flowId: id });
+    WKApp.routeRight.popToRoot();
+    WKApp.routeRight.push(<FlowEditorPage flowId={id} />);
   };
 
   const openExecutions = (id: string) => {
-    WKApp.route.push("/flow/executions", { flowId: id });
+    WKApp.routeRight.popToRoot();
+    WKApp.routeRight.push(<FlowExecutionsPage flowId={id} />);
   };
 
   const handleCreate = async () => {
