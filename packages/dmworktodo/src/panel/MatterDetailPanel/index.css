@@ -1049,10 +1049,19 @@ textarea.wk-mp-goal__text--editing {
   color: rgba(28, 28, 35, 0.8);
 }
 
-/* Content wrap (colon + text) */
+/* Content wrap (colon + content column) */
 .wk-mp-tl__content-wrap {
   display: inline-flex;
   align-items: flex-start;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 内容列: 纵向叠放文本 + 附件区 */
+.wk-mp-tl__content-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
   flex: 1;
   min-width: 0;
 }
@@ -1070,12 +1079,99 @@ textarea.wk-mp-goal__text--editing {
   font-size: var(--wk-text-size-md);
   font-weight: var(--wk-font-regular);
   line-height: 20px;
-  flex: 1;
   min-width: 0;
   color: var(--wk-text-primary);
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
+}
+
+/* ─── 附件区 ─── */
+.wk-mp-tl__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wk-sp-1-5);
+}
+
+.wk-mp-tl__att-card {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1-5);
+  max-width: 100%;
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-surface);
+  transition: border-color var(--wk-dur-fast),
+    background var(--wk-dur-fast);
+}
+
+.wk-mp-tl__att-card:hover {
+  border-color: var(--wk-border-default);
+  background: var(--wk-bg-item-hover);
+}
+
+.wk-mp-tl__att-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.wk-mp-tl__att-meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--wk-sp-1);
+  min-width: 0;
+  max-width: 220px;
+}
+
+.wk-mp-tl__att-name {
+  font-size: var(--wk-text-size-sm);
+  line-height: 18px;
+  color: var(--wk-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-mp-tl__att-size {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  flex-shrink: 0;
+}
+
+.wk-mp-tl__att-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-0-5);
+  flex-shrink: 0;
+}
+
+.wk-mp-tl__att-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--wk-r-xs);
+  background: transparent;
+  color: var(--wk-icon-default);
+  cursor: pointer;
+  transition: background var(--wk-dur-fast),
+    color var(--wk-dur-fast);
+}
+
+.wk-mp-tl__att-btn:hover {
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-primary);
+}
+
+.wk-mp-tl__att-btn:focus-visible {
+  outline: 2px solid var(--wk-brand-primary);
+  outline-offset: 1px;
 }
 
 /* 原消息 anchor button */
