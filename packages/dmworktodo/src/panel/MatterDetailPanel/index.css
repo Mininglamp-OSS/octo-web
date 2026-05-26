@@ -1051,7 +1051,7 @@ textarea.wk-mp-goal__text--editing {
 
 /* Content wrap (colon + content column) */
 .wk-mp-tl__content-wrap {
-  display: inline-flex;
+  display: flex;
   align-items: flex-start;
   flex: 1;
   min-width: 0;

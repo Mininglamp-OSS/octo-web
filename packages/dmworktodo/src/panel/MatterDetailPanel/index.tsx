@@ -623,26 +623,39 @@ export default function MatterDetailPanel({
   // 独立 matter 页面不接听这个事件, 避免按钮看似可点但无反应。
   //
   // payload 与 wk:file-preview 既有形状对齐 (dmworkbase/App.tsx 定义):
-  //   - sourceChannelId / sourceChannelType 用 entry.source_channel_id 直传,
-  //     这是真实 IM channel_id (跟 timeline_entries.source_channel_id 同源),
-  //     不是 matter_channels.id, 跟 PR #97 Outputs tab 那边不一样, 这里
-  //     不用做 matter.channels lookup。
+  //   - sourceChannelId 用 entry.source_channel_id, 这是真实 IM channel_id
+  //     (跟 timeline_entries.source_channel_id 同源), 不是 matter_channels.id,
+  //     跟 PR #97 Outputs tab 那边不一样, 这里不用做 matter.channels lookup。
+  //   - sourceChannelType 优先用 entry.channel_type, 否则回查 matter.channels
+  //     拿到与 sourceChannelId 配套的 channel_type。两者都缺时不传, 让
+  //     Pages/Chat._onFilePreview 走默认分支 (不当作 thread)。这样可以避免
+  //     "id 有 / type 没有" 半截信息导致下游分支判断错误。
   const handlePreviewAttachment = useCallback(
     (att: TimelineAttachment, entry: TimelineEntry) => {
       const url = resolveAttachmentUrl(att.file_url);
       if (!url) return;
       const name = att.file_name || "未知文件";
       const ext = getExtension("", name);
+
+      const sourceChannelId = entry.source_channel_id;
+      let sourceChannelType: number | undefined = entry.channel_type;
+      if (sourceChannelId && sourceChannelType == null) {
+        const matched = (matter?.channels || []).find(
+          (ch) => ch.channel_id === sourceChannelId,
+        );
+        sourceChannelType = matched?.channel_type;
+      }
+
       WKApp.mittBus.emit("wk:file-preview", {
         url,
         name,
         extension: ext,
         size: att.file_size,
-        sourceChannelId: entry.source_channel_id,
-        sourceChannelType: entry.channel_type,
+        sourceChannelId,
+        sourceChannelType,
       });
     },
-    [resolveAttachmentUrl],
+    [resolveAttachmentUrl, matter],
   );
 
   // 下载附件: 嵌入和独立模式都启用, 沿用 dmworkbase/Utils/download.downloadFile,
@@ -1721,9 +1734,9 @@ export function TimelinePanel({
                       <UserName uid={e.user_id} className="wk-mp-tl__user-name" />
                     </span>
                     {/* 内容（前面带冒号） + 附件区 */}
-                    <span className="wk-mp-tl__content-wrap">
+                    <div className="wk-mp-tl__content-wrap">
                       <span className="wk-mp-tl__colon">：</span>
-                      <span className="wk-mp-tl__content-col">
+                      <div className="wk-mp-tl__content-col">
                         <span className="wk-mp-tl__content">{e.content || ""}</span>
                         {/* 附件列表: 仅当 entry 有 attachments 时渲染 */}
                         {Array.isArray(e.attachments) && e.attachments.length > 0 && (
@@ -1802,8 +1815,8 @@ export function TimelinePanel({
                             })}
                           </div>
                         )}
-                      </span>
-                    </span>
+                      </div>
+                    </div>
                   </div>
                   {/* 原消息按钮 */}
                   {(() => {
