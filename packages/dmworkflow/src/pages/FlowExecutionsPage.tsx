@@ -8,9 +8,13 @@ import ExecutionView from "../components/ExecutionView";
 interface Props {
   flowId: string;
   executionId?: string | null;
+  /** Return to the previous right-pane view (typically the editor). Defaults to `routeRight.pop()`. */
+  onBack?: () => void;
+  /** Close the right pane entirely and return to the list. Defaults to `routeRight.popToRoot()`. */
+  onClose?: () => void;
 }
 
-export default function FlowExecutionsPage({ flowId, executionId }: Props) {
+export default function FlowExecutionsPage({ flowId, executionId, onBack, onClose }: Props) {
   const [flow, setFlow] = useState<Flow | null>(null);
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState<string | null>(executionId ?? null);
@@ -51,10 +55,10 @@ export default function FlowExecutionsPage({ flowId, executionId }: Props) {
           background: "var(--semi-color-bg-1)",
         }}
       >
-        <Button size="small" onClick={() => WKApp.route.push("/flow/edit", { flowId })}>← 编辑器</Button>
+        <Button size="small" onClick={() => (onBack ? onBack() : WKApp.routeRight.pop())}>← 编辑器</Button>
         <div style={{ fontWeight: 600, marginLeft: 8 }}>{flow.name} · 执行历史</div>
         <div style={{ flex: 1 }} />
-        <Button size="small" onClick={() => WKApp.route.push("/flow")}>返回列表</Button>
+        <Button size="small" onClick={() => (onClose ? onClose() : WKApp.routeRight.popToRoot())}>返回列表</Button>
       </div>
       <ExecutionView flow={flow} activeExecutionId={active} onSelectExecution={setActive} />
     </div>

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Button, Modal, Popconfirm, Spin, Table, Tag, Toast, Input } from "@douyinfe/semi-ui";
-import { IconPlus, IconRefresh } from "@douyinfe/semi-icons";
-import { WKApp } from "@octo/base";
+import { Button, Dropdown, Empty, Modal, Popconfirm, Spin, Tag, Toast, Input } from "@douyinfe/semi-ui";
+import { IconPlus, IconRefresh, IconMore } from "@douyinfe/semi-icons";
 import {
   activateFlow,
   createFlow,
@@ -25,7 +24,20 @@ const EXEC_COLOR: Record<ExecutionStatus, "grey" | "green" | "red" | "blue" | "o
   cancelled: "orange",
 };
 
-export default function FlowListPage() {
+interface Props {
+  /** Open a flow's editor in the right pane. */
+  onOpenEditor: (flowId: string) => void;
+  /** Open a flow's execution history in the right pane. */
+  onOpenExecutions: (flowId: string) => void;
+}
+
+/**
+ * Octo Flow list — rendered inside the ~300 px left panel. Layout is therefore
+ * compact: a single column of cards, with bulk actions tucked behind a kebab
+ * menu. Editor / executions navigation is delegated to callbacks so this page
+ * does not need to know that they live on the right pane.
+ */
+export default function FlowListPage({ onOpenEditor, onOpenExecutions }: Props) {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -44,14 +56,6 @@ export default function FlowListPage() {
     load();
   }, [load]);
 
-  const openEditor = (id: string) => {
-    WKApp.route.push("/flow/edit", { flowId: id });
-  };
-
-  const openExecutions = (id: string) => {
-    WKApp.route.push("/flow/executions", { flowId: id });
-  };
-
   const handleCreate = async () => {
     const name = draftName.trim();
     if (!name) {
@@ -66,7 +70,9 @@ export default function FlowListPage() {
       });
       setCreateOpen(false);
       setDraftName("");
-      openEditor(flow.id);
+      // Optimistically prepend so the user sees it before the next reload.
+      setFlows((cur) => [flow, ...cur]);
+      onOpenEditor(flow.id);
     } catch (e) {
       Toast.error(`创建失败：${(e as Error).message}`);
     } finally {
@@ -94,74 +100,118 @@ export default function FlowListPage() {
     }
   };
 
+  const renderItem = (flow: Flow) => {
+    const lastExec = flow.last_execution_status as ExecutionStatus | null | undefined;
+    return (
+      <div
+        key={flow.id}
+        onClick={() => onOpenEditor(flow.id)}
+        style={{
+          padding: "10px 12px",
+          borderBottom: "1px solid var(--semi-color-border)",
+          cursor: "pointer",
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontWeight: 500,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={flow.name}
+          >
+            {flow.name}
+          </div>
+          <Tag size="small" color={STATUS_COLOR[flow.status]}>{flow.status}</Tag>
+          <Dropdown
+            position="bottomRight"
+            trigger="click"
+            render={(
+              <Dropdown.Menu>
+                <Dropdown.Item onClick={() => onOpenEditor(flow.id)}>编辑</Dropdown.Item>
+                <Dropdown.Item onClick={() => handleActivateToggle(flow)}>
+                  {flow.status === "active" ? "停用" : "激活"}
+                </Dropdown.Item>
+                <Dropdown.Item onClick={() => onOpenExecutions(flow.id)}>执行历史</Dropdown.Item>
+                <Dropdown.Divider />
+                <Popconfirm
+                  title="删除 Flow"
+                  content="确认删除该 Flow？此操作不可恢复。"
+                  onConfirm={() => handleDelete(flow)}
+                >
+                  <Dropdown.Item type="danger">删除</Dropdown.Item>
+                </Popconfirm>
+              </Dropdown.Menu>
+            )}
+          >
+            <Button
+              size="small"
+              theme="borderless"
+              icon={<IconMore />}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </Dropdown>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 12,
+            color: "var(--semi-color-text-2)",
+          }}
+        >
+          {lastExec ? (
+            <Tag size="small" color={EXEC_COLOR[lastExec]}>{lastExec}</Tag>
+          ) : (
+            <span>尚未执行</span>
+          )}
+          <span style={{ flex: 1 }} />
+          <span>{flow.created_at ? new Date(flow.created_at).toLocaleDateString() : ""}</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div style={{ padding: 16, height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-        <div style={{ fontSize: 18, fontWeight: 600, flex: 1 }}>Octo Flow</div>
-        <Button icon={<IconRefresh />} onClick={load} style={{ marginRight: 8 }}>刷新</Button>
-        <Button type="primary" icon={<IconPlus />} onClick={() => setCreateOpen(true)}>
-          新建 Flow
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+      <div
+        style={{
+          padding: "10px 12px",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          borderBottom: "1px solid var(--semi-color-border)",
+        }}
+      >
+        <div style={{ fontSize: 16, fontWeight: 600, flex: 1 }}>Octo Flow</div>
+        <Button size="small" icon={<IconRefresh />} onClick={load} aria-label="刷新" />
+        <Button size="small" type="primary" icon={<IconPlus />} onClick={() => setCreateOpen(true)}>
+          新建
         </Button>
       </div>
 
-      {loading ? (
-        <Spin />
-      ) : (
-        <Table
-          dataSource={flows}
-          rowKey="id"
-          pagination={false}
-          empty="暂无 Flow，点击右上角新建"
-          columns={[
-            {
-              title: "名称",
-              dataIndex: "name",
-              render: (name: string, flow: Flow) => (
-                <a onClick={() => openEditor(flow.id)} style={{ cursor: "pointer" }}>{name}</a>
-              ),
-            },
-            {
-              title: "状态",
-              dataIndex: "status",
-              width: 100,
-              render: (status: FlowStatus) => <Tag color={STATUS_COLOR[status]}>{status}</Tag>,
-            },
-            {
-              title: "最近执行",
-              dataIndex: "last_execution_status",
-              width: 140,
-              render: (status: ExecutionStatus | null | undefined) =>
-                status ? <Tag color={EXEC_COLOR[status]}>{status}</Tag> : <span style={{ color: "var(--semi-color-text-2)" }}>—</span>,
-            },
-            {
-              title: "创建时间",
-              dataIndex: "created_at",
-              width: 180,
-              render: (v: string) => (v ? new Date(v).toLocaleString() : "—"),
-            },
-            {
-              title: "操作",
-              width: 280,
-              render: (_: unknown, flow: Flow) => (
-                <div style={{ display: "flex", gap: 6 }}>
-                  <Button size="small" onClick={() => openEditor(flow.id)}>编辑</Button>
-                  <Button size="small" onClick={() => handleActivateToggle(flow)}>
-                    {flow.status === "active" ? "停用" : "激活"}
-                  </Button>
-                  <Button size="small" onClick={() => openExecutions(flow.id)}>执行历史</Button>
-                  <Popconfirm
-                    title="删除 Flow"
-                    content="确认删除该 Flow？此操作不可恢复。"
-                    onConfirm={() => handleDelete(flow)}
-                  >
-                    <Button size="small" type="danger">删除</Button>
-                  </Popconfirm>
-                </div>
-              ),
-            },
-          ]}
-        />
-      )}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        {loading ? (
+          <div style={{ padding: 24, textAlign: "center" }}>
+            <Spin />
+          </div>
+        ) : flows.length === 0 ? (
+          <Empty
+            style={{ paddingTop: 40 }}
+            description="暂无 Flow，点击右上角「新建」开始编排。"
+          />
+        ) : (
+          flows.map(renderItem)
+        )}
+      </div>
 
       <Modal
         title="新建 Flow"

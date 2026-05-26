@@ -6,18 +6,15 @@ import FlowEditorPage from "./pages/FlowEditorPage";
 import FlowExecutionsPage from "./pages/FlowExecutionsPage";
 
 /**
- * The WKApp router is a flat path → component map (see Service/Route.tsx).
- * It does not natively support `/flow/:id` style segment matching, so we
- * follow the existing module convention (e.g. SummaryModule registering
- * `/summary/detail` with a `taskId` param) and expose:
+ * octo-web is a three-pane shell: NavRail | left panel (~300 px) | right panel
+ * (the wide main area). Anything registered through `WKApp.route.register(...)`
+ * is rendered by `MainContentLeft` inside the narrow left panel — that fits
+ * list views (chats, contacts, summary list) but does NOT fit the Flow editor
+ * canvas.
  *
- *   /flow            — list page
- *   /flow/edit       — editor (param: { flowId })
- *   /flow/executions — execution history (param: { flowId })
- *   /flow/execution  — single-execution detail (param: { flowId, executionId })
- *
- * Cross-page navigation goes through WKApp.route.push(path, param). The
- * `:id` semantics from the issue spec are preserved as param keys.
+ * Following the SummaryModule pattern, we only register the list page on the
+ * left, and push the editor / execution-history pages to the right pane via
+ * `WKApp.routeRight.*`. This keeps the React Flow canvas full-width.
  */
 function FlowIcon({ active }: { active?: boolean }) {
   const color = active ? "var(--wk-brand-primary, #7C5CFC)" : "currentColor";
@@ -32,48 +29,63 @@ function FlowIcon({ active }: { active?: boolean }) {
   );
 }
 
+// ─── Right-pane navigation helpers ────────────────────────────────────────
+// Centralised so list / editor / executions pages all push to the same stack
+// with identical onBack semantics. Exposed on WKApp so external entries (e.g.
+// notifications, deeplinks) can drop straight into the editor.
+
+function openFlowEditor(flowId: string): void {
+  WKApp.switchToMenuById?.("flow");
+  WKApp.routeRight.replaceToRoot(
+    <FlowEditorPage
+      flowId={flowId}
+      onBack={() => WKApp.routeRight.popToRoot()}
+      onOpenExecutions={(id, executionId) => openFlowExecutions(id, executionId)}
+    />,
+  );
+}
+
+function openFlowExecutions(flowId: string, executionId?: string | null): void {
+  WKApp.switchToMenuById?.("flow");
+  WKApp.routeRight.push(
+    <FlowExecutionsPage
+      flowId={flowId}
+      executionId={executionId ?? null}
+      onBack={() => WKApp.routeRight.pop()}
+      onClose={() => WKApp.routeRight.popToRoot()}
+    />,
+  );
+}
+
+// Re-export so other modules can import without reaching into module internals.
+(WKApp as any).openFlowEditor = openFlowEditor;
+(WKApp as any).openFlowExecutions = openFlowExecutions;
+
 export class FlowModule implements IModule {
   id(): string {
     return "FlowModule";
   }
 
   init(): void {
-    WKApp.route.register("/flow", () => <FlowListPage />);
-
-    WKApp.route.register("/flow/edit", (param: { flowId?: string } | undefined) => {
-      const flowId = param?.flowId ?? "";
-      return <FlowEditorPage flowId={flowId} />;
-    });
-
-    WKApp.route.register("/flow/executions", (param: { flowId?: string; executionId?: string } | undefined) => {
-      return (
-        <FlowExecutionsPage
-          flowId={param?.flowId ?? ""}
-          executionId={param?.executionId ?? null}
-        />
-      );
-    });
-
-    WKApp.route.register("/flow/execution", (param: { flowId?: string; executionId?: string } | undefined) => {
-      return (
-        <FlowExecutionsPage
-          flowId={param?.flowId ?? ""}
-          executionId={param?.executionId ?? null}
-        />
-      );
-    });
+    // Only the list lives on the left. The editor / executions pages are
+    // pushed to the right pane via the helpers above so they get the full
+    // canvas width that React Flow needs.
+    WKApp.route.register("/flow", () => (
+      <FlowListPage
+        onOpenEditor={openFlowEditor}
+        onOpenExecutions={(id) => openFlowExecutions(id)}
+      />
+    ));
 
     // Top-level nav entry, weight chosen to sit after summary (5000).
-    WKApp.menus.register("flow", (_ctx) => {
-      const m = new Menus("flow", "/flow", "Flow", <FlowIcon />, <FlowIcon />);
-      m.onPress = () => {
-        WKApp.routeLeft.popToRoot();
-        const page = WKApp.route.get("/flow");
-        if (page && React.isValidElement(page)) {
-          WKApp.routeRight.replaceToRoot(page);
-        }
-      };
-      return m;
-    }, 6000);
+    // No onPress override — the default in MainPage.onMenuClick already does
+    // `routeLeft.popToRoot() + routeRight.popToRoot()`, which is exactly what
+    // we want: show the list on the left and clear any stale editor on the
+    // right.
+    WKApp.menus.register(
+      "flow",
+      (_ctx) => new Menus("flow", "/flow", "Flow", <FlowIcon />, <FlowIcon />),
+      6000,
+    );
   }
 }

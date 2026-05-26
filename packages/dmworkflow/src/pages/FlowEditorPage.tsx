@@ -10,9 +10,14 @@ import {
 } from "../api/flowApi";
 import type { Flow, FlowDefinition, FlowStatus } from "../types/flow";
 import FlowEditor from "../components/FlowEditor";
+import FlowExecutionsPage from "./FlowExecutionsPage";
 
 interface Props {
   flowId: string;
+  /** Invoked when the user clicks the back button. Defaults to closing the right pane. */
+  onBack?: () => void;
+  /** Invoked to open the executions page for this flow. Defaults to right-pane push. */
+  onOpenExecutions?: (flowId: string, executionId?: string | null) => void;
 }
 
 const STATUS_COLOR: Record<FlowStatus, "grey" | "green" | "amber"> = {
@@ -21,7 +26,7 @@ const STATUS_COLOR: Record<FlowStatus, "grey" | "green" | "amber"> = {
   disabled: "amber",
 };
 
-export default function FlowEditorPage({ flowId }: Props) {
+export default function FlowEditorPage({ flowId, onBack, onOpenExecutions }: Props) {
   const [flow, setFlow] = useState<Flow | null>(null);
   const [definition, setDefinition] = useState<FlowDefinition>({ nodes: [], edges: [] });
   const [loading, setLoading] = useState(true);
@@ -96,7 +101,11 @@ export default function FlowEditorPage({ flowId }: Props) {
     try {
       const exec = await executeFlow(flow.id);
       Toast.success("已触发执行");
-      WKApp.route.push("/flow/execution", { flowId: flow.id, executionId: exec.id });
+      if (onOpenExecutions) {
+        onOpenExecutions(flow.id, exec.id);
+      } else {
+        WKApp.routeRight.push(<FlowExecutionsPage flowId={flow.id} executionId={exec.id} />);
+      }
     } catch (e) {
       Toast.error(`触发失败：${(e as Error).message}`);
     }
@@ -104,10 +113,20 @@ export default function FlowEditorPage({ flowId }: Props) {
 
   const openExecutions = () => {
     if (!flow) return;
-    WKApp.route.push("/flow/executions", { flowId: flow.id });
+    if (onOpenExecutions) {
+      onOpenExecutions(flow.id);
+    } else {
+      WKApp.routeRight.push(<FlowExecutionsPage flowId={flow.id} />);
+    }
   };
 
-  const back = () => WKApp.route.push("/flow");
+  const back = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      WKApp.routeRight.popToRoot();
+    }
+  };
 
   if (loading || !flow) {
     return (
