@@ -6,7 +6,8 @@ import useTextareaVoice, { ReplaceMode, SelectionRange } from "./useTextareaVoic
 import type { ChatContextResult } from "../Conversation/chatContext";
 import type { VoiceMode } from "../../Service/VoiceService";
 import VoiceFeedbackNotice from "../MessageInput/VoiceFeedbackNotice";
-import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, getSharedVoiceConfig } from "../MessageInput/useSpaceFeedbackSetting";
+import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "../MessageInput/useSpaceFeedbackSetting";
+import WKApp from "../../App";
 import "./index.css";
 
 const VOICE_MODES: { value: VoiceMode; label: string }[] = [
@@ -44,7 +45,8 @@ export default function VoiceInputButton({
   const [showMenu, setShowMenu] = useState(false);
   const [showFeedbackNotice, setShowFeedbackNotice] = useState(false);
   const buttonRef = useRef<HTMLDivElement>(null);
-  const { spaceSetting, loaded, voiceConfig, updateSetting } = useSpaceFeedbackSetting();
+  const pendingModeRef = useRef<VoiceMode>("append_only");
+  const { spaceSetting, loaded, voiceConfig } = useSpaceFeedbackSetting();
 
   const {
     isRecording,
@@ -202,16 +204,11 @@ export default function VoiceInputButton({
               Toast.warning("网络不可用，无法使用语音功能");
               return;
             }
-            const vc = getSharedVoiceConfig();
             const feedbackState = getSharedSpaceFeedbackState();
-            if (vc?.feedback_url && !feedbackState.loaded) {
+            if (!feedbackState.loaded) {
               return;
             }
-            if (
-              vc?.feedback_url &&
-              feedbackState.spaceSetting?.voice_feedback_on === 1 &&
-              feedbackState.spaceSetting?.voice_feedback_notice_acked !== 1
-            ) {
+            if (feedbackState.spaceSetting?.voice_input_enabled !== 1) {
               setShowFeedbackNotice(true);
               return;
             }
@@ -300,14 +297,11 @@ export default function VoiceInputButton({
       return;
     }
     if (!inputRef.current) return;
-    if (voiceConfig?.feedback_url && !loaded) {
+    if (!loaded) {
       return;
     }
-    if (
-      voiceConfig?.feedback_url &&
-      spaceSetting?.voice_feedback_on === 1 &&
-      spaceSetting?.voice_feedback_notice_acked !== 1
-    ) {
+    if (spaceSetting?.voice_input_enabled !== 1) {
+      pendingModeRef.current = "append_only";
       setShowFeedbackNotice(true);
       return;
     }
@@ -318,14 +312,11 @@ export default function VoiceInputButton({
   const handleModeSelect = (selectedMode: VoiceMode) => {
     setShowMenu(false);
     if (!canRecord || !inputRef.current) return;
-    if (voiceConfig?.feedback_url && !loaded) {
+    if (!loaded) {
       return;
     }
-    if (
-      voiceConfig?.feedback_url &&
-      spaceSetting?.voice_feedback_on === 1 &&
-      spaceSetting?.voice_feedback_notice_acked !== 1
-    ) {
+    if (spaceSetting?.voice_input_enabled !== 1) {
+      pendingModeRef.current = selectedMode;
       setShowFeedbackNotice(true);
       return;
     }
@@ -449,11 +440,25 @@ export default function VoiceInputButton({
         </Dropdown>
         {showFeedbackNotice && (
           <VoiceFeedbackNotice
-            onClose={() => {
+            onAccept={async (feedbackOn) => {
               setShowFeedbackNotice(false);
-              updateSetting({ voice_feedback_notice_acked: 1 });
+              const spaceId = WKApp.shared.currentSpaceId;
+              try {
+                if (spaceId) {
+                  await acceptVoiceInput(spaceId, feedbackOn);
+                }
+              } catch {
+                Toast.error('操作失败，请重试');
+                return;
+              }
+              onRecordingStart?.();
+              startRecording(pendingModeRef.current);
             }}
-            privacyUrl={voiceConfig?.feedback_privacy_url}
+            onCancel={() => {
+              setShowFeedbackNotice(false);
+            }}
+            feedbackPrivacyUrl={voiceConfig?.feedback_privacy_url}
+            feedbackUserAgreementUrl={voiceConfig?.feedback_user_agreement_url}
           />
         )}
       </>
@@ -479,11 +484,25 @@ export default function VoiceInputButton({
       </div>
       {showFeedbackNotice && (
         <VoiceFeedbackNotice
-          onClose={() => {
+          onAccept={async (feedbackOn) => {
             setShowFeedbackNotice(false);
-            updateSetting({ voice_feedback_notice_acked: 1 });
+            const spaceId = WKApp.shared.currentSpaceId;
+            try {
+              if (spaceId) {
+                await acceptVoiceInput(spaceId, feedbackOn);
+              }
+            } catch {
+              Toast.error('操作失败，请重试');
+              return;
+            }
+            onRecordingStart?.();
+            startRecording(pendingModeRef.current);
           }}
-          privacyUrl={voiceConfig?.feedback_privacy_url}
+          onCancel={() => {
+            setShowFeedbackNotice(false);
+          }}
+          feedbackPrivacyUrl={voiceConfig?.feedback_privacy_url}
+          feedbackUserAgreementUrl={voiceConfig?.feedback_user_agreement_url}
         />
       )}
     </>

@@ -13,6 +13,7 @@ export interface VoiceConfig {
   local_transcribe_url?: string;
   feedback_url?: string;
   feedback_privacy_url?: string;
+  feedback_user_agreement_url?: string;
   engine?: string;
   edit_mode?: string;
 }

@@ -19,6 +19,7 @@ export interface SpaceFeedbackState {
 const defaultSetting: SpaceSetting = {
   voice_feedback_on: 0,
   voice_feedback_notice_acked: 0,
+  voice_input_enabled: 0,
 };
 
 let sharedState: SpaceFeedbackState = {
@@ -72,7 +73,7 @@ export async function fetchAndApplySpaceSetting(spaceId: string, feedbackUrl?: s
     if (WKApp.shared.currentSpaceId !== spaceId) return;
     setSharedSpaceSetting(setting, true, spaceId);
 
-    if (feedbackUrl && setting.voice_feedback_on === 1) {
+    if (feedbackUrl && setting.voice_input_enabled === 1 && setting.voice_feedback_on === 1) {
       if (VoiceFeedback.shared()) {
         VoiceFeedback.shared()!.enable(feedbackUrl);
       } else {
@@ -115,10 +116,8 @@ export function ensureVoiceFeedbackLoaded(): Promise<void> {
       const config = await configPromise;
       if (WKApp.shared.currentSpaceId !== spaceId) return;
 
-      if (config.feedback_url) {
-        setSharedVoiceConfig(config);
-        await fetchAndApplySpaceSetting(spaceId, config.feedback_url);
-      }
+      setSharedVoiceConfig(config);
+      await fetchAndApplySpaceSetting(spaceId, config.feedback_url);
     } catch {
       configPromise = null;
     } finally {
@@ -137,6 +136,15 @@ export async function toggleVoiceFeedback(
   feedbackUrl?: string,
 ): Promise<void> {
   await updateSpaceSetting(spaceId, { voice_feedback_on: newValue });
+
+  if (sharedState.spaceSetting && sharedState.loadedSpaceId === spaceId) {
+    setSharedSpaceSetting(
+      { ...sharedState.spaceSetting, voice_feedback_on: newValue },
+      sharedState.apiAvailable,
+      spaceId,
+    );
+  }
+
   if (newValue === 0) {
     VoiceFeedback.shared()?.disable();
   } else if (feedbackUrl) {
@@ -148,8 +156,68 @@ export async function toggleVoiceFeedback(
   }
 }
 
-export async function ackFeedbackNotice(spaceId: string): Promise<void> {
-  await updateSpaceSetting(spaceId, { voice_feedback_notice_acked: 1 });
+export async function enableVoiceInput(spaceId: string): Promise<void> {
+  const data: Partial<SpaceSetting> = {
+    voice_input_enabled: 1,
+  };
+  await updateSpaceSetting(spaceId, data);
+
+  if (sharedState.spaceSetting && sharedState.loadedSpaceId === spaceId) {
+    setSharedSpaceSetting(
+      { ...sharedState.spaceSetting, ...data },
+      sharedState.apiAvailable,
+      spaceId,
+    );
+  }
+}
+
+export async function disableVoiceInput(spaceId: string): Promise<void> {
+  const data: Partial<SpaceSetting> = {
+    voice_input_enabled: 0,
+    voice_feedback_on: 0,
+  };
+  await updateSpaceSetting(spaceId, data);
+
+  if (sharedState.spaceSetting && sharedState.loadedSpaceId === spaceId) {
+    setSharedSpaceSetting(
+      { ...sharedState.spaceSetting, ...data },
+      sharedState.apiAvailable,
+      spaceId,
+    );
+  }
+
+  VoiceFeedback.shared()?.disable();
+}
+
+export async function acceptVoiceInput(
+  spaceId: string,
+  feedbackOn: boolean,
+): Promise<void> {
+  const data: Partial<SpaceSetting> = {
+    voice_input_enabled: 1,
+    voice_feedback_notice_acked: 1,
+    voice_feedback_on: feedbackOn ? 1 : 0,
+  };
+  await updateSpaceSetting(spaceId, data);
+
+  if (sharedState.spaceSetting && sharedState.loadedSpaceId === spaceId) {
+    setSharedSpaceSetting(
+      { ...sharedState.spaceSetting, ...data },
+      sharedState.apiAvailable,
+      spaceId,
+    );
+  }
+
+  if (feedbackOn) {
+    const feedbackUrl = sharedVoiceConfig?.feedback_url;
+    if (feedbackUrl) {
+      if (VoiceFeedback.shared()) {
+        VoiceFeedback.shared()!.enable(feedbackUrl);
+      } else {
+        VoiceFeedback.init(feedbackUrl);
+      }
+    }
+  }
 }
 
 export default function useSpaceFeedbackSetting() {

@@ -4,7 +4,7 @@ import classnames from "classnames";
 import React, { Component } from "react";
 import { Toast, Spin, Button, Progress } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
-import NavVoiceFeedbackItem from "./NavVoiceFeedbackItem";
+import NavVoiceSettingsItem from "./NavVoiceSettingsItem";
 
 export interface NavSettingsPanelProps {
     settingSelected: boolean;
@@ -167,7 +167,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                     }}>
                         {WKApp.shared.notificationIsClose ? "打开" : "关闭"}桌面通知
                     </li>
-                    <NavVoiceFeedbackItem />
+                    <NavVoiceSettingsItem />
                     <li onClick={() => {
                         onToggleSetting();
                         WKApp.shared.logout();
