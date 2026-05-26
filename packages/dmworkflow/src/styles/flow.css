@@ -1,0 +1,85 @@
+/* @dmwork/flow — visual flow editor styles.
+ *
+ * Most of the editor relies on inline styles + Semi tokens so that it picks
+ * up the surrounding app's light/dark theme automatically. The class names
+ * below are stable hooks for downstream theming and for the per-category
+ * node colors that the issue spec calls out:
+ *
+ *   trigger 蓝色 #3B82F6
+ *   action  绿色 #10B981
+ *   logic   紫色 #8B5CF6
+ *   human   橙色 #F59E0B (Phase 2: 灰色禁用)
+ */
+
+.octo-flow-editor {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  font-family: inherit;
+}
+
+.octo-flow-sidebar {
+  width: 220px;
+  border-right: 1px solid var(--semi-color-border);
+  background: var(--semi-color-bg-1);
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.octo-flow-canvas {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.octo-flow-config-panel {
+  width: 360px;
+  border-left: 1px solid var(--semi-color-border);
+  background: var(--semi-color-bg-1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.octo-flow-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Category-coded node visuals (mirrored in BaseNodeView inline styles so the
+ * editor still renders without this stylesheet being imported). */
+.octo-flow-node {
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 160px;
+  padding: 10px 14px;
+  transition: box-shadow 120ms ease;
+}
+
+.octo-flow-node--trigger { --node-color: #3B82F6; }
+.octo-flow-node--action  { --node-color: #10B981; }
+.octo-flow-node--logic   { --node-color: #8B5CF6; }
+.octo-flow-node--human   { --node-color: #F59E0B; }
+
+.octo-flow-node.is-selected {
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
+}
+
+.octo-flow-node.is-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+}
+
+/* React Flow attribution / handle tweaks — keep handles flush with the
+ * border so they don't dangle beyond the node's bounding box. */
+.octo-flow-canvas .react-flow__handle {
+  width: 8px;
+  height: 8px;
+}
+
+.octo-flow-canvas .react-flow__edge-path {
+  stroke-width: 1.5;
+}

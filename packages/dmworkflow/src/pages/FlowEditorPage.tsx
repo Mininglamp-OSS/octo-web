@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Spin, Tag, Toast } from "@douyinfe/semi-ui";
+import { Spin, Toast } from "@douyinfe/semi-ui";
 import { WKApp } from "@octo/base";
 import {
   activateFlow,
@@ -8,18 +8,13 @@ import {
   getFlow,
   updateFlow,
 } from "../api/flowApi";
-import type { Flow, FlowDefinition, FlowStatus } from "../types/flow";
+import type { Flow, FlowDefinition } from "../types/flow";
 import FlowEditor from "../components/FlowEditor";
+import FlowToolbar from "../components/FlowToolbar";
 
 interface Props {
   flowId: string;
 }
-
-const STATUS_COLOR: Record<FlowStatus, "grey" | "green" | "amber"> = {
-  draft: "grey",
-  active: "green",
-  disabled: "amber",
-};
 
 export default function FlowEditorPage({ flowId }: Props) {
   const [flow, setFlow] = useState<Flow | null>(null);
@@ -124,30 +119,16 @@ export default function FlowEditorPage({ flowId }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div
-        style={{
-          padding: "8px 16px",
-          borderBottom: "1px solid var(--semi-color-border)",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          background: "var(--semi-color-bg-1)",
-        }}
-      >
-        <Button size="small" onClick={back}>← 列表</Button>
-        <div style={{ fontWeight: 600, marginLeft: 8 }}>{flow.name}</div>
-        <Tag color={STATUS_COLOR[flow.status]} style={{ marginLeft: 4 }}>{flow.status}</Tag>
-        {dirty && <Tag color="orange">未保存</Tag>}
-        <div style={{ flex: 1 }} />
-        <Button type="primary" loading={saving} onClick={handleSave}>保存</Button>
-        {flow.status === "active" ? (
-          <Button onClick={handleDeactivate}>停用</Button>
-        ) : (
-          <Button onClick={handleActivate}>激活</Button>
-        )}
-        <Button onClick={handleExecute}>手动执行</Button>
-        <Button onClick={openExecutions}>执行历史</Button>
-      </div>
+      <FlowToolbar
+        flow={flow}
+        dirty={dirty}
+        saving={saving}
+        onBack={back}
+        onSave={handleSave}
+        onActivateToggle={flow.status === "active" ? handleDeactivate : handleActivate}
+        onExecute={handleExecute}
+        onOpenExecutions={openExecutions}
+      />
 
       <FlowEditor
         definition={definition}

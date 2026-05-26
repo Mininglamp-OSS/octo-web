@@ -28,8 +28,41 @@ import type {
 import Sidebar from "./Sidebar";
 import NodeConfigPanel from "./NodeConfigPanel";
 import FlowNodeView from "./nodes/FlowNodeView";
+import TriggerNode from "./custom-nodes/TriggerNode";
+import ScriptNode from "./custom-nodes/ScriptNode";
+import HttpNode from "./custom-nodes/HttpNode";
+import ConditionNode from "./custom-nodes/ConditionNode";
+import HumanNode from "./custom-nodes/HumanNode";
+import "../styles/flow.css";
 
-const nodeTypes = { flowNode: FlowNodeView };
+// React Flow node-type registry. The legacy `flowNode` key preserves any
+// canvas state saved against the original scaffold; the per-category keys
+// match what the issue spec asks for (Trigger / Script / Http / Condition /
+// Human) so each node type can render its own palette / summary line.
+const nodeTypes = {
+  flowNode: FlowNodeView,
+  trigger: TriggerNode,
+  script: ScriptNode,
+  http: HttpNode,
+  condition: ConditionNode,
+  human: HumanNode,
+};
+
+/**
+ * Map a domain NodeType (trigger.webhook / action.script / …) to the React
+ * Flow node-type registered above. Anything we don't recognise falls back to
+ * the generic FlowNodeView so the editor degrades gracefully.
+ */
+function rfNodeKey(type: NodeType): string {
+  if (type.startsWith("trigger.")) return "trigger";
+  if (type === "action.script") return "script";
+  if (type === "action.http") return "http";
+  if (type === "action.bot") return "flowNode";
+  if (type === "logic.condition") return "condition";
+  if (type === "logic.parallel") return "flowNode";
+  if (type === "human.approval") return "human";
+  return "flowNode";
+}
 
 interface FlowEditorProps {
   definition: FlowDefinition;
@@ -48,12 +81,16 @@ interface FlowEditorProps {
 function toReactFlow(def: FlowDefinition, statusByNode?: Record<string, ExecutionStatus>): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = def.nodes.map((n) => ({
     id: n.id,
-    type: "flowNode",
+    type: rfNodeKey(n.type),
     position: n.position,
     data: {
+      // legacy keys used by FlowNodeView fallback
       nodeType: n.type,
       config: n.config,
       status: statusByNode?.[n.id],
+      // per-category keys consumed by Trigger/Script/Http/Condition/Human nodes
+      subtype: n.type,
+      label: n.config?.label,
     },
   }));
   const edges: Edge[] = def.edges.map((e) => ({
@@ -172,9 +209,9 @@ function FlowEditorInner({
       const id = `n_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const node: Node = {
         id,
-        type: "flowNode",
+        type: rfNodeKey(nodeType),
         position,
-        data: { nodeType, config: {} },
+        data: { nodeType, config: {}, subtype: nodeType },
       };
       setNodes((cur) => {
         const next = [...cur, node];
@@ -225,6 +262,9 @@ function FlowEditorInner({
                 data: {
                   ...n.data,
                   config: { ...(n.data as { config: FlowNodeConfig }).config, ...patchObj },
+                  // Mirror label into the top-level data so per-category node
+                  // renderers can read it without diving into config.
+                  ...(patchObj.label !== undefined ? { label: patchObj.label } : {}),
                 },
               }
             : n,
