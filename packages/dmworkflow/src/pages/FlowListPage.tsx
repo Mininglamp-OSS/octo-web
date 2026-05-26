@@ -10,6 +10,7 @@ import {
   listFlows,
 } from "../api/flowApi";
 import type { ExecutionStatus, Flow, FlowStatus } from "../types/flow";
+import { FLOW_TEMPLATES, findTemplate } from "../utils/flowTemplates";
 
 const STATUS_COLOR: Record<FlowStatus, "grey" | "green" | "amber"> = {
   draft: "grey",
@@ -31,6 +32,7 @@ export default function FlowListPage() {
   const [creating, setCreating] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [draftName, setDraftName] = useState("");
+  const [draftTemplateId, setDraftTemplateId] = useState<string>("blank");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -52,20 +54,29 @@ export default function FlowListPage() {
     WKApp.route.push("/flow/executions", { flowId: id });
   };
 
+  const openCreate = () => {
+    setDraftName("");
+    setDraftTemplateId("blank");
+    setCreateOpen(true);
+  };
+
   const handleCreate = async () => {
     const name = draftName.trim();
     if (!name) {
       Toast.warning("请输入 Flow 名称");
       return;
     }
+    const template = findTemplate(draftTemplateId) ?? findTemplate("blank")!;
     setCreating(true);
     try {
       const flow = await createFlow({
         name,
-        definition: { nodes: [], edges: [] },
+        description: template.id === "blank" ? undefined : `From template: ${template.label}`,
+        definition: template.build(),
       });
       setCreateOpen(false);
       setDraftName("");
+      setDraftTemplateId("blank");
       openEditor(flow.id);
     } catch (e) {
       Toast.error(`创建失败：${(e as Error).message}`);
@@ -99,7 +110,7 @@ export default function FlowListPage() {
       <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
         <div style={{ fontSize: 18, fontWeight: 600, flex: 1 }}>Octo Flow</div>
         <Button icon={<IconRefresh />} onClick={load} style={{ marginRight: 8 }}>刷新</Button>
-        <Button type="primary" icon={<IconPlus />} onClick={() => setCreateOpen(true)}>
+        <Button type="primary" icon={<IconPlus />} onClick={openCreate}>
           新建 Flow
         </Button>
       </div>
@@ -170,9 +181,60 @@ export default function FlowListPage() {
         onOk={handleCreate}
         confirmLoading={creating}
         okText="创建"
+        width={520}
       >
         <div style={{ fontSize: 12, marginBottom: 4 }}>名称</div>
         <Input value={draftName} onChange={setDraftName} placeholder="my-first-flow" />
+
+        <div style={{ fontSize: 12, marginTop: 16, marginBottom: 6 }}>模板</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {FLOW_TEMPLATES.map((tpl) => {
+            const active = tpl.id === draftTemplateId;
+            return (
+              <div
+                key={tpl.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setDraftTemplateId(tpl.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setDraftTemplateId(tpl.id);
+                  }
+                }}
+                style={{
+                  cursor: "pointer",
+                  padding: "10px 12px",
+                  border: `1px solid ${active ? "var(--semi-color-primary)" : "var(--semi-color-border)"}`,
+                  borderRadius: 6,
+                  background: active ? "var(--semi-color-primary-light-default)" : "transparent",
+                  outline: "none",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                }}
+              >
+                <div
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: "50%",
+                    border: `2px solid ${active ? "var(--semi-color-primary)" : "var(--semi-color-border)"}`,
+                    background: active ? "var(--semi-color-primary)" : "transparent",
+                    flexShrink: 0,
+                    marginTop: 3,
+                  }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 500, fontSize: 13 }}>{tpl.label}</div>
+                  <div style={{ fontSize: 12, color: "var(--semi-color-text-2)", marginTop: 2 }}>
+                    {tpl.description}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </Modal>
     </div>
   );

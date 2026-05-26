@@ -115,3 +115,27 @@ export async function getExecution(executionId: string): Promise<FlowExecution> 
 export async function cancelExecution(executionId: string): Promise<void> {
   await flowAxios.post(`${apiBase()}/executions/${executionId}/cancel`);
 }
+
+export interface WebhookInfo {
+  url: string;
+  /** Optional configured signature header; the raw secret is never returned. */
+  signatureHeader?: string;
+}
+
+/**
+ * Fetch the canonical webhook URL minted by the server. We prefer this over
+ * deriving the URL from the apiBase locally because the server may publish a
+ * different host (e.g. webhook ingress vs. API ingress) and may include a
+ * token segment in the path.
+ */
+export async function getWebhookUrl(flowId: string): Promise<WebhookInfo> {
+  const resp = await flowAxios.get(`${apiBase()}/flows/${flowId}/webhook`);
+  const body = unwrap<Partial<WebhookInfo> | string>(resp.data);
+  if (typeof body === "string") {
+    return { url: body };
+  }
+  return {
+    url: body.url ?? "",
+    signatureHeader: body.signatureHeader,
+  };
+}

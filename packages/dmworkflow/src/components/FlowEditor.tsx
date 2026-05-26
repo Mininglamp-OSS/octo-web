@@ -28,6 +28,7 @@ import type {
 import Sidebar from "./Sidebar";
 import NodeConfigPanel from "./NodeConfigPanel";
 import FlowNodeView from "./nodes/FlowNodeView";
+import { buildLayeredLayout, isParallelSiblingEdge } from "../utils/flowLayout";
 
 const nodeTypes = { flowNode: FlowNodeView };
 
@@ -45,8 +46,21 @@ interface FlowEditorProps {
   webhookUrl?: string;
 }
 
-function toReactFlow(def: FlowDefinition, statusByNode?: Record<string, ExecutionStatus>): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = def.nodes.map((n) => ({
+function toReactFlow(
+  def: FlowDefinition,
+  statusByNode?: Record<string, ExecutionStatus>,
+  layered?: boolean,
+): { nodes: Node[]; edges: Edge[] } {
+  // Read-only execution view applies a layered layout so parallel siblings
+  // render side-by-side and a dashed sibling edge surfaces the same-layer
+  // relationship explicitly. Editing mode keeps user-placed positions.
+  const source: FlowDefinition = layered
+    ? (() => {
+        const { nodes: ln, edges: le } = buildLayeredLayout(def);
+        return { nodes: ln, edges: le };
+      })()
+    : def;
+  const nodes: Node[] = source.nodes.map((n) => ({
     id: n.id,
     type: "flowNode",
     position: n.position,
@@ -55,13 +69,31 @@ function toReactFlow(def: FlowDefinition, statusByNode?: Record<string, Executio
       config: n.config,
       status: statusByNode?.[n.id],
     },
+    draggable: !layered,
   }));
-  const edges: Edge[] = def.edges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    label: e.label ?? e.branch,
-  }));
+  const edges: Edge[] = source.edges.map((e) => {
+    const isSibling = isParallelSiblingEdge(e.id);
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      label: isSibling ? undefined : e.label ?? e.branch,
+      // Dashed, animation-free, lower contrast — visually distinct from real
+      // data-flow edges so users don't mistake them for actual control flow.
+      animated: false,
+      type: isSibling ? "straight" : undefined,
+      style: isSibling
+        ? {
+            stroke: "var(--semi-color-text-2, #86909C)",
+            strokeDasharray: "4 4",
+            strokeWidth: 1,
+            opacity: 0.7,
+          }
+        : undefined,
+      data: isSibling ? { parallelSibling: true } : undefined,
+      selectable: !isSibling,
+    } as Edge;
+  });
   return { nodes, edges };
 }
 
@@ -73,13 +105,17 @@ function fromReactFlow(nodes: Node[], edges: Edge[]): FlowDefinition {
       position: n.position,
       config: (n.data as { config: FlowNodeConfig }).config ?? {},
     })),
-    edges: edges.map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      label: typeof e.label === "string" ? e.label : undefined,
-      branch: typeof e.label === "string" ? e.label : undefined,
-    })),
+    edges: edges
+      // Synthetic sibling edges are layout-only — never persist them back
+      // into the user-authored definition.
+      .filter((e) => !isParallelSiblingEdge(e.id))
+      .map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        label: typeof e.label === "string" ? e.label : undefined,
+        branch: typeof e.label === "string" ? e.label : undefined,
+      })),
   };
 }
 
@@ -95,7 +131,12 @@ function FlowEditorInner({
   const { screenToFlowPosition } = useReactFlow();
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const initial = useMemo(() => toReactFlow(definition, statusByNode), [definition, statusByNode]);
+  const initial = useMemo(
+    () => toReactFlow(definition, statusByNode, readOnly),
+    // intentional: layout reflows on read-only toggle and definition change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [definition, readOnly],
+  );
   const [nodes, setNodes] = useState<Node[]>(initial.nodes);
   const [edges, setEdges] = useState<Edge[]>(initial.edges);
   const [selectedId, setSelectedId] = useState<string | null>(controlledSelected ?? null);
@@ -107,7 +148,7 @@ function FlowEditorInner({
   const lastUpstreamRef = useRef(definition);
   if (lastUpstreamRef.current !== definition) {
     lastUpstreamRef.current = definition;
-    const next = toReactFlow(definition, statusByNode);
+    const next = toReactFlow(definition, statusByNode, readOnly);
     setNodes(next.nodes);
     setEdges(next.edges);
   }
