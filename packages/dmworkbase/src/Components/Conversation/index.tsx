@@ -1901,8 +1901,19 @@ export class Conversation
                         onDrop={(event) => {
                           event.preventDefault();
                           this.dragEnd();
+                          const items = Array.from(event.dataTransfer.items);
                           const files = Array.from(event.dataTransfer.files);
                           if (files.length === 0) return;
+                          const hasDirectory = items.length
+                            ? items.some((it) => {
+                                const entry = it.webkitGetAsEntry?.();
+                                return entry ? entry.isDirectory : false;
+                              })
+                            : files.some((f) => f.type === "" && f.size === 0);
+                          if (hasDirectory) {
+                            Toast.error("暂不支持上传文件夹，请选择具体文件");
+                            return;
+                          }
                           const err = this.addPendingAttachments(files);
                           if (err) Toast.error(err);
                         }}
