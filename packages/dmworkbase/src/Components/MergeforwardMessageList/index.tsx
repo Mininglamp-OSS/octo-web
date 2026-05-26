@@ -19,6 +19,8 @@ import WKAvatar, { isBot } from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import WKApp from "../../App";
 import { downloadFile } from "../../Utils/download";
+import { isSafeUrl } from "../../Utils/security";
+import { getExtension } from "../FilePreviewPanel/types";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
@@ -311,13 +313,19 @@ export default class MergeforwardMessageList extends Component<
             url ? " wk-mergeforward-file--clickable" : ""
           }`}
           onClick={() => {
-            if (!url) return;
-            // 发送预览事件，与 FileCell 行为一致（fix #125）
+            if (!url || !isSafeUrl(url)) return;
+            // 与 Messages/File:handlePreview 行为一致 (fix #125)。
+            // 合并转发的 inner message 没有 channel/messageSeq 上下文,
+            // 因此 sourceChannelId/sourceChannelType/messageSeq 不传 —
+            // 预览面板的"回复"能力在这里不适用是预期行为。
             const previewData = {
               url,
               name: fileContent.name || "未知文件",
-              extension: (fileContent.extension || "").toLowerCase(),
+              extension: getExtension(fileContent.extension, fileContent.name),
               size: fileContent.size,
+              messageId: msg.messageID,
+              fromUID: msg.fromUID,
+              conversationDigest: msg.content?.conversationDigest,
             };
             WKApp.mittBus.emit("wk:file-preview", previewData);
           }}
