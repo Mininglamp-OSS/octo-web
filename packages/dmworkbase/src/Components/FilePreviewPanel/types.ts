@@ -104,13 +104,17 @@ export function getLanguageFromExtension(ext: string): string {
 
 /**
  * 从扩展名或文件名中提取扩展名
+ *
+ * 优先级: 文件名后缀 > content.extension。
+ * 服务端返回的 extension 字段不可靠 (可能为空、或是 "file" 等占位值,
+ * 见 issue #143), 用文件名后缀更稳妥; 文件名无后缀时再 fallback 到 extension。
  */
 export function getExtension(ext: string, name?: string): string {
-  const e = (ext || "").toLowerCase();
-  if (e) return e;
   if (name) {
     const dot = name.lastIndexOf(".");
     if (dot >= 0) return name.substring(dot + 1).toLowerCase();
   }
+  const e = (ext || "").toLowerCase();
+  if (e) return e;
   return "";
 }

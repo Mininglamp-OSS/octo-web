@@ -275,13 +275,15 @@ function FileTypeIcon({
 }
 
 function getExtension(extension: string, name?: string): string {
-  const ext = (extension || "").toLowerCase();
-  if (ext) return ext;
-  // fallback: extract from filename
+  // 优先从文件名后缀提取: 服务端返回的 extension 字段不可靠 (可能为空、
+  // 或是 "file" 等占位值, 见 issue #143), 用文件名后缀更稳妥。
   if (name) {
     const dot = name.lastIndexOf(".");
     if (dot >= 0) return name.substring(dot + 1).toLowerCase();
   }
+  // fallback: 文件名无后缀时 (如 Makefile / Dockerfile) 才用 extension
+  const ext = (extension || "").toLowerCase();
+  if (ext) return ext;
   return "";
 }
 
