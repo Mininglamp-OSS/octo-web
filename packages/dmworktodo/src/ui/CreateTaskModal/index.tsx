@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Modal, DatePicker } from '@douyinfe/semi-ui';
 import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';
+import { useI18n } from '@octo/base';
 import type { CreateMatterReq } from '../../bridge/types';
 import MemberPicker from '../MemberPicker';
 import './index.css';
@@ -54,6 +55,7 @@ export default function CreateTaskModal({
   sendOnConfirm = false,
   channel,
 }: CreateTaskModalProps) {
+  const { t } = useI18n();
   const [title, setTitle] = useState(prefillTitle);
   const [assigneeUids, setAssigneeUids] = useState<string[]>(prefillAssigneeUids);
   const [deadline, setDeadline] = useState('');
@@ -152,12 +154,12 @@ export default function CreateTaskModal({
       <div className="wk-create-task-modal__wrap" onKeyDown={handleKeyDown}>
         {/* ─── Header ─── */}
         <div className="wk-create-task-modal__header">
-          <h3 className="wk-create-task-modal__title">新建事项：</h3>
+          <h3 className="wk-create-task-modal__title">{t("todo.create.title")}</h3>
           <button
             type="button"
             className="wk-create-task-modal__close-btn"
             onClick={handleClose}
-            aria-label="关闭"
+            aria-label={t("todo.common.close")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path
@@ -175,14 +177,14 @@ export default function CreateTaskModal({
           {/* 事项名称 */}
           <div className="wk-create-task-modal__field">
             <label className="wk-create-task-modal__label">
-              事项名称<span className="wk-create-task-modal__required">*</span>
+              {t("todo.field.title")}<span className="wk-create-task-modal__required">*</span>
             </label>
             <div className="wk-create-task-modal__input-wrap">
               <input
                 ref={titleInputRef}
                 type="text"
                 className={`wk-create-task-modal__input${sendOnConfirm ? ' wk-create-task-modal__input--readonly' : ''}`}
-                placeholder="请输入"
+                placeholder={t("todo.common.inputPlaceholder")}
                 value={title}
                 onChange={sendOnConfirm ? () => {} : (e) => setTitle(e.target.value)}
                 readOnly={sendOnConfirm}
@@ -215,13 +217,13 @@ export default function CreateTaskModal({
           {/* 主要目标 */}
           <div className="wk-create-task-modal__field">
             <label className="wk-create-task-modal__label">
-              主要目标<span className="wk-create-task-modal__required">*</span>
+              {t("todo.field.goal")}<span className="wk-create-task-modal__required">*</span>
             </label>
             <div className="wk-create-task-modal__textarea-wrap">
               <textarea
                 ref={descRef}
                 className="wk-create-task-modal__textarea"
-                placeholder="一句话说清这件事"
+                placeholder={t("todo.field.goalPlaceholder")}
                 value={description}
                 onChange={(e) => setDescription(e.target.value.slice(0, 200))}
                 rows={3}
@@ -259,14 +261,14 @@ export default function CreateTaskModal({
           {/* 负责人 */}
           <div className="wk-create-task-modal__field">
             <label className="wk-create-task-modal__label">
-              负责人<span className="wk-create-task-modal__required">*</span>
+              {t("todo.field.assignee")}<span className="wk-create-task-modal__required">*</span>
             </label>
             <MemberPicker
               mode="controlled"
               value={assigneeUids}
               onChange={setAssigneeUids}
               channel={channel}
-              placeholder="请选择"
+              placeholder={t("todo.common.selectPlaceholder")}
             />
           </div>
 
@@ -288,7 +290,7 @@ export default function CreateTaskModal({
                 setDeadline(`${yyyy}-${mm}-${dd}`);
               }}
               disabledDate={(date) => !!date && date < new Date(new Date().setHours(0,0,0,0))}
-              placeholder="请选择"
+              placeholder={t("todo.common.selectPlaceholder")}
               density="compact"
             />
           </div>
@@ -301,7 +303,7 @@ export default function CreateTaskModal({
             className="wk-create-task-modal__btn wk-create-task-modal__btn--cancel"
             onClick={handleClose}
           >
-            取消
+            {t("todo.common.cancel")}
           </button>
           <button
             ref={confirmBtnRef}
@@ -310,7 +312,7 @@ export default function CreateTaskModal({
             onClick={handleConfirm}
             disabled={!title.trim() || !description.trim() || assigneeUids.length === 0 || !deadline || submitting}
           >
-            {sendOnConfirm ? '发送并创建事项' : '确定'}
+            {sendOnConfirm ? t("todo.create.sendAndCreate") : t("todo.common.confirm")}
           </button>
         </div>
       </div>

@@ -1,0 +1,263 @@
+{
+  "action": {
+    "add": "添加",
+    "create": "创建事项",
+    "deleteMatter": "删除事项",
+    "editDescription": "点击编辑描述",
+    "editTitle": "点击编辑标题",
+    "linkNewGroup": "关联新会话",
+    "loadMore": "加载更多",
+    "loadMoreComments": "加载更多评论",
+    "markDone": "标记完成",
+    "more": "更多",
+    "new": "新建事项",
+    "remove": "移除",
+    "reopen": "重新打开",
+    "timeSort": "时间排序",
+    "toggleSort": "切换排序",
+    "viewGroup": "查看群聊"
+  },
+  "activity": {
+    "action": {
+      "assigneeAdded": "新增负责人",
+      "assigneeRemoved": "移除负责人",
+      "channelChanged": "群聊变更",
+      "channelLinked": "关联群聊",
+      "channelUnlinked": "取消关联群聊",
+      "created": "创建",
+      "ddlChanged": "截止日期变更",
+      "deadlineChanged": "截止日期变更",
+      "descriptionChanged": "目标变更",
+      "statusChanged": "状态变更",
+      "titleChanged": "标题变更"
+    },
+    "createdMatter": "创建了事项",
+    "empty": "暂无变更记录",
+    "filter": {
+      "all": "全部",
+      "label": "类型：{{type}}"
+    },
+    "initial": "初始内容：",
+    "table": {
+      "actor": "操作人",
+      "content": "内容",
+      "source": "来源",
+      "time": "时间",
+      "type": "类型"
+    },
+    "updatedDescription": "更新了主要目标"
+  },
+  "anchor": {
+    "loadFailed": "加载失败",
+    "loadingMessages": "加载原消息中...",
+    "messageUnavailable": "消息不可用",
+    "noSourceMessages": "无原消息上下文",
+    "sourceMessage": "原消息",
+    "viewContext": "查看原消息上下文"
+  },
+  "assignee": {
+    "count": "{{count}} 人负责",
+    "moreSuffix": "等 {{count}} 人"
+  },
+  "channel": {
+    "hiddenName": "隐藏的群聊名称",
+    "hiddenTitle": "你不在该群，群名已隐藏",
+    "loadingInfo": "正在加载群聊信息...",
+    "notMember": "不在群",
+    "notMemberTitle": "你不在该群，无法查看原消息",
+    "unknownGroup": "未知群聊"
+  },
+  "comment": {
+    "placeholder": "添加进展或评论..."
+  },
+  "common": {
+    "cancel": "取消",
+    "close": "关闭",
+    "confirm": "确定",
+    "inputPlaceholder": "请输入",
+    "none": "无",
+    "selectPlaceholder": "请选择",
+    "listSeparator": "、",
+    "retry": "重试",
+    "send": "发送"
+  },
+  "confirm": {
+    "deleteMatter": "确定删除事项「{{title}}」吗？",
+    "discardUnsaved": "还有未保存的内容，确定关闭吗？",
+    "unlinkChannel": "确定取消关联该群聊吗？"
+  },
+  "create": {
+    "aiExtracting": "AI 正在提取事项...",
+    "sendAndCreate": "发送并创建事项",
+    "smartTitle": "智能创建事项",
+    "title": "新建事项"
+  },
+  "day": {
+    "today": "今天",
+    "yesterday": "昨天"
+  },
+  "deadline": {
+    "monthDayWeekday": "{{month}}/{{day}} {{weekday}}",
+    "set": "设置截止日期",
+    "untilMonthDayWeekday": "截止到 {{month}}/{{day}}（{{weekday}}）",
+    "updateFailed": "截止日期修改失败"
+  },
+  "detail": {
+    "changeLog": "变更记录",
+    "linkedGroups": "关联群聊",
+    "linkedGroupsWithCount": "关联群聊 {{count}}",
+    "noLinkedGroups": "暂无关联群聊或子区"
+  },
+  "field": {
+    "assignee": "负责人",
+    "goal": "主要目标",
+    "goalPlaceholder": "请输入主要目标",
+    "title": "事项名称"
+  },
+  "filter": {
+    "searchPlaceholder": "搜索事项"
+  },
+  "footer": {
+    "tagline": "由聊天内容驱动的事项协作"
+  },
+  "label": {
+    "assignee": "负责人",
+    "creator": "创建人",
+    "fromChannel": "来自 {{name}}",
+    "fromHiddenChannel": "来自隐藏群聊"
+  },
+  "linkChannels": {
+    "failed": "关联失败",
+    "inParentGroup": "在 {{name}}",
+    "loadFailedRetry": "加载会话列表失败，请稍后重试",
+    "linked": "已关联 {{count}} 个会话",
+    "noMatches": "没有匹配的群聊或子区",
+    "overflowHint": "只显示前 {{limit}} 项，共 {{total}} 项，请输入关键词缩小范围",
+    "searchPlaceholder": "搜索群聊 / 子区名 / 父群名",
+    "selectedCount": "已选 {{count}} 个会话",
+    "selectionUnavailable": "所选会话已不可用，请重新选择",
+    "threadLoadFailedMany": "{{names}} 等 {{count}} 个群的子区加载失败",
+    "threadLoadFailedNamed": "{{names}} 的子区加载失败",
+    "threadLoadFailedOne": "\"{{name}}\" 的子区加载失败，该群的子区暂不可选",
+    "title": "关联会话",
+    "unnamedThread": "未命名子区"
+  },
+  "linkMenu": {
+    "createNew": "创建新事项",
+    "currentGroupTasks": "当前群事项",
+    "syncExisting": "同步到已有事项"
+  },
+  "member": {
+    "empty": "暂无成员",
+    "noMatches": "未找到匹配成员",
+    "searchPlaceholder": "搜索成员",
+    "updateFailed": "{{action}}成员失败"
+  },
+  "mention": {
+    "everyone": "@所有人"
+  },
+  "menu": {
+    "title": "事项"
+  },
+  "messageType": {
+    "contactCard": "[联系人卡片]",
+    "emoji": "[表情]",
+    "file": "[文件] {{name}}",
+    "fileWithSize": "[文件] {{name}} · {{size}}",
+    "image": "[图片]",
+    "location": "[位置]",
+    "mergeForward": "[聊天记录]",
+    "message": "[消息]",
+    "shortVideo": "[短视频]",
+    "system": "[系统消息]",
+    "typedMessage": "[{{type}}消息]",
+    "unknownFile": "未知文件",
+    "video": "[视频]",
+    "voice": "[语音]"
+  },
+  "owner": {
+    "keepOne": "至少保留 1 位负责人",
+    "readonly": "暂无权限修改负责人"
+  },
+  "quickAdd": {
+    "fullForm": "打开完整表单",
+    "placeholder": "快速添加事项"
+  },
+  "state": {
+    "empty": "暂无事项",
+    "loadFailed": "加载失败",
+    "loadFailedRetry": "加载失败，请稍后重试",
+    "loading": "加载中...",
+    "selectMatter": "请选择事项",
+    "submitting": "提交中...",
+    "syncing": "同步中..."
+  },
+  "status": {
+    "archived": "已归档",
+    "archivedCount": "已归档 {{count}}",
+    "cannotChangeArchived": "已归档事项不可修改状态",
+    "clickToChange": "点击切换状态",
+    "done": "已完成",
+    "onlyCreatorOrAssignee": "仅创建人或负责人可修改",
+    "open": "进行中",
+    "pending": "待处理",
+    "unarchived": "未归档"
+  },
+  "sync": {
+    "daysAgo": "{{count}} 天前同步",
+    "hoursAgo": "{{count}} 小时前同步",
+    "justNow": "刚刚同步",
+    "minutesAgo": "{{count}} 分钟前同步"
+  },
+  "tabs": {
+    "all": "全部",
+    "created": "我发起的",
+    "mine": "我负责的"
+  },
+  "timeline": {
+    "attachments": "{{count}} 个附件",
+    "collapse": "收起群内时间线",
+    "empty": "暂无进展",
+    "emptyInGroup": "本群暂无时间线记录",
+    "expand": "展开群内时间线",
+    "groupTitle": "群内进展",
+    "loading": "正在加载时间线...",
+    "noText": "无文本内容"
+  },
+  "toast": {
+    "addAssigneeFailed": "添加负责人失败",
+    "addCommentFailed": "添加评论失败",
+    "addFailed": "添加失败",
+    "aiExtractFailed": "AI 提取失败",
+    "aiUnavailable": "AI 服务不可用",
+    "assigneeUpdateFailed": "负责人更新失败",
+    "createFailed": "创建失败",
+    "created": "已创建事项",
+    "deleteFailed": "删除失败",
+    "deleted": "已删除",
+    "descriptionUpdateFailed": "描述修改失败",
+    "loadCommentsFailed": "加载评论失败",
+    "loadFailed": "加载失败",
+    "noMessagesToSync": "没有可同步的消息",
+    "onlyCreatorArchive": "只有创建人可以归档事项",
+    "operationFailed": "操作失败",
+    "removeAssigneeFailed": "移除负责人失败",
+    "saved": "已保存",
+    "statusChangeFailed": "状态变更失败",
+    "statusUpdateFailed": "状态更新失败",
+    "syncProgressFailed": "同步进展失败",
+    "syncedProgress": "已同步进展",
+    "titleUpdateFailed": "标题修改失败",
+    "unlinkFailed": "取消关联失败",
+    "unlinked": "已取消关联"
+  },
+  "weekday": {
+    "fri": "周五",
+    "mon": "周一",
+    "sat": "周六",
+    "sun": "周日",
+    "thu": "周四",
+    "tue": "周二",
+    "wed": "周三"
+  }
+}

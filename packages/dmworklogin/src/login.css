@@ -259,6 +259,10 @@
     gap: 8px;
     font-size: 13px;
     color: var(--semi-color-text-2, #8a8fa8);
+    max-width: calc(100% - 128px);
+    min-width: 0;
+    pointer-events: none;
+    z-index: 3;
     user-select: none;
 }
 .wk-login-panel-breadcrumb-dot {
@@ -267,6 +271,103 @@
     border-radius: 50%;
     background: var(--wk-sso-accent);
     box-shadow: 0 0 0 3px var(--wk-sso-accent-dot-ring);
+    flex-shrink: 0;
+}
+
+.wk-login-panel-breadcrumb-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wk-login-language {
+    position: absolute;
+    top: 24px;
+    right: 48px;
+    z-index: 4;
+}
+
+.wk-login-language-button {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--semi-color-text-2, #8a8fa8);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 120ms ease, color 120ms ease;
+}
+
+.wk-login-language-button:hover,
+.wk-login-language-button:focus-visible,
+.wk-login-language-button--open {
+    background: var(--semi-color-fill-0, #f5f6fa);
+    color: var(--semi-color-text-0, #1a1a2e);
+    outline: none;
+}
+
+.wk-login-language-button .semi-icon {
+    display: inline-flex;
+    font-size: 18px;
+}
+
+.wk-login-language-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+}
+
+.wk-login-language-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    width: 132px;
+    padding: 4px;
+    border: 1px solid var(--semi-color-border, #e4e6ef);
+    border-radius: 10px;
+    background: var(--semi-color-bg-0, #fff);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    z-index: 31;
+}
+
+.wk-login-language-menu-item {
+    width: 100%;
+    min-height: 32px;
+    padding: 0 8px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--semi-color-text-0, #1a1a2e);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 20px;
+    letter-spacing: 0;
+}
+
+.wk-login-language-menu-item:hover,
+.wk-login-language-menu-item--active {
+    background: var(--semi-color-fill-0, #f5f6fa);
+}
+
+.wk-login-language-menu-item .semi-icon {
+    flex-shrink: 0;
+    color: var(--wk-color-theme, #1C1C23);
+    font-size: 14px;
+}
+
+.wk-login-language-menu-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* ---- Panel footer (bottom-center copyright + legal) ---- */
@@ -855,7 +956,13 @@
     .wk-login-panel-breadcrumb {
         position: static;
         justify-content: center;
+        max-width: calc(100% - 48px);
         margin-bottom: 16px;
+    }
+
+    .wk-login-language {
+        top: 24px;
+        right: 24px;
     }
 
     .wk-login-panel-footer {

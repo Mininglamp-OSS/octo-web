@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { WKApp, isSafeUrl } from '@octo/base';
+import { WKApp, useI18n } from '@octo/base';
 import AiBadge from '@octo/base/src/Components/AiBadge';
 import type { MatterAssignee } from '../../bridge/types';
 import { useMemberList, AssigneeInfo } from '../../hooks/useMemberList';
@@ -42,6 +42,7 @@ function MemberTag({
   onRemove: () => void;
   disabled?: boolean;
 }) {
+  const { t } = useI18n();
   const name = useUserName(uid);
   const avatarUrl = WKApp.shared.avatarUser(uid);
   const initial = (name || uid).charAt(0).toUpperCase();
@@ -71,7 +72,7 @@ function MemberTag({
             e.stopPropagation();
             onRemove();
           }}
-          title="移除"
+          title={t("todo.action.remove")}
         >
           ✕
         </button>
@@ -132,7 +133,8 @@ function MemberOption({
 // ─── MemberPicker 主组件 ─────────────────────────────────
 
 export default function MemberPicker(props: MemberPickerProps) {
-  const { channel, placeholder = '搜索成员...', disabled = false } = props;
+  const { t } = useI18n();
+  const { channel, placeholder = t("todo.member.searchPlaceholder"), disabled = false } = props;
 
     // 受控模式 vs 直连模式，用两个独立变量避免条件表达式作依赖
   const controlledValue = props.mode === 'controlled' ? props.value : undefined;
@@ -221,10 +223,10 @@ export default function MemberPicker(props: MemberPickerProps) {
           onChanged?.(undefined, uid);
         }
       } catch (error) {
-        Toast.error(`${action === 'add' ? '添加' : '移除'}成员失败`);
+        Toast.error(t("todo.member.updateFailed", { values: { action: action === 'add' ? t("todo.action.add") : t("todo.action.remove") } }));
       }
     },
-    [matterId, onChanged]
+    [matterId, onChanged, t]
   );
 
   // 添加成员
@@ -316,10 +318,10 @@ export default function MemberPicker(props: MemberPickerProps) {
       {showDropdown && !disabled && (
         <div ref={dropdownRef} className="wk-member-picker__dropdown">
           {loading ? (
-            <div className="wk-member-picker__loading">加载中...</div>
+            <div className="wk-member-picker__loading">{t("todo.state.loading")}</div>
           ) : members.length === 0 ? (
             <div className="wk-member-picker__empty">
-              {debouncedKeyword ? '未找到匹配成员' : '暂无可选成员'}
+              {debouncedKeyword ? t("todo.member.noMatches") : t("todo.member.empty")}
             </div>
           ) : (
             members.map((member) => (

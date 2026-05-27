@@ -1,0 +1,15 @@
+{
+  "action.retry": "重试",
+  "error.connectFailed": "无法连接到该应用，请稍后重试",
+  "list.defaultDescription": "应用 Bot",
+  "menu.title": "应用",
+  "page.searchPlaceholder": "搜索",
+  "page.title": "应用",
+  "section.platform": "平台应用",
+  "section.space": "空间应用",
+  "section.spaceWithName": "空间应用 · {{name}}",
+  "state.empty": "暂无可用应用",
+  "state.loadFailed": "加载失败",
+  "state.loading": "加载中...",
+  "state.noMatches": "未找到匹配的应用"
+}

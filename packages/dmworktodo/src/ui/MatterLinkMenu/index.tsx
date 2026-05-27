@@ -1,5 +1,6 @@
 import React, { Component } from "react";
 import ReactDOM from "react-dom";
+import { I18nContext, t } from "@octo/base";
 import "./index.css";
 
 /**
@@ -39,6 +40,9 @@ export interface MatterLinkMenuProps {
 // 如果未传，显示空列表
 
 class MatterLinkMenu extends Component<MatterLinkMenuProps> {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   private menuRef = React.createRef<HTMLDivElement>();
 
   componentDidMount() {
@@ -81,7 +85,7 @@ class MatterLinkMenu extends Component<MatterLinkMenuProps> {
         style={style}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="wk-matter-link-menu__head">当前群聊关联的任务</div>
+        <div className="wk-matter-link-menu__head">{t("todo.linkMenu.currentGroupTasks")}</div>
         <button
           type="button"
           className="wk-matter-link-menu__item wk-matter-link-menu__item--primary"
@@ -104,10 +108,10 @@ class MatterLinkMenu extends Component<MatterLinkMenuProps> {
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          <span>创建新事项</span>
+          <span>{t("todo.linkMenu.createNew")}</span>
         </button>
         <div className="wk-matter-link-menu__divider" />
-        <div className="wk-matter-link-menu__sub">同步到已有事项</div>
+        <div className="wk-matter-link-menu__sub">{t("todo.linkMenu.syncExisting")}</div>
         {matters.map((m) => (
           <button
             key={m.id}

@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useEffect, useState } from 'react';
+import { useI18n } from '@octo/base';
 import type { MatterListParams, MatterStatus } from '../../bridge/types';
 import './index.css';
 
@@ -8,14 +9,15 @@ export interface MatterFilterBarProps {
   searchOnly?: boolean;
 }
 
-const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: '', label: '全部' },
-  { value: 'open', label: '待处理' },
-  { value: 'done', label: '已完成' },
-  { value: 'archived', label: '已归档' },
+const STATUS_OPTIONS: Array<{ value: string; labelKey: string }> = [
+  { value: '', labelKey: 'todo.tabs.all' },
+  { value: 'open', labelKey: 'todo.status.pending' },
+  { value: 'done', labelKey: 'todo.status.done' },
+  { value: 'archived', labelKey: 'todo.status.archived' },
 ];
 
 export default function MatterFilterBar({ filters, onFilterChange, searchOnly = false }: MatterFilterBarProps) {
+  const { t } = useI18n();
   const [localSearch, setLocalSearch] = useState(filters.q || '');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -61,7 +63,7 @@ export default function MatterFilterBar({ filters, onFilterChange, searchOnly = 
         >
           {STATUS_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
-              {opt.label}
+              {t(opt.labelKey)}
             </option>
           ))}
         </select>
@@ -69,7 +71,7 @@ export default function MatterFilterBar({ filters, onFilterChange, searchOnly = 
       <input
         className="wk-matter-filter-bar__search"
         type="text"
-        placeholder="搜索事项..."
+        placeholder={t("todo.filter.searchPlaceholder")}
         value={localSearch}
         onChange={handleSearchChange}
       />

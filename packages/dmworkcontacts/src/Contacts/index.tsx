@@ -1,6 +1,6 @@
 import React, { useRef, useState, useCallback } from "react";
 import { Component } from "react";
-import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal } from "@octo/base"
+import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
@@ -38,8 +38,6 @@ function OverflowTooltip({ text, children }: { text: string; children: React.Rea
         </Tooltip>
     )
 }
-
-const SpaceRoleLabels: Record<number, string> = { 1: '创建者', 2: '管理员', 3: '成员' }
 
 const ITEM_HEIGHT = 44
 const LETTER_HEADER_HEIGHT = 24
@@ -160,6 +158,9 @@ export class ContactsState {
 }
 
 export default class ContactsList extends Component<any, ContactsState> {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
+
     channelInfoListener!: ChannelInfoListener
     contextMenusContext!: ContextMenusContext
     baseContext!: WKBaseContext
@@ -446,7 +447,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                 </div>
                 <div className="wk-contacts-botfather-info">
                     <div className="wk-contacts-botfather-name">BotFather</div>
-                    <div className="wk-contacts-botfather-desc">创建和管理你的 AI 机器人</div>
+                    <div className="wk-contacts-botfather-desc">{t("contacts.botFather.desc")}</div>
                 </div>
                 <ChevronRight size={16} color="rgba(255,255,255,0.6)" />
             </div>
@@ -460,7 +461,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                     <SearchIcon size={14} className="wk-contacts-search-icon" />
                     <input
                         type="text"
-                        placeholder="搜索通讯录"
+                        placeholder={t("contacts.search.placeholder")}
                         value={this.state.keyword || ''}
                         onChange={(e) => this.handleSearchChange(e.target.value)}
                     />
@@ -479,7 +480,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             return (
                 <div className="wk-contacts-empty">
                     <SearchIcon size={28} className="wk-contacts-empty-icon" />
-                    <div className="wk-contacts-empty-text">没有找到相关联系人</div>
+                    <div className="wk-contacts-empty-text">{t("contacts.search.noResults")}</div>
                 </div>
             )
         }
@@ -488,7 +489,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             <div className="wk-contacts-search-results">
                 {searchContacts.length > 0 && (
                     <div className="wk-contacts-search-section">
-                        <div className="wk-contacts-search-section-title">联系人</div>
+                        <div className="wk-contacts-search-section-title">{t("contacts.section.contacts")}</div>
                         {searchContacts.map((m: any) => (
                             <div key={m.uid} className="wk-contacts-section-item" onClick={() => {
                                 this.handleContactClick(m.uid, m.robot === 1)
@@ -506,7 +507,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                 )}
                 {searchGroups.length > 0 && (
                     <div className="wk-contacts-search-section">
-                        <div className="wk-contacts-search-section-title">群聊</div>
+                        <div className="wk-contacts-search-section-title">{t("contacts.section.groups")}</div>
                         {searchGroups.map((g: any) => (
                             <div key={g.group_no} className="wk-contacts-section-item" onClick={() => {
                                 this.handleGroupClick(g.group_no, g.name, g.member_count)
@@ -515,7 +516,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                                     <WKAvatar channel={new Channel(g.group_no, ChannelTypeGroup)} />
                                 </div>
                                 <OverflowTooltip text={g.name}>
-                                    <span className="wk-contacts-group-tag">群</span>
+                                    <span className="wk-contacts-group-tag">{t("contacts.tag.group")}</span>
                                 </OverflowTooltip>
                             </div>
                         ))}
@@ -545,11 +546,11 @@ export default class ContactsList extends Component<any, ContactsState> {
         return (
             <div className="wk-contacts-filters">
                 <span className={classnames("wk-contacts-chip", filterMode === 'all' && "active")}
-                    onClick={() => this.handleFilterChange('all')}>全部 {allCount > 0 && <span className="wk-contacts-chip-count">{allCount}</span>}</span>
+                    onClick={() => this.handleFilterChange('all')}>{t("contacts.filter.all")} {allCount > 0 && <span className="wk-contacts-chip-count">{allCount}</span>}</span>
                 <span className={classnames("wk-contacts-chip", filterMode === 'bots' && "active")}
                     onClick={() => this.handleFilterChange('bots')}>AI {botsCount > 0 && <span className="wk-contacts-chip-count">{botsCount}</span>}</span>
                 <span className={classnames("wk-contacts-chip", filterMode === 'humans' && "active")}
-                    onClick={() => this.handleFilterChange('humans')}>人类 {humansCount > 0 && <span className="wk-contacts-chip-count">{humansCount}</span>}</span>
+                    onClick={() => this.handleFilterChange('humans')}>{t("contacts.filter.humans")} {humansCount > 0 && <span className="wk-contacts-chip-count">{humansCount}</span>}</span>
             </div>
         )
     }
@@ -573,13 +574,13 @@ export default class ContactsList extends Component<any, ContactsState> {
 
         return (
             <div className={classnames("wk-contacts-accordion", isExpanded && "wk-contacts-accordion--expanded")}>
-                {this.renderAccordionHeader('groups', <UsersRound size={16} />, '群聊', groups.length)}
+                {this.renderAccordionHeader('groups', <UsersRound size={16} />, t("contacts.section.groups"), groups.length)}
                 {isExpanded && (
                     <div className="wk-contacts-accordion-body">
                         {groups.length === 0 ? (
                             <div className="wk-contacts-empty">
                                 <UsersRound size={28} className="wk-contacts-empty-icon" />
-                                <div className="wk-contacts-empty-text">还没有群聊，去创建一个吧</div>
+                                <div className="wk-contacts-empty-text">{t("contacts.empty.groups")}</div>
                             </div>
                         ) : groups.map((g: any) => (
                             <div key={g.group_no} className="wk-contacts-section-item" onClick={() => {
@@ -589,7 +590,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                                     <WKAvatar channel={new Channel(g.group_no, ChannelTypeGroup)} />
                                 </div>
                                 <OverflowTooltip text={g.name}>
-                                    <span className="wk-contacts-group-tag">群</span>
+                                    <span className="wk-contacts-group-tag">{t("contacts.tag.group")}</span>
                                 </OverflowTooltip>
                             </div>
                         ))}
@@ -606,13 +607,13 @@ export default class ContactsList extends Component<any, ContactsState> {
 
         return (
             <div className={classnames("wk-contacts-accordion", isExpanded && "wk-contacts-accordion--expanded")}>
-                {this.renderAccordionHeader('myBots', <Bot size={16} />, '已添加 AI', bots.length)}
+                {this.renderAccordionHeader('myBots', <Bot size={16} />, t("contacts.section.addedAi"), bots.length)}
                 {isExpanded && (
                     <div className="wk-contacts-accordion-body">
                         {bots.length === 0 ? (
                             <div className="wk-contacts-empty">
                                 <Bot size={28} className="wk-contacts-empty-icon" />
-                                <div className="wk-contacts-empty-text">还没有添加 AI，去全部联系人里看看</div>
+                                <div className="wk-contacts-empty-text">{t("contacts.empty.ai")}</div>
                             </div>
                         ) : bots.map((bot: any) => (
                             <div key={bot.uid} className="wk-contacts-section-item" onClick={() => {
@@ -640,14 +641,14 @@ export default class ContactsList extends Component<any, ContactsState> {
 
         return (
             <div className={classnames("wk-contacts-accordion", isExpanded && "wk-contacts-accordion--expanded")}>
-                {this.renderAccordionHeader('allContacts', <Users size={16} />, '全部联系人', totalCount)}
+                {this.renderAccordionHeader('allContacts', <Users size={16} />, t("contacts.section.allContacts"), totalCount)}
                 {isExpanded && (
                     <>
                         {this.renderFilterChips()}
                         {totalCount === 0 ? (
                             <div className="wk-contacts-empty">
                                 <Users size={28} className="wk-contacts-empty-icon" />
-                                <div className="wk-contacts-empty-text">当前 Space 还没有成员</div>
+                                <div className="wk-contacts-empty-text">{t("contacts.empty.members")}</div>
                             </div>
                         ) : this.renderContactListWithLetters()}
                     </>
@@ -704,7 +705,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                     {item.robot === true && <AiBadge />}
                     {(item as any)._spaceRole != null && (item as any)._spaceRole > 0 && (item as any)._spaceRole <= 2 && (
                         <span className={`wk-contacts-role-badge wk-contacts-role-badge--${(item as any)._spaceRole === 1 ? 'owner' : 'admin'}`}>
-                            {SpaceRoleLabels[(item as any)._spaceRole] || ''}
+                            {t(`contacts.role.${(item as any)._spaceRole}`)}
                         </span>
                     )}
                 </OverflowTooltip>
@@ -718,7 +719,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         return <WKBase onContext={(baseCtx) => {
             this.baseContext = baseCtx
         }}>
-            <ErrorBoundary moduleName="通讯录">
+            <ErrorBoundary moduleName={t("contacts.page.title")}>
                 <div className="wk-contacts">
                     <div className="wk-contacts-content">
                         {this.renderBotFatherBanner()}
@@ -738,12 +739,12 @@ export default class ContactsList extends Component<any, ContactsState> {
                     <ContextMenus onContext={(context: ContextMenusContext) => {
                         this.contextMenusContext = context
                     }} menus={[{
-                        title: "查看资料", onClick: () => {
+                        title: t("contacts.context.viewProfile"), onClick: () => {
                             const { selectedItem } = this.state
                             this.setState({ userInfoUid: selectedItem?.uid || "", userInfoVisible: true })
                         }
                     }, {
-                        title: "分享给朋友...", onClick: () => {
+                        title: t("contacts.context.shareToFriend"), onClick: () => {
                             WKApp.shared.baseContext.showConversationSelect((channels: Channel[]) => {
                                 const { selectedItem } = this.state
                                 if (channels && channels.length > 0) {
@@ -754,9 +755,9 @@ export default class ContactsList extends Component<any, ContactsState> {
                                         card.vercode = selectedItem?.vercode || ""
                                         WKSDK.shared().chatManager.send(card, channel)
                                     }
-                                    Toast.success("分享成功！")
+                                    Toast.success(t("contacts.share.success"))
                                 }
-                            }, "分享名片")
+                            }, t("contacts.share.cardTitle"))
                         }
                     }]} />
 

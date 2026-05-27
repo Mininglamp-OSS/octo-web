@@ -1,0 +1,15 @@
+{
+  "action.retry": "Retry",
+  "error.connectFailed": "Unable to connect to this app. Please try again later.",
+  "list.defaultDescription": "App Bot",
+  "menu.title": "Apps",
+  "page.searchPlaceholder": "Search",
+  "page.title": "Apps",
+  "section.platform": "Platform apps",
+  "section.space": "Space apps",
+  "section.spaceWithName": "Space apps · {{name}}",
+  "state.empty": "No apps available",
+  "state.loadFailed": "Failed to load",
+  "state.loading": "Loading...",
+  "state.noMatches": "No matching apps found"
+}

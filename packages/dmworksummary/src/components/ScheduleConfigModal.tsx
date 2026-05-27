@@ -1,6 +1,8 @@
 import React, { Component } from "react";
 import { Modal, Select, Button } from "@douyinfe/semi-ui";
+import { I18nContext } from "@octo/base";
 import type { ScheduleConfig } from "../types/summary";
+import { getDayOfMonthLabel, getWeekdayName } from "../utils/summaryHelpers";
 
 interface Props {
     visible: boolean;
@@ -20,22 +22,14 @@ const timeOptions = Array.from({ length: 48 }, (_, i) => {
     return { value: val, label: val };
 });
 
-const weekDayOptions = [
-    { value: 1, label: "周一" },
-    { value: 2, label: "周二" },
-    { value: 3, label: "周三" },
-    { value: 4, label: "周四" },
-    { value: 5, label: "周五" },
-    { value: 6, label: "周六" },
-    { value: 7, label: "周日" },
-];
+const weekDayValues = [1, 2, 3, 4, 5, 6, 7];
 
-const dayOfMonthOptions = Array.from({ length: 28 }, (_, i) => ({
-    value: i + 1,
-    label: `${i + 1}日`,
-}));
+const dayOfMonthValues = Array.from({ length: 28 }, (_, i) => i + 1);
 
 export default class ScheduleConfigModal extends Component<Props, State> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     state: State = {
         local: { period: "daily", time: "09:00" },
     };
@@ -67,6 +61,15 @@ export default class ScheduleConfigModal extends Component<Props, State> {
 
     renderTimeRow() {
         const { local } = this.state;
+        const { t } = this.context;
+        const weekDayOptions = weekDayValues.map((value) => ({
+            value,
+            label: getWeekdayName(value),
+        }));
+        const dayOfMonthOptions = dayOfMonthValues.map((value) => ({
+            value,
+            label: getDayOfMonthLabel(value),
+        }));
 
         const rowStyle: React.CSSProperties = {
             display: "flex",
@@ -84,7 +87,7 @@ export default class ScheduleConfigModal extends Component<Props, State> {
         if (local.period === "daily") {
             return (
                 <div style={rowStyle}>
-                    <span style={prefixStyle}>每天</span>
+                    <span style={prefixStyle}>{t("summary.cron.everyDay")}</span>
                     <Select
                         value={local.time}
                         onChange={(v) => this.updateLocal({ time: v as string })}
@@ -98,7 +101,7 @@ export default class ScheduleConfigModal extends Component<Props, State> {
         if (local.period === "weekly") {
             return (
                 <div style={rowStyle}>
-                    <span style={prefixStyle}>每周</span>
+                    <span style={prefixStyle}>{t("summary.cron.everyWeek")}</span>
                     <Select
                         value={local.dayOfWeek ?? 1}
                         onChange={(v) => this.updateLocal({ dayOfWeek: v as number })}
@@ -118,7 +121,7 @@ export default class ScheduleConfigModal extends Component<Props, State> {
         // monthly
         return (
             <div style={rowStyle}>
-                <span style={prefixStyle}>每月</span>
+                <span style={prefixStyle}>{t("summary.cron.everyMonth")}</span>
                 <Select
                     value={local.dayOfMonth ?? 1}
                     onChange={(v) => this.updateLocal({ dayOfMonth: v as number })}
@@ -138,9 +141,10 @@ export default class ScheduleConfigModal extends Component<Props, State> {
     render() {
         const { visible, onCancel } = this.props;
         const { local } = this.state;
+        const { t } = this.context;
 
         const labelStyle: React.CSSProperties = {
-            width: 50,
+            width: 88,
             flexShrink: 0,
             color: "var(--semi-color-text-1)",
             fontSize: 14,
@@ -154,39 +158,39 @@ export default class ScheduleConfigModal extends Component<Props, State> {
 
         return (
             <Modal
-                title="定时更新"
+                title={t("summary.schedule.config.title")}
                 visible={visible}
                 onCancel={onCancel}
                 width={420}
                 footer={
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                        <Button onClick={onCancel}>取消</Button>
-                        <Button theme="solid" onClick={this.handleConfirm}>保存</Button>
+                        <Button onClick={onCancel}>{t("summary.common.cancel")}</Button>
+                        <Button theme="solid" onClick={this.handleConfirm}>{t("summary.common.save")}</Button>
                     </div>
                 }
             >
                 <div style={{ color: "var(--semi-color-text-2)", fontSize: 13, marginBottom: 20 }}>
-                    后续将自动更新总结内容并通知你
+                    {t("summary.schedule.config.desc")}
                 </div>
 
                 {/* 频率 */}
                 <div style={rowStyle}>
-                    <span style={labelStyle}>频率</span>
+                    <span style={labelStyle}>{t("summary.schedule.config.frequency")}</span>
                     <Select
                         value={local.period}
                         onChange={this.handlePeriodChange}
                         style={{ flex: 1 }}
                         optionList={[
-                            { value: "daily", label: "按天更新" },
-                            { value: "weekly", label: "按周更新" },
-                            { value: "monthly", label: "按月更新" },
+                            { value: "daily", label: t("summary.schedule.config.daily") },
+                            { value: "weekly", label: t("summary.schedule.config.weekly") },
+                            { value: "monthly", label: t("summary.schedule.config.monthly") },
                         ]}
                     />
                 </div>
 
                 {/* 时间 */}
                 <div style={{ ...rowStyle, marginBottom: 0 }}>
-                    <span style={labelStyle}>时间</span>
+                    <span style={labelStyle}>{t("summary.schedule.config.time")}</span>
                     {this.renderTimeRow()}
                 </div>
             </Modal>

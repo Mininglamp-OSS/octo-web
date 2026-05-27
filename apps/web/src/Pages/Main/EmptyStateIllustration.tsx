@@ -1,7 +1,10 @@
 import React from "react"
+import { useI18n } from "@octo/base"
 import "./index.css"
 
 export const EmptyStateIllustration: React.FC = () => {
+    const { t } = useI18n()
+
     return (
         <div className="wk-chat-empty-hologram">
             <svg width="280" height="220" viewBox="0 0 320 250">
@@ -49,8 +52,8 @@ export const EmptyStateIllustration: React.FC = () => {
                 <circle cx="108" cy="98" r="2" fill="#00D4AA" opacity="0.4" className="wk-hologram-pulse"/>
                 <circle cx="210" cy="98" r="2" fill="#7C5CFC" opacity="0.4" className="wk-hologram-pulse"/>
             </svg>
-            <div className="empty-text">选择对话，激活连接</div>
-            <div className="empty-hint">人与 AI 在这里汇聚 ✦</div>
+            <div className="empty-text">{t("app.main.empty.title")}</div>
+            <div className="empty-hint">{t("app.main.empty.hint")}</div>
         </div>
     )
 }

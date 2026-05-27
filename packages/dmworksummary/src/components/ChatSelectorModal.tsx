@@ -1,6 +1,7 @@
 import React, { Component } from "react";
 import { Modal, Input, Tabs, TabPane, Checkbox, Button, Spin, Empty, Tag } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
+import { I18nContext } from "@octo/base";
 import type { ChatCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
 import AiBadge from "@octo/base/src/Components/AiBadge";
@@ -29,6 +30,9 @@ interface DisplayEntry {
 }
 
 export default class ChatSelectorModal extends Component<Props, State> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     state: State = {
         keyword: "",
         activeTab: "all",
@@ -165,6 +169,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
         const { localSelected } = this.state;
         const maxSelect = this.props.maxSelect ?? MAX_SELECT;
         const { item, indent } = entry;
+        const { t } = this.context;
         const checked = !!localSelected.find((s) => s.chat_id === item.chat_id);
         const disabled = !checked && localSelected.length >= maxSelect;
         return (
@@ -191,7 +196,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                     </div>
                     {item.member_count !== null && (
                         <div style={{ fontSize: 12, color: "var(--semi-color-text-2)" }}>
-                            {item.member_count} 人
+                            {t("summary.common.peopleCount", { values: { count: item.member_count } })}
                         </div>
                     )}
                 </div>
@@ -200,9 +205,9 @@ export default class ChatSelectorModal extends Component<Props, State> {
                     item.chat_type === "thread" ? "green" :
                     "cyan"
                 }>
-                    {item.chat_type === "group" ? "群聊" :
-                     item.chat_type === "thread" ? "子区" :
-                     "私聊"}
+                    {item.chat_type === "group" ? t("summary.source.groupChat") :
+                     item.chat_type === "thread" ? t("summary.source.thread") :
+                     t("summary.source.directMessage")}
                 </Tag>
             </div>
         );
@@ -211,23 +216,24 @@ export default class ChatSelectorModal extends Component<Props, State> {
     render() {
         const { visible, onCancel, maxSelect = MAX_SELECT } = this.props;
         const { keyword, activeTab, loading, localSelected } = this.state;
+        const { t } = this.context;
         const displayList = this.getDisplayList();
 
         const footer = (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
                 <span style={{ fontSize: 13, color: "var(--semi-color-text-2)" }}>
-                    已选 {localSelected.length} / {maxSelect}
+                    {t("summary.common.selectedCount", { values: { count: localSelected.length, max: maxSelect } })}
                 </span>
                 <div>
-                    <Button onClick={onCancel} style={{ marginRight: 8 }}>取消</Button>
-                    <Button theme="solid" onClick={this.handleConfirm}>确定</Button>
+                    <Button onClick={onCancel} style={{ marginRight: 8 }}>{t("summary.common.cancel")}</Button>
+                    <Button theme="solid" onClick={this.handleConfirm}>{t("summary.common.confirm")}</Button>
                 </div>
             </div>
         );
 
         return (
             <Modal
-                title="选择聊天"
+                title={t("summary.chatSelector.title")}
                 visible={visible}
                 onCancel={onCancel}
                 footer={footer}
@@ -236,22 +242,22 @@ export default class ChatSelectorModal extends Component<Props, State> {
             >
                 <Input
                     prefix={<IconSearch />}
-                    placeholder="搜索群聊或联系人"
+                    placeholder={t("summary.chatSelector.searchPlaceholder")}
                     value={keyword}
                     onChange={this.handleKeywordChange}
                     showClear
                     style={{ marginBottom: 12 }}
                 />
                 <Tabs activeKey={activeTab} onChange={this.handleTabChange} size="small">
-                    <TabPane tab="全部" itemKey="all" />
-                    <TabPane tab="群聊" itemKey="group" />
-                    <TabPane tab="私聊" itemKey="direct" />
+                    <TabPane tab={t("summary.chatSelector.all")} itemKey="all" />
+                    <TabPane tab={t("summary.source.groupChat")} itemKey="group" />
+                    <TabPane tab={t("summary.source.directMessage")} itemKey="direct" />
                 </Tabs>
                 <div style={{ minHeight: 240, maxHeight: 360, overflowY: "auto" }}>
                     {loading ? (
                         <div style={{ textAlign: "center", paddingTop: 60 }}><Spin /></div>
                     ) : displayList.length === 0 ? (
-                        <Empty description="暂无数据" style={{ paddingTop: 40 }} />
+                        <Empty description={t("summary.chatSelector.noData")} style={{ paddingTop: 40 }} />
                     ) : (
                         displayList.map((entry) => this.renderItem(entry))
                     )}

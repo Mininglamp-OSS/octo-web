@@ -3,23 +3,26 @@ import {
     TaskStatus,
     SourceType,
     ParticipantStatus,
-    TimeRangeTypeLabels,
     type TaskStatusType,
     type SummaryModeType,
     type SourceTypeValue,
     type ScheduleConfig,
 } from "../types/summary";
+import { t } from "@octo/base";
+
+const weekdayKeys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+const isoWeekdayKeys = ["", "mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 
 /** 任务状态 → 显示文本 */
 export function getStatusLabel(status: TaskStatusType): string {
     switch (status) {
-        case TaskStatus.PENDING: return "等待中";
-        case TaskStatus.WAITING_CONFIRM: return "等待参与者";
-        case TaskStatus.PROCESSING: return "生成中";
-        case TaskStatus.COMPLETED: return "已完成";
-        case TaskStatus.FAILED: return "失败";
-        case TaskStatus.CANCELLED: return "已取消";
-        default: return "未知";
+        case TaskStatus.PENDING: return t("summary.status.pending");
+        case TaskStatus.WAITING_CONFIRM: return t("summary.status.waitingConfirm");
+        case TaskStatus.PROCESSING: return t("summary.status.processing");
+        case TaskStatus.COMPLETED: return t("summary.status.completed");
+        case TaskStatus.FAILED: return t("summary.status.failed");
+        case TaskStatus.CANCELLED: return t("summary.status.cancelled");
+        default: return t("summary.common.unknown");
     }
 }
 
@@ -38,32 +41,54 @@ export function getStatusColor(status: TaskStatusType): string {
 
 /** 总结模式 → 显示文本 */
 export function getModeLabel(mode: SummaryModeType): string {
-    return mode === SummaryMode.BY_GROUP ? "按群总结" : "按人总结";
+    return mode === SummaryMode.BY_GROUP ? t("summary.mode.byGroup") : t("summary.mode.byPerson");
 }
 
 /** 信息来源类型 → 显示文本 */
 export function getSourceTypeLabel(type: SourceTypeValue): string {
     switch (type) {
-        case SourceType.GROUP_CHAT: return "群聊";
-        case SourceType.THREAD: return "子区";
-        case SourceType.DIRECT_MESSAGE: return "私聊";
-        default: return "未知";
+        case SourceType.GROUP_CHAT: return t("summary.source.groupChat");
+        case SourceType.THREAD: return t("summary.source.thread");
+        case SourceType.DIRECT_MESSAGE: return t("summary.source.directMessage");
+        default: return t("summary.common.unknown");
     }
+}
+
+export function getSourceTypeOptions(sourceTypes?: SourceTypeValue[]) {
+    const options = [
+        { value: SourceType.GROUP_CHAT, label: getSourceTypeLabel(SourceType.GROUP_CHAT) },
+        { value: SourceType.THREAD, label: getSourceTypeLabel(SourceType.THREAD) },
+        { value: SourceType.DIRECT_MESSAGE, label: getSourceTypeLabel(SourceType.DIRECT_MESSAGE) },
+    ];
+    return sourceTypes ? options.filter((option) => sourceTypes.includes(option.value)) : options;
 }
 
 /** 参与者状态 → 显示文本 */
 export function getParticipantStatusLabel(status: number): string {
     switch (status) {
-        case ParticipantStatus.PENDING: return "等待确认";
-        case ParticipantStatus.CONFIRMED: return "已确认";
-        case ParticipantStatus.DECLINED: return "已拒绝";
-        default: return "未知";
+        case ParticipantStatus.PENDING: return t("summary.participant.pending");
+        case ParticipantStatus.CONFIRMED: return t("summary.participant.confirmed");
+        case ParticipantStatus.DECLINED: return t("summary.participant.declined");
+        default: return t("summary.common.unknown");
     }
 }
 
 /** 时间范围类型 → 显示文本 */
 export function getTimeRangeTypeLabel(type: number): string {
-    return TimeRangeTypeLabels[type] || "未知";
+    switch (type) {
+        case 1: return t("summary.timeRange.last24h");
+        case 2: return t("summary.timeRange.last7d");
+        case 3: return t("summary.timeRange.last30d");
+        case 4: return t("summary.timeRange.sinceLastSummary");
+        default: return t("summary.common.unknown");
+    }
+}
+
+export function getTimeRangeTypeOptions() {
+    return [1, 2, 3, 4].map((value) => ({
+        value,
+        label: getTimeRangeTypeLabel(value),
+    }));
 }
 
 /** 格式化日期 */
@@ -86,10 +111,12 @@ export function formatDateOnly(dateStr: string | null | undefined): string {
 
 /** 校验时间范围不超过 maxDays 天 */
 export function validateTimeRange(start: Date, end: Date, maxDays = 31): string | null {
-    if (end <= start) return "结束时间必须晚于开始时间";
+    if (end <= start) return t("summary.timeRange.validationEndAfterStart");
     const diffMs = end.getTime() - start.getTime();
     const diffDays = diffMs / (1000 * 60 * 60 * 24);
-    if (diffDays > maxDays) return `时间范围不能超过 ${maxDays} 天`;
+    if (diffDays > maxDays) {
+        return t("summary.timeRange.validationMaxDays", { values: { maxDays } });
+    }
     return null;
 }
 
@@ -112,12 +139,23 @@ export function canRegenerate(status: TaskStatusType): boolean {
 }
 
 /** 预设 cron 表达式选项 */
-export const CRON_PRESETS = [
-    { value: "0 9 * * *", label: "每天 09:00" },
-    { value: "0 9 * * 1-5", label: "工作日 09:00" },
-    { value: "0 9 * * 1", label: "每周一 09:00" },
-    { value: "0 9 1 * *", label: "每月 1 日 09:00" },
-];
+export function getCronPresetOptions() {
+    return [
+        { value: "0 9 * * *", label: t("summary.cron.everyDayAt") },
+        { value: "0 9 * * 1-5", label: t("summary.cron.workdaysAt") },
+        { value: "0 9 * * 1", label: t("summary.cron.weeklyMondayAt") },
+        { value: "0 9 1 * *", label: t("summary.cron.monthlyFirstAt") },
+    ];
+}
+
+export function getWeekdayName(dayOfWeek: number): string {
+    const key = isoWeekdayKeys[dayOfWeek] || "mon";
+    return t(`summary.cron.weekdayNames.${key}`);
+}
+
+export function getDayOfMonthLabel(day: number): string {
+    return t("summary.cron.dayOfMonth", { values: { day } });
+}
 
 /** cron 表达式 → 可读标签（用于详情页展示） */
 export function cronToLabel(cron_expr: string): string {
@@ -126,20 +164,21 @@ export function cronToLabel(cron_expr: string): string {
     const [minStr, hourStr, dom, , dow] = parts;
     const pad = (n: string) => n.padStart(2, "0");
     const timeStr = `${pad(hourStr)}:${pad(minStr)}`;
-    const dowLabels = ["日", "一", "二", "三", "四", "五", "六"];
 
     if (dom !== "*") {
         // monthly: e.g. "0 9 27 * *"
-        return `每月${dom}日 ${timeStr}`;
+        return t("summary.cron.monthlyAt", { values: { day: dom, time: timeStr } });
     }
     if (dow !== "*") {
         // weekly: e.g. "30 11 * * 1"
         const dowNum = parseInt(dow, 10);
-        const label = dowLabels[dowNum] ?? dow;
-        return `每周${label} ${timeStr}`;
+        const label = weekdayKeys[dowNum]
+            ? t(`summary.cron.weekdays.${weekdayKeys[dowNum]}`)
+            : dow;
+        return t("summary.cron.weeklyAt", { values: { day: label, time: timeStr } });
     }
     // daily
-    return `每天 ${timeStr}`;
+    return t("summary.cron.dailyAt", { values: { time: timeStr } });
 }
 
 /** ScheduleConfig → cron 表达式（与 cronToScheduleConfig 对称） */
@@ -183,12 +222,19 @@ export function describeCron(expr: string): string {
     const [min, hour, , , dow] = parts;
 
     const dowMap: Record<string, string> = {
-        "0": "周日", "1": "周一", "2": "周二", "3": "周三",
-        "4": "周四", "5": "周五", "6": "周六", "7": "周日",
-        "*": "每天", "1-5": "工作日",
+        "0": t("summary.cron.weekdayNames.sun"),
+        "1": t("summary.cron.weekdayNames.mon"),
+        "2": t("summary.cron.weekdayNames.tue"),
+        "3": t("summary.cron.weekdayNames.wed"),
+        "4": t("summary.cron.weekdayNames.thu"),
+        "5": t("summary.cron.weekdayNames.fri"),
+        "6": t("summary.cron.weekdayNames.sat"),
+        "7": t("summary.cron.weekdayNames.sun"),
+        "*": t("summary.cron.everyDay"),
+        "1-5": t("summary.cron.workdays"),
     };
 
-    const dayStr = dowMap[dow] || `星期${dow}`;
+    const dayStr = dowMap[dow] || t("summary.cron.weekdayFallback", { values: { day: dow } });
     const timeStr = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
     return `${dayStr} ${timeStr}`;
 }

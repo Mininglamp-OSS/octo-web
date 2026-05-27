@@ -1,6 +1,6 @@
 import React from "react";
 import { Button } from "@douyinfe/semi-ui";
-import type { JoinApprovalStatus } from "@octo/base";
+import { useI18n, type JoinApprovalStatus } from "@octo/base";
 import "./index.css";
 
 interface JoinApprovalResultProps {
@@ -16,6 +16,7 @@ interface JoinApprovalResultProps {
  * 由 Layout state 统一渲染，不依赖各业务入口自己处理。
  */
 export default function JoinApprovalResult({ status, onDismiss }: JoinApprovalResultProps) {
+    const { t } = useI18n();
     const isPending = status === "pending";
 
     return (
@@ -25,12 +26,12 @@ export default function JoinApprovalResult({ status, onDismiss }: JoinApprovalRe
                     {isPending ? "⏳" : "✅"}
                 </div>
                 <h2 className="wk-join-approval-title">
-                    {isPending ? "申请审批中" : "申请已提交"}
+                    {isPending ? t("app.joinApproval.pendingTitle") : t("app.joinApproval.submittedTitle")}
                 </h2>
                 <p className="wk-join-approval-desc">
                     {isPending
-                        ? "你已有一个申请正在审批中，请耐心等待管理员处理。"
-                        : "你的加入申请已提交，请等待管理员审批通过后即可加入。"}
+                        ? t("app.joinApproval.pendingDesc")
+                        : t("app.joinApproval.submittedDesc")}
                 </p>
                 <Button
                     type="primary"
@@ -38,7 +39,7 @@ export default function JoinApprovalResult({ status, onDismiss }: JoinApprovalRe
                     className="wk-join-approval-btn"
                     onClick={onDismiss}
                 >
-                    知道了
+                    {t("app.joinApproval.ok")}
                 </Button>
             </div>
         </div>

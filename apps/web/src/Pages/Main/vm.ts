@@ -1,4 +1,4 @@
-import { WKApp, Menus, ProviderListener, startVersionCheck } from "@octo/base";
+import { WKApp, Menus, ProviderListener, startVersionCheck, t } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
 
 export default class MainVM extends ProviderListener {
@@ -121,7 +121,7 @@ export default class MainVM extends ProviderListener {
       this.showAppUpdate = false;
       this.showAppUpdateOperation = false;
       this.showAppUpdateOperation = false;
-      Toast.success("已经是最新版本");
+      Toast.success(t("app.main.updateAlreadyLatest"));
     });
     // 更新下载进度事件
     this.addIpcListener("download-progress", (event, message) => {

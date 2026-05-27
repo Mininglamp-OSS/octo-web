@@ -1,5 +1,6 @@
 import React from 'react';
 import { evaluatePasswordStrength, PasswordStrengthResult } from './passwordStrength';
+import { loginT as t } from './i18n';
 
 interface PasswordStrengthIndicatorProps {
     password: string;
@@ -76,7 +77,7 @@ export const PasswordStrengthIndicator: React.FC<PasswordStrengthIndicatorProps>
             </div>
             <div style={styles.labelRow}>
                 <span style={{ ...styles.label, color: result.color }}>
-                    密码强度: {result.label}
+                    {t('password.label')} {result.label}
                 </span>
             </div>
             {result.feedback.length > 0 && (

@@ -1,4 +1,4 @@
-import { WKApp, WKViewQueueHeader, Provider } from "@octo/base";
+import { WKApp, WKViewQueueHeader, Provider, I18nContext, t } from "@octo/base";
 import React from "react";
 import { Component, ReactNode } from "react";
 import "./index.css";
@@ -8,6 +8,9 @@ import { IndexTableItem, ContactsSelect } from "@octo/base";
 import { FinishButtonContext } from "@octo/base/src/Service/Context";
 
 export default class GroupSave extends Component {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   render(): ReactNode {
     return (
       <Provider
@@ -18,7 +21,7 @@ export default class GroupSave extends Component {
           return (
             <div className="wk-groupsave">
               <WKViewQueueHeader
-                title="保存的群"
+                title={t("contacts.header.savedGroups")}
                 onBack={() => {
                   WKApp.routeLeft.pop();
                 }}
@@ -65,7 +68,7 @@ export default class GroupSave extends Component {
                         );
                       }}
                     >
-                      新建群
+                      {t("contacts.groupSave.createGroup")}
                     </Button>
                   </div>
                 }

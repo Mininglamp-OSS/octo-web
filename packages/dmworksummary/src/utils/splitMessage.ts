@@ -1,4 +1,4 @@
-const SIGNATURE = "\n\n---\n_by Octo 智能总结_";
+import { t } from "@octo/base";
 
 export function splitSummaryText(markdown: string, maxLen = 4500): string[] {
     if (!markdown || !markdown.trim()) return [];
@@ -28,10 +28,11 @@ export function splitSummaryText(markdown: string, maxLen = 4500): string[] {
 
     // Append signature to last chunk
     const last = chunks[chunks.length - 1];
-    if (last.length + SIGNATURE.length <= maxLen) {
-        chunks[chunks.length - 1] = last + SIGNATURE;
+    const signature = `\n\n${t("summary.splitMessage.signature")}`;
+    if (last.length + signature.length <= maxLen) {
+        chunks[chunks.length - 1] = last + signature;
     } else {
-        chunks.push(SIGNATURE.trimStart());
+        chunks.push(signature.trimStart());
     }
 
     return chunks;

@@ -1,6 +1,7 @@
 import React from "react";
 import { Button, Popconfirm } from "@douyinfe/semi-ui";
 import { IconDelete } from "@douyinfe/semi-icons";
+import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryListItem } from "../types/summary";
 import { ParticipantStatus } from "../types/summary";
@@ -15,6 +16,7 @@ interface SummaryCardProps {
 }
 
 const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRespond }) => {
+    const { t } = useI18n();
     const currentUid = WKApp.loginInfo.uid;
     const myParticipant = task.participants?.find((p) => p.user_id === currentUid);
     const isPendingInvite = myParticipant != null && myParticipant.status === ParticipantStatus.PENDING;
@@ -39,22 +41,24 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
                         theme="solid"
                         onClick={() => onRespond(task.task_id, "accept")}
                     >
-                        同意
+                        {t("summary.action.accept")}
                     </Button>
                     <Button
                         size="small"
                         onClick={() => onRespond(task.task_id, "reject")}
                     >
-                        拒绝
+                        {t("summary.action.reject")}
                     </Button>
                 </div>
             )}
             <div className="summary-card-footer">
-                <span className="summary-card-created">{task.creator_name || '未知'} 发起</span>
+                <span className="summary-card-created">
+                    {t("summary.summaryCard.createdBy", { values: { name: task.creator_name || t("summary.common.unknown") } })}
+                </span>
                 <span className="summary-card-date">{task.created_at?.substring(0, 10) || ''}</span>
                 <Popconfirm
-                    title="确认删除"
-                    content={`确定要删除「${task.title || task.task_no}」吗？删除后历史版本也将一并清除。`}
+                    title={t("summary.summaryCard.deleteTitle")}
+                    content={t("summary.summaryCard.deleteContent", { values: { title: task.title || task.task_no } })}
                     onConfirm={(e) => {
                         e?.stopPropagation();
                         onDelete(task.task_id);

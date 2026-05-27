@@ -1,5 +1,6 @@
 import React, { Component } from "react";
 import { Button, Toast } from "@douyinfe/semi-ui";
+import { I18nContext, t } from "@octo/base";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import * as api from "../api/summaryApi";
@@ -18,6 +19,9 @@ interface SummaryEditorState {
 }
 
 export default class SummaryEditor extends Component<SummaryEditorProps, SummaryEditorState> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     private textareaRef = React.createRef<HTMLTextAreaElement>();
 
     state: SummaryEditorState = {
@@ -66,15 +70,15 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
         this.setState({ saving: true });
         try {
             await api.editSummary(taskId, content, baseResultId);
-            Toast.success("保存成功");
+            Toast.success(t("summary.editor.saveSuccess"));
             onSave();
         } catch (err: unknown) {
             const error = err as Error & { status?: number };
             if (error.status === 409) {
-                Toast.warning("内容已更新，请刷新");
+                Toast.warning(t("summary.editor.contentUpdated"));
                 onSave();
             } else {
-                Toast.error(error.message || "保存失败，请重试");
+                Toast.error(error.message || t("summary.editor.saveFailed"));
                 this.setState({ saving: false });
             }
         }
@@ -83,6 +87,7 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
     render() {
         const { onCancel } = this.props;
         const { content, saving } = this.state;
+        const { t: translate } = this.context;
 
         return (
             <div className="summary-editor">
@@ -93,7 +98,7 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
                         value={content}
                         onChange={this.handleChange}
                         disabled={saving}
-                        placeholder="编辑总结内容..."
+                        placeholder={translate("summary.editor.placeholder")}
                     />
                     {!saving && (
                         <VoiceInputButton
@@ -122,7 +127,7 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
                 </div>
                 <div className="summary-editor-actions">
                     <Button onClick={onCancel} disabled={saving}>
-                        取消
+                        {translate("summary.common.cancel")}
                     </Button>
                     <Button
                         theme="solid"
@@ -130,7 +135,7 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
                         disabled={!this.hasChanges || saving}
                         loading={saving}
                     >
-                        保存
+                        {translate("summary.common.save")}
                     </Button>
                 </div>
             </div>

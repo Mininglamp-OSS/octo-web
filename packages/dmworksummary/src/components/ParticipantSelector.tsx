@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from "react";
 import { Tag, Button, Input } from "@douyinfe/semi-ui";
 import { IconPlus } from "@douyinfe/semi-icons";
+import { useI18n } from "@octo/base";
 
 interface ParticipantItem {
     user_id: number;
@@ -18,6 +19,7 @@ const ParticipantSelector: React.FC<ParticipantSelectorProps> = ({
     onChange,
     maxParticipants = 20,
 }) => {
+    const { t } = useI18n();
     const [adding, setAdding] = useState(false);
     const [userId, setUserId] = useState("");
     const [userName, setUserName] = useState("");
@@ -27,7 +29,7 @@ const ParticipantSelector: React.FC<ParticipantSelectorProps> = ({
         if (isNaN(uid) || uid <= 0) return;
         if (value.length >= maxParticipants) return;
         if (value.some((p) => p.user_id === uid)) return;
-        onChange([...value, { user_id: uid, user_name: userName.trim() || `用户 ${uid}` }]);
+        onChange([...value, { user_id: uid, user_name: userName.trim() || t("summary.common.userFallback", { values: { id: uid } }) }]);
         setUserId("");
         setUserName("");
         setAdding(false);
@@ -53,7 +55,7 @@ const ParticipantSelector: React.FC<ParticipantSelectorProps> = ({
                         size="large"
                         style={{ marginBottom: 4, marginRight: 4 }}
                     >
-                        {p.user_name || `用户 ${p.user_id}`}
+                        {p.user_name || t("summary.common.userFallback", { values: { id: p.user_id } })}
                     </Tag>
                 ))}
             </div>
@@ -63,7 +65,7 @@ const ParticipantSelector: React.FC<ParticipantSelectorProps> = ({
                     <Input
                         value={userId}
                         onChange={setUserId}
-                        placeholder="用户 ID"
+                        placeholder={t("summary.participant.userIdPlaceholder")}
                         size="small"
                         style={{ width: 120 }}
                         type="number"
@@ -71,15 +73,15 @@ const ParticipantSelector: React.FC<ParticipantSelectorProps> = ({
                     <Input
                         value={userName}
                         onChange={setUserName}
-                        placeholder="用户名（可选）"
+                        placeholder={t("summary.participant.userNamePlaceholder")}
                         size="small"
                         style={{ width: 120, marginLeft: 8 }}
                     />
                     <Button size="small" theme="solid" onClick={handleAdd} style={{ marginLeft: 8 }}>
-                        添加
+                        {t("summary.common.add")}
                     </Button>
                     <Button size="small" theme="borderless" onClick={() => setAdding(false)} style={{ marginLeft: 4 }}>
-                        取消
+                        {t("summary.common.cancel")}
                     </Button>
                 </div>
             ) : (
@@ -91,7 +93,7 @@ const ParticipantSelector: React.FC<ParticipantSelectorProps> = ({
                         onClick={() => setAdding(true)}
                         style={{ marginTop: 4 }}
                     >
-                        添加参与者
+                        {t("summary.participant.addParticipant")}
                     </Button>
                 )
             )}

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useI18n } from '@octo/base';
 import type { MatterAssignee } from '../../bridge/types';
 import './index.css';
 
@@ -57,13 +58,14 @@ function OwnerOption({
   disabled?: boolean;
   renderAvatar: (uid: string, size: number) => React.ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <button
       type="button"
       className={`wk-owner-editor__option${picked ? ' is-picked' : ''}${disabled ? ' is-disabled' : ''}`}
       onClick={onClick}
       disabled={disabled}
-      title={disabled ? '至少保留 1 位负责人' : undefined}
+      title={disabled ? t("todo.owner.keepOne") : undefined}
     >
       <span className="wk-owner-editor__option-tick">
         {picked && (
@@ -90,6 +92,7 @@ export default function OwnerEditor({
     renderAvatar,
     resolveUserName,
 }: OwnerEditorProps) {
+    const { t } = useI18n();
     const [open, setOpen] = useState(false);
     const [pending, setPending] = useState<Set<string>>(new Set());
     const ref = useRef<HTMLSpanElement>(null);
@@ -167,7 +170,7 @@ export default function OwnerEditor({
     : {
         type: 'button' as const,
         disabled: true,
-        title: '仅发起人或当前负责人可修改',
+        title: t("todo.owner.readonly"),
       };
 
   return (
@@ -194,7 +197,7 @@ export default function OwnerEditor({
         <div className="wk-owner-editor__dropdown">
           {mergedCandidates.length === 0 && (
             <div className="wk-owner-editor__empty">
-              暂无可选成员
+              {t("todo.member.empty")}
             </div>
           )}
           {mergedCandidates.map((c) => {

@@ -1,11 +1,12 @@
 import React from "react";
+import { useI18n } from "@octo/base";
 import type { Matter } from "../../bridge/types";
 import "./index.css";
 
-const STATUS_MAP: Record<string, { label: string; colorClass: string }> = {
-  open: { label: "进行中", colorClass: "wk-mp-sidebar-card__tag--blue" },
-  done: { label: "已完成", colorClass: "wk-mp-sidebar-card__tag--green" },
-  archived: { label: "已归档", colorClass: "wk-mp-sidebar-card__tag--gray" },
+const STATUS_MAP: Record<string, { labelKey: string; colorClass: string }> = {
+  open: { labelKey: "todo.status.open", colorClass: "wk-mp-sidebar-card__tag--blue" },
+  done: { labelKey: "todo.status.done", colorClass: "wk-mp-sidebar-card__tag--green" },
+  archived: { labelKey: "todo.status.archived", colorClass: "wk-mp-sidebar-card__tag--gray" },
 };
 
 function formatDdl(deadline?: string): string {
@@ -34,6 +35,7 @@ export default function SidebarCard({
   renderUserName,
   sourceChannelName,
 }: SidebarCardProps) {
+  const { t } = useI18n();
   const status = STATUS_MAP[matter.status] || STATUS_MAP.open;
   const ddl = formatDdl(matter.deadline);
 
@@ -46,7 +48,7 @@ export default function SidebarCard({
       {/* 第一行：状态标签 + 日期 */}
       <div className="wk-mp-sidebar-card__row1">
         <span className={`wk-mp-sidebar-card__tag ${status.colorClass}`}>
-          <span className="wk-mp-sidebar-card__tag-label">{status.label}</span>
+          <span className="wk-mp-sidebar-card__tag-label">{t(status.labelKey)}</span>
           {matter.seq_no ? (
             <span className="wk-mp-sidebar-card__tag-no">｜M-{matter.seq_no}</span>
           ) : null}
@@ -73,7 +75,7 @@ export default function SidebarCard({
       {/* 第三行：创建人 + 负责人 */}
       <div className="wk-mp-sidebar-card__meta">
         <div className="wk-mp-sidebar-card__meta-item">
-          <span className="wk-mp-sidebar-card__meta-label">创建人：</span>
+          <span className="wk-mp-sidebar-card__meta-label">{t("todo.label.creator")}</span>
           <span className="wk-mp-sidebar-card__user">
             {renderAvatar(matter.creator_id, 16)}
             <span className="wk-mp-sidebar-card__user-name">{renderUserName(matter.creator_id)}</span>
@@ -81,7 +83,7 @@ export default function SidebarCard({
         </div>
         {matter.assignees && matter.assignees.length > 0 && (
           <div className="wk-mp-sidebar-card__meta-item">
-            <span className="wk-mp-sidebar-card__meta-label">负责人：</span>
+            <span className="wk-mp-sidebar-card__meta-label">{t("todo.label.assignee")}</span>
             <span className="wk-mp-sidebar-card__user">
               <span className="wk-mp-sidebar-card__avatar-group">
                 {matter.assignees.slice(0, 3).map((a, i) => (
@@ -100,7 +102,8 @@ export default function SidebarCard({
               )}
               {matter.assignees.length > 1 && (
                 <span className="wk-mp-sidebar-card__user-name">
-                  {renderUserName(matter.assignees[0].user_id)}等{matter.assignees.length}人
+                  {renderUserName(matter.assignees[0].user_id)}
+                  {t("todo.assignee.moreSuffix", { values: { count: matter.assignees.length } })}
                 </span>
               )}
             </span>

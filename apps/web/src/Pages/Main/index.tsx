@@ -1,4 +1,4 @@
-import { WKApp, WKLayout, Provider, WKModal } from "@octo/base";
+import { WKApp, WKLayout, Provider, WKModal, t } from "@octo/base";
 import React, { Component } from "react";
 import "./index.css"
 import MainVM from "./vm";
@@ -134,7 +134,7 @@ export class MainPage extends Component<{}, MainPageState> {
                 if (target) WKApp.mittBus.emit("space-changed", target);
             }
         }).catch(() => {
-            Toast.error("刷新 Space 列表失败，请手动刷新");
+            Toast.error(t("app.main.spaceListRefreshFailed"));
         });
     };
 

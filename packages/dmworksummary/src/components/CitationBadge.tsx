@@ -1,5 +1,6 @@
 import React, { useContext, useMemo } from 'react';
 import { Popover } from '@douyinfe/semi-ui';
+import { i18n, useI18n } from '@octo/base';
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from 'wukongimjssdk';
 import WKApp from '@octo/base/src/App';
 import { ShowConversationOptions } from '@octo/base/src/EndpointCommon';
@@ -21,8 +22,7 @@ interface CitationGroupBadgeProps {
 
 function formatTime(iso: string): string {
     try {
-        const d = new Date(iso);
-        return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        return i18n.format.dateTime(iso, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
     } catch {
         return iso;
     }
@@ -134,6 +134,7 @@ function ContextMessages({ messages }: { messages?: CitationContextMessage[] }) 
 }
 
 function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; badgeKey: string; closeKey: (key: string) => void }) {
+    const { t } = useI18n();
     if (!citation.channel_id || !citation.message_seq || citation.channel_type == null) return null;
     return (
         <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #f0f0f0', textAlign: 'right' }}>
@@ -154,13 +155,14 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
                     WKApp.endpoints.showConversation(channel, opts);
                 }}
             >
-                跳转到原文 →
+                {t("summary.citation.jumpToOriginal")}
             </span>
         </div>
     );
 }
 
 const CitationBadge: React.FC<CitationBadgeProps> = ({ index, citations, badgeKey }) => {
+    const { t } = useI18n();
     const { activeKey, onBadgeClick, closeKey } = useContext(CitationContext);
     const citation = citations.find(c => c.index === index);
 
@@ -187,7 +189,7 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, citations, badgeKe
                         </div>
                         {citation.source && (
                             <div style={{ fontSize: 12, color: '#999', marginBottom: 4 }}>
-                                来源：{citation.source}
+                                {t("summary.citation.source", { values: { source: citation.source } })}
                             </div>
                         )}
                         <div style={{ fontSize: 13, lineHeight: 1.5 }}>{citation.content}</div>

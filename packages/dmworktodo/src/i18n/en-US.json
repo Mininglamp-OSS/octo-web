@@ -1,0 +1,263 @@
+{
+  "action": {
+    "add": "Add",
+    "create": "Create task",
+    "deleteMatter": "Delete task",
+    "editDescription": "Edit description",
+    "editTitle": "Edit title",
+    "linkNewGroup": "Link conversation",
+    "loadMore": "Load more",
+    "loadMoreComments": "Load more comments",
+    "markDone": "Mark done",
+    "more": "More",
+    "new": "New task",
+    "remove": "Remove",
+    "reopen": "Reopen",
+    "timeSort": "Time sort",
+    "toggleSort": "Toggle sort",
+    "viewGroup": "View group"
+  },
+  "activity": {
+    "action": {
+      "assigneeAdded": "Assignee added",
+      "assigneeRemoved": "Assignee removed",
+      "channelChanged": "Group changed",
+      "channelLinked": "Group linked",
+      "channelUnlinked": "Group unlinked",
+      "created": "Created",
+      "ddlChanged": "Deadline changed",
+      "deadlineChanged": "Deadline changed",
+      "descriptionChanged": "Goal changed",
+      "statusChanged": "Status changed",
+      "titleChanged": "Title changed"
+    },
+    "createdMatter": "Created the task",
+    "empty": "No activity yet",
+    "filter": {
+      "all": "All",
+      "label": "Type: {{type}}"
+    },
+    "initial": "Initial content:",
+    "table": {
+      "actor": "Actor",
+      "content": "Content",
+      "source": "Source",
+      "time": "Time",
+      "type": "Type"
+    },
+    "updatedDescription": "Updated the main goal"
+  },
+  "anchor": {
+    "loadFailed": "Failed to load",
+    "loadingMessages": "Loading source messages...",
+    "messageUnavailable": "Message unavailable",
+    "noSourceMessages": "No source message context",
+    "sourceMessage": "Source message",
+    "viewContext": "View source context"
+  },
+  "assignee": {
+    "count": "{{count}} assignees",
+    "moreSuffix": "+{{count}} more"
+  },
+  "channel": {
+    "hiddenName": "Hidden group name",
+    "hiddenTitle": "You are not in this group. The group name is hidden.",
+    "loadingInfo": "Loading group info...",
+    "notMember": "Not in group",
+    "notMemberTitle": "You are not in this group and cannot view source messages.",
+    "unknownGroup": "Unknown group"
+  },
+  "comment": {
+    "placeholder": "Add progress or a comment..."
+  },
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirm": "Confirm",
+    "inputPlaceholder": "Enter text",
+    "none": "None",
+    "selectPlaceholder": "Select",
+    "listSeparator": ", ",
+    "retry": "Retry",
+    "send": "Send"
+  },
+  "confirm": {
+    "deleteMatter": "Delete task \"{{title}}\"?",
+    "discardUnsaved": "You have unsaved content. Close anyway?",
+    "unlinkChannel": "Unlink this group?"
+  },
+  "create": {
+    "aiExtracting": "AI is extracting the task...",
+    "sendAndCreate": "Send and create task",
+    "smartTitle": "Smart task creation",
+    "title": "New task"
+  },
+  "day": {
+    "today": "Today",
+    "yesterday": "Yesterday"
+  },
+  "deadline": {
+    "monthDayWeekday": "{{month}}/{{day}} {{weekday}}",
+    "set": "Set deadline",
+    "untilMonthDayWeekday": "Due by {{month}}/{{day}} ({{weekday}})",
+    "updateFailed": "Failed to update deadline"
+  },
+  "detail": {
+    "changeLog": "Change log",
+    "linkedGroups": "Linked groups",
+    "linkedGroupsWithCount": "Linked groups {{count}}",
+    "noLinkedGroups": "No linked groups or threads"
+  },
+  "field": {
+    "assignee": "Assignee",
+    "goal": "Main goal",
+    "goalPlaceholder": "Enter the main goal",
+    "title": "Task name"
+  },
+  "filter": {
+    "searchPlaceholder": "Search tasks"
+  },
+  "footer": {
+    "tagline": "Task collaboration powered by chat context"
+  },
+  "label": {
+    "assignee": "Assignee",
+    "creator": "Creator",
+    "fromChannel": "From {{name}}",
+    "fromHiddenChannel": "From hidden group"
+  },
+  "linkChannels": {
+    "failed": "Failed to link",
+    "inParentGroup": "in {{name}}",
+    "loadFailedRetry": "Failed to load the conversation list. Please try again later.",
+    "linked": "Linked {{count}} conversations",
+    "noMatches": "No matching groups or threads",
+    "overflowHint": "Showing the first {{limit}} of {{total}} items. Enter keywords to narrow the list.",
+    "searchPlaceholder": "Search group, thread, or parent group",
+    "selectedCount": "{{count}} conversations selected",
+    "selectionUnavailable": "Selected conversations are unavailable. Please choose again.",
+    "threadLoadFailedMany": "Failed to load threads for {{names}} and {{count}} groups",
+    "threadLoadFailedNamed": "Failed to load threads for {{names}}",
+    "threadLoadFailedOne": "Failed to load threads for \"{{name}}\". Threads in this group are unavailable.",
+    "title": "Link conversations",
+    "unnamedThread": "Unnamed thread"
+  },
+  "linkMenu": {
+    "createNew": "Create new task",
+    "currentGroupTasks": "Tasks in this group",
+    "syncExisting": "Sync to an existing task"
+  },
+  "member": {
+    "empty": "No members",
+    "noMatches": "No matching members",
+    "searchPlaceholder": "Search members",
+    "updateFailed": "Failed to {{action}} member"
+  },
+  "mention": {
+    "everyone": "@everyone"
+  },
+  "menu": {
+    "title": "Tasks"
+  },
+  "messageType": {
+    "contactCard": "[Contact card]",
+    "emoji": "[Emoji]",
+    "file": "[File] {{name}}",
+    "fileWithSize": "[File] {{name}} · {{size}}",
+    "image": "[Image]",
+    "location": "[Location]",
+    "mergeForward": "[Chat history]",
+    "message": "[Message]",
+    "shortVideo": "[Short video]",
+    "system": "[System message]",
+    "typedMessage": "[{{type}} message]",
+    "unknownFile": "Unknown file",
+    "video": "[Video]",
+    "voice": "[Voice]"
+  },
+  "owner": {
+    "keepOne": "Keep at least one assignee",
+    "readonly": "You do not have permission to edit assignees"
+  },
+  "quickAdd": {
+    "fullForm": "Open full form",
+    "placeholder": "Quick add task"
+  },
+  "state": {
+    "empty": "No tasks yet",
+    "loadFailed": "Failed to load",
+    "loadFailedRetry": "Failed to load. Please try again later.",
+    "loading": "Loading...",
+    "selectMatter": "Select a task",
+    "submitting": "Submitting...",
+    "syncing": "Syncing..."
+  },
+  "status": {
+    "archived": "Archived",
+    "archivedCount": "Archived {{count}}",
+    "cannotChangeArchived": "Archived tasks cannot change status",
+    "clickToChange": "Click to change status",
+    "done": "Done",
+    "onlyCreatorOrAssignee": "Only the creator or assignees can edit this",
+    "open": "In progress",
+    "pending": "Pending",
+    "unarchived": "Unarchived"
+  },
+  "sync": {
+    "daysAgo": "Synced {{count}} days ago",
+    "hoursAgo": "Synced {{count}} hours ago",
+    "justNow": "Synced just now",
+    "minutesAgo": "Synced {{count}} minutes ago"
+  },
+  "tabs": {
+    "all": "All",
+    "created": "Created by me",
+    "mine": "Assigned to me"
+  },
+  "timeline": {
+    "attachments": "{{count}} attachments",
+    "collapse": "Collapse group timeline",
+    "empty": "No progress yet",
+    "emptyInGroup": "No timeline records in this group yet",
+    "expand": "Expand group timeline",
+    "groupTitle": "Group progress",
+    "loading": "Loading timeline...",
+    "noText": "No text content"
+  },
+  "toast": {
+    "addAssigneeFailed": "Failed to add assignee",
+    "addCommentFailed": "Failed to add comment",
+    "addFailed": "Failed to add",
+    "aiExtractFailed": "AI extraction failed",
+    "aiUnavailable": "AI service unavailable",
+    "assigneeUpdateFailed": "Failed to update assignees",
+    "createFailed": "Failed to create",
+    "created": "Task created",
+    "deleteFailed": "Failed to delete",
+    "deleted": "Deleted",
+    "descriptionUpdateFailed": "Failed to update description",
+    "loadCommentsFailed": "Failed to load comments",
+    "loadFailed": "Failed to load",
+    "noMessagesToSync": "No messages to sync",
+    "onlyCreatorArchive": "Only the creator can archive this task",
+    "operationFailed": "Operation failed",
+    "removeAssigneeFailed": "Failed to remove assignee",
+    "saved": "Saved",
+    "statusChangeFailed": "Failed to change status",
+    "statusUpdateFailed": "Failed to update status",
+    "syncProgressFailed": "Failed to sync progress",
+    "syncedProgress": "Progress synced",
+    "titleUpdateFailed": "Failed to update title",
+    "unlinkFailed": "Failed to unlink",
+    "unlinked": "Unlinked"
+  },
+  "weekday": {
+    "fri": "Fri",
+    "mon": "Mon",
+    "sat": "Sat",
+    "sun": "Sun",
+    "thu": "Thu",
+    "tue": "Tue",
+    "wed": "Wed"
+  }
+}

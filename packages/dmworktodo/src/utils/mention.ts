@@ -29,7 +29,7 @@ export function replaceMentions(text: string): string {
             if (i < text.length && text[i] === ']' && colonIdx !== -1) {
                 const uid = text.slice(start + 2, colonIdx);
                 const name = text.slice(colonIdx + 1, i);
-                result += uid === '-1' ? '@所有人' : `@${name}`;
+                result += uid === '-1' ? t('todo.mention.everyone') : `@${name}`;
                 i++; // 跳过 ]
             } else {
                 // 格式不完整，原样输出
@@ -69,7 +69,7 @@ export function parseMentions(raw: string): { title: string; uids: string[] } {
                 const uid = raw.slice(start + 2, colonIdx);
                 const name = raw.slice(colonIdx + 1, i);
                 if (uid && uid !== '-1') uids.push(uid);
-                result += uid === '-1' ? '@所有人' : `@${name}`;
+                result += uid === '-1' ? t('todo.mention.everyone') : `@${name}`;
                 i++;
             } else {
                 result += raw[start];
@@ -82,3 +82,4 @@ export function parseMentions(raw: string): { title: string; uids: string[] } {
     }
     return { title: result.trim(), uids: [...new Set(uids)] };
 }
+import { t } from "@octo/base";

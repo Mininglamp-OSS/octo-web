@@ -1,0 +1,274 @@
+{
+  "common": {
+    "add": "Add",
+    "cancel": "Cancel",
+    "confirm": "OK",
+    "createFailed": "Failed to create",
+    "deleteFailed": "Failed to delete",
+    "edit": "Edit",
+    "loadingFailed": "Failed to load",
+    "operationFailed": "Operation failed",
+    "retry": "Retry",
+    "save": "Save",
+    "saveFailed": "Failed to save",
+    "unknown": "Unknown",
+    "updateFailed": "Failed to update",
+    "charLimitReached": "{{count}} character limit reached",
+    "selectedCount": "Selected {{count}} / {{max}}",
+    "selectedPeopleCount": "{{count}} selected",
+    "peopleCount": "{{count}} people",
+    "messagesCount": "{{count}} messages",
+    "version": "Version {{version}}",
+    "current": "Current",
+    "userFallback": "User {{id}}"
+  },
+  "action": {
+    "accept": "Accept",
+    "accepted": "Accepted",
+    "reject": "Reject",
+    "rejected": "Rejected"
+  },
+  "status": {
+    "pending": "Pending",
+    "waitingConfirm": "Waiting for participants",
+    "processing": "Generating",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
+  },
+  "mode": {
+    "byGroup": "By chat",
+    "byPerson": "By person"
+  },
+  "source": {
+    "groupChat": "Group chat",
+    "thread": "Thread",
+    "directMessage": "Direct message",
+    "label": "Source: ",
+    "selectedHeader": "📋 Selected sources",
+    "idPlaceholder": "Source ID",
+    "namePlaceholder": "Name (optional)",
+    "addSource": "Add source"
+  },
+  "participant": {
+    "pending": "Waiting",
+    "confirmed": "Confirmed",
+    "declined": "Declined",
+    "statusTitle": "Participant status",
+    "statusTitleWithColon": "Participant status:",
+    "addParticipant": "Add participant",
+    "userIdPlaceholder": "User ID",
+    "userNamePlaceholder": "Username (optional)"
+  },
+  "memberStatus": {
+    "pending": "Pending",
+    "accepted": "Accepted",
+    "declined": "Declined",
+    "processing": "Generating",
+    "completed": "Completed",
+    "submitted": "Submitted"
+  },
+  "timeRange": {
+    "last24h": "Last 24 hours",
+    "last7d": "Last 7 days",
+    "last30d": "Last 30 days",
+    "sinceLastSummary": "Since last summary",
+    "startPlaceholder": "Start date",
+    "endPlaceholder": "End date",
+    "validationEndAfterStart": "End time must be later than start time",
+    "validationMaxDays": "Time range cannot exceed {{maxDays}} days"
+  },
+  "cron": {
+    "everyDayAt": "Every day 09:00",
+    "workdaysAt": "Workdays 09:00",
+    "weeklyMondayAt": "Every Monday 09:00",
+    "monthlyFirstAt": "Monthly on day 1 09:00",
+    "dailyAt": "Every day {{time}}",
+    "weeklyAt": "Every {{day}} {{time}}",
+    "monthlyAt": "Monthly on day {{day}} {{time}}",
+    "everyDay": "Every day",
+    "everyWeek": "Every week",
+    "everyMonth": "Every month",
+    "workdays": "Workdays",
+    "weekdayFallback": "Weekday {{day}}",
+    "dayOfMonth": "Day {{day}}",
+    "weekdays": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    },
+    "weekdayNames": {
+      "sun": "Sunday",
+      "mon": "Monday",
+      "tue": "Tuesday",
+      "wed": "Wednesday",
+      "thu": "Thursday",
+      "fri": "Friday",
+      "sat": "Saturday"
+    }
+  },
+  "list": {
+    "title": "AI Summary",
+    "allStatus": "All statuses",
+    "createTooltip": "New summary",
+    "searchPlaceholder": "Search summaries...",
+    "deleteSuccess": "Deleted",
+    "networkError": "Network connection error. Check your connection and retry.",
+    "emptyTitle": "No summaries yet",
+    "emptyDesc": "Generate group or personal work summaries quickly, and let AI organize key information for you.",
+    "createFirst": "Create first summary"
+  },
+  "create": {
+    "title": "AI Summary",
+    "desc": "Invite teammates to summarize information together, with automatic summaries from chats and related content.",
+    "topicPlaceholder": "Enter a topic, for example: summarize this week's project progress, organize customer feedback...",
+    "scheduleFailed": "Summary was created, but scheduled updates failed",
+    "success": "Summary task created",
+    "selectChat": "Select chats",
+    "selectedChats": "{{count}} chats selected",
+    "start": "Start summary",
+    "templatesTitle": "Try these summary templates",
+    "scheduleDaily": "Daily {{time}}",
+    "scheduleWeekly": "Every {{day}} {{time}}",
+    "scheduleMonthly": "Monthly on day {{day}} {{time}}"
+  },
+  "chatSelector": {
+    "title": "Select chats",
+    "searchPlaceholder": "Search groups or contacts",
+    "all": "All",
+    "noData": "No data"
+  },
+  "memberSelector": {
+    "title": "Add members",
+    "searchPlaceholder": "Search members",
+    "empty": "No members"
+  },
+  "schedule": {
+    "pageTitle": "Scheduled summaries",
+    "new": "New",
+    "empty": "No scheduled summaries",
+    "createFirst": "Create first scheduled task",
+    "fallbackTitle": "Scheduled task #{{id}}",
+    "deleteTitle": "Confirm deletion",
+    "deleteContent": "Delete this scheduled summary?",
+    "createModalTitle": "New scheduled summary",
+    "editModalTitle": "Edit scheduled summary",
+    "createSuccess": "Scheduled summary created",
+    "updateSuccess": "Scheduled summary updated",
+    "deleted": "Deleted",
+    "enabled": "Enabled",
+    "paused": "Paused",
+    "form": {
+      "title": "Title",
+      "titlePlaceholder": "Scheduled summary title",
+      "mode": "Summary mode",
+      "frequency": "Frequency",
+      "customCron": "Custom cron expression",
+      "customCronPlaceholder": "Cron expression, e.g. 0 9 * * 1-5",
+      "usePreset": "Use preset",
+      "timeRange": "Time range",
+      "source": "Sources"
+    },
+    "config": {
+      "title": "Scheduled update",
+      "desc": "Summary content will be updated automatically and you will be notified.",
+      "frequency": "Frequency",
+      "time": "Time",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly"
+    }
+  },
+  "confirmPage": {
+    "title": "Participant confirmation",
+    "sourceRequired": "Select at least one source",
+    "confirmed": "Participation confirmed",
+    "confirmFailed": "Failed to confirm",
+    "declined": "Participation declined",
+    "inviteTitle": "You are invited to join a team summary",
+    "timeRange": "Time range: ",
+    "sourcePrompt": "Select the sources to include:",
+    "submit": "Confirm and submit"
+  },
+  "detail": {
+    "defaultTitle": "Summary details",
+    "submitSuccess": "Submitted",
+    "submitFailed": "Failed to submit",
+    "regenerateStarted": "Regeneration started",
+    "cancelSuccess": "Task cancelled",
+    "scheduleSaved": "Scheduled update saved",
+    "scheduleCreated": "Scheduled update created",
+    "forwardFailed": "Failed to forward",
+    "partialForwardFailed": "Failed to forward to some channels ({{failed}}/{{total}})",
+    "forwarded": "Forwarded",
+    "forwardToChat": "Forward to chat",
+    "forwardToMatter": "Forward to Matters",
+    "noForwardContent": "No content to forward",
+    "forwardedToMatter": "Forwarded to \"{{title}}\"",
+    "processingTitle": "Generating summary...",
+    "processingDesc": "This may take a little while. Please wait.",
+    "failedTitle": "Summary generation failed",
+    "taskNo": "Task ID: {{taskNo}}",
+    "createdAt": "Created: {{time}}",
+    "contentTitle": "📝 Summary content",
+    "edited": "Edited",
+    "generatedAt": "Generated {{time}}",
+    "lastEditedAt": "Last edited {{time}}",
+    "mySummary": "👤 My summary",
+    "mySummaryPlain": "My summary",
+    "submitToAll": "Submit to everyone",
+    "teamSummary": "👥 Team summary",
+    "submittedPeople": "{{count}} submitted",
+    "memberStatus": "Member status",
+    "participantReports": "Participant reports",
+    "collapse": "Collapse ▲",
+    "expandAll": "Expand all ▼",
+    "waitingSubmit": "{{name}} · Waiting to submit...",
+    "regenerate": "Regenerate",
+    "cancelTask": "Cancel task",
+    "errorCause": "This may be caused by network instability or a service error.",
+    "inviteQuestion": "You have been invited to participate in this summary task. Accept?",
+    "cancelledTitle": "Task cancelled",
+    "cancelledDesc": "This summary task was cancelled and will not continue.",
+    "waitingConfirmTitle": "Waiting for participant confirmation",
+    "waitingConfirmDesc": "All participants need to confirm before generation can start.",
+    "viewConfirmStatus": "View confirmation status"
+  },
+  "summaryCard": {
+    "createdBy": "Created by {{name}}",
+    "deleteTitle": "Confirm deletion",
+    "deleteContent": "Delete \"{{title}}\"? Historical versions will also be removed."
+  },
+  "editor": {
+    "saveSuccess": "Saved",
+    "contentUpdated": "Content has changed. Please refresh.",
+    "saveFailed": "Failed to save. Please retry.",
+    "placeholder": "Edit summary content..."
+  },
+  "versionHistory": {
+    "empty": "No version history",
+    "viewVersion": "View this version",
+    "meta": "{{time}} · {{count}} messages · {{model}}"
+  },
+  "content": {
+    "empty": "No summary content"
+  },
+  "citation": {
+    "jumpToOriginal": "Open original →",
+    "source": "Source: {{source}}"
+  },
+  "matterPicker": {
+    "loadFailed": "Failed to load matters",
+    "title": "Select target matter",
+    "searchPlaceholder": "Search matters...",
+    "empty": "No available matters",
+    "loadMore": "Load more..."
+  },
+  "splitMessage": {
+    "signature": "---\n_by Octo AI Summary_"
+  }
+}

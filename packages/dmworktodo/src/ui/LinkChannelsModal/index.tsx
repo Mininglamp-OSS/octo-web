@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Modal } from "@douyinfe/semi-ui";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
+import { useI18n } from "@octo/base";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import type { MatterChannel } from "../../bridge/types";
 import { Toast } from "../../utils/toast";
@@ -82,6 +83,7 @@ export default function LinkChannelsModal({
   loadChannels,
   onLinkChannel,
 }: LinkChannelsModalProps) {
+  const { t } = useI18n();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [channels, setChannels] = useState<ChannelOption[]>([]);
@@ -113,10 +115,10 @@ export default function LinkChannelsModal({
         // 不清掉 channels / selected: 如果之前成功加载过, 保留旧的列表给
         // 用户继续操作, 不要因为一次重试失败就让用户从头来 (review #110
         // r2 yujiawei P2-3/P2-4)。走 toast 通知, 而不是默默空白。
-        Toast.error("加载会话列表失败,请稍后重试");
+        Toast.error(t("todo.linkChannels.loadFailedRetry"));
       })
       .finally(() => setLoading(false));
-  }, [loadChannels]);
+  }, [loadChannels, t]);
 
   useEffect(() => {
     if (!visible) {
@@ -183,18 +185,18 @@ export default function LinkChannelsModal({
       // 之前用 selected.length 会报 "已关联 N 个" 但实际只关联了 N-1 个,
       // 跟用户实际看到的不一致 (review #110 r3 Jerry-Xin 🟡-1)。
       if (linkedCount === 0) {
-        Toast.error("所选会话已不可用,请重新选择");
+        Toast.error(t("todo.linkChannels.selectionUnavailable"));
         return;
       }
-      Toast.success(`已关联 ${linkedCount} 个会话`);
+      Toast.success(t("todo.linkChannels.linked", { values: { count: linkedCount } }));
       onLinked();
       onClose();
     } catch (err: unknown) {
-      Toast.error((err as Error)?.message || "关联失败");
+      Toast.error((err as Error)?.message || t("todo.linkChannels.failed"));
     } finally {
       setSubmitting(false);
     }
-  }, [selected, submitting, channels, matterId, onLinked, onClose, onLinkChannel]);
+  }, [selected, submitting, channels, matterId, onLinked, onClose, onLinkChannel, t]);
 
   // 已选 Set: 同时给左侧列表 (每行 isSelected 判断) 和右侧已选列表用,
   // 把行级 .includes (O(N×M)) 收敛成一次 Set 构造 (O(N+M))。
@@ -222,8 +224,8 @@ export default function LinkChannelsModal({
       <div className="wk-lcm">
         {/* Header */}
         <div className="wk-lcm__header">
-          <span className="wk-lcm__title">关联会话</span>
-          <button type="button" className="wk-lcm__close" onClick={onClose} aria-label="关闭">
+          <span className="wk-lcm__title">{t("todo.linkChannels.title")}</span>
+          <button type="button" className="wk-lcm__close" onClick={onClose} aria-label={t("todo.common.close")}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
@@ -243,7 +245,7 @@ export default function LinkChannelsModal({
                 </svg>
                 <input
                   className="wk-lcm__search-input"
-                  placeholder="搜索群聊 / 子区名 / 父群名"
+                  placeholder={t("todo.linkChannels.searchPlaceholder")}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   autoFocus
@@ -257,13 +259,26 @@ export default function LinkChannelsModal({
                 <span className="wk-lcm__warn-icon" aria-hidden="true">!</span>
                 <span className="wk-lcm__warn-text">
                   {threadLoadErrors.length === 1
-                    ? `"${threadLoadErrors[0]}" 的子区加载失败, 该群的子区暂不可选`
+                    ? t("todo.linkChannels.threadLoadFailedOne", {
+                        values: { name: threadLoadErrors[0] },
+                      })
                     : threadLoadErrors.length <= ERROR_NAME_PREVIEW_LIMIT
-                      ? `${threadLoadErrors.map((n) => `"${n}"`).join("、")} 的子区加载失败`
-                      : `${threadLoadErrors
-                          .slice(0, ERROR_NAME_PREVIEW_LIMIT)
-                          .map((n) => `"${n}"`)
-                          .join("、")} 等 ${threadLoadErrors.length} 个群的子区加载失败`}
+                      ? t("todo.linkChannels.threadLoadFailedNamed", {
+                          values: {
+                            names: threadLoadErrors
+                              .map((n) => `"${n}"`)
+                              .join(t("todo.common.listSeparator")),
+                          },
+                        })
+                      : t("todo.linkChannels.threadLoadFailedMany", {
+                          values: {
+                            count: threadLoadErrors.length,
+                            names: threadLoadErrors
+                              .slice(0, ERROR_NAME_PREVIEW_LIMIT)
+                              .map((n) => `"${n}"`)
+                              .join(t("todo.common.listSeparator")),
+                          },
+                        })}
                 </span>
                 <button
                   type="button"
@@ -271,7 +286,7 @@ export default function LinkChannelsModal({
                   onClick={reload}
                   disabled={loading}
                 >
-                  重试
+                  {t("todo.common.retry")}
                 </button>
               </div>
             )}
@@ -279,9 +294,9 @@ export default function LinkChannelsModal({
             {/* 列表 */}
             <div className="wk-lcm__list">
               {loading ? (
-                <div className="wk-lcm__empty">加载中...</div>
+                <div className="wk-lcm__empty">{t("todo.state.loading")}</div>
               ) : filtered.length === 0 ? (
-                <div className="wk-lcm__empty">没有匹配的群聊或子区</div>
+                <div className="wk-lcm__empty">{t("todo.linkChannels.noMatches")}</div>
               ) : (
                 <>
                   {visibleRows.map((c) => {
@@ -320,9 +335,11 @@ export default function LinkChannelsModal({
                             )}
                             {c.name}
                           </span>
-                          {isThread && c.parentGroupName && (
+                            {isThread && c.parentGroupName && (
                             <span className="wk-lcm__item-context">
-                              在 {c.parentGroupName}
+                              {t("todo.linkChannels.inParentGroup", {
+                                values: { name: c.parentGroupName },
+                              })}
                             </span>
                           )}
                         </span>
@@ -331,7 +348,12 @@ export default function LinkChannelsModal({
                   })}
                   {overflowing && (
                     <div className="wk-lcm__overflow-hint">
-                      只显示前 {VISIBLE_ROW_LIMIT} 项, 共 {filtered.length} 项, 请输入关键词缩小范围
+                      {t("todo.linkChannels.overflowHint", {
+                        values: {
+                          limit: VISIBLE_ROW_LIMIT,
+                          total: filtered.length,
+                        },
+                      })}
                     </div>
                   )}
                 </>
@@ -342,7 +364,7 @@ export default function LinkChannelsModal({
           {/* 右栏：已选列表 */}
           <div className="wk-lcm__right">
             <div className="wk-lcm__right-title">
-              已选{selected.length}个会话
+              {t("todo.linkChannels.selectedCount", { values: { count: selected.length } })}
             </div>
             {selectedChannels.map((c) => {
               const isThread = c.channelType === CHANNEL_TYPE_COMMUNITY_TOPIC;
@@ -367,7 +389,9 @@ export default function LinkChannelsModal({
                     </span>
                     {isThread && c.parentGroupName && (
                       <span className="wk-lcm__item-context">
-                        在 {c.parentGroupName}
+                        {t("todo.linkChannels.inParentGroup", {
+                          values: { name: c.parentGroupName },
+                        })}
                       </span>
                     )}
                   </span>
@@ -375,7 +399,7 @@ export default function LinkChannelsModal({
                     type="button"
                     className="wk-lcm__selected-remove"
                     onClick={() => removeSelected(c.channelId)}
-                    aria-label="移除"
+                    aria-label={t("todo.action.remove")}
                   >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                       <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -391,7 +415,7 @@ export default function LinkChannelsModal({
         <div className="wk-lcm__footer">
           <div className="wk-lcm__footer-actions">
             <button type="button" className="wk-lcm__btn-cancel" onClick={onClose}>
-              取消
+              {t("todo.common.cancel")}
             </button>
             <button
               type="button"
@@ -399,7 +423,7 @@ export default function LinkChannelsModal({
               disabled={selected.length === 0 || submitting}
               onClick={handleConfirm}
             >
-              确定
+              {t("todo.common.confirm")}
             </button>
           </div>
         </div>

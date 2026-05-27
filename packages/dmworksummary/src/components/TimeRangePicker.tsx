@@ -1,5 +1,6 @@
 import React, { useCallback } from "react";
 import { DatePicker, Typography } from "@douyinfe/semi-ui";
+import { useI18n } from "@octo/base";
 import { validateTimeRange } from "../utils/summaryHelpers";
 
 const { Text } = Typography;
@@ -15,6 +16,7 @@ const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
     onChange,
     maxDays = 31,
 }) => {
+    const { t } = useI18n();
     const [error, setError] = React.useState<string | null>(null);
 
     const handleChange = useCallback(
@@ -40,7 +42,7 @@ const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
                 value={dateValue}
                 onChange={handleChange as any}
                 style={{ width: "100%" }}
-                placeholder={["开始日期", "结束日期"]}
+                placeholder={[t("summary.timeRange.startPlaceholder"), t("summary.timeRange.endPlaceholder")]}
                 disabledDate={(date) => {
                     if (!date) return false;
                     return date.getTime() > Date.now();

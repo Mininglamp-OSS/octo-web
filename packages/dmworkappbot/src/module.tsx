@@ -1,6 +1,8 @@
 import React from "react";
-import { IModule, WKApp, Menus } from "@octo/base";
+import { IModule, WKApp, Menus, i18n, t } from "@octo/base";
 import AppBotPage from "./AppBotPage";
+import enUS from "./i18n/en-US.json";
+import zhCN from "./i18n/zh-CN.json";
 
 const AppBotIcon: React.FC<{ active?: boolean }> = ({ active }) => (
   <svg
@@ -72,6 +74,11 @@ export default class AppBotModule implements IModule {
     if (_initialized) return;
     _initialized = true;
 
+    i18n.registerNamespace("appbot", {
+      "zh-CN": zhCN,
+      "en-US": enUS,
+    });
+
     // Register route
     WKApp.route.register("/appbot", () => <AppBotPage />);
 
@@ -82,7 +89,7 @@ export default class AppBotModule implements IModule {
         const m = new Menus(
           "appbot",
           "/appbot",
-          "应用",
+          t("appbot.menu.title"),
           <AppBotIcon />,
           <AppBotIcon active />
         );

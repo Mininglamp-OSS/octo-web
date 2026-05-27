@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
+import { useI18n } from '@octo/base';
 import CitationBadge, { CitationGroupBadge } from './CitationBadge';
 import { CitationItem } from '../types/summary';
 
@@ -147,6 +148,7 @@ function markdownComponents(citations: CitationItem[]): any {
 }
 
 const CitationText: React.FC<CitationTextProps> = ({ content, citations }) => {
+    const { t } = useI18n();
     const [activeKey, setActiveKey] = useState<string | null>(null);
 
     const onBadgeClick = useCallback((key: string) => {
@@ -159,7 +161,7 @@ const CitationText: React.FC<CitationTextProps> = ({ content, citations }) => {
 
     const normalized = content.trim();
     if (!normalized) {
-        return <div className="summary-content-empty">暂无总结内容</div>;
+        return <div className="summary-content-empty">{t("summary.content.empty")}</div>;
     }
 
     const hasCitations = citations && citations.length > 0;

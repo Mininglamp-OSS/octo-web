@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Channel, ChannelTypePerson, ChannelInfo, WKSDK } from "wukongimjssdk"
-import { WKApp, Conversation, SpaceService } from "@octo/base"
+import { WKApp, Conversation, SpaceService, useI18n } from "@octo/base"
 import WKAvatar from "@octo/base/src/Components/WKAvatar"
 import "./AppBotPage.css"
 
@@ -58,6 +58,7 @@ function BotChatHeader({ bot }: { bot: AppBotInfo }) {
 }
 
 export default function AppBotPage() {
+  const { t } = useI18n()
   const [bots, setBots] = useState<AppBotInfo[]>([])
   const [state, setState] = useState<LoadState>("loading")
   const [spaceName, setSpaceName] = useState("")
@@ -166,7 +167,7 @@ export default function AppBotPage() {
       )
     } catch (err) {
       console.error("[AppBotPage] handleSelect failed:", err)
-      showErrorToast("无法连接到该应用，请稍后重试")
+      showErrorToast(t("appbot.error.connectFailed"))
     } finally {
       isSelectingRef.current = false
     }
@@ -185,7 +186,7 @@ export default function AppBotPage() {
         </div>
         <div className="appbot-list-info">
           <div className="appbot-list-name">{bot.display_name}</div>
-          <div className="appbot-list-desc">{bot.description || "应用 Bot"}</div>
+          <div className="appbot-list-desc">{bot.description || t("appbot.list.defaultDescription")}</div>
         </div>
       </div>
     )
@@ -204,11 +205,11 @@ export default function AppBotPage() {
   return (
     <div className="appbot-page">
       <div className="appbot-page-header">
-        <div className="appbot-page-title">应用</div>
+        <div className="appbot-page-title">{t("appbot.page.title")}</div>
         <input
           type="search"
           className="appbot-search-input"
-          placeholder="搜索"
+          placeholder={t("appbot.page.searchPlaceholder")}
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
         />
@@ -217,24 +218,29 @@ export default function AppBotPage() {
         {state === "loading" && (
           <div className="appbot-list-status">
             <div className="appbot-spinner" />
-            <span>加载中...</span>
+            <span>{t("appbot.state.loading")}</span>
           </div>
         )}
         {state === "error" && (
           <div className="appbot-list-status">
-            <span>加载失败</span>
-            <button className="appbot-retry-btn" onClick={() => setReloadTick((t) => t + 1)}>重试</button>
+            <span>{t("appbot.state.loadFailed")}</span>
+            <button className="appbot-retry-btn" onClick={() => setReloadTick((t) => t + 1)}>{t("appbot.action.retry")}</button>
           </div>
         )}
         {state === "ready" && filtered.length === 0 && (
           <div className="appbot-list-status">
-            <span>{keyword ? "未找到匹配的应用" : "暂无可用应用"}</span>
+            <span>{keyword ? t("appbot.state.noMatches") : t("appbot.state.empty")}</span>
           </div>
         )}
         {state === "ready" && (
           <>
-            {renderSection("平台应用", platformBots)}
-            {renderSection(spaceName ? `空间应用 · ${spaceName}` : "空间应用", spaceBots)}
+            {renderSection(t("appbot.section.platform"), platformBots)}
+            {renderSection(
+              spaceName
+                ? t("appbot.section.spaceWithName", { values: { name: spaceName } })
+                : t("appbot.section.space"),
+              spaceBots
+            )}
           </>
         )}
       </div>

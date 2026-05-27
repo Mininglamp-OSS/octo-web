@@ -38,7 +38,7 @@ import OwnerEditor from "../../ui/OwnerEditor";
 import AnchorPopover from "../../ui/AnchorPopover";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
-import { WKApp } from "@octo/base";
+import { WKApp, i18n, useI18n, t as translate } from "@octo/base";
 import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
 import { useChannelName } from "../../hooks/useChannelName";
 import { useMyGroups } from "../../hooks/useMyGroups";
@@ -65,6 +65,7 @@ export default function MatterDetailPanel({
   onClose,
   showClose = false,
 }: MatterDetailPanelProps) {
+  const { t } = useI18n();
   const [matter, setMatter] = useState<MatterDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -278,13 +279,13 @@ export default function MatterDetailPanel({
       .then((data) => { if (!stale) setMatter(data); })
       .catch((err) => {
         if (!stale) {
-          setError(err?.message || "加载失败");
+          setError(err?.message || t("todo.state.loadFailed"));
           setMatter(null);
         }
       })
       .finally(() => { if (!stale) setLoading(false); });
     return () => { stale = true; };
-  }, [matterId, channelId]);
+  }, [matterId, channelId, t]);
 
   // Fetch timeline when matter loads. 展开时还会再拉一次 (loadTimeline)。
   useEffect(() => {
@@ -303,30 +304,30 @@ export default function MatterDetailPanel({
         applyMatterUpdate(updated);
       } catch (err: any) {
         setMatter((prev) => (prev ? { ...prev, status: oldStatus } : prev));
-        const msg = err?.message || "状态修改失败";
+        const msg = err?.message || t("todo.toast.statusChangeFailed");
         if (msg.includes("only creator")) {
-          Toast.error("仅创建人可以归档/取消归档");
+          Toast.error(t("todo.toast.onlyCreatorArchive"));
         } else {
           Toast.error(msg);
         }
       }
     },
-    [matter, applyMatterUpdate],
+    [matter, applyMatterUpdate, t],
   );
 
   const handleDeleteMatter = useCallback(async () => {
     if (!matter) return;
-    if (!window.confirm(`确定删除事项「${matter.title}」？此操作不可恢复。`))
+    if (!window.confirm(t("todo.confirm.deleteMatter", { values: { title: matter.title } })))
       return;
     try {
       await deleteMatter(matter.id);
       WKApp.mittBus.emit("wk:matter-deleted", { matterId: matter.id });
-      Toast.success("事项已删除");
+      Toast.success(t("todo.toast.deleted"));
       onClose();
     } catch {
-      Toast.error("删除失败");
+      Toast.error(t("todo.toast.deleteFailed"));
     }
-  }, [matter, onClose]);
+  }, [matter, onClose, t]);
 
   const handleLinkChannel = useCallback(() => {
     setLinkModalOpen(true);
@@ -342,17 +343,17 @@ export default function MatterDetailPanel({
   const handleUnlinkChannel = useCallback(
     async (chId: string) => {
       if (!matter) return;
-      if (!window.confirm("确定取消关联此频道？")) return;
+      if (!window.confirm(t("todo.confirm.unlinkChannel"))) return;
       try {
         await unlinkChannel(matter.id, chId);
         const updated = await getMatter(matter.id);
         applyMatterUpdate(updated);
-        Toast.success("已取消关联");
+        Toast.success(t("todo.toast.unlinked"));
       } catch {
-        Toast.error("取消关联失败");
+        Toast.error(t("todo.toast.unlinkFailed"));
       }
     },
-    [matter, applyMatterUpdate],
+    [matter, applyMatterUpdate, t],
   );
 
   const handleDeleteTimeline = useCallback(
@@ -361,12 +362,12 @@ export default function MatterDetailPanel({
       try {
         await deleteTimelineEntry(matter.id, entryId);
         setTimeline((prev) => prev.filter((e) => e.id !== entryId));
-        Toast.success("已删除");
+        Toast.success(t("todo.toast.deleted"));
       } catch {
-        Toast.error("删除失败");
+        Toast.error(t("todo.toast.deleteFailed"));
       }
     },
-    [matter],
+    [matter, t],
   );
 
   const handleAddTimeline = useCallback(
@@ -380,13 +381,13 @@ export default function MatterDetailPanel({
       } catch (e: any) {
         const code = e?.code;
         if (code === "LLM_UPSTREAM_ERROR") {
-          Toast.error("AI 服务暂时不可用，请稍后重试");
+          Toast.error(t("todo.toast.aiUnavailable"));
         } else {
-          Toast.error("添加失败");
+          Toast.error(t("todo.toast.addFailed"));
         }
       }
     },
-    [matter],
+    [matter, t],
   );
 
   // ── 负责人 toggle：添加或移除 assignee，成功后拉取最新 matter ──
@@ -406,11 +407,11 @@ export default function MatterDetailPanel({
       } catch (err: any) {
         const msg =
           err?.message ||
-          (isCurrentlyAssigned ? "移除负责人失败" : "添加负责人失败");
+          (isCurrentlyAssigned ? t("todo.toast.removeAssigneeFailed") : t("todo.toast.addAssigneeFailed"));
         Toast.error(msg);
       }
     },
-    [matter, applyMatterUpdate],
+    [matter, applyMatterUpdate, t],
   );
 
   // ── Hooks: 必须在任何 early return 之前调用, 保证每次渲染 hook 顺序一致 ──
@@ -522,9 +523,12 @@ export default function MatterDetailPanel({
           threadList: (no, req) =>
             WKApp.dataSource.channelDataSource.threadList(no, req),
         },
-        { channelTypeGroup: ChannelTypeGroup },
+        {
+          channelTypeGroup: ChannelTypeGroup,
+          unnamedThreadName: t("todo.linkChannels.unnamedThread"),
+        },
       ),
-    [],
+    [t],
   );
 
   const handleLinkChannelSubmit = useCallback(
@@ -544,7 +548,7 @@ export default function MatterDetailPanel({
     return (
       <main className="wk-mp-main">
         <div className="wk-mp-main__empty">
-          {loading ? "加载中..." : error || "选择一个事项查看详情"}
+          {loading ? t("todo.state.loading") : error || t("todo.state.selectMatter")}
         </div>
       </main>
     );
@@ -582,7 +586,7 @@ export default function MatterDetailPanel({
   };
 
   const displaySourceName =
-    liveSourceName || matter.source_name || "未知群聊";
+    liveSourceName || matter.source_name || t("todo.channel.unknownGroup");
 
   // 来源群成员判断: 跟关联群卡片同逻辑, 用 toParentGroupNo + myGroupNos 判断
   const isSourceMember = (() => {
@@ -600,8 +604,8 @@ export default function MatterDetailPanel({
     label: string;
     count: number;
   }[] = [
-    { id: "channels", label: "关联群聊", count: channels.length },
-    { id: "changelog", label: "变更记录", count: activities.length },
+    { id: "channels", label: t("todo.detail.linkedGroups"), count: channels.length },
+    { id: "changelog", label: t("todo.detail.changeLog"), count: activities.length },
   ];
 
   return (
@@ -691,7 +695,7 @@ export default function MatterDetailPanel({
 
         {/* ── 主要目标 ── */}
         <div className="wk-mp-goal">
-          <div className="wk-mp-goal__label">主要目标</div>
+          <div className="wk-mp-goal__label">{t("todo.field.goal")}</div>
           {matter.source_channel_id && (
             <div
               className={`wk-mp-goal__source${!myGroupsLoading && isSourceMember && matter.source_msgs && matter.source_msgs.length > 0 ? " wk-mp-goal__source--clickable" : ""}`}
@@ -709,11 +713,11 @@ export default function MatterDetailPanel({
               }}
               title={
                 myGroupsLoading
-                  ? "正在加载群信息..."
+                  ? t("todo.channel.loadingInfo")
                   : isSourceMember && matter.source_msgs && matter.source_msgs.length > 0
-                    ? "点击查看原消息上下文"
+                    ? t("todo.anchor.viewContext")
                     : !isSourceMember
-                      ? "您未加入该群"
+                      ? t("todo.channel.notMemberTitle")
                       : undefined
               }
               style={
@@ -726,13 +730,13 @@ export default function MatterDetailPanel({
                 <path fillRule="evenodd" clipRule="evenodd" d="M14.0004 1.33301H8.94326C8.76645 1.33301 8.59688 1.40325 8.47185 1.52827L0.943259 9.05686C0.42256 9.57756 0.422559 10.4218 0.943258 10.9425L5.05764 15.0569C5.57834 15.5776 6.42256 15.5776 6.94326 15.0569L14.4719 7.52827C14.5969 7.40325 14.6671 7.23368 14.6671 7.05687V1.99967C14.6671 1.63148 14.3686 1.33301 14.0004 1.33301ZM10.3338 7.33301C11.2543 7.33301 12.0004 6.58682 12.0004 5.66634C12.0004 4.74587 11.2543 3.99967 10.3338 3.99967C9.41331 3.99967 8.66712 4.74587 8.66712 5.66634C8.66712 6.58682 9.41331 7.33301 10.3338 7.33301Z" fill="currentColor" />
               </svg>
               {myGroupsLoading ? (
-                <span className="wk-mp-goal__source-skeleton" aria-label="加载中">
+                <span className="wk-mp-goal__source-skeleton" aria-label={t("todo.state.loading")}>
                   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
                 </span>
               ) : isSourceMember ? (
-                <span>来自 #{displaySourceName} · <UserName uid={matter.creator_id} /> · {formatSourceTime(matter.created_at)}</span>
+                <span>{t("todo.label.fromChannel", { values: { name: displaySourceName } })} · <UserName uid={matter.creator_id} /> · {formatSourceTime(matter.created_at)}</span>
               ) : (
-                <span style={{ filter: "blur(2.5px)", opacity: 0.35, userSelect: "none" }}>来自 #████</span>
+                <span style={{ filter: "blur(2.5px)", opacity: 0.35, userSelect: "none" }}>{t("todo.label.fromHiddenChannel")}</span>
               )}
             </div>
           )}
@@ -748,7 +752,7 @@ export default function MatterDetailPanel({
           {/* 创建人 / 负责人 */}
           <div className="wk-mp-people">
             <div className="wk-mp-people__item">
-              <span className="wk-mp-people__role">创建人：</span>
+              <span className="wk-mp-people__role">{t("todo.label.creator")}</span>
               <span className="wk-mp-people__tag">
                 <WKAvatar
                   channel={new Channel(matter.creator_id, ChannelTypePerson)}
@@ -759,7 +763,7 @@ export default function MatterDetailPanel({
             </div>
             {assignees.length > 0 && (
               <div className="wk-mp-people__item">
-                <span className="wk-mp-people__role">负责人：</span>
+                <span className="wk-mp-people__role">{t("todo.label.assignee")}</span>
                 <OwnerEditor
                   assignees={assignees}
                   canEdit={canEditOwner}
@@ -807,12 +811,12 @@ export default function MatterDetailPanel({
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path fillRule="evenodd" clipRule="evenodd" d="M8.00033 15.3332C12.0504 15.3332 15.3337 12.0499 15.3337 7.99984C15.3337 3.94975 12.0504 0.666504 8.00033 0.666504C3.95024 0.666504 0.666992 3.94975 0.666992 7.99984C0.666992 12.0499 3.95024 15.3332 8.00033 15.3332ZM12.6662 7.9184C12.6758 8.4706 12.236 8.92606 11.6838 8.9357L9.01751 8.98224L9.06405 11.6485C9.07369 12.2007 8.63386 12.6562 8.08166 12.6658C7.52945 12.6754 7.07399 12.2356 7.06435 11.6834L7.01781 9.01714L4.35155 9.06368C3.79935 9.07332 3.34389 8.63349 3.33425 8.08129C3.32462 7.52909 3.76445 7.07363 4.31665 7.06399L6.98291 7.01745L6.93637 4.35119C6.92673 3.79899 7.36657 3.34353 7.91877 3.33389C8.47097 3.32425 8.92643 3.76408 8.93607 4.31628L8.98261 6.98254L11.6489 6.936C12.2011 6.92637 12.6565 7.3662 12.6662 7.9184Z" fill="currentColor" />
                   </svg>
-                  关联新会话
+                  {t("todo.action.linkNewGroup")}
                 </button>
               )}
             </div>
             {channels.length === 0 ? (
-              <div className="wk-mp-channels__empty">暂无关联群聊或子区</div>
+              <div className="wk-mp-channels__empty">{t("todo.detail.noLinkedGroups")}</div>
             ) : (
               channels.map((ch) => {
                 // 用户是否加入本群: 从 /group/my 拉的 group_no 集合判断。
@@ -871,15 +875,15 @@ export default function MatterDetailPanel({
                             <UserName uid={latest.user_id} className="wk-mp-channels__card-msg-name" />
                           </span>
                           <span className="wk-mp-channels__card-msg-time">
-                            {new Date(latest.created_at).toLocaleString("zh-CN", {
+                            {i18n.format.dateTime(latest.created_at, {
                               month: "2-digit", day: "2-digit",
                               hour: "2-digit", minute: "2-digit",
                               hour12: false,
-                            }).replace(/\//g, "-")}
+                            })}
                           </span>
                         </div>
                         <div className="wk-mp-channels__card-msg-content">
-                          {latest.content || "（无文本内容）"}
+                          {latest.content || t("todo.timeline.noText")}
                         </div>
                       </div>
                     );
@@ -926,8 +930,7 @@ export default function MatterDetailPanel({
 
         {/* ── Footer ── */}
         <div className="wk-mp-footer">
-          ✦ Matter 是 IM 工作的 hierarchy 任务卡 · AI 从群聊持续蒸馏 ·
-          用户只确认, 不维护
+          {t("todo.footer.tagline")}
         </div>
       </div>
 
@@ -974,10 +977,10 @@ export { MatterDetailPanel };
 
 // ─── StatusPicker ─────────────────────────────────────────
 
-const STATUS_OPTIONS: { value: MatterStatus; label: string; cls: string }[] = [
-  { value: "open", label: "进行中", cls: "wk-mp-pill--active" },
-  { value: "done", label: "已完成", cls: "wk-mp-pill--done" },
-  { value: "archived", label: "已归档", cls: "wk-mp-pill--archived" },
+const STATUS_OPTIONS: { value: MatterStatus; labelKey: string; cls: string }[] = [
+  { value: "open", labelKey: "todo.status.open", cls: "wk-mp-pill--active" },
+  { value: "done", labelKey: "todo.status.done", cls: "wk-mp-pill--done" },
+  { value: "archived", labelKey: "todo.status.archived", cls: "wk-mp-pill--archived" },
 ];
 
 function StatusPicker({
@@ -993,6 +996,7 @@ function StatusPicker({
   isCreator: boolean;
   canEditStatus: boolean;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1022,16 +1026,16 @@ function StatusPicker({
         }}
         title={
           isArchived
-            ? "已归档事项不可修改状态"
+            ? t("todo.status.cannotChangeArchived")
             : !canEditStatus
-              ? "仅发起人或负责人可修改状态"
-              : "点击修改状态"
+              ? t("todo.status.onlyCreatorOrAssignee")
+              : t("todo.status.clickToChange")
         }
         style={isDisabled ? { cursor: "not-allowed", opacity: 0.8 } : undefined}
         disabled={isDisabled}
       >
         <span className="wk-mp-pill__dot" />
-        {current.label}
+        {t(current.labelKey)}
         {seqNo ? <span className="wk-mp-pill__no">｜M-{seqNo}</span> : null}
       </button>
       {open && !isDisabled && (
@@ -1047,7 +1051,7 @@ function StatusPicker({
               }}
             >
               <span className={`wk-mp-pill__dot ${opt.cls}`} />
-              {opt.label}
+              {t(opt.labelKey)}
             </button>
           ))}
         </div>
@@ -1059,6 +1063,7 @@ function StatusPicker({
 // ─── MoreMenu (删除事项) ──────────────────────────────────
 
 function MoreMenu({ onDelete }: { onDelete: () => void }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -1076,7 +1081,7 @@ function MoreMenu({ onDelete }: { onDelete: () => void }) {
         type="button"
         className="wk-mp-header__action"
         onClick={() => setOpen(!open)}
-        title="更多操作"
+        title={t("todo.action.more")}
       >
         <svg
           width="13"
@@ -1113,7 +1118,7 @@ function MoreMenu({ onDelete }: { onDelete: () => void }) {
               <line x1="10" y1="11" x2="10" y2="17" />
               <line x1="14" y1="11" x2="14" y2="17" />
             </svg>
-            删除事项
+            {t("todo.action.deleteMatter")}
           </button>
         </div>
       )}
@@ -1132,6 +1137,7 @@ function ChannelMoreMenu({
   channelType: number;
   onUnlink: () => void;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -1192,7 +1198,7 @@ function ChannelMoreMenu({
               <polyline points="15 3 21 3 21 9" />
               <line x1="10" y1="14" x2="21" y2="3" />
             </svg>
-            查看群聊
+            {t("todo.action.viewGroup")}
           </button>
           {/* 取消关联暂时隐藏，后续产品确认后恢复 */}
         </div>
@@ -1265,15 +1271,14 @@ function dayLabel(key: string): { label: string; raw: string } {
   const target = new Date(y, m - 1, d);
   const diff = Math.round((today.getTime() - target.getTime()) / 86400000);
   const raw = `${m}/${d}`;
-  if (diff === 0) return { label: "今天", raw };
-  if (diff === 1) return { label: "昨天", raw };
+  if (diff === 0) return { label: translate("todo.day.today"), raw };
+  if (diff === 1) return { label: translate("todo.day.yesterday"), raw };
   return { label: raw, raw };
 }
 
 /** 格式化时间为 HH:MM */
 function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString("zh-CN", {
+  return i18n.format.time(iso, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -1286,12 +1291,12 @@ function formatRelativeSyncTime(iso: string): string {
   const t = new Date(iso).getTime();
   const diff = now - t;
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "刚刚同步";
-  if (minutes < 60) return `${minutes}分钟前同步`;
+  if (minutes < 1) return translate("todo.sync.justNow");
+  if (minutes < 60) return translate("todo.sync.minutesAgo", { values: { count: minutes } });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}小时前同步`;
+  if (hours < 24) return translate("todo.sync.hoursAgo", { values: { count: hours } });
   const days = Math.floor(hours / 24);
-  return `${days}天前同步`;
+  return translate("todo.sync.daysAgo", { values: { count: days } });
 }
 
 function TimelinePanel({
@@ -1314,6 +1319,7 @@ function TimelinePanel({
    */
   canShowAnchor?: (entry: TimelineEntry) => boolean;
 }) {
+  const { t } = useI18n();
   const [sortNewest, setSortNewest] = useState(true);
 
   // 排序
@@ -1328,18 +1334,18 @@ function TimelinePanel({
     <div className="wk-mp-tl">
       {/* Header: 标题 + 排序切换 */}
       <div className="wk-mp-tl__header">
-        <span className="wk-mp-tl__title">群内时间线</span>
+        <span className="wk-mp-tl__title">{t("todo.timeline.groupTitle")}</span>
         <button
           type="button"
           className="wk-mp-tl__sort-btn"
           onClick={() => setSortNewest((v) => !v)}
-          title="切换排序"
+          title={t("todo.action.toggleSort")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M7.33333 10.667L4.66667 13.3337L2 10.667M4.66667 13.3337V2.66699" stroke="currentColor" strokeOpacity={sortNewest ? 1 : 0.4} strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M8.66602 5.33366L11.3327 2.66699L13.9993 5.33366M11.3327 2.66699V13.3337" stroke="currentColor" strokeOpacity={sortNewest ? 0.4 : 1} strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          时间排序
+          {t("todo.action.timeSort")}
         </button>
       </div>
 
@@ -1381,7 +1387,7 @@ function TimelinePanel({
                     {/* 附件 */}
                     {e.attachments && e.attachments.length > 0 && (
                       <span className="wk-mp-tl__att-count">
-                        {e.attachments.length} 附件
+                        {t("todo.timeline.attachments", { values: { count: e.attachments.length } })}
                       </span>
                     )}
                   </div>
@@ -1400,8 +1406,8 @@ function TimelinePanel({
                         className="wk-mp-tl__anchor-btn"
                         title={
                           hasSource
-                            ? "查看原消息上下文"
-                            : "无原消息关联"
+                            ? t("todo.anchor.viewContext")
+                            : t("todo.anchor.noSourceMessages")
                         }
                         disabled={!hasSource}
                         style={
@@ -1416,7 +1422,7 @@ function TimelinePanel({
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                           <path fillRule="evenodd" clipRule="evenodd" d="M14.333 1.66654L9.33318 1.66654L9.33318 2.99988L12.0564 2.99988L6.46884 8.58773L7.41167 9.53051L12.9996 3.9423L12.9995 6.66652L14.3328 6.66657L14.333 1.66654ZM7.33288 2.99984L2.99955 2.99984L2.99955 12.9998L12.9995 12.9998L12.9995 8.6665L14.3329 8.6665L14.3329 13.3332C14.3329 13.8855 13.8852 14.3332 13.3329 14.3332L2.66621 14.3332C2.11393 14.3332 1.66621 13.8855 1.66621 13.3332L1.66621 2.6665C1.66621 2.11422 2.11393 1.6665 2.66621 1.6665L7.33288 1.6665L7.33288 2.99984Z" fill="currentColor" />
                         </svg>
-                        原消息
+                        {t("todo.anchor.sourceMessage")}
                       </button>
                     );
                   })()}
@@ -1428,7 +1434,7 @@ function TimelinePanel({
       })}
 
       {entries.length === 0 && (
-        <div className="wk-mp-tl__empty">暂无时间线记录</div>
+        <div className="wk-mp-tl__empty">{t("todo.timeline.empty")}</div>
       )}
     </div>
   );
@@ -1465,6 +1471,7 @@ function ChannelNameLabel({
    */
   loading?: boolean;
 }) {
+  const { t } = useI18n();
   const live = useChannelName(channelId, channelType);
   // 子区 (channel_type=5): 额外反查父群名, 渲染成 "父群名/子区名"
   // 让用户在事项关联群聊里能看到子区的归属。
@@ -1479,7 +1486,7 @@ function ChannelNameLabel({
     return (
       <span
         className="wk-mp-channels__card-name--skeleton"
-        aria-label="加载中"
+        aria-label={t("todo.state.loading")}
         role="presentation"
       >
         &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
@@ -1490,8 +1497,8 @@ function ChannelNameLabel({
     return (
       <span
         className="wk-mp-channels__card-name--blur"
-        title="你不在该群, 群名已隐藏"
-        aria-label="群名已隐藏"
+        title={t("todo.channel.hiddenTitle")}
+        aria-label={t("todo.channel.hiddenName")}
       >
         ████
       </span>
@@ -1510,6 +1517,7 @@ function ChannelNameLabel({
 // 跟一个灰底带小锁的 '不在群' 徽章标明权限状态。避免 blur 群名那种
 // "看不清是啥群" 的困惑。
 function NotMemberBadge() {
+  const { t } = useI18n();
   return (
     <span className="wk-mp-channels__not-member-badge">
       <svg
@@ -1524,7 +1532,7 @@ function NotMemberBadge() {
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
         <path d="M7 11V7a5 5 0 0 1 10 0v4" />
       </svg>
-      不在群
+      {t("todo.channel.notMember")}
     </span>
   );
 }
@@ -1550,6 +1558,7 @@ function ChannelTimelineSection({
   timelineLoading: boolean;
   onShowAnchor: (entry: TimelineEntry, ev: React.MouseEvent, channelName: string) => void;
 }) {
+  const { t } = useI18n();
   // 实时解析 channel 名称 (群改名 / 子区标题都能跟上)
   const liveChannelName = useChannelName(ch.channel_id, ch.channel_type);
   const displayName = liveChannelName || ch.channel_name || ch.channel_id.slice(0, 8);
@@ -1561,20 +1570,20 @@ function ChannelTimelineSection({
         className="wk-mp-channels__timeline-btn"
         onClick={onToggle}
       >
-        {expanded ? "收起群内时间线" : "展开群内时间线"}
+        {expanded ? t("todo.timeline.collapse") : t("todo.timeline.expand")}
       </button>
       {expanded && (() => {
         if (timelineLoading && chEntries.length === 0) {
           return (
             <div className="wk-mp-empty-tab">
-              正在加载时间线...
+              {t("todo.timeline.loading")}
             </div>
           );
         }
         if (chEntries.length === 0) {
           return (
             <div className="wk-mp-empty-tab">
-              本群暂无时间线记录
+              {t("todo.timeline.emptyInGroup")}
             </div>
           );
         }
@@ -1595,30 +1604,33 @@ function ChannelTimelineSection({
 // ─── ActivityPanel (变更记录 — 对接 GET /matters/:id/activities) ──
 
 const ACTION_LABELS: Record<string, string> = {
-  created: "创建",
-  title_changed: "标题变更",
-  description_changed: "目标变更",
-  deadline_changed: "截止日期变更",
-  status_changed: "状态变更",
-  assignee_added: "添加负责人",
-  assignee_removed: "移除负责人",
-  channel_linked: "关联群聊",
-  channel_unlinked: "取消关联",
+  created: "todo.activity.action.created",
+  title_changed: "todo.activity.action.titleChanged",
+  description_changed: "todo.activity.action.descriptionChanged",
+  deadline_changed: "todo.activity.action.deadlineChanged",
+  status_changed: "todo.activity.action.statusChanged",
+  assignee_added: "todo.activity.action.assigneeAdded",
+  assignee_removed: "todo.activity.action.assigneeRemoved",
+  channel_linked: "todo.activity.action.channelLinked",
+  channel_unlinked: "todo.activity.action.channelUnlinked",
 };
 
 function formatActivityTime(iso: string): string {
-  const d = new Date(iso);
-  const mm = `${d.getMonth() + 1}/${d.getDate()}`;
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${mm} ${hh}:${mi}`;
+  return i18n.format.dateTime(iso, {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 function ActivityContent({ activity }: { activity: MatterActivity }) {
+  const { t } = useI18n();
   const detail = activity.detail || {};
   switch (activity.action) {
     case "created":
-      return <span>初始 {(detail.summary as string) || "创建了事项"}</span>;
+      return <span>{t("todo.activity.initial")} {(detail.summary as string) || t("todo.activity.createdMatter")}</span>;
     case "title_changed":
       return (
         <span className="wk-mp-activity__diff-inline">
@@ -1637,7 +1649,7 @@ function ActivityContent({ activity }: { activity: MatterActivity }) {
       const added = (detail.added as string[]) || [];
       const removed = (detail.removed as string[]) || [];
       if (added.length === 0 && removed.length === 0) {
-        return <span>{(detail.summary as string) || "更新了描述"}</span>;
+        return <span>{(detail.summary as string) || t("todo.activity.updatedDescription")}</span>;
       }
       return (
         <div className="wk-mp-activity__diff-list">
@@ -1658,11 +1670,11 @@ function ActivityContent({ activity }: { activity: MatterActivity }) {
     }
     case "deadline_changed": {
       const from = detail.from
-        ? new Date((detail.from as number) * 1000).toLocaleDateString("zh-CN")
-        : "无";
+        ? i18n.format.date((detail.from as number) * 1000)
+        : t("todo.common.none");
       const to = detail.to
-        ? new Date((detail.to as number) * 1000).toLocaleDateString("zh-CN")
-        : "无";
+        ? i18n.format.date((detail.to as number) * 1000)
+        : t("todo.common.none");
       return (
         <span className="wk-mp-activity__diff-inline">
           <span className="wk-mp-activity__old">{from}</span>
@@ -1744,6 +1756,7 @@ function ActivityPanel({
   activities: MatterActivity[];
   loading: boolean;
 }) {
+  const { t } = useI18n();
   const [sortNewest, setSortNewest] = useState(true);
   const [filter, setFilter] = useState("all");
   const [filterOpen, setFilterOpen] = useState(false);
@@ -1772,12 +1785,12 @@ function ActivityPanel({
   });
 
   const FILTER_OPTIONS = [
-    { id: "all", label: "全部类型" },
-    { id: "created", label: "创建" },
-    { id: "description_changed", label: "目标变更" },
-    { id: "deadline_changed", label: "DDL变更" },
-    { id: "status_changed", label: "状态变更" },
-    { id: "channel_changed", label: "关联群变更" },
+    { id: "all", labelKey: "todo.activity.filter.all" },
+    { id: "created", labelKey: "todo.activity.action.created" },
+    { id: "description_changed", labelKey: "todo.activity.action.descriptionChanged" },
+    { id: "deadline_changed", labelKey: "todo.activity.action.ddlChanged" },
+    { id: "status_changed", labelKey: "todo.activity.action.statusChanged" },
+    { id: "channel_changed", labelKey: "todo.activity.action.channelChanged" },
   ];
   const currentFilter =
     FILTER_OPTIONS.find((o) => o.id === filter) || FILTER_OPTIONS[0];
@@ -1792,7 +1805,7 @@ function ActivityPanel({
             className="wk-mp-activity__filter-btn"
             onClick={() => setFilterOpen((o) => !o)}
           >
-            <span>变更类型：{currentFilter.label}</span>
+            <span>{t("todo.activity.filter.label", { values: { type: t(currentFilter.labelKey) } })}</span>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M4.29 6.27L8 9.71l3.71-3.42" stroke="currentColor" strokeOpacity="0.4" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -1816,7 +1829,7 @@ function ActivityPanel({
                       </svg>
                     )}
                   </span>
-                  {o.label}
+                  {t(o.labelKey)}
                 </button>
               ))}
             </div>
@@ -1826,30 +1839,30 @@ function ActivityPanel({
           type="button"
           className="wk-mp-tl__sort-btn"
           onClick={() => setSortNewest((v) => !v)}
-          title="切换排序"
+          title={t("todo.action.toggleSort")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M7.33333 10.667L4.66667 13.3337L2 10.667M4.66667 13.3337V2.66699" stroke="currentColor" strokeOpacity={sortNewest ? 1 : 0.4} strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M8.66602 5.33366L11.3327 2.66699L13.9993 5.33366M11.3327 2.66699V13.3337" stroke="currentColor" strokeOpacity={sortNewest ? 0.4 : 1} strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          时间排序
+          {t("todo.action.timeSort")}
         </button>
       </div>
 
-      {loading && <div className="wk-mp-empty-tab">加载中...</div>}
+      {loading && <div className="wk-mp-empty-tab">{t("todo.state.loading")}</div>}
       {!loading && sorted.length === 0 && (
-        <div className="wk-mp-empty-tab">暂无变更记录</div>
+        <div className="wk-mp-empty-tab">{t("todo.activity.empty")}</div>
       )}
       {!loading && sorted.length > 0 && (
         <div className="wk-mp-activity__table-wrap">
           <table className="wk-mp-activity__table">
             <thead>
               <tr>
-                <th className="wk-mp-activity__th wk-mp-activity__col-time">变更时间</th>
-                <th className="wk-mp-activity__th wk-mp-activity__col-type">变更类型</th>
-                <th className="wk-mp-activity__th wk-mp-activity__col-content">变更内容</th>
-                <th className="wk-mp-activity__th wk-mp-activity__col-actor">变更人</th>
-                <th className="wk-mp-activity__th wk-mp-activity__col-source">来源群</th>
+                <th className="wk-mp-activity__th wk-mp-activity__col-time">{t("todo.activity.table.time")}</th>
+                <th className="wk-mp-activity__th wk-mp-activity__col-type">{t("todo.activity.table.type")}</th>
+                <th className="wk-mp-activity__th wk-mp-activity__col-content">{t("todo.activity.table.content")}</th>
+                <th className="wk-mp-activity__th wk-mp-activity__col-actor">{t("todo.activity.table.actor")}</th>
+                <th className="wk-mp-activity__th wk-mp-activity__col-source">{t("todo.activity.table.source")}</th>
               </tr>
             </thead>
             <tbody>
@@ -1861,7 +1874,7 @@ function ActivityPanel({
                     </span>
                   </td>
                   <td className="wk-mp-activity__td wk-mp-activity__col-type">
-                    {ACTION_LABELS[a.action] || a.action}
+                    {ACTION_LABELS[a.action] ? t(ACTION_LABELS[a.action]) : a.action}
                   </td>
                   <td className="wk-mp-activity__td wk-mp-activity__col-content">
                     <ActivityContent activity={a} />
@@ -1891,6 +1904,7 @@ function ActivityPanel({
 // ─── TimelineInput (添加进展) ─────────────────────────────
 
 function TimelineInput({ onSubmit }: { onSubmit: (content: string) => void }) {
+  const { t } = useI18n();
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const handleSubmit = () => {
@@ -1904,7 +1918,7 @@ function TimelineInput({ onSubmit }: { onSubmit: (content: string) => void }) {
         ref={inputRef}
         type="text"
         className="wk-mp-tl-input__field"
-        placeholder="添加进展或评论..."
+        placeholder={t("todo.comment.placeholder")}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
@@ -1934,7 +1948,7 @@ function TimelineInput({ onSubmit }: { onSubmit: (content: string) => void }) {
         disabled={!value.trim()}
         onClick={handleSubmit}
       >
-        发送
+        {t("todo.common.send")}
       </button>
     </div>
   );
@@ -1955,6 +1969,7 @@ function EditableTitle({
   /** 内联模式：用 span 而非 h1，字号更小 */
   inline?: boolean;
 }) {
+  const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1992,7 +2007,7 @@ function EditableTitle({
     try {
       await onSave(trimmed);
     } catch {
-      Toast.error("标题修改失败");
+      Toast.error(t("todo.toast.titleUpdateFailed"));
       setDraft(value);
     }
     setEditing(false);
@@ -2054,7 +2069,7 @@ function EditableTitle({
       <span
         className="wk-mp-header__inline-title"
         onClick={() => setEditing(true)}
-        title="点击编辑标题"
+        title={t("todo.action.editTitle")}
       >
         {prefix}{value}
       </span>
@@ -2065,7 +2080,7 @@ function EditableTitle({
     <h1
       className="wk-mp-header__title wk-mp-header__title--clickable"
       onClick={() => setEditing(true)}
-      title="点击编辑标题"
+      title={t("todo.action.editTitle")}
     >
       {value}
     </h1>
@@ -2081,6 +2096,7 @@ function EditableDescription({
   value: string;
   onSave: (v: string) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -2122,7 +2138,7 @@ function EditableDescription({
     try {
       await onSave(trimmed);
     } catch {
-      Toast.error("描述修改失败");
+      Toast.error(t("todo.toast.descriptionUpdateFailed"));
       setDraft(value);
     }
     setEditing(false);
@@ -2186,9 +2202,9 @@ function EditableDescription({
     <div
       className="wk-mp-goal__text wk-mp-goal__text--clickable"
       onClick={() => setEditing(true)}
-      title="点击编辑描述"
+      title={t("todo.action.editDescription")}
     >
-      {value || <span className="wk-mp-goal__placeholder">点击添加描述...</span>}
+      {value || <span className="wk-mp-goal__placeholder">{t("todo.field.goalPlaceholder")}</span>}
     </div>
   );
 }
@@ -2215,6 +2231,7 @@ function EditableDeadline({
   value: string | null;
   onSave: (v: string) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const ref = useRef<HTMLSpanElement>(null);
   const [localDate, setLocalDate] = useState<string>(() => {
     if (!value) return "";
@@ -2238,14 +2255,24 @@ function EditableDeadline({
   const formatDisplay = (iso: string | null) => {
     if (!iso) return null;
     const d = new Date(iso);
-    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-    return `${d.getMonth() + 1}/${d.getDate()} ${weekdays[d.getDay()]}`;
+    const weekdays = [
+      t("todo.weekday.sun"),
+      t("todo.weekday.mon"),
+      t("todo.weekday.tue"),
+      t("todo.weekday.wed"),
+      t("todo.weekday.thu"),
+      t("todo.weekday.fri"),
+      t("todo.weekday.sat"),
+    ];
+    return t("todo.deadline.monthDayWeekday", {
+      values: { month: d.getMonth() + 1, day: d.getDate(), weekday: weekdays[d.getDay()] },
+    });
   };
 
   const handleChange = async (date: Date | Date[] | string | string[] | undefined) => {
     if (!date) {
       setLocalDate("");
-      try { await onSave(""); } catch { Toast.error("截止日期修改失败"); }
+      try { await onSave(""); } catch { Toast.error(t("todo.deadline.updateFailed")); }
       return;
     }
     const d = date instanceof Date ? date : new Date(String(date));
@@ -2257,7 +2284,7 @@ function EditableDeadline({
     try {
       await onSave(`${dateStr}T23:59:59${getLocalTZOffset()}`);
     } catch {
-      Toast.error("截止日期修改失败");
+      Toast.error(t("todo.deadline.updateFailed"));
     }
   };
 
@@ -2285,7 +2312,23 @@ function EditableDeadline({
               <path d="M5.33 1.33v2M10.67 1.33v2M2 6h12M3.33 3.33h9.34a1.33 1.33 0 011.33 1.34v8a1.33 1.33 0 01-1.33 1.33H3.33A1.33 1.33 0 012 12.67v-8a1.33 1.33 0 011.33-1.34z" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span className="wk-mp-header__ddl-value">
-              {display ? `截止到 ${display}` : "设置截止日期"}
+              {display
+                ? t("todo.deadline.untilMonthDayWeekday", {
+                    values: {
+                      month: new Date(value as string).getMonth() + 1,
+                      day: new Date(value as string).getDate(),
+                      weekday: [
+                        t("todo.weekday.sun"),
+                        t("todo.weekday.mon"),
+                        t("todo.weekday.tue"),
+                        t("todo.weekday.wed"),
+                        t("todo.weekday.thu"),
+                        t("todo.weekday.fri"),
+                        t("todo.weekday.sat"),
+                      ][new Date(value as string).getDay()],
+                    },
+                  })
+                : t("todo.deadline.set")}
             </span>
           </span>
         )}

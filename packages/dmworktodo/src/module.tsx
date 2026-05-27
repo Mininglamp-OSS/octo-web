@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import ReactDOM from "react-dom/client";
-import { WKApp, Menus, ChannelTypeCommunityTopic } from "@octo/base";
+import { WKApp, Menus, ChannelTypeCommunityTopic, i18n, t as translate, useI18n } from "@octo/base";
 import type { IModule, ConversationContext } from "@octo/base";
 import { ChannelTypeGroup } from "wukongimjssdk";
 import WKSDK from "wukongimjssdk";
@@ -23,6 +23,8 @@ import {
 import { Toast } from "./utils/toast";
 import { parseMentions } from "./utils/mention";
 import CreateTaskModal from "./ui/CreateTaskModal";
+import enUS from "./i18n/en-US.json";
+import zhCN from "./i18n/zh-CN.json";
 import "./ui/tokens.css";
 
 export type OpenCreateTaskPayload = {
@@ -137,6 +139,11 @@ export default class MatterModule implements IModule {
     if (_initialized) return;
     _initialized = true;
 
+    i18n.registerNamespace("todo", {
+      "zh-CN": zhCN,
+      "en-US": enUS,
+    });
+
     // Register route
     WKApp.route.register("/matter", () => <MatterPage />);
 
@@ -147,7 +154,7 @@ export default class MatterModule implements IModule {
         const m = new Menus(
           "matter",
           "/matter",
-          "事项",
+          translate("todo.menu.title"),
           <MatterIcon />,
           <MatterIcon active />,
         );
@@ -185,7 +192,7 @@ export default class MatterModule implements IModule {
           return null;
         }
         return {
-          title: "创建事项",
+          title: translate("todo.action.create"),
           onClick: () => {
             // 优先用编辑后的内容（remoteExtra.contentEdit），fallback 到原始 conversationDigest
             const remoteExtra = message.remoteExtra as
@@ -287,7 +294,7 @@ export default class MatterModule implements IModule {
               });
             }}
             style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
-            title="事项"
+            title={translate("todo.menu.title")}
           >
             <ChecklistIcon />
           </div>
@@ -303,6 +310,7 @@ export default class MatterModule implements IModule {
  * Emits 'wk:open-create-matter-modal' — handled by GlobalMatterModal.
  */
 function ChatToolbarTodoButton({ ctx }: { ctx: ConversationContext }) {
+  const { t } = useI18n();
   const channel = ctx.channel();
   const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
 
@@ -324,7 +332,7 @@ function ChatToolbarTodoButton({ ctx }: { ctx: ConversationContext }) {
 
   return (
     <div
-      title="创建事项"
+      title={t("todo.action.create")}
       style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
       onClick={handleOpen}
     >
@@ -351,6 +359,7 @@ function mountGlobalMatterModal() {
 }
 
 function GlobalMatterModal() {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [payload, setPayload] = useState<OpenCreateTaskPayload | null>(null);
 
@@ -380,14 +389,14 @@ function GlobalMatterModal() {
 
   const handleClose = () => setOpen(false);
   const handleDirtyClose = () => {
-    if (window.confirm("有未保存的修改，确定放弃？")) setOpen(false);
+    if (window.confirm(t("todo.confirm.discardUnsaved"))) setOpen(false);
   };
 
   const handleConfirm = async (req: Parameters<typeof createMatter>[0]) => {
     try {
       await createMatter(req);
     } catch (e) {
-      Toast.error("创建事项失败");
+      Toast.error(t("todo.toast.createFailed"));
       throw e; // re-throw 让 CreateTaskModal 保持打开
     }
     // Send input content (with mention) + clear when triggered from toolbar / Alt+Enter
@@ -398,7 +407,7 @@ function GlobalMatterModal() {
         channelType: payload.channelType,
       });
     }
-    Toast.success("事项已创建");
+    Toast.success(t("todo.toast.created"));
     setOpen(false);
     WKApp.mittBus.emit("wk:exit-multiple-mode");
   };
@@ -461,6 +470,7 @@ function mountGlobalMatterLinkMenu() {
 }
 
 function GlobalMatterLinkMenu() {
+  const { t } = useI18n();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [channelId, setChannelId] = useState<string>("");
   const [channelType, setChannelType] = useState<number>(0);
@@ -555,7 +565,7 @@ function GlobalMatterLinkMenu() {
                 animation: "wk-btn-spin 0.6s linear infinite",
               }}
             />
-            同步中...
+            {t("todo.state.syncing")}
           </div>
         </div>
       )}
@@ -571,7 +581,7 @@ function GlobalMatterLinkMenu() {
           disabled={loading}
           onPick={async (matter) => {
             if (!messages || messages.length === 0) {
-              Toast.error("没有可同步的消息");
+              Toast.error(t("todo.toast.noMessagesToSync"));
               return;
             }
             setLoading(true);
@@ -589,15 +599,15 @@ function GlobalMatterLinkMenu() {
                   attachments: m.attachments || [],
                 })),
               });
-              Toast.success("已同步进展");
+              Toast.success(t("todo.toast.syncedProgress"));
               setAnchor(null);
               WKApp.mittBus.emit("wk:exit-multiple-mode");
             } catch (e: any) {
               const code = e?.code;
               if (code === "LLM_UPSTREAM_ERROR") {
-                Toast.error("AI 服务暂时不可用，请稍后重试");
+                Toast.error(t("todo.toast.aiUnavailable"));
               } else {
-                Toast.error("同步进展失败");
+                Toast.error(t("todo.toast.syncProgressFailed"));
               }
             } finally {
               setLoading(false);
@@ -611,7 +621,7 @@ function GlobalMatterLinkMenu() {
         onClose={() => setShowCreate(false)}
         onConfirm={async (req) => {
           await createMatter(req);
-          Toast.success("事项已创建");
+          Toast.success(t("todo.toast.created"));
           WKApp.mittBus.emit("wk:exit-multiple-mode");
         }}
         channel={channelId ? { channelId, channelType } : undefined}
@@ -639,6 +649,7 @@ function mountGlobalSmartCreateModal() {
 }
 
 function GlobalSmartCreateModal() {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [channel, setChannel] = useState<
     { channelId: string; channelType: number } | undefined
@@ -725,7 +736,7 @@ function GlobalSmartCreateModal() {
         } catch (e) {
           // 仅当用户未关闭弹窗且仍在当前 session 时才弹 toast
           if (sessionRef.current === currentSession && !closedRef.current) {
-            Toast.error("AI 提取失败，请手动填写");
+            Toast.error(t("todo.toast.aiExtractFailed"));
           }
         } finally {
           if (sessionRef.current === currentSession && !closedRef.current) {
@@ -802,17 +813,17 @@ function GlobalSmartCreateModal() {
             const results = await Promise.all(ops);
             const failed = results.filter(r => r !== null);
             if (failed.length > 0) {
-              Toast.error("负责人更新失败，请重试");
+              Toast.error(t("todo.toast.assigneeUpdateFailed"));
               throw new Error("assignee reconciliation failed");
             }
             // Matter 已完整保存 — 立即清除 orphan 追踪，防止并发新 session
             // 在 submittingRef=false 和 onConfirmSuccess 之间的微任务窗口误删
             extractedMatterIdRef.current = null;
-            Toast.success("事项已保存");
+            Toast.success(t("todo.toast.saved"));
           } else {
             // 空白新建模式（无 AI 提取），走正常创建流程
             await createMatter(req);
-            Toast.success("事项已创建");
+            Toast.success(t("todo.toast.created"));
           }
         } finally {
           submittingRef.current = false;

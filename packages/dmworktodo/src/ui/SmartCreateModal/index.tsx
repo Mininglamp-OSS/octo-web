@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Modal, DatePicker, Spin } from "@douyinfe/semi-ui";
-import { WKApp } from "@octo/base";
+import { WKApp, useI18n } from "@octo/base";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { CreateMatterReq, ExtractMessage } from "../../bridge/types";
 import MemberPicker from "../MemberPicker";
@@ -68,6 +68,7 @@ export default function SmartCreateModal({
   onConfirm,
   channel,
 }: SmartCreateModalProps) {
+  const { t } = useI18n();
   const [title, setTitle] = useState("");
   const [brief, setBrief] = useState("");
   const [assigneeUids, setAssigneeUids] = useState<string[]>([]);
@@ -126,14 +127,14 @@ export default function SmartCreateModal({
     } catch (e: unknown) {
       const msg = (e as Error)?.message === "assignee reconciliation failed"
         ? undefined
-        : "操作失败，请重试";
+        : t("todo.toast.operationFailed");
       if (msg) Toast.error(msg);
     } finally {
       setSubmitting(false);
     }
   }, [
     canCreate, submitting, title, brief, assigneeUids,
-    deadline, channel, sourceMsgs, onConfirm, onConfirmSuccess, onClose,
+    deadline, channel, sourceMsgs, onConfirm, onConfirmSuccess, onClose, t,
   ]);
 
   // Enter 键确认
@@ -183,13 +184,13 @@ export default function SmartCreateModal({
                 <path d="M12 3v4m0 14v-4m9-5h-4M3 12h4m12.3-5.3-2.8 2.8M7.5 16.5l-2.8 2.8m14.6 0-2.8-2.8M7.5 7.5 4.7 4.7" />
               </svg>
             )}
-            {blank ? "新建事项：" : "智能创建事项："}
+            {blank ? t("todo.create.title") : t("todo.create.smartTitle")}
           </h3>
           <button
             type="button"
             className="wk-smart-create-modal__close-btn"
             onClick={onClose}
-            aria-label="关闭"
+            aria-label={t("todo.common.close")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path
@@ -214,7 +215,7 @@ export default function SmartCreateModal({
           >
             <Spin size="large" />
             <div style={{ color: "var(--semi-color-text-2)", fontSize: 14 }}>
-              AI 正在努力提取事项信息...
+              {t("todo.create.aiExtracting")}
             </div>
           </div>
         ) : (
@@ -224,7 +225,7 @@ export default function SmartCreateModal({
               {/* 事项名称 */}
               <div className="wk-smart-create-modal__field">
                 <label className="wk-smart-create-modal__label">
-                  事项名称<span className="wk-smart-create-modal__req">*</span>
+                  {t("todo.field.title")}<span className="wk-smart-create-modal__req">*</span>
                 </label>
                 <div className="wk-smart-create-modal__input-wrap">
                   <input
@@ -233,7 +234,7 @@ export default function SmartCreateModal({
                     className="wk-smart-create-modal__input"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="请输入"
+                    placeholder={t("todo.common.inputPlaceholder")}
                   />
                   <VoiceInputButton
                     inputRef={titleInputRef}
@@ -258,7 +259,7 @@ export default function SmartCreateModal({
               {/* 主要目标 */}
               <div className="wk-smart-create-modal__field">
                 <label className="wk-smart-create-modal__label">
-                  主要目标<span className="wk-smart-create-modal__req">*</span>
+                  {t("todo.field.goal")}<span className="wk-smart-create-modal__req">*</span>
                 </label>
                 <div className="wk-smart-create-modal__textarea-wrap">
                   <textarea
@@ -266,7 +267,7 @@ export default function SmartCreateModal({
                     className="wk-smart-create-modal__textarea"
                     value={brief}
                     onChange={(e) => setBrief(e.target.value.slice(0, 200))}
-                    placeholder="一句话说清这件事"
+                    placeholder={t("todo.field.goalPlaceholder")}
                     rows={3}
                     maxLength={200}
                   />
@@ -302,14 +303,14 @@ export default function SmartCreateModal({
               {/* 负责人 */}
               <div className="wk-smart-create-modal__field">
                 <label className="wk-smart-create-modal__label">
-                  负责人<span className="wk-smart-create-modal__req">*</span>
+                  {t("todo.field.assignee")}<span className="wk-smart-create-modal__req">*</span>
                 </label>
                 <MemberPicker
                   mode="controlled"
                   value={assigneeUids}
                   onChange={setAssigneeUids}
                   channel={channel}
-                  placeholder="请选择"
+                  placeholder={t("todo.common.selectPlaceholder")}
                 />
               </div>
 
@@ -336,7 +337,7 @@ export default function SmartCreateModal({
                   disabledDate={(date) =>
                     !!date && date < new Date(new Date().setHours(0, 0, 0, 0))
                   }
-                  placeholder="请选择"
+                  placeholder={t("todo.common.selectPlaceholder")}
                   density="compact"
                 />
               </div>
@@ -349,7 +350,7 @@ export default function SmartCreateModal({
                 className="wk-smart-create-modal__btn wk-smart-create-modal__btn--cancel"
                 onClick={onClose}
               >
-                取消
+                {t("todo.common.cancel")}
               </button>
               <button
                 type="button"
@@ -357,7 +358,7 @@ export default function SmartCreateModal({
                 onClick={handleConfirm}
                 disabled={!canCreate || submitting}
               >
-                {submitting ? "提交中..." : "确定"}
+                {submitting ? t("todo.state.submitting") : t("todo.common.confirm")}
               </button>
             </div>
           </>

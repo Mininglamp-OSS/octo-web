@@ -71,7 +71,23 @@
 .summary-list-toolbar {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
     margin-bottom: 16px;
+}
+
+.summary-list-search {
+    flex: 1 1 180px;
+    min-width: 0;
+}
+
+.summary-list-status-filter {
+    flex: 0 1 132px;
+    min-width: 112px;
+}
+
+.summary-list-refresh {
+    flex: 0 0 32px;
 }
 
 .summary-list-loading {

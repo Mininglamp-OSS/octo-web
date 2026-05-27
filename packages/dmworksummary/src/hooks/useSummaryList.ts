@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { t } from "@octo/base";
 import * as api from "../api/summaryApi";
 import type {
     ListSummariesParams,
@@ -46,7 +47,7 @@ export function useSummaryList(): UseSummaryListReturn {
             setItems(resp.items);
             setTotal(resp.total);
         } catch (err: any) {
-            setError(err.message || "加载失败");
+            setError(err.message || t("summary.common.loadingFailed"));
         } finally {
             setLoading(false);
         }

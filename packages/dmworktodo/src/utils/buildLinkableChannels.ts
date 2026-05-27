@@ -40,6 +40,8 @@ export interface BuildLinkableChannelsOptions {
     threadPageSize?: number;
     /** 单群子区拉取失败时的日志钩子, 默认 console.warn。 */
     onThreadListError?: (groupNo: string, err: unknown) => void;
+    /** 子区没有名称时展示的兜底名称。 */
+    unnamedThreadName?: string;
 }
 
 /**
@@ -66,6 +68,7 @@ export async function buildLinkableChannels(
 ): Promise<LoadChannelsResult> {
     const concurrency = opts.concurrency ?? 4;
     const threadPageSize = opts.threadPageSize ?? 100;
+    const unnamedThreadName = opts.unnamedThreadName ?? "Unnamed thread";
     const onErr =
         opts.onThreadListError ??
         ((groupNo, err) => {
@@ -145,7 +148,7 @@ export async function buildLinkableChannels(
             result.push({
                 channelId: t.channel_id,
                 channelType: t.channel_type,
-                name: t.name || "(未命名子区)",
+                name: t.name || unnamedThreadName,
                 memberCount: t.member_count,
                 parentGroupName: g.name,
                 parentGroupNo: g.channelId,

@@ -10,7 +10,7 @@ import {
     Tooltip,
 } from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus, IconRefresh } from "@douyinfe/semi-icons";
-import { WKApp } from "@octo/base";
+import { I18nContext, t, WKApp } from "@octo/base";
 import * as api from "../api/summaryApi";
 import type {
     SummaryListItem,
@@ -34,8 +34,8 @@ interface SummaryListPageState {
     keyword: string;
 }
 
-const statusOptions = [
-    { value: "", label: "全部状态" },
+const getStatusOptions = () => [
+    { value: "", label: t("summary.list.allStatus") },
     { value: TaskStatus.PENDING, label: getStatusLabel(TaskStatus.PENDING) },
     { value: TaskStatus.WAITING_CONFIRM, label: getStatusLabel(TaskStatus.WAITING_CONFIRM) },
     { value: TaskStatus.PROCESSING, label: getStatusLabel(TaskStatus.PROCESSING) },
@@ -45,6 +45,9 @@ const statusOptions = [
 ];
 
 export default class SummaryListPage extends Component<{}, SummaryListPageState> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     state: SummaryListPageState = {
         items: [],
         total: 0,
@@ -93,7 +96,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
                 this.maybeStartBatchPoll();
             });
         } catch (err: any) {
-            this.setState({ error: err.message || "加载失败", loading: false });
+            this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
         }
     }
 
@@ -184,14 +187,14 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     handleDelete = async (taskId: number) => {
         try {
             await api.deleteSummary(taskId);
-            Toast.success("删除成功");
+            Toast.success(t("summary.list.deleteSuccess"));
             WKApp.routeRight.popToRoot();
             WKApp.routeRight.push(
                 <SummaryCreatePage onCreated={() => this.loadData()} />
             );
             this.loadData();
         } catch (err: any) {
-            Toast.error(err.message || "删除失败");
+            Toast.error(err.message || t("summary.common.deleteFailed"));
         }
     };
 
@@ -203,10 +206,10 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
     handleRespond = async (taskId: number, action: "accept" | "reject") => {
         try {
             await api.respondToTask(taskId, action);
-            Toast.success(action === "accept" ? "已同意" : "已拒绝");
+            Toast.success(action === "accept" ? t("summary.action.accepted") : t("summary.action.rejected"));
             this.loadData();
         } catch (err: any) {
-            Toast.error(err.message || "操作失败");
+            Toast.error(err.message || t("summary.common.operationFailed"));
         }
     };
 
@@ -219,12 +222,14 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
 
     render() {
         const { items, total, page, pageSize, loading, error, statusFilter, keyword } = this.state;
+        const { locale, t: translate } = this.context;
+        const statusOptions = getStatusOptions();
 
         return (
             <div className="summary-list-page">
                 <div className="summary-list-header">
-                    <h2 className="summary-list-title">智能总结</h2>
-                    <Tooltip content="新建总结" position="bottom">
+                    <h2 className="summary-list-title">{translate("summary.list.title")}</h2>
+                    <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
                         <Button
                             icon={<IconPlus />}
                             theme="borderless"
@@ -235,17 +240,18 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
 
                 <div className="summary-list-toolbar">
                     <Input
+                        className="summary-list-search"
                         prefix={<IconSearch />}
-                        placeholder="搜索总结..."
+                        placeholder={translate("summary.list.searchPlaceholder")}
                         value={keyword}
                         onChange={this.handleKeywordChange}
                         showClear
-                        style={{ width: 240 }}
                     />
                     <Select
+                        className="summary-list-status-filter"
+                        key={locale}
                         value={statusFilter ?? ""}
                         onChange={this.handleStatusChange}
-                        style={{ width: 140, marginLeft: 12 }}
                     >
                         {statusOptions.map((opt) => (
                             <Select.Option key={String(opt.value)} value={opt.value}>
@@ -254,10 +260,10 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
                         ))}
                     </Select>
                     <Button
+                        className="summary-list-refresh"
                         icon={<IconRefresh />}
                         theme="borderless"
                         onClick={() => this.loadData()}
-                        style={{ marginLeft: 4 }}
                     />
                 </div>
 
@@ -270,8 +276,8 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
                         fullMode={false}
                     >
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span>网络连接异常，请检查网络后重试</span>
-                            <Button size="small" onClick={() => this.loadData()}>重试</Button>
+                            <span>{translate("summary.list.networkError")}</span>
+                            <Button size="small" onClick={() => this.loadData()}>{translate("summary.common.retry")}</Button>
                         </div>
                     </Banner>
                 )}
@@ -285,12 +291,12 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
                 {!loading && !error && items.length === 0 && (
                     <div className="summary-list-empty">
                         <div className="summary-list-empty-icon">📄</div>
-                        <div className="summary-list-empty-title">暂无总结记录</div>
+                        <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
                         <div className="summary-list-empty-desc">
-                            快速生成群聊或个人工作总结，让 AI 帮你梳理重要信息
+                            {translate("summary.list.emptyDesc")}
                         </div>
                         <Button theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
-                            创建第一份总结
+                            {translate("summary.list.createFirst")}
                         </Button>
                     </div>
                 )}

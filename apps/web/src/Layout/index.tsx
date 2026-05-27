@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { WKApp, WKBase, Provider, ErrorBoundary } from "@octo/base"
+import { WKApp, WKBase, Provider, ErrorBoundary, t } from "@octo/base"
 import { listen } from '@tauri-apps/api/event'
 import { MainPage } from "../Pages/Main";
 import SpaceGate from "../Components/SpaceGate";
@@ -112,10 +112,10 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                         })
                         .catch((e: any) => {
                             const msg = e?.msg || '';
-                            if (msg.includes('已满') || msg.includes('SPACE_FULL')) {
+                            if (msg.includes(t("app.invite.serverTerms.full", { locale: "zh-CN" })) || msg.includes('SPACE_FULL')) {
                                 // SPACE_FULL 保留 pendingInviteCode，让用户下次重试
-                                import('@douyinfe/semi-ui').then(({ Toast }) => Toast.error('空间已满，无法加入'));
-                            } else if (msg.includes('已是成员') || msg.includes('already')) {
+                                import('@douyinfe/semi-ui').then(({ Toast }) => Toast.error(t("app.invite.spaceFullCannotJoin")));
+                            } else if (msg.includes(t("app.joinSpace.serverTerms.alreadyMember", { locale: "zh-CN" })) || msg.includes('already')) {
                                 localStorage.removeItem("pendingInviteCode");
                                 if (e?.space_id) localStorage.setItem('currentSpaceId', e.space_id);
                             } else {
@@ -190,7 +190,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
 
     showUpdateUI(manifest: UpdateManifest) {
       const notifyID =  NotificationUI.info({
-            title: `有新版本 ${manifest.version}`,
+            title: t("app.layout.update.newVersion", { values: { version: manifest.version } }),
             duration: 0,
             content: (
                 <>
@@ -202,11 +202,11 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                                 await installUpdate()
                             }
                           await relaunch()
-                        }}>更新</Button>
+                        }}>{t("base.common.update")}</Button>
                         <Button onClick={()=>{
                             NotificationUI.close(notifyID)
                         }} type="secondary" style={{ marginLeft: 20 }}>
-                            下次
+                            {t("app.layout.update.later")}
                         </Button>
                     </div>
                 </>
@@ -295,7 +295,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             if (!WKApp.shared.isLogined() || window.location.pathname.endsWith('/login')) {
                 const loginComponent = WKApp.route.get("/login")
                 if (!loginComponent) {
-                    return <div>没有登录模块！</div>
+                    return <div>{t("app.layout.noLoginModule")}</div>
                 }
                 return loginComponent
             }
@@ -311,7 +311,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             if (!WKApp.shared.currentSpaceId && !WKApp.shared.spaceChecked) {
                 return <SpaceGate />
             }
-            return <ErrorBoundary moduleName="应用">
+            return <ErrorBoundary moduleName={t("app.layout.errorBoundaryModuleName")}>
                 <WKBase onContext={(ctx) => {
                     WKApp.shared.baseContext = ctx
                 }}>

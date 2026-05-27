@@ -15,6 +15,7 @@ import {
     IconDelete,
     IconEdit,
 } from "@douyinfe/semi-icons";
+import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import * as api from "../api/summaryApi";
 import type {
@@ -40,6 +41,9 @@ interface ScheduleListPageState {
 }
 
 export default class ScheduleListPage extends Component<{}, ScheduleListPageState> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     state: ScheduleListPageState = {
         schedules: [],
         loading: false,
@@ -60,7 +64,7 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
             const schedules = await api.listSchedules();
             this.setState({ schedules, loading: false });
         } catch (err: any) {
-            this.setState({ error: err.message || "加载失败", loading: false });
+            this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
         }
     }
 
@@ -72,11 +76,11 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
         this.setState({ formLoading: true });
         try {
             await api.createSchedule(params);
-            Toast.success("定时配置已创建");
+            Toast.success(t("summary.schedule.createSuccess"));
             this.setState({ showCreateModal: false, formLoading: false });
             this.loadData();
         } catch (err: any) {
-            Toast.error(err.message || "创建失败");
+            Toast.error(err.message || t("summary.common.createFailed"));
             this.setState({ formLoading: false });
         }
     };
@@ -94,11 +98,11 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                 sources: params.sources,
             };
             await api.updateSchedule(editingSchedule.schedule_id, updateParams);
-            Toast.success("定时配置已更新");
+            Toast.success(t("summary.schedule.updateSuccess"));
             this.setState({ showEditModal: false, editingSchedule: null, formLoading: false });
             this.loadData();
         } catch (err: any) {
-            Toast.error(err.message || "更新失败");
+            Toast.error(err.message || t("summary.common.updateFailed"));
             this.setState({ formLoading: false });
         }
     };
@@ -106,37 +110,38 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
     handleDelete = async (id: number) => {
         try {
             await api.deleteSchedule(id);
-            Toast.success("已删除");
+            Toast.success(t("summary.schedule.deleted"));
             this.loadData();
         } catch (err: any) {
-            Toast.error(err.message || "删除失败");
+            Toast.error(err.message || t("summary.common.deleteFailed"));
         }
     };
 
     handleToggle = async (id: number, isActive: boolean) => {
         try {
             await api.toggleSchedule(id, isActive);
-            Toast.success(isActive ? "已启用" : "已暂停");
+            Toast.success(isActive ? t("summary.schedule.enabled") : t("summary.schedule.paused"));
             this.loadData();
         } catch (err: any) {
-            Toast.error(err.message || "操作失败");
+            Toast.error(err.message || t("summary.common.operationFailed"));
         }
     };
 
     render() {
         const { schedules, loading, error, showCreateModal, showEditModal, editingSchedule, formLoading } = this.state;
+        const { t: translate } = this.context;
 
         return (
             <div className="summary-schedule-page">
                 <div className="summary-schedule-header">
                     <Button icon={<IconArrowLeft />} theme="borderless" onClick={this.handleBack} />
-                    <h2>定时总结配置</h2>
+                    <h2>{translate("summary.schedule.pageTitle")}</h2>
                     <Button
                         icon={<IconPlus />}
                         theme="solid"
                         onClick={() => this.setState({ showCreateModal: true })}
                     >
-                        新建
+                        {translate("summary.schedule.new")}
                     </Button>
                 </div>
 
@@ -149,8 +154,8 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                         fullMode={false}
                     >
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span>加载失败</span>
-                            <Button size="small" onClick={() => this.loadData()}>重试</Button>
+                            <span>{translate("summary.common.loadingFailed")}</span>
+                            <Button size="small" onClick={() => this.loadData()}>{translate("summary.common.retry")}</Button>
                         </div>
                     </Banner>
                 )}
@@ -163,9 +168,9 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
 
                 {!loading && schedules.length === 0 && !error && (
                     <div className="summary-schedule-empty">
-                        <p>暂无定时配置</p>
+                        <p>{translate("summary.schedule.empty")}</p>
                         <Button theme="solid" onClick={() => this.setState({ showCreateModal: true })}>
-                            创建第一个定时任务
+                            {translate("summary.schedule.createFirst")}
                         </Button>
                     </div>
                 )}
@@ -176,7 +181,7 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                             <div key={item.schedule_id} className="summary-schedule-card">
                                 <div className="summary-schedule-card-header">
                                     <span className="summary-schedule-card-title">
-                                        {item.title || `定时任务 #${item.schedule_id}`}
+                                        {item.title || translate("summary.schedule.fallbackTitle", { values: { id: item.schedule_id } })}
                                     </span>
                                     <Switch
                                         checked={item.is_active}
@@ -192,7 +197,7 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                     </span>
                                 </div>
                                 <div className="summary-schedule-card-sources">
-                                    来源：{item.sources.map((s) => s.source_name || s.source_id).join("、") || "-"}
+                                    {translate("summary.source.label")}{item.sources.map((s) => s.source_name || s.source_id).join("、") || "-"}
                                 </div>
                                 <div className="summary-schedule-card-actions">
                                     <Button
@@ -205,8 +210,8 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                         })}
                                     />
                                     <Popconfirm
-                                        title="确认删除"
-                                        content="确定要删除此定时配置吗？"
+                                        title={translate("summary.schedule.deleteTitle")}
+                                        content={translate("summary.schedule.deleteContent")}
                                         onConfirm={() => this.handleDelete(item.schedule_id)}
                                     >
                                         <Button
@@ -223,7 +228,7 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                 )}
 
                 <Modal
-                    title="新建定时配置"
+                    title={translate("summary.schedule.createModalTitle")}
                     visible={showCreateModal}
                     onCancel={() => this.setState({ showCreateModal: false })}
                     footer={null}
@@ -237,7 +242,7 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                 </Modal>
 
                 <Modal
-                    title="编辑定时配置"
+                    title={translate("summary.schedule.editModalTitle")}
                     visible={showEditModal}
                     onCancel={() => this.setState({ showEditModal: false, editingSchedule: null })}
                     footer={null}

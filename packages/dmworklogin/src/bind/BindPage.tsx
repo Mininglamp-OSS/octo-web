@@ -23,6 +23,7 @@ import {
 } from '../oidc/bind'
 import { applyLoginResp, parseLoginResp } from '../loginSession'
 import { mapBindError, type BindEndpoint, type BindErrorDisplay } from './errorMessages'
+import { loginT as t } from '../i18n'
 import './bind.css'
 
 type Stage =
@@ -51,13 +52,13 @@ function deriveCreateState(info: BindInfoResp): CreateState {
   // 是 disabled > claims_incomplete > manual_conflict > consumed, 防御性兜底.
   if (blocked === 'disabled') return { kind: 'hidden' }
   if (blocked === 'claims_incomplete') {
-    return { kind: 'blocked', reason: 'SSO 身份信息不完整，无法自助创建账号' }
+    return { kind: 'blocked', reason: t('bind.blocked.claimsIncomplete') }
   }
   if (blocked === 'manual_conflict') {
-    return { kind: 'blocked', reason: '您的 SSO 身份匹配到多个 Octo 账号，需要管理员协助处理' }
+    return { kind: 'blocked', reason: t('bind.blocked.manualConflict') }
   }
   if (blocked === 'consumed') {
-    return { kind: 'blocked', reason: '当前链接已使用过，请重新发起 SSO 登录' }
+    return { kind: 'blocked', reason: t('bind.blocked.consumed') }
   }
   return { kind: 'hidden' }
 }
@@ -95,7 +96,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     if (!params) {
       setStage({
         kind: 'fatal',
-        display: { message: '链接无效，请重新发起登录', terminal: true },
+        display: { message: t('bind.invalidLink'), terminal: true },
       })
       return
     }
@@ -136,8 +137,8 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
           createState.kind === 'blocked'
             ? createState.reason
             : info.support_contact
-              ? `无可用的绑定方式，请联系 ${info.support_contact}`
-              : '无可用的绑定方式，请联系管理员'
+              ? t('bind.noMethodContact', { values: { contact: info.support_contact } })
+              : t('bind.noMethodContactAdmin')
         setStage({
           kind: 'fatal',
           display: { message, terminal: true },
@@ -173,7 +174,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       if (!token) return
       await sendBindOtp(fetchHttpClient, token, apiOpts())
       setStage({ kind: 'verify_otp', info: stage.info, sent: true, sending: false })
-      Toast.success('验证码已发送')
+      Toast.success(t('bind.otp.sent'))
     } catch (err) {
       setStage({ kind: 'verify_otp', info: stage.info, sent: false, sending: false })
       handleError('verify_otp_send', err)
@@ -188,7 +189,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     setInlineError(null)
     try {
       await sendBindOtp(fetchHttpClient, token, apiOpts())
-      Toast.success('验证码已重新发送')
+      Toast.success(t('bind.otp.resent'))
       setStage({ ...stage, sent: true })
     } catch (err) {
       handleError('verify_otp_send', err)
@@ -208,7 +209,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
   async function onSubmitPassword(): Promise<void> {
     if (stage.kind !== 'verify_password') return
     if (!identifier || !password) {
-      setInlineError('请输入账号和密码')
+      setInlineError(t('bind.validation.accountPasswordRequired'))
       return
     }
     const token = entryRef.current?.token
@@ -237,7 +238,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     // 后端短信验证码长度固定为 6 位 (BindService.VerifyOTPCheck);
     // input 的 maxLength={6} 已经卡上限, 这里卡下限避免半截 OTP 提交后被 401.
     if (!otp || otp.length < 6) {
-      setInlineError('请输入 6 位验证码')
+      setInlineError(t('bind.validation.otpRequired'))
       return
     }
     const token = entryRef.current?.token
@@ -385,13 +386,13 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
   return (
     <div className="wk-bind">
       <div className="wk-bind-card">
-        <h2 className="wk-bind-title">完成账号绑定</h2>
+        <h2 className="wk-bind-title">{t('bind.title')}</h2>
         {/* fatal 状态下隐藏教学话术 — 已经报错了, 用户不需要再被告知"为什么在这" */}
         {stage.kind !== 'fatal' ? (
           <p className="wk-bind-subtitle">
             {stage.kind === 'success'
-              ? '绑定成功，正在跳转…'
-              : '您的 SSO 身份尚未关联到 Octo 账号，验证后即可继续使用。'}
+              ? t('bind.success')
+              : t('bind.subtitle')}
           </p>
         ) : null}
 
@@ -406,7 +407,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
             <div className="wk-bind-error" data-severity="hard">{stage.display.message}</div>
             <div className="wk-bind-actions">
               <Button type="primary" theme="solid" onClick={goBackToLogin}>
-                返回登录
+                {t('common.backLogin')}
               </Button>
             </div>
           </>
@@ -435,8 +436,8 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
         {stage.kind === 'creating' ? (
           <div className="wk-bind-loader">
             <Spin size="large" />
-            <div className="wk-bind-loader-title">正在创建 Octo 账号</div>
-            <div className="wk-bind-loader-sub">请稍候，完成后将自动进入主界面…</div>
+            <div className="wk-bind-loader-title">{t('bind.creatingAccount')}</div>
+            <div className="wk-bind-loader-sub">{t('bind.loaderSub')}</div>
           </div>
         ) : null}
 
@@ -444,7 +445,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
           <>
             {inlineError ? <div className="wk-bind-error" data-severity="soft">{inlineError}</div> : null}
             <div className="wk-bind-field">
-              <label htmlFor="bind-username">Octo 账号（用户名/手机号/邮箱）</label>
+              <label htmlFor="bind-username">{t('bind.passwordAccount')}</label>
               <Input
                 id="bind-username"
                 size="large"
@@ -455,7 +456,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
               />
             </div>
             <div className="wk-bind-field">
-              <label htmlFor="bind-password">密码</label>
+              <label htmlFor="bind-password">{t('bind.passwordLabel')}</label>
               <Input
                 id="bind-password"
                 size="large"
@@ -477,7 +478,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
                 }}
                 disabled={busy}
               >
-                返回
+                {t('common.back')}
               </Button>
               <Button
                 type="primary"
@@ -485,7 +486,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
                 loading={busy}
                 onClick={onSubmitPassword}
               >
-                验证并绑定
+                {t('bind.submit')}
               </Button>
             </div>
           </>
@@ -495,7 +496,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
           <>
             {inlineError ? <div className="wk-bind-error" data-severity="soft">{inlineError}</div> : null}
             <div className="wk-bind-field">
-              <label htmlFor="bind-otp">短信验证码</label>
+              <label htmlFor="bind-otp">{t('bind.otp.label')}</label>
               <Input
                 id="bind-otp"
                 size="large"
@@ -506,8 +507,8 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
                 autoComplete="one-time-code"
               />
               <div className="wk-bind-otp-hint">
-                验证码已发送至{' '}
-                {stage.info.masked_phone ?? '您的手机号'}
+                {t('bind.otp.sentTo')}{' '}
+                {stage.info.masked_phone ?? t('bind.otp.fallbackPhone')}
                 {' · '}
                 <a
                   onClick={() => {
@@ -515,7 +516,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
                   }}
                   style={{ cursor: busy || stage.sending ? 'not-allowed' : 'pointer' }}
                 >
-                  重新发送
+                  {t('bind.otp.resend')}
                 </a>
               </div>
             </div>
@@ -528,7 +529,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
                 }}
                 disabled={busy}
               >
-                返回
+                {t('common.back')}
               </Button>
               <Button
                 type="primary"
@@ -537,7 +538,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
                 disabled={stage.sending}
                 onClick={onSubmitOtp}
               >
-                验证并绑定
+                {t('bind.submit')}
               </Button>
             </div>
           </>
@@ -546,8 +547,8 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
         {stage.kind === 'confirming' ? (
           <div className="wk-bind-loader">
             <Spin size="large" />
-            <div className="wk-bind-loader-title">正在完成绑定</div>
-            <div className="wk-bind-loader-sub">请稍候，完成后将自动进入主界面…</div>
+            <div className="wk-bind-loader-title">{t('bind.validating')}</div>
+            <div className="wk-bind-loader-sub">{t('bind.loaderSub')}</div>
           </div>
         ) : null}
 
@@ -559,13 +560,13 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
           <div className="wk-bind-footer">
             {(stage as { info: BindInfoResp }).info.support_contact ? (
               <>
-                遇到问题？联系{' '}
+                {t('bind.footerContact')}{' '}
                 <a href={`mailto:${(stage as { info: BindInfoResp }).info.support_contact}`}>
                   {(stage as { info: BindInfoResp }).info.support_contact}
                 </a>
               </>
             ) : (
-              <span>遇到问题？请联系管理员</span>
+              <span>{t('bind.footerContactAdmin')}</span>
             )}
           </div>
         ) : null}
@@ -598,10 +599,10 @@ function postLoginReturnTo(raw: string | undefined): string {
 // 次入口引导文案. 按 methods[] 实际给的方式拼, 避免写死"密码或短信"误导用户.
 function secondaryHintFor(methods: BindMethod[]): string {
   const labels: string[] = []
-  if (methods.includes('password')) labels.push('密码')
-  if (methods.includes('sms_otp')) labels.push('短信')
-  if (labels.length === 0) return '已有 Octo 账号，请使用其他方式关联'
-  return `已有 Octo 账号，使用${labels.join('或')}验证关联`
+  if (methods.includes('password')) labels.push(t('bind.method.password'))
+  if (methods.includes('sms_otp')) labels.push(t('bind.method.sms'))
+  if (labels.length === 0) return t('bind.noMethod')
+  return t('bind.secondaryHint', { values: { methods: labels.join(t('bind.or')) } })
 }
 
 function renderChooseMethod(
@@ -624,7 +625,7 @@ function renderChooseMethod(
             disabled={busy}
             onClick={onCreate}
           >
-            使用 SSO 身份创建 Octo 账号
+            {t('bind.createAccount')}
           </Button>
         </div>
       ) : null}
@@ -637,7 +638,7 @@ function renderChooseMethod(
 
       {createState.kind !== 'hidden' && hasVerify ? (
         <div className="wk-bind-divider" role="separator">
-          <span>或</span>
+          <span>{t('common.or')}</span>
         </div>
       ) : null}
 
@@ -658,7 +659,7 @@ function renderChooseMethod(
                 disabled={busy}
                 onClick={() => onSelectMethod(m)}
               >
-                {m === 'password' ? '使用 Octo 密码验证' : '使用短信验证码验证'}
+                {m === 'password' ? t('bind.methodPassword') : t('bind.methodSms')}
               </Button>
             ))}
           </div>
@@ -672,18 +673,18 @@ const IdentityBlock = ({ info }: { info: BindInfoResp }) => {
   return (
     <div className="wk-bind-identity">
       <div className="wk-bind-identity-row">
-        <span className="wk-bind-identity-label">SSO 身份</span>
+        <span className="wk-bind-identity-label">{t('bind.identity.sso')}</span>
         <span>{info.name || '—'}</span>
       </div>
       {info.masked_email ? (
         <div className="wk-bind-identity-row">
-          <span className="wk-bind-identity-label">邮箱</span>
+          <span className="wk-bind-identity-label">{t('bind.identity.email')}</span>
           <span>{info.masked_email}</span>
         </div>
       ) : null}
       {info.masked_phone ? (
         <div className="wk-bind-identity-row">
-          <span className="wk-bind-identity-label">手机</span>
+          <span className="wk-bind-identity-label">{t('bind.identity.phone')}</span>
           <span>{info.masked_phone}</span>
         </div>
       ) : null}

@@ -1,6 +1,7 @@
 import React, { Component } from "react";
 import { Modal, Input, Checkbox, Button, Spin, Empty, Avatar } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
+import { I18nContext } from "@octo/base";
 import type { MemberCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
 
@@ -19,6 +20,9 @@ interface State {
 }
 
 export default class MemberSelectorModal extends Component<Props, State> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     private searchTimer: ReturnType<typeof setTimeout> | null = null;
 
     state: State = {
@@ -75,22 +79,23 @@ export default class MemberSelectorModal extends Component<Props, State> {
     render() {
         const { visible, onCancel } = this.props;
         const { keyword, candidates, loading, localSelected } = this.state;
+        const { t } = this.context;
 
         const footer = (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
                 <span style={{ fontSize: 13, color: "var(--semi-color-text-2)" }}>
-                    已选 {localSelected.length} 人
+                    {t("summary.common.selectedPeopleCount", { values: { count: localSelected.length } })}
                 </span>
                 <div>
-                    <Button onClick={onCancel} style={{ marginRight: 8 }}>取消</Button>
-                    <Button theme="solid" onClick={this.handleConfirm}>确定</Button>
+                    <Button onClick={onCancel} style={{ marginRight: 8 }}>{t("summary.common.cancel")}</Button>
+                    <Button theme="solid" onClick={this.handleConfirm}>{t("summary.common.confirm")}</Button>
                 </div>
             </div>
         );
 
         return (
             <Modal
-                title="添加成员"
+                title={t("summary.memberSelector.title")}
                 visible={visible}
                 onCancel={onCancel}
                 footer={footer}
@@ -99,7 +104,7 @@ export default class MemberSelectorModal extends Component<Props, State> {
             >
                 <Input
                     prefix={<IconSearch />}
-                    placeholder="搜索成员"
+                    placeholder={t("summary.memberSelector.searchPlaceholder")}
                     value={keyword}
                     onChange={this.handleKeywordChange}
                     showClear
@@ -109,7 +114,7 @@ export default class MemberSelectorModal extends Component<Props, State> {
                     {loading ? (
                         <div style={{ textAlign: "center", paddingTop: 60 }}><Spin /></div>
                     ) : candidates.length === 0 ? (
-                        <Empty description="暂无成员" style={{ paddingTop: 40 }} />
+                        <Empty description={t("summary.memberSelector.empty")} style={{ paddingTop: 40 }} />
                     ) : (
                         candidates.map((item) => {
                             const checked = !!localSelected.find((s) => s.user_id === item.user_id);

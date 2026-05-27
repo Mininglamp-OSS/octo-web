@@ -1,9 +1,10 @@
 import React, { useState, useCallback } from "react";
 import { Select, Tag, Button, Input } from "@douyinfe/semi-ui";
 import { IconPlus } from "@douyinfe/semi-icons";
+import { useI18n } from "@octo/base";
 import type { SourceItem, SourceTypeValue } from "../types/summary";
 import { SourceType } from "../types/summary";
-import { getSourceTypeLabel } from "../utils/summaryHelpers";
+import { getSourceTypeLabel, getSourceTypeOptions } from "../utils/summaryHelpers";
 
 interface SourceSelectorProps {
     value: SourceItem[];
@@ -12,26 +13,19 @@ interface SourceSelectorProps {
     maxSources?: number;
 }
 
-const sourceTypeOptions = [
-    { value: SourceType.GROUP_CHAT, label: "群聊" },
-    { value: SourceType.THREAD, label: "子区" },
-    { value: SourceType.DIRECT_MESSAGE, label: "私聊" },
-];
-
 const SourceSelector: React.FC<SourceSelectorProps> = ({
     value,
     onChange,
     sourceTypes,
     maxSources = 10,
 }) => {
+    const { t } = useI18n();
     const [adding, setAdding] = useState(false);
     const [newSourceType, setNewSourceType] = useState<SourceTypeValue>(SourceType.GROUP_CHAT);
     const [newSourceId, setNewSourceId] = useState("");
     const [newSourceName, setNewSourceName] = useState("");
 
-    const filteredOptions = sourceTypes
-        ? sourceTypeOptions.filter((o) => sourceTypes.includes(o.value))
-        : sourceTypeOptions;
+    const filteredOptions = getSourceTypeOptions(sourceTypes);
 
     const handleAdd = useCallback(() => {
         if (!newSourceId.trim()) return;
@@ -96,22 +90,22 @@ const SourceSelector: React.FC<SourceSelectorProps> = ({
                     <Input
                         value={newSourceId}
                         onChange={setNewSourceId}
-                        placeholder="来源 ID"
+                        placeholder={t("summary.source.idPlaceholder")}
                         size="small"
                         style={{ width: 160, marginLeft: 8 }}
                     />
                     <Input
                         value={newSourceName}
                         onChange={setNewSourceName}
-                        placeholder="名称（可选）"
+                        placeholder={t("summary.source.namePlaceholder")}
                         size="small"
                         style={{ width: 120, marginLeft: 8 }}
                     />
                     <Button size="small" theme="solid" onClick={handleAdd} style={{ marginLeft: 8 }}>
-                        添加
+                        {t("summary.common.add")}
                     </Button>
                     <Button size="small" theme="borderless" onClick={() => setAdding(false)} style={{ marginLeft: 4 }}>
-                        取消
+                        {t("summary.common.cancel")}
                     </Button>
                 </div>
             ) : (
@@ -123,7 +117,7 @@ const SourceSelector: React.FC<SourceSelectorProps> = ({
                         onClick={() => setAdding(true)}
                         style={{ marginTop: 4 }}
                     >
-                        添加来源
+                        {t("summary.source.addSource")}
                     </Button>
                 )
             )}

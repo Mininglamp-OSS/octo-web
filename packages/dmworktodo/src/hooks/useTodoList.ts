@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import * as api from '../api/todoApi';
 import type { Matter, MatterListParams, MatterStatus } from '../bridge/types';
 import { Toast } from '../utils/toast';
+import { t } from '@octo/base';
 
 export interface UseMatterListOptions {
   initialFilters?: MatterListParams;
@@ -72,7 +73,7 @@ export function useMatterList({
     } catch (err: unknown) {
       // AbortError 是主动取消, 不报错; 其余才提示用户
       if ((err as Error)?.name === 'AbortError') return;
-      Toast.error('加载事项失败');
+      Toast.error(t('todo.toast.loadFailed'));
     } finally {
       // 当前请求若未被 abort, 才关掉 loading (被 abort 时新请求会重新 setLoading(true))
       if (!ctrl.signal.aborted) setLoading(false);
@@ -111,7 +112,7 @@ export function useMatterList({
         prev.map((t) => (t.id === matterId ? { ...t, status: newStatus } : t))
       );
     } catch {
-      Toast.error('更新状态失败');
+      Toast.error(t('todo.toast.statusUpdateFailed'));
     }
   }, []);
 

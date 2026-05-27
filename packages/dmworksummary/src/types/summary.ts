@@ -244,14 +244,6 @@ export interface InferResult {
     suggested_time_range: { start: string; end: string } | null;
 }
 
-/** 时间范围类型标签 */
-export const TimeRangeTypeLabels: Record<number, string> = {
-    1: "最近 24 小时",
-    2: "最近 7 天",
-    3: "最近 30 天",
-    4: "自上次总结以来",
-};
-
 /** 批量状态查询 - 单任务状态 */
 export interface BatchStatusItem {
     id: number;

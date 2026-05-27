@@ -1,4 +1,4 @@
-import { ChatPage, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace } from '@octo/base';
+import { ChatPage, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, t } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
 import React, { useEffect } from 'react';
 // lucide icons replaced with filled SVGs per Figma
@@ -25,7 +25,7 @@ function useRealnameVerifiedLandingHandler() {
       if (params.getAll('verified').some((v) => v === '1')) {
         // 在 login 模块和 SDK 初始化稳定后弹提示（延迟一帧避免 toast 被 early render 吃掉）
         requestAnimationFrame(() => {
-          Toast.success('实名认证已完成');
+          Toast.success(t("app.toast.realnameVerified"));
         });
         // 移除所有 verified 参数（背上游 double-append 历史 bug 经过后真的可能有两个）
         params.delete('verified');
@@ -62,7 +62,7 @@ async function registerMenus() {
   })
 
   WKApp.menus.register("chat", (_context) => {
-    const m = new Menus("chat", "/", "会话", <ChatIcon />, <ChatIcon />)
+    const m = new Menus("chat", "/", t("app.nav.chat"), <ChatIcon />, <ChatIcon />)
     let badge = 0;
 
     for (const conversation of WKSDK.shared().conversationManager.conversations) {
@@ -107,13 +107,13 @@ async function registerMenus() {
   }
 
   WKApp.menus.register("contacts", (param) => {
-    const m = new Menus("contacts", "/contacts", "通讯录", <ContactsIcon />, <ContactsIcon />)
+    const m = new Menus("contacts", "/contacts", t("app.nav.contacts"), <ContactsIcon />, <ContactsIcon />)
     m.badge = WKApp.shared.getFriendApplysUnreadCount();
     return m
   }, 4000)
 
   WKApp.menus.register("summary", (_context) => {
-    const m = new Menus("summary", "/summary", "智能总结", <SummaryIcon />, <SummaryIcon />)
+    const m = new Menus("summary", "/summary", t("app.nav.summary"), <SummaryIcon />, <SummaryIcon />)
     m.onPress = () => {
       WKApp.routeLeft.popToRoot()
       const page = WKApp.route.get("/summary/create")
@@ -135,4 +135,3 @@ async function registerMenus() {
 }
 
 export default App;
-

@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import rehypeSanitize from "rehype-sanitize";
 import { Spin } from "@douyinfe/semi-ui";
+import { useI18n } from "@octo/base";
 
 interface SummaryContentProps {
     content: string;
@@ -22,6 +23,7 @@ const components: any = {
 };
 
 const SummaryContent: React.FC<SummaryContentProps> = ({ content, loading }) => {
+    const { t } = useI18n();
     const normalized = useMemo(() => content.trim(), [content]);
 
     if (loading) {
@@ -33,7 +35,7 @@ const SummaryContent: React.FC<SummaryContentProps> = ({ content, loading }) => 
     }
 
     if (!normalized) {
-        return <div className="summary-content-empty">暂无总结内容</div>;
+        return <div className="summary-content-empty">{t("summary.content.empty")}</div>;
     }
 
     return (

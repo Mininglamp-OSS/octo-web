@@ -9,6 +9,7 @@ import {
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconMore, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser } from "@douyinfe/semi-icons";
 import { Channel, ChannelTypeGroup, ChannelTypePerson, MessageText, WKSDK } from "wukongimjssdk";
+import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import { splitSummaryText } from "../utils/splitMessage";
 import SummaryConfirmPage from "./SummaryConfirmPage";
@@ -63,6 +64,9 @@ interface SummaryDetailPageState {
 const INTER_MESSAGE_DELAY_MS = 200;
 
 export default class SummaryDetailPage extends Component<SummaryDetailPageProps, SummaryDetailPageState> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     state: SummaryDetailPageState = {
         detail: null,
         loading: false,
@@ -152,7 +156,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 this.loadMembers();
             }
         } catch (err: any) {
-            this.setState({ error: err.message || "加载失败", loading: false });
+            this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
         }
     }
 
@@ -216,11 +220,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (this.taskId == null) return;
         try {
             await api.submitPersonalResult(this.taskId);
-            Toast.success("已提交");
+            Toast.success(t("summary.detail.submitSuccess"));
             this.loadPersonalResult();
             this.loadMembers();
         } catch (err: any) {
-            Toast.error(err.message || "提交失败");
+            Toast.error(err.message || t("summary.detail.submitFailed"));
         }
     };
 
@@ -228,10 +232,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (this.taskId == null) return;
         try {
             await api.respondToTask(this.taskId, action);
-            Toast.success(action === "accept" ? "已同意" : "已拒绝");
+            Toast.success(action === "accept" ? t("summary.action.accepted") : t("summary.action.rejected"));
             this.loadDetail();
         } catch (err: any) {
-            Toast.error(err.message || "操作失败");
+            Toast.error(err.message || t("summary.common.operationFailed"));
         }
     };
 
@@ -363,11 +367,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (this.taskId == null) return;
         try {
             await api.regenerateSummary(this.taskId);
-            Toast.success("已开始重新生成");
+            Toast.success(t("summary.detail.regenerateStarted"));
             this.loadDetail();
             window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskId: this.taskId } }));
         } catch (err: any) {
-            Toast.error(err.message || "操作失败");
+            Toast.error(err.message || t("summary.common.operationFailed"));
         }
     };
 
@@ -375,10 +379,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (this.taskId == null) return;
         try {
             await api.cancelSummary(this.taskId);
-            Toast.success("任务已取消");
+            Toast.success(t("summary.detail.cancelSuccess"));
             this.loadDetail();
         } catch (err: any) {
-            Toast.error(err.message || "操作失败");
+            Toast.error(err.message || t("summary.common.operationFailed"));
         }
     };
 
@@ -406,7 +410,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         try {
             if (scheduleItem) {
                 await api.updateSchedule(scheduleItem.schedule_id, { cron_expr: cronExpr });
-                Toast.success("定时更新已保存");
+                Toast.success(t("summary.detail.scheduleSaved"));
                 this.loadSchedule(scheduleItem.schedule_id);
             } else {
                 const newSchedule = await api.createSchedule({
@@ -416,12 +420,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     time_range_type: 2,
                     sources: detail.sources,
                 });
-                Toast.success("定时更新已创建");
+                Toast.success(t("summary.detail.scheduleCreated"));
                 this.setState({ scheduleItem: newSchedule });
             }
             this.setState({ showScheduleConfig: false });
         } catch (err: any) {
-            Toast.error(err.message || "保存失败");
+            Toast.error(err.message || t("summary.common.saveFailed"));
         }
     };
 
@@ -462,14 +466,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
             if (errors.length > 0) {
                 if (errors.length === channels.length) {
-                    Toast.error('转发失败');
+                    Toast.error(t("summary.detail.forwardFailed"));
                 } else {
-                    Toast.error(`部分频道转发失败 (${errors.length}/${channels.length})`);
+                    Toast.error(t("summary.detail.partialForwardFailed", { values: { failed: errors.length, total: channels.length } }));
                 }
             } else {
-                Toast.success('已转发');
+                Toast.success(t("summary.detail.forwarded"));
             }
-        }, '转发到聊天');
+        }, t("summary.detail.forwardToChat"));
     };
 
     handleForwardToMatter = () => {
@@ -478,7 +482,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         const content = detail.result?.content;
         if (!content?.trim()) {
-            Toast.warning('暂无可转发的内容');
+            Toast.warning(t("summary.detail.noForwardContent"));
             return;
         }
 
@@ -495,23 +499,24 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ forwardingToMatter: true, showMatterPicker: false });
         try {
             await matterBridge.addComment(matterId, content);
-            Toast.success(`已转发到「${matterTitle}」`);
+            Toast.success(t("summary.detail.forwardedToMatter", { values: { title: matterTitle } }));
         } catch (err: any) {
-            Toast.error(err.message || '转发失败');
+            Toast.error(err.message || t("summary.detail.forwardFailed"));
         } finally {
             this.setState({ forwardingToMatter: false });
         }
     };
 
     renderProcessing() {
+        const { t } = this.context;
         return (
             <div className="summary-detail-processing">
                 <Spin size="large" />
                 <h3 style={{ marginTop: 16 }}>
-                    正在生成总结...
+                    {t("summary.detail.processingTitle")}
                 </h3>
                 <div style={{ fontSize: 14, color: "var(--semi-color-text-2)", marginTop: 8 }}>
-                    这可能需要一些时间，请耐心等待
+                    {t("summary.detail.processingDesc")}
                 </div>
             </div>
         );
@@ -519,19 +524,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     renderFailed() {
         const { detail } = this.state;
+        const { t } = this.context;
         if (!detail) return null;
         return (
             <div className="summary-detail-failed">
                 <div className="summary-detail-failed-icon">⚠️</div>
-                <h3>总结生成失败</h3>
+                <h3>{t("summary.detail.failedTitle")}</h3>
                 {detail.error_message && (
                     <div className="summary-detail-failed-reason">
                         {detail.error_message}
                     </div>
                 )}
                 <div className="summary-detail-failed-meta">
-                    <div>任务编号：{detail.task_no}</div>
-                    <div>创建时间：{formatDate(detail.created_at)}</div>
+                    <div>{t("summary.detail.taskNo", { values: { taskNo: detail.task_no } })}</div>
+                    <div>{t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}</div>
                 </div>
             </div>
         );
@@ -539,21 +545,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     renderCompleted() {
         const { detail } = this.state;
+        const { t } = this.context;
         if (!detail || !detail.result) return null;
         return (
             <div className="summary-detail-result">
                 <div className="summary-detail-result-header">
-                    <h3>📝 总结内容</h3>
+                    <h3>{t("summary.detail.contentTitle")}</h3>
                     <div className="summary-detail-result-badges">
                         <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
-                            版本 {detail.result.version}
+                            {t("summary.common.version", { values: { version: detail.result.version } })}
                         </Tag>
                         <Tag color="green" size="small">
-                            {detail.result.total_msg_count} 条消息
+                            {t("summary.common.messagesCount", { values: { count: detail.result.total_msg_count } })}
                         </Tag>
                         {detail.result_is_edited && detail.result_edited_at && (
                             <Tag color="orange" size="small">
-                                已编辑
+                                {t("summary.detail.edited")}
                             </Tag>
                         )}
                     </div>
@@ -563,11 +570,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 </div>
                 <div className="summary-detail-result-footer">
                     <span className="summary-detail-result-time">
-                        生成于 {formatDate(detail.result.generated_at)}
+                        {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
                     </span>
                     {detail.result_is_edited && detail.result_edited_at && (
                         <span className="summary-detail-result-time">
-                            最后编辑 {formatDate(detail.result_edited_at)}
+                            {t("summary.detail.lastEditedAt", { values: { time: formatDate(detail.result_edited_at) } })}
                         </span>
                     )}
                 </div>
@@ -577,11 +584,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     renderPersonalSummary() {
         const { personalResult, personalLoading, detail } = this.state;
+        const { t } = this.context;
         if (personalLoading) {
             return (
                 <div className="summary-detail-personal">
                     <div className="summary-detail-section-header">
-                        <span>👤 我的总结</span>
+                        <span>{t("summary.detail.mySummary")}</span>
                     </div>
                     <Spin size="small" />
                 </div>
@@ -591,7 +599,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return (
             <div className="summary-detail-personal">
                 <div className="summary-detail-section-header">
-                    <span>👤 我的总结</span>
+                    <span>{t("summary.detail.mySummary")}</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         {detail && detail.status === TaskStatus.COMPLETED && detail.permissions?.can_edit && !this.state.isEditing && (
                             <Button
@@ -600,12 +608,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 icon={<IconEdit />}
                                 onClick={this.handleStartEdit}
                             >
-                                编辑
+                                {t("summary.common.edit")}
                             </Button>
                         )}
                         {personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
                             <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
-                                提交给所有人
+                                {t("summary.detail.submitToAll")}
                             </Button>
                         )}
                     </div>
@@ -621,6 +629,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     renderTeamSummary() {
         const { detail, members } = this.state;
+        const { t } = this.context;
         if (!detail || !detail.result) return null;
         if (members.length <= 1) return null;
         const submittedCount = members.filter((m) => m.status === "submitted").length;
@@ -628,13 +637,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return (
             <div className="summary-detail-team">
                 <div className="summary-detail-section-header">
-                    <span>👥 团队汇总</span>
+                    <span>{t("summary.detail.teamSummary")}</span>
                     <div className="summary-detail-section-badges">
                         <Tag color="cyan" size="small" prefixIcon={<IconUser />}>
-                            {submittedCount} 人提交
+                            {t("summary.detail.submittedPeople", { values: { count: submittedCount } })}
                         </Tag>
                         <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
-                            版本 {detail.result.version}
+                            {t("summary.common.version", { values: { version: detail.result.version } })}
                         </Tag>
                     </div>
                 </div>
@@ -647,10 +656,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     renderMemberStatus() {
         const { members, membersLoading } = this.state;
+        const { t } = this.context;
         if (membersLoading) {
             return (
                 <div className="summary-detail-members">
-                    <h3>成员状态</h3>
+                    <h3>{t("summary.detail.memberStatus")}</h3>
                     <Spin size="small" />
                 </div>
             );
@@ -659,17 +669,17 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (members.length <= 1) return null;
 
         const statusConfig: Record<string, { icon: React.ReactNode; label: string; type: "success" | "warning" | "danger" | "default" }> = {
-            pending: { icon: <IconClock />, label: "待响应", type: "warning" },
-            accepted: { icon: <IconTick />, label: "已同意", type: "success" },
-            declined: { icon: <IconClose />, label: "已拒绝", type: "danger" },
-            processing: { icon: <IconInfoCircle />, label: "生成中", type: "default" },
-            completed: { icon: <IconTick />, label: "已完成", type: "success" },
-            submitted: { icon: <IconTick />, label: "已提交", type: "success" },
+            pending: { icon: <IconClock />, label: t("summary.memberStatus.pending"), type: "warning" },
+            accepted: { icon: <IconTick />, label: t("summary.memberStatus.accepted"), type: "success" },
+            declined: { icon: <IconClose />, label: t("summary.memberStatus.declined"), type: "danger" },
+            processing: { icon: <IconInfoCircle />, label: t("summary.memberStatus.processing"), type: "default" },
+            completed: { icon: <IconTick />, label: t("summary.memberStatus.completed"), type: "success" },
+            submitted: { icon: <IconTick />, label: t("summary.memberStatus.submitted"), type: "success" },
         };
 
         return (
             <div className="summary-detail-members">
-                <h3>成员状态</h3>
+                <h3>{t("summary.detail.memberStatus")}</h3>
                 <div className="summary-detail-members-list">
                     {members.map((m) => {
                         const st = statusConfig[m.status] || statusConfig["pending"];
@@ -682,8 +692,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 </Tag>
                                 {isMe && m.status === "pending" && (
                                     <span style={{ display: "inline-flex", gap: 4, marginLeft: 8 }}>
-                                        <Button size="small" theme="solid" onClick={() => this.handleRespondToTask("accept")}>同意</Button>
-                                        <Button size="small" onClick={() => this.handleRespondToTask("reject")}>拒绝</Button>
+                                        <Button size="small" theme="solid" onClick={() => this.handleRespondToTask("accept")}>{t("summary.action.accept")}</Button>
+                                        <Button size="small" onClick={() => this.handleRespondToTask("reject")}>{t("summary.action.reject")}</Button>
                                     </span>
                                 )}
                                 {m.submitted_at && (
@@ -707,6 +717,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     renderParticipantReports() {
         const { members, membersLoading, expandedReports } = this.state;
+        const { t } = this.context;
         // 如果只有 1 个人（creator 自己），不显示参与者报告区块
         if (membersLoading || members.length <= 1) return null;
         const submitted = members.filter((m) => m.submitted_at && m.content);
@@ -714,7 +725,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (submitted.length === 0 && pending.length === 0) return null;
         return (
             <div className="summary-detail-participant-reports">
-                <h3>参与者报告</h3>
+                <h3>{t("summary.detail.participantReports")}</h3>
                 {submitted.map((m) => {
                     const expanded = !!expandedReports[m.user_id];
                     const content = m.content!;
@@ -743,7 +754,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             </div>
                             {needsTruncate && (
                                 <div className="summary-detail-participant-report-toggle">
-                                    {expanded ? "收起 ▲" : "展开全部 ▼"}
+                                    {expanded ? t("summary.detail.collapse") : t("summary.detail.expandAll")}
                                 </div>
                             )}
                         </div>
@@ -752,7 +763,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 {pending.map((m) => (
                     <div key={m.user_id} className="summary-detail-participant-report-pending">
                         <IconClock style={{ fontSize: 14 }} />
-                        <span>{m.user_name} · 等待提交...</span>
+                        <span>{t("summary.detail.waitingSubmit", { values: { name: m.user_name } })}</span>
                     </div>
                 ))}
             </div>
@@ -774,21 +785,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     renderHeader() {
         const { detail } = this.state;
+        const { t } = this.context;
 
         // Build "..." menu items
         const menuItems: { node: string; key: string; onClick: () => void; danger?: boolean }[] = [];
         if (detail && canRegenerate(detail.status)) {
-            menuItems.push({ node: "重新生成", key: "regenerate", onClick: this.handleRegenerate });
+            menuItems.push({ node: t("summary.detail.regenerate"), key: "regenerate", onClick: this.handleRegenerate });
         }
         if (detail && canCancel(detail.status)) {
-            menuItems.push({ node: "取消任务", key: "cancel", onClick: this.handleCancel, danger: true });
+            menuItems.push({ node: t("summary.detail.cancelTask"), key: "cancel", onClick: this.handleCancel, danger: true });
         }
 
         return (
             <div className="summary-detail-header">
                 <div className="summary-detail-header-inner">
                     <OverflowTooltip as="h2" className="summary-detail-title">
-                        {detail?.title || "总结详情"}
+                        {detail?.title || t("summary.detail.defaultTitle")}
                     </OverflowTooltip>
                     <div className="summary-detail-header-actions">
                         {detail && detail.status === TaskStatus.COMPLETED && (
@@ -797,7 +809,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 icon={<IconSend />}
                                 onClick={this.handleForwardToChat}
                             >
-                                转发到聊天
+                                {t("summary.detail.forwardToChat")}
                             </Button>
                         )}
                         {detail && detail.status === TaskStatus.COMPLETED && (
@@ -808,7 +820,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 loading={this.state.forwardingToMatter}
                                 disabled={this.state.forwardingToMatter}
                             >
-                                转发到 Matters
+                                {t("summary.detail.forwardToMatter")}
                             </Button>
                         )}
                         {menuItems.length > 0 && (
@@ -840,6 +852,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     render() {
         const { detail, loading, error, showScheduleConfig, scheduleConfig } = this.state;
+        const { t } = this.context;
 
         return (
             <div className="summary-detail-page">
@@ -856,14 +869,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {error && (
                             <Banner
                                 type="warning"
-                                description="可能由网络波动或服务异常导致"
+                                description={t("summary.detail.errorCause")}
                                 closeIcon={null}
                                 style={{ marginBottom: 16 }}
                                 fullMode={false}
                             >
                                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                     <span>{error}</span>
-                                    <Button size="small" onClick={() => this.loadDetail()}>重试</Button>
+                                    <Button size="small" onClick={() => this.loadDetail()}>{t("summary.common.retry")}</Button>
                                 </div>
                             </Banner>
                         )}
@@ -884,9 +897,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                         borderRadius: 8,
                                     }}
                                 >
-                                    <span style={{ flex: 1, color: "var(--semi-color-text-0)" }}>你被邀请参与此总结任务，是否同意？</span>
-                                    <Button size="small" theme="solid" onClick={() => this.handleRespondToTask("accept")}>同意</Button>
-                                    <Button size="small" onClick={() => this.handleRespondToTask("reject")}>拒绝</Button>
+                                    <span style={{ flex: 1, color: "var(--semi-color-text-0)" }}>{t("summary.detail.inviteQuestion")}</span>
+                                    <Button size="small" theme="solid" onClick={() => this.handleRespondToTask("accept")}>{t("summary.action.accept")}</Button>
+                                    <Button size="small" onClick={() => this.handleRespondToTask("reject")}>{t("summary.action.reject")}</Button>
                                 </div>
                             ) : null;
                         })()}
@@ -897,7 +910,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     <>
                                         {this.state.isEditing && this.state.personalResult && detail.result_id ? (
                                             <div className="summary-detail-personal">
-                                                <h3>我的总结</h3>
+                                                <h3>{t("summary.detail.mySummaryPlain")}</h3>
                                                 <SummaryEditor
                                                     taskId={detail.task_id}
                                                     baseResultId={detail.result_id}
@@ -924,9 +937,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {detail.status === TaskStatus.CANCELLED && (
                                     <div className="summary-detail-cancelled">
                                         <div style={{ fontSize: 48, marginBottom: 12 }}>🚫</div>
-                                        <p style={{ fontSize: 16, fontWeight: 500 }}>任务已取消</p>
+                                        <p style={{ fontSize: 16, fontWeight: 500 }}>{t("summary.detail.cancelledTitle")}</p>
                                         <p style={{ fontSize: 14, color: "var(--semi-color-text-2)", marginTop: 8 }}>
-                                            此总结任务已被取消，不会继续执行
+                                            {t("summary.detail.cancelledDesc")}
                                         </p>
                                     </div>
                                 )}
@@ -935,12 +948,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {detail.status === TaskStatus.WAITING_CONFIRM && this.state.members.length > 1 && (
                                     <div className="summary-detail-waiting">
                                         <div style={{ fontSize: 48, marginBottom: 12 }}>⏳</div>
-                                        <p style={{ fontSize: 16, fontWeight: 500 }}>等待参与者确认中</p>
+                                        <p style={{ fontSize: 16, fontWeight: 500 }}>{t("summary.detail.waitingConfirmTitle")}</p>
                                         <p style={{ fontSize: 14, color: "var(--semi-color-text-2)", marginTop: 8, marginBottom: 16 }}>
-                                            需要所有参与者确认后才能开始生成
+                                            {t("summary.detail.waitingConfirmDesc")}
                                         </p>
                                         <Button onClick={() => WKApp.routeLeft.push(<SummaryConfirmPage taskId={this.taskId} />)}>
-                                            查看确认状态
+                                            {t("summary.detail.viewConfirmStatus")}
                                         </Button>
                                     </div>
                                 )}

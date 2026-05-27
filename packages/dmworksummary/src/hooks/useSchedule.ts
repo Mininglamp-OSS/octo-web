@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { t } from "@octo/base";
 import * as api from "../api/summaryApi";
 import type {
     ScheduleItem,
@@ -30,7 +31,7 @@ export function useSchedule(): UseScheduleReturn {
             const data = await api.listSchedules();
             setSchedules(data);
         } catch (err: any) {
-            setError(err.message || "加载失败");
+            setError(err.message || t("summary.common.loadingFailed"));
         } finally {
             setLoading(false);
         }

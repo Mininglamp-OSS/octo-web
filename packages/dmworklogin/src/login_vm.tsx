@@ -16,6 +16,7 @@ import {
     pollAuthStatus,
     savePendingOidcLogin,
 } from "./oidc";
+import { loginT as t } from "./i18n";
 
 
 export class LoginStatus {
@@ -533,12 +534,12 @@ export class LoginVM extends ProviderListener {
         if (urlState.error && pending) {
             const name = getProviderById(pending.providerId)?.name || 'SSO'
             clearPendingOidcLogin()
-            return { handled: true, success: false, error: `${name} 登录失败，请重试` }
+            return { handled: true, success: false, error: t('oidc.failedWithProvider', { values: { provider: name } }) }
         }
         if (!pending) return { handled: false }
         if (isPendingExpired(pending)) {
             clearPendingOidcLogin()
-            return { handled: true, success: false, error: '登录超时，请重新发起' }
+            return { handled: true, success: false, error: t('oidc.timeout') }
         }
         const providerName = getProviderById(pending.providerId)?.name || 'SSO'
         this.oidcResuming = true
@@ -564,20 +565,20 @@ export class LoginVM extends ProviderListener {
             }
             clearPendingOidcLogin()
             this._resetOidcResume()
-            return { handled: true, success: false, error: result.msg || `${providerName} 登录失败` }
+            return { handled: true, success: false, error: result.msg || t('oidc.failedWithProvider', { values: { provider: providerName } }) }
         } catch (e) {
             clearPendingOidcLogin()
             this._resetOidcResume()
             if (e instanceof OidcPollTimeoutError) {
-                return { handled: true, success: false, error: '登录超时，请重新发起' }
+                return { handled: true, success: false, error: t('oidc.timeout') }
             }
             if (e instanceof OidcPollCancelledError) {
-                return { handled: true, success: false, error: '已取消登录' }
+                return { handled: true, success: false, error: t('oidc.canceled') }
             }
             if (e instanceof OidcPollNetworkError) {
-                return { handled: true, success: false, error: '网络异常，请检查网络后重试' }
+                return { handled: true, success: false, error: t('oidc.network') }
             }
-            return { handled: true, success: false, error: '登录失败，请重试' }
+            return { handled: true, success: false, error: t('oidc.failed') }
         }
     }
 

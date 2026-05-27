@@ -1,0 +1,274 @@
+{
+  "common": {
+    "add": "添加",
+    "cancel": "取消",
+    "confirm": "确定",
+    "createFailed": "创建失败",
+    "deleteFailed": "删除失败",
+    "edit": "编辑",
+    "loadingFailed": "加载失败",
+    "operationFailed": "操作失败",
+    "retry": "重试",
+    "save": "保存",
+    "saveFailed": "保存失败",
+    "unknown": "未知",
+    "updateFailed": "更新失败",
+    "charLimitReached": "已达到 {{count}} 字符上限",
+    "selectedCount": "已选 {{count}} / {{max}}",
+    "selectedPeopleCount": "已选 {{count}} 人",
+    "peopleCount": "{{count}} 人",
+    "messagesCount": "{{count}} 条消息",
+    "version": "版本 {{version}}",
+    "current": "当前",
+    "userFallback": "用户 {{id}}"
+  },
+  "action": {
+    "accept": "同意",
+    "accepted": "已同意",
+    "reject": "拒绝",
+    "rejected": "已拒绝"
+  },
+  "status": {
+    "pending": "等待中",
+    "waitingConfirm": "等待参与者",
+    "processing": "生成中",
+    "completed": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消"
+  },
+  "mode": {
+    "byGroup": "按群总结",
+    "byPerson": "按人总结"
+  },
+  "source": {
+    "groupChat": "群聊",
+    "thread": "子区",
+    "directMessage": "私聊",
+    "label": "来源：",
+    "selectedHeader": "📋 已选择的信息来源",
+    "idPlaceholder": "来源 ID",
+    "namePlaceholder": "名称（可选）",
+    "addSource": "添加来源"
+  },
+  "participant": {
+    "pending": "等待确认",
+    "confirmed": "已确认",
+    "declined": "已拒绝",
+    "statusTitle": "参与者状态",
+    "statusTitleWithColon": "参与者状态：",
+    "addParticipant": "添加参与者",
+    "userIdPlaceholder": "用户 ID",
+    "userNamePlaceholder": "用户名（可选）"
+  },
+  "memberStatus": {
+    "pending": "待响应",
+    "accepted": "已同意",
+    "declined": "已拒绝",
+    "processing": "生成中",
+    "completed": "已完成",
+    "submitted": "已提交"
+  },
+  "timeRange": {
+    "last24h": "最近 24 小时",
+    "last7d": "最近 7 天",
+    "last30d": "最近 30 天",
+    "sinceLastSummary": "自上次总结以来",
+    "startPlaceholder": "开始日期",
+    "endPlaceholder": "结束日期",
+    "validationEndAfterStart": "结束时间必须晚于开始时间",
+    "validationMaxDays": "时间范围不能超过 {{maxDays}} 天"
+  },
+  "cron": {
+    "everyDayAt": "每天 09:00",
+    "workdaysAt": "工作日 09:00",
+    "weeklyMondayAt": "每周一 09:00",
+    "monthlyFirstAt": "每月 1 日 09:00",
+    "dailyAt": "每天 {{time}}",
+    "weeklyAt": "每周{{day}} {{time}}",
+    "monthlyAt": "每月{{day}}日 {{time}}",
+    "everyDay": "每天",
+    "everyWeek": "每周",
+    "everyMonth": "每月",
+    "workdays": "工作日",
+    "weekdayFallback": "星期{{day}}",
+    "dayOfMonth": "{{day}}日",
+    "weekdays": {
+      "sun": "日",
+      "mon": "一",
+      "tue": "二",
+      "wed": "三",
+      "thu": "四",
+      "fri": "五",
+      "sat": "六"
+    },
+    "weekdayNames": {
+      "sun": "周日",
+      "mon": "周一",
+      "tue": "周二",
+      "wed": "周三",
+      "thu": "周四",
+      "fri": "周五",
+      "sat": "周六"
+    }
+  },
+  "list": {
+    "title": "智能总结",
+    "allStatus": "全部状态",
+    "createTooltip": "新建总结",
+    "searchPlaceholder": "搜索总结...",
+    "deleteSuccess": "删除成功",
+    "networkError": "网络连接异常，请检查网络后重试",
+    "emptyTitle": "暂无总结记录",
+    "emptyDesc": "快速生成群聊或个人工作总结，让 AI 帮你梳理重要信息",
+    "createFirst": "创建第一份总结"
+  },
+  "create": {
+    "title": "智能总结",
+    "desc": "邀请同事一起总结信息，并根据聊天等内容自动总结",
+    "topicPlaceholder": "输入你想总结的主题，例如：总结本周项目进展、整理客户反馈要点...",
+    "scheduleFailed": "总结已创建，但定时更新配置失败",
+    "success": "总结任务已创建",
+    "selectChat": "选择聊天",
+    "selectedChats": "已选 {{count}} 个聊天",
+    "start": "开始总结",
+    "templatesTitle": "试试这些总结模板",
+    "scheduleDaily": "按天 {{time}}",
+    "scheduleWeekly": "每{{day}} {{time}}",
+    "scheduleMonthly": "每月{{day}}日 {{time}}"
+  },
+  "chatSelector": {
+    "title": "选择聊天",
+    "searchPlaceholder": "搜索群聊或联系人",
+    "all": "全部",
+    "noData": "暂无数据"
+  },
+  "memberSelector": {
+    "title": "添加成员",
+    "searchPlaceholder": "搜索成员",
+    "empty": "暂无成员"
+  },
+  "schedule": {
+    "pageTitle": "定时总结配置",
+    "new": "新建",
+    "empty": "暂无定时配置",
+    "createFirst": "创建第一个定时任务",
+    "fallbackTitle": "定时任务 #{{id}}",
+    "deleteTitle": "确认删除",
+    "deleteContent": "确定要删除此定时配置吗？",
+    "createModalTitle": "新建定时配置",
+    "editModalTitle": "编辑定时配置",
+    "createSuccess": "定时配置已创建",
+    "updateSuccess": "定时配置已更新",
+    "deleted": "已删除",
+    "enabled": "已启用",
+    "paused": "已暂停",
+    "form": {
+      "title": "标题",
+      "titlePlaceholder": "定时总结标题",
+      "mode": "总结模式",
+      "frequency": "执行频率",
+      "customCron": "自定义 cron 表达式",
+      "customCronPlaceholder": "cron 表达式，如 0 9 * * 1-5",
+      "usePreset": "使用预设",
+      "timeRange": "时间范围",
+      "source": "信息来源"
+    },
+    "config": {
+      "title": "定时更新",
+      "desc": "后续将自动更新总结内容并通知你",
+      "frequency": "频率",
+      "time": "时间",
+      "daily": "按天更新",
+      "weekly": "按周更新",
+      "monthly": "按月更新"
+    }
+  },
+  "confirmPage": {
+    "title": "参与者确认",
+    "sourceRequired": "请至少选择一个信息来源",
+    "confirmed": "已确认参与",
+    "confirmFailed": "确认失败",
+    "declined": "已拒绝参与",
+    "inviteTitle": "邀请你参与团队总结",
+    "timeRange": "时间范围：",
+    "sourcePrompt": "请选择你要包含的信息来源：",
+    "submit": "确认并提交"
+  },
+  "detail": {
+    "defaultTitle": "总结详情",
+    "submitSuccess": "已提交",
+    "submitFailed": "提交失败",
+    "regenerateStarted": "已开始重新生成",
+    "cancelSuccess": "任务已取消",
+    "scheduleSaved": "定时更新已保存",
+    "scheduleCreated": "定时更新已创建",
+    "forwardFailed": "转发失败",
+    "partialForwardFailed": "部分频道转发失败 ({{failed}}/{{total}})",
+    "forwarded": "已转发",
+    "forwardToChat": "转发到聊天",
+    "forwardToMatter": "转发到 Matters",
+    "noForwardContent": "暂无可转发的内容",
+    "forwardedToMatter": "已转发到「{{title}}」",
+    "processingTitle": "正在生成总结...",
+    "processingDesc": "这可能需要一些时间，请耐心等待",
+    "failedTitle": "总结生成失败",
+    "taskNo": "任务编号：{{taskNo}}",
+    "createdAt": "创建时间：{{time}}",
+    "contentTitle": "📝 总结内容",
+    "edited": "已编辑",
+    "generatedAt": "生成于 {{time}}",
+    "lastEditedAt": "最后编辑 {{time}}",
+    "mySummary": "👤 我的总结",
+    "mySummaryPlain": "我的总结",
+    "submitToAll": "提交给所有人",
+    "teamSummary": "👥 团队汇总",
+    "submittedPeople": "{{count}} 人提交",
+    "memberStatus": "成员状态",
+    "participantReports": "参与者报告",
+    "collapse": "收起 ▲",
+    "expandAll": "展开全部 ▼",
+    "waitingSubmit": "{{name}} · 等待提交...",
+    "regenerate": "重新生成",
+    "cancelTask": "取消任务",
+    "errorCause": "可能由网络波动或服务异常导致",
+    "inviteQuestion": "你被邀请参与此总结任务，是否同意？",
+    "cancelledTitle": "任务已取消",
+    "cancelledDesc": "此总结任务已被取消，不会继续执行",
+    "waitingConfirmTitle": "等待参与者确认中",
+    "waitingConfirmDesc": "需要所有参与者确认后才能开始生成",
+    "viewConfirmStatus": "查看确认状态"
+  },
+  "summaryCard": {
+    "createdBy": "{{name}} 发起",
+    "deleteTitle": "确认删除",
+    "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。"
+  },
+  "editor": {
+    "saveSuccess": "保存成功",
+    "contentUpdated": "内容已更新，请刷新",
+    "saveFailed": "保存失败，请重试",
+    "placeholder": "编辑总结内容..."
+  },
+  "versionHistory": {
+    "empty": "暂无历史版本",
+    "viewVersion": "查看此版本",
+    "meta": "{{time}} · {{count}} 条消息 · {{model}}"
+  },
+  "content": {
+    "empty": "暂无总结内容"
+  },
+  "citation": {
+    "jumpToOriginal": "跳转到原文 →",
+    "source": "来源：{{source}}"
+  },
+  "matterPicker": {
+    "loadFailed": "加载事项失败",
+    "title": "选择目标事项",
+    "searchPlaceholder": "搜索事项...",
+    "empty": "暂无可用事项",
+    "loadMore": "加载更多..."
+  },
+  "splitMessage": {
+    "signature": "---\n_by Octo 智能总结_"
+  }
+}

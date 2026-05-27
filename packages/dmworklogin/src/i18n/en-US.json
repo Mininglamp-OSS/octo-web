@@ -1,0 +1,234 @@
+{
+  "bind": {
+    "blocked": {
+      "claimsIncomplete": "Your SSO profile is incomplete and cannot create an account automatically",
+      "consumed": "This link has already been used. Start SSO login again.",
+      "manualConflict": "Your SSO identity matches multiple Octo accounts. Contact an administrator."
+    },
+    "createAccount": "Create an Octo account with SSO",
+    "creatingAccount": "Creating Octo account",
+    "footerContact": "Need help? Contact",
+    "footerContactAdmin": "Need help? Contact an administrator",
+    "identity": {
+      "email": "Email",
+      "phone": "Phone",
+      "sso": "SSO identity"
+    },
+    "invalidLink": "Invalid link. Start login again.",
+    "loaderSub": "Please wait. You will enter the app automatically.",
+    "method": {
+      "password": "password",
+      "sms": "SMS"
+    },
+    "methodPassword": "Verify with Octo password",
+    "methodSms": "Verify with SMS code",
+    "noMethod": "Already have an Octo account? Use another method to link it.",
+    "noMethodContact": "No binding method is available. Contact {{contact}}.",
+    "noMethodContactAdmin": "No binding method is available. Contact an administrator.",
+    "otp": {
+      "fallbackPhone": "your phone number",
+      "label": "SMS code",
+      "resend": "Resend",
+      "sent": "Verification code sent",
+      "sentTo": "Code sent to",
+      "resent": "Verification code resent"
+    },
+    "or": "or",
+    "passwordAccount": "Octo account (username / phone / email)",
+    "passwordLabel": "Password",
+    "secondaryHint": "Already have an Octo account? Verify with {{methods}} to link it.",
+    "submit": "Verify and link",
+    "subtitle": "Your SSO identity is not linked to an Octo account yet. Verify it to continue.",
+    "success": "Linked successfully. Redirecting...",
+    "title": "Complete account linking",
+    "validating": "Completing account linking",
+    "validation": {
+      "accountPasswordRequired": "Enter account and password",
+      "otpRequired": "Enter the 6-digit code"
+    }
+  },
+  "bindErrors": {
+    "alreadyBound": "This account is already linked. Return to login and start SSO again.",
+    "bindFailed": "Binding failed. Start SSO login again.",
+    "claimsIncomplete": "Your SSO profile is incomplete (missing email or phone) and cannot create an account automatically.",
+    "createAttempted": "Account creation has already been attempted. Start SSO login again.",
+    "createConflict": "Account information conflicts. Contact an administrator or return to login.",
+    "createFailed": "Account creation failed. Start SSO login again.",
+    "createUnauthorized": "This SSO identity is not allowed to create an account.",
+    "default": "Operation failed. Please try again.",
+    "invalid": "The link is invalid. Start login again.",
+    "network": "Network error. Check your connection and try again.",
+    "expired": "The link has expired. Start login again.",
+    "needVerify": "Complete identity verification first. Start SSO login again.",
+    "passwordInvalid": "Incorrect username or password",
+    "retryLater": "Too many attempts. Please try again later.",
+    "sendOtpFailed": "Unable to send code. Try another verification method.",
+    "sendTooOften": "Too many requests. Please try again later.",
+    "serviceUnavailable": "Binding service is unavailable. Please try again later.",
+    "server": "Service error. Please try again later.",
+    "tooManyRestart": "Too many attempts. Start SSO login again.",
+    "verified": "Verified. Continue to complete binding.",
+    "verifyCodeInvalid": "The code is incorrect or expired"
+  },
+  "common": {
+    "back": "Back",
+    "backLogin": "Back to login",
+    "cancel": "Cancel",
+    "or": "or"
+  },
+  "download": {
+    "android": "Download Android client",
+    "ios": "Download iOS client",
+    "mobile": "Mobile apps are also available"
+  },
+  "form": {
+    "code": "Code",
+    "confirmNewPassword": "Confirm new password",
+    "confirmPassword": "Confirm password",
+    "email": "Email",
+    "emailCode": "Email code",
+    "newPassword": "New password",
+    "nickname": "Nickname",
+    "password": "Password",
+    "registeredEmail": "Registered email"
+  },
+  "login": {
+    "accountPassword": "Use account password",
+    "breadcrumb": "Log in to {{appName}} · Web",
+    "button": "Log in",
+    "defaultSub": "Log in to your account to continue",
+    "forgotPassword": "Forgot password",
+    "invite": "You were invited to join",
+    "memberCount": "{{count}} members",
+    "memberCountWithMax": "{{count}}/{{max}} people",
+    "noAccountRegister": "No account? Register",
+    "passwordCta": "Trouble logging in or new here?",
+    "passwordCtaLink": "Log in / Register",
+    "passwordDivider": "or use password login",
+    "passwordToggle": "Use password login",
+    "scanLogin": "QR login",
+    "ssoAutoCreate": "First-time users will get an account automatically",
+    "ssoButton": "Octo login",
+    "ssoMetaBrandTitle": "Authenticate with {{provider}}. After login, your session works across connected products.",
+    "ssoMetaPrefix": "Authentication by",
+    "ssoMetaSuffix": "",
+    "ssoMetaTrust": "Enterprise security",
+    "ssoStartFailed": "Unable to start {{provider}} login",
+    "ssoSub": "Securely log in to your {{appName}} account with {{provider}}",
+    "welcome": "Welcome back"
+  },
+  "oidc": {
+    "canceled": "Login canceled",
+    "failed": "Login failed. Please try again.",
+    "failedWithProvider": "{{provider}} login failed. Please try again.",
+    "network": "Network error. Check your connection and try again.",
+    "resuming": "Completing {{provider}} login...",
+    "timeout": "Login timed out. Start again."
+  },
+  "password": {
+    "feedback": {
+      "addWords": "Add another word or two. Uncommon words are better.",
+      "allUpper": "All-uppercase is almost as easy to guess as all-lowercase.",
+      "avoidDates": "Avoid dates and years associated with you.",
+      "avoidRecentYears": "Avoid recent years.",
+      "avoidRepeat": "Avoid repeated words and characters.",
+      "avoidSequences": "Avoid sequences.",
+      "avoidYears": "Avoid years associated with you.",
+      "capitalization": "Capitalization does not help very much.",
+      "common10": "This is a top-10 common password.",
+      "common100": "This is a top-100 common password.",
+      "commonPassword": "This is a very common password.",
+      "dates": "Dates are often easy to guess.",
+      "keyboard": "Straight rows of keys are easy to guess.",
+      "name": "Names and surnames by themselves are easy to guess.",
+      "names": "Common names and surnames are easy to guess.",
+      "noNeedSymbols": "Symbols, digits, or uppercase letters are not always needed.",
+      "recentYears": "Recent years are easy to guess.",
+      "repeats": "Repeats like \"aaa\" are easy to guess.",
+      "repeatPattern": "Repeated patterns are only slightly harder to guess.",
+      "reversed": "Reversed words are not much harder to guess.",
+      "sequence": "Sequences like abc or 6543 are easy to guess.",
+      "shortKeyboard": "Short keyboard patterns are easy to guess.",
+      "similar": "This is similar to a commonly used password.",
+      "substitution": "Predictable substitutions like @ for a do not help much.",
+      "useWords": "Use a few words and avoid common phrases.",
+      "word": "A single word is easy to guess."
+    },
+    "label": "Password strength:",
+    "lengthMin": "Password must be at least {{count}} characters",
+    "levels": {
+      "fair": "Fair",
+      "strong": "Strong",
+      "veryStrong": "Very strong",
+      "veryWeak": "Very weak",
+      "weak": "Weak"
+    },
+    "required": "Password is required",
+    "tooWeak": "Password is too weak. Choose a stronger password."
+  },
+  "qr": {
+    "accountPassword": "Use account password",
+    "appStepDesc": "Open {{appName}} on your phone",
+    "appStepTitle": "Open app",
+    "confirmStepDesc": "Confirm on your phone",
+    "confirmStepTitle": "Confirm login",
+    "expired": "QR code expired. Click to refresh.",
+    "scanStepDesc": "Chat → + → Scan",
+    "scanStepTitle": "Scan QR code",
+    "subtitle": "A safer, faster login method",
+    "tip": "Open {{appName}} and scan the QR code",
+    "title": "QR login"
+  },
+  "register": {
+    "button": "Register",
+    "hasAccount": "Already have an account? Log in",
+    "sub": "Join {{appName}} and start collaborating efficiently",
+    "title": "Create account"
+  },
+  "reset": {
+    "accountCenter": "{{provider}} account center",
+    "button": "Reset password",
+    "oidcHintPrefix": "For enterprise SSO accounts, go to",
+    "oidcHintSuffix": "to change your password.",
+    "sub": "Enter your registered email and we will send a code",
+    "title": "Reset password"
+  },
+  "sendCode": "Send code",
+  "serverErrors": {
+    "accountDisabled": "账号已被禁用",
+    "emailRegistered": "该邮箱已注册",
+    "sendTooOften": "发送过于频繁",
+    "usernameExists": "该用户名已存在",
+    "usernameOrPassword": "用户名或密码错误",
+    "verificationCodeExpired": "验证码已过期",
+    "verificationCodeWrong": "验证码错误"
+  },
+  "serverErrorDisplays": {
+    "accountDisabled": "Account disabled",
+    "emailRegistered": "This email is already registered",
+    "sendTooOften": "Too many requests. Please try again later.",
+    "usernameExists": "This username already exists",
+    "usernameOrPassword": "Incorrect username or password",
+    "verificationCodeExpired": "Verification code expired",
+    "verificationCodeWrong": "Incorrect verification code"
+  },
+  "validation": {
+    "codeRequired": "Code is required",
+    "emailCodeRequired": "Enter the email code",
+    "emailInvalid": "Enter a valid email address",
+    "emailInvalidBeforeSend": "Enter a valid email address first",
+    "genericError": "Operation failed. Please try again later.",
+    "nicknameRequired": "Nickname is required",
+    "passwordMismatch": "Passwords do not match",
+    "passwordRequired": "Password is required",
+    "resetSuccess": "Password reset. Please log in.",
+    "usernameRequired": "Email or username is required"
+  },
+  "welcome": {
+    "chat1": "Hi! I can help organize today's meeting notes 📝",
+    "chat2": "Great, I sent you the meeting recording",
+    "chat3": "Got it. Generating a summary now ⚡",
+    "headline": "Instant messaging\nfor the AI Agent era",
+    "subline": "Connect people and AI for more efficient collaboration.\nAvailable on Web, Mac, Windows, and Linux."
+  }
+}

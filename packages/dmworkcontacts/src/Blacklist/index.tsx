@@ -1,10 +1,12 @@
-import { WKApp, WKViewQueueHeader, Provider } from "@octo/base";
+import { WKApp, WKViewQueueHeader, Provider, I18nContext, t } from "@octo/base";
 import React from "react";
 import { Component, ReactNode } from "react";
 import "./index.css"
 import BlacklistVM from "./vm";
 
 export default class Blacklist extends Component {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
 
     render(): ReactNode {
 
@@ -12,7 +14,7 @@ export default class Blacklist extends Component {
             return new BlacklistVM()
         }} render={(vm: BlacklistVM) => {
             return <div className="wk-blacklist">
-                <WKViewQueueHeader title="黑名单" onBack={() => {
+                <WKViewQueueHeader title={t("contacts.header.blacklist")} onBack={() => {
                     WKApp.routeLeft.pop()
                 }}></WKViewQueueHeader>
                 <div className="wk-blacklist-content">

@@ -1,0 +1,234 @@
+{
+  "bind": {
+    "blocked": {
+      "claimsIncomplete": "SSO 身份信息不完整，无法自助创建账号",
+      "consumed": "当前链接已使用过，请重新发起 SSO 登录",
+      "manualConflict": "您的 SSO 身份匹配到多个 Octo 账号，需要管理员协助处理"
+    },
+    "createAccount": "使用 SSO 身份创建 Octo 账号",
+    "creatingAccount": "正在创建 Octo 账号",
+    "footerContact": "遇到问题？联系",
+    "footerContactAdmin": "遇到问题？请联系管理员",
+    "identity": {
+      "email": "邮箱",
+      "phone": "手机",
+      "sso": "SSO 身份"
+    },
+    "invalidLink": "链接无效，请重新发起登录",
+    "loaderSub": "请稍候，完成后将自动进入主界面…",
+    "method": {
+      "password": "密码",
+      "sms": "短信"
+    },
+    "methodPassword": "使用 Octo 密码验证",
+    "methodSms": "使用短信验证码验证",
+    "noMethod": "已有 Octo 账号，请使用其他方式关联",
+    "noMethodContact": "无可用的绑定方式，请联系 {{contact}}",
+    "noMethodContactAdmin": "无可用的绑定方式，请联系管理员",
+    "otp": {
+      "fallbackPhone": "您的手机号",
+      "label": "短信验证码",
+      "resend": "重新发送",
+      "sent": "验证码已发送",
+      "sentTo": "验证码已发送至",
+      "resent": "验证码已重新发送"
+    },
+    "or": "或",
+    "passwordAccount": "Octo 账号（用户名/手机号/邮箱）",
+    "passwordLabel": "密码",
+    "secondaryHint": "已有 Octo 账号，使用{{methods}}验证关联",
+    "submit": "验证并绑定",
+    "subtitle": "您的 SSO 身份尚未关联到 Octo 账号，验证后即可继续使用。",
+    "success": "绑定成功，正在跳转…",
+    "title": "完成账号绑定",
+    "validating": "正在完成绑定",
+    "validation": {
+      "accountPasswordRequired": "请输入账号和密码",
+      "otpRequired": "请输入 6 位验证码"
+    }
+  },
+  "bindErrors": {
+    "alreadyBound": "该账号已绑定，请返回登录页重新使用 SSO 登录",
+    "bindFailed": "绑定失败，请重新发起 SSO 登录",
+    "claimsIncomplete": "SSO 身份信息不完整（缺邮箱或手机），无法自助创建账号",
+    "createAttempted": "已尝试创建账号，请重新发起 SSO 登录",
+    "createConflict": "账号信息冲突，请联系管理员或返回登录页重试",
+    "createFailed": "创建失败，请重新发起 SSO 登录",
+    "createUnauthorized": "当前 SSO 身份无创建权限",
+    "default": "操作失败，请重试",
+    "invalid": "链接已失效，请重新发起登录",
+    "network": "网络异常，请检查后重试",
+    "expired": "链接已过期，请重新发起登录",
+    "needVerify": "请先完成身份验证，请重新发起 SSO 登录",
+    "passwordInvalid": "用户名或密码错误",
+    "retryLater": "尝试次数过多，请稍后再试",
+    "sendOtpFailed": "无法发送验证码，请尝试其他验证方式",
+    "sendTooOften": "发送过于频繁，请稍后再试",
+    "serviceUnavailable": "绑定服务暂不可用，请稍后重试",
+    "server": "服务异常，请稍后重试",
+    "tooManyRestart": "尝试次数过多，请重新发起 SSO 登录",
+    "verified": "验证已通过，请继续完成绑定",
+    "verifyCodeInvalid": "验证码错误或已过期"
+  },
+  "common": {
+    "back": "返回",
+    "backLogin": "返回登录",
+    "cancel": "取消",
+    "or": "或"
+  },
+  "download": {
+    "android": "下载 Android 客户端",
+    "ios": "下载 iOS 客户端",
+    "mobile": "也可下载移动版"
+  },
+  "form": {
+    "code": "验证码",
+    "confirmNewPassword": "确认新密码",
+    "confirmPassword": "确认密码",
+    "email": "邮箱",
+    "emailCode": "邮箱验证码",
+    "newPassword": "新密码",
+    "nickname": "昵称",
+    "password": "密码",
+    "registeredEmail": "注册邮箱"
+  },
+  "login": {
+    "accountPassword": "使用账号密码登录",
+    "breadcrumb": "登录到 {{appName}} · Web",
+    "button": "登录",
+    "defaultSub": "登录你的账号以继续",
+    "forgotPassword": "忘记密码",
+    "invite": "你被邀请加入",
+    "memberCount": "{{count}} 位成员",
+    "memberCountWithMax": "{{count}}/{{max}} 人",
+    "noAccountRegister": "没有账号？注册",
+    "passwordCta": "登录不上或还是新用户？请",
+    "passwordCtaLink": "登录 / 注册",
+    "passwordDivider": "或使用密码登录",
+    "passwordToggle": "使用密码登录",
+    "scanLogin": "扫码登录",
+    "ssoAutoCreate": "新用户首次登录将自动创建账号",
+    "ssoButton": "Octo 登录",
+    "ssoMetaBrandTitle": "通过 {{provider}} 进行统一身份认证，登录后可在所有接入的产品中通用",
+    "ssoMetaPrefix": "身份认证由",
+    "ssoMetaSuffix": "提供",
+    "ssoMetaTrust": "企业级安全",
+    "ssoStartFailed": "无法启动 {{provider}} 登录",
+    "ssoSub": "使用 {{provider}} 安全登录你的 {{appName}} 账号",
+    "welcome": "欢迎回来"
+  },
+  "oidc": {
+    "canceled": "已取消登录",
+    "failed": "登录失败，请重试",
+    "failedWithProvider": "{{provider}} 登录失败，请重试",
+    "network": "网络异常，请检查网络后重试",
+    "resuming": "正在完成 {{provider}} 登录…",
+    "timeout": "登录超时，请重新发起"
+  },
+  "password": {
+    "feedback": {
+      "addWords": "添加一两个不常见的单词",
+      "allUpper": "全大写和全小写一样容易被猜到",
+      "avoidDates": "避免使用与你相关的日期和年份",
+      "avoidRecentYears": "避免使用近期年份",
+      "avoidRepeat": "避免重复的单词和字符",
+      "avoidSequences": "避免使用序列",
+      "avoidYears": "避免使用与你相关的年份",
+      "capitalization": "大写字母帮助不大",
+      "common10": "这是最常见的10个密码之一",
+      "common100": "这是最常见的100个密码之一",
+      "commonPassword": "这是一个非常常见的密码",
+      "dates": "日期通常很容易被猜到",
+      "keyboard": "键盘上连续的按键很容易被猜到",
+      "name": "姓名本身很容易被猜到",
+      "names": "常见姓名很容易被猜到",
+      "noNeedSymbols": "不一定需要符号、数字或大写字母",
+      "recentYears": "近期年份很容易被猜到",
+      "repeats": "像 \"aaa\" 这样的重复很容易被猜到",
+      "repeatPattern": "重复模式只是略难猜测",
+      "reversed": "倒写的单词并不难猜",
+      "sequence": "像 abc 或 6543 这样的序列很容易被猜到",
+      "shortKeyboard": "简短的键盘模式很容易被猜到",
+      "similar": "这与常用密码相似",
+      "substitution": "可预测的替换（如用 @ 代替 a）帮助不大",
+      "useWords": "使用几个单词，避免常见短语",
+      "word": "单个单词很容易被猜到"
+    },
+    "label": "密码强度:",
+    "lengthMin": "密码长度至少需要 {{count}} 位",
+    "levels": {
+      "fair": "一般",
+      "strong": "强",
+      "veryStrong": "非常强",
+      "veryWeak": "非常弱",
+      "weak": "弱"
+    },
+    "required": "密码不能为空",
+    "tooWeak": "密码强度太弱，请设置更安全的密码"
+  },
+  "qr": {
+    "accountPassword": "使用账号密码登录",
+    "appStepDesc": "手机打开 {{appName}}",
+    "appStepTitle": "打开 App",
+    "confirmStepDesc": "手机端点击确认",
+    "confirmStepTitle": "确认登录",
+    "expired": "二维码已失效，点击刷新",
+    "scanStepDesc": "聊天 → + → 扫一扫",
+    "scanStepTitle": "扫描二维码",
+    "subtitle": "更安全、更快速的登录方式",
+    "tip": "打开 {{appName}} 扫描二维码",
+    "title": "扫码登录"
+  },
+  "register": {
+    "button": "注册",
+    "hasAccount": "已有账号？登录",
+    "sub": "加入 {{appName}}，开始高效协作",
+    "title": "创建账号"
+  },
+  "reset": {
+    "accountCenter": "{{provider}} 账户中心",
+    "button": "重置密码",
+    "oidcHintPrefix": "企业统一认证账号请前往",
+    "oidcHintSuffix": "修改密码。",
+    "sub": "输入注册邮箱，我们将发送验证码",
+    "title": "重置密码"
+  },
+  "sendCode": "发送验证码",
+  "serverErrors": {
+    "accountDisabled": "账号已被禁用",
+    "emailRegistered": "该邮箱已注册",
+    "sendTooOften": "发送过于频繁",
+    "usernameExists": "该用户名已存在",
+    "usernameOrPassword": "用户名或密码错误",
+    "verificationCodeExpired": "验证码已过期",
+    "verificationCodeWrong": "验证码错误"
+  },
+  "serverErrorDisplays": {
+    "accountDisabled": "账号已被禁用",
+    "emailRegistered": "该邮箱已注册",
+    "sendTooOften": "发送过于频繁，请稍后再试",
+    "usernameExists": "该用户名已存在",
+    "usernameOrPassword": "用户名或密码错误",
+    "verificationCodeExpired": "验证码已过期",
+    "verificationCodeWrong": "验证码错误"
+  },
+  "validation": {
+    "codeRequired": "验证码不能为空！",
+    "emailCodeRequired": "请输入邮箱验证码！",
+    "emailInvalid": "请输入正确的邮箱地址！",
+    "emailInvalidBeforeSend": "请先输入正确的邮箱地址！",
+    "genericError": "操作失败，请稍后重试",
+    "nicknameRequired": "昵称不能为空！",
+    "passwordMismatch": "两次密码输入不一致！",
+    "passwordRequired": "密码不能为空！",
+    "resetSuccess": "密码重置成功，请登录",
+    "usernameRequired": "邮箱或用户名不能为空！"
+  },
+  "welcome": {
+    "chat1": "你好！我可以帮你整理今天的会议纪要 📝",
+    "chat2": "好的，会议录音已发给你",
+    "chat3": "收到，正在生成摘要，稍等片刻 ⚡",
+    "headline": "AI Agent 时代的\n即时通讯平台",
+    "subline": "连接人与 AI，让协作更高效。\n支持 Web、Mac、Windows、Linux 全平台。"
+  }
+}

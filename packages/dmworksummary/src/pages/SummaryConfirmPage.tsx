@@ -6,6 +6,7 @@ import {
     Banner,
 } from "@douyinfe/semi-ui";
 import { IconArrowLeft } from "@douyinfe/semi-icons";
+import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import SummaryDetailPage from "./SummaryDetailPage";
 import * as api from "../api/summaryApi";
@@ -29,6 +30,9 @@ interface SummaryConfirmPageState {
 }
 
 export default class SummaryConfirmPage extends Component<SummaryConfirmPageProps, SummaryConfirmPageState> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     state: SummaryConfirmPageState = {
         detail: null,
         participants: [],
@@ -61,7 +65,7 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
                 loading: false,
             });
         } catch (err: any) {
-            this.setState({ error: err.message || "加载失败", loading: false });
+            this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
         }
     }
 
@@ -73,16 +77,16 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
         if (this.taskId == null) return;
         const { selectedSources } = this.state;
         if (selectedSources.length === 0) {
-            Toast.warning("请至少选择一个信息来源");
+            Toast.warning(t("summary.confirmPage.sourceRequired"));
             return;
         }
         this.setState({ submitting: true });
         try {
             await api.confirmParticipation(this.taskId, selectedSources);
-            Toast.success("已确认参与");
+            Toast.success(t("summary.confirmPage.confirmed"));
             this.loadData();
         } catch (err: any) {
-            Toast.error(err.message || "确认失败");
+            Toast.error(err.message || t("summary.confirmPage.confirmFailed"));
         } finally {
             this.setState({ submitting: false });
         }
@@ -93,10 +97,10 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
         this.setState({ submitting: true });
         try {
             await api.declineParticipation(this.taskId);
-            Toast.success("已拒绝参与");
+            Toast.success(t("summary.confirmPage.declined"));
             WKApp.routeLeft.popToRoot();
         } catch (err: any) {
-            Toast.error(err.message || "操作失败");
+            Toast.error(err.message || t("summary.common.operationFailed"));
         } finally {
             this.setState({ submitting: false });
         }
@@ -104,12 +108,13 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
 
     render() {
         const { detail, participants, selectedSources, loading, submitting, error } = this.state;
+        const { t: translate } = this.context;
 
         return (
             <div className="summary-confirm-page">
                 <div className="summary-confirm-header">
                     <Button icon={<IconArrowLeft />} theme="borderless" onClick={this.handleBack} />
-                    <h2>参与者确认</h2>
+                    <h2>{translate("summary.confirmPage.title")}</h2>
                 </div>
 
                 {loading && (
@@ -127,8 +132,8 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
                         fullMode={false}
                     >
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span>加载失败</span>
-                            <Button size="small" onClick={() => this.loadData()}>重试</Button>
+                            <span>{translate("summary.common.loadingFailed")}</span>
+                            <Button size="small" onClick={() => this.loadData()}>{translate("summary.common.retry")}</Button>
                         </div>
                     </Banner>
                 )}
@@ -136,14 +141,14 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
                 {detail && !loading && (
                     <div className="summary-confirm-body">
                         <div className="summary-confirm-invite">
-                            <p>邀请你参与团队总结</p>
+                            <p>{translate("summary.confirmPage.inviteTitle")}</p>
                             <p className="summary-confirm-time">
-                                时间范围：{formatDate(detail.time_range_start)} ~ {formatDate(detail.time_range_end)}
+                                {translate("summary.confirmPage.timeRange")}{formatDate(detail.time_range_start)} ~ {formatDate(detail.time_range_end)}
                             </p>
                         </div>
 
                         <div className="summary-confirm-sources">
-                            <h4>请选择你要包含的信息来源：</h4>
+                            <h4>{translate("summary.confirmPage.sourcePrompt")}</h4>
                             <SourceSelector
                                 value={selectedSources}
                                 onChange={(sources) => this.setState({ selectedSources: sources })}
@@ -151,7 +156,7 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
                         </div>
 
                         <div className="summary-confirm-participants">
-                            <h4>参与者状态：</h4>
+                            <h4>{translate("summary.participant.statusTitleWithColon")}</h4>
                             <ConfirmParticipantList participants={participants} />
                         </div>
 
@@ -163,7 +168,7 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
                                     onClick={this.handleDecline}
                                     loading={submitting}
                                 >
-                                    拒绝
+                                    {translate("summary.action.reject")}
                                 </Button>
                                 <Button
                                     theme="solid"
@@ -172,7 +177,7 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
                                     disabled={selectedSources.length === 0}
                                     style={{ marginLeft: 8 }}
                                 >
-                                    确认并提交
+                                    {translate("summary.confirmPage.submit")}
                                 </Button>
                             </div>
                         )}

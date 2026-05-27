@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '@octo/base';
 import type { MatterStatus } from '../../bridge/types';
 import './index.css';
 
@@ -8,17 +9,18 @@ export interface MatterStatusBadgeProps {
 }
 
 const STATUS_LABELS: Record<MatterStatus, string> = {
-  open: '待处理',
-  done: '已完成',
-  archived: '已归档',
+  open: 'todo.status.pending',
+  done: 'todo.status.done',
+  archived: 'todo.status.archived',
 };
 
 export default function MatterStatusBadge({ status, className }: MatterStatusBadgeProps) {
+  const { t } = useI18n();
   return (
     <span
       className={`wk-matter-status-badge wk-matter-status-badge--${status}${className ? ` ${className}` : ''}`}
     >
-      {STATUS_LABELS[status]}
+      {t(STATUS_LABELS[status])}
     </span>
   );
 }

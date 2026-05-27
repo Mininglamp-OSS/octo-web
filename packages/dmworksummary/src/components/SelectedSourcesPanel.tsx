@@ -1,4 +1,5 @@
 import React from "react";
+import { useI18n } from "@octo/base";
 import type { SourceItem } from "../types/summary";
 import { SourceType } from "../types/summary";
 import type { SourceTypeValue } from "../types/summary";
@@ -8,6 +9,7 @@ interface SelectedSourcesPanelProps {
 }
 
 const SelectedSourcesPanel: React.FC<SelectedSourcesPanelProps> = ({ sources }) => {
+    const { t } = useI18n();
     if (!sources || sources.length === 0) return null;
 
     const getIcon = (sourceType: SourceTypeValue): string => {
@@ -30,7 +32,7 @@ const SelectedSourcesPanel: React.FC<SelectedSourcesPanelProps> = ({ sources }) 
     return (
         <div className="selected-sources-panel">
             <div className="selected-sources-header">
-                <span>📋 已选择的信息来源</span>
+                <span>{t("summary.source.selectedHeader")}</span>
             </div>
             <div className="selected-sources-list">
                 {sources.map((source) => (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { WKApp } from '@octo/base';
+import { WKApp, useI18n } from '@octo/base';
 import { Channel } from 'wukongimjssdk';
 import * as api from '../../api/todoApi';
 import type { MatterDetail, MatterComment } from '../../bridge/types';
@@ -18,21 +18,32 @@ export interface DetailPanelProps {
 }
 
 // ─── 状态标签颜色 ─────────────────────────────────────────
-const STATUS_TAG: Record<string, { label: string; cls: string }> = {
-  open: { label: '进行中', cls: 'wk-matter-side-panel__header-tag--blue' },
-  done: { label: '已完成', cls: 'wk-matter-side-panel__header-tag--green' },
-  archived: { label: '已归档', cls: 'wk-matter-side-panel__header-tag--gray' },
+const STATUS_TAG: Record<string, { labelKey: string; cls: string }> = {
+  open: { labelKey: 'todo.status.open', cls: 'wk-matter-side-panel__header-tag--blue' },
+  done: { labelKey: 'todo.status.done', cls: 'wk-matter-side-panel__header-tag--green' },
+  archived: { labelKey: 'todo.status.archived', cls: 'wk-matter-side-panel__header-tag--gray' },
 };
 
-function formatDeadlineDisplay(deadline: string): string {
+function formatDeadlineDisplay(deadline: string, t: (key: string, options?: any) => string): string {
   const d = new Date(deadline);
-  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  return `截止到 ${d.getMonth() + 1}/${d.getDate()} ${weekdays[d.getDay()]}`;
+  const weekdays = [
+    t('todo.weekday.sun'),
+    t('todo.weekday.mon'),
+    t('todo.weekday.tue'),
+    t('todo.weekday.wed'),
+    t('todo.weekday.thu'),
+    t('todo.weekday.fri'),
+    t('todo.weekday.sat'),
+  ];
+  return t('todo.deadline.untilMonthDayWeekday', {
+    values: { month: d.getMonth() + 1, day: d.getDate(), weekday: weekdays[d.getDay()] },
+  });
 }
 
 // ─── DetailPanel 主组件 ────────────────────────────────────
 
 export default function DetailPanel({ matterId, onClose, onStatusChanged, channel }: DetailPanelProps) {
+  const { t, format } = useI18n();
   const [matter, setMatter] = useState<MatterDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [comments, setComments] = useState<MatterComment[]>([]);
@@ -58,22 +69,22 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
       setCommentsHasMore(res?.pagination?.has_more ?? false);
       commentsCursorRef.current = res?.pagination?.next_cursor;
     } catch {
-      if (!append) { setComments([]); Toast.error('加载评论失败'); }
-      else Toast.error('加载评论失败');
+      if (!append) { setComments([]); Toast.error(t('todo.toast.loadCommentsFailed')); }
+      else Toast.error(t('todo.toast.loadCommentsFailed'));
     }
-  }, [matterId, channel?.channelId]);
+  }, [matterId, channel?.channelId, t]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const t = await api.getMatter(matterId, channel?.channelId);
-      setMatter(t);
+      const detail = await api.getMatter(matterId, channel?.channelId);
+      setMatter(detail);
     } catch {
-      Toast.error('加载事项失败');
+      Toast.error(t('todo.toast.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [matterId, channel?.channelId]);
+  }, [matterId, channel?.channelId, t]);
 
   useEffect(() => { load(); loadComments(false); }, [load, loadComments]);
 
@@ -94,9 +105,9 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
       onStatusChanged?.();
     } catch {
       setMatter((prev) => prev ? { ...prev, status: oldStatus } : prev);
-      Toast.error('更新状态失败');
+      Toast.error(t('todo.toast.statusUpdateFailed'));
     }
-  }, [matter, onStatusChanged]);
+  }, [matter, onStatusChanged, t]);
 
   const handleStartEditTitle = useCallback(() => {
     if (!matter || matter.status === 'archived') return;
@@ -114,9 +125,9 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
       setMatter(updated);
       setIsEditingTitle(false);
       onStatusChanged?.();
-    } catch { Toast.error('更新标题失败'); }
+    } catch { Toast.error(t('todo.toast.titleUpdateFailed')); }
     finally { setUpdatingTitle(false); }
-  }, [matter, editTitleValue, matterId, updatingTitle, onStatusChanged]);
+  }, [matter, editTitleValue, matterId, updatingTitle, onStatusChanged, t]);
 
   const handleAddComment = useCallback(async () => {
     if (!newComment.trim() || submitting) return;
@@ -125,9 +136,9 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
       await api.addComment(matterId, newComment.trim());
       setNewComment('');
       await loadComments(false);
-    } catch { Toast.error('添加评论失败'); }
+    } catch { Toast.error(t('todo.toast.addCommentFailed')); }
     finally { setSubmitting(false); }
-  }, [matterId, newComment, submitting, loadComments]);
+  }, [matterId, newComment, submitting, loadComments, t]);
 
   const statusTag = matter ? (STATUS_TAG[matter.status] || STATUS_TAG.open) : STATUS_TAG.open;
 
@@ -139,7 +150,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
           {matter && (
             <>
               <span className={`wk-matter-side-panel__header-tag ${statusTag.cls}`}>
-                <span className="wk-matter-side-panel__header-tag-label">{statusTag.label}</span>
+                <span className="wk-matter-side-panel__header-tag-label">{t(statusTag.labelKey)}</span>
                 {matter.seq_no ? <span className="wk-matter-side-panel__header-tag-no">｜M-{matter.seq_no}</span> : null}
               </span>
               {matter.deadline && (
@@ -147,7 +158,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path d="M5.33 1.33v2M10.67 1.33v2M2 6h12M3.33 3.33h9.34a1.33 1.33 0 011.33 1.34v8a1.33 1.33 0 01-1.33 1.33H3.33A1.33 1.33 0 012 12.67v-8a1.33 1.33 0 011.33-1.34z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
-                  {formatDeadlineDisplay(matter.deadline)}
+                  {formatDeadlineDisplay(matter.deadline, t)}
                 </span>
               )}
             </>
@@ -155,7 +166,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
         </div>
         <div className="wk-matter-side-panel__header-actions">
           {matter && matter.status !== 'archived' && (
-            <button type="button" className="wk-matter-side-panel__header-btn" onClick={handleToggleStatus} title={matter.status === 'open' ? '标记完成' : '重新打开'}>
+            <button type="button" className="wk-matter-side-panel__header-btn" onClick={handleToggleStatus} title={matter.status === 'open' ? t("todo.action.markDone") : t("todo.action.reopen")}>
               {matter.status === 'open' ? (
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
               ) : (
@@ -164,7 +175,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
             </button>
           )}
           {onClose && (
-            <button type="button" className="wk-matter-side-panel__header-btn" onClick={onClose} aria-label="关闭">
+            <button type="button" className="wk-matter-side-panel__header-btn" onClick={onClose} aria-label={t("todo.common.close")}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M3.5 3.5L12.5 12.5M12.5 3.5L3.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               </svg>
@@ -175,8 +186,8 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
 
       {/* ─── Body ─── */}
       <div className="wk-matter-side-panel__body">
-        {loading && <div className="wk-matter-detail__loading">加载中...</div>}
-        {!loading && !matter && <div className="wk-matter-detail__loading">加载事项失败，请重试</div>}
+        {loading && <div className="wk-matter-detail__loading">{t("todo.state.loading")}</div>}
+        {!loading && !matter && <div className="wk-matter-detail__loading">{t("todo.state.loadFailedRetry")}</div>}
         {!loading && matter && (
           <div className="wk-matter-detail__content">
             {/* Title + Meta */}
@@ -192,7 +203,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }}
                 />
               ) : (
-                <h2 className="wk-matter-detail__title" onClick={handleStartEditTitle} title="点击编辑标题">
+                <h2 className="wk-matter-detail__title" onClick={handleStartEditTitle} title={t("todo.action.editTitle")}>
                   {replaceMentions(matter.title)}
                 </h2>
               )}
@@ -201,14 +212,14 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
               {matter.description && (
                 <>
                   <div className="wk-matter-detail__goal-label">
-                    🎯 <span>主要目标</span>
+                    🎯 <span>{t("todo.field.goal")}</span>
                   </div>
                   {matter.source_channel_id && matter.source_name && (
                     <div className="wk-matter-detail__source">
                       <svg className="wk-matter-detail__source-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <path d="M2 4l6 4 6-4M2 4v8l6 4 6-4V4M2 4l6-4 6 4" stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/>
                       </svg>
-                      来自 #{matter.source_name}
+                      {t("todo.label.fromChannel", { values: { name: matter.source_name } })}
                     </div>
                   )}
                   <div className="wk-matter-detail__description">{matter.description}</div>
@@ -218,14 +229,14 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
               {/* 创建人 + 负责人 */}
               <div className="wk-matter-detail__people">
                 <div className="wk-matter-detail__people-item">
-                  <span className="wk-matter-detail__people-label">创建人：</span>
+                  <span className="wk-matter-detail__people-label">{t("todo.label.creator")}</span>
                   <span className="wk-matter-detail__people-tag">
                     <UserName uid={matter.creator_id} />
                   </span>
                 </div>
                 {matter.assignees && matter.assignees.length > 0 && (
                   <div className="wk-matter-detail__people-item">
-                    <span className="wk-matter-detail__people-label">负责人：</span>
+                    <span className="wk-matter-detail__people-label">{t("todo.label.assignee")}</span>
                     {matter.assignees.slice(0, 2).map((a) => (
                       <span key={a.user_id} className="wk-matter-detail__people-tag">
                         <UserName uid={a.user_id} />
@@ -243,10 +254,10 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
             <div className="wk-matter-detail__section">
               <div className="wk-matter-detail__tabs">
                 <button type="button" className="wk-matter-detail__tab is-active">
-                  关联群聊 {matter.channels?.length || 0}
+                  {t("todo.detail.linkedGroupsWithCount", { values: { count: matter.channels?.length || 0 } })}
                 </button>
                 <button type="button" className="wk-matter-detail__tab">
-                  变更记录
+                  {t("todo.detail.changeLog")}
                 </button>
               </div>
 
@@ -265,7 +276,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
                           onClick={() => WKApp.endpoints.showConversation(new Channel(ch.channel_id, ch.channel_type))}
                         >
                           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3.33h-2A1.33 1.33 0 002.67 4.67v8A1.33 1.33 0 004 14h8a1.33 1.33 0 001.33-1.33v-2M9.33 2h4.67v4.67M6.67 9.33L14 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                          查看群聊
+                          {t("todo.action.viewGroup")}
                         </button>
                       </div>
                     </div>
@@ -284,7 +295,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
                 <div className="wk-matter-detail__comment-body">
                   <div className="wk-matter-detail__comment-header">
                     <span className="wk-matter-detail__comment-name"><UserName uid={c.user_id} /></span>
-                    <span className="wk-matter-detail__comment-time">{new Date(c.created_at).toLocaleString('zh-CN')}</span>
+                    <span className="wk-matter-detail__comment-time">{format.dateTime(c.created_at)}</span>
                   </div>
                   {c.content && <div className="wk-matter-detail__comment-content">{c.content}</div>}
                 </div>
@@ -292,7 +303,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
             ))}
             {commentsHasMore && (
               <button type="button" className="wk-matter-detail__channel-msg-expand" onClick={() => loadComments(true)}>
-                加载更多评论...
+                {t("todo.action.loadMoreComments")}
               </button>
             )}
           </div>
@@ -304,7 +315,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
         <div className="wk-matter-detail__comment-input">
           <input
             type="text"
-            placeholder="添加评论..."
+            placeholder={t("todo.comment.placeholder")}
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddComment(); } }}
@@ -315,7 +326,7 @@ export default function DetailPanel({ matterId, onClose, onStatusChanged, channe
             onClick={handleAddComment}
             disabled={!newComment.trim() || submitting}
           >
-            发送
+            {t("todo.common.send")}
           </button>
         </div>
       )}

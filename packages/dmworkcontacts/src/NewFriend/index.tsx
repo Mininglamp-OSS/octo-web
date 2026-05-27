@@ -1,11 +1,13 @@
 import React, { Component, ReactNode } from "react";
 import { Button } from '@douyinfe/semi-ui';
-import { FriendApplyState, WKApp, WKViewQueueHeader, Provider } from "@octo/base";
+import { FriendApplyState, WKApp, WKViewQueueHeader, Provider, I18nContext, t } from "@octo/base";
 import { FriendAdd } from "../FriendAdd";
 import { NewFriendVM } from "./vm";
 import "./index.css";
 
 export class NewFriend extends Component {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
 
     render(): ReactNode {
         return <Provider create={() => {
@@ -13,14 +15,14 @@ export class NewFriend extends Component {
         }} render={(vm: NewFriendVM) => {
 
             return <div className="wk-newfriend">
-                <WKViewQueueHeader title="新朋友" onBack={() => {
+                <WKViewQueueHeader title={t("contacts.header.newFriends")} onBack={() => {
                     WKApp.routeLeft.pop()
                 }} action={<div className="wk-viewqueueheader-content-action">
                     <Button size="small" onClick={()=>{
                           WKApp.routeLeft.push(<FriendAdd onBack={()=>{
                             WKApp.routeLeft.pop()
                         }}></FriendAdd>)
-                    }} >添加好友</Button>
+                    }} >{t("contacts.friendAdd.title")}</Button>
                 </div>}></WKViewQueueHeader>
                 <div className="wk-newfriend-content">
                     <ul>
@@ -41,7 +43,7 @@ export class NewFriend extends Component {
                                     <div className="wk-newfriend-content-action">
                                         <Button loading={vm.currentFriendApply?.to_uid === f.to_uid && vm.sureLoading } disabled={f.status === FriendApplyState.accepted} onClick={()=>{
                                            vm.friendSure(f)
-                                        }}>{f.status === FriendApplyState.accepted ? "已添加" : "确认"}</Button>
+                                        }}>{f.status === FriendApplyState.accepted ? t("contacts.newFriend.added") : t("contacts.newFriend.confirm")}</Button>
                                     </div>
                                 </li>
                             })

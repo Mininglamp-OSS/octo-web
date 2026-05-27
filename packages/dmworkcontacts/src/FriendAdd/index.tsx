@@ -1,4 +1,4 @@
-import { WKApp, WKViewQueueHeader, QRCodeMy, Search } from "@octo/base";
+import { WKApp, WKViewQueueHeader, QRCodeMy, Search, I18nContext, t } from "@octo/base";
 import {WKBase, WKBaseContext } from "@octo/base";
 import React from "react";
 import { Component, ReactNode } from "react";
@@ -16,6 +16,8 @@ export class FriendAddState {
 }
 
 export class FriendAdd extends Component<FriendAddProps,FriendAddState> {
+    static contextType = I18nContext
+    declare context: React.ContextType<typeof I18nContext>
     baseContext!:WKBaseContext
     constructor(props:any) {
         super(props)
@@ -43,7 +45,7 @@ export class FriendAdd extends Component<FriendAddProps,FriendAddState> {
             spinning: false,
         })
         if(result.exist !== 1) {
-            Toast.error("用户不存在！")
+            Toast.error(t("contacts.friendAdd.userNotFound"))
         }else {
             WKApp.shared.baseContext.showUserInfo(result.data?.uid,undefined,result.data?.vercode)
         }
@@ -58,10 +60,10 @@ export class FriendAdd extends Component<FriendAddProps,FriendAddState> {
             this.baseContext = ctx
         }}>
             <div className="wk-friendadd">
-            <WKViewQueueHeader title="添加好友" onBack={onBack} />
+            <WKViewQueueHeader title={t("contacts.friendAdd.title")} onBack={onBack} />
             <div className="wk-friendadd-content">
                 <Spin spinning={spinning}>
-                <Search placeholder={`${WKApp.config.appName}号/手机号`} onChange={(v)=>{
+                <Search placeholder={t("contacts.friendAdd.searchPlaceholder", { values: { appName: WKApp.config.appName } })} onChange={(v)=>{
                     this.setState({
                         keyword: v
                     })
@@ -70,7 +72,7 @@ export class FriendAdd extends Component<FriendAddProps,FriendAddState> {
                 }}></Search>
                 </Spin>
                 <div className="wk-friendadd-content-qrcode">
-                        我的{WKApp.config.appName}号：{WKApp.loginInfo.shortNo} <img onClick={()=>{
+                        {t("contacts.friendAdd.myShortNo", { values: { appName: WKApp.config.appName, shortNo: WKApp.loginInfo.shortNo } })} <img onClick={()=>{
                             WKApp.routeLeft.push(<QRCodeMy></QRCodeMy>)
                         }} src={require("./assets/icon_qrcode.png")}></img>
                 </div>  

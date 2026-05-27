@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '@octo/base';
 import { Channel, ChannelTypePerson } from 'wukongimjssdk';
 import type { Matter } from '../../bridge/types';
 import WKAvatar from '@octo/base/src/Components/WKAvatar';
@@ -18,20 +19,20 @@ export interface MatterCardProps {
 
 // ─── 状态 → 标签颜色映射 ───────────────────────────────────
 interface StatusTagInfo {
-  label: string;
+  labelKey: string;
   colorClass: string;
 }
 
 function getStatusTag(matter: Matter): StatusTagInfo {
   switch (matter.status) {
     case 'open':
-      return { label: '进行中', colorClass: 'wk-matter-card__tag--blue' };
+      return { labelKey: 'todo.status.open', colorClass: 'wk-matter-card__tag--blue' };
     case 'done':
-      return { label: '已完成', colorClass: 'wk-matter-card__tag--green' };
+      return { labelKey: 'todo.status.done', colorClass: 'wk-matter-card__tag--green' };
     case 'archived':
-      return { label: '已归档', colorClass: 'wk-matter-card__tag--gray' };
+      return { labelKey: 'todo.status.archived', colorClass: 'wk-matter-card__tag--gray' };
     default:
-      return { label: '进行中', colorClass: 'wk-matter-card__tag--blue' };
+      return { labelKey: 'todo.status.open', colorClass: 'wk-matter-card__tag--blue' };
   }
 }
 
@@ -74,6 +75,7 @@ export default function MatterCard({
   onClick,
   className,
 }: MatterCardProps) {
+  const { t } = useI18n();
   const handleClick = () => {
     if (onClick) onClick(matter.id);
   };
@@ -93,7 +95,7 @@ export default function MatterCard({
       {/* 第一行：状态标签 + 日期 */}
       <div className="wk-matter-card__row-1">
         <span className={`wk-matter-card__tag ${statusTag.colorClass}`}>
-          <span className="wk-matter-card__tag-label">{statusTag.label}</span>
+          <span className="wk-matter-card__tag-label">{t(statusTag.labelKey)}</span>
           {matterNo && (
             <span className="wk-matter-card__tag-no">｜{matterNo}</span>
           )}
@@ -115,7 +117,7 @@ export default function MatterCard({
       <div className="wk-matter-card__meta">
         {creatorUid && (
           <div className="wk-matter-card__meta-item">
-            <span className="wk-matter-card__meta-label">创建人：</span>
+            <span className="wk-matter-card__meta-label">{t("todo.label.creator")}</span>
             <div className="wk-matter-card__user">
               <WKAvatar
                 channel={new Channel(creatorUid, ChannelTypePerson)}
@@ -127,7 +129,7 @@ export default function MatterCard({
         )}
         {assigneeUids.length > 0 && (
           <div className="wk-matter-card__meta-item">
-            <span className="wk-matter-card__meta-label">负责人：</span>
+            <span className="wk-matter-card__meta-label">{t("todo.label.assignee")}</span>
             <div className="wk-matter-card__user">
               <div className="wk-matter-card__avatar-group">
                 {assigneeUids.slice(0, 3).map((uid) => (
@@ -140,7 +142,7 @@ export default function MatterCard({
               </div>
               {assigneeUids.length > 1 && (
                 <span className="wk-matter-card__assignee-text">
-                  等{assigneeUids.length}人
+                  {t("todo.assignee.count", { values: { count: assigneeUids.length } })}
                 </span>
               )}
             </div>

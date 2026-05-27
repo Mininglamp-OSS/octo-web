@@ -1,6 +1,6 @@
 import React, { Component } from "react";
 import { Input, TextArea, Toast } from "@douyinfe/semi-ui";
-import { SpaceService, WKModal, extractErrorMsg } from "@octo/base";
+import { I18nContext, SpaceService, WKModal, extractErrorMsg, t } from "@octo/base";
 import "./index.css";
 
 export interface SpaceCreateProps {
@@ -17,6 +17,9 @@ interface SpaceCreateState {
 }
 
 export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreateState> {
+    static contextType = I18nContext;
+    declare context: React.ContextType<typeof I18nContext>;
+
     constructor(props: SpaceCreateProps) {
         super(props);
         this.state = {
@@ -30,7 +33,7 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
     handleCreate = async () => {
         const { name, description } = this.state;
         if (!name.trim()) {
-            Toast.warning("请输入 Space 名称");
+            Toast.warning(t("app.spaceCreate.validation.nameRequired"));
             return;
         }
         this.setState({ loading: true });
@@ -38,17 +41,17 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
             const resp = await SpaceService.shared.createSpace(name.trim(), description.trim());
             const invite = await SpaceService.shared.createInvite(resp.space_id);
             this.setState({ inviteUrl: invite.invite_url, loading: false });
-            Toast.success("Space 创建成功");
+            Toast.success(t("app.spaceCreate.createSuccess"));
             this.props.onSuccess();
         } catch (err: unknown) {
-            Toast.error(extractErrorMsg(err) || "创建失败，请重试");
+            Toast.error(extractErrorMsg(err) || t("app.spaceCreate.createFailedRetry"));
             this.setState({ loading: false });
         }
     };
 
     handleCopyInvite = () => {
         navigator.clipboard.writeText(this.state.inviteUrl).then(() => {
-            Toast.success("邀请链接已复制");
+            Toast.success(t("app.spaceCreate.inviteCopied"));
         });
     };
 
@@ -60,38 +63,39 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
     render() {
         const { visible } = this.props;
         const { name, description, loading, inviteUrl } = this.state;
+        const { t } = this.context;
 
         return (
             <WKModal
-                title={inviteUrl ? "邀请成员" : "创建 Space"}
+                title={inviteUrl ? t("app.spaceCreate.inviteMembersTitle") : t("app.spaceCreate.createTitle")}
                 visible={visible}
                 onCancel={this.handleClose}
             >
                 {inviteUrl ? (
                     <div className="wk-spacecreate-invite">
-                        <p className="wk-spacecreate-invite-tip">Space 创建成功！分享以下链接邀请成员加入：</p>
+                        <p className="wk-spacecreate-invite-tip">{t("app.spaceCreate.inviteTip")}</p>
                         <div className="wk-spacecreate-invite-link">
                             <Input value={inviteUrl} readOnly />
                             <button className="wk-spacecreate-btn" onClick={this.handleCopyInvite}>
-                                复制链接
+                                {t("app.spaceCreate.copyLink")}
                             </button>
                         </div>
                     </div>
                 ) : (
                     <div className="wk-spacecreate-form">
                         <div className="wk-spacecreate-field">
-                            <label className="wk-spacecreate-label">名称</label>
+                            <label className="wk-spacecreate-label">{t("app.spaceCreate.nameLabel")}</label>
                             <Input
-                                placeholder="输入 Space 名称"
+                                placeholder={t("app.spaceCreate.namePlaceholder")}
                                 value={name}
                                 onChange={(v) => this.setState({ name: v })}
                                 maxLength={32}
                             />
                         </div>
                         <div className="wk-spacecreate-field">
-                            <label className="wk-spacecreate-label">描述</label>
+                            <label className="wk-spacecreate-label">{t("app.spaceCreate.descriptionLabel")}</label>
                             <TextArea
-                                placeholder="输入 Space 描述（可选）"
+                                placeholder={t("app.spaceCreate.descriptionPlaceholder")}
                                 value={description}
                                 onChange={(v) => this.setState({ description: v })}
                                 maxCount={200}
@@ -100,14 +104,14 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                         </div>
                         <div className="wk-spacecreate-actions">
                             <button className="wk-spacecreate-btn wk-spacecreate-btn-cancel" onClick={this.handleClose}>
-                                取消
+                                {t("base.common.cancel")}
                             </button>
                             <button
                                 className="wk-spacecreate-btn wk-spacecreate-btn-primary"
                                 onClick={this.handleCreate}
                                 disabled={loading}
                             >
-                                {loading ? "创建中..." : "创建"}
+                                {loading ? t("app.spaceCreate.creating") : t("app.spaceCreate.create")}
                             </button>
                         </div>
                     </div>

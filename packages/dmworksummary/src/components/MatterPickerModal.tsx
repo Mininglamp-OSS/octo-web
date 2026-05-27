@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import { Modal, Input, Spin, Toast } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
+import { I18nContext, t } from '@octo/base';
 import * as matterBridge from '../api/matterBridge';
 import type { MatterBrief } from '../api/matterBridge';
 import './MatterPickerModal.css';
@@ -23,6 +24,9 @@ const PAGE_SIZE = 50;
 const DEBOUNCE_MS = 300;
 
 export default class MatterPickerModal extends Component<MatterPickerModalProps, MatterPickerModalState> {
+  static contextType = I18nContext;
+  declare context: React.ContextType<typeof I18nContext>;
+
   state: MatterPickerModalState = {
     matters: [],
     loading: false,
@@ -66,7 +70,7 @@ export default class MatterPickerModal extends Component<MatterPickerModalProps,
         loading: false,
       }));
     } catch (err: any) {
-      Toast.error(err.message || '加载事项失败');
+      Toast.error(err.message || t('summary.matterPicker.loadFailed'));
       this.setState({ loading: false });
     }
   }
@@ -99,22 +103,23 @@ export default class MatterPickerModal extends Component<MatterPickerModalProps,
   render() {
     const { visible, onCancel } = this.props;
     const { matters, loading, keyword, hasMore, selectedId } = this.state;
+    const { t: translate } = this.context;
 
     return (
       <Modal
-        title="选择目标事项"
+        title={translate("summary.matterPicker.title")}
         visible={visible}
         onOk={this.handleConfirm}
         onCancel={onCancel}
-        okText="确定"
-        cancelText="取消"
+        okText={translate("summary.common.confirm")}
+        cancelText={translate("summary.common.cancel")}
         okButtonProps={{ disabled: !selectedId }}
         width={480}
         className="matter-picker-modal"
       >
         <Input
           prefix={<IconSearch />}
-          placeholder="搜索事项..."
+          placeholder={translate("summary.matterPicker.searchPlaceholder")}
           value={keyword}
           onChange={this.handleKeywordChange}
           showClear
@@ -127,7 +132,7 @@ export default class MatterPickerModal extends Component<MatterPickerModalProps,
               <Spin />
             </div>
           ) : matters.length === 0 ? (
-            <div className="matter-picker-empty">暂无可用事项</div>
+            <div className="matter-picker-empty">{translate("summary.matterPicker.empty")}</div>
           ) : (
             <>
               {matters.map((matter) => (
@@ -144,7 +149,7 @@ export default class MatterPickerModal extends Component<MatterPickerModalProps,
               ))}
               {hasMore && (
                 <div className="matter-picker-load-more" onClick={this.handleLoadMore}>
-                  {loading ? <Spin size="small" /> : '加载更多...'}
+                  {loading ? <Spin size="small" /> : translate("summary.matterPicker.loadMore")}
                 </div>
               )}
             </>
