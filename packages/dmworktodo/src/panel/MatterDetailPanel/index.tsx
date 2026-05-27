@@ -25,7 +25,7 @@ import {
 } from "../../api/todoApi";
 import { getMessageByChannel } from "../../api/imMessageApi";
 import { Toast } from "../../utils/toast";
-import { toParentGroupNo } from "../../utils/channelId";
+import { toParentGroupNo, CHANNEL_TYPE_COMMUNITY_TOPIC } from "../../utils/channelId";
 import { buildLinkableChannels } from "../../utils/buildLinkableChannels";
 import type { GroupSaveListRow } from "../../utils/buildLinkableChannels";
 import UserName from "../../ui/UserName";
@@ -1466,6 +1466,15 @@ function ChannelNameLabel({
   loading?: boolean;
 }) {
   const live = useChannelName(channelId, channelType);
+  // 子区 (channel_type=5): 额外反查父群名, 渲染成 "父群名/子区名"
+  // 让用户在事项关联群聊里能看到子区的归属。
+  // 父群号通过 toParentGroupNo 从子区 channel_id 拆出 (前半段)。
+  const isThread = channelType === CHANNEL_TYPE_COMMUNITY_TOPIC;
+  const parentGroupNo = isThread ? toParentGroupNo(channelId, channelType) : "";
+  const parentLive = useChannelName(
+    isThread ? parentGroupNo : null,
+    isThread ? ChannelTypeGroup : null,
+  );
   if (loading) {
     return (
       <span
@@ -1488,7 +1497,10 @@ function ChannelNameLabel({
       </span>
     );
   }
-  const display = live || fallback || channelId.slice(0, 8);
+  const selfName = live || fallback || channelId.slice(0, 8);
+  // 父群名解析不出来时退化为只显示子区名, 不渲染孤零零的 "/"
+  const display =
+    isThread && parentLive ? `${parentLive}/${selfName}` : selfName;
   return <span className="wk-mp-channels__card-name--clear">{display}</span>;
 }
 
