@@ -2,12 +2,12 @@ import React, { useCallback, useEffect, useState } from 'react'
 import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson, ChannelTypeGroup } from 'wukongimjssdk'
 import WKApp from '../../App'
 import { MessageWrap } from '../../Service/Model'
-import { MessageContentTypeConst } from '../../Service/Const'
 import { MessageRowUIProps } from './types'
 import { resolveExternalForViewer } from '../../Utils/externalViewer'
 import { subscriberDisplayName } from '../../Utils/displayName'
 import { shouldShowRealnameBadge } from '../../Utils/realnameBadge'
 import moment from 'moment'
+import { isMessageContinuation } from '../../Service/messageContinuity'
 
 export interface MessageRowSelectionState {
   /** 是否处于多选模式（来自 context.editOn()） */
@@ -82,11 +82,7 @@ export function getMessageRow(
 
   // 判断是否为连续消息（对齐 Model.tsx preIsSamePerson 逻辑）
   // 时间分隔符或撤回消息之后不算连续
-  const pre = message.preMessage
-  const isContinue = !!pre
-    && pre.content?.contentType !== MessageContentTypeConst.time
-    && !pre.revoke
-    && pre.fromUID === message.fromUID
+  const isContinue = isMessageContinuation(message.preMessage, message)
 
   // 格式化时间戳
   const timestamp = formatTimestamp(message.timestamp)

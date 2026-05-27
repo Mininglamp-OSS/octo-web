@@ -5,6 +5,7 @@ import { MessageContentTypeConst, MessageReasonCode, OrderFactor } from "./Const
 import { DefaultEmojiService } from "./EmojiService"
 import { TypingManager } from "./TypingManager"
 import { getSpaceFilteredLastMessage, SYSTEM_BOTS } from "./SpaceService"
+import { isMessageContinuation } from "./messageContinuity"
 
 export class ConversationWrap {
     conversation: Conversation
@@ -362,39 +363,28 @@ export class MessageWrap {
 
     public get bubblePosition(): BubblePosition {
 
-        if (!this.preIsSamePerson && this.nextIsSamePerson) {
+        if (!this.isContinueFromPrevious && this.isContinueToNext) {
             return BubblePosition.first
         }
-        if (this.preIsSamePerson && this.nextIsSamePerson) {
+        if (this.isContinueFromPrevious && this.isContinueToNext) {
             return BubblePosition.middle
         }
 
-        if (this.preIsSamePerson && !this.nextIsSamePerson) {
+        if (this.isContinueFromPrevious && !this.isContinueToNext) {
             return BubblePosition.last
         }
-        if (!this.preIsSamePerson && !this.nextIsSamePerson) {
+        if (!this.isContinueFromPrevious && !this.isContinueToNext) {
             return BubblePosition.single
         }
         return BubblePosition.unknown
     }
 
-    private get preIsSamePerson(): boolean {
-        if (this.preMessage?.content.contentType === MessageContentTypeConst.time) {
-            return false
-        }
-        if (this.preMessage?.revoke) {
-            return false
-        }
-        return this.preMessage?.fromUID === this.fromUID
+    public get isContinueFromPrevious(): boolean {
+        return isMessageContinuation(this.preMessage, this)
     }
-    private get nextIsSamePerson(): boolean {
-        if (this.nextMessage?.content.contentType === MessageContentTypeConst.time) {
-            return false
-        }
-        if (this.nextMessage?.revoke) {
-            return false
-        }
-        return this.nextMessage?.fromUID === this.fromUID
+
+    public get isContinueToNext(): boolean {
+        return isMessageContinuation(this, this.nextMessage)
     }
 
     // 解析@

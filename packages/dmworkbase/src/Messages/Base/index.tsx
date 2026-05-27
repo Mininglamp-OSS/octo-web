@@ -34,6 +34,7 @@ import moment from "moment";
 import ThreadIndicator, {
   ThreadIndicatorData,
 } from "../../Components/ThreadIndicator";
+import { isMessageContinuation } from "../../Service/messageContinuity";
 
 interface MessageBaseProps extends HTMLProps<any> {
   message: MessageWrap;
@@ -142,12 +143,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
       return false;
     }
     const { message } = this.props;
-    if (message.preMessage) {
-      if (message.fromUID === message.preMessage.fromUID) {
-        return true;
-      }
-    }
-    return false;
+    return isMessageContinuation(message.preMessage, message);
   }
 
   getMessageStyle(hasContinue: boolean, message: MessageWrap) {
@@ -167,18 +163,12 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
       messageStyle.marginBottom = "0px";
       messageStyle.marginRight = "0px";
     }
-    if (message.preMessage && message.preMessage.fromUID !== message.fromUID) {
-      if (
-        message.nextMessage &&
-        message.nextMessage.fromUID === message.fromUID
-      ) {
+    if (!hasContinue) {
+      if (isMessageContinuation(message, message.nextMessage)) {
         messageStyle.marginBottom = "0px";
       }
     }
-    if (
-      message.nextMessage &&
-      message.nextMessage.fromUID !== message.fromUID
-    ) {
+    if (!isMessageContinuation(message, message.nextMessage)) {
       messageStyle.marginBottom = "15px";
     }
     return messageStyle;
@@ -190,15 +180,13 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     }
     if (
       hasContinue &&
-      message.nextMessage &&
-      message.nextMessage.fromUID === message.fromUID
+      isMessageContinuation(message, message.nextMessage)
     ) {
       return "8px 20px 20px 8px";
     }
     if (
       hasContinue &&
-      message.nextMessage &&
-      message.nextMessage.fromUID !== message.fromUID
+      !isMessageContinuation(message, message.nextMessage)
     ) {
       return "8px 20px 20px 8px";
     }
