@@ -83,6 +83,8 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: I18n check
+        run: pnpm i18n:check
       - name: Build
         run: pnpm build
       - name: Lint

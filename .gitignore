@@ -37,6 +37,9 @@ yarn-error.log*
 # turbo
 .turbo
 
+# generated i18n scan reports (baseline/config stay tracked)
+.i18n/reports/
+
 lib/
 out/
 build

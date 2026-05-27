@@ -17,6 +17,9 @@
     "lint": "turbo run lint",
     "lint:css": "stylelint '**/*.css' --config stylelint.config.mjs --allow-empty-input",
     "lint:css:ci": "stylelint --config stylelint.ci.config.mjs --allow-empty-input",
+    "i18n:scan": "node scripts/i18n-scan.mjs scan",
+    "i18n:check": "node scripts/i18n-scan.mjs check",
+    "i18n:baseline": "node scripts/i18n-scan.mjs baseline",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "gen:component": "node scripts/gen-component.mjs",
     "new:worktree": "bash scripts/new-worktree.sh",
@@ -36,6 +39,7 @@
     "rimraf": "^5.0.5",
     "stylelint": "^17.6.0",
     "turbo": "2.2.1",
+    "typescript": "5.9.3",
     "vitest": "^4.1.5"
   },
   "engines": {

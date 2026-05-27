@@ -26,4 +26,5 @@
 - [ ] PR description is in English
 - [ ] Added tests for my changes
 - [ ] Updated documentation
+- [ ] Ran `pnpm i18n:check` or confirmed the change does not affect UI copy
 - [ ] Followed commit message conventions (Conventional Commits)

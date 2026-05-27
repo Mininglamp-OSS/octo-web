@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "generatedAt": "2026-05-27T13:11:58.173Z",
+  "candidateCount": 0,
+  "signatureCount": 0,
+  "ignoredFiles": [
+    {
+      "path": "packages/dmworkbase/src/Utils/pinYin.ts",
+      "reason": "Pinyin search dictionary data, not UI copy."
+    },
+    {
+      "path": "packages/dmworkbase/src/Utils/t2s.ts",
+      "reason": "Simplified/traditional Chinese conversion dictionary data, not UI copy."
+    },
+    {
+      "path": "packages/dmworkbase/src/Service/EmojiService.ts",
+      "reason": "Emoji shortcode-to-asset dictionary; the Chinese bracket tokens are message/emoji protocol keys and must remain stable."
+    },
+    {
+      "path": "packages/dmworkbase/src/Utils/mentionRender.ts",
+      "reason": "Mention broadcast token helpers for @所有人/@所有AI. These literals are protocol/display tokens inserted into message content and covered by mention tests, not translatable UI copy in this pass."
+    }
+  ],
+  "summary": {
+    "byConfidence": {},
+    "byFile": {},
+    "byKind": {},
+    "byPackage": {}
+  },
+  "signatures": {}
+}

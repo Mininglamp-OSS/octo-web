@@ -80,12 +80,21 @@ importers:
       turbo:
         specifier: 2.2.1
         version: 2.2.1
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
       vitest:
         specifier: ^4.1.5
         version: 4.1.5(@types/node@20.19.39)(@vitest/browser-playwright@4.1.5)(jsdom@29.0.2)(vite@8.0.7(@types/node@20.19.39)(esbuild@0.27.7)(jiti@2.6.1))
 
   apps/extension:
     dependencies:
+      '@douyinfe/semi-icons':
+        specifier: ^2.93.0
+        version: 2.93.0(react@18.3.1)
+      '@douyinfe/semi-ui':
+        specifier: ^2.93.0
+        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@octo/base':
         specifier: workspace:*
         version: link:../../packages/dmworkbase
@@ -98,12 +107,6 @@ importers:
       '@octo/login':
         specifier: workspace:*
         version: link:../../packages/dmworklogin
-      '@douyinfe/semi-icons':
-        specifier: ^2.93.0
-        version: 2.93.0(react@18.3.1)
-      '@douyinfe/semi-ui':
-        specifier: ^2.93.0
-        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@18.3.1)
@@ -150,6 +153,15 @@ importers:
       '@dmwork/appbot':
         specifier: workspace:*
         version: link:../../packages/dmworkappbot
+      '@dmwork/summary':
+        specifier: workspace:*
+        version: link:../../packages/dmworksummary
+      '@douyinfe/semi-icons':
+        specifier: ^2.93.0
+        version: 2.93.0(react@18.3.1)
+      '@douyinfe/semi-ui':
+        specifier: ^2.93.0
+        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@octo/base':
         specifier: workspace:*
         version: link:../../packages/dmworkbase
@@ -162,18 +174,9 @@ importers:
       '@octo/login':
         specifier: workspace:*
         version: link:../../packages/dmworklogin
-      '@dmwork/summary':
-        specifier: workspace:*
-        version: link:../../packages/dmworksummary
       '@octo/todo':
         specifier: workspace:*
         version: link:../../packages/dmworktodo
-      '@douyinfe/semi-icons':
-        specifier: ^2.93.0
-        version: 2.93.0(react@18.3.1)
-      '@douyinfe/semi-ui':
-        specifier: ^2.93.0
-        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@react-pdf-viewer/core':
         specifier: ^3.12.0
         version: 3.12.0(pdfjs-dist@3.11.174(encoding@0.1.13))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -531,15 +534,15 @@ importers:
 
   packages/dmworkcontacts:
     dependencies:
-      '@octo/base':
-        specifier: workspace:*
-        version: link:../dmworkbase
       '@douyinfe/semi-foundation':
         specifier: ^2.93.0
         version: 2.93.0
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
         version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@octo/base':
+        specifier: workspace:*
+        version: link:../dmworkbase
       '@tanstack/react-virtual':
         specifier: ^3.13.23
         version: 3.13.23(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
@@ -573,15 +576,15 @@ importers:
 
   packages/dmworklogin:
     dependencies:
-      '@octo/base':
-        specifier: workspace:*
-        version: link:../dmworkbase
       '@douyinfe/semi-icons':
         specifier: ^2.93.0
         version: 2.93.0(react@17.0.2)
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
         version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@octo/base':
+        specifier: workspace:*
+        version: link:../dmworkbase
       '@types/qrcode.react':
         specifier: ^1.0.2
         version: 1.0.5
@@ -613,15 +616,15 @@ importers:
 
   packages/dmworksummary:
     dependencies:
-      '@octo/base':
-        specifier: workspace:*
-        version: link:../dmworkbase
       '@douyinfe/semi-icons':
         specifier: ^2.93.0
         version: 2.93.0(react@17.0.2)
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
         version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@octo/base':
+        specifier: workspace:*
+        version: link:../dmworkbase
       axios:
         specifier: ^0.25.0
         version: 0.25.0
@@ -665,15 +668,15 @@ importers:
 
   packages/dmworktodo:
     dependencies:
-      '@octo/base':
-        specifier: workspace:*
-        version: link:../dmworkbase
       '@douyinfe/semi-icons':
         specifier: ^2.93.0
         version: 2.93.0(react@17.0.2)
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
         version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@octo/base':
+        specifier: workspace:*
+        version: link:../dmworkbase
       axios:
         specifier: ^0.25.0
         version: 0.25.0
