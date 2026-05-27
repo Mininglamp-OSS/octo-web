@@ -9,7 +9,7 @@ name: Check Sprint
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
     branches: [main]
 
 permissions: {}
@@ -20,5 +20,6 @@ jobs:
     with:
       pr-number: ${{ github.event.pull_request.number }}
       repo-name: ${{ github.repository }}
+      enforce-freshness: true
     secrets:
       PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
