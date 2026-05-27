@@ -4,10 +4,9 @@ on:
   pull_request_target: # zizmor: ignore[dangerous-triggers] metadata-only automation; no PR code executed
     types: [opened]
 
-permissions: {}
+permissions:
+  issues: write
 
 jobs:
   welcome:
     uses: Mininglamp-OSS/.github/.github/workflows/reusable-pr-contributor-welcome.yml@main
-    permissions:
-      issues: write
