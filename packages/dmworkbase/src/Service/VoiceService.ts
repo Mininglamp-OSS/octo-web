@@ -167,6 +167,10 @@ export default class VoiceService {
     await APIClient.shared.delete("/voice/local-config");
   }
 
+  async resetLocalConfig(config: { enabled: boolean }): Promise<void> {
+    await APIClient.shared.post("/voice/local-config/reset", config);
+  }
+
   clearVoiceContextCache(spaceId?: string): void {
     if (spaceId) {
       this._voiceContextEpoch.set(

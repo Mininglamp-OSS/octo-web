@@ -553,4 +553,28 @@ describe("VoiceService", () => {
             await expect(VoiceService.shared.deleteLocalConfig()).rejects.toThrow("Not found")
         })
     })
+
+    describe("resetLocalConfig", () => {
+        it("should call POST /voice/local-config/reset with enabled true", async () => {
+            vi.mocked(APIClient.shared.post).mockResolvedValue({ status: 200, msg: "ok" })
+
+            await VoiceService.shared.resetLocalConfig({ enabled: true })
+
+            expect(APIClient.shared.post).toHaveBeenCalledWith("/voice/local-config/reset", { enabled: true })
+        })
+
+        it("should call POST /voice/local-config/reset with enabled false", async () => {
+            vi.mocked(APIClient.shared.post).mockResolvedValue({ status: 200, msg: "ok" })
+
+            await VoiceService.shared.resetLocalConfig({ enabled: false })
+
+            expect(APIClient.shared.post).toHaveBeenCalledWith("/voice/local-config/reset", { enabled: false })
+        })
+
+        it("should propagate errors from the API", async () => {
+            vi.mocked(APIClient.shared.post).mockRejectedValue(new Error("Server error"))
+
+            await expect(VoiceService.shared.resetLocalConfig({ enabled: true })).rejects.toThrow("Server error")
+        })
+    })
 })
