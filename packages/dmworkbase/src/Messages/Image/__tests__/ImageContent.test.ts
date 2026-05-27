@@ -94,7 +94,7 @@ describe('getImageTransferState', () => {
   })
 
   it('shows failed state with retry callback when upload fails', () => {
-    const onRetry = vi.fn()
+    const onUploadRetry = vi.fn()
 
     expect(getImageTransferState({
       hasLocalFile: true,
@@ -103,12 +103,12 @@ describe('getImageTransferState', () => {
       messageStatus: MessageStatus.Wait,
       uploadStatus: TaskStatus.fail,
       uploadProgress: 17,
-      onRetry,
-    })).toEqual({ status: 'failed', onRetry })
+      onUploadRetry,
+    })).toEqual({ status: 'failed', onRetry: onUploadRetry })
   })
 
   it('shows failed state when send ack fails after upload', () => {
-    const onRetry = vi.fn()
+    const onMessageRetry = vi.fn()
 
     expect(getImageTransferState({
       hasLocalFile: false,
@@ -117,8 +117,19 @@ describe('getImageTransferState', () => {
       messageStatus: MessageStatus.Fail,
       uploadStatus: TaskStatus.success,
       uploadProgress: 100,
-      onRetry,
-    })).toEqual({ status: 'failed', onRetry })
+      onMessageRetry,
+    })).toEqual({ status: 'failed', onRetry: onMessageRetry })
+  })
+
+  it('lets an active upload retry override a stale failed message status', () => {
+    expect(getImageTransferState({
+      hasLocalFile: true,
+      hasRemoteUrl: false,
+      fileSize: 2 * 1024 * 1024,
+      messageStatus: MessageStatus.Fail,
+      uploadStatus: TaskStatus.processing,
+      uploadProgress: 31,
+    })).toEqual({ status: 'uploading', progress: 31 })
   })
 
   it('uses sending state for small active uploads instead of hiding pending state', () => {

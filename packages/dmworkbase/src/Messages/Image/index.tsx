@@ -82,7 +82,8 @@ export interface ImageTransferInput {
     messageStatus: MessageStatus
     uploadStatus: TaskStatus | null
     uploadProgress: number
-    onRetry?: () => void
+    onUploadRetry?: () => void
+    onMessageRetry?: () => void
 }
 
 function isTaskFailed(uploadStatus: TaskStatus | null) {
@@ -100,22 +101,23 @@ export function getImageTransferState({
     messageStatus,
     uploadStatus,
     uploadProgress,
-    onRetry,
+    onUploadRetry,
+    onMessageRetry,
 }: ImageTransferInput): ImageTransferState | undefined {
-    if (messageStatus === MessageStatus.Fail) {
-        return { status: "failed", onRetry }
-    }
-
-    if (isTaskFailed(uploadStatus)) {
-        return { status: "failed", onRetry }
-    }
-
     if (isTaskActive(uploadStatus)) {
         const progress = Math.max(0, Math.min(100, Math.round(uploadProgress)))
         if (fileSize >= SMALL_FILE_THRESHOLD && progress > 0) {
             return { status: "uploading", progress }
         }
         return { status: "sending" }
+    }
+
+    if (isTaskFailed(uploadStatus)) {
+        return { status: "failed", onRetry: onUploadRetry }
+    }
+
+    if (messageStatus === MessageStatus.Fail) {
+        return { status: "failed", onRetry: onMessageRetry }
     }
 
     if (messageStatus === MessageStatus.Wait || (hasLocalFile && !hasRemoteUrl)) {
@@ -229,7 +231,8 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                 messageStatus: message.status,
                 uploadStatus,
                 uploadProgress,
-                onRetry: this.handleRetry,
+                onUploadRetry: this.handleRetry,
+                onMessageRetry: () => context.resendMessage(message.message),
             })
             const canPreview = !transferState && hasRemoteUrl
             return (
