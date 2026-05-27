@@ -443,14 +443,11 @@ export class ChatVM extends ProviderListener {
 
     // 排序最近会话列表
     sortConversations(conversations?: Array<ConversationWrap>) {
-        let newConversations = conversations;
-        if (!newConversations) {
-            newConversations = this.conversations
-        }
-        if (!newConversations || newConversations.length <= 0) {
+        const sourceConversations = conversations || this.conversations
+        if (!sourceConversations || sourceConversations.length <= 0) {
             return [];
         }
-        let sortAfter = newConversations.sort((a, b) => {
+        const sortAfter = [...sourceConversations].sort((a, b) => {
             let aScore = a.timestamp;
             let bScore = b.timestamp;
             if (a.extra?.top === 1) {
@@ -461,6 +458,9 @@ export class ChatVM extends ProviderListener {
             }
             return bScore - aScore;
         });
+        if (!conversations) {
+            this.conversations = sortAfter
+        }
         return sortAfter
     }
 
