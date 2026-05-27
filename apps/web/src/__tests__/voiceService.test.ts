@@ -6,6 +6,8 @@ vi.mock("@octo/base/src/Service/APIClient", () => {
         shared: {
             get: vi.fn(),
             post: vi.fn(),
+            put: vi.fn(),
+            delete: vi.fn(),
             config: { apiURL: "" },
         },
     }
@@ -468,6 +470,87 @@ describe("VoiceService", () => {
             expect(r1.context).toBe("Space A 纠错词")
             expect(r2.context).toBe("Space B 纠错词")
             expect(APIClient.shared.get).toHaveBeenCalledTimes(2)
+        })
+    })
+
+    describe("putLocalConfig", () => {
+        it("should call PUT /voice/local-config with enabled true", async () => {
+            vi.mocked(APIClient.shared.put).mockResolvedValue({ status: 200, msg: "ok" })
+
+            await VoiceService.shared.putLocalConfig({ enabled: true })
+
+            expect(APIClient.shared.put).toHaveBeenCalledWith("/voice/local-config", { enabled: true })
+        })
+
+        it("should call PUT /voice/local-config with enabled false", async () => {
+            vi.mocked(APIClient.shared.put).mockResolvedValue({ status: 200, msg: "ok" })
+
+            await VoiceService.shared.putLocalConfig({ enabled: false })
+
+            expect(APIClient.shared.put).toHaveBeenCalledWith("/voice/local-config", { enabled: false })
+        })
+
+        it("should propagate errors from the API", async () => {
+            vi.mocked(APIClient.shared.put).mockRejectedValue(new Error("Forbidden"))
+
+            await expect(VoiceService.shared.putLocalConfig({ enabled: true })).rejects.toThrow("Forbidden")
+        })
+    })
+
+    describe("getLocalConfig", () => {
+        it("should call GET /voice/local-config and return config", async () => {
+            const mockResp = {
+                status: 200,
+                enabled: true,
+                timeout_ms: 8000,
+                probe_url: "http://localhost:8787/",
+                transcribe_url: "http://localhost:8787/v1/voice/transcribe",
+            }
+            vi.mocked(APIClient.shared.get).mockResolvedValue(mockResp)
+
+            const result = await VoiceService.shared.getLocalConfig()
+
+            expect(APIClient.shared.get).toHaveBeenCalledWith("/voice/local-config")
+            expect(result).toEqual(mockResp)
+        })
+
+        it("should handle null fields from unset config", async () => {
+            const mockResp = {
+                status: 200,
+                enabled: false,
+                timeout_ms: null,
+                probe_url: null,
+                transcribe_url: null,
+            }
+            vi.mocked(APIClient.shared.get).mockResolvedValue(mockResp)
+
+            const result = await VoiceService.shared.getLocalConfig()
+
+            expect(result.timeout_ms).toBeNull()
+            expect(result.probe_url).toBeNull()
+            expect(result.transcribe_url).toBeNull()
+        })
+
+        it("should propagate errors from the API", async () => {
+            vi.mocked(APIClient.shared.get).mockRejectedValue(new Error("Service unavailable"))
+
+            await expect(VoiceService.shared.getLocalConfig()).rejects.toThrow("Service unavailable")
+        })
+    })
+
+    describe("deleteLocalConfig", () => {
+        it("should call DELETE /voice/local-config", async () => {
+            vi.mocked(APIClient.shared.delete).mockResolvedValue({ status: 200, msg: "ok" })
+
+            await VoiceService.shared.deleteLocalConfig()
+
+            expect(APIClient.shared.delete).toHaveBeenCalledWith("/voice/local-config")
+        })
+
+        it("should propagate errors from the API", async () => {
+            vi.mocked(APIClient.shared.delete).mockRejectedValue(new Error("Not found"))
+
+            await expect(VoiceService.shared.deleteLocalConfig()).rejects.toThrow("Not found")
         })
     })
 })

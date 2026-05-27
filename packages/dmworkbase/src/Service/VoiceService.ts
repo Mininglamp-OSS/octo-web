@@ -144,6 +144,29 @@ export default class VoiceService {
     return request;
   }
 
+  async putLocalConfig(config: {
+    enabled: boolean;
+    timeout_ms?: number;
+    probe_url?: string;
+    transcribe_url?: string;
+  }): Promise<void> {
+    await APIClient.shared.put("/voice/local-config", config);
+  }
+
+  async getLocalConfig(): Promise<{
+    status: number;
+    enabled: boolean;
+    timeout_ms: number | null;
+    probe_url: string | null;
+    transcribe_url: string | null;
+  }> {
+    return APIClient.shared.get("/voice/local-config");
+  }
+
+  async deleteLocalConfig(): Promise<void> {
+    await APIClient.shared.delete("/voice/local-config");
+  }
+
   clearVoiceContextCache(spaceId?: string): void {
     if (spaceId) {
       this._voiceContextEpoch.set(

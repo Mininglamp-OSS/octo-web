@@ -101,14 +101,11 @@ export default function useVoiceInput(
     LocalModelService.shared.loadConfig(localStorage);
     LocalModelService.shared.updateConfig({ enabled: false }, localStorage);
 
-    const LOCAL_DEFAULT_TIMEOUT_MS = 10000;
-
     VoiceService.shared
       .getConfig()
       .then((config: VoiceConfig) => {
         if (cancelled) return;
-        const localAllowed = config.local_enabled === true;
-        setIsVoiceEnabled(config.enabled || localAllowed);
+        setIsVoiceEnabled(config.enabled || config.local_enabled === true);
         backendEnabledRef.current = config.enabled;
         maxFileSizeRef.current = config.max_file_size || 0;
         if (config.max_duration != null) {
@@ -129,24 +126,6 @@ export default function useVoiceInput(
           VoiceFeedback.init(undefined);
         }
 
-        const localTimeout = config.local_timeout_ms ?? LOCAL_DEFAULT_TIMEOUT_MS;
-
-        if (localAllowed) {
-          const updateFields: Partial<LocalModelConfig> = {
-            enabled: true,
-            requestTimeoutMs: localTimeout,
-          };
-          if (config.local_probe_url) {
-            updateFields.probeUrl = config.local_probe_url;
-          }
-          if (config.local_transcribe_url) {
-            updateFields.transcribeUrl = config.local_transcribe_url;
-          }
-          LocalModelService.shared.updateConfig(updateFields, localStorage);
-          LocalModelService.shared.probe().then((available) => {
-            if (!cancelled) setLocalAvailable(available);
-          });
-        }
       })
       .catch(() => {
         if (cancelled) return;
@@ -192,6 +171,44 @@ export default function useVoiceInput(
     return subscribeSpaceFeedback(() => {
       const st = getSharedSpaceFeedbackState();
       voiceFeedbackOnRef.current = (st.spaceSetting?.voice_input_enabled === 1 && st.spaceSetting?.voice_feedback_on === 1) ? 1 : 0;
+    });
+  }, []);
+
+  useEffect(() => {
+    const prevRef = { enabled: false, probeUrl: '', transcribeUrl: '', timeoutMs: 0 };
+    return subscribeSpaceFeedback(() => {
+      const config = getSharedVoiceConfig();
+      if (!config) return;
+
+      const next = {
+        enabled: config.local_enabled === true,
+        probeUrl: config.local_probe_url ?? '',
+        transcribeUrl: config.local_transcribe_url ?? '',
+        timeoutMs: config.local_timeout_ms ?? 10000,
+      };
+
+      const changed = next.enabled !== prevRef.enabled
+        || next.probeUrl !== prevRef.probeUrl
+        || next.transcribeUrl !== prevRef.transcribeUrl
+        || next.timeoutMs !== prevRef.timeoutMs;
+
+      if (!changed) return;
+      Object.assign(prevRef, next);
+
+      // Assumption: fetchAndApplySpaceSetting does not mutate local_* fields.
+      if (next.enabled) {
+        const updateFields: Partial<LocalModelConfig> = {
+          enabled: true,
+          requestTimeoutMs: next.timeoutMs,
+        };
+        if (next.probeUrl) updateFields.probeUrl = next.probeUrl;
+        if (next.transcribeUrl) updateFields.transcribeUrl = next.transcribeUrl;
+        LocalModelService.shared.updateConfig(updateFields, localStorage);
+        LocalModelService.shared.probe().then(setLocalAvailable);
+      } else {
+        LocalModelService.shared.updateConfig({ enabled: false }, localStorage);
+        setLocalAvailable(false);
+      }
     });
   }, []);
 
