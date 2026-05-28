@@ -2,7 +2,7 @@ name: Octo PR Review Feed
 
 on:
   pull_request_target:
-    types: [opened, ready_for_review, review_requested, synchronize]
+    types: [ready_for_review, review_requested]
 
 permissions: {}
 
