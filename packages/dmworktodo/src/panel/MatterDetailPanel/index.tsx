@@ -271,11 +271,11 @@ export default function MatterDetailPanel({
           setOutputs([]);
           setOutputsCursor(undefined);
           setOutputsHasMore(false);
-          setOutputsError(t("outputs.loadFailed"));
+          setOutputsError(t("todo.outputs.loadFailed"));
         } else {
           // 加载更多失败: 已展示的行还能用, 不清不闪, 给个 toast 让用户重试。
           // (load-more 按钮会在 loading=false 后重新可点)
-          Toast.error(t("outputs.loadMoreFailed"));
+          Toast.error(t("todo.outputs.loadMoreFailed"));
         }
       } finally {
         if (
@@ -365,7 +365,7 @@ export default function MatterDetailPanel({
       );
       WKApp.mittBus.emit("wk:file-preview", {
         url,
-        name: item.file_name || t("conversation.file.unknown"),
+        name: item.file_name || t("base.conversation.file.unknown"),
         extension: ext,
         size: item.file_size,
         sourceChannelId: matchedCh?.channel_id,
@@ -837,7 +837,7 @@ export default function MatterDetailPanel({
     count: number;
   }[] = [
     { id: "channels", label: t("todo.detail.linkedGroups"), count: channels.length },
-    { id: "outputs", label: t("outputs.tabLabel"), count: outputs.length },
+    { id: "outputs", label: t("todo.outputs.tabLabel"), count: outputs.length },
     { id: "changelog", label: t("todo.detail.changeLog"), count: activities.length },
   ];
 
