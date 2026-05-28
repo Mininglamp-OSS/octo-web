@@ -628,7 +628,7 @@ export default function MatterDetailPanel({
     (att: TimelineAttachment, entry: TimelineEntry) => {
       const url = resolveAndGuardUrl(att.file_url);
       if (!url) return;
-      const name = att.file_name || "未知文件";
+      const name = att.file_name || t("base.conversation.file.unknown");
       const ext = getExtension("", name);
 
       const sourceChannelId = entry.source_channel_id;
@@ -649,7 +649,7 @@ export default function MatterDetailPanel({
         sourceChannelType,
       });
     },
-    [matter],
+    [matter, t],
   );
 
   // 下载附件: 嵌入和独立模式都启用, 沿用 dmworkbase/Utils/download.downloadFile,
@@ -661,7 +661,7 @@ export default function MatterDetailPanel({
       try {
         await downloadFile(url, att.file_name || "file");
       } catch {
-        Toast.error("下载失败");
+        Toast.error(t("todo.toast.downloadFailed"));
       }
     },
     [],
@@ -1737,10 +1737,10 @@ export function TimelinePanel({
                           <div
                             className="wk-mp-tl__attachments"
                             role="list"
-                            aria-label="附件"
+                            aria-label={t("todo.timeline.attachmentLabel")}
                           >
                             {e.attachments.map((att) => {
-                              const name = att.file_name || "未命名文件";
+                              const name = att.file_name || t("todo.timeline.unnamedFile");
                               const sizeText =
                                 att.file_size != null
                                   ? formatFileSize(att.file_size)
@@ -1774,8 +1774,8 @@ export function TimelinePanel({
                                       <button
                                         type="button"
                                         className="wk-mp-tl__att-btn"
-                                        title={`预览 ${name}`}
-                                        aria-label={`预览 ${name}`}
+                                        title={t("todo.timeline.previewFile", { values: { name } })}
+                                        aria-label={t("todo.timeline.previewFile", { values: { name } })}
                                         onClick={() =>
                                           onPreviewAttachment(att, e)
                                         }
@@ -1787,8 +1787,8 @@ export function TimelinePanel({
                                       <button
                                         type="button"
                                         className="wk-mp-tl__att-btn"
-                                        title={`下载 ${name}`}
-                                        aria-label={`下载 ${name}`}
+                                        title={t("todo.timeline.downloadFile", { values: { name } })}
+                                        aria-label={t("todo.timeline.downloadFile", { values: { name } })}
                                         onClick={() =>
                                           onDownloadAttachment(att, e)
                                         }

@@ -241,14 +241,18 @@
     "mine": "我负责的"
   },
   "timeline": {
+    "attachmentLabel": "附件",
     "attachments": "{{count}} 个附件",
     "collapse": "收起群内时间线",
+    "downloadFile": "下载 {{name}}",
     "empty": "暂无进展",
     "emptyInGroup": "本群暂无时间线记录",
     "expand": "展开群内时间线",
     "groupTitle": "群内进展",
     "loading": "正在加载时间线...",
-    "noText": "无文本内容"
+    "noText": "无文本内容",
+    "previewFile": "预览 {{name}}",
+    "unnamedFile": "未命名文件"
   },
   "toast": {
     "addAssigneeFailed": "添加负责人失败",
@@ -262,6 +266,7 @@
     "deleteFailed": "删除失败",
     "deleted": "已删除",
     "descriptionUpdateFailed": "描述修改失败",
+    "downloadFailed": "下载失败",
     "loadCommentsFailed": "加载评论失败",
     "loadFailed": "加载失败",
     "noMessagesToSync": "没有可同步的消息",
