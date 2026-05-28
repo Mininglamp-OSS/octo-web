@@ -26,7 +26,10 @@ jobs:
       OCTO_BOT_TOKEN: ${{ secrets.OCTO_BOT_TOKEN }}
 
   review-result:
-    if: github.event_name == 'pull_request_review' && (github.event.review.state == 'approved' || github.event.review.state == 'changes_requested')
+    if: >-
+      github.event_name == 'pull_request_review' &&
+      (github.event.review.state == 'approved' || github.event.review.state == 'changes_requested') &&
+      github.event.pull_request.head.repo.full_name == github.repository
     uses: Mininglamp-OSS/.github/.github/workflows/octo-pr-result-notify.yml@main
     with:
       repo_name: ${{ github.event.repository.name }}
