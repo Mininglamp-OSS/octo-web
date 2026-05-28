@@ -209,6 +209,31 @@
     "justNow": "刚刚同步",
     "minutesAgo": "{{count}} 分钟前同步"
   },
+  "outputs": {
+    "column": {
+      "actions": "操作",
+      "description": "描述",
+      "sender": "发送人",
+      "sentAt": "发送时间",
+      "sourceGroup": "来源群",
+      "title": "标题"
+    },
+    "emptyDefault": "暂无产出文件",
+    "emptySearch": "没有匹配的产出文件",
+    "groupNameHidden": "群名已隐藏",
+    "loadFailed": "加载失败,请稍后重试",
+    "loadMore": "加载更多",
+    "loadMoreFailed": "加载更多失败,请稍后重试",
+    "loading": "加载中…",
+    "loadingMembership": "加载成员关系中",
+    "notInGroup": "不在群",
+    "notInGroupTitle": "你不在该群, 群名已隐藏",
+    "retry": "重试",
+    "searchAriaLabel": "搜索产出文件",
+    "searchPlaceholder": "输入产出物的文件名/描述/产出者搜索",
+    "tabLabel": "产出文件",
+    "unnamedFile": "未命名文件"
+  },
   "tabs": {
     "all": "全部",
     "created": "我发起的",

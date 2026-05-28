@@ -209,6 +209,31 @@
     "justNow": "Synced just now",
     "minutesAgo": "Synced {{count}} minutes ago"
   },
+  "outputs": {
+    "column": {
+      "actions": "Actions",
+      "description": "Description",
+      "sender": "Sender",
+      "sentAt": "Sent At",
+      "sourceGroup": "Source Group",
+      "title": "Title"
+    },
+    "emptyDefault": "No output files yet",
+    "emptySearch": "No matching output files",
+    "groupNameHidden": "Group name hidden",
+    "loadFailed": "Loading failed, please retry",
+    "loadMore": "Load More",
+    "loadMoreFailed": "Load more failed, please retry",
+    "loading": "Loading...",
+    "loadingMembership": "Loading membership...",
+    "notInGroup": "Not in group",
+    "notInGroupTitle": "You are not in this group",
+    "retry": "Retry",
+    "searchAriaLabel": "Search output files",
+    "searchPlaceholder": "Search by file name, description or creator",
+    "tabLabel": "Output Files",
+    "unnamedFile": "Unnamed File"
+  },
   "tabs": {
     "all": "All",
     "created": "Created by me",

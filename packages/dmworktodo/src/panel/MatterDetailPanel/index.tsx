@@ -271,11 +271,11 @@ export default function MatterDetailPanel({
           setOutputs([]);
           setOutputsCursor(undefined);
           setOutputsHasMore(false);
-          setOutputsError(t("todo.outputs.loadFailed"));
+          setOutputsError(t("outputs.loadFailed"));
         } else {
           // 加载更多失败: 已展示的行还能用, 不清不闪, 给个 toast 让用户重试。
           // (load-more 按钮会在 loading=false 后重新可点)
-          Toast.error(t("todo.outputs.loadMoreFailed"));
+          Toast.error(t("outputs.loadMoreFailed"));
         }
       } finally {
         if (
@@ -837,7 +837,7 @@ export default function MatterDetailPanel({
     count: number;
   }[] = [
     { id: "channels", label: t("todo.detail.linkedGroups"), count: channels.length },
-    { id: "outputs", label: t("todo.outputs.tabLabel"), count: outputs.length },
+    { id: "outputs", label: t("outputs.tabLabel"), count: outputs.length },
     { id: "changelog", label: t("todo.detail.changeLog"), count: activities.length },
   ];
 

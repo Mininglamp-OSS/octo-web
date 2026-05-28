@@ -190,7 +190,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
   );
 
   const isEmpty = outputs.length === 0 && !loading;
-  const emptyText = query ? t("todo.outputs.emptySearch") : t("todo.outputs.emptyDefault");
+  const emptyText = query ? t("outputs.emptySearch") : t("outputs.emptyDefault");
 
   return (
     <div className="wk-outputs">
@@ -217,8 +217,8 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
           <input
             type="text"
             className="wk-outputs__search-input"
-            placeholder={t("todo.outputs.searchPlaceholder")}
-            aria-label={t("todo.outputs.searchAriaLabel")}
+            placeholder={t("outputs.searchPlaceholder")}
+            aria-label={t("outputs.searchAriaLabel")}
             value={searchValue}
             onChange={handleSearchChange}
           />
@@ -230,22 +230,22 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
         {/* 表头 */}
         <div className="wk-outputs__thead" role="row">
           <div className="wk-outputs__th wk-outputs__col-title" role="columnheader">
-            {t("todo.outputs.column.title")}
+            {t("outputs.column.title")}
           </div>
           <div className="wk-outputs__th wk-outputs__col-desc" role="columnheader">
-            {t("todo.outputs.column.description")}
+            {t("outputs.column.description")}
           </div>
           <div className="wk-outputs__th wk-outputs__col-sender" role="columnheader">
-            {t("todo.outputs.column.sender")}
+            {t("outputs.column.sender")}
           </div>
           <div className="wk-outputs__th wk-outputs__col-channel" role="columnheader">
-            {t("todo.outputs.column.sourceGroup")}
+            {t("outputs.column.sourceGroup")}
           </div>
           <div className="wk-outputs__th wk-outputs__col-time" role="columnheader">
-            {t("todo.outputs.column.sentAt")}
+            {t("outputs.column.sentAt")}
           </div>
           <div className="wk-outputs__th wk-outputs__col-actions" role="columnheader">
-            {t("todo.outputs.column.actions")}
+            {t("outputs.column.actions")}
           </div>
         </div>
 
@@ -269,7 +269,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
             <span>{error}</span>
             {onRetry && (
               <button type="button" className="wk-outputs__load-more" onClick={onRetry}>
-                {t("todo.outputs.retry")}
+                {t("outputs.retry")}
               </button>
             )}
           </div>
@@ -305,7 +305,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
                       className="wk-outputs__file-name"
                       title={item.file_name || ""}
                     >
-                      {item.file_name || t("todo.outputs.unnamedFile")}
+                      {item.file_name || t("outputs.unnamedFile")}
                     </div>
                     <div className="wk-outputs__file-size">
                       {/*
@@ -358,7 +358,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
                         <span
                           className="wk-outputs__channel-name--skeleton"
                           role="status"
-                          aria-label={t("todo.outputs.loadingMembership")}
+                          aria-label={t("outputs.loadingMembership")}
                         >
                           &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
                         </span>
@@ -369,8 +369,8 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
                         <span className="wk-outputs__channel-blocked">
                           <span
                             className="wk-outputs__channel-name--blur"
-                            title={t("todo.outputs.notInGroupTitle")}
-                            aria-label={t("todo.outputs.groupNameHidden")}
+                            title={t("outputs.notInGroupTitle")}
+                            aria-label={t("outputs.groupNameHidden")}
                           >
                             ████
                           </span>
@@ -387,7 +387,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
                               <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                             </svg>
-                            {t("todo.outputs.notInGroup")}
+                            {t("outputs.notInGroup")}
                           </span>
                         </span>
                       );
@@ -460,7 +460,7 @@ const OutputsPanel: React.FC<OutputsPanelProps> = ({
           onClick={onLoadMore}
           disabled={loading}
         >
-          {loading ? t("todo.outputs.loading") : t("todo.outputs.loadMore")}
+          {loading ? t("outputs.loading") : t("outputs.loadMore")}
         </button>
       )}
     </div>
