@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { detectLocale, localeStorageKey } from "../detectLocale";
+import { detectLocale, localeCookieName, localeStorageKey } from "../detectLocale";
 
 const storage = new Map<string, string>();
 const fakeWindow = {
@@ -28,6 +28,7 @@ function resetLocaleInputs() {
   storage.clear();
   fakeWindow.location.search = "";
   vi.stubGlobal("window", fakeWindow);
+  vi.stubGlobal("document", { cookie: "" });
   setNavigatorLanguages(["en-US"]);
 }
 
@@ -49,6 +50,19 @@ describe("detectLocale", () => {
     fakeWindow.location.search = "?locale=en-US";
 
     expect(detectLocale()).toBe("en-US");
+  });
+
+  it("uses backend lang query before legacy locale query", () => {
+    fakeWindow.location.search = "?locale=zh-CN&lang=en-US";
+
+    expect(detectLocale()).toBe("en-US");
+  });
+
+  it("uses i18n_lang cookie before localStorage", () => {
+    fakeWindow.localStorage.setItem(localeStorageKey, "en-US");
+    vi.stubGlobal("document", { cookie: `${localeCookieName}=zh-CN` });
+
+    expect(detectLocale()).toBe("zh-CN");
   });
 
   it("uses persisted locale before browser preferences", () => {

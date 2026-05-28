@@ -1,14 +1,40 @@
 import { defaultLocale, Locale, normalizeLocale } from "./types";
 
 export const localeStorageKey = "octo:locale";
+export const localeCookieName = "i18n_lang";
+const localeCookieMaxAgeSeconds = 60 * 60 * 24 * 365;
 
-function getLocaleFromQuery(): Locale | undefined {
+function getLocaleFromQueryParam(name: string): Locale | undefined {
   if (typeof window === "undefined") return undefined;
   try {
     const params = new URLSearchParams(window.location.search);
-    return normalizeLocale(params.get("locale"));
+    return normalizeLocale(params.get(name));
   } catch (_) {
     return undefined;
+  }
+}
+
+function getLocaleFromQuery(): Locale | undefined {
+  return getLocaleFromQueryParam("lang") || getLocaleFromQueryParam("locale");
+}
+
+function getLocaleFromCookie(): Locale | undefined {
+  const cookie = typeof document !== "undefined" ? document.cookie : "";
+  if (!cookie) return undefined;
+
+  const prefix = `${localeCookieName}=`;
+  const value = cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix))
+    ?.slice(prefix.length);
+
+  if (!value) return undefined;
+
+  try {
+    return normalizeLocale(decodeURIComponent(value));
+  } catch (_) {
+    return normalizeLocale(value);
   }
 }
 
@@ -33,8 +59,20 @@ export function detectLocale(explicitLocale?: string | Locale): Locale {
   return (
     normalizeLocale(explicitLocale) ||
     getLocaleFromQuery() ||
+    getLocaleFromCookie() ||
     getLocaleFromStorage() ||
     getLocaleFromNavigator() ||
     defaultLocale
   );
+}
+
+export function persistLocaleCookie(locale: Locale) {
+  if (typeof document === "undefined") return;
+
+  document.cookie = [
+    `${localeCookieName}=${encodeURIComponent(locale)}`,
+    "Path=/",
+    `Max-Age=${localeCookieMaxAgeSeconds}`,
+    "SameSite=Lax",
+  ].join("; ");
 }
