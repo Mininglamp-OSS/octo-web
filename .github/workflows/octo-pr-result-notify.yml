@@ -1,0 +1,40 @@
+name: Octo PR Result Notify
+
+on:
+  pull_request_target:
+    types: [closed, reopened]
+  pull_request_review:
+    types: [submitted]
+
+permissions: {}
+
+jobs:
+  pr-result:
+    if: github.event_name == 'pull_request_target'
+    uses: Mininglamp-OSS/.github/.github/workflows/octo-pr-result-notify.yml@main
+    with:
+      repo_name: ${{ github.event.repository.name }}
+      pr_number: ${{ github.event.pull_request.number }}
+      pr_title: ${{ github.event.pull_request.title }}
+      pr_url: ${{ github.event.pull_request.html_url }}
+      pr_author: ${{ github.event.pull_request.user.login }}
+      event_kind: ${{ github.event.action == 'closed' && github.event.pull_request.merged == true && 'pr_merged' || github.event.action == 'closed' && 'pr_closed' || 'pr_reopened' }}
+      pr_additions: ${{ github.event.pull_request.additions }}
+      pr_deletions: ${{ github.event.pull_request.deletions }}
+      pr_changed_files: ${{ github.event.pull_request.changed_files }}
+    secrets:
+      OCTO_BOT_TOKEN: ${{ secrets.OCTO_BOT_TOKEN }}
+
+  review-result:
+    if: github.event_name == 'pull_request_review' && (github.event.review.state == 'approved' || github.event.review.state == 'changes_requested')
+    uses: Mininglamp-OSS/.github/.github/workflows/octo-pr-result-notify.yml@main
+    with:
+      repo_name: ${{ github.event.repository.name }}
+      pr_number: ${{ github.event.pull_request.number }}
+      pr_title: ${{ github.event.pull_request.title }}
+      pr_url: ${{ github.event.pull_request.html_url }}
+      pr_author: ${{ github.event.pull_request.user.login }}
+      event_kind: ${{ github.event.review.state == 'approved' && 'review_approved' || 'review_changes_requested' }}
+      reviewer: ${{ github.event.review.user.login }}
+    secrets:
+      OCTO_BOT_TOKEN: ${{ secrets.OCTO_BOT_TOKEN }}
