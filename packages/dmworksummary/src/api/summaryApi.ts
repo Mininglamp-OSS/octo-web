@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { WKApp } from '@octo/base';
+import { WKApp, buildAcceptLanguage } from '@octo/base';
 import type {
     ApiResponse,
     BatchStatusItem,
@@ -24,6 +24,8 @@ import type {
 const summaryAxios = axios.create({ baseURL: '' });
 
 summaryAxios.interceptors.request.use((config) => {
+    config.headers = config.headers ?? {};
+    config.headers['Accept-Language'] = buildAcceptLanguage();
     const token = WKApp.loginInfo.token;
     if (token) {
         config.headers['token'] = token;

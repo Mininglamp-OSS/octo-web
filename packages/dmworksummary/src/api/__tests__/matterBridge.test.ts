@@ -144,7 +144,7 @@ describe('matterBridge', () => {
       expect(mockResponseUse).toHaveBeenCalledTimes(1);
     });
 
-    it('request interceptor injects token and space headers', async () => {
+    it('request interceptor injects language, token, and space headers', async () => {
       vi.resetModules();
       mockRequestUse.mockClear();
       await import('../matterBridge');
@@ -153,6 +153,7 @@ describe('matterBridge', () => {
 
       const result = requestInterceptor(config);
 
+      expect(result.headers['Accept-Language']).toBe('zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7');
       expect(result.headers['token']).toBe('test-token-abc');
       expect(result.headers['X-Space-Id']).toBe('space-123');
     });

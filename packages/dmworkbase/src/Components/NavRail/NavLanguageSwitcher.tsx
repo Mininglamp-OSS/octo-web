@@ -9,6 +9,16 @@ function getNextLocale(locale: Locale): Locale {
   return locale === "zh-CN" ? "en-US" : "zh-CN";
 }
 
+function summarizeLanguageSyncError(error: unknown): Record<string, unknown> | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const { status, code, msg } = error as { status?: unknown; code?: unknown; msg?: unknown };
+  const summary: Record<string, unknown> = {};
+  if (typeof status === "number") summary.status = status;
+  if (typeof code === "string") summary.code = code;
+  if (typeof msg === "string") summary.message = msg;
+  return Object.keys(summary).length > 0 ? summary : undefined;
+}
+
 export default function NavLanguageSwitcher() {
   const [open, setOpen] = React.useState(false);
   const { locale, setLocale, t } = useI18n();
@@ -31,7 +41,12 @@ export default function NavLanguageSwitcher() {
     setOpen(false);
     if (WKApp.shared.isLogined()) {
       updateUserLanguagePreference(next).catch((error) => {
-        console.warn("[i18n] failed to sync user language preference", error);
+        const summary = summarizeLanguageSyncError(error);
+        if (summary) {
+          console.warn("[i18n] failed to sync user language preference", summary);
+        } else {
+          console.warn("[i18n] failed to sync user language preference");
+        }
       });
     }
   };

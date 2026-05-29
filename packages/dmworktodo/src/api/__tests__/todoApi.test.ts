@@ -31,6 +31,14 @@ vi.mock('@octo/base', () => {
   const t = (key: string) => messages[key] ?? key;
 
   return {
+    WKApp: {
+      loginInfo: { token: 'test-token-abc', uid: 'test-uid' },
+      shared: {
+        currentSpaceId: 'space-123',
+        logout: vi.fn(),
+      },
+    },
+    buildAcceptLanguage: () => 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
     useI18n: () => ({
       locale: 'zh-CN',
       setLocale: () => {},
@@ -56,6 +64,22 @@ describe('matterApi', () => {
   beforeEach(() => {
     mockAxios = getMockInstance();
     vi.clearAllMocks();
+  });
+
+  describe('interceptors', () => {
+    it('injects language, token, and space headers', async () => {
+      vi.resetModules();
+      mockAxios.interceptors.request.use.mockClear();
+      await import('../../api/todoApi');
+      const requestInterceptor = mockAxios.interceptors.request.use.mock.calls[0]?.[0];
+      const config = { headers: {} } as any;
+
+      const result = requestInterceptor(config);
+
+      expect(result.headers['Accept-Language']).toBe('zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7');
+      expect(result.headers['token']).toBe('test-token-abc');
+      expect(result.headers['X-Space-Id']).toBe('space-123');
+    });
   });
 
   describe('listMatters', () => {

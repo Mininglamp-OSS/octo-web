@@ -111,7 +111,18 @@ describe("NavLanguageSwitcher", () => {
 
   it("keeps local language when backend sync fails", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    hoisted.updateUserLanguagePreference.mockRejectedValueOnce(new Error("network down"));
+    hoisted.updateUserLanguagePreference.mockRejectedValueOnce({
+      error: {
+        config: {
+          headers: {
+            token: "secret-token",
+          },
+        },
+      },
+      msg: "sync failed",
+      status: 500,
+      code: "err.shared.internal",
+    });
     renderSwitcher();
 
     act(() => {
@@ -124,6 +135,12 @@ describe("NavLanguageSwitcher", () => {
 
     expect(i18n.getLocale()).toBe("en-US");
     expect(hoisted.updateUserLanguagePreference).toHaveBeenCalledWith("en-US");
+    expect(warn).toHaveBeenCalledWith("[i18n] failed to sync user language preference", {
+      status: 500,
+      code: "err.shared.internal",
+      message: "sync failed",
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("secret-token");
     warn.mockRestore();
   });
 });

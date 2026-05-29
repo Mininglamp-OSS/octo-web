@@ -1,5 +1,5 @@
 import axios from "axios";
-import { WKApp } from "@octo/base";
+import { WKApp, buildAcceptLanguage } from "@octo/base";
 import type {
   Matter,
   MatterDetail,
@@ -31,14 +31,14 @@ const matterAxios = axios.create({ baseURL: "" });
 // Inject auth headers via interceptor (consistent with base APIClient pattern).
 // Token is read at request time so it stays fresh after refresh.
 matterAxios.interceptors.request.use((config) => {
+  config.headers = config.headers ?? {};
+  config.headers["Accept-Language"] = buildAcceptLanguage();
   const token = WKApp.loginInfo.token;
   if (token) {
-    config.headers = config.headers ?? {};
     config.headers["token"] = token;
   }
   const spaceId = WKApp.shared.currentSpaceId;
   if (spaceId) {
-    config.headers = config.headers ?? {};
     config.headers["X-Space-Id"] = spaceId;
   }
   return config;
