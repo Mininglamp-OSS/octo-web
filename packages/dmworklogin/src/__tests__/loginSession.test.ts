@@ -17,9 +17,16 @@ vi.mock('@octo/base', () => ({
       save: vi.fn(),
     },
   },
+  i18n: {
+    setLocale: vi.fn(),
+  },
+  normalizeLocale: vi.fn((value: string | null | undefined) => {
+    if (value === 'zh-CN' || value === 'en-US') return value
+    return undefined
+  }),
 }))
 
-import { WKApp } from '@octo/base'
+import { WKApp, i18n } from '@octo/base'
 
 beforeEach(() => {
   // 重置 loginInfo 避免测试间污染
@@ -36,6 +43,7 @@ beforeEach(() => {
     realnameVerifiedAt: undefined,
   })
   ;(WKApp.loginInfo.save as ReturnType<typeof vi.fn>).mockClear()
+  ;(i18n.setLocale as ReturnType<typeof vi.fn>).mockClear()
 })
 
 describe('applyLoginResp', () => {
@@ -103,6 +111,23 @@ describe('applyLoginResp', () => {
   it('drops realname_verified_at when 0', () => {
     applyLoginResp({ uid: 'u', token: 't', realname_verified_at: 0 }, 'oidc')
     expect(WKApp.loginInfo.realnameVerifiedAt).toBeUndefined()
+  })
+
+  it('applies non-empty backend language preference', () => {
+    applyLoginResp({ uid: 'u', token: 't', language: 'en-US' }, 'oidc')
+    expect(i18n.setLocale).toHaveBeenCalledWith('en-US')
+    expect(WKApp.loginInfo.save).toHaveBeenCalledOnce()
+  })
+
+  it('does not override local language when backend language is empty or missing', () => {
+    applyLoginResp({ uid: 'u', token: 't', language: '' }, 'oidc')
+    applyLoginResp({ uid: 'u', token: 't' }, 'oidc')
+    expect(i18n.setLocale).not.toHaveBeenCalled()
+  })
+
+  it('ignores unsupported backend language values', () => {
+    applyLoginResp({ uid: 'u', token: 't', language: 'fr-FR' }, 'oidc')
+    expect(i18n.setLocale).not.toHaveBeenCalled()
   })
 })
 

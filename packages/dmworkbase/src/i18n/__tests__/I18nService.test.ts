@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { localeCookieName, localeStorageKey } from "../detectLocale";
 import { I18nService } from "../I18nService";
 
 function createService() {
@@ -21,6 +22,11 @@ function createService() {
 }
 
 describe("I18nService", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    document.cookie = `${localeCookieName}=; Path=/; Max-Age=0; SameSite=Lax`;
+  });
+
   it("translates registered namespace keys and interpolates values", () => {
     const service = createService();
 
@@ -51,6 +57,24 @@ describe("I18nService", () => {
     expect(document.documentElement.lang).toBe("en-US");
     expect(document.documentElement.dir).toBe("ltr");
     expect(listener).toHaveBeenCalledWith("en-US");
+  });
+
+  it("persists locale to localStorage and i18n_lang cookie", () => {
+    const service = createService();
+
+    service.setLocale("en-US");
+
+    expect(window.localStorage.getItem(localeStorageKey)).toBe("en-US");
+    expect(document.cookie).toContain(`${localeCookieName}=en-US`);
+  });
+
+  it("skips storage and cookie persistence when persist is false", () => {
+    const service = createService();
+
+    service.setLocale("en-US", { persist: false });
+
+    expect(window.localStorage.getItem(localeStorageKey)).toBeNull();
+    expect(document.cookie).not.toContain(localeCookieName);
   });
 
   it("formats custom date-time options without mixing Intl style shortcuts", () => {

@@ -755,6 +755,8 @@
   "categoryList.noSpaceSelected": "未选中 Space",
   "api.error.notFound": "请求地址没有找到（404）",
   "api.error.sessionExpired": "登录已过期，请重新登录",
+  "api.error.forbidden": "没有权限",
+  "api.error.rateLimited": "请求过于频繁，请稍后再试",
   "api.error.unknown": "未知错误",
   "aiTag.assistant": "AI助手",
   "aiTag.collaboration": "AI协作",

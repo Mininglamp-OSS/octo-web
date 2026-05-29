@@ -1,4 +1,4 @@
-import { detectLocale, localeStorageKey } from "./detectLocale";
+import { detectLocale, localeStorageKey, persistLocaleCookie } from "./detectLocale";
 import { getTextDirection } from "./direction";
 import { createI18nFormatter, I18nFormatter } from "./format";
 import {
@@ -115,6 +115,7 @@ export class I18nService {
       } catch (_) {
         // Persistence is a convenience; locale switching should still work without it.
       }
+      persistLocaleCookie(nextLocale);
     }
 
     if (changed && options?.notify !== false) {

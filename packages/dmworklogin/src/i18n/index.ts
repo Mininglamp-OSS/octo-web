@@ -1,4 +1,5 @@
-import { i18n, t as translate, TranslateOptions } from "@octo/base/src/i18n";
+import { i18n, t as translate } from "@octo/base/src/i18n/instance";
+import type { TranslateOptions } from "@octo/base/src/i18n/types";
 import enUS from "./en-US.json";
 import zhCN from "./zh-CN.json";
 

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { WKApp } from '@octo/base';
+import { WKApp, buildAcceptLanguage } from '@octo/base';
 
 // ─── 本地类型定义（最小子集）────────────────────────────
 
@@ -36,14 +36,14 @@ export interface PaginatedList<T> {
 const matterAxios = axios.create({ baseURL: '' });
 
 matterAxios.interceptors.request.use((config) => {
+  config.headers = config.headers ?? {};
+  config.headers['Accept-Language'] = buildAcceptLanguage();
   const token = WKApp.loginInfo.token;
   if (token) {
-    config.headers = config.headers ?? {};
     config.headers['token'] = token;
   }
   const spaceId = WKApp.shared.currentSpaceId;
   if (spaceId) {
-    config.headers = config.headers ?? {};
     config.headers['X-Space-Id'] = spaceId;
   }
   return config;

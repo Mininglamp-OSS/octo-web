@@ -52,7 +52,15 @@ vi.mock('@octo/base', () => {
     config: { themeColor: '#000', appName: 'Test' },
     remoteConfig: { oidcProviders: [] },
   }
-  return { WKApp, ProviderListener }
+  return {
+    WKApp,
+    ProviderListener,
+    i18n: { setLocale: vi.fn() },
+    normalizeLocale: vi.fn((value: string | null | undefined) => {
+      if (value === 'zh-CN' || value === 'en-US') return value
+      return undefined
+    }),
+  }
 })
 
 import { LoginVM } from '../login_vm'

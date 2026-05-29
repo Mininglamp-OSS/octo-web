@@ -2,15 +2,12 @@
 
 This guide is the standard entry point for future agents handling multilingual UI work in Octo Web.
 
-For architecture decisions, rollout status, and governance rules, read `docs/i18n-tracking.md`.
-
 ## Read First
 
 Before changing user-visible copy, read these files:
 
 1. `docs/i18n-agent-guide.md`
-2. `docs/i18n-tracking.md`
-3. `.i18n/scan-config.json`
+2. `.i18n/scan-config.json`
 
 After changing user-visible copy, run:
 
@@ -29,6 +26,7 @@ If layout may be affected by English copy length, also verify the touched screen
 - Use JSON resources for locale files.
 - Keep namespace ownership explicit.
 - Use `zh-CN` and `en-US` as the required baseline locales.
+- Keep URL locale prefixes, machine translation of user content, and partial third-locale rollout out of ordinary UI copy work.
 
 Typical namespace layout:
 
@@ -76,6 +74,29 @@ format.relativeTime(updatedAt);
 ```
 
 Semi UI component chrome is also locale-sensitive. The app-level `I18nProvider` owns the Semi `ConfigProvider` / `LocaleProvider` bridge, so do not set Semi locale per DatePicker, Pagination, Modal, or Select unless a component has a specific product reason. Component props that are still product copy, such as labels, placeholders, tooltips, and aria labels, must continue to use `t()`.
+
+Language switchers live in the signed-in NavRail and on the login page. Runtime switching should update React copy, Semi UI chrome, menus, and locale-sensitive formatting without requiring a page refresh.
+
+## Backend API I18n Rules
+
+Keep these backend-facing rules stable:
+
+- Locale detection accepts `?lang=`, `?locale=`, `i18n_lang`, `localStorage.octo:locale`, then browser language fallback.
+- `i18n.setLocale()` persists both `localStorage.octo:locale` and the frontend-readable `i18n_lang` cookie.
+- Internal Octo API requests go through `APIClient`, `apiFetch`, or `apiFetchJson` so they send `Accept-Language`.
+- Web frontend code must not send `X-Octo-Lang`; it is reserved for trusted service-to-service propagation.
+- Do not branch on localized backend `error.message`; use `error.code`, `error.http_status`, then legacy `status`.
+- Hide raw backend text for `err.shared.internal` and 5xx errors.
+- Keep raw `fetch` only for file/blob/static resources, presigned URLs, local probes, third-party URLs, unload beacons, or intentionally custom clients such as OIDC bind HTTP.
+- Login response `language: ""` means no account preference. Non-empty supported values apply locally. Signed-in NavRail language changes best-effort sync `PUT /v1/user/language`; login-page changes stay local.
+
+When changing backend API language or error behavior, run the touched package tests plus:
+
+```bash
+pnpm exec vitest run packages/dmworkbase/src/Service/__tests__/apiError.test.ts packages/dmworkbase/src/Service/__tests__/apiFetch.test.ts
+pnpm i18n:check
+git diff --check
+```
 
 ## Key Naming
 
@@ -140,7 +161,6 @@ For new user-visible copy:
 3. Use `useI18n()` or `t()` at the callsite.
 4. Run `pnpm i18n:check`.
 5. If the text is visible in a constrained layout, verify both languages in the browser.
-6. Update `docs/i18n-tracking.md` only when the change affects architecture, rollout status, or governance rules.
 
 ## Migrating Existing Copy
 
@@ -170,15 +190,7 @@ Expected work:
 
 ## Commit And PR Expectations
 
-For large i18n work, prefer one PR with a small number of meaningful commits:
-
-1. Docs and migration tracking.
-2. Runtime and language switcher.
-3. Product/app surface migrations.
-4. Base/shared chat surface migrations.
-5. Tests.
-6. Scanner, CI, and governance.
-7. Layout polish or unrelated support chores, only if needed.
+For large i18n work, prefer a small number of meaningful commits grouped by runtime behavior, product surface migration, tests, scanner/CI guardrails, and any required layout fixes.
 
 Every PR that changes UI copy should include:
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { i18n } from '@octo/base/src/i18n'
+import { i18n } from '@octo/base/src/i18n/instance'
 
 import { IOSDownloadButton, IOS_DOWNLOAD_URL } from '../IOSDownloadButton'
 

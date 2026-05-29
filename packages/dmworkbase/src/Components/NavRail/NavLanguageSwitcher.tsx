@@ -1,9 +1,22 @@
 import { IconLanguage, IconTick } from "@douyinfe/semi-icons";
 import React from "react";
-import { Locale, useI18n } from "../../i18n";
+import WKApp from "../../App";
+import { updateUserLanguagePreference } from "../../Service/UserLanguageService";
+import { useI18n } from "../../i18n/useI18n";
+import { Locale } from "../../i18n/types";
 
 function getNextLocale(locale: Locale): Locale {
   return locale === "zh-CN" ? "en-US" : "zh-CN";
+}
+
+function summarizeLanguageSyncError(error: unknown): Record<string, unknown> | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const { status, code, msg } = error as { status?: unknown; code?: unknown; msg?: unknown };
+  const summary: Record<string, unknown> = {};
+  if (typeof status === "number") summary.status = status;
+  if (typeof code === "string") summary.code = code;
+  if (typeof msg === "string") summary.message = msg;
+  return Object.keys(summary).length > 0 ? summary : undefined;
 }
 
 export default function NavLanguageSwitcher() {
@@ -20,8 +33,22 @@ export default function NavLanguageSwitcher() {
   ];
 
   const handleSelect = (next: Locale) => {
+    if (next === locale) {
+      setOpen(false);
+      return;
+    }
     setLocale(next);
     setOpen(false);
+    if (WKApp.shared.isLogined()) {
+      updateUserLanguagePreference(next).catch((error) => {
+        const summary = summarizeLanguageSyncError(error);
+        if (summary) {
+          console.warn("[i18n] failed to sync user language preference", summary);
+        } else {
+          console.warn("[i18n] failed to sync user language preference");
+        }
+      });
+    }
   };
 
   return (

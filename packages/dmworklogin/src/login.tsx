@@ -5,7 +5,7 @@ import { Button, Spin, Toast } from '@douyinfe/semi-ui';
 // 主按钮纯文字, 避免锁定到任意一种登录方式让用户产生 "我没邮箱不能登" 的误判.
 import './login.css'
 import { QRCodeSVG } from 'qrcode.react';
-import { WKApp, Provider, useI18n } from "@octo/base"
+import { WKApp, Provider, apiFetchJson, useI18n } from "@octo/base"
 import type { Locale } from "@octo/base"
 import { LoginStatus, LoginType, LoginVM } from "./login_vm";
 import classNames from "classnames";
@@ -227,8 +227,7 @@ const AndroidDownloadButton: React.FC = () => {
 
     useEffect(() => {
         const baseURL = WKApp.apiClient.config.apiURL || ""
-        fetch(`${baseURL}common/updater/android/1.0`)
-            .then(r => r.json())
+        apiFetchJson<{ url?: string }>(`${baseURL}common/updater/android/1.0`)
             .then(data => {
                 if (data?.url) setApkUrl(data.url)
             })

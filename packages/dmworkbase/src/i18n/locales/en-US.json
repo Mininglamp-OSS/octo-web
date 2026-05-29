@@ -754,6 +754,8 @@
   "categoryList.noSpaceSelected": "No Space selected",
   "api.error.notFound": "Request URL not found (404)",
   "api.error.sessionExpired": "Session expired. Please log in again.",
+  "api.error.forbidden": "Permission denied",
+  "api.error.rateLimited": "Too many requests. Please try again later.",
   "api.error.unknown": "Unknown error",
   "aiTag.assistant": "AI assistant",
   "aiTag.collaboration": "AI collaboration",

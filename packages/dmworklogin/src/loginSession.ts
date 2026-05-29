@@ -1,4 +1,4 @@
-import { WKApp } from '@octo/base'
+import { WKApp, i18n, normalizeLocale } from '@octo/base'
 
 // LoginRespJSON 的字段子集. 用 unknown / any 避免对后端 schema 过度约束:
 // 不同登录入口 (password / sms / OIDC autolink / OIDC bind confirm) 走的是同
@@ -13,7 +13,15 @@ export interface LoginRespFields {
   realname_verified?: unknown
   real_name?: unknown
   realname_verified_at?: unknown
+  language?: unknown
   [k: string]: unknown
+}
+
+function applyBackendLanguagePreference(language: unknown): void {
+  if (typeof language !== 'string' || language === '') return
+  const locale = normalizeLocale(language)
+  if (!locale) return
+  i18n.setLocale(locale)
 }
 
 /**
@@ -76,6 +84,7 @@ export function applyLoginResp(data: LoginRespFields, provider: string): void {
     loginInfo.realnameVerifiedAt = undefined
   }
 
+  applyBackendLanguagePreference(data.language)
   loginInfo.save()
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { i18n } from '@octo/base/src/i18n'
+import { i18n } from '@octo/base/src/i18n/instance'
 import { mapBindError } from '../errorMessages'
 import { OidcBindHttpError } from '../../oidc/http'
 

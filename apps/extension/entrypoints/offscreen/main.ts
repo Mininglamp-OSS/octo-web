@@ -1,4 +1,4 @@
-import { Convert } from "@octo/base";
+import { Convert, apiFetchJson, isApiFetchError } from "@octo/base";
 import {
   Channel,
   ChannelInfo,
@@ -111,24 +111,27 @@ async function fetchJSON<T>(
   authOverride?: ExtensionAuthState,
 ): Promise<T> {
   const auth = authOverride ?? getAuthOrThrow();
-  const response = await fetch(`${normalizeApiURL(auth.apiURL)}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      token: auth.token,
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  if (response.status === 401) {
-    throw new Error("AUTH_EXPIRED");
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
   }
+  headers.set("token", auth.token);
 
-  if (!response.ok) {
-    throw new Error(`HTTP_${response.status}`);
+  try {
+    return await apiFetchJson<T>(`${normalizeApiURL(auth.apiURL)}${path}`, {
+      ...init,
+      headers,
+    });
+  } catch (error) {
+    if (isApiFetchError(error)) {
+      const status = error.httpStatus ?? error.response.status;
+      if (status === 401) {
+        throw new Error("AUTH_EXPIRED");
+      }
+      throw new Error(`HTTP_${status}`);
+    }
+    throw error;
   }
-
-  return (await response.json()) as T;
 }
 
 async function fetchConnectAddrs(auth: ExtensionAuthState): Promise<string[]> {

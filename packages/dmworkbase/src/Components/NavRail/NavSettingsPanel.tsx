@@ -6,6 +6,7 @@ import { Toast, Spin, Button, Progress } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import NavVoiceSettingsItem from "./NavVoiceSettingsItem";
 import { i18n, t } from "../../i18n";
+import { apiFetchJson } from "../../Service/apiFetch";
 
 export interface NavSettingsPanelProps {
     settingSelected: boolean;
@@ -58,13 +59,18 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
         this.setState({ changelogLoading: true });
         try {
             const apiURL = WKApp.apiClient.config.apiURL;
-            const resp = await fetch(`${apiURL}common/updater/web/1.0`);
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
+            const data = await apiFetchJson<{ notes?: unknown; version?: string; pub_date?: string }>(`${apiURL}common/updater/web/1.0`);
             if (!data || typeof data.notes !== 'string') {
                 throw new Error('Invalid changelog format');
             }
-            this.setState({ changelog: data, changelogLoading: false });
+            this.setState({
+                changelog: {
+                    notes: data.notes,
+                    version: data.version || "",
+                    pub_date: data.pub_date || "",
+                },
+                changelogLoading: false,
+            });
         } catch (e) {
             console.error('[NavSettingsPanel] fetch changelog failed', e);
             this.setState({ changelogLoading: false });
@@ -250,4 +256,3 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
         );
     }
 }
-

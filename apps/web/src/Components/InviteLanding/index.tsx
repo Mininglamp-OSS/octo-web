@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { I18nContext, WKApp, computeAndSaveJoinSuccess, t, toJoinApprovalStatus } from "@octo/base";
+import { I18nContext, WKApp, apiFetchJson, computeAndSaveJoinSuccess, t, toJoinApprovalStatus } from "@octo/base";
 import type { JoinSpaceStatus } from "@octo/base";
 import { Button, Spin, Toast } from "@douyinfe/semi-ui";
 import "./index.css";
@@ -71,22 +71,34 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
 
     async loadInviteInfo() {
         try {
-            const resp = await fetch(`${WKApp.apiClient.config.apiURL}space/invite/${this.props.inviteCode}`);
-            const body = await resp.json().catch(() => ({} as any));
+            const body = await apiFetchJson<any>(`${WKApp.apiClient.config.apiURL}space/invite/${this.props.inviteCode}`);
             // dmworkim#1319: detail 入口可能返回 need_space
             // 状态（后端契约：{status: "need_space", msg: "..."}）。识别到时
             // 持久化邀请码并切到 need_space 分支，避免渲染入群/入 Space 按钮。
-            if (this.isNeedSpaceResponse(resp.status, body)) {
+            if (this.isNeedSpaceResponse(200, body)) {
                 this.enterNeedSpace();
-                return;
-            }
-            if (!resp.ok) {
-                this.setState({ loading: false, error: body?.msg || t("app.invite.invalidCode") });
                 return;
             }
             this.setState({ loading: false, info: body });
         } catch (e) {
-            this.setState({ loading: false, error: t("app.invite.networkError") });
+            const body = this.getApiErrorData(e);
+            const status = this.getApiErrorStatus(e);
+            if (this.isNeedSpaceResponse(status, body)) {
+                this.enterNeedSpace();
+                return;
+            }
+            const message = e instanceof Error ? e.message : "";
+            const hasBackendMessage = Boolean(
+                e && typeof e === "object" && typeof (e as { backendMessage?: unknown }).backendMessage === "string"
+            );
+            this.setState({
+                loading: false,
+                error: hasBackendMessage && message
+                    ? message
+                    : status
+                        ? t("app.invite.invalidCode")
+                        : t("app.invite.networkError"),
+            });
         }
     }
 
@@ -101,6 +113,19 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
      */
     private isNeedSpaceResponse(_status: number, body: any): boolean {
         return !!body && body.status === "need_space";
+    }
+
+    private getApiErrorData(error: unknown): any {
+        return error && typeof error === "object" && "data" in error
+            ? (error as { data?: unknown }).data
+            : undefined;
+    }
+
+    private getApiErrorStatus(error: unknown): number {
+        if (!error || typeof error !== "object") return 0;
+        const status = (error as { httpStatus?: unknown; status?: unknown }).httpStatus
+            ?? (error as { status?: unknown }).status;
+        return typeof status === "number" ? status : 0;
     }
 
     /**
@@ -208,23 +233,17 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
             // 必须由用户显式点 toast 里的「切换过去」才切。这里在改动前快照下来。
             const prevCurrentSpaceId = localStorage.getItem("currentSpaceId") || "";
             const apiUrl = WKApp.apiClient.config.apiURL?.replace(/\/+$/, '');
-            const resp = await fetch(`${apiUrl}/space/join`, {
+            const result = await apiFetchJson<any>(`${apiUrl}/space/join`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', token },
                 body: JSON.stringify({ invite_code: this.props.inviteCode }),
             });
-            const result = await resp.json().catch(() => ({} as any));
             // dmworkim#1319: authorize / scanjoin 亦可能
             // 同步返回 need_space。与 detail 分支走同一 enterNeedSpace()，
             // 保证 CTA + pendingInviteCode 自动重试语义一致。
-            if (this.isNeedSpaceResponse(resp.status, result)) {
+            if (this.isNeedSpaceResponse(200, result)) {
                 this.enterNeedSpace();
                 return;
-            }
-            if (!resp.ok) {
-                const error: any = new Error(result?.msg || t("app.invite.joinFailed"));
-                error.status = resp.status;
-                throw error;
             }
             const status: JoinSpaceStatus | undefined = result?.status;
 
@@ -262,8 +281,13 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
             const basePath = this.getAppBasePath();
             window.location.href = `${window.location.origin}${basePath}/${sid ? `?sid=${sid}` : ''}`;
         } catch (e: any) {
+            const body = this.getApiErrorData(e);
+            if (this.isNeedSpaceResponse(this.getApiErrorStatus(e), body)) {
+                this.enterNeedSpace();
+                return;
+            }
             const msg = e?.message || "";
-            const status = e?.status || 0;
+            const status = this.getApiErrorStatus(e);
             // session 过期 / 未授权 → 引导重新登录（携带 pendingInviteCode 登录后自动加群）
             if (this.isUnauthorizedError(status, msg)) {
                 this.redirectToLoginWithPendingInvite(t("app.invite.sessionExpiredJoin"));

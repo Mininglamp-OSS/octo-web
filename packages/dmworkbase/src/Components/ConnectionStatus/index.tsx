@@ -2,6 +2,7 @@ import React, { Component } from "react"
 import { WKSDK, ConnectStatus } from "wukongimjssdk"
 import WKApp from "../../App"
 import { I18nContext } from "../../i18n"
+import { apiFetch } from "../../Service/apiFetch"
 import "./index.css"
 
 interface ConnectionStatusProps {
@@ -76,7 +77,7 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
         try {
             const start = Date.now()
             const baseUrl = WKApp.apiClient.config.apiURL.replace(/\/+$/, '')
-            await fetch(`${baseUrl}/health`, {
+            await apiFetch(`${baseUrl}/health`, {
                 method: "GET",
                 cache: "no-cache",
             })

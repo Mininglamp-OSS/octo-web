@@ -1,6 +1,6 @@
 import React, { Component } from "react"
 import { WKSDK, ConnectStatus } from "wukongimjssdk"
-import { I18nContext, WKApp } from "@octo/base"
+import { I18nContext, WKApp, apiFetch } from "@octo/base"
 import "./index.css"
 
 interface ConnectionStatusState {
@@ -68,7 +68,7 @@ export default class ConnectionStatus extends Component<{}, ConnectionStatusStat
     async measureLatency() {
         try {
             const start = Date.now()
-            await fetch(`${WKApp.apiClient.config.apiURL}/health`, {
+            await apiFetch(`${WKApp.apiClient.config.apiURL}/health`, {
                 method: "GET",
                 cache: "no-cache",
             })
