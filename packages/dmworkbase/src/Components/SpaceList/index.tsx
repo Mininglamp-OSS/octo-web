@@ -3,6 +3,7 @@ import { IconPlus, IconSearch, IconLink } from "@douyinfe/semi-icons";
 import { Spin, Toast, Tooltip } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import { Space, SpaceService } from "../../Service/SpaceService";
+import WKApp from "../../App";
 import SpaceItem from "../SpaceItem";
 import ActionListItem from "../ActionListItem";
 import JoinSpaceModalConnected from "../JoinSpaceModal/JoinSpaceModalConnected";
@@ -31,6 +32,7 @@ interface SpaceListState {
 export default class SpaceList extends Component<SpaceListProps, SpaceListState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
+    private unsubscribeRemoteConfig?: () => void;
 
     constructor(props: SpaceListProps) {
         super(props);
@@ -47,6 +49,13 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
 
     componentDidMount() {
         this.loadSpaces();
+        this.unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
+            this.forceUpdate();
+        });
+    }
+
+    componentWillUnmount() {
+        this.unsubscribeRemoteConfig?.();
     }
 
     loadSpaces = async (): Promise<Space[]> => {
@@ -102,6 +111,7 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
         const selectedSpace = spaces.find(s => s.space_id === selectedSpaceId);
         const headerLabel = selectedSpace ? selectedSpace.name : "Space";
         const handleJoinEntry = onJoinClick ?? (() => this.setState({ showJoinModal: true }));
+        const canCreateSpace = !WKApp.remoteConfig.disableUserCreateSpace;
         const { t } = this.context;
 
         return (
@@ -190,13 +200,15 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
                         variant="join"
                         onClick={handleJoinEntry}
                     />
-                    <ActionListItem
-                        icon={<IconPlus />}
-                        label={t("base.spaceList.createSpace")}
-                        desc={t("base.spaceList.createSpaceDesc")}
-                        variant="create"
-                        onClick={onCreateClick}
-                    />
+                    {canCreateSpace && (
+                        <ActionListItem
+                            icon={<IconPlus />}
+                            label={t("base.spaceList.createSpace")}
+                            desc={t("base.spaceList.createSpaceDesc")}
+                            variant="create"
+                            onClick={onCreateClick}
+                        />
+                    )}
                 </div>
             </div>
         );

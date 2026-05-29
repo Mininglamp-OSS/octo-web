@@ -3,6 +3,7 @@ import { Space } from "wukongimjssdk";
 import SpaceItem from "../SpaceItem";
 import ActionListItem from "../ActionListItem";
 import { I18nContext } from "../../i18n";
+import WKApp from "../../App";
 
 function IconBuilding() {
     return (
@@ -12,13 +13,14 @@ function IconBuilding() {
     );
 }
 
-import { IconJoinSpace, IconChevronRight } from "./icons";
+import { IconCreateSpace, IconJoinSpace, IconChevronRight } from "./icons";
 
 export interface NavSpaceSwitcherProps {
     spaces: Space[];
     currentSpaceId?: string;
     onSpaceSelect: (spaceId: string) => void;
     onJoinSpace?: () => void;
+    onCreateSpace?: () => void;
 }
 
 interface NavSpaceSwitcherState {
@@ -31,6 +33,7 @@ interface NavSpaceSwitcherState {
 export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, NavSpaceSwitcherState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
+    private unsubscribeRemoteConfig?: () => void;
 
     constructor(props: NavSpaceSwitcherProps) {
         super(props);
@@ -39,10 +42,14 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
 
     componentDidMount() {
         document.addEventListener("keydown", this.handleKeyDown);
+        this.unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
+            this.forceUpdate();
+        });
     }
 
     componentWillUnmount() {
         document.removeEventListener("keydown", this.handleKeyDown);
+        this.unsubscribeRemoteConfig?.();
     }
 
     private handleKeyDown = (e: KeyboardEvent) => {
@@ -60,10 +67,11 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
     };
 
     render() {
-        const { spaces, currentSpaceId, onSpaceSelect, onJoinSpace } = this.props;
+        const { spaces, currentSpaceId, onSpaceSelect, onJoinSpace, onCreateSpace } = this.props;
         const { open } = this.state;
         const { t } = this.context;
         const current = spaces.find(s => s.space_id === currentSpaceId);
+        const canCreateSpace = !!onCreateSpace && !WKApp.remoteConfig.disableUserCreateSpace;
 
         return (
             <div className="wk-navrail__switcher">
@@ -111,17 +119,28 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                                 ))}
                             </div>
                             {/* 固定底部操作区 */}
-                            {onJoinSpace && (
+                            {(onJoinSpace || canCreateSpace) && (
                                 <>
                                     <div className="wk-navrail__dropdown-divider" />
                                     <div className="wk-navrail__dropdown-actions">
-                                        <ActionListItem
-                                            icon={<IconJoinSpace />}
-                                            label={t("base.navRail.spaceSwitcher.joinNewSpace")}
-                                            compact
-                                            trailing={<IconChevronRight />}
-                                            onClick={() => { this.handleClose(); onJoinSpace(); }}
-                                        />
+                                        {onJoinSpace && (
+                                            <ActionListItem
+                                                icon={<IconJoinSpace />}
+                                                label={t("base.navRail.spaceSwitcher.joinNewSpace")}
+                                                compact
+                                                trailing={<IconChevronRight />}
+                                                onClick={() => { this.handleClose(); onJoinSpace(); }}
+                                            />
+                                        )}
+                                        {canCreateSpace && (
+                                            <ActionListItem
+                                                icon={<IconCreateSpace />}
+                                                label={t("base.spaceList.createSpace")}
+                                                compact
+                                                trailing={<IconChevronRight />}
+                                                onClick={() => { this.handleClose(); onCreateSpace?.(); }}
+                                            />
+                                        )}
                                     </div>
                                 </>
                             )}

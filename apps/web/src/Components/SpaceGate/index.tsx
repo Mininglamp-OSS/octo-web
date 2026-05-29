@@ -29,9 +29,18 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
     private _enterTimer: ReturnType<typeof setTimeout> | null = null;
     private _isEntering = false;
     private _isMounted = false;
+    private _unsubscribeRemoteConfig?: () => void;
 
     componentDidMount() {
         this._isMounted = true;
+        this._unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
+            if (!this._isMounted) return;
+            if (WKApp.remoteConfig.disableUserCreateSpace && this.state.showCreate) {
+                this.setState({ showCreate: false });
+                return;
+            }
+            this.forceUpdate();
+        });
         const cached = localStorage.getItem("currentSpaceId");
         if (cached) {
             this.enterSpace(cached);
@@ -42,6 +51,7 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
 
     componentWillUnmount() {
         this._isMounted = false;
+        this._unsubscribeRemoteConfig?.();
         if (this._enterTimer) {
             clearTimeout(this._enterTimer);
             this._enterTimer = null;
@@ -110,6 +120,7 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
     render() {
         const { loading, noSpace, inviteCode, joining, showCreate, showInviteInput } = this.state;
         const { t } = this.context;
+        const canCreateSpace = !WKApp.remoteConfig.disableUserCreateSpace;
 
         if (loading && !noSpace) {
             return (
@@ -140,10 +151,12 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
                                 onClick={() => this.setState({ showInviteInput: true })}>
                                 📩 {t("app.spaceGate.joinByInvite")}
                             </Button>
-                            <Button type="secondary" size="large" style={{ width: "100%", height: 44 }}
-                                onClick={() => this.setState({ showCreate: true })}>
-                                ✨ {t("app.spaceGate.createTeam")}
-                            </Button>
+                            {canCreateSpace && (
+                                <Button type="secondary" size="large" style={{ width: "100%", height: 44 }}
+                                    onClick={() => this.setState({ showCreate: true })}>
+                                    ✨ {t("app.spaceGate.createTeam")}
+                                </Button>
+                            )}
                         </div>
                     ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -168,7 +181,7 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
                 </div>
 
                 <SpaceCreate
-                    visible={showCreate}
+                    visible={canCreateSpace && showCreate}
                     onClose={() => this.setState({ showCreate: false })}
                     onSuccess={(_spaceId) => this.checkSpaces()}
                 />

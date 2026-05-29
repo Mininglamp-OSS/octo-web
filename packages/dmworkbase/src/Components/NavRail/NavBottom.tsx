@@ -16,6 +16,7 @@ export interface NavBottomProps {
     currentSpaceId?: string;
     onSpaceSelect: (spaceId: string) => void;
     onJoinSpace?: () => void;
+    onCreateSpace?: () => void;
 }
 
 interface NavBottomState {
@@ -43,7 +44,7 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
     }
 
     render() {
-        const { onSettingsClick, hasNewVersion, onDismissNewVersion, spaces, currentSpaceId, onSpaceSelect, onJoinSpace } = this.props;
+        const { onSettingsClick, hasNewVersion, onDismissNewVersion, spaces, currentSpaceId, onSpaceSelect, onJoinSpace, onCreateSpace } = this.props;
         const { bubbleVisible } = this.state;
 
         return (
@@ -107,6 +108,7 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
                     currentSpaceId={currentSpaceId}
                     onSpaceSelect={onSpaceSelect}
                     onJoinSpace={onJoinSpace}
+                    onCreateSpace={onCreateSpace}
                 />
             </div>
         );

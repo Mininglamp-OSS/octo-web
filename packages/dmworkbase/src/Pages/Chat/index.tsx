@@ -1049,6 +1049,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
 
   private _onSpaceChanged?: (space: any) => void;
   private _onSwitchTab?: (tab: string) => void;
+  private _unsubscribeRemoteConfig?: () => void;
 
   componentDidMount() {
     // 监听 space-changed，同步 spacename 到 state
@@ -1072,6 +1073,14 @@ export default class ChatPage extends Component<any, ChatPageState> {
     };
     WKApp.mittBus.on("wk:switch-sidebar-tab", this._onSwitchTab);
 
+    this._unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
+      if (WKApp.remoteConfig.disableUserCreateSpace && this.vm?.showSpaceCreate) {
+        this.vm.showSpaceCreate = false;
+      } else {
+        this.forceUpdate();
+      }
+    });
+
     // 初始化：主动拉当前 Space 名称（首次渲染时 space-changed 还没触发）
     const currentSpaceId = WKApp.shared.currentSpaceId;
     if (currentSpaceId) {
@@ -1094,6 +1103,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
     if (this._onSwitchTab) {
       WKApp.mittBus.off("wk:switch-sidebar-tab", this._onSwitchTab);
     }
+    this._unsubscribeRemoteConfig?.();
   }
 
   render(): ReactNode {
@@ -1355,15 +1365,17 @@ export default class ChatPage extends Component<any, ChatPageState> {
                   </FollowSidebarProvider>
                 </div>
               </div>
-              <SpaceCreate
-                visible={vm.showSpaceCreate}
-                onClose={() => {
-                  vm.showSpaceCreate = false;
-                }}
-                onSuccess={() => {
-                  this.spaceListRef?.loadSpaces();
-                }}
-              />
+              {!WKApp.remoteConfig.disableUserCreateSpace && (
+                <SpaceCreate
+                  visible={vm.showSpaceCreate}
+                  onClose={() => {
+                    vm.showSpaceCreate = false;
+                  }}
+                  onSuccess={() => {
+                    this.spaceListRef?.loadSpaces();
+                  }}
+                />
+              )}
               <WKModal
                 size="full"
                 visible={vm.showGlobalSearch}

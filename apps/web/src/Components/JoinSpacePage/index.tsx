@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { WKApp, toJoinApprovalStatus, useI18n } from "@octo/base";
+import React, { useEffect, useState } from "react";
+import { SpaceCreate, WKApp, toJoinApprovalStatus, useI18n } from "@octo/base";
 import { SpaceService } from "@octo/base";
 import { Button, Input, Toast } from "@douyinfe/semi-ui";
 import "./index.css";
@@ -22,18 +22,32 @@ interface JoinSpacePageProps {
 const ACCENT = "var(--wk-color-primary, #1C1C23)";
 
 const setCurrentSpace = (spaceId: string) => {
-    if (spaceId) localStorage.setItem("currentSpaceId", spaceId);
+    if (!spaceId) return;
+    WKApp.shared.currentSpaceId = spaceId;
+    localStorage.setItem("currentSpaceId", spaceId);
 };
 
 export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
     const { t } = useI18n();
     const [view, setView] = useState<View>("home");
+    const [showCreate, setShowCreate] = useState(false);
+    const [, setRemoteConfigVersion] = useState(0);
+    const canCreateSpace = !WKApp.remoteConfig.disableUserCreateSpace;
 
     // --- 加入 Space ---
     const [inviteCode, setInviteCode] = useState("");
     const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
     const [verifyLoading, setVerifyLoading] = useState(false);
     const [joinLoading, setJoinLoading] = useState(false);
+
+    useEffect(() => {
+        return WKApp.remoteConfig.addConfigChangeListener(() => {
+            if (WKApp.remoteConfig.disableUserCreateSpace) {
+                setShowCreate(false);
+            }
+            setRemoteConfigVersion((v) => v + 1);
+        });
+    }, []);
 
     /** 验证邀请码，展示 Space 信息 */
     const handleVerifyCode = async () => {
@@ -119,6 +133,16 @@ export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
                             >
                                 📩 {t("app.joinSpace.inputInviteJoin")}
                             </Button>
+                            {canCreateSpace && (
+                                <Button
+                                    type="secondary"
+                                    size="large"
+                                    className="wk-join-space-btn"
+                                    onClick={() => setShowCreate(true)}
+                                >
+                                    ✨ {t("app.spaceGate.createTeam")}
+                                </Button>
+                            )}
                         </div>
                     </>
                 )}
@@ -193,6 +217,15 @@ export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
                     </>
                 )}
             </div>
+            <SpaceCreate
+                visible={canCreateSpace && showCreate}
+                onClose={() => setShowCreate(false)}
+                onSuccess={(spaceId) => {
+                    setCurrentSpace(spaceId);
+                    setShowCreate(false);
+                    onSuccess();
+                }}
+            />
         </div>
     );
 }

@@ -142,6 +142,7 @@ import {
   parseOidcProviders,
   type OidcProviderConfig,
 } from "./Service/OidcConfig";
+import { parseRemoteBool } from "./Utils/remoteConfig";
 export {
   sanitizeHttpUrl,
   parseOidcProviders,
@@ -151,6 +152,7 @@ export type { OidcProviderConfig } from "./Service/OidcConfig";
 export class WKRemoteConfig {
   revokeSecond: number = 2 * 60; // 撤回时间
   threadOn: boolean = false; // 子区功能开关，默认关闭
+  disableUserCreateSpace: boolean = false; // 是否关闭普通用户创建 Space 入口
   /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
@@ -164,6 +166,7 @@ export class WKRemoteConfig {
   // 而其内容(SSO 按钮文案/可见性)依赖 appconfig 字段的组件去 re-render。
   // 不在每次失败重试上 fire, 避免重复刷新。
   private listeners: Array<() => void> = [];
+  private configChangeListeners: Array<() => void> = [];
 
   /**
    * addListener 订阅 appconfig **首次** 加载完成事件——只 fire 一次 (后续重连/手动 refetch 不再触发)。
@@ -204,6 +207,25 @@ export class WKRemoteConfig {
     }
   }
 
+  addConfigChangeListener(cb: () => void): () => void {
+    this.configChangeListeners.push(cb);
+    return () => {
+      const i = this.configChangeListeners.indexOf(cb);
+      if (i >= 0) this.configChangeListeners.splice(i, 1);
+    };
+  }
+
+  private notifyConfigChangeListeners() {
+    const snapshot = [...this.configChangeListeners];
+    for (const cb of snapshot) {
+      try {
+        cb();
+      } catch (e) {
+        console.error("[WKRemoteConfig] config change listener threw", e);
+      }
+    }
+  }
+
   async startRequestConfig() {
     // 吃掉 requestConfig 的 reject: 否则 await 直接抛出, 后面的 retry 分支根本到不了——
     // 网络错误下指数退避就成了死代码。requestSuccess 在出错时保持 false, retry 分支负责重排。
@@ -226,12 +248,19 @@ export class WKRemoteConfig {
   requestConfig() {
     return WKApp.apiClient.get("common/appconfig").then((result) => {
       const wasSuccessful = this.requestSuccess;
+      const previousDisableUserCreateSpace = this.disableUserCreateSpace;
       this.requestSuccess = true;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
+      this.disableUserCreateSpace = parseRemoteBool(
+        result["disable_user_create_space"]
+      );
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
+      if (previousDisableUserCreateSpace !== this.disableUserCreateSpace) {
+        this.notifyConfigChangeListeners();
+      }
     });
   }
 }
@@ -564,6 +593,8 @@ export default class WKApp extends ProviderListener {
   spaceChecked: boolean = false; // Space 检查是否完成
   deviceName: string = ""; // 设备名称
   deviceModel: string = ""; // 设备型号
+  private remoteConfigForegroundRefreshStarted: boolean = false;
+  private lastRemoteConfigForegroundRefreshAt: number = 0;
 
   set notificationIsClose(v: boolean) {
     this._notificationIsClose = v;
@@ -641,6 +672,35 @@ export default class WKApp extends ProviderListener {
     }
 
     WKApp.remoteConfig.startRequestConfig();
+    this.setupRemoteConfigForegroundRefresh();
+  }
+
+  private setupRemoteConfigForegroundRefresh() {
+    if (
+      this.remoteConfigForegroundRefreshStarted ||
+      typeof window === "undefined" ||
+      typeof document === "undefined"
+    ) {
+      return;
+    }
+    this.remoteConfigForegroundRefreshStarted = true;
+
+    const refresh = () => {
+      this.refreshRemoteConfigOnForeground();
+    };
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refresh();
+    });
+    window.addEventListener("focus", refresh);
+  }
+
+  private refreshRemoteConfigOnForeground() {
+    const now = Date.now();
+    if (now - this.lastRemoteConfigForegroundRefreshAt < 5000) return;
+    this.lastRemoteConfigForegroundRefreshAt = now;
+    WKApp.remoteConfig.requestConfig().catch((e) => {
+      console.warn("[WKRemoteConfig] foreground refresh failed", e);
+    });
   }
 
   getDeviceIdFromStorage() {

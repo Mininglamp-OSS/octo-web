@@ -38,6 +38,7 @@ export interface NavRailVMProps {
     currentSpaceId?: string;
     onSpaceSelect: (spaceId: string) => void;
     onJoinSpace?: () => void;
+    onCreateSpace?: () => void;
     /** 是否在设置菜单中显示「空间管理」入口（仅 owner/admin 可见） */
     canManageSpace?: boolean;
     /** 用户关闭版本更新气泡时的回调 */
@@ -72,6 +73,7 @@ export default class NavRail extends Component<NavRailProps> {
             currentSpaceId,
             onSpaceSelect,
             onJoinSpace,
+            onCreateSpace,
             canManageSpace = false,
         } = this.props;
 
@@ -121,6 +123,7 @@ export default class NavRail extends Component<NavRailProps> {
                         currentSpaceId={currentSpaceId}
                         onSpaceSelect={onSpaceSelect}
                         onJoinSpace={onJoinSpace}
+                        onCreateSpace={onCreateSpace}
                     />
                 </nav>
 

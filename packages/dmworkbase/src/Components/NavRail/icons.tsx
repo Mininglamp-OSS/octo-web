@@ -12,6 +12,17 @@ export function IconJoinSpace() {
     );
 }
 
+/** 创建 Space — plus icon */
+export function IconCreateSpace() {
+    return (
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none"
+            stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+    );
+}
+
 /** Figma: filled/arrow/chevron_right 16x16 */
 export function IconChevronRight() {
     return (
@@ -21,4 +32,3 @@ export function IconChevronRight() {
         </svg>
     );
 }
-
