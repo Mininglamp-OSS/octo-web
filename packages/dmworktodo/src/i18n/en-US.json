@@ -241,14 +241,18 @@
     "mine": "Assigned to me"
   },
   "timeline": {
+    "attachmentLabel": "Attachments",
     "attachments": "{{count}} attachments",
     "collapse": "Collapse group timeline",
+    "downloadFile": "Download {{name}}",
     "empty": "No progress yet",
     "emptyInGroup": "No timeline records in this group yet",
     "expand": "Expand group timeline",
     "groupTitle": "Group progress",
     "loading": "Loading timeline...",
-    "noText": "No text content"
+    "noText": "No text content",
+    "previewFile": "Preview {{name}}",
+    "unnamedFile": "Unnamed file"
   },
   "toast": {
     "addAssigneeFailed": "Failed to add assignee",
@@ -260,7 +264,7 @@
     "createFailed": "Failed to create",
     "created": "Task created",
     "deleteFailed": "Failed to delete",
-    "deleted": "Deleted",
+    "deleted": "Deleted","downloadFailed": "Download failed",
     "descriptionUpdateFailed": "Failed to update description",
     "loadCommentsFailed": "Failed to load comments",
     "loadFailed": "Failed to load",

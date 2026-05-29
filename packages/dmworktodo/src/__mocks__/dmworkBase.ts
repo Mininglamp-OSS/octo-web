@@ -1,11 +1,19 @@
 // Mock for @octo/base — provides WKApp stubs for tests
+//
+// dataSource.commonDataSource.getFileURL 默认是恒等函数 (返回原始 URL),
+// 单测里可以 import 这个 mock 再覆盖该函数, 模拟不同的 baseURL/OSS 行为。
 export const WKApp = {
   loginInfo: { token: 'test-token-abc', uid: 'test-uid' },
   shared: { currentSpaceId: 'space-123', logout: () => { }, avatarUser: () => '' },
   routeRight: { push: () => { }, replaceToRoot: () => { } },
   mittBus: { on: () => { }, off: () => { }, emit: () => { } },
   apiClient: {},
-  endpoints: { showConversation: () => { } },
+  endpoints: { showConversation: () => {} },
+  dataSource: {
+    commonDataSource: {
+      getFileURL: (raw: string) => raw,
+    },
+  },
 };
 
 export const isSafeUrl = (url: string) => /^https?:\/\//.test(url);

@@ -6,6 +6,7 @@ import type {
   MatterStatus,
   MatterChannel as MatterChannelType,
   TimelineEntry,
+  TimelineAttachment,
   TimelineReq,
   MatterActivity,
   MatterOutput,
@@ -41,10 +42,15 @@ import OwnerEditor from "../../ui/OwnerEditor";
 import AnchorPopover from "../../ui/AnchorPopover";
 import { OutputsPanel } from "../../ui/OutputsPanel";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
-import { getExtension } from "@octo/base/src/Components/FilePreviewPanel/types";
-import { downloadFile } from "@octo/base/src/Utils/download";
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import { WKApp, i18n, useI18n, t as translate } from "@octo/base";
+import { downloadFile } from "@octo/base/src/Utils/download";
+import {
+  getFileIcon,
+  formatFileSize,
+} from "@octo/base/src/Components/MessageInput/AttachmentNode";
+import { getExtension } from "@octo/base/src/Components/FilePreviewPanel/types";
+import { Eye, Download as DownloadIcon } from "lucide-react";
 import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
 import { useChannelName } from "../../hooks/useChannelName";
 import { useMyGroups } from "../../hooks/useMyGroups";
@@ -591,6 +597,72 @@ export default function MatterDetailPanel({
       }
     },
     [matter, t],
+  );
+
+  // ── 时间线附件: 解析 + 校验 URL ──
+  // 复用 utils/fileUrl.resolveAndGuardUrl, 跟 dmworkbase/Messages/File
+  // 同一套两步:
+  //   1. WKApp.dataSource.commonDataSource.getFileURL(rawUrl)  → 拿到完整路径
+  //   2. 不是绝对 URL 则补 origin
+  //   3. isSafeUrl 拒掉 javascript: / data: 等不安全协议
+  //
+  // 抽成独立 util 是为了:
+  //   - 单测可直接对 helper 加 case
+  //   - 跟 OutputsPanel 这类未来用同样安全模式的调用方共享一个真源
+
+  // 预览附件: 仅在嵌入聊天侧边栏 (showClose=true) 时启用,
+  // 因为只有 Pages/Chat 监听 wk:file-preview 事件并弹 FilePreviewPanel。
+  // 独立 matter 页面不接听这个事件, 避免按钮看似可点但无反应。
+  //
+  // payload 与 wk:file-preview 既有形状对齐 (dmworkbase/App.tsx 定义):
+  //   - sourceChannelId 用 entry.source_channel_id, 这是真实 IM channel_id
+  //     (跟 timeline_entries.source_channel_id 同源), 不是 matter_channels.id,
+  //     跟 PR #97 Outputs tab 那边不一样, 这里不用做 matter.channels lookup。
+  //   - sourceChannelType 优先用 entry.channel_type, 否则回查 matter.channels
+  //     拿到与 sourceChannelId 配套的 channel_type。两者都缺时不传, 让
+  //     Pages/Chat._onFilePreview 走默认分支 (不当作 thread)。这样可以避免
+  //     "id 有 / type 没有" 半截信息导致下游分支判断错误。
+  const handlePreviewAttachment = useCallback(
+    (att: TimelineAttachment, entry: TimelineEntry) => {
+      const url = resolveAndGuardUrl(att.file_url);
+      if (!url) return;
+      const name = att.file_name || t("base.conversation.file.unknown");
+      const ext = getExtension("", name);
+
+      const sourceChannelId = entry.source_channel_id;
+      let sourceChannelType: number | undefined = entry.channel_type;
+      if (sourceChannelId && sourceChannelType == null) {
+        const matched = (matter?.channels || []).find(
+          (ch) => ch.channel_id === sourceChannelId,
+        );
+        sourceChannelType = matched?.channel_type;
+      }
+
+      WKApp.mittBus.emit("wk:file-preview", {
+        url,
+        name,
+        extension: ext,
+        size: att.file_size,
+        sourceChannelId,
+        sourceChannelType,
+      });
+    },
+    [matter, t],
+  );
+
+  // 下载附件: 嵌入和独立模式都启用, 沿用 dmworkbase/Utils/download.downloadFile,
+  // 内部已带 isSafeUrl 二次保险 + presigned cross-origin 处理。
+  const handleDownloadAttachment = useCallback(
+    async (att: TimelineAttachment) => {
+      const url = resolveAndGuardUrl(att.file_url);
+      if (!url) return;
+      try {
+        await downloadFile(url, att.file_name || "file");
+      } catch {
+        Toast.error(t("todo.toast.downloadFailed"));
+      }
+    },
+    [],
   );
 
   // ── 负责人 toggle：添加或移除 assignee，成功后拉取最新 matter ──
@@ -1144,6 +1216,10 @@ export default function MatterDetailPanel({
                           ...computeAnchorPosition(rect),
                         });
                       }}
+                      onPreviewAttachment={
+                        showClose ? handlePreviewAttachment : undefined
+                      }
+                      onDownloadAttachment={handleDownloadAttachment}
                     />
                   )}
                 </div>
@@ -1183,10 +1259,6 @@ export default function MatterDetailPanel({
           />
         )}
 
-        {/* ── Footer ── */}
-        <div className="wk-mp-footer">
-          {t("todo.footer.tagline")}
-        </div>
       </div>
 
       {/* 关联群聊弹窗 */}
@@ -1554,10 +1626,12 @@ function formatRelativeSyncTime(iso: string): string {
   return translate("todo.sync.daysAgo", { values: { count: days } });
 }
 
-function TimelinePanel({
+export function TimelinePanel({
   entries,
   onShowAnchor,
   canShowAnchor,
+  onPreviewAttachment,
+  onDownloadAttachment,
 }: {
   entries: TimelineEntry[];
   /**
@@ -1570,9 +1644,26 @@ function TimelinePanel({
    * 可选: 逐条判断某 entry 是否允许 "查看原消息" (典型场景: 当前用户
    * 不在该条 entry 所属 channel, 没权限拉原消息)。
    * 返回 false 时该条不显示原消息按钮, 即使 source_msgs 非空。
-   * 不传 = 默认所有条都允许 (由 onShowAnchor + source_msgs 决定)。
+   * 不传 = 默认所有条都单独允许 (由 onShowAnchor + source_msgs 决定)。
    */
   canShowAnchor?: (entry: TimelineEntry) => boolean;
+  /**
+   * 点击附件预览按钮时调用, 由父组件负责派发 wk:file-preview 事件。
+   * 不传 = 附件区域不渲染预览按钮 (典型场景: 独立 matter 页面而非
+   * 嵌入聊天侧边栏, 此时没有 FilePreviewPanel 接收事件)。
+   */
+  onPreviewAttachment?: (
+    attachment: TimelineAttachment,
+    entry: TimelineEntry,
+  ) => void;
+  /**
+   * 点击附件下载按钮时调用, 由父组件负责 resolveAndGuardUrl + downloadFile。
+   * 不传 = 附件区域不渲染下载按钮。
+   */
+  onDownloadAttachment?: (
+    attachment: TimelineAttachment,
+    entry: TimelineEntry,
+  ) => void;
 }) {
   const { t } = useI18n();
   const [sortNewest, setSortNewest] = useState(true);
@@ -1634,17 +1725,83 @@ function TimelinePanel({
                       />
                       <UserName uid={e.user_id} className="wk-mp-tl__user-name" />
                     </span>
-                    {/* 内容（前面带冒号） */}
-                    <span className="wk-mp-tl__content-wrap">
+                    {/* 内容（前面带冒号） + 附件区 */}
+                    <div className="wk-mp-tl__content-wrap">
                       <span className="wk-mp-tl__colon">：</span>
-                      <span className="wk-mp-tl__content">{e.content || ""}</span>
-                    </span>
-                    {/* 附件 */}
-                    {e.attachments && e.attachments.length > 0 && (
-                      <span className="wk-mp-tl__att-count">
-                        {t("todo.timeline.attachments", { values: { count: e.attachments.length } })}
-                      </span>
-                    )}
+                      <div className="wk-mp-tl__content-col">
+                        <span className="wk-mp-tl__content">{e.content || ""}</span>
+                        {/* 附件列表: 仅当 entry 有 attachments 时渲染 */}
+                        {Array.isArray(e.attachments) && e.attachments.length > 0 && (
+                          <div
+                            className="wk-mp-tl__attachments"
+                            role="list"
+                            aria-label={t("todo.timeline.attachmentLabel")}
+                          >
+                            {e.attachments.map((att) => {
+                              const name = att.file_name || t("todo.timeline.unnamedFile");
+                              const sizeText =
+                                att.file_size != null
+                                  ? formatFileSize(att.file_size)
+                                  : null;
+                              const icon = getFileIcon(name, att.mime_type || "");
+                              return (
+                                <div
+                                  key={att.id}
+                                  className="wk-mp-tl__att-card"
+                                  role="listitem"
+                                  title={name}
+                                >
+                                  <img
+                                    src={icon}
+                                    alt=""
+                                    className="wk-mp-tl__att-icon"
+                                    aria-hidden="true"
+                                  />
+                                  <span className="wk-mp-tl__att-meta">
+                                    <span className="wk-mp-tl__att-name">
+                                      {name}
+                                    </span>
+                                    {sizeText && (
+                                      <span className="wk-mp-tl__att-size">
+                                        {sizeText}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="wk-mp-tl__att-actions">
+                                    {onPreviewAttachment && (
+                                      <button
+                                        type="button"
+                                        className="wk-mp-tl__att-btn"
+                                        title={t("todo.timeline.previewFile", { values: { name } })}
+                                        aria-label={t("todo.timeline.previewFile", { values: { name } })}
+                                        onClick={() =>
+                                          onPreviewAttachment(att, e)
+                                        }
+                                      >
+                                        <Eye size={14} aria-hidden="true" />
+                                      </button>
+                                    )}
+                                    {onDownloadAttachment && (
+                                      <button
+                                        type="button"
+                                        className="wk-mp-tl__att-btn"
+                                        title={t("todo.timeline.downloadFile", { values: { name } })}
+                                        aria-label={t("todo.timeline.downloadFile", { values: { name } })}
+                                        onClick={() =>
+                                          onDownloadAttachment(att, e)
+                                        }
+                                      >
+                                        <DownloadIcon size={14} aria-hidden="true" />
+                                      </button>
+                                    )}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   {/* 原消息按钮 */}
                   {(() => {
@@ -1805,6 +1962,8 @@ function ChannelTimelineSection({
   chEntries,
   timelineLoading,
   onShowAnchor,
+  onPreviewAttachment,
+  onDownloadAttachment,
 }: {
   ch: MatterChannelType;
   expanded: boolean;
@@ -1812,6 +1971,15 @@ function ChannelTimelineSection({
   chEntries: TimelineEntry[];
   timelineLoading: boolean;
   onShowAnchor: (entry: TimelineEntry, ev: React.MouseEvent, channelName: string) => void;
+  /**
+   * 点击附件预览按钮时调用, 由父组件负责派发 wk:file-preview 事件。
+   * 不传 = 附件区域不渲染预览按钮 (独立 matter 页面场景)。
+   */
+  onPreviewAttachment?: (attachment: TimelineAttachment, entry: TimelineEntry) => void;
+  /**
+   * 点击附件下载按钮时调用, 由父组件负责 resolveAndGuardUrl + downloadFile。
+   */
+  onDownloadAttachment?: (attachment: TimelineAttachment, entry: TimelineEntry) => void;
 }) {
   const { t } = useI18n();
   // 实时解析 channel 名称 (群改名 / 子区标题都能跟上)
@@ -1849,6 +2017,8 @@ function ChannelTimelineSection({
             onShowAnchor={(entry, ev) => {
               onShowAnchor(entry, ev, displayName);
             }}
+            onPreviewAttachment={onPreviewAttachment}
+            onDownloadAttachment={onDownloadAttachment}
           />
         );
       })()}
