@@ -737,6 +737,7 @@ export default class ConversationVM extends ProviderListener {
                         existMsg.message.streams.sort((a, b) => a.streamSeq - b.streamSeq)
                     }
                     existMsg.message.streamFlag = message.streamFlag
+                    this.rebuildRenderItems()
                     this.notifyListener()
                     return
                 }

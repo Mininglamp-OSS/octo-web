@@ -31,6 +31,18 @@ describe("isMessageContinuation", () => {
         )).toBe(false)
     })
 
+    it("does not let temporary typing messages merge with real messages", () => {
+        expect(isMessageContinuation(
+            msg("bot1", 1_000, { contentType: MessageContentTypeConst.typing }),
+            msg("bot1", 1_030),
+        )).toBe(false)
+
+        expect(isMessageContinuation(
+            msg("bot1", 1_000),
+            msg("bot1", 1_030, { contentType: MessageContentTypeConst.typing }),
+        )).toBe(false)
+    })
+
     it("does not continue across different senders", () => {
         expect(isMessageContinuation(msg("u1", 1_000), msg("u2", 1_030))).toBe(false)
     })

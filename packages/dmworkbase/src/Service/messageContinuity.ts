@@ -20,6 +20,7 @@ function isBoundaryMessage(message: ContinuityMessage): boolean {
     const contentType = contentTypeOf(message)
     return contentType === MessageContentTypeConst.time
         || contentType === MessageContentTypeConst.historySplit
+        || contentType === MessageContentTypeConst.typing
         || !!message.revoke
 }
 
