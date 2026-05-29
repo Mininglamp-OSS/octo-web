@@ -79,6 +79,8 @@ import VoiceFeedback from "../../Service/VoiceFeedback";
 import { precheckUploadCredentials } from "../../Service/UploadCredentials";
 import { I18nContext, t } from "../../i18n";
 
+import { cloneContentForForward } from "./cloneContentForForward";
+
 /**
  * 取消息的有效内容：如果消息被编辑过，返回编辑后的 contentEdit；否则返回原始 content
  */
@@ -367,8 +369,9 @@ export class Conversation
 
   fowardMessageUI(message: Message): void {
     WKApp.shared.baseContext.showConversationSelect((channels: Channel[]) => {
-      const cloneContent = getEffectiveContent(message);
       for (const channel of channels) {
+        // #86: 每个目标独立克隆, 避免共享引用导致上传/变更互相干扰
+        const cloneContent = cloneContentForForward(getEffectiveContent(message));
         this.sendMessage(cloneContent, channel);
       }
     });
@@ -1974,10 +1977,11 @@ export class Conversation
                       WKApp.shared.baseContext.showConversationSelect(
                         (channels: Channel[]) => {
                           for (const message of messages) {
-                            const cloneContent = getEffectiveContent(
-                              message.message,
-                            );
                             for (const channel of channels) {
+                              // #86: 每个 (message, channel) 组合独立克隆
+                              const cloneContent = cloneContentForForward(
+                                getEffectiveContent(message.message),
+                              );
                               this.sendMessage(cloneContent, channel);
                             }
                           }
