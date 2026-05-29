@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Component } from "react";
 import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t } from "@octo/base"
 import "./index.css"
@@ -42,59 +42,68 @@ function OverflowTooltip({ text, children }: { text: string; children: React.Rea
 const ITEM_HEIGHT = 44
 const LETTER_HEADER_HEIGHT = 24
 
-function getItemLetter(item: Contacts): string {
-    let name = (item.name || '').replace(/\*\*/g, '')
-    if (item.remark && item.remark !== "") name = item.remark
-    const py = getPinyin(toSimplized(name)).toUpperCase()
+type ContactFilterMode = 'all' | 'bots' | 'humans'
+
+interface ContactListRow {
+    item: Contacts
+    letter: string
+    showLetter: boolean
+}
+
+interface ContactIndexData {
+    items: Contacts[]
+    indexList: string[]
+    indexItemMap: Map<string, Contacts[]>
+    listRows: ContactListRow[]
+}
+
+function getLetterFromPinyin(py: string): string {
     let letter = (py && py[0]) || '#'
     if (!/[A-Z]/.test(letter)) letter = '#'
     return letter
 }
 
 interface VirtualContactListProps {
-    items: Contacts[]
+    rows: ContactListRow[]
     renderItem: (item: Contacts) => React.ReactNode
+    initialScrollTop: number
+    onScrollTopChange: (scrollTop: number) => void
 }
 
-function VirtualContactList({ items, renderItem }: VirtualContactListProps) {
+function VirtualContactList({ rows, renderItem, initialScrollTop, onScrollTopChange }: VirtualContactListProps) {
     const parentRef = useRef<HTMLDivElement>(null)
 
     const virtualizer = useVirtualizer({
-        count: items.length,
+        count: rows.length,
         getScrollElement: () => parentRef.current,
         estimateSize: (index: number) => {
-            if (index === 0) return ITEM_HEIGHT + LETTER_HEADER_HEIGHT
-            const curr = items[index]
-            const prev = items[index - 1]
-            if (curr && prev && getItemLetter(curr) !== getItemLetter(prev)) {
-                return ITEM_HEIGHT + LETTER_HEADER_HEIGHT
-            }
-            return ITEM_HEIGHT
+            return rows[index]?.showLetter ? ITEM_HEIGHT + LETTER_HEADER_HEIGHT : ITEM_HEIGHT
         },
         overscan: 15,
     })
 
+    useEffect(() => {
+        const scrollElement = parentRef.current
+        if (!scrollElement) return
+
+        const maxScrollTop = Math.max(0, virtualizer.getTotalSize() - scrollElement.clientHeight)
+        virtualizer.scrollToOffset(Math.min(initialScrollTop, maxScrollTop))
+    }, [initialScrollTop, virtualizer])
+
     return (
-        <div ref={parentRef} className="wk-contacts-all-list">
+        <div
+            ref={parentRef}
+            className="wk-contacts-all-list"
+            onScroll={(event) => onScrollTopChange(event.currentTarget.scrollTop)}
+        >
             <div style={{ height: virtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
                 {virtualizer.getVirtualItems().map(virtualItem => {
-                    const item = items[virtualItem.index]
-                    if (!item) return null
-
-                    let showLetter = false
-                    let letter = getItemLetter(item)
-                    if (virtualItem.index === 0) {
-                        showLetter = true
-                    } else {
-                        const prev = items[virtualItem.index - 1]
-                        if (getItemLetter(prev) !== letter) {
-                            showLetter = true
-                        }
-                    }
+                    const row = rows[virtualItem.index]
+                    if (!row) return null
 
                     return (
                         <div
-                            key={item.uid}
+                            key={row.item.uid}
                             style={{
                                 position: 'absolute',
                                 top: 0,
@@ -103,8 +112,8 @@ function VirtualContactList({ items, renderItem }: VirtualContactListProps) {
                                 transform: `translateY(${virtualItem.start}px)`,
                             }}
                         >
-                            {showLetter && <div className="wk-contacts-letter-header">{letter}</div>}
-                            {renderItem(item)}
+                            {row.showLetter && <div className="wk-contacts-letter-header">{row.letter}</div>}
+                            {renderItem(row.item)}
                         </div>
                     )
                 })}
@@ -128,7 +137,7 @@ export class ContactsState {
     myGroups: any[] = []
 
     // 筛选
-    filterMode: 'all' | 'bots' | 'humans' = 'all'
+    filterMode: ContactFilterMode = 'all'
 
     // 搜索
     isSearching: boolean = false
@@ -152,6 +161,7 @@ export class ContactsState {
     // 字母索引
     indexList: string[] = []
     indexItemMap: Map<string, Contacts[]> = new Map()
+    listRows: ContactListRow[] = []
 
     // 加载
     loading: boolean = true
@@ -166,6 +176,8 @@ export default class ContactsList extends Component<any, ContactsState> {
     baseContext!: WKBaseContext
     private spaceChangedHandler!: (space: any) => void
     private flatItems: Contacts[] = []
+    private indexCache = new Map<ContactFilterMode, ContactIndexData>()
+    private filterScrollTops: Record<ContactFilterMode, number> = { all: 0, bots: 0, humans: 0 }
 
     constructor(props: any) {
         super(props)
@@ -181,12 +193,17 @@ export default class ContactsList extends Component<any, ContactsState> {
             if (idx !== -1) {
                 const members = [...this.state.spaceMembers]
                 members[idx] = { ...members[idx], name: channelInfo.title }
-                this.setState({ spaceMembers: members }, () => this.rebuildIndex())
+                this.setState({ spaceMembers: members }, () => {
+                    this.clearIndexCache()
+                    this.rebuildIndex()
+                })
             }
         }
 
         this.spaceChangedHandler = (space: any) => {
             const sp = space as Space | undefined
+            this.clearIndexCache()
+            this.resetFilterScrollTops()
             if (sp) {
                 this.debouncedSearch.cancel()
                 this.setState({ currentSpace: sp, myGroups: [], myBots: [], spaceBots: [], keyword: '', isSearching: false, searchContacts: [], searchGroups: [], filterMode: 'all', loading: true }, () => {
@@ -242,6 +259,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                 myGroups: myGroups || [],
                 loading: false,
             }, () => {
+                this.clearIndexCache()
                 this.rebuildIndex()
             })
         } catch {
@@ -249,8 +267,34 @@ export default class ContactsList extends Component<any, ContactsState> {
         }
     }
 
-    private rebuildIndex() {
-        const { spaceMembers, spaceBots, filterMode } = this.state
+    private clearIndexCache() {
+        this.indexCache.clear()
+    }
+
+    private resetFilterScrollTops() {
+        this.filterScrollTops = { all: 0, bots: 0, humans: 0 }
+    }
+
+    private handleListScroll = (scrollTop: number) => {
+        this.filterScrollTops[this.state.filterMode] = scrollTop
+    }
+
+    private restoreListScroll = (element: HTMLDivElement | null) => {
+        if (!element) return
+        element.scrollTop = this.filterScrollTops[this.state.filterMode] || 0
+    }
+
+    private getIndex(filterMode: ContactFilterMode) {
+        const cached = this.indexCache.get(filterMode)
+        if (cached) return cached
+
+        const indexData = this.buildIndex(filterMode)
+        this.indexCache.set(filterMode, indexData)
+        return indexData
+    }
+
+    private buildIndex(filterMode: ContactFilterMode): ContactIndexData {
+        const { spaceMembers, spaceBots } = this.state
         const myUID = WKApp.loginInfo.uid || ""
 
         let items: Contacts[]
@@ -330,17 +374,24 @@ export default class ContactsList extends Component<any, ContactsState> {
         // 构建字母分组索引
         const indexItemMap = new Map<string, Contacts[]>()
         const indexList: string[] = []
+        const listRows: ContactListRow[] = []
+        let prevLetter = ''
 
         for (const item of items) {
             const py = pinyinCache.get(item.uid)!
-            let letter = (py && py[0]) || '#'
-            if (!/[A-Z]/.test(letter)) letter = '#'
+            const letter = getLetterFromPinyin(py)
 
             if (!indexItemMap.has(letter)) {
                 indexItemMap.set(letter, [])
                 indexList.push(letter)
             }
             indexItemMap.get(letter)!.push(item)
+            listRows.push({
+                item,
+                letter,
+                showLetter: letter !== prevLetter,
+            })
+            prevLetter = letter
         }
 
         // 排序字母：A-Z, # 排最后
@@ -350,8 +401,13 @@ export default class ContactsList extends Component<any, ContactsState> {
             return a.localeCompare(b)
         })
 
+        return { items, indexList, indexItemMap, listRows }
+    }
+
+    private rebuildIndex() {
+        const { items, indexList, indexItemMap, listRows } = this.getIndex(this.state.filterMode)
         this.flatItems = items
-        this.setState({ indexList, indexItemMap })
+        this.setState({ indexList, indexItemMap, listRows })
     }
 
     private debouncedSearch = debounce((keyword: string) => {
@@ -424,10 +480,11 @@ export default class ContactsList extends Component<any, ContactsState> {
         this.setState({ groupCardVisible: true, groupCardGroupNo: groupNo, groupCardName: name, groupCardMemberCount: memberCount })
     }
 
-    private handleFilterChange = (mode: 'all' | 'bots' | 'humans') => {
-        this.setState({ filterMode: mode }, () => {
-            this.rebuildIndex()
-        })
+    private handleFilterChange = (mode: ContactFilterMode) => {
+        if (this.state.filterMode === mode) return
+        const { items, indexList, indexItemMap, listRows } = this.getIndex(mode)
+        this.flatItems = items
+        this.setState({ filterMode: mode, indexList, indexItemMap, listRows })
     }
 
     _handleContextMenu(item: Contacts, event: React.MouseEvent) {
@@ -658,21 +715,29 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     renderContactListWithLetters() {
-        const { indexList, indexItemMap } = this.state
+        const { filterMode, indexList, indexItemMap, listRows } = this.state
 
         // 大量联系人用虚拟列表（函数组件 + useVirtualizer）
         if (this.flatItems.length > 100) {
             return (
                 <VirtualContactList
-                    items={this.flatItems}
+                    key={filterMode}
+                    rows={listRows}
                     renderItem={(item) => this.renderContactItem(item)}
+                    initialScrollTop={this.filterScrollTops[filterMode] || 0}
+                    onScrollTopChange={this.handleListScroll}
                 />
             )
         }
 
         // 少量项目直接渲染
         return (
-            <div className="wk-contacts-accordion-body">
+            <div
+                key={filterMode}
+                ref={this.restoreListScroll}
+                className="wk-contacts-accordion-body"
+                onScroll={(event) => this.handleListScroll(event.currentTarget.scrollTop)}
+            >
                 {indexList.map(letter => {
                     const items = indexItemMap.get(letter)
                     if (!items || items.length === 0) return null
