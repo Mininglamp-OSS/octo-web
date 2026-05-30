@@ -2,7 +2,7 @@ name: Octo PR Result Notify
 
 on:
   pull_request_target:
-    types: [closed, reopened]
+    types: [closed]
   pull_request_review:
     types: [submitted]
 
@@ -18,10 +18,11 @@ jobs:
       pr_title: ${{ github.event.pull_request.title }}
       pr_url: ${{ github.event.pull_request.html_url }}
       pr_author: ${{ github.event.pull_request.user.login }}
-      event_kind: ${{ github.event.action == 'closed' && github.event.pull_request.merged == true && 'pr_merged' || github.event.action == 'closed' && 'pr_closed' || 'pr_reopened' }}
+      event_kind: ${{ github.event.pull_request.merged == true && 'pr_merged' || 'pr_closed' }}
       pr_additions: ${{ github.event.pull_request.additions }}
       pr_deletions: ${{ github.event.pull_request.deletions }}
       pr_changed_files: ${{ github.event.pull_request.changed_files }}
+      feed_group_id: ${{ vars.OCTO_PR_FEED_GROUP_ID }}
     secrets:
       OCTO_BOT_TOKEN: ${{ secrets.OCTO_BOT_TOKEN }}
 
@@ -39,5 +40,6 @@ jobs:
       pr_author: ${{ github.event.pull_request.user.login }}
       event_kind: ${{ github.event.review.state == 'approved' && 'review_approved' || 'review_changes_requested' }}
       reviewer: ${{ github.event.review.user.login }}
+      feed_group_id: ${{ vars.OCTO_PR_FEED_GROUP_ID }}
     secrets:
       OCTO_BOT_TOKEN: ${{ secrets.OCTO_BOT_TOKEN }}
