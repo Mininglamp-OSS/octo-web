@@ -23,7 +23,7 @@ jobs:
       pr_deletions: ${{ github.event.pull_request.deletions }}
       pr_changed_files: ${{ github.event.pull_request.changed_files }}
     secrets:
-      OCTO_BOT_TOKEN: *** secrets.OCTO_BOT_TOKEN }}
+      OCTO_BOT_TOKEN: ${{ secrets.OCTO_BOT_TOKEN }}
 
   review-result:
     if: >-
@@ -40,4 +40,4 @@ jobs:
       event_kind: ${{ github.event.review.state == 'approved' && 'review_approved' || 'review_changes_requested' }}
       reviewer: ${{ github.event.review.user.login }}
     secrets:
-      OCTO_BOT_TOKEN: *** secrets.OCTO_BOT_TOKEN }}
+      OCTO_BOT_TOKEN: ${{ secrets.OCTO_BOT_TOKEN }}
