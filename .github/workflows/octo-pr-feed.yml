@@ -2,7 +2,7 @@ name: Octo PR Feed
 
 on:
   pull_request_target: # zizmor: ignore[dangerous-triggers] metadata-only automation; no PR code executed
-    types: [opened, closed, reopened]
+    types: [opened]
     branches: [main]
 
 permissions: {}
