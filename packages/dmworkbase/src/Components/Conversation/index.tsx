@@ -67,9 +67,11 @@ import {
   FileContent,
   formatFileSize,
   getFileIconInfo,
+  getExtension,
 } from "../../Messages/File";
 import { ImageContent } from "../../Messages/Image";
 import { downloadFile } from "../../Utils/download";
+import { isSafeUrl } from "../../Utils/security";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
@@ -1201,16 +1203,33 @@ export class Conversation
     if (message.contentType === MessageContentTypeConst.file) {
       const content = message.content as FileContent;
       const iconInfo = getFileIconInfo(content.extension, content.name);
+      const resolveFileUrl = () => {
+        const rawUrl = content.url || content.remoteUrl || "";
+        if (!rawUrl) return "";
+        const fileUrl =
+          WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
+        if (!fileUrl || !isSafeUrl(fileUrl)) return "";
+        return fileUrl;
+      };
       return (
         <div
           className="wk-fold-file"
-          onClick={async () => {
-            const rawUrl = content.url || content.remoteUrl || "";
-            if (!rawUrl) return;
-            const fileUrl =
-              WKApp.dataSource.commonDataSource.getFileURL(rawUrl);
+          title={t("base.messageFile.preview")}
+          onClick={() => {
+            const fileUrl = resolveFileUrl();
             if (!fileUrl) return;
-            await downloadFile(fileUrl, content.name || "file");
+            WKApp.mittBus.emit("wk:file-preview", {
+              url: fileUrl,
+              name: content.name || t("base.messageFile.unknownFile"),
+              extension: getExtension(content.extension, content.name),
+              size: content.size,
+              sourceChannelId: message.channel.channelID,
+              sourceChannelType: message.channel.channelType,
+              messageId: message.messageID,
+              messageSeq: message.messageSeq,
+              fromUID: message.fromUID,
+              conversationDigest: content.conversationDigest,
+            });
           }}
         >
           <div
@@ -1227,7 +1246,16 @@ export class Conversation
               {formatFileSize(content.size)}
             </div>
           </div>
-          <div className="wk-fold-file-dl" title={t("base.conversation.file.download")}>
+          <div
+            className="wk-fold-file-dl"
+            title={t("base.conversation.file.download")}
+            onClick={async (e) => {
+              e.stopPropagation();
+              const fileUrl = resolveFileUrl();
+              if (!fileUrl) return;
+              await downloadFile(fileUrl, content.name || "file");
+            }}
+          >
             <svg
               viewBox="0 0 24 24"
               width="14"

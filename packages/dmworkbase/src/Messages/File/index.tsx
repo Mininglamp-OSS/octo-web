@@ -275,7 +275,7 @@ function FileTypeIcon({
   );
 }
 
-function getExtension(extension: string, name?: string): string {
+export function getExtension(extension: string, name?: string): string {
   // 优先从文件名后缀提取: 服务端返回的 extension 字段不可靠 (可能为空、
   // 或是 "file" 等占位值, 见 issue #143), 用文件名后缀更稳妥。
   //
