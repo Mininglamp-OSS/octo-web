@@ -354,7 +354,7 @@ function escapeRegExp(s: string): string {
 // Build a dynamic regex that matches @name for all known members.
 // Names are sorted longest-first so "Cindy Che" matches before "Cindy".
 function buildMentionRegex(members: MemberInfo[]): RegExp {
-  const specialNames = [MENTION_LABEL_HUMANS, "all", "everyone"];
+  const specialNames = [MENTION_LABEL_HUMANS, "all", "everyone", MENTION_LABEL_AIS, "All AIs"];
   const allNames = [...specialNames, ...members.map((m) => m.name)];
   // Deduplicate and sort by length descending (longest match first)
   const unique = [...new Set(allNames)];
@@ -390,18 +390,26 @@ function parseMentionMarkers(
       result.push({ type: "text", text: text.slice(lastIndex, matchStart) });
     }
 
-    const isAll =
+    const isHumans =
       name === MENTION_LABEL_HUMANS ||
       name.toLowerCase() === "all" ||
       name.toLowerCase() === "everyone";
+    const isAis =
+      name === MENTION_LABEL_AIS || name.toLowerCase() === "all ais";
     const member = members.find(
       (m) => m.name.toLowerCase() === name.toLowerCase()
     );
 
-    if (isAll) {
+    if (isHumans) {
       result.push({
         type: "mention",
-        attrs: { id: "-1", label: MENTION_LABEL_HUMANS },
+        attrs: { id: MENTION_UID_HUMANS, label: MENTION_LABEL_HUMANS },
+      });
+      result.push({ type: "text", text: " " });
+    } else if (isAis) {
+      result.push({
+        type: "mention",
+        attrs: { id: MENTION_UID_AIS, label: MENTION_LABEL_AIS },
       });
       result.push({ type: "text", text: " " });
     } else if (member) {
@@ -416,7 +424,7 @@ function parseMentionMarkers(
     }
 
     lastIndex = match.index + match[0].length;
-    if (isAll || member) {
+    if (isHumans || isAis || member) {
       if (lastIndex < text.length && /\s/.test(text[lastIndex])) {
         lastIndex++;
       }

@@ -17,8 +17,17 @@ interface MentionEntity {
     length: number
 }
 
+// Sentinel uids shared with Utils/mentionRender. Mirrored here so the
+// test stays self-contained (no import cycle through the editor module).
+const MENTION_UID_HUMANS = "-2"
+const MENTION_UID_AIS = "-3"
+const MENTION_LABEL_HUMANS = "所有人"
+const MENTION_LABEL_AIS = "所有AI"
+
 class MentionModel {
     all: boolean = false
+    humans?: number
+    ais?: number
     uids?: Array<string>
     entities?: MentionEntity[]
 }
@@ -30,7 +39,7 @@ function escapeRegExp(s: string): string {
 }
 
 function buildMentionRegex(members: MemberInfo[]): RegExp {
-    const specialNames = ["所有人", "all", "everyone"]
+    const specialNames = ["所有人", "all", "everyone", "所有AI", "All AIs"]
     const allNames = [...specialNames, ...members.map((m) => m.name)]
     const unique = [...new Set(allNames)]
     unique.sort((a, b) => b.length - a.length)
@@ -55,13 +64,20 @@ function parseMentionMarkers(
             result.push({ type: 'text', text: text.slice(lastIndex, matchStart) })
         }
 
-        const isAll = name === '所有人' || name.toLowerCase() === 'all' || name.toLowerCase() === 'everyone'
+        const isHumans = name === '所有人' || name.toLowerCase() === 'all' || name.toLowerCase() === 'everyone'
+        const isAis = name === MENTION_LABEL_AIS || name.toLowerCase() === 'all ais'
         const member = members.find(m => m.name.toLowerCase() === name.toLowerCase())
 
-        if (isAll) {
+        if (isHumans) {
             result.push({
                 type: 'mention',
-                attrs: { id: '-1', label: '所有人' },
+                attrs: { id: MENTION_UID_HUMANS, label: MENTION_LABEL_HUMANS },
+            })
+            result.push({ type: 'text', text: ' ' })
+        } else if (isAis) {
+            result.push({
+                type: 'mention',
+                attrs: { id: MENTION_UID_AIS, label: MENTION_LABEL_AIS },
             })
             result.push({ type: 'text', text: ' ' })
         } else if (member) {
@@ -75,7 +91,7 @@ function parseMentionMarkers(
         }
 
         lastIndex = match.index + match[0].length
-        if (isAll || member) {
+        if (isHumans || isAis || member) {
             if (lastIndex < text.length && /\s/.test(text[lastIndex])) {
                 lastIndex++
             }
@@ -98,6 +114,8 @@ function formatMentionTextV2(text: string): {
     let result = '';
     let cursor = 0;
     let all = false;
+    let humans = false;
+    let ais = false;
 
     const placeholderPattern = /@\[([^:\]]+):([^\]]+)\]/g;
     let match;
@@ -110,8 +128,13 @@ function formatMentionTextV2(text: string): {
 
         if (uid === '-1') {
             all = true;
-            const atName = `@${name}`;
-            result += atName;
+            result += `@${MENTION_LABEL_HUMANS}`;
+        } else if (uid === MENTION_UID_HUMANS) {
+            humans = true;
+            result += `@${MENTION_LABEL_HUMANS}`;
+        } else if (uid === MENTION_UID_AIS) {
+            ais = true;
+            result += `@${MENTION_LABEL_AIS}`;
         } else {
             const atName = `@${name}`;
             const offset = result.length;
@@ -126,20 +149,17 @@ function formatMentionTextV2(text: string): {
 
     result += text.substring(cursor);
 
-    if (all) {
+    if (all || humans || ais || entities.length > 0) {
         const mention = new MentionModel();
-        mention.all = true;
+        mention.all = all;
+        if (uids.length > 0) mention.uids = uids;
+        if (entities.length > 0) mention.entities = entities;
+        if (humans) mention.humans = 1;
+        if (ais) mention.ais = 1;
         return { content: result, mention };
     }
 
-    if (entities.length === 0) {
-        return { content: result, mention: undefined };
-    }
-
-    const mention = new MentionModel();
-    mention.uids = uids;
-    mention.entities = entities;
-    return { content: result, mention };
+    return { content: result, mention: undefined };
 }
 
 // Simulates extractMentionsFromEditor traversal on a Tiptap JSON doc
@@ -207,7 +227,7 @@ describe('parseMentionMarkers', () => {
         const result = parseMentionMarkers('@所有人 注意', members)
         expect(result[0]).toEqual({
             type: 'mention',
-            attrs: { id: '-1', label: '所有人' },
+            attrs: { id: MENTION_UID_HUMANS, label: MENTION_LABEL_HUMANS },
         })
     })
 
@@ -215,7 +235,7 @@ describe('parseMentionMarkers', () => {
         const result = parseMentionMarkers('@all check this', members)
         expect(result[0]).toEqual({
             type: 'mention',
-            attrs: { id: '-1', label: '所有人' },
+            attrs: { id: MENTION_UID_HUMANS, label: MENTION_LABEL_HUMANS },
         })
     })
 
@@ -223,7 +243,31 @@ describe('parseMentionMarkers', () => {
         const result = parseMentionMarkers('@everyone check this', members)
         expect(result[0]).toEqual({
             type: 'mention',
-            attrs: { id: '-1', label: '所有人' },
+            attrs: { id: MENTION_UID_HUMANS, label: MENTION_LABEL_HUMANS },
+        })
+    })
+
+    it('should handle @所有AI', () => {
+        const result = parseMentionMarkers('@所有AI 看一下', members)
+        expect(result[0]).toEqual({
+            type: 'mention',
+            attrs: { id: MENTION_UID_AIS, label: MENTION_LABEL_AIS },
+        })
+    })
+
+    it('should handle @All AIs (English)', () => {
+        const result = parseMentionMarkers('@All AIs check this', members)
+        expect(result[0]).toEqual({
+            type: 'mention',
+            attrs: { id: MENTION_UID_AIS, label: MENTION_LABEL_AIS },
+        })
+    })
+
+    it('should still match @所有AI with empty members list', () => {
+        const result = parseMentionMarkers('@所有AI 注意', [])
+        expect(result[0]).toEqual({
+            type: 'mention',
+            attrs: { id: MENTION_UID_AIS, label: MENTION_LABEL_AIS },
         })
     })
 
@@ -242,7 +286,7 @@ describe('parseMentionMarkers', () => {
         const result = parseMentionMarkers('@所有人 注意', [])
         expect(result[0]).toEqual({
             type: 'mention',
-            attrs: { id: '-1', label: '所有人' },
+            attrs: { id: MENTION_UID_HUMANS, label: MENTION_LABEL_HUMANS },
         })
     })
 
@@ -391,7 +435,7 @@ describe('voice mention end-to-end', () => {
         expect(mention?.entities?.[1].uid).toBe('uid_bob')
     })
 
-    it('@所有人 should set mention.all = true', () => {
+    it('@所有人 (voice) should set mention.humans = 1', () => {
         const nodes = parseMentionMarkers('@所有人 注意', members)
 
         const editorJSON = {
@@ -400,10 +444,33 @@ describe('voice mention end-to-end', () => {
         }
 
         const extracted = extractMentionsFromJSON(editorJSON)
+        expect(extracted).toBe('@[-2:所有人] 注意')
+
         const { content, mention } = formatMentionTextV2(extracted)
 
         expect(content).toBe('@所有人 注意')
-        expect(mention?.all).toBe(true)
+        expect(mention?.humans).toBe(1)
+        expect(mention?.all).toBe(false)
+        expect(mention?.ais).toBeUndefined()
+    })
+
+    it('@所有AI (voice) should set mention.ais = 1', () => {
+        const nodes = parseMentionMarkers('@所有AI 注意', members)
+
+        const editorJSON = {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: nodes }],
+        }
+
+        const extracted = extractMentionsFromJSON(editorJSON)
+        expect(extracted).toBe('@[-3:所有AI] 注意')
+
+        const { content, mention } = formatMentionTextV2(extracted)
+
+        expect(content).toBe('@所有AI 注意')
+        expect(mention?.ais).toBe(1)
+        expect(mention?.all).toBe(false)
+        expect(mention?.humans).toBeUndefined()
     })
 
     it('unmatched @mention should pass through as plain text', () => {
