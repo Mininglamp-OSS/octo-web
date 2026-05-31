@@ -6,7 +6,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 Octo-web is the web frontend for DMWork (enterprise IM platform). It's a pnpm monorepo with Turborepo, React + TypeScript.
 
-- **Package Manager**: pnpm (also has yarn.lock for legacy compat)
+- **Package Manager**: pnpm
 - **Build Tool**: Vite + Turborepo
 - **Test Framework**: Vitest
 - **Default Branch**: `main`
@@ -26,11 +26,9 @@ pnpm build                      # production build
 
 # Test
 cd apps/web && pnpm test        # run vitest
-pnpm vitest run --reporter=verbose  # verbose output
 
 # Lint
-pnpm eslint . --ext .ts,.tsx
-pnpm tsc --noEmit               # type check
+pnpm lint                       # turbo-orchestrated lint across all packages
 ```
 
 ## Architecture
@@ -98,6 +96,8 @@ Plain CSS files (no CSS Modules, no Tailwind). Styles co-located with components
 - Components: PascalCase directories, `index.tsx` entry
 - ViewModels: `vm.ts` or `vm.tsx` in component directory
 - Tests: `__tests__/` directory or `*.test.ts` co-located
-- Imports: use `@octo/<package>` workspace aliases for cross-package imports
+- Imports: use workspace package names for cross-package imports:
+  - `@octo/base`, `@octo/contacts`, `@octo/datasource`, `@octo/login`, `@octo/todo`
+  - `@dmwork/summary`, `@dmwork/appbot`
 - Type safety: avoid `any` — use proper types or `unknown` with type guards
 - API calls: go through `WKApp.apiClient`, do NOT create separate axios/fetch instances
