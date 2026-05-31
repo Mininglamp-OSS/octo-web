@@ -1354,7 +1354,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
                 // Use dynamic regex built from member names to detect mentions
                 const hasMention =
-                  memberInfos.length > 0 &&
                   buildMentionRegex(memberInfos).test(text);
 
                 // Find text position in current doc (handles mention atom nodes)
