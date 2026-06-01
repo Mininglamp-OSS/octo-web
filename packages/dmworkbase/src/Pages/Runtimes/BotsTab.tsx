@@ -25,7 +25,6 @@ export function BotsTab() {
     try {
       const list = await listBots();
       setBots(list);
-      setSelectedId(prev => prev ?? (list[0]?.id ?? null));
     } finally {
       setLoading(false);
     }
@@ -54,6 +53,16 @@ export function BotsTab() {
     return () => window.clearInterval(t);
   }, [refresh]);
 
+  // Selecting a bot pushes the detail to the right pane (same mechanism
+  // RuntimesPage uses for agent detail — keeps RuntimesPage as a pure
+  // left-sidebar list and stays consistent with the WKApp two-pane router).
+  const selectBot = useCallback((bot: Bot) => {
+    setSelectedId(bot.id);
+    (WKApp as any).routeRight.replaceToRoot(
+      <BotDetailPanel bot={bot} onArchived={refresh} />,
+    );
+  }, [refresh]);
+
   const modalRuntimes = useMemo(() => runtimes.map(r => ({
     id: r.id,
     name: r.name,
@@ -61,51 +70,49 @@ export function BotsTab() {
     supported: SUPPORTED_KINDS.includes(r.provider as RuntimeKind),
   })), [runtimes]);
 
-  const handleCreated = useCallback((botId: number) => {
+  const handleCreated = useCallback(async (botId: number) => {
     setSelectedId(botId);
-    refresh();
-  }, [refresh]);
-
-  const selected = bots.find(b => b.id === selectedId) ?? null;
+    await refresh();
+    // Find the new bot in the just-refreshed list (might race; the polling
+    // will catch it on next tick if not present yet).
+    const fresh = await listBots();
+    setBots(fresh);
+    const created = fresh.find(b => b.id === botId);
+    if (created) selectBot(created);
+  }, [refresh, selectBot]);
 
   return (
-    <div className="wk-rt-bots">
-      <div className="wk-rt-bots__list">
-        <div className="wk-rt-bots__list-header">
-          <span>智能体 {bots.length > 0 && <span className="wk-rt-bots__count">{bots.length}</span>}</span>
-          <button type="button" className="wk-rt-bots__new" onClick={() => setModalOpen(true)}>
-            + 新建
-          </button>
-        </div>
-        {loading && bots.length === 0 && <div className="wk-rt-bots__empty">加载中…</div>}
-        {!loading && bots.length === 0 && (
-          <div className="wk-rt-bots__empty">还没有智能体，点上方 + 新建</div>
-        )}
-        <ul className="wk-rt-bots__items">
-          {bots.map(b => (
-            <li
-              key={b.id}
-              className={`wk-rt-bots__item${selectedId === b.id ? ' is-active' : ''}`}
-              onClick={() => setSelectedId(b.id)}
-            >
-              <div className="wk-rt-bots__item-name">{b.name}</div>
-              <div className="wk-rt-bots__item-meta">
-                <span className="wk-rt-bots__item-kind">{b.runtime_kind}</span>
-                <span className={`wk-rt-bots__item-status wk-rt-bots__item-status--${b.status}`}>
-                  {b.status === 'active' ? '在线' :
-                   b.status === 'failed' ? '失败' :
-                   (b.status === 'provisioning' || b.status === 'bot_minted' || b.status === 'dispatched') ? '初始化中' :
-                   b.status}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+    <div className="wk-rt-bots-list">
+      <div className="wk-rt-bots__list-header">
+        <span>智能体 {bots.length > 0 && <span className="wk-rt-bots__count">{bots.length}</span>}</span>
+        <button type="button" className="wk-rt-bots__new" onClick={() => setModalOpen(true)}>
+          + 新建
+        </button>
       </div>
-      <div className="wk-rt-bots__detail">
-        {selected ? <BotDetailPanel bot={selected} onArchived={refresh} /> :
-          <div className="wk-rt-bots__detail-empty">从左侧选择一个智能体</div>}
-      </div>
+      {loading && bots.length === 0 && <div className="wk-rt-bots__empty">加载中…</div>}
+      {!loading && bots.length === 0 && (
+        <div className="wk-rt-bots__empty">还没有智能体，点上方 + 新建</div>
+      )}
+      <ul className="wk-rt-bots__items">
+        {bots.map(b => (
+          <li
+            key={b.id}
+            className={`wk-rt-bots__item${selectedId === b.id ? ' is-active' : ''}`}
+            onClick={() => selectBot(b)}
+          >
+            <div className="wk-rt-bots__item-name">{b.name}</div>
+            <div className="wk-rt-bots__item-meta">
+              <span className="wk-rt-bots__item-kind">{b.runtime_kind}</span>
+              <span className={`wk-rt-bots__item-status wk-rt-bots__item-status--${b.status}`}>
+                {b.status === 'active' ? '在线' :
+                 b.status === 'failed' ? '失败' :
+                 (b.status === 'provisioning' || b.status === 'bot_minted' || b.status === 'dispatched') ? '初始化中' :
+                 b.status}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
       <CreateBotModal
         visible={modalOpen}
         runtimes={modalRuntimes}

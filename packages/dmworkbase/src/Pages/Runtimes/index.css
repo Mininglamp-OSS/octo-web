@@ -1013,11 +1013,11 @@
 }
 
 /* ─── PoC4 BotsTab ─────────────────────────────────────────── */
-.wk-rt-bots {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 0;
-  height: calc(100vh - 140px);
+/* List-only — detail pushes into WKApp.routeRight, same model as
+ * RuntimesPage agent detail. Stays inside the left-sidebar container. */
+.wk-rt-bots-list {
+  display: flex;
+  flex-direction: column;
   border-top: 1px solid var(--border-light, #e5e5e5);
 }
 .wk-rt-bots__list {
@@ -1086,13 +1086,6 @@
   text-align: center;
   font-size: 12px;
   color: var(--text-tertiary, #888);
-}
-.wk-rt-bots__detail { padding: 0; overflow-y: auto; }
-.wk-rt-bots__detail-empty {
-  padding: 60px 24px;
-  text-align: center;
-  color: var(--text-tertiary, #888);
-  font-size: 13px;
 }
 
 /* ─── PoC4 BotDetailPanel ──────────────────────────────────── */
