@@ -989,27 +989,99 @@
     color: var(--text-tertiary);
 }
 
-/* ─── PoC4 page tabs ───────────────────────────────────────── */
+/* ─── PoC4 page header (tab nav as page identity) ────────────
+ * No separate H1 — the tab labels themselves are the page title,
+ * GitHub/Linear style. Bigger type + generous spacing so they feel
+ * like primary nav, not buried controls. Bottom hairline border
+ * is the only divider; section subheader takes over below.
+ */
+.wk-rt-pageheader {
+  padding: 12px 16px 0;
+  background: var(--bg-primary, #fff);
+  border-bottom: 1px solid var(--border-light, #e8e8e8);
+}
+
 .wk-rt-pagetabs {
   display: flex;
-  gap: 8px;
-  padding: 12px 16px 0;
-  border-bottom: 1px solid var(--border-light, #e5e5e5);
-  margin-bottom: 12px;
+  gap: 4px;
+  align-items: stretch;
 }
+
+/* Meta info (count / status summary) sits at the trailing edge of the
+ * tab row — keeps page metadata visible without a second header line. */
+.wk-rt-pageheader__meta {
+  margin-left: auto;
+  align-self: center;
+  padding-bottom: 4px;       /* visually align with active tab baseline */
+  font-size: 12px;
+  color: var(--text-tertiary, #8a8a8a);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Primary action button hosted in the page header (Bot tab uses it for
+ * "+ 新建"). Style mirrors .wk-rt-upgrade-btn — light grey on hairline
+ * border — so it reads as a secondary chrome control, not a hero CTA. */
+.wk-rt-pageheader__action {
+  margin-left: auto;
+  align-self: center;
+  margin-bottom: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-primary, #1a1a1a);
+  background: var(--bg-secondary, #f5f5f5);
+  border: 1px solid var(--border-light, #e5e5e5);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wk-rt-pageheader__action:hover {
+  background: var(--bg-hover, #ececec);
+  border-color: var(--border-medium, #d8d8d8);
+}
+
+.wk-rt-pageheader__action:focus-visible {
+  outline: none;
+  border-color: var(--text-primary, #1a1a1a);
+}
+
 .wk-rt-pagetab {
-  padding: 8px 14px;
+  position: relative;
+  margin: 0;
+  padding: 8px 14px 12px;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  font-size: 13px;
-  color: var(--text-tertiary, #888);
-  cursor: pointer;
-}
-.wk-rt-pagetab.is-active {
-  color: var(--text-primary, #1a1a1a);
-  border-bottom-color: var(--text-primary, #1a1a1a);
+  font: inherit;
+  font-size: 14px;
   font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.005em;
+  color: var(--text-tertiary, #8a8a8a);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  min-height: 36px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wk-rt-pagetab:hover {
+  color: var(--text-secondary, #444);
+}
+
+.wk-rt-pagetab:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 2px var(--accent-light, rgba(99, 102, 241, 0.35));
+}
+
+.wk-rt-pagetab.is-active {
+  color: var(--text-primary, #111);
+  border-bottom-color: var(--text-primary, #111);
+  font-weight: 600;
 }
 
 /* ─── PoC4 BotsTab ─────────────────────────────────────────── */
@@ -1018,7 +1090,23 @@
 .wk-rt-bots-list {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--border-light, #e5e5e5);
+}
+
+/* Toolbar row above the list — minimal, only carries the create CTA
+ * and an inline count. No section title — the page tab already says
+ * "Bot", so a "智能体" heading here would be duplicative. */
+.wk-rt-bots__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+}
+
+.wk-rt-bots__count-inline {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--text-tertiary, #8a8a8a);
+  font-variant-numeric: tabular-nums;
 }
 .wk-rt-bots__list {
   border-right: 1px solid var(--border-light, #e5e5e5);
@@ -1088,108 +1176,711 @@
   color: var(--text-tertiary, #888);
 }
 
-/* ─── PoC4 BotDetailPanel ──────────────────────────────────── */
-.wk-rt-botdetail { display: flex; flex-direction: column; height: 100%; }
-.wk-rt-botdetail__header {
-  display: flex; align-items: center; gap: 12px;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-light, #e5e5e5);
+
+/* ─── PoC4 Bot Detail Panel (multica-inspired) ────────────
+ * Three vertical layers in the right-pane scroll container:
+ *   1) Header (avatar + name + status + chips + actions)
+ *   2) Tab nav (underline, icon-less for now)
+ *   3) Body (one or more `wk-bd-section` cards)
+ * Stays system-native: no gradients, no shadows, hairline borders only.
+ * Spacing rhythm 4/8 (multica uses gap-1.5, gap-3, p-5).
+ */
+
+.wk-bd {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #111);
 }
-.wk-rt-botdetail__avatar {
-  width: 40px; height: 40px;
-  background: var(--bg-secondary, #f0f0f0);
-  border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 600; color: var(--text-tertiary, #888);
-  font-size: 18px;
+
+/* ── Header ── */
+.wk-bd-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border-light, #ececec);
 }
-.wk-rt-botdetail__title { flex: 1; }
-.wk-rt-botdetail__name { font-size: 15px; font-weight: 600; }
-.wk-rt-botdetail__sub {
-  display: flex; gap: 8px; margin-top: 2px;
-  font-size: 11px; color: var(--text-tertiary, #888);
+
+.wk-bd-avatar {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
-.wk-rt-botdetail__status--active { color: #0a8a4f; }
-.wk-rt-botdetail__status--failed { color: #dc2626; }
-.wk-rt-botdetail__kind {
-  padding: 1px 6px;
-  background: var(--bg-secondary, #f0f0f0);
-  border-radius: 3px;
+
+.wk-bd-headinfo {
+  flex: 1;
+  min-width: 0;
 }
-.wk-rt-botdetail__archive {
-  font-size: 12px;
-  padding: 4px 10px;
-  border: 1px solid var(--border-light, #e5e5e5);
-  background: transparent;
+
+.wk-bd-name {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--text-primary, #111);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-bd-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wk-bd-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  line-height: 1.4;
+}
+
+.wk-bd-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.wk-bd-status--online {
+  color: #0a8a4f;
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.18);
+}
+.wk-bd-status--failed {
+  color: #c2410c;
+  background: rgba(220, 38, 38, 0.06);
+  border-color: rgba(220, 38, 38, 0.18);
+}
+.wk-bd-status--pending {
+  color: #92691a;
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.18);
+}
+
+.wk-bd-chip {
+  display: inline-flex;
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 1.4;
   color: var(--text-tertiary, #888);
+  background: var(--bg-secondary, #f3f3f3);
+  border: 1px solid var(--border-light, #ececec);
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wk-bd-chip--ws {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 10.5px;
+  color: var(--text-secondary, #555);
+}
+
+.wk-bd-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.wk-bd-action {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
   border-radius: 6px;
   cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
 }
-.wk-rt-botdetail__tabs {
-  display: flex; gap: 4px;
+
+.wk-bd-action--ghost {
+  background: transparent;
+  border: 1px solid var(--border-light, #e5e5e5);
+  color: var(--text-secondary, #555);
+}
+.wk-bd-action--ghost:hover {
+  background: var(--bg-hover, #f5f5f5);
+  border-color: var(--border-medium, #d0d0d0);
+  color: var(--text-primary, #111);
+}
+
+/* ── Tab nav ── */
+.wk-bd-tabs {
+  display: flex;
+  gap: 2px;
   padding: 0 20px;
-  border-bottom: 1px solid var(--border-light, #e5e5e5);
+  border-bottom: 1px solid var(--border-light, #ececec);
 }
-.wk-rt-botdetail__tab {
-  padding: 10px 14px;
+
+.wk-bd-tab {
+  position: relative;
+  padding: 10px 14px 12px;
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-tertiary, #8a8a8a);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.wk-bd-tab:hover { color: var(--text-secondary, #555); }
+.wk-bd-tab.is-active {
+  color: var(--text-primary, #111);
+  border-bottom-color: var(--text-primary, #111);
+  font-weight: 600;
+}
+
+/* ── Body / section cards ── */
+.wk-bd-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wk-bd-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wk-bd-section--card {
+  padding: 16px 18px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-light, #ececec);
+  border-radius: 8px;
+}
+
+.wk-bd-section__title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary, #888);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-bd-section__title--secondary {
+  margin-top: 8px;
+}
+
+.wk-bd-section__count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary, #888);
+  padding: 0 6px;
+  background: var(--bg-secondary, #f0f0f0);
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ── PropRow (multica-style PropRow) ── */
+.wk-bd-props {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  row-gap: 2px;
+  column-gap: 12px;
+}
+
+.wk-bd-prop {
+  display: contents;
+}
+
+.wk-bd-prop__label {
+  margin: 0;
+  padding: 7px 0;
   font-size: 12px;
   color: var(--text-tertiary, #888);
+  align-self: start;
+}
+
+.wk-bd-prop__value {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--text-primary, #111);
+  border-radius: 4px;
+  transition: background 0.12s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wk-bd-prop__value:hover {
+  background: var(--bg-secondary, #fafafa);
+}
+
+.wk-bd-props__sep {
+  color: var(--text-tertiary, #bbb);
+}
+
+.wk-bd-props__hint {
+  color: var(--text-tertiary, #888);
+  font-size: 12px;
+}
+
+.wk-bd-props__time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary, #555);
+}
+
+.wk-bd-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 12px;
+}
+
+/* ── Copyable value ── */
+.wk-bd-copyable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.wk-bd-copyable.is-mono .wk-bd-copyable__text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 12px;
+  color: var(--text-secondary, #444);
+}
+
+.wk-bd-copyable__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.wk-bd-copyable__btn {
+  flex-shrink: 0;
+  padding: 0 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary, #bbb);
   cursor: pointer;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+  line-height: 1;
 }
-.wk-rt-botdetail__tab.is-active {
-  color: var(--text-primary, #1a1a1a);
-  border-bottom-color: var(--text-primary, #1a1a1a);
+
+.wk-bd-prop__value:hover .wk-bd-copyable__btn { opacity: 1; }
+
+.wk-bd-copyable__btn:hover {
+  color: var(--text-primary, #111);
 }
-.wk-rt-botdetail__body {
-  flex: 1; padding: 16px 20px; overflow-y: auto;
+
+/* ── Error callout ── */
+.wk-bd-callout {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wk-bd-callout--err {
+  background: rgba(220, 38, 38, 0.05);
+  border: 1px solid rgba(220, 38, 38, 0.18);
+}
+
+.wk-bd-callout__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #c2410c;
+}
+
+.wk-bd-callout__body {
+  font-size: 12px;
+  color: var(--text-secondary, #555);
+  font-family: ui-monospace, monospace;
+  word-break: break-word;
+}
+
+/* ── Empty state ── */
+.wk-bd-empty {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--text-tertiary, #aaa);
   font-size: 13px;
 }
-.wk-rt-botdetail__empty {
-  padding: 32px 0; text-align: center; color: var(--text-tertiary, #888); font-size: 12px;
+
+.wk-bd-empty--inline {
+  padding: 20px 0;
+  font-size: 12px;
 }
-.wk-rt-botdetail__props {
-  display: grid;
-  grid-template-columns: 100px 1fr;
-  gap: 8px 16px;
-  margin: 0;
+
+/* ── Stats (big numbers) ── */
+.wk-bd-stats {
+  display: flex;
+  align-items: flex-end;
+  gap: 28px;
+  padding: 4px 0 2px;
 }
-.wk-rt-botdetail__props dt { color: var(--text-tertiary, #888); }
-.wk-rt-botdetail__props dd { margin: 0; }
-.wk-rt-botdetail__props code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+.wk-bd-stats__col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wk-bd-stats__big {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary, #111);
+}
+
+.wk-bd-stats__unit {
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 1px;
+  color: var(--text-tertiary, #888);
+}
+
+.wk-bd-stats__sub {
   font-size: 11px;
-  background: var(--bg-secondary, #f0f0f0);
-  padding: 1px 5px;
-  border-radius: 3px;
+  color: var(--text-tertiary, #888);
 }
-.wk-rt-botdetail__feed {
-  list-style: none; padding: 0; margin: 0;
-  display: flex; flex-direction: column; gap: 6px;
+
+/* ── Feed (mixed comment + activity) ── */
+.wk-bd-feed {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
 }
-.wk-rt-botdetail__feed li {
-  display: grid;
-  grid-template-columns: 70px 90px 1fr;
+
+.wk-bd-feed__row {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--border-light, #f3f3f3);
+}
+
+.wk-bd-feed__row:last-child { border-bottom: none; }
+
+.wk-bd-feed__dot {
+  margin-top: 6px;
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-tertiary, #c5c5c5);
+}
+
+.wk-bd-feed__dot--ok { background: #16a34a; }
+.wk-bd-feed__dot--fail { background: #dc2626; }
+.wk-bd-feed__dot--comment { background: #6366f1; }
+
+.wk-bd-feed__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wk-bd-feed__title {
+  font-size: 13px;
+  color: var(--text-primary, #111);
+  line-height: 1.5;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.wk-bd-feed__row--activity .wk-bd-feed__title {
+  font-size: 12px;
+  color: var(--text-secondary, #444);
+}
+
+.wk-bd-feed__meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+  font-variant-numeric: tabular-nums;
+}
+
+.wk-bd-feed__dotsep {
+  color: var(--text-tertiary, #ccc);
+}
+
+/* ── Tasks (rounded card rows) ── */
+.wk-bd-tasks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wk-bd-task {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light, #ececec);
+  border-radius: 6px;
+  background: var(--bg-primary, #fff);
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.wk-bd-task:hover {
+  border-color: var(--border-medium, #d8d8d8);
+  background: var(--bg-secondary, #fafafa);
+}
+
+.wk-bd-task--failed { border-color: rgba(220, 38, 38, 0.15); }
+
+.wk-bd-task__icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wk-bd-task__icon--ok {
+  background: rgba(16, 185, 129, 0.08);
+  color: #0a8a4f;
+}
+
+.wk-bd-task__icon--fail {
+  background: rgba(220, 38, 38, 0.08);
+  color: #c2410c;
+}
+
+.wk-bd-task__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.wk-bd-task__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #111);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-bd-task__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+  font-variant-numeric: tabular-nums;
+  flex-wrap: wrap;
+}
+
+.wk-bd-task__err {
+  color: #c2410c;
+  font-family: ui-monospace, monospace;
+}
+
+/* ─── BotsSection (embedded in openclaw RuntimeDetail) ────────────────
+   Own namespace so styling here can evolve without touching wk-bd-* or
+   the page-level wk-rt-bots__* list. Visual language matches Bot detail
+   (calm avatar palette + status pill + ws chip) but compact: rows fit
+   inside the Runtime detail page without dominating it. */
+
+.wk-rt-rtbots {
+  margin: 16px 24px 0;
+  padding: 14px 16px;
+  background: var(--bg-secondary, #fafafa);
+  border: 1px solid var(--border-light, #ececec);
+  border-radius: 10px;
+}
+
+.wk-rt-rtbots__header {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  margin-bottom: 10px;
+}
+
+.wk-rt-rtbots__title {
   font-size: 12px;
-  border-bottom: 1px solid var(--border-light, #f5f5f5);
+  font-weight: 600;
+  color: var(--text-secondary, #555);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
-.wk-rt-botdetail__feed-time, .wk-rt-botdetail__feed-matter {
-  color: var(--text-tertiary, #888); font-family: ui-monospace, monospace;
+
+.wk-rt-rtbots__count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary, #999);
+  padding: 1px 6px;
+  background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
 }
-.wk-rt-botdetail__feed-comment .wk-rt-botdetail__feed-body { color: var(--text-primary, #1a1a1a); }
-.wk-rt-botdetail__feed-activity .wk-rt-botdetail__feed-body { color: var(--text-secondary, #555); }
-.wk-rt-botdetail__tasks {
-  width: 100%;
-  border-collapse: collapse;
+
+.wk-rt-rtbots__add {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border-light, #ececec);
+  border-radius: 6px;
   font-size: 12px;
+  color: var(--text-secondary, #555);
+  cursor: pointer;
+  line-height: 1;
 }
-.wk-rt-botdetail__tasks th, .wk-rt-botdetail__tasks td {
-  padding: 6px 8px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-light, #f0f0f0);
+
+.wk-rt-rtbots__add:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+  color: var(--text-primary, #222);
+  border-color: var(--border-default, #d9d9d9);
 }
-.wk-rt-botdetail__tasks th { color: var(--text-tertiary, #888); font-weight: 400; }
+
+.wk-rt-rtbots__empty {
+  padding: 14px 6px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary, #999);
+}
+
+.wk-rt-rtbots__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wk-rt-rtbots__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  outline: none;
+  transition: background 80ms ease;
+}
+
+.wk-rt-rtbots__row:hover,
+.wk-rt-rtbots__row:focus-visible {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+.wk-rt-rtbots__row:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-light, rgba(91, 106, 191, 0.25));
+}
+
+.wk-rt-rtbots__avatar {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.wk-rt-rtbots__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #222);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-rt-rtbots__status {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary, #222);
+  background: #fff;
+  border: 1px solid var(--border-light, #ececec);
+  border-radius: 10px;
+  line-height: 1.4;
+}
+
+.wk-rt-rtbots__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9aa1ad;
+}
+
+.wk-rt-rtbots__status--online .wk-rt-rtbots__dot { background: #16a34a; }
+.wk-rt-rtbots__status--failed .wk-rt-rtbots__dot { background: #dc2626; }
+.wk-rt-rtbots__status--pending .wk-rt-rtbots__dot { background: #d97706; }
+
+.wk-rt-rtbots__ws {
+  flex: 0 0 auto;
+  max-width: 160px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+  padding: 2px 6px;
+  background: var(--bg-hover, rgba(0, 0, 0, 0.03));
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import WKApp from '../../App';
 import { Bot, listBots, RuntimeKind } from './botsApi';
 import { CreateBotModal } from './CreateBotModal';
@@ -10,15 +10,32 @@ interface RuntimeListEntry {
   provider: string;
 }
 
+// Imperative handle exposed to RuntimesPage so the parent can render the
+// "+ 新建" CTA up in the shared page header (next to the tabs) while the
+// modal state and bot list remain owned by this component. openBot is
+// invoked when the user clicks a bot row inside a Runtime's detail page —
+// the parent switches the active tab to "bots" and then asks us to
+// surface that bot's detail panel.
+export interface BotsTabHandle {
+  openCreate: () => void;
+  openBot: (id: number) => void;
+}
+
 // PoC4: which runtime kinds actually run tasks. Others are inert.
 const SUPPORTED_KINDS: RuntimeKind[] = ['openclaw'];
 
-export function BotsTab() {
+export const BotsTab = forwardRef<BotsTabHandle>(function BotsTab(_props, ref) {
   const [bots, setBots] = useState<Bot[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [runtimes, setRuntimes] = useState<RuntimeListEntry[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // When a parent calls openBot(id) before the bots list has loaded, we
+  // stash the id here and let a [bots]-watching effect apply it once the
+  // list arrives. Without this, jumping in from a Runtime detail page on
+  // first render silently does nothing.
+  const pendingOpenIdRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -63,6 +80,35 @@ export function BotsTab() {
     );
   }, [refresh]);
 
+  useImperativeHandle(ref, () => ({
+    openCreate: () => setModalOpen(true),
+    openBot: (id: number) => {
+      const found = bots.find(b => b.id === id);
+      if (found) {
+        selectBot(found);
+      } else {
+        // List not loaded yet (or stale). Park the id and let the
+        // [bots] effect below pick it up on the next list arrival.
+        pendingOpenIdRef.current = id;
+      }
+    },
+  }), [bots, selectBot]);
+
+  // Apply any parked openBot request once the bots list (or a refresh)
+  // delivers the matching entry. Cleared regardless of match — a missing
+  // id is most likely an archived/deleted bot and shouldn't keep firing.
+  useEffect(() => {
+    const pending = pendingOpenIdRef.current;
+    if (pending == null) return;
+    const found = bots.find(b => b.id === pending);
+    if (found) {
+      pendingOpenIdRef.current = null;
+      selectBot(found);
+    } else if (!loading && bots.length > 0) {
+      pendingOpenIdRef.current = null;
+    }
+  }, [bots, loading, selectBot]);
+
   const modalRuntimes = useMemo(() => runtimes.map(r => ({
     id: r.id,
     name: r.name,
@@ -73,8 +119,6 @@ export function BotsTab() {
   const handleCreated = useCallback(async (botId: number) => {
     setSelectedId(botId);
     await refresh();
-    // Find the new bot in the just-refreshed list (might race; the polling
-    // will catch it on next tick if not present yet).
     const fresh = await listBots();
     setBots(fresh);
     const created = fresh.find(b => b.id === botId);
@@ -83,15 +127,9 @@ export function BotsTab() {
 
   return (
     <div className="wk-rt-bots-list">
-      <div className="wk-rt-bots__list-header">
-        <span>智能体 {bots.length > 0 && <span className="wk-rt-bots__count">{bots.length}</span>}</span>
-        <button type="button" className="wk-rt-bots__new" onClick={() => setModalOpen(true)}>
-          + 新建
-        </button>
-      </div>
       {loading && bots.length === 0 && <div className="wk-rt-bots__empty">加载中…</div>}
       {!loading && bots.length === 0 && (
-        <div className="wk-rt-bots__empty">还没有智能体，点上方 + 新建</div>
+        <div className="wk-rt-bots__empty">还没有智能体，点右上角 + 新建</div>
       )}
       <ul className="wk-rt-bots__items">
         {bots.map(b => (
@@ -121,4 +159,5 @@ export function BotsTab() {
       />
     </div>
   );
-}
+});
+

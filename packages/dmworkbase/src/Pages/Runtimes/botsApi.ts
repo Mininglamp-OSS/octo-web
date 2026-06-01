@@ -31,6 +31,8 @@ export interface BotFeedItem {
   kind: 'comment' | 'activity';
   id: string;
   matter_id: string;
+  matter_title?: string;
+  matter_seq_no?: number;
   created_at: string;
   content?: string | null;
   action?: string;

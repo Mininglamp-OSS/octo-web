@@ -3,7 +3,8 @@ import { Channel, ChannelTypePerson } from "wukongimjssdk"
 import { Toast, Modal, Form, Button } from "@douyinfe/semi-ui"
 import WKApp from "../../App"
 import WKAvatar from "../../Components/WKAvatar"
-import { BotsTab } from "./BotsTab"
+import { BotsTab, type BotsTabHandle } from "./BotsTab"
+import { Bot, listBots } from "./botsApi"
 import "./index.css"
 
 interface AgentRuntime {
@@ -811,6 +812,123 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
     }
 }
 
+// ─── BotsSection: list bots bound to this openclaw runtime, embedded in
+//     RuntimeDetail. Row click hands off to the Bot tab via parent callback;
+//     "+ 新建" likewise. Polls every 5s to mirror BotsTab so status
+//     transitions (provisioning → active) reflect without a page refresh.
+// ────────────────────────────────────────────────────────────────────────
+
+const RTBOTS_PALETTE = [
+    { bg: "#eef2f7", fg: "#3d4759" },
+    { bg: "#eef5ee", fg: "#365940" },
+    { bg: "#f5eef0", fg: "#5a3d4a" },
+    { bg: "#f0f0f5", fg: "#3d3d5c" },
+    { bg: "#f5f1e8", fg: "#5c4a2d" },
+    { bg: "#e8f1f5", fg: "#2d4a5c" },
+]
+
+function rtbotsAvatarColor(name: string): { bg: string; fg: string } {
+    let h = 0
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+    return RTBOTS_PALETTE[h % RTBOTS_PALETTE.length]
+}
+
+function BotsSection({ runtime, onOpenBot, onCreateBot }: {
+    runtime: AgentRuntime
+    onOpenBot?: (id: number) => void
+    onCreateBot?: () => void
+}) {
+    const [bots, setBots] = React.useState<Bot[]>([])
+    const [loading, setLoading] = React.useState(true)
+
+    const refresh = React.useCallback(async () => {
+        try {
+            const all = await listBots()
+            setBots(all.filter(b => b.runtime_id === runtime.id && b.status !== "archived"))
+        } catch {
+            // swallow — leaves stale list visible; next poll will retry
+        } finally {
+            setLoading(false)
+        }
+    }, [runtime.id])
+
+    React.useEffect(() => { refresh() }, [refresh])
+    React.useEffect(() => {
+        const t = window.setInterval(refresh, 5000)
+        return () => window.clearInterval(t)
+    }, [refresh])
+
+    return (
+        <div className="wk-rt-rtbots">
+            <div className="wk-rt-rtbots__header">
+                <span className="wk-rt-rtbots__title">智能体</span>
+                <span className="wk-rt-rtbots__count">{bots.length}</span>
+                {onCreateBot && (
+                    <button
+                        type="button"
+                        className="wk-rt-rtbots__add"
+                        onClick={onCreateBot}
+                        title="在 Bot 标签页创建新智能体"
+                    >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        <span>新建</span>
+                    </button>
+                )}
+            </div>
+            {loading && bots.length === 0 ? (
+                <div className="wk-rt-rtbots__empty">加载中…</div>
+            ) : bots.length === 0 ? (
+                <div className="wk-rt-rtbots__empty">这个 runtime 还没有智能体</div>
+            ) : (
+                <ul className="wk-rt-rtbots__list">
+                    {bots.map(b => {
+                        const av = rtbotsAvatarColor(b.name)
+                        const statusKind: "online" | "failed" | "pending" =
+                            b.status === "active" ? "online" :
+                            b.status === "failed" ? "failed" : "pending"
+                        const statusLabel =
+                            b.status === "active" ? "在线" :
+                            b.status === "failed" ? "失败" : "初始化中"
+                        return (
+                            <li
+                                key={b.id}
+                                className="wk-rt-rtbots__row"
+                                role="button"
+                                tabIndex={0}
+                                title={`查看 ${b.name} 详情`}
+                                onClick={() => onOpenBot?.(b.id)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault()
+                                        onOpenBot?.(b.id)
+                                    }
+                                }}
+                            >
+                                <span
+                                    className="wk-rt-rtbots__avatar"
+                                    style={{ background: av.bg, color: av.fg }}
+                                    aria-hidden="true"
+                                >{b.name.slice(0, 1).toUpperCase()}</span>
+                                <span className="wk-rt-rtbots__name">{b.name}</span>
+                                <span className={`wk-rt-rtbots__status wk-rt-rtbots__status--${statusKind}`}>
+                                    <span className="wk-rt-rtbots__dot" aria-hidden="true" />
+                                    {statusLabel}
+                                </span>
+                                {b.workspace_id && (
+                                    <span className="wk-rt-rtbots__ws" title={b.workspace_id}>{b.workspace_id}</span>
+                                )}
+                            </li>
+                        )
+                    })}
+                </ul>
+            )}
+        </div>
+    )
+}
+
 // ─── RuntimeDetail: rendered in RIGHT panel when clicking an agent ──────
 
 interface RuntimeDetailProps {
@@ -820,6 +938,10 @@ interface RuntimeDetailProps {
     componentActiveUpgrade?: ActiveUpgrade
     onDelete: (id: number) => void
     onAgentsChanged?: () => void
+    // PoC4: openclaw runtime detail surfaces a Bots section. These callbacks
+    // hand off to the Bot tab (parent owns tab state + BotsTab ref).
+    onOpenBot?: (botId: number) => void
+    onCreateBot?: () => void
 }
 
 type PluginUpgradeStatus = "idle" | "pending" | "dispatched" | "installing" | "completed" | "failed" | "timeout"
@@ -986,6 +1108,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                         runtime={updated}
                                         versionHints={hints}
                                         onDelete={this.props.onDelete}
+                                        onOpenBot={this.props.onOpenBot}
+                                        onCreateBot={this.props.onCreateBot}
                                     />
                                 )
                             }
@@ -1088,6 +1212,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                         runtime={updated}
                                         versionHints={hints}
                                         onDelete={this.props.onDelete}
+                                        onOpenBot={this.props.onOpenBot}
+                                        onCreateBot={this.props.onCreateBot}
                                     />
                                 )
                             }
@@ -1215,6 +1341,14 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     <span className="wk-rt-mono">{rt.daemon_id || "N/A"}</span>
                 </div>
 
+                {rt.provider === "openclaw" && (
+                    <BotsSection
+                        runtime={rt}
+                        onOpenBot={this.props.onOpenBot}
+                        onCreateBot={this.props.onCreateBot}
+                    />
+                )}
+
                 <div className="wk-rt-detail-footer">
                     <span>Created: {rt.created_at}</span>
                     <span>Updated: {rt.updated_at}</span>
@@ -1234,6 +1368,7 @@ interface RuntimesPageState extends RuntimesState {
 
 export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     pingCache: PingCache = new Map()
+    botsTabRef = React.createRef<BotsTabHandle>()
 
     state: RuntimesPageState = {
         runtimes: [],
@@ -1380,8 +1515,43 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                     this.loadData()
                 }}
                 onAgentsChanged={() => this.loadData()}
+                onOpenBot={this.openBotFromRuntime}
+                onCreateBot={this.createBotFromRuntime}
             />
         )
+    }
+
+    // Tab switch with optional after-hook. Used both by the tab buttons
+    // and by the openBot/createBot bridge so the BotsTab ref is ready
+    // before we try to call into it.
+    private switchTab = (next: ActiveTab, after?: () => void) => {
+        const sp = new URLSearchParams(window.location.search)
+        if (next === "bots") sp.set("tab", "bots"); else sp.delete("tab")
+        const q = sp.toString()
+        window.history.replaceState(null, "", window.location.pathname + (q ? "?" + q : ""))
+        if (this.state.activeTab === next) {
+            // Already on target tab — defer the after-hook a microtask so
+            // callers don't have to special-case sync vs async.
+            if (after) Promise.resolve().then(after)
+            return
+        }
+        WKApp.routeRight.popToRoot()
+        this.setState({ activeTab: next }, after)
+    }
+
+    // Bridge: clicking a bot row inside a Runtime detail page switches to
+    // the Bot tab, then asks BotsTab to surface that bot's detail panel.
+    // openBot tolerates an unloaded list via pendingOpenIdRef.
+    private openBotFromRuntime = (botId: number) => {
+        this.switchTab("bots", () => {
+            this.botsTabRef.current?.openBot(botId)
+        })
+    }
+
+    private createBotFromRuntime = () => {
+        this.switchTab("bots", () => {
+            this.botsTabRef.current?.openCreate()
+        })
     }
 
     render() {
@@ -1389,40 +1559,42 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         const groups = groupByDevice(runtimes)
         const totalOnline = runtimes.filter(r => r.status === "online").length
 
-        const switchTab = (next: ActiveTab) => {
-            if (next === activeTab) return
-            WKApp.routeRight.popToRoot()
-            const sp = new URLSearchParams(window.location.search)
-            if (next === "bots") sp.set("tab", "bots"); else sp.delete("tab")
-            const q = sp.toString()
-            window.history.replaceState(null, "", window.location.pathname + (q ? "?" + q : ""))
-            this.setState({ activeTab: next })
-        }
-
         return (
             <div className="wk-rt-list">
-                <div className="wk-rt-pagetabs">
-                    <button
-                        type="button"
-                        className={`wk-rt-pagetab${activeTab === "runtime" ? " is-active" : ""}`}
-                        onClick={() => switchTab("runtime")}
-                    >运行时</button>
-                    <button
-                        type="button"
-                        className={`wk-rt-pagetab${activeTab === "bots" ? " is-active" : ""}`}
-                        onClick={() => switchTab("bots")}
-                    >智能体</button>
+                <div className="wk-rt-pageheader">
+                    <nav className="wk-rt-pagetabs" role="tablist" aria-label="Runtimes / Bots">
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === "runtime"}
+                            className={`wk-rt-pagetab${activeTab === "runtime" ? " is-active" : ""}`}
+                            onClick={() => this.switchTab("runtime")}
+                        >Runtime</button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === "bots"}
+                            className={`wk-rt-pagetab${activeTab === "bots" ? " is-active" : ""}`}
+                            onClick={() => this.switchTab("bots")}
+                        >Bot</button>
+                        {activeTab === "runtime" && (
+                            <span className="wk-rt-pageheader__meta" aria-live="polite">
+                                {groups.length} device{groups.length !== 1 ? "s" : ""} · {totalOnline} online
+                            </span>
+                        )}
+                        {activeTab === "bots" && (
+                            <button
+                                type="button"
+                                className="wk-rt-pageheader__action"
+                                onClick={() => this.botsTabRef.current?.openCreate()}
+                            >+ 新建</button>
+                        )}
+                    </nav>
                 </div>
                 {activeTab === "bots" ? (
-                    <BotsTab />
+                    <BotsTab ref={this.botsTabRef} />
                 ) : (
                     <div className="wk-rt-runtime-tab">
-                <div className="wk-rt-list-header">
-                    <span className="wk-rt-list-title">Runtimes</span>
-                    <span className="wk-rt-list-count">
-                        {groups.length} device{groups.length !== 1 ? "s" : ""} · {totalOnline} online
-                    </span>
-                </div>
                 <div className="wk-rt-list-items">
                     {loading && <div className="wk-rt-empty">Loading...</div>}
                     {!loading && groups.length === 0 && (
