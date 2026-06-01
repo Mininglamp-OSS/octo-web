@@ -71,12 +71,53 @@ export default class APIClient {
     public config = new APIClientConfig()
     public logoutCallback?:()=>void
 
+    // PR-A.2: per-process JWT cache for fleet routes. Acquired on demand
+    // by exchanging the session token at POST /v1/auth/token. We use raw
+    // fetch (not axios) for that exchange to avoid recursing through our
+    // own request interceptor.
+    private _jwt: { token: string; expiresAt: number } | null = null
+
+    private static FLEET_URL_RE = /\/runtimes(\/|$|\?)|\/daemon(\/|$|\?)/
+
+    /**
+     * Returns a daemon-or-web-scope JWT acceptable to octo-fleet. Cached
+     * in-memory; refreshed when within 60s of expiry. Returns "" if no
+     * session token is configured (caller should let the request 401).
+     */
+    private async getFleetJWT(): Promise<string> {
+        if (this._jwt && this._jwt.expiresAt > Date.now() + 60_000) {
+            return this._jwt.token
+        }
+        const sessionToken = this.config.tokenCallback?.()
+        if (!sessionToken) return ""
+        const spaceId = this.config.spaceIdCallback?.() || ""
+        try {
+            const res = await fetch("/api/v1/auth/token", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ session_token: sessionToken, space_id: spaceId }),
+            })
+            if (!res.ok) {
+                // Don't cache failure — next call retries.
+                return ""
+            }
+            const j = await res.json()
+            const tok = j?.token || j?.data?.token
+            const expiresIn = j?.expires_in || j?.data?.expires_in || 1800
+            if (!tok) return ""
+            this._jwt = { token: tok, expiresAt: Date.now() + Number(expiresIn) * 1000 }
+            return tok
+        } catch {
+            return ""
+        }
+    }
+
     initAxios() {
         const self = this
         // 全局默认超时兜底，避免请求永久挂起导致登录页一直转圈（YUJ-2628）。
         // 单个请求仍可通过 config.timeout 覆盖（如上传走更长的超时）。
         axios.defaults.timeout = DEFAULT_REQUEST_TIMEOUT_MS
-        axios.interceptors.request.use(function (config) {
+        axios.interceptors.request.use(async function (config) {
             config.headers = config.headers || {};
             config.headers["Accept-Language"] = buildAcceptLanguage();
             let token:string | undefined
@@ -87,12 +128,24 @@ export default class APIClient {
                 config.headers!["token"] = token;
             }
             // 统一注入 X-Space-Id header（GH Mininglamp-OSS/octo-web#1038）。
-            // 仅当回调返回非空字符串时写入，避免把 "" 作为合法 space_id 传给后端。
-            // 与 URL query 里的 space_id= 拼接共存，后端按优先级双读，前端渐进迁移。
             if (self.config.spaceIdCallback) {
                 const spaceId = self.config.spaceIdCallback()
                 if (spaceId && spaceId !== "") {
                     config.headers!["X-Space-Id"] = spaceId;
+                }
+            }
+            // PR-A.2: fleet endpoints (under /runtimes or /daemon) require
+            // a server-issued JWT in Authorization. Keep the existing
+            // `token` header too — server's session AuthMiddleware ignores
+            // Authorization and JWT middleware ignores `token`, so the
+            // dual-header request works against either backend.
+            const url = config.url || ""
+            const baseURL = config.baseURL || ""
+            const fullPath = url.startsWith("http") ? url : baseURL + url
+            if (APIClient.FLEET_URL_RE.test(fullPath)) {
+                const jwt = await self.getFleetJWT()
+                if (jwt) {
+                    config.headers!["Authorization"] = "Bearer " + jwt
                 }
             }
             return config;

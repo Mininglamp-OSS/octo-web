@@ -50,16 +50,27 @@ export const BotsTab = forwardRef<BotsTabHandle>(function BotsTab(_props, ref) {
   // Load runtimes once for the create modal.
   useEffect(() => {
     const spaceId = (WKApp as any)?.shared?.currentSpaceId ?? '';
-    const token = (WKApp as any)?.loginInfo?.token ?? '';
-    fetch('/api/v1/runtimes?space_id=' + encodeURIComponent(spaceId), {
-      headers: { token },
-    })
-      .then(r => r.json())
-      .then(env => {
+    const sessionToken = (WKApp as any)?.loginInfo?.token ?? '';
+    // PR-A.2: /api/v1/runtimes is served by fleet which requires JWT.
+    // Exchange session for JWT first, then fetch.
+    (async () => {
+      try {
+        const tokRes = await fetch('/api/v1/auth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_token: sessionToken, space_id: spaceId }),
+        });
+        const tok = (await tokRes.json())?.token;
+        const res = await fetch('/api/v1/runtimes?space_id=' + encodeURIComponent(spaceId), {
+          headers: tok ? { Authorization: 'Bearer ' + tok } : {},
+        });
+        const env = await res.json();
         const list = (env?.data?.runtimes ?? env?.runtimes ?? []) as any[];
         setRuntimes(list.map(r => ({ id: r.id, name: r.name || r.provider, provider: r.provider })));
-      })
-      .catch(() => setRuntimes([]));
+      } catch {
+        setRuntimes([]);
+      }
+    })();
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
