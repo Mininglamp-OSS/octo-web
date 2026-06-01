@@ -3,6 +3,7 @@ import { Channel, ChannelTypePerson } from "wukongimjssdk"
 import { Toast, Modal, Form, Button } from "@douyinfe/semi-ui"
 import WKApp from "../../App"
 import WKAvatar from "../../Components/WKAvatar"
+import { BotsTab } from "./BotsTab"
 import "./index.css"
 
 interface AgentRuntime {
@@ -1214,16 +1215,6 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     <span className="wk-rt-mono">{rt.daemon_id || "N/A"}</span>
                 </div>
 
-                {metadata && Array.isArray((metadata as any).agents) && (
-                    <div className="wk-rt-detail-section wk-rt-detail-section-managed">
-                        <AgentsList
-                            agents={(metadata as any).agents as any[]}
-                            runtime={rt}
-                            onChanged={() => this.props.onAgentsChanged?.()}
-                        />
-                    </div>
-                )}
-
                 <div className="wk-rt-detail-footer">
                     <span>Created: {rt.created_at}</span>
                     <span>Updated: {rt.updated_at}</span>
@@ -1236,10 +1227,15 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
 
 // ─── RuntimesPage: two-level list (Device → Agent) ─────────────────────
 
-export default class RuntimesPage extends Component<{}, RuntimesState> {
+type ActiveTab = "runtime" | "bots"
+interface RuntimesPageState extends RuntimesState {
+    activeTab: ActiveTab
+}
+
+export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     pingCache: PingCache = new Map()
 
-    state: RuntimesState = {
+    state: RuntimesPageState = {
         runtimes: [],
         versionHints: {},
         daemonVersionHints: {},
@@ -1247,6 +1243,7 @@ export default class RuntimesPage extends Component<{}, RuntimesState> {
         loading: true,
         selectedId: null,
         expandedDevices: new Set<string>(),
+        activeTab: (new URLSearchParams(window.location.search).get("tab") === "bots" ? "bots" : "runtime"),
     }
 
     private pollTimer?: ReturnType<typeof setInterval>
@@ -1388,12 +1385,38 @@ export default class RuntimesPage extends Component<{}, RuntimesState> {
     }
 
     render() {
-        const { runtimes, selectedId, loading, expandedDevices } = this.state
+        const { runtimes, selectedId, loading, expandedDevices, activeTab } = this.state
         const groups = groupByDevice(runtimes)
         const totalOnline = runtimes.filter(r => r.status === "online").length
 
+        const switchTab = (next: ActiveTab) => {
+            if (next === activeTab) return
+            WKApp.routeRight.popToRoot()
+            const sp = new URLSearchParams(window.location.search)
+            if (next === "bots") sp.set("tab", "bots"); else sp.delete("tab")
+            const q = sp.toString()
+            window.history.replaceState(null, "", window.location.pathname + (q ? "?" + q : ""))
+            this.setState({ activeTab: next })
+        }
+
         return (
             <div className="wk-rt-list">
+                <div className="wk-rt-pagetabs">
+                    <button
+                        type="button"
+                        className={`wk-rt-pagetab${activeTab === "runtime" ? " is-active" : ""}`}
+                        onClick={() => switchTab("runtime")}
+                    >运行时</button>
+                    <button
+                        type="button"
+                        className={`wk-rt-pagetab${activeTab === "bots" ? " is-active" : ""}`}
+                        onClick={() => switchTab("bots")}
+                    >智能体</button>
+                </div>
+                {activeTab === "bots" ? (
+                    <BotsTab />
+                ) : (
+                    <div className="wk-rt-runtime-tab">
                 <div className="wk-rt-list-header">
                     <span className="wk-rt-list-title">Runtimes</span>
                     <span className="wk-rt-list-count">
@@ -1461,6 +1484,8 @@ export default class RuntimesPage extends Component<{}, RuntimesState> {
                         )
                     })}
                 </div>
+                    </div>
+                )}
             </div>
         )
     }

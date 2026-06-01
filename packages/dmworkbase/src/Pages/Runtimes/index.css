@@ -988,3 +988,215 @@
     line-height: 1.6;
     color: var(--text-tertiary);
 }
+
+/* ─── PoC4 page tabs ───────────────────────────────────────── */
+.wk-rt-pagetabs {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px 0;
+  border-bottom: 1px solid var(--border-light, #e5e5e5);
+  margin-bottom: 12px;
+}
+.wk-rt-pagetab {
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+  color: var(--text-tertiary, #888);
+  cursor: pointer;
+}
+.wk-rt-pagetab.is-active {
+  color: var(--text-primary, #1a1a1a);
+  border-bottom-color: var(--text-primary, #1a1a1a);
+  font-weight: 500;
+}
+
+/* ─── PoC4 BotsTab ─────────────────────────────────────────── */
+.wk-rt-bots {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 0;
+  height: calc(100vh - 140px);
+  border-top: 1px solid var(--border-light, #e5e5e5);
+}
+.wk-rt-bots__list {
+  border-right: 1px solid var(--border-light, #e5e5e5);
+  display: flex;
+  flex-direction: column;
+}
+.wk-rt-bots__list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.wk-rt-bots__count {
+  display: inline-block;
+  padding: 0 6px;
+  margin-left: 4px;
+  font-size: 11px;
+  background: var(--bg-secondary, #f0f0f0);
+  color: var(--text-tertiary, #888);
+  border-radius: 8px;
+  font-weight: 400;
+}
+.wk-rt-bots__new {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-light, #e5e5e5);
+  background: var(--bg-secondary, #f5f5f5);
+  color: var(--text-primary, #1a1a1a);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.wk-rt-bots__new:hover { background: var(--bg-hover, #ebebeb); }
+.wk-rt-bots__items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-y: auto;
+}
+.wk-rt-bots__item {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-light, #f0f0f0);
+  cursor: pointer;
+}
+.wk-rt-bots__item:hover { background: var(--bg-hover, #fafafa); }
+.wk-rt-bots__item.is-active { background: var(--bg-active, #eef2ff); }
+.wk-rt-bots__item-name { font-size: 13px; font-weight: 500; }
+.wk-rt-bots__item-meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-tertiary, #888);
+}
+.wk-rt-bots__item-kind {
+  padding: 1px 6px;
+  background: var(--bg-secondary, #f0f0f0);
+  border-radius: 3px;
+}
+.wk-rt-bots__item-status--active { color: #0a8a4f; }
+.wk-rt-bots__item-status--failed { color: #dc2626; }
+.wk-rt-bots__empty {
+  padding: 24px 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary, #888);
+}
+.wk-rt-bots__detail { padding: 0; overflow-y: auto; }
+.wk-rt-bots__detail-empty {
+  padding: 60px 24px;
+  text-align: center;
+  color: var(--text-tertiary, #888);
+  font-size: 13px;
+}
+
+/* ─── PoC4 BotDetailPanel ──────────────────────────────────── */
+.wk-rt-botdetail { display: flex; flex-direction: column; height: 100%; }
+.wk-rt-botdetail__header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-light, #e5e5e5);
+}
+.wk-rt-botdetail__avatar {
+  width: 40px; height: 40px;
+  background: var(--bg-secondary, #f0f0f0);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600; color: var(--text-tertiary, #888);
+  font-size: 18px;
+}
+.wk-rt-botdetail__title { flex: 1; }
+.wk-rt-botdetail__name { font-size: 15px; font-weight: 600; }
+.wk-rt-botdetail__sub {
+  display: flex; gap: 8px; margin-top: 2px;
+  font-size: 11px; color: var(--text-tertiary, #888);
+}
+.wk-rt-botdetail__status--active { color: #0a8a4f; }
+.wk-rt-botdetail__status--failed { color: #dc2626; }
+.wk-rt-botdetail__kind {
+  padding: 1px 6px;
+  background: var(--bg-secondary, #f0f0f0);
+  border-radius: 3px;
+}
+.wk-rt-botdetail__archive {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-light, #e5e5e5);
+  background: transparent;
+  color: var(--text-tertiary, #888);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.wk-rt-botdetail__tabs {
+  display: flex; gap: 4px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-light, #e5e5e5);
+}
+.wk-rt-botdetail__tab {
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 12px;
+  color: var(--text-tertiary, #888);
+  cursor: pointer;
+}
+.wk-rt-botdetail__tab.is-active {
+  color: var(--text-primary, #1a1a1a);
+  border-bottom-color: var(--text-primary, #1a1a1a);
+}
+.wk-rt-botdetail__body {
+  flex: 1; padding: 16px 20px; overflow-y: auto;
+  font-size: 13px;
+}
+.wk-rt-botdetail__empty {
+  padding: 32px 0; text-align: center; color: var(--text-tertiary, #888); font-size: 12px;
+}
+.wk-rt-botdetail__props {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 8px 16px;
+  margin: 0;
+}
+.wk-rt-botdetail__props dt { color: var(--text-tertiary, #888); }
+.wk-rt-botdetail__props dd { margin: 0; }
+.wk-rt-botdetail__props code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: var(--bg-secondary, #f0f0f0);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.wk-rt-botdetail__feed {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.wk-rt-botdetail__feed li {
+  display: grid;
+  grid-template-columns: 70px 90px 1fr;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-light, #f5f5f5);
+}
+.wk-rt-botdetail__feed-time, .wk-rt-botdetail__feed-matter {
+  color: var(--text-tertiary, #888); font-family: ui-monospace, monospace;
+}
+.wk-rt-botdetail__feed-comment .wk-rt-botdetail__feed-body { color: var(--text-primary, #1a1a1a); }
+.wk-rt-botdetail__feed-activity .wk-rt-botdetail__feed-body { color: var(--text-secondary, #555); }
+.wk-rt-botdetail__tasks {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.wk-rt-botdetail__tasks th, .wk-rt-botdetail__tasks td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-light, #f0f0f0);
+}
+.wk-rt-botdetail__tasks th { color: var(--text-tertiary, #888); font-weight: 400; }
