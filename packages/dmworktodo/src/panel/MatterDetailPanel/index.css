@@ -1608,3 +1608,345 @@ textarea.wk-mp-goal__text--editing {
     padding: 10px 10px 16px;
   }
 }
+
+/* ─── FeedPanel R2 — multica-inspired comment + activity feed ──
+ * Goal: comments read "heavy" (avatar + card-style background); activities
+ * read "light" (dot + single line, time right-aligned). Keep the existing
+ * project tokens — no gradients, no big shadows, low-contrast borders.
+ */
+.wk-mp-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 0 32px;
+}
+
+/* Composer (top, non-sticky for now to keep it simple) */
+.wk-mp-feed__composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-light, #e5e5e5);
+  border-radius: 8px;
+}
+
+.wk-mp-feed__textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-primary, #1a1a1a);
+  font-family: inherit;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.wk-mp-feed__textarea::placeholder {
+  color: var(--text-tertiary, #999);
+}
+
+.wk-mp-feed__composer-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wk-mp-feed__composer-hint {
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+}
+
+.wk-mp-feed__send {
+  border: 1px solid var(--border-light, #e5e5e5);
+  background: var(--bg-secondary, #f5f5f5);
+  color: var(--text-primary, #1a1a1a);
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.wk-mp-feed__send:hover:not(:disabled) {
+  background: var(--bg-hover, #ebebeb);
+}
+
+.wk-mp-feed__send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wk-mp-feed__empty {
+  padding: 32px 0;
+  text-align: center;
+  color: var(--text-tertiary, #999);
+  font-size: 12px;
+}
+
+.wk-mp-feed__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── Comment card (heavy) ── */
+.wk-mp-feed-comment {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  margin: 6px 0;
+  background: var(--bg-secondary, #fafafa);
+  border: 1px solid var(--border-light, #ececec);
+  border-radius: 8px;
+  transition: border-color 0.15s ease;
+}
+
+.wk-mp-feed-comment:hover {
+  border-color: var(--border-medium, #d8d8d8);
+}
+
+.wk-mp-feed-comment__avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.wk-mp-feed-comment__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.wk-mp-feed-comment__header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.wk-mp-feed-comment__author {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.wk-mp-feed-comment__time {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+  font-variant-numeric: tabular-nums;
+}
+
+.wk-mp-feed-comment__content {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary, #1a1a1a);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.wk-mp-feed-comment__link {
+  color: var(--accent-primary, #2563eb);
+  text-decoration: none;
+}
+.wk-mp-feed-comment__link:hover {
+  text-decoration: underline;
+}
+
+.wk-mp-feed-comment__attachments {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wk-mp-feed-comment__attachment a {
+  display: inline-block;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  border: 1px solid var(--border-light, #e5e5e5);
+  border-radius: 4px;
+  background: var(--bg-primary, #fff);
+  text-decoration: none;
+}
+
+.wk-mp-feed-comment__attachment a:hover {
+  background: var(--bg-hover, #f5f5f5);
+}
+
+/* ── Activity row (light, single line) ── */
+.wk-mp-feed-activity {
+  display: flex;
+  gap: 12px;
+  padding: 6px 8px;
+  align-items: center;
+}
+
+.wk-mp-feed-activity__dot {
+  flex-shrink: 0;
+  width: 32px;
+  display: flex;
+  justify-content: center;
+}
+
+.wk-mp-feed-activity__dot::before {
+  content: "";
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary, #c0c0c0);
+}
+
+.wk-mp-feed-activity__line {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  flex-wrap: wrap;
+}
+
+.wk-mp-feed-activity__actor {
+  font-weight: 500;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.wk-mp-feed-activity__verb {
+  color: var(--text-secondary, #666);
+}
+
+.wk-mp-feed-activity__body {
+  color: var(--text-secondary, #666);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.wk-mp-feed-activity__count {
+  display: inline-block;
+  padding: 0 6px;
+  margin-left: 2px;
+  background: var(--bg-secondary, #f0f0f0);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--text-tertiary, #888);
+  font-variant-numeric: tabular-nums;
+}
+
+.wk-mp-feed-activity__time {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wk-mp-feed__inline-code {
+  padding: 1px 5px;
+  background: var(--bg-secondary, #f0f0f0);
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 11px;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.wk-mp-feed__err {
+  color: var(--color-danger, #dc2626);
+}
+
+/* ─── Mention picker (popup over composer) ────────── */
+.wk-mp-feed__composer-wrap {
+  position: relative;
+}
+
+.wk-mp-feed__mention-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-medium, #d8d8d8);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.wk-mp-feed__mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.wk-mp-feed__mention-item:hover,
+.wk-mp-feed__mention-item.is-active {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+.wk-mp-feed__mention-kind {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 18px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 3px;
+  background: var(--bg-secondary, #f0f0f0);
+  color: var(--text-tertiary, #888);
+  letter-spacing: 0.5px;
+}
+
+.wk-mp-feed__mention-kind--agent {
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+}
+
+.wk-mp-feed__mention-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.wk-mp-feed__mention-uid {
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ─── Inline mention chip in rendered comment content ───────────── */
+.wk-mp-feed-comment__mention {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  margin: 0 1px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 3px;
+  background: var(--accent-light, rgba(99, 102, 241, 0.1));
+  color: var(--accent-primary, #6366f1);
+  text-decoration: none;
+  cursor: default;
+}

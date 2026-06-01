@@ -19,6 +19,9 @@
   },
   "activity": {
     "action": {
+      "agentDispatched": "Agent dispatched",
+      "agentTaskCompleted": "Agent task completed",
+      "agentTaskFailed": "Agent task failed",
       "assigneeAdded": "Assignee added",
       "assigneeRemoved": "Assignee removed",
       "channelChanged": "Group changed",
@@ -104,6 +107,9 @@
   },
   "detail": {
     "changeLog": "Change log",
+    "feed": "Activity",
+    "feedEmpty": "No activity yet",
+    "feedSendPlaceholder": "Reply or comment...",
     "linkedGroups": "Linked groups",
     "linkedGroupsWithCount": "Linked groups {{count}}",
     "noLinkedGroups": "No linked groups or threads"

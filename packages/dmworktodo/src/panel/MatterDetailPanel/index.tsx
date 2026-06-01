@@ -83,8 +83,8 @@ export default function MatterDetailPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "channels" | "outputs" | "changelog"
-  >("channels");
+    "feed" | "channels" | "outputs" | "changelog"
+  >("feed");
 
   // Timeline
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
@@ -952,10 +952,11 @@ export default function MatterDetailPanel({
   })();
 
   const tabs: {
-    id: "channels" | "outputs" | "changelog";
+    id: "feed" | "channels" | "outputs" | "changelog";
     label: string;
     count: number;
   }[] = [
+    { id: "feed", label: t("todo.detail.feed"), count: timeline.length + activities.length },
     { id: "channels", label: t("todo.detail.linkedGroups"), count: channels.length },
     { id: "outputs", label: t("todo.outputs.tabLabel"), count: outputs.length },
     { id: "changelog", label: t("todo.detail.changeLog"), count: activities.length },
@@ -1150,6 +1151,23 @@ export default function MatterDetailPanel({
             </button>
           ))}
         </div>
+
+        {/* ── Tab: 动态 (feed = comments + activities) ── */}
+        {activeTab === "feed" && (
+          <FeedPanel
+            timeline={timeline}
+            activities={activities}
+            assignees={matter.assignees ?? []}
+            creatorId={matter.creator_id}
+            loading={timelineLoading || activitiesLoading}
+            onSend={handleAddTimeline}
+            onRefresh={() => {
+              loadTimeline();
+              loadActivities();
+            }}
+            renderAvatar={renderAvatar}
+          />
+        )}
 
         {/* ── Tab: 关联群聊 ── */}
         {activeTab === "channels" && (
@@ -2075,6 +2093,473 @@ function ChannelTimelineSection({
   );
 }
 
+// ─── FeedPanel R2 — mixed comment+activity feed inspired by multica IssueDetail ──
+// Layout:
+//   ┌─ Composer (textarea + 发送, sticky at top of panel)
+//   ├─ AgentLiveBanner (if any activity_in_progress — TODO when we have task state)
+//   ├─ Coalesced timeline:
+//   │    • Comment   → CommentCard (avatar + name + body + time-right)
+//   │    • Activity  → ActivityBlock (dot + actor + 人话文案 + time-right;
+//   │                  consecutive same-actor/action collapse into one row with "(Nx)")
+// Polling every 3s while mounted; comments tagged with bot uid render as bot replies.
+
+const TWO_MIN_MS = 2 * 60 * 1000;
+const COALESCE_NO_TIME_LIMIT = new Set(["agent_task_completed", "agent_task_failed"]);
+const COALESCE_NEVER = new Set(["squad_leader_evaluated"]);
+
+type FeedActivityCoalesced = MatterActivity & { coalesced_count?: number };
+
+// formatBotActivity returns the human-readable label for an agent_* activity.
+// Pulled out of the JSX so the count badge can be appended uniformly.
+function formatAgentActivityText(action: string, detail: Record<string, any>, t: (key: string, opts?: any) => string): React.ReactNode {
+  switch (action) {
+    case "agent_dispatched": {
+      const agent = (detail.agent_id as string) || "";
+      if (agent) return <>派发任务给 <code className="wk-mp-feed__inline-code">{agent}</code></>;
+      return <>派发了任务</>;
+    }
+    case "agent_task_completed": {
+      const elapsedMs = (detail.elapsed_ms as number) || 0;
+      const bytes = (detail.bytes as number) || 0;
+      const dur = elapsedMs > 0 ? ` · ${(elapsedMs / 1000).toFixed(1)}s` : "";
+      const size = bytes > 0 ? ` · ${bytes} 字节` : "";
+      return <>完成了任务{dur}{size}</>;
+    }
+    case "agent_task_failed": {
+      const err = (detail.error as string) || "";
+      return <>任务失败 <span className="wk-mp-feed__err">{err}</span></>;
+    }
+    default:
+      // fall back to translated label
+      return t(ACTION_LABELS[action] || action);
+  }
+}
+
+// coalesceActivities groups consecutive same-actor/same-action activities
+// within a 2-minute window into a single row with a count badge. Mirrors
+// multica's algorithm in issue-detail.tsx (line 904-944).
+function coalesceActivities(activities: MatterActivity[]): FeedActivityCoalesced[] {
+  if (activities.length === 0) return [];
+  const sorted = [...activities].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+  const out: FeedActivityCoalesced[] = [];
+  for (const entry of sorted) {
+    const prev = out[out.length - 1];
+    const sameKind =
+      prev &&
+      prev.action === entry.action &&
+      prev.actor_id === entry.actor_id &&
+      !COALESCE_NEVER.has(entry.action);
+    const withinWindow =
+      sameKind &&
+      (COALESCE_NO_TIME_LIMIT.has(entry.action) ||
+        new Date(entry.created_at).getTime() - new Date(prev!.created_at).getTime() <= TWO_MIN_MS);
+    if (sameKind && withinWindow) {
+      prev!.coalesced_count = (prev!.coalesced_count ?? 1) + 1;
+      // Keep the latest detail (so elapsed/bytes reflect most recent run)
+      prev!.detail = entry.detail;
+      prev!.created_at = entry.created_at;
+    } else {
+      out.push({ ...entry });
+    }
+  }
+  return out;
+}
+
+function FeedPanel({
+  timeline,
+  activities,
+  assignees,
+  creatorId,
+  loading,
+  onSend,
+  onRefresh,
+  renderAvatar,
+}: {
+  timeline: TimelineEntry[];
+  activities: MatterActivity[];
+  assignees: { user_id: string }[];
+  creatorId: string;
+  loading: boolean;
+  onSend: (content: string) => Promise<void> | void;
+  onRefresh: () => void;
+  renderAvatar: (uid: string, size: number) => React.ReactNode;
+}) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Mention picker state ──
+  // mentionQuery !== null means the picker is open. queryStart is the offset
+  // of the `@` in `draft`. queryEnd is the cursor position (so the picked
+  // mention replaces draft[queryStart..queryEnd]).
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionRange, setMentionRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+  const [mentionIndex, setMentionIndex] = useState(0);
+
+  // Candidate list = matter assignees + creator (deduped). Bot uids
+  // (suffix `_bot`) are kind=agent; the rest are kind=member.
+  const candidateUIDs = useMemo(() => {
+    const set = new Set<string>();
+    if (creatorId) set.add(creatorId);
+    for (const a of assignees) set.add(a.user_id);
+    return Array.from(set);
+  }, [assignees, creatorId]);
+  const candidateNames = useUserNames(candidateUIDs);
+
+  type MentionCandidate = { uid: string; name: string; kind: "agent" | "member" };
+  const candidates: MentionCandidate[] = useMemo(() => {
+    return candidateUIDs.map((uid) => ({
+      uid,
+      name: candidateNames.get(uid) || uid.slice(0, 8),
+      kind: uid.endsWith("_bot") ? "agent" : "member",
+    }));
+  }, [candidateUIDs, candidateNames]);
+
+  const filteredCandidates = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const q = mentionQuery.toLowerCase();
+    if (q === "") return candidates;
+    return candidates.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.uid.toLowerCase().includes(q),
+    );
+  }, [candidates, mentionQuery]);
+
+  // 3s polling while tab mounted; cleared on unmount.
+  useEffect(() => {
+    const id = window.setInterval(onRefresh, 3000);
+    return () => window.clearInterval(id);
+  }, [onRefresh]);
+
+  // Coalesce activities first, then merge with comments and sort descending.
+  type FeedItem =
+    | { kind: "comment"; id: string; at: number; entry: TimelineEntry }
+    | { kind: "activity"; id: string; at: number; activity: FeedActivityCoalesced };
+
+  const items: FeedItem[] = useMemo(() => {
+    const coalesced = coalesceActivities(activities);
+    const merged: FeedItem[] = [
+      ...timeline.map<FeedItem>((e) => ({
+        kind: "comment" as const,
+        id: `c-${e.id}`,
+        at: new Date(e.created_at).getTime(),
+        entry: e,
+      })),
+      ...coalesced.map<FeedItem>((a) => ({
+        kind: "activity" as const,
+        id: `a-${a.id}`,
+        at: new Date(a.created_at).getTime(),
+        activity: a,
+      })),
+    ];
+    // descending: newest first
+    merged.sort((x, y) => y.at - x.at);
+    return merged;
+  }, [timeline, activities]);
+
+  const handleSend = useCallback(async () => {
+    const content = draft.trim();
+    if (!content || sending) return;
+    setSending(true);
+    try {
+      await onSend(content);
+      setDraft("");
+      setMentionQuery(null);
+    } finally {
+      setSending(false);
+    }
+  }, [draft, sending, onSend]);
+
+  // ── Mention picker logic ──
+  // On every textarea change, re-scan around the cursor to decide whether
+  // the picker should be open and what the current query is.
+  const updateMentionState = useCallback((value: string, cursor: number) => {
+    // Look back from the cursor for an `@` that is either at the start of
+    // the string or preceded by whitespace. If found and there's no
+    // whitespace between it and the cursor, the picker should be open.
+    let i = cursor - 1;
+    while (i >= 0 && !/\s/.test(value[i]) && value[i] !== "@") i--;
+    if (i < 0 || value[i] !== "@") {
+      setMentionQuery(null);
+      return;
+    }
+    if (i > 0 && !/\s/.test(value[i - 1])) {
+      setMentionQuery(null);
+      return;
+    }
+    const query = value.slice(i + 1, cursor);
+    setMentionQuery(query);
+    setMentionRange({ start: i, end: cursor });
+    setMentionIndex(0);
+  }, []);
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const value = e.target.value;
+      setDraft(value);
+      updateMentionState(value, e.target.selectionStart || value.length);
+    },
+    [updateMentionState],
+  );
+
+  const insertMention = useCallback(
+    (c: MentionCandidate) => {
+      const { start, end } = mentionRange;
+      const insertion = `[@${c.name}](mention://${c.kind}/${c.uid}) `;
+      const next = draft.slice(0, start) + insertion + draft.slice(end);
+      setDraft(next);
+      setMentionQuery(null);
+      // Restore focus + caret position after the inserted mention.
+      requestAnimationFrame(() => {
+        const ta = textareaRef.current;
+        if (!ta) return;
+        ta.focus();
+        const pos = start + insertion.length;
+        ta.setSelectionRange(pos, pos);
+      });
+    },
+    [draft, mentionRange],
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (mentionQuery !== null && filteredCandidates.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setMentionIndex((i) => (i + 1) % filteredCandidates.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setMentionIndex((i) => (i - 1 + filteredCandidates.length) % filteredCandidates.length);
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          insertMention(filteredCandidates[mentionIndex]);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setMentionQuery(null);
+          return;
+        }
+      }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [mentionQuery, filteredCandidates, mentionIndex, insertMention, handleSend],
+  );
+
+  return (
+    <div className="wk-mp-feed">
+      {/* Composer */}
+      <div className="wk-mp-feed__composer">
+        <div className="wk-mp-feed__composer-wrap">
+          <textarea
+            ref={textareaRef}
+            className="wk-mp-feed__textarea"
+            placeholder={t("todo.detail.feedSendPlaceholder")}
+            value={draft}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onClick={(e) => {
+              const ta = e.target as HTMLTextAreaElement;
+              updateMentionState(ta.value, ta.selectionStart || 0);
+            }}
+            rows={3}
+          />
+          {mentionQuery !== null && filteredCandidates.length > 0 && (
+            <ul className="wk-mp-feed__mention-picker" role="listbox">
+              {filteredCandidates.slice(0, 6).map((c, i) => (
+                <li
+                  key={c.uid}
+                  className={`wk-mp-feed__mention-item${i === mentionIndex ? " is-active" : ""}`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    insertMention(c);
+                  }}
+                  role="option"
+                  aria-selected={i === mentionIndex}
+                >
+                  <span className={`wk-mp-feed__mention-kind wk-mp-feed__mention-kind--${c.kind}`}>
+                    {c.kind === "agent" ? "AI" : "@"}
+                  </span>
+                  <span className="wk-mp-feed__mention-name">{c.name}</span>
+                  <span className="wk-mp-feed__mention-uid">{c.uid.slice(0, 12)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="wk-mp-feed__composer-actions">
+          <span className="wk-mp-feed__composer-hint">
+            {mentionQuery !== null ? "↑↓ 选择 · Enter 确认 · Esc 取消" : "@ 提及 · ⌘+Enter 发送"}
+          </span>
+          <button
+            type="button"
+            className="wk-mp-feed__send"
+            onClick={handleSend}
+            disabled={!draft.trim() || sending}
+          >
+            {sending ? "发送中…" : t("todo.common.send")}
+          </button>
+        </div>
+      </div>
+
+      {/* Mixed feed */}
+      {items.length === 0 ? (
+        <div className="wk-mp-feed__empty">
+          {loading ? "加载中…" : t("todo.detail.feedEmpty")}
+        </div>
+      ) : (
+        <div className="wk-mp-feed__list">
+          {items.map((it) =>
+            it.kind === "comment" ? (
+              <CommentRow key={it.id} entry={it.entry} renderAvatar={renderAvatar} />
+            ) : (
+              <ActivityRow key={it.id} activity={it.activity} t={t} />
+            ),
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── CommentRow — multica-inspired comment card ──
+function CommentRow({
+  entry,
+  renderAvatar,
+}: {
+  entry: TimelineEntry;
+  renderAvatar: (uid: string, size: number) => React.ReactNode;
+}) {
+  return (
+    <article className="wk-mp-feed-comment">
+      <div className="wk-mp-feed-comment__avatar">{renderAvatar(entry.user_id, 32)}</div>
+      <div className="wk-mp-feed-comment__body">
+        <header className="wk-mp-feed-comment__header">
+          <span className="wk-mp-feed-comment__author">
+            <UserName uid={entry.user_id} />
+          </span>
+          <span className="wk-mp-feed-comment__time">{formatActivityTime(entry.created_at)}</span>
+        </header>
+        {entry.content && (
+          <div className="wk-mp-feed-comment__content">{renderCommentContent(entry.content)}</div>
+        )}
+        {entry.attachments && entry.attachments.length > 0 && (
+          <ul className="wk-mp-feed-comment__attachments">
+            {entry.attachments.map((a) => (
+              <li key={a.id || a.file_url} className="wk-mp-feed-comment__attachment">
+                <a href={a.file_url} target="_blank" rel="noopener noreferrer">
+                  📎 {a.file_name || a.file_url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </article>
+  );
+}
+
+// renderCommentContent is a deliberately tiny "markdown lite" — auto-linkifies
+// URLs, renders [@name](mention://kind/id) as chip, and preserves whitespace/
+// newlines via pre-wrap. Full markdown would pull in a heavy lib; this gets
+// us 80% of the value for bot replies that commonly include URLs, line
+// breaks, and @-mentions.
+function renderCommentContent(content: string): React.ReactNode {
+  // Combined regex: mention OR url. Capture groups so we can tell which matched.
+  // group 1: full mention markdown; 2: label; 3: kind; 4: id
+  // group 5: URL
+  const re = /(\[@([^\]]+)\]\(mention:\/\/([a-z]+)\/([A-Za-z0-9_\-]+)\))|(https?:\/\/[^\s)]+)/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let keySeed = 0;
+  while ((match = re.exec(content))) {
+    if (match.index > lastIndex) parts.push(content.slice(lastIndex, match.index));
+    if (match[1]) {
+      // mention
+      const label = match[2];
+      const kind = match[3];
+      parts.push(
+        <span
+          key={`m-${keySeed++}`}
+          className={`wk-mp-feed-comment__mention wk-mp-feed-comment__mention--${kind}`}
+        >
+          @{label}
+        </span>,
+      );
+    } else if (match[5]) {
+      // url
+      parts.push(
+        <a
+          key={`u-${keySeed++}`}
+          href={match[5]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="wk-mp-feed-comment__link"
+        >
+          {match[5]}
+        </a>,
+      );
+    }
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < content.length) parts.push(content.slice(lastIndex));
+  return parts.length > 0 ? parts : content;
+}
+
+// ─── ActivityRow — single (possibly coalesced) activity line ──
+function ActivityRow({
+  activity,
+  t,
+}: {
+  activity: FeedActivityCoalesced;
+  t: (key: string, opts?: any) => string;
+}) {
+  const detail = (activity.detail || {}) as Record<string, any>;
+  const isAgentAction = activity.action.startsWith("agent_");
+  // Agent-action body uses our rich formatter; matter mutations reuse the
+  // ActivityContent renderer from the 变更记录 tab so we don't duplicate
+  // 8 cases of from/to diffing.
+  const body = isAgentAction
+    ? formatAgentActivityText(activity.action, detail, t)
+    : <ActivityContent activity={activity} />;
+  // For matter mutations we still want a verb prefix, mirroring multica
+  // ("齐乐 状态从 进行中 改为 审核中"). The ACTION_LABELS map gives us that.
+  const verb = ACTION_LABELS[activity.action] ? t(ACTION_LABELS[activity.action]) : activity.action;
+  const count = activity.coalesced_count ?? 1;
+  return (
+    <div className="wk-mp-feed-activity">
+      <span className="wk-mp-feed-activity__dot" aria-hidden="true" />
+      <div className="wk-mp-feed-activity__line">
+        <span className="wk-mp-feed-activity__actor">
+          <UserName uid={activity.actor_id} />
+        </span>
+        {isAgentAction ? (
+          <span className="wk-mp-feed-activity__body">{body}</span>
+        ) : (
+          <>
+            <span className="wk-mp-feed-activity__verb">{verb}</span>
+            <span className="wk-mp-feed-activity__body">{body}</span>
+          </>
+        )}
+        {count > 1 && (
+          <span className="wk-mp-feed-activity__count">×{count}</span>
+        )}
+        <span className="wk-mp-feed-activity__time">{formatActivityTime(activity.created_at)}</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── ActivityPanel (变更记录 — 对接 GET /matters/:id/activities) ──
 
 const ACTION_LABELS: Record<string, string> = {
@@ -2087,6 +2572,9 @@ const ACTION_LABELS: Record<string, string> = {
   assignee_removed: "todo.activity.action.assigneeRemoved",
   channel_linked: "todo.activity.action.channelLinked",
   channel_unlinked: "todo.activity.action.channelUnlinked",
+  agent_dispatched: "todo.activity.action.agentDispatched",
+  agent_task_completed: "todo.activity.action.agentTaskCompleted",
+  agent_task_failed: "todo.activity.action.agentTaskFailed",
 };
 
 function formatActivityTime(iso: string): string {
@@ -2191,6 +2679,24 @@ function ActivityContent({ activity }: { activity: MatterActivity }) {
       return (
         <span>
           #{(detail.channel_id as string) || ""}
+        </span>
+      );
+    case "agent_dispatched":
+      return (
+        <span>
+          → task #{String((detail.task_id as number) ?? "?")}
+        </span>
+      );
+    case "agent_task_completed":
+      return (
+        <span>
+          ✓ {String((detail.bytes as number) ?? 0)} bytes
+        </span>
+      );
+    case "agent_task_failed":
+      return (
+        <span className="wk-mp-activity__old">
+          ✗ {(detail.error as string) || ""}
         </span>
       );
     default:

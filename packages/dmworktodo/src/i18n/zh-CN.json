@@ -19,6 +19,9 @@
   },
   "activity": {
     "action": {
+      "agentDispatched": "Agent 已派发",
+      "agentTaskCompleted": "Agent 完成任务",
+      "agentTaskFailed": "Agent 任务失败",
       "assigneeAdded": "新增负责人",
       "assigneeRemoved": "移除负责人",
       "channelChanged": "群聊变更",
@@ -104,6 +107,9 @@
   },
   "detail": {
     "changeLog": "变更记录",
+    "feed": "动态",
+    "feedEmpty": "暂无动态",
+    "feedSendPlaceholder": "回复或评论...",
     "linkedGroups": "关联群聊",
     "linkedGroupsWithCount": "关联群聊 {{count}}",
     "noLinkedGroups": "暂无关联群聊或子区"
