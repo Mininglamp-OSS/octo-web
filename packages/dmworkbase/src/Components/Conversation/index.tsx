@@ -1027,6 +1027,10 @@ export class Conversation
 
   markConversationExtra() {
     let draft = this.messageInputContext()?.text();
+    this.updateConversationExtra(draft || "");
+  }
+
+  updateConversationExtra(draft: string) {
     const conversationLastMessageSeq = this.vm.conversationLastMessageSeq();
     const lastVisiableMessage = this.lastVisiableMessage(null);
     let keepMessageSeq = 0;
@@ -1045,9 +1049,23 @@ export class Conversation
       browseTo: 0,
       keepMessageSeq: keepMessageSeq,
       keepOffsetY: 0,
-      draft: draft || "",
+      draft,
       version: 0,
     });
+  }
+
+  clearDraftAfterSend() {
+    const remoteExtra = this.vm.currentConversation?.remoteExtra;
+    if (remoteExtra) {
+      remoteExtra.draft = "";
+    }
+    this.updateConversationExtra("");
+    if (this.vm.currentConversation) {
+      WKSDK.shared().conversationManager.notifyConversationListeners(
+        this.vm.currentConversation,
+        ConversationAction.update,
+      );
+    }
   }
 
   _handleContextMenus(event: React.MouseEvent) {
@@ -2624,12 +2642,16 @@ export class Conversation
                               msgContent.reply = reply;
                             }
                             await this.sendTextAndWaitAck(msgContent);
+                            anyMessageSent = true;
                           } else if (reply && anyMessageSent) {
                             // 同上: 顶部附件全部被预检拒绝时不要补空回复
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
                             await this.sendTextAndWaitAck(emptyContent);
                           }
+                        }
+                        if (anyMessageSent) {
+                          this.clearDraftAfterSend();
                         }
                         this.props.onMessageSent?.();
                       }}

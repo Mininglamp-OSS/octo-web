@@ -35,6 +35,7 @@ import WKAvatar from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import ConversationVM from "../Conversation/vm";
 import { I18nContext, t, useI18n } from "../../i18n";
+import { formatDraftPreview } from "../../Utils/draftPreview";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
 // ── CompactGroupItem：群聊 Tab 紧凑 item，支持拖拽 ──────────────────────
@@ -373,12 +374,12 @@ export default class ConversationList extends Component<
   }
 
   lastContent(conversationWrap: ConversationWrap) {
-    if (!conversationWrap.lastMessage) {
-      return;
-    }
     const draft = conversationWrap.remoteExtra.draft;
     if (draft && draft !== "") {
-      return draft;
+      return formatDraftPreview(draft);
+    }
+    if (!conversationWrap.lastMessage) {
+      return;
     }
     // 检查是否有进行中的 AI 折叠 session
     const foldPreview = ConversationVM.foldSessionPreview.get(
