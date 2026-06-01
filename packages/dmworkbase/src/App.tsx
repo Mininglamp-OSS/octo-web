@@ -101,6 +101,7 @@ import { ConnectStatus } from "wukongimjssdk";
 import { WKBaseContext } from "./Components/WKBase";
 import StorageService from "./Service/StorageService";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
+import { TypingManager } from "./Service/TypingManager";
 
 export enum ThemeMode {
   light,
@@ -673,6 +674,12 @@ export default class WKApp extends ProviderListener {
         } else if (reasonCode === 2) {
           // 认证失败！
           WKApp.shared.logout();
+        } else if (status === ConnectStatus.Connected) {
+          // 第二层防御：重连成功后清除所有残留 typing。
+          // SDK 重连只 reSubscribe，不补拉离线消息/CMD，断连期间 bot 回复经
+          // HTTP sync 落库不触发清除路径 → typing 永不清。放全局单例 listener
+          // （生命周期最长），不放 Chat/vm.ts（随页面卸载注销）。
+          TypingManager.shared.resetAll();
         } else if (status === ConnectStatus.Disconnect) {
           if (this.addrUsed && this.wsaddrs.length > 1) {
             const oldwsAddr = this.wsaddrs[0];
@@ -712,7 +719,11 @@ export default class WKApp extends ProviderListener {
       this.refreshRemoteConfigOnForeground();
     };
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) refresh();
+      if (!document.hidden) {
+        refresh();
+        // 第一层防御：回前台清除所有残留 typing，对齐 iOS appDidBecomeActive。
+        TypingManager.shared.resetAll();
+      }
     });
     window.addEventListener("focus", refresh);
   }

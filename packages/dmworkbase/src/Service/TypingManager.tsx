@@ -4,28 +4,34 @@ import { TypingContent } from "../Messages/Typing";
 
 export type TypingListener = (channel: Channel, add: boolean) => void
 
+interface TypingEntry {
+    typing: Typing
+    channel: Channel
+}
+
 export class TypingManager {
-    private typingMap: Map<string, Typing> = new Map()
+    // value 存 { typing, channel }，以便 resetAll 能反查 Channel 广播 notify
+    private typingMap: Map<string, TypingEntry> = new Map()
     private typingListeners: TypingListener[] = new Array<TypingListener>();
 
     private constructor() {
     }
     public static shared = new TypingManager()
 
-  
+
 
     addTyping(channel: Channel, fromUID: string, fromName: string) {
         if(fromUID === WKApp.loginInfo.uid) {
             return
         }
-        const typing = this.typingMap.get(channel.getChannelKey())
-        if (typing) {
-            typing.restart()
+        const entry = this.typingMap.get(channel.getChannelKey())
+        if (entry) {
+            entry.typing.restart()
         } else {
             const newTyping = new Typing(fromUID, fromName, () => {
                 this.removeTyping(channel)
             })
-            this.typingMap.set(channel.getChannelKey(), newTyping)
+            this.typingMap.set(channel.getChannelKey(), { typing: newTyping, channel })
             newTyping.start()
 
             this.notifyTypingListener(channel, true)
@@ -33,10 +39,11 @@ export class TypingManager {
     }
     // 获取输入中的消息（仿造）
     getFakeTypingMessage(channel: Channel) {
-        const typing = this.typingMap.get(channel.getChannelKey())
-        if (!typing) {
+        const entry = this.typingMap.get(channel.getChannelKey())
+        if (!entry) {
             return
         }
+        const { typing } = entry
         const message = new Message()
         message.channel = channel
         message.timestamp = new Date().getTime() / 1000
@@ -49,15 +56,33 @@ export class TypingManager {
         return this.typingMap.has(channel.getChannelKey())
     }
     getTyping(channel: Channel): Typing | undefined {
-        return this.typingMap.get(channel.getChannelKey())
+        return this.typingMap.get(channel.getChannelKey())?.typing
     }
     removeTyping(channel: Channel) {
-        const typing = this.typingMap.get(channel.getChannelKey())
-        if (typing) {
-            typing.stop()
+        const entry = this.typingMap.get(channel.getChannelKey())
+        if (entry) {
+            entry.typing.stop()
         }
         this.typingMap.delete(channel.getChannelKey())
         this.notifyTypingListener(channel, false)
+    }
+
+    // 清除所有会话的 typing：回前台 / 重连后调用，对齐 iOS appDidBecomeActive
+    // 与 Connected 两层防御。先快照 channel 列表再 clear，避免遍历中修改 map。
+    resetAll() {
+        if (this.typingMap.size === 0) {
+            return
+        }
+        const channels: Channel[] = []
+        this.typingMap.forEach((entry) => {
+            entry.typing.stop()
+            channels.push(entry.channel)
+        })
+        this.typingMap.clear()
+        // 聚合 notify：clear 已完成，逐个通知对应会话清除 typing
+        channels.forEach((channel) => {
+            this.notifyTypingListener(channel, false)
+        })
     }
 
     addTypingListener(listener: TypingListener) {

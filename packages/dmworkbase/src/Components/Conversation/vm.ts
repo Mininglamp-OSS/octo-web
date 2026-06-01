@@ -1,4 +1,4 @@
-import { Channel, ChannelTypeGroup, ChannelTypePerson, ConversationAction, WKSDK, Message, MessageContent, MessageStatus, Subscriber, Conversation, MessageExtra, CMDContent, PullMode, MessageContentType, ChannelInfo, ChannelInfoListener, ConversationListener } from "wukongimjssdk";
+import { Channel, ChannelTypeGroup, ChannelTypePerson, ConversationAction, WKSDK, Message, MessageContent, MessageStatus, Subscriber, Conversation, MessageExtra, CMDContent, PullMode, MessageContentType, ChannelInfo, ChannelInfoListener, ConversationListener, ConnectStatus, ConnectStatusListener } from "wukongimjssdk";
 import WKApp from "../../App";
 import { SyncMessageOptions } from "../../Service/DataSource/DataProvider";
 import { MessageWrap } from "../../Service/Model";
@@ -91,6 +91,8 @@ export default class ConversationVM extends ProviderListener {
 
     typingListener!: TypingListener // 输入中监听
     messageListener!: MessageListener // 消息监听
+    connectStatusListener!: ConnectStatusListener // 连接状态监听（重连补刷当前会话）
+    private lastReconnectRefreshAt: number = 0 // 重连补刷去抖时间戳
     cmdListener!: MessageListener // cmd消息监听
     messageStatusListener!: MessageStatusListener // 消息状态监听
     conversationListener!: ConversationListener // 会话监听
@@ -855,6 +857,24 @@ export default class ConversationVM extends ProviderListener {
         }
         TypingManager.shared.addTypingListener(this.typingListener)
 
+        // 重连补刷：SDK 重连不补拉离线消息，断连期间当前会话窗口不刷新。
+        // Connected 时补刷首屏。5s 去抖（参考 App.tsx remoteConfig foreground
+        // refresh pattern），避免频繁断连重连重复拉首屏。
+        // ⚠️ 必须在 didUnMount 成对 removeConnectStatusListener，否则页面切换
+        // 累积 listener → 内存泄漏 + 重连时多实例并发拉首屏。
+        this.connectStatusListener = (status: ConnectStatus) => {
+            if (status !== ConnectStatus.Connected) {
+                return
+            }
+            const now = Date.now()
+            if (now - this.lastReconnectRefreshAt < 5000) {
+                return
+            }
+            this.lastReconnectRefreshAt = now
+            this.requestMessagesOfFirstPage(0)
+        }
+        WKSDK.shared().connectManager.addConnectStatusListener(this.connectStatusListener)
+
         const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
         if (conversation) {
             const unread = conversation.unread
@@ -906,6 +926,7 @@ export default class ConversationVM extends ProviderListener {
         WKSDK.shared().chatManager.removeCMDListener(this.cmdListener)
 
         TypingManager.shared.removeTypingListener(this.typingListener)
+        WKSDK.shared().connectManager.removeConnectStatusListener(this.connectStatusListener)
         WKSDK.shared().conversationManager.removeConversationListener(this.conversationListener)
         WKSDK.shared().channelManager.removeSubscriberChangeListener(this.subscriberChangeListener)
         WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
