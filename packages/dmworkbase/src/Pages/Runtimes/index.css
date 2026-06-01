@@ -689,3 +689,302 @@
     color: var(--text-tertiary);
     font-size: 13px;
 }
+
+/* ─────────────────────────────────────────────────────────────────
+   Managed Agents Card  (RuntimeDetail → openclaw provider only)
+   inspired by multica ServingAgentsCard: card border + section header
+   + divide-y list + nested bot rows + per-agent "Add Bot" inline action.
+   ───────────────────────────────────────────────────────────────── */
+
+.wk-rt-detail-section-managed {
+    padding: 0;
+}
+
+.wk-rt-detail-section-managed > label {
+    display: none;
+}
+
+.wk-rt-managed-card {
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    background: var(--bg-primary, #fff);
+    overflow: hidden;
+}
+
+.wk-rt-managed-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-light);
+    background: var(--bg-secondary, rgba(0, 0, 0, 0.02));
+}
+
+.wk-rt-managed-title {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-secondary, #4b5563);
+}
+
+.wk-rt-managed-count {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
+    border-radius: 999px;
+    padding: 1px 8px;
+    line-height: 18px;
+    font-variant-numeric: tabular-nums;
+}
+
+.wk-rt-managed-add {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 26px;
+    padding: 0 10px;
+    background: var(--bg-secondary, #f5f5f5);
+    border: 1px solid var(--border-light, #e5e5e5);
+    border-radius: 5px;
+    color: var(--text-primary, #1a1a1a);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+/* Toggle-all button: even more subtle — link-like, no border by default */
+.wk-rt-managed-toggle-all {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 26px;
+    padding: 0 8px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: var(--text-tertiary, #8a8a8a);
+    font-size: 12px;
+    font-weight: 400;
+    cursor: pointer;
+    transition: color 120ms ease, background-color 120ms ease;
+}
+
+.wk-rt-managed-toggle-all:hover {
+    color: var(--text-primary, #1a1a1a);
+    background: var(--bg-hover, #ebebeb);
+}
+
+.wk-rt-managed-toggle-all:focus-visible {
+    outline: 2px solid var(--accent-light, rgba(91, 106, 191, 0.4));
+    outline-offset: 1px;
+}
+
+.wk-rt-managed-toggle-all svg {
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+/* When both toggle-all and add coexist, toggle-all takes the auto push,
+   add sits adjacent with a small fixed gap. */
+.wk-rt-managed-toggle-all + .wk-rt-managed-add {
+    margin-left: 6px;
+}
+
+.wk-rt-managed-add:hover {
+    background: var(--bg-hover, #ebebeb);
+    border-color: var(--border-medium, #d4d4d4);
+}
+
+.wk-rt-managed-add:active {
+    background: var(--bg-active, #e0e0e0);
+}
+
+.wk-rt-managed-add:focus-visible {
+    outline: 2px solid var(--accent-light, rgba(91, 106, 191, 0.4));
+    outline-offset: 1px;
+}
+
+.wk-rt-managed-add svg {
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+/* Empty state */
+.wk-rt-managed-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 36px 16px;
+    text-align: center;
+    color: var(--text-tertiary);
+    gap: 8px;
+}
+
+.wk-rt-managed-empty-icon {
+    color: var(--text-tertiary);
+    opacity: 0.5;
+}
+
+.wk-rt-managed-empty-text {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.wk-rt-managed-empty-hint {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+/* Agent list (rows divided by divider) */
+.wk-rt-managed-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.wk-rt-managed-agent + .wk-rt-managed-agent {
+    border-top: 1px solid var(--border-light);
+}
+
+.wk-rt-managed-agent-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    transition: background-color 150ms ease;
+    min-height: 44px;
+}
+
+.wk-rt-managed-agent-row:hover {
+    background: var(--bg-tertiary, rgba(0, 0, 0, 0.03));
+}
+
+.wk-rt-managed-agent-icon {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--bg-secondary, rgba(0, 0, 0, 0.04));
+    border: 1px solid var(--border-light);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wk-rt-managed-agent-icon.default {
+    background: rgba(96, 102, 250, 0.1);
+    border-color: rgba(96, 102, 250, 0.3);
+    color: rgb(96, 102, 250);
+}
+
+.wk-rt-managed-agent-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.wk-rt-managed-agent-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wk-rt-managed-agent-meta {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Bot list under expanded agent */
+.wk-rt-managed-bots {
+    padding: 4px 14px 10px 58px;
+    background: var(--bg-secondary, rgba(0, 0, 0, 0.015));
+    border-top: 1px solid var(--border-light);
+}
+
+.wk-rt-managed-bots .wk-rt-binding-row {
+    padding: 8px 10px;
+    border-radius: 8px;
+}
+
+.wk-rt-managed-no-bots {
+    padding: 12px 4px;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    font-style: italic;
+}
+
+.wk-rt-managed-addbot {
+    margin-top: 8px;
+    background: transparent;
+    border: 1px dashed var(--border-light);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 100%;
+    transition: all 150ms ease;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.wk-rt-managed-addbot:hover {
+    border-color: var(--border-medium, #d4d4d4);
+    border-style: solid;
+    color: var(--text-primary, #1a1a1a);
+    background: var(--bg-hover, #ebebeb);
+}
+
+.wk-rt-managed-addbot:active {
+    background: var(--bg-active, #e0e0e0);
+}
+
+.wk-rt-managed-addbot svg {
+    flex-shrink: 0;
+}
+
+/* Chevron: SVG icon, animated rotation, replaces ascii arrow */
+.wk-rt-managed-chevron {
+    flex-shrink: 0;
+    color: var(--text-tertiary);
+    transition: transform 180ms ease;
+}
+
+.wk-rt-managed-chevron.expanded {
+    transform: rotate(90deg);
+}
+
+/* Modal helpers */
+.wk-rt-modal-footer {
+    margin-top: 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.wk-rt-modal-hint {
+    margin-top: 14px;
+    padding: 10px 12px;
+    background: var(--bg-secondary, rgba(0, 0, 0, 0.03));
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-tertiary);
+}

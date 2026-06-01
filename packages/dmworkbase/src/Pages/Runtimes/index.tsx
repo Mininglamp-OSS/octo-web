@@ -1,6 +1,6 @@
 import React, { Component } from "react"
 import { Channel, ChannelTypePerson } from "wukongimjssdk"
-import { Toast } from "@douyinfe/semi-ui"
+import { Toast, Modal, Form, Button } from "@douyinfe/semi-ui"
 import WKApp from "../../App"
 import WKAvatar from "../../Components/WKAvatar"
 import "./index.css"
@@ -497,14 +497,51 @@ function BotRouteRow({ route }: { route: RouteInfo }) {
 
 interface AgentsListProps {
     agents: any[]
+    // When provided, the list shows management controls (New Agent / Add Bot)
+    // scoped to this openclaw runtime. Omit to render as a read-only list.
+    runtime?: AgentRuntime
+    onChanged?: () => void
 }
+
+type ManagedAgentMode = "create-agent" | "add-bot"
 
 interface AgentsListState {
     expanded: Set<string>
+    modalMode: ManagedAgentMode | null
+    modalAgentId: string | null   // only set for add-bot: which existing agent
+    submitting: boolean
+}
+
+// ManagedAgent: server response shape for managed-agents endpoints
+interface ManagedAgent {
+    id: number
+    agent_id: string
+    space_id: string
+    runtime_id: number
+    daemon_id: string
+    display_name: string
+    provider: string
+    bot_uid: string
+    status: string
+    error_msg?: string
+    created_at: string
+    updated_at: string
 }
 
 class AgentsList extends Component<AgentsListProps, AgentsListState> {
-    state: AgentsListState = { expanded: new Set() }
+    state: AgentsListState = {
+        expanded: new Set(),
+        modalMode: null,
+        modalAgentId: null,
+        submitting: false,
+    }
+
+    componentDidMount() {
+        // Auto-expand all agents on first mount so the user sees bots
+        // without having to click each one.
+        const expanded = new Set<string>(this.props.agents.map((a: any) => a.id))
+        this.setState({ expanded })
+    }
 
     toggle = (id: string) => {
         this.setState((prev) => {
@@ -515,45 +552,259 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
         })
     }
 
-    render() {
+    private toggleAll = () => {
         const { agents } = this.props
+        this.setState((prev) => {
+            // If every agent is expanded → collapse all; otherwise → expand all.
+            const allExpanded = agents.length > 0 && agents.every((a: any) => prev.expanded.has(a.id))
+            const expanded = allExpanded ? new Set<string>() : new Set<string>(agents.map((a: any) => a.id))
+            return { expanded }
+        })
+    }
+
+    private openCreateAgent = () => {
+        this.setState({ modalMode: "create-agent", modalAgentId: null })
+    }
+
+    private openAddBot = (agentId: string) => {
+        this.setState({ modalMode: "add-bot", modalAgentId: agentId })
+    }
+
+    private closeModal = () => {
+        if (this.state.submitting) return
+        this.setState({ modalMode: null, modalAgentId: null })
+    }
+
+    private pollManagedAgent = async (id: number): Promise<ManagedAgent> => {
+        const deadline = Date.now() + 60_000
+        for (;;) {
+            const ma: ManagedAgent = await WKApp.apiClient.get(`/runtimes/managed-agents/${id}`)
+            if (ma.status === "active" || ma.status === "failed") return ma
+            if (Date.now() > deadline) {
+                return { ...ma, status: "failed", error_msg: "timeout waiting for daemon (60s)" }
+            }
+            await new Promise(r => setTimeout(r, 3000))
+        }
+    }
+
+    private submitForm = async (values: { display_name: string }) => {
+        const runtime = this.props.runtime
+        const { modalMode, modalAgentId } = this.state
+        if (!runtime || !modalMode) return
+        this.setState({ submitting: true })
+        try {
+            let created: ManagedAgent
+            if (modalMode === "create-agent") {
+                created = await WKApp.apiClient.post("/runtimes/managed-agents", {
+                    runtime_id: runtime.id,
+                    display_name: values.display_name,
+                })
+                Toast.info(`Agent 已注册，等待 daemon 在本地 openclaw 创建 workspace…`)
+            } else {
+                // add-bot
+                if (!modalAgentId) return
+                created = await WKApp.apiClient.post(
+                    `/runtimes/${runtime.id}/agents/${encodeURIComponent(modalAgentId)}/bots`,
+                    { display_name: values.display_name },
+                )
+                Toast.info(`Bot ${created.bot_uid} 已 mint，等待 daemon 绑定到 ${modalAgentId}…`)
+            }
+            const final = await this.pollManagedAgent(created.id)
+            if (final.status === "active") {
+                Toast.success(
+                    modalMode === "create-agent"
+                        ? `Agent ${final.agent_id} 已创建`
+                        : `Bot ${final.display_name} 已绑定到 ${final.agent_id}`
+                )
+            } else {
+                Toast.error(`操作失败：${final.error_msg || "unknown error"}`)
+            }
+            this.setState({ modalMode: null, modalAgentId: null, submitting: false })
+            // Daemon force-syncs server metadata before ack, so a single
+            // refresh right after "active" is sufficient.
+            this.props.onChanged?.()
+        } catch (err: any) {
+            console.error("managed agent op failed", err)
+            const msg = err?.msg || err?.message || String(err)
+            Toast.error(`操作失败：${msg}`)
+            this.setState({ submitting: false })
+        }
+    }
+
+    private renderModal() {
+        const { modalMode, modalAgentId, submitting } = this.state
+        if (!modalMode) return null
+        const isAddBot = modalMode === "add-bot"
+        return (
+            <Modal
+                title={isAddBot ? `给 ${modalAgentId} 添加 Bot` : "创建新 Agent"}
+                visible
+                onCancel={this.closeModal}
+                footer={null}
+                maskClosable={!submitting}
+                width={420}
+            >
+                <Form onSubmit={this.submitForm}>
+                    <Form.Input
+                        field="display_name"
+                        label={isAddBot ? "Bot 显示名" : "Agent 名称"}
+                        placeholder={isAddBot ? "例如：my-bot" : "例如：caster"}
+                        rules={[
+                            { required: true, message: "必填" },
+                            { max: 60, message: "最多 60 字符" },
+                        ]}
+                        disabled={submitting}
+                    />
+                    <div className="wk-rt-modal-footer">
+                        <Button onClick={this.closeModal} disabled={submitting}>取消</Button>
+                        <Button type="primary" theme="solid" htmlType="submit" loading={submitting}>
+                            {isAddBot ? "添加 Bot" : "创建 Agent"}
+                        </Button>
+                    </div>
+                </Form>
+                <div className="wk-rt-modal-hint">
+                    {isAddBot
+                        ? `服务端会 mint 一个新 bot，等待下次 daemon heartbeat（最长 15s）通过 openclaw agents bind 绑定到 ${modalAgentId}。`
+                        : "服务端只在本地 openclaw 创建一个 agent workspace（不会自动 mint bot）。创建完成后可在 agent 下面手动 Add Bot。"}
+                </div>
+            </Modal>
+        )
+    }
+
+    render() {
+        const { agents, runtime } = this.props
         const { expanded } = this.state
+        const manageable = !!runtime && runtime.provider === "openclaw" && runtime.status === "online"
+        const allExpanded = agents.length > 0 && agents.every((a: any) => expanded.has(a.id))
 
         return (
-            <div className="wk-rt-device-agent-list" style={{ marginTop: 8 }}>
-                {agents.map((agent: any) => {
-                    const isExpanded = expanded.has(agent.id)
-                    const routeInfos = getRouteInfos(agent)
-                    return (
-                        <div key={agent.id}>
-                            <div
-                                className="wk-rt-device-agent-row wk-rt-clickable"
-                                onClick={() => this.toggle(agent.id)}
-                            >
-                                <div className="wk-rt-agent-badge">
-                                    {agent.is_default ? "★" : "○"}
-                                </div>
-                                <div className="wk-rt-device-agent-info">
-                                    <span className="wk-rt-device-agent-name">
-                                        {agent.name || agent.id}
-                                        {agent.is_default && <span className="wk-rt-default-tag">default</span>}
-                                    </span>
-                                    <span className="wk-rt-device-agent-ver">
-                                        {agent.bindings} binding{agent.bindings !== 1 ? "s" : ""}
-                                    </span>
-                                </div>
-                                <span className={`wk-rt-expand-arrow ${isExpanded ? "expanded" : ""}`}>&#9654;</span>
-                            </div>
-                            {isExpanded && routeInfos.length > 0 && (
-                                <div className="wk-rt-binding-list">
-                                    {routeInfos.map((info: RouteInfo, i: number) => (
-                                        <BotRouteRow key={info.raw || i} route={info} />
-                                    ))}
-                                </div>
+            <div className="wk-rt-managed-card">
+                <div className="wk-rt-managed-header">
+                    <span className="wk-rt-managed-title">Agents</span>
+                    <span className="wk-rt-managed-count">{agents.length}</span>
+                    {agents.length > 0 && (
+                        <button
+                            type="button"
+                            className="wk-rt-managed-toggle-all"
+                            onClick={this.toggleAll}
+                            title={allExpanded ? "折叠全部" : "展开全部"}
+                        >
+                            {allExpanded ? (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="4 14 10 14 10 20" />
+                                    <polyline points="20 10 14 10 14 4" />
+                                    <line x1="14" y1="10" x2="21" y2="3" />
+                                    <line x1="3" y1="21" x2="10" y2="14" />
+                                </svg>
+                            ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="15 3 21 3 21 9" />
+                                    <polyline points="9 21 3 21 3 15" />
+                                    <line x1="21" y1="3" x2="14" y2="10" />
+                                    <line x1="3" y1="21" x2="10" y2="14" />
+                                </svg>
                             )}
+                            <span>{allExpanded ? "Collapse all" : "Expand all"}</span>
+                        </button>
+                    )}
+                    {manageable && (
+                        <button
+                            type="button"
+                            className="wk-rt-managed-add"
+                            onClick={this.openCreateAgent}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                            <span>New Agent</span>
+                        </button>
+                    )}
+                </div>
+
+                {agents.length === 0 ? (
+                    <div className="wk-rt-managed-empty">
+                        <div className="wk-rt-managed-empty-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                <path d="M9 9h6v6H9z" />
+                            </svg>
                         </div>
-                    )
-                })}
+                        <div className="wk-rt-managed-empty-text">No agents yet</div>
+                        {manageable && (
+                            <div className="wk-rt-managed-empty-hint">点击右上「+ New Agent」创建第一个</div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="wk-rt-managed-list">
+                        {agents.map((agent: any) => {
+                            const isExpanded = expanded.has(agent.id)
+                            const routeInfos = getRouteInfos(agent)
+                            return (
+                                <div key={agent.id} className="wk-rt-managed-agent">
+                                    <div
+                                        className="wk-rt-managed-agent-row wk-rt-clickable"
+                                        onClick={() => this.toggle(agent.id)}
+                                    >
+                                        <div className={`wk-rt-managed-agent-icon${agent.is_default ? " default" : ""}`}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <rect x="3" y="11" width="18" height="10" rx="2" />
+                                                <circle cx="12" cy="5" r="2" />
+                                                <path d="M12 7v4" />
+                                                <line x1="8" y1="16" x2="8" y2="16" />
+                                                <line x1="16" y1="16" x2="16" y2="16" />
+                                            </svg>
+                                        </div>
+                                        <div className="wk-rt-managed-agent-info">
+                                            <div className="wk-rt-managed-agent-name">
+                                                {agent.name || agent.id}
+                                                {agent.is_default && <span className="wk-rt-default-tag">default</span>}
+                                            </div>
+                                            <div className="wk-rt-managed-agent-meta">
+                                                {routeInfos.length} bot{routeInfos.length !== 1 ? "s" : ""}
+                                            </div>
+                                        </div>
+                                        <svg
+                                            className={`wk-rt-managed-chevron${isExpanded ? " expanded" : ""}`}
+                                            width="16" height="16" viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor"
+                                            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                                        >
+                                            <polyline points="9 18 15 12 9 6" />
+                                        </svg>
+                                    </div>
+
+                                    {isExpanded && (
+                                        <div className="wk-rt-managed-bots">
+                                            {routeInfos.length === 0 ? (
+                                                <div className="wk-rt-managed-no-bots">No bots bound</div>
+                                            ) : (
+                                                routeInfos.map((info: RouteInfo, i: number) => (
+                                                    <BotRouteRow key={info.raw || i} route={info} />
+                                                ))
+                                            )}
+                                            {manageable && (
+                                                <button
+                                                    type="button"
+                                                    className="wk-rt-managed-addbot"
+                                                    onClick={(e) => { e.stopPropagation(); this.openAddBot(agent.id) }}
+                                                >
+                                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                        <line x1="12" y1="5" x2="12" y2="19" />
+                                                        <line x1="5" y1="12" x2="19" y2="12" />
+                                                    </svg>
+                                                    <span>Add Bot</span>
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                )}
+
+                {this.renderModal()}
             </div>
         )
     }
@@ -567,6 +818,7 @@ interface RuntimeDetailProps {
     pluginActiveUpgrade?: ActiveUpgrade
     componentActiveUpgrade?: ActiveUpgrade
     onDelete: (id: number) => void
+    onAgentsChanged?: () => void
 }
 
 type PluginUpgradeStatus = "idle" | "pending" | "dispatched" | "installing" | "completed" | "failed" | "timeout"
@@ -962,10 +1214,13 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     <span className="wk-rt-mono">{rt.daemon_id || "N/A"}</span>
                 </div>
 
-                {metadata && Array.isArray((metadata as any).agents) && (metadata as any).agents.length > 0 && (
-                    <div className="wk-rt-detail-section">
-                        <label>{providerLabels[rt.provider] || rt.provider} Agents</label>
-                        <AgentsList agents={(metadata as any).agents as any[]} />
+                {metadata && Array.isArray((metadata as any).agents) && (
+                    <div className="wk-rt-detail-section wk-rt-detail-section-managed">
+                        <AgentsList
+                            agents={(metadata as any).agents as any[]}
+                            runtime={rt}
+                            onChanged={() => this.props.onAgentsChanged?.()}
+                        />
                     </div>
                 )}
 
@@ -1127,6 +1382,7 @@ export default class RuntimesPage extends Component<{}, RuntimesState> {
                     WKApp.routeRight.popToRoot()
                     this.loadData()
                 }}
+                onAgentsChanged={() => this.loadData()}
             />
         )
     }
