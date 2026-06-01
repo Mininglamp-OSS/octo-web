@@ -13,4 +13,14 @@ describe("formatDraftPreview", () => {
     it("leaves malformed placeholders unchanged", () => {
         expect(formatDraftPreview("hello @[u_123]")).toBe("hello @[u_123]")
     })
+
+    it("continues after malformed placeholders", () => {
+        expect(formatDraftPreview("hello @[u_123] and @[u_456:李雷]")).toBe("hello @[u_123] and @李雷")
+    })
+
+    it("handles adversarial unfinished placeholders in linear time", () => {
+        const draft = `${"@[9".repeat(1000)} done`
+
+        expect(formatDraftPreview(draft)).toBe(draft)
+    })
 })

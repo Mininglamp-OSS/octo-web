@@ -181,7 +181,9 @@ interface MessageInputProps {
     /** 顶部附件区文件（通过上传按钮添加），优先于编辑器内容发送 */
     topFiles?: AttachmentFile[],
     /** 编辑器中按文档顺序排列的内容块（文本段和粘贴图片交替） */
-    editorBlocks?: EditorContentBlock[]
+    editorBlocks?: EditorContentBlock[],
+    /** Editor text snapshot that belongs to this send attempt, including mention placeholders. */
+    draftSnapshot?: string
   ) => void;
   members?: Array<Subscriber>;
   onInputRef?: any;
@@ -1053,7 +1055,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         mention,
         allAttachments.length > 0 ? allAttachments : undefined,
         topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
-        orderedBlocks.length > 0 ? orderedBlocks : undefined
+        orderedBlocks.length > 0 ? orderedBlocks : undefined,
+        formattedText
       );
     }
 

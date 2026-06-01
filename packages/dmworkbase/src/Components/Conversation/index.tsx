@@ -75,6 +75,7 @@ import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
+import { shouldClearDraftAfterSend } from "../../Utils/draftLifecycle";
 import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import VoiceFeedback from "../../Service/VoiceFeedback";
@@ -315,6 +316,8 @@ export class Conversation
     channelType: number;
   }) => void;
   private _guardId: symbol = Symbol("pendingAttachmentGuard");
+  private draftSaveGeneration = 0;
+  private latestSavedDraft = "";
   private _addAttachmentFn?: (
     files: File[],
     source?: "paste" | "upload",
@@ -1027,7 +1030,9 @@ export class Conversation
 
   markConversationExtra() {
     let draft = this.messageInputContext()?.text();
-    this.updateConversationExtra(draft || "");
+    this.draftSaveGeneration += 1;
+    this.latestSavedDraft = draft || "";
+    void this.updateConversationExtra(draft || "");
   }
 
   updateConversationExtra(draft: string) {
@@ -1044,7 +1049,7 @@ export class Conversation
       keepMessageSeq = firstVisiableMessage?.messageSeq || 0;
     }
 
-    WKApp.dataSource.channelDataSource.conversationExtraUpdate({
+    return WKApp.dataSource.channelDataSource.conversationExtraUpdate({
       channel: this.vm.channel,
       browseTo: 0,
       keepMessageSeq: keepMessageSeq,
@@ -1054,12 +1059,26 @@ export class Conversation
     });
   }
 
-  clearDraftAfterSend() {
+  async clearDraftAfterSend(sentDraftSnapshot: string, sendDraftGeneration: number) {
     const remoteExtra = this.vm.currentConversation?.remoteExtra;
+    if (!shouldClearDraftAfterSend({
+      sentDraftSnapshot,
+      liveDraft: this.messageInputContext()?.text() || "",
+      remoteDraft: remoteExtra?.draft || "",
+      draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
+      latestSavedDraft: this.latestSavedDraft,
+    })) {
+      return;
+    }
+
     if (remoteExtra) {
       remoteExtra.draft = "";
     }
-    this.updateConversationExtra("");
+    try {
+      await this.updateConversationExtra("");
+    } catch (err) {
+      console.warn("[Conversation] clear draft after send failed", err);
+    }
     if (this.vm.currentConversation) {
       WKSDK.shared().conversationManager.notifyConversationListeners(
         this.vm.currentConversation,
@@ -2376,7 +2395,9 @@ export class Conversation
                         _attachments?: { id: string; file: File }[],
                         topFiles?: { id: string; file: File }[],
                         editorBlocks?: EditorContentBlock[],
+                        draftSnapshot?: string,
                       ) => {
+                        const sendDraftGeneration = this.draftSaveGeneration;
                         VoiceFeedback.shared()?.submitAll(text);
 
                         // ── 回复/编辑处理 ──────────────
@@ -2651,7 +2672,10 @@ export class Conversation
                           }
                         }
                         if (anyMessageSent) {
-                          this.clearDraftAfterSend();
+                          await this.clearDraftAfterSend(
+                            draftSnapshot || "",
+                            sendDraftGeneration,
+                          );
                         }
                         this.props.onMessageSent?.();
                       }}
