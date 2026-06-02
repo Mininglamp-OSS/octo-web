@@ -1275,6 +1275,7 @@ export default class ThreadPanel extends Component<
         await FollowService.followThread({ thread_channel_id: threadChannelId });
         Toast.success(t("base.threadList.followed"));
       }
+      window.dispatchEvent(new CustomEvent("sidebar-reload"));
       this.loadThreads();
     } catch (err: any) {
       this.setState((prev) => ({

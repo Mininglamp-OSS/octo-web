@@ -82,6 +82,13 @@ export function useFollowSidebar(): UseFollowSidebarResult {
         load()
     }, [load])
 
+    // 外部触发重载（如 ThreadPanel 关注子区后）
+    useEffect(() => {
+        const handler = () => load()
+        window.addEventListener("sidebar-reload", handler)
+        return () => window.removeEventListener("sidebar-reload", handler)
+    }, [load])
+
     // sort 成功后调，乐观自增 ref，避免连续拖拽用旧版本号触发 CAS conflict
     const bumpVersion = useCallback(() => {
         versionRef.current = versionRef.current + 1
