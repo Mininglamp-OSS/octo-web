@@ -89,3 +89,15 @@ jobs:
         run: pnpm build
       - name: Lint
         run: pnpm lint
+
+  quality:
+    needs: [changes]
+    if: |
+      (github.event_name != 'pull_request' || !github.event.pull_request.draft) &&
+      needs.changes.outputs.code == 'true'
+    name: Quality
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-node-quality.yml@main
+    with:
+      package-manager: pnpm
+      node-version: '20'
+      has-tests: false
