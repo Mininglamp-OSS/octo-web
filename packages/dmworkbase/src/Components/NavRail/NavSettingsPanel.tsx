@@ -179,7 +179,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                     <NavVoiceSettingsItem />
                     <li onClick={() => {
                         onToggleSetting();
-                        WKApp.shared.logout();
+                        void WKApp.shared.logoutUserInitiated();
                     }}>
                         {t("base.navRail.settingsPanel.logout")}
                     </li>

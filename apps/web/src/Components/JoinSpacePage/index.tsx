@@ -115,7 +115,7 @@ export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
         : ACCENT;
 
     const handleLogout = () => {
-        WKApp.shared.logout();
+        void WKApp.shared.logoutUserInitiated();
     };
 
     return (

@@ -108,6 +108,15 @@ import { WKBaseContext } from "./Components/WKBase";
 import StorageService from "./Service/StorageService";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { TypingManager } from "./Service/TypingManager";
+import {
+  clearAuthStorage,
+  consumeOidcPostLogoutCleanup,
+  isOidcLoginProvider,
+  markOidcPostLogoutCleanup,
+  overridePostLogoutRedirectUri,
+  requestOidcLogout,
+  safeEndSessionUrl,
+} from "./Service/oidcLogout";
 
 export enum ThemeMode {
   light,
@@ -425,6 +434,10 @@ export class LoginInfo {
    * load 加载登录信息
    */
   public load() {
+    if (consumeOidcPostLogoutCleanup()) {
+      this.logout();
+      clearAuthStorage();
+    }
     this.uid = this.getStorageItemForSID("uid") || "";
     this.shortNo = this.getStorageItemForSID("short_no") || "";
     this.token = this.getStorageItemForSID("token") || "";
@@ -482,6 +495,11 @@ export class LoginInfo {
     this.token = undefined;
     this.appID = "";
     this.role = "";
+    this.uid = "";
+    this.shortNo = "";
+    this.name = "";
+    this.isWork = false;
+    this.sex = 0;
     this.loginProvider = undefined;
     this.removeStorageItemForSID("token");
     this.removeStorageItemForSID("app_id");
@@ -637,6 +655,9 @@ export default class WKApp extends ProviderListener {
 
   // app启动
   startup() {
+    if (consumeOidcPostLogoutCleanup()) {
+      this.clearLocalLoginState();
+    }
     WKApp.loginInfo.load(); // 加载登录信息
 
     // 是否是PC端
@@ -851,15 +872,46 @@ export default class WKApp extends ProviderListener {
   isLogined() {
     return WKApp.loginInfo.isLogined();
   }
-  // 登出
-  logout() {
+  private clearLocalLoginState() {
     WKApp.loginInfo.logout();
-    localStorage.removeItem("currentSpaceId");
+    clearAuthStorage();
     this.currentSpaceId = "";
     this.channelSpaceMap.clear();
     this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
+  }
+
+  // 登出
+  logout() {
+    this.clearLocalLoginState();
     window.location.reload();
+  }
+
+  async logoutUserInitiated() {
+    const providerId = WKApp.loginInfo.loginProvider;
+    const token = WKApp.loginInfo.token || "";
+    if (isOidcLoginProvider(providerId) && token) {
+      try {
+        const resp = await requestOidcLogout(providerId, token);
+        const rawEndSessionUrl = safeEndSessionUrl(resp.end_session_url);
+        const endSessionUrl =
+          rawEndSessionUrl && import.meta.env.DEV
+            ? overridePostLogoutRedirectUri(
+                rawEndSessionUrl,
+                import.meta.env.VITE_OIDC_POST_LOGOUT_REDIRECT_URI
+              )
+            : rawEndSessionUrl;
+        if (endSessionUrl) {
+          this.clearLocalLoginState();
+          markOidcPostLogoutCleanup();
+          window.location.href = endSessionUrl;
+          return;
+        }
+      } catch (e) {
+        console.warn("OIDC logout failed, falling back to local logout", e);
+      }
+    }
+    this.logout();
   }
 
   avatarChannel(channel: Channel) {

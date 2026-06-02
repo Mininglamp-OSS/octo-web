@@ -120,7 +120,7 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
     };
 
     logout = () => {
-        WKApp.shared.logout();
+        void WKApp.shared.logoutUserInitiated();
     };
 
     render() {

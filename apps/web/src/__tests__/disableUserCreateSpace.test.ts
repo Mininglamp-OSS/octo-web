@@ -59,7 +59,7 @@ describe("disable_user_create_space web integration", () => {
     const zh = JSON.parse(readRepoFile("apps/web/src/i18n/zh-CN.json"));
     const en = JSON.parse(readRepoFile("apps/web/src/i18n/en-US.json"));
 
-    expect(source).toContain("WKApp.shared.logout()");
+    expect(source).toContain("WKApp.shared.logoutUserInitiated()");
     expect(source).toContain('t("app.spaceGate.logout")');
     expect(zh["spaceGate.logout"]).toBe("退出登录");
     expect(en["spaceGate.logout"]).toBe("Log out");
@@ -80,7 +80,7 @@ describe("disable_user_create_space web integration", () => {
     const zh = JSON.parse(readRepoFile("apps/web/src/i18n/zh-CN.json"));
     const en = JSON.parse(readRepoFile("apps/web/src/i18n/en-US.json"));
 
-    expect(source).toContain("WKApp.shared.logout()");
+    expect(source).toContain("WKApp.shared.logoutUserInitiated()");
     expect(source).toContain('t("app.joinSpace.logout")');
     expect(zh["joinSpace.logout"]).toBe("退出登录");
     expect(en["joinSpace.logout"]).toBe("Log out");
