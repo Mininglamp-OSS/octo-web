@@ -15,6 +15,7 @@ import "./markdown.css";
 import WKApp from "../../App";
 import { isSafeUrl } from "../../Utils/security";
 import { downloadFile } from "../../Utils/download";
+import { t } from "../../i18n";
 
 export interface MentionInfo {
   name: string; // "@张三"（含@符号）
@@ -284,7 +285,11 @@ const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
   const resolved = WKApp.dataSource.commonDataSource.getImageURL(src);
   // 安全校验：解析后必须是 http/https 绝对地址，否则降级为纯文本占位，绝不渲染。
   if (!isSafeUrl(resolved)) {
-    return <span className="wk-markdown-img-unsafe">{alt || "[图片]"}</span>;
+    return (
+      <span className="wk-markdown-img-unsafe">
+        {alt || t("base.message.digest.image")}
+      </span>
+    );
   }
   return (
     <>
