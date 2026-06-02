@@ -131,10 +131,32 @@ export default defineConfig(({ mode }) => {
             ? (path: string) => path.replace(/^\/matter/, "")
             : undefined,
         },
+        // PR-A.2: runtime/bot endpoints moved to octo-fleet :8092.
+        // Must come before the general /api/ catch-all. Endpoints like
+        // /api/v1/runtimes/bots/:id/feed are also served from fleet
+        // (fleet internally proxies to octo-matter).
+        "/api/v1/runtimes": {
+          target: env.VITE_FLEET_API_URL || "http://127.0.0.1:8092",
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path: string) => path.replace(/^\/api/, ''),
+        },
+        // /api/v1/daemon/* lives on fleet too (daemon clients hit it
+        // directly, but proxy through so browser tooling can introspect)
+        "/api/v1/daemon": {
+          target: env.VITE_FLEET_API_URL || "http://127.0.0.1:8092",
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path: string) => path.replace(/^\/api/, ''),
+        },
         "/api/": {
           target: apiOrigin,
           changeOrigin: true,
           secure: false,
+          // Dev only: backend serves /v1/*, web sends /api/v1/*. Production
+          // goes through nginx which strips /api before forwarding; we
+          // replicate that here so `pnpm dev` against bare backends works.
+          rewrite: (path: string) => path.replace(/^\/api/, ''),
         },
         // OIDC SSO endpoints (backend mounts these at /v1/ directly, no /api prefix)
         "/v1/": {
