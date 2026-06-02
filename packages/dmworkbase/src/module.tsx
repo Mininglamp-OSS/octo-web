@@ -49,6 +49,7 @@ import {
 } from "./Messages/SignalMessage/signalmessage";
 import { SystemCell } from "./Messages/System";
 import { TextCell } from "./Messages/Text";
+import { RichTextCell, RichTextContent } from "./Messages/RichText";
 import { TimeCell } from "./Messages/Time";
 import { UnknownCell } from "./Messages/Unknown";
 import { UnsupportCell, UnsupportContent } from "./Messages/Unsupport";
@@ -214,6 +215,8 @@ export default class BaseModule implements IModule {
         switch (contentType) {
           case MessageContentType.text: // 文本消息
             return TextCell;
+          case MessageContentTypeConst.richText: // 富文本（图文混排）
+            return RichTextCell;
           case MessageContentType.image: // 图片消息
             return ImageCell;
           case MessageContentTypeConst.card: // 名片
@@ -315,6 +318,12 @@ export default class BaseModule implements IModule {
     );
     // 智能总结卡片
     WKSDK.shared().register(15, () => new SummaryCardContent());
+
+    // 富文本（图文混排）
+    WKSDK.shared().register(
+      MessageContentTypeConst.richText,
+      () => new RichTextContent()
+    );
 
     // 未知消息
     WKApp.messageManager.registerCell(
@@ -703,7 +712,10 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.copy",
       (message, context) => {
-        if (message.contentType !== MessageContentType.text) {
+        const isText = message.contentType === MessageContentType.text;
+        const isRichText =
+          message.contentType === MessageContentTypeConst.richText;
+        if (!isText && !isRichText) {
           return null;
         }
 
@@ -711,8 +723,12 @@ export default class BaseModule implements IModule {
           title: t("base.module.contextMenus.copy"),
           onClick: () => {
             const selectedText = context.getCachedSelectedText?.();
-            const textToCopy =
-              selectedText || (message.content as MessageText).text || "";
+            // RichText(=14)：取顶层 plain（server 权威纯文本），避免对 content
+            // blocks 数组 stringify 丢字；text 消息走 content.text。
+            const fullText = isRichText
+              ? (message.content as RichTextContent).plain || ""
+              : (message.content as MessageText).text || "";
+            const textToCopy = selectedText || fullText;
             if (navigator.clipboard?.writeText) {
               navigator.clipboard.writeText(textToCopy).catch(() => {
                 // navigator.clipboard 失败时降级到 execCommand

@@ -685,6 +685,7 @@
   "message.digest.image": "[Image]",
   "message.digest.joinOrganization": "[Organization invite]",
   "message.digest.location": "[Location]",
+  "message.digest.richText": "[Rich text]",
   "message.digest.sticker": "[Sticker]",
   "message.digest.summaryCard": "[Smart summary]",
   "message.digest.voice": "[Voice]",

@@ -1,0 +1,18 @@
+/* ──────────────────────────────────────────────────────────────
+   RichText(=14) 图文混排消息：按 blocks 顺序穿插文本/图片
+   ────────────────────────────────────────────────────────────── */
+.wk-message-richtext {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  word-break: break-word;
+}
+
+/* 相邻文本块视觉上连续，去掉块间多余间距 */
+.wk-message-richtext-text + .wk-message-richtext-text {
+  margin-top: -4px;
+}
+
+.wk-message-richtext-image {
+  display: flex;
+}

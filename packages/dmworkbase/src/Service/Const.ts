@@ -58,6 +58,7 @@ export class MessageContentTypeConst {
   static mergeForward: number = 11 // 合并转发
   static lottieSticker: number = 12 // lottie贴图
   static lottieEmojiSticker: number = 13 // lottie emoji 贴图
+  static richText: number = 14 // 富文本（图文混排）
   static joinOrganization: number = 16 // 加入组织
   static addMembers: number = 1002 // 添加群成员
   static removeMembers: number = 1003 // 删除群成员

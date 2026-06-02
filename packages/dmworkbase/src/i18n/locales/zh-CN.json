@@ -686,6 +686,7 @@
   "message.digest.image": "[图片]",
   "message.digest.joinOrganization": "[邀请加入组织]",
   "message.digest.location": "[位置]",
+  "message.digest.richText": "[富文本]",
   "message.digest.sticker": "[贴图]",
   "message.digest.summaryCard": "[智能总结]",
   "message.digest.voice": "[语音]",

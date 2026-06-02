@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -6,9 +6,15 @@ import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import Lightbox from "yet-another-react-lightbox";
+import Download from "yet-another-react-lightbox/plugins/download";
+import "yet-another-react-lightbox/styles.css";
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
 import "./markdown.css";
+import WKApp from "../../App";
+import { isSafeUrl } from "../../Utils/security";
+import { downloadFile } from "../../Utils/download";
 
 export interface MentionInfo {
   name: string; // "@张三"（含@符号）
@@ -29,6 +35,12 @@ interface MarkdownContentProps {
   emojis?: EmojiInfo[];
   /** 是否启用数学公式渲染（KaTeX），默认 false */
   enableMath?: boolean;
+  /**
+   * 是否启用 Markdown 语法渲染，默认 true。
+   * RichText(=14) MVP 锁纯文本：传 false 时按纯文本渲染（保留换行/链接/emoji/mention），
+   * 不解析标题/列表/表格/代码块等 markdown 语法，避免 web 渲 markdown 而移动端不渲的跨端不一致。
+   */
+  enableMarkdown?: boolean;
 }
 
 /**
@@ -139,6 +151,24 @@ const baseRemarkPlugins: any[] = [remarkGfm, remarkBreaks];
 const mathRemarkPlugins: any[] = [remarkGfm, remarkBreaks, remarkMath];
 
 /**
+ * 纯文本模式（enableMarkdown=false）插件：
+ *   - remark 只保留 remarkBreaks（换行转 <br>），不启用 gfm，避免 markdown 语法解析；
+ *   - rehype 只保留 sanitize 兜底清洗。
+ * 配合 escapeMarkdown 转义，最终按纯文本渲染（与移动端「不渲 markdown」对齐）。
+ */
+const plainRemarkPlugins: any[] = [remarkBreaks];
+const plainRehypePlugins: any[] = [[rehypeSanitize, sanitizeSchema]];
+
+/**
+ * 转义 markdown 语法字符，使内容按纯文本渲染：
+ * 反斜杠转义后 react-markdown 渲染时会还原为原字符（不显示反斜杠），
+ * 从而禁用标题/加粗/列表/代码块/表格/链接等一切 markdown 语法。
+ */
+function escapeMarkdown(raw: string): string {
+  return raw.replace(/[\\`*_{}[\]()#+\-.!>|~]/g, "\\$&");
+}
+
+/**
  * 预处理 Markdown 内容：
  * 把独占一行的 --- / === 补充前后空行，避免被解析成 setext 标题（h2/h1）。
  * 跳过 fenced code block（```...```）内的内容，避免误处理 YAML 等代码中的分隔线。
@@ -235,6 +265,57 @@ const baseComponents: any = {
       <pre {...props}>{children}</pre>
     </div>
   ),
+  img: ({ src, alt }: any) => <MarkdownImage src={src} alt={alt} />,
+};
+
+/**
+ * Markdown / RichText 正文内联图片：
+ *  - url 安全校验（仅 http/https，挡 data:/javascript:/file: 等），不安全则降级为文本占位；
+ *  - 点击打开 Lightbox 大图预览（与 ImageCell 行为一致，带下载）；
+ *  - src 经 datasource 处理，与其它图片渲染路径补全 base URL 保持一致。
+ */
+const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
+  src,
+  alt,
+}) => {
+  const [open, setOpen] = useState(false);
+  if (!src) return null;
+  // 经 datasource 解析（补全 base URL / 相对路径改写），与 ImageCell 一致。
+  const resolved = WKApp.dataSource.commonDataSource.getImageURL(src);
+  // 安全校验：解析后必须是 http/https 绝对地址，否则降级为纯文本占位，绝不渲染。
+  if (!isSafeUrl(resolved)) {
+    return <span className="wk-markdown-img-unsafe">{alt || "[图片]"}</span>;
+  }
+  return (
+    <>
+      <img
+        className="wk-markdown-img"
+        src={resolved}
+        alt={alt || ""}
+        loading="lazy"
+        onClick={() => setOpen(true)}
+      />
+      <Lightbox
+        open={open}
+        close={() => setOpen(false)}
+        slides={[{ src: resolved, alt: alt || "" }]}
+        plugins={[Download]}
+        download={{
+          download: ({ slide }) => {
+            if (slide?.src) {
+              downloadFile(slide.src, alt || "image.png");
+            }
+          },
+        }}
+        carousel={{ finite: true }}
+        controller={{ closeOnBackdropClick: true }}
+        render={{
+          buttonPrev: () => null,
+          buttonNext: () => null,
+        }}
+      />
+    </>
+  );
 };
 
 /**
@@ -309,8 +390,12 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
   onMentionClick,
   emojis = [],
   enableMath = false,
+  enableMarkdown = true,
 }) => {
-  const normalized = useMemo(() => normalizeContent(content), [content]);
+  const normalized = useMemo(
+    () => (enableMarkdown ? normalizeContent(content) : escapeMarkdown(content)),
+    [content, enableMarkdown]
+  );
 
   // Stabilize mentions/emojis references: only swap when actual content changes.
   // Parent re-renders triggered by scroll events create new array instances with
@@ -379,9 +464,17 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
     isSend,
   ]);
 
-  // 根据是否启用数学公式选择插件
-  const remarkPlugins = enableMath ? mathRemarkPlugins : baseRemarkPlugins;
-  const rehypePlugins = enableMath ? mathRehypePlugins : baseRehypePlugins;
+  // 根据是否启用数学公式 / markdown 选择插件
+  const remarkPlugins = !enableMarkdown
+    ? plainRemarkPlugins
+    : enableMath
+    ? mathRemarkPlugins
+    : baseRemarkPlugins;
+  const rehypePlugins = !enableMarkdown
+    ? plainRehypePlugins
+    : enableMath
+    ? mathRehypePlugins
+    : baseRehypePlugins;
 
   return (
     <div
@@ -401,4 +494,5 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
   );
 };
 
+export { MarkdownImage };
 export default MarkdownContent;
