@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Modal, DatePicker, Spin } from "@douyinfe/semi-ui";
 import { WKApp, useI18n } from "@octo/base";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -21,12 +21,20 @@ export interface SmartCreateModalProps {
   sourceMsgs?: ExtractMessage[];
   /** 用户主动关闭/取消弹窗 */
   onClose: () => void;
+  /** 用户关闭弹窗时表单有修改（dirty），触发孤儿清理等逻辑。未传时等同于 onClose */
+  onDirtyClose?: () => void;
   /** 确认成功后关闭弹窗（不触发孤儿清理）。未传时等同于 onClose */
   onConfirmSuccess?: () => void;
   /** 创建/编辑事项 */
   onConfirm: (req: CreateMatterReq) => Promise<void>;
   /** 当前频道（用于 MemberPicker 获取成员列表） */
   channel?: { channelId: string; channelType: number; name?: string };
+  /** 预填充标题（用于 dirty 检测基准） */
+  prefillTitle?: string;
+  /** 预填充负责人（用于 dirty 检测基准） */
+  prefillAssigneeUids?: string[];
+  /** 控制按钮文案：true 显示「发送并创建事项」，且标题只读 */
+  sendOnConfirm?: boolean;
 }
 
 // 本地日期格式化
@@ -64,9 +72,13 @@ export default function SmartCreateModal({
   initialValues,
   sourceMsgs,
   onClose,
+  onDirtyClose,
   onConfirmSuccess,
   onConfirm,
   channel,
+  prefillTitle = "",
+  prefillAssigneeUids = [],
+  sendOnConfirm = false,
 }: SmartCreateModalProps) {
   const { t } = useI18n();
   const [title, setTitle] = useState("");
@@ -78,27 +90,34 @@ export default function SmartCreateModal({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const briefRef = useRef<HTMLTextAreaElement>(null);
 
-  // 打开时聚焦标题输入框，设置默认负责人
+  // 稳定化初始负责人引用，用于打开时初始化和 dirty 检测。
+  // 空白新建沿用 SmartCreateModal 原行为：默认负责人为当前用户；该默认值不应被视为 dirty。
+  const prefillAssigneeUidsKey = prefillAssigneeUids.join(",");
+  const initialAssigneeUids = useMemo(() => {
+    if (prefillAssigneeUids.length > 0) return prefillAssigneeUids;
+    const currentUid = WKApp.loginInfo.uid;
+    return currentUid ? [currentUid] : [];
+  }, [prefillAssigneeUidsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 打开时重置表单、聚焦标题输入框
   useEffect(() => {
     if (visible) {
-      const currentUid = WKApp.loginInfo.uid;
-      if (currentUid && assigneeUids.length === 0) {
-        setAssigneeUids([currentUid]);
-      }
+      // 使用 prefill 值或默认值初始化
+      setTitle(prefillTitle);
+      setBrief("");
+      setDeadline("");
+      setSubmitting(false);
+      setAssigneeUids(initialAssigneeUids);
+
       setTimeout(() => {
         if (!loading) {
           titleInputRef.current?.focus();
         }
       }, 100);
-    } else {
-      setTitle("");
-      setBrief("");
-      setAssigneeUids([]);
-      setDeadline("");
-      setSubmitting(false);
     }
-  }, [visible, loading]);
+  }, [visible, loading, prefillTitle, initialAssigneeUids]);
 
+  // AI 提取完成后填充 initialValues
   useEffect(() => {
     if (visible && initialValues && !loading) {
       if (initialValues.title) setTitle(initialValues.title);
@@ -106,6 +125,26 @@ export default function SmartCreateModal({
       if (initialValues.deadline) setDeadline(initialValues.deadline);
     }
   }, [visible, initialValues, loading]);
+
+  // ─── dirty 检测：表单是否有修改 ───────────────────────────
+  const isDirty = useMemo(() => {
+    if (title.trim() !== prefillTitle.trim()) return true;
+    if (assigneeUids.length !== stablePrefillAssigneeUids.length) return true;
+    const prefillSet = new Set(stablePrefillAssigneeUids);
+    if (assigneeUids.some((uid) => !prefillSet.has(uid))) return true;
+    if (deadline) return true;
+    if (brief.trim()) return true;
+    return false;
+  }, [title, assigneeUids, deadline, brief, prefillTitle, stablePrefillAssigneeUids]);
+
+  // ─── 关闭处理：dirty 时走 onDirtyClose ─────────────────────
+  const handleClose = useCallback(() => {
+    if (isDirty && onDirtyClose) {
+      onDirtyClose();
+    } else {
+      onClose();
+    }
+  }, [isDirty, onClose, onDirtyClose]);
 
   const canCreate =
     title.trim() && brief.trim() && assigneeUids.length > 0 && deadline;
@@ -137,25 +176,29 @@ export default function SmartCreateModal({
     deadline, channel, sourceMsgs, onConfirm, onConfirmSuccess, onClose, t,
   ]);
 
-  // Enter 键确认
+  // 键盘快捷键：Escape 关闭，Enter 确认
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && !e.shiftKey) {
+      if (e.key === "Escape") {
+        handleClose();
+      } else if (e.key === "Enter" && !e.shiftKey && !e.altKey) {
         const tag = (e.target as HTMLElement).tagName;
         if (tag === "TEXTAREA") return;
+        // 标题输入框以外的 input 不触发
+        if (tag === "INPUT" && e.target !== titleInputRef.current) return;
         if (canCreate) {
           e.preventDefault();
           handleConfirm();
         }
       }
     },
-    [handleConfirm, canCreate],
+    [handleConfirm, handleClose, canCreate],
   );
 
   return (
     <Modal
       visible={visible}
-      onCancel={onClose}
+      onCancel={handleClose}
       footer={null}
       width={480}
       closable={false}
@@ -189,7 +232,7 @@ export default function SmartCreateModal({
           <button
             type="button"
             className="wk-smart-create-modal__close-btn"
-            onClick={onClose}
+            onClick={handleClose}
             aria-label={t("todo.common.close")}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -231,28 +274,31 @@ export default function SmartCreateModal({
                   <input
                     ref={titleInputRef}
                     type="text"
-                    className="wk-smart-create-modal__input"
+                    className={`wk-smart-create-modal__input${sendOnConfirm ? " wk-smart-create-modal__input--readonly" : ""}`}
                     value={title}
-                    onChange={(e) => setTitle(e.target.value)}
+                    onChange={sendOnConfirm ? () => {} : (e) => setTitle(e.target.value)}
+                    readOnly={sendOnConfirm}
                     placeholder={t("todo.common.inputPlaceholder")}
                   />
-                  <VoiceInputButton
-                    inputRef={titleInputRef}
-                    onTranscribed={(text, mode, savedRange) => {
-                      if (mode === "all") {
-                        setTitle(text);
-                      } else if (mode === "selection" && savedRange) {
-                        setTitle(prev => prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to));
-                      } else {
-                        setTitle(prev => {
-                          const pos = savedRange?.from ?? prev.length;
-                          return prev.slice(0, pos) + text + prev.slice(pos);
-                        });
-                      }
-                    }}
-                    getCurrentText={() => title}
-                    size="sm"
-                  />
+                  {!sendOnConfirm && (
+                    <VoiceInputButton
+                      inputRef={titleInputRef}
+                      onTranscribed={(text, mode, savedRange) => {
+                        if (mode === "all") {
+                          setTitle(text);
+                        } else if (mode === "selection" && savedRange) {
+                          setTitle(prev => prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to));
+                        } else {
+                          setTitle(prev => {
+                            const pos = savedRange?.from ?? prev.length;
+                            return prev.slice(0, pos) + text + prev.slice(pos);
+                          });
+                        }
+                      }}
+                      getCurrentText={() => title}
+                      size="sm"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -348,7 +394,7 @@ export default function SmartCreateModal({
               <button
                 type="button"
                 className="wk-smart-create-modal__btn wk-smart-create-modal__btn--cancel"
-                onClick={onClose}
+                onClick={handleClose}
               >
                 {t("todo.common.cancel")}
               </button>
@@ -358,7 +404,11 @@ export default function SmartCreateModal({
                 onClick={handleConfirm}
                 disabled={!canCreate || submitting}
               >
-                {submitting ? t("todo.state.submitting") : t("todo.common.confirm")}
+                {submitting
+                  ? t("todo.state.submitting")
+                  : sendOnConfirm
+                    ? t("todo.create.sendAndCreate")
+                    : t("todo.common.confirm")}
               </button>
             </div>
           </>
