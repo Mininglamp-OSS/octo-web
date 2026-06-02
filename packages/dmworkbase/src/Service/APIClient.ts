@@ -48,6 +48,21 @@ export class APIClientConfig {
     }
 }
 
+/**
+ * 默认请求超时（毫秒）。
+ *
+ * 在此之前 axios 没有任何超时配置 —— 一旦后端/网关迟迟不返回（连接 hang、
+ * 网关 504 前的长挂起、移动弱网），`user/login`、`user/loginuuid`、`space/my`
+ * 这些请求的 Promise 永远不 settle，于是 LoginVM.loginLoading 一直停在 true，
+ * 登录按钮 / 二维码就「一直转圈」无法恢复（YUJ-2628）。
+ *
+ * 给一个全局兜底超时，请求超时后会被 response 拦截器 normalizeApiError 归类成
+ * 可读 msg 并 reject，前端的 .catch / finally 才能复位 loading 状态并提示重试。
+ * 文件上传等长耗时请求走的是直接的 `axios.post/put`（带各自的 timeout），
+ * 不经过这里的 get/post/put/delete 封装，所以不受影响。
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000
+
 export default class APIClient {
     private constructor() {
         this.initAxios()
@@ -58,6 +73,9 @@ export default class APIClient {
 
     initAxios() {
         const self = this
+        // 全局默认超时兜底，避免请求永久挂起导致登录页一直转圈（YUJ-2628）。
+        // 单个请求仍可通过 config.timeout 覆盖（如上传走更长的超时）。
+        axios.defaults.timeout = DEFAULT_REQUEST_TIMEOUT_MS
         axios.interceptors.request.use(function (config) {
             config.headers = config.headers || {};
             config.headers["Accept-Language"] = buildAcceptLanguage();

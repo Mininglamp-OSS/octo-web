@@ -87,6 +87,27 @@ export function normalizeApiError(input: NormalizeApiErrorInput): NormalizedApiE
   const data = input.data;
   const raw = input.raw ?? data;
 
+  // 无响应错误（请求超时 / 网络中断）：axios reject 时没有 response，因此
+  // data 和 httpStatus 都缺失，错误信息挂在 raw 上（code=ECONNABORTED/
+  // ERR_NETWORK，message 含 "timeout"）。必须在这里显式归类，否则会落到最后
+  // 的「未知错误」分支 —— 而真正的影响是：登录请求永久挂起 + 这个兜底超时
+  // 触发后，用户只看到「未知错误」，不知道是网络问题（YUJ-2628：登录页一直
+  // 转圈的根因是 APIClient 此前根本没有超时，请求 hang 住 loginLoading 不复位）。
+  if (input.httpStatus === undefined && !isRecord(data)) {
+    const rawRecord = isRecord(raw) ? raw : undefined;
+    const code = asNonEmptyString(rawRecord?.code);
+    const message = asNonEmptyString(rawRecord?.message);
+    const isTimeout = code === "ECONNABORTED" || /timeout/i.test(message ?? "");
+    const isNetwork = code === "ERR_NETWORK" || /network\s*error/i.test(message ?? "");
+    if (isTimeout || isNetwork) {
+      return {
+        code,
+        raw,
+        message: isTimeout ? t("base.api.error.timeout") : t("base.api.error.network"),
+      };
+    }
+  }
+
   if (isV2ErrorEnvelope(data)) {
     const envelope = data.error;
     const code = asNonEmptyString(envelope.code);

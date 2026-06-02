@@ -756,6 +756,8 @@
   "api.error.sessionExpired": "Session expired. Please log in again.",
   "api.error.forbidden": "Permission denied",
   "api.error.rateLimited": "Too many requests. Please try again later.",
+  "api.error.timeout": "Request timed out. Please check your network and retry.",
+  "api.error.network": "Network error. Please check your network and retry.",
   "api.error.unknown": "Unknown error",
   "aiTag.assistant": "AI assistant",
   "aiTag.collaboration": "AI collaboration",
