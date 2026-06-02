@@ -743,19 +743,6 @@ export default class BaseModule implements IModule {
           return null;
         }
 
-        let isManager = false;
-        if (message.channel.channelType === ChannelTypeGroup) {
-          const sub = WKSDK.shared().channelManager.getSubscribeOfMe(
-            message.channel
-          );
-          if (
-            sub?.role === GroupRole.manager ||
-            sub?.role === GroupRole.owner
-          ) {
-            isManager = true;
-          }
-        }
-
         // Bot 创建者可撤回自己创建的 Bot 发送的消息（与群管理员同等待遇，
         // 不受 message.send 和 24h 时间窗口限制，与后端行为一致）
         let isBotOwner = false;
@@ -769,19 +756,124 @@ export default class BaseModule implements IModule {
           }
         }
 
-        if (!isManager && !isBotOwner) {
+        // 自己创建的 Bot 发的消息 → 显示（无时间限制）
+        if (isBotOwner) {
+          return {
+            title: t("base.module.contextMenus.revoke"),
+            onClick: () => {
+              context.revokeMessage(message).catch((err) => {
+                Toast.error(err.msg);
+              });
+            },
+          };
+        }
+
+        // 群聊和子区的撤回权限判断
+        const channelType = message.channel.channelType;
+        const isGroup = channelType === ChannelTypeGroup;
+        const isThread = channelType === ChannelTypeCommunityTopic;
+
+        if (isGroup || isThread) {
+          // 获取当前用户在群/子区父群中的角色
+          let myRole: number | undefined;
+          if (isGroup) {
+            const sub = WKSDK.shared().channelManager.getSubscribeOfMe(
+              message.channel
+            );
+            myRole = sub?.role;
+          } else if (isThread) {
+            // 子区：沿用父群角色判断
+            const parsed = parseThreadChannelId(message.channel.channelID);
+            if (parsed) {
+              const parentChannel = new Channel(parsed.groupNo, ChannelTypeGroup);
+              const sub = WKSDK.shared().channelManager.getSubscribeOfMe(parentChannel);
+              myRole = sub?.role;
+            }
+          }
+
+          const isOwner = myRole === GroupRole.owner;
+          const isManager = myRole === GroupRole.manager;
+
+          // 群主可以撤回任何人的消息（除了自己的也走此分支）
+          if (isOwner) {
+            return {
+              title: t("base.module.contextMenus.revoke"),
+              onClick: () => {
+                context.revokeMessage(message).catch((err) => {
+                  Toast.error(err.msg);
+                });
+              },
+            };
+          }
+
+          // 管理员可以撤回普通成员的消息，但不能撤回其他管理员或群主的消息
+          if (isManager) {
+            // 先判断是否是自己发的消息
+            if (message.send) {
+              // 自己发的消息需要判断时间限制
+              let revokeSecond = WKApp.remoteConfig.revokeSecond;
+              if (revokeSecond > 0) {
+                const messageTime = new Date().getTime() / 1000 - message.timestamp;
+                if (messageTime > revokeSecond) {
+                  return null;
+                }
+              }
+              return {
+                title: t("base.module.contextMenus.revoke"),
+                onClick: () => {
+                  context.revokeMessage(message).catch((err) => {
+                    Toast.error(err.msg);
+                  });
+                },
+              };
+            }
+
+            // 检查消息发送者的角色
+            const targetChannel = isGroup ? message.channel : (
+              parseThreadChannelId(message.channel.channelID)
+                ? new Channel(parseThreadChannelId(message.channel.channelID)!.groupNo, ChannelTypeGroup)
+                : message.channel
+            );
+            const subs = WKSDK.shared().channelManager.getSubscribes(targetChannel) as any[] | null | undefined;
+            const targetMember = subs?.find((s: any) => s && s.uid === message.fromUID);
+            const targetRole = targetMember?.role;
+
+            // 管理员只能撤回普通成员的消息
+            if (targetRole === GroupRole.owner || targetRole === GroupRole.manager) {
+              return null;
+            }
+
+            // 可以撤回普通成员的消息（无时间限制）
+            return {
+              title: t("base.module.contextMenus.revoke"),
+              onClick: () => {
+                context.revokeMessage(message).catch((err) => {
+                  Toast.error(err.msg);
+                });
+              },
+            };
+          }
+
+          // 普通成员只能撤回自己的消息
           if (!message.send) {
             return null;
           }
-          let revokeSecond = WKApp.remoteConfig.revokeSecond;
-          if (revokeSecond > 0) {
-            const messageTime = new Date().getTime() / 1000 - message.timestamp;
-            if (messageTime > revokeSecond) {
-              //  超过两分钟则不显示撤回
-              return null;
-            }
+        }
+
+        // 私聊或其他场景：只能撤回自己的消息
+        if (!message.send) {
+          return null;
+        }
+
+        // 自己发的消息：检查时间限制
+        let revokeSecond = WKApp.remoteConfig.revokeSecond;
+        if (revokeSecond > 0) {
+          const messageTime = new Date().getTime() / 1000 - message.timestamp;
+          if (messageTime > revokeSecond) {
+            return null;
           }
         }
+
         return {
           title: t("base.module.contextMenus.revoke"),
           onClick: () => {
