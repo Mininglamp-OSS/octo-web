@@ -1437,24 +1437,36 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               }}
               getCurrentText={() => {
                 if (!editor) return "";
-                // 过滤非文本节点（如图片/附件），只返回纯文本内容
+                // 序列化编辑器内容为纯文本，处理各类 leaf 节点
+                const leafText = (node: any) => {
+                  if (node.type.name === "attachment") return "";
+                  if (node.type.name === "mention") return `@${node.attrs.label ?? node.attrs.id}`;
+                  if (node.type.name === "hardBreak") return "\n";
+                  return "";
+                };
                 return editor.state.doc.textBetween(
                   0,
                   editor.state.doc.content.size,
                   " ",
-                  (node) => (node.type.name === "attachment" ? "" : undefined)
+                  leafText
                 );
               }}
               getSelectedText={() => {
                 if (!editor) return undefined;
                 const { from, to } = editor.state.selection;
                 if (from === to) return undefined; // 没有选中文字
-                // 过滤非文本节点（如图片/附件），只返回纯文本内容
+                // 序列化编辑器内容为纯文本，处理各类 leaf 节点
+                const leafText = (node: any) => {
+                  if (node.type.name === "attachment") return "";
+                  if (node.type.name === "mention") return `@${node.attrs.label ?? node.attrs.id}`;
+                  if (node.type.name === "hardBreak") return "\n";
+                  return "";
+                };
                 const text = editor.state.doc.textBetween(
                   from,
                   to,
                   " ",
-                  (node) => (node.type.name === "attachment" ? "" : undefined)
+                  leafText
                 );
                 return text || undefined;
               }}
