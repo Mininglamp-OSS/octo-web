@@ -122,15 +122,14 @@ body[theme-mode=dark] .wk-ctx-submenu {
     display: block;
 }
 
-/* 隐形桥接：覆盖父项与子菜单之间的 4px 间隙，
-   防止鼠标对角线移动时短暂离开父 li 触发 :hover 失效、子菜单消失 */
-.wk-ctx-submenu::before {
+/* Bridge: extend the hover area of the parent li rightward to cover the 4px gap */
+.wk-contextmenus li:has(> .wk-ctx-submenu)::after {
     content: "";
     position: absolute;
-    top: -4px;
-    bottom: -4px;
-    left: -8px;
+    top: 0;
+    right: -8px;
     width: 8px;
+    height: 100%;
 }
 
 /* 子菜单向左展开（靠近右侧视口边缘时） */
@@ -139,9 +138,9 @@ body[theme-mode=dark] .wk-ctx-submenu {
     right: calc(100% + 4px);
 }
 
-.wk-contextmenus-flip-submenu .wk-ctx-submenu::before {
-    left: auto;
-    right: -8px;
+.wk-contextmenus-flip-submenu li:has(> .wk-ctx-submenu)::after {
+    right: auto;
+    left: -8px;
 }
 
 .wk-ctx-submenu li {
