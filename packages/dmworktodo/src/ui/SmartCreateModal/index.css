@@ -130,6 +130,16 @@
   color: var(--wk-brand-tint-35);
 }
 
+.wk-smart-create-modal__input--readonly {
+  background: var(--wk-brand-tint-03);
+  color: var(--wk-text-secondary);
+  cursor: default;
+}
+
+.wk-smart-create-modal__input--readonly:focus {
+  background: var(--wk-brand-tint-03);
+}
+
 /* ─── Textarea ─── */
 .wk-smart-create-modal__textarea-wrap {
   position: relative;
