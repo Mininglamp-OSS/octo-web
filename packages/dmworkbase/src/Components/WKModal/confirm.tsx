@@ -1,6 +1,6 @@
 import React from 'react'
 import { Modal } from '@douyinfe/semi-ui'
-import type { ModalReactProps } from '@douyinfe/semi-ui/modal'
+import type { ConfirmProps, ModalReactProps } from '@douyinfe/semi-ui/modal'
 import { t } from '../../i18n'
 import WKButton from '../WKButton'
 
@@ -28,9 +28,11 @@ export function wkConfirm(props: WKConfirmProps) {
 
   const renderContent = (pending: WKConfirmPending = null) => {
     const updatePending = (nextPending: WKConfirmPending) => {
-      modalRef?.update({
+      const updateConfig: ConfirmProps = {
+        type: 'confirm',
         content: renderContent(nextPending),
-      } as WKConfirmProps)
+      }
+      modalRef?.update(updateConfig)
     }
 
     const runAction = (action: 'ok' | 'cancel', event: React.MouseEvent<HTMLButtonElement>) => {

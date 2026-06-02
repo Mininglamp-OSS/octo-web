@@ -56,6 +56,10 @@
   margin-top: var(--wk-sp-6);
 }
 
+.wk-modal-footer > .wk-modal-footer-fill {
+  width: 100%;
+}
+
 .wk-modal-confirm-footer {
   margin-top: var(--wk-sp-5);
 }
