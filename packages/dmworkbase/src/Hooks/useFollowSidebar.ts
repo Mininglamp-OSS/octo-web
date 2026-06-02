@@ -122,8 +122,8 @@ export function useFollowSidebar(): UseFollowSidebarResult {
     // 外部触发重载（如 ThreadPanel 关注子区后）
     useEffect(() => {
         const handler = () => load()
-        window.addEventListener("sidebar-reload", handler)
-        return () => window.removeEventListener("sidebar-reload", handler)
+        WKApp.mittBus.on("sidebar-reload" as any, handler)
+        return () => { WKApp.mittBus.off("sidebar-reload" as any, handler) }
     }, [load])
 
     useEffect(() => {

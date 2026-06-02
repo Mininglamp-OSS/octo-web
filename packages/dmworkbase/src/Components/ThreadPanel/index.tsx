@@ -22,7 +22,6 @@ import WKApp from "../../App";
 import { formatRelativeTime } from "../../Utils/time";
 import FollowService from "../../Service/FollowService";
 import SidebarService from "../../Service/SidebarService";
-import CategoryService from "../../Service/CategoryService";
 import { FilePreviewInfo } from "../FilePreviewPanel/types";
 import { fileRendererRegistry } from "../FilePreviewPanel/registry";
 import { getExtension } from "../FilePreviewPanel/types";
@@ -483,7 +482,7 @@ export default class ThreadPanel extends Component<
       const followedChannelIds = new Set<string>();
       if (sidebarResp?.items) {
         for (const item of sidebarResp.items) {
-          if (item.target_type === 5 && item.is_followed) {
+          if (item.target_type === ChannelTypeCommunityTopic && item.is_followed) {
             followedChannelIds.add(item.target_id);
           }
         }
@@ -1271,11 +1270,10 @@ export default class ThreadPanel extends Component<
         await FollowService.unfollowThread(threadChannelId);
         Toast.success(t("base.threadList.unfollowed"));
       } else {
-        await this.ensureParentGroupInFollowSet(thread.group_no);
         await FollowService.followThread({ thread_channel_id: threadChannelId });
         Toast.success(t("base.threadList.followed"));
       }
-      window.dispatchEvent(new CustomEvent("sidebar-reload"));
+      WKApp.mittBus.emit("sidebar-reload" as any);
       this.loadThreads();
     } catch (err: any) {
       this.setState((prev) => ({
@@ -1283,37 +1281,9 @@ export default class ThreadPanel extends Component<
           t.short_id === thread.short_id ? { ...t, is_followed: wasFollowed } : t
         ),
       }));
-      Toast.error(err?.msg || err?.message || t("base.threadList.followFailed"));
+      Toast.error(err?.msg || err?.message || t(wasFollowed ? "base.threadList.unfollowFailed" : "base.threadList.followFailed"));
     }
   };
-  private async ensureParentGroupInFollowSet(parentGroupNo: string) {
-    const spaceId = WKApp.shared.currentSpaceId;
-    if (!spaceId) return;
-
-    const categories = await CategoryService.list(spaceId);
-    const alreadyInCategory = categories.some((cat) =>
-      cat.groups?.some((g) => g.group_no === parentGroupNo)
-    );
-
-    if (!alreadyInCategory) {
-      const targetCategory =
-        categories.find((cat) => cat.is_default && cat.category_id) ||
-        categories.find((cat) => cat.category_id);
-      if (targetCategory?.category_id) {
-        await CategoryService.moveGroupToCategory(parentGroupNo, {
-          category_id: targetCategory.category_id,
-        });
-      }
-    }
-
-    // 清除父群取消关注标记；这里失败不阻断子区关注，move category 才是进入 follow set 的关键
-    try {
-      await FollowService.refollowChannel({ group_no: parentGroupNo });
-    } catch (_) {
-      // ignore
-    }
-  }
-
   private renderThreadItem(thread: Thread) {
     const hasUnread = (thread.unread_count ?? 0) > 0;
     const creatorName = this.getCreatorName(thread);
@@ -1331,9 +1301,11 @@ export default class ThreadPanel extends Component<
           </div>
           <div className="wk-thread-panel-item-header-right">
             <button
+              type="button"
               className="wk-thread-panel-item-follow-btn"
               data-followed={thread.is_followed ? "true" : "false"}
               title={thread.is_followed ? t("base.threadList.unfollow") : t("base.threadList.follow")}
+              aria-label={thread.is_followed ? t("base.threadList.unfollow") : t("base.threadList.follow")}
               onClick={(e) => this.handleFollow(thread, e)}
             >
               <Star
