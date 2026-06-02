@@ -129,13 +129,13 @@ export default function SmartCreateModal({
   // ─── dirty 检测：表单是否有修改 ───────────────────────────
   const isDirty = useMemo(() => {
     if (title.trim() !== prefillTitle.trim()) return true;
-    if (assigneeUids.length !== stablePrefillAssigneeUids.length) return true;
-    const prefillSet = new Set(stablePrefillAssigneeUids);
+    if (assigneeUids.length !== initialAssigneeUids.length) return true;
+    const prefillSet = new Set(initialAssigneeUids);
     if (assigneeUids.some((uid) => !prefillSet.has(uid))) return true;
     if (deadline) return true;
     if (brief.trim()) return true;
     return false;
-  }, [title, assigneeUids, deadline, brief, prefillTitle, stablePrefillAssigneeUids]);
+  }, [title, assigneeUids, deadline, brief, prefillTitle, initialAssigneeUids]);
 
   // ─── 关闭处理：dirty 时走 onDirtyClose ─────────────────────
   const handleClose = useCallback(() => {
@@ -160,6 +160,7 @@ export default function SmartCreateModal({
         deadline: deadline ? `${deadline}T23:59:59${getLocalTZOffset()}` : undefined,
         source_channel_id: channel?.channelId,
         source_channel_type: channel?.channelType,
+        source_name: channel?.name,
         source_msgs: sourceMsgs,
       });
       (onConfirmSuccess ?? onClose)();
