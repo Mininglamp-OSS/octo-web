@@ -126,6 +126,67 @@ function fallbackCopy(text: string) {
   }
 }
 
+const pendingRevokeRoleFetches = new Set<string>();
+
+function findSubscriber(channel: Channel, uid: string): Subscriber | undefined {
+  const subscribers = WKSDK.shared().channelManager.getSubscribes(channel) as
+    | Subscriber[]
+    | null
+    | undefined;
+  return subscribers?.find((subscriber) => subscriber && subscriber.uid === uid);
+}
+
+function mergeSubscriberIntoCache(channel: Channel, subscriber: Subscriber) {
+  const channelManager = WKSDK.shared().channelManager;
+  const cached = (channelManager.getSubscribes(channel) || []) as Subscriber[];
+  const nextSubscribers = [...cached];
+  const index = nextSubscribers.findIndex((item) => item.uid === subscriber.uid);
+  subscriber.channel = channel;
+
+  if (index >= 0) {
+    nextSubscribers[index] = {
+      ...nextSubscribers[index],
+      ...subscriber,
+    };
+  } else {
+    nextSubscribers.push(subscriber);
+  }
+
+  channelManager.subscribeCacheMap.set(channel.getChannelKey(), nextSubscribers);
+  channelManager.notifySubscribeChangeListeners(channel);
+}
+
+function warmRevokeTargetRole(channel: Channel, uid: string) {
+  if (findSubscriber(channel, uid)) {
+    return;
+  }
+
+  const requestKey = `${channel.getChannelKey()}:${uid}`;
+  if (pendingRevokeRoleFetches.has(requestKey)) {
+    return;
+  }
+
+  pendingRevokeRoleFetches.add(requestKey);
+  WKApp.dataSource.channelDataSource
+    .subscribers(channel, {
+      keyword: uid,
+      limit: 20,
+      page: 1,
+    })
+    .then((subscribers) => {
+      const matched = subscribers?.find((subscriber) => subscriber.uid === uid);
+      if (matched) {
+        mergeSubscriberIntoCache(channel, matched);
+      }
+    })
+    .catch(() => {
+      // Permission remains fail-closed when the sender role cannot be resolved.
+    })
+    .finally(() => {
+      pendingRevokeRoleFetches.delete(requestKey);
+    });
+}
+
 export default class BaseModule implements IModule {
   messageTone?: Howl;
 
@@ -784,13 +845,11 @@ export default class BaseModule implements IModule {
 
           // 管理员撤回别人消息时必须确认发送者不是群主/管理员；角色未知时默认隐藏。
           if (myRole === GroupRole.manager && !message.send) {
-            const subs = WKSDK.shared().channelManager.getSubscribes(
-              roleChannel
-            ) as any[] | null | undefined;
-            const targetMember = subs?.find(
-              (s: any) => s && s.uid === message.fromUID
-            );
+            const targetMember = findSubscriber(roleChannel, message.fromUID);
             targetRole = targetMember?.role;
+            if (targetRole == null) {
+              warmRevokeTargetRole(roleChannel, message.fromUID);
+            }
           }
         }
 
