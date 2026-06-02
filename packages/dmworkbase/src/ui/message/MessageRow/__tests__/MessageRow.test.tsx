@@ -1,7 +1,175 @@
+// @vitest-environment jsdom
+
 import React from "react"
+import ReactDOM from "react-dom"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, it, expect } from "vitest"
+import { act } from "react-dom/test-utils"
+import { afterEach, describe, it, expect, vi } from "vitest"
+
+vi.mock("../../../../i18n", () => ({
+    useI18n: () => ({
+        t: (key: string) => {
+            const messages: Record<string, string> = {
+                "base.message.avatar.alt": "Avatar",
+                "base.message.edited": "已编辑",
+                "base.realnameVerified.title": "已完成实名认证",
+                "base.realnameVerified.label": "已实名",
+            }
+            return messages[key] ?? key
+        },
+    }),
+}))
+
 import MessageRow from "../index"
+
+let container: HTMLDivElement | null = null
+
+afterEach(() => {
+    if (!container) return
+    ReactDOM.unmountComponentAtNode(container)
+    container.remove()
+    container = null
+})
+
+function renderRow(element: React.ReactElement) {
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    act(() => {
+        ReactDOM.render(element, container)
+    })
+    return container
+}
+
+function dispatchMouseEvent(element: Element, type: string) {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true })
+    act(() => {
+        element.dispatchEvent(event)
+    })
+    return event
+}
+
+describe("MessageRow — selection mode interactions", () => {
+    const baseProps = {
+        isSend: false,
+        isContinue: false,
+        isSelected: false,
+        showAvatar: true,
+        avatarUrl: "https://example.test/avatar.png",
+        senderName: "yujiawei",
+        timestamp: "10:30",
+    }
+
+    it("turns row clicks into selection and suppresses row-specific actions while selecting", () => {
+        const onSelect = vi.fn()
+        const onClick = vi.fn()
+        const onContextMenu = vi.fn()
+        const onAvatarClick = vi.fn()
+        const onSenderNameClick = vi.fn()
+
+        const root = renderRow(
+            <MessageRow
+                {...baseProps}
+                showCheckbox={true}
+                onSelect={onSelect}
+                onClick={onClick}
+                onContextMenu={onContextMenu}
+                onAvatarClick={onAvatarClick}
+                onSenderNameClick={onSenderNameClick}
+            >
+                <button type="button">open</button>
+            </MessageRow>
+        )
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "click")
+        expect(onSelect).toHaveBeenLastCalledWith(true)
+        expect(onClick).not.toHaveBeenCalled()
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-avatar")!, "click")
+        expect(onAvatarClick).not.toHaveBeenCalled()
+        expect(onSelect).toHaveBeenCalledTimes(2)
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "click")
+        expect(onSenderNameClick).not.toHaveBeenCalled()
+        expect(onSelect).toHaveBeenCalledTimes(3)
+
+        const contextMenuEvent = dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "contextmenu")
+        expect(onContextMenu).not.toHaveBeenCalled()
+        expect(contextMenuEvent.defaultPrevented).toBe(true)
+    })
+
+    it("suppresses row-specific actions for unselectable rows while selection mode is active", () => {
+        const onSelect = vi.fn()
+        const onClick = vi.fn()
+        const onContextMenu = vi.fn()
+        const onAvatarClick = vi.fn()
+        const onSenderNameClick = vi.fn()
+
+        const root = renderRow(
+            <MessageRow
+                {...baseProps}
+                selectionMode={true}
+                showCheckbox={false}
+                onSelect={onSelect}
+                onClick={onClick}
+                onContextMenu={onContextMenu}
+                onAvatarClick={onAvatarClick}
+                onSenderNameClick={onSenderNameClick}
+            >
+                <button type="button">open</button>
+            </MessageRow>
+        )
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "click")
+        expect(onSelect).not.toHaveBeenCalled()
+        expect(onClick).not.toHaveBeenCalled()
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-avatar")!, "click")
+        expect(onAvatarClick).not.toHaveBeenCalled()
+        expect(onSelect).not.toHaveBeenCalled()
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "click")
+        expect(onSenderNameClick).not.toHaveBeenCalled()
+        expect(onSelect).not.toHaveBeenCalled()
+
+        const contextMenuEvent = dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "contextmenu")
+        expect(onContextMenu).not.toHaveBeenCalled()
+        expect(contextMenuEvent.defaultPrevented).toBe(true)
+    })
+
+    it("keeps row-specific actions available outside selection mode", () => {
+        const onSelect = vi.fn()
+        const onClick = vi.fn()
+        const onContextMenu = vi.fn()
+        const onAvatarClick = vi.fn()
+        const onSenderNameClick = vi.fn()
+
+        const root = renderRow(
+            <MessageRow
+                {...baseProps}
+                onSelect={onSelect}
+                onClick={onClick}
+                onContextMenu={onContextMenu}
+                onAvatarClick={onAvatarClick}
+                onSenderNameClick={onSenderNameClick}
+            >
+                <button type="button">open</button>
+            </MessageRow>
+        )
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "click")
+        expect(onClick).toHaveBeenCalledTimes(1)
+        expect(onSelect).not.toHaveBeenCalled()
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-avatar")!, "click")
+        expect(onAvatarClick).toHaveBeenCalledTimes(1)
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "click")
+        expect(onSenderNameClick).toHaveBeenCalledTimes(1)
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "contextmenu")
+        expect(onContextMenu).toHaveBeenCalledTimes(1)
+    })
+})
 
 /**
  * 老组件 `wk-msg-row-header` 补齐 @SpaceName 渲染。

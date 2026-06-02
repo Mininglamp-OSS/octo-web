@@ -11,7 +11,9 @@ import { isMessageContinuation } from '../../Service/messageContinuity'
 import { t } from '../../i18n'
 
 export interface MessageRowSelectionState {
-  /** 是否处于多选模式（来自 context.editOn()） */
+  /** 当前会话是否处于多选模式（不可选消息也需要知道，用于禁用行内操作） */
+  selectionMode?: boolean
+  /** 当前消息是否显示多选 Checkbox */
   showCheckbox: boolean
   /** 当前消息是否被选中（来自 message.checked） */
   isSelected: boolean
@@ -194,6 +196,7 @@ export function getMessageRow(
     isContinue,
     isSelected: selection?.isSelected ?? false,
     showCheckbox: selection?.showCheckbox ?? false,
+    selectionMode: selection?.selectionMode ?? selection?.showCheckbox ?? false,
     showAvatar: !isContinue,
     avatarUrl: WKApp.shared.avatarUser(message.fromUID),
     // self 气泡名字走 loginInfo.selfDisplayName() —— 已实名时

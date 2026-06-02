@@ -45,8 +45,11 @@ export interface MessageRowUIProps {
   /** 选择状态变化回调 */
   onSelect?: (selected: boolean) => void
 
-  /** 是否显示多选 Checkbox（多选模式时为 true） */
+  /** 当前消息是否显示多选 Checkbox */
   showCheckbox?: boolean
+
+  /** 当前是否处于多选模式（当前消息不可选时也可为 true） */
+  selectionMode?: boolean
 
   /** 头像点击回调（私聊场景：点头像打开私聊） */
   onAvatarClick?: (e: React.MouseEvent) => void

@@ -14,6 +14,7 @@ import React from "react";
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { applyMsgLevelExternalFields } from "../../Service/Convert";
+import { isMessageSelectable } from "../../Service/messageSelection";
 import MessageBase from "../Base";
 import MessageTrail from "../Base/tail";
 import { MessageCell } from "../MessageCell";
@@ -304,11 +305,15 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
 
     // 新 UI 实现
     if (useNewUI) {
+      const selectionMode = context.editOn();
+      const selectable = isMessageSelectable(message);
       const uiProps = getMergeforwardMessageUI(message, {
-        showCheckbox: context.editOn(),
-        isSelected: !!message.checked,
-        onSelect: (selected) =>
-          context.checkeMessage(message.message, selected),
+        selectionMode,
+        showCheckbox: selectionMode && selectable,
+        isSelected: selectable && !!message.checked,
+        onSelect: selectable
+          ? (selected) => context.checkeMessage(message.message, selected)
+          : undefined,
       });
       return (
         <>
@@ -316,11 +321,6 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
             {...uiProps.row}
             onContextMenu={(event) => context.showContextMenus(message, event)}
             isActive={context.isContextMenuOpen(message.message)}
-            onClick={
-              context.editOn()
-                ? () => context.checkeMessage(message.message, !message.checked)
-                : undefined
-            }
             onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
             onSenderNameClick={() => context.showUser(message.fromUID)}
           >

@@ -163,7 +163,14 @@ const FoldSessionCard: React.FC<FoldSessionCardProps> = ({
             highlightSummary && "wk-fold-session-card-summary-highlight"
           )}
           onAnimationEnd={onSummaryAnimationEnd}
-          onContextMenu={selectionMode ? undefined : onSummaryContextMenu}
+          onContextMenu={
+            selectionMode
+              ? (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }
+              : onSummaryContextMenu
+          }
         >
           <div
             className={classNames(
@@ -210,8 +217,7 @@ const FoldSessionCard: React.FC<FoldSessionCardProps> = ({
             <div
               className="wk-fold-session-card-summary-main"
               style={{
-                pointerEvents:
-                  selectionMode && summarySelectable ? "none" : undefined,
+                pointerEvents: selectionMode ? "none" : undefined,
               }}
             >
               {/* 折叠状态显示完整消息:姓名tag + 时间 + 内容 */}

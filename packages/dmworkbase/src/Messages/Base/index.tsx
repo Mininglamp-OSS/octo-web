@@ -35,6 +35,7 @@ import ThreadIndicator, {
   ThreadIndicatorData,
 } from "../../Components/ThreadIndicator";
 import { isMessageContinuation } from "../../Service/messageContinuity";
+import { isMessageSelectable } from "../../Service/messageSelection";
 import { I18nContext } from "../../i18n";
 
 interface MessageBaseProps extends HTMLProps<any> {
@@ -365,6 +366,8 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     const showHead = this.needHead();
     const showAvatar = this.needAvatar();
     const timeStr = moment(message.timestamp * 1000).format("HH:mm");
+    const selectionMode = context.editOn();
+    const selectable = isMessageSelectable(message);
 
     // 外部群成员来源标记：按当前查看 Space 相对渲染。
     // 优先读 msg-level 新字段 from_home_space_id / from_home_space_name；
@@ -440,22 +443,24 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
       <div
         className={classNames(
           "wk-message-base",
-          context.editOn() ? "wk-message-base-check-open" : undefined
+          selectionMode && selectable ? "wk-message-base-check-open" : undefined
         )}
         onClick={
-          context.editOn()
-            ? (event) => {
-                context.checkeMessage(message.message, !message.checked);
+          selectionMode
+            ? () => {
+                if (selectable) {
+                  context.checkeMessage(message.message, !message.checked);
+                }
               }
             : undefined
         }
       >
-        {context.editOn() ? (
+        {selectionMode && selectable ? (
           <div
             className="wk-message-base-checkBox"
             style={{ marginBottom: messageStyle.marginBottom }}
           >
-            <Checkbox checked={message.checked} />
+            <Checkbox checked={selectable && message.checked} />
           </div>
         ) : null}
         <div
@@ -466,7 +471,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
         >
           <div
             className={"wk-message-base-box"}
-            style={{ pointerEvents: context.editOn() ? "none" : undefined }}
+            style={{ pointerEvents: selectionMode ? "none" : undefined }}
           >
             {message.send && message.status === MessageStatus.Fail ? (
               <Popconfirm

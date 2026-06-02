@@ -20,6 +20,7 @@ import { getFoldSessionExpandedMessages } from "./foldSessionSummary";
 import { getPulldownRestoredScrollTop } from "./historyScroll";
 import { applyMsgLevelExternalFieldsWithFallback } from "../../Service/Convert";
 import { wrapSendContentForInjection } from "./sendContentProxy";
+import { isMessageSelectable } from "../../Service/messageSelection";
 
 export interface FoldSessionParticipant {
     uid: string
@@ -240,6 +241,9 @@ export default class ConversationVM extends ProviderListener {
 
     // 选中消息
     checkedMessage(message: Message, checked: boolean): void {
+        if (checked && !isMessageSelectable(message)) {
+            return
+        }
         let messageWrap = this.findMessageWithClientMsgNo(message.clientMsgNo)
         if (!messageWrap) {
             return
@@ -251,7 +255,7 @@ export default class ConversationVM extends ProviderListener {
     // 获取被选中的消息列表
     getCheckedMessages() {
         return this.messages.filter((m) => {
-            return m.checked
+            return m.checked && isMessageSelectable(m)
         })
     }
 

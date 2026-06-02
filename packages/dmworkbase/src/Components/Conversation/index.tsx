@@ -79,6 +79,7 @@ import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import VoiceFeedback from "../../Service/VoiceFeedback";
 import { precheckUploadCredentials } from "../../Service/UploadCredentials";
+import { isMessageSelectable } from "../../Service/messageSelection";
 import { I18nContext, t } from "../../i18n";
 
 /**
@@ -656,7 +657,7 @@ export class Conversation
   }
   setEditOn(edit: boolean): void {
     this.vm.editOn = edit;
-    if (this.vm.selectMessage && edit) {
+    if (this.vm.selectMessage && edit && isMessageSelectable(this.vm.selectMessage)) {
       this.vm.checkedMessage(this.vm.selectMessage, true);
     }
   }
@@ -1313,8 +1314,7 @@ export class Conversation
     const { showSummary, summaryId, summaryMessage } =
       getFoldSessionSummaryState(session);
     const summarySelectable =
-      showSummary &&
-      summaryMessage.contentType !== MessageContentTypeConst.typing;
+      showSummary && isMessageSelectable(summaryMessage);
     const typingSender =
       summaryMessage.contentType === MessageContentTypeConst.typing
         ? (summaryMessage.content as { fromName?: string })?.fromName

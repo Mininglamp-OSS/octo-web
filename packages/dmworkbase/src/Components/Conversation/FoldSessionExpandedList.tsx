@@ -4,6 +4,7 @@ import moment from "moment";
 import { Message } from "wukongimjssdk";
 import { MessageWrap } from "../../Service/Model";
 import Checkbox from "../Checkbox";
+import { isMessageSelectable } from "../../Service/messageSelection";
 
 interface FoldSessionExpandedListProps {
   messages: MessageWrap[];
@@ -30,19 +31,22 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
       {messages.map((message) => {
         const senderName = message.from?.title || message.fromUID;
         const timeStr = moment(message.timestamp * 1000).format("HH:mm");
+        const selectable = isMessageSelectable(message);
         return (
           <div
             key={message.clientMsgNo}
             className={classNames(
               "wk-fold-msg",
               editMode && "wk-fold-msg-check-open",
-              message.checked && "wk-fold-msg-selected"
+              selectable && message.checked && "wk-fold-msg-selected"
             )}
             data-testid={`fold-msg-${message.clientMsgNo}`}
             onClick={
               editMode
                 ? () => {
-                    onToggleSelect(message.message, !message.checked);
+                    if (selectable) {
+                      onToggleSelect(message.message, !message.checked);
+                    }
                   }
                 : undefined
             }
@@ -54,7 +58,7 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
               onMessageContextMenu(message.message, event);
             }}
           >
-            {editMode ? (
+            {editMode && selectable ? (
               <div
                 className="wk-fold-msg-check"
                 onClick={(event) => {
