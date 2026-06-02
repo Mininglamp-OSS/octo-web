@@ -67,7 +67,9 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                     window.location.reload()
                     return
                 }
-                window.location.href = `${window.location.origin}${basePath}/${sidParam}`
+                // file:// (Electron desktop) has no SPA fallback — must target index.html explicitly
+                const entry = window.location.protocol === 'file:' ? '/index.html' : '/'
+                window.location.href = `${window.location.origin}${basePath}${entry}${sidParam}`
             }
 
             // 检查是否有待处理的邀请码（验证格式防止 XSS/Open Redirect）

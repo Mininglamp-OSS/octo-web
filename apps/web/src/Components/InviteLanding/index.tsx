@@ -279,7 +279,9 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
             const sid = this.findSid();
             // 使用安全的 basePath，避免当 pathname 为 /api/ 时跳到后端 API 路径（#1006）
             const basePath = this.getAppBasePath();
-            window.location.href = `${window.location.origin}${basePath}/${sid ? `?sid=${sid}` : ''}`;
+            // file:// (Electron desktop) has no SPA fallback — must target index.html explicitly
+            const entry = window.location.protocol === 'file:' ? '/index.html' : '/'
+            window.location.href = `${window.location.origin}${basePath}${entry}${sid ? `?sid=${sid}` : ''}`;
         } catch (e: any) {
             const body = this.getApiErrorData(e);
             if (this.isNeedSpaceResponse(this.getApiErrorStatus(e), body)) {
@@ -312,7 +314,9 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
         // 使用安全的 basePath，避免硬编码 /web 导致部署路径不匹配，
         // 同时剥离 /api 前缀防止登录页被错误托管在后端 API 路径下（#1006）
         const basePath = this.getAppBasePath();
-        window.location.href = `${window.location.origin}${basePath}/?invite=${encodeURIComponent(this.props.inviteCode)}&action=login`;
+        // file:// (Electron desktop) has no SPA fallback — must target index.html explicitly
+        const entry = window.location.protocol === 'file:' ? '/index.html' : '/'
+        window.location.href = `${window.location.origin}${basePath}${entry}?invite=${encodeURIComponent(this.props.inviteCode)}&action=login`;
     }
 
     /**
