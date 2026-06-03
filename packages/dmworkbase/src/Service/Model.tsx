@@ -213,7 +213,7 @@ export class MessageWrap {
     public locateRemind?: boolean // 定位到消息后是否需要提醒
     constructor(message: Message) {
         this.message = message
-        this.order = message.messageSeq * OrderFactor
+        this.order = message.messageSeq > 0 ? message.messageSeq * OrderFactor : 0
     }
     private _parts?: Array<Part>
 

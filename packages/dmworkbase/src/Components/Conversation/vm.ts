@@ -66,6 +66,8 @@ export interface ConversationRenderFoldSessionItem {
 
 export type ConversationRenderItem = ConversationRenderMessageItem | ConversationRenderFoldSessionItem
 
+const PendingMessageOrderBase = Number.MAX_SAFE_INTEGER / 2
+
 export default class ConversationVM extends ProviderListener {
 
     loading: boolean = false // 消息是否加载中
@@ -665,6 +667,70 @@ export default class ConversationVM extends ProviderListener {
         }
     }
 
+    private static getSdkSendingQueues(): Map<number, unknown> | undefined {
+        const chatManager = WKSDK.shared().chatManager as unknown as { sendingQueues?: Map<number, unknown> }
+        return chatManager.sendingQueues
+    }
+
+    private static shouldKeepSendingMessage(message: MessageWrap, sdkSendingQueues?: Map<number, unknown>): boolean {
+        if (message.messageSeq && message.messageSeq > 0) {
+            return false
+        }
+        if (message.status === MessageStatus.Fail) {
+            return true
+        }
+        if (message.status !== MessageStatus.Wait) {
+            return false
+        }
+        if (!message.clientSeq || message.clientSeq <= 0 || !sdkSendingQueues) {
+            return true
+        }
+        return sdkSendingQueues.has(message.clientSeq)
+    }
+
+    private reconcileSendingMessages(channel: Channel): MessageWrap[] {
+        const channelKey = channel.getChannelKey()
+        const sendingMessages = ConversationVM.sendQueue.get(channelKey)
+        if (!sendingMessages || sendingMessages.length === 0) {
+            return []
+        }
+
+        const sdkSendingQueues = ConversationVM.getSdkSendingQueues()
+        const nextSendingMessages = sendingMessages.filter((message) => {
+            return ConversationVM.shouldKeepSendingMessage(message, sdkSendingQueues)
+        })
+
+        if (nextSendingMessages.length !== sendingMessages.length) {
+            if (nextSendingMessages.length > 0) {
+                ConversationVM.sendQueue.set(channelKey, nextSendingMessages)
+            } else {
+                ConversationVM.sendQueue.delete(channelKey)
+            }
+        }
+
+        return nextSendingMessages
+    }
+
+    private forEachLocalMessageWithClientSeq(clientSeq: number, handler: (message: MessageWrap) => void) {
+        const visited = new Set<MessageWrap>()
+        const visit = (messages?: MessageWrap[]) => {
+            if (!messages || messages.length === 0) {
+                return
+            }
+            for (const message of messages) {
+                if (message.clientSeq === clientSeq && !visited.has(message)) {
+                    visited.add(message)
+                    handler(message)
+                }
+            }
+        }
+
+        visit(this.messagesOfOrigin)
+        visit(this.pendingMessages)
+        visit(this.messages)
+        visit(ConversationVM.sendQueue.get(this.channel.getChannelKey()))
+    }
+
     // 取消所有消息的选中
     unCheckAllMessages() {
         let hasChange = false
@@ -1136,24 +1202,28 @@ export default class ConversationVM extends ProviderListener {
     updateMessageStatusBySendAck(ackPacket: SendackPacket) {
         const message = this.findMessageWithClientSeq(ackPacket.clientSeq)
         if (message) {
-            message.message.messageID = ackPacket.messageID.toString()
-            message.message.messageSeq = ackPacket.messageSeq
-            if (ackPacket.reasonCode === 1) {
-                // 发送成功后同步更新 order，确保 sortMessages 能正确排序
-                message.order = ackPacket.messageSeq * OrderFactor
-                this.updateLastMessageIfNeed(message)
-                message.status = MessageStatus.Normal
-                this.removeSendingMessageIfNeed(ackPacket.clientSeq, this.channel)
-            } else {
-                message.status = MessageStatus.Fail
-                const sendingMessage = this.getSendingMessageWithClientMsgNo(message.clientMsgNo)
-                if (sendingMessage) {
-                    sendingMessage.reasonCode = ackPacket.reasonCode
-                    this.fillOrder(sendingMessage)
+            const ackOrder = ackPacket.messageSeq * OrderFactor
+            this.forEachLocalMessageWithClientSeq(ackPacket.clientSeq, (localMessage) => {
+                localMessage.message.messageID = ackPacket.messageID.toString()
+                localMessage.message.messageSeq = ackPacket.messageSeq
+                localMessage.reasonCode = ackPacket.reasonCode
+                if (ackPacket.reasonCode === 1) {
+                    localMessage.order = ackOrder
+                    localMessage.status = MessageStatus.Normal
+                } else {
+                    localMessage.status = MessageStatus.Fail
+                    this.fillOrder(localMessage)
                 }
-
+            })
+            if (ackPacket.reasonCode === 1) {
+                // 发送成功后同步更新 order 并重排渲染列表，纠正本地回显阶段的临时位置。
+                message.order = ackOrder
+                this.updateLastMessageIfNeed(message)
+                this.removeSendingMessageIfNeed(ackPacket.clientSeq, this.channel)
+                this.messagesOfOrigin = ConversationVM.deduplicateMessages(this.sortMessages(this.messagesOfOrigin))
+                this.refreshMessages(this.messagesOfOrigin)
+                return
             }
-            message.reasonCode = ackPacket.reasonCode
         }
         this.notifyListener()
     }
@@ -1191,25 +1261,24 @@ export default class ConversationVM extends ProviderListener {
         }
         this.notifyListener()
     }
-    // 通过clientSeq获取消息对象（同时搜索 messages 和 sendQueue，避免 ack 丢失）
+    // 通过clientSeq获取消息对象（同时搜索本地列表/缓冲区/sendQueue，避免 ack 丢失）
     findMessageWithClientSeq(clientSeq: number): MessageWrap | undefined {
-        if (this.messages && this.messages.length > 0) {
-            for (let i = this.messages.length - 1; i >= 0; i--) {
-                const message = this.messages[i]
+        const findIn = (messages?: MessageWrap[]) => {
+            if (!messages || messages.length <= 0) {
+                return
+            }
+            for (let i = messages.length - 1; i >= 0; i--) {
+                const message = messages[i]
                 if (message.clientSeq === clientSeq) {
                     return message
                 }
             }
         }
-        // 消息可能还在 sendQueue 中（尚未通过 appendMessage 合并到 messages）
-        const sending = ConversationVM.sendQueue.get(this.channel.getChannelKey())
-        if (sending && sending.length > 0) {
-            for (let i = sending.length - 1; i >= 0; i--) {
-                if (sending[i].clientSeq === clientSeq) {
-                    return sending[i]
-                }
-            }
-        }
+
+        return findIn(this.messages)
+            || findIn(this.messagesOfOrigin)
+            || findIn(this.pendingMessages)
+            || findIn(ConversationVM.sendQueue.get(this.channel.getChannelKey()))
     }
 
     // 通过clientMsgNo获取消息对象
@@ -1516,9 +1585,33 @@ export default class ConversationVM extends ProviderListener {
             this.ensureBotChannelInfos()
         })
     }
+    private getMessageSortOrder(message: MessageWrap): number {
+        if (message.messageSeq && message.messageSeq > 0) {
+            return message.messageSeq * OrderFactor
+        }
+        if (Number.isFinite(message.order) && message.order > 0) {
+            return message.order
+        }
+        const timestamp = Number.isFinite(message.timestamp) && message.timestamp > 0 ? message.timestamp : 0
+        const clientSeq = Number.isFinite(message.clientSeq) && message.clientSeq > 0 ? message.clientSeq : 0
+        return PendingMessageOrderBase + timestamp * 1000 + clientSeq
+    }
+
     sortMessages(messages: MessageWrap[]) {
         return messages.sort((a, b) => {
-            return a.order - b.order
+            const orderDiff = this.getMessageSortOrder(a) - this.getMessageSortOrder(b)
+            if (orderDiff !== 0) {
+                return orderDiff
+            }
+            const timestampDiff = (a.timestamp || 0) - (b.timestamp || 0)
+            if (timestampDiff !== 0) {
+                return timestampDiff
+            }
+            const clientSeqDiff = (a.clientSeq || 0) - (b.clientSeq || 0)
+            if (clientSeqDiff !== 0) {
+                return clientSeqDiff
+            }
+            return (a.clientMsgNo || "").localeCompare(b.clientMsgNo || "")
         })
     }
 
@@ -1718,8 +1811,13 @@ export default class ConversationVM extends ProviderListener {
     // 获取当前消息列表的最小序列号的消息
     getMessageMax(): MessageWrap | undefined {
         if (this.messagesOfOrigin && this.messagesOfOrigin.length > 0) {
-            let lastMsg = this.messagesOfOrigin[this.messagesOfOrigin.length - 1];
-            return lastMsg;
+            let maxMessage = this.messagesOfOrigin[0]
+            for (const message of this.messagesOfOrigin) {
+                if (this.getMessageSortOrder(message) > this.getMessageSortOrder(maxMessage)) {
+                    maxMessage = message
+                }
+            }
+            return maxMessage
         }
     }
 
@@ -1825,9 +1923,7 @@ export default class ConversationVM extends ProviderListener {
 
     // 获取当前发送中的消息
     getSendingMessages(channel: Channel) {
-        let channelKey = channel.getChannelKey();
-        let sending = ConversationVM.sendQueue.get(channelKey);
-        return sending || [];
+        return this.reconcileSendingMessages(channel)
     }
     // 获取当前发送中的消息
     getSendingMessageWithClientMsgNo(clientMsgNo: string) {
@@ -1883,6 +1979,7 @@ export default class ConversationVM extends ProviderListener {
         // bubble 丢外部来源标识。已有值不覆盖、失败静默。
         applyMsgLevelExternalFieldsWithFallback(message, undefined)
         const messageWrap = new MessageWrap(message)
+        this.fillOrder(messageWrap)
 
         this.addSendMessageToQueue(messageWrap)
         return message
@@ -1899,13 +1996,13 @@ export default class ConversationVM extends ProviderListener {
         if (maxMessage) {
             if (message.clientMsgNo === maxMessage.clientMsgNo) {
                 if (maxMessage.preMessage) {
-                    message.order = maxMessage.preMessage.order + 1
+                    message.order = this.getMessageSortOrder(maxMessage.preMessage) + 1
                 } else {
                     message.order = OrderFactor + 1
                 }
 
             } else {
-                message.order = maxMessage.order + 1
+                message.order = this.getMessageSortOrder(maxMessage) + 1
             }
 
         } else {
