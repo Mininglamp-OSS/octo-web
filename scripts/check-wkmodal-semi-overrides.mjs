@@ -7,6 +7,14 @@ const repoRoot = process.cwd();
 const sourceRoots = ["apps", "packages"];
 const sourceExtensions = new Set([".js", ".jsx", ".ts", ".tsx"]);
 const styleExtensions = new Set([".css", ".less", ".scss"]);
+const wkModalInternalStyleFile = path.join(
+  "packages",
+  "dmworkbase",
+  "src",
+  "Components",
+  "WKModal",
+  "index.css",
+);
 const ignoredDirs = new Set([
   ".git",
   ".turbo",
@@ -136,6 +144,7 @@ function scanCss(files, wkModalClasses) {
 
   for (const file of files) {
     if (!styleExtensions.has(path.extname(file))) continue;
+    if (path.relative(repoRoot, file) === wkModalInternalStyleFile) continue;
 
     const rawText = fs.readFileSync(file, "utf8");
     if (!rawText.includes(".semi-modal")) continue;

@@ -1,6 +1,6 @@
 /*
- * WKModal — 覆盖 Semi Modal 的 Token 变量
- * 规范：禁止直接写 .semi-xxx selector，通过根节点 Token 覆盖（DEVELOPMENT.md §十三）
+ * WKModal centralizes Semi Modal adaptation.
+ * Callers must target WKModal classes instead of Semi internals.
  */
 
 .wk-modal {
@@ -17,7 +17,12 @@
 }
 
 .wk-modal-content {
+  border: none;
   padding: 0;
+}
+
+.wk-modal-content > .semi-modal-body-wrapper {
+  margin: 0;
 }
 
 .wk-modal-shell,
