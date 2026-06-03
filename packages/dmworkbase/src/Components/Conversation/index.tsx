@@ -71,6 +71,13 @@ import {
   resolveSafeFileUrl,
 } from "../../Messages/File";
 import { ImageContent } from "../../Messages/Image";
+import {
+  RichTextBlock,
+  createRichTextContent,
+  makeTextBlock,
+  makeImageBlock,
+} from "../../Messages/RichText/RichTextContent";
+import { isSafeUrl } from "../../Utils/security";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
@@ -84,7 +91,7 @@ import {
 import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import VoiceFeedback from "../../Service/VoiceFeedback";
-import { precheckUploadCredentials } from "../../Service/UploadCredentials";
+import { precheckUploadCredentials, uploadChatMedia } from "../../Service/UploadCredentials";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { I18nContext, t } from "../../i18n";
 
@@ -683,6 +690,119 @@ export class Conversation
     }
 
     return promise;
+  }
+
+  /**
+   * 图文混排发送：把编辑器里穿插的 text / image 块聚合成单条 RichText(=14) 消息。
+   *
+   * 仅在「同时含文本和图片、且无非图片文件块」时触发（见 onSend）。纯文本仍走
+   * 文本消息(type=1)、纯图片仍走 ImageContent(type=2)，避免回退已落地的发送路径。
+   *
+   * - blocks schema 复用 #218 接收侧 RichTextContent 同一份定义（makeTextBlock /
+   *   makeImageBlock），wire-format 与 octo-lib 权威 schema byte-match。
+   * - 图片先 uploadChatMedia 拿 downloadUrl，再 isSafeUrl(http/https) 校验（与接收侧
+   *   对称，防 javascript:/data:/file: 注入）；单张图片上传失败/URL 不安全则 Toast 跳过该图。
+   * - plain 由 createRichTextContent 本地占位，server #232 Finalize 重算覆盖。
+   * - mention：合并各文本块的 all/uids/humans/ais 到顶层，保证群里 @人/@所有AI 通知不丢
+   *   （vm.sendMessage 读 content.mention.humans/ais 注入）。
+   *
+   * 返回 true 表示消息已入队。
+   */
+  private async sendRichTextMixed(
+    editorBlocks: EditorContentBlock[],
+    reply?: Reply,
+  ): Promise<boolean> {
+    const channel = this.channel();
+    const contentBlocks: RichTextBlock[] = [];
+
+    // 合并 mention（跨多个文本块）。
+    let mentionAll = false;
+    const mentionUids = new Set<string>();
+    let mentionHumans = false;
+    let mentionAis = false;
+
+    for (const block of editorBlocks) {
+      if (block.type === "text") {
+        if (block.text) {
+          contentBlocks.push(makeTextBlock(block.text));
+        }
+        const m = block.mention;
+        if (m) {
+          if (m.all) mentionAll = true;
+          if (m.humans) mentionHumans = true;
+          if (m.ais) mentionAis = true;
+          m.uids?.forEach((uid) => mentionUids.add(uid));
+        }
+      } else if (block.type === "image") {
+        const file = block.file;
+        const dot = (file.name || "").lastIndexOf(".");
+        const ext = dot > 0 ? file.name.substring(dot + 1) : "";
+        let url: string;
+        try {
+          url = await uploadChatMedia(file, channel, ext);
+        } catch (err) {
+          const msg =
+            (err as { msg?: string })?.msg ||
+            t("base.conversation.upload.failed");
+          Toast.error(
+            t("base.conversation.upload.imageFailed", {
+              values: { name: file.name, message: msg },
+            }),
+          );
+          continue;
+        }
+        // 安全：发送前图片 URL 走 isSafeUrl(http/https only)，与接收侧对称。
+        if (!isSafeUrl(url)) {
+          Toast.error(
+            t("base.conversation.upload.imageFailed", {
+              values: {
+                name: file.name,
+                message: t("base.conversation.upload.failed"),
+              },
+            }),
+          );
+          continue;
+        }
+        const { width, height } = await new Promise<{
+          width: number;
+          height: number;
+        }>((resolve) => {
+          const img = new Image();
+          img.onload = () =>
+            resolve({ width: img.naturalWidth, height: img.naturalHeight });
+          img.onerror = () => resolve({ width: 0, height: 0 });
+          img.src = url;
+        });
+        contentBlocks.push(
+          makeImageBlock({
+            url,
+            width,
+            height,
+            size: file.size,
+            name: file.name || undefined,
+          }),
+        );
+      }
+      // file 块在 onSend 已被排除在图文混排路径之外
+    }
+
+    if (contentBlocks.length === 0) {
+      return false;
+    }
+
+    const content = createRichTextContent(contentBlocks);
+    if (reply) {
+      content.reply = reply;
+    }
+    if (mentionAll || mentionUids.size > 0 || mentionHumans || mentionAis) {
+      const mn = new Mention();
+      mn.all = mentionAll;
+      if (mentionUids.size > 0) mn.uids = Array.from(mentionUids);
+      if (mentionHumans) (mn as any).humans = 1;
+      if (mentionAis) (mn as any).ais = 1;
+      content.mention = mn;
+    }
+    return this.sendTextAndWaitAck(content);
   }
 
   scrollToBottom(animate?: boolean): void {
@@ -2541,6 +2661,40 @@ export class Conversation
 
                         // ── 第二阶段：按编辑器文档顺序发送内容块（文本段和粘贴图片交替） ──
                         if (editorBlocks && editorBlocks.length > 0) {
+                          // 图文混排：同时含文本和图片、且无非图片文件块时，聚合成单条
+                          // RichText(=14) 消息（而非拆成多条独立消息）。含 file 块或
+                          // 纯文本/纯图片时仍走下方逐块发送路径，不回退已落地逻辑。
+                          const hasText = editorBlocks.some(
+                            (b) => b.type === "text" && b.text.trim() !== "",
+                          );
+                          const hasImage = editorBlocks.some(
+                            (b) => b.type === "image",
+                          );
+                          const hasFile = editorBlocks.some(
+                            (b) => b.type === "file",
+                          );
+                          if (hasText && hasImage && !hasFile) {
+                            try {
+                              if (await this.sendRichTextMixed(editorBlocks, reply)) {
+                                anyMessageSent = true;
+                              }
+                              reply = undefined;
+                            } catch (err) {
+                              console.error(
+                                "[Conversation] richtext mixed send failed:",
+                                err,
+                              );
+                              Toast.error(t("base.conversation.message.sendFailed"));
+                            }
+                            if (anyMessageSent) {
+                              await this.clearDraftAfterSend(
+                                sendDraftGeneration,
+                                remoteDraftAtSend,
+                              );
+                            }
+                            this.props.onMessageSent?.();
+                            return;
+                          }
                           let isFirstTextBlock = true;
                           for (const block of editorBlocks) {
                             try {

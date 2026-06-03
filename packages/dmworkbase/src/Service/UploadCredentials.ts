@@ -1,6 +1,14 @@
 import { Channel } from "wukongimjssdk"
+import axios from "axios"
 import APIClient, { extractErrorMsg } from "./APIClient"
 import { t } from "../i18n"
+
+interface UploadCredentials {
+    uploadUrl: string
+    downloadUrl: string
+    contentType: string
+    contentDisposition?: string
+}
 
 /**
  * 上传前预检 file/upload/credentials。
@@ -51,6 +59,69 @@ function throwWithMsg(msg: string): never {
     const e = new Error(msg) as Error & { msg: string }
     e.msg = msg
     throw e
+}
+
+/**
+ * 上传一个聊天文件并返回最终 downloadUrl。
+ *
+ * Why: 图文混排 RichText(=14) 发送侧需要在「构造单条 payload」之前先把每张图片
+ * 上传拿到 url（与逐条 ImageContent 发送不同——后者由 SDK MediaMessageUploadTask
+ * 在发送时上传）。直接复用 SDK 的 task 拿不到 url 再聚合，故抽出独立直传。
+ *
+ * How: 与 `dmworkdatasource` 的 `MediaMessageUploadTask` 完全同一套两步：
+ *   1. GET file/upload/credentials（同一接口、同一 query 形状）拿预签名直传凭证；
+ *   2. axios.put(uploadUrl, file) 直传，成功返回 downloadUrl。
+ *
+ * 失败抛出的 Error 上挂 `.msg`，UI 层可直接 Toast，无需再解析。
+ */
+export async function uploadChatMedia(
+    file: File,
+    channel: Channel,
+    extension: string,
+): Promise<string> {
+    const contentType = file.type || "application/octet-stream"
+    const fileName = file.name || "file"
+    const fileSize = file.size
+    const ext = extension ? `.${extension}` : ""
+    const path = `/${channel.channelType}/${channel.channelID}/${genUploadUUID()}${ext}`
+
+    let credentials: UploadCredentials | undefined
+    try {
+        credentials = await APIClient.shared.get<UploadCredentials>(
+            `file/upload/credentials?path=${encodeURIComponent(path)}&type=chat&filename=${encodeURIComponent(fileName)}&contentType=${encodeURIComponent(contentType)}&fileSize=${fileSize}`,
+        )
+    } catch (err) {
+        const msg =
+            extractErrorMsg(err) ||
+            (err instanceof Error ? err.message : "") ||
+            t("base.uploadCredentials.failed")
+        throwWithMsg(msg)
+    }
+
+    if (!credentials || typeof credentials.uploadUrl !== "string" || typeof credentials.downloadUrl !== "string") {
+        throwWithMsg(t("base.uploadCredentials.missingFields"))
+    }
+
+    // 动态超时：每 MB 预留 10 秒，最低 2 分钟兜底（对齐 MediaMessageUploadTask）。
+    const fileSizeMB = file.size / (1024 * 1024)
+    const timeoutMs = Math.max(2 * 60 * 1000, fileSizeMB * 10 * 1000)
+    const headers: Record<string, string> = { "Content-Type": credentials.contentType }
+    if (credentials.contentDisposition) {
+        headers["Content-Disposition"] = credentials.contentDisposition
+    }
+
+    try {
+        const resp = await axios.put(credentials.uploadUrl, file, { headers, timeout: timeoutMs })
+        if (!(resp.status >= 200 && resp.status < 300)) {
+            throwWithMsg(t("base.conversation.upload.failed"))
+        }
+    } catch (err) {
+        if (err && typeof err === "object" && "msg" in err) throw err
+        const msg = (err instanceof Error ? err.message : "") || t("base.conversation.upload.failed")
+        throwWithMsg(msg)
+    }
+
+    return credentials.downloadUrl
 }
 
 function genUploadUUID(): string {

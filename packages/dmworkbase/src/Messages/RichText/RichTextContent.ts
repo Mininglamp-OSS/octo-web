@@ -49,8 +49,50 @@ export function buildRichTextPlain(content: RichTextBlock[]): string {
     return out
 }
 
+/** 构造一个 text block（发送侧，与接收侧 schema 对齐）。 */
+export function makeTextBlock(text: string): RichTextBlock {
+    return { type: RichTextBlockType.text, text }
+}
+
 /**
- * RichText(=14) 图文混排消息正文（Phase 1：仅接收渲染）。
+ * 构造一个 image block（发送侧，与接收侧 schema + octo-lib 权威 schema 对齐）。
+ * url/width/height 必填（contract §image 必填 >0，供端上占位排版）；size/name 仅在有值时带上，
+ * 避免往 wire 注入 0/空 字段污染 byte-match。
+ */
+export function makeImageBlock(opts: {
+    url: string
+    width: number
+    height: number
+    size?: number
+    name?: string
+}): RichTextBlock {
+    const blk: RichTextBlock = {
+        type: RichTextBlockType.image,
+        url: opts.url,
+        width: opts.width,
+        height: opts.height,
+    }
+    if (opts.size && opts.size > 0) blk.size = opts.size
+    if (opts.name) blk.name = opts.name
+    return blk
+}
+
+/**
+ * 构造一个可发送的 RichText(=14) 正文（发送侧入口，与接收侧 decodeJSON 共用同一份 schema）。
+ *
+ * plain 字段：本地按 buildRichTextPlain 填一份占位（image→RichTextImagePlaceholder），
+ * 仅用于本地回显 / 离线兜底；**server #232 Finalize 会重算覆盖**，web 不是 plain 权威源。
+ * 占位符 token 复用 RichTextImagePlaceholder（wire-format 不可本地化），与接收侧严格对称。
+ */
+export function createRichTextContent(content: RichTextBlock[]): RichTextContent {
+    const c = new RichTextContent()
+    c.content = content
+    c.plain = buildRichTextPlain(content)
+    return c
+}
+
+/**
+ * RichText(=14) 图文混排消息正文（接收渲染 + 发送构造共用同一份 schema）。
  *
  * payload 结构（见 octo-lib common/richtext.go）：
  *   { type: 14, content: [ {type:"text",text} | {type:"image",url,width,height} ], plain }
@@ -89,7 +131,9 @@ export class RichTextContent extends MessageContent {
     }
 
     encodeJSON(): any {
-        // Phase 1 仅接收渲染，发送端留后续单；此处保留可往返编码以防转发等路径复用。
+        // 发送侧序列化 content blocks + 本地 plain 占位（server #232 Finalize 重算覆盖）。
+        // SDK MessageContent.encode() 会注入 type=14；JSON.stringify 自动丢弃 undefined 字段，
+        // 保证 wire-format 与 octo-lib 权威 schema byte-match。
         return { content: this.content, plain: this.plain }
     }
 

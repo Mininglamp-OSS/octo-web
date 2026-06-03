@@ -25,6 +25,9 @@ import {
   RichTextContent,
   buildRichTextPlain,
   RichTextImagePlaceholder,
+  makeTextBlock,
+  makeImageBlock,
+  createRichTextContent,
 } from "../RichTextContent";
 
 describe("buildRichTextPlain", () => {
@@ -89,5 +92,66 @@ describe("RichTextContent.decodeJSON", () => {
     c.decodeJSON({ type: 14, content: [] });
     expect(c.plain).toBe("");
     expect(c.conversationDigest).toBe("[富文本]");
+  });
+});
+
+describe("发送侧 block 构造（与接收侧 schema 对称）", () => {
+  it("makeTextBlock 产出 text block", () => {
+    expect(makeTextBlock("hi")).toEqual({ type: "text", text: "hi" });
+  });
+
+  it("makeImageBlock 必填 url/width/height，size/name 仅在有值时带上", () => {
+    expect(
+      makeImageBlock({ url: "https://x/a.png", width: 10, height: 20 }),
+    ).toEqual({ type: "image", url: "https://x/a.png", width: 10, height: 20 });
+
+    expect(
+      makeImageBlock({
+        url: "https://x/a.png",
+        width: 10,
+        height: 20,
+        size: 123,
+        name: "a.png",
+      }),
+    ).toEqual({
+      type: "image",
+      url: "https://x/a.png",
+      width: 10,
+      height: 20,
+      size: 123,
+      name: "a.png",
+    });
+
+    // size=0 不应注入 wire（防 byte-match 污染）
+    expect(
+      makeImageBlock({ url: "https://x/a.png", width: 1, height: 1, size: 0 }),
+    ).not.toHaveProperty("size");
+  });
+
+  it("createRichTextContent 本地填 plain 占位（image→占位符），与 buildRichTextPlain 对称", () => {
+    const blocks = [
+      makeTextBlock("看图："),
+      makeImageBlock({ url: "https://x/a.png", width: 10, height: 20 }),
+    ];
+    const c = createRichTextContent(blocks);
+    expect(c.content).toBe(blocks);
+    expect(c.plain).toBe(`看图：${RichTextImagePlaceholder}`);
+  });
+
+  it("encodeJSON↔decodeJSON 往返：发送构造的 payload 可被接收侧解析回同一 blocks", () => {
+    const sent = createRichTextContent([
+      makeTextBlock("hello"),
+      makeImageBlock({ url: "https://x/a.png", width: 10, height: 20 }),
+    ]);
+    const wire = sent.encodeJSON();
+    const received = new RichTextContent();
+    received.decodeJSON(wire);
+    expect(received.content[0]).toMatchObject({ type: "text", text: "hello" });
+    expect(received.content[1]).toMatchObject({
+      type: "image",
+      url: "https://x/a.png",
+      width: 10,
+      height: 20,
+    });
   });
 });
