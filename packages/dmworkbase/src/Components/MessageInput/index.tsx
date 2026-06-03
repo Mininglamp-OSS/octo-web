@@ -33,7 +33,11 @@ import {
   videoPlayIcon,
 } from "./AttachmentNode";
 import { t as translate, useI18n } from "../../i18n";
-import { runSendWithCleanup, SendResultDetail } from "./sendFlow";
+import {
+  runSendWithCleanup,
+  removeSentSnapshot,
+  SendResultDetail,
+} from "./sendFlow";
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -72,6 +76,22 @@ function extractAttachmentsFromEditor(
 
   traverse(json);
   return attachments;
+}
+
+/**
+ * Collect every attachment node id present in a ProseMirror/TipTap JSON doc
+ * into `out`. Used by the round-3 dedup path to learn which consumed attachment
+ * ids survive into the post-subtraction draft, so their File refs / preview
+ * URLs are not released out from under the remaining draft.
+ */
+function collectAttachmentIds(node: any, out: Set<string>): void {
+  if (!node) return;
+  if (node.type === "attachment" && node.attrs?.id) {
+    out.add(node.attrs.id as string);
+  }
+  if (Array.isArray(node.content)) {
+    node.content.forEach((child: any) => collectAttachmentIds(child, out));
+  }
 }
 
 /**
@@ -1077,22 +1097,31 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 提取编辑器中有序内容块（文本段和粘贴图片按文档顺序交替）
     const orderedBlocks = extractOrderedBlocks(editor, attachmentFilesRef.current);
 
-    // ⚠️ 关键修复 (octo-web#227, Jerry-Xin P1 第二轮)：
+    // ⚠️ 关键修复 (octo-web#227, Jerry-Xin P1 第二/三轮)：
     // round 1 已把同步清理改成「await onSend、仅成功才清」，避免混排上传失败
     // 丢整条草稿。但 await 期间编辑器仍可编辑，onSend 可能耗时数秒（上传图片 +
     // 等 ack），用户趁发送 pending 时打的下一条草稿，会被上一条 send 成功后的
     // 清理误删。本轮改为 snapshot-aware：
-    //   • 发送前对编辑器文档拍 JSON 快照 (editorSnapshot)；成功回来时只有当
-    //     编辑器内容仍 === 快照（用户没开始新草稿）才 clearContent，否则保留。
+    //   • 发送前对编辑器文档拍 JSON 快照 (editorSnapshot)；成功回来时若编辑器
+    //     内容仍 === 快照（用户没开始新草稿）则整段 clearContent。
+    //   • round 3 去重：若编辑器已变（用户打了新草稿），不再原样保留——那样会把
+    //     已发送的快照块连同新草稿在下次 send 重发（重复消息）。改为从 live 文档
+    //     里减去已发送的快照，只留窗口期新打的内容 (removeSentEditorContent)，
+    //     并释放被消费的图片 File / 预览 URL，避免重发与 blob 泄漏。
     //   • 顶部附件按本次实际消费的 id 精确移除，绝不 setTopAttachments([])
     //     全清，等待期间新加的附件因此不丢。
     //   • onSend 可返回 { editorConsumed, consumedTopIds } 表达「顶部附件已发、
     //     但编辑器混排失败」，让已发文件不被重试重复 (Jerry-Xin non-blocking)。
     // 编排逻辑在纯函数 runSendWithCleanup，便于单测覆盖各竞态场景。
-    const editorSnapshot = JSON.stringify(editor.getJSON());
+    const editorSnapshotJSON = editor.getJSON();
+    const editorSnapshot = JSON.stringify(editorSnapshotJSON);
     const consumedAttachmentAttrs = attachmentAttrs;
     const topItemsAtSend = topAttachments;
     const allTopIds = topItemsAtSend.map((item) => item.id);
+    // Attachment ids that survive into the post-dedup draft; their File refs /
+    // preview URLs must NOT be released even though their id was "consumed"
+    // (e.g. an in-editor attachment duplicated during the in-flight window).
+    const survivingAttachmentIds = new Set<string>();
     sendingRef.current = true;
     try {
       await runSendWithCleanup(
@@ -1110,17 +1139,53 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             JSON.stringify(editor.getJSON()) === editorSnapshot,
           deleteEditorAttachmentRefs: () => {
             consumedAttachmentAttrs.forEach((attr) => {
+              // Don't drop a File ref that the surviving (post-dedup) draft
+              // still references, e.g. the user duplicated an in-editor
+              // attachment with the same id during the in-flight window.
+              if (survivingAttachmentIds.has(attr.id)) return;
               attachmentFilesRef.current.delete(attr.id);
             });
           },
           revokeEditorPreviewUrls: () => {
             consumedAttachmentAttrs.forEach((attr) => {
+              if (survivingAttachmentIds.has(attr.id)) return;
               if (attr.previewUrl) {
                 URL.revokeObjectURL(attr.previewUrl);
               }
             });
           },
           clearEditor: () => editor.commands.clearContent(),
+          removeSentEditorContent: () => {
+            // round-3 dedup: the editor changed mid-flight but the send
+            // succeeded. Subtract the sent snapshot from the live doc, keeping
+            // only what the user typed during the in-flight window, so the
+            // already-sent blocks are not re-sent on the next send.
+            const live = editor.getJSON();
+            const remaining = removeSentSnapshot(
+              editorSnapshotJSON as any,
+              live as any
+            );
+            if (remaining === null) {
+              // Sent content edited inside the live doc → not safely separable;
+              // preserve the live draft untouched (rare fallback).
+              return false;
+            }
+            const content = Array.isArray(remaining.content)
+              ? remaining.content
+              : [];
+            // Record attachment ids that survive into the remaining draft so we
+            // do NOT release their File refs / preview URLs below (the surviving
+            // draft still needs them; e.g. an attachment duplicated during the
+            // in-flight window shares a consumed id).
+            collectAttachmentIds(remaining, survivingAttachmentIds);
+            if (content.length === 0) {
+              // Everything sent, nothing new survived → clear the editor.
+              editor.commands.clearContent();
+            } else {
+              editor.commands.setContent(remaining as any);
+            }
+            return true;
+          },
           removeTopAttachments: (ids: string[]) => {
             const idSet = new Set(ids);
             // 先 revoke 被消费项的预览 URL（避免内存泄漏），用拍快照时的列表
