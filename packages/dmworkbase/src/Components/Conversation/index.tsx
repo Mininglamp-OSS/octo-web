@@ -190,6 +190,35 @@ function guessFileNameFromUrl(url: string, fallback: string): string {
 }
 
 /**
+ * 从本地图片文件读取像素尺寸（用 FileReader → Image，绝不依赖远端 URL）。
+ *
+ * Why: RichText image block 的 width/height 是 schema 必填>0（供端上占位排版）。
+ * 若从刚上传的 downloadUrl 读尺寸，CDN read-after-write 延迟可能让 Image 读到 0×0，
+ * 注入非法块。纯图片发送路径(sendImageFile)本就从本地文件量尺寸，这里保持一致。
+ */
+function readLocalImageSize(
+  file: File,
+): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string;
+      if (!dataUrl) {
+        resolve({ width: 0, height: 0 });
+        return;
+      }
+      const img = new Image();
+      img.onload = () =>
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => resolve({ width: 0, height: 0 });
+      img.src = dataUrl;
+    };
+    reader.onerror = () => resolve({ width: 0, height: 0 });
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
  * 从 WuKongIM Message 对象解析发送人的展示名。
  *
  * WuKongIM SDK 的 Message 只带 fromUID, 不带 fromName; name 必须前端自己解析。
@@ -700,13 +729,17 @@ export class Conversation
    *
    * - blocks schema 复用 #218 接收侧 RichTextContent 同一份定义（makeTextBlock /
    *   makeImageBlock），wire-format 与 octo-lib 权威 schema byte-match。
-   * - 图片先 uploadChatMedia 拿 downloadUrl，再 isSafeUrl(http/https) 校验（与接收侧
-   *   对称，防 javascript:/data:/file: 注入）；单张图片上传失败/URL 不安全则 Toast 跳过该图。
+   * - 原子性：单条 RichText 是一个整体，任一图片上传失败 / URL 不安全 / 本地尺寸读取
+   *   失败 → 整条消息发送中止（抛错），调用方不清草稿、用户可重试，绝不静默丢图。
+   * - 图片尺寸取**本地文件**（与纯图片路径一致），不依赖刚上传的 downloadUrl，避免
+   *   CDN read-after-write 延迟导致 width/height=0 违反 image schema 必填>0。
+   * - 上传成功后图片 URL 走 isSafeUrl(http/https only)（与接收侧对称，防 javascript:/
+   *   data:/file: 注入）。
    * - plain 由 createRichTextContent 本地占位，server #232 Finalize 重算覆盖。
    * - mention：合并各文本块的 all/uids/humans/ais 到顶层，保证群里 @人/@所有AI 通知不丢
    *   （vm.sendMessage 读 content.mention.humans/ais 注入）。
    *
-   * 返回 true 表示消息已入队。
+   * 返回 true 表示消息已入队；任一图片块准备失败则抛错（已 Toast 具体原因）。
    */
   private async sendRichTextMixed(
     editorBlocks: EditorContentBlock[],
@@ -720,6 +753,21 @@ export class Conversation
     const mentionUids = new Set<string>();
     let mentionHumans = false;
     let mentionAis = false;
+
+    // 单张图片准备失败 → Toast 具体原因后抛错，让整条消息原子失败（草稿保留可重试）。
+    const failImage = (file: File, message: string): never => {
+      Toast.error(
+        t("base.conversation.upload.imageFailed", {
+          values: { name: file.name, message },
+        }),
+      );
+      const e = new Error(
+        `richtext mixed image prepare failed: ${file.name}`,
+      ) as Error & { toasted?: boolean };
+      // 标记已 Toast，调用方 catch 不再重复弹通用错误。
+      e.toasted = true;
+      throw e;
+    };
 
     for (const block of editorBlocks) {
       if (block.type === "text") {
@@ -735,6 +783,14 @@ export class Conversation
         }
       } else if (block.type === "image") {
         const file = block.file;
+        // 1. 先从本地文件读尺寸（schema 必填>0，且不受 CDN 延迟影响）。
+        const { width, height } = await readLocalImageSize(file);
+        if (width <= 0 || height <= 0) {
+          failImage(file, t("base.conversation.upload.imageReadFailed", {
+            values: { name: file.name },
+          }));
+        }
+        // 2. 上传拿 downloadUrl。
         const dot = (file.name || "").lastIndexOf(".");
         const ext = dot > 0 ? file.name.substring(dot + 1) : "";
         let url: string;
@@ -744,38 +800,15 @@ export class Conversation
           const msg =
             (err as { msg?: string })?.msg ||
             t("base.conversation.upload.failed");
-          Toast.error(
-            t("base.conversation.upload.imageFailed", {
-              values: { name: file.name, message: msg },
-            }),
-          );
-          continue;
+          failImage(file, msg);
         }
-        // 安全：发送前图片 URL 走 isSafeUrl(http/https only)，与接收侧对称。
-        if (!isSafeUrl(url)) {
-          Toast.error(
-            t("base.conversation.upload.imageFailed", {
-              values: {
-                name: file.name,
-                message: t("base.conversation.upload.failed"),
-              },
-            }),
-          );
-          continue;
+        // 3. 安全：发送前图片 URL 走 isSafeUrl(http/https only)，与接收侧对称。
+        if (!isSafeUrl(url!)) {
+          failImage(file, t("base.conversation.upload.failed"));
         }
-        const { width, height } = await new Promise<{
-          width: number;
-          height: number;
-        }>((resolve) => {
-          const img = new Image();
-          img.onload = () =>
-            resolve({ width: img.naturalWidth, height: img.naturalHeight });
-          img.onerror = () => resolve({ width: 0, height: 0 });
-          img.src = url;
-        });
         contentBlocks.push(
           makeImageBlock({
-            url,
+            url: url!,
             width,
             height,
             size: file.size,
@@ -2684,7 +2717,11 @@ export class Conversation
                                 "[Conversation] richtext mixed send failed:",
                                 err,
                               );
-                              Toast.error(t("base.conversation.message.sendFailed"));
+                              // 图片准备失败已在 sendRichTextMixed 内 Toast 具体原因，
+                              // 不再重复弹通用错误（草稿因 anyMessageSent=false 自动保留可重试）。
+                              if (!(err as { toasted?: boolean })?.toasted) {
+                                Toast.error(t("base.conversation.message.sendFailed"));
+                              }
                             }
                             if (anyMessageSent) {
                               await this.clearDraftAfterSend(
