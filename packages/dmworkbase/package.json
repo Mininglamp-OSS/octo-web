@@ -36,7 +36,7 @@
     "classnames": "^2.3.1",
     "dompurify": "^3.4.2",
     "highlight.js": "^11.11.1",
-    "hotkeys-js": "^3.8.7",
+    "hotkeys-js": "^4.0.4",
     "howler": "^2.2.4",
     "katex": "^0.16.45",
     "lucide-react": "^0.577.0",
