@@ -43,6 +43,7 @@ import MessageInput, {
   MessageInputContext,
   EditorContentBlock,
 } from "../MessageInput";
+import { SendResultDetail } from "../MessageInput/sendFlow";
 import { BotCommand } from "../SlashCommandMenu";
 import ContextMenus, { ContextMenusContext } from "../ContextMenus";
 import classNames from "classnames";
@@ -2476,7 +2477,7 @@ export class Conversation
                         _attachments?: { id: string; file: File }[],
                         topFiles?: { id: string; file: File }[],
                         editorBlocks?: EditorContentBlock[],
-                      ): Promise<boolean> => {
+                      ): Promise<boolean | SendResultDetail> => {
                         // 返回值告诉 MessageInput 是否清空编辑器/附件：
                         //   true  → 发送成功(或已消费)，清空草稿+附件；
                         //   false → 发送失败，保留编辑器内容+图片引用供重试。
@@ -2681,8 +2682,12 @@ export class Conversation
                         // 若所有顶部附件 + 编辑器内容块都被预检拒绝,且没有文本块,
                         // 则不应再补发空回复消息 (octo-web#119 review by Jerry-Xin)。
                         let anyMessageSent = false;
+                        // 记录实际发出的顶部附件 id：失败时让 MessageInput 仅
+                        // 清掉这些已发文件、保留编辑器草稿，重试不会重复发送
+                        // (octo-web#227 Jerry-Xin non-blocking)。
+                        const consumedTopIds: string[] = [];
                         const topFilesToSend = topFiles || [];
-                        for (const { file } of topFilesToSend) {
+                        for (const { id, file } of topFilesToSend) {
                           try {
                             let sent = false;
                             if (file.type && file.type.startsWith("image/")) {
@@ -2690,7 +2695,10 @@ export class Conversation
                             } else {
                               sent = await sendFileAttachment(file);
                             }
-                            if (sent) anyMessageSent = true;
+                            if (sent) {
+                              anyMessageSent = true;
+                              consumedTopIds.push(id);
+                            }
                           } catch (err) {
                             Toast.error(t("base.conversation.upload.fileSendFailed", {
                               values: { name: file.name },
@@ -2742,10 +2750,17 @@ export class Conversation
                               );
                             }
                             this.props.onMessageSent?.();
-                            // 返回 mixedSent：失败时 (false) MessageInput 保留编辑器
-                            // 文本+图片引用与预览 URL，用户可直接重试整条消息
-                            // (octo-web#227 Jerry-Xin P1)。
-                            return mixedSent;
+                            // 返回 snapshot-aware 结果 (octo-web#227 Jerry-Xin
+                            // 第二轮)：
+                            //   • editorConsumed=mixedSent：混排失败时保留编辑器
+                            //     文本+图片，用户可整条重试；
+                            //   • consumedTopIds：本次已发出的顶部附件 id。即使
+                            //     混排失败，这些文件也已发出，让 MessageInput 只
+                            //     清掉它们、不随编辑器草稿一起保留，避免重试重复。
+                            return {
+                              editorConsumed: mixedSent,
+                              consumedTopIds,
+                            };
                           }
                           let isFirstTextBlock = true;
                           for (const block of editorBlocks) {
