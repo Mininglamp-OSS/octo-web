@@ -2476,7 +2476,12 @@ export class Conversation
                         _attachments?: { id: string; file: File }[],
                         topFiles?: { id: string; file: File }[],
                         editorBlocks?: EditorContentBlock[],
-                      ) => {
+                      ): Promise<boolean> => {
+                        // 返回值告诉 MessageInput 是否清空编辑器/附件：
+                        //   true  → 发送成功(或已消费)，清空草稿+附件；
+                        //   false → 发送失败，保留编辑器内容+图片引用供重试。
+                        // 关键：混排 (text+image) 上传失败时必须返回 false，否则
+                        // 用户整条消息会被同步清空丢失 (octo-web#227 Jerry-Xin P1)。
                         const sendDraftGeneration = this.draftSaveGeneration;
                         const remoteDraftAtSend =
                           this.vm.currentConversation?.remoteExtra?.draft || "";
@@ -2498,7 +2503,8 @@ export class Conversation
                               JSON.stringify(json),
                             );
                             vm.currentReplyMessage = undefined;
-                            return;
+                            // 编辑消息已提交，编辑器应清空。
+                            return true;
                           }
                           reply = new Reply();
                           reply.messageID = vm.currentReplyMessage.messageID;
@@ -2736,7 +2742,10 @@ export class Conversation
                               );
                             }
                             this.props.onMessageSent?.();
-                            return;
+                            // 返回 mixedSent：失败时 (false) MessageInput 保留编辑器
+                            // 文本+图片引用与预览 URL，用户可直接重试整条消息
+                            // (octo-web#227 Jerry-Xin P1)。
+                            return mixedSent;
                           }
                           let isFirstTextBlock = true;
                           for (const block of editorBlocks) {
@@ -2804,6 +2813,10 @@ export class Conversation
                           );
                         }
                         this.props.onMessageSent?.();
+                        // 与 clearDraftAfterSend 同口径：只有确实发出消息时才让
+                        // MessageInput 清空编辑器；全部失败/被预检拒绝时返回 false
+                        // 保留草稿可重试。
+                        return anyMessageSent;
                       }}
                     ></MessageInput>
                   </div>

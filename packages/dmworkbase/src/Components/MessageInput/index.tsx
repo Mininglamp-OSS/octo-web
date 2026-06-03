@@ -33,6 +33,7 @@ import {
   videoPlayIcon,
 } from "./AttachmentNode";
 import { t as translate, useI18n } from "../../i18n";
+import { runSendWithCleanup } from "./sendFlow";
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -174,6 +175,13 @@ export interface AttachmentFile {
 
 interface MessageInputProps {
   context: ConversationContext;
+  /**
+   * 发送回调。返回值决定是否清空编辑器/附件：
+   *   - resolve `true`（或 `undefined`/`void`，向后兼容）→ 视为发送成功，清空草稿与附件；
+   *   - resolve `false` → 视为发送失败/未发送，保留编辑器内容、附件引用与预览 URL 以便重试。
+   * 必须在 send 内被 `await`，否则同步清理会先于异步发送结果丢掉混排草稿
+   * (octo-web#227 review by Jerry-Xin)。
+   */
   onSend?: (
     text: string,
     mention?: MentionModel,
@@ -182,7 +190,7 @@ interface MessageInputProps {
     topFiles?: AttachmentFile[],
     /** 编辑器中按文档顺序排列的内容块（文本段和粘贴图片交替） */
     editorBlocks?: EditorContentBlock[]
-  ) => void;
+  ) => void | boolean | Promise<void | boolean>;
   members?: Array<Subscriber>;
   onInputRef?: any;
   onInsertText?: (fnc: OnInsertFnc) => void;
@@ -612,7 +620,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const isDirectChannelRef = useRef(
     props.context.channel().channelType === ChannelTypePerson,
   );
-  const sendRef = useRef<(() => void) | null>(null);
+  const sendRef = useRef<(() => void | Promise<void>) | null>(null);
+  // 发送进行中标志：onSend 现在被 await，发送窗口内防止重复触发 (octo-web#227)。
+  const sendingRef = useRef(false);
   const mentionActiveRef = useRef(false);
   const botCommandsRef = useRef(props.botCommands);
   // editorHandleKeyDownRef 持有最新的键盘处理函数，通过 useEffect 更新
@@ -1011,8 +1021,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     [editor]
   );
 
-  const send = useCallback(() => {
+  const send = useCallback(async () => {
     if (!editor) return;
+    // 重入保护：onSend 现在被 await，发送期间可能再次触发 Enter/快捷键，
+    // 避免同一份草稿被发送两次 (octo-web#227)。
+    if (sendingRef.current) return;
 
     const text = editor.getText();
     if (text.length > MAX_MESSAGE_LENGTH) {
@@ -1046,45 +1059,68 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     const hasText = text.trim() !== "";
     const hasAttachments = allAttachments.length > 0;
 
-    if (props.onSend && (hasText || hasAttachments)) {
-      // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）
-      const formattedText = extractMentionsFromEditor(editor);
-      const { content, mention } = formatMentionTextV2(formattedText);
-
-      // 提取编辑器中有序内容块（文本段和粘贴图片按文档顺序交替）
-      const orderedBlocks = extractOrderedBlocks(editor, attachmentFilesRef.current);
-
-      props.onSend(
-        content,
-        mention,
-        allAttachments.length > 0 ? allAttachments : undefined,
-        topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
-        orderedBlocks.length > 0 ? orderedBlocks : undefined
-      );
+    // 没有 onSend 或没有任何内容时无需发送，直接退出（不清空，保持现状）。
+    if (!props.onSend || (!hasText && !hasAttachments)) {
+      return;
     }
 
-    // 清理编辑器附件文件引用和图片预览 URL
-    attachmentAttrs.forEach((attr) => {
-      attachmentFilesRef.current.delete(attr.id);
-      // 释放图片预览 URL，避免内存泄漏
-      if (attr.previewUrl) {
-        URL.revokeObjectURL(attr.previewUrl);
-      }
-    });
+    // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）
+    const formattedText = extractMentionsFromEditor(editor);
+    const { content, mention } = formatMentionTextV2(formattedText);
 
-    // 清理顶部附件区
-    topAttachments.forEach((item) => {
-      if (item.previewUrl) {
-        URL.revokeObjectURL(item.previewUrl);
-      }
-    });
-    setTopAttachments([]);
+    // 提取编辑器中有序内容块（文本段和粘贴图片按文档顺序交替）
+    const orderedBlocks = extractOrderedBlocks(editor, attachmentFilesRef.current);
 
-    editor.commands.clearContent();
-
-    if (expanded) {
-      setExpanded(false);
-      props.onExpandChange?.(false);
+    // ⚠️ 关键修复 (octo-web#227, Jerry-Xin P1)：
+    // 必须 await onSend 的结果，且仅在发送成功 (true / void) 后才清空编辑器、
+    // 删除附件引用、revoke 预览 URL。否则混排 (text+image) 上传失败时，
+    // 同步清理会先于异步发送结果执行，导致用户已编辑的整条消息（文本+图片）
+    // 全部丢失、无草稿可重试。失败 (false) 时保留全部 compose 状态。
+    // 编排逻辑抽到纯函数 runSendWithCleanup，便于单测覆盖失败保留草稿场景。
+    const topItemsAtSend = topAttachments;
+    sendingRef.current = true;
+    try {
+      await runSendWithCleanup(
+        () =>
+          props.onSend!(
+            content,
+            mention,
+            allAttachments.length > 0 ? allAttachments : undefined,
+            topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
+            orderedBlocks.length > 0 ? orderedBlocks : undefined
+          ),
+        {
+          deleteAttachmentRefs: () => {
+            attachmentAttrs.forEach((attr) => {
+              attachmentFilesRef.current.delete(attr.id);
+            });
+          },
+          revokePreviewUrls: () => {
+            // 编辑器内粘贴图片的预览 URL
+            attachmentAttrs.forEach((attr) => {
+              if (attr.previewUrl) {
+                URL.revokeObjectURL(attr.previewUrl);
+              }
+            });
+            // 顶部附件区的预览 URL
+            topItemsAtSend.forEach((item) => {
+              if (item.previewUrl) {
+                URL.revokeObjectURL(item.previewUrl);
+              }
+            });
+          },
+          clearTopAttachments: () => setTopAttachments([]),
+          clearEditor: () => editor.commands.clearContent(),
+          collapseExpanded: () => {
+            if (expanded) {
+              setExpanded(false);
+              props.onExpandChange?.(false);
+            }
+          },
+        }
+      );
+    } finally {
+      sendingRef.current = false;
     }
   }, [editor, expanded, topAttachments, props.onSend, props.onExpandChange, t]);
 
