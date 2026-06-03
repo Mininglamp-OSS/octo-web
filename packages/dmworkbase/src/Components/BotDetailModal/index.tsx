@@ -11,6 +11,7 @@ import { WKAvatarUploadPreview } from "../WKAvatarUploadPreview";
 import WKAvatarPreviewImage from "../WKAvatarPreviewImage";
 import AiBadge from "../AiBadge";
 import ClawInfoModal from "../ClawInfoModal/ClawInfoModal";
+import BotManageModal from "../BotManage";
 import AgentCardService from "../../Service/AgentCardService";
 import { I18nContext, t } from "../../i18n";
 import { canvasToPngFile, isAvatarFileTooLarge, isGifImageFile } from "../avatarUpload";
@@ -47,6 +48,7 @@ interface BotDetailModalState {
     reported: boolean | null;
     reportStatusLoading: boolean;
     showClawInfo: boolean;
+    showBotManage: boolean;
     avatarCropFile: File | null;
     avatarPreviewFile: File | null;
 }
@@ -83,6 +85,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         reported: null,
         reportStatusLoading: false,
         showClawInfo: false,
+        showBotManage: false,
         avatarCropFile: null,
         avatarPreviewFile: null,
     };
@@ -96,6 +99,11 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
 
     componentDidUpdate(prevProps: BotDetailModalProps) {
         if (prevProps.uid !== this.props.uid && this.props.uid) {
+            // 复用同一 BotDetailModal 实例切到新 bot 时，先关掉「Bot 管理」子模态。
+            // 否则在 loadBotInfo() 重算 isOwner 之前会有一帧用「旧 bot 的 creatorUid」
+            // 判定 owner，却把「新 uid」透传给 BotManageModal —— 可能让用户在所有权
+            // 重新校验前对一个未必属于自己的 bot 触发一次群数据加载（codex P2）。
+            this.setState({ showBotManage: false });
             this.loadBotInfo();
         }
         if (prevProps.visible && !this.props.visible) {
@@ -500,6 +508,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             reported,
             reportStatusLoading,
             showClawInfo,
+            showBotManage,
             avatarCropFile,
             avatarPreviewFile,
         } = this.state;
@@ -725,13 +734,24 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                 ))}
                             </div>
                         )}
+                        {isOwner && (
+                            <Button
+                                block
+                                onClick={() => this.setState({ showBotManage: true })}
+                                className="wk-bot-detail-manage-btn"
+                                style={{ marginTop: 16 }}
+                                aria-label={t("base.botManage.title")}
+                            >
+                                {`⚙️ ${t("base.botManage.title")}`}
+                            </Button>
+                        )}
                         {isOwner && reported !== null && (
                             <Button
                                 block
                                 disabled={!reported}
                                 onClick={this.handleViewClawInfo}
                                 className={`wk-bot-detail-claw-btn${!reported ? " wk-bot-detail-claw-btn--disabled" : ""}`}
-                                style={{ marginTop: 16 }}
+                                style={{ marginTop: 10 }}
                                 aria-label={reported ? t("base.botDetail.viewClawInfo") : undefined}
                                 data-tooltip={!reported ? t("base.botDetail.reportHelp") : undefined}
                             >
@@ -788,6 +808,13 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                 visible={showClawInfo}
                 onClose={() => this.setState({ showClawInfo: false })}
             />
+            {isOwner && showBotManage && (
+                <BotManageModal
+                    robotId={uid}
+                    visible={showBotManage}
+                    onClose={() => this.setState({ showBotManage: false })}
+                />
+            )}
             <WKModal
                 title={t("base.botDetail.previewAvatar")}
                 visible={visible && !!avatarPreviewFile}
