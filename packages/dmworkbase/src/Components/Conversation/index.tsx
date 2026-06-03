@@ -2707,8 +2707,13 @@ export class Conversation
                             (b) => b.type === "file",
                           );
                           if (hasText && hasImage && !hasFile) {
+                            // 单独跟踪图文混排是否成功：图片准备失败时 sendRichTextMixed
+                            // 抛错，此时即便此前顶部附件已发(anyMessageSent=true)，也不能
+                            // 清空编辑器草稿——草稿里的文本+图片整条都没发出，须保留可重试。
+                            let mixedSent = false;
                             try {
                               if (await this.sendRichTextMixed(editorBlocks, reply)) {
+                                mixedSent = true;
                                 anyMessageSent = true;
                               }
                               reply = undefined;
@@ -2718,12 +2723,13 @@ export class Conversation
                                 err,
                               );
                               // 图片准备失败已在 sendRichTextMixed 内 Toast 具体原因，
-                              // 不再重复弹通用错误（草稿因 anyMessageSent=false 自动保留可重试）。
+                              // 不再重复弹通用错误。
                               if (!(err as { toasted?: boolean })?.toasted) {
                                 Toast.error(t("base.conversation.message.sendFailed"));
                               }
                             }
-                            if (anyMessageSent) {
+                            // 仅当图文混排本身发出时才清草稿；失败则保留编辑器内容可重试。
+                            if (mixedSent) {
                               await this.clearDraftAfterSend(
                                 sendDraftGeneration,
                                 remoteDraftAtSend,
