@@ -34,11 +34,49 @@
     font-size: 14px;
     color: #666;
 }
+.wk-bot-detail-empty {
+    color: #999;
+}
 .wk-bot-detail-label {
     font-size: 12px;
     color: #999;
-    margin-bottom: 4px;
     font-weight: 500;
+}
+.wk-bot-detail-field-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 24px;
+    margin-bottom: 4px;
+}
+.wk-bot-detail-edit-action {
+    height: 22px;
+    padding: 0 4px;
+    color: #777;
+    font-size: 12px;
+}
+.wk-bot-detail-edit-action:hover {
+    color: var(--wk-color-theme, #1C1C23);
+}
+.wk-bot-detail-remark-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+}
+.wk-bot-detail-value-edit {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    padding: 0;
+    color: #777;
+    opacity: 0.72;
+}
+.wk-bot-detail-value-edit:hover,
+.wk-bot-detail-value-edit:focus-visible {
+    color: var(--wk-color-theme, #1C1C23);
+    opacity: 1;
 }
 .wk-bot-detail-commands {
     margin-bottom: 8px;
@@ -120,27 +158,6 @@
     display: flex;
     justify-content: center;
 }
-
-/* Owner 简介编辑：hover label 显示 ✏️ */
-.wk-bot-detail-edit-icon {
-    margin-left: 6px;
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.15s ease-in-out;
-    font-size: 12px;
-    user-select: none;
-}
-.wk-bot-detail-desc:hover .wk-bot-detail-edit-icon,
-.wk-bot-detail-edit-icon:focus-visible {
-    opacity: 1;
-}
-/* keyboard focus ring: 默认 opacity:0 的 ✏️ 在键盘聚焦时要看得见 */
-.wk-bot-detail-edit-icon:focus-visible {
-    outline: 2px solid var(--wk-border-glow);
-    outline-offset: 2px;
-    border-radius: 2px;
-}
-
 /* OctoPush 状态 chip（头像下方，@username 之后） */
 .wk-bot-detail-octopush-chip {
     display: flex;
