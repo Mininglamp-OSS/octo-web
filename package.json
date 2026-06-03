@@ -51,7 +51,7 @@
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
     "@types/react-syntax-highlighter": "^15.5.13",
     "katex": "^0.16.45",
-    "lucide-react": "^0.577.0",
+    "lucide-react": "^1.17.0",
     "pinyin-pro": "^3.28.0",
     "react-syntax-highlighter": "^15.6.6",
     "rehype-katex": "^7.0.1",
