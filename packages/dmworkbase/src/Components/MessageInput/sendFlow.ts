@@ -24,6 +24,11 @@
  *    the user's newer draft is left untouched. Top attachments are removed by
  *    the specific ids that were consumed, never with a blanket reset, so items
  *    queued during the wait survive.
+ *    Residual follow-up: when the editor changed mid-flight we leave the live
+ *    doc untouched, so the already-sent snapshot blocks stay alongside the new
+ *    draft and could be re-sent on the next send (duplicate). Accepted over the
+ *    worse "draft wiped" failure; a precise per-range removal is deferred — see
+ *    the `!isEditorUnchanged()` branch below.
  *
  * `onSend` return-value contract (back-compatible):
  *   - `undefined` / `void` → success: editor consumed, all consumed top
@@ -136,9 +141,19 @@ export async function runSendWithCleanup(
   }
 
   if (!cleanup.isEditorUnchanged()) {
-    // The user started a new draft while the older send was in flight. Never
-    // wipe it — the snapshot content left behind is harmless and gets cleared
-    // on the next send. This is the core round-2 fix.
+    // The user started a new draft while the older send was in flight. We must
+    // NOT clear the editor — doing so would wipe the newly typed draft (the
+    // round-2 data-loss bug). We deliberately leave the live document as-is.
+    //
+    // Known residual edge case (octo-web#227, tracked as a follow-up): the live
+    // editor now holds [already-sent snapshot blocks] + [new draft]. The
+    // already-sent blocks are NOT auto-removed here, so if the user presses send
+    // again those blocks are re-sent → a duplicate of the previous message. The
+    // message was delivered and the leftover content is visible to the user, so
+    // per the team's severity call this is accepted for now over the worse
+    // "draft wiped" failure. A precise fix (remove only the submitted snapshot
+    // range from the live doc, mirroring the by-id removeTopAttachments path)
+    // is deferred to a dedicated PR with its own ProseMirror-position tests.
     return true;
   }
 
