@@ -89,3 +89,5 @@ jobs:
         run: pnpm build
       - name: Lint
         run: pnpm lint
+      - name: WKModal Semi override guard
+        run: pnpm lint:wkmodal
