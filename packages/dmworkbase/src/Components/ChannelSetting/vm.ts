@@ -307,7 +307,7 @@ export class ChannelSettingVM extends ProviderListener {
             }
             WKSDK.shared().channelManager.addSubscriberChangeListener(this.subscriberChangeListener)
 
-            // WKSDK.shared().channelManager.syncSubscribes(this.channel)
+            WKSDK.shared().channelManager.syncSubscribes(this.channel)
 
         }
         this.channelInfoListener = (channelInfo:ChannelInfo) => {

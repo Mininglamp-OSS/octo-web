@@ -67,7 +67,7 @@ export class ChannelDataSource implements IChannelDataSource {
         if (options?.categoryId) {
             body.category_id = options.categoryId
         }
-        return WKApp.apiClient.post(`group/create`, body);
+        return WKApp.apiClient.post(`group/create`, body, { timeout: 15000 });
     }
     async groupSaveList(): Promise<ChannelInfo[]> {
         const param: any = { "limit": MAX_GROUP_LIST_LIMIT }

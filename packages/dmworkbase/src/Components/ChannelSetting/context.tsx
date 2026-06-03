@@ -15,7 +15,19 @@ export class ChannelSettingRouteData {
 
      // 我是否是管理者或创建者
      get isManagerOrCreatorOfMe() {
-        return  this.subscriberOfMe?.role === GroupRole.manager || this.subscriberOfMe?.role === GroupRole.owner
+        if (this.subscriberOfMe?.role === GroupRole.manager || this.subscriberOfMe?.role === GroupRole.owner) {
+            return true
+        }
+        // Fallback: if subscriber data is unavailable (e.g. IM channel not yet created
+        // after weak-network group creation), check role from channelInfo.orgData which
+        // is populated from the server-side GroupResp.
+        if (!this.subscriberOfMe && this.channelInfo?.orgData?.role != null) {
+            const role = this.channelInfo.orgData.role as number
+            if (role === GroupRole.owner || role === GroupRole.manager) {
+                return true
+            }
+        }
+        return false
      }
 
 }

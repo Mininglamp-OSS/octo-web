@@ -106,16 +106,20 @@ export default class APIClient {
 
      get<T>(path: string, config?: RequestConfig) {
        return this.wrapResult<T>(axios.get(path, {
-        params: config?.param
+        params: config?.param,
+        timeout: config?.timeout,
     }), config)
     }
     post(path: string, data?: any, config?: RequestConfig) {
-        return this.wrapResult(axios.post(path, data, {}), config)
+        return this.wrapResult(axios.post(path, data, {
+            timeout: config?.timeout,
+        }), config)
     }
 
     put(path: string, data?: any, config?: RequestConfig) {
         return this.wrapResult(axios.put(path, data, {
             params: config?.param,
+            timeout: config?.timeout,
         }), config)
     }
 
@@ -123,6 +127,7 @@ export default class APIClient {
         return this.wrapResult(axios.delete(path, {
             params: config?.param,
             data: config?.data,
+            timeout: config?.timeout,
         }), config)
     }
 
@@ -161,6 +166,7 @@ export class RequestConfig {
     param?: any
     data?:any
     resp?: () => APIResp
+    timeout?: number
 }
 
 export interface APIResp {
