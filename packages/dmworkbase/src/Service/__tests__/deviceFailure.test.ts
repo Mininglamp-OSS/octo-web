@@ -83,4 +83,22 @@ describe('handleDeviceFetchError', () => {
     expect(resetInMemoryDeviceId).toHaveBeenCalledTimes(1)
     expect(triggerLogout).toHaveBeenCalledTimes(1)
   })
+
+  it('invokes handlers in storage-clear-before-logout order (reload depends on this)', () => {
+    // Order matters: removeDeviceId MUST run before triggerLogout, because
+    // triggerLogout fires window.location.reload(), and the post-reload
+    // App.startup → getDeviceIdFromStorage() only regenerates a fresh UUID
+    // when sessionStorage.deviceId is null/"". If logout fired first and the
+    // reload raced ahead before removeDeviceId completed, the stale UUID
+    // would be re-used and the loop would not break.
+    const calls: string[] = []
+    const removeDeviceId = vi.fn(() => { calls.push('removeDeviceId') })
+    const resetInMemoryDeviceId = vi.fn(() => { calls.push('resetInMemoryDeviceId') })
+    const triggerLogout = vi.fn(() => { calls.push('triggerLogout') })
+    const err = makeRejected({ code: 'err.server.user.device_not_found' })
+
+    handleDeviceFetchError(err, { removeDeviceId, resetInMemoryDeviceId, triggerLogout })
+
+    expect(calls).toEqual(['removeDeviceId', 'resetInMemoryDeviceId', 'triggerLogout'])
+  })
 })
