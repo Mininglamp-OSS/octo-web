@@ -17,11 +17,11 @@ function makeRejected(overrides: Partial<APIClientRejectedError>): APIClientReje
 }
 
 describe('handleDeviceFetchError', () => {
-  it('on 400 with err.server.user.device_not_found, invokes all three handlers', () => {
+  it('on err.server.user.device_not_found code (production status 404), invokes all three handlers', () => {
     const removeDeviceId = vi.fn()
     const resetInMemoryDeviceId = vi.fn()
     const triggerLogout = vi.fn()
-    const err = makeRejected({ status: 400, code: 'err.server.user.device_not_found' })
+    const err = makeRejected({ status: 404, code: 'err.server.user.device_not_found' })
 
     handleDeviceFetchError(err, { removeDeviceId, resetInMemoryDeviceId, triggerLogout })
 
@@ -67,5 +67,21 @@ describe('handleDeviceFetchError', () => {
     expect(removeDeviceId).not.toHaveBeenCalled()
     expect(resetInMemoryDeviceId).not.toHaveBeenCalled()
     expect(triggerLogout).not.toHaveBeenCalled()
+  })
+
+  it('on the device_not_found code regardless of status field value, still triggers', () => {
+    const removeDeviceId = vi.fn()
+    const resetInMemoryDeviceId = vi.fn()
+    const triggerLogout = vi.fn()
+    // Defensive: even if the backend ever flips its inconsistent http_status
+    // field to something else (e.g. 400 matching the real HTTP status), the
+    // code-only gate must still trigger.
+    const err = makeRejected({ status: 400, code: 'err.server.user.device_not_found' })
+
+    handleDeviceFetchError(err, { removeDeviceId, resetInMemoryDeviceId, triggerLogout })
+
+    expect(removeDeviceId).toHaveBeenCalledTimes(1)
+    expect(resetInMemoryDeviceId).toHaveBeenCalledTimes(1)
+    expect(triggerLogout).toHaveBeenCalledTimes(1)
   })
 })
