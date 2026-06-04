@@ -42,4 +42,17 @@ describe('handleDeviceFetchError', () => {
     expect(resetInMemoryDeviceId).not.toHaveBeenCalled()
     expect(triggerLogout).not.toHaveBeenCalled()
   })
+
+  it('on network error (no response, status undefined), does NOT invoke any handler', () => {
+    const removeDeviceId = vi.fn()
+    const resetInMemoryDeviceId = vi.fn()
+    const triggerLogout = vi.fn()
+    const err = makeRejected({ status: undefined as any, code: '' })
+
+    handleDeviceFetchError(err, { removeDeviceId, resetInMemoryDeviceId, triggerLogout })
+
+    expect(removeDeviceId).not.toHaveBeenCalled()
+    expect(resetInMemoryDeviceId).not.toHaveBeenCalled()
+    expect(triggerLogout).not.toHaveBeenCalled()
+  })
 })
