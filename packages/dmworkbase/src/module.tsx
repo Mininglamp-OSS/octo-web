@@ -77,6 +77,7 @@ import { LottieSticker, LottieStickerCell } from "./Messages/LottieSticker";
 import { LocationCell, LocationContent } from "./Messages/Location";
 import { Toast, Tag } from "@douyinfe/semi-ui";
 import { ChannelSettingManager } from "./Service/ChannelSetting";
+import { buildAllowNoMentionRow } from "./Service/channelSettingRows";
 import { DefaultEmojiService } from "./Service/EmojiService";
 import IconClick from "./Components/IconClick";
 import EmojiToolbar from "./Components/EmojiToolbar";
@@ -1830,6 +1831,18 @@ export default class BaseModule implements IModule {
               },
             })
           );
+        }
+
+        // 群级「允许群内 Bot 免@回答」总开关：仅群主/管理员可见可控。
+        const allowNoMentionRow = buildAllowNoMentionRow({
+          channel,
+          channelInfo,
+          isManagerOrCreator: data.isManagerOrCreatorOfMe,
+          title: t("base.module.channelSettings.allowNoMention"),
+          refresh: () => data.refresh(),
+        });
+        if (allowNoMentionRow) {
+          rows.push(allowNoMentionRow);
         }
         return new Section({
           rows: rows,

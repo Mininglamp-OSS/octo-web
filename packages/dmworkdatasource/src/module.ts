@@ -145,6 +145,8 @@ export default class DataSourceModule implements IModule {
                 channelInfo.orgData.invite = data.invite;
                 channelInfo.orgData.forbiddenAddFriend = data.extra?.forbidden_add_friend;
                 channelInfo.orgData.save = data.save;
+                // 群级「允许免@回答」总开关：老数据无字段时回退 1（允许），零回归。
+                channelInfo.orgData.allow_no_mention = (data.allow_no_mention ?? data.extra?.allow_no_mention) ?? 1;
                 channelInfo.orgData.has_group_md = !!(data.has_group_md ?? data.extra?.has_group_md);
                 channelInfo.orgData.group_md_version = data.group_md_version || data.extra?.group_md_version || 0;
                 channelInfo.orgData.group_md_updated_at = data.group_md_updated_at || data.extra?.group_md_updated_at || null;

@@ -54,6 +54,11 @@ export class ChannelSettingManager {
         return this._onSetting({ "allow_member_pinned_message": v ? 1 : 0 }, channel)
     }
 
+    // 允许群内 Bot 免@回答（群级总开关，群主/管理员可控）
+    setAllowNoMention(allow: boolean, channel: Channel): Promise<void> {
+        return this._onSetting({ "allow_no_mention": allow ? 1 : 0 }, channel)
+    }
+
     _onSetting(setting: any, channel: Channel): Promise<void> {
         return WKApp.dataSource.channelDataSource.updateSetting(setting, channel).catch((err) => {
             console.error('Setting update failed:', err);

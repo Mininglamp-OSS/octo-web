@@ -469,6 +469,7 @@
   "botStore.noDescription": "暂无简介",
   "botStore.pending": "审批中",
   "botStore.storeEmpty": "当前 Space 暂无可用 AI",
+  "module.channelSettings.allowNoMention": "允许群内 Bot 免@回答",
   "module.channelSettings.clearMessages": "清空聊天记录",
   "module.channelSettings.clearMessagesConfirm": "是否清空此会话的所有消息？",
   "module.channelSettings.configuredVersion": "已配置 v{{version}}",

@@ -468,6 +468,7 @@
   "botStore.noDescription": "No description",
   "botStore.pending": "Pending approval",
   "botStore.storeEmpty": "No AI bots available in this Space",
+  "module.channelSettings.allowNoMention": "Allow bots to reply without @",
   "module.channelSettings.clearMessages": "Clear chat history",
   "module.channelSettings.clearMessagesConfirm": "Clear all messages in this conversation?",
   "module.channelSettings.configuredVersion": "Configured v{{version}}",

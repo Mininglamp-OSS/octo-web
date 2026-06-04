@@ -410,6 +410,8 @@ export class Convert {
         channelInfo.orgData.invite = data.invite;
         channelInfo.orgData.forbiddenAddFriend = data.forbidden_add_friend;
         channelInfo.orgData.save = data.save;
+        // 群级「允许免@回答」总开关：老数据无字段时回退 1（允许），零回归。
+        channelInfo.orgData.allow_no_mention = data.allow_no_mention ?? 1;
 
         channelInfo.logo = data.logo
         if (!channelInfo.logo || channelInfo.logo === "") {
