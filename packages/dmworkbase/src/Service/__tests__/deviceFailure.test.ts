@@ -7,13 +7,12 @@ function makeRejected(overrides: Partial<APIClientRejectedError>): APIClientReje
   return {
     error: new Error('stub'),
     msg: '',
-    status: undefined as any,
     code: '',
     details: undefined,
     backendMessage: undefined,
-    normalized: undefined as any,
+    normalized: { message: '', raw: undefined },
     ...overrides,
-  } as APIClientRejectedError
+  }
 }
 
 describe('handleDeviceFetchError', () => {
@@ -47,7 +46,7 @@ describe('handleDeviceFetchError', () => {
     const removeDeviceId = vi.fn()
     const resetInMemoryDeviceId = vi.fn()
     const triggerLogout = vi.fn()
-    const err = makeRejected({ status: undefined as any, code: '' })
+    const err = makeRejected({ code: '' })
 
     handleDeviceFetchError(err, { removeDeviceId, resetInMemoryDeviceId, triggerLogout })
 
