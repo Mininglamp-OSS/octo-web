@@ -188,6 +188,8 @@
   "groupManagement.addBotAdmin": "添加 Bot 管理员",
   "groupManagement.addManager": "添加管理员",
   "groupManagement.added": "已添加",
+  "groupManagement.allowNoMentionDesc": "开启后，群内 Bot 在其主人允许免@时可不被@直接回答；关闭后，本群 Bot 即使主人设置了免@也必须被@才回答。",
+  "groupManagement.allowNoMentionTitle": "Bot 免@回答",
   "groupManagement.botAdmin": "Bot管理员",
   "groupManagement.botAdmins": "Bot 管理员",
   "groupManagement.loadFailed": "加载失败",

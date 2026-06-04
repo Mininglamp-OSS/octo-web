@@ -188,6 +188,8 @@
   "groupManagement.addBotAdmin": "Add Bot admin",
   "groupManagement.addManager": "Add admin",
   "groupManagement.added": "Added",
+  "groupManagement.allowNoMentionDesc": "When on, a bot in this group may reply without being @-mentioned if its owner allows it. When off, bots in this group must be @-mentioned to reply, even if their owner enabled no-@.",
+  "groupManagement.allowNoMentionTitle": "Bot reply without @",
   "groupManagement.botAdmin": "Bot admin",
   "groupManagement.botAdmins": "Bot admins",
   "groupManagement.loadFailed": "Failed to load",

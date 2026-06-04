@@ -86,3 +86,22 @@
   font-size: 13px;
   padding: 8px 0;
 }
+
+.wk-group-mgmt-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+
+.wk-group-mgmt-switch-label {
+  font-size: 14px;
+  color: var(--wk-color-text-0, rgba(9, 30, 66, 0.87));
+}
+
+.wk-group-mgmt-switch-desc {
+  color: var(--wk-text-tertiary, #999);
+  font-size: 12px;
+  line-height: 1.5;
+  padding-top: 4px;
+}

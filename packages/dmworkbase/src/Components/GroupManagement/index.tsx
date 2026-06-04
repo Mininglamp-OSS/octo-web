@@ -1,11 +1,12 @@
 import React, { Component } from "react";
-import { Button, Spin, Tag, Toast } from "@douyinfe/semi-ui";
-import { Channel, Subscriber } from "wukongimjssdk";
+import { Button, Spin, Switch, Tag, Toast } from "@douyinfe/semi-ui";
+import { Channel, Subscriber, WKSDK } from "wukongimjssdk";
 import WKApp from "../../App";
 import WKAvatar from "../WKAvatar";
 import { SubscriberList } from "../Subscribers/list";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { GroupRole } from "../../Service/Const";
+import { ChannelSettingManager } from "../../Service/ChannelSetting";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
 import "./index.css";
@@ -20,6 +21,9 @@ interface GroupManagementState {
   loading: boolean;
   managers: Subscriber[];
   botAdmins: Subscriber[];
+  // 群级「允许群内 Bot 免@回答」总开关：缺省 1（允许），零回归。
+  allowNoMention: boolean;
+  allowNoMentionSaving: boolean;
 }
 
 export class GroupManagement extends Component<
@@ -35,8 +39,16 @@ export class GroupManagement extends Component<
       loading: true,
       managers: [],
       botAdmins: [],
+      allowNoMention: this.readAllowNoMention(),
+      allowNoMentionSaving: false,
     };
   }
+
+  // 从 SDK 频道缓存读「允许免@」开关当前值；缺省（老后端无字段）回退 true（允许），零回归。
+  readAllowNoMention = (): boolean => {
+    const info = WKSDK.shared().channelManager.getChannelInfo(this.props.channel);
+    return info?.orgData?.allow_no_mention !== 0;
+  };
 
   componentDidMount() {
     this.loadMembers();
@@ -206,9 +218,30 @@ export class GroupManagement extends Component<
     );
   };
 
+  handleToggleAllowNoMention = async (next: boolean) => {
+    const { channel } = this.props;
+    const prev = this.state.allowNoMention;
+    // 乐观更新 + saving 锁，避免连点。
+    this.setState({ allowNoMention: next, allowNoMentionSaving: true });
+    try {
+      await ChannelSettingManager.shared.setAllowNoMention(next, channel);
+      // 回读 server 真实值（refresh 后弹回的根因已在 server 端修复）。
+      await WKSDK.shared().channelManager.fetchChannelInfo(channel);
+      this.setState({
+        allowNoMention: this.readAllowNoMention(),
+        allowNoMentionSaving: false,
+      });
+    } catch (err: any) {
+      // 失败回滚到改前状态。
+      this.setState({ allowNoMention: prev, allowNoMentionSaving: false });
+      Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
+    }
+  };
+
   render() {
     const { isCreator } = this.props;
-    const { loading, managers, botAdmins } = this.state;
+    const { loading, managers, botAdmins, allowNoMention, allowNoMentionSaving } =
+      this.state;
 
     if (loading) {
       return (
@@ -304,6 +337,29 @@ export class GroupManagement extends Component<
                 </div>
               ))
             )}
+          </div>
+        </div>
+
+        {/* 群级「允许群内 Bot 免@回答」总开关：群主/管理员可控。
+            两轴语义：最终免@ = bot主人开了本群免@ AND 群管理员允许本群免@（本开关）。 */}
+        <div className="wk-group-mgmt-section">
+          <div className="wk-group-mgmt-section-header">
+            <span className="wk-group-mgmt-section-title">
+              {t("base.groupManagement.allowNoMentionTitle")}
+            </span>
+          </div>
+          <div className="wk-group-mgmt-switch-row">
+            <span className="wk-group-mgmt-switch-label">
+              {t("base.module.channelSettings.allowNoMention")}
+            </span>
+            <Switch
+              checked={allowNoMention}
+              loading={allowNoMentionSaving}
+              onChange={(v) => this.handleToggleAllowNoMention(v)}
+            />
+          </div>
+          <div className="wk-group-mgmt-switch-desc">
+            {t("base.groupManagement.allowNoMentionDesc")}
           </div>
         </div>
       </div>
