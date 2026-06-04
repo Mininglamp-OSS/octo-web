@@ -8,7 +8,13 @@ set -eu
 : "${SUMMARY_API_URL:=}"
 export SUMMARY_API_URL
 
-envsubst '${API_URL} ${SUMMARY_API_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
+# Same pattern for MATTER_API_URL — the /matter/ location 503-falls-back
+# when blank. Set MATTER_API_URL=http://octo-matter:8080 in the compose
+# stack to enable the bot feed / matter direct path.
+: "${MATTER_API_URL:=}"
+export MATTER_API_URL
+
+envsubst '${API_URL} ${SUMMARY_API_URL} ${MATTER_API_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 
 exec "$@"

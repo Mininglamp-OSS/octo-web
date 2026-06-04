@@ -132,9 +132,9 @@ export default defineConfig(({ mode }) => {
             : undefined,
         },
         // PR-A.2: runtime/bot endpoints moved to octo-fleet :8092.
-        // Must come before the general /api/ catch-all. Endpoints like
-        // /api/v1/runtimes/bots/:id/feed are also served from fleet
-        // (fleet internally proxies to octo-matter).
+        // Must come before the general /api/ catch-all.
+        // Note: bot feed (/bots/:uid/feed) is served directly by matter
+        // via the /matter/api/v1 proxy rule above — no fleet proxy.
         "/api/v1/runtimes": {
           target: env.VITE_FLEET_API_URL || "http://127.0.0.1:8092",
           changeOrigin: true,

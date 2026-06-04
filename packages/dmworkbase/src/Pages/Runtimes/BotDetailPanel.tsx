@@ -165,12 +165,12 @@ function FeedTab({ bot }: { bot: Bot }) {
   const [items, setItems] = useState<BotFeedItem[] | null>(null);
   const load = useCallback(async () => {
     try {
-      const data = await getBotFeed(bot.id, 50);
+      const data = await getBotFeed(bot.bot_uid, 50);
       setItems(data);
     } catch {
       setItems([]);
     }
-  }, [bot.id]);
+  }, [bot.bot_uid]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const t = window.setInterval(load, 3000);
@@ -257,10 +257,10 @@ function FeedTab({ bot }: { bot: Bot }) {
 function TasksTab({ bot }: { bot: Bot }) {
   const [items, setItems] = useState<BotFeedItem[] | null>(null);
   useEffect(() => {
-    getBotFeed(bot.id, 100)
+    getBotFeed(bot.bot_uid, 100)
       .then(data => setItems(data.filter(i => i.kind === 'activity' && i.action?.startsWith('agent_task'))))
       .catch(() => setItems([]));
-  }, [bot.id]);
+  }, [bot.bot_uid]);
   if (items === null) return <div className="wk-bd-empty">加载中…</div>;
   if (items.length === 0) return (
     <section className="wk-bd-section wk-bd-section--card">
