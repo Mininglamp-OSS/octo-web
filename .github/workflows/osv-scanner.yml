@@ -3,8 +3,6 @@ name: OSV-Scanner
 on:
   pull_request:
     branches: [main]
-  merge_group:
-    types: [checks_requested]
   push:
     branches: [main]
   schedule:
@@ -26,7 +24,7 @@ jobs:
         ./
 
   scan-pr:
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    if: github.event_name == 'pull_request'
     uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
     with:
       scan-args: |-
