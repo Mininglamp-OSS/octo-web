@@ -29,4 +29,17 @@ describe('handleDeviceFetchError', () => {
     expect(resetInMemoryDeviceId).toHaveBeenCalledTimes(1)
     expect(triggerLogout).toHaveBeenCalledTimes(1)
   })
+
+  it('on 401 (auth expired), does NOT invoke any handler', () => {
+    const removeDeviceId = vi.fn()
+    const resetInMemoryDeviceId = vi.fn()
+    const triggerLogout = vi.fn()
+    const err = makeRejected({ status: 401, code: 'err.shared.auth.token_missing' })
+
+    handleDeviceFetchError(err, { removeDeviceId, resetInMemoryDeviceId, triggerLogout })
+
+    expect(removeDeviceId).not.toHaveBeenCalled()
+    expect(resetInMemoryDeviceId).not.toHaveBeenCalled()
+    expect(triggerLogout).not.toHaveBeenCalled()
+  })
 })
