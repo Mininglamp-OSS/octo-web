@@ -861,6 +861,15 @@ export default class WKApp extends ProviderListener {
         // messages then build clientMsgNo as "<uuid>_0_3" instead of
         // "<uuid>_<real-device-id>_3" (see wukongimjssdk packet.clientMsgNo),
         // which breaks per-device message dedup and cross-device tracking.
+        if (err?.code !== "err.server.user.device_not_found") {
+          // Non-stale device errors fall through to existing handling paths
+          // (auth interceptor / silent failure). Log once for observability
+          // so future regressions on this endpoint are not hidden.
+          console.warn(
+            "[App.startMain] /user/devices fetch failed (non-stale):",
+            { status: err?.status, code: err?.code, msg: err?.msg },
+          );
+        }
         handleDeviceFetchError(err, {
           removeDeviceId: () => StorageService.shared.removeItem("deviceId"),
           resetInMemoryDeviceId: () => { WKApp.shared.deviceId = ""; },
