@@ -176,12 +176,22 @@ export async function archiveBot(id: number): Promise<void> {
   if (!res.ok) throw new Error(`archiveBot: ${res.status}`);
 }
 
-export async function getBotFeed(id: number, limit = 50): Promise<BotFeedItem[]> {
-  const res = await fetch(`${base}/v1/runtimes/bots/${id}/feed?limit=${limit}`, { headers: await authHeaders() });
+export async function getBotFeed(botUid: string, limit = 50): Promise<BotFeedItem[]> {
+  // Skip the round-trip for draft/provisioning bots where bot_uid is empty —
+  // matter would 404 and FeedTab polls every 3s, so silent empty is correct.
+  if (!botUid) return [];
+  // Direct to matter (was: fleet /v1/runtimes/bots/:id/feed proxy → matter).
+  // matter user-auth expects session `token:` header, not the fleet Bearer JWT,
+  // and the new endpoint is space-agnostic (ownership checked via related_uids),
+  // so X-Space-Id is omitted.
+  const sessionToken = (WKApp as any)?.loginInfo?.token || '';
+  const res = await fetch(`/matter/api/v1/bots/${encodeURIComponent(botUid)}/feed?limit=${limit}`, {
+    headers: sessionToken ? { token: sessionToken } : {},
+  });
   if (!res.ok) throw new Error(`getBotFeed: ${res.status}`);
   const env = await res.json();
   const payload = unwrap<{ items?: BotFeedItem[] }>(env);
-  // server may return {items: []} or just the array
+  // matter may return {items: []} or just the array
   if (Array.isArray(payload)) return payload as any as BotFeedItem[];
   return (payload as any)?.items ?? [];
 }
