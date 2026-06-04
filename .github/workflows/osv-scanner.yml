@@ -30,3 +30,7 @@ jobs:
       scan-args: |-
         -r
         ./
+      # Fork PRs have read-only GITHUB_TOKEN; skip SARIF upload to avoid
+      # security-events:write permission failure. Scan still runs and
+      # results are visible in the workflow output.
+      upload-sarif: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
