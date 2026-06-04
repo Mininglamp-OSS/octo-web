@@ -1020,6 +1020,27 @@ export class Conversation
       }
     }
 
+    // 大小校验（octo-web#3173）：单入口统一拦截，按钮/粘贴/拖拽三路共用。
+    // 阈值复用既有常量 ConversationVM.MAX_TOTAL_SIZE（100MB），不另立阈值。
+    // 单文件超限：任一文件本身就超过总上限时直接拒绝。
+    const maxTotal = ConversationVM.MAX_TOTAL_SIZE;
+    const maxSizeLabel = formatFileSize(maxTotal);
+    const oversized = incoming.find((f) => f.size > maxTotal);
+    if (oversized) {
+      return t("base.conversation.upload.fileTooLarge", {
+        values: { name: oversized.name, max: maxSizeLabel },
+      });
+    }
+    // 总大小超限：本次新增 + 已在待发送队列里的累加。
+    const existing = this.getPendingAttachments();
+    const existingSize = existing.reduce((sum, f) => sum + f.size, 0);
+    const incomingSize = incoming.reduce((sum, f) => sum + f.size, 0);
+    if (existingSize + incomingSize > maxTotal) {
+      return t("base.conversation.upload.totalTooLarge", {
+        values: { max: maxSizeLabel },
+      });
+    }
+
     // 调用编辑器的 addAttachment 方法插入附件节点
     if (this._addAttachmentFn) {
       this._addAttachmentFn(incoming, source);
@@ -2134,6 +2155,63 @@ export class Conversation
     this.vm.notifyListener();
   }
 
+  // 拖拽进入/离开计数：子元素之间移动会反复触发 dragenter/dragleave，
+  // 用深度计数代替布尔标记，避免遮罩闪烁/卡住（octo-web#3173）。
+  private _dragDepth = 0;
+
+  // 仅当拖拽内容里真的带文件时才响应。
+  // 拖网页里的图片(URL/HTML)、拖一段文字时 types 不含 "Files"，
+  // 直接忽略——遮罩不出现、不 preventDefault、不报错（octo-web#3173）。
+  private dragHasFiles(event: React.DragEvent): boolean {
+    const dt = event.dataTransfer;
+    if (!dt) return false;
+    return Array.from(dt.types || []).includes("Files");
+  }
+
+  private handleConversationDragEnter(event: React.DragEvent): void {
+    if (!this.dragHasFiles(event)) return;
+    event.preventDefault();
+    this._dragDepth += 1;
+    if (!this.vm.fileDragEnter) this.dragStart();
+  }
+
+  private handleConversationDragOver(event: React.DragEvent): void {
+    if (!this.dragHasFiles(event)) return;
+    // 必须 preventDefault 才能触发 drop。
+    event.preventDefault();
+  }
+
+  private handleConversationDragLeave(event: React.DragEvent): void {
+    if (!this.dragHasFiles(event)) return;
+    event.preventDefault();
+    this._dragDepth = Math.max(0, this._dragDepth - 1);
+    if (this._dragDepth === 0) this.dragEnd();
+  }
+
+  private handleConversationDrop(event: React.DragEvent): void {
+    // 无论拖入的是什么，drop 都强制复位计数与遮罩，杜绝遮罩残留。
+    this._dragDepth = 0;
+    this.dragEnd();
+    if (!this.dragHasFiles(event)) return; // 非文件(网页图/文字)：静默忽略
+    event.preventDefault();
+
+    const items = Array.from(event.dataTransfer.items);
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length === 0) return; // types 声称有文件但实际取不到，安全兜底
+    const hasDirectory = items.length
+      ? items.some((it) => {
+          const entry = it.webkitGetAsEntry?.();
+          return entry ? entry.isDirectory : false;
+        })
+      : files.some((f) => f.type === "" && f.size === 0);
+    if (hasDirectory) {
+      Toast.error(t("base.conversation.upload.folderUnsupported"));
+      return;
+    }
+    const err = this.addPendingAttachments(files);
+    if (err) Toast.error(err);
+  }
+
   render() {
     const { chatBg, channel, initLocateMessageSeq } = this.props;
 
@@ -2184,15 +2262,15 @@ export class Conversation
                     ? `url(${chatBg}) rgb(245, 247, 249)`
                     : undefined,
                 }}
+                // 拖拽命中区扩大到整个会话窗口（含输入框/输入框展开态）。
+                // 入口与遮罩都挂在这里，内部 content 在展开态被 inert/height:0
+                // 隐藏也不影响拖拽（octo-web#3173）。
+                onDragEnter={(event) => this.handleConversationDragEnter(event)}
+                onDragOver={(event) => this.handleConversationDragOver(event)}
+                onDragLeave={(event) => this.handleConversationDragLeave(event)}
+                onDrop={(event) => this.handleConversationDrop(event)}
               >
                 <div
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                  }}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    this.dragStart();
-                  }}
                   className={classNames("wk-conversation-content")}
                   style={
                     this.state.inputExpanded
@@ -2231,46 +2309,20 @@ export class Conversation
                         (r) => !r.done,
                       )}
                     ></ConversationPositionView>
-
-                    {vm.fileDragEnter ? (
-                      <div
-                        className="wk-conversation-content-fileupload-mask"
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                        }}
-                        onDragLeave={(event) => {
-                          event.preventDefault();
-                          this.dragEnd();
-                        }}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          this.dragEnd();
-                          const items = Array.from(event.dataTransfer.items);
-                          const files = Array.from(event.dataTransfer.files);
-                          if (files.length === 0) return;
-                          const hasDirectory = items.length
-                            ? items.some((it) => {
-                                const entry = it.webkitGetAsEntry?.();
-                                return entry ? entry.isDirectory : false;
-                              })
-                            : files.some((f) => f.type === "" && f.size === 0);
-                          if (hasDirectory) {
-                            Toast.error(t("base.conversation.upload.folderUnsupported"));
-                            return;
-                          }
-                          const err = this.addPendingAttachments(files);
-                          if (err) Toast.error(err);
-                        }}
-                      >
-                        <div className="wk-conversation-content-fileupload-mask-content">
-                          {t("base.conversation.upload.sendTo", {
-                            values: { name: channelInfo?.title || "" },
-                          })}
-                        </div>
-                      </div>
-                    ) : undefined}
                   </div>
                 </div>
+                {/* 拖拽上传遮罩：覆盖整个会话窗口，纯视觉层（pointer-events:none），
+                    drop/dragleave 由外层 .wk-conversation 统一处理，避免遮罩自身
+                    抢事件导致计数错乱（octo-web#3173）。 */}
+                {vm.fileDragEnter ? (
+                  <div className="wk-conversation-content-fileupload-mask">
+                    <div className="wk-conversation-content-fileupload-mask-content">
+                      {t("base.conversation.upload.sendTo", {
+                        values: { name: channelInfo?.title || "" },
+                      })}
+                    </div>
+                  </div>
+                ) : undefined}
                 {/* ReplyView 已移到 MessageInput 内部的 topView prop */}
                 <div className="wk-conversation-topview"></div>
                 <div

@@ -507,6 +507,10 @@ body[theme-mode="dark"] .wk-conversation-input-notice-bubble {
   left: 0px;
   top: 0px;
   padding: 15px;
+  z-index: 10;
+  /* 纯视觉遮罩：拖拽/drop 事件由外层 .wk-conversation 统一处理，
+     遮罩不参与事件，避免子元素抢事件导致 dragenter/dragleave 计数错乱。 */
+  pointer-events: none;
 }
 
 .wk-conversation-content-fileupload-mask-content {
