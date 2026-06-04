@@ -61,6 +61,7 @@ import {
   isFoldSessionSummaryMessage,
 } from "./foldSessionSummary";
 import {
+  getScrollAnchorOffsetY,
   shouldPulldownOnWheel,
   TOP_HISTORY_TRIGGER_OFFSET,
 } from "./historyScroll";
@@ -1234,24 +1235,47 @@ export class Conversation
   }
 
   updateConversationExtra(draft: string) {
+    const viewport = document.getElementById(this.vm.messageContainerId);
     const conversationLastMessageSeq = this.vm.conversationLastMessageSeq();
-    const lastVisiableMessage = this.lastVisiableMessage(null);
+    const lastVisiableMessage = this.visiblePersistentMessage(viewport, true);
     let keepMessageSeq = 0;
+    let keepOffsetY = 0;
     if (
+      conversationLastMessageSeq > 0 &&
       lastVisiableMessage &&
       lastVisiableMessage.messageSeq >= conversationLastMessageSeq
     ) {
       keepMessageSeq = 0;
     } else {
-      const firstVisiableMessage = this.firstVisiableMessage(null);
+      const firstVisiableMessage = this.visiblePersistentMessage(
+        viewport,
+        false,
+      );
+      const firstVisibleElement = firstVisiableMessage
+        ? this.getMessageElement(firstVisiableMessage)
+        : null;
       keepMessageSeq = firstVisiableMessage?.messageSeq || 0;
+      keepOffsetY =
+        viewport && firstVisibleElement
+          ? getScrollAnchorOffsetY({
+              scrollTop: viewport.scrollTop,
+              anchorOffsetTop: firstVisibleElement.offsetTop,
+            })
+          : 0;
+    }
+
+    const remoteExtra = this.vm.currentConversation?.remoteExtra;
+    if (remoteExtra) {
+      remoteExtra.keepMessageSeq = keepMessageSeq;
+      remoteExtra.keepOffsetY = keepOffsetY;
+      remoteExtra.draft = draft || "";
     }
 
     return WKApp.dataSource.channelDataSource.conversationExtraUpdate({
       channel: this.vm.channel,
       browseTo: 0,
       keepMessageSeq: keepMessageSeq,
-      keepOffsetY: 0,
+      keepOffsetY,
       draft,
       version: 0,
     });
@@ -2016,6 +2040,46 @@ export class Conversation
       }
     }
   }
+
+  private visiblePersistentMessage(
+    vp: HTMLElement | null,
+    fromEnd: boolean,
+  ) {
+    if (!this.vm.messages || this.vm.messages.length === 0) {
+      return;
+    }
+    let viewport = vp;
+    if (!viewport) {
+      viewport = document.getElementById(this.vm.messageContainerId);
+    }
+    if (!viewport) {
+      return;
+    }
+    const targetScrollTop = viewport.scrollTop;
+    const scrollOffsetTop =
+      viewport.scrollHeight - (targetScrollTop + viewport.clientHeight);
+    const start = fromEnd ? this.vm.messages.length - 1 : 0;
+    const end = fromEnd ? -1 : this.vm.messages.length;
+    const step = fromEnd ? -1 : 1;
+    for (let index = start; index !== end; index += step) {
+      const message = this.vm.messages[index];
+      if (!message.messageSeq || message.messageSeq <= 0) {
+        continue;
+      }
+      const element = this.getMessageElement(message);
+      if (!element) {
+        continue;
+      }
+      if (fromEnd) {
+        if (viewport.scrollHeight - element.offsetTop > scrollOffsetTop) {
+          return message;
+        }
+      } else if (element.offsetTop + element.clientHeight > targetScrollTop) {
+        return message;
+      }
+    }
+  }
+
   // 所有可见的消息
   allVisiableMessages(vp: HTMLElement | null): Array<MessageWrap> {
     const visiableMessages = new Array<MessageWrap>();

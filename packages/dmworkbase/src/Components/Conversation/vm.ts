@@ -17,7 +17,7 @@ import { SYSTEM_BOTS } from "../../Service/SpaceService";
 import { SuperGroup } from "../../Utils/const";
 import { SystemContent } from "wukongimjssdk";
 import { getFoldSessionExpandedMessages } from "./foldSessionSummary";
-import { getPulldownRestoredScrollTop } from "./historyScroll";
+import { getPulldownRestoredScrollTop, getRestoredAnchorScrollTop } from "./historyScroll";
 import { applyMsgLevelExternalFieldsWithFallback } from "../../Service/Convert";
 import { wrapSendContentForInjection } from "./sendContentProxy";
 import { isMessageSelectable } from "../../Service/messageSelection";
@@ -1481,24 +1481,31 @@ export default class ConversationVM extends ProviderListener {
     requestMessagesOfFirstPage(lcateMessageSeq?: number, stateCallback?: () => void) {
 
         this.initLocateMessageSeq = 0
+        let initLocateOffsetY = 0
         if (lcateMessageSeq === undefined) {
             if (this.currentConversation) {
                 const remoteExtra = this.currentConversation.remoteExtra
+                const savedKeepMessageSeq = Number(remoteExtra.keepMessageSeq || 0)
+                const savedKeepOffsetY = Number(remoteExtra.keepOffsetY || 0)
+                const keepMessageSeq = Number.isFinite(savedKeepMessageSeq) ? savedKeepMessageSeq : 0
+                const keepOffsetY = Number.isFinite(savedKeepOffsetY) ? savedKeepOffsetY : 0
                 if (this.currentConversation.unread > 0) {
-                    if (remoteExtra.keepMessageSeq != 0 && remoteExtra.keepMessageSeq < this.browseToMessageSeq) {
-                        this.initLocateMessageSeq = remoteExtra.keepMessageSeq
+                    if (keepMessageSeq > 0 && keepMessageSeq < this.browseToMessageSeq) {
+                        this.initLocateMessageSeq = keepMessageSeq
+                        initLocateOffsetY = keepOffsetY
                     } else {
                         this.initLocateMessageSeq = this.browseToMessageSeq
                     }
 
                 } else {
-                    this.initLocateMessageSeq = remoteExtra.keepMessageSeq
+                    this.initLocateMessageSeq = keepMessageSeq
+                    initLocateOffsetY = keepMessageSeq > 0 ? keepOffsetY : 0
                 }
             }
         } else {
             this.initLocateMessageSeq = lcateMessageSeq
         }
-        return this.syncMessages(this.initLocateMessageSeq, stateCallback)
+        return this.syncMessages(this.initLocateMessageSeq, stateCallback, initLocateOffsetY)
     }
 
     // 最近会话显示的最后一条消息的messageSeq
@@ -1511,7 +1518,7 @@ export default class ConversationVM extends ProviderListener {
     }
 
     // 同步消息
-    async syncMessages(initMessageSeq?: number, stateCallback?: () => void) {
+    async syncMessages(initMessageSeq?: number, stateCallback?: () => void, locateOffsetY: number = 0) {
         this.loading = true
         this.notifyListener()
 
@@ -1583,7 +1590,7 @@ export default class ConversationVM extends ProviderListener {
             // loading 完成后，主动确保 bot 消息的 channelInfo 已载入
             // 修复：loading 期间 channelInfoListener 会被跳过，导致 AI 标识不显示
             this.ensureBotChannelInfos()
-        })
+        }, locateOffsetY)
     }
     private getMessageSortOrder(message: MessageWrap): number {
         if (message.messageSeq && message.messageSeq > 0) {
@@ -1632,10 +1639,10 @@ export default class ConversationVM extends ProviderListener {
     }
 
     // 刷新消息列表并定位到某条消息
-    refreshAndLocateMessages(messages: MessageWrap[], locateMessage?: MessageWrap, scrollBottom?: boolean, callback?: () => void) {
+    refreshAndLocateMessages(messages: MessageWrap[], locateMessage?: MessageWrap, scrollBottom?: boolean, callback?: () => void, locateOffsetY: number = 0) {
         this.refreshMessages(messages, () => {
             if (locateMessage) {
-                this.scrollToMessage(locateMessage)
+                this.scrollToMessage(locateMessage, locateOffsetY)
             } else if (scrollBottom) {
                 this.scrollToBottom(false)
             }
@@ -1899,12 +1906,50 @@ export default class ConversationVM extends ProviderListener {
             }
         }
     }
+    private messageScrollElement(message: MessageWrap): HTMLElement | null {
+        const element = document.getElementById(message.clientMsgNo)
+        if (element) {
+            return element
+        }
+        if (!message.messageSeq || message.messageSeq <= 0) {
+            return null
+        }
+        const foldSession = this.findFoldSessionByMessageSeq(message.messageSeq)
+        if (!foldSession) {
+            return null
+        }
+        return document.getElementById(foldSession.anchorId)
+    }
+
     // 滚动到指定的消息
-    scrollToMessage(message: MessageWrap) {
+    scrollToMessage(message: MessageWrap, offsetY: number = 0) {
+        const viewport = document.getElementById(this.messageContainerId)
+        const element = this.messageScrollElement(message)
+        const keepOffsetY = Number.isFinite(offsetY) ? Math.max(0, offsetY) : 0
+        if (viewport && element) {
+            viewport.scrollTop = getRestoredAnchorScrollTop({
+                anchorOffsetTop: element.offsetTop,
+                keepOffsetY,
+            })
+            return
+        }
         scroller.scrollTo(message.clientMsgNo, {
             containerId: this.messageContainerId,
             "duration": 0,
         });
+        if (keepOffsetY > 0) {
+            const restoreOffset = () => {
+                const nextViewport = document.getElementById(this.messageContainerId)
+                if (nextViewport) {
+                    nextViewport.scrollTop += keepOffsetY
+                }
+            }
+            if (typeof requestAnimationFrame === "function") {
+                requestAnimationFrame(restoreOffset)
+            } else {
+                setTimeout(restoreOffset, 0)
+            }
+        }
     }
     // 只滚动到底部
     scrollToBottom(animate: boolean) {

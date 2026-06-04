@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { getPulldownRestoredScrollTop, shouldPulldownOnWheel, TOP_HISTORY_TRIGGER_OFFSET } from "../historyScroll"
+import {
+    getPulldownRestoredScrollTop,
+    getRestoredAnchorScrollTop,
+    getScrollAnchorOffsetY,
+    shouldPulldownOnWheel,
+    TOP_HISTORY_TRIGGER_OFFSET,
+} from "../historyScroll"
 
 describe("getPulldownRestoredScrollTop", () => {
     it("keeps the visible anchor stable by restoring the scroll height delta", () => {
@@ -16,6 +22,29 @@ describe("getPulldownRestoredScrollTop", () => {
             previousScrollTop: 0,
             nextScrollHeight: 1000,
         })).toBe(0)
+    })
+})
+
+describe("message anchor scroll restore", () => {
+    it("stores the viewport offset from the first visible message anchor", () => {
+        expect(getScrollAnchorOffsetY({
+            scrollTop: 260,
+            anchorOffsetTop: 220,
+        })).toBe(40)
+    })
+
+    it("does not store a negative anchor offset", () => {
+        expect(getScrollAnchorOffsetY({
+            scrollTop: 180,
+            anchorOffsetTop: 220,
+        })).toBe(0)
+    })
+
+    it("restores scrollTop from the message anchor and stored offset", () => {
+        expect(getRestoredAnchorScrollTop({
+            anchorOffsetTop: 500,
+            keepOffsetY: 35,
+        })).toBe(535)
     })
 })
 
