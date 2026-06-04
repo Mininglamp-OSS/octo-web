@@ -25,7 +25,7 @@ import type {
 } from "../types/summary";
 import {
     getModeLabel,
-    describeCron,
+    describeSchedule,
     getTimeRangeTypeLabel,
 } from "../utils/summaryHelpers";
 import ScheduleForm from "../components/ScheduleForm";
@@ -94,6 +94,7 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                 title: params.title,
                 summary_mode: params.summary_mode,
                 cron_expr: params.cron_expr,
+                interval_days: params.interval_days ?? 0,
                 time_range_type: params.time_range_type,
                 sources: params.sources,
             };
@@ -191,13 +192,13 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                 </div>
                                 <div className="summary-schedule-card-meta">
                                     <Tag size="small" color="blue">{getModeLabel(item.summary_mode)}</Tag>
-                                    <span style={{ marginLeft: 8 }}>{describeCron(item.cron_expr)}</span>
+                                    <span style={{ marginLeft: 8 }}>{describeSchedule(item.cron_expr, item.interval_days)}</span>
                                     <span style={{ marginLeft: 8, color: "var(--semi-color-text-2)" }}>
                                         {getTimeRangeTypeLabel(item.time_range_type)}
                                     </span>
                                 </div>
                                 <div className="summary-schedule-card-sources">
-                                    {translate("summary.source.label")}{item.sources.map((s) => s.source_name || s.source_id).join("、") || "-"}
+                                    {translate("summary.source.label")}{(item.sources ?? []).map((s) => s.source_name || s.source_id).join("、") || "-"}
                                 </div>
                                 <div className="summary-schedule-card-actions">
                                     <Button
@@ -254,8 +255,9 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                 title: editingSchedule.title,
                                 summary_mode: editingSchedule.summary_mode,
                                 cron_expr: editingSchedule.cron_expr,
+                                interval_days: editingSchedule.interval_days ?? 0,
                                 time_range_type: editingSchedule.time_range_type,
-                                sources: editingSchedule.sources,
+                                sources: editingSchedule.sources ?? [],
                             }}
                             onSubmit={this.handleUpdate}
                             onCancel={() => this.setState({ showEditModal: false, editingSchedule: null })}

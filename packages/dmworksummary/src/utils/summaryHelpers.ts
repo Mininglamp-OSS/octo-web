@@ -10,6 +10,9 @@ import {
 } from "../types/summary";
 import { t } from "@octo/base";
 
+/** 每两周对应的间隔天数 */
+export const BIWEEKLY_INTERVAL_DAYS = 14;
+
 const weekdayKeys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 const isoWeekdayKeys = ["", "mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 
@@ -144,6 +147,7 @@ export function getCronPresetOptions() {
         { value: "0 9 * * *", label: t("summary.cron.everyDayAt") },
         { value: "0 9 * * 1-5", label: t("summary.cron.workdaysAt") },
         { value: "0 9 * * 1", label: t("summary.cron.weeklyMondayAt") },
+        { value: "biweekly", label: t("summary.cron.biweekly") },
         { value: "0 9 1 * *", label: t("summary.cron.monthlyFirstAt") },
     ];
 }
@@ -193,7 +197,30 @@ export function scheduleToCron(config: ScheduleConfig): string {
         const cronDow = (config.dayOfWeek ?? 1) % 7;
         return `${min} ${hour} * * ${cronDow}`;
     }
+    if (config.period === "biweekly") {
+        // biweekly 走 interval_days，不用 cron。返回空串。
+        return "";
+    }
     return `${min} ${hour} ${config.dayOfMonth ?? 1} * *`;
+}
+
+/** ScheduleConfig → 提交后端的调度参数（cron_expr + interval_days 互斥） */
+export function scheduleToParams(config: ScheduleConfig): { cron_expr: string; interval_days: number } {
+    if (config.period === "biweekly") {
+        return { cron_expr: "", interval_days: BIWEEKLY_INTERVAL_DAYS };
+    }
+    return { cron_expr: scheduleToCron(config), interval_days: 0 };
+}
+
+/** 调度展示：interval_days>0 优先按间隔展示，否则解析 cron */
+export function describeSchedule(cron_expr: string, interval_days?: number): string {
+    if (interval_days && interval_days > 0) {
+        if (interval_days === BIWEEKLY_INTERVAL_DAYS) {
+            return t("summary.cron.biweekly");
+        }
+        return t("summary.cron.everyNDays", { values: { days: interval_days } });
+    }
+    return describeCron(cron_expr);
 }
 
 /** cron 表达式 → ScheduleConfig（用于回填弹窗） */

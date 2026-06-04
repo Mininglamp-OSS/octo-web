@@ -109,7 +109,9 @@
       "thu": "周四",
       "fri": "周五",
       "sat": "周六"
-    }
+    },
+    "biweekly": "每两周",
+    "everyNDays": "每 {{days}} 天"
   },
   "list": {
     "title": "智能总结",
@@ -180,7 +182,8 @@
       "time": "时间",
       "daily": "按天更新",
       "weekly": "按周更新",
-      "monthly": "按月更新"
+      "monthly": "按月更新",
+      "biweekly": "按两周更新"
     }
   },
   "confirmPage": {

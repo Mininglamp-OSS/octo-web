@@ -194,6 +194,7 @@ export interface ScheduleItem {
     title: string;
     summary_mode: SummaryModeType;
     cron_expr: string;
+    interval_days?: number;
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
     participants: { user_id: string }[];
@@ -207,6 +208,7 @@ export interface CreateScheduleParams {
     title: string;
     summary_mode: SummaryModeType;
     cron_expr: string;
+    interval_days?: number;
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
     participants?: { user_id: string }[];
@@ -216,6 +218,7 @@ export interface UpdateScheduleParams {
     title?: string;
     summary_mode?: SummaryModeType;
     cron_expr?: string;
+    interval_days?: number;
     time_range_type?: 1 | 2 | 3 | 4;
     sources?: SourceItem[];
     participants?: { user_id: string }[];
@@ -277,7 +280,7 @@ export interface MemberCandidate {
 
 /** 定时配置（内部状态用） */
 export interface ScheduleConfig {
-    period: "daily" | "weekly" | "monthly";
+    period: "daily" | "weekly" | "biweekly" | "monthly";
     dayOfWeek?: number;   // 1=Mon, 2=Tue, ..., 7=Sun (ISO weekday)
     dayOfMonth?: number;  // 1..28
     time: string;         // "HH:MM"

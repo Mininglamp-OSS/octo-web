@@ -6,7 +6,7 @@ import {
     Tag,
     Avatar,
 } from "@douyinfe/semi-ui";
-import { IconPlus } from "@douyinfe/semi-icons";
+import { IconPlus, IconClock } from "@douyinfe/semi-icons";
 import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -24,7 +24,7 @@ import type {
     ScheduleConfig,
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
-import { getWeekdayName, scheduleToCron } from "../utils/summaryHelpers";
+import { getWeekdayName, scheduleToParams } from "../utils/summaryHelpers";
 
 const { Text } = Typography;
 
@@ -160,12 +160,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
             // If schedule is configured, create schedule too
             if (scheduleConfig !== null) {
-                const cronExpr = scheduleToCron(scheduleConfig);
+                const { cron_expr, interval_days } = scheduleToParams(scheduleConfig);
                 try {
                     await api.createSchedule({
                         title: topic.trim(),
                         summary_mode: params.summary_mode || SummaryMode.BY_PERSON,
-                        cron_expr: cronExpr,
+                        cron_expr,
+                        interval_days,
                         time_range_type: 2,
                         sources: params.sources || [],
                         participants: params.participants,
@@ -251,6 +252,17 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 {selectedChats.length > 0
                                     ? translate("summary.create.selectedChats", { values: { count: selectedChats.length } })
                                     : translate("summary.create.selectChat")}
+                            </Button>
+                            <Button
+                                theme="borderless"
+                                icon={<IconClock />}
+                                size="small"
+                                onClick={() => this.setState({ showScheduleConfig: true })}
+                                style={{ color: scheduleConfig ? "var(--semi-color-primary)" : undefined }}
+                            >
+                                {scheduleConfig
+                                    ? this.getScheduleLabel(scheduleConfig)
+                                    : translate("summary.schedule.config.title")}
                             </Button>
                         </div>
 

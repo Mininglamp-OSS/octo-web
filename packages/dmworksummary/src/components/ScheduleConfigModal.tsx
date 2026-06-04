@@ -55,8 +55,7 @@ export default class ScheduleConfigModal extends Component<Props, State> {
             next.dayOfWeek = this.state.local.dayOfWeek ?? 1;
         } else if (period === "monthly") {
             next.dayOfMonth = this.state.local.dayOfMonth ?? 1;
-        }
-        this.setState({ local: next });
+        }        this.setState({ local: next });
     };
 
     renderTimeRow() {
@@ -94,6 +93,14 @@ export default class ScheduleConfigModal extends Component<Props, State> {
                         style={{ flex: 1 }}
                         optionList={timeOptions}
                     />
+                </div>
+            );
+        }
+
+        if (local.period === "biweekly") {
+            return (
+                <div style={rowStyle}>
+                    <span style={prefixStyle}>{t("summary.cron.biweekly")}</span>
                 </div>
             );
         }
@@ -183,6 +190,7 @@ export default class ScheduleConfigModal extends Component<Props, State> {
                         optionList={[
                             { value: "daily", label: t("summary.schedule.config.daily") },
                             { value: "weekly", label: t("summary.schedule.config.weekly") },
+                            { value: "biweekly", label: t("summary.schedule.config.biweekly") },
                             { value: "monthly", label: t("summary.schedule.config.monthly") },
                         ]}
                     />

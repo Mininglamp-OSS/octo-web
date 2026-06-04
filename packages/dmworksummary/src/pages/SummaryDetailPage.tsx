@@ -28,7 +28,8 @@ import {
     canCancel,
     canRegenerate,
     cronToScheduleConfig,
-    scheduleToCron,
+    scheduleToParams,
+    BIWEEKLY_INTERVAL_DAYS,
 } from "../utils/summaryHelpers";
 import SummaryContent from "../components/SummaryContent";
 import CitationText from "../components/CitationText";
@@ -390,7 +391,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { scheduleItem } = this.state;
         if (scheduleItem) {
             this.setState({
-                scheduleConfig: cronToScheduleConfig(scheduleItem.cron_expr),
+                scheduleConfig: (scheduleItem.interval_days ?? 0) === BIWEEKLY_INTERVAL_DAYS
+                    ? { period: "biweekly", time: "09:00" }
+                    : cronToScheduleConfig(scheduleItem.cron_expr),
                 showScheduleConfig: true,
             });
         } else {
@@ -405,18 +408,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { detail, scheduleItem } = this.state;
         if (!detail) return;
 
-        const cronExpr = scheduleToCron(config);
+        const { cron_expr, interval_days } = scheduleToParams(config);
 
         try {
             if (scheduleItem) {
-                await api.updateSchedule(scheduleItem.schedule_id, { cron_expr: cronExpr });
+                await api.updateSchedule(scheduleItem.schedule_id, { cron_expr, interval_days });
                 Toast.success(t("summary.detail.scheduleSaved"));
                 this.loadSchedule(scheduleItem.schedule_id);
             } else {
                 const newSchedule = await api.createSchedule({
                     title: detail.title,
                     summary_mode: detail.summary_mode,
-                    cron_expr: cronExpr,
+                    cron_expr,
+                    interval_days,
                     time_range_type: 2,
                     sources: detail.sources,
                 });

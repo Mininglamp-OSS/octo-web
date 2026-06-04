@@ -7,7 +7,7 @@ import type {
     SourceItem,
     SummaryModeType,
 } from "../types/summary";
-import { getCronPresetOptions, getTimeRangeTypeOptions } from "../utils/summaryHelpers";
+import { getCronPresetOptions, getTimeRangeTypeOptions, BIWEEKLY_INTERVAL_DAYS } from "../utils/summaryHelpers";
 import SourceSelector from "./SourceSelector";
 
 interface ScheduleFormProps {
@@ -28,7 +28,10 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
     const [summaryMode, setSummaryMode] = useState<SummaryModeType>(
         initialValues?.summary_mode || SummaryMode.BY_GROUP,
     );
-    const [cronExpr, setCronExpr] = useState(initialValues?.cron_expr || "0 9 * * 1");
+    const initialBiweekly = (initialValues?.interval_days ?? 0) === BIWEEKLY_INTERVAL_DAYS;
+    const [cronExpr, setCronExpr] = useState(
+        initialBiweekly ? "biweekly" : (initialValues?.cron_expr || "0 9 * * 1"),
+    );
     const [customCron, setCustomCron] = useState("");
     const [useCustomCron, setUseCustomCron] = useState(false);
     const [timeRangeType, setTimeRangeType] = useState<1 | 2 | 3 | 4>(
@@ -43,10 +46,14 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
         if (!finalCron.trim()) return;
         if (sources.length === 0) return;
 
+        // "biweekly" 预设 → 走 interval_days=14，cron 留空
+        const isBiweekly = !useCustomCron && finalCron === "biweekly";
+
         onSubmit({
             title: title.trim(),
             summary_mode: summaryMode,
-            cron_expr: finalCron.trim(),
+            cron_expr: isBiweekly ? "" : finalCron.trim(),
+            interval_days: isBiweekly ? BIWEEKLY_INTERVAL_DAYS : 0,
             time_range_type: timeRangeType,
             sources,
         });

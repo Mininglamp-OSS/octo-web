@@ -109,7 +109,9 @@
       "thu": "Thursday",
       "fri": "Friday",
       "sat": "Saturday"
-    }
+    },
+    "biweekly": "Every two weeks",
+    "everyNDays": "Every {{days}} days"
   },
   "list": {
     "title": "AI Summary",
@@ -180,7 +182,8 @@
       "time": "Time",
       "daily": "Daily",
       "weekly": "Weekly",
-      "monthly": "Monthly"
+      "monthly": "Monthly",
+      "biweekly": "Every two weeks"
     }
   },
   "confirmPage": {
