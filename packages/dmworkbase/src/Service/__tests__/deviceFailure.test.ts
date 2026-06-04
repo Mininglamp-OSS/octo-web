@@ -55,4 +55,17 @@ describe('handleDeviceFetchError', () => {
     expect(resetInMemoryDeviceId).not.toHaveBeenCalled()
     expect(triggerLogout).not.toHaveBeenCalled()
   })
+
+  it('on 400 with a different error code, does NOT invoke any handler', () => {
+    const removeDeviceId = vi.fn()
+    const resetInMemoryDeviceId = vi.fn()
+    const triggerLogout = vi.fn()
+    const err = makeRejected({ status: 400, code: 'err.shared.request.invalid' })
+
+    handleDeviceFetchError(err, { removeDeviceId, resetInMemoryDeviceId, triggerLogout })
+
+    expect(removeDeviceId).not.toHaveBeenCalled()
+    expect(resetInMemoryDeviceId).not.toHaveBeenCalled()
+    expect(triggerLogout).not.toHaveBeenCalled()
+  })
 })
