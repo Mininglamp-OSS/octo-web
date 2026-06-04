@@ -6,7 +6,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "30 4 * * 1" # Weekly Monday 04:30 UTC (12:30 CST)
+    - cron: "30 4 * * 1"  # Weekly Monday 04:30 UTC (12:30 CST)
   workflow_dispatch:
 
 permissions:
@@ -17,20 +17,23 @@ permissions:
 jobs:
   scan-scheduled:
     if: github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2  # v2.3.8
     with:
       scan-args: |-
         -r
         ./
+      # Full scan reports pre-existing vulns to Code Scanning tab but does
+      # not fail the workflow. Pre-existing vulnerabilities should be tracked
+      # and remediated via the Security tab, not by blocking every push to main.
+      # New vulnerabilities are still blocked at PR time (scan-pr defaults to
+      # fail-on-vuln: true).
+      fail-on-vuln: false
 
   scan-pr:
     if: github.event_name == 'pull_request'
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@9a498708959aeaef5ef730655706c5a1df1edbc2  # v2.3.8
     with:
       scan-args: |-
         -r
         ./
-      # Fork PRs have read-only GITHUB_TOKEN; skip SARIF upload to avoid
-      # security-events:write permission failure. Scan still runs and
-      # results are visible in the workflow output.
-      upload-sarif: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+      upload-sarif: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]' }}
