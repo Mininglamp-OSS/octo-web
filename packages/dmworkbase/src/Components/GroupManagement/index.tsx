@@ -1,6 +1,6 @@
 import React, { Component } from "react";
 import { Button, Spin, Switch, Tag, Toast } from "@douyinfe/semi-ui";
-import { Channel, Subscriber, WKSDK } from "wukongimjssdk";
+import { Channel, ChannelInfo, Subscriber, WKSDK } from "wukongimjssdk";
 import WKApp from "../../App";
 import WKAvatar from "../WKAvatar";
 import { SubscriberList } from "../Subscribers/list";
@@ -9,6 +9,7 @@ import { GroupRole } from "../../Service/Const";
 import { ChannelSettingManager } from "../../Service/ChannelSetting";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
+import { readAllowNoMention as parseAllowNoMention } from "./allowNoMention";
 import "./index.css";
 
 export interface GroupManagementProps {
@@ -33,6 +34,10 @@ export class GroupManagement extends Component<
   static contextType = I18nContext;
   declare context: React.ContextType<typeof I18nContext>;
 
+  // unmount 守卫：异步 fetch / listener resolve 时若组件已卸载，不再 setState。
+  private unmounted = false;
+  private channelInfoListener?: (channelInfo: ChannelInfo) => void;
+
   constructor(props: GroupManagementProps) {
     super(props);
     this.state = {
@@ -47,11 +52,40 @@ export class GroupManagement extends Component<
   // 从 SDK 频道缓存读「允许免@」开关当前值；缺省（老后端无字段）回退 true（允许），零回归。
   readAllowNoMention = (): boolean => {
     const info = WKSDK.shared().channelManager.getChannelInfo(this.props.channel);
-    return info?.orgData?.allow_no_mention !== 0;
+    return parseAllowNoMention(info?.orgData);
   };
 
   componentDidMount() {
     this.loadMembers();
+
+    // Bug 2 时序变种修复：挂载时缓存可能是 stale/缺字段的 ChannelInfo，
+    // fetchChannelInfo 是异步的。这里主动拉一次 fresh，并订阅 channelManager
+    // listener，fresh 值到达时刷新开关（带 unmount 守卫）。
+    this.channelInfoListener = (channelInfo: ChannelInfo) => {
+      if (this.unmounted) return;
+      if (channelInfo.channel.isEqual(this.props.channel)) {
+        this.setState({ allowNoMention: this.readAllowNoMention() });
+      }
+    };
+    WKSDK.shared().channelManager.addListener(this.channelInfoListener);
+
+    void WKSDK.shared()
+      .channelManager.fetchChannelInfo(this.props.channel)
+      .then(() => {
+        if (this.unmounted) return;
+        this.setState({ allowNoMention: this.readAllowNoMention() });
+      })
+      .catch(() => {
+        // 拉取失败保持缓存/缺省值，不打断群管理其它功能。
+      });
+  }
+
+  componentWillUnmount() {
+    this.unmounted = true;
+    if (this.channelInfoListener) {
+      WKSDK.shared().channelManager.removeListener(this.channelInfoListener);
+      this.channelInfoListener = undefined;
+    }
   }
 
   loadMembers = async () => {
@@ -227,14 +261,16 @@ export class GroupManagement extends Component<
       await ChannelSettingManager.shared.setAllowNoMention(next, channel);
       // 回读 server 真实值（refresh 后弹回的根因已在 server 端修复）。
       await WKSDK.shared().channelManager.fetchChannelInfo(channel);
+      if (this.unmounted) return;
       this.setState({
         allowNoMention: this.readAllowNoMention(),
         allowNoMentionSaving: false,
       });
     } catch (err: any) {
-      // 失败回滚到改前状态。
+      // 失败回滚到改前状态。Toast 已由 ChannelSettingManager._onSetting 弹出，
+      // 这里不再重复弹（避免双 Toast）。
+      if (this.unmounted) return;
       this.setState({ allowNoMention: prev, allowNoMentionSaving: false });
-      Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
     }
   };
 
