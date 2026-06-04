@@ -117,6 +117,8 @@ import {
   requestOidcLogout,
   safeEndSessionUrl,
 } from "./Service/oidcLogout";
+import { handleDeviceFetchError } from "./Service/deviceFailure";
+import type { APIClientRejectedError } from "./Service/APIClient";
 
 export enum ThemeMode {
   light,
@@ -850,6 +852,20 @@ export default class WKApp extends ProviderListener {
         if (res.id) {
           WKSDK.shared().config.clientMsgDeviceId = res.id;
         }
+      })
+      .catch((err: APIClientRejectedError) => {
+        // octo-web#76: server may forget our device (after data reset, manual
+        // device-table cleanup, sessionStorage copied from another env, etc.).
+        // Without this handler the device fetch silently fails, leaving
+        // WKSDK.config.clientMsgDeviceId at its default 0; subsequent outbound
+        // messages then build clientMsgNo as "<uuid>_0_3" instead of
+        // "<uuid>_<real-device-id>_3" (see wukongimjssdk packet.clientMsgNo),
+        // which breaks per-device message dedup and cross-device tracking.
+        handleDeviceFetchError(err, {
+          removeDeviceId: () => StorageService.shared.removeItem("deviceId"),
+          resetInMemoryDeviceId: () => { WKApp.shared.deviceId = ""; },
+          triggerLogout: () => WKApp.shared.logout(),
+        });
       });
   }
 
