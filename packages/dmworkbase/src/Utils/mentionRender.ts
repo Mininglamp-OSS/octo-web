@@ -117,6 +117,14 @@ export const MENTION_UID_AIS = "-3";
 export const MENTION_LABEL_HUMANS = "所有人";
 export const MENTION_LABEL_AIS = "所有AI";
 
+export type MentionUidState = "bot" | "user" | "unknown";
+
+export function mentionUidStateFromRobot(robot: unknown): MentionUidState {
+  if (robot === 1) return "bot";
+  if (robot === 0) return "user";
+  return "unknown";
+}
+
 /**
  * Dropdown item shape returned by the @-mention suggestion factory.
  * Exported so unit tests can assert the exact selection order and

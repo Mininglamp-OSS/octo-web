@@ -247,6 +247,7 @@ function parseMention(
         subscriberUserUids?: string[];
         channelInfoBotUids?: string[];
         channelInfoUserUids?: string[];
+        channelInfoUnknownUids?: string[];
     }
 ): Part[] {
     if (!mention) {
@@ -263,20 +264,26 @@ function parseMention(
         const subscriberUserUids = new Set(mention.subscriberUserUids ?? mention.userUids ?? []);
         const channelInfoBotUids = new Set(mention.channelInfoBotUids ?? mention.botUids ?? []);
         const channelInfoUserUids = new Set(mention.channelInfoUserUids ?? mention.userUids ?? []);
+        const channelInfoUnknownUids = new Set(mention.channelInfoUnknownUids ?? []);
         const legacyUids = mention.ais
             ? (() => {
                 let trailingBotCount = 0;
                 for (let idx = mention.uids!.length - 1; idx >= 0; idx--) {
                     const uid = mention.uids![idx];
-                    const state = subscriberBotUids.has(uid)
+                    const subscriberState = subscriberBotUids.has(uid)
                         ? 'bot'
                         : subscriberUserUids.has(uid)
                             ? 'user'
-                            : channelInfoBotUids.has(uid)
-                                ? 'bot'
-                                : channelInfoUserUids.has(uid)
-                                    ? 'user'
-                                    : 'unknown';
+                            : undefined;
+                    const state = subscriberState ?? (
+                        channelInfoBotUids.has(uid)
+                            ? 'bot'
+                            : channelInfoUserUids.has(uid)
+                                ? 'user'
+                                : channelInfoUnknownUids.has(uid)
+                                    ? 'unknown'
+                                    : 'unknown'
+                    );
                     if (state === 'bot') {
                         trailingBotCount++;
                         continue;
@@ -756,6 +763,34 @@ describe('parseMention dispatcher (v2 priority + v1 fallback)', () => {
             uids: ['uid_alice', 'bot_a', 'bot_b'],
             subscriberBotUids: ['bot_b'],
             userUids: ['uid_alice'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.text, '@Alice @所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should fallback when a subscriber record exists but lacks robot metadata', () => {
+        const parts = parseMention('@Alice @所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['uid_alice', 'bot_a', 'bot_b'],
+            subscriberBotUids: ['bot_b'],
+            channelInfoBotUids: ['bot_a', 'bot_b'],
+            channelInfoUserUids: ['uid_alice'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.mention, '@Alice', { uid: 'uid_alice' }),
+            new Part(PartType.text, ' @所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should fail closed when subscriber and channelInfo records lack robot metadata', () => {
+        const parts = parseMention('@Alice @所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['uid_alice', 'bot_a'],
+            channelInfoUnknownUids: ['bot_a'],
+            channelInfoUserUids: ['uid_alice'],
         });
 
         expect(parts).toEqual([

@@ -3,6 +3,7 @@ import {
   buildMentionDropdownItems,
   MENTION_UID_AIS,
   MENTION_UID_HUMANS,
+  mentionUidStateFromRobot,
 } from "../mentionRender";
 
 const members = [
@@ -49,5 +50,19 @@ describe("buildMentionDropdownItems", () => {
     });
 
     expect(items.map((item) => item.uid)).toEqual(["u1"]);
+  });
+});
+
+describe("mentionUidStateFromRobot", () => {
+  it("classifies only explicit robot metadata as bot or user", () => {
+    expect(mentionUidStateFromRobot(1)).toBe("bot");
+    expect(mentionUidStateFromRobot(0)).toBe("user");
+  });
+
+  it("treats missing or malformed robot metadata as unknown", () => {
+    expect(mentionUidStateFromRobot(undefined)).toBe("unknown");
+    expect(mentionUidStateFromRobot(null)).toBe("unknown");
+    expect(mentionUidStateFromRobot("1")).toBe("unknown");
+    expect(mentionUidStateFromRobot(true)).toBe("unknown");
   });
 });

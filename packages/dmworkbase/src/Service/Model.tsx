@@ -12,6 +12,8 @@ import {
     MENTION_UID_AIS,
     MENTION_UID_HUMANS,
     MENTION_UID_LEGACY_ALL,
+    mentionUidStateFromRobot,
+    type MentionUidState,
 } from "../Utils/mentionRender"
 
 export class ConversationWrap {
@@ -608,14 +610,17 @@ export class MessageWrap {
         return 0
     }
 
-    private getSubscriberMentionUidState(uids: string[]): Map<string, "bot" | "user"> {
-        const state = new Map<string, "bot" | "user">()
+    private getSubscriberMentionUidState(uids: string[]): Map<string, MentionUidState> {
+        const state = new Map<string, MentionUidState>()
         const uidSet = new Set(uids)
         try {
             const subscribers = WKSDK.shared().channelManager.getSubscribes(this.channel) || []
             for (const sub of subscribers as any[]) {
                 if (sub?.uid && uidSet.has(sub.uid)) {
-                    state.set(sub.uid, sub.orgData?.robot === 1 ? "bot" : "user")
+                    const uidState = mentionUidStateFromRobot(sub.orgData?.robot)
+                    if (uidState !== "unknown") {
+                        state.set(sub.uid, uidState)
+                    }
                 }
             }
         } catch {
@@ -624,11 +629,11 @@ export class MessageWrap {
         return state
     }
 
-    private getChannelInfoMentionUidState(uid: string): "bot" | "user" | "unknown" {
+    private getChannelInfoMentionUidState(uid: string): MentionUidState {
         try {
             const info = WKSDK.shared().channelManager.getChannelInfo(new Channel(uid, ChannelTypePerson))
             if (!info) return "unknown"
-            return info.orgData?.robot === 1 ? "bot" : "user"
+            return mentionUidStateFromRobot(info.orgData?.robot)
         } catch {
             return "unknown"
         }
