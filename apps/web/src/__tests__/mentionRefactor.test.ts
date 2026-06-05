@@ -12,6 +12,7 @@ import {
     buildMessageMentions as productionBuildMessageMentions,
     readMentionFlags,
     buildMentionDropdownItems,
+    MENTION_UID_LEGACY_ALL,
     MENTION_UID_HUMANS,
     MENTION_UID_AIS,
     MENTION_LABEL_HUMANS,
@@ -170,11 +171,10 @@ function parseMentionWithEntities(
             continue;
         }
 
-        const mentionName = mentionText.slice(1);
         if (
-            mentionName.toLowerCase() === 'all' ||
-            mentionName === MENTION_LABEL_HUMANS ||
-            mentionName === MENTION_LABEL_AIS
+            entity.uid === MENTION_UID_LEGACY_ALL ||
+            entity.uid === MENTION_UID_HUMANS ||
+            entity.uid === MENTION_UID_AIS
         ) {
             parts.push(new Part(PartType.text, mentionText));
             cursor = entity.offset + entity.length;
@@ -258,7 +258,7 @@ function parseMention(
             break;
         }
         const legacyUids = mention.ais
-            ? mention.uids.slice(0, Math.max(0, mention.uids.length - trailingBotCount))
+            ? mention.uids.slice(0, trailingBotCount > 0 ? Math.max(0, mention.uids.length - trailingBotCount) : 0)
             : mention.uids;
         return parseMentionLegacy(text, legacyUids);
     }
@@ -532,6 +532,14 @@ describe('parseMentionWithEntities', () => {
         expect(result![0].data.uid).toBe('uid_alice');
         expect(result![2].data.uid).toBe('uid_bob');
     });
+
+    it('should bind a real member entity even when its label is reserved text', () => {
+        const text = '@所有AI 请看下';
+        const entities = [{ uid: 'real_member_uid', offset: 0, length: 5 }];
+        const parts = parseMentionWithEntities(text, entities);
+
+        expect(parts![0]).toEqual(new Part(PartType.mention, '@所有AI', { uid: 'real_member_uid' }));
+    });
 });
 
 describe('parseMentionLegacy', () => {
@@ -653,6 +661,17 @@ describe('parseMention dispatcher (v2 priority + v1 fallback)', () => {
             ais: 1,
             uids: ['bot_a'],
             botUids: ['bot_a'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.text, '@所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should fail closed when @所有AI legacy routing uids have no bot metadata', () => {
+        const parts = parseMention('@所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['bot_a'],
         });
 
         expect(parts).toEqual([

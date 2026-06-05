@@ -6,7 +6,13 @@ import { DefaultEmojiService } from "./EmojiService"
 import { TypingManager } from "./TypingManager"
 import { getSpaceFilteredLastMessage, SYSTEM_BOTS } from "./SpaceService"
 import { isMessageContinuation } from "./messageContinuity"
-import { MENTION_LABEL_AIS, MENTION_LABEL_HUMANS } from "../Utils/mentionRender"
+import {
+    MENTION_LABEL_AIS,
+    MENTION_LABEL_HUMANS,
+    MENTION_UID_AIS,
+    MENTION_UID_HUMANS,
+    MENTION_UID_LEGACY_ALL,
+} from "../Utils/mentionRender"
 
 export class ConversationWrap {
     conversation: Conversation
@@ -506,10 +512,13 @@ export class MessageWrap {
                 continue
             }
 
-            // Defensive check: broadcast tokens (@all / @所有人 / @所有AI)
-            // should not bind to personal entities.
-            const mentionName = mentionText.slice(1)
-            if (mentionName.toLowerCase() === 'all' || mentionName === MENTION_LABEL_HUMANS || mentionName === MENTION_LABEL_AIS) {
+            // Broadcast entities use sentinel uids. Do not suppress by visible
+            // label alone: a real member can be named "所有AI" / "所有人".
+            if (
+                entity.uid === MENTION_UID_LEGACY_ALL ||
+                entity.uid === MENTION_UID_HUMANS ||
+                entity.uid === MENTION_UID_AIS
+            ) {
                 parts.push(new Part(PartType.text, mentionText))
                 cursor = entity.offset + entity.length
                 continue
@@ -576,6 +585,9 @@ export class MessageWrap {
 
     private getLegacyMentionUidLimitForAis(uids: string[]): number {
         const routingUidCount = this.getAisRoutingUidCount(uids)
+        if (routingUidCount === 0) {
+            return 0
+        }
         return Math.max(0, uids.length - routingUidCount)
     }
 
