@@ -144,8 +144,7 @@
     "panelTitle": "Summaries in this chat",
     "createNew": "New summary",
     "back": "Back",
-    "starTooltip": "AI Summary",
-    "creatorWithSources": "Created by {{name}} · {{count}} sources"
+    "starTooltip": "AI Summary"
   },
   "templates": {
     "project_progress": {

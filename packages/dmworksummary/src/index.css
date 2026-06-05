@@ -190,6 +190,13 @@
     font-weight: 500;
 }
 
+/* Sidebar reuses SummaryCard in a narrow column: tighten spacing without dropping fields. */
+.chat-summary-history .summary-card {
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
 /* ========== Create Page ========== */
 .summary-create-header {
     display: flex;

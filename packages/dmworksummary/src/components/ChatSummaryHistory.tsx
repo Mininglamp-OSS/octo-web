@@ -1,10 +1,11 @@
 import React, { Component } from 'react';
 import axios from 'axios';
+import { Toast } from '@douyinfe/semi-ui';
 import { I18nContext } from '@octo/base';
 import * as summaryApi from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
 import { TaskStatus } from '../types/summary';
-import TaskStatusBadge from './TaskStatusBadge';
+import SummaryCard from './SummaryCard';
 
 interface ChatSummaryHistoryProps {
     channel: { channelID: string; channelType: number };
@@ -147,9 +148,18 @@ export default class ChatSummaryHistory extends Component<
         }
     }
 
-    private formatTime(dateStr: string): string {
-        return this.context.format.time(dateStr, { hour: '2-digit', minute: '2-digit' });
-    }
+    private handleDelete = async (taskId: number) => {
+        try {
+            await summaryApi.deleteSummary(taskId);
+            // Reuse the existing event mechanism so this list refreshes itself.
+            window.dispatchEvent(new CustomEvent('chat-summary-deleted', {
+                detail: { channelId: this.props.channel.channelID },
+            }));
+        } catch {
+            // Surface the failure; the item stays in the list if deletion fails.
+            Toast.error(this.context.t('summary.common.deleteFailed'));
+        }
+    };
 
     render() {
         const { onCreateNew, onViewDetail } = this.props;
@@ -157,7 +167,7 @@ export default class ChatSummaryHistory extends Component<
         const { t } = this.context;
 
         return (
-            <div style={{ padding: '16px', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div className="chat-summary-history" style={{ padding: '16px', height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: 'var(--wk-text-primary, #1C1F23)' }}>
                     {t('summary.chatSummary.panelTitle')}
                 </div>
@@ -198,60 +208,12 @@ export default class ChatSummaryHistory extends Component<
                 ) : (
                     <div style={{ flex: 1, overflowY: 'auto' }}>
                         {items.map((item) => (
-                            <div
+                            <SummaryCard
                                 key={item.task_id}
-                                onClick={() => onViewDetail(item.task_id)}
-                                style={{
-                                    padding: '12px',
-                                    border: '1px solid var(--wk-border-default, #E5E6EB)',
-                                    borderRadius: 8,
-                                    marginBottom: 8,
-                                    cursor: 'pointer',
-                                    transition: 'background-color 0.15s',
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = 'var(--wk-bg-hover, #F5F6F7)';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = '';
-                                }}
-                            >
-                                <div style={{
-                                    fontSize: 14,
-                                    fontWeight: 500,
-                                    color: 'var(--wk-text-primary, #1C1F23)',
-                                    marginBottom: 6,
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                }}>
-                                    {item.title}
-                                </div>
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    fontSize: 12,
-                                    color: 'var(--wk-text-tertiary, #8F959E)',
-                                }}>
-                                    <span>
-                                        {item.sources?.length
-                                            ? t('summary.chatSummary.creatorWithSources', {
-                                                values: {
-                                                    name: item.creator_name || t('summary.common.unknown'),
-                                                    count: item.sources.length,
-                                                },
-                                            })
-                                            : t('summary.summaryCard.createdBy', {
-                                                values: { name: item.creator_name || t('summary.common.unknown') },
-                                            })}
-                                    </span>
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                                        <TaskStatusBadge status={item.status} />
-                                        {this.formatTime(item.created_at)}
-                                    </span>
-                                </div>
-                            </div>
+                                task={item}
+                                onClick={onViewDetail}
+                                onDelete={this.handleDelete}
+                            />
                         ))}
                     </div>
                 )}

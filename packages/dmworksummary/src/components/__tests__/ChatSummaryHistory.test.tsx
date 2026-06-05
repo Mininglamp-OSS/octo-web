@@ -13,10 +13,13 @@ vi.mock('@octo/base', async () => {
 
 const mockListSummaries = vi.fn();
 const mockBatchStatus = vi.fn();
+const mockDeleteSummary = vi.fn();
+const mockToastError = vi.fn();
 
 vi.mock('../../api/summaryApi', () => ({
     listSummaries: (...args: any[]) => mockListSummaries(...args),
     batchStatus: (...args: any[]) => mockBatchStatus(...args),
+    deleteSummary: (...args: any[]) => mockDeleteSummary(...args),
 }));
 
 vi.mock('../../utils/summaryHelpers', () => ({
@@ -31,9 +34,26 @@ vi.mock('../../utils/summaryHelpers', () => ({
 }));
 
 vi.mock('@douyinfe/semi-ui', () => ({
+    Toast: { error: (...args: any[]) => mockToastError(...args) },
     Tag: ({ children, color, size }: any) => (
         <span data-testid="status-tag" data-color={color} data-size={size}>{children}</span>
     ),
+    Tooltip: ({ children }: any) => <>{children}</>,
+    Button: ({ icon, onClick }: any) => (
+        <button data-testid="delete-btn" onClick={onClick}>{icon}</button>
+    ),
+    Popconfirm: ({ children, onConfirm }: any) => (
+        <span
+            data-testid="popconfirm"
+            onClick={() => onConfirm({ stopPropagation: () => {} })}
+        >
+            {children}
+        </span>
+    ),
+}));
+
+vi.mock('@douyinfe/semi-icons', () => ({
+    IconDelete: () => <svg data-testid="delete-icon" />,
 }));
 
 function render(ui: React.ReactElement, options?: any) {
@@ -101,9 +121,9 @@ describe('ChatSummaryHistory', () => {
         expect(tags[1].dataset.color).toBe('blue');
     });
 
-    it('renders creator, source count, and time alongside badge', async () => {
+    it('renders title, creator, date, and status via SummaryCard', async () => {
         mockListSummaries.mockResolvedValue({
-            items: [makeItem({ creator_name: '李四', sources: [{ source_type: 1, source_id: 's1' }, { source_type: 1, source_id: 's2' }] })],
+            items: [makeItem({ title: '已完成任务', creator_name: '李四', created_at: '2026-01-01T09:30:00Z' })],
         });
 
         await act(async () => {
@@ -117,9 +137,91 @@ describe('ChatSummaryHistory', () => {
             await flushPromises();
         });
 
+        expect(screen.getByText('已完成任务')).toBeInTheDocument();
+        // Subtitle matches the tab: "{name} 发起" with no source count.
         expect(screen.getByText(/李四 发起/)).toBeInTheDocument();
-        expect(screen.getByText(/2 个来源/)).toBeInTheDocument();
+        expect(screen.queryByText(/个来源/)).not.toBeInTheDocument();
+        // Date is the YYYY-MM-DD prefix, not an HH:MM time.
+        expect(screen.getByText('2026-01-01')).toBeInTheDocument();
         expect(screen.getByTestId('status-tag')).toBeInTheDocument();
+    });
+
+    it('falls back to task_no when title is empty', async () => {
+        mockListSummaries.mockResolvedValue({
+            items: [makeItem({ title: '', task_no: 'T999' })],
+        });
+
+        await act(async () => {
+            render(
+                <ChatSummaryHistory
+                    channel={channel}
+                    onCreateNew={onCreateNew}
+                    onViewDetail={onViewDetail}
+                />,
+            );
+            await flushPromises();
+        });
+
+        expect(screen.getByText('T999')).toBeInTheDocument();
+    });
+
+    it('deletes a summary and refreshes the list via chat-summary-deleted event', async () => {
+        mockListSummaries.mockResolvedValue({ items: [makeItem({ task_id: 7 })] });
+        mockDeleteSummary.mockResolvedValue(undefined);
+        const onDeleted = vi.fn();
+        window.addEventListener('chat-summary-deleted', onDeleted as EventListener);
+
+        await act(async () => {
+            render(
+                <ChatSummaryHistory
+                    channel={channel}
+                    onCreateNew={onCreateNew}
+                    onViewDetail={onViewDetail}
+                />,
+            );
+            await flushPromises();
+        });
+
+        await act(async () => {
+            screen.getByTestId('popconfirm').click();
+            await flushPromises();
+        });
+
+        expect(mockDeleteSummary).toHaveBeenCalledWith(7);
+        expect(onDeleted).toHaveBeenCalled();
+        const event = onDeleted.mock.calls[0][0] as CustomEvent;
+        expect(event.detail).toEqual({ channelId: 'ch1' });
+
+        window.removeEventListener('chat-summary-deleted', onDeleted as EventListener);
+    });
+
+    it('shows a toast and keeps the item when delete fails', async () => {
+        mockListSummaries.mockResolvedValue({ items: [makeItem({ task_id: 7 })] });
+        mockDeleteSummary.mockRejectedValue(new Error('boom'));
+        const onDeleted = vi.fn();
+        window.addEventListener('chat-summary-deleted', onDeleted as EventListener);
+
+        await act(async () => {
+            render(
+                <ChatSummaryHistory
+                    channel={channel}
+                    onCreateNew={onCreateNew}
+                    onViewDetail={onViewDetail}
+                />,
+            );
+            await flushPromises();
+        });
+
+        await act(async () => {
+            screen.getByTestId('popconfirm').click();
+            await flushPromises();
+        });
+
+        expect(mockDeleteSummary).toHaveBeenCalledWith(7);
+        expect(mockToastError).toHaveBeenCalledWith('删除失败');
+        expect(onDeleted).not.toHaveBeenCalled();
+
+        window.removeEventListener('chat-summary-deleted', onDeleted as EventListener);
     });
 
     it('does not poll when all items are completed', async () => {

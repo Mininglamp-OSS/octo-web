@@ -144,8 +144,7 @@
     "panelTitle": "聊天内的智能总结",
     "createNew": "新建总结",
     "back": "返回",
-    "starTooltip": "智能总结",
-    "creatorWithSources": "{{name}} 发起 · {{count}} 个来源"
+    "starTooltip": "智能总结"
   },
   "templates": {
     "project_progress": {
