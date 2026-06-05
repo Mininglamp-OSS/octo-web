@@ -55,8 +55,11 @@ export const BotsTab = forwardRef<BotsTabHandle>(function BotsTab(_props, ref) {
     // token, 直接带 `token:` header 调 (跟 matter user-auth 一致).
     (async () => {
       try {
+        const headers: Record<string, string> = {};
+        if (sessionToken) headers.token = sessionToken;
+        if (spaceId) headers['X-Space-Id'] = spaceId;
         const res = await fetch('/api/v1/runtimes?space_id=' + encodeURIComponent(spaceId), {
-          headers: sessionToken ? { token: sessionToken } : {},
+          headers,
         });
         const env = await res.json();
         const list = (env?.data?.runtimes ?? env?.runtimes ?? []) as any[];
