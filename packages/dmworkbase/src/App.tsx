@@ -872,6 +872,14 @@ export default class WKApp extends ProviderListener {
     // (Plan F) for stale device; non-stale errors are logged and we proceed
     // with the SDK default clientMsgDeviceId=0 (current pre-#256 behavior).
     await this.awaitDeviceIdOrTimeout(5000);
+    // Task E guard: if the await resolved because Plan F's interceptor fired
+    // (stale device → staleLocalResourceCallback → WKApp.shared.logout()),
+    // `loggingOut` is now true and a reload is pending. Continuing to call
+    // connectIM / contactsSync / prohibitWordsSync here would fire requests
+    // against the just-cleared token (token/uid emptied by clearLocalLoginState),
+    // returning 401 and producing unhandled Uncaught (in promise) noise.
+    // Short-circuit instead — the pending reload will reset the page.
+    if (this.loggingOut) return;
     this.connectIM();
     WKApp.dataSource.contactsSync();
     ProhibitwordsService.shared.sync();
