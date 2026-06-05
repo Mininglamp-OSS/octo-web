@@ -117,7 +117,6 @@ import {
   requestOidcLogout,
   safeEndSessionUrl,
 } from "./Service/oidcLogout";
-import { handleDeviceFetchError } from "./Service/deviceFailure";
 import type { APIClientRejectedError } from "./Service/APIClient";
 
 export enum ThemeMode {
@@ -854,27 +853,18 @@ export default class WKApp extends ProviderListener {
         }
       })
       .catch((err: APIClientRejectedError) => {
-        // octo-web#76: server may forget our device (after data reset, manual
-        // device-table cleanup, sessionStorage copied from another env, etc.).
-        // Without this handler the device fetch silently fails, leaving
-        // WKSDK.config.clientMsgDeviceId at its default 0; subsequent outbound
-        // messages then build clientMsgNo as "<uuid>_0_3" instead of
-        // "<uuid>_<real-device-id>_3" (see wukongimjssdk packet.clientMsgNo),
-        // which breaks per-device message dedup and cross-device tracking.
+        // Plan F: stale device recovery is handled centrally by the
+        // APIClient staleLocalResourceCallback (see module.tsx). This catch
+        // only exists to (a) consume the promise rejection so it doesn't
+        // surface as Uncaught and (b) keep observability of non-stale
+        // failures of this endpoint. The recovery side-effect has already
+        // fired by the time this runs (interceptor → callback → handler).
         if (err?.code !== "err.server.user.device_not_found") {
-          // Non-stale device errors fall through to existing handling paths
-          // (auth interceptor / silent failure). Log once for observability
-          // so future regressions on this endpoint are not hidden.
           console.warn(
             "[App.startMain] /user/devices fetch failed (non-stale):",
             { status: err?.status, code: err?.code, msg: err?.msg },
           );
         }
-        handleDeviceFetchError(err, {
-          removeDeviceId: () => StorageService.shared.removeItem("deviceId"),
-          resetInMemoryDeviceId: () => { WKApp.shared.deviceId = ""; },
-          triggerLogout: () => WKApp.shared.logout(),
-        });
       });
   }
 
