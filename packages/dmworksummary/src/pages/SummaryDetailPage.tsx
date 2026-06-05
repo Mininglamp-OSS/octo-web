@@ -12,6 +12,7 @@ import { Channel, ChannelTypeGroup, ChannelTypePerson, MessageText, WKSDK } from
 import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import { splitSummaryText } from "../utils/splitMessage";
+import { sendSummaryNotifyTip } from "../utils/sendSummaryNotifyTip";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import OverflowTooltip from "../components/OverflowTooltip";
@@ -91,6 +92,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private listPageActive = false;
     private lastEventTime = 0;
     private isPersonalPolling = false;
+    private hasSentNotifyTip = false;
 
     componentDidMount() {
         window.addEventListener("summary-status-change", this.handleStatusChangeEvent);
@@ -104,6 +106,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const currentTaskId = this.taskId;
         if (prevTaskId !== currentTaskId && currentTaskId != null) {
             this.listPageActive = false;
+            this.hasSentNotifyTip = false;
             this.clearAllTimers();
             this.loadDetail();
         }
@@ -277,6 +280,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         this.loadMembers();
                     }
                 }
+                if (newStatus === TaskStatus.COMPLETED && !this.hasSentNotifyTip) {
+                    this.hasSentNotifyTip = true;
+                    sendSummaryNotifyTip(detail.sources);
+                }
             }
         } catch {
             // ignore
@@ -342,6 +349,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         if (detail.schedule_id && detail.schedule_id > 0) {
                             this.loadSchedule(detail.schedule_id);
                         }
+                    }
+                    if (newStatus === TaskStatus.COMPLETED && !this.hasSentNotifyTip) {
+                        this.hasSentNotifyTip = true;
+                        sendSummaryNotifyTip(detail.sources);
                     }
                 } catch {
                     // Don't advance lastKnownStatus — retry on next tick

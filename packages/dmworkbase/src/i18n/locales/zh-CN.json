@@ -728,6 +728,8 @@
   "message.mergeForward.chatRecord": "聊天记录",
   "message.screenshot.text": "{{name}}在聊天中截屏了",
   "message.screenshot.you": "你",
+  "message.summaryNotify.text": "{{name}}总结了群聊内容",
+  "message.summaryNotify.you": "你",
   "message.signal.unavailable": "此消息已采用端对端加密，web端无法解密，请在手机端查看",
   "message.unknown.unsupportedWithType": "[此消息不支持查看，请至手机端查看详情({{type}})]",
   "message.unsupport.tip": "[收到一条网页版暂不支持的消息类型，请在手机上查看]",

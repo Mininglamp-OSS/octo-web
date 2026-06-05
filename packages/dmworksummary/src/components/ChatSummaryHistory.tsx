@@ -4,7 +4,8 @@ import { Toast } from '@douyinfe/semi-ui';
 import { I18nContext } from '@octo/base';
 import * as summaryApi from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
-import { TaskStatus } from '../types/summary';
+import { TaskStatus, SourceType } from '../types/summary';
+import { sendSummaryNotifyTip } from '../utils/sendSummaryNotifyTip';
 import SummaryCard from './SummaryCard';
 
 interface ChatSummaryHistoryProps {
@@ -29,6 +30,7 @@ export default class ChatSummaryHistory extends Component<
     private abortController: AbortController | null = null;
     private pollTimer: ReturnType<typeof setInterval> | null = null;
     private isPolling = false;
+    private notifiedTaskIds = new Set<number>();
 
     constructor(props: ChatSummaryHistoryProps) {
         super(props);
@@ -98,16 +100,32 @@ export default class ChatSummaryHistory extends Component<
             const updates = await summaryApi.batchStatus(taskIds);
             const updateMap = new Map(updates.map(u => [u.id, u]));
             let changed = false;
+            const completedTaskIds: number[] = [];
             const newItems = this.state.items.map(item => {
                 const update = updateMap.get(item.task_id);
                 if (update && update.status !== item.status) {
                     changed = true;
+                    if (update.status === TaskStatus.COMPLETED && !this.notifiedTaskIds.has(item.task_id)) {
+                        completedTaskIds.push(item.task_id);
+                    }
                     return { ...item, status: update.status };
                 }
                 return item;
             });
             if (changed) {
                 this.setState({ items: newItems }, () => this.maybeStartPoll());
+            }
+            // Send summary notify tips for newly completed tasks
+            for (const taskId of completedTaskIds) {
+                this.notifiedTaskIds.add(taskId);
+                try {
+                    const detail = await summaryApi.getSummaryDetail(taskId);
+                    if (detail.sources?.length > 0) {
+                        sendSummaryNotifyTip(detail.sources);
+                    }
+                } catch {
+                    // best-effort
+                }
             }
         } catch {
             // ignore

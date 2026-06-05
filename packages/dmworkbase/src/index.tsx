@@ -48,6 +48,8 @@ export * from "./Messages/Base"
 
 export * from "./Messages/MessageCell"
 
+export * from "./Messages/SummaryNotify"
+
 export * from "./Service/Section";
 export * from "./Components/ListItem";
 
