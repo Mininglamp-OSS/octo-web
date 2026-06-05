@@ -156,6 +156,7 @@ describe("APIClient stale local resource interceptor", () => {
             throw err
         }
         await client.get("/v1/user/devices/probe").catch(() => {})
-        expect(staleFn).toHaveBeenCalledExactlyOnceWith("err.server.user.device_not_found")
+        expect(staleFn).toHaveBeenCalledTimes(1)
+        expect(staleFn).toHaveBeenCalledWith("err.server.user.device_not_found")
     })
 })
