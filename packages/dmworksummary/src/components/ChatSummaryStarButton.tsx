@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
 import axios from 'axios';
+import { Toast } from '@douyinfe/semi-ui';
 import { WKApp, I18nContext } from '@octo/base';
 import { Sparkle } from 'lucide-react';
 import * as summaryApi from '../api/summaryApi';
@@ -57,7 +58,14 @@ export default class ChatSummaryStarButton extends Component<
         }
     };
 
-    private async fetchSummaryCount(): Promise<boolean> {
+    // Three outcomes are distinguished so the caller never confuses a load
+    // failure with "no summaries":
+    //   { state: 'ok', hasSummaries } — genuine result (total resolved)
+    //   { state: 'cancelled' }        — superseded/aborted request, ignore
+    //   { state: 'failed' }           — network/server error, surface to user
+    private async fetchSummaryCount(): Promise<
+        { state: 'ok'; hasSummaries: boolean } | { state: 'cancelled' } | { state: 'failed' }
+    > {
         this.abortController?.abort();
         const controller = new AbortController();
         this.abortController = controller;
@@ -67,28 +75,46 @@ export default class ChatSummaryStarButton extends Component<
                 { origin_channel_id: this.props.channel.channelID, page: 1, page_size: 1 },
                 { signal: controller.signal },
             );
-            if (!controller.signal.aborted) {
-                const hasSummaries = res.total > 0;
-                this.setState({ hasSummaries, loaded: true });
-                return hasSummaries;
+            if (controller.signal.aborted) {
+                return { state: 'cancelled' };
             }
-            return false;
+            const hasSummaries = res.total > 0;
+            this.setState({ hasSummaries, loaded: true });
+            return { state: 'ok', hasSummaries };
         } catch (err: unknown) {
-            if (!axios.isCancel(err)) {
-                // non-cancel error, silent
+            // Cancellation identity is preserved by the api layer (see summaryApi get helper).
+            if (axios.isCancel(err) || controller.signal.aborted) {
+                return { state: 'cancelled' };
             }
-            return false;
+            // Genuine load failure: cannot assert "no summaries".
+            return { state: 'failed' };
         }
     }
 
     private handleClick = async () => {
-        const { channel } = this.props;
-        let hasSummaries = this.state.hasSummaries;
-
-        if (!this.state.loaded) {
-            hasSummaries = await this.fetchSummaryCount();
+        if (this.state.loaded) {
+            this.emitForHasSummaries(this.state.hasSummaries);
+            return;
         }
 
+        const result = await this.fetchSummaryCount();
+
+        // Cancelled (superseded by a newer request): do nothing.
+        if (result.state === 'cancelled') {
+            return;
+        }
+        // Load failed: surface an error and do NOT route the user into the
+        // create flow, which would risk creating a duplicate summary.
+        if (result.state === 'failed') {
+            Toast.error(this.context.t('summary.common.loadingFailed'));
+            return;
+        }
+
+        this.emitForHasSummaries(result.hasSummaries);
+    };
+
+    private emitForHasSummaries(hasSummaries: boolean) {
+        const { channel } = this.props;
         if (hasSummaries) {
             WKApp.mittBus.emit('wk:toggle-summary-panel', {
                 channelId: channel.channelID,
@@ -101,7 +127,7 @@ export default class ChatSummaryStarButton extends Component<
                 channelType: channel.channelType,
             });
         }
-    };
+    }
 
     render() {
         const { t } = this.context;

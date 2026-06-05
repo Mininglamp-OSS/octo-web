@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import axios from 'axios';
 
 const { mockGet, mockPost, mockRequestUse, mockResponseUse } = vi.hoisted(() => ({
     mockGet: vi.fn(),
@@ -19,10 +20,11 @@ vi.mock('axios', () => ({
                 response: { use: mockResponseUse },
             },
         }),
+        isCancel: (err: unknown) => !!(err as { __CANCEL__?: boolean })?.__CANCEL__,
     },
 }));
 
-import { getTopicTemplates, getTemplates } from '../summaryApi';
+import { getTopicTemplates, getTemplates, listSummaries } from '../summaryApi';
 
 describe('summaryApi interceptors', () => {
   it('injects language, token, and space headers', async () => {
@@ -133,6 +135,32 @@ describe('summaryApi', () => {
                 expect(err.message).toHaveLength(201);
                 expect(err.message.endsWith('…')).toBe(true);
             }
+        });
+    });
+
+    describe('cancellation', () => {
+        it('rethrows the original cancel error so axios.isCancel still detects it', async () => {
+            const cancelErr = { __CANCEL__: true, message: 'canceled' };
+            mockGet.mockRejectedValue(cancelErr);
+
+            await expect(
+                listSummaries({ origin_channel_id: 'ch1', page: 1, page_size: 1 }),
+            ).rejects.toBe(cancelErr);
+
+            // The thrown value preserves cancellation identity (not wrapped in a new Error).
+            try {
+                await listSummaries({ origin_channel_id: 'ch1', page: 1, page_size: 1 });
+            } catch (err) {
+                expect(axios.isCancel(err)).toBe(true);
+            }
+        });
+
+        it('still wraps non-cancel errors in a plain Error', async () => {
+            mockGet.mockRejectedValue(new Error('Network Error'));
+
+            await expect(
+                listSummaries({ origin_channel_id: 'ch1', page: 1, page_size: 1 }),
+            ).rejects.toThrow('Network Error');
         });
     });
 });

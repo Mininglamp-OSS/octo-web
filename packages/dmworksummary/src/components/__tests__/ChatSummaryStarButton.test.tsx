@@ -13,6 +13,18 @@ vi.mock('@octo/base', async () => {
     };
 });
 
+const mockToastError = vi.fn();
+
+vi.mock('@douyinfe/semi-ui', () => ({
+    Toast: { error: (...args: any[]) => mockToastError(...args) },
+}));
+
+const mockIsCancel = vi.fn(() => false);
+
+vi.mock('axios', () => ({
+    default: { isCancel: (...args: any[]) => mockIsCancel(...args) },
+}));
+
 const mockListSummaries = vi.fn();
 
 vi.mock('../../api/summaryApi', () => ({
@@ -38,6 +50,7 @@ describe('ChatSummaryStarButton', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockIsCancel.mockReturnValue(false);
     });
 
     it('renders with default icon color', () => {
@@ -76,6 +89,38 @@ describe('ChatSummaryStarButton', () => {
             channelId: 'ch1',
             channelType: 2,
         });
+    });
+
+    it('does NOT open create modal when count query fails', async () => {
+        mockListSummaries.mockRejectedValue(new Error('500'));
+        render(<ChatSummaryStarButton channel={channel} />);
+
+        await act(async () => {
+            fireEvent.click(screen.getByTitle('智能总结'));
+            await flushPromises();
+        });
+
+        // Load failure must not be treated as "no summaries".
+        expect(mockEmit).not.toHaveBeenCalledWith('wk:open-summary-modal', expect.anything());
+        expect(mockEmit).not.toHaveBeenCalledWith('wk:toggle-summary-panel', expect.anything());
+        // An error is surfaced to the user instead.
+        expect(mockToastError).toHaveBeenCalledWith('加载失败');
+    });
+
+    it('ignores a cancelled count query (no modal, no toast)', async () => {
+        const cancelErr = { __CANCEL__: true };
+        mockIsCancel.mockImplementation((e: unknown) => e === cancelErr);
+        mockListSummaries.mockRejectedValue(cancelErr);
+        render(<ChatSummaryStarButton channel={channel} />);
+
+        await act(async () => {
+            fireEvent.click(screen.getByTitle('智能总结'));
+            await flushPromises();
+        });
+
+        expect(mockEmit).not.toHaveBeenCalledWith('wk:open-summary-modal', expect.anything());
+        expect(mockEmit).not.toHaveBeenCalledWith('wk:toggle-summary-panel', expect.anything());
+        expect(mockToastError).not.toHaveBeenCalled();
     });
 
     it('opens summary panel when summaries exist', async () => {
