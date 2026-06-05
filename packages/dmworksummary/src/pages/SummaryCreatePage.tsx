@@ -369,7 +369,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     selected={selectedChats}
                     onConfirm={(chats) => this.setState({ selectedChats: chats, showChatSelector: false })}
                     onCancel={() => this.setState({ showChatSelector: false })}
-                    maxSelect={10}
                 />
                 <MemberSelectorModal
                     visible={showMemberSelector}

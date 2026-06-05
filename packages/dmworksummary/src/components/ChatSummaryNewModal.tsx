@@ -282,7 +282,6 @@ export default class ChatSummaryNewModal extends Component<
                         this.setState({ selectedChats: chats, showChatSelector: false })
                     }
                     onCancel={() => this.setState({ showChatSelector: false })}
-                    maxSelect={10}
                 />
             </>
         );
