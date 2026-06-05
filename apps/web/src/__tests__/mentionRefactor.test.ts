@@ -243,6 +243,10 @@ function parseMention(
         ais?: number;
         botUids?: string[];
         userUids?: string[];
+        subscriberBotUids?: string[];
+        subscriberUserUids?: string[];
+        channelInfoBotUids?: string[];
+        channelInfoUserUids?: string[];
     }
 ): Part[] {
     if (!mention) {
@@ -255,18 +259,29 @@ function parseMention(
     }
 
     if (mention.uids && Array.isArray(mention.uids) && mention.uids.length > 0) {
-        const botUids = new Set(mention.botUids ?? []);
-        const userUids = new Set(mention.userUids ?? []);
+        const subscriberBotUids = new Set(mention.subscriberBotUids ?? mention.botUids ?? []);
+        const subscriberUserUids = new Set(mention.subscriberUserUids ?? mention.userUids ?? []);
+        const channelInfoBotUids = new Set(mention.channelInfoBotUids ?? mention.botUids ?? []);
+        const channelInfoUserUids = new Set(mention.channelInfoUserUids ?? mention.userUids ?? []);
         const legacyUids = mention.ais
             ? (() => {
                 let trailingBotCount = 0;
                 for (let idx = mention.uids!.length - 1; idx >= 0; idx--) {
                     const uid = mention.uids![idx];
-                    if (botUids.has(uid)) {
+                    const state = subscriberBotUids.has(uid)
+                        ? 'bot'
+                        : subscriberUserUids.has(uid)
+                            ? 'user'
+                            : channelInfoBotUids.has(uid)
+                                ? 'bot'
+                                : channelInfoUserUids.has(uid)
+                                    ? 'user'
+                                    : 'unknown';
+                    if (state === 'bot') {
                         trailingBotCount++;
                         continue;
                     }
-                    if (userUids.has(uid)) {
+                    if (state === 'user') {
                         return mention.uids!.slice(0, mention.uids!.length - trailingBotCount);
                     }
                     return [];
@@ -720,11 +735,26 @@ describe('parseMention dispatcher (v2 priority + v1 fallback)', () => {
         ]);
     });
 
+    it('should fallback from partial subscriber metadata to channelInfo for each trailing bot', () => {
+        const parts = parseMention('@Alice @所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['uid_alice', 'bot_a', 'bot_b'],
+            subscriberBotUids: ['bot_b'],
+            channelInfoBotUids: ['bot_a', 'bot_b'],
+            channelInfoUserUids: ['uid_alice'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.mention, '@Alice', { uid: 'uid_alice' }),
+            new Part(PartType.text, ' @所有AI 测试 @ops'),
+        ]);
+    });
+
     it('should fail closed when a trailing all-ai uid cannot be classified', () => {
         const parts = parseMention('@Alice @所有AI 测试 @ops', {
             ais: 1,
             uids: ['uid_alice', 'bot_a', 'bot_b'],
-            botUids: ['bot_b'],
+            subscriberBotUids: ['bot_b'],
             userUids: ['uid_alice'],
         });
 
