@@ -1,24 +1,28 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockRequestUse, mockResponseUse } = vi.hoisted(() => ({
-  mockRequestUse: vi.fn(),
-  mockResponseUse: vi.fn(),
+const { mockGet, mockPost, mockRequestUse, mockResponseUse } = vi.hoisted(() => ({
+    mockGet: vi.fn(),
+    mockPost: vi.fn(),
+    mockRequestUse: vi.fn(),
+    mockResponseUse: vi.fn(),
 }));
 
 vi.mock('axios', () => ({
-  default: {
-    create: () => ({
-      get: vi.fn(),
-      post: vi.fn(),
-      put: vi.fn(),
-      delete: vi.fn(),
-      interceptors: {
-        request: { use: mockRequestUse },
-        response: { use: mockResponseUse },
-      },
-    }),
-  },
+    default: {
+        create: () => ({
+            get: mockGet,
+            post: mockPost,
+            put: vi.fn(),
+            delete: vi.fn(),
+            interceptors: {
+                request: { use: mockRequestUse },
+                response: { use: mockResponseUse },
+            },
+        }),
+    },
 }));
+
+import { getTopicTemplates, getTemplates } from '../summaryApi';
 
 describe('summaryApi interceptors', () => {
   it('injects language, token, and space headers', async () => {
@@ -34,4 +38,101 @@ describe('summaryApi interceptors', () => {
     expect(result.headers['token']).toBe('test-token-abc');
     expect(result.headers['X-Space-Id']).toBe('space-123');
   });
+});
+
+describe('summaryApi', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    describe('getTopicTemplates', () => {
+        it('unwraps {templates: [...]} correctly', async () => {
+            const templates = [
+                { id: 'project_progress', label: '汇总项目进展', icon: 'FileText', description: 'desc', type: 'parameterized', pattern: '总结 {project_name} 的项目进展', placeholders: [{ key: 'project_name', label: '输入项目名称', position: [3, 9] }] },
+                { id: 'weekly_report', label: '总结团队周报', icon: 'Calendar', description: 'desc2', type: 'fixed', pattern: '总结每周的工作周报' },
+            ];
+            mockGet.mockResolvedValue({ data: { data: { templates } } });
+
+            const result = await getTopicTemplates();
+
+            expect(result).toEqual(templates);
+        });
+
+        it('returns empty array when templates is missing', async () => {
+            mockGet.mockResolvedValue({ data: { data: {} } });
+
+            const result = await getTopicTemplates();
+
+            expect(result).toEqual([]);
+        });
+
+        it('returns empty array when data is null', async () => {
+            mockGet.mockResolvedValue({ data: { data: null } });
+
+            const result = await getTopicTemplates();
+
+            expect(result).toEqual([]);
+        });
+    });
+
+    describe('getTemplates', () => {
+        it('maps TopicTemplate fields to SummaryTemplate format', async () => {
+            const templates = [
+                { id: 'project_progress', label: '汇总项目进展', icon: 'FileText', description: '与团队一起总结', type: 'parameterized', pattern: '总结 {project_name} 的项目进展' },
+                { id: 'weekly_report', label: '总结团队周报', icon: 'Calendar', description: '总结每周工作', type: 'fixed', pattern: '总结每周的工作周报' },
+            ];
+            mockGet.mockResolvedValue({ data: { data: { templates } } });
+
+            const result = await getTemplates();
+
+            expect(result).toEqual([
+                { template_id: 'project_progress', name: '汇总项目进展', description: '与团队一起总结', default_mode: 1, default_time_range_type: 1 },
+                { template_id: 'weekly_report', name: '总结团队周报', description: '总结每周工作', default_mode: 1, default_time_range_type: 1 },
+            ]);
+        });
+
+        it('returns empty array when templates is missing', async () => {
+            mockGet.mockResolvedValue({ data: { data: {} } });
+
+            const result = await getTemplates();
+
+            expect(result).toEqual([]);
+        });
+    });
+
+    describe('extractErrorMessage', () => {
+        it('reads response.data.message from backend envelope', async () => {
+            mockGet.mockRejectedValue({
+                response: { data: { message: 'Insufficient permissions' } },
+            });
+
+            await expect(getTopicTemplates()).rejects.toThrow('Insufficient permissions');
+        });
+
+        it('falls back to err.message when response.data.message is absent', async () => {
+            mockGet.mockRejectedValue(new Error('Network Error'));
+
+            await expect(getTopicTemplates()).rejects.toThrow('Network Error');
+        });
+
+        it('falls back to "Request failed" for non-Error rejections', async () => {
+            mockGet.mockRejectedValue('string error');
+
+            await expect(getTopicTemplates()).rejects.toThrow('Request failed');
+        });
+
+        it('truncates long error messages to 200 chars', async () => {
+            const longMsg = 'x'.repeat(300);
+            mockGet.mockRejectedValue({
+                response: { data: { message: longMsg } },
+            });
+
+            try {
+                await getTopicTemplates();
+            } catch (err: any) {
+                expect(err.message).toHaveLength(201);
+                expect(err.message.endsWith('…')).toBe(true);
+            }
+        });
+    });
 });

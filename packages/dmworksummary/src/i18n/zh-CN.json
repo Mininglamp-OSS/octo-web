@@ -4,8 +4,10 @@
     "cancel": "取消",
     "confirm": "确定",
     "createFailed": "创建失败",
+    "createFailedRetry": "创建失败，请稍后重试",
     "deleteFailed": "删除失败",
     "edit": "编辑",
+    "loading": "加载中...",
     "loadingFailed": "加载失败",
     "operationFailed": "操作失败",
     "retry": "重试",
@@ -126,15 +128,48 @@
     "title": "智能总结",
     "desc": "邀请同事一起总结信息，并根据聊天等内容自动总结",
     "topicPlaceholder": "输入你想总结的主题，例如：总结本周项目进展、整理客户反馈要点...",
+    "topicPlaceholderInChat": "输入聊天内你想总结的主题",
+    "templatesTitle": "试试总结",
+    "submitting": "总结中...",
     "scheduleFailed": "总结已创建，但定时更新配置失败",
     "success": "总结任务已创建",
     "selectChat": "选择聊天",
     "selectedChats": "已选 {{count}} 个聊天",
     "start": "开始总结",
-    "templatesTitle": "试试这些总结模板",
     "scheduleDaily": "按天 {{time}}",
     "scheduleWeekly": "每{{day}} {{time}}",
     "scheduleMonthly": "每月{{day}}日 {{time}}"
+  },
+  "chatSummary": {
+    "panelTitle": "聊天内的智能总结",
+    "createNew": "新建总结",
+    "back": "返回",
+    "starTooltip": "智能总结",
+    "creatorWithSources": "{{name}} 发起 · {{count}} 个来源"
+  },
+  "templates": {
+    "project_progress": {
+      "label": "汇总项目进展",
+      "description": "与团队成员一起总结进展",
+      "pattern": "总结 {project_name} 的项目进展",
+      "placeholder": "输入项目名称"
+    },
+    "task_tracking": {
+      "label": "跟踪任务进度",
+      "description": "邀请同事汇总任务完成情况",
+      "pattern": "总结 {task_name} 的完成情况",
+      "placeholder": "输入任务名称"
+    },
+    "weekly_report": {
+      "label": "总结团队周报",
+      "description": "总结团队成员每周的工作",
+      "pattern": "总结每周的工作周报"
+    },
+    "chat_content": {
+      "label": "总结聊天内容",
+      "description": "总结指定聊天中的事情进展",
+      "pattern": "总结本群中的关键内容"
+    }
   },
   "chatSelector": {
     "title": "选择聊天",

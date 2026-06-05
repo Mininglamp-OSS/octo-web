@@ -126,6 +126,8 @@ export interface SummaryListItem {
     participants?: Participant[];
     total_msg_count: number;
     creator_name?: string;
+    origin_channel_id: string;
+    origin_channel_type: number;
     created_at: string;
     completed_at: string | null;
 }
@@ -145,6 +147,8 @@ export interface SummaryDetail {
     result: SummaryResult | null;
     error_message: string | null;
     schedule_id?: number;
+    origin_channel_id: string;
+    origin_channel_type: number;
     created_at: string;
     updated_at: string;
     result_id?: number;
@@ -158,12 +162,14 @@ export interface SummaryDetail {
 /** 创建请求 */
 export interface CreateSummaryParams {
     topic: string;
-    title: string;
+    title?: string;
     summary_mode?: SummaryModeType;
     time_range?: TimeRange;
     sources?: SourceItem[];
     participants?: { user_id: string }[];
     confirm_timeout_hours?: number;
+    origin_channel_id?: string;
+    origin_channel_type?: number;
 }
 
 /** 列表查询参数 */
@@ -178,14 +184,13 @@ export interface ListSummariesParams {
     created_before?: string;
     trigger_type?: number;
     keyword?: string;
+    origin_channel_id?: string;
 }
 
 /** 列表响应 */
 export interface ListSummariesResponse {
     items: SummaryListItem[];
     total: number;
-    page: number;
-    page_size: number;
 }
 
 /** 定时配置 */
@@ -281,4 +286,43 @@ export interface ScheduleConfig {
     dayOfWeek?: number;   // 1=Mon, 2=Tue, ..., 7=Sun (ISO weekday)
     dayOfMonth?: number;  // 1..28
     time: string;         // "HH:MM"
+}
+
+/** 主题模板占位符 */
+export interface TopicTemplatePlaceholder {
+    key: string;
+    label: string;
+    position?: [number, number];
+}
+
+/** 主题模板 */
+export interface TopicTemplate {
+    id: string;
+    label: string;
+    icon: string;
+    description: string;
+    type: 'fixed' | 'parameterized';
+    pattern: string;
+    placeholders?: TopicTemplatePlaceholder[];
+}
+
+/** 前端兜底主题模板占位符（存 i18n key，渲染期解析为明文） */
+export interface LocalTopicTemplatePlaceholder {
+    key: string;
+    labelKey: string;
+    position?: [number, number];
+}
+
+/**
+ * 前端离线兜底模板：字段存 i18n key 而非明文，进组件后由 resolveTemplate
+ * 在 render() 期用当前 locale 解析为明文 TopicTemplate，保证切语言即时刷新。
+ */
+export interface LocalTopicTemplate {
+    id: string;
+    icon: string;
+    type: 'fixed' | 'parameterized';
+    labelKey: string;
+    descriptionKey: string;
+    patternKey: string;
+    placeholders?: LocalTopicTemplatePlaceholder[];
 }

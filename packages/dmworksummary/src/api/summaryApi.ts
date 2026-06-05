@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 import { WKApp, buildAcceptLanguage } from '@octo/base';
 import type {
     ApiResponse,
@@ -18,8 +18,10 @@ import type {
     SourceItem,
     SummaryDetail,
     SummaryTemplate,
+    TopicTemplate,
     UpdateScheduleParams,
 } from '../types/summary';
+import { SummaryMode } from '../types/summary';
 
 const summaryAxios = axios.create({ baseURL: '' });
 
@@ -50,16 +52,16 @@ summaryAxios.interceptors.response.use(
 const BASE = '/summary/api/v1';
 
 function extractErrorMessage(err: unknown): string {
-    const axiosErr = err as { response?: { data?: { error?: { message?: string } } } };
-    const msg = axiosErr?.response?.data?.error?.message;
+    const axiosErr = err as { response?: { data?: { message?: string } } };
+    const msg = axiosErr?.response?.data?.message;
     const raw = msg || (err instanceof Error ? err.message : 'Request failed');
     return raw.length > 200 ? raw.slice(0, 200) + '…' : raw;
 }
 
 // Backend wraps responses in {code, message, data} envelope — unwrap .data
-async function get<T>(path: string, params?: Record<string, unknown>): Promise<T> {
+async function get<T>(path: string, params?: Record<string, unknown>, config?: AxiosRequestConfig): Promise<T> {
     try {
-        const resp = await summaryAxios.get(`${BASE}${path}`, { params });
+        const resp = await summaryAxios.get(`${BASE}${path}`, { params, ...config });
         return resp.data?.data ?? resp.data;
     } catch (err) {
         throw new Error(extractErrorMessage(err));
@@ -99,8 +101,11 @@ export async function createSummary(params: CreateSummaryParams): Promise<{ task
     return post('/summaries', params);
 }
 
-export async function listSummaries(params: ListSummariesParams): Promise<ListSummariesResponse> {
-    return get('/summaries', params as Record<string, unknown>);
+export async function listSummaries(
+    params: ListSummariesParams,
+    config?: { signal?: AbortSignal },
+): Promise<ListSummariesResponse> {
+    return get('/summaries', params as Record<string, unknown>, config);
 }
 
 export async function getSummaryDetail(taskId: number): Promise<SummaryDetail> {
@@ -194,8 +199,19 @@ export async function getParticipants(taskId: number): Promise<Participant[]> {
 }
 
 export async function getTemplates(): Promise<SummaryTemplate[]> {
-    const data = await get<SummaryTemplate[]>('/summary-templates');
-    return data || [];
+    const data = await get<{ templates: TopicTemplate[] }>('/summary-templates');
+    return (data?.templates || []).map(t => ({
+        template_id: t.id,
+        name: t.label,
+        description: t.description,
+        default_mode: SummaryMode.BY_GROUP,
+        default_time_range_type: 1 as const,
+    }));
+}
+
+export async function getTopicTemplates(): Promise<TopicTemplate[]> {
+    const data = await get<{ templates: TopicTemplate[] }>('/summary-templates');
+    return data?.templates || [];
 }
 
 export async function inferScope(topic: string): Promise<InferResult> {

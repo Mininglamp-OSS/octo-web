@@ -199,6 +199,10 @@ export interface ChatContentPageState {
    * 没来过子区的情况下让 ← 把用户带到子区列表会很突兀。
    */
   previewHadThreadShell: boolean;
+  /** 智能总结面板是否显示 */
+  showSummaryPanel: boolean;
+  /** 总结面板初始视图 */
+  summaryPanelView: 'history' | 'new';
 }
 export class ChatContentPage extends Component<
   ChatContentPageProps,
@@ -225,6 +229,8 @@ export class ChatContentPage extends Component<
       showMatterDetailPanel: false,
       previewReturnMatterId: null,
       previewHadThreadShell: false,
+      showSummaryPanel: false,
+      summaryPanelView: 'new',
     };
   }
 
@@ -289,6 +295,7 @@ export class ChatContentPage extends Component<
       showMatterDetailPanel: fromMatter
         ? this.state.showMatterDetailPanel
         : false,
+      showSummaryPanel: false,
       activePreviewMessageId: file.messageId || null, // 保存激活的消息 ID
       previewReturnMatterId: file.originMatterId || null,
       // 仅当预览触发前用户已经在子区面板里 (showThreadPanel 已经是 true)
@@ -351,6 +358,7 @@ export class ChatContentPage extends Component<
           activePreviewMessageId: null,
           showMatterPanel: false, // 关闭事项列表面板
           showMatterDetailPanel: false, // 关闭事项详情面板
+          showSummaryPanel: false,
         });
       }
     };
@@ -386,6 +394,7 @@ export class ChatContentPage extends Component<
           activePreviewMessageId: opening
             ? null
             : prevState.activePreviewMessageId,
+          showSummaryPanel: opening ? false : prevState.showSummaryPanel,
         };
       });
     };
@@ -412,6 +421,7 @@ export class ChatContentPage extends Component<
           activeThread: null,
           previewFile: null,
           activePreviewMessageId: null,
+          showSummaryPanel: false,
         };
       });
     };
@@ -419,6 +429,29 @@ export class ChatContentPage extends Component<
       "wk:toggle-matter-detail-panel",
       this._onToggleMatterDetailPanel,
     );
+
+    this._onToggleSummaryPanel = (data) => {
+      if (
+        data.channelId !== channel.channelID ||
+        data.channelType !== channel.channelType
+      )
+        return;
+      this.setState((prevState) => {
+        // forceOpen：始终打开（用于聊天内创建总结后展示），不做 toggle 关闭
+        const opening = data.forceOpen ? true : !prevState.showSummaryPanel;
+        return {
+          showSummaryPanel: opening,
+          summaryPanelView: opening ? data.summaryPanelView : prevState.summaryPanelView,
+          showMatterPanel: opening ? false : prevState.showMatterPanel,
+          showMatterDetailPanel: opening ? false : prevState.showMatterDetailPanel,
+          showThreadPanel: opening ? false : prevState.showThreadPanel,
+          activeThread: opening ? null : prevState.activeThread,
+          previewFile: opening ? null : prevState.previewFile,
+          activePreviewMessageId: opening ? null : prevState.activePreviewMessageId,
+        };
+      });
+    };
+    WKApp.mittBus.on("wk:toggle-summary-panel", this._onToggleSummaryPanel);
 
     // 检查是否需要自动打开子区面板（查看全部子区）
     if (WKApp.shared.pendingThreadPanel === channel.channelID) {
@@ -429,6 +462,7 @@ export class ChatContentPage extends Component<
         activePreviewMessageId: null,
         showMatterPanel: false, // 互斥
         showMatterDetailPanel: false, // 互斥
+        showSummaryPanel: false,
       });
       WKApp.shared.pendingThreadPanel = undefined;
     }
@@ -453,6 +487,7 @@ export class ChatContentPage extends Component<
         activePreviewMessageId: pending.messageId || null,
         showMatterPanel: false, // 互斥
         showMatterDetailPanel: false, // 互斥
+        showSummaryPanel: false,
       });
     }
 
@@ -489,6 +524,7 @@ export class ChatContentPage extends Component<
           activePreviewMessageId: null,
           showMatterPanel: false, // 互斥
           showMatterDetailPanel: false, // 互斥
+          showSummaryPanel: false,
         });
         return;
       }
@@ -513,6 +549,7 @@ export class ChatContentPage extends Component<
           activePreviewMessageId: pending.messageId || null,
           showMatterPanel: false, // 互斥
           showMatterDetailPanel: false, // 互斥
+          showSummaryPanel: false,
         });
         return;
       }
@@ -551,6 +588,12 @@ export class ChatContentPage extends Component<
     channelId: string;
     channelType: number;
   }) => void;
+  private _onToggleSummaryPanel?: (data: {
+    channelId: string;
+    channelType: number;
+    summaryPanelView: 'history' | 'new';
+    forceOpen?: boolean;
+  }) => void;
 
   componentWillUnmount() {
     WKApp.mittBus.off("wk:file-preview", this._onFilePreview);
@@ -568,6 +611,9 @@ export class ChatContentPage extends Component<
         "wk:toggle-matter-detail-panel",
         this._onToggleMatterDetailPanel,
       );
+    }
+    if (this._onToggleSummaryPanel) {
+      WKApp.mittBus.off("wk:toggle-summary-panel", this._onToggleSummaryPanel);
     }
     WKSDK.shared().channelManager.removeListener(this.channelInfoListener);
   }
@@ -667,6 +713,8 @@ export class ChatContentPage extends Component<
       previewFile,
       showMatterPanel,
       showMatterDetailPanel,
+      showSummaryPanel,
+      summaryPanelView,
     } = this.state;
     // 子区页面不显示讨论串按钮
     const isThreadChannel = channel.channelType === ChannelTypeCommunityTopic;
@@ -684,6 +732,7 @@ export class ChatContentPage extends Component<
             ? "wk-chat-threadpanel-open"
             : "",
           showMatterDetailPanel ? "wk-chat-matter-detail-panel-open" : "",
+          showSummaryPanel ? "wk-chat-summary-panel-open" : "",
         )}
       >
         <div
@@ -846,6 +895,7 @@ export class ChatContentPage extends Component<
                                 showThreadPanel: !isThreadListVisible,
                                 showMatterPanel: false, // 与事项列表面板互斥
                                 showMatterDetailPanel: false, // 与事项详情面板互斥
+                                showSummaryPanel: false,
                                 activeThread: null,
                                 previewFile: null, // 关闭文件预览（互斥）
                                 activePreviewMessageId: null,
@@ -911,6 +961,7 @@ export class ChatContentPage extends Component<
                       showThreadPanel: true,
                       showMatterPanel: false, // 与事项列表面板互斥
                       showMatterDetailPanel: false, // 与事项详情面板互斥
+                      showSummaryPanel: false,
                       previewFile: null, // 关闭文件预览（互斥）
                       activePreviewMessageId: null,
                       activeThread: buildThreadStub(
@@ -1059,6 +1110,15 @@ export class ChatContentPage extends Component<
           >
             {WKApp.endpoints.chatMatterDetailPanel(channel, () =>
               this.setState({ showMatterDetailPanel: false }),
+            )}
+          </div>
+        )}
+
+        {showSummaryPanel && (
+          <div className="wk-summary-panel">
+            {WKApp.endpoints.chatSummaryPanel(
+              channel,
+              () => this.setState({ showSummaryPanel: false }),
             )}
           </div>
         )}

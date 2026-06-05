@@ -27,6 +27,7 @@ export class EndpointCategory {
   static organizationalLayer = "organizationalLayer" // 组织架构弹框
   static chatMatterPanel = "chatMatterPanel" // 事项面板
   static chatMatterDetailPanel = "chatMatterDetailPanel" // 事项详情面板 (v0.7)
+  static chatSummaryPanel = "chatSummaryPanel"
 }
 
 

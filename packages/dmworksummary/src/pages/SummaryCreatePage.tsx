@@ -12,19 +12,23 @@ import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import * as api from "../api/summaryApi";
+import { getTopicTemplates } from "../api/summaryApi";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
 import MemberSelectorModal from "../components/MemberSelectorModal";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
+import TemplateCard from "../components/TemplateCard";
+import { TOPIC_TEMPLATES } from "../constants/templates";
 import type {
-    SummaryTemplate,
     CreateSummaryParams,
     ChatCandidate,
     MemberCandidate,
     ScheduleConfig,
+    TopicTemplate,
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
 import { getWeekdayName, scheduleToCron } from "../utils/summaryHelpers";
+import { resolveTemplate, computeTemplateSelection, type ResolvableTemplate } from "../utils/templateResolver";
 
 const { Text } = Typography;
 
@@ -34,8 +38,8 @@ interface SummaryCreatePageProps {
 
 interface SummaryCreatePageState {
     topic: string;
-    templates: SummaryTemplate[];
-    selectedTemplateId: string;
+    templates: ResolvableTemplate[];
+    templatePlaceholderRange: [number, number] | null;
     selectedChats: ChatCandidate[];
     selectedMembers: MemberCandidate[];
     scheduleConfig: ScheduleConfig | null;
@@ -46,13 +50,6 @@ interface SummaryCreatePageState {
     error: string | null;
 }
 
-const TEMPLATE_ICONS: Record<string, string> = {
-    project: "📋",
-    tasks: "☰",
-    weekly: "📅",
-    docs: "📄",
-};
-
 export default class SummaryCreatePage extends Component<SummaryCreatePageProps, SummaryCreatePageState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
@@ -61,8 +58,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     state: SummaryCreatePageState = {
         topic: "",
-        templates: [],
-        selectedTemplateId: "",
+        templates: TOPIC_TEMPLATES,
+        templatePlaceholderRange: null,
         selectedChats: [],
         selectedMembers: [],
         scheduleConfig: null,
@@ -74,23 +71,57 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     componentDidMount() {
-        this.loadTemplates();
+        void this.loadTemplates();
     }
 
-    async loadTemplates() {
+    private async loadTemplates() {
         try {
-            const templates = await api.getTemplates();
-            this.setState({ templates });
+            const templates = await getTopicTemplates();
+            if (templates.length > 0) {
+                this.setState({ templates });
+            }
         } catch {
-            // non-critical
+            // fallback to constants already in state
         }
     }
 
-    handleTemplateClick = (tpl: SummaryTemplate) => {
-        this.setState({
-            selectedTemplateId: tpl.template_id,
-            topic: this.state.topic || tpl.name,
+    private handleTemplateClick = (template: TopicTemplate) => {
+        const { text, range } = computeTemplateSelection(template);
+
+        if (range) {
+            const [start, end] = range;
+            this.setState({ topic: text, templatePlaceholderRange: [start, end] }, this.autoResizeTextarea);
+
+            setTimeout(() => {
+                const input = this.textareaRef.current;
+                if (!input) return;
+                input.focus();
+                input.setSelectionRange(start, end);
+            }, 0);
+        } else {
+            this.setState({ topic: text, templatePlaceholderRange: null }, this.autoResizeTextarea);
+
+            setTimeout(() => {
+                this.textareaRef.current?.focus();
+            }, 0);
+        }
+    };
+
+    private handleInputFocus = () => {
+        const { templatePlaceholderRange, topic } = this.state;
+        if (!templatePlaceholderRange) return;
+        const [start, end] = templatePlaceholderRange;
+        const newTopic = topic.substring(0, start) + topic.substring(end);
+        this.setState({ topic: newTopic, templatePlaceholderRange: null }, () => {
+            this.textareaRef.current?.setSelectionRange(start, start);
         });
+    };
+
+    autoResizeTextarea = () => {
+        const el = this.textareaRef.current;
+        if (!el) return;
+        el.style.height = "auto";
+        el.style.height = `${el.scrollHeight}px`;
     };
 
     getScheduleLabel(cfg: ScheduleConfig): string {
@@ -113,19 +144,19 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     handleVoiceTranscribed = (text: string, mode: ReplaceMode, savedRange?: SelectionRange) => {
         if (mode === "all") {
-            this.setState({ topic: text.slice(0, 1000) });
+            this.setState({ topic: text.slice(0, 1000) }, this.autoResizeTextarea);
         } else if (mode === "selection" && savedRange) {
             // Note: savedRange indices are from recording start; assumes input is read-only during recording
             this.setState((prev) => {
                 const updated = prev.topic.slice(0, savedRange.from) + text + prev.topic.slice(savedRange.to);
                 return { topic: updated.slice(0, 1000) };
-            });
+            }, this.autoResizeTextarea);
         } else {
             this.setState((prev) => {
                 const pos = savedRange?.from ?? prev.topic.length;
                 const updated = prev.topic.slice(0, pos) + text + prev.topic.slice(pos);
                 return { topic: updated.slice(0, 1000) };
-            });
+            }, this.autoResizeTextarea);
         }
     };
 
@@ -190,12 +221,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     render() {
         const {
-            topic, templates, selectedTemplateId,
+            topic,
+            templates,
             selectedChats, selectedMembers, scheduleConfig,
             showChatSelector, showMemberSelector, showScheduleConfig,
             submitting, error,
         } = this.state;
         const { t: translate } = this.context;
+        // 模板在 render() 用当前 locale 解析，切语言即时刷新（不在 state 烘焙）。
+        const resolvedTemplates = templates.map((tpl) => resolveTemplate(tpl, translate));
 
         return (
             <div className="summary-workbench">
@@ -217,9 +251,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             ref={this.textareaRef}
                             className="summary-workbench-textarea"
                             value={topic}
-                            onChange={(e) => this.setState({ topic: e.target.value.slice(0, 1000) })}
+                            onChange={(e) => {
+                                this.setState({ topic: e.target.value.slice(0, 1000), templatePlaceholderRange: null });
+                                this.autoResizeTextarea();
+                            }}
+                            onFocus={this.handleInputFocus}
                             placeholder={translate("summary.create.topicPlaceholder")}
-                            rows={4}
+                            rows={1}
                             maxLength={1000}
                         />
                         <VoiceInputButton
@@ -232,9 +270,25 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         />
                     </div>
                     {topic.length >= 1000 && (
-                        <div style={{ color: "var(--semi-color-warning)", fontSize: 12, marginTop: 4, padding: "0 12px 8px" }}>
+                        <div style={{ color: "var(--semi-color-warning)", fontSize: 12, marginTop: 4, padding: "0 16px 8px" }}>
                             {translate("summary.common.charLimitReached", { values: { count: 1000 } })}
                         </div>
+                    )}
+
+                    {/* Templates (nested inside the input panel, like the modal) */}
+                    {!topic.trim() && (
+                        <>
+                            <div className="summary-workbench-templates-label">{translate("summary.create.templatesTitle")}</div>
+                            <div className="summary-workbench-templates">
+                                {resolvedTemplates.map((tpl) => (
+                                    <TemplateCard
+                                        key={tpl.id}
+                                        template={tpl}
+                                        onClick={this.handleTemplateClick}
+                                    />
+                                ))}
+                            </div>
+                        </>
                     )}
 
                     {/* Action bar */}
@@ -307,28 +361,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     <Text type="danger" style={{ display: "block", marginTop: 8 }}>
                         {error}
                     </Text>
-                )}
-
-                {/* Template cards */}
-                {templates.length > 0 && (
-                    <div className="summary-workbench-templates">
-                        <div className="summary-workbench-templates-title">{translate("summary.create.templatesTitle")}</div>
-                        <div className="summary-workbench-template-grid">
-                            {templates.map((tpl) => (
-                                <div
-                                    key={tpl.template_id}
-                                    className={`summary-workbench-template-card${selectedTemplateId === tpl.template_id ? " selected" : ""}`}
-                                    onClick={() => this.handleTemplateClick(tpl)}
-                                >
-                                    <div className="summary-template-card-icon">
-                                        {TEMPLATE_ICONS[tpl.template_id] || "📝"}
-                                    </div>
-                                    <div className="summary-template-card-title">{tpl.name}</div>
-                                    <div className="summary-template-card-desc">{tpl.description}</div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
                 )}
 
                 {/* Modals */}

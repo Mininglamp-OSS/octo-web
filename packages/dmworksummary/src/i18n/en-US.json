@@ -4,8 +4,10 @@
     "cancel": "Cancel",
     "confirm": "OK",
     "createFailed": "Failed to create",
+    "createFailedRetry": "Failed to create. Please try again.",
     "deleteFailed": "Failed to delete",
     "edit": "Edit",
+    "loading": "Loading...",
     "loadingFailed": "Failed to load",
     "operationFailed": "Operation failed",
     "retry": "Retry",
@@ -126,15 +128,48 @@
     "title": "AI Summary",
     "desc": "Invite teammates to summarize information together, with automatic summaries from chats and related content.",
     "topicPlaceholder": "Enter a topic, for example: summarize this week's project progress, organize customer feedback...",
+    "topicPlaceholderInChat": "Enter a topic to summarize in this chat",
+    "templatesTitle": "Try summarizing",
+    "submitting": "Summarizing...",
     "scheduleFailed": "Summary was created, but scheduled updates failed",
     "success": "Summary task created",
     "selectChat": "Select chats",
     "selectedChats": "{{count}} chats selected",
     "start": "Start summary",
-    "templatesTitle": "Try these summary templates",
     "scheduleDaily": "Daily {{time}}",
     "scheduleWeekly": "Every {{day}} {{time}}",
     "scheduleMonthly": "Monthly on day {{day}} {{time}}"
+  },
+  "chatSummary": {
+    "panelTitle": "Summaries in this chat",
+    "createNew": "New summary",
+    "back": "Back",
+    "starTooltip": "AI Summary",
+    "creatorWithSources": "Created by {{name}} · {{count}} sources"
+  },
+  "templates": {
+    "project_progress": {
+      "label": "Summarize project progress",
+      "description": "Summarize progress with your team",
+      "pattern": "Summarize the progress of {project_name}",
+      "placeholder": "Enter project name"
+    },
+    "task_tracking": {
+      "label": "Track task progress",
+      "description": "Invite colleagues to summarize task status",
+      "pattern": "Summarize the status of {task_name}",
+      "placeholder": "Enter task name"
+    },
+    "weekly_report": {
+      "label": "Summarize team weekly report",
+      "description": "Summarize the team's weekly work",
+      "pattern": "Summarize the weekly work report"
+    },
+    "chat_content": {
+      "label": "Summarize chat content",
+      "description": "Summarize what's happening in a chat",
+      "pattern": "Summarize key content in this chat"
+    }
   },
   "chatSelector": {
     "title": "Select chats",
