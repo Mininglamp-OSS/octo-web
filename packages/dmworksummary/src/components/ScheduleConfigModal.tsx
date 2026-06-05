@@ -9,6 +9,12 @@ interface Props {
     value: ScheduleConfig;
     onConfirm: (config: ScheduleConfig) => void;
     onCancel: () => void;
+    /** 是否已存在（且启用的）定时：为 true 时 footer 左侧展示「关闭定时」按钮 */
+    hasExisting?: boolean;
+    /** 点击「关闭定时」的回调（停用，可恢复） */
+    onDisable?: () => void;
+    /** 「关闭定时」请求中的 loading 态 */
+    disabling?: boolean;
 }
 
 interface State {
@@ -115,9 +121,24 @@ export default class ScheduleConfigModal extends Component<Props, State> {
                 onCancel={onCancel}
                 width={460}
                 footer={
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                        <Button onClick={onCancel}>{t("summary.common.cancel")}</Button>
-                        <Button theme="solid" onClick={this.handleConfirm}>{t("summary.common.save")}</Button>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <div>
+                            {this.props.hasExisting && this.props.onDisable && (
+                                <Button
+                                    type="danger"
+                                    theme="borderless"
+                                    loading={this.props.disabling}
+                                    disabled={this.props.disabling}
+                                    onClick={this.props.onDisable}
+                                >
+                                    {t("summary.detail.disableSchedule")}
+                                </Button>
+                            )}
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                            <Button onClick={onCancel}>{t("summary.common.cancel")}</Button>
+                            <Button theme="solid" onClick={this.handleConfirm}>{t("summary.common.save")}</Button>
+                        </div>
                     </div>
                 }
             >

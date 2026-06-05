@@ -153,6 +153,11 @@
     },
     "schedule": {
         "pageTitle": "Scheduled summaries",
+        "summary": {
+            "everyNDays": "Every {{days}} days",
+            "everyNWeeks": "Every {{weeks}} weeks",
+            "everyNMonths": "Every {{months}} months"
+        },
         "new": "New",
         "empty": "No scheduled summaries",
         "createFirst": "Create first scheduled task",
@@ -234,6 +239,12 @@
         "scheduleCreated": "Scheduled update created",
         "setSchedule": "Set schedule",
         "editSchedule": "Edit schedule",
+        "disableSchedule": "Turn off schedule",
+        "scheduleDisabled": "Schedule turned off",
+        "scheduleDisabledHint": "Schedule is off",
+        "scheduleActiveLabel": "Schedule on",
+        "schedulePrefix": "Schedule: ",
+        "scheduleNextRun": "next {{time}}",
         "forwardFailed": "Failed to forward",
         "partialForwardFailed": "Failed to forward to some channels ({{failed}}/{{total}})",
         "forwarded": "Forwarded",

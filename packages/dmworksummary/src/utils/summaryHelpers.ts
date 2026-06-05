@@ -7,6 +7,7 @@ import {
     type SummaryModeType,
     type SourceTypeValue,
     type ScheduleConfig,
+    type ScheduleItem,
 } from "../types/summary";
 import { t } from "@octo/base";
 
@@ -318,4 +319,100 @@ export function describeCron(expr: string): string {
     const dayStr = dowMap[dow] || t("summary.cron.weekdayFallback", { values: { day: dow } });
     const timeStr = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
     return `${dayStr} ${timeStr}`;
+}
+
+/**
+ * 把后端返回的时间字符串格式化为「Asia/Shanghai」本地可读时间（YYYY-MM-DD HH:MM）。
+ * 后端 next_run_at 使用上海时区，这里固定按上海时区展示，避免浏览器时区漂移。
+ * 解析失败时原样返回。
+ */
+export function formatNextRunAt(value?: string | null): string {
+    if (!value) return "";
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+    try {
+        const parts = new Intl.DateTimeFormat("zh-CN", {
+            timeZone: "Asia/Shanghai",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+        }).formatToParts(d);
+        const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+        const hour = get("hour") === "24" ? "00" : get("hour");
+        return `${get("year")}-${get("month")}-${get("day")} ${hour}:${get("minute")}`;
+    } catch {
+        return value;
+    }
+}
+
+/**
+ * 纯函数：把 ScheduleItem 转成一行人类可读的中文定时描述。
+ * 覆盖三种周期：
+ *  - interval_months：按月（可附「N 号」）
+ *  - interval_days：按天 / 按周（7 的倍数视为周，可附「周几」）
+ *  - cron_expr：遗留，复用 describeCron 简单展示
+ * 末尾附运行时刻（run_time）与下次运行时间（next_run_at，按上海时区）。
+ * is_active=false 时返回「定时已关闭」。
+ */
+export function formatScheduleSummary(item: ScheduleItem): string {
+    if (!item) return "";
+    if (item.is_active === false) {
+        return t("summary.detail.scheduleDisabledHint");
+    }
+
+    const segments: string[] = [];
+    const runTime = item.run_time || "";
+
+    if (item.interval_months && item.interval_months > 0) {
+        // 每 N 个月
+        segments.push(
+            item.interval_months === 1
+                ? t("summary.cron.everyMonth")
+                : t("summary.schedule.summary.everyNMonths", { values: { months: item.interval_months } }),
+        );
+        if (item.day_of_month && item.day_of_month > 0) {
+            segments.push(t("summary.cron.dayOfMonth", { values: { day: item.day_of_month } }));
+        }
+    } else if (item.interval_days && item.interval_days > 0) {
+        if (item.interval_days % DAYS_PER_WEEK === 0) {
+            const weeks = item.interval_days / DAYS_PER_WEEK;
+            segments.push(
+                weeks === 1
+                    ? t("summary.cron.everyWeek")
+                    : t("summary.schedule.summary.everyNWeeks", { values: { weeks } }),
+            );
+            if (item.day_of_week && item.day_of_week >= 1 && item.day_of_week <= 7) {
+                const key = isoWeekdayKeys[item.day_of_week];
+                if (key) {
+                    segments.push(t(`summary.cron.weekdayNames.${key}`));
+                }
+            }
+        } else {
+            segments.push(
+                item.interval_days === 1
+                    ? t("summary.cron.everyDay")
+                    : t("summary.schedule.summary.everyNDays", { values: { days: item.interval_days } }),
+            );
+        }
+    } else if (item.cron_expr) {
+        segments.push(describeCron(item.cron_expr));
+    }
+
+    if (runTime) {
+        segments.push(runTime);
+    }
+
+    let body = segments.filter(Boolean).join(" ");
+    if (!body) {
+        // 兜底：无法识别周期
+        body = t("summary.detail.scheduleActiveLabel");
+    }
+
+    const next = formatNextRunAt(item.next_run_at);
+    const nextPart = next ? ` · ${t("summary.detail.scheduleNextRun", { values: { time: next } })}` : "";
+
+    return `${t("summary.detail.schedulePrefix")}${body}${nextPart}`;
 }

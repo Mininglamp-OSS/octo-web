@@ -153,6 +153,11 @@
     },
     "schedule": {
         "pageTitle": "定时总结配置",
+        "summary": {
+            "everyNDays": "每 {{days}} 天",
+            "everyNWeeks": "每 {{weeks}} 周",
+            "everyNMonths": "每 {{months}} 个月"
+        },
         "new": "新建",
         "empty": "暂无定时配置",
         "createFirst": "创建第一个定时任务",
@@ -234,6 +239,12 @@
         "scheduleCreated": "定时更新已创建",
         "setSchedule": "设置定时更新",
         "editSchedule": "修改定时更新",
+        "disableSchedule": "关闭定时",
+        "scheduleDisabled": "定时已关闭",
+        "scheduleDisabledHint": "定时已关闭",
+        "scheduleActiveLabel": "已开启定时",
+        "schedulePrefix": "定时：",
+        "scheduleNextRun": "下次 {{time}}",
         "forwardFailed": "转发失败",
         "partialForwardFailed": "部分频道转发失败 ({{failed}}/{{total}})",
         "forwarded": "已转发",

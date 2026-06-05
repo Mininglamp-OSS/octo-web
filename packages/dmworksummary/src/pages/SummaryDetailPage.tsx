@@ -29,6 +29,7 @@ import {
     canRegenerate,
     scheduleItemToConfig,
     scheduleToParams,
+    formatScheduleSummary,
 } from "../utils/summaryHelpers";
 import SummaryContent from "../components/SummaryContent";
 import CitationText from "../components/CitationText";
@@ -52,6 +53,7 @@ interface SummaryDetailPageState {
     membersLoading: boolean;
     scheduleLoading: boolean;
     scheduleItem: ScheduleItem | null;
+    scheduleDisabling: boolean;
     showScheduleConfig: boolean;
     scheduleConfig: ScheduleConfig | null;
     lastKnownStatus?: number;
@@ -77,6 +79,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         membersLoading: false,
         scheduleLoading: false,
         scheduleItem: null,
+        scheduleDisabling: false,
         showScheduleConfig: false,
         scheduleConfig: null,
         expandedReports: {},
@@ -449,6 +452,28 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     };
 
+    // 任务1：「关闭定时」——停用（可恢复），不走 delete。
+    // 调 toggleSchedule(..., false) 把 is_active 置 0，成功后刷新详情页定时状态。
+    handleScheduleDisable = async () => {
+        const { scheduleItem } = this.state;
+        if (!scheduleItem) return;
+        this.setState({ scheduleDisabling: true });
+        try {
+            const updated = await api.toggleSchedule(scheduleItem.schedule_id, false);
+            Toast.success(t("summary.detail.scheduleDisabled"));
+            // 任务3：回显一致——停用后本地把 is_active 置 false，
+            // 使 hasSchedule / 描述行不再把它当作“有效定时”。
+            this.setState({
+                scheduleItem: { ...scheduleItem, ...(updated || {}), is_active: false },
+                showScheduleConfig: false,
+                scheduleDisabling: false,
+            });
+        } catch (err: any) {
+            this.setState({ scheduleDisabling: false });
+            Toast.error(err.message || t("summary.common.operationFailed"));
+        }
+    };
+
     handleForwardToChat = () => {
         const { detail } = this.state;
         if (!detail?.result?.content?.trim()) return;
@@ -809,7 +834,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { t } = this.context;
         if (!detail?.permissions?.can_edit || isEditing) return null;
 
-        const hasSchedule = !!scheduleItem || !!(detail.schedule_id && detail.schedule_id > 0);
+        // 任务3：hasSchedule 仅在存在且 is_active 时为 true。
+        // 停用后文案回到「设置定时更新」。
+        const hasActiveSchedule = !!scheduleItem && scheduleItem.is_active !== false;
+        const hasSchedule =
+            hasActiveSchedule ||
+            (!scheduleItem && !!(detail.schedule_id && detail.schedule_id > 0));
 
         return (
             <Button
@@ -822,6 +852,54 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             >
                 {t(hasSchedule ? "summary.detail.editSchedule" : "summary.detail.setSchedule")}
             </Button>
+        );
+    }
+
+    // 任务2：详情页直观展示当前定时（人类可读）。
+    renderScheduleSummary() {
+        const { detail, scheduleItem, isEditing } = this.state;
+        const { t } = this.context;
+        if (!detail?.permissions?.can_edit || isEditing) return null;
+        if (!scheduleItem) return null;
+
+        const inactive = scheduleItem.is_active === false;
+        if (inactive) {
+            // 已停用：灰色提示，不当作有效定时
+            return (
+                <div
+                    className="summary-detail-schedule-summary summary-detail-schedule-summary--inactive"
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 12,
+                        color: "var(--semi-color-text-2)",
+                        marginTop: 4,
+                    }}
+                >
+                    <IconClock size="small" />
+                    <span>{t("summary.detail.scheduleDisabledHint")}</span>
+                </div>
+            );
+        }
+
+        const text = formatScheduleSummary(scheduleItem);
+        if (!text) return null;
+        return (
+            <div
+                className="summary-detail-schedule-summary"
+                style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 12,
+                    color: "var(--semi-color-text-1)",
+                    marginTop: 4,
+                }}
+            >
+                <IconClock size="small" style={{ color: "var(--semi-color-primary)" }} />
+                <span>{text}</span>
+            </div>
         );
     }
 
@@ -889,6 +967,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         )}
                     </div>
                 </div>
+                {this.renderScheduleSummary()}
             </div>
         );
     }
@@ -1020,6 +1099,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     value={scheduleConfig || { unit: "week", every: 1, time: "09:00" }}
                     onConfirm={this.handleScheduleSave}
                     onCancel={() => this.setState({ showScheduleConfig: false })}
+                    hasExisting={!!this.state.scheduleItem && this.state.scheduleItem.is_active !== false}
+                    onDisable={this.handleScheduleDisable}
+                    disabling={this.state.scheduleDisabling}
                 />
                 <MatterPickerModal
                     visible={this.state.showMatterPicker}
