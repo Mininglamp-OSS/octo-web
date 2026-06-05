@@ -977,6 +977,10 @@ export default class WKApp extends ProviderListener {
   private clearLocalLoginState() {
     WKApp.loginInfo.logout();
     clearAuthStorage();
+    // Issue #256: clear the cached numeric device id so a same-tab relogin
+    // or user-switch always re-traverses the first-login flow (correct
+    // numeric id for the new auth session).
+    clearCachedNumericDeviceId();
     this.currentSpaceId = "";
     this.channelSpaceMap.clear();
     this.channelMySourceSpaceMap.clear();
