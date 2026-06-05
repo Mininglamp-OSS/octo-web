@@ -10,6 +10,7 @@ import { resolveTemplate, computeTemplateSelection, type ResolvableTemplate } fr
 import * as summaryApi from '../api/summaryApi';
 import { getTopicTemplates } from '../api/summaryApi';
 import { TOPIC_TEMPLATES } from '../constants/templates';
+import { MAX_CHAT_SELECT } from '../constants/limits';
 import TemplateCard from './TemplateCard';
 import ChatSelectorModal from './ChatSelectorModal';
 import './ChatSummaryNewModal.css';
@@ -278,6 +279,7 @@ export default class ChatSummaryNewModal extends Component<
                 <ChatSelectorModal
                     visible={showChatSelector}
                     selected={selectedChats}
+                    maxSelect={MAX_CHAT_SELECT}
                     onConfirm={(chats) =>
                         this.setState({ selectedChats: chats, showChatSelector: false })
                     }

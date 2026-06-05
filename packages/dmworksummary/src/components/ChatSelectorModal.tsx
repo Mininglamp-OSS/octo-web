@@ -5,6 +5,7 @@ import { I18nContext } from "@octo/base";
 import type { ChatCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
 import AiBadge from "@octo/base/src/Components/AiBadge";
+import { MAX_CHAT_SELECT } from "../constants/limits";
 
 interface Props {
     visible: boolean;
@@ -21,8 +22,6 @@ interface State {
     loading: boolean;
     localSelected: ChatCandidate[];
 }
-
-const MAX_SELECT = 30;
 
 interface DisplayEntry {
     item: ChatCandidate;
@@ -68,7 +67,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     handleToggle = (item: ChatCandidate) => {
         const { localSelected } = this.state;
-        const maxSelect = this.props.maxSelect ?? MAX_SELECT;
+        const maxSelect = this.props.maxSelect ?? MAX_CHAT_SELECT;
         const existing = localSelected.find((s) => s.chat_id === item.chat_id);
         if (existing) {
             this.setState({ localSelected: localSelected.filter((s) => s.chat_id !== item.chat_id) });
@@ -167,7 +166,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     renderItem = (entry: DisplayEntry) => {
         const { localSelected } = this.state;
-        const maxSelect = this.props.maxSelect ?? MAX_SELECT;
+        const maxSelect = this.props.maxSelect ?? MAX_CHAT_SELECT;
         const { item, indent } = entry;
         const { t } = this.context;
         const checked = !!localSelected.find((s) => s.chat_id === item.chat_id);
@@ -214,7 +213,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
     };
 
     render() {
-        const { visible, onCancel, maxSelect = MAX_SELECT } = this.props;
+        const { visible, onCancel, maxSelect = MAX_CHAT_SELECT } = this.props;
         const { keyword, activeTab, loading, localSelected } = this.state;
         const { t } = this.context;
         const displayList = this.getDisplayList();

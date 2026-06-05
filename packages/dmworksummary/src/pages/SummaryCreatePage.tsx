@@ -19,6 +19,7 @@ import MemberSelectorModal from "../components/MemberSelectorModal";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import TemplateCard from "../components/TemplateCard";
 import { TOPIC_TEMPLATES } from "../constants/templates";
+import { MAX_CHAT_SELECT } from "../constants/limits";
 import type {
     CreateSummaryParams,
     ChatCandidate,
@@ -367,6 +368,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 <ChatSelectorModal
                     visible={showChatSelector}
                     selected={selectedChats}
+                    maxSelect={MAX_CHAT_SELECT}
                     onConfirm={(chats) => this.setState({ selectedChats: chats, showChatSelector: false })}
                     onCancel={() => this.setState({ showChatSelector: false })}
                 />
