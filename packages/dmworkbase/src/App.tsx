@@ -907,7 +907,19 @@ export default class WKApp extends ProviderListener {
     // a real page reload resets the flag.
     if (this.loggingOut) return;
     this.loggingOut = true;
-    this.clearLocalLoginState();
+    // Plan F Task 9 hardening: clearLocalLoginState performs raw
+    // localStorage/sessionStorage writes (via StorageService) that throw in
+    // Safari private mode, on QuotaExceededError, or under SecurityError.
+    // Without the try/finally, a throw here would leave loggingOut=true
+    // forever AND skip the reload — every subsequent logout attempt
+    // short-circuits and the user is permanently wedged. The reload must
+    // happen regardless so the next bootstrap can detect the broken auth
+    // state and route to login.
+    try {
+      this.clearLocalLoginState();
+    } catch (e) {
+      console.warn("[WKApp.logout] clearLocalLoginState threw, reloading anyway", e);
+    }
     window.location.reload();
   }
 
