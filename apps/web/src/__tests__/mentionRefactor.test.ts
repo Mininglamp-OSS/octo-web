@@ -236,7 +236,14 @@ function parseMentionLegacy(text: string, uids: string[]): Part[] {
 
 function parseMention(
     text: string,
-    mention?: { uids?: string[]; entities?: any[]; all?: boolean; ais?: number; botUids?: string[] }
+    mention?: {
+        uids?: string[];
+        entities?: any[];
+        all?: boolean;
+        ais?: number;
+        botUids?: string[];
+        userUids?: string[];
+    }
 ): Part[] {
     if (!mention) {
         return [new Part(PartType.text, text)];
@@ -248,24 +255,30 @@ function parseMention(
     }
 
     if (mention.uids && Array.isArray(mention.uids) && mention.uids.length > 0) {
-        let trailingBotCount = 0;
         const botUids = new Set(mention.botUids ?? []);
-        for (let idx = mention.uids.length - 1; idx >= 0; idx--) {
-            if (botUids.has(mention.uids[idx])) {
-                trailingBotCount++;
-                continue;
-            }
-            break;
-        }
+        const userUids = new Set(mention.userUids ?? []);
         const legacyUids = mention.ais
-            ? mention.uids.slice(0, trailingBotCount > 0 ? Math.max(0, mention.uids.length - trailingBotCount) : 0)
+            ? (() => {
+                let trailingBotCount = 0;
+                for (let idx = mention.uids!.length - 1; idx >= 0; idx--) {
+                    const uid = mention.uids![idx];
+                    if (botUids.has(uid)) {
+                        trailingBotCount++;
+                        continue;
+                    }
+                    if (userUids.has(uid)) {
+                        return mention.uids!.slice(0, mention.uids!.length - trailingBotCount);
+                    }
+                    return [];
+                }
+                return [];
+            })()
             : mention.uids;
         return parseMentionLegacy(text, legacyUids);
     }
 
     return [new Part(PartType.text, text)];
 }
-
 // ═════════════════════════════════════════════════════════════════
 // Tests
 // ═════════════════════════════════════════════════════════════════
@@ -684,11 +697,39 @@ describe('parseMention dispatcher (v2 priority + v1 fallback)', () => {
             ais: 1,
             uids: ['uid_alice', 'bot_a'],
             botUids: ['bot_a'],
+            userUids: ['uid_alice'],
         });
 
         expect(parts).toEqual([
             new Part(PartType.mention, '@Alice', { uid: 'uid_alice' }),
             new Part(PartType.text, ' @所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should check each trailing routing uid before keeping legacy mentions', () => {
+        const parts = parseMention('@Alice @所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['uid_alice', 'bot_a', 'bot_b'],
+            botUids: ['bot_a', 'bot_b'],
+            userUids: ['uid_alice'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.mention, '@Alice', { uid: 'uid_alice' }),
+            new Part(PartType.text, ' @所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should fail closed when a trailing all-ai uid cannot be classified', () => {
+        const parts = parseMention('@Alice @所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['uid_alice', 'bot_a', 'bot_b'],
+            botUids: ['bot_b'],
+            userUids: ['uid_alice'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.text, '@Alice @所有AI 测试 @ops'),
         ]);
     });
 

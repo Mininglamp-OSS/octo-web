@@ -739,7 +739,9 @@ export class Conversation
    *   data:/file: 注入）。
    * - plain 由 createRichTextContent 本地占位，server #232 Finalize 重算覆盖。
    * - mention：合并各文本块的 all/uids/humans/ais 到顶层，保证群里 @人/@所有AI 通知不丢
-   *   （vm.sendMessage 读 content.mention.humans/ais 注入）。
+   *   （vm.sendMessage 读 content.mention.humans/ais 注入）。这里不合并
+   *   entities：富文本发送的是 blocks，entity offset 需要映射到最终 plain 文本，
+   *   当前由接收侧 ais legacy fail-closed 兜底，避免 routing UID 误绑裸 @text。
    *
    * 返回 true 表示消息已入队；任一图片块准备失败则抛错（已 Toast 具体原因）。
    */

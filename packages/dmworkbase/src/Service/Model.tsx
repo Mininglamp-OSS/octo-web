@@ -584,58 +584,54 @@ export class MessageWrap {
     }
 
     private getLegacyMentionUidLimitForAis(uids: string[]): number {
-        const routingUidCount = this.getAisRoutingUidCount(uids)
-        if (routingUidCount === 0) {
+        const subscriberState = this.getSubscriberMentionUidState(uids)
+        let trailingBotCount = 0
+
+        for (let idx = uids.length - 1; idx >= 0; idx--) {
+            const uid = uids[idx]
+            const state = subscriberState.get(uid) ?? this.getChannelInfoMentionUidState(uid)
+
+            if (state === "bot") {
+                trailingBotCount++
+                continue
+            }
+            if (state === "user") {
+                return uids.length - trailingBotCount
+            }
+
+            // Unknown metadata means we cannot separate real direct mentions
+            // from all-AI routing UIDs. Fail closed rather than binding a
+            // routing UID to unrelated raw @text.
             return 0
         }
-        return Math.max(0, uids.length - routingUidCount)
+
+        return 0
     }
 
-    private getAisRoutingUidCount(uids: string[]): number {
+    private getSubscriberMentionUidState(uids: string[]): Map<string, "bot" | "user"> {
+        const state = new Map<string, "bot" | "user">()
         const uidSet = new Set(uids)
-
         try {
             const subscribers = WKSDK.shared().channelManager.getSubscribes(this.channel) || []
-            const botUidSet = new Set(subscribers
-                .filter((sub: any) =>
-                    sub &&
-                    uidSet.has(sub.uid) &&
-                    sub.orgData?.robot === 1
-                )
-                .map((sub: any) => sub.uid)
-            )
-            let trailingBotCount = 0
-            for (let idx = uids.length - 1; idx >= 0; idx--) {
-                if (botUidSet.has(uids[idx])) {
-                    trailingBotCount++
-                    continue
+            for (const sub of subscribers as any[]) {
+                if (sub?.uid && uidSet.has(sub.uid)) {
+                    state.set(sub.uid, sub.orgData?.robot === 1 ? "bot" : "user")
                 }
-                break
-            }
-            if (trailingBotCount > 0) {
-                return trailingBotCount
             }
         } catch {
-            // Fall through to per-uid channelInfo lookup.
+            // Fall through with whatever state was collected before failure.
         }
+        return state
+    }
 
-        let trailingBotCount = 0
-        for (let idx = uids.length - 1; idx >= 0; idx--) {
-            try {
-                const info = WKSDK.shared().channelManager.getChannelInfo(new Channel(uids[idx], ChannelTypePerson))
-                if (
-                    uidSet.has(uids[idx]) &&
-                    info?.orgData?.robot === 1
-                ) {
-                    trailingBotCount++
-                    continue
-                }
-            } catch {
-                // Treat unknown uid as non-routing; do not trim beyond it.
-            }
-            break
+    private getChannelInfoMentionUidState(uid: string): "bot" | "user" | "unknown" {
+        try {
+            const info = WKSDK.shared().channelManager.getChannelInfo(new Channel(uid, ChannelTypePerson))
+            if (!info) return "unknown"
+            return info.orgData?.robot === 1 ? "bot" : "user"
+        } catch {
+            return "unknown"
         }
-        return trailingBotCount
     }
     // 解析emoji
     parseEmoji(parts: Array<Part>): Array<Part> {
