@@ -315,4 +315,11 @@ export interface ScheduleConfig {
     time: string;         // "HH:MM" — 运行时刻，始终保留
     dayOfWeek?: number;   // 周模式：1=周一 .. 7=周日，0/undefined=不限
     dayOfMonth?: number;  // 月模式：1..31，0/undefined=不限
+    /**
+     * 非阻塞1：原始遗留 cron 表达式（仅当回填的定时是遗留 cron 时存在）。
+     * 新表单仅支持 interval(天/周/月)，无法精确回填 cron。带此标记时弹窗会
+     * 提示「保存将把该遗留 cron 转换为间隔模式」，避免用户没改周期却被默默
+     * 转成「每 1 天」。用户改动周期字段后该标记清空。
+     */
+    legacyCron?: string;
 }

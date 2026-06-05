@@ -207,6 +207,7 @@
             "dayOfMonthPlaceholder": "选择日期",
             "dayOfMonthLabel": "{{day}} 号",
             "dayOfMonthHint": "选 29/30/31 号时，遇到小月会自动顺延到当月最后一天",
+            "legacyCronWarning": "此定时为旧版自定义周期，新版表单不支持精确回填。保存将把它转换为上方所选的间隔（天/周/月）模式，请确认周期设置无误。",
             "weekday": {
                 "mon": "周一",
                 "tue": "周二",

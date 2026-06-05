@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { Modal, Select, Button, InputNumber, Toast } from "@douyinfe/semi-ui";
+import { Modal, Select, Button, InputNumber, Toast, Banner } from "@douyinfe/semi-ui";
 import { I18nContext } from "@octo/base";
 import type { ScheduleConfig, ScheduleUnit } from "../types/summary";
 import { validateScheduleConfig } from "../utils/summaryHelpers";
@@ -60,7 +60,15 @@ export default class ScheduleConfigModal extends Component<Props, State> {
     };
 
     updateLocal(patch: Partial<ScheduleConfig>) {
-        this.setState({ local: { ...this.state.local, ...patch } });
+        // 非阻塞1：一旦用户主动改动周期相关字段，清掉 legacyCron 标记
+        //（表明这是用户有意的新间隔设置，不再属于「遗留 cron 被误改」）。
+        const touchesPeriod =
+            "every" in patch || "unit" in patch || "dayOfWeek" in patch || "dayOfMonth" in patch;
+        const next = { ...this.state.local, ...patch };
+        if (touchesPeriod && next.legacyCron) {
+            delete next.legacyCron;
+        }
+        this.setState({ local: next });
     }
 
     render() {
@@ -145,6 +153,16 @@ export default class ScheduleConfigModal extends Component<Props, State> {
                 <div style={{ color: "var(--semi-color-text-2)", fontSize: 13, marginBottom: 20 }}>
                     {t("summary.schedule.config.desc")}
                 </div>
+
+                {/* 非阻塞1：遗留 cron 定时打开时明确提示保存会转为间隔模式，避免静默误改 */}
+                {local.legacyCron && (
+                    <Banner
+                        type="warning"
+                        closeIcon={null}
+                        description={t("summary.schedule.config.legacyCronWarning")}
+                        style={{ marginBottom: 16 }}
+                    />
+                )}
 
                 {/* 频率：每 [N] [天/周/月] */}
                 <div style={rowStyle}>

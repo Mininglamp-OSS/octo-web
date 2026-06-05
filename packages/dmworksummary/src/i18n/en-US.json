@@ -207,6 +207,7 @@
             "dayOfMonthPlaceholder": "Select a date",
             "dayOfMonthLabel": "Day {{day}}",
             "dayOfMonthHint": "For day 29/30/31, short months automatically roll over to the last day of the month",
+            "legacyCronWarning": "This schedule uses a legacy custom cron and cannot be edited precisely here. Saving will convert it to the interval (day/week/month) selected above — please verify the period before saving.",
             "weekday": {
                 "mon": "Monday",
                 "tue": "Tuesday",

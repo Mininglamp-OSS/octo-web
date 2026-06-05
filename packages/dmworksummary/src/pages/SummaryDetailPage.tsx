@@ -30,6 +30,7 @@ import {
     scheduleItemToConfig,
     scheduleToParams,
     formatScheduleSummary,
+    shouldReactivateOnSave,
 } from "../utils/summaryHelpers";
 import SummaryContent from "../components/SummaryContent";
 import CitationText from "../components/CitationText";
@@ -391,6 +392,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     openScheduleModal = () => {
         const { scheduleItem } = this.state;
+        // Blocking 1：is_active=false 的记录在交互上视为「无活动定时」，但仍回填
+        // 原有周期/时刻，方便用户「重新启用」时不用从零填。保存逻辑（handleScheduleSave）
+        // 会检测原记录是否 inactive 并走重新启用路径。
         if (scheduleItem) {
             this.setState({
                 scheduleConfig: scheduleItemToConfig(scheduleItem),
@@ -412,6 +416,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         try {
             if (scheduleItem) {
+                // Blocking 1：原记录被停用（is_active=false）时，仅 update 不会把 is_active
+                // 切回 true，定时仍不生效。所以：先 update 应用新配置，再 toggle(id,true)
+                // 重新启用。toggle 在 re-enable 时会按 NextRunWithInterval 重算 next_run_at 到
+                // 未来，保证「停用→再设置保存→定时真正重新生效」。
+                const wasInactive = shouldReactivateOnSave(scheduleItem);
+
                 // Plan A1: detail-page edit is scoped to THIS summary. The backend
                 // clones a new schedule (and rebinds this task) when the schedule
                 // is shared by multiple summaries, so other summaries are not
@@ -427,10 +437,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     scope: 'task',
                     task_id: detail.task_id,
                 });
-                Toast.success(t("summary.detail.scheduleSaved"));
                 const effectiveScheduleId = updated?.schedule_id ?? scheduleItem.schedule_id;
+
+                if (wasInactive) {
+                    // 重新启用：对生效的 schedule_id（可能是 clone）调 toggle(true)，
+                    // 把 is_active 置回 1 并把 next_run 推到未来。
+                    await api.toggleSchedule(effectiveScheduleId, true);
+                }
+
+                Toast.success(t("summary.detail.scheduleSaved"));
                 this.loadSchedule(effectiveScheduleId);
             } else {
+                // Blocking 2：为「无定时」总结新建定时时，创建后需把新 schedule 绑定
+                // 到当前 task。后端 create 接口不接受 task_id/scope，且 update 的 scope=task 克隆
+                // 路径仅在 task.schedule_id 已指向该 schedule 时才 rebind——所以纯前端无法
+                // 持久化绑定。这里以「创建→再 update(scope=task,task_id)」发出正确调用形状，
+                // 本会话内立即生效；跨刷新持久化需后端在 update scope=task 路径支持
+                // 「task 无 schedule_id 时绑定」（见交付说明：需后端配合）。
                 const newSchedule = await api.createSchedule({
                     title: detail.title,
                     summary_mode: detail.summary_mode,
@@ -443,8 +466,26 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     time_range_type: 2,
                     sources: detail.sources,
                 });
+                const newScheduleId = newSchedule?.schedule_id;
+                let effectiveScheduleId = newScheduleId;
+                if (newScheduleId != null && detail.task_id != null) {
+                    try {
+                        const bound = await api.updateSchedule(newScheduleId, {
+                            scope: 'task',
+                            task_id: detail.task_id,
+                        });
+                        effectiveScheduleId = bound?.schedule_id ?? newScheduleId;
+                    } catch {
+                        // 绑定尝试失败不阻断主流程；定时已创建，属需后端配合的已知限制。
+                    }
+                }
                 Toast.success(t("summary.detail.scheduleCreated"));
-                this.setState({ scheduleItem: newSchedule });
+                if (effectiveScheduleId != null) {
+                    // 拉取生效记录回显（本会话内保证「刚建的定时立即可见」）。
+                    this.loadSchedule(effectiveScheduleId);
+                } else {
+                    this.setState({ scheduleItem: newSchedule });
+                }
             }
             this.setState({ showScheduleConfig: false });
         } catch (err: any) {

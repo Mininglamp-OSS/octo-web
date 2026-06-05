@@ -234,24 +234,52 @@ export function validateScheduleConfig(config: ScheduleConfig): string | null {
     return null;
 }
 
-/** 调度展示：interval_months > 0 按月，interval_days > 0 按天/周，否则解析 cron(遗留) */
+/** 调度展示：interval_months > 0 按月，interval_days > 0 按天/周，否则解析 cron(遗留)
+ *  非阻塞3：周/月模式补上「周几 / 几号」，避免创建页与列表页漏显。 */
 export function describeSchedule(
     cron_expr: string,
     interval_days?: number,
     interval_months?: number,
     run_time?: string,
+    day_of_week?: number,
+    day_of_month?: number,
 ): string {
     const at = run_time ? ` ${run_time}` : "";
     if (interval_months && interval_months > 0) {
-        return t("summary.cron.everyNMonths", { values: { months: interval_months, at } });
+        const base = t("summary.cron.everyNMonths", { values: { months: interval_months, at: "" } });
+        // 月模式：插入「N 号」，再补运行时刻。
+        const dom =
+            day_of_month && day_of_month > 0
+                ? t("summary.cron.dayOfMonth", { values: { day: day_of_month } })
+                : "";
+        return [base, dom].filter(Boolean).join(" ") + at;
     }
     if (interval_days && interval_days > 0) {
         if (interval_days % DAYS_PER_WEEK === 0) {
-            return t("summary.cron.everyNWeeks", { values: { weeks: interval_days / DAYS_PER_WEEK, at } });
+            const base = t("summary.cron.everyNWeeks", {
+                values: { weeks: interval_days / DAYS_PER_WEEK, at: "" },
+            });
+            // 周模式：插入「周一..周日」，再补运行时刻。
+            let dow = "";
+            if (day_of_week && day_of_week >= 1 && day_of_week <= 7) {
+                const key = isoWeekdayKeys[day_of_week];
+                if (key) dow = t(`summary.cron.weekdayNames.${key}`);
+            }
+            return [base, dow].filter(Boolean).join(" ") + at;
         }
         return t("summary.cron.everyNDays", { values: { days: interval_days, at } });
     }
     return describeCron(cron_expr);
+}
+
+/**
+ * Blocking 1 决策（纯函数，便于单测）：详情页保存定时时，若当前 scheduleItem
+ * 存在但 is_active === false，说明用户是在「停用后重新设置」——仅 update 不会把
+ * is_active 切回 true，需额外调 toggleSchedule(id, true) 重新启用（同时把 next_run 推到
+ * 未来）。返回 true 表示「保存后需重新启用」。
+ */
+export function shouldReactivateOnSave(item?: { is_active?: boolean } | null): boolean {
+    return !!item && item.is_active === false;
 }
 
 /** ScheduleItem → ScheduleConfig（用于回填弹窗）。优先 interval，遗留 cron 降级为默认。 */
@@ -282,8 +310,13 @@ export function scheduleItemToConfig(item: {
         }
         return { unit: "day", every: item.interval_days, time: item.run_time || "09:00" };
     }
-    // 遗留 cron：尽量从 cron 提取时刻，默认每 1 天
-    return { unit: "day", every: 1, time: cronToTime(item.cron_expr) };
+    // 遗留 cron：尽量从 cron 提取时刻，默认每 1 天。
+    // 非阻塞1：打上 legacyCron 标记，供弹窗提示「保存将转换为间隔模式」，
+    // 避免用户未主动改周期却被默默转成「每 1 天」。
+    if (item.cron_expr) {
+        return { unit: "day", every: 1, time: cronToTime(item.cron_expr), legacyCron: item.cron_expr };
+    }
+    return { unit: "day", every: 1, time: "09:00" };
 }
 
 /** 从标准 5 段 cron 提取 HH:MM，解析失败返回 09:00 */
@@ -322,14 +355,42 @@ export function describeCron(expr: string): string {
 }
 
 /**
+ * 解析后端返回的时间字符串为 Date。
+ * - 带时区（末尾 Z 或 ±HH:MM / ±HHMM）：直接交给 new Date 按绝对时刻解析。
+ * - 无时区的 naive 字符串（如 "2026-06-05 09:00:00" 或 "2026-06-05T09:00:00"）：
+ *   后端以 Asia/Shanghai(+08:00) 为准，这里显式拼上 +08:00 再解析，
+ *   避免 new Date() 默认按浏览器本地时区解析造成偏移。
+ * 解析失败返回 null。
+ */
+export function parseBackendTime(value?: string | null): Date | null {
+    if (!value) return null;
+    const s = value.trim();
+    // 已带时区信息：Z / +08:00 / -0500 等。
+    const hasTz = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(s);
+    if (hasTz) {
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    // naive 格式："YYYY-MM-DD HH:MM(:SS)?" 或 "YYYY-MM-DDTHH:MM(:SS)?"
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (m) {
+        const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] || "00"}+08:00`;
+        const d = new Date(iso);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    const fallback = new Date(s);
+    return isNaN(fallback.getTime()) ? null : fallback;
+}
+
+/**
  * 把后端返回的时间字符串格式化为「Asia/Shanghai」本地可读时间（YYYY-MM-DD HH:MM）。
  * 后端 next_run_at 使用上海时区，这里固定按上海时区展示，避免浏览器时区漂移。
  * 解析失败时原样返回。
  */
 export function formatNextRunAt(value?: string | null): string {
     if (!value) return "";
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return value;
+    const d = parseBackendTime(value);
+    if (!d || isNaN(d.getTime())) return value;
     try {
         const parts = new Intl.DateTimeFormat("zh-CN", {
             timeZone: "Asia/Shanghai",

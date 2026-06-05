@@ -94,8 +94,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     getScheduleLabel(cfg: ScheduleConfig): string {
-        const { cron_expr, interval_days, interval_months, run_time } = scheduleToParams(cfg);
-        return describeSchedule(cron_expr, interval_days, interval_months, run_time);
+        const { cron_expr, interval_days, interval_months, run_time, day_of_week, day_of_month } = scheduleToParams(cfg);
+        return describeSchedule(cron_expr, interval_days, interval_months, run_time, day_of_week, day_of_month);
     }
 
     canSubmit(): boolean {
@@ -149,11 +149,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
             const result = await api.createSummary(params);
 
-            // If schedule is configured, create schedule too
+            // If schedule is configured, create schedule then bind it to the new task.
+            // 与详情页 handleScheduleSave 的「新建定时」分支保持一致的两步法：
+            //   1. createSchedule 拿到 newSchedule.schedule_id；
+            //   2. updateSchedule(id, {scope:'task', task_id}) 把定时绑定到刚创建的 task，
+            //      否则 task.schedule_id 永远为 NULL，定时成孤儿、详情页不显示。
             if (scheduleConfig !== null) {
                 const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time } = scheduleToParams(scheduleConfig);
                 try {
-                    await api.createSchedule({
+                    const newSchedule = await api.createSchedule({
                         title: topic.trim(),
                         summary_mode: params.summary_mode || SummaryMode.BY_PERSON,
                         cron_expr,
@@ -166,6 +170,18 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         sources: params.sources || [],
                         participants: params.participants,
                     });
+                    const newScheduleId = newSchedule?.schedule_id;
+                    if (newScheduleId != null && result.task_id != null) {
+                        try {
+                            await api.updateSchedule(newScheduleId, {
+                                scope: 'task',
+                                task_id: result.task_id,
+                            });
+                        } catch {
+                            // 绑定失败不阻断主流程：定时已创建，但未绑定到 task。
+                            Toast.warning(t("summary.create.scheduleFailed"));
+                        }
+                    }
                 } catch {
                     // non-fatal: schedule creation failed
                     Toast.warning(t("summary.create.scheduleFailed"));
