@@ -910,7 +910,7 @@ export default class WKApp extends ProviderListener {
     // Plan F Task 9 hardening: clearLocalLoginState performs raw
     // localStorage/sessionStorage writes (via StorageService) that throw in
     // Safari private mode, on QuotaExceededError, or under SecurityError.
-    // Without the try/finally, a throw here would leave loggingOut=true
+    // Without the try/catch, a throw here would leave loggingOut=true
     // forever AND skip the reload — every subsequent logout attempt
     // short-circuits and the user is permanently wedged. The reload must
     // happen regardless so the next bootstrap can detect the broken auth
