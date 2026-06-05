@@ -41,40 +41,13 @@ export interface BotFeedItem {
 
 const base = '/api'; // vite proxy strips /api → /v1; /api/v1/runtimes goes to fleet :8092
 
-// PR-A.2: fleet expects JWT (Bearer) instead of session token. Cache the
-// JWT in-module; mirror the same pattern APIClient.getFleetJWT() uses.
-// Kept here (rather than calling into APIClient) because botsApi.ts has
-// always used raw fetch — letting it stay independent keeps the surface
-// area contained.
-let _jwt: { token: string; expiresAt: number } | null = null;
-
-async function getFleetJWT(): Promise<string> {
-  if (_jwt && _jwt.expiresAt > Date.now() + 60_000) return _jwt.token;
-  const sessionToken = (WKApp as any)?.loginInfo?.token;
-  if (!sessionToken) return '';
-  const spaceId = (WKApp as any)?.shared?.currentSpaceId || '';
-  try {
-    const res = await fetch('/api/v1/auth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_token: sessionToken, space_id: spaceId }),
-    });
-    if (!res.ok) return '';
-    const j = await res.json();
-    const tok = j?.token || j?.data?.token;
-    const expiresIn = j?.expires_in || j?.data?.expires_in || 1800;
-    if (!tok) return '';
-    _jwt = { token: tok, expiresAt: Date.now() + Number(expiresIn) * 1000 };
-    return tok;
-  } catch {
-    return '';
-  }
-}
-
+// 合并 plan 决策一+二 Phase 3A: fleet 已切到 AuthMiddleware 接 session token
+// 直接 (跟 matter user-auth 一致), 不再换 JWT。authHeaders 注入 token: +
+// X-Space-Id, 跟 axios 全局 interceptor 行为对齐。
 async function authHeaders(): Promise<Record<string, string>> {
   const h: Record<string, string> = {};
-  const jwt = await getFleetJWT();
-  if (jwt) h.Authorization = 'Bearer ' + jwt;
+  const sessionToken = (WKApp as any)?.loginInfo?.token;
+  if (sessionToken) h.token = sessionToken;
   const spaceId = (WKApp as any)?.shared?.currentSpaceId;
   if (spaceId) h['X-Space-Id'] = spaceId;
   return h;
