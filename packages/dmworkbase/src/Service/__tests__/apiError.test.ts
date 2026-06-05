@@ -4,6 +4,7 @@ import {
   isForbiddenApiError,
   isInternalApiError,
   isRateLimitedApiError,
+  isStaleLocalResourceApiError,
   normalizeApiError,
 } from "../apiError";
 import { i18n } from "../../i18n/instance";
@@ -149,3 +150,25 @@ describe("normalizeApiError", () => {
     expect(normalizeApiError({ httpStatus: 418, data: {} }).message).toBe("未知错误");
   });
 });
+
+describe("isStaleLocalResourceApiError", () => {
+  it("returns true for err.server.user.device_not_found regardless of httpStatus", () => {
+    // Real server response shape: HTTP 400 but body.http_status=404; only the code is stable.
+    expect(
+      isStaleLocalResourceApiError({ code: "err.server.user.device_not_found" })
+    ).toBe(true)
+  })
+
+  it("returns false for unrelated codes", () => {
+    expect(
+      isStaleLocalResourceApiError({ code: "err.shared.auth.token_expired" })
+    ).toBe(false)
+    expect(
+      isStaleLocalResourceApiError({ code: "err.server.user.not_found" })
+    ).toBe(false)
+  })
+
+  it("returns false when code is undefined", () => {
+    expect(isStaleLocalResourceApiError({ code: undefined })).toBe(false)
+  })
+})

@@ -30,6 +30,17 @@ const rateLimitedCodes = new Set([
   "err.shared.rate.limited",
 ]);
 
+// Plan F: stale local resource codes. Server emits one such code per cached
+// client-side ID it no longer recognizes (e.g., the deviceId UUID in
+// localStorage when the server-side device row was removed). Code-only
+// matching: server returns HTTP 400 with body.http_status=404 for
+// device_not_found, so neither HTTP status nor body http_status is the
+// stable contract — the string code is. Future siblings (e.g., space.not_found)
+// can be added to this set without touching the interceptor.
+const staleLocalResourceCodes = new Set([
+  "err.server.user.device_not_found",
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -77,6 +88,10 @@ export function isForbiddenApiError(error: Pick<NormalizedApiError, "code" | "ht
 
 export function isRateLimitedApiError(error: Pick<NormalizedApiError, "code" | "httpStatus">): boolean {
   return Boolean(error.code && rateLimitedCodes.has(error.code)) || error.httpStatus === 429;
+}
+
+export function isStaleLocalResourceApiError(error: Pick<NormalizedApiError, "code">): boolean {
+  return Boolean(error.code && staleLocalResourceCodes.has(error.code));
 }
 
 export function isInternalApiError(error: Pick<NormalizedApiError, "code" | "httpStatus">): boolean {
