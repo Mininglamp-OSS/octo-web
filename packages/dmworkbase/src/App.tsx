@@ -630,6 +630,7 @@ export default class WKApp extends ProviderListener {
 
   private wsaddrs = new Array<string>(); // ws的连接地址
   private addrUsed = false; // 地址是否被使用
+  private loggingOut = false; // Plan F: in-flight guard for logout() to short-circuit concurrent reload attempts from racing callbacks (auth-expired + stale-device). One-way per session — reset only by the actual page reload.
 
   isPC = false; // 是否是PC端
   deviceId: string = ""; // 设备ID
@@ -898,6 +899,14 @@ export default class WKApp extends ProviderListener {
 
   // 登出
   logout() {
+    // Plan F bundled fix #1: in-flight guard. Multiple concurrent API
+    // errors (e.g., auth-expired + stale-device, or N parallel stale
+    // responses) can call logout() in rapid succession before the page
+    // actually unloads. Without this guard, clearLocalLoginState() runs N
+    // times. Idempotent in practice but wasteful and noisy. One-way: only
+    // a real page reload resets the flag.
+    if (this.loggingOut) return;
+    this.loggingOut = true;
     this.clearLocalLoginState();
     window.location.reload();
   }
