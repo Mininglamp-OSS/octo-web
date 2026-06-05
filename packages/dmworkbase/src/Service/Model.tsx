@@ -426,7 +426,12 @@ export class MessageWrap {
         }
 
         if (mention.uids && Array.isArray(mention.uids) && mention.uids.length > 0) {
-            return this.parseMentionLegacy(text, mention.uids)
+            const mentionAny = mention as any
+            const hasAisBroadcast = !!(mentionAny.ais || this.content.contentObj?.mention?.ais)
+            const legacyUids = hasAisBroadcast
+                ? mention.uids.slice(0, this.getLegacyMentionUidLimitForAis(mention.uids))
+                : mention.uids
+            return this.parseMentionLegacy(text, legacyUids)
         }
 
         // mention.all：把文本中的 @所有人/@all 替换成 uid="all" 的 mention Part
@@ -567,6 +572,58 @@ export class MessageWrap {
         }
 
         return parts
+    }
+
+    private getLegacyMentionUidLimitForAis(uids: string[]): number {
+        const routingUidCount = this.getAisRoutingUidCount(uids)
+        return Math.max(0, uids.length - routingUidCount)
+    }
+
+    private getAisRoutingUidCount(uids: string[]): number {
+        const uidSet = new Set(uids)
+
+        try {
+            const subscribers = WKSDK.shared().channelManager.getSubscribes(this.channel) || []
+            const botUidSet = new Set(subscribers
+                .filter((sub: any) =>
+                    sub &&
+                    uidSet.has(sub.uid) &&
+                    sub.orgData?.robot === 1
+                )
+                .map((sub: any) => sub.uid)
+            )
+            let trailingBotCount = 0
+            for (let idx = uids.length - 1; idx >= 0; idx--) {
+                if (botUidSet.has(uids[idx])) {
+                    trailingBotCount++
+                    continue
+                }
+                break
+            }
+            if (trailingBotCount > 0) {
+                return trailingBotCount
+            }
+        } catch {
+            // Fall through to per-uid channelInfo lookup.
+        }
+
+        let trailingBotCount = 0
+        for (let idx = uids.length - 1; idx >= 0; idx--) {
+            try {
+                const info = WKSDK.shared().channelManager.getChannelInfo(new Channel(uids[idx], ChannelTypePerson))
+                if (
+                    uidSet.has(uids[idx]) &&
+                    info?.orgData?.robot === 1
+                ) {
+                    trailingBotCount++
+                    continue
+                }
+            } catch {
+                // Treat unknown uid as non-routing; do not trim beyond it.
+            }
+            break
+        }
+        return trailingBotCount
     }
     // 解析emoji
     parseEmoji(parts: Array<Part>): Array<Part> {

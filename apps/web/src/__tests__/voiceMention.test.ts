@@ -134,7 +134,10 @@ function formatMentionTextV2(text: string): {
             result += `@${MENTION_LABEL_HUMANS}`;
         } else if (uid === MENTION_UID_AIS) {
             ais = true;
-            result += `@${MENTION_LABEL_AIS}`;
+            const atName = `@${MENTION_LABEL_AIS}`;
+            const offset = result.length;
+            result += atName;
+            entities.push({ uid, offset, length: atName.length });
         } else {
             const atName = `@${name}`;
             const offset = result.length;
@@ -471,6 +474,9 @@ describe('voice mention end-to-end', () => {
         expect(mention?.ais).toBe(1)
         expect(mention?.all).toBe(false)
         expect(mention?.humans).toBeUndefined()
+        expect(mention?.entities).toEqual([
+            { uid: MENTION_UID_AIS, offset: 0, length: 5 },
+        ])
     })
 
     it('unmatched @mention should pass through as plain text', () => {

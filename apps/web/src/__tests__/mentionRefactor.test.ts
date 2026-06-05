@@ -51,6 +51,8 @@ class MentionModel {
     all: boolean = false
     uids?: Array<string>
     entities?: MentionEntity[]
+    humans?: number
+    ais?: number
 }
 
 // ─── Extracted functions (mirroring production code) ─────────────
@@ -64,6 +66,8 @@ function formatMentionTextV2(text: string): {
     let result = '';
     let cursor = 0;
     let all = false;
+    let humans = false;
+    let ais = false;
 
     const placeholderPattern = /@\[([^:\]]+):([^\]]+)\]/g;
     let match;
@@ -78,6 +82,17 @@ function formatMentionTextV2(text: string): {
             all = true;
             const atName = `@${name}`;
             result += atName;
+        } else if (uid === MENTION_UID_HUMANS) {
+            humans = true;
+            const atName = `@${MENTION_LABEL_HUMANS}`;
+            result += atName;
+        } else if (uid === MENTION_UID_AIS) {
+            ais = true;
+            const atName = `@${MENTION_LABEL_AIS}`;
+            const offset = result.length;
+            result += atName;
+
+            entities.push({ uid, offset, length: atName.length });
         } else {
             const atName = `@${name}`;
             const offset = result.length;
@@ -92,20 +107,17 @@ function formatMentionTextV2(text: string): {
 
     result += text.substring(cursor);
 
-    if (all) {
+    if (all || humans || ais || entities.length > 0) {
         const mention = new MentionModel();
-        mention.all = true;
+        mention.all = all;
+        mention.uids = uids.length > 0 ? uids : undefined;
+        mention.entities = entities.length > 0 ? entities : undefined;
+        if (humans) mention.humans = 1;
+        if (ais) mention.ais = 1;
         return { content: result, mention };
     }
 
-    if (entities.length === 0) {
-        return { content: result, mention: undefined };
-    }
-
-    const mention = new MentionModel();
-    mention.uids = uids;
-    mention.entities = entities;
-    return { content: result, mention };
+    return { content: result, mention: undefined };
 }
 
 function parseMentionWithEntities(
@@ -153,6 +165,17 @@ function parseMentionWithEntities(
         const mentionText = text.substring(entity.offset, entity.offset + entity.length);
 
         if (!mentionText.startsWith('@')) {
+            parts.push(new Part(PartType.text, mentionText));
+            cursor = entity.offset + entity.length;
+            continue;
+        }
+
+        const mentionName = mentionText.slice(1);
+        if (
+            mentionName.toLowerCase() === 'all' ||
+            mentionName === MENTION_LABEL_HUMANS ||
+            mentionName === MENTION_LABEL_AIS
+        ) {
             parts.push(new Part(PartType.text, mentionText));
             cursor = entity.offset + entity.length;
             continue;
@@ -213,7 +236,7 @@ function parseMentionLegacy(text: string, uids: string[]): Part[] {
 
 function parseMention(
     text: string,
-    mention?: { uids?: string[]; entities?: any[]; all?: boolean }
+    mention?: { uids?: string[]; entities?: any[]; all?: boolean; ais?: number; botUids?: string[] }
 ): Part[] {
     if (!mention) {
         return [new Part(PartType.text, text)];
@@ -225,7 +248,19 @@ function parseMention(
     }
 
     if (mention.uids && Array.isArray(mention.uids) && mention.uids.length > 0) {
-        return parseMentionLegacy(text, mention.uids);
+        let trailingBotCount = 0;
+        const botUids = new Set(mention.botUids ?? []);
+        for (let idx = mention.uids.length - 1; idx >= 0; idx--) {
+            if (botUids.has(mention.uids[idx])) {
+                trailingBotCount++;
+                continue;
+            }
+            break;
+        }
+        const legacyUids = mention.ais
+            ? mention.uids.slice(0, Math.max(0, mention.uids.length - trailingBotCount))
+            : mention.uids;
+        return parseMentionLegacy(text, legacyUids);
     }
 
     return [new Part(PartType.text, text)];
@@ -278,6 +313,18 @@ describe('formatMentionTextV2', () => {
         expect(result.content).toBe('大家注意 @所有人 ');
         expect(result.mention?.all).toBe(true);
         expect(result.mention?.entities).toBeUndefined();
+    });
+
+    it('should mark @所有AI with a sentinel entity', () => {
+        const input = '@[-3:所有AI] ping @ops';
+        const result = formatMentionTextV2(input);
+
+        expect(result.content).toBe('@所有AI ping @ops');
+        expect(result.mention?.ais).toBe(1);
+        expect(result.mention?.uids).toBeUndefined();
+        expect(result.mention?.entities).toEqual([
+            { uid: MENTION_UID_AIS, offset: 0, length: 5 },
+        ]);
     });
 
     it('should return undefined mention when no mentions', () => {
@@ -587,6 +634,43 @@ describe('parseMention dispatcher (v2 priority + v1 fallback)', () => {
 
         const mentionPart = parts.find((p) => p.type === PartType.mention);
         expect(mentionPart?.data?.uid).toBe('uid_bob');
+    });
+
+    it('should not bind routing uids to raw @text when @所有AI has an entity', () => {
+        const parts = parseMention('@所有AI ping @ops', {
+            uids: ['bot_a'],
+            entities: [{ uid: MENTION_UID_AIS, offset: 0, length: 5 }],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.text, '@所有AI'),
+            new Part(PartType.text, ' ping @ops'),
+        ]);
+    });
+
+    it('should not bind mobile @所有AI routing uids to raw @text without entities', () => {
+        const parts = parseMention('@所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['bot_a'],
+            botUids: ['bot_a'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.text, '@所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should keep real uid mentions before @所有AI routing uids in legacy payloads', () => {
+        const parts = parseMention('@Alice @所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['uid_alice', 'bot_a'],
+            botUids: ['bot_a'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.mention, '@Alice', { uid: 'uid_alice' }),
+            new Part(PartType.text, ' @所有AI 测试 @ops'),
+        ]);
     });
 
     it('should return plain text when no mention', () => {

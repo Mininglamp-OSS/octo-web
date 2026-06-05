@@ -289,9 +289,18 @@ function formatMentionTextV2(text: string): {
       humans = true;
       result += `@${MENTION_LABEL_HUMANS}`;
     } else if (uid === MENTION_UID_AIS) {
-      // 新的三态：ais=1，文本插入 @所有AI，不进 entities 列表
+      // 新的三态：ais=1。这里也为 @所有AI 写入 sentinel entity：
+      // bot routing UIDs 会放进 mention.uids，entity 能让接收端走精确解析路径，
+      // 避免这些 routing UID 被 legacy parser 误绑到其它裸写的 @xxx 文本。
       ais = true;
-      result += `@${MENTION_LABEL_AIS}`;
+      const atName = `@${MENTION_LABEL_AIS}`;
+      const offset = result.length;
+      entities.push({
+        uid,
+        offset,
+        length: atName.length,
+      });
+      result += atName;
     } else {
       // 普通成员：以最新的 member.name 优先（avoid stale display label），fallback to label。
       const atName = membersRef.current?.find((m) => m.uid === uid)?.name
