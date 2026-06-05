@@ -9,6 +9,7 @@ export interface SidebarTabBarProps {
     followUnread: number
     recentUnread: number
     onTabChange: (tab: SidebarTab) => void
+    onActiveTabClick?: (tab: SidebarTab) => void
 }
 
 const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
@@ -16,14 +17,23 @@ const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
     followUnread,
     recentUnread,
     onTabChange,
+    onActiveTabClick,
 }) => {
     const { t } = useI18n()
+    const handleTabClick = (tab: SidebarTab) => {
+        if (activeTab === tab) {
+            onActiveTabClick?.(tab)
+            return
+        }
+        onTabChange(tab)
+    }
+
     return (
         <div className="wk-sidebar-tabbar">
             <div className="wk-sidebar-tabbar__container">
                 <button
                     className={`wk-sidebar-tabbar__btn ${activeTab === 'follow' ? 'wk-sidebar-tabbar__btn--active' : ''}`}
-                    onClick={() => onTabChange('follow')}
+                    onClick={() => handleTabClick('follow')}
                 >
                     <span className="wk-sidebar-tabbar__label">{t("base.sidebarTabBar.follow")}</span>
                     {followUnread > 0 && (
@@ -34,7 +44,7 @@ const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
                 </button>
                 <button
                     className={`wk-sidebar-tabbar__btn ${activeTab === 'recent' ? 'wk-sidebar-tabbar__btn--active' : ''}`}
-                    onClick={() => onTabChange('recent')}
+                    onClick={() => handleTabClick('recent')}
                 >
                     <span className="wk-sidebar-tabbar__label">{t("base.sidebarTabBar.recent")}</span>
                     {recentUnread > 0 && (

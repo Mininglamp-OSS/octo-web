@@ -7,13 +7,13 @@
  * - CreateCategoryModal 在此层管理，不依赖子组件挂载
  */
 import React, { useState, useMemo } from "react"
-import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
+import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK } from "wukongimjssdk"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import WKApp from "../../App"
 import { useCategoryList } from "../../Hooks/useCategoryList"
 import { useFollowSidebarContext } from "../../Hooks/useFollowSidebar"
 import FollowService from "../../Service/FollowService"
-import { parseThreadChannelId } from "../../Service/Thread"
+import { isEffectivelyMuted, parseThreadChannelId } from "../../Service/Thread"
 import { ConversationWrap } from "../../Service/Model"
 import { ConvFilter } from "../ConversationList"
 import ConversationList from "../ConversationList"
@@ -34,6 +34,26 @@ export function isVisibleInRecentTab(conv: ConversationWrap, now: number = Date.
     return (now - conv.timestamp * 1000) < RECENT_INACTIVE_THRESHOLD_MS
 }
 
+export function isMutedForRecentConversation(conv: ConversationWrap): boolean {
+    const isThread = conv.channel.channelType === ChannelTypeCommunityTopic
+    let parentChannelInfo: any | undefined
+    if (isThread) {
+        const parentGroupNo =
+            (conv.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
+            parseThreadChannelId(conv.channel.channelID)?.groupNo
+        if (parentGroupNo) {
+            parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+                new Channel(parentGroupNo, ChannelTypeGroup)
+            )
+        }
+    }
+    return isEffectivelyMuted({
+        isThread,
+        channelInfo: conv.channelInfo,
+        parentChannelInfo,
+    })
+}
+
 export interface ChatConversationListProps {
     conversations: ConversationWrap[]
     filter: ConvFilter
@@ -47,6 +67,8 @@ export interface ChatConversationListProps {
     onOpenCreateCategoryRef?: React.MutableRefObject<(() => void) | null>
     /** 群聊创建成功后回调，用于刷新会话列表 */
     onGroupCreated?: () => void
+    /** 递增 token：变化时最近列表滚到第一条可导航未读 */
+    scrollToUnreadToken?: number
 }
 
 // 「+ 新建分组」入口在三个右键场景共用同一个 modal。建分类成功后,要把当时
@@ -72,6 +94,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
     onThreadOverflowClick,
     onOpenCreateCategoryRef,
     onGroupCreated,
+    scrollToUnreadToken,
 }) => {
     const { t } = useI18n()
     const {
@@ -209,6 +232,16 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
         const now = Date.now()
         return conversations.filter(conv => isVisibleInRecentTab(conv, now))
     }, [conversations, hideInactiveGroups])
+
+    const shouldScrollToRecentUnreadTarget = React.useCallback(
+        (conv: ConversationWrap) => {
+            if (filter === 'group') return false
+            if (conv.unread <= 0) return false
+            if (hideInactiveGroups && !isVisibleInRecentTab(conv)) return false
+            return !isMutedForRecentConversation(conv)
+        },
+        [filter, hideInactiveGroups]
+    )
 
     // 按 conv.channelType 把会话归入指定分类。三种 channel 走三套写操作:
     // - 子区:父群先 refollow + moveCategory,再 followThread(子区不能脱离父群单独分组)
@@ -418,6 +451,8 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                     onClearMessages={onClearMessages}
                     onThreadOverflowClick={onThreadOverflowClick}
                     extraContextMenus={buildExtraMenus}
+                    scrollToUnreadToken={scrollToUnreadToken}
+                    shouldScrollToUnreadTarget={shouldScrollToRecentUnreadTarget}
                 />
             )}
 

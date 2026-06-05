@@ -5,7 +5,10 @@ import ConversationList, {
 } from "../../Components/ConversationList";
 import SidebarTabBar, { SidebarTab } from "../../Components/SidebarTabBar";
 import ConversationListGrouped from "../../Components/ConversationListGrouped";
-import ChatConversationList, { isVisibleInRecentTab } from "../../Components/ChatConversationList";
+import ChatConversationList, {
+  isMutedForRecentConversation,
+  isVisibleInRecentTab,
+} from "../../Components/ChatConversationList";
 import Provider from "../../Service/Provider";
 import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
@@ -61,6 +64,7 @@ interface SidebarTabBarWithBadgesProps {
   conversations: ConversationWrap[];
   activeTab: SidebarTab;
   onTabChange: (tab: SidebarTab) => void;
+  onRecentUnreadNavigate?: () => void;
 }
 
 /**
@@ -79,6 +83,7 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
   conversations,
   activeTab,
   onTabChange,
+  onRecentUnreadNavigate,
 }) => {
   const { items } = useFollowSidebarContext();
 
@@ -110,22 +115,6 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     return isEffectivelyMuted({ isThread, channelInfo: info, parentChannelInfo });
   };
 
-  const isConversationMuted = (c: ConversationWrap): boolean => {
-    const isThread = c.channel.channelType === ChannelTypeCommunityTopic;
-    let parentChannelInfo: any | undefined;
-    if (isThread) {
-      const parentGroupNo =
-        (c.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
-        parseThreadChannelId(c.channel.channelID)?.groupNo;
-      if (parentGroupNo) {
-        parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
-          new Channel(parentGroupNo, ChannelTypeGroup),
-        );
-      }
-    }
-    return isEffectivelyMuted({ isThread, channelInfo: c.channelInfo, parentChannelInfo });
-  };
-
   // sidebar items 是 /sidebar/sync 的快照，IM 缓存里 conv 才是 reactive 的。
   // IM 缓存有这条会话就用 live unread；没有（sidebar-only 关注，从未聊过）才
   // fallback sidebar 的 unread 快照——这样新消息一来 badge 即刻同步，sidebar-
@@ -150,7 +139,7 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
       // 与 ChatConversationList 的 hideInactiveGroups 渲染过滤一致：3 天不活跃的群
       // 不算入 badge，否则会出现「红点 N 但列表里看不到对应未读」。
       if (!isVisibleInRecentTab(c)) return sum;
-      if (isConversationMuted(c)) return sum;
+      if (isMutedForRecentConversation(c)) return sum;
       return sum + (c.unread || 0);
     },
     0,
@@ -162,6 +151,11 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
       followUnread={followUnread}
       recentUnread={recentUnread}
       onTabChange={onTabChange}
+      onActiveTabClick={(tab) => {
+        if (tab === "recent" && activeTab === "recent" && recentUnread > 0) {
+          onRecentUnreadNavigate?.();
+        }
+      }}
     />
   );
 };
@@ -1084,6 +1078,7 @@ interface ChatPageState {
   activeTab: SidebarTab;
   currentSpaceName: string;
   pendingConfirm: null | { onOk: () => void }; // 附件切换确认弹窗
+  recentUnreadJumpToken: number;
 }
 
 export default class ChatPage extends Component<any, ChatPageState> {
@@ -1101,6 +1096,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
       activeTab: getSavedTab(),
       currentSpaceName: WKApp.config.appName,
       pendingConfirm: null,
+      recentUnreadJumpToken: 0,
     };
   }
 
@@ -1109,6 +1105,12 @@ export default class ChatPage extends Component<any, ChatPageState> {
       localStorage.setItem(SIDEBAR_TAB_KEY, tab);
     } catch {}
     this.setState({ activeTab: tab });
+  };
+
+  _handleRecentUnreadNavigate = () => {
+    this.setState((state) => ({
+      recentUnreadJumpToken: state.recentUnreadJumpToken + 1,
+    }));
   };
 
   private _onSpaceChanged?: (space: any) => void;
@@ -1178,7 +1180,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
           return this.vm;
         }}
         render={(vm: ChatVM) => {
-          const { activeTab } = this.state;
+          const { activeTab, recentUnreadJumpToken } = this.state;
           // filter 用于 ConversationList
           // follow Tab 用 group（分组视图），recent Tab 用 all（所有会话混合）
           const filter: ConvFilter = activeTab === "follow" ? "group" : "all";
@@ -1280,6 +1282,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     conversations={vm.conversations}
                     activeTab={activeTab}
                     onTabChange={this._handleTabChange}
+                    onRecentUnreadNavigate={this._handleRecentUnreadNavigate}
                   />
                   <div className="wk-chat-conversation-list">
                     {vm.loading ? (
@@ -1349,6 +1352,11 @@ export default class ChatPage extends Component<any, ChatPageState> {
                           filter={filter}
                           hideInactiveGroups={activeTab === "recent"}
                           select={WKApp.shared.openChannel}
+                          scrollToUnreadToken={
+                            activeTab === "recent"
+                              ? recentUnreadJumpToken
+                              : undefined
+                          }
                           onOpenCreateCategoryRef={this.openCreateCategoryRef}
                           onGroupCreated={() =>
                             vm.reloadRequestConversationList()

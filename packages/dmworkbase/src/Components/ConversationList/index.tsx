@@ -262,6 +262,10 @@ export interface ConversationListProps {
    *  pin 与拖拽语义冲突（pin 会强制顶到分组顶端覆盖手动顺序），所以在关注 tab 移除 pin 入口。
    *  最近 tab 仍保留 pin。 */
   hidePin?: boolean;
+  /** 递增 token：变化时滚到第一条 shouldScrollToUnreadTarget 命中的会话 */
+  scrollToUnreadToken?: number;
+  /** 外部提供导航目标口径，避免列表层重复理解具体业务规则 */
+  shouldScrollToUnreadTarget?: (conversation: ConversationWrap) => boolean;
 }
 
 export interface ConversationListState {
@@ -280,6 +284,10 @@ export default class ConversationList extends Component<
   channelListener!: ChannelInfoListener;
   contextMenusContext!: ContextMenusContext;
   typingListener!: TypingListener;
+  private listRef = React.createRef<HTMLDivElement>();
+  private itemRefs = new Map<string, HTMLDivElement>();
+  private lastRenderableItems: ConversationWrap[] = [];
+  private scrollFrame: number | null = null;
   private _storageKey(): string {
     const uid = WKApp.loginInfo?.uid || 'unknown';
     const spaceId = WKApp.shared?.currentSpaceId || 'default';
@@ -313,9 +321,81 @@ export default class ConversationList extends Component<
     TypingManager.shared.addTypingListener(this.typingListener);
   }
 
+  componentDidUpdate(prevProps: ConversationListProps) {
+    if (
+      this.props.scrollToUnreadToken !== undefined &&
+      this.props.scrollToUnreadToken !== prevProps.scrollToUnreadToken
+    ) {
+      this.scheduleScrollToFirstUnreadTarget();
+    }
+  }
+
   componentWillUnmount() {
+    if (
+      this.scrollFrame !== null &&
+      typeof window !== "undefined" &&
+      typeof window.cancelAnimationFrame === "function"
+    ) {
+      window.cancelAnimationFrame(this.scrollFrame);
+      this.scrollFrame = null;
+    }
     WKSDK.shared().channelManager.removeListener(this.channelListener);
     TypingManager.shared.removeTypingListener(this.typingListener);
+  }
+
+  private setConversationItemRef(
+    conversationWrap: ConversationWrap,
+    node: HTMLDivElement | null
+  ) {
+    const key = conversationWrap.channel.getChannelKey();
+    if (node) {
+      this.itemRefs.set(key, node);
+    } else {
+      this.itemRefs.delete(key);
+    }
+  }
+
+  private scheduleScrollToFirstUnreadTarget() {
+    if (
+      typeof window === "undefined" ||
+      typeof window.requestAnimationFrame !== "function"
+    ) {
+      this.scrollToFirstUnreadTarget();
+      return;
+    }
+
+    if (this.scrollFrame !== null) {
+      window.cancelAnimationFrame(this.scrollFrame);
+    }
+    this.scrollFrame = window.requestAnimationFrame(() => {
+      this.scrollFrame = null;
+      this.scrollToFirstUnreadTarget();
+    });
+  }
+
+  private scrollToFirstUnreadTarget() {
+    const root = this.listRef.current;
+    const shouldTarget = this.props.shouldScrollToUnreadTarget;
+    if (!root || !shouldTarget) return;
+
+    const target = this.lastRenderableItems.find((conv) => shouldTarget(conv));
+    if (!target) return;
+
+    const node = this.itemRefs.get(target.channel.getChannelKey());
+    if (!node) return;
+
+    const rootRect = root.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    const targetTop = Math.max(0, root.scrollTop + nodeRect.top - rootRect.top);
+
+    if (typeof root.scrollTo === "function") {
+      root.scrollTo({
+        top: targetTop,
+        behavior: "smooth",
+      });
+    } else {
+      root.scrollTop = targetTop;
+    }
   }
 
   _handleScroll = () => {
@@ -558,6 +638,7 @@ export default class ConversationList extends Component<
     const isDM = avatarChannel.channelType === ChannelTypePerson;
     return (
       <div
+        ref={(node) => this.setConversationItemRef(conversationWrap, node)}
         key={conversationWrap.channel.getChannelKey()}
         onClick={() => {
           if (onClick) {
@@ -984,6 +1065,9 @@ export default class ConversationList extends Component<
 
     const { onThreadOverflowClick } = this.props;
     const { expandedGroupIds } = this.state;
+    this.lastRenderableItems = [...finalPinned, ...finalRecent].filter(
+      (item): item is ConversationWrap => !("type" in item)
+    );
 
     const renderItem = (
       item:
@@ -1055,6 +1139,7 @@ export default class ConversationList extends Component<
 
     return (
       <div
+        ref={this.listRef}
         id="wk-conversationlist"
         className="wk-conversationlist"
         onScroll={this._handleScroll}
