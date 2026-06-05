@@ -22,7 +22,7 @@ interface State {
     localSelected: ChatCandidate[];
 }
 
-const MAX_SELECT = 10;
+const MAX_SELECT = 30;
 
 interface DisplayEntry {
     item: ChatCandidate;
