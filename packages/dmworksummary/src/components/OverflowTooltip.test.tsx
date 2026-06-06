@@ -3,17 +3,15 @@ import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
 import { vi } from "vitest";
 import OverflowTooltip from "./OverflowTooltip";
 
+// Mock semi Tooltip: render content only when `visible` is true. The real
+// component now drives visibility via its own onMouseEnter/onMouseLeave on the
+// wrapped child (trigger="custom"), so the mock must render `children` as-is and
+// let those handlers flow through.
 vi.mock("@douyinfe/semi-ui", () => ({
-    Tooltip: ({ children, content, visible, onVisibleChange, trigger }: any) => (
+    Tooltip: ({ children, content, visible, trigger }: any) => (
         <div data-testid="tooltip-wrapper" data-visible={visible} data-trigger={trigger}>
             {visible && <div data-testid="tooltip-content">{content}</div>}
-            <div
-                data-testid="tooltip-trigger"
-                onMouseEnter={() => onVisibleChange?.(true)}
-                onMouseLeave={() => onVisibleChange?.(false)}
-            >
-                {children}
-            </div>
+            {children}
         </div>
     ),
 }));
@@ -34,7 +32,7 @@ describe("OverflowTooltip", () => {
         const container = screen.getByText("Short text");
         mockOverflow(container, false);
 
-        fireEvent.mouseEnter(screen.getByTestId("tooltip-trigger"));
+        fireEvent.mouseEnter(container);
 
         expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
     });
@@ -45,7 +43,7 @@ describe("OverflowTooltip", () => {
         const container = screen.getByText("This is a very long text that overflows");
         mockOverflow(container, true);
 
-        fireEvent.mouseEnter(screen.getByTestId("tooltip-trigger"));
+        fireEvent.mouseEnter(container);
 
         expect(screen.getByTestId("tooltip-content")).toBeInTheDocument();
     });
@@ -56,10 +54,10 @@ describe("OverflowTooltip", () => {
         const container = screen.getByText("Overflowing text");
         mockOverflow(container, true);
 
-        fireEvent.mouseEnter(screen.getByTestId("tooltip-trigger"));
+        fireEvent.mouseEnter(container);
         expect(screen.getByTestId("tooltip-content")).toBeInTheDocument();
 
-        fireEvent.mouseLeave(screen.getByTestId("tooltip-trigger"));
+        fireEvent.mouseLeave(container);
         expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
     });
 
@@ -82,10 +80,23 @@ describe("OverflowTooltip", () => {
         expect(el).toHaveStyle("color: rgb(255, 0, 0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;");
     });
 
-    it("uses hover trigger for selectable tooltip text", () => {
+    it("uses a fully controlled (custom) trigger so semi never self-mounts an overlay", () => {
         render(<OverflowTooltip>Text</OverflowTooltip>);
 
         const wrapper = screen.getByTestId("tooltip-wrapper");
-        expect(wrapper).toHaveAttribute("data-trigger", "hover");
+        expect(wrapper).toHaveAttribute("data-trigger", "custom");
+    });
+
+    it("does not show an empty tooltip bubble when text content is blank", () => {
+        render(<OverflowTooltip>{"   "}</OverflowTooltip>);
+
+        const wrapper = screen.getByTestId("tooltip-wrapper");
+        const container = wrapper.lastElementChild as HTMLElement;
+        mockOverflow(container, true);
+
+        fireEvent.mouseEnter(container);
+
+        // Blank/whitespace text must never open an (empty) tooltip overlay.
+        expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
     });
 });

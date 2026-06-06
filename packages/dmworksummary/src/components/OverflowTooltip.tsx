@@ -11,30 +11,42 @@ interface OverflowTooltipProps {
 const OverflowTooltip: React.FC<OverflowTooltipProps> = ({ children, className, style, as: Component = "div" }) => {
     const containerRef = useRef<HTMLElement>(null);
     const [visible, setVisible] = useState(false);
+    const [content, setContent] = useState("");
 
-    const handleVisibleChange = useCallback((newVisible: boolean) => {
-        if (newVisible) {
-            const el = containerRef.current;
-            if (el && el.scrollWidth > el.clientWidth) {
+    // NOTE: we intentionally use trigger="custom" instead of trigger="hover".
+    // With trigger="hover", semi binds its own mouseenter/focus handlers that mount
+    // the overlay from internal state (empty content on first hover) and bypass the
+    // controlled `visible` prop, producing an empty dark bubble. trigger="custom"
+    // makes visibility depend solely on `visible`, so the overlay only ever mounts
+    // when the title is truly overflowing and the text is non-empty.
+    const handleMouseEnter = useCallback(() => {
+        const el = containerRef.current;
+        if (el && el.scrollWidth > el.clientWidth) {
+            const text = el.textContent ?? "";
+            if (text.trim()) {
+                setContent(text);
                 setVisible(true);
             }
-        } else {
-            setVisible(false);
         }
+    }, []);
+
+    const handleMouseLeave = useCallback(() => {
+        setVisible(false);
     }, []);
 
     return (
         <Tooltip
-            content={containerRef.current?.textContent ?? ""}
+            content={content}
             position="bottom"
-            trigger="hover"
-            visible={visible}
-            onVisibleChange={handleVisibleChange}
+            trigger="custom"
+            visible={visible && content.length > 0}
         >
             <Component
                 ref={containerRef}
                 className={className}
                 style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...style }}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
             >
                 {children}
             </Component>

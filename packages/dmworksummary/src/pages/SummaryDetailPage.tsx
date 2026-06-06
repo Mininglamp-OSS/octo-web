@@ -534,6 +534,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     };
 
+    /**
+     * Whether the personal summary content is already visible in BY_PERSON mode.
+     * Mirrors the content-display predicate in renderPersonalSummary (shows when content is non-empty),
+     * so the global "generating" card and the personal summary are guaranteed to be mutually exclusive
+     * regardless of worker_status value/type/timing.
+     */
+    private get personalReady(): boolean {
+        const { detail, personalResult } = this.state;
+        return (
+            detail?.summary_mode === SummaryMode.BY_PERSON &&
+            !!personalResult?.content?.trim()
+        );
+    }
+
     renderProcessing() {
         const { t } = this.context;
         return (
@@ -957,6 +971,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 )}
 
                                 {(detail.status === TaskStatus.PENDING || detail.status === TaskStatus.PROCESSING) &&
+                                    !this.personalReady &&
                                     this.renderProcessing()
                                 }
 
@@ -985,8 +1000,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                         </Button>
                                     </div>
                                 )}
-                                {/* 单人 WaitingConfirm 状态显示生成中 */}
-                                {detail.status === TaskStatus.WAITING_CONFIRM && this.state.members.length <= 1 && (
+                                {/* 单人 WaitingConfirm 状态显示生成中（个人总结已出则不再显示 loading） */}
+                                {detail.status === TaskStatus.WAITING_CONFIRM && this.state.members.length <= 1 && !this.personalReady && (
                                     this.renderProcessing()
                                 )}
 
