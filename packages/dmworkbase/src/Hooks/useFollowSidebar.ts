@@ -3,6 +3,7 @@ import WKSDK, { ConversationAction, type Conversation, type ConversationListener
 import WKApp from "../App"
 import { t } from "../i18n"
 import { ChannelTypeCommunityTopic } from "../Service/Const"
+import FollowService from "../Service/FollowService"
 import SidebarService, { SidebarItem } from "../Service/SidebarService"
 import { buildThreadChannelId, parseThreadChannelId } from "../Service/Thread"
 
@@ -201,6 +202,21 @@ export function useFollowSidebar(): UseFollowSidebarResult {
             const threadChannelId = event.threadChannelId
                 || event.thread?.channel_id
                 || (event.shortId ? buildThreadChannelId(event.groupNo, event.shortId) : undefined)
+
+            // Auto-follow the newly created thread when its parent channel
+            // is already followed.  This covers all create entry points
+            // (ThreadCreate, ThreadCreateModal, ThreadPanel) without each
+            // needing access to follow state.  Best-effort: failure is
+            // logged but does not affect the create UX.
+            if (threadChannelId && followedGroupNosRef.current.has(event.groupNo)) {
+                const threadKey = `${ChannelTypeCommunityTopic}::${threadChannelId}`
+                if (!followedKeysRef.current.has(threadKey)) {
+                    FollowService.followThread({ thread_channel_id: threadChannelId })
+                        .then(() => load({ silent: true }))
+                        .catch((err) => console.warn("[useFollowSidebar] auto-follow thread failed (non-fatal)", err))
+                }
+            }
+
             scheduleThreadReload(threadChannelId)
         }
 
