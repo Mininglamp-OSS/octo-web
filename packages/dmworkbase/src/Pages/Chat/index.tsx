@@ -5,6 +5,7 @@ import ConversationList, {
 } from "../../Components/ConversationList";
 import SidebarTabBar, { SidebarTab } from "../../Components/SidebarTabBar";
 import ConversationListGrouped from "../../Components/ConversationListGrouped";
+import { isArchivedThreadConversation } from "../../Components/ConversationListGrouped/archivedThreads";
 import ChatConversationList, {
   isMutedForRecentConversation,
   isVisibleInRecentTab,
@@ -130,6 +131,16 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
           c.channel.channelType === channelType && c.channel.channelID === it.target_id,
         )
       : undefined;
+    // 与展开列表的展示层过滤一致：明确已归档的子区已从列表隐藏，未读也不计入
+    // 角标，否则会出现「红点 N 但列表里看不到对应未读」。fail-open：status 未知 /
+    // liveConv 不存在（sidebar-only 子区，无 channelInfo）仍按原逻辑累加，不漏算。
+    if (
+      it.target_type === SidebarTargetType.THREAD &&
+      liveConv &&
+      isArchivedThreadConversation(liveConv)
+    ) {
+      return sum;
+    }
     const unread = liveConv ? (liveConv.unread || 0) : (it.unread || 0);
     return sum + unread;
   }, 0);
