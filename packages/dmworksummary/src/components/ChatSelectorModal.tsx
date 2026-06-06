@@ -1,7 +1,8 @@
 import React, { Component } from "react";
 import { Modal, Input, Tabs, TabPane, Checkbox, Button, Spin, Empty, Tag, Switch } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
-import { I18nContext } from "@octo/base";
+import { I18nContext, ChannelTypeCommunityTopic } from "@octo/base";
+import WKSDK, { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import type { ChatCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
 import AiBadge from "@octo/base/src/Components/AiBadge";
@@ -17,7 +18,7 @@ interface Props {
 
 interface State {
     keyword: string;
-    activeTab: "all" | "group" | "direct";
+    activeTab: "followed" | "recent" | "group" | "direct";
     candidates: ChatCandidate[];
     loading: boolean;
     localSelected: ChatCandidate[];
@@ -35,7 +36,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     state: State = {
         keyword: "",
-        activeTab: "all",
+        activeTab: "followed",
         candidates: [],
         loading: false,
         localSelected: [],
@@ -46,7 +47,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     componentDidUpdate(prevProps: Props) {
         if (this.props.visible && !prevProps.visible) {
-            this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "all", includeArchived: false });
+            this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "followed", includeArchived: false });
             this.loadCandidates(false);
         }
     }
@@ -95,6 +96,35 @@ export default class ChatSelectorModal extends Component<Props, State> {
         this.props.onConfirm(this.state.localSelected);
     };
 
+    // 关注集合：纯前端判定。候选项的 chat_type 映射到 channelType 后查本地
+    // channelInfo —— 群聊看 orgData.save===1（保存到通讯录即关注），子区/私聊
+    // 看 orgData.is_followed。sidebar 服务未在此包暴露，故复用 IM 本地缓存。
+    getFollowedIds(): Set<string> {
+        const followed = new Set<string>();
+        for (const c of this.state.candidates) {
+            const channelType =
+                c.chat_type === "direct" ? ChannelTypePerson :
+                c.chat_type === "thread" ? ChannelTypeCommunityTopic :
+                ChannelTypeGroup;
+            const info = WKSDK.shared().channelManager.getChannelInfo(
+                new Channel(c.chat_id, channelType),
+            );
+            const org = info?.orgData as { save?: number; is_followed?: number | boolean } | undefined;
+            if (org && (org.save === 1 || org.is_followed === 1 || org.is_followed === true)) {
+                followed.add(c.chat_id);
+            }
+        }
+        return followed;
+    }
+
+    // 最近集合：取本地会话列表的 channelID。按 timestamp DESC 排序后取 id 集合
+    // （集合本身无序，排序仅遵循"最近优先"语义）。
+    getRecentIds(): Set<string> {
+        const conversations = WKSDK.shared().conversationManager.conversations ?? [];
+        const sorted = [...conversations].sort((a, b) => b.timestamp - a.timestamp);
+        return new Set(sorted.map((c) => c.channel.channelID));
+    }
+
     getDisplayList(): DisplayEntry[] {
         const { candidates, activeTab, keyword } = this.state;
         const kw = keyword.trim().toLowerCase();
@@ -106,9 +136,21 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 .map((c) => ({ item: c, indent: false }));
         }
 
-        const groups = candidates.filter((c) => c.chat_type === "group");
-        const threads = candidates.filter((c) => c.chat_type === "thread");
-        const directs = activeTab === "all" ? candidates.filter((c) => c.chat_type === "direct") : [];
+        // followed / recent：纯前端按本地集合过滤，切 tab 不重新请求后端。
+        const followedIds = activeTab === "followed" ? this.getFollowedIds() : null;
+        const recentIds = activeTab === "recent" ? this.getRecentIds() : null;
+        const inScope = (c: ChatCandidate): boolean => {
+            if (followedIds) return followedIds.has(c.chat_id);
+            if (recentIds) return recentIds.has(c.chat_id);
+            return true;
+        };
+
+        const groups = candidates.filter((c) => c.chat_type === "group" && inScope(c));
+        const threads = candidates.filter((c) => c.chat_type === "thread" && inScope(c));
+        const directs =
+            activeTab === "followed" || activeTab === "recent"
+                ? candidates.filter((c) => c.chat_type === "direct" && inScope(c))
+                : [];
 
         const groupIds = new Set(groups.map((g) => g.chat_id));
         const threadsByParent = new Map<string, ChatCandidate[]>();
@@ -267,9 +309,10 @@ export default class ChatSelectorModal extends Component<Props, State> {
                     style={{ marginBottom: 12 }}
                 />
                 <Tabs activeKey={activeTab} onChange={this.handleTabChange} size="small">
-                    <TabPane tab={t("summary.chatSelector.all")} itemKey="all" />
-                    <TabPane tab={t("summary.source.groupChat")} itemKey="group" />
-                    <TabPane tab={t("summary.source.directMessage")} itemKey="direct" />
+                    <TabPane tab={t("summary.chatSelector.followed")} itemKey="followed" />
+                    <TabPane tab={t("summary.chatSelector.recent")} itemKey="recent" />
+                    <TabPane tab={t("summary.chatSelector.allGroups")} itemKey="group" />
+                    <TabPane tab={t("summary.chatSelector.allDirects")} itemKey="direct" />
                 </Tabs>
                 <div style={{ display: "flex", alignItems: "center", padding: "8px 0", gap: 8 }}>
                     <Switch
