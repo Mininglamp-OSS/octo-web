@@ -166,6 +166,8 @@
   "conversation.foldSession.collapsedParticipants": "{{name}} and {{count}} others",
   "conversation.foldSession.collapseDiscussions": "Collapse {{count}} discussions",
   "conversation.foldSession.expandDiscussions": "Expand {{count}} discussions",
+  "conversation.forward.allFailed": "Failed to forward",
+  "conversation.forward.partialFailed": "{{failed}} of {{total}} failed to forward",
   "conversation.message.sendFailed": "Failed to send message",
   "conversation.multiplePanel.cancelSelection": "Cancel selection",
   "conversation.multiplePanel.createMatter": "Create task",

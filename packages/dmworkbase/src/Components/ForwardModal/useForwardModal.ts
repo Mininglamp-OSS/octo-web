@@ -7,6 +7,8 @@ import { filterArchivedThreads } from "../ConversationListGrouped/archivedThread
 import { debounce } from "../../Utils/rateLimit"
 import WKApp from "../../App"
 import { ForwardItem } from "./ForwardModal"
+import { candidateToForwardItem } from "./candidateToForwardItem"
+import { chatTypeToChannelType } from "./chatTypeToChannelType"
 
 function channelInfoToForwardItem(channelInfo: ChannelInfo): ForwardItem {
   return {
@@ -347,22 +349,10 @@ export function useForwardModal(
         if (reqId !== searchRequestRef.current) return
         const arr = Array.isArray(candidates) ? candidates : []
         const groups: ForwardItem[] = arr.map((c: any) => {
-          const chType = c.chat_type === "direct" ? 1 : ChannelTypeGroup
-          const ch = new Channel(c.chat_id, chType)
+          // 保留 channelMapRef 副作用：confirm 时按 channelID 取回 Channel 引用。
+          const ch = new Channel(c.chat_id, chatTypeToChannelType(c.chat_type))
           channelMapRef.current.set(c.chat_id, ch)
-          // 若本地已缓存 channelInfo，尝试继承外部群标记
-          const cachedInfo = WKSDK.shared().channelManager.getChannelInfo(ch)
-          const isExternal =
-            chType === ChannelTypeGroup &&
-            cachedInfo?.orgData?.is_external_group === 1
-          return {
-            channelID: c.chat_id,
-            channelType: chType,
-            displayName: c.name || c.chat_id,
-            isAI: false,
-            isThread: false,
-            isExternal,
-          } as ForwardItem
+          return candidateToForwardItem(c)
         })
         setSearchGroupItems(groups)
       })

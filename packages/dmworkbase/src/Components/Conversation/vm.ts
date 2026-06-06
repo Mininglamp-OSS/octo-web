@@ -575,7 +575,11 @@ export default class ConversationVM extends ProviderListener {
         })
     }
 
-    sendMergeforward(toChannels: Channel[]) {
+    // 返回 { failed, total }：failed 为转发失败的目标数，total 为目标总数。
+    // 单个目标失败不中断其余目标（并发投递，互相隔离）。
+    // 注意：sendMessage→WKSDK.chatManager.send() 是本地乐观语义，入队即 resolve，
+    // 真正投递失败在 ack 阶段异步回调，不在此 catch 覆盖范围内（#273 已知边界）。
+    async sendMergeforward(toChannels: Channel[]): Promise<{ failed: number; total: number }> {
         let users = new Array<any>();
 
         let checkedMessages = this.getCheckedMessages().map((messageWrap: MessageWrap) => {
@@ -597,11 +601,29 @@ export default class ConversationVM extends ProviderListener {
                 users.push({ uid: message.fromUID, name: channelInfo?.title })
             }
         }
+        const total = toChannels?.length ?? 0
+        let failed = 0
         if (toChannels && toChannels.length > 0) {
-            for (const destChannel of toChannels) {
-                this.sendMessage(new MergeforwardContent(this.channel.channelType, users, checkedMessages), destChannel)
+            const content = new MergeforwardContent(this.channel.channelType, users, checkedMessages)
+            // 并发投递 + 每个任务 .catch 兜底（语义等价 Promise.allSettled，但本包
+            // tsconfig target=es2019 没有 allSettled 类型，手写更稳）。单目标失败
+            // 被隔离、计数，不影响其余。
+            type SendOutcome = { ok: true } | { ok: false; channelID: string; reason: unknown }
+            const outcomes = await Promise.all(
+                toChannels.map((destChannel): Promise<SendOutcome> =>
+                    this.sendMessage(content, destChannel)
+                        .then((): SendOutcome => ({ ok: true }))
+                        .catch((reason: unknown): SendOutcome => ({ ok: false, channelID: destChannel.channelID, reason }))
+                )
+            )
+            for (const o of outcomes) {
+                if (!o.ok) {
+                    failed++
+                    console.error("[merge-forward] send failed", o.channelID, o.reason)
+                }
             }
         }
+        return { failed, total }
     }
 
     // 删除消息

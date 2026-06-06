@@ -166,6 +166,8 @@
   "conversation.foldSession.collapsedParticipants": "{{name}}等{{count}}人",
   "conversation.foldSession.collapseDiscussions": "收起{{count}}条讨论",
   "conversation.foldSession.expandDiscussions": "展开{{count}}条讨论",
+  "conversation.forward.allFailed": "转发失败",
+  "conversation.forward.partialFailed": "{{total}} 个会话中有 {{failed}} 个转发失败",
   "conversation.message.sendFailed": "消息发送失败",
   "conversation.multiplePanel.cancelSelection": "取消多选",
   "conversation.multiplePanel.createMatter": "创建新事项",

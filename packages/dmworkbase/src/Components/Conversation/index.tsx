@@ -450,13 +450,77 @@ export class Conversation
     return message;
   }
 
+  // 统一上报转发结果。区分「全部失败」与「部分失败（带计数）」，全部成功不提示。
+  private showForwardResult(failed: number, total: number): void {
+    if (failed <= 0) {
+      return;
+    }
+    if (failed >= total) {
+      Toast.error(t("base.conversation.forward.allFailed"));
+    } else {
+      Toast.error(
+        t("base.conversation.forward.partialFailed", {
+          values: { failed, total },
+        }),
+      );
+    }
+  }
+
   fowardMessageUI(message: Message): void {
-    WKApp.shared.baseContext.showConversationSelect((channels: Channel[]) => {
-      const cloneContent = getEffectiveContent(message);
-      for (const channel of channels) {
-        this.sendMessage(cloneContent, channel);
+    WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
+      // getEffectiveContent 放在最外层 try：它同步抛错也不会逃逸成 unhandled
+      // rejection（此回调是 async）。
+      try {
+        const cloneContent = getEffectiveContent(message);
+        // 并发投递，单目标失败不影响其余（目标上限已放宽到 30，串行会线性放大耗时）。
+        // 用 Promise.all + 每个任务 .catch 兜底（语义等价 Promise.allSettled，但本
+        // 包 tsconfig target=es2019 没有 allSettled 类型，手写更稳）。
+        //
+        // 加固边界（#273）：此处捕获的是「内容构造 / 编码 / 同步 send 调用」异常；
+        // WKSDK.chatManager.send() 是本地乐观语义——packet 入队后立即 resolve，真正
+        // 的投递失败在 ack 阶段异步回调（notifyMessageStatusListeners），不会在这里
+        // 被 catch 到。hook ack 超出本次修复范围。
+        const failed = await this.forwardToChannels(
+          channels,
+          () => cloneContent,
+        );
+        this.showForwardResult(failed, channels.length);
+      } catch (e) {
+        console.error("[forward] build content failed", e);
+        Toast.error(t("base.conversation.forward.allFailed"));
       }
     });
+  }
+
+  // 把同一 content 并发转发到多个目标，返回失败目标数。getContent 每个目标调用
+  // 一次（merge / 多消息场景按需返回不同 content）。单目标失败被隔离、计数，不影响
+  // 其余目标。见 fowardMessageUI 处关于 send() 乐观语义与捕获边界的说明。
+  private async forwardToChannels(
+    channels: Channel[],
+    getContent: (channel: Channel) => MessageContent,
+  ): Promise<number> {
+    type SendOutcome = { ok: true } | { ok: false; channelID: string; reason: unknown };
+    const outcomes = await Promise.all(
+      channels.map((channel): Promise<SendOutcome> =>
+        this.sendMessage(getContent(channel), channel)
+          .then((): SendOutcome => ({ ok: true }))
+          .catch(
+            (reason: unknown): SendOutcome => ({
+              ok: false,
+              channelID: channel.channelID,
+              reason,
+            }),
+          ),
+      ),
+    );
+    let failed = 0;
+    for (const o of outcomes) {
+      if (!o.ok) {
+        failed++;
+        console.error("[forward] send failed", o.channelID, o.reason);
+      }
+    }
+    return failed;
   }
   openThreadPanel(threadChannelId: string, threadName: string): void {
     this.onOpenThreadPanel?.(threadChannelId, threadName);
@@ -2445,14 +2509,57 @@ export class Conversation
                         return;
                       }
                       WKApp.shared.baseContext.showConversationSelect(
-                        (channels: Channel[]) => {
-                          for (const message of messages) {
-                            const cloneContent = getEffectiveContent(
-                              message.message
-                            );
-                            for (const channel of channels) {
-                              this.sendMessage(cloneContent, channel);
+                        async (channels: Channel[]) => {
+                          try {
+                            // 每条选中消息 × 每个目标，全部并发投递（详见
+                            // forwardToChannels / fowardMessageUI 处关于 send()
+                            // 乐观语义的说明）。getEffectiveContent 同步抛错会被
+                            // 最外层 try 兜住。
+                            const tasks: {
+                              content: MessageContent;
+                              channel: Channel;
+                            }[] = [];
+                            for (const message of messages) {
+                              const cloneContent = getEffectiveContent(
+                                message.message,
+                              );
+                              for (const channel of channels) {
+                                tasks.push({ content: cloneContent, channel });
+                              }
                             }
+                            type SendOutcome =
+                              | { ok: true }
+                              | { ok: false; channelID: string; reason: unknown };
+                            const outcomes = await Promise.all(
+                              tasks.map((task): Promise<SendOutcome> =>
+                                this.sendMessage(task.content, task.channel)
+                                  .then((): SendOutcome => ({ ok: true }))
+                                  .catch(
+                                    (reason: unknown): SendOutcome => ({
+                                      ok: false,
+                                      channelID: task.channel.channelID,
+                                      reason,
+                                    }),
+                                  ),
+                              ),
+                            );
+                            let failed = 0;
+                            for (const o of outcomes) {
+                              if (!o.ok) {
+                                failed++;
+                                console.error(
+                                  "[forward] send failed",
+                                  o.channelID,
+                                  o.reason,
+                                );
+                              }
+                            }
+                            this.showForwardResult(failed, tasks.length);
+                          } catch (e) {
+                            console.error("[forward] build content failed", e);
+                            Toast.error(
+                              t("base.conversation.forward.allFailed"),
+                            );
                           }
                           vm.editOn = false;
                           vm.unCheckAllMessages();
@@ -2468,8 +2575,26 @@ export class Conversation
                         return;
                       }
                       WKApp.shared.baseContext.showConversationSelect(
-                        (channels: Channel[]) => {
-                          vm.sendMergeforward(channels);
+                        async (channels: Channel[]) => {
+                          // 最外层 try：sendMergeforward 的同步前置段
+                          // （getCheckedMessages().map / getChannelInfo /
+                          // new MergeforwardContent）在 await 之前，若抛错会让此
+                          // async 回调 reject 成 unhandled rejection，且清理逻辑
+                          // 不执行、UI 卡在多选态。与 onForward / fowardMessageUI
+                          // 两处路径对称兜底（#273）。
+                          try {
+                            const { failed, total } =
+                              await vm.sendMergeforward(channels);
+                            this.showForwardResult(failed, total);
+                          } catch (e) {
+                            console.error(
+                              "[merge-forward] build content failed",
+                              e,
+                            );
+                            Toast.error(
+                              t("base.conversation.forward.allFailed"),
+                            );
+                          }
                           vm.editOn = false;
                           vm.unCheckAllMessages();
                         }
