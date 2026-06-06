@@ -521,6 +521,7 @@
   "module.thread.archiveFailedRetry": "Failed to archive. Please try again.",
   "module.thread.archiveOk": "Archive",
   "module.thread.archiveSuccess": "Thread archived",
+  "module.thread.archiveUndo": "Undo",
   "module.thread.fallbackName": "Thread",
   "module.thread.info": "Thread info",
   "module.thread.leave": "Leave thread",

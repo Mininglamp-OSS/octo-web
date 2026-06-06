@@ -522,6 +522,7 @@
   "module.thread.archiveFailedRetry": "归档失败，请重试",
   "module.thread.archiveOk": "归档",
   "module.thread.archiveSuccess": "子区已归档",
+  "module.thread.archiveUndo": "撤销",
   "module.thread.fallbackName": "子区",
   "module.thread.info": "子区信息",
   "module.thread.leave": "离开子区",

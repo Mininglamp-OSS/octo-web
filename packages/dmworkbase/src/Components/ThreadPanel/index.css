@@ -501,6 +501,47 @@ body[theme-mode="dark"] .wk-thread-panel {
   background: var(--semi-color-fill-1);
 }
 
+.wk-thread-panel-item-archive-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  line-height: 1;
+}
+
+.wk-thread-panel-item:hover .wk-thread-panel-item-archive-btn {
+  opacity: 1;
+}
+
+.wk-thread-panel-item-archive-btn:hover {
+  background: var(--semi-color-fill-1);
+}
+
+.wk-thread-archive-undo-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+}
+
+.wk-thread-archive-undo-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--semi-color-primary);
+}
+
+.wk-thread-archive-undo-btn:hover {
+  text-decoration: underline;
+}
+
 .wk-thread-panel-item-title {
   display: flex;
   align-items: center;
