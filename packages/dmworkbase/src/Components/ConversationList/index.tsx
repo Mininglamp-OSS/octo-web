@@ -5,6 +5,7 @@ import {
   ChannelInfo,
   ChannelTypePerson,
   ChannelTypeGroup,
+  ReminderType,
 } from "wukongimjssdk";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import { parseThreadChannelId } from "../../Service/Thread";
@@ -67,6 +68,7 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
 }) => {
   const { t } = useI18n();
   const totalUnread = conversationWrap.unread + threadUnread;
+  const hasMention = conversationWrap.isMentionMe && totalUnread > 0;
   const channelInfo = conversationWrap.channelInfo;
   // channelInfo 未加载时主动拉取，加载完触发 re-render
   React.useEffect(() => {
@@ -176,9 +178,6 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
           />
         )}
       </span>
-      {conversationWrap.isMentionMe && totalUnread > 0 && (
-        <span className="wk-mention-badge">{t("base.conversationList.mentionMe")}</span>
-      )}
       <span className="wk-conv-compact-name">
         {channelInfo?.orgData.displayName ? (
           channelInfo.orgData.displayName
@@ -211,11 +210,18 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
           </svg>
         </span>
       )}
-      {totalUnread > 0 && !effectiveMute && (
+      {(hasMention || (totalUnread > 0 && !effectiveMute)) && (
         <span className="wk-conv-compact-badges">
-          <span className="wk-conv-compact-badge">
-            {totalUnread > 99 ? "99+" : totalUnread}
-          </span>
+          {hasMention && (
+            <span className="wk-conv-compact-mention" aria-hidden="true">
+              {t("base.conversationList.mentionMarker")}
+            </span>
+          )}
+          {totalUnread > 0 && !effectiveMute && (
+            <span className="wk-conv-compact-badge">
+              {totalUnread > 99 ? "99+" : totalUnread}
+            </span>
+          )}
         </span>
       )}
       {hasThreads && (
@@ -669,6 +675,10 @@ export default class ConversationList extends Component<
     // 折叠中的子区未读一起显示，否则会出现「角标显示 N 但列表里看不到任何未读」。
     // 已展开时 threadUnread 由调用处传 0，自然只显示父群自身。
     const totalUnread = conversationWrap.unread + threadUnread;
+    const hasMention = conversationWrap.isMentionMe && totalUnread > 0;
+    const visibleSimpleReminders = conversationWrap.simpleReminders?.filter(
+      (r) => !r.done && r.reminderType !== ReminderType.ReminderTypeMentionMe
+    );
     // 子区静音继承父群（与 CompactGroupItem 保持一致）：显式设置看自身，未设置看父群
     const threadRawMute = isThread
       ? ((channelInfo?.orgData?.thread as any)?.mute as number | null | undefined)
@@ -819,18 +829,16 @@ export default class ConversationList extends Component<
                     {t("base.conversationList.draft")}
                   </label>
                 ) : undefined}
-                {conversationWrap.simpleReminders &&
+                {visibleSimpleReminders &&
                 !typing &&
-                conversationWrap.simpleReminders.length > 0
-                  ? conversationWrap.simpleReminders
-                      .filter((r) => r.done === false)
-                      .map((r) => {
-                        return (
-                          <label key={r.reminderID} className="wk-reminder">
-                            {r.text}
-                          </label>
-                        );
-                      })
+                visibleSimpleReminders.length > 0
+                  ? visibleSimpleReminders.map((r) => {
+                      return (
+                        <label key={r.reminderID} className="wk-reminder">
+                          {r.text}
+                        </label>
+                      );
+                    })
                   : undefined}
                 {/* 静音 + 多条未读：预览前置 [N 条] 红字提示（design v3.1 低打扰） */}
                 {effectiveMute && totalUnread > 1 && !typing && (
@@ -844,8 +852,10 @@ export default class ConversationList extends Component<
                   ? this._getTypingUI(conversationWrap)
                   : this.lastContent(conversationWrap)}
               </div>
-              {conversationWrap.isMentionMe && totalUnread > 0 && !effectiveMute && (
-                <span className="wk-mention-badge">{t("base.conversationList.mentionMe")}</span>
+              {hasMention && (
+                <span className="wk-mention" aria-hidden="true">
+                  {t("base.conversationList.mentionMarker")}
+                </span>
               )}
             </div>
           </div>

@@ -33,7 +33,7 @@
   "conversationList.external": "External",
   "conversationList.externalGroup": "External group",
   "conversationList.justNow": "Just now",
-  "conversationList.mentionMe": "@me",
+  "conversationList.mentionMarker": "@me",
   "conversationList.minutesAgoShort": "{{count}}m",
   "conversationList.toggleThreads": "Expand or collapse threads",
   "conversationList.typing": "typing",
