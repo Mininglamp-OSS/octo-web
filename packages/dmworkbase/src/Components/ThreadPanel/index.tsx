@@ -1500,10 +1500,11 @@ export default class ThreadPanel extends Component<
         onClick={(e) => this.handleInlineArchiveToggle(thread, e)}
       >
         {archiving ? (
-          <Archive size={15} color="var(--semi-color-text-2)" />
+          <Archive size={13} />
         ) : (
-          <ArchiveRestore size={15} color="var(--semi-color-text-2)" />
+          <ArchiveRestore size={13} />
         )}
+        <span className="wk-thread-panel-item-archive-btn-label">{label}</span>
       </button>
     );
   }
