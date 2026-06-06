@@ -68,6 +68,7 @@ export class RichTextCell extends MessageCell {
           )}
           <MixedContent
             {...uiProps.content}
+            onMentionClick={(uid) => context.showUser(uid)}
             onFileDownload={(block) => {
               if (block.url) {
                 downloadFile(block.url, block.name);

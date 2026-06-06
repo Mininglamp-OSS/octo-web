@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import WKApp from "../../App";
 import type { MessageWrap } from "../../Service/Model";
+import { PartType } from "../../Service/Model";
 import { RichTextBlockType } from "../../Messages/RichText/RichTextContent";
 import type {
   RichTextBlock,
@@ -19,6 +20,8 @@ import type {
 } from "../../ui/message/MixedContent";
 import { getMessageRow } from "./useMessageRow";
 import type { MessageRowSelectionState } from "./useMessageRow";
+import { buildTextMessageMentions } from "./textMessageMentions";
+import type { MentionInfo, EmojiInfo } from "../../Messages/Text/MarkdownContent";
 
 function resolveFileUrl(rawUrl?: string): string {
   if (!rawUrl) return "";
@@ -125,10 +128,30 @@ export function getRichTextMessageUI(
   selection?: MessageRowSelectionState
 ) {
   const content = message.content as RichTextContent;
+  const parts = message.parts || [];
+
+  const mentions: MentionInfo[] = buildTextMessageMentions({
+    parts: parts as any,
+    content: message.content,
+    partMentionType: PartType.mention as unknown as number,
+  }) as MentionInfo[];
+
+  const emojis: EmojiInfo[] = parts
+    .filter((p: any) => p.type === PartType.emoji)
+    .reduce((acc: EmojiInfo[], p: any) => {
+      const url = WKApp.emojiService.getImage(p.text);
+      if (url && !acc.find((e) => e.key === p.text)) {
+        acc.push({ key: p.text, url });
+      }
+      return acc;
+    }, []);
+
   return {
     row: getMessageRow(message, selection),
     content: {
       blocks: getRichTextBlocksUI(content.content || []),
+      mentions,
+      emojis,
     },
   };
 }

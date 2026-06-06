@@ -2,6 +2,8 @@ import React from "react";
 import { Download } from "lucide-react";
 import MarkdownContent, {
   MarkdownImage,
+  MentionInfo,
+  EmojiInfo,
 } from "../../../Messages/Text/MarkdownContent";
 import "./index.css";
 
@@ -43,6 +45,9 @@ export type MixedContentBlock =
 
 export interface MixedContentProps {
   blocks: MixedContentBlock[];
+  mentions?: MentionInfo[];
+  onMentionClick?: (uid: string) => void;
+  emojis?: EmojiInfo[];
   onFileDownload?: (
     block: Extract<MixedContentBlock, { type: "file" }>
   ) => void;
@@ -50,6 +55,9 @@ export interface MixedContentProps {
 
 export default function MixedContent({
   blocks,
+  mentions,
+  onMentionClick,
+  emojis,
   onFileDownload,
 }: MixedContentProps) {
   return (
@@ -110,7 +118,13 @@ export default function MixedContent({
         }
         return (
           <div key={block.id} className="wk-msg-mixed-text">
-            <MarkdownContent content={block.content} enableMarkdown={false} />
+            <MarkdownContent
+              content={block.content}
+              enableMarkdown={false}
+              mentions={mentions}
+              onMentionClick={onMentionClick}
+              emojis={emojis}
+            />
           </div>
         );
       })}
