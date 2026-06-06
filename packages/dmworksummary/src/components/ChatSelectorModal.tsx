@@ -6,7 +6,7 @@ import type { ChatCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import WKApp from "@octo/base/src/App";
-import SidebarService from "@octo/base/src/Service/SidebarService";
+import SidebarService, { SidebarTargetType } from "@octo/base/src/Service/SidebarService";
 import { MAX_CHAT_SELECT } from "../constants/limits";
 
 interface Props {
@@ -75,15 +75,16 @@ export default class ChatSelectorModal extends Component<Props, State> {
             const followedIds = new Set<string>();
             for (const item of followResp?.items ?? []) {
                 if (item.is_followed) {
-                    followedIds.add(item.target_id);
+                    followedIds.add(`${item.target_type}::${item.target_id}`);
                 }
             }
 
             const recentIds = new Set<string>();
             const recentOrder = new Map<string, number>();
             for (const item of recentResp?.items ?? []) {
-                recentIds.add(item.target_id);
-                recentOrder.set(item.target_id, item.timestamp);
+                const key = `${item.target_type}::${item.target_id}`;
+                recentIds.add(key);
+                recentOrder.set(key, item.timestamp);
             }
 
             if (seq !== this.reqSeq) return;
@@ -123,15 +124,18 @@ export default class ChatSelectorModal extends Component<Props, State> {
         this.props.onConfirm(this.state.localSelected);
     };
 
-    // 关注集合：来自 SidebarService follow tab 的权威关注列表（is_followed=true），
-    // 按 target_id（即 SidebarItem 的 channel_id）匹配候选项。
-    getFollowedIds(): Set<string> {
-        return this.state.followedIds;
+    // chat_type → SidebarTargetType 映射，用于构建类型安全的复合 key
+    static chatTypeToTargetType(chatType: string): number {
+        switch (chatType) {
+            case "direct": return SidebarTargetType.DM;
+            case "thread": return SidebarTargetType.THREAD;
+            default: return SidebarTargetType.CHANNEL;
+        }
     }
 
-    // 最近集合：来自 SidebarService recent tab 的权威会话列表。
-    getRecentIds(): Set<string> {
-        return this.state.recentIds;
+    // 构建复合 key：${target_type}::${id}，防止跨类型 id 碰撞
+    static compositeKey(chatType: string, chatId: string): string {
+        return `${ChatSelectorModal.chatTypeToTargetType(chatType)}::${chatId}`;
     }
 
     getDisplayList(): DisplayEntry[] {
@@ -146,19 +150,18 @@ export default class ChatSelectorModal extends Component<Props, State> {
         }
 
         if (activeTab === "recent") {
-            const recentIds = this.getRecentIds();
-            const { recentOrder } = this.state;
+            const { recentIds, recentOrder } = this.state;
             return candidates
-                .filter((c) => recentIds.has(c.chat_id))
+                .filter((c) => recentIds.has(ChatSelectorModal.compositeKey(c.chat_type, c.chat_id)))
                 .filter((c) => !kw || c.name.toLowerCase().includes(kw))
-                .sort((a, b) => (recentOrder.get(b.chat_id) ?? 0) - (recentOrder.get(a.chat_id) ?? 0))
+                .sort((a, b) => (recentOrder.get(ChatSelectorModal.compositeKey(b.chat_type, b.chat_id)) ?? 0) - (recentOrder.get(ChatSelectorModal.compositeKey(a.chat_type, a.chat_id)) ?? 0))
                 .map((c) => ({ item: c, indent: false }));
         }
 
         // followed：纯前端按本地集合过滤，切 tab 不重新请求后端。
-        const followedIds = activeTab === "followed" ? this.getFollowedIds() : null;
+        const { followedIds } = activeTab === "followed" ? this.state : { followedIds: null };
         const inScope = (c: ChatCandidate): boolean => {
-            if (followedIds) return followedIds.has(c.chat_id);
+            if (followedIds) return followedIds.has(ChatSelectorModal.compositeKey(c.chat_type, c.chat_id));
             return true;
         };
 
