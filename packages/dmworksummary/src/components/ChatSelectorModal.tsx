@@ -1,11 +1,12 @@
 import React, { Component } from "react";
 import { Modal, Input, Tabs, TabPane, Checkbox, Button, Spin, Empty, Tag, Switch } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
-import { I18nContext, ChannelTypeCommunityTopic } from "@octo/base";
-import WKSDK, { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
+import { I18nContext } from "@octo/base";
 import type { ChatCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
 import AiBadge from "@octo/base/src/Components/AiBadge";
+import WKApp from "@octo/base/src/App";
+import SidebarService from "@octo/base/src/Service/SidebarService";
 import { MAX_CHAT_SELECT } from "../constants/limits";
 
 interface Props {
@@ -23,6 +24,9 @@ interface State {
     loading: boolean;
     localSelected: ChatCandidate[];
     includeArchived: boolean;
+    followedIds: Set<string>;
+    recentIds: Set<string>;
+    recentOrder: Map<string, number>;
 }
 
 interface DisplayEntry {
@@ -41,6 +45,9 @@ export default class ChatSelectorModal extends Component<Props, State> {
         loading: false,
         localSelected: [],
         includeArchived: false,
+        followedIds: new Set<string>(),
+        recentIds: new Set<string>(),
+        recentOrder: new Map<string, number>(),
     };
 
     private reqSeq = 0;
@@ -56,11 +63,31 @@ export default class ChatSelectorModal extends Component<Props, State> {
         const includeArchived = includeArchivedOverride ?? this.state.includeArchived;
         const seq = ++this.reqSeq;
         this.setState({ loading: true });
+        const deviceUuid = WKApp.shared.deviceId || "";
         try {
             const params = includeArchived ? { include_archived: true } : {};
-            const candidates = await api.getChatCandidates(params);
+            const [candidates, followResp, recentResp] = await Promise.all([
+                api.getChatCandidates(params),
+                SidebarService.sync({ tab: "follow", device_uuid: deviceUuid }).catch(() => null),
+                SidebarService.sync({ tab: "recent", device_uuid: deviceUuid }).catch(() => null),
+            ]);
+
+            const followedIds = new Set<string>();
+            for (const item of followResp?.items ?? []) {
+                if (item.is_followed) {
+                    followedIds.add(item.target_id);
+                }
+            }
+
+            const recentIds = new Set<string>();
+            const recentOrder = new Map<string, number>();
+            for (const item of recentResp?.items ?? []) {
+                recentIds.add(item.target_id);
+                recentOrder.set(item.target_id, item.timestamp);
+            }
+
             if (seq !== this.reqSeq) return;
-            this.setState({ candidates, loading: false });
+            this.setState({ candidates, followedIds, recentIds, recentOrder, loading: false });
         } catch {
             if (seq !== this.reqSeq) return;
             this.setState({ loading: false });
@@ -96,33 +123,15 @@ export default class ChatSelectorModal extends Component<Props, State> {
         this.props.onConfirm(this.state.localSelected);
     };
 
-    // 关注集合：纯前端判定。候选项的 chat_type 映射到 channelType 后查本地
-    // channelInfo —— 群聊看 orgData.save===1（保存到通讯录即关注），子区/私聊
-    // 看 orgData.is_followed。sidebar 服务未在此包暴露，故复用 IM 本地缓存。
+    // 关注集合：来自 SidebarService follow tab 的权威关注列表（is_followed=true），
+    // 按 target_id（即 SidebarItem 的 channel_id）匹配候选项。
     getFollowedIds(): Set<string> {
-        const followed = new Set<string>();
-        for (const c of this.state.candidates) {
-            const channelType =
-                c.chat_type === "direct" ? ChannelTypePerson :
-                c.chat_type === "thread" ? ChannelTypeCommunityTopic :
-                ChannelTypeGroup;
-            const info = WKSDK.shared().channelManager.getChannelInfo(
-                new Channel(c.chat_id, channelType),
-            );
-            const org = info?.orgData as { save?: number; is_followed?: number | boolean } | undefined;
-            if (org && (org.save === 1 || org.is_followed === 1 || org.is_followed === true)) {
-                followed.add(c.chat_id);
-            }
-        }
-        return followed;
+        return this.state.followedIds;
     }
 
-    // 最近集合：取本地会话列表的 channelID。按 timestamp DESC 排序后取 id 集合
-    // （集合本身无序，排序仅遵循"最近优先"语义）。
+    // 最近集合：来自 SidebarService recent tab 的权威会话列表。
     getRecentIds(): Set<string> {
-        const conversations = WKSDK.shared().conversationManager.conversations ?? [];
-        const sorted = [...conversations].sort((a, b) => b.timestamp - a.timestamp);
-        return new Set(sorted.map((c) => c.channel.channelID));
+        return this.state.recentIds;
     }
 
     getDisplayList(): DisplayEntry[] {
@@ -136,19 +145,27 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 .map((c) => ({ item: c, indent: false }));
         }
 
-        // followed / recent：纯前端按本地集合过滤，切 tab 不重新请求后端。
+        if (activeTab === "recent") {
+            const recentIds = this.getRecentIds();
+            const { recentOrder } = this.state;
+            return candidates
+                .filter((c) => recentIds.has(c.chat_id))
+                .filter((c) => !kw || c.name.toLowerCase().includes(kw))
+                .sort((a, b) => (recentOrder.get(b.chat_id) ?? 0) - (recentOrder.get(a.chat_id) ?? 0))
+                .map((c) => ({ item: c, indent: false }));
+        }
+
+        // followed：纯前端按本地集合过滤，切 tab 不重新请求后端。
         const followedIds = activeTab === "followed" ? this.getFollowedIds() : null;
-        const recentIds = activeTab === "recent" ? this.getRecentIds() : null;
         const inScope = (c: ChatCandidate): boolean => {
             if (followedIds) return followedIds.has(c.chat_id);
-            if (recentIds) return recentIds.has(c.chat_id);
             return true;
         };
 
         const groups = candidates.filter((c) => c.chat_type === "group" && inScope(c));
         const threads = candidates.filter((c) => c.chat_type === "thread" && inScope(c));
         const directs =
-            activeTab === "followed" || activeTab === "recent"
+            activeTab === "followed"
                 ? candidates.filter((c) => c.chat_type === "direct" && inScope(c))
                 : [];
 
