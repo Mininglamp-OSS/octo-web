@@ -111,6 +111,7 @@ import {
 import { SummaryCardContent } from "./Messages/SummaryCard/SummaryCardContent";
 import { SummaryCardCell } from "./Messages/SummaryCard";
 import { parseThreadChannelId, ThreadStatus } from "./Service/Thread";
+import { shouldShowThreadArchiveAction } from "./Service/threadPermission";
 import { canShowRevokeMenu } from "./Service/revokePermission";
 
 /** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
@@ -2194,13 +2195,22 @@ export default class BaseModule implements IModule {
         }
         const threadInfo = parseThreadChannelId(channel.channelID);
         const thread = data.channelInfo?.orgData?.thread as any;
-        const isCreator = thread?.creator_uid === WKApp.loginInfo.uid;
-        const canArchive = isCreator || data.isManagerOrCreatorOfMe;
+        // 角色/权限判定统一走 shouldShowThreadArchiveAction（内部调用
+        // canArchiveThread → canManageThread，从【父群】成员列表解析
+        // owner/manager，与 ThreadPanel.canEditThread 完全一致，见 issue #283），
+        // 并统一「状态须为 Active/Archived」的门槛，避免与入口 B 产生平行副本。
+        // data.isManagerOrCreatorOfMe 读的是子区频道自身成员缓存，从未同步，
+        // 非创建者的群主/管理员恒为 false，仅作兜底。
+        const showArchiveAction = shouldShowThreadArchiveAction({
+          thread,
+          groupNo: threadInfo?.groupNo,
+          isManagerOrCreatorOfMeFallback: data.isManagerOrCreatorOfMe,
+        });
+        // isArchived 用于决定显示「归档」还是「取消归档」文案。
         const isArchived = thread?.status === ThreadStatus.Archived;
-        const isActive = thread?.status === ThreadStatus.Active;
         const rows = new Array<Row>();
 
-        if (threadInfo && canArchive && (isActive || isArchived)) {
+        if (threadInfo && showArchiveAction) {
           rows.push(
             new Row({
               cell: ListItemButton,

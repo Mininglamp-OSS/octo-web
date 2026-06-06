@@ -16,7 +16,8 @@ import { X, Plus, ChevronDown, ArrowLeft, MoreHorizontal, Star } from "lucide-re
 import ThreadIcon from "../Icons/ThreadIcon";
 import classNames from "classnames";
 import { Conversation } from "../Conversation";
-import { ChannelTypeCommunityTopic, GroupRole } from "../../Service/Const";
+import { ChannelTypeCommunityTopic } from "../../Service/Const";
+import { canManageThread } from "../../Service/threadPermission";
 import { ErrorBoundary } from "../ErrorBoundary";
 import WKApp from "../../App";
 import { formatRelativeTime } from "../../Utils/time";
@@ -581,14 +582,7 @@ export default class ThreadPanel extends Component<
 
   private canEditThread(thread: Thread): boolean {
     if (!this.props.groupNo) return false;
-    const isCreator = thread.creator_uid === WKApp.loginInfo.uid;
-    const groupChannel = new Channel(this.props.groupNo, ChannelTypeGroup);
-    const subscribers =
-      WKSDK.shared().channelManager.getSubscribes(groupChannel);
-    const me = subscribers?.find((s) => s.uid === WKApp.loginInfo.uid);
-    const isManagerOrOwner =
-      me?.role === GroupRole.owner || me?.role === GroupRole.manager;
-    return isCreator || isManagerOrOwner;
+    return canManageThread(thread, this.props.groupNo);
   }
 
   private handleEditThread = () => {
