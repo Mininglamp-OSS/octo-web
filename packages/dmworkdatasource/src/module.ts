@@ -292,7 +292,7 @@ export default class DataSourceModule implements IModule {
             let conversations = new Array<Conversation>();
             const spaceId = WKApp.shared.currentSpaceId || ""
             const syncUrl = spaceId ? `conversation/sync?space_id=${encodeURIComponent(spaceId)}` : "conversation/sync"
-            resp = await WKApp.apiClient.post(syncUrl, { "msg_count": 1 })
+            resp = await WKApp.apiClient.post(syncUrl, { "msg_count": 1, "recent_filter": true })
             if (resp) {
                 // 防止快速切换 Space 时旧响应覆盖新缓存
                 if (spaceId && WKApp.shared.currentSpaceId !== spaceId) return conversations
