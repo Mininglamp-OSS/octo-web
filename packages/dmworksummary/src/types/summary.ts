@@ -270,6 +270,8 @@ export interface ChatCandidate {
     member_count: number | null;
     parent_group_no?: string;
     is_bot?: boolean;
+    is_followed?: boolean;
+    last_active_at?: string;
 }
 
 /** 成员候选项（添加成员弹窗用） */

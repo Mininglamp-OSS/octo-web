@@ -173,6 +173,10 @@
   "chatSelector": {
     "title": "选择聊天",
     "searchPlaceholder": "搜索群聊或联系人",
+    "followed": "关注",
+    "recent": "最近",
+    "allGroups": "全部群聊",
+    "allDirects": "全部私聊",
     "all": "全部",
     "noData": "暂无数据"
   },

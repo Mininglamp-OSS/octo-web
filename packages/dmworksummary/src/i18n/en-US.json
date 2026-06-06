@@ -173,6 +173,10 @@
   "chatSelector": {
     "title": "Select chats",
     "searchPlaceholder": "Search groups or contacts",
+    "followed": "Followed",
+    "recent": "Recent",
+    "allGroups": "All Groups",
+    "allDirects": "All DMs",
     "all": "All",
     "noData": "No data"
   },

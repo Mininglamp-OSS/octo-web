@@ -254,7 +254,7 @@ export async function toggleSchedule(scheduleId: number, isActive: boolean): Pro
 
 // ─── Candidate Selection ───────────────────────────────
 
-export async function getChatCandidates(params?: { keyword?: string; chat_type?: string }): Promise<ChatCandidate[]> {
+export async function getChatCandidates(params?: { keyword?: string; chat_type?: string; filter?: string }): Promise<ChatCandidate[]> {
     const data = await get<ChatCandidate[]>('/summary-chat-candidates', params as Record<string, unknown>);
     return data || [];
 }

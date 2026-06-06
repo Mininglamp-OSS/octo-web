@@ -17,7 +17,7 @@ interface Props {
 
 interface State {
     keyword: string;
-    activeTab: "all" | "group" | "direct";
+    activeTab: "followed" | "recent" | "group" | "direct";
     candidates: ChatCandidate[];
     loading: boolean;
     localSelected: ChatCandidate[];
@@ -34,7 +34,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     state: State = {
         keyword: "",
-        activeTab: "all",
+        activeTab: "followed",
         candidates: [],
         loading: false,
         localSelected: [],
@@ -42,15 +42,19 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     componentDidUpdate(prevProps: Props) {
         if (this.props.visible && !prevProps.visible) {
-            this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "all" });
-            this.loadCandidates();
+            this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "followed" });
+            this.loadCandidates("followed");
         }
     }
 
-    async loadCandidates() {
+    async loadCandidates(filter?: string) {
         this.setState({ loading: true });
         try {
-            const candidates = await api.getChatCandidates({});
+            const params: Record<string, string> = {};
+            if (filter === "followed" || filter === "recent") {
+                params.filter = filter;
+            }
+            const candidates = await api.getChatCandidates(params);
             this.setState({ candidates, loading: false });
         } catch {
             this.setState({ loading: false });
@@ -62,7 +66,14 @@ export default class ChatSelectorModal extends Component<Props, State> {
     };
 
     handleTabChange = (tab: string) => {
-        this.setState({ activeTab: tab as State["activeTab"] });
+        const activeTab = tab as State["activeTab"];
+        this.setState({ activeTab });
+        // Reload candidates with the appropriate filter for followed/recent tabs
+        if (activeTab === "followed" || activeTab === "recent") {
+            this.loadCandidates(activeTab);
+        } else {
+            this.loadCandidates();
+        }
     };
 
     handleToggle = (item: ChatCandidate) => {
@@ -85,6 +96,8 @@ export default class ChatSelectorModal extends Component<Props, State> {
         const { candidates, activeTab, keyword } = this.state;
         const kw = keyword.trim().toLowerCase();
 
+        // For "followed" and "recent" tabs, backend already filters.
+        // Apply local chat_type filter only for "group" and "direct" tabs.
         if (activeTab === "direct") {
             return candidates
                 .filter((c) => c.chat_type === "direct")
@@ -92,9 +105,12 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 .map((c) => ({ item: c, indent: false }));
         }
 
+        // For "group" tab, filter to groups+threads only.
+        // For "followed" and "recent", show everything the backend returned.
+        const showAll = activeTab === "followed" || activeTab === "recent";
         const groups = candidates.filter((c) => c.chat_type === "group");
         const threads = candidates.filter((c) => c.chat_type === "thread");
-        const directs = activeTab === "all" ? candidates.filter((c) => c.chat_type === "direct") : [];
+        const directs = showAll ? candidates.filter((c) => c.chat_type === "direct") : [];
 
         const groupIds = new Set(groups.map((g) => g.chat_id));
         const threadsByParent = new Map<string, ChatCandidate[]>();
@@ -248,9 +264,10 @@ export default class ChatSelectorModal extends Component<Props, State> {
                     style={{ marginBottom: 12 }}
                 />
                 <Tabs activeKey={activeTab} onChange={this.handleTabChange} size="small">
-                    <TabPane tab={t("summary.chatSelector.all")} itemKey="all" />
-                    <TabPane tab={t("summary.source.groupChat")} itemKey="group" />
-                    <TabPane tab={t("summary.source.directMessage")} itemKey="direct" />
+                    <TabPane tab={t("summary.chatSelector.followed")} itemKey="followed" />
+                    <TabPane tab={t("summary.chatSelector.recent")} itemKey="recent" />
+                    <TabPane tab={t("summary.chatSelector.allGroups")} itemKey="group" />
+                    <TabPane tab={t("summary.chatSelector.allDirects")} itemKey="direct" />
                 </Tabs>
                 <div style={{ minHeight: 240, maxHeight: 360, overflowY: "auto" }}>
                     {loading ? (
