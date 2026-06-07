@@ -63,6 +63,7 @@ interface SummaryDetailPageState {
     forwardingToMatter: boolean;
     showRegenerateModal: boolean;
     regenerateTopic: string;
+    regenerateSubmitting: boolean;
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
@@ -89,6 +90,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         forwardingToMatter: false,
         showRegenerateModal: false,
         regenerateTopic: "",
+        regenerateSubmitting: false,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -379,15 +381,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleRegenerateConfirm = async () => {
-        if (this.taskId == null) return;
+        if (this.taskId == null || this.state.regenerateSubmitting) return;
+        const trimmed = this.state.regenerateTopic.trim();
+        if (!trimmed) return;
+        this.setState({ regenerateSubmitting: true });
         try {
-            await api.regenerateSummary(this.taskId, { topic: this.state.regenerateTopic.trim() });
+            await api.regenerateSummary(this.taskId, { topic: trimmed });
             Toast.success(t("summary.detail.regenerateStarted"));
             this.setState({ showRegenerateModal: false });
             this.loadDetail();
             window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskId: this.taskId } }));
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.operationFailed"));
+        } finally {
+            this.setState({ regenerateSubmitting: false });
         }
     };
 
@@ -1010,14 +1017,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     onCancel={this.handleRegenerateCancel}
                     okText={t("summary.detail.regenerate")}
                     cancelText={t("summary.common.cancel")}
+                    confirmLoading={this.state.regenerateSubmitting}
+                    okButtonProps={{ disabled: !this.state.regenerateTopic.trim() }}
                 >
-                    <div style={{ marginBottom: 8, color: "var(--semi-color-text-1)" }}>
+                    <label id="regenerate-topic-label" style={{ display: "block", marginBottom: 8, color: "var(--semi-color-text-1)" }}>
                         {t("summary.detail.regenerateTopicLabel")}
-                    </div>
+                    </label>
                     <TextArea
+                        aria-labelledby="regenerate-topic-label"
                         autosize={{ minRows: 3, maxRows: 8 }}
+                        maxCount={1000}
                         value={this.state.regenerateTopic}
-                        onChange={(value) => this.setState({ regenerateTopic: value })}
+                        onChange={(value) => this.setState({ regenerateTopic: value.slice(0, 1000) })}
                     />
                 </Modal>
             </div>
