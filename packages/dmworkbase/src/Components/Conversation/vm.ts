@@ -289,6 +289,22 @@ export default class ConversationVM extends ProviderListener {
         return channelInfo?.orgData?.robot === 1
     }
 
+    // 是否为带附件的消息（图片/GIF/小视频/文件/富文本）。
+    // 这类消息是用户需要直接看到的交付物，不应被折叠进 FoldSessionCard。
+    // 注意：语音（voice=4）可以折叠，故不在此列。
+    private hasFileAttachment(message: MessageWrap): boolean {
+        switch (message.contentType) {
+            case MessageContentTypeConst.image:
+            case MessageContentTypeConst.gif:
+            case MessageContentTypeConst.smallVideo:
+            case MessageContentTypeConst.file:
+            case MessageContentTypeConst.richText:
+                return true
+            default:
+                return false
+        }
+    }
+
     getSessionParticipants(messages: MessageWrap[]): FoldSessionParticipant[] {
         const participants = new Array<FoldSessionParticipant>()
         const seenUIDs = new Set<string>()
@@ -388,6 +404,13 @@ export default class ConversationVM extends ProviderListener {
 
         for (const message of sourceMessages) {
             if (this.isBotMessage(message)) {
+                // 带附件的 bot 消息作为折叠分组的边界：先 flush 当前分组，再独立渲染，
+                // 保证图片/文件等交付物始终可见，无需展开折叠卡片。
+                if (this.hasFileAttachment(message)) {
+                    flushPendingSession(false)
+                    renderItems.push({ type: "message", message })
+                    continue
+                }
                 if (pendingSessionMessages.length > 0) {
                     const previousMessage = pendingSessionMessages[pendingSessionMessages.length - 1]
                     if (message.timestamp - previousMessage.timestamp < 120) {
