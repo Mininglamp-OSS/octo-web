@@ -165,7 +165,25 @@ function botMessage(contentType: number, timestamp: number, fromUID: string = "c
 
 const TEXT = 1
 const IMAGE = 2
+const GIF = 3
+const VOICE = 4
+const SMALL_VIDEO = 5
 const FILE = 8
+const RICH_TEXT = 14
+
+function humanMessage(contentType: number, timestamp: number, fromUID: string = "alice") {
+    const messageSeq = seqCounter++
+    return {
+        clientMsgNo: `msg-${messageSeq}`,
+        messageSeq,
+        fromUID,
+        timestamp,
+        contentType,
+        revoke: false,
+        send: false,
+        from: { title: fromUID },
+    } as any
+}
 
 describe("ConversationVM fold session file attachment", () => {
     beforeEach(() => {
@@ -173,31 +191,114 @@ describe("ConversationVM fold session file attachment", () => {
         seqCounter = 1
     })
 
-    it("does not fold a bot image message into a fold session", () => {
+    // --- All excluded content types ---
+
+    it.each([
+        { name: "image", contentType: IMAGE },
+        { name: "gif", contentType: GIF },
+        { name: "smallVideo", contentType: SMALL_VIDEO },
+        { name: "file", contentType: FILE },
+        { name: "richText", contentType: RICH_TEXT },
+    ])("does not fold a bot $name message (contentType=$contentType) into a fold session", ({ contentType }) => {
         const vm = new ConversationVM(channel)
         const messages = [
             botMessage(TEXT, 100),
-            botMessage(IMAGE, 110),
+            botMessage(contentType, 110),
         ]
 
         const items = vm.buildRenderItems(messages)
 
         expect(items.every((item) => item.type === "message")).toBe(true)
-        expect(items.map((item) => (item as any).message.contentType)).toEqual([TEXT, IMAGE])
+        expect(items.map((item) => (item as any).message.contentType)).toEqual([TEXT, contentType])
     })
 
-    it("does not fold a bot file message into a fold session", () => {
+    // --- Voice should still fold ---
+
+    it("still folds a bot voice message (voice is not a file attachment)", () => {
         const vm = new ConversationVM(channel)
         const messages = [
             botMessage(TEXT, 100),
+            botMessage(VOICE, 110),
+        ]
+
+        const items = vm.buildRenderItems(messages)
+
+        expect(items.length).toBe(1)
+        expect(items[0].type).toBe("foldSession")
+        expect((items[0] as any).session.count).toBe(2)
+    })
+
+    // --- User-sent file messages are not affected ---
+
+    it("does not affect user-sent file messages (guard is bot-only)", () => {
+        const vm = new ConversationVM(channel)
+        // Human messages are never folded (they flush pending session and render standalone)
+        const messages = [
+            humanMessage(FILE, 100),
+            humanMessage(IMAGE, 110),
+        ]
+
+        const items = vm.buildRenderItems(messages)
+
+        expect(items.every((item) => item.type === "message")).toBe(true)
+        expect(items.length).toBe(2)
+    })
+
+    // --- Boundary: attachment as first message ---
+
+    it("renders attachment as standalone when it is the first message", () => {
+        const vm = new ConversationVM(channel)
+        const messages = [
+            botMessage(IMAGE, 100),
+            botMessage(TEXT, 110),
+            botMessage(TEXT, 120),
+        ]
+
+        const items = vm.buildRenderItems(messages)
+
+        expect(items.length).toBe(2)
+        expect(items[0].type).toBe("message")
+        expect((items[0] as any).message.contentType).toBe(IMAGE)
+        expect(items[1].type).toBe("foldSession")
+        expect((items[1] as any).session.count).toBe(2)
+    })
+
+    // --- Boundary: attachment as last message ---
+
+    it("renders attachment as standalone when it is the last message", () => {
+        const vm = new ConversationVM(channel)
+        const messages = [
+            botMessage(TEXT, 100),
+            botMessage(TEXT, 110),
+            botMessage(FILE, 120),
+        ]
+
+        const items = vm.buildRenderItems(messages)
+
+        expect(items.length).toBe(2)
+        expect(items[0].type).toBe("foldSession")
+        expect((items[0] as any).session.count).toBe(2)
+        expect(items[1].type).toBe("message")
+        expect((items[1] as any).message.contentType).toBe(FILE)
+    })
+
+    // --- Two adjacent attachments ---
+
+    it("renders two adjacent attachment messages as standalone items", () => {
+        const vm = new ConversationVM(channel)
+        const messages = [
+            botMessage(IMAGE, 100),
             botMessage(FILE, 110),
         ]
 
         const items = vm.buildRenderItems(messages)
 
-        expect(items.some((item) => item.type === "foldSession")).toBe(false)
-        expect(items.map((item) => (item as any).message.contentType)).toEqual([TEXT, FILE])
+        expect(items.length).toBe(2)
+        expect(items.every((item) => item.type === "message")).toBe(true)
+        expect(items.map((item) => (item as any).message.contentType)).toEqual([IMAGE, FILE])
     })
+
+    // --- Original structural tests ---
 
     it("breaks a fold group when an image sits between bot text messages", () => {
         const vm = new ConversationVM(channel)
@@ -209,7 +310,6 @@ describe("ConversationVM fold session file attachment", () => {
 
         const items = vm.buildRenderItems(messages)
 
-        // image breaks the run, so the two single texts never form a group of 2
         expect(items.length).toBe(3)
         expect(items.every((item) => item.type === "message")).toBe(true)
         expect(items.map((item) => (item as any).message.contentType)).toEqual([TEXT, IMAGE, TEXT])
