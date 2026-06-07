@@ -172,7 +172,7 @@ describe('SecretEditModal (create mode)', () => {
     expect(hoisted.create).toHaveBeenCalledWith({
       display_name: '我的 Claude 密钥',
       kind: 'llm',
-      secret_value: 'sk-abcdefghijklmnop',
+      key: 'sk-abcdefghijklmnop',
     });
     expect(onSaved).toHaveBeenCalled();
   });

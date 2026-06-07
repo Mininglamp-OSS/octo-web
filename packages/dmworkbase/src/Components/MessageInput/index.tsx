@@ -39,7 +39,7 @@ import {
   imageBlockToPasteFile,
   restoreOctoRichTextClipboardToEditor,
 } from "./richTextPaste";
-import { detectPastedSecret } from "./secretPasteDetect";
+import { handleSecretPaste } from "./secretPasteDetect";
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -754,14 +754,17 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       handleKeyDown: (_view, event) => {
         return editorHandleKeyDownRef.current?.(_view, event) ?? false;
       },
-      // 防手滑（YUJ-3539）：检测到粘贴明文像 API 密钥（sk-/bf-/app- 开头）时，
-      // 即时提示改用密钥管理保存。不拦截粘贴本身（返回默认行为），
-      // 仅引导用户去新增弹窗并本地预填，绝不把明文发送出去。
+      // 防手滑（YUJ-3539，Jerry-Xin/lml2468 P0-1）：检测到粘贴明文像 API 密钥
+      // （sk-/bf-/app- 开头）时，**硬拦截这次粘贴**——明文绝不进编辑器，因此也不
+      // 可能被后续 send（editor.getText()）读到发进聊天；同时弹引导提示去密钥管理
+      // 保存。preventDefault + 返回 true 阻断 ProseMirror 默认粘贴，仅本地预填新增
+      // 弹窗，绝不把明文发送出去。
       handlePaste: (_view, event) => {
         const pasted = event.clipboardData?.getData("text/plain") ?? "";
-        const hit = detectPastedSecret(pasted);
-        if (hit) {
-          notifySecretPaste(hit.value);
+        const blocked = handleSecretPaste(pasted, notifySecretPaste);
+        if (blocked) {
+          event.preventDefault();
+          return true; // 已处理：阻断默认粘贴，明文不进编辑器
         }
         return editorHandlePasteRef.current?.(_view, event) ?? false;
       },

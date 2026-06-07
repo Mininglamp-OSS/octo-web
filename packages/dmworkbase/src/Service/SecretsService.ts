@@ -30,25 +30,35 @@ export interface SecretListItem {
 }
 
 export interface SecretListResponse {
-  /** 后端可能返回 secrets 或 list 字段，Service 统一归一为 items */
+  /**
+   * 后端契约（YUJ-3538）list 实测返回 `{ "secrets": [...] }`（gin `c.JSON` 裸出，
+   * 无 `data` 包裹）。这里仍兼容 list/items 别名，并在 normalizeList 里额外兜底
+   * 一层 `data` 信封（`{ data: { secrets } }` / `{ data: [] }`），以防未来网关/中间件
+   * 统一加 envelope —— 多一层防御不会误伤裸响应。
+   */
   secrets?: SecretListItem[];
   list?: SecretListItem[];
   items?: SecretListItem[];
+  /** 防御性：未来若被统一信封包裹（data: {...} 或 data: [...]）也能解出 */
+  data?: SecretListResponse | SecretListItem[];
 }
 
 export interface CreateSecretRequest {
   display_name: string;
   kind: SecretKind;
-  /** 明文 key，直达后端加密存储，不经任何聊天流 */
-  secret_value: string;
+  /**
+   * 明文 key，直达后端加密存储，不经任何聊天流。
+   * 线上字段名 `key`（YUJ-3538 契约：`POST /v1/manager/secrets` body `{ key }`）。
+   */
+  key: string;
 }
 
 /** 更新：换 key 或改名。secret_id 不变，引用不断。 */
 export interface UpdateSecretRequest {
   /** 仅改名时传 */
   display_name?: string;
-  /** 仅换 key 时传新明文；不传表示不动 key */
-  secret_value?: string;
+  /** 仅换 key 时传新明文（线上字段名 `key`）；不传表示不动 key */
+  key?: string;
   kind?: SecretKind;
 }
 
@@ -95,14 +105,22 @@ export default class SecretsService {
   }
 
   /**
-   * 归一化后端列表响应：兼容 { secrets } / { list } / { items } / 裸数组。
-   * 同时为缺 masked 的项用 last4 兜底拼出掩码串。
+   * 归一化后端列表响应（Jerry-Xin/lml2468 P0-2）：
+   * - 实测契约（YUJ-3538）返回 `{ secrets: [...] }`；兼容 list/items 别名与裸数组。
+   * - 额外兜底一层 `data` 信封：`{ data: { secrets: [...] } }` / `{ data: [...] }`，
+   *   以防网关/中间件统一加 envelope。先剥 data 再按 secrets/list/items/数组解。
+   * - 为缺 masked 的项用 last4 兜底拼出掩码串。
    */
   static normalizeList(resp: SecretListResponse | SecretListItem[] | null | undefined): SecretListItem[] {
     if (!resp) return [];
-    const raw: SecretListItem[] = Array.isArray(resp)
-      ? resp
-      : resp.items ?? resp.secrets ?? resp.list ?? [];
+    // 先剥可能存在的 data 信封（仅当 resp 是对象且带 data 字段时）。
+    let body: SecretListResponse | SecretListItem[] = resp;
+    if (!Array.isArray(body) && body.data != null) {
+      body = body.data;
+    }
+    const raw: SecretListItem[] = Array.isArray(body)
+      ? body
+      : body.items ?? body.secrets ?? body.list ?? [];
     return raw.map((it) => ({
       ...it,
       masked: it.masked ?? SecretsService.maskFromLast4(it.last4),

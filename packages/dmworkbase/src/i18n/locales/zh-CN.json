@@ -999,6 +999,6 @@
   "secrets.error.loadFailed": "加载密钥列表失败",
   "secrets.error.deleteFailed": "删除失败，请重试",
   "secrets.error.copyFailed": "复制失败",
-  "secrets.pasteGuard.title": "检测到密钥明文",
-  "secrets.pasteGuard.content": "建议改用密钥管理保存，点这里去添加（不会发送当前内容）。"
+  "secrets.pasteGuard.title": "已拦截密钥粘贴",
+  "secrets.pasteGuard.content": "为避免密钥进入聊天，已拦截这次明文粘贴。点这里改用密钥管理保存。"
 }

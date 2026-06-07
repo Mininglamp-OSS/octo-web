@@ -999,6 +999,6 @@
   "secrets.error.loadFailed": "Failed to load secrets",
   "secrets.error.deleteFailed": "Delete failed, please try again",
   "secrets.error.copyFailed": "Copy failed",
-  "secrets.pasteGuard.title": "Possible secret detected",
-  "secrets.pasteGuard.content": "Consider saving it in Secrets instead. Click here to add it (your current input won't be sent)."
+  "secrets.pasteGuard.title": "Secret paste blocked",
+  "secrets.pasteGuard.content": "We blocked pasting a possible API key into chat to keep it out of your messages. Click here to save it in Secrets instead."
 }

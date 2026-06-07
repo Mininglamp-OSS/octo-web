@@ -45,6 +45,43 @@ describe('SecretsService.normalizeList', () => {
     expect(SecretsService.normalizeList([item])[0].secret_id).toBe('id1');
   });
 
+  it('unwraps a data envelope (P0-2): { data: { secrets } } and { data: [] }', () => {
+    const item = {
+      secret_id: 'id1',
+      display_name: 'Claude',
+      kind: 'llm' as const,
+      last4: 'wxyz',
+      created_at: '2026-01-01T00:00:00Z',
+    };
+    // YUJ-3538 ships bare { secrets: [...] }; these guard against a gateway /
+    // middleware later wrapping the body in a `data` envelope so the list does
+    // not silently normalize to [].
+    expect(
+      SecretsService.normalizeList({ data: { secrets: [item] } })[0].secret_id
+    ).toBe('id1');
+    expect(SecretsService.normalizeList({ data: [item] })[0].secret_id).toBe('id1');
+    expect(SecretsService.normalizeList({ data: { list: [item] } })[0].secret_id).toBe(
+      'id1'
+    );
+  });
+
+  it('still derives masked through the data envelope', () => {
+    const out = SecretsService.normalizeList({
+      data: {
+        secrets: [
+          {
+            secret_id: 'id1',
+            display_name: 'Claude',
+            kind: 'llm',
+            last4: 'wxyz',
+            created_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+      },
+    });
+    expect(out[0].masked).toBe('••••wxyz');
+  });
+
   it('derives masked from last4 when backend omits masked', () => {
     const out = SecretsService.normalizeList([
       {

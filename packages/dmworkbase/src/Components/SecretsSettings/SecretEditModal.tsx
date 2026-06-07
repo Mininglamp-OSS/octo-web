@@ -84,17 +84,17 @@ export default function SecretEditModal({
     setSaving(true);
     try {
       if (isEdit && secret) {
-        const req: { display_name?: string; secret_value?: string; kind?: SecretKind } = {};
+        const req: { display_name?: string; key?: string; kind?: SecretKind } = {};
         if (name.trim() !== secret.display_name) req.display_name = name.trim();
         if (kind !== secret.kind) req.kind = kind;
-        if (value.trim().length > 0) req.secret_value = value.trim();
+        if (value.trim().length > 0) req.key = value.trim();
         await SecretsService.shared.update(secret.secret_id, req);
         Toast.success(t("base.secrets.toast.updated"));
       } else {
         await SecretsService.shared.create({
           display_name: name.trim(),
           kind,
-          secret_value: value.trim(),
+          key: value.trim(),
         });
         Toast.success(t("base.secrets.toast.created"));
       }
