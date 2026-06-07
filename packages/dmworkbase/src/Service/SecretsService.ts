@@ -109,6 +109,10 @@ export default class SecretsService {
    * - 实测契约（YUJ-3538）返回 `{ secrets: [...] }`；兼容 list/items 别名与裸数组。
    * - 额外兜底一层 `data` 信封：`{ data: { secrets: [...] } }` / `{ data: [...] }`，
    *   以防网关/中间件统一加 envelope。先剥 data 再按 secrets/list/items/数组解。
+   * - **显式字段白名单**（P0-2 必修）：绝不 `...it` 透传后端响应。TS 接口只在编译期
+   *   收窄，运行时多余 key（如后端回归误带的 value/plaintext/ciphertext/key/secret_value）
+   *   会照样进 React state，被 Sentry 面包屑 / devtool 快照 / 误 JSON.stringify 泄漏。
+   *   service normalizer 的职责就是防后端回归——只挑 write-only 契约允许的字段，其余全丢。
    * - 为缺 masked 的项用 last4 兜底拼出掩码串。
    */
   static normalizeList(resp: SecretListResponse | SecretListItem[] | null | undefined): SecretListItem[] {
@@ -121,10 +125,27 @@ export default class SecretsService {
     const raw: SecretListItem[] = Array.isArray(body)
       ? body
       : body.items ?? body.secrets ?? body.list ?? [];
-    return raw.map((it) => ({
-      ...it,
+    return raw.map((it) => SecretsService.pickListItem(it));
+  }
+
+  /**
+   * 从一条后端原始 item 里**只**挑出 write-only 契约允许的字段，其余（含任何明文/密文
+   * 字段，如 value/plaintext/ciphertext/key/secret_value）一律丢弃，再补算 masked。
+   * 这是运行时的最后一道防泄漏白名单，不依赖后端永远正确。
+   */
+  private static pickListItem(it: SecretListItem): SecretListItem {
+    const safe: SecretListItem = {
+      secret_id: it.secret_id,
+      display_name: it.display_name,
+      kind: it.kind,
+      created_at: it.created_at,
       masked: it.masked ?? SecretsService.maskFromLast4(it.last4),
-    }));
+    };
+    if (it.last4 != null) safe.last4 = it.last4;
+    if (it.updated_at != null) safe.updated_at = it.updated_at;
+    // last_used_at 允许 null（从未使用）——显式保留 null 与缺省的区别。
+    if (it.last_used_at !== undefined) safe.last_used_at = it.last_used_at;
+    return safe;
   }
 
   /** 用尾4位拼出展示掩码，如 "••••a1b2"。无 last4 时返回通用掩码。 */

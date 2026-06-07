@@ -108,4 +108,65 @@ describe('SecretsService.normalizeList', () => {
     ]);
     expect(out[0].masked).toBe('sk-****abcd');
   });
+
+  it('drops any leaked plaintext/secret fields via explicit whitelist (P0-2)', () => {
+    // 后端回归 / 未来字段变动可能误带明文。normalizer 必须只挑 write-only 契约
+    // 允许的字段，绝不 `...it` 透传，否则明文会进 React state 被 Sentry/devtool 泄漏。
+    const dirty = {
+      secret_id: 'id1',
+      display_name: 'Claude',
+      kind: 'llm' as const,
+      last4: 'wxyz',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-02T00:00:00Z',
+      last_used_at: '2026-01-03T00:00:00Z',
+      // 以下都是绝不该出现在前端的字段（构造后端回归场景）：
+      value: 'sk-supersecret-plaintext-value',
+      plaintext: 'sk-supersecret-plaintext-value',
+      ciphertext: 'enc:deadbeef',
+      key: 'sk-supersecret-plaintext-value',
+      secret_value: 'sk-supersecret-plaintext-value',
+    };
+    const out = SecretsService.normalizeList([dirty as never]);
+    const item = out[0];
+    // 允许字段都在。
+    expect(item.secret_id).toBe('id1');
+    expect(item.display_name).toBe('Claude');
+    expect(item.kind).toBe('llm');
+    expect(item.last4).toBe('wxyz');
+    expect(item.created_at).toBe('2026-01-01T00:00:00Z');
+    expect(item.updated_at).toBe('2026-01-02T00:00:00Z');
+    expect(item.last_used_at).toBe('2026-01-03T00:00:00Z');
+    expect(item.masked).toBe('••••wxyz');
+    // 泄漏字段一个都不能进。
+    const leaked = item as Record<string, unknown>;
+    expect(leaked.value).toBeUndefined();
+    expect(leaked.plaintext).toBeUndefined();
+    expect(leaked.ciphertext).toBeUndefined();
+    expect(leaked.key).toBeUndefined();
+    expect(leaked.secret_value).toBeUndefined();
+    // 兜底：序列化整个项也绝不含明文（模拟误 JSON.stringify(state) 泄漏路径）。
+    expect(JSON.stringify(item)).not.toContain('supersecret');
+    // 输出键集合就是白名单本身。
+    expect(Object.keys(item).sort()).toEqual(
+      ['created_at', 'display_name', 'kind', 'last4', 'last_used_at', 'masked', 'secret_id', 'updated_at'].sort()
+    );
+  });
+
+  it('keeps last_used_at: null (never used) but omits absent optionals', () => {
+    const out = SecretsService.normalizeList([
+      {
+        secret_id: 'id1',
+        display_name: 'Claude',
+        kind: 'llm',
+        last4: 'wxyz',
+        created_at: '2026-01-01T00:00:00Z',
+        last_used_at: null,
+      },
+    ]);
+    const item = out[0];
+    expect(item.last_used_at).toBeNull();
+    // 没传 updated_at / 没回 masked 之外，键集合不应含 updated_at。
+    expect(Object.prototype.hasOwnProperty.call(item, 'updated_at')).toBe(false);
+  });
 });
