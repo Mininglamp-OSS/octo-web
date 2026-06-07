@@ -58,6 +58,16 @@ export type MittEvents = {
    */
   'wk:nav-menu-activated': { menuId: string };
   /**
+   * 打开「密钥 / Secrets」管理面板（YUJ-3539）。由聊天反向跳转（bot 消息里的
+   * 「去添加密钥」按钮）或输入框防手滑提示触发；payload 可携带预填名字 / 明文，
+   * 接收方 NavSecretsSettingsItem 据此打开面板并预填新增弹窗（绝不自动发送/保存）。
+   */
+  'wk:open-secrets': {
+    create?: boolean;
+    name?: string;
+    value?: string;
+  } | undefined;
+  /**
    * Matter 任一字段被编辑后广播 (标题 / 主要目标 / DDL / 状态 / 负责人 /
    * 关联群聊等)。接收方 (通常是左侧事项列表) 据此 reload, 避免跨 React
    * 子树数据不同步 — 详情面板和列表分别挂在 routeRight / routeLeft, 不共

@@ -39,6 +39,7 @@ import {
   imageBlockToPasteFile,
   restoreOctoRichTextClipboardToEditor,
 } from "./richTextPaste";
+import { detectPastedSecret } from "./secretPasteDetect";
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -168,6 +169,25 @@ const INVISIBLE_CHARS_RE =
 function stripInvisibleChars(text: string): string {
   return text.replace(INVISIBLE_CHARS_RE, "");
 }
+
+/**
+ * 防手滑提示（YUJ-3539）：粘贴到聊天框的明文疑似 API 密钥时弹一条引导通知，
+ * 提供「去保存」动作 → 打开密钥管理新增弹窗并本地预填该明文（不发送）。
+ *
+ * 注意：detectedValue 是用户自己刚粘贴的明文，只在本机本地预填，不经任何网络/聊天流。
+ */
+function notifySecretPaste(detectedValue: string): void {
+  Notification.warning({
+    title: translate("base.secrets.pasteGuard.title"),
+    content: translate("base.secrets.pasteGuard.content"),
+    duration: 8,
+    showClose: true,
+    onClick: () => {
+      WKApp.mittBus.emit("wk:open-secrets", { create: true, value: detectedValue });
+    },
+  });
+}
+
 
 export type OnInsertFnc = (text: string) => void;
 export type OnAddMentionFnc = (uid: string, name: string) => void;
@@ -734,7 +754,15 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       handleKeyDown: (_view, event) => {
         return editorHandleKeyDownRef.current?.(_view, event) ?? false;
       },
+      // 防手滑（YUJ-3539）：检测到粘贴明文像 API 密钥（sk-/bf-/app- 开头）时，
+      // 即时提示改用密钥管理保存。不拦截粘贴本身（返回默认行为），
+      // 仅引导用户去新增弹窗并本地预填，绝不把明文发送出去。
       handlePaste: (_view, event) => {
+        const pasted = event.clipboardData?.getData("text/plain") ?? "";
+        const hit = detectPastedSecret(pasted);
+        if (hit) {
+          notifySecretPaste(hit.value);
+        }
         return editorHandlePasteRef.current?.(_view, event) ?? false;
       },
     },
