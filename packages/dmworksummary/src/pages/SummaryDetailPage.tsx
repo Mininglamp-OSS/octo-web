@@ -6,6 +6,8 @@ import {
     Banner,
     Dropdown,
     Tag,
+    Modal,
+    TextArea,
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconMore, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser } from "@douyinfe/semi-icons";
 import { Channel, ChannelTypeGroup, ChannelTypePerson, MessageText, WKSDK } from "wukongimjssdk";
@@ -59,6 +61,8 @@ interface SummaryDetailPageState {
     isEditing: boolean;
     showMatterPicker: boolean;
     forwardingToMatter: boolean;
+    showRegenerateModal: boolean;
+    regenerateTopic: string;
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
@@ -83,6 +87,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         isEditing: false,
         showMatterPicker: false,
         forwardingToMatter: false,
+        showRegenerateModal: false,
+        regenerateTopic: "",
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -363,16 +369,30 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     }
 
-    handleRegenerate = async () => {
+    handleRegenerate = () => {
+        const { detail } = this.state;
+        if (this.taskId == null) return;
+        this.setState({
+            showRegenerateModal: true,
+            regenerateTopic: detail?.title || "",
+        });
+    };
+
+    handleRegenerateConfirm = async () => {
         if (this.taskId == null) return;
         try {
-            await api.regenerateSummary(this.taskId);
+            await api.regenerateSummary(this.taskId, { topic: this.state.regenerateTopic.trim() });
             Toast.success(t("summary.detail.regenerateStarted"));
+            this.setState({ showRegenerateModal: false });
             this.loadDetail();
             window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskId: this.taskId } }));
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.operationFailed"));
         }
+    };
+
+    handleRegenerateCancel = () => {
+        this.setState({ showRegenerateModal: false });
     };
 
     handleCancel = async () => {
@@ -983,6 +1003,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     onSelect={this.handleMatterSelected}
                     onCancel={() => this.setState({ showMatterPicker: false })}
                 />
+                <Modal
+                    title={t("summary.detail.regenerateEditTitle")}
+                    visible={this.state.showRegenerateModal}
+                    onOk={this.handleRegenerateConfirm}
+                    onCancel={this.handleRegenerateCancel}
+                    okText={t("summary.detail.regenerate")}
+                    cancelText={t("summary.common.cancel")}
+                >
+                    <div style={{ marginBottom: 8, color: "var(--semi-color-text-1)" }}>
+                        {t("summary.detail.regenerateTopicLabel")}
+                    </div>
+                    <TextArea
+                        autosize={{ minRows: 3, maxRows: 8 }}
+                        value={this.state.regenerateTopic}
+                        onChange={(value) => this.setState({ regenerateTopic: value })}
+                    />
+                </Modal>
             </div>
         );
     }

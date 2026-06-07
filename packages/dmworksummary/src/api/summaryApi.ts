@@ -121,8 +121,8 @@ export async function deleteSummary(taskId: number): Promise<void> {
     return del(`/summaries/${taskId}`);
 }
 
-export async function regenerateSummary(taskId: number): Promise<{ task_id: number }> {
-    return post(`/summaries/${taskId}/regenerate`);
+export async function regenerateSummary(taskId: number, body?: { topic?: string }): Promise<{ task_id: number }> {
+    return post(`/summaries/${taskId}/regenerate`, body);
 }
 
 // 不复用 put helper，因为需要保留 HTTP status 区分 409（冲突）和 5xx（服务错误）

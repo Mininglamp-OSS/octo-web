@@ -263,6 +263,8 @@
     "expandAll": "Expand all ▼",
     "waitingSubmit": "{{name}} · Waiting to submit...",
     "regenerate": "Regenerate",
+    "regenerateEditTitle": "Edit prompt and regenerate",
+    "regenerateTopicLabel": "Prompt",
     "cancelTask": "Cancel task",
     "errorCause": "This may be caused by network instability or a service error.",
     "inviteQuestion": "You have been invited to participate in this summary task. Accept?",
