@@ -73,3 +73,4 @@ docs/superpowers/plans/
 # Review output files
 /cc-*.json
 grp_out.txt
+.cctmp/
