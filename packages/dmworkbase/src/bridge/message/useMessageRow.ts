@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson, ChannelTypeGroup } from 'wukongimjssdk'
+import WKSDK, { Channel, ChannelTypePerson, ChannelTypeGroup } from 'wukongimjssdk'
+import type { ChannelInfo, ChannelInfoListener } from 'wukongimjssdk'
 import WKApp from '../../App'
-import { MessageWrap } from '../../Service/Model'
-import { MessageRowUIProps } from './types'
+import type { MessageWrap } from '../../Service/Model'
+import type { MessageRowUIProps } from './types'
 import { resolveExternalForViewer } from '../../Utils/externalViewer'
-import { subscriberDisplayName } from '../../Utils/displayName'
+import { personalRemarkDisplayName, subscriberDisplayName } from '../../Utils/displayName'
 import { shouldShowRealnameBadge } from '../../Utils/realnameBadge'
 import moment from 'moment'
 import { isMessageContinuation } from '../../Service/messageContinuity'
-import { t } from '../../i18n'
+import { t } from '../../i18n/instance'
 
 export interface MessageRowSelectionState {
   /** 当前会话是否处于多选模式（不可选消息也需要知道，用于禁用行内操作） */
@@ -131,6 +132,10 @@ export function getMessageRow(
   // 单次群成员查找，同时拿到 memberName 和 member 对象，
   // 避免重复 .find()。
   const { member: groupMember, memberName: groupMemberName } = getGroupMemberInfo(message)
+  // 个人备注来自 sender 的 Person channelInfo。群消息虽然主路径读 subscriber，
+  // 但用户手动设置的个人备注必须优先于群成员名，否则 friend/remark 保存后
+  // fetchChannelInfo 已刷新也会被 subscriber.name 挡住。
+  const personalRemarkName = personalRemarkDisplayName(channelInfo)
 
   // Epic dmwork-web#1169 Phase A: 发送者实名徽章。
   // 优先群成员 orgData（群消息命中率最高），回落 Person channelInfo.orgData
@@ -205,9 +210,10 @@ export function getMessageRow(
     // payload 下发的 loginInfo 是可靠源。规则改动同步 Messages/Base/index.tsx。
     senderName: isOwnMessage
       ? WKApp.loginInfo.selfDisplayName() ||
+        personalRemarkName ||
         groupMemberName ||
         getSenderName(channelInfo, message.fromUID)
-      : groupMemberName || getSenderName(channelInfo, message.fromUID),
+      : personalRemarkName || groupMemberName || getSenderName(channelInfo, message.fromUID),
     isBot: channelInfo?.orgData?.robot === 1,
     timestamp,
     timeOnly,

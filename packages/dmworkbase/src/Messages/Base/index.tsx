@@ -19,7 +19,10 @@ import {
 import { IConversationProvider } from "../../Service/DataSource/DataProvider";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
-import { subscriberDisplayName } from "../../Utils/displayName";
+import {
+  personalRemarkDisplayName,
+  subscriberDisplayName,
+} from "../../Utils/displayName";
 import { shouldShowRealnameBadge } from "../../Utils/realnameBadge";
 import { css } from "@emotion/react";
 // import ClockLoader from "react-spinners/ClockLoader";
@@ -346,13 +349,19 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     //   即可拿到。规则改动请同步 bridge/message/useMessageRow.ts。
     const isOwnMessageName =
       message.fromUID && message.fromUID === WKApp.loginInfo.uid;
+    // 个人备注来自 sender 的 Person channelInfo。群消息虽然主路径读 subscriber，
+    // 但个人备注必须优先于群成员名，才能在 friend/remark 保存并刷新
+    // Person channelInfo 后立即反映到聊天框。
+    const personalRemarkName = personalRemarkDisplayName(channelInfo);
     const displayName = isOwnMessageName
       ? WKApp.loginInfo.selfDisplayName() ||
+        personalRemarkName ||
         groupMemberName ||
         channelInfo?.orgData?.displayName ||
         channelInfo?.title ||
         ""
-      : groupMemberName ||
+      : personalRemarkName ||
+        groupMemberName ||
         channelInfo?.orgData?.displayName ||
         channelInfo?.title ||
         "";

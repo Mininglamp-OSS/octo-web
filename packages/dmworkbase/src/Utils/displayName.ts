@@ -98,3 +98,27 @@ export function subscriberDisplayName(sub: SubscriberLike | null | undefined): s
         realname_verified: sub.orgData?.realname_verified,
     });
 }
+
+export interface PersonalRemarkChannelInfoLike {
+    title?: string | null;
+    orgData?: {
+        displayName?: string | null;
+        remark?: string | null;
+    } | null;
+}
+
+/**
+ * 从 Person ChannelInfo 中提取“个人备注”展示名。
+ *
+ * 群消息默认优先读 subscriber，避免群内陌生成员频繁单查 Person
+ * channelInfo；但当用户已经给对方设置了个人备注时，个人备注应覆盖群成员名。
+ */
+export function personalRemarkDisplayName(
+    channelInfo: PersonalRemarkChannelInfoLike | null | undefined
+): string {
+    const remark = channelInfo?.orgData?.remark;
+    if (typeof remark !== "string" || remark.trim() === "") {
+        return "";
+    }
+    return channelInfo?.orgData?.displayName || remark;
+}

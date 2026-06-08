@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
     displayName,
     isRealnameVerified,
+    personalRemarkDisplayName,
     subscriberDisplayName,
 } from "../displayName"
 
@@ -121,5 +122,42 @@ describe("subscriberDisplayName — 字符串归一化透传 (E1)", () => {
             },
         }
         expect(subscriberDisplayName(sub)).toBe("alice_nick")
+    })
+})
+
+describe("personalRemarkDisplayName — Person channelInfo 个人备注", () => {
+    it("存在个人备注时返回 orgData.displayName", () => {
+        expect(
+            personalRemarkDisplayName({
+                title: "bot_name",
+                orgData: {
+                    remark: "Bot Alias",
+                    displayName: "Bot Alias",
+                },
+            })
+        ).toBe("Bot Alias")
+    })
+
+    it("displayName 缺失时回退到 remark", () => {
+        expect(
+            personalRemarkDisplayName({
+                title: "bot_name",
+                orgData: {
+                    remark: "Bot Alias",
+                },
+            })
+        ).toBe("Bot Alias")
+    })
+
+    it("个人备注为空时返回空串，不用 displayName/title 抢占群成员名", () => {
+        expect(
+            personalRemarkDisplayName({
+                title: "bot_name",
+                orgData: {
+                    remark: "",
+                    displayName: "Real Bot Name",
+                },
+            })
+        ).toBe("")
     })
 })
