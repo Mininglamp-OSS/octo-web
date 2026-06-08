@@ -18,4 +18,4 @@ on:
 
 jobs:
   docker-lint:
-    uses: Mininglamp-OSS/.github/.github/workflows/reusable-docker-lint.yml@main
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-docker-lint.yml@v1

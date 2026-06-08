@@ -22,7 +22,7 @@ concurrency:
 jobs:
   analyze:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    uses: Mininglamp-OSS/.github/.github/workflows/reusable-codeql.yml@main
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-codeql.yml@v1
     with:
       language: javascript-typescript
     permissions:
