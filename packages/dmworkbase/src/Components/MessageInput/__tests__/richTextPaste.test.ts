@@ -119,4 +119,28 @@ describe("richTextPaste", () => {
     expect(file?.name).toBe("a.png");
     expect(file?.type).toBe("image/png");
   });
+
+  it("keeps same-origin credentials for pasted images on same-origin deployments", async () => {
+    const blob = new Blob(["image"], { type: "image/png" });
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: vi.fn().mockResolvedValue(blob),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const url = `${window.location.origin}/assets/a.png`;
+    await imageBlockToPasteFile(
+      {
+        type: "image",
+        url,
+        name: "a.png",
+      },
+      (url) => url
+    );
+
+    expect(fetch).toHaveBeenCalledWith(url, {
+      mode: "cors",
+      credentials: "same-origin",
+    });
+  });
 });

@@ -93,6 +93,17 @@ function safeImageFileName(name?: string, mime?: string): string {
   return raw || fallback;
 }
 
+function getPasteImageFetchCredentials(src: string): RequestCredentials {
+  if (typeof window === "undefined") return "omit";
+  try {
+    return new URL(src, window.location.href).origin === window.location.origin
+      ? "same-origin"
+      : "omit";
+  } catch {
+    return "omit";
+  }
+}
+
 export async function imageBlockToPasteFile(
   block: Extract<OctoRichTextClipboardBlock, { type: "image" }>,
   getImageURL: GetImageUrl
@@ -106,7 +117,7 @@ export async function imageBlockToPasteFile(
   try {
     const response = await fetch(src, {
       mode: "cors",
-      credentials: "omit",
+      credentials: getPasteImageFetchCredentials(src),
     });
     if (!response.ok) return null;
     const blob = await response.blob();
