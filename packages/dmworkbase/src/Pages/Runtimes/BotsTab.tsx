@@ -51,18 +51,15 @@ export const BotsTab = forwardRef<BotsTabHandle>(function BotsTab(_props, ref) {
   useEffect(() => {
     const spaceId = (WKApp as any)?.shared?.currentSpaceId ?? '';
     const sessionToken = (WKApp as any)?.loginInfo?.token ?? '';
-    // PR-A.2: /api/v1/runtimes is served by fleet which requires JWT.
-    // Exchange session for JWT first, then fetch.
+    // 合并 plan 决策一+二 Phase 3A: fleet 切到 AuthMiddleware 接 session
+    // token, 直接带 `token:` header 调 (跟 matter user-auth 一致).
     (async () => {
       try {
-        const tokRes = await fetch('/api/v1/auth/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_token: sessionToken, space_id: spaceId }),
-        });
-        const tok = (await tokRes.json())?.token;
+        const headers: Record<string, string> = {};
+        if (sessionToken) headers.token = sessionToken;
+        if (spaceId) headers['X-Space-Id'] = spaceId;
         const res = await fetch('/api/v1/runtimes?space_id=' + encodeURIComponent(spaceId), {
-          headers: tok ? { Authorization: 'Bearer ' + tok } : {},
+          headers,
         });
         const env = await res.json();
         const list = (env?.data?.runtimes ?? env?.runtimes ?? []) as any[];
