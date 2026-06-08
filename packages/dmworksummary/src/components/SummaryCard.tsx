@@ -19,7 +19,8 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
     const { t } = useI18n();
     const currentUid = WKApp.loginInfo.uid;
     const myParticipant = task.participants?.find((p) => p.user_id === currentUid);
-    const isPendingInvite = myParticipant != null && myParticipant.status === ParticipantStatus.PENDING;
+    const isMultiParticipant = (task.participants?.length ?? 0) > 1;
+    const isPendingInvite = isMultiParticipant && myParticipant != null && myParticipant.status === ParticipantStatus.PENDING;
 
     return (
         <div className="summary-card" onClick={() => onClick(task.task_id)}>

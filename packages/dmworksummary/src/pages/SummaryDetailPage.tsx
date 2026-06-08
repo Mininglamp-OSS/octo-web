@@ -910,7 +910,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
                         {detail && !loading && (() => {
                             const myP = detail.participants?.find((p) => p.user_id === WKApp.loginInfo.uid);
-                            const isPendingInvite = myP != null && myP.status === ParticipantStatus.PENDING;
+                            const isMultiParticipant = (detail.participants?.length ?? 0) > 1;
+                            const isPendingInvite = isMultiParticipant && myP != null && myP.status === ParticipantStatus.PENDING;
                             return isPendingInvite ? (
                                 <div
                                     className="summary-detail-respond-banner"
