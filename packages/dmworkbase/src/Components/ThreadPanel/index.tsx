@@ -1384,12 +1384,15 @@ export default class ThreadPanel extends Component<
         groupNo,
         thread.short_id
       );
+      // 卸载后短路：撤销 Toast 渲染在全局 portal，卸载后再创建会绕过 cleanup。
+      if (this.isUnmounted) return;
       this.refreshThreadChannelInfo({
         ...thread,
         status: ThreadStatus.Archived,
       });
       this.showArchiveUndoToast(groupNo, thread);
     } catch {
+      if (this.isUnmounted) return;
       // 失败回滚乐观状态
       this.setThreadStatusOptimistic(thread.short_id, ThreadStatus.Active);
       Toast.error(t("base.module.thread.archiveFailedRetry"));
@@ -1407,10 +1410,13 @@ export default class ThreadPanel extends Component<
         groupNo,
         thread.short_id
       );
+      // 卸载后短路：避免对已卸载组件 setState 并刷新列表。
+      if (this.isUnmounted) return;
       Toast.success(t("base.module.thread.unarchiveSuccess"));
       this.refreshThreadChannelInfo({ ...thread, status: ThreadStatus.Active });
       await this.loadThreads();
     } catch {
+      if (this.isUnmounted) return;
       this.setThreadStatusOptimistic(thread.short_id, ThreadStatus.Archived);
       Toast.error(t("base.module.thread.unarchiveFailedRetry"));
     } finally {

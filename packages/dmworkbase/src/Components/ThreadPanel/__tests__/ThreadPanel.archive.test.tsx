@@ -15,6 +15,8 @@ const hoisted = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastClose: vi.fn(),
   getSubscribes: vi.fn(),
+  deleteChannelInfo: vi.fn(),
+  fetchChannelInfo: vi.fn(),
 }));
 
 vi.mock("../../../App", () => ({
@@ -65,8 +67,8 @@ vi.mock("wukongimjssdk", () => {
         channelManager: {
           getSubscribes: hoisted.getSubscribes,
           getChannelInfo: () => null,
-          deleteChannelInfo: vi.fn(),
-          fetchChannelInfo: vi.fn(),
+          deleteChannelInfo: hoisted.deleteChannelInfo,
+          fetchChannelInfo: hoisted.fetchChannelInfo,
         },
       }),
     },
@@ -310,5 +312,103 @@ describe("ThreadPanel inline archive button", () => {
     await act(async () => {
       resolveArchive();
     });
+  });
+
+  it("归档请求在途时卸载：resolve 后不再建撤销 Toast / 刷新（在途竞态回归）", async () => {
+    let resolveArchive: () => void = () => {};
+    hoisted.threadArchive.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveArchive = resolve;
+      })
+    );
+    const { unmount } = await renderPanelWithUnmount([ACTIVE_THREAD]);
+
+    await act(async () => {
+      fireEvent.click(archiveButton()!);
+    });
+    expect(hoisted.threadArchive).toHaveBeenCalledTimes(1);
+
+    // 请求 resolve 前卸载面板
+    await act(async () => {
+      unmount();
+    });
+
+    // 现在 resolve 在途请求：isUnmounted 短路，不应再建撤销 Toast 或刷新频道信息
+    await act(async () => {
+      resolveArchive();
+    });
+    expect(hoisted.toastInfo).not.toHaveBeenCalled();
+    expect(hoisted.deleteChannelInfo).not.toHaveBeenCalled();
+    expect(hoisted.fetchChannelInfo).not.toHaveBeenCalled();
+  });
+
+  it("归档请求在途时卸载：reject 后不再回滚乐观状态（在途 reject 竞态回归）", async () => {
+    let rejectArchive: (e: Error) => void = () => {};
+    hoisted.threadArchive.mockReturnValue(
+      new Promise<void>((_resolve, reject) => {
+        rejectArchive = reject;
+      })
+    );
+    const { unmount } = await renderPanelWithUnmount([ACTIVE_THREAD]);
+
+    await act(async () => {
+      fireEvent.click(archiveButton()!);
+    });
+    expect(hoisted.threadArchive).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      unmount();
+    });
+
+    // reject 在途请求：catch 块开头 isUnmounted 短路，不应回滚（setThreadStatusOptimistic）
+    // 也不应 Toast.error。
+    await act(async () => {
+      rejectArchive(new Error("boom"));
+    });
+    expect(hoisted.toastError).not.toHaveBeenCalled();
+  });
+
+  it("取消归档请求在途时卸载：resolve 后不再刷新 / loadThreads（在途竞态回归）", async () => {
+    let resolveUnarchive: () => void = () => {};
+    hoisted.threadUnarchive.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveUnarchive = resolve;
+      })
+    );
+    hoisted.threadList.mockResolvedValue([ARCHIVED_THREAD]);
+    hoisted.getSubscribes.mockReturnValue([{ uid: "owner-uid", role: 1 }]);
+    const { unmount } = render(
+      React.createElement(ThreadPanel, {
+        groupNo: "g1",
+        thread: null,
+        onClose: vi.fn(),
+        onThreadSelect: vi.fn(),
+      })
+    );
+    await waitFor(() => expect(screen.getByText("Archived")).toBeTruthy());
+    await act(async () => {
+      fireEvent.click(screen.getByText("Archived"));
+    });
+    await waitFor(() => expect(archiveButton()).toBeTruthy());
+
+    // 初次列表加载已调用过 threadList，记录基线后只观察卸载后是否再次调用
+    const threadListCallsBefore = hoisted.threadList.mock.calls.length;
+
+    await act(async () => {
+      fireEvent.click(archiveButton()!);
+    });
+    expect(hoisted.threadUnarchive).toHaveBeenCalledWith("g1", "t2");
+
+    await act(async () => {
+      unmount();
+    });
+
+    // resolve 在途请求：isUnmounted 短路，不应 refreshThreadChannelInfo / loadThreads
+    await act(async () => {
+      resolveUnarchive();
+    });
+    expect(hoisted.deleteChannelInfo).not.toHaveBeenCalled();
+    expect(hoisted.fetchChannelInfo).not.toHaveBeenCalled();
+    expect(hoisted.threadList.mock.calls.length).toBe(threadListCallsBefore);
   });
 });
