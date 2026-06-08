@@ -95,6 +95,17 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private listPageActive = false;
     private lastEventTime = 0;
     private isPersonalPolling = false;
+    // Blocking 5（跨 task 串台 / async race）：单调递增的「调度加载序列号」。
+    // 每次发起一轮 detail+schedule 加载（loadDetail / 状态切换补拉 / 重新加载）都 bump，
+    // loadSchedule 在 setState 前用「发起时捕获的 seq」与最新 seq 比对：不一致说明期间
+    // 已切换 task 或重新加载，旧请求的响应必须丢弃，绝不污染当前 task 的 scheduleItem。
+    private scheduleLoadSeq = 0;
+
+    /** bump 并返回最新调度加载序列号；任何会改变「当前 scheduleItem 归属」的入口都应调用。 */
+    private nextScheduleSeq(): number {
+        this.scheduleLoadSeq += 1;
+        return this.scheduleLoadSeq;
+    }
 
     componentDidMount() {
         window.addEventListener("summary-status-change", this.handleStatusChangeEvent);
@@ -109,6 +120,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (prevTaskId !== currentTaskId && currentTaskId != null) {
             this.listPageActive = false;
             this.clearAllTimers();
+            // Blocking 5：切 task 立即清空上一 task 的 schedule 状态，避免在新 detail
+            // 返回前闪现旧定时（bump seq 由 loadDetail 内部完成，令旧 loadSchedule 作废）。
+            this.setState({ scheduleItem: null, scheduleLoading: false });
             this.loadDetail();
         }
     }
@@ -134,17 +148,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     async loadDetail() {
         if (this.taskId == null) return;
+        // Blocking 5：每轮 detail 加载开始就 bump 序列号。这样旧 task 未完成的
+        // loadSchedule（包括本函数下面发起的）都会被后续轮作废，不会回填到新 task。
+        const seq = this.nextScheduleSeq();
+        const requestTaskId = this.taskId;
         this.setState({ loading: true, error: null });
         try {
             const detail = await api.getSummaryDetail(this.taskId);
+            // detail 本身也可能是旧请求：期间切了 task / 又发了一轮 loadDetail 就丢弃。
+            if (this.scheduleLoadSeq !== seq || this.taskId !== requestTaskId) return;
             this.setState({ detail, loading: false, lastKnownStatus: detail.status });
 
             // Blocking 5（跨 task 串台）：scheduleItem 必须始终对应当前 detail。
-            // 从「有定时」总结导航到「无定时」总结时，若不显式清空，旧 scheduleItem
+            // 同步部分：从「有定时」总结导航到「无定时」总结时，若不显式清空，旧 scheduleItem
             // 会残留 → renderScheduleButton 误判有定时、保存可能把旧定时重绑到新 task。
-            // 所以：只有 schedule_id 有效时才 loadSchedule；否则显式清空 scheduleItem。
+            // 异步部分：loadSchedule 带上 seq，响应迟到时对比 seq/taskId 才 setState（见 loadSchedule）。
             if (detail.schedule_id && detail.schedule_id > 0) {
-                this.loadSchedule(detail.schedule_id);
+                this.loadSchedule(detail.schedule_id, seq);
             } else {
                 this.setState({ scheduleItem: null, scheduleLoading: false });
             }
@@ -169,12 +189,24 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     }
 
-    async loadSchedule(scheduleId: number) {
+    /**
+     * Blocking 5（async race）：只有当发起请求时捕获的 seq 与当前 seq 一致、
+     * 且 taskId 未变时，才能把响应写回 scheduleItem。不传 seq 时（handleScheduleSave
+     * 等同一 task 内的主动刷新）自动 bump 一个新 seq 作为基准，语义上代表
+     * 「这次是最新的一次 schedule 加载」。
+     */
+    async loadSchedule(scheduleId: number, seq?: number) {
+        const reqSeq = seq ?? this.nextScheduleSeq();
+        const requestTaskId = this.taskId;
         this.setState({ scheduleLoading: true });
         try {
             const item = await api.getSchedule(scheduleId);
+            // 旧请求（期间又发了一轮加载 / 切了 task）迟到 resolve：丢弃，不污染新 task。
+            if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
             this.setState({ scheduleItem: item, scheduleLoading: false });
         } catch {
+            // 同样：只有仍是最新请求才允许清空，避免旧请求的失败反而抹掉新 task 的定时。
+            if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
             // Blocking 5：加载失败也要清空 scheduleItem，避免上一条总结的定时残留，
             // 保证 scheduleItem 始终对应当前 detail（宁可显示「设置定时」也不串台）。
             this.setState({ scheduleItem: null, scheduleLoading: false });

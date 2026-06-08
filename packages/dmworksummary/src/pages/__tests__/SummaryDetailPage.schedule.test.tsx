@@ -112,6 +112,51 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
 
         expect(api.getSchedule).toHaveBeenCalledWith(55);
     });
+
+    // 核心 blocker（async race / 跨 task 串台）：
+    // 场景：从 summary A（有 schedule）切到 summary B（无 schedule），A 的 loadSchedule
+    // 请求延迟返回。修复前：A 的响应会把 A 的 scheduleItem 覆盖到 B 的 state，
+    // 导致 B 误显示「有定时」、保存时把 A 的定时误绑到 B 的 task。
+    // 修复后：seq/taskId 不一致 → 丢弃旧响应，B 的 scheduleItem 保持为 null。
+    it('discards a stale loadSchedule response after switching to another task (no cross-task leak)', async () => {
+        // A 的 getSchedule 手动控制 resolve 时机，模拟「切完 task 才返回」。
+        let resolveA: (v: any) => void = () => {};
+        const aPending = new Promise((res) => { resolveA = res; });
+        vi.mocked(api.getSchedule).mockReturnValueOnce(aPending as any);
+
+        // detail A：有定时 schedule_id=900。
+        vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(
+            baseDetail({ task_id: 1, schedule_id: 900 }) as any,
+        );
+
+        const page = makePage(1);
+        // 启动 A 的加载：loadDetail 会 fire loadSchedule(900)，但 getSchedule 还未 resolve。
+        await page.loadDetail();
+        expect(api.getSchedule).toHaveBeenCalledWith(900);
+
+        // 切到 task B（无定时）：模拟 props.taskId 变化 + componentDidUpdate 走 loadDetail。
+        vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(
+            baseDetail({ task_id: 2, schedule_id: 0 }) as any,
+        );
+        (page as any).props = { taskId: 2 };
+        page.componentDidUpdate({ taskId: 1 } as any);
+        // 等 B 的 loadDetail 完成（同步清空 + getSummaryDetail resolve + 显式清空）。
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        // B 无定时 → scheduleItem 应为 null。
+        expect((page.state as any).scheduleItem).toBeNull();
+
+        // A 的 loadSchedule 现在才迟迟 resolve——修复后必须被丢弃。
+        resolveA({ schedule_id: 900, is_active: true });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // 关键断言：A 的定时绝不能污染 B 的 state。
+        expect((page.state as any).scheduleItem).toBeNull();
+    });
 });
 
 // 回归：「无定时」总结新建定时改为一步式 createSchedule（scope='task' + task_id）。
