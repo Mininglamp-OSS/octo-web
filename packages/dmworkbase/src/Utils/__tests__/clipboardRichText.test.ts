@@ -2,7 +2,11 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { copyRichTextToClipboard } from "../clipboard";
-import { RichTextContent } from "../../Messages/RichText/RichTextContent";
+import {
+  RichTextContent,
+  RichTextImagePlaceholder,
+} from "../../Messages/RichText/RichTextContent";
+import { extractOctoRichTextClipboardPayloadFromHtml } from "../richTextClipboard";
 
 vi.mock("wukongimjssdk", () => ({
   MessageContent: class {
@@ -61,6 +65,15 @@ describe("copyRichTextToClipboard", () => {
       { type: "text", text: " @Alice" },
     ];
     content.plain = "看图：[图片] @Alice";
+    (content as any).mention = {
+      entities: [
+        {
+          uid: "alice",
+          offset: "看图：".length + RichTextImagePlaceholder.length + 1,
+          length: "@Alice".length,
+        },
+      ],
+    };
 
     await expect(copyRichTextToClipboard(content)).resolves.toBe(true);
 
@@ -69,6 +82,23 @@ describe("copyRichTextToClipboard", () => {
     await expect(item.items["text/html"].text()).resolves.toContain(
       '<img src="https://cdn.example.com/a.png" alt="a.png" />'
     );
+    const html = await item.items["text/html"].text();
+    const payload = extractOctoRichTextClipboardPayloadFromHtml(html);
+    expect(payload?.blocks).toEqual([
+      { type: "text", text: "看图：" },
+      {
+        type: "image",
+        url: "https://cdn.example.com/a.png",
+        width: 10,
+        height: 20,
+        name: "a.png",
+      },
+      {
+        type: "text",
+        text: " @Alice",
+        mentions: [{ uid: "alice", offset: 1, length: "@Alice".length }],
+      },
+    ]);
     await expect(item.items["text/plain"].text()).resolves.toBe(
       "看图：[图片] @Alice"
     );

@@ -7,6 +7,11 @@ import {
   RichTextFilePlaceholder,
   RichTextImagePlaceholder,
 } from "../Messages/RichText/RichTextContent";
+import {
+  buildOctoRichTextClipboardPayload,
+  encodeOctoRichTextClipboardPayload,
+  OCTO_RICHTEXT_CLIPBOARD_ATTR,
+} from "./richTextClipboard";
 import { isSafeUrl } from "./security";
 
 /**
@@ -68,7 +73,10 @@ function richTextBlockToHtml(
 function buildRichTextHtml(content: RichTextContent): string {
   const blocks = content.content || [];
   const body = blocks.map(richTextBlockToHtml).join("");
-  return `<div>${body}</div>`;
+  const payload = encodeOctoRichTextClipboardPayload(
+    buildOctoRichTextClipboardPayload(content)
+  );
+  return `<div ${OCTO_RICHTEXT_CLIPBOARD_ATTR}="${payload}">${body}</div>`;
 }
 
 export async function copyRichTextToClipboard(

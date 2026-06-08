@@ -34,6 +34,11 @@ import {
 } from "./AttachmentNode";
 import { t as translate, useI18n } from "../../i18n";
 import { runSendWithCleanup, SendResultDetail } from "./sendFlow";
+import { extractOctoRichTextClipboardPayloadFromHtml } from "../../Utils/richTextClipboard";
+import {
+  imageBlockToPasteFile,
+  restoreOctoRichTextClipboardToEditor,
+} from "./richTextPaste";
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -644,6 +649,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const editorHandleKeyDownRef = useRef<
     ((view: any, event: KeyboardEvent) => boolean) | null
   >(null);
+  const editorHandlePasteRef = useRef<
+    ((view: any, event: ClipboardEvent) => boolean) | null
+  >(null);
 
   // 更新模块级别的 membersRef
   membersRef = localMembersRef;
@@ -721,6 +729,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       // ProseMirror 级别的键盘处理，在所有 keymap 之前执行
       handleKeyDown: (_view, event) => {
         return editorHandleKeyDownRef.current?.(_view, event) ?? false;
+      },
+      handlePaste: (_view, event) => {
+        return editorHandlePasteRef.current?.(_view, event) ?? false;
       },
     },
     onUpdate: ({ editor }) => {
@@ -875,6 +886,36 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     },
     [editor]
   );
+
+  useEffect(() => {
+    editorHandlePasteRef.current = (_view: any, event: ClipboardEvent) => {
+      if (!editor || !event.clipboardData) return false;
+      const payload = extractOctoRichTextClipboardPayloadFromHtml(
+        event.clipboardData.getData("text/html")
+      );
+      if (!payload) return false;
+
+      event.preventDefault();
+      const beforePasteContent = JSON.stringify(editor.getJSON());
+      restoreOctoRichTextClipboardToEditor(payload, editor, addAttachment, {
+        imageBlockToFile: (block) =>
+          imageBlockToPasteFile(
+            block,
+            WKApp.dataSource.commonDataSource.getImageURL.bind(
+              WKApp.dataSource.commonDataSource
+            )
+          ),
+      }).catch(() => {
+        if (
+          payload.plain &&
+          JSON.stringify(editor.getJSON()) === beforePasteContent
+        ) {
+          editor.commands.insertContent(payload.plain);
+        }
+      });
+      return true;
+    };
+  }, [addAttachment, editor]);
 
   // 移除顶部附件区的附件
   const removeTopAttachment = useCallback((id: string) => {
