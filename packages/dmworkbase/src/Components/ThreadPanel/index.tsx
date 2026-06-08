@@ -1476,9 +1476,12 @@ export default class ThreadPanel extends Component<
         groupNo,
         thread.short_id
       );
+      // 卸载后短路：避免对已卸载组件 setState 并刷新列表。
+      if (this.isUnmounted) return;
       this.refreshThreadChannelInfo({ ...thread, status: ThreadStatus.Active });
       await this.loadThreads();
     } catch {
+      if (this.isUnmounted) return;
       this.setThreadStatusOptimistic(thread.short_id, ThreadStatus.Archived);
       Toast.error(t("base.module.thread.unarchiveFailedRetry"));
     } finally {

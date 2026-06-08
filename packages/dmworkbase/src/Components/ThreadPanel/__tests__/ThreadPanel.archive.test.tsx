@@ -411,4 +411,91 @@ describe("ThreadPanel inline archive button", () => {
     expect(hoisted.fetchChannelInfo).not.toHaveBeenCalled();
     expect(hoisted.threadList.mock.calls.length).toBe(threadListCallsBefore);
   });
+
+  it("撤销请求在途时卸载：resolve 后不再刷新 / loadThreads（撤销在途竞态回归）", async () => {
+    let resolveUnarchive: () => void = () => {};
+    hoisted.threadUnarchive.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveUnarchive = resolve;
+      })
+    );
+    const { unmount } = await renderPanelWithUnmount([ACTIVE_THREAD]);
+
+    // 归档创建撤销 Toast
+    await act(async () => {
+      fireEvent.click(archiveButton()!);
+    });
+    await waitFor(() => expect(hoisted.toastInfo).toHaveBeenCalled());
+
+    // 取出撤销 Toast 的 content 并点击「撤销」，threadUnarchive 进入在途状态
+    const content = hoisted.toastInfo.mock.calls[0][0].content as React.ReactElement;
+    render(content);
+    const undoBtn = await waitFor(() => {
+      const el = document.querySelector(".wk-thread-archive-undo-btn");
+      if (!el) throw new Error("undo button not rendered yet");
+      return el;
+    });
+    const threadListCallsBefore = hoisted.threadList.mock.calls.length;
+    await act(async () => {
+      fireEvent.click(undoBtn!);
+    });
+    expect(hoisted.threadUnarchive).toHaveBeenCalledWith("g1", "t1");
+
+    // 记录基线：归档成功路径已调用过 refreshThreadChannelInfo，只观察卸载后是否再次调用
+    const deleteCallsBefore = hoisted.deleteChannelInfo.mock.calls.length;
+    const fetchCallsBefore = hoisted.fetchChannelInfo.mock.calls.length;
+
+    // 撤销请求 resolve 前卸载面板
+    await act(async () => {
+      unmount();
+    });
+
+    // resolve 在途请求：isUnmounted 短路，不应 refreshThreadChannelInfo / loadThreads
+    await act(async () => {
+      resolveUnarchive();
+    });
+    expect(hoisted.deleteChannelInfo.mock.calls.length).toBe(deleteCallsBefore);
+    expect(hoisted.fetchChannelInfo.mock.calls.length).toBe(fetchCallsBefore);
+    expect(hoisted.threadList.mock.calls.length).toBe(threadListCallsBefore);
+  });
+
+  it("撤销请求在途时卸载：reject 后不再 Toast.error（撤销在途 reject 竞态回归）", async () => {
+    let rejectUnarchive: (e: Error) => void = () => {};
+    hoisted.threadUnarchive.mockReturnValue(
+      new Promise<void>((_resolve, reject) => {
+        rejectUnarchive = reject;
+      })
+    );
+    const { unmount } = await renderPanelWithUnmount([ACTIVE_THREAD]);
+
+    // 归档创建撤销 Toast
+    await act(async () => {
+      fireEvent.click(archiveButton()!);
+    });
+    await waitFor(() => expect(hoisted.toastInfo).toHaveBeenCalled());
+
+    // 取出撤销 Toast 的 content 并点击「撤销」，threadUnarchive 进入在途状态
+    const content = hoisted.toastInfo.mock.calls[0][0].content as React.ReactElement;
+    render(content);
+    const undoBtn = await waitFor(() => {
+      const el = document.querySelector(".wk-thread-archive-undo-btn");
+      if (!el) throw new Error("undo button not rendered yet");
+      return el;
+    });
+    await act(async () => {
+      fireEvent.click(undoBtn!);
+    });
+    expect(hoisted.threadUnarchive).toHaveBeenCalledWith("g1", "t1");
+
+    // 撤销请求 reject 前卸载面板
+    await act(async () => {
+      unmount();
+    });
+
+    // reject 在途请求：catch 块开头 isUnmounted 短路，不应 Toast.error
+    await act(async () => {
+      rejectUnarchive(new Error("boom"));
+    });
+    expect(hoisted.toastError).not.toHaveBeenCalled();
+  });
 });
