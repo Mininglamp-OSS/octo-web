@@ -5,7 +5,7 @@ import ConversationList, {
 } from "../../Components/ConversationList";
 import SidebarTabBar, { SidebarTab } from "../../Components/SidebarTabBar";
 import ConversationListGrouped from "../../Components/ConversationListGrouped";
-import { isArchivedThreadConversation } from "../../Components/ConversationListGrouped/archivedThreads";
+import { isArchivedThreadConversation, type ThreadSidebarStatusMap } from "../../Components/ConversationListGrouped/archivedThreads";
 import ChatConversationList, {
   isMutedForRecentConversation,
 } from "../../Components/ChatConversationList";
@@ -119,6 +119,15 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
   // IM 缓存有这条会话就用 live unread；没有（sidebar-only 关注，从未聊过）才
   // fallback sidebar 的 unread 快照——这样新消息一来 badge 即刻同步，sidebar-
   // only 关注又不会被漏算。
+  // 子区 channelID → sidebar status（来自 /sidebar/sync 的 target_type=5 项）。
+  // 与展开列表(ConversationListGrouped)用同一路信号：冷启动刷新后第一帧即可用，
+  // 无需等 channelInfo 异步补齐。下方角标过滤据此与列表的冷启动隐藏保持一致。
+  const threadSidebarStatus: ThreadSidebarStatusMap = new Map();
+  for (const it of items) {
+    if (it.target_type !== SidebarTargetType.THREAD) continue;
+    if (it.status == null) continue;
+    threadSidebarStatus.set(it.target_id, it.status);
+  }
   const followUnread = items.reduce((sum, it) => {
     if (isItemMuted(it)) return sum;
     let channelType: number | null = null;
@@ -131,12 +140,14 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
         )
       : undefined;
     // 与展开列表的展示层过滤一致：明确已归档的子区已从列表隐藏，未读也不计入
-    // 角标，否则会出现「红点 N 但列表里看不到对应未读」。fail-open：status 未知 /
-    // liveConv 不存在（sidebar-only 子区，无 channelInfo）仍按原逻辑累加，不漏算。
+    // 角标，否则会出现「红点 N 但列表里看不到对应未读」。角标这里同样先看 sidebar
+    // status（冷启动快路径），再回退 channelInfo，与列表的冷启动隐藏逻辑对齐。
+    // fail-open：status 未知 / liveConv 不存在（sidebar-only 子区，无 channelInfo）
+    // 仍按原逻辑累加，不漏算。
     if (
       it.target_type === SidebarTargetType.THREAD &&
       liveConv &&
-      isArchivedThreadConversation(liveConv)
+      isArchivedThreadConversation(liveConv, threadSidebarStatus)
     ) {
       return sum;
     }
