@@ -45,6 +45,10 @@ function formatWeekday(date: Date) {
     return new Intl.DateTimeFormat(i18n.getLocale(), { weekday: "long" }).format(date);
 }
 
+function formatShortWeekday(date: Date) {
+    return new Intl.DateTimeFormat(i18n.getLocale(), { weekday: "short" }).format(date);
+}
+
 /**
 * 仿照微信中的消息时间显示逻辑，将时间戳（单位：毫秒）转换为友好的显示格式.
 *
@@ -168,7 +172,7 @@ export function formatMessageTimestamp(timestamp: number): string {
     }
 
     if (diff < 86400 * 7000) {
-        return moment(ms).format("ddd HH:mm")
+        return `${formatShortWeekday(new Date(ms))} ${moment(ms).format("HH:mm")}`
     }
 
     if (moment(ms).isSame(moment(), "year")) {
