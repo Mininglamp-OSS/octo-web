@@ -13,6 +13,7 @@ export class Emoji {
 export interface EmojiService {
     getImage(name: string): string
     getAllEmoji(): Array<Emoji>
+    emojiRegExp(): RegExp
 }
 
 export class DefaultEmojiService implements EmojiService {

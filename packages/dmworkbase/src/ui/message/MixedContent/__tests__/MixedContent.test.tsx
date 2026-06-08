@@ -5,8 +5,32 @@ import ReactDOM from "react-dom";
 import { act } from "react-dom/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../TextContent", () => ({
+  default: ({
+    content,
+    mentions = [],
+    emojis = [],
+    onMentionClick,
+    enableMarkdown,
+  }: {
+    content: string;
+    mentions?: Array<{ name: string; uid: string }>;
+    emojis?: Array<{ key: string; url: string }>;
+    onMentionClick?: (uid: string) => void;
+    enableMarkdown?: boolean;
+  }) => (
+    <span
+      data-mentions={JSON.stringify(mentions)}
+      data-emojis={JSON.stringify(emojis)}
+      data-enable-markdown={String(enableMarkdown)}
+      onClick={() => mentions[0]?.uid && onMentionClick?.(mentions[0].uid)}
+    >
+      {content}
+    </span>
+  ),
+}));
+
 vi.mock("../../../../Messages/Text/MarkdownContent", () => ({
-  default: ({ content }: { content: string }) => <span>{content}</span>,
   MarkdownImage: ({ src, alt }: { src: string; alt?: string }) => (
     <img src={src} alt={alt || ""} />
   ),
@@ -89,5 +113,34 @@ describe("MixedContent", () => {
     expect(onFileDownload).toHaveBeenCalledWith(
       expect.objectContaining({ id: "f1", type: "file" })
     );
+  });
+
+  it("文本块透传 mention、emoji 和点击回调", () => {
+    const onMentionClick = vi.fn();
+    const root = renderMixed(
+      <MixedContent
+        blocks={[
+          {
+            id: "t1",
+            type: "text",
+            content: "@Alice [OK]",
+            mentions: [{ name: "@Alice", uid: "alice" }],
+            emojis: [{ key: "[OK]", url: "emoji://ok" }],
+          },
+        ]}
+        onMentionClick={onMentionClick}
+      />
+    );
+
+    const text = root.querySelector(".wk-msg-mixed-text span");
+    expect(text?.getAttribute("data-mentions")).toContain("alice");
+    expect(text?.getAttribute("data-emojis")).toContain("emoji://ok");
+    expect(text?.getAttribute("data-enable-markdown")).toBe("true");
+    act(() => {
+      text?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true })
+      );
+    });
+    expect(onMentionClick).toHaveBeenCalledWith("alice");
   });
 });
