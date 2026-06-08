@@ -17,6 +17,7 @@ import { SYSTEM_BOTS } from "../../Service/SpaceService";
 import { SuperGroup } from "../../Utils/const";
 import { SystemContent } from "wukongimjssdk";
 import { getFoldSessionExpandedMessages } from "./foldSessionSummary";
+import { RichTextContent } from "../../Messages/RichText/RichTextContent";
 import { getPulldownRestoredScrollTop, getRestoredAnchorScrollTop } from "./historyScroll";
 import { applyMsgLevelExternalFieldsWithFallback } from "../../Service/Convert";
 import { wrapSendContentForInjection } from "./sendContentProxy";
@@ -311,6 +312,33 @@ export default class ConversationVM extends ProviderListener {
         return `fold-session-${message.clientMsgNo}`
     }
 
+    /**
+     * 判断消息是否含有文件附件（图片/文件/GIF/视频/图文混排中的附件），
+     * 含附件的 Bot 消息不应折叠——附件是交付物，折叠会使用户无法感知。
+     */
+    private hasFileAttachment(message: MessageWrap): boolean {
+        const ct = message.contentType
+        // 独立文件类型消息：图片、文件、GIF、小视频
+        if (
+            ct === MessageContentTypeConst.image ||
+            ct === MessageContentTypeConst.file ||
+            ct === MessageContentTypeConst.gif ||
+            ct === MessageContentTypeConst.smallVideo
+        ) {
+            return true
+        }
+        // RichText 图文混排：检查是否包含 image 或 file block
+        if (ct === MessageContentTypeConst.richText) {
+            const raw = message.content
+            if (raw instanceof RichTextContent) {
+                return raw.content.some(
+                    (b) => b.type === "image" || b.type === "file",
+                )
+            }
+        }
+        return false
+    }
+
     buildRenderItems(messages: MessageWrap[], allowFoldAnimation: boolean = false): ConversationRenderItem[] {
         const renderItems = new Array<ConversationRenderItem>()
         const nextFoldSessionState = new Map<string, FoldSessionUIState>()
@@ -382,6 +410,13 @@ export default class ConversationVM extends ProviderListener {
 
         for (const message of sourceMessages) {
             if (this.isBotMessage(message)) {
+                // 含文件附件的消息不参与折叠：先 flush 当前堆积的纯文字 session，
+                // 再把附件消息作为独立消息渲染，确保交付物不被隐藏。
+                if (this.hasFileAttachment(message)) {
+                    flushPendingSession(false)
+                    renderItems.push({ type: "message", message })
+                    continue
+                }
                 if (pendingSessionMessages.length > 0) {
                     const previousMessage = pendingSessionMessages[pendingSessionMessages.length - 1]
                     if (message.timestamp - previousMessage.timestamp < 120) {
