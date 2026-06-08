@@ -1,9 +1,11 @@
 .mention-list {
+  position: relative;
   background-color: var(--wk-color-item);
   box-shadow: var(--wk-shadow-md);
   border-radius: 4px;
   max-height: 220px;
   overflow-y: auto;
+  overflow-anchor: none;
   padding: 5px 0;
   min-width: 420px;
 }
@@ -17,8 +19,8 @@
   margin-bottom: 10px;
 }
 
-.mention-list-item:hover,
-.mention-list-item.is-selected {
+.mention-list.mention-list--mouse .mention-list-item:hover,
+.mention-list.mention-list--keyboard .mention-list-item.is-selected {
   background-color: var(--wk-color-theme);
   color: var(--wk-text-inverse);
 }
@@ -32,7 +34,7 @@
   margin-left: 6px;
   font-size: 12px;
   font-weight: 400;
-  color: var(--wk-text-secondary, rgba(9, 30, 66, 0.6));
+  color: var(--wk-text-secondary, var(--semi-color-text-2));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -40,8 +42,8 @@
   vertical-align: middle;
 }
 
-.mention-list-item.is-selected .mention-list-item-space,
-.mention-list-item:hover .mention-list-item-space {
+.mention-list.mention-list--keyboard .mention-list-item.is-selected .mention-list-item-space,
+.mention-list.mention-list--mouse .mention-list-item:hover .mention-list-item-space {
   color: var(--wk-text-inverse);
   opacity: 0.8;
 }
