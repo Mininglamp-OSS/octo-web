@@ -33,13 +33,13 @@ import WKAvatar from "../../Components/WKAvatar";
 import AiBadge from "../../Components/AiBadge";
 import RealnameVerifiedBadge from "../../Components/RealnameVerifiedBadge";
 import { getTitleColor } from "./head";
-import moment from "moment";
 import ThreadIndicator, {
   ThreadIndicatorData,
 } from "../../Components/ThreadIndicator";
 import { isMessageContinuation } from "../../Service/messageContinuity";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { I18nContext } from "../../i18n";
+import { formatMessageTimestamp } from "../../Utils/time";
 
 interface MessageBaseProps extends HTMLProps<any> {
   message: MessageWrap;
@@ -374,7 +374,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     const isAi = this.isAiMessage();
     const showHead = this.needHead();
     const showAvatar = this.needAvatar();
-    const timeStr = moment(message.timestamp * 1000).format("HH:mm");
+    const timeStr = formatMessageTimestamp(message.timestamp);
     const selectionMode = context.editOn();
     const selectable = isMessageSelectable(message);
 

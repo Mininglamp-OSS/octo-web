@@ -9,7 +9,7 @@ import { personalRemarkDisplayName, subscriberDisplayName } from '../../Utils/di
 import { shouldShowRealnameBadge } from '../../Utils/realnameBadge'
 import moment from 'moment'
 import { isMessageContinuation } from '../../Service/messageContinuity'
-import { t } from '../../i18n/instance'
+import { formatMessageTimestamp } from '../../Utils/time'
 
 export interface MessageRowSelectionState {
   /** 当前会话是否处于多选模式（不可选消息也需要知道，用于禁用行内操作） */
@@ -89,7 +89,7 @@ export function getMessageRow(
   const isContinue = isMessageContinuation(message.preMessage, message)
 
   // 格式化时间戳
-  const timestamp = formatTimestamp(message.timestamp)
+  const timestamp = formatMessageTimestamp(message.timestamp)
   const timeOnly = formatTimeOnly(message.timestamp)
 
   // 把 uid 绑定到回调
@@ -330,41 +330,4 @@ export function useMessageRow(
 function formatTimeOnly(timestamp: number): string {
   const ms = timestamp < 10000000000 ? timestamp * 1000 : timestamp
   return moment(ms).format('HH:mm')
-}
-
-/**
- * 格式化时间戳
- * 
- * @param timestamp - 时间戳（秒或毫秒）
- * @returns 格式化后的时间字符串
- */
-function formatTimestamp(timestamp: number): string {
-  const ms = timestamp < 10000000000 ? timestamp * 1000 : timestamp
-  const now = Date.now()
-  const diff = now - ms
-  
-  // 今天：显示 HH:mm
-  if (diff < 86400 * 1000 && moment(ms).isSame(moment(), 'day')) {
-    return moment(ms).format('HH:mm')
-  }
-  
-  // 昨天：显示 "昨天 HH:mm"
-  if (diff < 86400 * 2000 && moment(ms).isSame(moment().subtract(1, 'day'), 'day')) {
-    return t('base.time.yesterdayWithTime', {
-      values: { time: moment(ms).format('HH:mm') },
-    })
-  }
-  
-  // 一周内：显示 "周X HH:mm"
-  if (diff < 86400 * 7000) {
-    return moment(ms).format('ddd HH:mm')
-  }
-  
-  // 今年：显示 "MM-DD HH:mm"
-  if (moment(ms).isSame(moment(), 'year')) {
-    return moment(ms).format('MM-DD HH:mm')
-  }
-  
-  // 跨年：显示 "YYYY-MM-DD HH:mm"
-  return moment(ms).format('YYYY-MM-DD HH:mm')
 }
