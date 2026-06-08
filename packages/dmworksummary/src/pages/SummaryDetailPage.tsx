@@ -840,7 +840,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return (
             <div className="summary-detail-header">
                 <div className="summary-detail-header-inner">
-                    <OverflowTooltip as="h2" className="summary-detail-title">
+                    <OverflowTooltip as="h2" className="summary-detail-title" title={detail?.title || t("summary.detail.defaultTitle")}>
                         {detail?.title || t("summary.detail.defaultTitle")}
                     </OverflowTooltip>
                     <div className="summary-detail-header-actions">

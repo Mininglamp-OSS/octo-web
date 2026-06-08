@@ -25,7 +25,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
     return (
         <div className="summary-card" onClick={() => onClick(task.task_id)}>
             <div className="summary-card-header">
-                <OverflowTooltip className="summary-card-title">
+                <OverflowTooltip className="summary-card-title" title={task.title || task.task_no}>
                     {task.title || task.task_no}
                 </OverflowTooltip>
                 <TaskStatusBadge status={task.status} />
