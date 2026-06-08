@@ -151,6 +151,11 @@ describe("renderCellContent", () => {
     expect(renderCellContent(undefined)).toBe("-");
   });
 
+  it("should return dash for empty or whitespace-only strings", () => {
+    expect(renderCellContent("")).toBe("-");
+    expect(renderCellContent("   ")).toBe("-");
+  });
+
   it("should stringify objects", () => {
     expect(renderCellContent({ a: 1 })).toBe('{"a":1}');
   });
@@ -182,6 +187,11 @@ describe("extractColumns", () => {
   it("should set title equal to key", () => {
     const columns = extractColumns([{ myKey: 1 }]);
     expect(columns[0]).toEqual({ key: "myKey", title: "myKey" });
+  });
+
+  it("should fall back to dash title for empty-string keys", () => {
+    const columns = extractColumns([{ "": 1 }]);
+    expect(columns[0]).toEqual({ key: "", title: "-" });
   });
 });
 
