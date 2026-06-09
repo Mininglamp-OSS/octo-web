@@ -8,11 +8,7 @@ import type {
   OctoRichTextClipboardPayload,
 } from "../../Utils/richTextClipboard";
 import { isSafeUrl } from "../../Utils/security";
-import {
-  MENTION_UID_LEGACY_ALL,
-  MENTION_UID_HUMANS,
-  MENTION_UID_AIS,
-} from "../../Utils/mentionRender";
+import { isBroadcastSentinelUid } from "../../Utils/mentionRender";
 
 type EditorLike = {
   chain: () => {
@@ -111,15 +107,10 @@ function safeImageFileName(name?: string, mime?: string): string {
   return raw || fallback;
 }
 
-// Issue #330 — broadcast routing sentinels MUST NOT come from untrusted
-// clipboard. A pasted @everyone / @all-humans / @all-AI silently triggers
-// group-wide broadcast on send via formatMentionTextV2 (MessageInput/index.tsx:283+).
-const BROADCAST_SENTINEL_UIDS = new Set<string>([
-  MENTION_UID_LEGACY_ALL,
-  MENTION_UID_HUMANS,
-  MENTION_UID_AIS,
-]);
-
+// Issue #330 — clipboard mention validation. Sentinel-rejection helper is
+// shared with parseDraftToContent and any future paste-adjacent ingestion via
+// Utils/mentionRender.ts; member-list validation stays local because it is
+// only meaningful for clipboard (draft restore comes from server, not user).
 export type MentionValidationMember = { uid: string; name: string };
 
 function isAllowedClipboardMention(
@@ -129,7 +120,7 @@ function isAllowedClipboardMention(
 ): boolean {
   // Always reject broadcast sentinels (defense in depth — sentinels are
   // dangerous in any context, even for legacy 2-arg callers).
-  if (BROADCAST_SENTINEL_UIDS.has(uid)) return false;
+  if (isBroadcastSentinelUid(uid)) return false;
   // Legacy 2-arg callers: skip member validation for backwards compat.
   // The 3-arg call from MessageInput.tsx is the secured entry point.
   if (!members) return true;

@@ -117,6 +117,21 @@ export const MENTION_UID_AIS = "-3";
 export const MENTION_LABEL_HUMANS = "所有人";
 export const MENTION_LABEL_AIS = "所有AI";
 
+// Issue #330 — broadcast routing sentinels. formatMentionTextV2 routes these
+// uids to mention.all / mention.humans / mention.ais on send, escalating to
+// @everyone / @all-humans / @all-AI broadcasts. Any untrusted ingestion path
+// (clipboard paste, draft restore, future deeplink/postMessage) MUST reject
+// these uids — typed-@ dropdown is the only sanctioned source.
+export const BROADCAST_SENTINEL_UIDS = new Set<string>([
+  MENTION_UID_LEGACY_ALL,
+  MENTION_UID_HUMANS,
+  MENTION_UID_AIS,
+]);
+
+export function isBroadcastSentinelUid(uid: string): boolean {
+  return BROADCAST_SENTINEL_UIDS.has(uid);
+}
+
 export type MentionUidState = "bot" | "user" | "unknown";
 
 export function mentionUidStateFromRobot(robot: unknown): MentionUidState {
