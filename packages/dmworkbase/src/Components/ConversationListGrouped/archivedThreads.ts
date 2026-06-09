@@ -73,6 +73,27 @@ export function isArchivedThreadConversation(
 }
 
 /**
+ * 角标(follow badge)专用：按 sidebar item + 可选 liveConv 判定子区是否「已归档」。
+ *
+ * 与列表展示层保持一致：
+ *   - liveConv 存在 → 走 isArchivedThreadConversation（channelInfo 优先，回退 statusMap）。
+ *   - liveConv 缺失（sidebar-only 关注，从未聊过、IM 缓存无 conv）→ 回退查
+ *     sidebar statusMap，sidebar=Archived 即判定归档。
+ * 这样 sidebar-only 的已归档关注子区不会把 it.unread 误计入角标，
+ * 避免「红点 N 但列表里看不到对应未读」的角标/列表 desync。
+ */
+export function isThreadArchivedForBadge(
+    liveConv: ArchivableConversation | undefined,
+    targetId: string,
+    statusMap: ThreadSidebarStatusMap,
+): boolean {
+    if (liveConv) {
+        return isArchivedThreadConversation(liveConv, statusMap)
+    }
+    return statusMap.get(targetId) === ThreadStatus.Archived
+}
+
+/**
  * 过滤掉「明确已归档」的子区，返回 UI 可见的会话数组。
  * 非子区、两路状态都未知的子区都会保留（fail-open）。
  *

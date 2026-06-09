@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
     isArchivedThreadConversation,
+    isThreadArchivedForBadge,
     filterArchivedThreads,
     type ArchivableConversation,
     type ThreadSidebarStatusMap,
@@ -153,5 +154,43 @@ describe("sidebar status map（issue #340 抗抖动）", () => {
             ["sb-active", ACTIVE],
         ])
         expect(filterArchivedThreads([a, b, c], statusMap)).toEqual([b, c])
+    })
+})
+
+describe("isThreadArchivedForBadge", () => {
+    const ARCHIVED = ThreadStatus.Archived // 2
+    const ACTIVE = ThreadStatus.Active // 1
+
+    it("BUG 用例：sidebar-only 已归档子区(liveConv 缺失，statusMap=Archived) => true（未读不计入角标）", () => {
+        const statusMap: ThreadSidebarStatusMap = new Map<string, number | undefined>([["t1", ARCHIVED]])
+        expect(isThreadArchivedForBadge(undefined, "t1", statusMap)).toBe(true)
+    })
+
+    it("对照：sidebar-only 活跃子区(liveConv 缺失，statusMap=Active) => false（未读计入角标）", () => {
+        const statusMap: ThreadSidebarStatusMap = new Map<string, number | undefined>([["t2", ACTIVE]])
+        expect(isThreadArchivedForBadge(undefined, "t2", statusMap)).toBe(false)
+    })
+
+    it("sidebar-only 子区且 statusMap 无该项(未知) => false（fail-open，计入角标）", () => {
+        const statusMap: ThreadSidebarStatusMap = new Map<string, number | undefined>()
+        expect(isThreadArchivedForBadge(undefined, "t3", statusMap)).toBe(false)
+    })
+
+    it("liveConv 存在且 channelInfo 归档(status=2) => true", () => {
+        const conv = makeThreadConv("t4", ThreadStatus.Archived)
+        const statusMap: ThreadSidebarStatusMap = new Map<string, number | undefined>()
+        expect(isThreadArchivedForBadge(conv, "t4", statusMap)).toBe(true)
+    })
+
+    it("liveConv 存在且 channelInfo 活跃(status=1) => false", () => {
+        const conv = makeThreadConv("t5", ThreadStatus.Active)
+        const statusMap: ThreadSidebarStatusMap = new Map<string, number | undefined>()
+        expect(isThreadArchivedForBadge(conv, "t5", statusMap)).toBe(false)
+    })
+
+    it("liveConv 存在、channelInfo 未知但 statusMap=Archived => true（委托给 isArchivedThreadConversation 回退）", () => {
+        const conv = makeThreadConv("t6", undefined)
+        const statusMap: ThreadSidebarStatusMap = new Map<string, number | undefined>([["t6", ARCHIVED]])
+        expect(isThreadArchivedForBadge(conv, "t6", statusMap)).toBe(true)
     })
 })
