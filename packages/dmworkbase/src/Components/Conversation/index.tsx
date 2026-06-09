@@ -2467,6 +2467,22 @@ export class Conversation
                         );
                         return;
                       }
+                      // Issue #273 — UI defense layer: if every selected message is an
+                      // in-flight media upload, opening the target picker is pure friction.
+                      // Block early with a clearer message. Mixed selections fall through;
+                      // MergeforwardContent.messageToMap will drop the in-flight ones at
+                      // encode time and ChatVM.sendMergeforward will Toast the count.
+                      const allInFlightMedia = checkedMsgs.every((mw) => {
+                        const c: any = mw.message.content;
+                        return (
+                          c instanceof MediaMessageContent &&
+                          (!c.url || c.url === "")
+                        );
+                      });
+                      if (allInFlightMedia) {
+                        Toast.warning(t("conversation.mergeforward.allInFlight"));
+                        return;
+                      }
                       WKApp.shared.baseContext.showConversationSelect(
                         (channels: Channel[]) => {
                           vm.sendMergeforward(channels);
