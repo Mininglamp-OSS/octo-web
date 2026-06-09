@@ -259,6 +259,9 @@ export default class ChatSummaryNewModal extends Component<
                                 ? t('summary.create.selectedChats', { values: { count: selectedChats.length } })
                                 : t('summary.create.selectChat')}
                         </Button>
+                        <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+                            {t('summary.create.archivedNotice')}
+                        </span>
                         {selectedChats.length > 0 && (
                             <div className="chat-summary-modal-chat-tags">
                                 {selectedChats.map((c) => (

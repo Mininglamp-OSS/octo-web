@@ -3,6 +3,7 @@ import { WKSDK, Channel, ChannelInfo, ChannelInfoListener, ChannelTypeGroup } fr
 import { ConversationWrap } from "../../Service/Model"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import { shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace } from "../../Service/SpaceService"
+import { filterArchivedThreads } from "../ConversationListGrouped/archivedThreads"
 import { debounce } from "../../Utils/rateLimit"
 import WKApp from "../../App"
 import { ForwardItem } from "./ForwardModal"
@@ -150,10 +151,15 @@ export function useForwardModal(
       }
     }
 
+    // 转发目标永不包含已归档子区：复用侧栏的 fail-open helper
+    // （仅过滤明确 status=Archived 的子区，status 未知/未加载的子区保留）。
+    // 仅作用于子区来源，不触碰群聊/私聊。
+    const visibleThreadWraps = filterArchivedThreads(threadWraps)
+
     // 按 parentGroupNo 建 Map
     const threadsByParent = new Map<string, ConversationWrap[]>()
     const orphanThreads: ConversationWrap[] = []
-    for (const tw of threadWraps) {
+    for (const tw of visibleThreadWraps) {
       const parentGroupNoRaw = tw.channelInfo?.orgData?.parentGroupNo
       const parentGroupNo = parentGroupNoRaw != null ? String(parentGroupNoRaw) : undefined
       if (parentGroupNo) {

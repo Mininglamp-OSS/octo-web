@@ -138,7 +138,8 @@
     "start": "开始总结",
     "scheduleDaily": "按天 {{time}}",
     "scheduleWeekly": "每{{day}} {{time}}",
-    "scheduleMonthly": "每月{{day}}日 {{time}}"
+    "scheduleMonthly": "每月{{day}}日 {{time}}",
+    "archivedNotice": "默认总结活跃子区，不含已归档子区"
   },
   "chatSummary": {
     "panelTitle": "聊天内的智能总结",
@@ -174,7 +175,10 @@
     "title": "选择聊天",
     "searchPlaceholder": "搜索群聊或联系人",
     "all": "全部",
-    "noData": "暂无数据"
+    "noData": "暂无数据",
+    "includeArchived": "包含已归档子区",
+    "includeArchivedHelper": "默认不含已归档子区，开启后可选择归档子区",
+    "archivedTag": "已归档"
   },
   "memberSelector": {
     "title": "添加成员",

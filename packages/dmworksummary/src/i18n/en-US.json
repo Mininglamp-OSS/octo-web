@@ -138,7 +138,8 @@
     "start": "Start summary",
     "scheduleDaily": "Daily {{time}}",
     "scheduleWeekly": "Every {{day}} {{time}}",
-    "scheduleMonthly": "Monthly on day {{day}} {{time}}"
+    "scheduleMonthly": "Monthly on day {{day}} {{time}}",
+    "archivedNotice": "Active threads are summarized by default; archived threads are excluded"
   },
   "chatSummary": {
     "panelTitle": "Summaries in this chat",
@@ -174,7 +175,10 @@
     "title": "Select chats",
     "searchPlaceholder": "Search groups or contacts",
     "all": "All",
-    "noData": "No data"
+    "noData": "No data",
+    "includeArchived": "Include archived threads",
+    "includeArchivedHelper": "Archived threads are excluded by default; enable to select them",
+    "archivedTag": "Archived"
   },
   "memberSelector": {
     "title": "Add members",

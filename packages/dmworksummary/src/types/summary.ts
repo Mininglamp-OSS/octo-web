@@ -270,6 +270,8 @@ export interface ChatCandidate {
     member_count: number | null;
     parent_group_no?: string;
     is_bot?: boolean;
+    /** 是否为已归档子区（status=2）；群聊/私聊恒为 false */
+    is_archived?: boolean;
 }
 
 /** 成员候选项（添加成员弹窗用） */
