@@ -17,6 +17,10 @@ const hoisted = vi.hoisted(() => ({
   getSubscribes: vi.fn(),
   deleteChannelInfo: vi.fn(),
   fetchChannelInfo: vi.fn(),
+  getChannelInfo: vi.fn(),
+  setChannleInfoForCache: vi.fn(),
+  notifyListeners: vi.fn(),
+  emit: vi.fn(),
 }));
 
 vi.mock("../../../App", () => ({
@@ -33,7 +37,7 @@ vi.mock("../../../App", () => ({
     },
     loginInfo: { uid: "owner-uid" },
     shared: { deviceId: "dev-1", currentSpaceId: "space-1" },
-    mittBus: { emit: vi.fn() },
+    mittBus: { emit: hoisted.emit },
     endpoints: { showConversation: vi.fn() },
   },
 }));
@@ -66,9 +70,11 @@ vi.mock("wukongimjssdk", () => {
       shared: () => ({
         channelManager: {
           getSubscribes: hoisted.getSubscribes,
-          getChannelInfo: () => null,
+          getChannelInfo: hoisted.getChannelInfo,
           deleteChannelInfo: hoisted.deleteChannelInfo,
           fetchChannelInfo: hoisted.fetchChannelInfo,
+          setChannleInfoForCache: hoisted.setChannleInfoForCache,
+          notifyListeners: hoisted.notifyListeners,
         },
       }),
     },
@@ -497,5 +503,71 @@ describe("ThreadPanel inline archive button", () => {
       rejectUnarchive(new Error("boom"));
     });
     expect(hoisted.toastError).not.toHaveBeenCalled();
+  });
+});
+
+// 入口对齐回归（issue #345）：行内归档 / 取消归档成功分支都经共享同步函数
+// syncThreadArchiveState 触发。新实现用调用方传入的权威 status 直接写回 channelInfo
+// 缓存（setChannleInfoForCache + notifyListeners），再 emit("sidebar-reload")，
+// 不再绕异步 fetchChannelInfo，避免被在途旧请求覆盖（B1 去重竞态）。
+describe("ThreadPanel inline archive sidebar sync (issue #345)", () => {
+  it("行内归档成功后写回权威 Archived 状态并 emit('sidebar-reload')", async () => {
+    // 提供 live channelInfo，验证权威 status 原地写回
+    const channelInfo: any = {
+      channel: { channelID: "g1____t1", channelType: 5 },
+      orgData: { thread: { status: ThreadStatus.Active } },
+    };
+    hoisted.getChannelInfo.mockReturnValue(channelInfo);
+
+    await renderPanel([ACTIVE_THREAD]);
+
+    await act(async () => {
+      fireEvent.click(archiveButton()!);
+    });
+
+    await waitFor(() => expect(hoisted.threadArchive).toHaveBeenCalledWith("g1", "t1"));
+    await waitFor(() =>
+      expect(hoisted.emit).toHaveBeenCalledWith("sidebar-reload")
+    );
+    // 权威 status 写回缓存并通知监听器
+    expect(channelInfo.orgData.thread.status).toBe(ThreadStatus.Archived);
+    expect(hoisted.setChannleInfoForCache).toHaveBeenCalledWith(channelInfo);
+    expect(hoisted.notifyListeners).toHaveBeenCalledWith(channelInfo);
+    // 不再绕异步 fetchChannelInfo（避免被在途旧请求覆盖）
+    expect(hoisted.fetchChannelInfo).not.toHaveBeenCalled();
+  });
+
+  it("已归档行点击取消归档成功后写回 Active 并 emit('sidebar-reload')", async () => {
+    const channelInfo: any = {
+      channel: { channelID: "g1____t2", channelType: 5 },
+      orgData: { thread: { status: ThreadStatus.Archived } },
+    };
+    hoisted.getChannelInfo.mockReturnValue(channelInfo);
+
+    hoisted.threadList.mockResolvedValue([ARCHIVED_THREAD]);
+    hoisted.getSubscribes.mockReturnValue([{ uid: "owner-uid", role: 1 }]);
+    render(
+      React.createElement(ThreadPanel, {
+        groupNo: "g1",
+        thread: null,
+        onClose: vi.fn(),
+        onThreadSelect: vi.fn(),
+      })
+    );
+    await waitFor(() => expect(screen.getByText("Archived")).toBeTruthy());
+    await act(async () => {
+      fireEvent.click(screen.getByText("Archived"));
+    });
+    await waitFor(() => expect(archiveButton()).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.click(archiveButton()!);
+    });
+
+    await waitFor(() => expect(hoisted.threadUnarchive).toHaveBeenCalledWith("g1", "t2"));
+    await waitFor(() =>
+      expect(hoisted.emit).toHaveBeenCalledWith("sidebar-reload")
+    );
+    expect(channelInfo.orgData.thread.status).toBe(ThreadStatus.Active);
   });
 });

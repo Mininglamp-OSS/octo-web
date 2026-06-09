@@ -115,6 +115,7 @@ import { SummaryCardContent } from "./Messages/SummaryCard/SummaryCardContent";
 import { SummaryCardCell } from "./Messages/SummaryCard";
 import { parseThreadChannelId, ThreadStatus } from "./Service/Thread";
 import { shouldShowThreadArchiveAction } from "./Service/threadPermission";
+import { runChannelSettingThreadArchive } from "./Service/threadArchiveAction";
 import { canShowRevokeMenu } from "./Service/revokePermission";
 
 /** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
@@ -2289,28 +2290,16 @@ export default class BaseModule implements IModule {
                       : t("base.module.thread.archiveConfirmContent"),
                     onOk: async () => {
                       try {
-                        if (isArchived) {
-                          await WKApp.dataSource.channelDataSource.threadUnarchive(
-                            threadInfo.groupNo,
-                            threadInfo.shortId
-                          );
-                        } else {
-                          await WKApp.dataSource.channelDataSource.threadArchive(
-                            threadInfo.groupNo,
-                            threadInfo.shortId
-                          );
-                        }
-                        Toast.success(
-                          isArchived
-                            ? t("base.module.thread.unarchiveSuccess")
-                            : t("base.module.thread.archiveSuccess")
-                        );
-                        WKSDK.shared().channelManager.deleteChannelInfo(
-                          channel
-                        );
-                        await WKSDK.shared().channelManager.fetchChannelInfo(
-                          channel
-                        );
+                        // 收口到共享 helper：打接口 → Toast → 用操作后的权威 status
+                        // 走 syncThreadArchiveState 同步左侧 sidebar（issue #345）。
+                        // 权威状态写回 channelInfo 缓存，避免被在途旧 fetch 覆盖
+                        // （B1 去重竞态）。data.refresh() 仍保留，刷新面板本身。
+                        await runChannelSettingThreadArchive({
+                          channel,
+                          groupNo: threadInfo.groupNo,
+                          shortId: threadInfo.shortId,
+                          isArchived,
+                        });
                         data.refresh();
                       } catch (err: any) {
                         Toast.error(

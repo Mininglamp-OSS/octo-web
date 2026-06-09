@@ -33,6 +33,7 @@ import { formatRelativeTime } from "../../Utils/time";
 import FollowService from "../../Service/FollowService";
 import SidebarService from "../../Service/SidebarService";
 import CategoryService from "../../Service/CategoryService";
+import { syncThreadArchiveState } from "../../Service/threadArchiveSync";
 import { FilePreviewInfo } from "../FilePreviewPanel/types";
 import { fileRendererRegistry } from "../FilePreviewPanel/registry";
 import { getExtension } from "../FilePreviewPanel/types";
@@ -738,7 +739,7 @@ export default class ThreadPanel extends Component<
     if (this.state.vmState.thread?.short_id === updatedThread.short_id) {
       this.props.onThreadSelect?.(updatedThread);
     }
-    this.refreshThreadChannelInfo(updatedThread);
+    this.syncThreadArchiveToSidebar(updatedThread);
     await this.loadThreads();
   };
 
@@ -874,6 +875,23 @@ export default class ThreadPanel extends Component<
     const threadChannel = new Channel(channelID, ChannelTypeCommunityTopic);
     WKSDK.shared().channelManager.deleteChannelInfo(threadChannel);
     WKSDK.shared().channelManager.fetchChannelInfo(threadChannel);
+  }
+
+  /**
+   * 归档 / 取消归档成功后同步左侧 sidebar（issue #345）。收口到共享的
+   * syncThreadArchiveState：用调用方传入的权威 thread.status 直接写回 channelInfo
+   * 缓存并 notifyListeners，再 emit("sidebar-reload")。传权威 status 而非绕异步
+   * fetchChannelInfo，避免被归档前在途的旧请求覆盖（B1 去重竞态）。
+   * 各入口在调用前已把 thread.status 设为操作后的权威值。
+   */
+  private syncThreadArchiveToSidebar(thread: Thread) {
+    const channelID =
+      thread.channel_id ||
+      (this.props.groupNo
+        ? buildThreadChannelId(this.props.groupNo, thread.short_id)
+        : "");
+    if (!channelID) return;
+    syncThreadArchiveState(channelID, thread.status);
   }
 
   private handleDeleteThread = () => {
@@ -1380,7 +1398,7 @@ export default class ThreadPanel extends Component<
       );
       // 卸载后短路：撤销 Toast 渲染在全局 portal，卸载后再创建会绕过 cleanup。
       if (this.isUnmounted) return;
-      this.refreshThreadChannelInfo({
+      this.syncThreadArchiveToSidebar({
         ...thread,
         status: ThreadStatus.Archived,
       });
@@ -1407,7 +1425,7 @@ export default class ThreadPanel extends Component<
       // 卸载后短路：避免对已卸载组件 setState 并刷新列表。
       if (this.isUnmounted) return;
       Toast.success(t("base.module.thread.unarchiveSuccess"));
-      this.refreshThreadChannelInfo({ ...thread, status: ThreadStatus.Active });
+      this.syncThreadArchiveToSidebar({ ...thread, status: ThreadStatus.Active });
       await this.loadThreads();
     } catch {
       if (this.isUnmounted) return;
@@ -1472,7 +1490,7 @@ export default class ThreadPanel extends Component<
       );
       // 卸载后短路：避免对已卸载组件 setState 并刷新列表。
       if (this.isUnmounted) return;
-      this.refreshThreadChannelInfo({ ...thread, status: ThreadStatus.Active });
+      this.syncThreadArchiveToSidebar({ ...thread, status: ThreadStatus.Active });
       await this.loadThreads();
     } catch {
       if (this.isUnmounted) return;

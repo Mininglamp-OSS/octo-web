@@ -63,4 +63,19 @@ describe("filterArchivedThreads", () => {
     it("空数组返回空数组", () => {
         expect(filterArchivedThreads([])).toEqual([])
     })
+
+    it("status 从 Active 改为 Archived 后，filterArchivedThreads 结果随之变化（issue #345 判定路径回归）", () => {
+        // 模拟归档前：同父群下两个活跃子区都可见
+        const stable = makeThreadConv("stable", ThreadStatus.Active)
+        const toggling = makeThreadConv("toggling", ThreadStatus.Active)
+        const before = filterArchivedThreads([stable, toggling])
+        expect(before).toEqual([stable, toggling])
+
+        // channelInfo 刷新后拿到权威 status=Archived（live 引用被原地改写）
+        toggling.channelInfo!.orgData!.thread!.status = ThreadStatus.Archived
+        const after = filterArchivedThreads([stable, toggling])
+
+        expect(after).toEqual([stable])
+        expect(after).not.toContain(toggling)
+    })
 })
