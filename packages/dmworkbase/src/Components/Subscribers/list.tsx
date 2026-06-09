@@ -22,6 +22,7 @@ import { I18nContext } from "../../i18n";
 export interface SubscriberListProps {
   channel: Channel;
   canSelect?: boolean; // 是否支持多选
+  singleSelect?: boolean; // 选择模式下是否只允许单选
   disableSelectList?: string[]; // 禁选列表
   onSelect?: (items: Subscriber[]) => void;
 
@@ -193,11 +194,13 @@ export class SubscriberList extends Component<
 
   checkItem(item: Subscriber) {
     const { selectedList } = this.state;
-    const { onSelect } = this.props;
+    const { onSelect, singleSelect } = this.props;
     const found = selectedList.findIndex((selected) => selected.uid === item.uid);
     let newSelectedList;
     if (found >= 0) {
       newSelectedList = [...selectedList.slice(0, found), ...selectedList.slice(found + 1)];
+    } else if (singleSelect) {
+      newSelectedList = [item];
     } else {
       newSelectedList = [item, ...selectedList];
     }

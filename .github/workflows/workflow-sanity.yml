@@ -14,6 +14,6 @@ permissions: {}
 
 jobs:
   sanity:
-    uses: Mininglamp-OSS/.github/.github/workflows/workflow-sanity.yml@main
+    uses: Mininglamp-OSS/.github/.github/workflows/workflow-sanity.yml@v1
     permissions:
       contents: read

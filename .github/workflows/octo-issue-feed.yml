@@ -8,7 +8,7 @@ permissions: {}
 
 jobs:
   notify:
-    uses: Mininglamp-OSS/.github/.github/workflows/octo-issue-feed.yml@main
+    uses: Mininglamp-OSS/.github/.github/workflows/octo-issue-notify.yml@v1
     with:
       repo_name: ${{ github.event.repository.name }}
       issue_number: ${{ github.event.issue.number }}
@@ -18,3 +18,4 @@ jobs:
       event_action: ${{ github.event.action }}
     secrets:
       OCTO_BOT_TOKEN: ${{ secrets.OCTO_BOT_TOKEN }}
+      TRIAGE_WEBHOOK_URL: ${{ secrets.TRIAGE_WEBHOOK_URL }}

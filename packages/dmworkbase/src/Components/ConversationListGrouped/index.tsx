@@ -31,6 +31,7 @@ import {
     isVirtualCategory,
     type ValidCategoryItem,
 } from "./categoriesFallback"
+import { filterArchivedThreads, isArchivedThreadConversation, type ThreadSidebarStatusMap } from "./archivedThreads"
 import { useI18n } from "../../i18n"
 import { wkConfirm } from "../WKModal"
 
@@ -309,6 +310,21 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         return new ConversationWrap(conv)
     }
 
+    // 子区 channelID → sidebar status（来自 /sidebar/sync 的 target_type=5 项）。
+    // 这是 archived 过滤的「第一路」信号：冷启动刷新后第一帧即可用，无需等 channelInfo
+    // 异步补齐，从源头消除归档子区「先闪一下再消失」的抖动（issue #340）。
+    // 缺失 status 字段（旧后端）的子区不写入，filterArchivedThreads 据此回退到 channelInfo。
+    const threadSidebarStatus: ThreadSidebarStatusMap = new Map()
+    if (itemsByCategory) {
+        for (const list of itemsByCategory.values()) {
+            for (const it of list) {
+                if (it.target_type !== 5) continue
+                if (it.status == null) continue
+                threadSidebarStatus.set(it.target_id, it.status)
+            }
+        }
+    }
+
     // 父群下「已关注子区」统一来源：合并 IM 缓存（按 followedKeys 过滤掉缓存里仍活跃
     // 但 sidebar 已 unfollow 的）+ sidebar 自己列出的 target_type=5 项（含 IM 没缓存的，
     // 通过 parent_channel_id 反挂父群）。渲染嵌套和拖父群 sort payload 共用，避免出现
@@ -333,6 +349,14 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 followedChildThreadsByParent.set(parentGroupNo, existing)
             }
         }
+    }
+
+    // 渲染用的可见子区 map：在全量 followedChildThreadsByParent 基础上过滤掉「明确已归档」
+    // 的子区（fail-open：status 未知/未加载的子区仍显示）。全量 map 继续用于拖拽排序的
+    // sort payload，避免隐藏归档子区导致后端 follow_sort 被意外改动。
+    const visibleChildThreadsByParent = new Map<string, ConversationWrap[]>()
+    for (const [parentGroupNo, threads] of followedChildThreadsByParent) {
+        visibleChildThreadsByParent.set(parentGroupNo, filterArchivedThreads(threads, threadSidebarStatus))
     }
 
     // 构建右键菜单：取消关注 + 移出分组（有分组时，一级直接点击）+ 移到分组（一级，展开二级子菜单）
@@ -498,7 +522,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
             const withThreads: ConversationWrap[] = []
             for (const conv of catConvs) {
                 withThreads.push(conv)
-                const threads = [...(threadConvsByParent.get(conv.channel.channelID) || [])]
+                const threads = filterArchivedThreads([...(threadConvsByParent.get(conv.channel.channelID) || [])], threadSidebarStatus)
                     .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
                 withThreads.push(...threads)
             }
@@ -523,7 +547,8 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                     catConvs.push(groupConvMap.get(it.target_id) || synthesizeFromItem(it))
                     // 父群下挂已关注子区：来源已合并 IM 缓存（按 followedKeys 过滤）+ sidebar
                     // 自带的 target_type=5 with parent_channel_id（含 IM 没缓存的关注子区）。
-                    const childThreads = (followedChildThreadsByParent.get(it.target_id) || [])
+                    // 渲染用可见 map（已过滤明确归档子区）；全量 map 仅用于拖拽 sort payload。
+                    const childThreads = (visibleChildThreadsByParent.get(it.target_id) || [])
                         .slice()
                         .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
                     for (const t of childThreads) {
@@ -534,7 +559,11 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                         }
                     }
                 } else if (it.target_type === 5) {
-                    catConvs.push(threadConvByChannel.get(it.target_id) || synthesizeFromItem(it))
+                    const threadConv = threadConvByChannel.get(it.target_id) || synthesizeFromItem(it)
+                    // standalone 子区：明确归档的不在关注列表渲染（ThreadPanel 仍可查看/重新激活）。
+                    if (!isArchivedThreadConversation(threadConv, threadSidebarStatus)) {
+                        catConvs.push(threadConv)
+                    }
                 }
             }
         } else {
@@ -547,14 +576,17 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 const groupConv = groupConvMap.get(g.group_no)
                 if (groupConv) {
                     catConvs.push(groupConv)
-                    const threads = threadConvsByParent.get(g.group_no) || []
+                    const threads = filterArchivedThreads(threadConvsByParent.get(g.group_no) || [], threadSidebarStatus)
                     catConvs.push(...threads)
                 }
             }
             const dmItems = dmsByCategory?.get(sidebarKey) || []
             const threadItems = threadsByCategory?.get(sidebarKey) || []
             const dmConvsInCat = dmItems.map(it => dmConvMap.get(it.target_id) || synthesizeFromItem(it))
-            const standaloneThreadConvs = threadItems.map(it => threadConvByChannel.get(it.target_id) || synthesizeFromItem(it))
+            const standaloneThreadConvs = filterArchivedThreads(
+                threadItems.map(it => threadConvByChannel.get(it.target_id) || synthesizeFromItem(it)),
+                threadSidebarStatus,
+            )
             const seenChannelIds = new Set(catConvs.map(c => c.channel.channelID))
             const dedupedThreads = standaloneThreadConvs.filter(c => !seenChannelIds.has(c.channel.channelID))
             catConvs.push(...dmConvsInCat, ...dedupedThreads)

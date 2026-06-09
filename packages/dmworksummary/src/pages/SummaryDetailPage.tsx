@@ -6,6 +6,8 @@ import {
     Banner,
     Dropdown,
     Tag,
+    Modal,
+    TextArea,
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconMore, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser } from "@douyinfe/semi-icons";
 import { Channel, ChannelTypeGroup, ChannelTypePerson, MessageText, WKSDK } from "wukongimjssdk";
@@ -59,6 +61,9 @@ interface SummaryDetailPageState {
     isEditing: boolean;
     showMatterPicker: boolean;
     forwardingToMatter: boolean;
+    showRegenerateModal: boolean;
+    regenerateTopic: string;
+    regenerateSubmitting: boolean;
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
@@ -83,6 +88,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         isEditing: false,
         showMatterPicker: false,
         forwardingToMatter: false,
+        showRegenerateModal: false,
+        regenerateTopic: "",
+        regenerateSubmitting: false,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -363,16 +371,35 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     }
 
-    handleRegenerate = async () => {
+    handleRegenerate = () => {
+        const { detail } = this.state;
         if (this.taskId == null) return;
+        this.setState({
+            showRegenerateModal: true,
+            regenerateTopic: detail?.title || "",
+        });
+    };
+
+    handleRegenerateConfirm = async () => {
+        if (this.taskId == null || this.state.regenerateSubmitting) return;
+        const trimmed = this.state.regenerateTopic.trim();
+        if (!trimmed) return;
+        this.setState({ regenerateSubmitting: true });
         try {
-            await api.regenerateSummary(this.taskId);
+            await api.regenerateSummary(this.taskId, { topic: trimmed });
             Toast.success(t("summary.detail.regenerateStarted"));
+            this.setState({ showRegenerateModal: false });
             this.loadDetail();
             window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskId: this.taskId } }));
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.operationFailed"));
+        } finally {
+            this.setState({ regenerateSubmitting: false });
         }
+    };
+
+    handleRegenerateCancel = () => {
+        this.setState({ showRegenerateModal: false });
     };
 
     handleCancel = async () => {
@@ -506,6 +533,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.setState({ forwardingToMatter: false });
         }
     };
+
+    /**
+     * Whether the personal summary content is already visible in BY_PERSON mode.
+     * Mirrors the content-display predicate in renderPersonalSummary (shows when content is non-empty),
+     * so the global "generating" card and the personal summary are guaranteed to be mutually exclusive
+     * regardless of worker_status value/type/timing.
+     */
+    private get personalReady(): boolean {
+        const { detail, personalResult } = this.state;
+        return (
+            detail?.summary_mode === SummaryMode.BY_PERSON &&
+            !!personalResult?.content?.trim()
+        );
+    }
 
     renderProcessing() {
         const { t } = this.context;
@@ -799,7 +840,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return (
             <div className="summary-detail-header">
                 <div className="summary-detail-header-inner">
-                    <OverflowTooltip as="h2" className="summary-detail-title">
+                    <OverflowTooltip as="h2" className="summary-detail-title" title={detail?.title || t("summary.detail.defaultTitle")}>
                         {detail?.title || t("summary.detail.defaultTitle")}
                     </OverflowTooltip>
                     <div className="summary-detail-header-actions">
@@ -883,7 +924,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
                         {detail && !loading && (() => {
                             const myP = detail.participants?.find((p) => p.user_id === WKApp.loginInfo.uid);
-                            const isPendingInvite = myP != null && myP.status === ParticipantStatus.PENDING;
+                            const isMultiParticipant = (detail.participants?.length ?? 0) > 1;
+                            const isPendingInvite = isMultiParticipant && myP != null && myP.status === ParticipantStatus.PENDING;
                             return isPendingInvite ? (
                                 <div
                                     className="summary-detail-respond-banner"
@@ -929,6 +971,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 )}
 
                                 {(detail.status === TaskStatus.PENDING || detail.status === TaskStatus.PROCESSING) &&
+                                    !this.personalReady &&
                                     this.renderProcessing()
                                 }
 
@@ -957,8 +1000,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                         </Button>
                                     </div>
                                 )}
-                                {/* 单人 WaitingConfirm 状态显示生成中 */}
-                                {detail.status === TaskStatus.WAITING_CONFIRM && this.state.members.length <= 1 && (
+                                {/* 单人 WaitingConfirm 状态显示生成中（个人总结已出则不再显示 loading） */}
+                                {detail.status === TaskStatus.WAITING_CONFIRM && this.state.members.length <= 1 && !this.personalReady && (
                                     this.renderProcessing()
                                 )}
 
@@ -983,6 +1026,27 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     onSelect={this.handleMatterSelected}
                     onCancel={() => this.setState({ showMatterPicker: false })}
                 />
+                <Modal
+                    title={t("summary.detail.regenerateEditTitle")}
+                    visible={this.state.showRegenerateModal}
+                    onOk={this.handleRegenerateConfirm}
+                    onCancel={this.handleRegenerateCancel}
+                    okText={t("summary.detail.regenerate")}
+                    cancelText={t("summary.common.cancel")}
+                    confirmLoading={this.state.regenerateSubmitting}
+                    okButtonProps={{ disabled: !this.state.regenerateTopic.trim() }}
+                >
+                    <label id="regenerate-topic-label" style={{ display: "block", marginBottom: 8, color: "var(--semi-color-text-1)" }}>
+                        {t("summary.detail.regenerateTopicLabel")}
+                    </label>
+                    <TextArea
+                        aria-labelledby="regenerate-topic-label"
+                        autosize={{ minRows: 3, maxRows: 8 }}
+                        maxCount={1000}
+                        value={this.state.regenerateTopic}
+                        onChange={(value) => this.setState({ regenerateTopic: value.slice(0, 1000) })}
+                    />
+                </Modal>
             </div>
         );
     }

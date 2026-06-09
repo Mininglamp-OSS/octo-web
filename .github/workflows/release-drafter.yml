@@ -9,7 +9,7 @@ permissions: {}
 
 jobs:
   draft:
-    uses: Mininglamp-OSS/.github/.github/workflows/reusable-release-drafter.yml@main
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-release-drafter.yml@v1
     permissions:
       contents: write
       pull-requests: read

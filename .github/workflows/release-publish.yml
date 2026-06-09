@@ -21,7 +21,7 @@ permissions: {}
 
 jobs:
   publish:
-    uses: Mininglamp-OSS/.github/.github/workflows/reusable-release-publish.yml@main
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-release-publish.yml@v1
     with:
       tag: ${{ inputs.tag }}
       validate_run_id: ${{ inputs.validate_run_id }}

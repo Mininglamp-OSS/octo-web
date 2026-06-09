@@ -263,6 +263,8 @@
     "expandAll": "展开全部 ▼",
     "waitingSubmit": "{{name}} · 等待提交...",
     "regenerate": "重新生成",
+    "regenerateEditTitle": "修改提示词并重新生成",
+    "regenerateTopicLabel": "提示词",
     "cancelTask": "取消任务",
     "errorCause": "可能由网络波动或服务异常导致",
     "inviteQuestion": "你被邀请参与此总结任务，是否同意？",

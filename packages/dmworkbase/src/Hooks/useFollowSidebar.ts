@@ -213,6 +213,14 @@ export function useFollowSidebar(): UseFollowSidebarResult {
             threadReloadTimersRef.current.clear()
         }
     }, [scheduleThreadReload])
+
+    useEffect(() => {
+        const listener = () => load({ silent: true })
+        WKApp.mittBus.on("wk:thread-deleted", listener)
+        return () => {
+            WKApp.mittBus.off("wk:thread-deleted", listener)
+        }
+    }, [load])
     // sort 成功后调，乐观自增 ref，避免连续拖拽用旧版本号触发 CAS conflict
     const bumpVersion = useCallback(() => {
         versionRef.current = versionRef.current + 1

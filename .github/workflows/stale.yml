@@ -9,7 +9,7 @@ permissions: {}
 
 jobs:
   stale:
-    uses: Mininglamp-OSS/.github/.github/workflows/reusable-stale.yml@main
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-stale.yml@v1
     permissions:
       issues: write
       pull-requests: write

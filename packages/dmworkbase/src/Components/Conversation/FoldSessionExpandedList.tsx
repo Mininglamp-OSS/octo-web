@@ -1,10 +1,10 @@
 import React from "react";
 import classNames from "classnames";
-import moment from "moment";
 import { Message } from "wukongimjssdk";
 import { MessageWrap } from "../../Service/Model";
 import Checkbox from "../Checkbox";
 import { isMessageSelectable } from "../../Service/messageSelection";
+import { formatMessageTimestamp } from "../../Utils/time";
 
 interface FoldSessionExpandedListProps {
   messages: MessageWrap[];
@@ -16,6 +16,8 @@ interface FoldSessionExpandedListProps {
     message: Message,
     event: React.MouseEvent<HTMLDivElement>
   ) => void;
+  getMessageElementId?: (message: MessageWrap) => string;
+  onLocateAnimationEnd?: (message: MessageWrap) => void;
 }
 
 const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
@@ -25,23 +27,37 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
   renderMessageContent,
   onToggleSelect,
   onMessageContextMenu,
+  getMessageElementId,
+  onLocateAnimationEnd,
 }) => {
   return (
     <>
       {messages.map((message) => {
         const senderName = message.from?.title || message.fromUID;
-        const timeStr = moment(message.timestamp * 1000).format("HH:mm");
+        const timeStr = formatMessageTimestamp(message.timestamp);
         const selectable = isMessageSelectable(message);
         const showMessageHead = !message.revoke;
         return (
           <div
             key={message.clientMsgNo}
+            id={getMessageElementId?.(message)}
+            data-locate-message-row="true"
+            data-message-seq={message.messageSeq > 0 ? message.messageSeq : undefined}
             className={classNames(
               "wk-fold-msg",
               editMode && "wk-fold-msg-check-open",
-              selectable && message.checked && "wk-fold-msg-selected"
+              selectable && message.checked && "wk-fold-msg-selected",
+              message.locateRemind && "wk-message-item-reminder"
             )}
             data-testid={`fold-msg-${message.clientMsgNo}`}
+            onAnimationEnd={(event) => {
+              if (
+                event.target === event.currentTarget &&
+                message.locateRemind
+              ) {
+                onLocateAnimationEnd?.(message);
+              }
+            }}
             onClick={
               editMode
                 ? () => {
