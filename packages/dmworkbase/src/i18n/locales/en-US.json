@@ -186,6 +186,8 @@
   "conversation.upload.imageReadFailed": "Failed to read image \"{{name}}\"",
   "conversation.upload.sendTo": "Send to {{name}}",
   "conversation.upload.totalTooLarge": "Total attachment size exceeds the {{max}} limit. Please remove some files and try again.",
+  "conversation.mergeforward.skippedInFlight": "{{count}} media message(s) skipped because the upload has not finished — please retry shortly",
+  "conversation.mergeforward.allInFlight": "Selected media is still uploading; please wait for the upload to finish before forwarding",
   "fileToolbar.duplicateAdded": "A file with the same name was added to the pending list",
   "friendApply.sendRequest": "Send friend request",
   "groupManagement.addBotAdmin": "Add Bot admin",
