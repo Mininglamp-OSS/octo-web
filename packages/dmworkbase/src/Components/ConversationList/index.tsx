@@ -38,6 +38,7 @@ import ConversationVM from "../Conversation/vm";
 import { I18nContext, t, useI18n } from "../../i18n";
 import { formatDraftPreview } from "../../Utils/draftPreview";
 import { wkConfirm } from "../WKModal";
+import { collapsedThreadUnread } from "./unread";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
 // ── CompactGroupItem：群聊 Tab 紧凑 item，支持拖拽 ──────────────────────
@@ -679,9 +680,9 @@ export default class ConversationList extends Component<
     const { locatingUnreadKey, locatingUnreadPulse } = this.state;
     const typing = TypingManager.shared.getTyping(conversationWrap.channel);
     const selected = select && select.isEqual(conversationWrap.channel);
-    // 父群下的子区折叠到 thread-overflow（默认不展开），父群 badge 必须把
-    // 折叠中的子区未读一起显示，否则会出现「角标显示 N 但列表里看不到任何未读」。
-    // 已展开时 threadUnread 由调用处传 0，自然只显示父群自身。
+    // compact mode nests collapsed threads under the parent group, so the
+    // parent item receives the collapsed unread count. Recent mode renders
+    // threads as independent rows and must keep parent unread independent.
     const totalUnread = conversationWrap.unread + threadUnread;
     const hasMention = conversationWrap.isMentionMe && totalUnread > 0;
     const visibleSimpleReminders = conversationWrap.simpleReminders?.filter(
@@ -1217,16 +1218,10 @@ export default class ConversationList extends Component<
         if (!hasThreads) return 0;
         if (this._isThreadExpanded(conv.channel.channelID)) return 0;
         const threads = threadsByParent.get(conv.channel.channelID) ?? [];
-        // 子区有独立免打扰设置，汇总时过滤掉已开启免打扰的子区未读
-        return threads.reduce((sum, t) => {
-          // 对齐 effectiveMute 逻辑：显式设置看自身，未设置继承父群
-          const rawMute = (t.channelInfo?.orgData?.thread as any)?.mute as number | null | undefined
-          const parentInfo = WKSDK.shared().channelManager.getChannelInfo(
-            new Channel(conv.channel.channelID, ChannelTypeGroup)
-          )
-          const tMute = rawMute != null ? rawMute === 1 : !!(parentInfo?.mute)
-          return sum + (tMute ? 0 : t.unread)
-        }, 0);
+        const parentInfo = WKSDK.shared().channelManager.getChannelInfo(
+          new Channel(conv.channel.channelID, ChannelTypeGroup)
+        );
+        return collapsedThreadUnread(threads, !!parentInfo?.mute, !!compact);
       })();
       return this.conversationItem(conv, hasThreads, threadUnread);
     };

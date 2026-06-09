@@ -70,6 +70,8 @@ const PendingMessageOrderBase = Number.MAX_SAFE_INTEGER / 2
 
 export default class ConversationVM extends ProviderListener {
 
+    private static nextMessageContainerSeq = 0
+
     loading: boolean = false // 消息是否加载中
     channel: Channel
     channelInfo?: ChannelInfo // 当前会话的频道详情
@@ -87,7 +89,7 @@ export default class ConversationVM extends ProviderListener {
     pullupHasMore: boolean = false // 上拉是否有更多
     pulldownFinished: boolean = false // 下拉完成
     pendingMessages: MessageWrap[] = [] // 缓冲区：pullupHasMore 期间收到的实时消息
-    messageContainerId = "viewport" // 消息容器的ID
+    messageContainerId = `viewport-${ConversationVM.nextMessageContainerSeq++}` // 消息容器的ID
     static sendQueue: Map<string, Array<MessageWrap>> = new Map() // 发送队列
     static foldSessionPreview: Map<string, { participants: string[], count: number }> = new Map() // 会话列表折叠预览缓存
     private _needSetUnread: boolean = false // 是否需要设置未读数量
