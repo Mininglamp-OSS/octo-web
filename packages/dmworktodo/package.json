@@ -5,8 +5,8 @@
   "main": "src/index.tsx",
   "dependencies": {
     "@octo/base": "workspace:*",
-    "@douyinfe/semi-icons": "^2.93.0",
-    "@douyinfe/semi-ui": "^2.93.0",
+    "@douyinfe/semi-icons": "^2.99.3",
+    "@douyinfe/semi-ui": "^2.99.3",
     "axios": "^0.25.0",
     "lucide-react": "^0.577.0",
     "wukongimjssdk": "^1.2.11"
