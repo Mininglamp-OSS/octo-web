@@ -17,6 +17,10 @@ describe("isMessageSelectable", () => {
     expect(isMessageSelectable({ contentType: MessageContentTypeConst.threadCreated })).toBe(false)
   })
 
+  it("rejects recalled messages", () => {
+    expect(isMessageSelectable({ contentType: MessageContentType.text, revoke: true })).toBe(false)
+  })
+
   it("rejects missing messages defensively", () => {
     expect(isMessageSelectable(undefined)).toBe(false)
     expect(isMessageSelectable({})).toBe(false)

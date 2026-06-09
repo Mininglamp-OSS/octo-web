@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const sdkState = vi.hoisted(() => ({
     sendingQueues: new Map<number, unknown>(),
+    channelInfos: new Map<string, any>(),
 }))
 
 vi.mock("wukongimjssdk", () => {
@@ -31,6 +32,7 @@ vi.mock("wukongimjssdk", () => {
         WKSDK: {
             shared: () => ({
                 channelManager: {
+                    getChannelInfo: (channel: any) => sdkState.channelInfos.get(channel.getChannelKey()),
                     getSubscribes: () => [],
                     addSubscriberChangeListener: () => {},
                     removeSubscriberChangeListener: () => {},
@@ -140,6 +142,7 @@ function wrap(overrides: Record<string, any>) {
         messageSeq: overrides.messageSeq || 0,
         messageID: overrides.messageID || "",
         timestamp: overrides.timestamp || 0,
+        contentType: overrides.contentType ?? 1,
         status: overrides.status ?? MessageStatus.Normal,
         fromUID: overrides.fromUID || "me",
         remoteExtra: {},
@@ -154,8 +157,13 @@ function wrap(overrides: Record<string, any>) {
         get timestamp() { return message.timestamp },
         get fromUID() { return message.fromUID },
         get channel() { return message.channel },
+        get contentType() { return message.contentType },
         get status() { return message.status },
         set status(value: number) { message.status = value },
+        get revoke() { return message.remoteExtra.revoke },
+        set revoke(value: boolean) { message.remoteExtra.revoke = value },
+        get revoker() { return message.remoteExtra.revoker },
+        set revoker(value: string | undefined) { message.remoteExtra.revoker = value },
         get send() { return message.fromUID === "me" },
         reasonCode: 0,
     }
@@ -166,6 +174,7 @@ describe("ConversationVM message ordering", () => {
     beforeEach(() => {
         ConversationVM.sendQueue.clear()
         sdkState.sendingQueues.clear()
+        sdkState.channelInfos.clear()
     })
 
     it("sorts no-seq messages with invalid order after sequenced messages", () => {
@@ -232,5 +241,79 @@ describe("ConversationVM message ordering", () => {
 
         expect(sendingMessages.map((m: any) => m.clientMsgNo)).toEqual(["active"])
         expect(ConversationVM.sendQueue.get(channel.getChannelKey())?.map((m: any) => m.clientMsgNo)).toEqual(["active"])
+    })
+
+    it("renders historical recalled bot messages outside fold sessions", () => {
+        sdkState.channelInfos.set("bot-1", {
+            channel: new Channel("bot", 1),
+            title: "Bot",
+            orgData: { robot: 1 },
+        })
+        const vm = new ConversationVM(channel)
+        const nowSec = Math.floor(Date.now() / 1000)
+        const bot1 = wrap({ clientMsgNo: "bot-1", messageSeq: 1, messageID: "m1", timestamp: nowSec - 20, fromUID: "bot" })
+        const bot2 = wrap({ clientMsgNo: "bot-2", messageSeq: 2, messageID: "m2", timestamp: nowSec - 10, fromUID: "bot" })
+        const bot3 = wrap({ clientMsgNo: "bot-3", messageSeq: 3, messageID: "m3", timestamp: nowSec - 5, fromUID: "bot" })
+        vm.messages = [bot1, bot2, bot3]
+
+        vm.rebuildRenderItems()
+        expect(vm.renderItems).toHaveLength(1)
+        expect(vm.renderItems[0].type).toBe("foldSession")
+        if (vm.renderItems[0].type === "foldSession") {
+            vm.setFoldSessionExpanded(vm.renderItems[0].session.sessionId, true, true)
+        }
+
+        bot3.revoke = true
+        vm.rebuildRenderItems()
+
+        expect(vm.renderItems).toHaveLength(2)
+        expect(vm.renderItems[0].type).toBe("foldSession")
+        if (vm.renderItems[0].type === "foldSession") {
+            expect(vm.renderItems[0].session.messages.map((m: any) => m.clientMsgNo)).toEqual(["bot-1", "bot-2"])
+            expect(vm.renderItems[0].session.isExpanded).toBe(true)
+            expect(vm.renderItems[0].session.userToggled).toBe(true)
+        }
+        expect(vm.renderItems[1]).toMatchObject({ type: "message", message: bot3 })
+
+        bot1.revoke = true
+        vm.rebuildRenderItems()
+
+        expect(vm.renderItems).toEqual([
+            { type: "message", message: bot1 },
+            { type: "message", message: bot2 },
+            { type: "message", message: bot3 },
+        ])
+    })
+
+    it("keeps live recalled bot messages in fold sessions until messages resync", () => {
+        sdkState.channelInfos.set("bot-1", {
+            channel: new Channel("bot", 1),
+            title: "Bot",
+            orgData: { robot: 1 },
+        })
+        const vm = new ConversationVM(channel)
+        const nowSec = Math.floor(Date.now() / 1000)
+        const bot1 = wrap({ clientMsgNo: "bot-1", messageSeq: 1, messageID: "m1", timestamp: nowSec - 20, fromUID: "bot" })
+        const bot2 = wrap({ clientMsgNo: "bot-2", messageSeq: 2, messageID: "m2", timestamp: nowSec - 10, fromUID: "bot" })
+        const bot3 = wrap({ clientMsgNo: "bot-3", messageSeq: 3, messageID: "m3", timestamp: nowSec - 5, fromUID: "bot" })
+        vm.messages = [bot1, bot2, bot3]
+        vm.rebuildRenderItems()
+        if (vm.renderItems[0].type === "foldSession") {
+            vm.setFoldSessionExpanded(vm.renderItems[0].session.sessionId, true, true)
+        }
+
+        bot3.revoke = true
+        ;(vm as any).liveFoldRevokeClientMsgNos.add(bot3.clientMsgNo)
+        vm.rebuildRenderItems()
+
+        expect(vm.renderItems).toHaveLength(1)
+        expect(vm.renderItems[0].type).toBe("foldSession")
+        if (vm.renderItems[0].type === "foldSession") {
+            expect(vm.renderItems[0].session.messages.map((m: any) => m.clientMsgNo)).toEqual(["bot-1", "bot-2", "bot-3"])
+            expect(vm.renderItems[0].session.lastMessage).toBe(bot3)
+            expect(vm.renderItems[0].session.isExpanded).toBe(true)
+            expect(vm.renderItems[0].session.userToggled).toBe(true)
+            expect(vm.renderItems[0].session.isActive).toBe(true)
+        }
     })
 })

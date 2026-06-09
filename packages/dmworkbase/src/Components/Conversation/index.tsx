@@ -1478,6 +1478,10 @@ export class Conversation
   }
 
   renderFoldSessionSummary(message: MessageWrap) {
+    if (message.revoke) {
+      return <RevokeCell message={message} context={this} />;
+    }
+
     if (message.contentType === MessageContentTypeConst.typing) {
       return (
         <span className="wk-fold-session-summary-loading">
@@ -1524,6 +1528,10 @@ export class Conversation
           this.vm.checkedMessage(message, checked);
         }}
         onMessageContextMenu={(message, event) => {
+          if (message.revoke) {
+            event.preventDefault();
+            return;
+          }
           this.showContextMenus(message, event);
         }}
       />
@@ -1531,6 +1539,10 @@ export class Conversation
   }
 
   renderFoldMessageContent(message: MessageWrap) {
+    if (message.revoke) {
+      return <RevokeCell message={message} context={this} />;
+    }
+
     // 文本消息（含 Markdown 表格、代码块、链接）
     if (message.contentType === MessageContentType.text || message.streamOn) {
       return (
@@ -1814,6 +1826,7 @@ export class Conversation
               summaryTime={moment(summaryMessage.timestamp * 1000).format(
                 "HH:mm"
               )}
+              summaryShowMeta={!summaryMessage.revoke}
               summaryContent={this.renderFoldSessionSummary(summaryMessage)}
               expandedContent={this.renderFoldSessionExpandedList(
                 session.expandedMessages
@@ -1841,6 +1854,7 @@ export class Conversation
                 }
               }}
               onSummaryContextMenu={
+                !summaryMessage.revoke &&
                 summaryMessage.contentType !== MessageContentTypeConst.typing
                   ? (event) => {
                       this.showContextMenus(summaryMessage.message, event);

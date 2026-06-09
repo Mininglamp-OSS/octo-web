@@ -25,6 +25,7 @@ export interface FoldSessionCardProps extends HTMLProps<HTMLDivElement> {
   summaryId?: string;
   summarySender?: string;
   summaryTime?: string;
+  summaryShowMeta?: boolean;
   summaryContent?: ReactNode;
   summaryIcon?: ReactNode;
 
@@ -53,6 +54,7 @@ const FoldSessionCard: React.FC<FoldSessionCardProps> = ({
   summaryId,
   summarySender,
   summaryTime,
+  summaryShowMeta = true,
   summaryContent,
   summaryIcon,
   expandedContent,
@@ -221,10 +223,12 @@ const FoldSessionCard: React.FC<FoldSessionCardProps> = ({
               }}
             >
               {/* 折叠状态显示完整消息:姓名tag + 时间 + 内容 */}
-              <div className="wk-fold-msg-head">
-                <span className="wk-fold-msg-name">{summarySender}</span>
-                <span className="wk-fold-msg-time">{summaryTime}</span>
-              </div>
+              {summaryShowMeta ? (
+                <div className="wk-fold-msg-head">
+                  <span className="wk-fold-msg-name">{summarySender}</span>
+                  <span className="wk-fold-msg-time">{summaryTime}</span>
+                </div>
+              ) : null}
               {summaryContent ? (
                 <div className="wk-fold-msg-text">
                   {summaryContent}

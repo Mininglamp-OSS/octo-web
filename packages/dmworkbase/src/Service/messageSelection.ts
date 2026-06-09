@@ -2,6 +2,7 @@ import { MessageContentTypeConst } from "./Const"
 
 export interface SelectableMessageLike {
   contentType?: number
+  revoke?: boolean
 }
 
 const UNSELECTABLE_MESSAGE_TYPES = new Set<number>([
@@ -12,7 +13,7 @@ const UNSELECTABLE_MESSAGE_TYPES = new Set<number>([
 ])
 
 export function isMessageSelectable(message?: SelectableMessageLike | null): boolean {
-  if (!message || typeof message.contentType !== "number") {
+  if (!message || message.revoke || typeof message.contentType !== "number") {
     return false
   }
   return !UNSELECTABLE_MESSAGE_TYPES.has(message.contentType)
