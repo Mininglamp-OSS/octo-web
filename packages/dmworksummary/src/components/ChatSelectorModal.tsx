@@ -42,28 +42,33 @@ export default class ChatSelectorModal extends Component<Props, State> {
         includeArchived: false,
     };
 
+    private reqSeq = 0;
+
     componentDidUpdate(prevProps: Props) {
         if (this.props.visible && !prevProps.visible) {
             this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "all", includeArchived: false });
-            this.loadCandidates();
+            this.loadCandidates(false);
         }
     }
 
-    async loadCandidates() {
+    async loadCandidates(includeArchivedOverride?: boolean) {
+        const includeArchived = includeArchivedOverride ?? this.state.includeArchived;
+        const seq = ++this.reqSeq;
         this.setState({ loading: true });
         try {
-            const params = this.state.includeArchived ? { include_archived: true } : {};
+            const params = includeArchived ? { include_archived: true } : {};
             const candidates = await api.getChatCandidates(params);
+            if (seq !== this.reqSeq) return;
             this.setState({ candidates, loading: false });
         } catch {
+            if (seq !== this.reqSeq) return;
             this.setState({ loading: false });
         }
     }
 
     handleIncludeArchivedChange = (checked: boolean) => {
-        this.setState({ includeArchived: checked }, () => {
-            this.loadCandidates();
-        });
+        this.setState({ includeArchived: checked });
+        this.loadCandidates(checked);
     };
 
     handleKeywordChange = (val: string) => {
@@ -271,6 +276,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                         checked={includeArchived}
                         onChange={this.handleIncludeArchivedChange}
                         size="small"
+                        aria-label={t("summary.chatSelector.includeArchived")}
                     />
                     <span style={{ fontSize: 13 }}>{t("summary.chatSelector.includeArchived")}</span>
                     <span style={{ fontSize: 12, color: "var(--semi-color-text-2)" }}>
