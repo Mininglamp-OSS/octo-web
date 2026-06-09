@@ -228,3 +228,89 @@ describe("richTextPaste", () => {
     expect(file).toBeNull();
   });
 });
+
+describe("buildInlineContentForRichTextPaste — #330 mention UID trust boundary", () => {
+  const members = [
+    { uid: "u_alice", name: "Alice" },
+    { uid: "u_bob",   name: "Bob" },
+  ];
+
+  it("[FIX] rejects MENTION_UID_LEGACY_ALL sentinel (@everyone broadcast smuggling)", () => {
+    const nodes = buildInlineContentForRichTextPaste(
+      "hi @everyone hello",
+      [{ uid: "-1", offset: 3, length: 9 }],
+      members
+    );
+    expect(nodes.find((n) => n.type === "mention")).toBeUndefined();
+    const fullText = nodes
+      .filter((n) => n.type === "text")
+      .map((n) => n.text)
+      .join("");
+    expect(fullText).toBe("hi @everyone hello");
+  });
+
+  it("[FIX] rejects MENTION_UID_HUMANS sentinel (@all-humans broadcast smuggling)", () => {
+    const nodes = buildInlineContentForRichTextPaste(
+      "@所有人 ping",
+      [{ uid: "-2", offset: 0, length: 4 }],
+      members
+    );
+    expect(nodes.find((n) => n.type === "mention")).toBeUndefined();
+  });
+
+  it("[FIX] rejects MENTION_UID_AIS sentinel (@all-AI broadcast smuggling)", () => {
+    const nodes = buildInlineContentForRichTextPaste(
+      "@所有AI go",
+      [{ uid: "-3", offset: 0, length: 5 }],
+      members
+    );
+    expect(nodes.find((n) => n.type === "mention")).toBeUndefined();
+  });
+
+  it("[FIX] passes mention when uid ∈ members AND label matches member.name", () => {
+    const nodes = buildInlineContentForRichTextPaste(
+      "hi @Alice hello",
+      [{ uid: "u_alice", offset: 3, length: 6 }],
+      members
+    );
+    const mention = nodes.find((n) => n.type === "mention");
+    expect(mention).toBeDefined();
+    expect(mention?.attrs.id).toBe("u_alice");
+    expect(mention?.attrs.label).toBe("Alice");
+  });
+
+  it("[FIX] degrades to plain text when uid not in members (spoofed identity)", () => {
+    const nodes = buildInlineContentForRichTextPaste(
+      "hi @Alice hello",
+      [{ uid: "u_evil_attacker", offset: 3, length: 6 }],
+      members
+    );
+    expect(nodes.find((n) => n.type === "mention")).toBeUndefined();
+    const fullText = nodes
+      .filter((n) => n.type === "text")
+      .map((n) => n.text)
+      .join("");
+    expect(fullText).toBe("hi @Alice hello");
+  });
+
+  it("[FIX] degrades when uid matches a member but label does not (label tampering)", () => {
+    const nodes = buildInlineContentForRichTextPaste(
+      "hi @Alice hello",
+      [{ uid: "u_bob", offset: 3, length: 6 }],
+      members
+    );
+    expect(nodes.find((n) => n.type === "mention")).toBeUndefined();
+  });
+
+  it("[CONTROL] legacy callers without members still work (backwards compat)", () => {
+    // Calling without `members` returns the old permissive behavior so callsites
+    // not yet updated do not silently break.
+    const nodes = buildInlineContentForRichTextPaste(
+      "hi @Alice hello",
+      [{ uid: "u_alice", offset: 3, length: 6 }]
+    );
+    const mention = nodes.find((n) => n.type === "mention");
+    expect(mention).toBeDefined();
+    expect(mention?.attrs.id).toBe("u_alice");
+  });
+});
