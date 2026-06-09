@@ -1876,6 +1876,7 @@ export class Conversation
     const isSystemMessage =
       message.revoke ||
       message.contentType === MessageContentTypeConst.screenshot ||
+      message.contentType === MessageContentTypeConst.summaryNotify ||
       (message.contentType >= 1000 &&
         message.contentType <= 2000 &&
         message.contentType !== MessageContentTypeConst.threadCreated);

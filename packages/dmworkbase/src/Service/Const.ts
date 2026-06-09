@@ -67,6 +67,7 @@ export class MessageContentTypeConst {
   static newGroupOwner: number = 1008 // 新的管理员
   static approveGroupMember: number = 1009 // 审批群成员
   static screenshot:number = 20 // 截屏消息
+  static summaryNotify:number = 21 // 总结通知
 
   // 音频通话消息号段 9900 - 9999
   static rtcResult:number = 9989 // 音视频通话结果
