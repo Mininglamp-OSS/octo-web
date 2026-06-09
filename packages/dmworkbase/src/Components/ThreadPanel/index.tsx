@@ -64,6 +64,12 @@ import "./index.css";
 // 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
 const THREAD_REACTIVATE_REFRESH_DELAYS_MS = [0, 300, 800, 1500];
 
+// 归档/取消归档落库到「IM channelInfo 返回新 status」同样存在后端 lag：
+// 侧边栏归档过滤读取 conv.channelInfo.orgData.thread.status，若只刷新一次仍可能
+// 拿到变更前的旧 status，列表永远停留在旧归档态。与上面同理，用短轮询刷 channelInfo
+// 直到 SDK 缓存反映出目标 status 再停止。
+const THREAD_CHANNEL_INFO_REFRESH_DELAYS_MS = [0, 300, 800, 1500];
+
 /** API 返回的文件数据结构 */
 interface ChannelFileResponse {
   message_id: string | number;
@@ -872,8 +878,25 @@ export default class ThreadPanel extends Component<
         : "");
     if (!channelID) return;
     const threadChannel = new Channel(channelID, ChannelTypeCommunityTopic);
-    WKSDK.shared().channelManager.deleteChannelInfo(threadChannel);
-    WKSDK.shared().channelManager.fetchChannelInfo(threadChannel);
+    const expectedStatus = thread.status;
+    // 短轮询刷新 channelInfo，直到 SDK 缓存反映出目标 status（后端 lag）。
+    // 单次 fetch 可能仍拿到旧 status，侧边栏归档过滤就会停留在旧态。
+    void (async () => {
+      for (const delay of THREAD_CHANNEL_INFO_REFRESH_DELAYS_MS) {
+        if (delay > 0) {
+          await this.sleep(delay);
+        }
+        if (this.isUnmounted) return;
+        WKSDK.shared().channelManager.deleteChannelInfo(threadChannel);
+        await WKSDK.shared().channelManager.fetchChannelInfo(threadChannel);
+        if (this.isUnmounted) return;
+        const channelInfo =
+          WKSDK.shared().channelManager.getChannelInfo(threadChannel);
+        if (channelInfo?.orgData?.thread?.status === expectedStatus) {
+          return;
+        }
+      }
+    })();
   }
 
   private handleDeleteThread = () => {
