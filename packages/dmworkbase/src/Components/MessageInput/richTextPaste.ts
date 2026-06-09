@@ -8,6 +8,11 @@ import type {
   OctoRichTextClipboardPayload,
 } from "../../Utils/richTextClipboard";
 import { isSafeUrl } from "../../Utils/security";
+import {
+  MENTION_UID_LEGACY_ALL,
+  MENTION_UID_HUMANS,
+  MENTION_UID_AIS,
+} from "../../Utils/mentionRender";
 
 type EditorLike = {
   chain: () => {
@@ -34,6 +39,11 @@ export interface RestoreOctoRichTextPasteDeps {
   imageBlockToFile?: (
     block: Extract<OctoRichTextClipboardBlock, { type: "image" }>
   ) => Promise<File | null>;
+  // Issue #330 — channel members snapshot for clipboard mention validation.
+  // Optional so existing tests (which only exercise inline content) keep
+  // working without a members fixture; absent members ⇒ legacy permissive
+  // behavior (sentinels still always rejected, see isAllowedClipboardMention).
+  members?: MentionValidationMember[];
 }
 
 function appendPlainText(nodes: any[], text: string) {
@@ -51,7 +61,8 @@ function appendPlainText(nodes: any[], text: string) {
 
 export function buildInlineContentForRichTextPaste(
   text: string,
-  mentions?: OctoRichTextClipboardMention[]
+  mentions?: OctoRichTextClipboardMention[],
+  members?: MentionValidationMember[]
 ): any[] {
   const nodes: any[] = [];
   const sortedMentions = (mentions || [])
@@ -68,7 +79,7 @@ export function buildInlineContentForRichTextPaste(
     if (mention.offset < cursor) continue;
     appendPlainText(nodes, text.slice(cursor, mention.offset));
     const name = text.slice(mention.offset, mention.offset + mention.length);
-    if (name.startsWith("@")) {
+    if (name.startsWith("@") && isAllowedClipboardMention(mention.uid, name.slice(1), members)) {
       nodes.push({
         type: "mention",
         attrs: {
@@ -77,6 +88,8 @@ export function buildInlineContentForRichTextPaste(
         },
       });
     } else {
+      // Not a mention OR validation failed → degrade to plain text (keeps
+      // user-visible content stable; same UX as typed-@ miss handling).
       appendPlainText(nodes, name);
     }
     cursor = mention.offset + mention.length;
@@ -96,6 +109,36 @@ function safeImageFileName(name?: string, mime?: string): string {
   const fallback = `image.${fallbackExt}`;
   const raw = (name || fallback).replace(/[\\/:*?"<>|]+/g, "_").slice(0, 120);
   return raw || fallback;
+}
+
+// Issue #330 — broadcast routing sentinels MUST NOT come from untrusted
+// clipboard. A pasted @everyone / @all-humans / @all-AI silently triggers
+// group-wide broadcast on send via formatMentionTextV2 (MessageInput/index.tsx:283+).
+const BROADCAST_SENTINEL_UIDS = new Set<string>([
+  MENTION_UID_LEGACY_ALL,
+  MENTION_UID_HUMANS,
+  MENTION_UID_AIS,
+]);
+
+export type MentionValidationMember = { uid: string; name: string };
+
+function isAllowedClipboardMention(
+  uid: string,
+  label: string,
+  members?: MentionValidationMember[]
+): boolean {
+  // Always reject broadcast sentinels (defense in depth — sentinels are
+  // dangerous in any context, even for legacy 2-arg callers).
+  if (BROADCAST_SENTINEL_UIDS.has(uid)) return false;
+  // Legacy 2-arg callers: skip member validation for backwards compat.
+  // The 3-arg call from MessageInput.tsx is the secured entry point.
+  if (!members) return true;
+  const member = members.find((m) => m.uid === uid);
+  if (!member) return false;
+  // Case-sensitive intentional: legitimate OCTO payloads carry server-truth
+  // labels that always exactly equal member.name. Any case mismatch =
+  // attacker-crafted or external paste → degrade for safety.
+  return member.name === label;
 }
 
 function parseContentLength(value: string | null): number | null {
@@ -196,7 +239,7 @@ export async function restoreOctoRichTextClipboardToEditor(
     if (block.type === "text") {
       insertInlineContent(
         editor,
-        buildInlineContentForRichTextPaste(block.text, block.mentions)
+        buildInlineContentForRichTextPaste(block.text, block.mentions, deps.members)
       );
       continue;
     }
