@@ -273,13 +273,29 @@ export class GroupManagement extends Component<
               WKApp.dataSource.channelDataSource.setBotAdmin(channel, item.uid)
             )
           );
-          const failed = results.filter((r) => r.status === "rejected");
-          context.pop();
-          this.loadMembers();
+          const failed = results.filter((r, i) => {
+            if (r.status === "rejected") {
+              console.warn(
+                "setBotAdmin failed for uid",
+                selectedItems[i].uid,
+                r.reason
+              );
+              return true;
+            }
+            return false;
+          });
+          if (failed.length < results.length) {
+            context.pop();
+            this.loadMembers();
+          }
           if (failed.length === 0) {
             Toast.success(t("base.groupManagement.added"));
           } else if (failed.length === results.length) {
-            Toast.error(t("base.groupManagement.operationFailed"));
+            const firstRejected = failed[0] as PromiseRejectedResult;
+            Toast.error(
+              (firstRejected.reason as any)?.msg ||
+                t("base.groupManagement.operationFailed")
+            );
           } else {
             Toast.error(
               t("base.groupManagement.operationFailed") +
