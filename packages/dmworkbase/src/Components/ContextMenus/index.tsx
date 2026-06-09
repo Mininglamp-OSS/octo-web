@@ -57,6 +57,7 @@ function ArrowIcon() {
 
 export default class ContextMenus extends Component<ContextMenusProps, ContextMenusState> implements ContextMenusContext {
     private static _instances: Set<ContextMenus> = new Set()
+    private static _documentContextMenuGuardAttached = false
     private _rafId?: number
 
     static hideAll() {
@@ -65,6 +66,34 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                 instance.hide()
             }
         })
+    }
+
+    private static _hasOpenInstance(): boolean {
+        for (const instance of ContextMenus._instances) {
+            if (instance.isShow()) return true
+        }
+        return false
+    }
+
+    private static _handleDocumentContextMenu(event: MouseEvent) {
+        if (!ContextMenus._hasOpenInstance()) {
+            ContextMenus._syncDocumentContextMenuGuard()
+            return
+        }
+        event.preventDefault()
+    }
+
+    private static _syncDocumentContextMenuGuard() {
+        if (typeof document === "undefined") return
+
+        const shouldAttach = ContextMenus._hasOpenInstance()
+        if (shouldAttach && !ContextMenus._documentContextMenuGuardAttached) {
+            document.addEventListener("contextmenu", ContextMenus._handleDocumentContextMenu, true)
+            ContextMenus._documentContextMenuGuardAttached = true
+        } else if (!shouldAttach && ContextMenus._documentContextMenuGuardAttached) {
+            document.removeEventListener("contextmenu", ContextMenus._handleDocumentContextMenu, true)
+            ContextMenus._documentContextMenuGuardAttached = false
+        }
     }
 
     _gHandleClick!: () => void
@@ -87,7 +116,9 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
     }
 
     hide(): void {
-        this.setState({ showContextMenus: false })
+        this.setState({ showContextMenus: false }, () => {
+            ContextMenus._syncDocumentContextMenuGuard()
+        })
         this.props.onHide?.()
     }
 
@@ -133,7 +164,9 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
             // 子菜单宽度估算 160px（min-width），靠近右侧时翻转
             const SUBMENU_W = 160
             const flipSubmenu = (screenW - left - rootW) < SUBMENU_W + MARGIN
-            this.setState({ contextOrigin, showContextMenus: true, flipSubmenu })
+            this.setState({ contextOrigin, showContextMenus: true, flipSubmenu }, () => {
+                ContextMenus._syncDocumentContextMenuGuard()
+            })
         })
     }
 
@@ -149,6 +182,18 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         if (this._rafId !== undefined) {
             cancelAnimationFrame(this._rafId)
         }
+        ContextMenus._syncDocumentContextMenuGuard()
+    }
+
+    _handleContextMenu(event: React.MouseEvent<HTMLElement>) {
+        event.preventDefault()
+        event.stopPropagation()
+    }
+
+    _handleMaskContextMenu(event: React.MouseEvent<HTMLDivElement>) {
+        event.preventDefault()
+        event.stopPropagation()
+        ContextMenus.hideAll()
     }
 
     _renderItem(m: ContextMenusData, i: number): ReactNode {
@@ -220,6 +265,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                     className={classNames("wk-contextmenus", showContextMenus && "wk-contextmenus-open", flipSubmenu && "wk-contextmenus-flip-submenu")}
                     ref={ref => { this.contextMenusRef = ref }}
                     style={{ transformOrigin: `-3px ${contextOrigin}px` }}
+                    onContextMenuCapture={this._handleContextMenu}
                 >
                     <ul>
                         {menus && menus.map((m, i) => this._renderItem(m, i))}
@@ -229,6 +275,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                     className="wk-contextmenus-mask"
                     style={{ visibility: showContextMenus ? "visible" : "hidden" }}
                     onClick={() => ContextMenus.hideAll()}
+                    onContextMenuCapture={this._handleMaskContextMenu}
                 />
             </>
         )
