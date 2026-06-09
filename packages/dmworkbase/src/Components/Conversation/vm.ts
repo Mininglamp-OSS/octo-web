@@ -21,7 +21,7 @@ import { getFoldSessionExpandedMessages } from "./foldSessionSummary";
 import { getPulldownRestoredScrollTop, getRestoredAnchorScrollTop } from "./historyScroll";
 import { applyMsgLevelExternalFieldsWithFallback } from "../../Service/Convert";
 import { wrapSendContentForInjection } from "./sendContentProxy";
-import { isMessageSelectable } from "../../Service/messageSelection";
+import { isMessageSelectable, isMessageInFlightMedia } from "../../Service/messageSelection";
 import { t } from "../../i18n";
 
 export interface FoldSessionParticipant {
@@ -600,14 +600,11 @@ export default class ConversationVM extends ProviderListener {
             }
         }
         if (toChannels && toChannels.length > 0) {
-            // Issue #273: count media messages that will be dropped by
-            // MergeforwardContent.messageToMap because their upload URL is empty,
-            // so we can Toast the user once after sending. We construct one
-            // MergeforwardContent (cheap) to use its public encodeJSON path as
-            // the source of truth instead of duplicating the filter logic.
-            const probe = new MergeforwardContent(this.channel.channelType, users, checkedMessages)
-            const wirePayload = probe.encodeJSON()
-            const skippedCount = checkedMessages.length - (wirePayload.msgs?.length ?? 0)
+            // Issue #273: count in-flight media messages that the encode-time
+            // guard (MergeforwardContent.messageToMap) will drop, so we can
+            // Toast the user once after sending. Predicate is shared with the
+            // encode layer (Service/messageSelection.ts) so they stay in sync.
+            const skippedCount = checkedMessages.filter(isMessageInFlightMedia).length
 
             for (const destChannel of toChannels) {
                 this.sendMessage(new MergeforwardContent(this.channel.channelType, users, checkedMessages), destChannel)

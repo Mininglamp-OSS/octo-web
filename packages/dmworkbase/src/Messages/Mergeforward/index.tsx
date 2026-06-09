@@ -14,7 +14,7 @@ import React from "react";
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { applyMsgLevelExternalFields } from "../../Service/Convert";
-import { isMessageSelectable } from "../../Service/messageSelection";
+import { isMessageSelectable, isInFlightMediaPayload } from "../../Service/messageSelection";
 import MessageBase from "../Base";
 import MessageTrail from "../Base/tail";
 import { MessageCell } from "../MessageCell";
@@ -33,23 +33,6 @@ export interface MergeforwardUser {
   is_external?: number;
   /** 外部成员所属 Space 名称，仅在 is_external=1 时有意义 */
   source_space_name?: string;
-}
-
-// Issue #273 — content types whose wire payload requires `url` to be set.
-// Wukongim broker accepts JSON-valid payloads even with empty url, so
-// missing url silently produces invisible content in the target client.
-// See SDK lib/wukongimjssdk.esm.js:2091-2097 (MessageImage.encodeJSON).
-const MEDIA_PAYLOAD_TYPES_REQUIRING_URL = new Set<number>([
-  MessageContentTypeConst.image,      // 2
-  MessageContentTypeConst.voice,      // 4
-  MessageContentTypeConst.smallVideo, // 5
-  MessageContentTypeConst.file,       // 8
-]);
-
-function isInFlightMediaPayload(payload: any): boolean {
-  if (!payload || typeof payload.type !== "number") return false;
-  if (!MEDIA_PAYLOAD_TYPES_REQUIRING_URL.has(payload.type)) return false;
-  return !payload.url || payload.url === "";
 }
 
 export default class MergeforwardContent extends MessageContent {

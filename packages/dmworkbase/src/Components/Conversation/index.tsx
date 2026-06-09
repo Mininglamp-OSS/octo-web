@@ -98,7 +98,7 @@ import {
   precheckUploadCredentials,
   uploadChatMedia,
 } from "../../Service/UploadCredentials";
-import { isMessageSelectable } from "../../Service/messageSelection";
+import { isMessageSelectable, isMessageInFlightMedia } from "../../Service/messageSelection";
 import { I18nContext, t } from "../../i18n";
 import {
   buildRichTextMixedCandidate,
@@ -2472,13 +2472,11 @@ export class Conversation
                       // Block early with a clearer message. Mixed selections fall through;
                       // MergeforwardContent.messageToMap will drop the in-flight ones at
                       // encode time and ChatVM.sendMergeforward will Toast the count.
-                      const allInFlightMedia = checkedMsgs.every((mw) => {
-                        const c: any = mw.message.content;
-                        return (
-                          c instanceof MediaMessageContent &&
-                          (!c.url || c.url === "")
-                        );
-                      });
+                      // Predicate (isMessageInFlightMedia) is shared with the encode layer
+                      // and ChatVM so all three callsites stay in sync.
+                      const allInFlightMedia = checkedMsgs.every((mw) =>
+                        isMessageInFlightMedia(mw.message)
+                      );
                       if (allInFlightMedia) {
                         Toast.warning(t("conversation.mergeforward.allInFlight"));
                         return;
