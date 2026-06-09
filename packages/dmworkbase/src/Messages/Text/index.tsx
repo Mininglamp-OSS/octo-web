@@ -12,7 +12,7 @@ import MessageRow from "../../ui/message/MessageRow"
 import ReplyBlock from "../../ui/message/ReplyBlock";
 import TextContent from "../../ui/message/TextContent";
 import { getTextMessageUI } from "../../bridge/message/useTextMessageUI";
-import { isMessageSelectable } from "../../Service/messageSelection";
+import { isMessageSelectable, isMeaningfulReply } from "../../Service/messageSelection";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import "./index.css"
 
@@ -194,7 +194,7 @@ export class TextCell extends MessageCell {
                     onSenderNameClick={() => context.showUser(message.fromUID)}
                 >
                     <div>
-                        {message?.content?.reply && (
+                        {isMeaningfulReply(message?.content?.reply) && (
                             <ReplyBlock
                                 fromName={message.content.reply.fromName || ''}
                                 digest={message.content.reply.content?.conversationDigest || ''}
@@ -218,7 +218,7 @@ export class TextCell extends MessageCell {
         }}>
 
             {
-                message?.content.reply ? <div className={classNames("wk-message-text-reply",message.send?undefined:"wk-message-text-reply-recv")} onClick={()=>{
+                isMeaningfulReply(message?.content?.reply) ? <div className={classNames("wk-message-text-reply",message.send?undefined:"wk-message-text-reply-recv")} onClick={()=>{
                     context.locateMessage( message?.content.reply.messageSeq)
                 }}>
                     <div className="wk-message-text-reply-author">
