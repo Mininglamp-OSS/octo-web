@@ -611,7 +611,7 @@ export default class ConversationVM extends ProviderListener {
             }
 
             if (skippedCount > 0) {
-                Toast.warning(t("conversation.mergeforward.skippedInFlight", { count: skippedCount }))
+                Toast.warning(t("base.conversation.mergeforward.skippedInFlight", { values: { count: skippedCount } }))
             }
         }
     }

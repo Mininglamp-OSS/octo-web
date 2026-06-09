@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { MediaMessageContent, MessageContentType } from "wukongimjssdk"
+import { MediaMessageContent, MessageContent, MessageContentType } from "wukongimjssdk"
 import { MessageContentTypeConst } from "../Const"
 import {
   isInFlightMediaPayload,
@@ -32,11 +32,18 @@ describe("isMessageSelectable", () => {
 })
 
 describe("isInFlightMediaPayload (#273 — payload-level)", () => {
-  it("flags image/voice/smallVideo/file payloads with empty url", () => {
+  it("flags image/voice/file payloads with empty url", () => {
     expect(isInFlightMediaPayload({ type: MessageContentTypeConst.image, url: "" })).toBe(true)
     expect(isInFlightMediaPayload({ type: MessageContentTypeConst.voice, url: "" })).toBe(true)
-    expect(isInFlightMediaPayload({ type: MessageContentTypeConst.smallVideo, url: "" })).toBe(true)
     expect(isInFlightMediaPayload({ type: MessageContentTypeConst.file, url: "" })).toBe(true)
+  })
+
+  it("does NOT flag smallVideo (type 5) — no client-side compose path today (#359 review)", () => {
+    // smallVideo intentionally excluded from MEDIA_PAYLOAD_TYPES_REQUIRING_URL
+    // (see messageSelection.ts scope comment). VideoContent extends plain
+    // MessageContent, not MediaMessageContent, so flagging here would create
+    // payload-vs-message asymmetry without protecting anything.
+    expect(isInFlightMediaPayload({ type: MessageContentTypeConst.smallVideo, url: "" })).toBe(false)
   })
 
   it("passes when url is set", () => {
@@ -85,18 +92,38 @@ describe("isMessageInFlightMedia (#273 — message-level)", () => {
     expect(isMessageInFlightMedia({ content: { text: "hello" } })).toBe(false)
   })
 
-  it("flags smallVideo subclass instances (regression — must not silently bypass)", () => {
-    // smallVideo (content type 5) is one of MEDIA_PAYLOAD_TYPES_REQUIRING_URL
-    // on the payload-level helper. Confirm the message-level helper also
-    // catches it via MediaMessageContent inheritance — kept as an explicit
-    // smoke test so future SDK changes don't silently regress this type.
-    class SmallVideoLike extends MediaMessageContent {
+  it("does NOT flag VideoContent — extends MessageContent, not MediaMessageContent (#359 review)", () => {
+    // The project's VideoContent (Messages/Video/index.tsx:16) extends plain
+    // MessageContent, not MediaMessageContent. isMessageInFlightMedia therefore
+    // cannot flag it via instanceof — by design (see messageSelection.ts scope
+    // comment). PR #359 review correctly identified that the previous
+    // SmallVideoLike fixture (extends MediaMessageContent) was a false green.
+    // This replacement uses a fake that mirrors the real extends chain to lock
+    // the intended behavior: even with empty url, video flows are NOT flagged.
+    class FakeVideoContent extends MessageContent {
       url = ""
     }
-    expect(isMessageInFlightMedia({ content: new SmallVideoLike() })).toBe(true)
-    const acked = new SmallVideoLike()
-    ;(acked as any).url = "https://cdn/v.mp4"
-    expect(isMessageInFlightMedia({ content: acked })).toBe(false)
+    expect(isMessageInFlightMedia({ content: new FakeVideoContent() })).toBe(false)
+  })
+
+  it("checks both remoteUrl and url (mirrors wire serialization)", () => {
+    // SDK MessageImage.encodeJSON emits this.remoteUrl || this.url. The
+    // upload task sets both together on success, but isMessageInFlightMedia
+    // keys off both to stay in sync with the wire contract even if a future
+    // code path only sets one.
+    class TestMediaContent extends MediaMessageContent {
+      url = ""
+    }
+    const onlyRemote = new TestMediaContent()
+    ;(onlyRemote as any).remoteUrl = "https://cdn/x.jpg"
+    expect(isMessageInFlightMedia({ content: onlyRemote })).toBe(false)
+
+    const onlyLocal = new TestMediaContent()
+    ;(onlyLocal as any).url = "https://cdn/y.jpg"
+    expect(isMessageInFlightMedia({ content: onlyLocal })).toBe(false)
+
+    const neither = new TestMediaContent()
+    expect(isMessageInFlightMedia({ content: neither })).toBe(true)
   })
 
   it("rejects missing message defensively", () => {

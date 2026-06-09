@@ -2478,7 +2478,7 @@ export class Conversation
                         isMessageInFlightMedia(mw.message)
                       );
                       if (allInFlightMedia) {
-                        Toast.warning(t("conversation.mergeforward.allInFlight"));
+                        Toast.warning(t("base.conversation.mergeforward.allInFlight"));
                         return;
                       }
                       WKApp.shared.baseContext.showConversationSelect(

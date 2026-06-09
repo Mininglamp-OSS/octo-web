@@ -159,8 +159,9 @@ function messageToMapAfterFix(message: any): any | null {
     payload = { ...payload, type: message.content.contentType };
   }
 
-  // Defense: skip media payloads with empty url (in-flight uploads).
-  const MEDIA_TYPES = new Set([2, 4, 5]); // image, voice, smallVideo
+  // Mirrors production MEDIA_PAYLOAD_TYPES_REQUIRING_URL in Service/messageSelection.ts.
+  // smallVideo (5) intentionally excluded — see scope comment in messageSelection.ts.
+  const MEDIA_TYPES = new Set([2, 4]); // image, voice
   const FILE_TYPE = 8;
   if (
     (MEDIA_TYPES.has(payload.type) || payload.type === FILE_TYPE) &&
