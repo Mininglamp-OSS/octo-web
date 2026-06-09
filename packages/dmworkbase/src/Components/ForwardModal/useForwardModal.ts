@@ -112,6 +112,12 @@ export function useForwardModal(
   // 保存原始 wraps 引用，供 channelInfoListener 触发后重新构建
   const wrapsRef = useRef<ConversationWrap[]>([])
 
+  // group/my 兜底群（recents 里缺席的群只在旁路返回，SDK 不建 conversation）。
+  // 由 load() 在 gen 守卫通过后写入，rebuildConvItems 每次执行都消费它并与
+  // recents 群合并，从而成为 conversationItems 的唯一写入路径，避免懒加载
+  // channelInfo 到达后 rebuild 全量覆盖把兜底群冲掉的双写竞态。
+  const extraGroupsRef = useRef<ChannelInfo[]>([])
+
   // 懒加载：记录已发起 fetchChannelInfo 的 channelID，避免重复请求
   const fetchedRef = useRef<Set<string>>(new Set())
 
@@ -135,20 +141,51 @@ export function useForwardModal(
     const groupWraps: ConversationWrap[] = []
     const threadWraps: ConversationWrap[] = []
     const spaceId = WKApp.shared.currentSpaceId
+    // 已并入的群 ID（recents 群 + extraGroups 群），用于去重与子区挂回。
+    const seenGroupIDs = new Set<string>()
     for (const wrap of wrapsRef.current) {
-      if (spaceId && wrap.channel.channelType === ChannelTypeGroup) {
-        const groupSpaceId = wrap.channelInfo?.orgData?.space_id
-        // 严格模式：没有 space_id 或不匹配当前 Space 的群聊都跳过
-        if (!groupSpaceId || groupSpaceId !== spaceId) {
-          continue
-        }
-      }
       channelMapRef.current.set(wrap.channel.channelID, wrap.channel)
       if (wrap.channel.channelType === ChannelTypeCommunityTopic) {
         threadWraps.push(wrap)
       } else {
+        // recents 群：load() 入口的 shouldSkipChannelForSpace 已做权威 Space
+        // 把关（channelSpaceMap → channelInfo → fail-closed），此处不再二次过滤。
         groupWraps.push(wrap)
+        if (wrap.channel.channelType === ChannelTypeGroup) {
+          seenGroupIDs.add(wrap.channel.channelID)
+        }
       }
+    }
+
+    // group/my 兜底群：用群条目自带的权威 space_id（来自 group/my 行）按来源分流。
+    const extraGroupItems: ForwardItem[] = []
+    for (const groupInfo of extraGroupsRef.current) {
+      const channelID = groupInfo.channel.channelID
+      // 去重：仅当不在已并入的 recents 群集合时才并入（避免 React duplicate key）。
+      if (seenGroupIDs.has(channelID)) continue
+
+      if (spaceId) {
+        const groupSpaceId = groupInfo.orgData?.space_id
+        if (typeof groupSpaceId === "string") {
+          if (groupSpaceId === spaceId) {
+            // 权威命中：用 group/my 行自带的权威 space_id 回灌 channelSpaceMap
+            // （隐藏副作用：让后续 shouldSkipChannelForSpace 走缓存命中分支）。
+            // key 格式与 shouldSkipChannelForSpace 一致。
+            WKApp.shared.channelSpaceMap.set(`${channelID}_${ChannelTypeGroup}`, groupSpaceId)
+          } else if (groupSpaceId !== "") {
+            // 明确跨 Space → 剔除。
+            continue
+          }
+          // 空串 ""：group/my 已带 param.space_id 背书，保留但绝不回种缓存（空串污染）。
+        }
+        // groupSpaceId 字段缺失(undefined) 或为 null（typeof 非 "string"）
+        // → 末位 fail-open 保留，且不回种 channelSpaceMap。
+      }
+      // currentSpaceId 为空（无 Space 模式）→ 不做 Space 过滤，全保留。
+
+      channelMapRef.current.set(channelID, groupInfo.channel)
+      seenGroupIDs.add(channelID)
+      extraGroupItems.push(channelInfoToForwardItem(groupInfo))
     }
 
     // 转发目标永不包含已归档子区：复用侧栏的 fail-open helper
@@ -179,8 +216,26 @@ export function useForwardModal(
       for (const tw of children) {
         items.push(conversationWrapToForwardItem(tw, gw.channel.channelID))
       }
+      // 已挂回的子区从 Map 移除，避免后续兜底重复追加。
+      threadsByParent.delete(gw.channel.channelID)
     }
-    // 找不到父群的孤儿子区追加到末尾
+    // group/my 兜底群追加在 recents 群之后；其子区（仅来自 recents）挂回父群。
+    for (const item of extraGroupItems) {
+      items.push(item)
+      const children = threadsByParent.get(item.channelID) || []
+      for (const tw of children) {
+        items.push(conversationWrapToForwardItem(tw, item.channelID))
+      }
+      threadsByParent.delete(item.channelID)
+    }
+    // 兜底：有 parentGroupNo 但父群既不在 recents 也不在 group/my 的子区，
+    // 作为独立项追加到末尾（带 parentChannelID），避免父群确实缺席时被静默丢弃。
+    for (const [parentGroupNo, children] of threadsByParent) {
+      for (const tw of children) {
+        items.push(conversationWrapToForwardItem(tw, parentGroupNo))
+      }
+    }
+    // 找不到父群的孤儿子区（无 parentGroupNo）追加到末尾
     for (const ow of orphanThreads) {
       items.push(conversationWrapToForwardItem(ow))
     }
@@ -191,6 +246,10 @@ export function useForwardModal(
   useEffect(() => {
     async function load() {
       const gen = ++loadGenRef.current
+      // 重入/切 Space 时先清空上一轮兜底群，避免第一帧 rebuild 用旧 Space 的
+      // group/my 兜底群产出（空串/字段缺失分支会 fail-open 让旧 Space 群闪现）。
+      // 代价仅冷启动第一帧不显示兜底群（本就冷状态，无损）。
+      extraGroupsRef.current = []
       setLoading(true)
       try {
         // 最近会话：仅构造 wrap，不再对每个 conv 主动 fetchChannelInfo。
@@ -206,25 +265,13 @@ export function useForwardModal(
         wrapsRef.current = sortConversations(wraps)
         rebuildConvItems()
 
-        // 补全：获取用户加入的全部群聊（已支持 space_id 过滤）
+        // 补全：获取用户加入的全部群聊（已支持 space_id 过滤）。
+        // 不再直接 setConversationItems 第二次写入，而是存入 extraGroupsRef 并
+        // 触发一次 rebuildConvItems，让其与 recents 群合并产出，杜绝双写竞态。
         const allGroups = await WKApp.dataSource.channelDataSource.groupSaveList()
         if (gen !== loadGenRef.current) return // 有更新的 load 在跑,丢弃本次结果
-        const existingGroupIDs = new Set<string>()
-        for (const wrap of wrapsRef.current) {
-          if (wrap.channel.channelType === ChannelTypeGroup) {
-            existingGroupIDs.add(wrap.channel.channelID)
-          }
-        }
-        const extraGroupItems: ForwardItem[] = []
-        for (const groupInfo of allGroups) {
-          if (!existingGroupIDs.has(groupInfo.channel.channelID)) {
-            channelMapRef.current.set(groupInfo.channel.channelID, groupInfo.channel)
-            extraGroupItems.push(channelInfoToForwardItem(groupInfo))
-          }
-        }
-        if (extraGroupItems.length > 0) {
-          setConversationItems((prev: ForwardItem[]) => [...prev, ...extraGroupItems])
-        }
+        extraGroupsRef.current = allGroups
+        rebuildConvItems()
 
         // 好友
         const friends = (await WKApp.dataSource.commonDataSource.searchFriends("")) ?? []
