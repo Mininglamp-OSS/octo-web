@@ -939,6 +939,13 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         editor,
         addRichTextPasteAttachment,
         {
+          // Issue #330 — channel members snapshot for clipboard mention validation.
+          // membersRef.current is the source of truth; paste is a single discrete
+          // operation so a snapshot at paste time is sufficient (no live tracking).
+          // .map projects to the minimal { uid, name } shape required by
+          // MentionValidationMember; passing full Subscriber[] would also work
+          // structurally but the explicit projection documents what we depend on.
+          members: (membersRef.current ?? []).map((m) => ({ uid: m.uid, name: m.name })),
           imageBlockToFile: (block) =>
             imageBlockToPasteFile(
               block,
