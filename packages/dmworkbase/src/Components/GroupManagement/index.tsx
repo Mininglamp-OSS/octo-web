@@ -268,8 +268,9 @@ export class GroupManagement extends Component<
             Toast.warning(t("base.groupManagement.selectBot"));
             return;
           }
+          const items = [...selectedItems];
           const results = await Promise.allSettled(
-            selectedItems.map((item) =>
+            items.map((item) =>
               WKApp.dataSource.channelDataSource.setBotAdmin(channel, item.uid)
             )
           );
@@ -277,7 +278,7 @@ export class GroupManagement extends Component<
             if (r.status === "rejected") {
               console.warn(
                 "setBotAdmin failed for uid",
-                selectedItems[i].uid,
+                items[i].uid,
                 r.reason
               );
               return true;
