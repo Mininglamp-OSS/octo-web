@@ -15,6 +15,11 @@ export type MittEvents = {
     shortId?: string;
     thread?: import("./Service/Thread").Thread;
   };
+  "wk:thread-deleted": {
+    groupNo: string;
+    threadChannelId: string;
+    shortId?: string;
+  };
   "wk:close-thread-panel": undefined;
   "wk:toggle-matter-panel": { channelId: string; channelType: number };
   /** v0.7 Matter 详情面板切换（跟子区/文件预览/任务列表可并存） */

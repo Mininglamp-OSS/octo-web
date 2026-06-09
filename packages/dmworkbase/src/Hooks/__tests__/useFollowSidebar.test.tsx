@@ -7,6 +7,7 @@ const hoisted = vi.hoisted(() => {
     const state = {
         listener: undefined as undefined | ((conversation: any, action: any) => void),
         threadCreatedListener: undefined as undefined | ((event: any) => void),
+        threadDeletedListener: undefined as undefined | ((event: any) => void),
         sidebarReloadListener: undefined as undefined | ((event: any) => void),
     }
     const sync = vi.fn()
@@ -38,6 +39,8 @@ const hoisted = vi.hoisted(() => {
                 on: vi.fn((event: string, listener: (event: any) => void) => {
                     if (event === "wk:thread-created") {
                         state.threadCreatedListener = listener
+                    } else if (event === "wk:thread-deleted") {
+                        state.threadDeletedListener = listener
                     } else if (event === "sidebar-reload") {
                         state.sidebarReloadListener = listener
                     }
@@ -45,6 +48,8 @@ const hoisted = vi.hoisted(() => {
                 off: vi.fn((event: string, listener: (event: any) => void) => {
                     if (event === "wk:thread-created" && state.threadCreatedListener === listener) {
                         state.threadCreatedListener = undefined
+                    } else if (event === "wk:thread-deleted" && state.threadDeletedListener === listener) {
+                        state.threadDeletedListener = undefined
                     } else if (event === "sidebar-reload" && state.sidebarReloadListener === listener) {
                         state.sidebarReloadListener = undefined
                     }
@@ -123,6 +128,7 @@ describe("useFollowSidebar", () => {
         vi.useFakeTimers()
         hoisted.state.listener = undefined
         hoisted.state.threadCreatedListener = undefined
+        hoisted.state.threadDeletedListener = undefined
         hoisted.state.sidebarReloadListener = undefined
         hoisted.sync.mockReset()
         hoisted.addConversationListener.mockClear()
@@ -247,5 +253,37 @@ describe("useFollowSidebar", () => {
         expect(latest?.isLoading).toBe(false)
         // 拿到最新已读快照，关注 tab 角标可归零
         expect(latest?.items.find((it) => it.target_id === "group-a")?.unread).toBe(0)
+    })
+
+    it("refreshes the followed sidebar when a thread is deleted", async () => {
+        let latest: ReturnType<typeof useFollowSidebar> | undefined
+        hoisted.sync
+            .mockResolvedValueOnce({ items: [groupItem, threadItem], follow_version: 1, version: 1 })
+            .mockResolvedValueOnce({ items: [groupItem], follow_version: 2, version: 2 })
+
+        await act(async () => {
+            ReactDOM.render(<Probe onValue={(value) => { latest = value }} />, container)
+            await flushMicrotasks()
+        })
+
+        expect(hoisted.fakeWKApp.mittBus.on).toHaveBeenCalledWith(
+            "wk:thread-deleted",
+            expect.any(Function)
+        )
+        expect(latest?.followedKeys.has("5::group-a____thread-1")).toBe(true)
+
+        await act(async () => {
+            hoisted.state.threadDeletedListener?.({
+                groupNo: "group-a",
+                threadChannelId: "group-a____thread-1",
+                shortId: "thread-1",
+            })
+            await flushMicrotasks()
+        })
+
+        expect(hoisted.sync).toHaveBeenCalledTimes(2)
+        expect(latest?.followedKeys.has("5::group-a____thread-1")).toBe(false)
+        expect(latest?.itemsByCategory.get("cat-a")?.map((it) => it.target_id))
+            .toEqual(["group-a"])
     })
 })

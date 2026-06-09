@@ -278,7 +278,16 @@ export class ChannelDataSource implements IChannelDataSource {
     }
 
     async threadDelete(groupNo: string, shortId: string): Promise<void> {
-        return WKApp.apiClient.delete(`groups/${groupNo}/threads/${shortId}`)
+        await WKApp.apiClient.delete(`groups/${groupNo}/threads/${shortId}`)
+        const threadChannelId = buildThreadChannelId(groupNo, shortId)
+        const threadChannel = new Channel(threadChannelId, ChannelTypeCommunityTopic)
+        WKSDK.shared().channelManager.deleteChannelInfo(threadChannel)
+        WKSDK.shared().conversationManager.removeConversation(threadChannel)
+        WKApp.mittBus.emit("wk:thread-deleted", {
+            groupNo,
+            shortId,
+            threadChannelId,
+        })
     }
 
     async threadUpdate(groupNo: string, shortId: string, data: { name: string }): Promise<void> {
