@@ -35,6 +35,23 @@ export interface MergeforwardUser {
   source_space_name?: string;
 }
 
+// Issue #273 — content types whose wire payload requires `url` to be set.
+// Wukongim broker accepts JSON-valid payloads even with empty url, so
+// missing url silently produces invisible content in the target client.
+// See SDK lib/wukongimjssdk.esm.js:2091-2097 (MessageImage.encodeJSON).
+const MEDIA_PAYLOAD_TYPES_REQUIRING_URL = new Set<number>([
+  MessageContentTypeConst.image,      // 2
+  MessageContentTypeConst.voice,      // 4
+  MessageContentTypeConst.smallVideo, // 5
+  MessageContentTypeConst.file,       // 8
+]);
+
+function isInFlightMediaPayload(payload: any): boolean {
+  if (!payload || typeof payload.type !== "number") return false;
+  if (!MEDIA_PAYLOAD_TYPES_REQUIRING_URL.has(payload.type)) return false;
+  return !payload.url || payload.url === "";
+}
+
 export default class MergeforwardContent extends MessageContent {
   title!: string;
   channelType!: number;
@@ -150,7 +167,10 @@ export default class MergeforwardContent extends MessageContent {
     const messageMaps: any[] = [];
     if (this.msgs && this.msgs.length > 0) {
       for (const msg of this.msgs) {
-        messageMaps.push(this.messageToMap(msg));
+        const mapped = this.messageToMap(msg);
+        if (mapped !== null) {
+          messageMaps.push(mapped);
+        }
       }
     }
     // users 原样透传，保留 is_external / source_space_name
@@ -197,7 +217,7 @@ export default class MergeforwardContent extends MessageContent {
     return message;
   }
 
-  messageToMap(message: Message): any {
+  messageToMap(message: Message): any | null {
     // Use contentObj if available, otherwise fall back to encodeJSON()
     let payload = message.content.contentObj;
     if (!payload) {
@@ -208,6 +228,16 @@ export default class MergeforwardContent extends MessageContent {
       // 但某些边缘情况可能导致丢失，这里兼容处理
       payload = { ...payload, type: message.content.contentType };
     }
+
+    // Issue #273: skip media payloads whose upload hasn't completed.
+    // Without this, the wire payload carries `url: ""`, the broker accepts
+    // it, and the target client renders <img src=""> (blank). The Toast
+    // surfacing the skipped count is emitted by sendMergeforward in vm.ts
+    // after collecting the per-message null returns.
+    if (isInFlightMediaPayload(payload)) {
+      return null;
+    }
+
     return {
       message_id: message.messageID,
       from_uid: message.fromUID ?? "",
