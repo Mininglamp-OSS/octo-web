@@ -570,5 +570,79 @@ describe('ChatSummaryHistory', () => {
             });
             expect(mockBatchStatus).toHaveBeenCalledWith([1]);
         });
+
+        it('dispatches a covering heartbeat with our own active ids after a successful poll', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [
+                    makeItem({ task_id: 7, status: 2 }),
+                    makeItem({ task_id: 9, status: 0, title: 'Pending' }),
+                ],
+            });
+            mockBatchStatus.mockResolvedValue([
+                { id: 7, status: 2, progress: 30, updated_at: '' },
+                { id: 9, status: 0, progress: 0, updated_at: '' },
+            ]);
+            const onHeartbeat = vi.fn();
+            window.addEventListener('summary-batch-heartbeat', onHeartbeat as EventListener);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+
+            const calls = onHeartbeat.mock.calls.filter(([e]) => (e as CustomEvent).detail);
+            expect(calls.length).toBeGreaterThanOrEqual(1);
+            const lastDetail = (calls[calls.length - 1][0] as CustomEvent).detail as { taskIds: number[] };
+            expect(lastDetail.taskIds).toEqual(expect.arrayContaining([7, 9]));
+
+            window.removeEventListener('summary-batch-heartbeat', onHeartbeat as EventListener);
+        });
+
+        it('does not self-suppress: solo polling stays at 5s cadence (self-echo guard)', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // First tick: dispatches a heartbeat. Without the self-echo guard,
+            // peerActive would flip true here and starve the second tick.
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledTimes(1);
+
+            // Second tick: must still fire (no peer was ever broadcasting).
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledTimes(2);
+
+            // Third tick for good measure — still steady 5s cadence.
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledTimes(3);
+        });
     });
 });

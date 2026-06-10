@@ -119,6 +119,18 @@ export default class ChatSummaryHistory extends Component<
         this.isPolling = true;
         try {
             const updates = await summaryApi.batchStatus(taskIds);
+            // #334: let peers (SummaryListPage / SummaryDetailPage fallback /
+            // another ChatSummaryHistory instance) skip their next own tick.
+            // Self-echo guard: window.dispatchEvent is synchronous; the flag
+            // suppresses our own handleBatchHeartbeat on the re-entry stack.
+            this.isDispatchingOwnHeartbeat = true;
+            try {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds } }),
+                );
+            } finally {
+                this.isDispatchingOwnHeartbeat = false;
+            }
             const updateMap = new Map(updates.map(u => [u.id, u]));
             let changed = false;
             const newItems = this.state.items.map(item => {
