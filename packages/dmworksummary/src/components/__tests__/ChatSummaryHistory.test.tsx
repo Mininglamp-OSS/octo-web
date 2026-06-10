@@ -426,4 +426,149 @@ describe('ChatSummaryHistory', () => {
             expect(mockBatchStatus).not.toHaveBeenCalled();
         });
     });
+
+    describe('heartbeat coordination (#334)', () => {
+        beforeEach(() => {
+            vi.useFakeTimers();
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('skips the next 5s tick when a covering heartbeat arrives', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [1, 2, 3] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).not.toHaveBeenCalled();
+        });
+
+        it('polls again after the 15s freshness window expires', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [1] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).not.toHaveBeenCalled();
+
+            // Move past the 15s freshness window from the heartbeat moment.
+            // Heartbeat at T=0; ticks fire at T=5000,10000,15000,20000.
+            // T=15000 delta=15000 is still fresh (<=15000), so the next
+            // unsuppressed tick is at T=20000. Advance to T>=20000 total.
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(15500);
+            });
+            expect(mockBatchStatus).toHaveBeenCalled();
+        });
+
+        it('does not skip when the heartbeat is non-covering (partial overlap)', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [
+                    makeItem({ task_id: 1, status: 2 }),
+                    makeItem({ task_id: 2, status: 2, title: 'Second' }),
+                ],
+            });
+            mockBatchStatus.mockResolvedValue([
+                { id: 1, status: 2, progress: 50, updated_at: '' },
+                { id: 2, status: 2, progress: 50, updated_at: '' },
+            ]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [1] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledWith([1, 2]);
+        });
+
+        it('does not skip when the heartbeat payload is empty and I have active ids', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledWith([1]);
+        });
+    });
 });

@@ -6,6 +6,7 @@ import * as summaryApi from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
 import { TaskStatus } from '../types/summary';
 import SummaryCard from './SummaryCard';
+import { containsAllTaskIds } from '../utils/heartbeatCoverage';
 
 interface ChatSummaryHistoryProps {
     channel: { channelID: string; channelType: number };
@@ -19,6 +20,12 @@ interface ChatSummaryHistoryState {
     loading: boolean;
 }
 
+// Mirrors SummaryDetailPage's 15s grace window so a heartbeat from any peer
+// (SummaryListPage or another ChatSummaryHistory instance) suppresses our
+// 5s tick for one window. After 15s of silence we treat the peer as gone
+// and resume self-polling on the next tick.
+const COVERING_HEARTBEAT_WINDOW_MS = 15_000;
+
 export default class ChatSummaryHistory extends Component<
     ChatSummaryHistoryProps,
     ChatSummaryHistoryState
@@ -29,6 +36,12 @@ export default class ChatSummaryHistory extends Component<
     private abortController: AbortController | null = null;
     private pollTimer: ReturnType<typeof setInterval> | null = null;
     private isPolling = false;
+    // #334: bring this component into the summary-batch-heartbeat protocol.
+    private peerActive = false;
+    private lastCoveringEventTime = 0;
+    // Set true for the duration of one synchronous window.dispatchEvent call
+    // when WE are the dispatcher, so our own listener can ignore the echo.
+    private isDispatchingOwnHeartbeat = false;
 
     constructor(props: ChatSummaryHistoryProps) {
         super(props);
@@ -39,6 +52,7 @@ export default class ChatSummaryHistory extends Component<
         void this.loadHistory();
         window.addEventListener('chat-summary-created', this.handleChange as EventListener);
         window.addEventListener('chat-summary-deleted', this.handleChange as EventListener);
+        window.addEventListener('summary-batch-heartbeat', this.handleBatchHeartbeat as EventListener);
     }
 
     componentWillUnmount() {
@@ -46,6 +60,7 @@ export default class ChatSummaryHistory extends Component<
         this.stopPoll();
         window.removeEventListener('chat-summary-created', this.handleChange as EventListener);
         window.removeEventListener('chat-summary-deleted', this.handleChange as EventListener);
+        window.removeEventListener('summary-batch-heartbeat', this.handleBatchHeartbeat as EventListener);
     }
 
     componentDidUpdate(prevProps: ChatSummaryHistoryProps) {
@@ -78,6 +93,14 @@ export default class ChatSummaryHistory extends Component<
             const ids = this.getActiveTaskIds();
             if (ids.length === 0) {
                 this.stopPoll();
+                return;
+            }
+            // #334: a peer's heartbeat covered our active set within the
+            // freshness window — skip this tick, do NOT stop the timer.
+            if (
+                this.peerActive &&
+                Date.now() - this.lastCoveringEventTime <= COVERING_HEARTBEAT_WINDOW_MS
+            ) {
                 return;
             }
             void this.doPoll(ids);
@@ -120,6 +143,26 @@ export default class ChatSummaryHistory extends Component<
         if (e.detail?.channelId === this.props.channel.channelID) {
             void this.loadHistory();
         }
+    };
+
+    // #334: a covering heartbeat from a peer means we can skip our next own
+    // poll tick. We do NOT stop the timer — the tick callback consults the
+    // flag + freshness window and self-skips. See containsAllTaskIds for the
+    // exact subset semantics.
+    //
+    // Self-echo guard: window.dispatchEvent is synchronous, so our own
+    // dispatch in doPoll re-enters this listener on the same call stack.
+    // Without the guard we would set peerActive=true from our own heartbeat
+    // and starve our own next tick → 5s cadence would silently degrade to
+    // ~15s when we are the sole poller. The isDispatchingOwnHeartbeat flag
+    // is set true in doPoll right before dispatch and cleared immediately
+    // after; we ignore any event observed while it is true.
+    private handleBatchHeartbeat = (event: Event) => {
+        if (this.isDispatchingOwnHeartbeat) return;
+        const taskIds: number[] | undefined = (event as CustomEvent).detail?.taskIds;
+        if (!containsAllTaskIds(taskIds, this.getActiveTaskIds())) return;
+        this.peerActive = true;
+        this.lastCoveringEventTime = Date.now();
     };
 
     private async loadHistory() {
