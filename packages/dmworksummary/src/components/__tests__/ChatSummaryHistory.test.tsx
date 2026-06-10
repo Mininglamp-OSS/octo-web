@@ -85,6 +85,26 @@ function makeItem(overrides: Record<string, unknown> = {}) {
     };
 }
 
+// Reduce per-test boilerplate: most tests render with the same channel and
+// callbacks, then await one fake-timer tick for the initial loadHistory
+// effect. Tests that need custom mockListSummaries setup still call it before
+// invoking mountHistory.
+async function mountHistory(props: { paused?: boolean } = {}) {
+    let result: ReturnType<typeof render> | undefined;
+    await act(async () => {
+        result = render(
+            <ChatSummaryHistory
+                channel={{ channelID: 'ch1', channelType: 2 }}
+                onCreateNew={vi.fn()}
+                onViewDetail={vi.fn()}
+                paused={props.paused}
+            />,
+        );
+        await vi.advanceTimersByTimeAsync(0);
+    });
+    return result!;
+}
+
 describe('ChatSummaryHistory', () => {
     const channel = { channelID: 'ch1', channelType: 2 };
     const onCreateNew = vi.fn();
@@ -442,16 +462,7 @@ describe('ChatSummaryHistory', () => {
             });
             mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
 
-            await act(async () => {
-                render(
-                    <ChatSummaryHistory
-                        channel={channel}
-                        onCreateNew={onCreateNew}
-                        onViewDetail={onViewDetail}
-                    />,
-                );
-                await vi.advanceTimersByTimeAsync(0);
-            });
+            await mountHistory();
 
             await act(async () => {
                 window.dispatchEvent(
@@ -472,16 +483,7 @@ describe('ChatSummaryHistory', () => {
             });
             mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
 
-            await act(async () => {
-                render(
-                    <ChatSummaryHistory
-                        channel={channel}
-                        onCreateNew={onCreateNew}
-                        onViewDetail={onViewDetail}
-                    />,
-                );
-                await vi.advanceTimersByTimeAsync(0);
-            });
+            await mountHistory();
 
             await act(async () => {
                 window.dispatchEvent(
@@ -517,16 +519,7 @@ describe('ChatSummaryHistory', () => {
                 { id: 2, status: 2, progress: 50, updated_at: '' },
             ]);
 
-            await act(async () => {
-                render(
-                    <ChatSummaryHistory
-                        channel={channel}
-                        onCreateNew={onCreateNew}
-                        onViewDetail={onViewDetail}
-                    />,
-                );
-                await vi.advanceTimersByTimeAsync(0);
-            });
+            await mountHistory();
 
             await act(async () => {
                 window.dispatchEvent(
@@ -547,16 +540,7 @@ describe('ChatSummaryHistory', () => {
             });
             mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
 
-            await act(async () => {
-                render(
-                    <ChatSummaryHistory
-                        channel={channel}
-                        onCreateNew={onCreateNew}
-                        onViewDetail={onViewDetail}
-                    />,
-                );
-                await vi.advanceTimersByTimeAsync(0);
-            });
+            await mountHistory();
 
             await act(async () => {
                 window.dispatchEvent(
@@ -750,17 +734,7 @@ describe('ChatSummaryHistory', () => {
                 items: [makeItem({ task_id: 1, status: 2 })],
             });
 
-            await act(async () => {
-                render(
-                    <ChatSummaryHistory
-                        channel={channel}
-                        onCreateNew={onCreateNew}
-                        onViewDetail={onViewDetail}
-                        paused
-                    />,
-                );
-                await vi.advanceTimersByTimeAsync(0);
-            });
+            await mountHistory({ paused: true });
 
             mockListSummaries.mockClear();
 
