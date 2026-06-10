@@ -6,7 +6,7 @@ import * as summaryApi from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
 import { TaskStatus } from '../types/summary';
 import SummaryCard from './SummaryCard';
-import { containsAllTaskIds } from '../utils/heartbeatCoverage';
+import { containsAllTaskIds, COVERING_HEARTBEAT_WINDOW_MS } from '../utils/heartbeatCoverage';
 
 interface ChatSummaryHistoryProps {
     channel: { channelID: string; channelType: number };
@@ -19,12 +19,6 @@ interface ChatSummaryHistoryState {
     items: SummaryListItem[];
     loading: boolean;
 }
-
-// Mirrors SummaryDetailPage's 15s grace window so a heartbeat from any peer
-// (SummaryListPage or another ChatSummaryHistory instance) suppresses our
-// 5s tick for one window. After 15s of silence we treat the peer as gone
-// and resume self-polling on the next tick.
-const COVERING_HEARTBEAT_WINDOW_MS = 15_000;
 
 export default class ChatSummaryHistory extends Component<
     ChatSummaryHistoryProps,

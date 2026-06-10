@@ -19,3 +19,13 @@ export function containsAllTaskIds(
     }
     return true
 }
+
+// Freshness window for the summary-batch-heartbeat protocol. A peer
+// broadcast is treated as covering only while `Date.now() - lastEventTime
+// <= COVERING_HEARTBEAT_WINDOW_MS`. Beyond it, the broadcaster is treated
+// as gone and the listener resumes self-polling.
+//
+// Shared between SummaryDetailPage (the original 15s grace window) and
+// ChatSummaryHistory (#334), so all protocol participants tune the same
+// window in one place.
+export const COVERING_HEARTBEAT_WINDOW_MS = 15_000;
