@@ -191,6 +191,11 @@ export default class ChatSummaryHistory extends Component<
     // SummaryListPage's `handleStatusChange` (a filter-dropdown callback on
     // a different class — unrelated despite the bare name).
     private handleStatusChangeEvent = (event: Event) => {
+        // #334: panel is hidden in detail view — even if a peer's status flip
+        // is for one of our items, the user can't see this list right now.
+        // maybeStartPoll already short-circuits on paused; mirror that here
+        // so we don't waste a network round-trip + setState while invisible.
+        if (this.props.paused) return;
         const taskIds: number[] | undefined = (event as CustomEvent).detail?.taskIds;
         if (!taskIds || taskIds.length === 0) return;
         const mine = new Set(this.state.items.map(item => item.task_id));

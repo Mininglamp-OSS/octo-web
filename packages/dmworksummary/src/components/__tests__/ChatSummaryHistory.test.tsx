@@ -744,5 +744,34 @@ describe('ChatSummaryHistory', () => {
             });
             expect(mockBatchStatus).toHaveBeenCalledWith([1]);
         });
+
+        it('does not fetch on summary-status-change while paused', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                        paused
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            mockListSummaries.mockClear();
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            expect(mockListSummaries).not.toHaveBeenCalled();
+        });
     });
 });
