@@ -53,6 +53,8 @@ export default class ChatSummaryHistory extends Component<
         window.addEventListener('chat-summary-created', this.handleChange as EventListener);
         window.addEventListener('chat-summary-deleted', this.handleChange as EventListener);
         window.addEventListener('summary-batch-heartbeat', this.handleBatchHeartbeat as EventListener);
+        window.addEventListener('summary-status-change', this.handleStatusChangeEvent as EventListener);
+        window.addEventListener('summary-list-unmount', this.handleListUnmount as EventListener);
     }
 
     componentWillUnmount() {
@@ -61,6 +63,8 @@ export default class ChatSummaryHistory extends Component<
         window.removeEventListener('chat-summary-created', this.handleChange as EventListener);
         window.removeEventListener('chat-summary-deleted', this.handleChange as EventListener);
         window.removeEventListener('summary-batch-heartbeat', this.handleBatchHeartbeat as EventListener);
+        window.removeEventListener('summary-status-change', this.handleStatusChangeEvent as EventListener);
+        window.removeEventListener('summary-list-unmount', this.handleListUnmount as EventListener);
     }
 
     componentDidUpdate(prevProps: ChatSummaryHistoryProps) {
@@ -175,6 +179,31 @@ export default class ChatSummaryHistory extends Component<
         if (!containsAllTaskIds(taskIds, this.getActiveTaskIds())) return;
         this.peerActive = true;
         this.lastCoveringEventTime = Date.now();
+    };
+
+    // #334: a peer surfaced a status flip for at least one of our visible
+    // items — refresh from server so the UI shows the new status without
+    // waiting for our own 5s tick. Ignored when the flip is for unrelated
+    // tasks (different channel / different page in SummaryListPage).
+    //
+    // Name choice: `handleStatusChangeEvent` mirrors SummaryDetailPage's
+    // identically-named handler (DetailPage:303) and avoids confusion with
+    // SummaryListPage's `handleStatusChange` (a filter-dropdown callback on
+    // a different class — unrelated despite the bare name).
+    private handleStatusChangeEvent = (event: Event) => {
+        const taskIds: number[] | undefined = (event as CustomEvent).detail?.taskIds;
+        if (!taskIds || taskIds.length === 0) return;
+        const mine = new Set(this.state.items.map(item => item.task_id));
+        const intersects = taskIds.some(id => mine.has(id));
+        if (!intersects) return;
+        void this.loadHistory();
+    };
+
+    // #334: a peer left the heartbeat protocol (e.g. SummaryListPage
+    // unmounted). Clear suppression so the next 5s tick polls — we may
+    // now be the only poller covering our active-task set.
+    private handleListUnmount = () => {
+        this.peerActive = false;
     };
 
     private async loadHistory() {

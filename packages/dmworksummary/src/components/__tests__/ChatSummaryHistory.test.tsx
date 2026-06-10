@@ -644,5 +644,105 @@ describe('ChatSummaryHistory', () => {
             });
             expect(mockBatchStatus).toHaveBeenCalledTimes(3);
         });
+
+        it('refreshes history when summary-status-change intersects current items', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            mockListSummaries.mockClear();
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 3 })],
+            });
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            expect(mockListSummaries).toHaveBeenCalled();
+        });
+
+        it('ignores summary-status-change when taskIds do not intersect current items', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            mockListSummaries.mockClear();
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-status-change', { detail: { taskIds: [99] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            expect(mockListSummaries).not.toHaveBeenCalled();
+        });
+
+        it('clears suppression on summary-list-unmount so the next tick polls', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Establish suppression first.
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [1] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).not.toHaveBeenCalled();
+
+            // Peer goes away.
+            await act(async () => {
+                window.dispatchEvent(new CustomEvent('summary-list-unmount'));
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledWith([1]);
+        });
     });
 });
