@@ -173,8 +173,14 @@ export function useForwardModal(
             // key 格式与 shouldSkipChannelForSpace 一致。
             WKApp.shared.channelSpaceMap.set(`${channelID}_${ChannelTypeGroup}`, groupSpaceId)
           } else if (groupSpaceId !== "") {
-            // 明确跨 Space → 剔除。
-            continue
+            // 跨 Space：先用 group/my 行自带的权威 space_id 回种 channelSpaceMap
+            // （回种群真实归属，与 shouldSkipChannelForSpace 命中 channelInfo 时
+            // 无条件回填的语义一致），再交给 shouldSkipChannelForSpace 统一裁决
+            // （它内部含 source_space_id 外部成员豁免）。豁免逻辑只活在
+            // SpaceService，不在此复制。先回种再调用不会短路——缓存命中分支读到
+            // 回种的跨 Space 值后仍会执行 source_space_id 豁免检查。
+            WKApp.shared.channelSpaceMap.set(`${channelID}_${ChannelTypeGroup}`, groupSpaceId)
+            if (shouldSkipChannelForSpace(groupInfo.channel)) continue
           }
           // 空串 ""：group/my 已带 param.space_id 背书，保留但绝不回种缓存（空串污染）。
         }

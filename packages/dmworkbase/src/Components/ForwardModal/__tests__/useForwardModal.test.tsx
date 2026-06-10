@@ -42,6 +42,9 @@ const hoisted = vi.hoisted(() => {
         channelSpaceMap: new Map<string, string>(),
         channelListeners: [] as Array<(info: any) => void>,
         refreshHandlers: [] as Array<() => void>,
+        // 可配置的 Space 裁决桩：默认全保留(false)。需要模拟「外部成员豁免保留」
+        // 与「跨 Space 非外部成员剔除」时，用例按 channel 覆写 mockImplementation。
+        shouldSkip: vi.fn((_channel: any) => false),
     }
 })
 
@@ -97,7 +100,7 @@ vi.mock("wukongimjssdk", () => {
 })
 
 vi.mock("../../../Service/SpaceService", () => ({
-    shouldSkipChannelForSpace: () => false,
+    shouldSkipChannelForSpace: (channel: any) => hoisted.shouldSkip(channel),
     shouldSkipPersonConversationForSpace: () => false,
 }))
 
@@ -171,6 +174,21 @@ async function flushMicrotasks() {
     await Promise.resolve()
 }
 
+// 用例隔离：重置所有 hoisted 共享状态（mock 返回值 + Space/缓存/监听器集合），
+// 保证两个 describe 的每个用例都从干净 hoisted 状态起步，避免跨用例串扰。
+function resetHoisted() {
+    vi.clearAllMocks()
+    hoisted.getChannelInfo.mockReturnValue(undefined)
+    hoisted.groupSaveList.mockResolvedValue([])
+    hoisted.searchFriends.mockResolvedValue([])
+    hoisted.shouldSkip.mockImplementation(() => false)
+    hoisted.currentSpaceId = ""
+    hoisted.channelSpaceMap = new Map()
+    hoisted.channelListeners = []
+    hoisted.refreshHandlers = []
+    hoisted.conversations = []
+}
+
 async function renderForward() {
     const container = document.createElement("div")
     document.body.appendChild(container)
@@ -194,10 +212,7 @@ async function renderForward() {
 
 describe("useForwardModal — archived threads excluded from forward targets", () => {
     beforeEach(() => {
-        vi.clearAllMocks()
-        hoisted.getChannelInfo.mockReturnValue(undefined)
-        hoisted.groupSaveList.mockResolvedValue([])
-        hoisted.searchFriends.mockResolvedValue([])
+        resetHoisted()
     })
 
     afterEach(() => {
@@ -261,14 +276,7 @@ describe("useForwardModal — archived threads excluded from forward targets", (
 
 describe("useForwardModal — group/my fallback groups + thread re-homing", () => {
     beforeEach(() => {
-        vi.clearAllMocks()
-        hoisted.getChannelInfo.mockReturnValue(undefined)
-        hoisted.groupSaveList.mockResolvedValue([])
-        hoisted.searchFriends.mockResolvedValue([])
-        hoisted.currentSpaceId = ""
-        hoisted.channelSpaceMap = new Map()
-        hoisted.channelListeners = []
-        hoisted.refreshHandlers = []
+        resetHoisted()
     })
 
     afterEach(() => {
@@ -321,9 +329,11 @@ describe("useForwardModal — group/my fallback groups + thread re-homing", () =
         view.unmount()
     })
 
-    it("drops a group whose space_id explicitly belongs to another space", async () => {
+    it("drops a cross-space group when shouldSkipChannelForSpace rejects it (non-external member), but still re-seeds its real space_id", async () => {
         hoisted.currentSpaceId = "space-1"
         hoisted.conversations = []
+        // 非外部成员：权威裁决剔除（source_space_id 不匹配 → shouldSkip 返回 true）。
+        hoisted.shouldSkip.mockImplementation((ch: any) => ch?.channelID === "g-other")
         hoisted.groupSaveList.mockResolvedValue([
             makeGroupInfo("g-other", "Group Other", { space_id: "space-2" }),
         ] as any)
@@ -332,7 +342,30 @@ describe("useForwardModal — group/my fallback groups + thread re-homing", () =
         const ids = view.current.allItems.map((i) => i.channelID)
 
         expect(ids).not.toContain("g-other")
-        expect(hoisted.channelSpaceMap.has(`g-other_${CT_GROUP}`)).toBe(false)
+        // Plan A：跨 Space 分支无条件回种群真实归属（与权威 channelInfo 命中时一致），
+        // 即便最终被剔除，缓存里存的也是该群真实 space_id（非污染）。
+        expect(hoisted.channelSpaceMap.get(`g-other_${CT_GROUP}`)).toBe("space-2")
+
+        view.unmount()
+    })
+
+    it("keeps a cross-space external group exempted by source_space_id and re-seeds its real space_id", async () => {
+        // currentSpaceId=space-1，群 orgData.space_id=space-2，但我以 space-1 身份外部加入
+        // （source_space_id=space-1）→ 权威 shouldSkipChannelForSpace 豁免保留（返回 false）。
+        hoisted.currentSpaceId = "space-1"
+        hoisted.conversations = []
+        hoisted.shouldSkip.mockImplementation(() => false)
+        hoisted.groupSaveList.mockResolvedValue([
+            makeGroupInfo("g-external", "External Group", { space_id: "space-2" }),
+        ] as any)
+
+        const view = await renderForward()
+        const ids = view.current.allItems.map((i) => i.channelID)
+
+        // 回归 #366 Blocker：外部群必须出现在转发框（兜底路径不得错误剔除）。
+        expect(ids).toContain("g-external")
+        // 回种群真实归属 space-2。
+        expect(hoisted.channelSpaceMap.get(`g-external_${CT_GROUP}`)).toBe("space-2")
 
         view.unmount()
     })
@@ -368,35 +401,59 @@ describe("useForwardModal — group/my fallback groups + thread re-homing", () =
         view.unmount()
     })
 
-    it("deduplicates a group present in both recents and group/my (appears once)", async () => {
-        hoisted.conversations = [makeConv("g-dup", CT_GROUP, "Group Dup", { timestamp: 100 })]
-        hoisted.groupSaveList.mockResolvedValue([makeGroupInfo("g-dup", "Group Dup")] as any)
+    it("deduplicates a group present in both recents and group/my, keeping the recents version", async () => {
+        // 给两份设可区分 displayName：recents 版 vs group/my 版。
+        // 去重逻辑：recents 群先入 seenGroupIDs，兜底群 continue 跳过 → 应保留 recents 版。
+        hoisted.conversations = [makeConv("g-dup", CT_GROUP, "Group Dup Recents", { timestamp: 100 })]
+        hoisted.groupSaveList.mockResolvedValue([makeGroupInfo("g-dup", "Group Dup Fallback")] as any)
 
         const view = await renderForward()
         const occurrences = view.current.allItems.filter((i) => i.channelID === "g-dup")
 
         expect(occurrences).toHaveLength(1)
+        // 锁定「recents 优先」语义：保留的必须是 recents 版本，而非兜底版本。
+        expect(occurrences[0].displayName).toBe("Group Dup Recents")
 
         view.unmount()
     })
 
-    it("re-homes a recents thread under a parent group that only exists in group/my", async () => {
+    it("re-homes a recents thread within its group/my parent's segment while an orphan thread stays in the tail", async () => {
+        // 区分两条路径：
+        //  - t-child 的父群 g-parent 仅在 group/my（兜底群），子区在 recents → 走挂回循环，
+        //    应紧跟父群、落在父群与下一个兜底群 g-second 之间。
+        //  - t-orphan 的父群 g-missing 既不在 recents 也不在 group/my → 真孤儿，落在末尾段。
+        // 第二个兜底群 g-second 作为分界：若删掉挂回循环，t-child 会落到末尾的
+        // threadsByParent 兜底段，排到 g-second 之后，下面的 childIdx < secondIdx 断言即失败。
         hoisted.conversations = [
             makeConv("t-child", ChannelTypeCommunityTopic, "Child Thread", {
                 parentGroupNo: "g-parent", timestamp: 90,
             }),
+            makeConv("t-orphan", ChannelTypeCommunityTopic, "Orphan Thread", {
+                parentGroupNo: "g-missing", timestamp: 80,
+            }),
         ]
-        hoisted.groupSaveList.mockResolvedValue([makeGroupInfo("g-parent", "Parent Group")] as any)
+        hoisted.groupSaveList.mockResolvedValue([
+            makeGroupInfo("g-parent", "Parent Group"),
+            makeGroupInfo("g-second", "Second Group"),
+        ] as any)
 
         const view = await renderForward()
         const items = view.current.allItems
 
         const parentIdx = items.findIndex((i) => i.channelID === "g-parent")
         const childIdx = items.findIndex((i) => i.channelID === "t-child")
+        const secondIdx = items.findIndex((i) => i.channelID === "g-second")
+        const orphanIdx = items.findIndex((i) => i.channelID === "t-orphan")
 
         expect(parentIdx).toBeGreaterThanOrEqual(0)
-        expect(childIdx).toBe(parentIdx + 1)
+        expect(secondIdx).toBeGreaterThanOrEqual(0)
+        // 真子区紧跟父群、归在父群段内（在下一个兜底群之前）——删除挂回循环则此断言失败。
+        expect(childIdx).toBeGreaterThan(parentIdx)
+        expect(childIdx).toBeLessThan(secondIdx)
         expect(items[childIdx].parentChannelID).toBe("g-parent")
+        // 孤儿子区在末尾段：排在所有兜底群之后，且 parentChannelID 仍正确。
+        expect(orphanIdx).toBeGreaterThan(secondIdx)
+        expect(items[orphanIdx].parentChannelID).toBe("g-missing")
 
         view.unmount()
     })
