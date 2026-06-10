@@ -60,7 +60,6 @@ vi.mock('@douyinfe/semi-ui', () => ({
     Tooltip: ({ children }: any) => <>{children}</>,
 }));
 
-(vi.mocked as any) ?? null;
 // Select.Option child stub
 import * as Semi from '@douyinfe/semi-ui';
 (Semi as any).Select.Option = ({ children, value }: any) => <option value={String(value)}>{children}</option>;
