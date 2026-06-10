@@ -4,6 +4,7 @@ import { SyncMessageOptions } from "../../Service/DataSource/DataProvider";
 import { MessageWrap } from "../../Service/Model";
 import { ProviderListener } from "../../Service/Provider";
 import { animateScroll, scroller } from 'react-scroll';
+import { Toast } from "@douyinfe/semi-ui";
 import { EndpointID, MessageContentTypeConst, OrderFactor, ChannelTypeCommunityTopic } from "../../Service/Const";
 import moment from 'moment'
 import { TimeContent } from "../../Messages/Time";
@@ -20,7 +21,8 @@ import { getFoldSessionExpandedMessages } from "./foldSessionSummary";
 import { getPulldownRestoredScrollTop, getRestoredAnchorScrollTop } from "./historyScroll";
 import { applyMsgLevelExternalFieldsWithFallback } from "../../Service/Convert";
 import { wrapSendContentForInjection } from "./sendContentProxy";
-import { isMessageSelectable } from "../../Service/messageSelection";
+import { isMessageSelectable, isMessageInFlightMedia } from "../../Service/messageSelection";
+import { t } from "../../i18n";
 
 export interface FoldSessionParticipant {
     uid: string
@@ -598,8 +600,18 @@ export default class ConversationVM extends ProviderListener {
             }
         }
         if (toChannels && toChannels.length > 0) {
+            // Issue #273: count in-flight media messages that the encode-time
+            // guard (MergeforwardContent.messageToMap) will drop, so we can
+            // Toast the user once after sending. Predicate is shared with the
+            // encode layer (Service/messageSelection.ts) so they stay in sync.
+            const skippedCount = checkedMessages.filter(isMessageInFlightMedia).length
+
             for (const destChannel of toChannels) {
                 this.sendMessage(new MergeforwardContent(this.channel.channelType, users, checkedMessages), destChannel)
+            }
+
+            if (skippedCount > 0) {
+                Toast.warning(t("base.conversation.mergeforward.skippedInFlight", { values: { count: skippedCount } }))
             }
         }
     }

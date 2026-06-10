@@ -14,7 +14,7 @@ import React from "react";
 import MergeforwardMessageList from "../../Components/MergeforwardMessageList";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { applyMsgLevelExternalFields } from "../../Service/Convert";
-import { isMessageSelectable } from "../../Service/messageSelection";
+import { isMessageSelectable, isInFlightMediaPayload } from "../../Service/messageSelection";
 import MessageBase from "../Base";
 import MessageTrail from "../Base/tail";
 import { MessageCell } from "../MessageCell";
@@ -150,7 +150,10 @@ export default class MergeforwardContent extends MessageContent {
     const messageMaps: any[] = [];
     if (this.msgs && this.msgs.length > 0) {
       for (const msg of this.msgs) {
-        messageMaps.push(this.messageToMap(msg));
+        const mapped = this.messageToMap(msg);
+        if (mapped !== null) {
+          messageMaps.push(mapped);
+        }
       }
     }
     // users 原样透传，保留 is_external / source_space_name
@@ -197,7 +200,7 @@ export default class MergeforwardContent extends MessageContent {
     return message;
   }
 
-  messageToMap(message: Message): any {
+  messageToMap(message: Message): any | null {
     // Use contentObj if available, otherwise fall back to encodeJSON()
     let payload = message.content.contentObj;
     if (!payload) {
@@ -208,6 +211,16 @@ export default class MergeforwardContent extends MessageContent {
       // 但某些边缘情况可能导致丢失，这里兼容处理
       payload = { ...payload, type: message.content.contentType };
     }
+
+    // Issue #273: skip media payloads whose upload hasn't completed.
+    // Without this, the wire payload carries `url: ""`, the broker accepts
+    // it, and the target client renders <img src=""> (blank). The Toast
+    // surfacing the skipped count is emitted by sendMergeforward in vm.ts
+    // after collecting the per-message null returns.
+    if (isInFlightMediaPayload(payload)) {
+      return null;
+    }
+
     return {
       message_id: message.messageID,
       from_uid: message.fromUID ?? "",

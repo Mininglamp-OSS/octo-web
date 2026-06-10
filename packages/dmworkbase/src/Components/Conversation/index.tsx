@@ -98,7 +98,7 @@ import {
   precheckUploadCredentials,
   uploadChatMedia,
 } from "../../Service/UploadCredentials";
-import { isMessageSelectable } from "../../Service/messageSelection";
+import { isMessageSelectable, isMessageInFlightMedia } from "../../Service/messageSelection";
 import { I18nContext, t } from "../../i18n";
 import {
   buildRichTextMixedCandidate,
@@ -2465,6 +2465,20 @@ export class Conversation
                         Toast.error(
                           t("base.conversation.selection.selectMessageFirst")
                         );
+                        return;
+                      }
+                      // Issue #273 — UI defense layer: if every selected message is an
+                      // in-flight media upload, opening the target picker is pure friction.
+                      // Block early with a clearer message. Mixed selections fall through;
+                      // MergeforwardContent.messageToMap will drop the in-flight ones at
+                      // encode time and ChatVM.sendMergeforward will Toast the count.
+                      // Predicate (isMessageInFlightMedia) is shared with the encode layer
+                      // and ChatVM so all three callsites stay in sync.
+                      const allInFlightMedia = checkedMsgs.every((mw) =>
+                        isMessageInFlightMedia(mw.message)
+                      );
+                      if (allInFlightMedia) {
+                        Toast.warning(t("base.conversation.mergeforward.allInFlight"));
                         return;
                       }
                       WKApp.shared.baseContext.showConversationSelect(

@@ -186,6 +186,8 @@
   "conversation.upload.imageReadFailed": "图片「{{name}}」读取失败",
   "conversation.upload.sendTo": "发送给 {{name}}",
   "conversation.upload.totalTooLarge": "附件总大小超过 {{max}} 上限，请减少文件后重试",
+  "conversation.mergeforward.skippedInFlight": "{{count}} 条媒体消息因上传未完成已跳过，可稍后重试",
+  "conversation.mergeforward.allInFlight": "选中的媒体消息正在上传，请等待上传完成后再转发",
   "fileToolbar.duplicateAdded": "包含同名文件，已追加到待发送列表",
   "friendApply.sendRequest": "发送添加朋友申请",
   "groupManagement.addBotAdmin": "添加 Bot 管理员",
