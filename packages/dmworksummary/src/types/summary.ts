@@ -148,7 +148,7 @@ export interface SummaryDetail {
     participants: Participant[];
     result: SummaryResult | null;
     error_message: string | null;
-    schedule_id?: number;
+    schedule_id?: number | null;
     origin_channel_id: string;
     origin_channel_type: number;
     created_at: string;

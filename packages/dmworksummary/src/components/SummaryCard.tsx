@@ -4,7 +4,7 @@ import { IconDelete } from "@douyinfe/semi-icons";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryListItem } from "../types/summary";
-import { ParticipantStatus } from "../types/summary";
+import { ParticipantStatus, TriggerType } from "../types/summary";
 import TaskStatusBadge from "./TaskStatusBadge";
 import OverflowTooltip from "./OverflowTooltip";
 
@@ -22,11 +22,9 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
     const isMultiParticipant = (task.participants?.length ?? 0) > 1;
     const isPendingInvite = isMultiParticipant && myParticipant != null && myParticipant.status === ParticipantStatus.PENDING;
 
-    // 是否定时任务：以「是否绑定了定时配置(schedule_id)」为准，而非 trigger_type。
-    // 给一个手动任务加上定时更新后、在定时器首次执行前，原任务 trigger_type 仍为
-    // MANUAL(1)，只看 trigger_type 会漏掉「未执行过的定时任务」。trigger_type===2
-    // 作为兜底（来自调度器生成的任务）。
-    const isScheduledTask = (task.schedule_id != null && task.schedule_id > 0) || task.trigger_type === 2;
+    // 是否定时任务：以 schedule_id 为准，trigger_type===SCHEDULED 作兜底，
+    // 以覆盖「绑定了定时但尚未执行过」的任务。
+    const isScheduledTask = (task.schedule_id != null && task.schedule_id > 0) || task.trigger_type === TriggerType.SCHEDULED;
 
     return (
         <div className="summary-card" onClick={() => onClick(task.task_id)}>
