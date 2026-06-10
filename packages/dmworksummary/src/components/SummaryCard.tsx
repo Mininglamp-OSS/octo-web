@@ -22,6 +22,12 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
     const isMultiParticipant = (task.participants?.length ?? 0) > 1;
     const isPendingInvite = isMultiParticipant && myParticipant != null && myParticipant.status === ParticipantStatus.PENDING;
 
+    // 是否定时任务：以「是否绑定了定时配置(schedule_id)」为准，而非 trigger_type。
+    // 给一个手动任务加上定时更新后、在定时器首次执行前，原任务 trigger_type 仍为
+    // MANUAL(1)，只看 trigger_type 会漏掉「未执行过的定时任务」。trigger_type===2
+    // 作为兜底（来自调度器生成的任务）。
+    const isScheduledTask = (task.schedule_id != null && task.schedule_id > 0) || task.trigger_type === 2;
+
     return (
         <div className="summary-card" onClick={() => onClick(task.task_id)}>
             <div className="summary-card-header">
@@ -59,7 +65,11 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
                 <span className="summary-card-date">{task.created_at?.substring(0, 10) || ''}</span>
                 <Popconfirm
                     title={t("summary.summaryCard.deleteTitle")}
-                    content={t("summary.summaryCard.deleteContent", { values: { title: task.title || task.task_no } })}
+                    content={
+                        isScheduledTask
+                            ? t("summary.summaryCard.deleteScheduledContent", { values: { title: task.title || task.task_no } })
+                            : t("summary.summaryCard.deleteContent", { values: { title: task.title || task.task_no } })
+                    }
                     onConfirm={(e) => {
                         e?.stopPropagation();
                         onDelete(task.task_id);

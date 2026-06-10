@@ -329,7 +329,8 @@
   "summaryCard": {
     "createdBy": "Created by {{name}}",
     "deleteTitle": "Confirm deletion",
-    "deleteContent": "Delete \"{{title}}\"? Historical versions will also be removed."
+    "deleteContent": "Delete \"{{title}}\"? Historical versions will also be removed.",
+    "deleteScheduledContent": "\"{{title}}\" is a scheduled summary. Deleting it will stop the scheduled updates and remove all of its history. Delete it?"
   },
   "editor": {
     "saveSuccess": "Saved",

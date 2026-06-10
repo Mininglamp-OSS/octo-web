@@ -329,7 +329,8 @@
   "summaryCard": {
     "createdBy": "{{name}} 发起",
     "deleteTitle": "确认删除",
-    "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。"
+    "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。",
+    "deleteScheduledContent": "「{{title}}」是定时更新的总结。删除后将停止定时更新，并移除该总结的全部历史记录，确定删除吗？"
   },
   "editor": {
     "saveSuccess": "保存成功",
