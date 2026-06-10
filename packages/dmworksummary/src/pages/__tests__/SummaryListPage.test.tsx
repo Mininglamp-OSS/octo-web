@@ -111,11 +111,18 @@ describe('SummaryListPage — terminal reload (#290)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.useFakeTimers();
+        // Default for the badge endpoint (page_size=1) and any unqueued main-list call.
+        mockListSummaries.mockResolvedValue({ items: [], total: 0 });
     });
 
     afterEach(() => {
         vi.useRealTimers();
     });
+
+    // emitBadgeUpdate also calls listSummaries (with page_size=1) — filter those
+    // out when asserting how many times the main list endpoint was hit.
+    const mainListCalls = () =>
+        mockListSummaries.mock.calls.filter(c => c[0]?.page_size !== 1);
 
     it('[FIX] silent loadData call does NOT set loading=true', async () => {
         mockListSummaries.mockResolvedValue({ items: [], total: 0 });
@@ -182,7 +189,7 @@ describe('SummaryListPage — terminal reload (#290)', () => {
         });
 
         // First fetch already happened on mount. Reset for clear assertion.
-        expect(mockListSummaries).toHaveBeenCalledTimes(1);
+        expect(mainListCalls()).toHaveLength(1);
 
         // Set up: batch returns task as COMPLETED. Next listSummaries returns updated title.
         mockBatchStatus.mockResolvedValueOnce([{ id: 1, status: 3, progress: 100, updated_at: '' }]);
@@ -198,7 +205,7 @@ describe('SummaryListPage — terminal reload (#290)', () => {
 
         expect(mockBatchStatus).toHaveBeenCalledWith([1]);
         // listSummaries should be called a second time (the silent reload).
-        expect(mockListSummaries).toHaveBeenCalledTimes(2);
+        expect(mainListCalls()).toHaveLength(2);
     });
 
     it('[FIX] doBatchPoll does NOT silent reload on intermediate (PENDING -> PROCESSING)', async () => {
@@ -211,7 +218,7 @@ describe('SummaryListPage — terminal reload (#290)', () => {
             render(<SummaryListPage />);
             await vi.advanceTimersByTimeAsync(0);
         });
-        expect(mockListSummaries).toHaveBeenCalledTimes(1);
+        expect(mainListCalls()).toHaveLength(1);
 
         mockBatchStatus.mockResolvedValueOnce([{ id: 1, status: 2, progress: 30, updated_at: '' }]);
         await act(async () => {
@@ -220,7 +227,7 @@ describe('SummaryListPage — terminal reload (#290)', () => {
 
         expect(mockBatchStatus).toHaveBeenCalledWith([1]);
         // listSummaries should NOT be called again — in-place setState path only.
-        expect(mockListSummaries).toHaveBeenCalledTimes(1);
+        expect(mainListCalls()).toHaveLength(1);
     });
 
     it('[FIX] doBatchPoll triggers silent reload on FAILED and CANCELLED too', async () => {
@@ -248,7 +255,7 @@ describe('SummaryListPage — terminal reload (#290)', () => {
                 await vi.advanceTimersByTimeAsync(2000);
             });
 
-            expect(mockListSummaries).toHaveBeenCalledTimes(2);
+            expect(mainListCalls()).toHaveLength(2);
 
             await act(async () => { unmountFn?.(); });
         }
