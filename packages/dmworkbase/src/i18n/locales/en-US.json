@@ -792,7 +792,7 @@
   "threadCreated.user": "User",
   "chatContext.direct": "Direct chat with \"{{name}}\"",
   "chatContext.group": "Group chat \"{{name}}\"",
-  "chatContext.members": "Chat members: {{names}}",
+  "chatContext.members": "Chat members (a person's multiple names are joined by /): {{names}}",
   "chatContext.thread": "Thread \"{{name}}\"",
   "foldSessionCard.aiCollaboration": "AI collaboration",
   "foldSessionCard.collapse": "Collapse AI collaboration",

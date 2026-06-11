@@ -17,6 +17,12 @@ import WKSDK, { Channel, ChannelInfo, ChannelTypePerson, Subscriber } from "wuko
 import hotkeys from "hotkeys-js";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
+import {
+  MemberInfo,
+  buildMemberInfos,
+  buildMentionRegex,
+  parseMentionMarkers,
+} from "./mentionResolve";
 import "./index.css";
 import { Notification } from "@douyinfe/semi-ui";
 import SlashCommandMenu, { BotCommand } from "../SlashCommandMenu";
@@ -393,102 +399,8 @@ export interface MessageInputContext {
   clear: () => void;
 }
 
-interface MemberInfo {
-  uid: string;
-  name: string;
-}
-
-// Escape special regex characters in a string
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// Build a dynamic regex that matches @name for all known members.
-// Names are sorted longest-first so "Cindy Che" matches before "Cindy".
-function buildMentionRegex(members: MemberInfo[]): RegExp {
-  const specialNames = [MENTION_LABEL_HUMANS, "all", "everyone", MENTION_LABEL_AIS, "All AIs"];
-  const allNames = [...specialNames, ...members.map((m) => m.name)];
-  // Deduplicate and sort by length descending (longest match first)
-  const unique = [...new Set(allNames)];
-  unique.sort((a, b) => b.length - a.length);
-  const pattern = unique.map(escapeRegExp).join("|");
-  // Boundary: whitespace, CJK punctuation, or end of string
-  return new RegExp(`@(${pattern})(?=[\\s，。！？,!?]|$)`, "gi");
-}
-
-// Parse voice-transcribed text for @mentions, converting to Tiptap content
-function parseMentionMarkers(
-  text: string,
-  members: MemberInfo[]
-): Array<{
-  type: string;
-  text?: string;
-  attrs?: { id: string; label: string };
-}> {
-  const result: Array<{
-    type: string;
-    text?: string;
-    attrs?: { id: string; label: string };
-  }> = [];
-  const regex = buildMentionRegex(members);
-  let lastIndex = 0;
-  let match;
-
-  while ((match = regex.exec(text)) !== null) {
-    const name = match[1];
-    const matchStart = match.index;
-
-    if (matchStart > lastIndex) {
-      result.push({ type: "text", text: text.slice(lastIndex, matchStart) });
-    }
-
-    const isHumans =
-      name === MENTION_LABEL_HUMANS ||
-      name.toLowerCase() === "all" ||
-      name.toLowerCase() === "everyone";
-    const isAis =
-      name === MENTION_LABEL_AIS || name.toLowerCase() === "all ais";
-    const member = members.find(
-      (m) => m.name.toLowerCase() === name.toLowerCase()
-    );
-
-    if (isHumans) {
-      result.push({
-        type: "mention",
-        attrs: { id: MENTION_UID_HUMANS, label: MENTION_LABEL_HUMANS },
-      });
-      result.push({ type: "text", text: " " });
-    } else if (isAis) {
-      result.push({
-        type: "mention",
-        attrs: { id: MENTION_UID_AIS, label: MENTION_LABEL_AIS },
-      });
-      result.push({ type: "text", text: " " });
-    } else if (member) {
-      result.push({
-        type: "mention",
-        attrs: { id: member.uid, label: member.name },
-      });
-      result.push({ type: "text", text: " " });
-    } else {
-      // Unrecognized @, keep as plain text
-      result.push({ type: "text", text: match[0] });
-    }
-
-    lastIndex = match.index + match[0].length;
-    if (isHumans || isAis || member) {
-      if (lastIndex < text.length && /\s/.test(text[lastIndex])) {
-        lastIndex++;
-      }
-    }
-  }
-
-  if (lastIndex < text.length) {
-    result.push({ type: "text", text: text.slice(lastIndex) });
-  }
-
-  return result;
-}
+// MemberInfo / buildMentionRegex / parseMentionMarkers / buildMemberInfos live
+// in ./mentionResolve so the editor and unit tests share one implementation.
 
 // 保持 membersRef 在模块级别供 formatMentionTextV2 使用
 let membersRef: React.MutableRefObject<Array<Subscriber> | undefined>;
@@ -643,22 +555,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     };
   }, [props.context, t]);
 
-  const memberInfos = useMemo<MemberInfo[]>(() => {
-    const infos: MemberInfo[] = props.members
-      ? props.members.map((s) => ({
-          uid: s.uid,
-          name: s.remark || s.name || s.uid,
-        }))
-      : [];
-    if (props.members) {
-      for (const s of props.members) {
-        if (s.name && s.remark && s.remark !== s.name) {
-          infos.push({ uid: s.uid, name: s.name });
-        }
-      }
-    }
-    return infos;
-  }, [props.members]);
+  const memberInfos = useMemo<MemberInfo[]>(
+    () => buildMemberInfos(props.members),
+    [props.members],
+  );
 
   const localMembersRef = useRef(props.members);
   const isDirectChannelRef = useRef(

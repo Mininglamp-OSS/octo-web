@@ -233,6 +233,34 @@ describe("VoiceService", () => {
             expect((formData as FormData).get("member_context")).toBeNull()
         })
 
+        it("should include self_name when a non-empty selfName is provided", async () => {
+            vi.mocked(APIClient.shared.post).mockResolvedValue({ text: "hi", m: "whisper-1" })
+            const audioBlob = new Blob(["audio-data"], { type: "audio/webm;codecs=opus" })
+            await VoiceService.shared.transcribe(
+                audioBlob, undefined, undefined, undefined, undefined, undefined, true, undefined, undefined, "张三/zhangsan"
+            )
+            const [, formData] = vi.mocked(APIClient.shared.post).mock.calls[0]
+            expect((formData as FormData).get("self_name")).toBe("张三/zhangsan")
+        })
+
+        it("should not include self_name when selfName is empty", async () => {
+            vi.mocked(APIClient.shared.post).mockResolvedValue({ text: "hi", m: "whisper-1" })
+            const audioBlob = new Blob(["audio-data"], { type: "audio/webm;codecs=opus" })
+            await VoiceService.shared.transcribe(
+                audioBlob, undefined, undefined, undefined, undefined, undefined, true, undefined, undefined, ""
+            )
+            const [, formData] = vi.mocked(APIClient.shared.post).mock.calls[0]
+            expect((formData as FormData).get("self_name")).toBeNull()
+        })
+
+        it("should not include self_name when selfName is undefined", async () => {
+            vi.mocked(APIClient.shared.post).mockResolvedValue({ text: "hi", m: "whisper-1" })
+            const audioBlob = new Blob(["audio-data"], { type: "audio/webm;codecs=opus" })
+            await VoiceService.shared.transcribe(audioBlob, undefined, undefined, undefined, undefined, undefined, true)
+            const [, formData] = vi.mocked(APIClient.shared.post).mock.calls[0]
+            expect((formData as FormData).get("self_name")).toBeNull()
+        })
+
         it("should return TranscribeResult with m field from backend response", async () => {
             vi.mocked(APIClient.shared.post).mockResolvedValue({ text: "hello", m: "g3fp" })
 
@@ -260,7 +288,7 @@ describe("VoiceService", () => {
             const audioBlob = new Blob(["audio-data"], { type: "audio/webm;codecs=opus" })
             const result = await VoiceService.shared.transcribe(audioBlob, "ctx", "chat", "personal", "member", "smart")
 
-            expect(LocalModelService.shared.transcribe).toHaveBeenCalledWith(audioBlob, "ctx", "chat", "personal", "member", "smart")
+            expect(LocalModelService.shared.transcribe).toHaveBeenCalledWith(audioBlob, "ctx", "chat", "personal", "member", "smart", undefined)
             expect(result.text).toBe("local result")
             expect(APIClient.shared.post).not.toHaveBeenCalled()
         })
@@ -273,7 +301,7 @@ describe("VoiceService", () => {
             await VoiceService.shared.transcribe(audioBlob, "ctxText", "chatCtx", "personalCtx", "memberCtx", "edit_only")
 
             expect(LocalModelService.shared.transcribe).toHaveBeenCalledWith(
-                audioBlob, "ctxText", "chatCtx", "personalCtx", "memberCtx", "edit_only"
+                audioBlob, "ctxText", "chatCtx", "personalCtx", "memberCtx", "edit_only", undefined
             )
         })
 
@@ -284,7 +312,7 @@ describe("VoiceService", () => {
             const audioBlob = new Blob(["audio-data"], { type: "audio/webm;codecs=opus" })
             const result = await VoiceService.shared.transcribe(audioBlob, "ctx")
 
-            expect(LocalModelService.shared.transcribe).toHaveBeenCalledWith(audioBlob, "ctx", undefined, undefined, undefined, undefined)
+            expect(LocalModelService.shared.transcribe).toHaveBeenCalledWith(audioBlob, "ctx", undefined, undefined, undefined, undefined, undefined)
             expect(APIClient.shared.post).toHaveBeenCalled()
             expect(result.text).toBe("backend result")
         })

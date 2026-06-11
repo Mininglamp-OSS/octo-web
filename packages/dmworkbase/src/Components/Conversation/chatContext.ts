@@ -1,4 +1,5 @@
 import { t } from "../../i18n"
+import { isRealnameVerified } from "../../Utils/displayName"
 
 const ChannelTypeGroup = 2
 const ChannelTypePerson = 1
@@ -9,6 +10,11 @@ export interface ChatContextMember {
     name?: string
     remark?: string
     isDeleted?: number
+    orgData?: {
+        real_name?: string | null
+        realname_verified?: boolean | number | string | null
+        robot?: number
+    } | null
 }
 
 export interface ChatContextMessage {
@@ -23,9 +29,37 @@ export interface ChatContextChannelInfo {
 }
 
 export interface ChatContextResult {
-    memberContext?: string   // "聊天成员：Alice,Bob" — undefined for DM
+    memberContext?: string   // "聊天成员（同一人的多个名字用/连接）：张三/小张,..." — undefined for DM
     chatContext?: string     // "[channel label]\n[Alice]: hi\n[Bob]: hello"
     channelType?: number     // pass-through for VoiceService to send as channel_type
+    selfName?: string        // 当前说话人三层名字串（去重 + "/" 连接），供 FormData self_name 使用
+}
+
+// 把三层名字按「收集 → 去重保序 → / 连接」拼成单个成员 token（无标签）
+function formatNameToken(
+    name?: string | null,
+    remark?: string | null,
+    realName?: string | null,
+    verified?: boolean,
+): string {
+    const nm = (name ?? "").trim()
+    const rm = (remark ?? "").trim()
+    const rn = verified ? (realName ?? "").trim() : ""
+
+    // 收集顺序：实名 > 群昵称 > 昵称；只收非空层
+    const parts = [rn, rm, nm].filter((v) => v.length > 0)
+    // 按值去重保序：相同的名字只保留一个（单名字成员即裸名）
+    const distinct = [...new Set(parts)]
+    return distinct.join("/")
+}
+
+// 成员 token：bot 不补实名；verified 用 isRealnameVerified 归一（兼容 "1"/"true"）
+function buildMemberNameToken(sub: ChatContextMember): string {
+    const isBot = sub.orgData?.robot === 1
+    const verified = !isBot && isRealnameVerified({
+        realname_verified: sub.orgData?.realname_verified,
+    })
+    return formatNameToken(sub.name, sub.remark, sub.orgData?.real_name, verified)
 }
 
 export function buildChatContext(params: {
@@ -36,6 +70,12 @@ export function buildChatContext(params: {
     channelInfo?: ChatContextChannelInfo | null
     groupName?: string
     threadName?: string
+    self?: {
+        name?: string | null
+        remark?: string | null
+        realName?: string | null
+        realnameVerified?: boolean
+    }
 }): ChatContextResult {
     const { messages, subscribers, channelType, loginUID, channelInfo, groupName, threadName } = params
     const names: string[] = []
@@ -60,10 +100,8 @@ export function buildChatContext(params: {
             for (const sub of subscribers) {
                 if (sub.uid === loginUID) continue
                 if (sub.isDeleted) continue
-                if (sub.name?.trim()) names.push(sub.name)
-                if (sub.remark?.trim() && sub.remark !== sub.name) {
-                    names.push(sub.remark)
-                }
+                const token = buildMemberNameToken(sub)
+                if (token) names.push(token)
             }
         } else {
             const activeUIDs = new Set<string>()
@@ -75,10 +113,8 @@ export function buildChatContext(params: {
             }
             for (const sub of subscribers) {
                 if (activeUIDs.has(sub.uid) && !sub.isDeleted) {
-                    if (sub.name?.trim()) names.push(sub.name)
-                    if (sub.remark?.trim() && sub.remark !== sub.name) {
-                        names.push(sub.remark)
-                    }
+                    const token = buildMemberNameToken(sub)
+                    if (token) names.push(token)
                 }
             }
         }
@@ -92,10 +128,8 @@ export function buildChatContext(params: {
                 for (const sub of subscribers) {
                     if (sub.uid === loginUID) continue
                     if (sub.isDeleted) continue
-                    if (sub.name?.trim()) names.push(sub.name)
-                    if (sub.remark?.trim() && sub.remark !== sub.name) {
-                        names.push(sub.remark)
-                    }
+                    const token = buildMemberNameToken(sub)
+                    if (token) names.push(token)
                 }
             } else {
                 const activeUIDs = new Set<string>()
@@ -107,10 +141,8 @@ export function buildChatContext(params: {
                 }
                 for (const sub of subscribers) {
                     if (activeUIDs.has(sub.uid) && !sub.isDeleted) {
-                        if (sub.name?.trim()) names.push(sub.name)
-                        if (sub.remark?.trim() && sub.remark !== sub.name) {
-                            names.push(sub.remark)
-                        }
+                        const token = buildMemberNameToken(sub)
+                        if (token) names.push(token)
                     }
                 }
             }
@@ -121,7 +153,7 @@ export function buildChatContext(params: {
         const uniqueNames = [...new Set(names)]
         if (uniqueNames.length > 0) {
             result.memberContext = t("base.chatContext.members", {
-                values: { names: uniqueNames.join(",") },
+                values: { names: uniqueNames.join("，") },
             })
         }
     }
@@ -143,6 +175,16 @@ export function buildChatContext(params: {
 
     if (chatLines.length > 0) {
         result.chatContext = chatLines.join('\n')
+    }
+
+    if (params.self) {
+        const selfToken = formatNameToken(
+            params.self.name,
+            params.self.remark,
+            params.self.realName,
+            params.self.realnameVerified === true,   // 自己侧 loginInfo 已归一，严格 ===true
+        )
+        if (selfToken) result.selfName = selfToken
     }
 
     return result

@@ -792,7 +792,7 @@
   "threadCreated.user": "用户",
   "chatContext.direct": "私聊「{{name}}」",
   "chatContext.group": "群聊「{{name}}」",
-  "chatContext.members": "聊天成员：{{names}}",
+  "chatContext.members": "聊天成员（同一人的多个名字用/连接）：{{names}}",
   "chatContext.thread": "子区「{{name}}」",
   "foldSessionCard.aiCollaboration": "AI 协作",
   "foldSessionCard.collapse": "收起 AI 协作会话",

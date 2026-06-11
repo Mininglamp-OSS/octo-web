@@ -2823,6 +2823,9 @@ export class Conversation
                           groupName = channelInfo?.title;
                         }
 
+                        const selfSub = this.vm.subscribers.find(
+                          (s) => s.uid === WKApp.loginInfo.uid
+                        );
                         return buildChatContext({
                           messages: this.vm.messagesOfOrigin || [],
                           subscribers: this.vm.subscribers,
@@ -2836,6 +2839,13 @@ export class Conversation
                               : undefined,
                           groupName,
                           threadName,
+                          self: {
+                            name: WKApp.loginInfo.name,
+                            remark: selfSub?.remark,
+                            realName: WKApp.loginInfo.realName,
+                            realnameVerified:
+                              WKApp.loginInfo.realnameVerified === true,
+                          },
                         });
                       }}
                       onSend={async (
