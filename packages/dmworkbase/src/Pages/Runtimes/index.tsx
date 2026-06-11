@@ -1388,14 +1388,21 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     }
 
     async loadData(silent = false) {
+        // C9 in-flight guard: 切 space 时 epoch++, 旧 space 在飞的
+        // /runtimes 响应回来时若 epoch 变了就丢弃, 防旧 space runtimes /
+        // versionHints / activeUpgrades 回填到新 space.
+        const epoch = this.spaceEpoch
+        const isStale = () => this.spaceEpoch !== epoch
         if (!silent) this.setState({ loading: true })
         try {
             const spaceId = WKApp.shared.currentSpaceId
             if (!spaceId) {
+                if (isStale()) return
                 this.setState({ runtimes: [], loading: false })
                 return
             }
             const res = await WKApp.apiClient.get("/runtimes", { param: { space_id: spaceId } })
+            if (isStale()) return
             // Compatible with both array (old) and object (new) response
             const runtimes: AgentRuntime[] = Array.isArray(res) ? res : (res?.runtimes || [])
             const versionHints = Array.isArray(res) ? {} : (res?.version_hints || {})
@@ -1424,6 +1431,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             }
             this.setState(
                 (prev) => {
+                    if (isStale()) return null
                     const expanded = new Set(prev.expandedDevices)
                     if (prev.expandedDevices.size === 0 && runtimes.length > 0) {
                         const groups = groupByDevice(runtimes)
@@ -1432,6 +1440,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                     return { runtimes, versionHints, daemonVersionHints, activeUpgrades, loading: false, expandedDevices: expanded }
                 },
                 () => {
+                    if (isStale()) return
                     // 放 callback 里：保证 showAgentDetail / showDeviceDetail 里读到的
                     // this.state.activeUpgrades 是本轮刚拉到的，而不是 setState 之前的快照
                     if (silent && WKApp.route.currentPath === "/runtimes") {
@@ -1454,6 +1463,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 },
             )
         } catch {
+            if (isStale()) return
             if (!silent) this.setState({ loading: false })
         }
     }

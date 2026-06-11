@@ -190,9 +190,14 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   })), [runtimes]);
 
   const handleCreated = useCallback(async (botId: number) => {
+    // C10: handleCreated 内 await 链同样要 epoch guard, 否则切 space 中
+    // 创建成功后旧响应 setBots / selectBot 旧 space 的 bot.
+    const epoch = spaceEpochRef.current;
     setSelectedId(botId);
     await refresh();
+    if (epoch !== spaceEpochRef.current) return;
     const fresh = await listBots();
+    if (epoch !== spaceEpochRef.current) return;
     setBots(fresh);
     const created = fresh.find(b => b.id === botId);
     if (created) {
