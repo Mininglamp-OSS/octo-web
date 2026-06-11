@@ -41,6 +41,7 @@ import {
 import { t as translate, useI18n } from "../../i18n";
 import { runSendWithCleanup, SendResultDetail } from "./sendFlow";
 import { extractOctoRichTextClipboardPayloadFromHtml } from "../../Utils/richTextClipboard";
+import { subscriberDisplayName } from "../../Utils/displayName";
 import {
   imageBlockToPasteFile,
   restoreOctoRichTextClipboardToEditor,
@@ -337,10 +338,13 @@ function formatMentionTextV2(text: string): {
       });
       result += atName;
     } else {
-      // 普通成员：以最新的 member.name 优先（avoid stale display label），fallback to label。
-      const atName = membersRef.current?.find((m) => m.uid === uid)?.name
-        ? `@${membersRef.current.find((m) => m.uid === uid)!.name}`
-        : `@${name}`;
+      // 普通成员：用规范展示名（real_name(verified) → remark → name），
+      // 与输入框 chip 标签（mentionResolve.buildMemberInfos 同样走
+      // subscriberDisplayName）保持一致，避免「框里 @王大棍、发出去 @大棍子」。
+      // 找不到成员 / 解析为空时回落到匹配到的 label 文本。
+      const member = membersRef.current?.find((m) => m.uid === uid);
+      const resolved = member ? subscriberDisplayName(member) : "";
+      const atName = resolved ? `@${resolved}` : `@${name}`;
       const offset = result.length;
       uids.push(uid);
       entities.push({

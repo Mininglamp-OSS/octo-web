@@ -18,7 +18,7 @@ export interface MemberInfo {
   uid: string;
   // 用于正则匹配的候选名字（可能是别名：群昵称 / 昵称 / 实名）
   name: string;
-  // 该 uid 的规范展示名（remark → real_name(verified) → name），同一 uid 的
+  // 该 uid 的规范展示名（real_name(verified) → remark → name），同一 uid 的
   // 所有候选共享同一个 label，命中任意别名后 chip 都渲染这个规范名。
   label: string;
 }
@@ -45,7 +45,7 @@ export function buildMemberInfos(
   const infos: MemberInfo[] = [];
   if (members) {
     for (const s of members) {
-      // 规范展示名：remark → real_name(verified) → name，与气泡/成员列表一致。
+      // 规范展示名：real_name(verified) → remark → name，与气泡/成员列表一致。
       const label = subscriberDisplayName(s) || s.uid;
       const primary = s.remark || s.name || s.uid;
       infos.push({ uid: s.uid, name: primary, label });

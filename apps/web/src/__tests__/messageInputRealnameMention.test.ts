@@ -3,6 +3,7 @@ import {
     buildMemberInfos,
     parseMentionMarkers,
 } from "@octo/base/src/Components/MessageInput/mentionResolve"
+import { subscriberDisplayName } from "@octo/base/src/Utils/displayName"
 
 /**
  * Tests for inbound @-mention matching with real_name candidates.
@@ -48,7 +49,7 @@ describe("MessageInput @-mention realname matching", () => {
     })
 
     it("chip label is the canonical display name for any matched alias", () => {
-        // real_name=王大棍, remark(群昵称)=棍哥, name(昵称)=大棍子 → 规范名是 remark 棍哥。
+        // real_name=王大棍, remark(群昵称)=棍哥, name(昵称)=大棍子 → 已实名，规范名是 real_name 王大棍。
         const member: SubscriberLike = {
             uid: "u1",
             name: "大棍子",
@@ -56,8 +57,25 @@ describe("MessageInput @-mention realname matching", () => {
             orgData: { real_name: "王大棍", realname_verified: 1 },
         }
         const infos = buildMemberInfos([member])
-        // 规范名 = remark → real_name(verified) → name，这里 remark="棍哥"。
+        // 规范名 = real_name(verified) → remark → name，这里 real_name="王大棍"。
         for (const writing of ["@棍哥", "@王大棍", "@大棍子"]) {
+            const mention = firstMention(parseMentionMarkers(`${writing} 在吗`, infos))
+            expect(mention, writing).toBeDefined()
+            expect(mention!.attrs!.id, writing).toBe("u1")
+            expect(mention!.attrs!.label, writing).toBe("王大棍")
+        }
+    })
+
+    it("chip label uses remark when not verified", () => {
+        // 未实名：real_name 不生效，规范名退回 remark 棍哥。
+        const member: SubscriberLike = {
+            uid: "u1",
+            name: "大棍子",
+            remark: "棍哥",
+            orgData: { real_name: "王大棍", realname_verified: 0 },
+        }
+        const infos = buildMemberInfos([member])
+        for (const writing of ["@棍哥", "@大棍子"]) {
             const mention = firstMention(parseMentionMarkers(`${writing} 在吗`, infos))
             expect(mention, writing).toBeDefined()
             expect(mention!.attrs!.id, writing).toBe("u1")
@@ -122,5 +140,26 @@ describe("MessageInput @-mention realname matching", () => {
         const parsed = parseMentionMarkers("@路人甲 你好", infos)
         expect(firstMention(parsed)).toBeUndefined()
         expect(parsed.map((n) => n.text).join("")).toBe("@路人甲 你好")
+    })
+
+    it("input-box chip label and send-side label agree on the canonical name", () => {
+        // real_name=王大棍(已实名), remark=棍哥, name=大棍子。
+        // 输入框 chip 走 buildMemberInfos→subscriberDisplayName；
+        // 发送侧 formatMentionTextV2 也走 subscriberDisplayName（同一解析器）。
+        // 二者必须都得到 @王大棍。
+        const member: SubscriberLike = {
+            uid: "u1",
+            name: "大棍子",
+            remark: "棍哥",
+            orgData: { real_name: "王大棍", realname_verified: 1 },
+        }
+        const infos = buildMemberInfos([member])
+        const chip = firstMention(parseMentionMarkers("@棍哥 在吗", infos))
+        const inputLabel = chip!.attrs!.label
+        // 模拟 formatMentionTextV2 普通成员分支：`@${subscriberDisplayName(member)}`
+        const sendLabel = subscriberDisplayName(member)
+        expect(inputLabel).toBe("王大棍")
+        expect(sendLabel).toBe("王大棍")
+        expect(`@${inputLabel}`).toBe(`@${sendLabel}`)
     })
 })

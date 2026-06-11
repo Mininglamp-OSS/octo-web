@@ -5,9 +5,12 @@
  * 名称的位置都应该经过本工具，以统一处理「真实姓名覆盖昵称」的优先级。
  *
  * 优先级（从高到低）：
- *   1. `remark`        —— 查看者本地给对方设置的备注名（好友备注）
- *   2. `real_name`     —— 仅当 `realname_verified === true` 时生效
+ *   1. `real_name`     —— 仅当 `realname_verified === true` 时生效（已实名认证）
+ *   2. `remark`        —— 查看者本地给对方设置的备注名（好友备注）
  *   3. `name`          —— 用户自设的昵称（默认）
+ *
+ * 实名优先：经过 OCTO 实名认证的真实姓名是最可信的身份信号，应当压过
+ * 本地备注与自设昵称，统一对齐外部混合身份群场景下「认准真人」的诉求。
  *
  * 字段来源：
  *   - `users/{uid}` profile API 返回扁平字段 realname_verified / real_name
@@ -54,10 +57,10 @@ function normalizeVerified(v: boolean | number | string | null | undefined): boo
 
 export function displayName(user: DisplayNameUser | null | undefined): string {
     if (!user) return "";
-    if (nonEmpty(user.remark)) return user.remark;
     // realname_verified 兼容 bool / 1 / 0 / "1" / "true"
     const verified = normalizeVerified(user.realname_verified);
     if (verified && nonEmpty(user.real_name)) return user.real_name;
+    if (nonEmpty(user.remark)) return user.remark;
     return nonEmpty(user.name) ? user.name : "";
 }
 
@@ -78,7 +81,7 @@ export function isRealnameVerified(user: DisplayNameUser | null | undefined): bo
  *
  * Subscriber 的 `name` / `remark` 是平铺字段，`real_name` / `realname_verified`
  * 在 orgData 里（后端 enrich）。本函数把两边的字段合并后交给 displayName
- * 统一按 remark → real_name(verified) → name 的优先级返回。
+ * 统一按 real_name(verified) → remark → name 的优先级返回。
  *
  * 用于群消息发送者名字的主路径（比 Person ChannelInfo 命中率高得多，
  * 特别是仅在群里出现、没开过 1v1 的用户）。

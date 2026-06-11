@@ -78,14 +78,24 @@ describe("displayName — 字符串归一化后的 real_name 生效 (E1)", () =>
         expect(name).toBe("nickname")
     })
 
-    it("remark 永远优先于 real_name / nickname", () => {
+    it("remark 优先于 nickname（未实名时）", () => {
+        const name = displayName({
+            remark: "Buddy",
+            name: "nickname",
+            real_name: "Real Name",
+            realname_verified: "0" as any,
+        })
+        expect(name).toBe("Buddy")
+    })
+
+    it("已实名的 real_name 优先于 remark / nickname", () => {
         const name = displayName({
             remark: "Buddy",
             name: "nickname",
             real_name: "Real Name",
             realname_verified: "1" as any,
         })
-        expect(name).toBe("Buddy")
+        expect(name).toBe("Real Name")
     })
 })
 
