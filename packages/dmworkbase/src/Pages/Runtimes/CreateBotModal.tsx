@@ -2,11 +2,24 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Toast } from '@douyinfe/semi-ui';
 import { createBot, RuntimeKind } from './botsApi';
 
+// CreateBotModal — 2-step device-first selector.
+//
+// Background: a single user can register multiple devices (= multiple
+// daemons). Each device contributes its own set of 4 runtimes (openclaw
+// / claude / codex / hermes). If the modal showed a flat runtime list
+// keyed only on `kind`, the user couldn't distinguish "openclaw on
+// laptop-1" from "openclaw on laptop-2" — picking by kind alone would
+// silently bind to whichever entry was first. So the modal asks for
+// device first, then offers the runtime kinds available on that device.
+
 interface RuntimeOption {
   id: number;
   name: string;
   kind: RuntimeKind;
   supported: boolean;
+  daemon_id: string;
+  device_name: string;
+  status: string;
 }
 
 interface Props {
@@ -16,30 +29,94 @@ interface Props {
   onCreated: (botId: number) => void;
 }
 
+interface DeviceGroup {
+  daemon_id: string;
+  device_name: string;
+  runtimes: RuntimeOption[];
+  hasSupportedOnline: boolean;
+}
+
+function groupByDevice(runtimes: RuntimeOption[]): DeviceGroup[] {
+  const map = new Map<string, DeviceGroup>();
+  for (const r of runtimes) {
+    const key = r.daemon_id || r.device_name || 'unknown';
+    let g = map.get(key);
+    if (!g) {
+      g = {
+        daemon_id: r.daemon_id,
+        device_name: r.device_name || r.daemon_id || 'unknown',
+        runtimes: [],
+        hasSupportedOnline: false,
+      };
+      map.set(key, g);
+    }
+    g.runtimes.push(r);
+    if (r.supported && r.status === 'online') g.hasSupportedOnline = true;
+  }
+  // Stable order: devices with at least one online supported runtime first
+  return Array.from(map.values()).sort((a, b) => {
+    if (a.hasSupportedOnline !== b.hasSupportedOnline) return a.hasSupportedOnline ? -1 : 1;
+    return a.device_name.localeCompare(b.device_name);
+  });
+}
+
 export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props) {
   const [name, setName] = useState('');
+  const [deviceKey, setDeviceKey] = useState<string | null>(null);
   const [runtimeId, setRuntimeId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (visible) {
-      setName('');
-      setRuntimeId(runtimes.find(r => r.supported)?.id ?? null);
-      setBusy(false);
-    }
-  }, [visible, runtimes]);
+  const groups = useMemo(() => groupByDevice(runtimes), [runtimes]);
 
-  const selected = useMemo(() => runtimes.find(r => r.id === runtimeId) ?? null, [runtimes, runtimeId]);
-  const canSubmit = !!name.trim() && !!selected && selected.supported && !busy;
+  // Reset state on open. Auto-select the first device that has a
+  // supported online runtime, and that runtime as the default.
+  useEffect(() => {
+    if (!visible) return;
+    setName('');
+    setBusy(false);
+    const firstReady = groups.find(g => g.hasSupportedOnline);
+    if (firstReady) {
+      setDeviceKey(firstReady.daemon_id);
+      const firstRt = firstReady.runtimes.find(r => r.supported && r.status === 'online')
+        ?? firstReady.runtimes.find(r => r.supported)
+        ?? firstReady.runtimes[0];
+      setRuntimeId(firstRt?.id ?? null);
+    } else if (groups[0]) {
+      setDeviceKey(groups[0].daemon_id);
+      setRuntimeId(null);
+    } else {
+      setDeviceKey(null);
+      setRuntimeId(null);
+    }
+  }, [visible, groups]);
+
+  const activeGroup = useMemo(
+    () => groups.find(g => g.daemon_id === deviceKey) ?? null,
+    [groups, deviceKey],
+  );
+  const selectedRuntime = useMemo(
+    () => activeGroup?.runtimes.find(r => r.id === runtimeId) ?? null,
+    [activeGroup, runtimeId],
+  );
+  const canSubmit = !!name.trim() && !!selectedRuntime && selectedRuntime.supported && !busy;
+
+  const handleDevicePick = (g: DeviceGroup) => {
+    setDeviceKey(g.daemon_id);
+    // Pre-select the first supported online runtime under the new device.
+    const firstRt = g.runtimes.find(r => r.supported && r.status === 'online')
+      ?? g.runtimes.find(r => r.supported)
+      ?? null;
+    setRuntimeId(firstRt?.id ?? null);
+  };
 
   const handleSubmit = async () => {
-    if (!canSubmit || !selected) return;
+    if (!canSubmit || !selectedRuntime) return;
     setBusy(true);
     try {
       const bot = await createBot({
-        runtime_id: selected.id,
+        runtime_id: selectedRuntime.id,
         name: name.trim(),
-        runtime_kind: selected.kind,
+        runtime_kind: selectedRuntime.kind,
       });
       Toast.success(`已创建：${bot.name}`);
       onCreated(bot.id);
@@ -60,63 +137,95 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
       okText={busy ? '创建中…' : '创建'}
       okButtonProps={{ disabled: !canSubmit }}
       maskClosable={!busy}
+      width={520}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div>
-          <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 6 }}>名称</label>
+      <div className="wk-rt-cb__form">
+        <div className="wk-rt-cb__field">
+          <label className="wk-rt-cb__label">名称</label>
           <input
+            className="wk-rt-cb__input"
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="如：dev / reviewer / writer"
-            style={{
-              width: '100%', padding: '6px 10px',
-              border: '1px solid #e5e5e5',
-              borderRadius: 6, fontSize: 13, boxSizing: 'border-box',
-            }}
             disabled={busy}
             autoFocus
+            maxLength={64}
           />
         </div>
-        <div>
-          <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 6 }}>运行时</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {runtimes.length === 0 && (
-              <span style={{ color: '#888', fontSize: 12 }}>本机暂无可用运行时</span>
-            )}
-            {runtimes.map(r => (
-              <label
-                key={r.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '6px 10px',
-                  border: '1px solid ' + (runtimeId === r.id ? '#1a1a1a' : '#e5e5e5'),
-                  borderRadius: 6,
-                  cursor: r.supported ? 'pointer' : 'not-allowed',
-                  opacity: r.supported ? 1 : 0.5,
-                }}
-              >
-                <input
-                  type="radio"
-                  checked={runtimeId === r.id}
-                  onChange={() => r.supported && setRuntimeId(r.id)}
-                  disabled={!r.supported || busy}
-                />
-                <span style={{ fontWeight: 500 }}>{r.name}</span>
-                <span style={{ fontSize: 11, color: '#888' }}>{r.kind}</span>
-                {!r.supported && (
-                  <span style={{
-                    marginLeft: 'auto',
-                    fontSize: 11, padding: '1px 6px',
-                    background: '#f0f0f0', borderRadius: 3, color: '#888',
-                  }}>暂不支持</span>
-                )}
-              </label>
-            ))}
-          </div>
+
+        <div className="wk-rt-cb__field">
+          <label className="wk-rt-cb__label">设备</label>
+          {groups.length === 0 ? (
+            <div className="wk-rt-cb__empty">
+              暂无可用设备。请先创建 Runtime（点上方 + → 创建 Runtime）。
+            </div>
+          ) : (
+            <div className="wk-rt-cb__chips" role="radiogroup" aria-label="选择设备">
+              {groups.map(g => {
+                const active = deviceKey === g.daemon_id;
+                return (
+                  <button
+                    type="button"
+                    key={g.daemon_id || g.device_name}
+                    role="radio"
+                    aria-checked={active}
+                    className={`wk-rt-cb__chip${active ? ' is-active' : ''}${
+                      g.hasSupportedOnline ? '' : ' is-dim'
+                    }`}
+                    onClick={() => handleDevicePick(g)}
+                    disabled={busy}
+                  >
+                    <span className="wk-rt-cb__chip-name">{g.device_name}</span>
+                    <span className="wk-rt-cb__chip-meta">
+                      {g.runtimes.filter(r => r.status === 'online').length}/{g.runtimes.length} 在线
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
-        {selected?.supported && selected.kind === 'openclaw' && (
-          <div style={{ fontSize: 11, color: '#888' }}>
-            openclaw workspace 名将自动派生（隐藏在内部）
+
+        <div className="wk-rt-cb__field">
+          <label className="wk-rt-cb__label">运行时</label>
+          {!activeGroup ? (
+            <div className="wk-rt-cb__empty">先选择设备</div>
+          ) : (
+            <div className="wk-rt-cb__rt-list" role="radiogroup" aria-label="选择运行时">
+              {activeGroup.runtimes.map(r => {
+                const isOnline = r.status === 'online';
+                const enabled = r.supported && isOnline && !busy;
+                return (
+                  <label
+                    key={r.id}
+                    className={`wk-rt-cb__rt-row${runtimeId === r.id ? ' is-active' : ''}${
+                      enabled ? '' : ' is-dim'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="runtime-pick"
+                      checked={runtimeId === r.id}
+                      onChange={() => enabled && setRuntimeId(r.id)}
+                      disabled={!enabled}
+                    />
+                    <span className="wk-rt-cb__rt-kind">{r.kind}</span>
+                    <span className="wk-rt-cb__rt-status" data-status={isOnline ? 'online' : 'offline'}>
+                      {isOnline ? '在线' : '离线'}
+                    </span>
+                    {!r.supported && (
+                      <span className="wk-rt-cb__rt-tag">暂不支持</span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {selectedRuntime?.supported && selectedRuntime.kind === 'openclaw' && (
+          <div className="wk-rt-cb__hint">
+            openclaw workspace 名将自动派生
           </div>
         )}
       </div>

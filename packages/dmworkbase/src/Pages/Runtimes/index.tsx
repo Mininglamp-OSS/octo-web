@@ -4,6 +4,7 @@ import { Toast, Modal, Form, Button } from "@douyinfe/semi-ui"
 import WKApp from "../../App"
 import WKAvatar from "../../Components/WKAvatar"
 import { BotsTab, type BotsTabHandle } from "./BotsTab"
+import { CreateRuntimeModal } from "./CreateRuntimeModal"
 import { Bot, listBots } from "./botsApi"
 import "./index.css"
 
@@ -1364,6 +1365,10 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
 type ActiveTab = "runtime" | "bots"
 interface RuntimesPageState extends RuntimesState {
     activeTab: ActiveTab
+    createMenuOpen: boolean
+    runtimeModalOpen: boolean
+    botModalOpen: boolean
+    botModalRuntimes: { id: number; name: string; kind: import("./botsApi").RuntimeKind; supported: boolean }[]
 }
 
 export default class RuntimesPage extends Component<{}, RuntimesPageState> {
@@ -1379,6 +1384,10 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         selectedId: null,
         expandedDevices: new Set<string>(),
         activeTab: (new URLSearchParams(window.location.search).get("tab") === "bots" ? "bots" : "runtime"),
+        createMenuOpen: false,
+        runtimeModalOpen: false,
+        botModalOpen: false,
+        botModalRuntimes: [],
     }
 
     private pollTimer?: ReturnType<typeof setInterval>
@@ -1555,46 +1564,58 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     }
 
     render() {
-        const { runtimes, selectedId, loading, expandedDevices, activeTab } = this.state
+        const { runtimes, selectedId, loading, expandedDevices, createMenuOpen, runtimeModalOpen, botModalOpen, botModalRuntimes } = this.state
         const groups = groupByDevice(runtimes)
         const totalOnline = runtimes.filter(r => r.status === "online").length
 
         return (
             <div className="wk-rt-list">
+                <CreateRuntimeModal
+                    visible={runtimeModalOpen}
+                    onClose={() => this.setState({ runtimeModalOpen: false })}
+                />
+                <BotsTab ref={this.botsTabRef} hidden />
+
                 <div className="wk-rt-pageheader">
-                    <nav className="wk-rt-pagetabs" role="tablist" aria-label="Runtimes / Bots">
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === "runtime"}
-                            className={`wk-rt-pagetab${activeTab === "runtime" ? " is-active" : ""}`}
-                            onClick={() => this.switchTab("runtime")}
-                        >Runtime</button>
-                        <button
-                            type="button"
-                            role="tab"
-                            aria-selected={activeTab === "bots"}
-                            className={`wk-rt-pagetab${activeTab === "bots" ? " is-active" : ""}`}
-                            onClick={() => this.switchTab("bots")}
-                        >Bot</button>
-                        {activeTab === "runtime" && (
-                            <span className="wk-rt-pageheader__meta" aria-live="polite">
-                                {groups.length} device{groups.length !== 1 ? "s" : ""} · {totalOnline} online
-                            </span>
-                        )}
-                        {activeTab === "bots" && (
+                    <div className="wk-rt-pagetitle">
+                        <h2 className="wk-rt-pagetitle-text">运行时</h2>
+                        <span className="wk-rt-pageheader__meta" aria-live="polite">
+                            {groups.length} device{groups.length !== 1 ? "s" : ""} · {totalOnline} online
+                        </span>
+                        <div className="wk-rt-create-wrap">
                             <button
                                 type="button"
-                                className="wk-rt-pageheader__action"
-                                onClick={() => this.botsTabRef.current?.openCreate()}
-                            >+ 新建</button>
-                        )}
-                    </nav>
+                                className="wk-rt-create-btn"
+                                aria-haspopup="menu"
+                                aria-expanded={createMenuOpen}
+                                onClick={() => this.setState({ createMenuOpen: !createMenuOpen })}
+                            >+</button>
+                            {createMenuOpen && (
+                                <>
+                                    <div
+                                        className="wk-rt-create-overlay"
+                                        onClick={() => this.setState({ createMenuOpen: false })}
+                                    />
+                                    <div className="wk-rt-create-menu" role="menu">
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            className="wk-rt-create-menu-item"
+                                            onClick={() => this.setState({ createMenuOpen: false, runtimeModalOpen: true })}
+                                        >创建 Runtime</button>
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            className="wk-rt-create-menu-item"
+                                            onClick={() => this.setState({ createMenuOpen: false }, () => this.botsTabRef.current?.openCreate())}
+                                        >创建 Bot</button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
                 </div>
-                {activeTab === "bots" ? (
-                    <BotsTab ref={this.botsTabRef} />
-                ) : (
-                    <div className="wk-rt-runtime-tab">
+                <div className="wk-rt-runtime-tab">
                 <div className="wk-rt-list-items">
                     {loading && <div className="wk-rt-empty">Loading...</div>}
                     {!loading && groups.length === 0 && (
@@ -1656,8 +1677,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                         )
                     })}
                 </div>
-                    </div>
-                )}
+                </div>
             </div>
         )
     }

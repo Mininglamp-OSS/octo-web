@@ -1884,3 +1884,324 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* PR-2 (runtime tree UI): top header now shows "运行时" + meta + "+" button.
+   Replaces the prior Runtime/Bot tab nav. Style is intentionally restrained
+   (no gradients / heavy shadows / strong colors) to match the rest of the
+   page. */
+.wk-rt-pagetitle {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+}
+.wk-rt-pagetitle-text {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
+  line-height: 1.4;
+}
+.wk-rt-create-wrap {
+  position: relative;
+  margin-left: auto;
+}
+.wk-rt-create-btn {
+  border: 1px solid var(--border-color, #e5e7eb);
+  background: transparent;
+  color: var(--text-primary, #1f2937);
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.wk-rt-create-btn:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+}
+.wk-rt-create-btn:focus-visible {
+  outline: 2px solid var(--brand-primary, #2563eb);
+  outline-offset: 1px;
+}
+.wk-rt-create-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+}
+.wk-rt-create-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 140px;
+  background: var(--bg-elevated, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  z-index: 10;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+.wk-rt-create-menu-item {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--text-primary, #1f2937);
+  font-size: 13px;
+  padding: 8px 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.wk-rt-create-menu-item:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+}
+.wk-rt-create-menu-item:focus-visible {
+  outline: 2px solid var(--brand-primary, #2563eb);
+  outline-offset: -2px;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   CreateBotModal — device-first 2-step picker.
+   Style follows project's restrained convention (no gradients, no
+   strong colors, neutral borders on light surfaces).
+   ────────────────────────────────────────────────────────────────── */
+
+.wk-rt-cb__form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.wk-rt-cb__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wk-rt-cb__label {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  font-weight: 500;
+}
+.wk-rt-cb__input {
+  appearance: none;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary, #1f2937);
+  background: var(--bg-elevated, #fff);
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+.wk-rt-cb__input:focus {
+  outline: none;
+  border-color: var(--brand-primary, #2563eb);
+}
+.wk-rt-cb__input:disabled {
+  background: var(--bg-disabled, #f5f5f5);
+  cursor: not-allowed;
+}
+.wk-rt-cb__empty {
+  font-size: 12px;
+  color: var(--text-tertiary, #888);
+  padding: 8px 10px;
+  background: var(--bg-fill-0, rgba(0, 0, 0, 0.02));
+  border-radius: 4px;
+  line-height: 1.5;
+}
+.wk-rt-cb__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wk-rt-cb__chip {
+  appearance: none;
+  background: var(--bg-elevated, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-primary, #1f2937);
+  cursor: pointer;
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+.wk-rt-cb__chip:hover:not(:disabled) {
+  border-color: var(--text-secondary, #999);
+}
+.wk-rt-cb__chip.is-active {
+  border-color: var(--text-primary, #1f2937);
+  background: var(--bg-fill-1, rgba(0, 0, 0, 0.04));
+}
+.wk-rt-cb__chip.is-dim {
+  opacity: 0.6;
+}
+.wk-rt-cb__chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.wk-rt-cb__chip:focus-visible {
+  outline: 2px solid var(--brand-primary, #2563eb);
+  outline-offset: 1px;
+}
+.wk-rt-cb__chip-name {
+  font-weight: 500;
+}
+.wk-rt-cb__chip-meta {
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+}
+.wk-rt-cb__rt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wk-rt-cb__rt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary, #1f2937);
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+  min-height: 36px;
+}
+.wk-rt-cb__rt-row:hover:not(.is-dim) {
+  border-color: var(--text-secondary, #999);
+}
+.wk-rt-cb__rt-row.is-active {
+  border-color: var(--text-primary, #1f2937);
+  background: var(--bg-fill-1, rgba(0, 0, 0, 0.04));
+}
+.wk-rt-cb__rt-row.is-dim {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.wk-rt-cb__rt-kind {
+  font-weight: 500;
+  text-transform: lowercase;
+  letter-spacing: 0;
+}
+.wk-rt-cb__rt-status {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-fill-1, rgba(0, 0, 0, 0.04));
+  color: var(--text-secondary, #666);
+}
+.wk-rt-cb__rt-status[data-status="online"] {
+  background: rgba(22, 163, 74, 0.10);
+  color: #16a34a;
+}
+.wk-rt-cb__rt-tag {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 1px 6px;
+  background: var(--bg-fill-1, rgba(0, 0, 0, 0.04));
+  border-radius: 3px;
+  color: var(--text-tertiary, #888);
+}
+.wk-rt-cb__hint {
+  font-size: 11px;
+  color: var(--text-tertiary, #888);
+  line-height: 1.5;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   CreateRuntimeModal — onboarding (replaces BotFather /daemon)
+   ────────────────────────────────────────────────────────────────── */
+
+.wk-rt-onb {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary, #1f2937);
+}
+.wk-rt-onb__lead {
+  margin: 0 0 16px;
+  color: var(--text-secondary, #555);
+}
+.wk-rt-onb__placeholder {
+  padding: 16px 0;
+  color: var(--text-tertiary, #888);
+  font-size: 12px;
+}
+.wk-rt-onb__error {
+  padding: 10px 12px;
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.wk-rt-onb__section {
+  margin-top: 14px;
+}
+.wk-rt-onb__section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.wk-rt-onb__section-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary, #1f2937);
+}
+.wk-rt-onb__section-hint {
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+}
+.wk-rt-onb__copy {
+  margin-left: auto;
+  appearance: none;
+  border: 1px solid var(--border-color, #e5e7eb);
+  background: transparent;
+  color: var(--text-primary, #1f2937);
+  padding: 2px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 18px;
+  transition: background-color 0.12s ease;
+}
+.wk-rt-onb__copy:hover {
+  background: var(--bg-fill-1, rgba(0, 0, 0, 0.04));
+}
+.wk-rt-onb__copy:focus-visible {
+  outline: 2px solid var(--brand-primary, #2563eb);
+  outline-offset: 1px;
+}
+.wk-rt-onb__code {
+  background: var(--bg-fill-2, rgba(0, 0, 0, 0.05));
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, monospace;
+  margin: 0;
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.6;
+  color: var(--text-primary, #1f2937);
+}
+.wk-rt-onb__note {
+  margin-top: 16px;
+  padding: 10px 12px;
+  background: var(--bg-fill-0, rgba(0, 0, 0, 0.02));
+  border-left: 2px solid var(--border-color, #e5e7eb);
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  line-height: 1.6;
+}

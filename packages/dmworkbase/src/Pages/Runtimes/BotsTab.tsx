@@ -8,6 +8,15 @@ interface RuntimeListEntry {
   id: number;
   name: string;
   provider: string;
+  // PR-2: device grouping for the create-bot 2-step selector. Same kind
+  // can have multiple instances across devices (one daemon = 4 runtimes:
+  // openclaw / claude / codex / hermes — each daemon contributes its own
+  // set), so the user must first pick a device, then a runtime kind under
+  // that device. Without this disambiguation the create-bot SELECT would
+  // silently bind to whichever "openclaw" entry happened to be first.
+  daemon_id: string;
+  device_name: string;
+  status: string;
 }
 
 // Imperative handle exposed to RuntimesPage so the parent can render the
@@ -24,7 +33,17 @@ export interface BotsTabHandle {
 // PoC4: which runtime kinds actually run tasks. Others are inert.
 const SUPPORTED_KINDS: RuntimeKind[] = ['openclaw'];
 
-export const BotsTab = forwardRef<BotsTabHandle>(function BotsTab(_props, ref) {
+export interface BotsTabProps {
+  // PR-2 (runtime tree UI): when true, only the create modal is rendered
+  // — the bot list / detail panel UI stays mounted but hidden so the
+  // RuntimesPage can keep using `ref.current.openCreate()` from its
+  // top-level "+" popover. The bot list is now surfaced inline under
+  // each runtime row in the tree, so the standalone tab body is no
+  // longer shown by default.
+  hidden?: boolean;
+}
+
+export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(props, ref) {
   const [bots, setBots] = useState<Bot[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [runtimes, setRuntimes] = useState<RuntimeListEntry[]>([]);
@@ -63,7 +82,14 @@ export const BotsTab = forwardRef<BotsTabHandle>(function BotsTab(_props, ref) {
         });
         const env = await res.json();
         const list = (env?.data?.runtimes ?? env?.runtimes ?? []) as any[];
-        setRuntimes(list.map(r => ({ id: r.id, name: r.name || r.provider, provider: r.provider })));
+        setRuntimes(list.map(r => ({
+          id: r.id,
+          name: r.name || r.provider,
+          provider: r.provider,
+          daemon_id: r.daemon_id || '',
+          device_name: r.device_name || r.daemon_id || 'unknown',
+          status: r.status || 'unknown',
+        })));
       } catch {
         setRuntimes([]);
       }
@@ -122,6 +148,9 @@ export const BotsTab = forwardRef<BotsTabHandle>(function BotsTab(_props, ref) {
     name: r.name,
     kind: (r.provider as RuntimeKind),
     supported: SUPPORTED_KINDS.includes(r.provider as RuntimeKind),
+    daemon_id: r.daemon_id,
+    device_name: r.device_name,
+    status: r.status,
   })), [runtimes]);
 
   const handleCreated = useCallback(async (botId: number) => {
@@ -134,7 +163,7 @@ export const BotsTab = forwardRef<BotsTabHandle>(function BotsTab(_props, ref) {
   }, [refresh, selectBot]);
 
   return (
-    <div className="wk-rt-bots-list">
+    <div className="wk-rt-bots-list" style={props.hidden ? { display: 'none' } : undefined}>
       {loading && bots.length === 0 && <div className="wk-rt-bots__empty">加载中…</div>}
       {!loading && bots.length === 0 && (
         <div className="wk-rt-bots__empty">还没有智能体，点右上角 + 新建</div>
