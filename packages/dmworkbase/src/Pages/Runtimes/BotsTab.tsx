@@ -56,6 +56,11 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // C10 in-flight guard: spaceEpoch 每次 space-changed 自增, refresh /
+  // loadRuntimes 启动时拍快照, 响应回来时若 epoch 变了就丢弃 — 防旧
+  // space 的请求覆盖新 space 的 setRuntimes/setBots.
+  const spaceEpochRef = useRef(0);
+
   // When a parent calls openBot(id) before the bots list has loaded, we
   // stash the id here and let a [bots]-watching effect apply it once the
   // list arrives. Without this, jumping in from a Runtime detail page on
@@ -63,12 +68,14 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   const pendingOpenIdRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
+    const epoch = spaceEpochRef.current;
     setLoading(true);
     try {
       const list = await listBots();
+      if (epoch !== spaceEpochRef.current) return; // stale
       setBots(list);
     } finally {
-      setLoading(false);
+      if (epoch === spaceEpochRef.current) setLoading(false);
     }
   }, []);
 
@@ -76,6 +83,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   // create bot 弹窗仍用旧 space 的设备/runtime, 导致跨 space mint 失败. 用
   // mittBus 监听 space-changed (跟 RuntimesPage 同源信号), 命中时重拉.
   const loadRuntimes = useCallback(async () => {
+    const epoch = spaceEpochRef.current;
     const spaceId = (WKApp as any)?.shared?.currentSpaceId ?? '';
     const sessionToken = (WKApp as any)?.loginInfo?.token ?? '';
     // 合并 plan 决策一+二 Phase 3A: fleet 切到 AuthMiddleware 接 session
@@ -88,6 +96,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
         headers,
       });
       const env = await res.json();
+      if (epoch !== spaceEpochRef.current) return; // stale
       const list = (env?.data?.runtimes ?? env?.runtimes ?? []) as any[];
       setRuntimes(list.map(r => ({
         id: r.id,
@@ -98,16 +107,18 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
         status: r.status || 'unknown',
       })));
     } catch {
-      setRuntimes([]);
+      if (epoch === spaceEpochRef.current) setRuntimes([]);
     }
   }, []);
 
   useEffect(() => { loadRuntimes() }, [loadRuntimes]);
 
   // 切 space 时清除 bot 列表 + 重拉 runtimes; 同时关弹窗 / 清挂起的 openBot,
-  // 防止跨 space 的 bot id 撞到当前列表.
+  // 防止跨 space 的 bot id 撞到当前列表. epoch++ 让在飞的 refresh /
+  // loadRuntimes 回填时被识别成 stale 丢弃 (C10).
   useEffect(() => {
     const onSpaceChanged = () => {
+      spaceEpochRef.current++;
       setBots([]);
       setSelectedId(null);
       setModalOpen(false);

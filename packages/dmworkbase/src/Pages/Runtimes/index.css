@@ -44,7 +44,7 @@
 }
 
 .wk-rt-list-item.selected {
-    background: var(--accent-light, rgba(91, 106, 191, 0.08));
+    background: var(--accent-light);
 }
 
 .wk-rt-list-item-info {
@@ -77,7 +77,7 @@
     justify-content: center;
     font-size: 15px;
     font-weight: 700;
-    color: #fff;
+    color: var(--bg-primary);
     flex-shrink: 0;
 }
 
@@ -96,11 +96,11 @@
 }
 
 .wk-rt-status-dot.online {
-    background: #22c55e;
+    background: var(--wk-color-success);
 }
 
 .wk-rt-status-dot.offline {
-    background: #d1d5db;
+    background: var(--text-tertiary);
 }
 
 /* ── Right Detail Panel ── */
@@ -150,13 +150,13 @@
 }
 
 .wk-rt-status-badge.online {
-    background: rgba(34, 197, 94, 0.1);
-    color: #16a34a;
+    background: var(--wk-color-success-bg);
+    color: var(--wk-color-success);
 }
 
 .wk-rt-status-badge.offline {
-    background: rgba(107, 114, 128, 0.1);
-    color: #6b7280;
+    background: var(--bg-secondary);
+    color: var(--text-tertiary);
 }
 
 /* ── Detail Grid ── */
@@ -185,11 +185,11 @@
 }
 
 .wk-rt-text-online {
-    color: #16a34a !important;
+    color: var(--wk-color-success) !important;
 }
 
 .wk-rt-text-offline {
-    color: #6b7280 !important;
+    color: var(--text-tertiary) !important;
 }
 
 /* ── Detail Section ── */
@@ -241,9 +241,9 @@
 }
 
 .wk-rt-btn-delete:hover {
-    background: #fee2e2;
-    color: #dc2626;
-    border-color: #fecaca;
+    background: var(--wk-color-danger-bg);
+    color: var(--wk-color-error);
+    border-color: var(--wk-color-danger-border);
 }
 
 .wk-rt-btn-delete:disabled {
@@ -339,7 +339,7 @@
 }
 
 .wk-rt-agent-row.selected {
-    background: var(--accent-light, rgba(91, 106, 191, 0.08));
+    background: var(--accent-light);
 }
 
 .wk-rt-provider-icon.small {
@@ -437,7 +437,7 @@
 }
 
 .wk-rt-binding-row-bot:hover {
-    background: var(--bg-tertiary, rgba(0, 0, 0, 0.04));
+    background: var(--bg-tertiary);
 }
 
 /* Bot row: avatar + two-line text */
@@ -462,9 +462,9 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: #22c55e;
-    border: 2px solid var(--bg-secondary, #fff);
-    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+    background: var(--wk-color-success);
+    border: 2px solid var(--bg-secondary);
+    box-shadow: 0 0 0 0.5px var(--border-color);
 }
 
 .wk-rt-binding-text {
@@ -479,7 +479,7 @@
 .wk-rt-binding-primary {
     font-size: 13px;
     font-weight: 600;
-    color: var(--text-primary, #111);
+    color: var(--text-primary);
     line-height: 1.4;
     white-space: nowrap;
 }
@@ -497,13 +497,13 @@
     transition: color 120ms ease;
 }
 .wk-rt-binding-primary.wk-rt-clickable:hover {
-    color: var(--accent, #5b6abf);
+    color: var(--accent);
 }
 
 .wk-rt-binding-mention {
     font-size: 12px;
     font-family: "SF Mono", Menlo, Consolas, monospace;
-    color: var(--text-secondary, #8b95a5);
+    color: var(--text-secondary);
     cursor: pointer;
     user-select: all;
     padding: 1px 6px;
@@ -513,8 +513,8 @@
 }
 
 .wk-rt-binding-mention:hover {
-    background: var(--accent-soft, rgba(91, 106, 191, 0.12));
-    color: var(--accent, #5b6abf);
+    background: var(--accent-soft);
+    color: var(--accent);
 }
 
 /* Fallback row (non-dmwork bot): inline channel chip + mention */
@@ -526,7 +526,7 @@
     font-size: 11px;
     padding: 2px 8px;
     border-radius: 999px;
-    background: var(--bg-tertiary, rgba(0, 0, 0, 0.08));
+    background: var(--bg-tertiary);
     color: var(--text-secondary);
     text-transform: lowercase;
     font-weight: 500;
@@ -534,7 +534,7 @@
 
 /* ── Update Hint ── */
 .wk-rt-update-hint {
-    color: var(--text-secondary, #8b95a5);
+    color: var(--text-secondary);
     font-weight: 400;
     margin-left: 6px;
     font-size: 13px;
@@ -549,9 +549,9 @@
     padding: 1px 8px;
     font-size: 11px;
     font-weight: 400;
-    color: var(--text-secondary, #6b7280);
-    background: var(--bg-secondary, #f5f5f5);
-    border: 1px solid var(--border-light, #e5e5e5);
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
     border-radius: 4px;
     cursor: pointer;
     vertical-align: baseline;
@@ -559,16 +559,16 @@
     line-height: 1.3;
 }
 .wk-rt-upgrade-btn:hover {
-    background: var(--bg-hover, #ebebeb);
-    border-color: var(--border-medium, #d0d0d0);
+    background: var(--bg-hover);
+    border-color: var(--border-medium);
 }
 .wk-rt-upgrade-btn:active {
-    background: var(--bg-active, #e0e0e0);
+    background: var(--bg-active);
 }
 .wk-rt-upgrade-btn.disabled {
-    color: var(--text-disabled, #c0c0c0);
-    background: var(--bg-secondary, #f5f5f5);
-    border-color: var(--border-light, #e8e8e8);
+    color: var(--text-disabled);
+    background: var(--bg-secondary);
+    border-color: var(--border-light);
     cursor: not-allowed;
     opacity: 0.6;
 }
@@ -589,24 +589,24 @@
     border-radius: 50%;
 }
 .wk-rt-upgrade-status.progress {
-    color: var(--text-secondary, #8b95a5);
+    color: var(--text-secondary);
 }
 .wk-rt-upgrade-status.progress .upgrade-dot {
-    background: #3b82f6;
+    background: var(--accent);
     animation: upgradeDotPulse 1.2s ease-in-out infinite;
 }
 .wk-rt-upgrade-status.success {
-    color: #34a853;
+    color: var(--wk-color-success);
 }
 .wk-rt-upgrade-status.success .upgrade-dot {
-    background: #34a853;
+    background: var(--wk-color-success);
 }
 .wk-rt-upgrade-status.error {
-    color: #ea4335;
+    color: var(--wk-color-error);
     cursor: help;
 }
 .wk-rt-upgrade-status.error .upgrade-dot {
-    background: #ea4335;
+    background: var(--wk-color-error);
 }
 @keyframes upgradeDotPulse {
     0%, 100% { opacity: 1; transform: scale(1); }
@@ -634,20 +634,20 @@
 }
 
 .wk-rt-ping-dot.idle {
-    background: #d1d5db;
+    background: var(--text-tertiary);
 }
 
 .wk-rt-ping-dot.testing {
-    background: #f59e0b;
+    background: var(--wk-color-warning);
     animation: wk-rt-pulse 1s infinite;
 }
 
 .wk-rt-ping-dot.done {
-    background: #22c55e;
+    background: var(--wk-color-success);
 }
 
 .wk-rt-ping-dot.error {
-    background: #ef4444;
+    background: var(--wk-color-error);
 }
 
 @keyframes wk-rt-pulse {
@@ -671,8 +671,8 @@
 
 .wk-rt-default-tag {
     font-size: 10px;
-    background: rgba(91, 106, 191, 0.1);
-    color: var(--accent, #5b6abf);
+    background: var(--accent-light);
+    color: var(--accent);
     padding: 1px 5px;
     border-radius: 3px;
     margin-left: 6px;
@@ -707,7 +707,7 @@
 .wk-rt-managed-card {
     border: 1px solid var(--border-light);
     border-radius: 10px;
-    background: var(--bg-primary, #fff);
+    background: var(--bg-primary);
     overflow: hidden;
 }
 
@@ -717,7 +717,7 @@
     gap: 8px;
     padding: 10px 14px;
     border-bottom: 1px solid var(--border-light);
-    background: var(--bg-secondary, rgba(0, 0, 0, 0.02));
+    background: var(--bg-secondary);
 }
 
 .wk-rt-managed-title {
@@ -725,13 +725,13 @@
     font-weight: 600;
     letter-spacing: 0.02em;
     text-transform: uppercase;
-    color: var(--text-secondary, #4b5563);
+    color: var(--text-secondary);
 }
 
 .wk-rt-managed-count {
     font-size: 12px;
     color: var(--text-tertiary);
-    background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
+    background: var(--bg-tertiary);
     border-radius: 999px;
     padding: 1px 8px;
     line-height: 18px;
@@ -745,10 +745,10 @@
     gap: 4px;
     height: 26px;
     padding: 0 10px;
-    background: var(--bg-secondary, #f5f5f5);
-    border: 1px solid var(--border-light, #e5e5e5);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
     border-radius: 5px;
-    color: var(--text-primary, #1a1a1a);
+    color: var(--text-primary);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
@@ -774,12 +774,12 @@
 }
 
 .wk-rt-managed-toggle-all:hover {
-    color: var(--text-primary, #1a1a1a);
-    background: var(--bg-hover, #ebebeb);
+    color: var(--text-primary);
+    background: var(--bg-hover);
 }
 
 .wk-rt-managed-toggle-all:focus-visible {
-    outline: 2px solid var(--accent-light, rgba(91, 106, 191, 0.4));
+    outline: 2px solid var(--accent-light);
     outline-offset: 1px;
 }
 
@@ -795,16 +795,16 @@
 }
 
 .wk-rt-managed-add:hover {
-    background: var(--bg-hover, #ebebeb);
+    background: var(--bg-hover);
     border-color: var(--border-color);
 }
 
 .wk-rt-managed-add:active {
-    background: var(--bg-active, #e0e0e0);
+    background: var(--bg-active);
 }
 
 .wk-rt-managed-add:focus-visible {
-    outline: 2px solid var(--accent-light, rgba(91, 106, 191, 0.4));
+    outline: 2px solid var(--accent-light);
     outline-offset: 1px;
 }
 
@@ -861,7 +861,7 @@
 }
 
 .wk-rt-managed-agent-row:hover {
-    background: var(--bg-tertiary, rgba(0, 0, 0, 0.03));
+    background: var(--bg-tertiary);
 }
 
 .wk-rt-managed-agent-icon {
@@ -869,7 +869,7 @@
     width: 32px;
     height: 32px;
     border-radius: 8px;
-    background: var(--bg-secondary, rgba(0, 0, 0, 0.04));
+    background: var(--bg-secondary);
     border: 1px solid var(--border-light);
     color: var(--text-secondary);
     display: flex;
@@ -878,9 +878,9 @@
 }
 
 .wk-rt-managed-agent-icon.default {
-    background: rgba(96, 102, 250, 0.1);
-    border-color: rgba(96, 102, 250, 0.3);
-    color: rgb(96, 102, 250);
+    background: var(--accent-light);
+    border-color: var(--accent-light);
+    color: var(--accent);
 }
 
 .wk-rt-managed-agent-info {
@@ -910,7 +910,7 @@
 /* Bot list under expanded agent */
 .wk-rt-managed-bots {
     padding: 4px 14px 10px 58px;
-    background: var(--bg-secondary, rgba(0, 0, 0, 0.015));
+    background: var(--bg-secondary);
     border-top: 1px solid var(--border-light);
 }
 
@@ -948,12 +948,12 @@
 .wk-rt-managed-addbot:hover {
     border-color: var(--border-color);
     border-style: solid;
-    color: var(--text-primary, #1a1a1a);
-    background: var(--bg-hover, #ebebeb);
+    color: var(--text-primary);
+    background: var(--bg-hover);
 }
 
 .wk-rt-managed-addbot:active {
-    background: var(--bg-active, #e0e0e0);
+    background: var(--bg-active);
 }
 
 .wk-rt-managed-addbot svg {
@@ -982,7 +982,7 @@
 .wk-rt-modal-hint {
     margin-top: 14px;
     padding: 10px 12px;
-    background: var(--bg-secondary, rgba(0, 0, 0, 0.03));
+    background: var(--bg-secondary);
     border-radius: 6px;
     font-size: 12px;
     line-height: 1.6;
@@ -997,14 +997,8 @@
  */
 .wk-rt-pageheader {
   padding: 12px 16px 0;
-  background: var(--bg-primary, #fff);
-  border-bottom: 1px solid var(--border-light, #e8e8e8);
-}
-
-.wk-rt-pagetabs {
-  display: flex;
-  gap: 4px;
-  align-items: stretch;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-light);
 }
 
 /* Meta info (count / status summary) sits at the trailing edge of the
@@ -1022,67 +1016,6 @@
 /* Primary action button hosted in the page header (Bot tab uses it for
  * "+ 新建"). Style mirrors .wk-rt-upgrade-btn — light grey on hairline
  * border — so it reads as a secondary chrome control, not a hero CTA. */
-.wk-rt-pageheader__action {
-  margin-left: auto;
-  align-self: center;
-  margin-bottom: 4px;
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.2;
-  color: var(--text-primary, #1a1a1a);
-  background: var(--bg-secondary, #f5f5f5);
-  border: 1px solid var(--border-light, #e5e5e5);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.wk-rt-pageheader__action:hover {
-  background: var(--bg-hover, #ececec);
-  border-color: var(--border-medium, #d8d8d8);
-}
-
-.wk-rt-pageheader__action:focus-visible {
-  outline: none;
-  border-color: var(--text-primary, #1a1a1a);
-}
-
-.wk-rt-pagetab {
-  position: relative;
-  margin: 0;
-  padding: 8px 14px 12px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: -0.005em;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
-  min-height: 36px;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.wk-rt-pagetab:hover {
-  color: var(--text-secondary, #444);
-}
-
-.wk-rt-pagetab:focus-visible {
-  outline: none;
-  border-radius: 4px;
-  box-shadow: inset 0 0 0 2px var(--accent-light, rgba(99, 102, 241, 0.35));
-}
-
-.wk-rt-pagetab.is-active {
-  color: var(--text-primary, #111);
-  border-bottom-color: var(--text-primary, #111);
-  font-weight: 600;
-}
 
 /* ─── PoC4 BotsTab ─────────────────────────────────────────── */
 /* List-only — detail pushes into WKApp.routeRight, same model as
@@ -1095,65 +1028,13 @@
 /* Toolbar row above the list — minimal, only carries the create CTA
  * and an inline count. No section title — the page tab already says
  * "Bot", so a "智能体" heading here would be duplicative. */
-.wk-rt-bots__toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-}
-
-.wk-rt-bots__count-inline {
-  margin-right: auto;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  font-variant-numeric: tabular-nums;
-}
-.wk-rt-bots__list {
-  border-right: 1px solid var(--border-light, #e5e5e5);
-  display: flex;
-  flex-direction: column;
-}
-.wk-rt-bots__list-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  font-size: 13px;
-  font-weight: 500;
-}
-.wk-rt-bots__count {
-  display: inline-block;
-  padding: 0 6px;
-  margin-left: 4px;
-  font-size: 11px;
-  background: var(--bg-secondary, #f0f0f0);
-  color: var(--text-tertiary);
-  border-radius: 8px;
-  font-weight: 400;
-}
-.wk-rt-bots__new {
-  font-size: 12px;
-  padding: 4px 10px;
-  border: 1px solid var(--border-light, #e5e5e5);
-  background: var(--bg-secondary, #f5f5f5);
-  color: var(--text-primary, #1a1a1a);
-  border-radius: 6px;
-  cursor: pointer;
-}
-.wk-rt-bots__new:hover { background: var(--bg-hover, #ebebeb); }
-.wk-rt-bots__items {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  overflow-y: auto;
-}
 .wk-rt-bots__item {
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border-light, #f0f0f0);
+  border-bottom: 1px solid var(--border-light);
   cursor: pointer;
 }
-.wk-rt-bots__item:hover { background: var(--bg-hover, #fafafa); }
-.wk-rt-bots__item.is-active { background: var(--bg-active, #eef2ff); }
+.wk-rt-bots__item:hover { background: var(--bg-hover); }
+.wk-rt-bots__item.is-active { background: var(--bg-active); }
 .wk-rt-bots__item-name { font-size: 13px; font-weight: 500; }
 .wk-rt-bots__item-meta {
   display: flex;
@@ -1164,11 +1045,11 @@
 }
 .wk-rt-bots__item-kind {
   padding: 1px 6px;
-  background: var(--bg-secondary, #f0f0f0);
+  background: var(--bg-secondary);
   border-radius: 3px;
 }
-.wk-rt-bots__item-status--active { color: #0a8a4f; }
-.wk-rt-bots__item-status--failed { color: #dc2626; }
+.wk-rt-bots__item-status--active { color: var(--wk-color-success); }
+.wk-rt-bots__item-status--failed { color: var(--wk-color-error); }
 .wk-rt-bots__empty {
   padding: 24px 14px;
   text-align: center;
@@ -1190,8 +1071,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary, #111);
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 /* ── Header ── */
@@ -1227,7 +1108,7 @@
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: -0.01em;
-  color: var(--text-primary, #111);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1260,19 +1141,19 @@
 }
 
 .wk-bd-status--online {
-  color: #0a8a4f;
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.18);
+  color: var(--wk-color-success);
+  background: var(--wk-color-success-bg);
+  border-color: var(--wk-color-success-bg);
 }
 .wk-bd-status--failed {
-  color: #c2410c;
-  background: rgba(220, 38, 38, 0.06);
-  border-color: rgba(220, 38, 38, 0.18);
+  color: var(--wk-color-error);
+  background: var(--wk-color-error-bg);
+  border-color: var(--wk-color-error-bg);
 }
 .wk-bd-status--pending {
-  color: #92691a;
-  background: rgba(245, 158, 11, 0.08);
-  border-color: rgba(245, 158, 11, 0.18);
+  color: var(--wk-color-warning);
+  background: var(--wk-color-warning-bg);
+  border-color: var(--wk-color-warning-bg);
 }
 
 .wk-bd-chip {
@@ -1281,7 +1162,7 @@
   font-size: 11px;
   line-height: 1.4;
   color: var(--text-tertiary);
-  background: var(--bg-secondary, #f3f3f3);
+  background: var(--bg-secondary);
   border: 1px solid var(--border-light);
   border-radius: 4px;
   font-variant-numeric: tabular-nums;
@@ -1309,13 +1190,13 @@
 
 .wk-bd-action--ghost {
   background: transparent;
-  border: 1px solid var(--border-light, #e5e5e5);
+  border: 1px solid var(--border-light);
   color: var(--text-secondary);
 }
 .wk-bd-action--ghost:hover {
-  background: var(--bg-hover, #f5f5f5);
-  border-color: var(--border-medium, #d0d0d0);
-  color: var(--text-primary, #111);
+  background: var(--bg-hover);
+  border-color: var(--border-medium);
+  color: var(--text-primary);
 }
 
 /* ── Tab nav ── */
@@ -1342,8 +1223,8 @@
 }
 .wk-bd-tab:hover { color: var(--text-secondary); }
 .wk-bd-tab.is-active {
-  color: var(--text-primary, #111);
-  border-bottom-color: var(--text-primary, #111);
+  color: var(--text-primary);
+  border-bottom-color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -1365,7 +1246,7 @@
 
 .wk-bd-section--card {
   padding: 16px 18px;
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary);
   border: 1px solid var(--border-light);
   border-radius: 8px;
 }
@@ -1391,7 +1272,7 @@
   font-weight: 500;
   color: var(--text-tertiary);
   padding: 0 6px;
-  background: var(--bg-secondary, #f0f0f0);
+  background: var(--bg-secondary);
   border-radius: 8px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
@@ -1423,7 +1304,7 @@
   margin: 0;
   padding: 6px 8px;
   font-size: 13px;
-  color: var(--text-primary, #111);
+  color: var(--text-primary);
   border-radius: 4px;
   transition: background 0.12s;
   display: flex;
@@ -1433,11 +1314,11 @@
 }
 
 .wk-bd-prop__value:hover {
-  background: var(--bg-secondary, #fafafa);
+  background: var(--bg-secondary);
 }
 
 .wk-bd-props__sep {
-  color: var(--text-tertiary, #bbb);
+  color: var(--text-tertiary);
 }
 
 .wk-bd-props__hint {
@@ -1467,7 +1348,7 @@
 .wk-bd-copyable.is-mono .wk-bd-copyable__text {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
   font-size: 12px;
-  color: var(--text-secondary, #444);
+  color: var(--text-secondary);
 }
 
 .wk-bd-copyable__text {
@@ -1483,7 +1364,7 @@
   padding: 0 4px;
   background: transparent;
   border: none;
-  color: var(--text-tertiary, #bbb);
+  color: var(--text-tertiary);
   cursor: pointer;
   font-size: 12px;
   opacity: 0;
@@ -1494,7 +1375,7 @@
 .wk-bd-prop__value:hover .wk-bd-copyable__btn { opacity: 1; }
 
 .wk-bd-copyable__btn:hover {
-  color: var(--text-primary, #111);
+  color: var(--text-primary);
 }
 
 /* ── Error callout ── */
@@ -1508,8 +1389,8 @@
 }
 
 .wk-bd-callout--err {
-  background: rgba(220, 38, 38, 0.05);
-  border: 1px solid rgba(220, 38, 38, 0.18);
+  background: var(--wk-color-error-bg);
+  border: 1px solid var(--wk-color-error-bg);
 }
 
 .wk-bd-callout__label {
@@ -1517,7 +1398,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #c2410c;
+  color: var(--wk-color-error);
 }
 
 .wk-bd-callout__body {
@@ -1531,7 +1412,7 @@
 .wk-bd-empty {
   padding: 40px 0;
   text-align: center;
-  color: var(--text-tertiary, #aaa);
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 
@@ -1560,7 +1441,7 @@
   line-height: 1;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-  color: var(--text-primary, #111);
+  color: var(--text-primary);
 }
 
 .wk-bd-stats__unit {
@@ -1589,7 +1470,7 @@
   gap: 12px;
   padding: 10px 0;
   align-items: flex-start;
-  border-bottom: 1px solid var(--border-light, #f3f3f3);
+  border-bottom: 1px solid var(--border-light);
 }
 
 .wk-bd-feed__row:last-child { border-bottom: none; }
@@ -1600,12 +1481,12 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--text-tertiary, #c5c5c5);
+  background: var(--text-tertiary);
 }
 
-.wk-bd-feed__dot--ok { background: #16a34a; }
-.wk-bd-feed__dot--fail { background: #dc2626; }
-.wk-bd-feed__dot--comment { background: #6366f1; }
+.wk-bd-feed__dot--ok { background: var(--wk-color-success); }
+.wk-bd-feed__dot--fail { background: var(--wk-color-error); }
+.wk-bd-feed__dot--comment { background: var(--accent); }
 
 .wk-bd-feed__main {
   flex: 1;
@@ -1617,7 +1498,7 @@
 
 .wk-bd-feed__title {
   font-size: 13px;
-  color: var(--text-primary, #111);
+  color: var(--text-primary);
   line-height: 1.5;
   word-break: break-word;
   display: -webkit-box;
@@ -1628,7 +1509,7 @@
 
 .wk-bd-feed__row--activity .wk-bd-feed__title {
   font-size: 12px;
-  color: var(--text-secondary, #444);
+  color: var(--text-secondary);
 }
 
 .wk-bd-feed__meta {
@@ -1641,7 +1522,7 @@
 }
 
 .wk-bd-feed__dotsep {
-  color: var(--text-tertiary, #ccc);
+  color: var(--text-tertiary);
 }
 
 /* ── Tasks (rounded card rows) ── */
@@ -1660,16 +1541,16 @@
   padding: 10px 12px;
   border: 1px solid var(--border-light);
   border-radius: 6px;
-  background: var(--bg-primary, #fff);
+  background: var(--bg-primary);
   transition: border-color 0.12s, background 0.12s;
 }
 
 .wk-bd-task:hover {
-  border-color: var(--border-medium, #d8d8d8);
-  background: var(--bg-secondary, #fafafa);
+  border-color: var(--border-medium);
+  background: var(--bg-secondary);
 }
 
-.wk-bd-task--failed { border-color: rgba(220, 38, 38, 0.15); }
+.wk-bd-task--failed { border-color: var(--wk-color-error-bg); }
 
 .wk-bd-task__icon {
   flex-shrink: 0;
@@ -1684,13 +1565,13 @@
 }
 
 .wk-bd-task__icon--ok {
-  background: rgba(16, 185, 129, 0.08);
-  color: #0a8a4f;
+  background: var(--wk-color-success-bg);
+  color: var(--wk-color-success);
 }
 
 .wk-bd-task__icon--fail {
-  background: rgba(220, 38, 38, 0.08);
-  color: #c2410c;
+  background: var(--wk-color-error-bg);
+  color: var(--wk-color-error);
 }
 
 .wk-bd-task__main {
@@ -1704,7 +1585,7 @@
 .wk-bd-task__title {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary, #111);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1721,7 +1602,7 @@
 }
 
 .wk-bd-task__err {
-  color: #c2410c;
+  color: var(--wk-color-error);
   font-family: ui-monospace, monospace;
 }
 
@@ -1730,14 +1611,6 @@
    the page-level wk-rt-bots__* list. Visual language matches Bot detail
    (calm avatar palette + status pill + ws chip) but compact: rows fit
    inside the Runtime detail page without dominating it. */
-
-.wk-rt-rtbots {
-  margin: 16px 24px 0;
-  padding: 14px 16px;
-  background: var(--bg-secondary, #fafafa);
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-}
 
 .wk-rt-rtbots__header {
   display: flex;
@@ -1781,8 +1654,8 @@
 
 .wk-rt-rtbots__add:hover {
   background: var(--bg-hover);
-  color: var(--text-primary, #222);
-  border-color: var(--border-default, #d9d9d9);
+  color: var(--text-primary);
+  border-color: var(--border-default);
 }
 
 .wk-rt-rtbots__empty {
@@ -1818,7 +1691,7 @@
 }
 
 .wk-rt-rtbots__row:focus-visible {
-  box-shadow: 0 0 0 2px var(--accent-light, rgba(91, 106, 191, 0.25));
+  box-shadow: 0 0 0 2px var(--accent-light);
 }
 
 .wk-rt-rtbots__avatar {
@@ -1839,7 +1712,7 @@
   min-width: 0;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary, #222);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1853,8 +1726,8 @@
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-primary, #222);
-  background: #fff;
+  color: var(--text-primary);
+  background: var(--bg-primary);
   border: 1px solid var(--border-light);
   border-radius: 10px;
   line-height: 1.4;
@@ -1864,12 +1737,12 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #9aa1ad;
+  background: var(--text-tertiary);
 }
 
-.wk-rt-rtbots__status--online .wk-rt-rtbots__dot { background: #16a34a; }
-.wk-rt-rtbots__status--failed .wk-rt-rtbots__dot { background: #dc2626; }
-.wk-rt-rtbots__status--pending .wk-rt-rtbots__dot { background: #d97706; }
+.wk-rt-rtbots__status--online .wk-rt-rtbots__dot { background: var(--wk-color-success); }
+.wk-rt-rtbots__status--failed .wk-rt-rtbots__dot { background: var(--wk-color-error); }
+.wk-rt-rtbots__status--pending .wk-rt-rtbots__dot { background: var(--wk-color-warning); }
 
 .wk-rt-rtbots__ws {
   flex: 0 0 auto;
@@ -1878,7 +1751,7 @@
   font-size: 11px;
   color: var(--text-tertiary);
   padding: 2px 6px;
-  background: var(--bg-hover, rgba(0, 0, 0, 0.03));
+  background: var(--bg-hover);
   border-radius: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
