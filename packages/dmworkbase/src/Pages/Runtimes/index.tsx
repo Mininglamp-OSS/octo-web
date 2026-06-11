@@ -1445,9 +1445,31 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     private pollTimer?: ReturnType<typeof setInterval>
     private selectedDaemonId?: string
 
+    // C1: BotsTab 创建成功后刷该 runtime 的 Level-3 cache, 用户当前
+    // 看到的 bot 列表立刻包含新建项. 同时如果该 runtime 行还没展开,
+    // 自动展开一下让用户能看到刚建的 bot.
+    private handleBotCreated = (bot: Bot) => {
+        this.refreshRuntimeBots(bot.runtime_id)
+        if (!this.state.expandedRuntimes.has(bot.runtime_id)) {
+            const next = new Set(this.state.expandedRuntimes)
+            next.add(bot.runtime_id)
+            this.setState({ expandedRuntimes: next })
+        }
+    }
+
     private handleSpaceChanged = () => {
         this.pingCache.clear()
-        this.setState({ selectedId: null, expandedDevices: new Set() })
+        // C5: 切 space 时也得清 expandedRuntimes / botsByRuntime / botsLoading,
+        // 否则 fleet 给 runtime id 是全局递增的不会重复, 但 bot 缓存仍然会绑到
+        // 上一 space 的 runtime — 用户切回原 space 看到的还是旧 list 直到
+        // refreshRuntimeBots 触发.
+        this.setState({
+            selectedId: null,
+            expandedDevices: new Set(),
+            expandedRuntimes: new Set(),
+            botsByRuntime: new Map(),
+            botsLoading: new Set(),
+        })
         WKApp.routeRight.popToRoot()
         this.loadData()
     }
@@ -1547,22 +1569,22 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     }
 
     // PR-2 Level 3: toggle a runtime row's expanded state and lazy-load
-    // its bot list on first expand. Uses the existing listBots() call +
-    // local filter rather than a per-runtime endpoint — keeps the API
-    // surface small and lets us cache one list across all expanded rows.
+    // its bot list on first expand. setState updater 必须保持纯, 不能在
+    // updater 里调 refreshRuntimeBots (它会 setState) — React 18
+    // StrictMode 下 updater 会跑两次, 异步副作用会重复触发 listBots.
+    // 所以这里先用 prev 计算下一态 + 决定是否需要拉一次, setState 之外
+    // (callback) 触发副作用.
     toggleRuntime = (runtimeId: number) => {
-        this.setState((prev) => {
-            const expanded = new Set(prev.expandedRuntimes)
-            if (expanded.has(runtimeId)) {
-                expanded.delete(runtimeId)
-            } else {
-                expanded.add(runtimeId)
-                // Fire-and-forget refresh on first open; keep cache for re-opens.
-                if (!prev.botsByRuntime.has(runtimeId) && !prev.botsLoading.has(runtimeId)) {
-                    this.refreshRuntimeBots(runtimeId)
-                }
-            }
-            return { expandedRuntimes: expanded }
+        const prev = this.state
+        const willExpand = !prev.expandedRuntimes.has(runtimeId)
+        const expanded = new Set(prev.expandedRuntimes)
+        if (willExpand) expanded.add(runtimeId)
+        else expanded.delete(runtimeId)
+        const needFirstLoad = willExpand
+            && !prev.botsByRuntime.has(runtimeId)
+            && !prev.botsLoading.has(runtimeId)
+        this.setState({ expandedRuntimes: expanded }, () => {
+            if (needFirstLoad) this.refreshRuntimeBots(runtimeId)
         })
     }
 
@@ -1674,7 +1696,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                     visible={runtimeModalOpen}
                     onClose={() => this.setState({ runtimeModalOpen: false })}
                 />
-                <BotsTab ref={this.botsTabRef} hidden />
+                <BotsTab ref={this.botsTabRef} hidden onBotCreated={this.handleBotCreated} />
 
                 <div className="wk-rt-pageheader">
                     <div className="wk-rt-pagetitle">
