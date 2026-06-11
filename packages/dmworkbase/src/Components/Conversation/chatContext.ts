@@ -29,19 +29,21 @@ export interface ChatContextChannelInfo {
 }
 
 export interface ChatContextResult {
-    memberContext?: string   // "聊天成员（同一人的多个名字用/连接）：张三/小张,..." — undefined for DM
+    memberContext?: string   // "聊天成员：张三，小张,..." — undefined for DM
     chatContext?: string     // "[channel label]\n[Alice]: hi\n[Bob]: hello"
     channelType?: number     // pass-through for VoiceService to send as channel_type
-    selfName?: string        // 当前说话人三层名字串（去重 + "/" 连接），供 FormData self_name 使用
+    selfName?: string        // 当前说话人的各层名字（去重 + "，" 连接），供 FormData self_name 使用
 }
 
-// 把三层名字按「收集 → 去重保序 → / 连接」拼成单个成员 token（无标签）
-function formatNameToken(
+// 收集某人的三层名字（实名 > 群昵称 > 昵称），去重保序后作为「独立条目」返回。
+// 后端转写 prompt 把 <member_vocabulary> 里每个逗号分隔条目当作一个完整名字
+// 原样输出，所以同一个人的多个名字必须各自成条，不能用 "/" 拼成一个 token。
+function collectNames(
     name?: string | null,
     remark?: string | null,
     realName?: string | null,
     verified?: boolean,
-): string {
+): string[] {
     const nm = (name ?? "").trim()
     const rm = (remark ?? "").trim()
     const rn = verified ? (realName ?? "").trim() : ""
@@ -49,17 +51,16 @@ function formatNameToken(
     // 收集顺序：实名 > 群昵称 > 昵称；只收非空层
     const parts = [rn, rm, nm].filter((v) => v.length > 0)
     // 按值去重保序：相同的名字只保留一个（单名字成员即裸名）
-    const distinct = [...new Set(parts)]
-    return distinct.join("/")
+    return [...new Set(parts)]
 }
 
-// 成员 token：bot 不补实名；verified 用 isRealnameVerified 归一（兼容 "1"/"true"）
-function buildMemberNameToken(sub: ChatContextMember): string {
+// 成员名字条目：bot 不补实名；verified 用 isRealnameVerified 归一（兼容 "1"/"true"）
+function buildMemberNames(sub: ChatContextMember): string[] {
     const isBot = sub.orgData?.robot === 1
     const verified = !isBot && isRealnameVerified({
         realname_verified: sub.orgData?.realname_verified,
     })
-    return formatNameToken(sub.name, sub.remark, sub.orgData?.real_name, verified)
+    return collectNames(sub.name, sub.remark, sub.orgData?.real_name, verified)
 }
 
 export function buildChatContext(params: {
@@ -100,8 +101,7 @@ export function buildChatContext(params: {
             for (const sub of subscribers) {
                 if (sub.uid === loginUID) continue
                 if (sub.isDeleted) continue
-                const token = buildMemberNameToken(sub)
-                if (token) names.push(token)
+                names.push(...buildMemberNames(sub))
             }
         } else {
             const activeUIDs = new Set<string>()
@@ -113,8 +113,7 @@ export function buildChatContext(params: {
             }
             for (const sub of subscribers) {
                 if (activeUIDs.has(sub.uid) && !sub.isDeleted) {
-                    const token = buildMemberNameToken(sub)
-                    if (token) names.push(token)
+                    names.push(...buildMemberNames(sub))
                 }
             }
         }
@@ -128,8 +127,7 @@ export function buildChatContext(params: {
                 for (const sub of subscribers) {
                     if (sub.uid === loginUID) continue
                     if (sub.isDeleted) continue
-                    const token = buildMemberNameToken(sub)
-                    if (token) names.push(token)
+                    names.push(...buildMemberNames(sub))
                 }
             } else {
                 const activeUIDs = new Set<string>()
@@ -141,8 +139,7 @@ export function buildChatContext(params: {
                 }
                 for (const sub of subscribers) {
                     if (activeUIDs.has(sub.uid) && !sub.isDeleted) {
-                        const token = buildMemberNameToken(sub)
-                        if (token) names.push(token)
+                        names.push(...buildMemberNames(sub))
                     }
                 }
             }
@@ -178,13 +175,13 @@ export function buildChatContext(params: {
     }
 
     if (params.self) {
-        const selfToken = formatNameToken(
+        const selfNames = collectNames(
             params.self.name,
             params.self.remark,
             params.self.realName,
             params.self.realnameVerified === true,   // 自己侧 loginInfo 已归一，严格 ===true
         )
-        if (selfToken) result.selfName = selfToken
+        if (selfNames.length > 0) result.selfName = selfNames.join("，")
     }
 
     return result

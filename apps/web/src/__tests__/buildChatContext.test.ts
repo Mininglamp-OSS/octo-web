@@ -19,8 +19,8 @@ const ChannelTypeCommunityTopic = 5
 
 const LOGIN_UID = "me"
 
-// V2 member_context prefix (聊天成员（同一人的多个名字用/连接）：)
-const PREFIX = "聊天成员（同一人的多个名字用/连接）："
+// member_context prefix (聊天成员：)
+const PREFIX = "聊天成员："
 const members = (body: string) => PREFIX + body
 
 type OrgData = {
@@ -64,7 +64,7 @@ describe("buildChatContext", () => {
             expect(result.chatContext).toBeUndefined()
         })
 
-        it("should join name and remark with / (group nick first)", () => {
+        it("should list name and remark as separate comma entries (group nick first)", () => {
             const subscribers = [
                 makeMember("u1", "Alice", "小A"),
             ]
@@ -74,7 +74,7 @@ describe("buildChatContext", () => {
                 channelType: ChannelTypeGroup,
                 loginUID: LOGIN_UID,
             })
-            expect(result.memberContext).toBe(members("小A/Alice"))
+            expect(result.memberContext).toBe(members("小A，Alice"))
             expect(result.chatContext).toBeUndefined()
         })
 
@@ -182,7 +182,7 @@ describe("buildChatContext", () => {
     })
 
     describe("realname (real_name / orgData) handling", () => {
-        it("joins all three layers with / when all differ (实名/群昵称/昵称)", () => {
+        it("lists all three layers as separate comma entries when all differ (实名/群昵称/昵称)", () => {
             const subscribers = [
                 makeMember("u1", "zhangsan", "小张", 0, {
                     real_name: "张三",
@@ -195,7 +195,24 @@ describe("buildChatContext", () => {
                 channelType: ChannelTypeGroup,
                 loginUID: LOGIN_UID,
             })
-            expect(result.memberContext).toBe(members("张三/小张/zhangsan"))
+            expect(result.memberContext).toBe(members("张三，小张，zhangsan"))
+        })
+
+        it("real_name=王大棍, remark=棍哥, name=大棍子 → three separate comma entries", () => {
+            const subscribers = [
+                makeMember("u1", "大棍子", "棍哥", 0, {
+                    real_name: "王大棍",
+                    realname_verified: 1,
+                }),
+            ]
+            const result = buildChatContext({
+                messages: [],
+                subscribers,
+                channelType: ChannelTypeGroup,
+                loginUID: LOGIN_UID,
+            })
+            expect(result.memberContext).toBe(members("王大棍，棍哥，大棍子"))
+            expect(result.memberContext).not.toContain("王大棍/棍哥/大棍子")
         })
 
         it("dedupes when real_name equals remark (real_name==群昵称)", () => {
@@ -211,7 +228,7 @@ describe("buildChatContext", () => {
                 channelType: ChannelTypeGroup,
                 loginUID: LOGIN_UID,
             })
-            expect(result.memberContext).toBe(members("李四/lisi"))
+            expect(result.memberContext).toBe(members("李四，lisi"))
         })
 
         it("collapses to bare name when all three are identical", () => {
@@ -243,7 +260,7 @@ describe("buildChatContext", () => {
                 channelType: ChannelTypeGroup,
                 loginUID: LOGIN_UID,
             })
-            expect(result.memberContext).toBe(members("老赵/zhao"))
+            expect(result.memberContext).toBe(members("老赵，zhao"))
         })
 
         it("falls back to bare nickname when not verified and no remark", () => {
@@ -275,7 +292,7 @@ describe("buildChatContext", () => {
                 channelType: ChannelTypeGroup,
                 loginUID: LOGIN_UID,
             })
-            expect(result.memberContext).toBe(members("张三/zhangsan"))
+            expect(result.memberContext).toBe(members("张三，zhangsan"))
         })
 
         it("accepts verified as string \"true\"", () => {
@@ -291,7 +308,7 @@ describe("buildChatContext", () => {
                 channelType: ChannelTypeGroup,
                 loginUID: LOGIN_UID,
             })
-            expect(result.memberContext).toBe(members("张三/zhangsan"))
+            expect(result.memberContext).toBe(members("张三，zhangsan"))
         })
 
         it("ignores empty real_name even when verified=true (no stray /)", () => {
@@ -349,7 +366,7 @@ describe("buildChatContext", () => {
                 loginUID: LOGIN_UID,
             })
             expect(result.memberContext).toBe(
-                members("张三/小张/zhangsan，李四/lisi，王五"),
+                members("张三，小张，zhangsan，李四，lisi，王五"),
             )
         })
 
@@ -369,12 +386,12 @@ describe("buildChatContext", () => {
                 channelType: ChannelTypeGroup,
                 loginUID: LOGIN_UID,
             })
-            expect(result.memberContext).toBe(members("张三/小张/zhangsan"))
+            expect(result.memberContext).toBe(members("张三，小张，zhangsan"))
         })
     })
 
     describe("self_name", () => {
-        it("joins self real_name and nickname when verified", () => {
+        it("lists self real_name and nickname as separate comma entries when verified", () => {
             const result = buildChatContext({
                 messages: [],
                 subscribers: [],
@@ -386,7 +403,7 @@ describe("buildChatContext", () => {
                     realnameVerified: true,
                 },
             })
-            expect(result.selfName).toBe("赵七/zhaoqi")
+            expect(result.selfName).toBe("赵七，zhaoqi")
         })
 
         it("uses group nickname and nickname when not verified", () => {
@@ -402,7 +419,7 @@ describe("buildChatContext", () => {
                     realnameVerified: false,
                 },
             })
-            expect(result.selfName).toBe("群主/admin")
+            expect(result.selfName).toBe("群主，admin")
         })
 
         it("falls back to bare nickname for self", () => {
@@ -892,7 +909,7 @@ describe("buildChatContext", () => {
                 loginUID: LOGIN_UID,
             })
             expect(result.memberContext).toBe(
-                "聊天成员（同一人的多个名字用/连接）：Alice，Bob",
+                "聊天成员：Alice，Bob",
             )
         })
     })

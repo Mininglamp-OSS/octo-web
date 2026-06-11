@@ -6,7 +6,7 @@
  * Kept free of React / DOM / SDK imports so it loads cleanly in a plain TS
  * test environment.
  */
-import { isRealnameVerified } from "../../Utils/displayName";
+import { isRealnameVerified, subscriberDisplayName } from "../../Utils/displayName";
 import {
   MENTION_UID_HUMANS,
   MENTION_UID_AIS,
@@ -16,7 +16,11 @@ import {
 
 export interface MemberInfo {
   uid: string;
+  // 用于正则匹配的候选名字（可能是别名：群昵称 / 昵称 / 实名）
   name: string;
+  // 该 uid 的规范展示名（remark → real_name(verified) → name），同一 uid 的
+  // 所有候选共享同一个 label，命中任意别名后 chip 都渲染这个规范名。
+  label: string;
 }
 
 /** Structural shape of a group member used to build mention candidates. */
@@ -41,10 +45,12 @@ export function buildMemberInfos(
   const infos: MemberInfo[] = [];
   if (members) {
     for (const s of members) {
+      // 规范展示名：remark → real_name(verified) → name，与气泡/成员列表一致。
+      const label = subscriberDisplayName(s) || s.uid;
       const primary = s.remark || s.name || s.uid;
-      infos.push({ uid: s.uid, name: primary });
+      infos.push({ uid: s.uid, name: primary, label });
       if (s.name && s.remark && s.remark !== s.name) {
-        infos.push({ uid: s.uid, name: s.name });
+        infos.push({ uid: s.uid, name: s.name, label });
       }
       // 实名候选：仅非 bot 且已实名；去重，避免与上面重复
       const orgData = s.orgData;
@@ -54,7 +60,7 @@ export function buildMemberInfos(
         isRealnameVerified({ realname_verified: orgData?.realname_verified });
       const realName = verified ? (orgData?.real_name ?? "").trim() : "";
       if (realName && realName !== primary && realName !== s.name) {
-        infos.push({ uid: s.uid, name: realName });
+        infos.push({ uid: s.uid, name: realName, label });
       }
     }
   }
@@ -130,7 +136,7 @@ export function parseMentionMarkers(
     } else if (member) {
       result.push({
         type: "mention",
-        attrs: { id: member.uid, label: member.name },
+        attrs: { id: member.uid, label: member.label },
       });
       result.push({ type: "text", text: " " });
     } else {

@@ -47,6 +47,41 @@ describe("MessageInput @-mention realname matching", () => {
         }
     })
 
+    it("chip label is the canonical display name for any matched alias", () => {
+        // real_name=王大棍, remark(群昵称)=棍哥, name(昵称)=大棍子 → 规范名是 remark 棍哥。
+        const member: SubscriberLike = {
+            uid: "u1",
+            name: "大棍子",
+            remark: "棍哥",
+            orgData: { real_name: "王大棍", realname_verified: 1 },
+        }
+        const infos = buildMemberInfos([member])
+        // 规范名 = remark → real_name(verified) → name，这里 remark="棍哥"。
+        for (const writing of ["@棍哥", "@王大棍", "@大棍子"]) {
+            const mention = firstMention(parseMentionMarkers(`${writing} 在吗`, infos))
+            expect(mention, writing).toBeDefined()
+            expect(mention!.attrs!.id, writing).toBe("u1")
+            expect(mention!.attrs!.label, writing).toBe("棍哥")
+        }
+    })
+
+    it("chip label uses real_name when no remark (verified)", () => {
+        // 没有群昵称：规范名 = real_name(verified)=张三，匹配任意别名都渲染 张三。
+        const infos = buildMemberInfos([
+            {
+                uid: "u1",
+                name: "zhangsan",
+                orgData: { real_name: "张三", realname_verified: 1 },
+            },
+        ])
+        for (const writing of ["@张三", "@zhangsan"]) {
+            const mention = firstMention(parseMentionMarkers(`${writing} 你好`, infos))
+            expect(mention, writing).toBeDefined()
+            expect(mention!.attrs!.id, writing).toBe("u1")
+            expect(mention!.attrs!.label, writing).toBe("张三")
+        }
+    })
+
     it("matches longest name first for prefix-overlapping names", () => {
         const members: SubscriberLike[] = [
             { uid: "u1", name: "zhangsan", orgData: { real_name: "张三", realname_verified: 1 } },
