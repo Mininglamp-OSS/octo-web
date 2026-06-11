@@ -130,7 +130,7 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
 
   return (
     <Modal
-      title="新建智能体"
+      title="新建 Bot"
       visible={visible}
       onCancel={onClose}
       onOk={handleSubmit}

@@ -1702,13 +1702,39 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                             role="menuitem"
                                             className="wk-rt-create-menu-item"
                                             onClick={() => this.setState({ createMenuOpen: false, runtimeModalOpen: true })}
-                                        >创建 Runtime</button>
+                                        >
+                                            <span className="wk-rt-create-menu-icon" aria-hidden="true">
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                                                    <line x1="8" y1="21" x2="16" y2="21"/>
+                                                    <line x1="12" y1="17" x2="12" y2="21"/>
+                                                </svg>
+                                            </span>
+                                            <span className="wk-rt-create-menu-text">
+                                                <span className="wk-rt-create-menu-title">创建 Runtime</span>
+                                                <span className="wk-rt-create-menu-desc">在新设备上接入 daemon</span>
+                                            </span>
+                                        </button>
                                         <button
                                             type="button"
                                             role="menuitem"
                                             className="wk-rt-create-menu-item"
                                             onClick={() => this.setState({ createMenuOpen: false }, () => this.botsTabRef.current?.openCreate())}
-                                        >创建 Bot</button>
+                                        >
+                                            <span className="wk-rt-create-menu-icon" aria-hidden="true">
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                                    <rect x="3" y="11" width="18" height="10" rx="2" />
+                                                    <circle cx="12" cy="5" r="2" />
+                                                    <path d="M12 7v4" />
+                                                    <line x1="8" y1="16" x2="8" y2="16" />
+                                                    <line x1="16" y1="16" x2="16" y2="16" />
+                                                </svg>
+                                            </span>
+                                            <span className="wk-rt-create-menu-text">
+                                                <span className="wk-rt-create-menu-title">创建 Bot</span>
+                                                <span className="wk-rt-create-menu-desc">基于已有 runtime 起一个 Bot</span>
+                                            </span>
+                                        </button>
                                     </div>
                                 </>
                             )}
