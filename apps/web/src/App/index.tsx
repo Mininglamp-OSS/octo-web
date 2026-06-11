@@ -147,57 +147,13 @@ async function registerMenus() {
     return m
   }, 4000)
 
-  // Runtimes 菜单：按需显示（用户在当前 Space 有注册 daemon 才显示）
-  let hasRuntimes = false
-  // 三态：null=未确认（space 未就绪），true=确认有，false=确认无
-  let runtimesKnown: boolean | null = null
-  const checkRuntimes = async (): Promise<boolean> => {
-    const spaceId = WKApp.shared.currentSpaceId
-    if (!spaceId || !WKApp.loginInfo.isLogined()) {
-      if (!spaceId) return false
-      hasRuntimes = false
-      runtimesKnown = false
-      if (WKApp.route.currentPath === "/runtimes") {
-        WKApp.route.push("/")
-      }
-      WKApp.menus.refresh()
-      return true
-    }
-    try {
-      const resp = await WKApp.apiClient.get("/runtimes", { param: { space_id: spaceId } })
-      const had = hasRuntimes
-      hasRuntimes = resp.runtimes && resp.runtimes.length > 0
-      runtimesKnown = true
-      if (had !== hasRuntimes) {
-        if (!hasRuntimes && WKApp.route.currentPath === "/runtimes") {
-          WKApp.route.push("/")
-        }
-        WKApp.menus.refresh()
-      }
-      return true
-    } catch (err) {
-      console.warn('[runtimes] Failed to check runtimes:', err)
-      return false
-    }
-  }
+  // PR-2 (准备上线): 运行时菜单常驻显示, 不再 conditional. 之前的
+  // hasRuntimes / checkRuntimes / 15s polling / mittBus 订阅已删 — 用户
+  // 进 /runtimes 页面后通过顶部 + 创建 Runtime 拿命令自助启 daemon-cli;
+  // 不再依赖"先有 daemon 才看见菜单"那条 chicken-and-egg 链.
   WKApp.menus.register("runtimes", () => {
-    if (!hasRuntimes) return undefined as any
     return new Menus("runtimes", "/runtimes", "运行时", <RuntimesIcon />, <RuntimesIcon />)
   }, 7000)
-  const waitForSpace = (retries = 0) => {
-    if (WKApp.shared.currentSpaceId) {
-      checkRuntimes()
-    } else if (retries < 20) {
-      setTimeout(() => waitForSpace(retries + 1), 500)
-    }
-  }
-  waitForSpace()
-  WKApp.mittBus.on('space-changed', checkRuntimes)
-  setInterval(() => {
-    if (!hasRuntimes && WKApp.shared.currentSpaceId) {
-      checkRuntimes()
-    }
-  }, 15000)
 
   WKApp.menus.register("summary", (_context) => {
     const m = new Menus("summary", "/summary", t("app.nav.summary"), <SummaryIcon />, <SummaryIcon />)
@@ -223,27 +179,6 @@ async function registerMenus() {
   })
 
   WKApp.route.register("/runtimes", () => {
-    if (!hasRuntimes) {
-      if (runtimesKnown === null) {
-        const tryCheck = (retries = 0) => {
-          if (!WKApp.shared.currentSpaceId && retries < 20) {
-            setTimeout(() => tryCheck(retries + 1), 500)
-            return
-          }
-          checkRuntimes().then((ok) => {
-            if (hasRuntimes) {
-              WKApp.route.push("/runtimes")
-            } else if (ok && !hasRuntimes) {
-              WKApp.route.push("/")
-            }
-          })
-        }
-        tryCheck()
-        return <ChatPage />
-      }
-      WKApp.route.push("/")
-      return <ChatPage />
-    }
     return <RuntimesPage />
   })
 

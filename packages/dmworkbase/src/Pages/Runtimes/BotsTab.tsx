@@ -30,8 +30,10 @@ export interface BotsTabHandle {
   openBot: (id: number) => void;
 }
 
-// PoC4: which runtime kinds actually run tasks. Others are inert.
-const SUPPORTED_KINDS: RuntimeKind[] = ['openclaw'];
+// PR-2: cc-channel-octo (claude) adapter 已落地 (吕思佳 daemon-cli #34) +
+// 本机 ~/.cc-channel-octo 已切本地 server, 开放 claude 创建. codex/hermes
+// adapter 仍在收尾 (codex skeleton, hermes 未跑通), 暂不开放.
+const SUPPORTED_KINDS: RuntimeKind[] = ['openclaw', 'claude'];
 
 export interface BotsTabProps {
   // PR-2 (runtime tree UI): when true, only the create modal is rendered

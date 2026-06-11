@@ -1,5 +1,5 @@
 import React, { Component } from "react"
-import { Channel, ChannelTypePerson } from "wukongimjssdk"
+import WKSDK, { Channel, ChannelTypePerson } from "wukongimjssdk"
 import { Toast, Modal, Form, Button } from "@douyinfe/semi-ui"
 import WKApp from "../../App"
 import WKAvatar from "../../Components/WKAvatar"
@@ -341,26 +341,10 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                     </div>
                 </div>
 
-                <div className="wk-rt-detail-section">
-                    <label>Agents on this device</label>
-                </div>
-                <div className="wk-rt-device-agent-list">
-                    {group.runtimes.map((rt) => (
-                        <div key={rt.id} className="wk-rt-device-agent-row">
-                            <div
-                                className="wk-rt-provider-icon small"
-                                style={{ background: providerColors[rt.provider] || "#6B7280" }}
-                            >
-                                {(providerLabels[rt.provider] || rt.provider).charAt(0).toUpperCase()}
-                            </div>
-                            <div className="wk-rt-device-agent-info">
-                                <span className="wk-rt-device-agent-name">{providerLabels[rt.provider] || rt.provider}</span>
-                                <span className="wk-rt-device-agent-ver">{rt.version}</span>
-                            </div>
-                            <div className={`wk-rt-status-dot ${rt.status === "online" ? "online" : "offline"}`} />
-                        </div>
-                    ))}
-                </div>
+                {/* PR-2: "Agents on this device" 列表去掉, 跟左侧树重复.
+                    左侧树 device 展开后已显示该 device 下的 4 runtime, 右侧
+                    panel 只保留 device 元数据 (name / OS / Daemon ID / Server
+                    Ping / 版本 + Upgrade) 即可. */}
             </div>
         )
     }
@@ -1297,14 +1281,9 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                         <label>Provider</label>
                         <span>{providerLabels[rt.provider] || rt.provider}</span>
                     </div>
-                    <div className="wk-rt-field">
-                        <label>Status</label>
-                        <span className={isOnline ? "wk-rt-text-online" : "wk-rt-text-offline"}>{rt.status}</span>
-                    </div>
-                    <div className="wk-rt-field">
-                        <label>Last Seen</label>
-                        <span>{formatLastSeen(rt.last_seen_at)}</span>
-                    </div>
+                    {/* PR-2: 探活由 device row 绿点 + daemon heartbeat
+                        体现; runtime 级 last_seen_at / device_name /
+                        daemon_id 都是 dev 调试字段, 用户不需要看到, 全删. */}
                     <div className="wk-rt-field">
                         <label>Version</label>
                         <span className="wk-rt-mono">
@@ -1314,10 +1293,6 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                             )}
                             {this.renderComponentUpgradeBtn(this.props.versionHints[rt.id]?.has_update)}
                         </span>
-                    </div>
-                    <div className="wk-rt-field">
-                        <label>Device</label>
-                        <span>{rt.device_name || "N/A"}</span>
                     </div>
                     {metadata && Array.isArray((metadata as any).plugins) && (() => {
                         const octoPlugin = ((metadata as any).plugins as any[]).find((p: any) => p.name === "octo")
@@ -1337,18 +1312,9 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     })()}
                 </div>
 
-                <div className="wk-rt-detail-section">
-                    <label>Daemon ID</label>
-                    <span className="wk-rt-mono">{rt.daemon_id || "N/A"}</span>
-                </div>
-
-                {rt.provider === "openclaw" && (
-                    <BotsSection
-                        runtime={rt}
-                        onOpenBot={this.props.onOpenBot}
-                        onCreateBot={this.props.onCreateBot}
-                    />
-                )}
+                {/* PR-2: 删 BotsSection (智能体列表 + 新建按钮) — 跟左侧
+                    树 Level 3 的 bot rows 重复, "新建" 也跟顶部 + popover
+                    的"创建 Bot"重复. caster 拍的去重. */}
 
                 <div className="wk-rt-detail-footer">
                     <span>Created: {rt.created_at}</span>
@@ -1362,6 +1328,83 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
 
 // ─── RuntimesPage: two-level list (Device → Agent) ─────────────────────
 
+// PR-2: bot.status enum → 用户可读中文标签. 原 'dispatched' / 'bot_minted'
+// 等是 fleet 内部状态机的 token, 直接给用户看会困惑. 多个内部中间态归为
+// 同一个面向用户的"配置中"桶, 终态保持区分.
+function botStatusLabel(s: string): string {
+    switch (s) {
+        case "active":       return "在线"
+        case "failed":       return "失败"
+        case "archived":     return "已归档"
+        case "draft":        return "草稿"
+        case "provisioning":
+        case "bot_minted":
+        case "dispatched":   return "配置中"
+        default:             return s
+    }
+}
+
+// PR-2: Level 3 bot row 抽成 functional 子组件, 让头像绿点能复用
+// useChannelOnline hook —— 信号源跟 BotDetailPanel + IM 私聊列表一致
+// (WuKongIM channelInfo.online === 1, 不是 fleet bot.status). class
+// component 调不了 hook 所以抽出去.
+function useChannelOnline(channel: Channel | null): boolean {
+    const [online, setOnline] = React.useState<boolean>(() => {
+        if (!channel) return false
+        const info = WKSDK.shared().channelManager.getChannelInfo(channel)
+        return (info?.online as any) === 1 || (info?.online as any) === true
+    })
+    React.useEffect(() => {
+        if (!channel) return
+        const read = () => {
+            const info = WKSDK.shared().channelManager.getChannelInfo(channel)
+            setOnline((info?.online as any) === 1 || (info?.online as any) === true)
+        }
+        read()
+        const t = window.setInterval(read, 2000)
+        return () => window.clearInterval(t)
+    }, [channel?.channelID, channel?.channelType])
+    return online
+}
+
+interface BotRowProps {
+    bot: Bot
+    onOpen: (id: number) => void
+}
+
+function BotRow({ bot, onOpen }: BotRowProps) {
+    const botChannel = React.useMemo(
+        () => bot.bot_uid ? new Channel(bot.bot_uid, ChannelTypePerson) : null,
+        [bot.bot_uid],
+    )
+    const isOnline = useChannelOnline(botChannel)
+    const openChat = (e: React.MouseEvent) => {
+        e.stopPropagation()
+        if (botChannel) (WKApp as any).endpoints?.showConversation?.(botChannel)
+    }
+    return (
+        <div
+            className="wk-rt-bot-row"
+            onClick={(e) => { e.stopPropagation(); onOpen(bot.id) }}
+        >
+            <div
+                className={`wk-rt-bot-avatar-wrap${botChannel ? " wk-rt-clickable" : ""}`}
+                title={botChannel ? "打开与该 Bot 的私聊" : undefined}
+                onClick={openChat}
+            >
+                {botChannel ? (
+                    <WKAvatar channel={botChannel} style={{ width: 20, height: 20, borderRadius: 4 }} />
+                ) : (
+                    <span className={`wk-rt-bot-dot ${bot.status === "failed" ? "failed" : "pending"}`} />
+                )}
+                {isOnline && <span className="wk-rt-online-dot" title="Online" />}
+            </div>
+            <span className="wk-rt-bot-name">{bot.name}</span>
+            <span className="wk-rt-bot-status">{botStatusLabel(bot.status)}</span>
+        </div>
+    )
+}
+
 type ActiveTab = "runtime" | "bots"
 interface RuntimesPageState extends RuntimesState {
     activeTab: ActiveTab
@@ -1369,6 +1412,12 @@ interface RuntimesPageState extends RuntimesState {
     runtimeModalOpen: boolean
     botModalOpen: boolean
     botModalRuntimes: { id: number; name: string; kind: import("./botsApi").RuntimeKind; supported: boolean }[]
+    // PR-2 Level 3: runtime row expand → bot list under that runtime.
+    // Lazy-load: bots fetched once when a runtime is first expanded, then
+    // cached in `botsByRuntime` and refreshed on a soft poll.
+    expandedRuntimes: Set<number>
+    botsByRuntime: Map<number, Bot[]>
+    botsLoading: Set<number>
 }
 
 export default class RuntimesPage extends Component<{}, RuntimesPageState> {
@@ -1388,6 +1437,9 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         runtimeModalOpen: false,
         botModalOpen: false,
         botModalRuntimes: [],
+        expandedRuntimes: new Set<number>(),
+        botsByRuntime: new Map<number, Bot[]>(),
+        botsLoading: new Set<number>(),
     }
 
     private pollTimer?: ReturnType<typeof setInterval>
@@ -1492,6 +1544,54 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             }
             return { expandedDevices: expanded }
         })
+    }
+
+    // PR-2 Level 3: toggle a runtime row's expanded state and lazy-load
+    // its bot list on first expand. Uses the existing listBots() call +
+    // local filter rather than a per-runtime endpoint — keeps the API
+    // surface small and lets us cache one list across all expanded rows.
+    toggleRuntime = (runtimeId: number) => {
+        this.setState((prev) => {
+            const expanded = new Set(prev.expandedRuntimes)
+            if (expanded.has(runtimeId)) {
+                expanded.delete(runtimeId)
+            } else {
+                expanded.add(runtimeId)
+                // Fire-and-forget refresh on first open; keep cache for re-opens.
+                if (!prev.botsByRuntime.has(runtimeId) && !prev.botsLoading.has(runtimeId)) {
+                    this.refreshRuntimeBots(runtimeId)
+                }
+            }
+            return { expandedRuntimes: expanded }
+        })
+    }
+
+    refreshRuntimeBots = async (runtimeId: number) => {
+        this.setState((prev) => {
+            const loading = new Set(prev.botsLoading)
+            loading.add(runtimeId)
+            return { botsLoading: loading }
+        })
+        try {
+            // listBots returns all bots in the current space; filter by
+            // runtime_id for this row's view. Tiny dataset (PoC scale)
+            // so per-runtime fan-out isn't worth the API surface.
+            const all = await listBots()
+            const forThis = all.filter(b => b.runtime_id === runtimeId)
+            this.setState((prev) => {
+                const next = new Map(prev.botsByRuntime)
+                next.set(runtimeId, forThis)
+                const loading = new Set(prev.botsLoading)
+                loading.delete(runtimeId)
+                return { botsByRuntime: next, botsLoading: loading }
+            })
+        } catch (e) {
+            this.setState((prev) => {
+                const loading = new Set(prev.botsLoading)
+                loading.delete(runtimeId)
+                return { botsLoading: loading }
+            })
+        }
     }
 
     showDeviceDetail = (group: DeviceGroup) => {
@@ -1651,28 +1751,60 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                     <div className={`wk-rt-status-dot ${anyOnline ? "online" : "offline"}`} />
                                 </div>
 
-                                {/* Level 2: Agents */}
-                                {expanded && group.runtimes.map((rt) => (
-                                    <div
-                                        key={rt.id}
-                                        className={`wk-rt-agent-row ${selectedId === rt.id ? "selected" : ""}`}
-                                        onClick={() => this.showAgentDetail(rt)}
-                                    >
-                                        <div
-                                            className="wk-rt-provider-icon small"
-                                            style={{ background: providerColors[rt.provider] || "#6B7280" }}
-                                        >
-                                            {(providerLabels[rt.provider] || rt.provider).charAt(0).toUpperCase()}
-                                        </div>
-                                        <div className="wk-rt-list-item-info">
-                                            <div className="wk-rt-list-item-name">
-                                                {providerLabels[rt.provider] || rt.provider}
+                                {/* Level 2: Agents (runtime kind) */}
+                                {expanded && group.runtimes.map((rt) => {
+                                    const rtExpanded = this.state.expandedRuntimes.has(rt.id)
+                                    const bots = this.state.botsByRuntime.get(rt.id) || []
+                                    const botsLoading = this.state.botsLoading.has(rt.id)
+                                    return (
+                                        <div key={rt.id} className="wk-rt-rt-block">
+                                            <div
+                                                className={`wk-rt-agent-row ${selectedId === rt.id ? "selected" : ""}`}
+                                                onClick={() => this.toggleRuntime(rt.id)}
+                                            >
+                                                <span className={`wk-rt-expand-arrow ${rtExpanded ? "expanded" : ""}`}>&#9654;</span>
+                                                <div
+                                                    className="wk-rt-provider-icon small"
+                                                    style={{ background: providerColors[rt.provider] || "#6B7280" }}
+                                                >
+                                                    {(providerLabels[rt.provider] || rt.provider).charAt(0).toUpperCase()}
+                                                </div>
+                                                <div
+                                                    className="wk-rt-list-item-info"
+                                                    onClick={(e) => { e.stopPropagation(); this.showAgentDetail(rt) }}
+                                                >
+                                                    <div className="wk-rt-list-item-name">
+                                                        {providerLabels[rt.provider] || rt.provider}
+                                                    </div>
+                                                    <div className="wk-rt-list-item-sub">{rt.version}</div>
+                                                </div>
+                                                {/* PR-2: runtime row 绿点删 — 探活责任在 device row, 由
+                                                    daemon 进程 heartbeat 决定; runtime kind 是 daemon 内 adapter
+                                                    实例, 不是独立进程, 单独显示绿点会让人误以为各 runtime 各自
+                                                    探活. caster 拍的去重. */}
                                             </div>
-                                            <div className="wk-rt-list-item-sub">{rt.version}</div>
+
+                                            {/* Level 3: Bots under this runtime */}
+                                            {rtExpanded && (
+                                                <div className="wk-rt-bot-rows">
+                                                    {botsLoading && bots.length === 0 && (
+                                                        <div className="wk-rt-bot-empty">加载中…</div>
+                                                    )}
+                                                    {!botsLoading && bots.length === 0 && (
+                                                        <div className="wk-rt-bot-empty">该运行时下暂无智能体</div>
+                                                    )}
+                                                    {bots.map((b) => (
+                                                        <BotRow
+                                                            key={b.id}
+                                                            bot={b}
+                                                            onOpen={(id) => this.botsTabRef.current?.openBot(id)}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
-                                        <div className={`wk-rt-status-dot ${rt.status === "online" ? "online" : "offline"}`} />
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         )
                     })}

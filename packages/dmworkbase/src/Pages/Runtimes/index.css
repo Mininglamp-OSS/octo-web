@@ -328,7 +328,7 @@
 .wk-rt-agent-row {
     display: flex;
     align-items: center;
-    padding: 8px 16px 8px 46px;
+    padding: 8px 16px 8px 24px;
     cursor: pointer;
     gap: 10px;
     transition: background 0.15s;
@@ -2204,4 +2204,77 @@
   font-size: 12px;
   color: var(--text-secondary, #666);
   line-height: 1.6;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   Level 3: bot rows under each runtime row.
+   Indent past the runtime arrow + icon (~28px); same neutral
+   palette as the rest of the tree (no color-only meaning).
+   ────────────────────────────────────────────────────────────────── */
+.wk-rt-rt-block {
+  display: flex;
+  flex-direction: column;
+}
+.wk-rt-bot-rows {
+  display: flex;
+  flex-direction: column;
+  margin-left: 36px;
+}
+.wk-rt-bot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 12px;
+  font-size: 12px;
+  color: var(--text-primary, #1f2937);
+  cursor: pointer;
+  border-radius: 0 4px 4px 0;
+  transition: background-color 0.12s ease;
+}
+.wk-rt-bot-row:hover {
+  background: var(--bg-fill-1, rgba(0, 0, 0, 0.04));
+}
+.wk-rt-bot-row:focus-visible {
+  outline: 2px solid var(--brand-primary, #2563eb);
+  outline-offset: -2px;
+}
+.wk-rt-bot-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary, #9ca3af);
+  flex: 0 0 auto;
+}
+.wk-rt-bot-dot.active   { background: #16a34a; }
+.wk-rt-bot-dot.failed   { background: #dc2626; }
+.wk-rt-bot-dot.pending  { background: #d97706; }
+.wk-rt-bot-name {
+  font-weight: 500;
+  color: var(--text-primary, #1f2937);
+}
+.wk-rt-bot-status {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-tertiary, #9ca3af);
+}
+.wk-rt-bot-empty {
+  margin-left: 36px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-tertiary, #9ca3af);
+}
+
+/* runtime arrow inherits the existing wk-rt-expand-arrow style; no new
+   class needed. The agent-row's onClick now triggers toggleRuntime, but
+   the inner list-item-info still triggers showAgentDetail (with
+   stopPropagation) so the user can pick "expand bots" vs "see runtime
+   details" with one row. */
+
+/* PR-2: BotDetailPanel + Level 3 bot row 的 avatar wrap, 让 .wk-rt-online-dot
+   能 absolute 定位到右下角. */
+.wk-bd-avatar-wrap,
+.wk-rt-bot-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
 }

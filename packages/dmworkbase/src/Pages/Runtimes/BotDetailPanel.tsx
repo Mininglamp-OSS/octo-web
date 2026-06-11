@@ -1,69 +1,86 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, BotFeedItem, archiveBot, getBotFeed } from './botsApi';
+import WKSDK, { Channel, ChannelTypePerson } from 'wukongimjssdk';
+import WKApp from '../../App';
+import WKAvatar from '../../Components/WKAvatar';
+import { Bot, BotFeedItem, getBotFeed } from './botsApi';
 
 type DetailTab = 'info' | 'feed' | 'tasks' | 'skills';
 
-// Deterministic, low-saturation color derived from bot name. Keeps the
-// page calm (memory: feedback_ui_style — no strong colors, no gradients)
-// while still giving each bot a recognizable hue at a glance.
-const AVATAR_PALETTE = [
-  { bg: '#eef2f7', fg: '#3d4759' },
-  { bg: '#eef5ee', fg: '#365940' },
-  { bg: '#f5eef0', fg: '#5a3d4a' },
-  { bg: '#f0f0f5', fg: '#3d3d5c' },
-  { bg: '#f5f1e8', fg: '#5c4a2d' },
-  { bg: '#e8f1f5', fg: '#2d4a5c' },
-];
-
-function avatarColor(name: string): { bg: string; fg: string } {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+// PR-2: bot 在线信号 = WuKongIM channel.online (跟主 IM 私聊里 bot 头像
+// 旁边那个绿点同源). 不是 fleet bot.status / runtime.status —— 那俩是
+// fleet 内部状态机, 跟 IM 实际能否通讯无直接关系.
+function useChannelOnline(channel: Channel | null): boolean {
+  const [online, setOnline] = useState<boolean>(() => {
+    if (!channel) return false;
+    const info = WKSDK.shared().channelManager.getChannelInfo(channel);
+    return (info?.online as any) === 1 || (info?.online as any) === true;
+  });
+  useEffect(() => {
+    if (!channel) return;
+    const read = () => {
+      const info = WKSDK.shared().channelManager.getChannelInfo(channel);
+      setOnline((info?.online as any) === 1 || (info?.online as any) === true);
+    };
+    read();
+    const t = window.setInterval(read, 2000);
+    return () => window.clearInterval(t);
+  }, [channel?.channelID, channel?.channelType]);
+  return online;
 }
 
 export function BotDetailPanel({ bot, onArchived }: { bot: Bot; onArchived: () => void }) {
   const [tab, setTab] = useState<DetailTab>('info');
-  const av = avatarColor(bot.name);
-  const statusKind: 'online' | 'failed' | 'pending' =
-    bot.status === 'active' ? 'online' :
-    bot.status === 'failed' ? 'failed' : 'pending';
-  const statusLabel =
-    bot.status === 'active' ? '在线' :
-    bot.status === 'failed' ? '失败' : '初始化中';
+
+  const botChannel = useMemo(
+    () => bot.bot_uid ? new Channel(bot.bot_uid, ChannelTypePerson) : null,
+    [bot.bot_uid],
+  );
+
+  const isOnline = useChannelOnline(botChannel);
+  const openChat = () => {
+    if (botChannel) {
+      (WKApp as any).endpoints?.showConversation?.(botChannel);
+    }
+  };
 
   return (
     <div className="wk-bd">
       {/* ── Header ────────────────────────────────────────── */}
       <header className="wk-bd-header">
         <div
-          className="wk-bd-avatar"
-          style={{ background: av.bg, color: av.fg }}
-          aria-hidden="true"
+          className={`wk-bd-avatar-wrap${botChannel ? ' wk-rt-clickable' : ''}`}
+          onClick={botChannel ? openChat : undefined}
+          title={botChannel ? '打开与该 Bot 的私聊' : undefined}
         >
-          {bot.name.slice(0, 1).toUpperCase()}
+          {botChannel ? (
+            <WKAvatar
+              channel={botChannel}
+              style={{ width: 48, height: 48, borderRadius: 8 }}
+            />
+          ) : (
+            <div className="wk-bd-avatar wk-bd-avatar--placeholder" aria-hidden="true">
+              {bot.name.slice(0, 1).toUpperCase()}
+            </div>
+          )}
+          {/* PR-2: 跟私聊 bot 头像同款绿点, 同信号 (bot.status='active'). */}
+          {isOnline && <span className="wk-rt-online-dot" title="Online" />}
         </div>
         <div className="wk-bd-headinfo">
           <h1 className="wk-bd-name">{bot.name}</h1>
           <div className="wk-bd-meta">
-            <span className={`wk-bd-status wk-bd-status--${statusKind}`}>
-              <span className="wk-bd-status__dot" aria-hidden="true" />
-              {statusLabel}
-            </span>
+            {/* PR-2: 删独立"● 在线"chip, 在线状态走头像旁绿点 (跟私聊一致). */}
             <span className="wk-bd-chip wk-bd-chip--kind">{bot.runtime_kind}</span>
             {bot.workspace_id && <span className="wk-bd-chip wk-bd-chip--ws">{bot.workspace_id}</span>}
           </div>
         </div>
-        <div className="wk-bd-actions">
-          <button
-            type="button"
-            className="wk-bd-action wk-bd-action--ghost"
-            onClick={() => {
-              if (!window.confirm(`归档 ${bot.name}？`)) return;
-              archiveBot(bot.id).then(onArchived).catch(() => {});
-            }}
-            title="归档智能体"
-          >归档</button>
-        </div>
+        {/* PR-2: hide "归档" button until cross-tier deprovision works:
+            current archiveBot only flips fleet bot.status=archived; the
+            server robot row + WuKongIM channel + daemon-side adapter
+            resources (openclaw workspace, cc-channel-octo bot config,
+            hermes .env line) are NOT cleaned up — leaving stale state
+            on multiple ends. Restore once adapter.Deprovision is
+            implemented end-to-end across runtimes (吕思佳 PR #34
+            interface is in place; claude/hermes/codex still TODO). */}
       </header>
 
       {/* ── Tabs ──────────────────────────────────────────── */}
@@ -100,21 +117,16 @@ function InfoTab({ bot }: { bot: Bot }) {
     <div className="wk-bd-section">
       <h3 className="wk-bd-section__title">配置</h3>
       <dl className="wk-bd-props">
-        <PropRow label="Runtime" value={
-          <>
-            <span className="wk-bd-mono">{bot.runtime_kind}</span>
-            <span className="wk-bd-props__sep">·</span>
-            <span className="wk-bd-props__hint">#{bot.runtime_id}</span>
-          </>
-        } />
-        <PropRow label="所有者" value={<Copyable text={bot.owner_uid} mono />} />
+        {/* PR-2: 删 #runtime_id (dev 级 PK, 用户用不到), 只留 kind. */}
+        <PropRow label="Runtime" value={<span className="wk-bd-mono">{bot.runtime_kind}</span>} />
+        <PropRow label="所有者" value={<OwnerLabel ownerUid={bot.owner_uid} />} />
         <PropRow label="状态" value={<span className="wk-bd-mono">{bot.status}</span>} />
         {bot.workspace_id && <PropRow label="Workspace" value={<Copyable text={bot.workspace_id} mono />} />}
       </dl>
       <h3 className="wk-bd-section__title wk-bd-section__title--secondary">身份</h3>
       <dl className="wk-bd-props">
         <PropRow label="Bot UID" value={<Copyable text={bot.bot_uid} mono />} />
-        <PropRow label="Daemon" value={<Copyable text={bot.daemon_id} mono />} />
+        {/* PR-2: 删 Daemon ID 字段, 是 dev 级 UUID, 用户用不到. */}
         <PropRow label="创建于" value={<span className="wk-bd-props__time">{bot.created_at}</span>} />
         <PropRow label="更新于" value={<span className="wk-bd-props__time">{bot.updated_at}</span>} />
       </dl>
@@ -125,6 +137,32 @@ function InfoTab({ bot }: { bot: Bot }) {
         </div>
       )}
     </div>
+  );
+}
+
+// PR-2: 所有者字段不再裸显示 UUID. bot.owner_uid 当前永远 = 登录用户
+// (api_key 跟 user 1:1 绑定), 所以查 WKApp.loginInfo 拿用户名 + Octo 号
+// (短号) 显示, 跟其他业务侧用户标识保持一致. 万一 owner ≠ 登录用户
+// (未来转移所有权), fallback 回 UUID 缩写.
+function OwnerLabel({ ownerUid }: { ownerUid: string }) {
+  const login = (WKApp as any).loginInfo;
+  const isMe = login?.uid === ownerUid;
+  if (isMe) {
+    const name = login?.name || '我';
+    const shortNo = login?.shortNo;
+    return (
+      <span className="wk-bd-owner">
+        <span className="wk-bd-mono">{name}</span>
+        {shortNo && <span className="wk-bd-props__hint">@{shortNo}</span>}
+      </span>
+    );
+  }
+  // 非当前登录用户 (例如 admin 视角 / 未来支持 transfer ownership) —
+  // 直接显示 UUID 缩写, 防止泄露完整 ID 又能让人区分.
+  return (
+    <span className="wk-bd-mono" title={ownerUid}>
+      {ownerUid ? `${ownerUid.slice(0, 8)}…${ownerUid.slice(-4)}` : '—'}
+    </span>
   );
 }
 
