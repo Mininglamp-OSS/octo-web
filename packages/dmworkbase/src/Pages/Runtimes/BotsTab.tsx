@@ -43,6 +43,10 @@ export interface BotsTabProps {
   // each runtime row in the tree, so the standalone tab body is no
   // longer shown by default.
   hidden?: boolean;
+  // PR-2 review-fix C1: 创建成功后通知父组件 (RuntimesPage), 让父刷
+  // 该 runtime 在左树 Level-3 的 bot cache —— BotsTab 自己只管自己那套
+  // bots state, 不知道父侧 botsByRuntime 缓存的存在.
+  onBotCreated?: (bot: Bot) => void;
 }
 
 export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(props, ref) {
@@ -68,35 +72,54 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
     }
   }, []);
 
-  // Load runtimes once for the create modal.
-  useEffect(() => {
+  // Load runtimes for the create modal —— 必须跟 space 同步, 否则切 space 后
+  // create bot 弹窗仍用旧 space 的设备/runtime, 导致跨 space mint 失败. 用
+  // mittBus 监听 space-changed (跟 RuntimesPage 同源信号), 命中时重拉.
+  const loadRuntimes = useCallback(async () => {
     const spaceId = (WKApp as any)?.shared?.currentSpaceId ?? '';
     const sessionToken = (WKApp as any)?.loginInfo?.token ?? '';
     // 合并 plan 决策一+二 Phase 3A: fleet 切到 AuthMiddleware 接 session
     // token, 直接带 `token:` header 调 (跟 matter user-auth 一致).
-    (async () => {
-      try {
-        const headers: Record<string, string> = {};
-        if (sessionToken) headers.token = sessionToken;
-        if (spaceId) headers['X-Space-Id'] = spaceId;
-        const res = await fetch('/api/v1/runtimes?space_id=' + encodeURIComponent(spaceId), {
-          headers,
-        });
-        const env = await res.json();
-        const list = (env?.data?.runtimes ?? env?.runtimes ?? []) as any[];
-        setRuntimes(list.map(r => ({
-          id: r.id,
-          name: r.name || r.provider,
-          provider: r.provider,
-          daemon_id: r.daemon_id || '',
-          device_name: r.device_name || r.daemon_id || 'unknown',
-          status: r.status || 'unknown',
-        })));
-      } catch {
-        setRuntimes([]);
-      }
-    })();
+    try {
+      const headers: Record<string, string> = {};
+      if (sessionToken) headers.token = sessionToken;
+      if (spaceId) headers['X-Space-Id'] = spaceId;
+      const res = await fetch('/api/v1/runtimes?space_id=' + encodeURIComponent(spaceId), {
+        headers,
+      });
+      const env = await res.json();
+      const list = (env?.data?.runtimes ?? env?.runtimes ?? []) as any[];
+      setRuntimes(list.map(r => ({
+        id: r.id,
+        name: r.name || r.provider,
+        provider: r.provider,
+        daemon_id: r.daemon_id || '',
+        device_name: r.device_name || r.daemon_id || 'unknown',
+        status: r.status || 'unknown',
+      })));
+    } catch {
+      setRuntimes([]);
+    }
   }, []);
+
+  useEffect(() => { loadRuntimes() }, [loadRuntimes]);
+
+  // 切 space 时清除 bot 列表 + 重拉 runtimes; 同时关弹窗 / 清挂起的 openBot,
+  // 防止跨 space 的 bot id 撞到当前列表.
+  useEffect(() => {
+    const onSpaceChanged = () => {
+      setBots([]);
+      setSelectedId(null);
+      setModalOpen(false);
+      pendingOpenIdRef.current = null;
+      loadRuntimes();
+      refresh();
+    };
+    (WKApp as any).mittBus?.on?.('space-changed', onSpaceChanged);
+    return () => {
+      (WKApp as any).mittBus?.off?.('space-changed', onSpaceChanged);
+    };
+  }, [loadRuntimes, refresh]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -161,8 +184,13 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
     const fresh = await listBots();
     setBots(fresh);
     const created = fresh.find(b => b.id === botId);
-    if (created) selectBot(created);
-  }, [refresh, selectBot]);
+    if (created) {
+      selectBot(created);
+      // C1: 让左树 Level-3 缓存失效, RuntimesPage 在 onBotCreated 里
+      // refreshRuntimeBots(runtime_id) 重新拉新 list (含刚建的 bot).
+      props.onBotCreated?.(created);
+    }
+  }, [refresh, selectBot, props]);
 
   return (
     <div className="wk-rt-bots-list" style={props.hidden ? { display: 'none' } : undefined}>

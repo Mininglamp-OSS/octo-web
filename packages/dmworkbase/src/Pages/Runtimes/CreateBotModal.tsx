@@ -77,9 +77,8 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
     const firstReady = groups.find(g => g.hasSupportedOnline);
     if (firstReady) {
       setDeviceKey(firstReady.daemon_id);
-      const firstRt = firstReady.runtimes.find(r => r.supported && r.status === 'online')
-        ?? firstReady.runtimes.find(r => r.supported)
-        ?? firstReady.runtimes[0];
+      // 同 handleDevicePick: 只预选 supported+online, 找不到就留空.
+      const firstRt = firstReady.runtimes.find(r => r.supported && r.status === 'online') ?? null;
       setRuntimeId(firstRt?.id ?? null);
     } else if (groups[0]) {
       setDeviceKey(groups[0].daemon_id);
@@ -98,14 +97,19 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
     () => activeGroup?.runtimes.find(r => r.id === runtimeId) ?? null,
     [activeGroup, runtimeId],
   );
-  const canSubmit = !!name.trim() && !!selectedRuntime && selectedRuntime.supported && !busy;
+  // 提交前必须保证 runtime 既 supported 又 online —— 否则 fleet 派发到离线
+  // daemon 不会 ack, bot 进配置中后会卡几分钟超时变 failed.
+  const canSubmit = !!name.trim()
+    && !!selectedRuntime
+    && selectedRuntime.supported
+    && selectedRuntime.status === 'online'
+    && !busy;
 
   const handleDevicePick = (g: DeviceGroup) => {
     setDeviceKey(g.daemon_id);
-    // Pre-select the first supported online runtime under the new device.
-    const firstRt = g.runtimes.find(r => r.supported && r.status === 'online')
-      ?? g.runtimes.find(r => r.supported)
-      ?? null;
+    // 只预选 supported + online 的 runtime, 不 fallback 到离线/不支持的 ——
+    // 让用户主动看到该设备 0 个可用 runtime, 而不是默选个不可提交的项.
+    const firstRt = g.runtimes.find(r => r.supported && r.status === 'online') ?? null;
     setRuntimeId(firstRt?.id ?? null);
   };
 
