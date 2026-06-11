@@ -13,6 +13,7 @@
     --wk-height-chat-search: 64px;
     --wk-height-chat-conversation-header: 48px;  /* Figma: 48px */
     --wk-wdith-chat-channelsetting: 340px;
+    --wk-width-chat-search-panel: 480px;
     --wk-width-thread-panel: 380px;
     --wk-layer-transition: 300ms cubic-bezier(0.33,1,0.68,1);
     --wk-slide-transition: 450ms cubic-bezier(0.25, 1, 0.5, 1);

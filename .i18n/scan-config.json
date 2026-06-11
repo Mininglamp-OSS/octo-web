@@ -19,6 +19,10 @@
     {
       "path": "packages/dmworkbase/src/Messages/RichText/RichTextContent.ts",
       "reason": "RichText(=14) plain-generation image placeholder. This [图片] literal is a cross-platform wire-format token that must byte-match octo-lib RichTextImagePlaceholder (common/richtext.go) so server/mobile/web produce identical plain text; it is protocol data, not translatable UI copy."
+    },
+    {
+      "path": "packages/dmworkbase/src/Components/ChannelSearch/ChannelSearch.stories.mock.ts",
+      "reason": "Channel search Storybook fixture data with sample sender names, message bodies, filenames, and match reasons; not UI copy."
     }
   ]
 }

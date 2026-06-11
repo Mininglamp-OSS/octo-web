@@ -94,11 +94,9 @@ import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
 import FileToolbar from "./Components/FileToolbar";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { SubscriberList } from "./Components/Subscribers/list";
-import GlobalSearch from "./Components/GlobalSearch";
 import { GroupMdEditor } from "./Components/GroupMdEditor";
 import { GroupManagement } from "./Components/GroupManagement";
 import ChannelWebhookPanel from "./Components/ChannelWebhook";
-import { handleGlobalSearchClick } from "./Pages/Chat/vm";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
 import { notificationUtil } from "./Utils/NotificationUtil";
 import { resolveExternalForViewer } from "./Utils/externalViewer";
@@ -1887,40 +1885,30 @@ export default class BaseModule implements IModule {
       1000
     );
 
-    // [隐藏] 2026-04-15 隐藏「查找聊天内容」入口，产品决策，随时可恢复
-    // WKApp.shared.channelSettingRegister(
-    //   "channel.base.settingMessageHistory",
-    //   (context) => {
-    //     const data = context.routeData() as ChannelSettingRouteData;
-    //     const channel = data.channel
-    //
-    //     return new Section({
-    //       rows: [
-    //         new Row({
-    //           cell: ListItem,
-    //           properties: {
-    //             title: "查找聊天内容",
-    //             onClick: () => {
-    //               WKApp.shared.baseContext.showGlobalModal({
-    //                 body: <GlobalSearch channel={channel} onClick={(item: any, type: string) => {
-    //                   void handleGlobalSearchClick(item, type, () => {
-    //                     WKApp.shared.baseContext.hideGlobalModal()
-    //                   })
-    //                 }} />,
-    //                 width: "80%",
-    //                 height: "80%",
-    //                 onCancel: () => {
-    //                   WKApp.shared.baseContext.hideGlobalModal()
-    //                 }
-    //               })
-    //             },
-    //           },
-    //         }),
-    //       ],
-    //     });
-    //   },
-    //   1100
-    // );
+    WKApp.shared.channelSettingRegister(
+      "channel.base.settingMessageHistory",
+      (context) => {
+        const data = context.routeData() as ChannelSettingRouteData;
+        if (!data.onOpenChannelSearch) {
+          return undefined;
+        }
+
+        return new Section({
+          rows: [
+            new Row({
+              cell: ListItem,
+              properties: {
+                title: t("base.module.channelSettings.messageHistory"),
+                onClick: () => {
+                  data.onOpenChannelSearch?.();
+                },
+              },
+            }),
+          ],
+        });
+      },
+      1100
+    );
 
     WKApp.shared.channelSettingRegister(
       "channel.base.setting2",

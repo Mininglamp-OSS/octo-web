@@ -22,6 +22,7 @@ import "./index.css";
 import { ConversationWrap } from "../../Service/Model";
 import WKApp, { ThemeMode } from "../../App";
 import ChannelSetting from "../../Components/ChannelSetting";
+import ChannelSearchPanel from "../../Components/ChannelSearch";
 import classNames from "classnames";
 import {
   Channel,
@@ -215,6 +216,8 @@ export interface ChatContentPageState {
   showSummaryPanel: boolean;
   /** 总结面板初始视图 */
   summaryPanelView: 'history' | 'new';
+  /** 频道内聊天搜索面板是否显示 */
+  showChannelSearch: boolean;
 }
 export class ChatContentPage extends Component<
   ChatContentPageProps,
@@ -243,6 +246,7 @@ export class ChatContentPage extends Component<
       previewHadThreadShell: false,
       showSummaryPanel: false,
       summaryPanelView: 'new',
+      showChannelSearch: false,
     };
   }
 
@@ -303,6 +307,7 @@ export class ChatContentPage extends Component<
       previewFile: file,
       showThreadPanel: true, // 确保面板打开
       showChannelSetting: false, // 关闭设置面板，避免布局冲突
+      showChannelSearch: false,
       showMatterPanel: fromMatter ? this.state.showMatterPanel : false,
       showMatterDetailPanel: fromMatter
         ? this.state.showMatterDetailPanel
@@ -371,6 +376,7 @@ export class ChatContentPage extends Component<
           showMatterPanel: false, // 关闭事项列表面板
           showMatterDetailPanel: false, // 关闭事项详情面板
           showSummaryPanel: false,
+          showChannelSearch: false,
         });
       }
     };
@@ -407,6 +413,7 @@ export class ChatContentPage extends Component<
             ? null
             : prevState.activePreviewMessageId,
           showSummaryPanel: opening ? false : prevState.showSummaryPanel,
+          showChannelSearch: opening ? false : prevState.showChannelSearch,
         };
       });
     };
@@ -434,6 +441,7 @@ export class ChatContentPage extends Component<
           previewFile: null,
           activePreviewMessageId: null,
           showSummaryPanel: false,
+          showChannelSearch: false,
         };
       });
     };
@@ -460,6 +468,7 @@ export class ChatContentPage extends Component<
           activeThread: opening ? null : prevState.activeThread,
           previewFile: opening ? null : prevState.previewFile,
           activePreviewMessageId: opening ? null : prevState.activePreviewMessageId,
+          showChannelSearch: opening ? false : prevState.showChannelSearch,
         };
       });
     };
@@ -475,6 +484,7 @@ export class ChatContentPage extends Component<
         showMatterPanel: false, // 互斥
         showMatterDetailPanel: false, // 互斥
         showSummaryPanel: false,
+        showChannelSearch: false,
       });
       WKApp.shared.pendingThreadPanel = undefined;
     }
@@ -500,6 +510,7 @@ export class ChatContentPage extends Component<
         showMatterPanel: false, // 互斥
         showMatterDetailPanel: false, // 互斥
         showSummaryPanel: false,
+        showChannelSearch: false,
       });
     }
 
@@ -537,6 +548,7 @@ export class ChatContentPage extends Component<
           showMatterPanel: false, // 互斥
           showMatterDetailPanel: false, // 互斥
           showSummaryPanel: false,
+          showChannelSearch: false,
         });
         return;
       }
@@ -562,6 +574,7 @@ export class ChatContentPage extends Component<
           showMatterPanel: false, // 互斥
           showMatterDetailPanel: false, // 互斥
           showSummaryPanel: false,
+          showChannelSearch: false,
         });
         return;
       }
@@ -735,11 +748,13 @@ export class ChatContentPage extends Component<
       WKSDK.shared().channelManager.fetchChannelInfo(channel);
     }
     const threadStatus = this.getThreadStatus(channelInfo);
+    const showChannelSearch = this.state.showChannelSearch;
     return (
       <div
         className={classNames(
           "wk-chat-content-right",
           showChannelSetting ? "wk-chat-channelsetting-open" : "",
+          showChannelSearch ? "wk-chat-channel-search-open" : "",
           showThreadPanel || previewFile || showMatterPanel
             ? "wk-chat-threadpanel-open"
             : "",
@@ -908,6 +923,7 @@ export class ChatContentPage extends Component<
                                 showMatterPanel: false, // 与事项列表面板互斥
                                 showMatterDetailPanel: false, // 与事项详情面板互斥
                                 showSummaryPanel: false,
+                                showChannelSearch: false,
                                 activeThread: null,
                                 previewFile: null, // 关闭文件预览（互斥）
                                 activePreviewMessageId: null,
@@ -926,6 +942,7 @@ export class ChatContentPage extends Component<
                         // 点击更多按钮只切换设置面板，不影响文件预览/子区面板状态
                         this.setState({
                           showChannelSetting: !this.state.showChannelSetting,
+                          showChannelSearch: false,
                         });
                       }}
                     >
@@ -974,6 +991,7 @@ export class ChatContentPage extends Component<
                       showMatterPanel: false, // 与事项列表面板互斥
                       showMatterDetailPanel: false, // 与事项详情面板互斥
                       showSummaryPanel: false,
+                      showChannelSearch: false,
                       previewFile: null, // 关闭文件预览（互斥）
                       activePreviewMessageId: null,
                       activeThread: buildThreadStub(
@@ -1010,12 +1028,40 @@ export class ChatContentPage extends Component<
               conversationContext={this.conversationContext}
               key={channel.getChannelKey()}
               channel={channel}
+              onOpenChannelSearch={() => {
+                this.setState({
+                  showChannelSearch: true,
+                  showChannelSetting: false,
+                  showThreadPanel: false,
+                  activeThread: null,
+                  previewFile: null,
+                  activePreviewMessageId: null,
+                  showMatterPanel: false,
+                  showMatterDetailPanel: false,
+                  showSummaryPanel: false,
+                });
+              }}
               onClose={() => {
                 this.setState({
                   showChannelSetting: false,
                 });
               }}
             ></ChannelSetting>
+          </ErrorBoundary>
+        </div>
+
+        <div className="wk-chat-channel-search-panel">
+          <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
+            <ChannelSearchPanel
+              key={channel.getChannelKey()}
+              channel={channel}
+              conversationContext={this.conversationContext}
+              onClose={() => {
+                this.setState({
+                  showChannelSearch: false,
+                });
+              }}
+            />
           </ErrorBoundary>
         </div>
 
