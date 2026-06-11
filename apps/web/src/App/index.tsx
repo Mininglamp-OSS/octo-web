@@ -151,7 +151,7 @@ async function registerMenus() {
   }
   WKApp.menus.register("runtimes", () => {
     if (!hasRuntimes) return undefined as any
-    return new Menus("runtimes", "/runtimes", "Runtimes", <RuntimesIcon />, <RuntimesIcon />)
+    return new Menus("runtimes", "/runtimes", "运行时", <RuntimesIcon />, <RuntimesIcon />)
   }, 7000)
   const waitForSpace = (retries = 0) => {
     if (WKApp.shared.currentSpaceId) {
