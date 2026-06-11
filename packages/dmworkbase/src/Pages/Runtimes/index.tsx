@@ -83,17 +83,6 @@ function parseMetadata(raw: string): Record<string, unknown> | null {
     try { return JSON.parse(raw) } catch { return null }
 }
 
-function formatLastSeen(lastSeen: string): string {
-    if (!lastSeen) return "N/A"
-    const ts = new Date(lastSeen.replace(" ", "T") + "Z").getTime()
-    if (isNaN(ts)) return lastSeen
-    const diff = Date.now() - ts
-    if (diff < 60000) return "Just now"
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
-    return `${Math.floor(diff / 86400000)}d ago`
-}
-
 function groupByDevice(runtimes: AgentRuntime[]): DeviceGroup[] {
     const map = new Map<string, DeviceGroup>()
     for (const rt of runtimes) {
@@ -797,122 +786,11 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
     }
 }
 
-// ─── BotsSection: list bots bound to this openclaw runtime, embedded in
-//     RuntimeDetail. Row click hands off to the Bot tab via parent callback;
-//     "+ 新建" likewise. Polls every 5s to mirror BotsTab so status
-//     transitions (provisioning → active) reflect without a page refresh.
+// ─── BotsSection 已删 (PR-2 review-fix round 2):
+//     左树 Level-3 (BotRow) 已显示该 runtime 的 bot 列表 + 顶部 + popover
+//     提供"创建 Bot" 入口, 这一段嵌入式 BotsSection 完全 dead code.
 // ────────────────────────────────────────────────────────────────────────
 
-const RTBOTS_PALETTE = [
-    { bg: "#eef2f7", fg: "#3d4759" },
-    { bg: "#eef5ee", fg: "#365940" },
-    { bg: "#f5eef0", fg: "#5a3d4a" },
-    { bg: "#f0f0f5", fg: "#3d3d5c" },
-    { bg: "#f5f1e8", fg: "#5c4a2d" },
-    { bg: "#e8f1f5", fg: "#2d4a5c" },
-]
-
-function rtbotsAvatarColor(name: string): { bg: string; fg: string } {
-    let h = 0
-    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
-    return RTBOTS_PALETTE[h % RTBOTS_PALETTE.length]
-}
-
-function BotsSection({ runtime, onOpenBot, onCreateBot }: {
-    runtime: AgentRuntime
-    onOpenBot?: (id: number) => void
-    onCreateBot?: () => void
-}) {
-    const [bots, setBots] = React.useState<Bot[]>([])
-    const [loading, setLoading] = React.useState(true)
-
-    const refresh = React.useCallback(async () => {
-        try {
-            const all = await listBots()
-            setBots(all.filter(b => b.runtime_id === runtime.id && b.status !== "archived"))
-        } catch {
-            // swallow — leaves stale list visible; next poll will retry
-        } finally {
-            setLoading(false)
-        }
-    }, [runtime.id])
-
-    React.useEffect(() => { refresh() }, [refresh])
-    React.useEffect(() => {
-        const t = window.setInterval(refresh, 5000)
-        return () => window.clearInterval(t)
-    }, [refresh])
-
-    return (
-        <div className="wk-rt-rtbots">
-            <div className="wk-rt-rtbots__header">
-                <span className="wk-rt-rtbots__title">智能体</span>
-                <span className="wk-rt-rtbots__count">{bots.length}</span>
-                {onCreateBot && (
-                    <button
-                        type="button"
-                        className="wk-rt-rtbots__add"
-                        onClick={onCreateBot}
-                        title="在 Bot 标签页创建新智能体"
-                    >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                        </svg>
-                        <span>新建</span>
-                    </button>
-                )}
-            </div>
-            {loading && bots.length === 0 ? (
-                <div className="wk-rt-rtbots__empty">加载中…</div>
-            ) : bots.length === 0 ? (
-                <div className="wk-rt-rtbots__empty">这个 runtime 还没有智能体</div>
-            ) : (
-                <ul className="wk-rt-rtbots__list">
-                    {bots.map(b => {
-                        const av = rtbotsAvatarColor(b.name)
-                        const statusKind: "online" | "failed" | "pending" =
-                            b.status === "active" ? "online" :
-                            b.status === "failed" ? "failed" : "pending"
-                        const statusLabel =
-                            b.status === "active" ? "在线" :
-                            b.status === "failed" ? "失败" : "初始化中"
-                        return (
-                            <li
-                                key={b.id}
-                                className="wk-rt-rtbots__row"
-                                role="button"
-                                tabIndex={0}
-                                title={`查看 ${b.name} 详情`}
-                                onClick={() => onOpenBot?.(b.id)}
-                                onKeyDown={(e) => {
-                                    if (e.key === "Enter" || e.key === " ") {
-                                        e.preventDefault()
-                                        onOpenBot?.(b.id)
-                                    }
-                                }}
-                            >
-                                <span
-                                    className="wk-rt-rtbots__avatar"
-                                    style={{ background: av.bg, color: av.fg }}
-                                    aria-hidden="true"
-                                >{b.name.slice(0, 1).toUpperCase()}</span>
-                                <span className="wk-rt-rtbots__name">{b.name}</span>
-                                <span className={`wk-rt-rtbots__status wk-rt-rtbots__status--${statusKind}`}>
-                                    <span className="wk-rt-rtbots__dot" aria-hidden="true" />
-                                    {statusLabel}
-                                </span>
-                                {b.workspace_id && (
-                                    <span className="wk-rt-rtbots__ws" title={b.workspace_id}>{b.workspace_id}</span>
-                                )}
-                            </li>
-                        )
-                    })}
-                </ul>
-            )}
-        </div>
-    )
-}
 
 // ─── RuntimeDetail: rendered in RIGHT panel when clicking an agent ──────
 
@@ -923,10 +801,6 @@ interface RuntimeDetailProps {
     componentActiveUpgrade?: ActiveUpgrade
     onDelete: (id: number) => void
     onAgentsChanged?: () => void
-    // PoC4: openclaw runtime detail surfaces a Bots section. These callbacks
-    // hand off to the Bot tab (parent owns tab state + BotsTab ref).
-    onOpenBot?: (botId: number) => void
-    onCreateBot?: () => void
 }
 
 type PluginUpgradeStatus = "idle" | "pending" | "dispatched" | "installing" | "completed" | "failed" | "timeout"
@@ -1093,8 +967,6 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                         runtime={updated}
                                         versionHints={hints}
                                         onDelete={this.props.onDelete}
-                                        onOpenBot={this.props.onOpenBot}
-                                        onCreateBot={this.props.onCreateBot}
                                     />
                                 )
                             }
@@ -1197,8 +1069,6 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                         runtime={updated}
                                         versionHints={hints}
                                         onDelete={this.props.onDelete}
-                                        onOpenBot={this.props.onOpenBot}
-                                        onCreateBot={this.props.onCreateBot}
                                     />
                                 )
                             }
@@ -1385,12 +1255,23 @@ function BotRow({ bot, onOpen }: BotRowProps) {
     return (
         <div
             className="wk-rt-bot-row"
+            role="button"
+            tabIndex={0}
             onClick={(e) => { e.stopPropagation(); onOpen(bot.id) }}
+            onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    onOpen(bot.id)
+                }
+            }}
         >
             <div
                 className={`wk-rt-bot-avatar-wrap${botChannel ? " wk-rt-clickable" : ""}`}
                 title={botChannel ? "打开与该 Bot 的私聊" : undefined}
-                onClick={openChat}
+                // C9 fix: 没 botChannel 时不挂 onClick, 否则空 handler
+                // stopPropagation 会吞掉点击, 让头像区变 dead zone (用户
+                // 看到头像点没反应, 行级 onOpen 也不触发).
+                onClick={botChannel ? openChat : undefined}
             >
                 {botChannel ? (
                     <WKAvatar channel={botChannel} style={{ width: 20, height: 20, borderRadius: 4 }} />
@@ -1405,16 +1286,13 @@ function BotRow({ bot, onOpen }: BotRowProps) {
     )
 }
 
-type ActiveTab = "runtime" | "bots"
 interface RuntimesPageState extends RuntimesState {
-    activeTab: ActiveTab
     createMenuOpen: boolean
     runtimeModalOpen: boolean
-    botModalOpen: boolean
-    botModalRuntimes: { id: number; name: string; kind: import("./botsApi").RuntimeKind; supported: boolean }[]
     // PR-2 Level 3: runtime row expand → bot list under that runtime.
-    // Lazy-load: bots fetched once when a runtime is first expanded, then
-    // cached in `botsByRuntime` and refreshed on a soft poll.
+    // Lazy-load: bots fetched once when a runtime is first expanded, cache
+    // is invalidated on space-change and on bot create. PR-3 may add a soft
+    // poll to keep the list fresh while expanded.
     expandedRuntimes: Set<number>
     botsByRuntime: Map<number, Bot[]>
     botsLoading: Set<number>
@@ -1424,6 +1302,12 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     pingCache: PingCache = new Map()
     botsTabRef = React.createRef<BotsTabHandle>()
 
+    // C9 in-flight guard: 切 space 时 epoch++ , refreshRuntimeBots 的
+    // .then 回到时若 epoch 变了就丢弃结果, 防旧 space 响应回填到清空后
+    // 的 botsByRuntime (fleet runtime id 全局递增不撞数据, 但避免 dead
+    // 条目残留).
+    private spaceEpoch = 0
+
     state: RuntimesPageState = {
         runtimes: [],
         versionHints: {},
@@ -1432,11 +1316,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         loading: true,
         selectedId: null,
         expandedDevices: new Set<string>(),
-        activeTab: (new URLSearchParams(window.location.search).get("tab") === "bots" ? "bots" : "runtime"),
         createMenuOpen: false,
         runtimeModalOpen: false,
-        botModalOpen: false,
-        botModalRuntimes: [],
         expandedRuntimes: new Set<number>(),
         botsByRuntime: new Map<number, Bot[]>(),
         botsLoading: new Set<number>(),
@@ -1445,20 +1326,28 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     private pollTimer?: ReturnType<typeof setInterval>
     private selectedDaemonId?: string
 
-    // C1: BotsTab 创建成功后刷该 runtime 的 Level-3 cache, 用户当前
-    // 看到的 bot 列表立刻包含新建项. 同时如果该 runtime 行还没展开,
-    // 自动展开一下让用户能看到刚建的 bot.
+    // C1 + R1: BotsTab 创建成功后刷该 runtime 的 Level-3 cache, 用户当前
+    // 看到的 bot 列表立刻包含新建项. R1: 同时把父 device 也展开 — 用户
+    // 从顶部 + popover 创建时 device 行可能未展开, 仅展开 runtime 看不
+    // 到 (上层 device 折叠把整 subtree 藏了), tree 链路体感断.
     private handleBotCreated = (bot: Bot) => {
         this.refreshRuntimeBots(bot.runtime_id)
-        if (!this.state.expandedRuntimes.has(bot.runtime_id)) {
-            const next = new Set(this.state.expandedRuntimes)
-            next.add(bot.runtime_id)
-            this.setState({ expandedRuntimes: next })
-        }
+        const rt = this.state.runtimes.find(r => r.id === bot.runtime_id)
+        const daemonId = rt?.daemon_id
+        this.setState((prev) => {
+            const expandedRuntimes = prev.expandedRuntimes.has(bot.runtime_id)
+                ? prev.expandedRuntimes
+                : new Set(prev.expandedRuntimes).add(bot.runtime_id)
+            const expandedDevices = (daemonId && !prev.expandedDevices.has(daemonId))
+                ? new Set(prev.expandedDevices).add(daemonId)
+                : prev.expandedDevices
+            return { expandedRuntimes, expandedDevices }
+        })
     }
 
     private handleSpaceChanged = () => {
         this.pingCache.clear()
+        this.spaceEpoch++
         // C5: 切 space 时也得清 expandedRuntimes / botsByRuntime / botsLoading,
         // 否则 fleet 给 runtime id 是全局递增的不会重复, 但 bot 缓存仍然会绑到
         // 上一 space 的 runtime — 用户切回原 space 看到的还是旧 list 直到
@@ -1474,15 +1363,28 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         this.loadData()
     }
 
+    // C6 a11y: popover Escape close + focus return. document keydown 监听
+    // 期间 menu 打开 + Escape 触发关 + 把焦点退回 + 按钮.
+    private createBtnRef = React.createRef<HTMLButtonElement>()
+    private handleGlobalKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape" && this.state.createMenuOpen) {
+            this.setState({ createMenuOpen: false }, () => {
+                this.createBtnRef.current?.focus()
+            })
+        }
+    }
+
     componentDidMount() {
         this.loadData()
         this.pollTimer = setInterval(() => this.loadData(true), 15000)
         WKApp.mittBus.on("space-changed", this.handleSpaceChanged)
+        document.addEventListener("keydown", this.handleGlobalKeyDown)
     }
 
     componentWillUnmount() {
         if (this.pollTimer) clearInterval(this.pollTimer)
         WKApp.mittBus.off("space-changed", this.handleSpaceChanged)
+        document.removeEventListener("keydown", this.handleGlobalKeyDown)
     }
 
     async loadData(silent = false) {
@@ -1569,27 +1471,37 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     }
 
     // PR-2 Level 3: toggle a runtime row's expanded state and lazy-load
-    // its bot list on first expand. setState updater 必须保持纯, 不能在
-    // updater 里调 refreshRuntimeBots (它会 setState) — React 18
-    // StrictMode 下 updater 会跑两次, 异步副作用会重复触发 listBots.
-    // 所以这里先用 prev 计算下一态 + 决定是否需要拉一次, setState 之外
-    // (callback) 触发副作用.
+    // its bot list on first expand.
+    //
+    // C11 fix: setState updater 保持纯 (函数式 setState), 但用 outer
+    // `let` 暂存 needFirstLoad 给 setState 第二参 callback 用. 这样:
+    //   - StrictMode 下 updater 跑两次, 但 needFirstLoad 只是 boolean,
+    //     不会触发副作用 (refreshRuntimeBots 只在 callback 里调一次)
+    //   - 直接读 this.state 后 setState 会丢同 tick 多次 toggle 的中间
+    //     态; 函数式 prev 永远拿最新.
     toggleRuntime = (runtimeId: number) => {
-        const prev = this.state
-        const willExpand = !prev.expandedRuntimes.has(runtimeId)
-        const expanded = new Set(prev.expandedRuntimes)
-        if (willExpand) expanded.add(runtimeId)
-        else expanded.delete(runtimeId)
-        const needFirstLoad = willExpand
-            && !prev.botsByRuntime.has(runtimeId)
-            && !prev.botsLoading.has(runtimeId)
-        this.setState({ expandedRuntimes: expanded }, () => {
+        let needFirstLoad = false
+        this.setState((prev) => {
+            const willExpand = !prev.expandedRuntimes.has(runtimeId)
+            const expanded = new Set(prev.expandedRuntimes)
+            if (willExpand) expanded.add(runtimeId)
+            else expanded.delete(runtimeId)
+            needFirstLoad = willExpand
+                && !prev.botsByRuntime.has(runtimeId)
+                && !prev.botsLoading.has(runtimeId)
+            return { expandedRuntimes: expanded }
+        }, () => {
             if (needFirstLoad) this.refreshRuntimeBots(runtimeId)
         })
     }
 
     refreshRuntimeBots = async (runtimeId: number) => {
+        // C9 in-flight guard: 进 epoch 闭包, 响应回来时若 epoch 变过
+        // (期间切了 space) 就丢弃, 防旧 space 数据回填.
+        const epoch = this.spaceEpoch
+        const isStale = () => this.spaceEpoch !== epoch
         this.setState((prev) => {
+            if (isStale()) return null
             const loading = new Set(prev.botsLoading)
             loading.add(runtimeId)
             return { botsLoading: loading }
@@ -1599,8 +1511,10 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             // runtime_id for this row's view. Tiny dataset (PoC scale)
             // so per-runtime fan-out isn't worth the API surface.
             const all = await listBots()
+            if (isStale()) return
             const forThis = all.filter(b => b.runtime_id === runtimeId)
             this.setState((prev) => {
+                if (isStale()) return null
                 const next = new Map(prev.botsByRuntime)
                 next.set(runtimeId, forThis)
                 const loading = new Set(prev.botsLoading)
@@ -1609,6 +1523,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             })
         } catch (e) {
             this.setState((prev) => {
+                if (isStale()) return null
                 const loading = new Set(prev.botsLoading)
                 loading.delete(runtimeId)
                 return { botsLoading: loading }
@@ -1646,47 +1561,12 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                     this.loadData()
                 }}
                 onAgentsChanged={() => this.loadData()}
-                onOpenBot={this.openBotFromRuntime}
-                onCreateBot={this.createBotFromRuntime}
             />
         )
     }
 
-    // Tab switch with optional after-hook. Used both by the tab buttons
-    // and by the openBot/createBot bridge so the BotsTab ref is ready
-    // before we try to call into it.
-    private switchTab = (next: ActiveTab, after?: () => void) => {
-        const sp = new URLSearchParams(window.location.search)
-        if (next === "bots") sp.set("tab", "bots"); else sp.delete("tab")
-        const q = sp.toString()
-        window.history.replaceState(null, "", window.location.pathname + (q ? "?" + q : ""))
-        if (this.state.activeTab === next) {
-            // Already on target tab — defer the after-hook a microtask so
-            // callers don't have to special-case sync vs async.
-            if (after) Promise.resolve().then(after)
-            return
-        }
-        WKApp.routeRight.popToRoot()
-        this.setState({ activeTab: next }, after)
-    }
-
-    // Bridge: clicking a bot row inside a Runtime detail page switches to
-    // the Bot tab, then asks BotsTab to surface that bot's detail panel.
-    // openBot tolerates an unloaded list via pendingOpenIdRef.
-    private openBotFromRuntime = (botId: number) => {
-        this.switchTab("bots", () => {
-            this.botsTabRef.current?.openBot(botId)
-        })
-    }
-
-    private createBotFromRuntime = () => {
-        this.switchTab("bots", () => {
-            this.botsTabRef.current?.openCreate()
-        })
-    }
-
     render() {
-        const { runtimes, selectedId, loading, expandedDevices, createMenuOpen, runtimeModalOpen, botModalOpen, botModalRuntimes } = this.state
+        const { runtimes, selectedId, loading, expandedDevices, createMenuOpen, runtimeModalOpen } = this.state
         const groups = groupByDevice(runtimes)
         const totalOnline = runtimes.filter(r => r.status === "online").length
 
@@ -1706,10 +1586,12 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                         </span>
                         <div className="wk-rt-create-wrap">
                             <button
+                                ref={this.createBtnRef}
                                 type="button"
                                 className="wk-rt-create-btn"
                                 aria-haspopup="menu"
                                 aria-expanded={createMenuOpen}
+                                aria-label="新建"
                                 onClick={() => this.setState({ createMenuOpen: !createMenuOpen })}
                             >+</button>
                             {createMenuOpen && (
@@ -1763,7 +1645,6 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                         </div>
                     </div>
                 </div>
-                <div className="wk-rt-runtime-tab">
                 <div className="wk-rt-list-items">
                     {loading && <div className="wk-rt-empty">Loading...</div>}
                     {!loading && groups.length === 0 && (
@@ -1777,7 +1658,16 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                 {/* Level 1: Device */}
                                 <div
                                     className="wk-rt-device-row"
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-expanded={expanded}
                                     onClick={() => this.toggleDevice(group.daemonId)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault()
+                                            this.toggleDevice(group.daemonId)
+                                        }
+                                    }}
                                 >
                                     <span className={`wk-rt-expand-arrow ${expanded ? "expanded" : ""}`}>&#9654;</span>
                                     <div className="wk-rt-device-icon">
@@ -1808,7 +1698,16 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                         <div key={rt.id} className="wk-rt-rt-block">
                                             <div
                                                 className={`wk-rt-agent-row ${selectedId === rt.id ? "selected" : ""}`}
+                                                role="button"
+                                                tabIndex={0}
+                                                aria-expanded={rtExpanded}
                                                 onClick={() => this.toggleRuntime(rt.id)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === "Enter" || e.key === " ") {
+                                                        e.preventDefault()
+                                                        this.toggleRuntime(rt.id)
+                                                    }
+                                                }}
                                             >
                                                 <span className={`wk-rt-expand-arrow ${rtExpanded ? "expanded" : ""}`}>&#9654;</span>
                                                 <div
@@ -1856,7 +1755,6 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                             </div>
                         )
                     })}
-                </div>
                 </div>
             </div>
         )
