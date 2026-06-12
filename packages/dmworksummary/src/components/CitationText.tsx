@@ -5,8 +5,8 @@ import remarkBreaks from 'remark-breaks';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
 import { useI18n } from '@octo/base';
-import CitationBadge, { CitationGroupBadge } from './CitationBadge';
-import { CitationItem } from '../types/summary';
+import CitationBadge, { CitationGroupBadge, TeamCitationBadge } from './CitationBadge';
+import { CitationItem, TeamCitationItem } from '../types/summary';
 
 export interface CitationContextValue {
     activeKey: string | null;
@@ -23,15 +23,17 @@ export const CitationContext = createContext<CitationContextValue>({
 interface CitationTextProps {
     content: string;
     citations: CitationItem[];
+    teamCitations?: TeamCitationItem[];
 }
 
 const citationSchema = {
     ...defaultSchema,
-    tagNames: [...(defaultSchema.tagNames || []), 'citation', 'citationgroup'],
+    tagNames: [...(defaultSchema.tagNames || []), 'citation', 'citationgroup', 'teamcitation'],
     attributes: {
         ...defaultSchema.attributes,
         citation: ['index', 'badgekey'],
         citationgroup: ['indices', 'badgekey'],
+        teamcitation: ['index', 'badgekey'],
     },
 };
 
@@ -124,7 +126,59 @@ function remarkCitation(citations: CitationItem[]) {
     };
 }
 
-function markdownComponents(citations: CitationItem[]): any {
+// remarkTeamCitation turns [Pn] tokens into <teamcitation> nodes. Kept separate
+// from remarkCitation: [Pn] is a distinct namespace pointing to a participant
+// (person), not a message. No grouping/channel logic applies. The regex is kept
+// byte-for-byte identical to the backend authority
+// (internal/worker/meta_processor.go: teamCitationRe = `\[P(\d{1,3})\]`). Go RE2
+// has no lookahead, so the backend cannot add (?!\(); team-summary body is
+// LLM-generated plain text that never emits [P1](url), so matching the backend
+// literally takes priority over guarding against markdown links.
+function remarkTeamCitation() {
+    return (tree: any) => {
+        let occurrence = 0;
+        visit(tree, 'text', (node: any, index: number | undefined, parent: any) => {
+            if (!parent || index === undefined) return;
+            const regex = /\[P(\d{1,3})\]/g;
+
+            const matches: { start: number; end: number; teamIndex: number }[] = [];
+            let match: RegExpExecArray | null;
+            while ((match = regex.exec(node.value)) !== null) {
+                matches.push({
+                    start: match.index,
+                    end: match.index + match[0].length,
+                    teamIndex: parseInt(match[1], 10),
+                });
+            }
+
+            if (matches.length === 0) return;
+
+            const parts: any[] = [];
+            let textOffset = 0;
+            for (const m of matches) {
+                if (m.start > textOffset) {
+                    parts.push({ type: 'text', value: node.value.slice(textOffset, m.start) });
+                }
+                parts.push({
+                    type: 'teamcitation',
+                    data: {
+                        hName: 'teamcitation',
+                        hProperties: { index: m.teamIndex, badgekey: `tc-${m.teamIndex}-${occurrence++}` },
+                    },
+                    children: [],
+                });
+                textOffset = m.end;
+            }
+            if (textOffset < node.value.length) {
+                parts.push({ type: 'text', value: node.value.slice(textOffset) });
+            }
+
+            parent.children.splice(index, 1, ...parts);
+        });
+    };
+}
+
+function markdownComponents(citations: CitationItem[], teamCitations: TeamCitationItem[]): any {
     return {
         citation: ({ node, ...props }: any) => {
             const idx = node?.properties?.index ?? props?.index;
@@ -139,6 +193,12 @@ function markdownComponents(citations: CitationItem[]): any {
             const indices = String(indicesStr).split(',').map(Number);
             return <CitationGroupBadge indices={indices} citations={citations} badgeKey={badgeKey} />;
         },
+        teamcitation: ({ node, ...props }: any) => {
+            const idx = node?.properties?.index ?? props?.index;
+            const badgeKey = node?.properties?.badgekey ?? props?.badgekey ?? `tc-${idx}-fallback`;
+            if (idx === undefined) return null;
+            return <TeamCitationBadge index={idx} teamCitations={teamCitations} badgeKey={badgeKey} />;
+        },
         a: ({ href, children, ...props }: any) => (
             <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
                 {children}
@@ -147,7 +207,7 @@ function markdownComponents(citations: CitationItem[]): any {
     };
 }
 
-const CitationText: React.FC<CitationTextProps> = ({ content, citations }) => {
+const CitationText: React.FC<CitationTextProps> = ({ content, citations, teamCitations = [] }) => {
     const { t } = useI18n();
     const [activeKey, setActiveKey] = useState<string | null>(null);
 
@@ -165,10 +225,11 @@ const CitationText: React.FC<CitationTextProps> = ({ content, citations }) => {
     }
 
     const hasCitations = citations && citations.length > 0;
+    const hasTeamCitations = teamCitations && teamCitations.length > 0;
     const citationPlugin = () => remarkCitation(citations);
-    const remarkPlugins: any[] = hasCitations
-        ? [remarkGfm, remarkBreaks, citationPlugin]
-        : [remarkGfm, remarkBreaks];
+    const remarkPlugins: any[] = [remarkGfm, remarkBreaks];
+    if (hasCitations) remarkPlugins.push(citationPlugin);
+    if (hasTeamCitations) remarkPlugins.push(remarkTeamCitation);
 
     return (
         <CitationContext.Provider value={{ activeKey, onBadgeClick, closeKey }}>
@@ -176,7 +237,7 @@ const CitationText: React.FC<CitationTextProps> = ({ content, citations }) => {
                 <ReactMarkdown
                     remarkPlugins={remarkPlugins}
                     rehypePlugins={[[rehypeSanitize, citationSchema]]}
-                    components={markdownComponents(citations)}
+                    components={markdownComponents(citations, teamCitations)}
                 >
                     {normalized}
                 </ReactMarkdown>

@@ -117,6 +117,9 @@
     "everyNWeeks": "每 {{weeks}} 周{{at}}",
     "everyNMonths": "每 {{months}} 个月{{at}}"
   },
+  "menu": {
+    "title": "智能总结"
+  },
   "list": {
     "title": "智能总结",
     "allStatus": "全部状态",
@@ -139,6 +142,8 @@
     "success": "总结任务已创建",
     "selectChat": "选择聊天",
     "selectedChats": "已选 {{count}} 个聊天",
+    "selectMembers": "选择参与者",
+    "selectedMembers": "已选 {{count}} 位参与者",
     "start": "开始总结",
     "scheduleDaily": "按天 {{time}}",
     "scheduleWeekly": "每{{day}} {{time}}",
@@ -348,7 +353,8 @@
   },
   "citation": {
     "jumpToOriginal": "跳转到原文 →",
-    "source": "来源：{{source}}"
+    "source": "来源：{{source}}",
+    "member": "成员：{{name}}"
   },
   "matterPicker": {
     "loadFailed": "加载事项失败",

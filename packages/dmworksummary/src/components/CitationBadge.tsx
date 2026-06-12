@@ -6,7 +6,7 @@ import WKApp from '@octo/base/src/App';
 import { ShowConversationOptions } from '@octo/base/src/EndpointCommon';
 import { ChannelTypeCommunityTopic } from '@octo/base/src/Service/Const';
 import { CitationContext } from './CitationText';
-import { CitationItem, CitationContextMessage } from '../types/summary';
+import { CitationItem, CitationContextMessage, TeamCitationItem } from '../types/summary';
 
 interface CitationBadgeProps {
     index: number;
@@ -248,6 +248,56 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
             }
         >
             <sup className="citation-badge" style={badgeStyle} onClick={() => onBadgeClick(badgeKey)}>[{label}]</sup>
+        </Popover>
+    );
+};
+
+interface TeamCitationBadgeProps {
+    index: number;
+    teamCitations: TeamCitationItem[];
+    badgeKey: string;
+}
+
+const memberRowStyle: React.CSSProperties = {
+    padding: '4px 8px',
+    borderLeft: '3px solid #1677ff',
+    fontSize: 13,
+    lineHeight: 1.5,
+    wordBreak: 'break-word',
+};
+
+// TeamCitationBadge renders a [Pn] reference. Unlike a normal [n] citation
+// (which points to a message with content/sender/jump), a team citation points
+// to a PERSON (participant): only user_name/user_id exist. The popover shows the
+// member name only — no fabricated message content. Visual style (badge + popup)
+// matches CitationBadge for consistency.
+export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({ index, teamCitations, badgeKey }) => {
+    const { t } = useI18n();
+    const { activeKey, onBadgeClick, closeKey } = useContext(CitationContext);
+    const citation = teamCitations.find(c => c.index === index);
+
+    if (!citation) {
+        return <sup style={badgeStyle}>[P{index}]</sup>;
+    }
+
+    const isVisible = activeKey === badgeKey;
+
+    return (
+        <Popover
+            trigger="custom"
+            visible={isVisible}
+            position="top"
+            showArrow
+            onClickOutSide={() => closeKey(badgeKey)}
+            content={
+                <div style={{ maxWidth: 280, padding: '8px 4px' }}>
+                    <div style={memberRowStyle}>
+                        {t("summary.citation.member", { values: { name: citation.user_name } })}
+                    </div>
+                </div>
+            }
+        >
+            <sup className="citation-badge" style={badgeStyle} onClick={() => onBadgeClick(badgeKey)}>[P{index}]</sup>
         </Popover>
     );
 };

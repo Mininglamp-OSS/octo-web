@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import type { IModule } from "@octo/base";
-import { i18n, I18nProvider, WKApp } from "@octo/base";
+import { i18n, I18nProvider, WKApp, Menus, t as translate } from "@octo/base";
 import SummaryListPage from "./pages/SummaryListPage";
 import SummaryCreatePage from "./pages/SummaryCreatePage";
 import SummaryDetailPage from "./pages/SummaryDetailPage";
@@ -18,6 +18,31 @@ import zhCN from "./i18n/zh-CN.json";
 import "./index.css";
 
 let _spaceChangedHandler: (() => void) | null = null;
+
+/**
+ * NavRail 顶层菜单图标（智能总结）。与 dmworktodo / dmworkappbot 的菜单图标同构：
+ * 纯 SVG、随 active 变色，不引入额外依赖。
+ */
+function SummaryMenuIcon({ active }: { active?: boolean }) {
+    const color = active ? "var(--wk-brand-primary, #7C5CFC)" : "currentColor";
+    return (
+        <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke={color}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+        >
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+            <path d="M14 2v6h6" />
+            <path d="M8 13h8" />
+            <path d="M8 17h6" />
+        </svg>
+    );
+}
 
 export class SummaryModule implements IModule {
     id(): string {
@@ -57,6 +82,26 @@ export class SummaryModule implements IModule {
         WKApp.route.register("/summary/schedules", () => {
             return <ScheduleListPage />;
         });
+
+        // 顶层 NavRail 菜单入口（sort=4002，紧跟在 contacts=4000 / matter=4001 之后）。
+        // 背景：之前 summary 只挂了路由 + 聊天窗口星标按钮，没有顶层可见菜单，
+        // 导致「多人协作 / 多人定时」入口在主导航上找不到。菜单 id 须为 "summary"，
+        // 与 WKApp.switchToMenuById("summary") 及 SummaryListPage 监听的 wk:nav-menu-activated
+        // (menuId === "summary") 保持一致；路由指向 /summary 列表页（列表页内「新建」
+        // 进入创建页，可选参与者 + 定时）。
+        WKApp.menus.register(
+            "summary",
+            () => {
+                return new Menus(
+                    "summary",
+                    "/summary",
+                    translate("summary.menu.title"),
+                    <SummaryMenuIcon />,
+                    <SummaryMenuIcon active />,
+                );
+            },
+            4002,
+        );
 
         _spaceChangedHandler = () => {
             WKApp.mittBus.emit('summary-space-changed');

@@ -34,7 +34,6 @@ import {
     formatScheduleSummary,
     shouldReactivateOnSave,
 } from "../utils/summaryHelpers";
-import SummaryContent from "../components/SummaryContent";
 import CitationText from "../components/CitationText";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
@@ -806,7 +805,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </div>
                 </div>
                 <div className="summary-detail-content-box">
-                    <SummaryContent content={detail.result.content} />
+                    <CitationText
+                        content={detail.result.content}
+                        citations={detail.result.citations || []}
+                        teamCitations={detail.result.team_citations || []}
+                    />
                 </div>
             </div>
         );

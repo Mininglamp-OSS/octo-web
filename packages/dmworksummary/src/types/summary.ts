@@ -81,6 +81,17 @@ export interface CitationItem {
     context_after?: CitationContextMessage[];
 }
 
+/**
+ * 团队引用项（[Pn]）。语义上不同于普通引用 [n]：[Pn] 指向「人」（参与者），
+ * 只有 user_name / user_id，没有消息内容 / 跳转上下文。和 CitationItem 是
+ * 两个独立命名空间，不要混用编号。
+ */
+export interface TeamCitationItem {
+    index: number;
+    user_id: string;
+    user_name: string;
+}
+
 /** 总结结果 */
 export interface SummaryResult {
     content: string;
@@ -90,6 +101,7 @@ export interface SummaryResult {
     version: number;
     generated_at: string | null;
     citations?: CitationItem[];
+    team_citations?: TeamCitationItem[];
 }
 
 /** 个人总结结果（BY_PERSON 模式） */
