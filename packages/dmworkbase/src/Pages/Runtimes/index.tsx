@@ -5,7 +5,7 @@ import WKApp from "../../App"
 import WKAvatar from "../../Components/WKAvatar"
 import { BotsTab, type BotsTabHandle } from "./BotsTab"
 import { CreateRuntimeModal } from "./CreateRuntimeModal"
-import { Bot, listBots } from "./botsApi"
+import { Bot, botStatusLabel, listBots } from "./botsApi"
 import "./index.css"
 
 interface AgentRuntime {
@@ -1198,21 +1198,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
 
 // ─── RuntimesPage: two-level list (Device → Agent) ─────────────────────
 
-// PR-2: bot.status enum → 用户可读中文标签. 原 'dispatched' / 'bot_minted'
-// 等是 fleet 内部状态机的 token, 直接给用户看会困惑. 多个内部中间态归为
-// 同一个面向用户的"配置中"桶, 终态保持区分.
-function botStatusLabel(s: string): string {
-    switch (s) {
-        case "active":       return "在线"
-        case "failed":       return "失败"
-        case "archived":     return "已归档"
-        case "draft":        return "草稿"
-        case "provisioning":
-        case "bot_minted":
-        case "dispatched":   return "配置中"
-        default:             return s
-    }
-}
+// botStatusLabel 已抽到 botsApi.ts (单源, 跟 Bot 类型同文件), BotsTab
+// 也共用同一份, 不再两边 inline ternary 漂移.
 
 // PR-2: Level 3 bot row 抽成 functional 子组件, 让头像绿点能复用
 // useChannelOnline hook —— 信号源跟 BotDetailPanel + IM 私聊列表一致
@@ -1330,10 +1317,16 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     // 看到的 bot 列表立刻包含新建项. R1: 同时把父 device 也展开 — 用户
     // 从顶部 + popover 创建时 device 行可能未展开, 仅展开 runtime 看不
     // 到 (上层 device 折叠把整 subtree 藏了), tree 链路体感断.
+    //
+    // P1 fix (yujiawei review #375): 创建成功后 BotsTab.selectBot 会把
+    // BotDetailPanel 推到 routeRight, 此时 selectedId 不能停留在某个
+    // agent 上 — 否则 silent loadData 15s 后 showAgentDetail 把 Bot pane
+    // 替换回 RuntimeDetail. selectedDaemonId 同理 (DeviceDetail 路径).
     private handleBotCreated = (bot: Bot) => {
         this.refreshRuntimeBots(bot.runtime_id)
         const rt = this.state.runtimes.find(r => r.id === bot.runtime_id)
         const daemonId = rt?.daemon_id
+        this.selectedDaemonId = undefined
         this.setState((prev) => {
             const expandedRuntimes = prev.expandedRuntimes.has(bot.runtime_id)
                 ? prev.expandedRuntimes
@@ -1341,7 +1334,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             const expandedDevices = (daemonId && !prev.expandedDevices.has(daemonId))
                 ? new Set(prev.expandedDevices).add(daemonId)
                 : prev.expandedDevices
-            return { expandedRuntimes, expandedDevices }
+            return { selectedId: null, expandedRuntimes, expandedDevices }
         })
     }
 
@@ -1754,7 +1747,17 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                                         <BotRow
                                                             key={b.id}
                                                             bot={b}
-                                                            onOpen={(id) => this.botsTabRef.current?.openBot(id)}
+                                                            onOpen={(id) => {
+                                                                // P1 fix (yujiawei review #375): 打开 Bot 详情前清
+                                                                // selectedId / selectedDaemonId, 否则 15s silent
+                                                                // loadData 触发 showAgentDetail() 把 routeRight 上
+                                                                // 当前 BotDetailPanel 强行 replaceToRoot 回 RuntimeDetail
+                                                                // (route vs routeRight 是两个 manager,
+                                                                // currentPath==='/runtimes' guard 区分不出来).
+                                                                this.setState({ selectedId: null })
+                                                                this.selectedDaemonId = undefined
+                                                                this.botsTabRef.current?.openBot(id)
+                                                            }}
                                                         />
                                                     ))}
                                                 </div>

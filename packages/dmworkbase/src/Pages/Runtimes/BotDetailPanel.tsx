@@ -28,7 +28,7 @@ function useChannelOnline(channel: Channel | null): boolean {
   return online;
 }
 
-export function BotDetailPanel({ bot, onArchived }: { bot: Bot; onArchived: () => void }) {
+export function BotDetailPanel({ bot }: { bot: Bot }) {
   const [tab, setTab] = useState<DetailTab>('info');
 
   const botChannel = useMemo(
@@ -62,7 +62,10 @@ export function BotDetailPanel({ bot, onArchived }: { bot: Bot; onArchived: () =
               {bot.name.slice(0, 1).toUpperCase()}
             </div>
           )}
-          {/* PR-2: 跟私聊 bot 头像同款绿点, 同信号 (bot.status='active'). */}
+          {/* PR-2: 跟私聊 bot 头像同款绿点. 信号源 = WuKongIM
+              channel.online (channelInfo.online === 1), 跟主 IM 私聊
+              列表完全一致, 不是 fleet 的 bot.status — 后者 'active'
+              是 fleet 状态机里"已派发完成"的语义, 不等于 IM 真在线. */}
           {isOnline && <span className="wk-rt-online-dot" title="Online" />}
         </div>
         <div className="wk-bd-headinfo">
