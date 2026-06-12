@@ -19,6 +19,7 @@ server {
         # string that the corresponding location block tests for.
         set $summary_api_url "${SUMMARY_API_URL}";
         set $matter_api_url "${MATTER_API_URL}";
+        set $fleet_api_url "${FLEET_API_URL}";
 
         # Security headers
         # Prevent clickjacking attacks
@@ -61,6 +62,47 @@ server {
             # forwards the rewritten request as-is.
             rewrite ^/summary/api/v1/(.*)$ /api/v1/$1 break;
             proxy_pass  $summary_api_url;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            client_max_body_size 100m;
+        }
+
+        # PR-A.2: runtime/bot endpoints moved to octo-fleet (default :8092).
+        # MUST come before the generic /api/ catch-all below — vite.config.ts
+        # has the same ordering for dev. /api/v1/runtimes/* and
+        # /api/v1/daemon/* live on fleet (list / create / update / ping /
+        # upgrade / runtime-onboarding flows). Set FLEET_API_URL (e.g.
+        # http://octo-fleet:8092) at container start; blank yields a 503
+        # so a missing fleet does not break nginx startup.
+        #
+        # Path rewrite: web sends /api/v1/runtimes/* but fleet serves
+        # /v1/runtimes/* directly (no /api/ prefix), so we strip /api before
+        # forwarding (same scheme as the catch-all /api/ rule below).
+        location /api/v1/runtimes {
+            default_type application/json;
+            if ($fleet_api_url = "") {
+                return 503 '{"status":503,"msg":"fleet API is not configured (set FLEET_API_URL)"}';
+            }
+            resolver 127.0.0.11 ipv6=off valid=30s;
+            rewrite ^/api/(.*)$ /$1 break;
+            proxy_pass  $fleet_api_url;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            client_max_body_size 100m;
+        }
+
+        location /api/v1/daemon {
+            default_type application/json;
+            if ($fleet_api_url = "") {
+                return 503 '{"status":503,"msg":"fleet API is not configured (set FLEET_API_URL)"}';
+            }
+            resolver 127.0.0.11 ipv6=off valid=30s;
+            rewrite ^/api/(.*)$ /$1 break;
+            proxy_pass  $fleet_api_url;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
