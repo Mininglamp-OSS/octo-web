@@ -60,14 +60,9 @@ export function CreateRuntimeModal({ visible, onClose }: Props) {
     }
   };
 
-  // Stitch env vars into a single shell-friendly block so the user can
-  // paste once instead of three exports + one octo-daemon line.
-  const envBlock = data
-    ? Object.entries(data.env_vars)
-        .map(([k, v]) => `export ${k}=${v}`)
-        .join('\n')
-    : '';
-  const fullStartBlock = data ? `${envBlock}\n${data.commands.start}` : '';
+  // server 直接返 standalone start block (含 export OCTO_*_URL + octo-daemon
+  // 启动行), 直接用 commands.start 字段, 不在前端拼.
+  const fullStartBlock = data?.commands.start ?? '';
 
   return (
     <Modal

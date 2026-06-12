@@ -30,19 +30,35 @@ interface Props {
 }
 
 interface DeviceGroup {
+  // Stable composite key for grouping + selection. Same value used as the
+  // map key in groupByDevice; we store it on the group so all selection
+  // (chip key prop / setDeviceKey / activeGroup find / handleDevicePick)
+  // goes through ONE field. daemon_id below is purely for display.
+  //
+  // Why this matters: review F1 (PR #375) found that using daemon_id alone
+  // for selection silently mis-binds when ≥2 devices have empty daemon_id
+  // (both 'find(g => g.daemon_id === "")' return the first group regardless
+  // of which chip the user clicked) — exactly the failure mode the
+  // RuntimeListEntry comment was written to prevent.
+  key: string;
   daemon_id: string;
   device_name: string;
   runtimes: RuntimeOption[];
   hasSupportedOnline: boolean;
 }
 
+function groupKey(r: { daemon_id: string; device_name: string }): string {
+  return r.daemon_id || r.device_name || 'unknown';
+}
+
 function groupByDevice(runtimes: RuntimeOption[]): DeviceGroup[] {
   const map = new Map<string, DeviceGroup>();
   for (const r of runtimes) {
-    const key = r.daemon_id || r.device_name || 'unknown';
+    const key = groupKey(r);
     let g = map.get(key);
     if (!g) {
       g = {
+        key,
         daemon_id: r.daemon_id,
         device_name: r.device_name || r.daemon_id || 'unknown',
         runtimes: [],
@@ -76,12 +92,12 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
     setBusy(false);
     const firstReady = groups.find(g => g.hasSupportedOnline);
     if (firstReady) {
-      setDeviceKey(firstReady.daemon_id);
+      setDeviceKey(firstReady.key);
       // 同 handleDevicePick: 只预选 supported+online, 找不到就留空.
       const firstRt = firstReady.runtimes.find(r => r.supported && r.status === 'online') ?? null;
       setRuntimeId(firstRt?.id ?? null);
     } else if (groups[0]) {
-      setDeviceKey(groups[0].daemon_id);
+      setDeviceKey(groups[0].key);
       setRuntimeId(null);
     } else {
       setDeviceKey(null);
@@ -90,7 +106,7 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
   }, [visible, groups]);
 
   const activeGroup = useMemo(
-    () => groups.find(g => g.daemon_id === deviceKey) ?? null,
+    () => groups.find(g => g.key === deviceKey) ?? null,
     [groups, deviceKey],
   );
   const selectedRuntime = useMemo(
@@ -106,7 +122,7 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
     && !busy;
 
   const handleDevicePick = (g: DeviceGroup) => {
-    setDeviceKey(g.daemon_id);
+    setDeviceKey(g.key);
     // 只预选 supported + online 的 runtime, 不 fallback 到离线/不支持的 ——
     // 让用户主动看到该设备 0 个可用 runtime, 而不是默选个不可提交的项.
     const firstRt = g.runtimes.find(r => r.supported && r.status === 'online') ?? null;
@@ -166,11 +182,11 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
           ) : (
             <div className="wk-rt-cb__chips" role="radiogroup" aria-label="选择设备">
               {groups.map(g => {
-                const active = deviceKey === g.daemon_id;
+                const active = deviceKey === g.key;
                 return (
                   <button
                     type="button"
-                    key={g.daemon_id || g.device_name}
+                    key={g.key}
                     role="radio"
                     aria-checked={active}
                     className={`wk-rt-cb__chip${active ? ' is-active' : ''}${

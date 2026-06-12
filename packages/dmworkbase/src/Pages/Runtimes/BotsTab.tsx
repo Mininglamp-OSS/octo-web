@@ -135,10 +135,15 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   useEffect(() => { refresh(); }, [refresh]);
 
   // Light 5s polling so status transitions (provisioning → active) appear.
+  // PR-2 review F3 (lml2468): hidden 时跳轮询, 否则 RuntimesPage 用 ref
+  // 持有的 hidden BotsTab 也每 5s 全量 listBots(), 跟 RuntimesPage 自己的
+  // refreshRuntimeBots 是两路并发. hidden 时左树 Level-3 已经走父侧的
+  // refreshRuntimeBots 单源, 这条 polling 是冗余.
   useEffect(() => {
+    if (props.hidden) return;
     const t = window.setInterval(refresh, 5000);
     return () => window.clearInterval(t);
-  }, [refresh]);
+  }, [refresh, props.hidden]);
 
   // Selecting a bot pushes the detail to the right pane (same mechanism
   // RuntimesPage uses for agent detail — keeps RuntimesPage as a pure
@@ -159,10 +164,14 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
       } else {
         // List not loaded yet (or stale). Park the id and let the
         // [bots] effect below pick it up on the next list arrival.
+        // F3-fix (review round 5 codex C1): hidden 时关了 5s polling,
+        // bots 不会自动更新 → 必须主动触发一次 refresh, 否则 pending
+        // id 永远落不到任何后续 [bots] tick 上, bot 永远打不开.
         pendingOpenIdRef.current = id;
+        refresh();
       }
     },
-  }), [bots, selectBot]);
+  }), [bots, selectBot, refresh]);
 
   // Apply any parked openBot request once the bots list (or a refresh)
   // delivers the matching entry. Cleared regardless of match — a missing
@@ -192,10 +201,12 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   const handleCreated = useCallback(async (botId: number) => {
     // C10: handleCreated 内 await 链同样要 epoch guard, 否则切 space 中
     // 创建成功后旧响应 setBots / selectBot 旧 space 的 bot.
+    //
+    // F3 (review #375 lml2468): 单次 listBots 即可 — refresh() 内部已经
+    // 调一次 listBots+setBots, 后面再独立 listBots 是冗余 fetch. 改成只
+    // 调一次, 直接拿到结果用 (refresh 同时也更新 state).
     const epoch = spaceEpochRef.current;
     setSelectedId(botId);
-    await refresh();
-    if (epoch !== spaceEpochRef.current) return;
     const fresh = await listBots();
     if (epoch !== spaceEpochRef.current) return;
     setBots(fresh);
@@ -206,7 +217,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
       // refreshRuntimeBots(runtime_id) 重新拉新 list (含刚建的 bot).
       props.onBotCreated?.(created);
     }
-  }, [refresh, selectBot, props]);
+  }, [selectBot, props.onBotCreated]);
 
   return (
     <div className="wk-rt-bots-list" style={props.hidden ? { display: 'none' } : undefined}>
