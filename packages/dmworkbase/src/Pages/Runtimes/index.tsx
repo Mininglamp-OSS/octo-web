@@ -363,7 +363,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                                                 {upgradeStatus === "timeout" ? "Timeout" : "Failed"}
                                                 {upgradeError && <span className="wk-rt-upgrade-reason">· {upgradeError.length > 40 ? upgradeError.slice(0, 40) + "…" : upgradeError}</span>}
                                                 {!isWindows && (busyByOther
-                                                    ? <span className="wk-rt-upgrade-btn disabled" title="同设备已有升级进行中, 请稍候">Upgrade</span>
+                                                    ? <span className="wk-rt-upgrade-btn disabled" title={UPGRADE_BUSY_TITLE}>Upgrade</span>
                                                     : <span className="wk-rt-upgrade-btn" onClick={this.handleUpgrade}>Upgrade</span>)}
                                             </span>
                                         )
@@ -376,7 +376,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                                     }
                                     if (busyByOther) {
                                         // B-3: 同 daemon 其他升级在跑, 点了 fleet 必拒 — 预防性禁用
-                                        return <span className="wk-rt-upgrade-btn disabled" title="同设备已有升级进行中, 请稍候">Upgrade</span>
+                                        return <span className="wk-rt-upgrade-btn disabled" title={UPGRADE_BUSY_TITLE}>Upgrade</span>
                                     }
                                     if (!anyOnline) return null
                                     return <span className="wk-rt-upgrade-btn" onClick={this.handleUpgrade}>Upgrade</span>
@@ -918,6 +918,10 @@ function isUpgradeInProgress(status: string): boolean {
     return UPGRADE_IN_PROGRESS_STATUSES.has(status)
 }
 
+// busy-disabled title 单源 (6 个按钮共用). 英文 — detail 面板 label 已统一
+// 全英文 (cc R3-4: 同面板 Windows disabled title 也是英文, 语言保持一致).
+const UPGRADE_BUSY_TITLE = "Another upgrade is in progress on this device, please wait"
+
 // 允许远程升级的 provider（和服务端 providerComponents / daemon componentUpgradeSpecs 保持一致）
 const COMPONENT_UPGRADE_ENABLED = new Set<string>(["claude", "codex", "hermes", "openclaw"])
 
@@ -1123,7 +1127,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     {pluginUpgradeStatus === "timeout" ? "Timeout" : "Failed"}
                     {pluginUpgradeError && <span className="wk-rt-upgrade-reason">· {pluginUpgradeError.length > 40 ? pluginUpgradeError.slice(0, 40) + "…" : pluginUpgradeError}</span>}
                     {pluginName === "octo" && (busyByOther
-                        ? <span className="wk-rt-upgrade-btn disabled" title="同设备已有升级进行中, 请稍候">Upgrade</span>
+                        ? <span className="wk-rt-upgrade-btn disabled" title={UPGRADE_BUSY_TITLE}>Upgrade</span>
                         : <span className="wk-rt-upgrade-btn" onClick={this.handlePluginUpgrade}>Upgrade</span>)}
                 </span>
             )
@@ -1139,7 +1143,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         if (hasUpdate && pluginName === "octo") {
             if (busyByOther) {
                 // B-3: 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
-                return <span className="wk-rt-upgrade-btn disabled" title="同设备已有升级进行中, 请稍候">Upgrade</span>
+                return <span className="wk-rt-upgrade-btn disabled" title={UPGRADE_BUSY_TITLE}>Upgrade</span>
             }
             return <span className="wk-rt-upgrade-btn" onClick={this.handlePluginUpgrade}>Upgrade</span>
         }
@@ -1248,7 +1252,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     {componentUpgradeStatus === "timeout" ? "Timeout" : "Failed"}
                     {componentUpgradeError && <span className="wk-rt-upgrade-reason">· {componentUpgradeError.length > 40 ? componentUpgradeError.slice(0, 40) + "…" : componentUpgradeError}</span>}
                     {busyByOther
-                        ? <span className="wk-rt-upgrade-btn disabled" title="同设备已有升级进行中, 请稍候">Upgrade</span>
+                        ? <span className="wk-rt-upgrade-btn disabled" title={UPGRADE_BUSY_TITLE}>Upgrade</span>
                         : <span className="wk-rt-upgrade-btn" onClick={this.handleComponentUpgrade}>Upgrade</span>}
                 </span>
             )
@@ -1264,7 +1268,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         if (hasUpdate) {
             if (busyByOther) {
                 // B-3: 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
-                return <span className="wk-rt-upgrade-btn disabled" title="同设备已有升级进行中, 请稍候">Upgrade</span>
+                return <span className="wk-rt-upgrade-btn disabled" title={UPGRADE_BUSY_TITLE}>Upgrade</span>
             }
             return <span className="wk-rt-upgrade-btn" onClick={this.handleComponentUpgrade}>Upgrade</span>
         }
@@ -1446,6 +1450,11 @@ interface RuntimesPageState extends RuntimesState {
     expandedRuntimes: Set<number>
     botsByRuntime: Map<number, Bot[]>
     botsLoading: Set<number>
+    // codex R3-3: botsByRuntime 首次水合标记. 没水合前 (首屏 loadData →
+    // refreshAllBots 在飞) 不能把所有 runtime 按 "0 bot" 渲染成不可展开 —
+    // 回退到旧的 "可展开 + 展开时懒加载" 行为, 水合后才用 "没 bot 不可
+    // 展开" 新逻辑.
+    botsHydrated: boolean
 }
 
 export default class RuntimesPage extends Component<{}, RuntimesPageState> {
@@ -1471,6 +1480,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         expandedRuntimes: new Set<number>(),
         botsByRuntime: new Map<number, Bot[]>(),
         botsLoading: new Set<number>(),
+        botsHydrated: false,
     }
 
     private pollTimer?: ReturnType<typeof setInterval>
@@ -1518,6 +1528,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             expandedRuntimes: new Set(),
             botsByRuntime: new Map(),
             botsLoading: new Set(),
+            botsHydrated: false,
         })
         WKApp.routeRight.popToRoot()
         this.loadData()
@@ -1645,10 +1656,14 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             if (isStale()) return
             if (!silent) this.setState({ loading: false })
         } finally {
-            // X7: non-silent 请求被后发 silent 请求淘汰 (isStale 早退) 时,
-            // 没人翻回 loading=false 会卡屏 Loading. 兜底: 本请求是
-            // non-silent 且 loading 仍真 (后续成功响应没翻掉) 时翻 false.
-            if (!silent && this.state.loading) this.setState({ loading: false })
+            // X7 + cc R3-3: loading 兜底归"最新请求"管 — seq 不是最新说明
+            // 有更新的请求在飞, 它的成功/finally 路径会收尾, 本请求不动
+            // (防旧 non-silent 把新 non-silent 刚设的 loading 提前翻掉).
+            // seq 是最新且 loading 还挂着 (e.g. non-silent 被 silent 抢先
+            // 淘汰后 silent 失败) 才兜底翻 false.
+            if (seq === this.loadSeq && this.state.loading) {
+                this.setState({ loading: false })
+            }
         }
     }
 
@@ -1694,9 +1709,18 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     // listBots() 本来就一次返回全 space 的 bot (refreshRuntimeBots 是客户
     // 端过滤), 这里批量按 runtime_id 分组回填 botsByRuntime. 由 loadData
     // 每 15s 调用 — 也顺带让 Level-3 bot 行保持新鲜 (别处创建的 bot 会出现).
+    //
+    // R3 review (cc R3-2 / codex R3-1): refreshAllBots 整 Map 替换跟
+    // refreshRuntimeBots 单 key 合并是双路并发写 — 旧全量响应晚到会覆盖
+    // 新单 key 结果 (e.g. 刚创建 bot 后 handleBotCreated 的单 key 刷新被
+    // 更早起飞的全量覆盖, 新 bot 左树短暂消失). botsSeq 模块级序号统一
+    // 两路: 任一新请求起飞使旧响应作废.
+    private botsSeq = 0
+
     refreshAllBots = async () => {
         const epoch = this.spaceEpoch
-        const isStale = () => this.spaceEpoch !== epoch
+        const seq = ++this.botsSeq
+        const isStale = () => this.spaceEpoch !== epoch || seq !== this.botsSeq
         try {
             const all = await listBots()
             if (isStale()) return
@@ -1713,18 +1737,25 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 for (const rt of prev.runtimes) {
                     if (!next.has(rt.id)) next.set(rt.id, [])
                 }
-                return { botsByRuntime: next }
+                // codex R3-3: 首屏 botsByRuntime 未水合前不能按 "0 bot" 渲染
+                // (所有 runtime 都没箭头, 数据回来箭头才冒出来). hydrated
+                // 标记让 render 在水合前回退到 "可展开 + 懒加载" 旧行为.
+                return { botsByRuntime: next, botsHydrated: true }
             })
         } catch {
-            // 静默: 保留旧 cache, 下轮 15s 再试
+            // 静默: 保留旧 cache (botsHydrated 不动 — 首次失败时维持
+            // 未水合的可展开回退, 不会把全树误判成无 bot), 下轮 15s 再试
         }
     }
 
     refreshRuntimeBots = async (runtimeId: number) => {
         // C9 in-flight guard: 进 epoch 闭包, 响应回来时若 epoch 变过
         // (期间切了 space) 就丢弃, 防旧 space 数据回填.
+        // R3-2/R3-1: botsSeq 跟 refreshAllBots 共用 — 单 key 刷新起飞也
+        // 使在飞的全量响应作废 (双路写 botsByRuntime 的最新 wins).
         const epoch = this.spaceEpoch
-        const isStale = () => this.spaceEpoch !== epoch
+        const seq = ++this.botsSeq
+        const isStale = () => this.spaceEpoch !== epoch || seq !== this.botsSeq
         this.setState((prev) => {
             if (isStale()) return null
             const loading = new Set(prev.botsLoading)
@@ -1965,16 +1996,25 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                     // "该运行时下暂无 Bot + 在此创建" 空态 (创建入口顶栏 +
                                     // 已有). botsByRuntime 由 loadData → refreshAllBots 批量
                                     // 预填 (15s), 不再依赖展开时懒加载.
+                                    //
+                                    // codex R3-3: 首屏水合前 (refreshAllBots 还没回来)
+                                    // botsByRuntime 全空, 不能按 "0 bot" 把全树渲染成不可
+                                    // 展开 — 回退旧 "可展开 + 懒加载" 行为, 水合后才启用
+                                    // 新逻辑. 失败时 botsHydrated 维持 false 同样回退.
                                     const bots = this.state.botsByRuntime.get(rt.id) || []
-                                    const expandable = bots.length > 0
+                                    const expandable = !this.state.botsHydrated || bots.length > 0
                                     const rtExpanded = expandable && this.state.expandedRuntimes.has(rt.id)
+                                    const botsLoading = this.state.botsLoading.has(rt.id)
                                     return (
                                         <div key={rt.id} className="wk-rt-rt-block">
                                             <div
                                                 className={`wk-rt-agent-row ${selectedId === rt.id ? "selected" : ""}`}
-                                                role="button"
-                                                tabIndex={0}
-                                                aria-expanded={rtExpanded}
+                                                // cc R3-5 (a11y): 不可展开行不再播报成可操作的
+                                                // 折叠按钮 — role/tabIndex/aria-expanded 仅在
+                                                // expandable 时给 (此页 a11y 之前 C6 专门修过).
+                                                role={expandable ? "button" : undefined}
+                                                tabIndex={expandable ? 0 : undefined}
+                                                aria-expanded={expandable ? rtExpanded : undefined}
                                                 onClick={() => { if (expandable) this.toggleRuntime(rt.id) }}
                                                 onKeyDown={(e) => {
                                                     if (e.key === "Enter" || e.key === " ") {
@@ -2009,9 +2049,13 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                             </div>
 
                                             {/* Level 3: Bots under this runtime (没 bot 不可展开,
-                                                空态文案 + 在此创建 CTA 已删 — caster 2026-06-12) */}
+                                                空态文案 + 在此创建 CTA 已删 — caster 2026-06-12.
+                                                水合前回退懒加载, 保留加载中指示) */}
                                             {rtExpanded && (
                                                 <div className="wk-rt-bot-rows">
+                                                    {botsLoading && bots.length === 0 && (
+                                                        <div className="wk-rt-bot-loading">加载中…</div>
+                                                    )}
                                                     {bots.map((b) => (
                                                         <BotRow
                                                             key={b.id}

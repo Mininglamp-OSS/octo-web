@@ -2053,6 +2053,13 @@
 }
 /* .wk-rt-bot-empty + __cta 已删 (caster 2026-06-12): Level-3 空态文案
    "该运行时下暂无 Bot + 在此创建" 移除, 没 bot 的 runtime 直接不可展开 */
+/* 水合前回退懒加载路径的加载指示 (codex R3-3) */
+.wk-rt-bot-loading {
+  margin-left: 36px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
 
 /* runtime arrow inherits the existing wk-rt-expand-arrow style; no new
    class needed. The agent-row's onClick now triggers toggleRuntime, but
