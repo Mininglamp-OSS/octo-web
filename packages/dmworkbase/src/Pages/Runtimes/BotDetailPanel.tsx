@@ -6,6 +6,19 @@ import { Bot, BotFeedItem, getBotFeed } from './botsApi';
 
 type DetailTab = 'info' | 'feed' | 'tasks' | 'skills';
 
+// matter (任务/数据面) 本期未上线 —— 依赖 matter 的「动态」「任务记录」两个
+// tab 改为「待上线」占位 (同时停掉 FeedTab/TasksTab 对 matter feed 的 3s 轮询).
+// matter 上线后把 MATTER_ENABLED 置 true 即恢复真实内容.
+const MATTER_ENABLED = false;
+// 每个 tab 是否已就绪: false → 展示「待上线」占位 + tab 角标.
+// Skills 是独立的待开发功能, 跟 matter 无关.
+const TAB_READY: Record<DetailTab, boolean> = {
+  info: true,
+  feed: MATTER_ENABLED,
+  tasks: MATTER_ENABLED,
+  skills: false,
+};
+
 // PR-2: bot 在线信号 = WuKongIM channel.online (跟主 IM 私聊里 bot 头像
 // 旁边那个绿点同源). 不是 fleet bot.status / runtime.status —— 那俩是
 // fleet 内部状态机, 跟 IM 实际能否通讯无直接关系.
@@ -90,7 +103,7 @@ export function BotDetailPanel({ bot }: { bot: Bot }) {
       </header>
 
       {/* ── Tabs ──────────────────────────────────────────── */}
-      <nav className="wk-bd-tabs" role="tablist" aria-label="智能体详情切换">
+      <nav className="wk-bd-tabs" role="tablist" aria-label="Bot 详情切换">
         {(['info','feed','tasks','skills'] as DetailTab[]).map(t => (
           <button
             key={t}
@@ -101,6 +114,7 @@ export function BotDetailPanel({ bot }: { bot: Bot }) {
             onClick={() => setTab(t)}
           >
             {t === 'info' ? '基本信息' : t === 'feed' ? '动态' : t === 'tasks' ? 'Tasks' : 'Skills'}
+            {!TAB_READY[t] && <span className="wk-bd-tab__soon">待上线</span>}
           </button>
         ))}
       </nav>
@@ -108,9 +122,9 @@ export function BotDetailPanel({ bot }: { bot: Bot }) {
       {/* ── Body ──────────────────────────────────────────── */}
       <div className="wk-bd-body">
         {tab === 'info' && <InfoTab bot={bot} />}
-        {tab === 'feed' && <FeedTab bot={bot} />}
-        {tab === 'tasks' && <TasksTab bot={bot} />}
-        {tab === 'skills' && <SkillsTab />}
+        {tab === 'feed' && (TAB_READY.feed ? <FeedTab bot={bot} /> : <ComingSoon title="动态" />)}
+        {tab === 'tasks' && (TAB_READY.tasks ? <TasksTab bot={bot} /> : <ComingSoon title="任务记录" />)}
+        {tab === 'skills' && (TAB_READY.skills ? <SkillsTab /> : <ComingSoon title="Skills" />)}
       </div>
     </div>
   );
@@ -309,7 +323,7 @@ function TasksTab({ bot }: { bot: Bot }) {
   if (items.length === 0) return (
     <section className="wk-bd-section wk-bd-section--card">
       <h3 className="wk-bd-section__title">任务记录</h3>
-      <div className="wk-bd-empty wk-bd-empty--inline">还没有任务记录 — 在事项里 @ 此智能体即可派任务</div>
+      <div className="wk-bd-empty wk-bd-empty--inline">还没有任务记录 — 在事项里 @ 此 Bot 即可派任务</div>
     </section>
   );
   return (
@@ -348,6 +362,16 @@ function SkillsTab() {
     <section className="wk-bd-section wk-bd-section--card">
       <h3 className="wk-bd-section__title">Skills</h3>
       <div className="wk-bd-empty wk-bd-empty--inline">Skills 配置（占位 — 下个迭代）</div>
+    </section>
+  );
+}
+
+// 「待上线」占位 — 用于本期未开放的 tab (动态/任务记录依赖 matter; Skills 待开发).
+function ComingSoon({ title }: { title: string }) {
+  return (
+    <section className="wk-bd-section wk-bd-section--card">
+      <h3 className="wk-bd-section__title">{title}</h3>
+      <div className="wk-bd-empty wk-bd-empty--inline">该功能开发中，即将上线，敬请期待</div>
     </section>
   );
 }
