@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Toast } from '@douyinfe/semi-ui';
-import { createBot, RuntimeKind } from './botsApi';
+import { createBot, providerLabels, RuntimeKind } from './botsApi';
 
 // CreateBotModal — 2-step device-first selector.
 //
@@ -25,6 +25,11 @@ interface RuntimeOption {
 interface Props {
   visible: boolean;
   runtimes: RuntimeOption[];
+  // UI/UX review #375 follow-up (P1-4 空态 CTA): 父侧 (RuntimesPage 通过
+  // BotsTab.openCreate({preselectRuntimeId})) 指定一个 runtime, modal 打开
+  // 时跳过 firstReady 自动选, 直接定位到目标 runtime + 它的 device. 用户
+  // 在左树某个空 runtime 下点"在此创建"时省去重选 device + runtime 两步.
+  preselectRuntimeId?: number | null;
   onClose: () => void;
   onCreated: (botId: number) => void;
 }
@@ -76,7 +81,7 @@ function groupByDevice(runtimes: RuntimeOption[]): DeviceGroup[] {
   });
 }
 
-export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props) {
+export function CreateBotModal({ visible, runtimes, preselectRuntimeId, onClose, onCreated }: Props) {
   const [name, setName] = useState('');
   const [deviceKey, setDeviceKey] = useState<string | null>(null);
   const [runtimeId, setRuntimeId] = useState<number | null>(null);
@@ -84,12 +89,37 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
 
   const groups = useMemo(() => groupByDevice(runtimes), [runtimes]);
 
-  // Reset state on open. Auto-select the first device that has a
-  // supported online runtime, and that runtime as the default.
+  // Reset state on open.
+  // 优先级:
+  //   (1) 父侧传 preselectRuntimeId → 定位到该 runtime + 它的 device
+  //       (空态 CTA 入口: 用户在左树 Level-3 某个空 runtime 下点"在此创建")
+  //   (2) 否则走 firstReady (有 supported+online runtime 的第一个 device)
+  //   (3) 否则随便选第一个 device, runtime 留空
   useEffect(() => {
     if (!visible) return;
     setName('');
     setBusy(false);
+    if (preselectRuntimeId != null) {
+      const targetGroup = groups.find(g => g.runtimes.some(r => r.id === preselectRuntimeId));
+      if (targetGroup) {
+        setDeviceKey(targetGroup.key);
+        // R1-2 (cc+codex review #PR-3): 校验 target runtime 是否
+        // supported+online. 是 → 预选; 否 → 走 firstReady 同款逻辑选该
+        // device 第一个可用 runtime, 避免出现 "选中态 + radio disabled +
+        // 创建按钮灰" 的矛盾死胡同 (空态 CTA 在 offline / unsupported
+        // runtime 下也会出现, 不能信任 preselect 一定可用).
+        const target = targetGroup.runtimes.find(r => r.id === preselectRuntimeId);
+        if (target && target.supported && target.status === 'online') {
+          setRuntimeId(preselectRuntimeId);
+        } else {
+          const fallback = targetGroup.runtimes.find(r => r.supported && r.status === 'online');
+          setRuntimeId(fallback?.id ?? null);
+        }
+        return;
+      }
+      // preselect runtime 不在 groups 里 (e.g. 数据未同步) — 静默 fallback
+      // 到 firstReady, 不让用户卡在错误的 modal 状态.
+    }
     const firstReady = groups.find(g => g.hasSupportedOnline);
     if (firstReady) {
       setDeviceKey(firstReady.key);
@@ -103,7 +133,7 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
       setDeviceKey(null);
       setRuntimeId(null);
     }
-  }, [visible, groups]);
+  }, [visible, groups, preselectRuntimeId]);
 
   const activeGroup = useMemo(
     () => groups.find(g => g.key === deviceKey) ?? null,
@@ -229,7 +259,7 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
                       onChange={() => enabled && setRuntimeId(r.id)}
                       disabled={!enabled}
                     />
-                    <span className="wk-rt-cb__rt-kind">{r.kind}</span>
+                    <span className="wk-rt-cb__rt-kind">{providerLabels[r.kind] ?? r.kind}</span>
                     <span className="wk-rt-cb__rt-status" data-status={isOnline ? 'online' : 'offline'}>
                       {isOnline ? '在线' : '离线'}
                     </span>

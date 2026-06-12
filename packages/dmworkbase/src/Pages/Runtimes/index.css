@@ -2024,6 +2024,28 @@
   padding: 6px 12px;
   font-size: 11px;
   color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wk-rt-bot-empty__cta {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.wk-rt-bot-empty__cta:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.wk-rt-bot-empty__cta:focus-visible {
+  outline: none;
+  border-color: var(--accent);
 }
 
 /* runtime arrow inherits the existing wk-rt-expand-arrow style; no new
