@@ -96,10 +96,11 @@ function parseMetadata(raw: string): Record<string, unknown> | null {
 function humanizeAge(epochMs: number): string {
     if (!epochMs) return "—"
     const diff = Date.now() - epochMs
-    if (diff < 60_000)     return "刚刚"
-    if (diff < 3_600_000)  return `${Math.floor(diff / 60_000)} 分钟前`
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
-    return `${Math.floor(diff / 86_400_000)} 天前`
+    if (diff < 0)          return "—"
+    if (diff < 60_000)     return "Just now"
+    if (diff < 3_600_000)  return `${Math.floor(diff / 60_000)} min ago`
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hr ago`
+    return `${Math.floor(diff / 86_400_000)} day${Math.floor(diff / 86_400_000) === 1 ? "" : "s"} ago`
 }
 
 // 取 device 下所有 runtime 的 max last_seen_at, 返 epoch ms (无则 0).
@@ -308,7 +309,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                         <span>{group.deviceName}</span>
                     </div>
                     <div className="wk-rt-field">
-                        <label>Agents</label>
+                        <label>Runtimes</label>
                         <span>{group.runtimes.length}</span>
                     </div>
                     {(group.osName || group.arch) && (
@@ -363,7 +364,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                         if (!ms) return null
                         return (
                             <div className="wk-rt-field">
-                                <label>最近活跃</label>
+                                <label>Last Active</label>
                                 <span title={new Date(ms).toLocaleString()}>
                                     {humanizeAge(ms)}
                                 </span>
@@ -1215,8 +1216,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                         <span>{providerLabels[rt.provider] || rt.provider}</span>
                     </div>
                     <div className="wk-rt-field">
-                        <label>已绑定 Bot</label>
-                        <span>{this.props.botCount ?? 0} 个</span>
+                        <label>Bots</label>
+                        <span>{this.props.botCount ?? 0}</span>
                     </div>
                     {/* PR-2: 探活由 device row 绿点 + daemon heartbeat
                         体现; runtime 级 last_seen_at / device_name /
