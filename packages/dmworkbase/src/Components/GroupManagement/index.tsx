@@ -14,6 +14,7 @@ import {
   shouldApplyFetchResult,
   shouldListenerApply,
 } from "./allowNoMention";
+import { submitBotAdmins } from "./botAdmins";
 import "./index.css";
 
 export interface GroupManagementProps {
@@ -268,17 +269,31 @@ export class GroupManagement extends Component<
             Toast.warning(t("base.groupManagement.selectBot"));
             return;
           }
-          const uid = selectedItems[0].uid;
-          try {
-            await WKApp.dataSource.channelDataSource.setBotAdmin(
-              channel,
-              uid
-            );
-            Toast.success(t("base.groupManagement.added"));
+          // 后端无批量端点，对每个选中 bot 各发一次 PUT；先快照选中 uid，
+          // 避免提交期间 onSelect 回调改写 selectedItems 造成竞态。
+          const uids = selectedItems.map((item) => item.uid);
+          const { succeeded, failed } = await submitBotAdmins(uids, (uid) =>
+            WKApp.dataSource.channelDataSource.setBotAdmin(channel, uid)
+          );
+          if (succeeded.length > 0) {
+            // 只要有成功的就刷新列表并关闭对话框。
             context.pop();
             this.loadMembers();
-          } catch (err: any) {
-            Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
+          }
+          if (failed.length === 0) {
+            Toast.success(t("base.groupManagement.added"));
+          } else if (succeeded.length === 0) {
+            const firstReason = failed[0].reason as any;
+            Toast.error(
+              firstReason?.msg || t("base.groupManagement.operationFailed")
+            );
+          } else {
+            // 部分失败：明确列出失败的 uid，不静默吞掉。
+            Toast.error(
+              t("base.groupManagement.operationFailed") +
+                ` (${failed.length}/${uids.length}): ` +
+                failed.map((f) => f.uid).join(", ")
+            );
           }
         },
       })
