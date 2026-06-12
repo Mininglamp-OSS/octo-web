@@ -290,6 +290,12 @@
     transform: rotate(90deg);
 }
 
+/* 没 bot 的 runtime 行不可展开 — 不渲染箭头, 占位保持缩进对齐
+   (caster 2026-06-12, 同步删除 Level-3 空态文案 + 在此创建 CTA) */
+.wk-rt-expand-arrow.placeholder {
+    visibility: hidden;
+}
+
 .wk-rt-device-icon {
     width: 32px;
     height: 32px;
@@ -322,11 +328,8 @@
     white-space: nowrap;
 }
 
-.wk-rt-device-sub {
-    font-size: 11px;
-    color: var(--text-tertiary);
-    margin-top: 1px;
-}
+/* .wk-rt-device-sub 已删 (caster 2026-06-12): device 行 "N 个运行时"
+   副标题移除, 顶栏 "N devices · M runtimes" 已有该信息 */
 
 /* ── Agent Row (Level 2) ── */
 .wk-rt-agent-row {
@@ -611,6 +614,21 @@
 }
 .wk-rt-upgrade-status.error .upgrade-dot {
     background: var(--wk-color-error);
+}
+/* A-1 (升级互斥 UX): Failed 旁内联展示 error_msg (截断 40 字符, title 放
+   全文) — 原来藏 hover title, 互斥拒绝看起来像升级真坏了 */
+.wk-rt-upgrade-reason {
+    color: var(--wk-color-error);
+    opacity: 0.85;
+    font-weight: 400;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* A-2: Failed 态旁的 Retry 按钮间距 */
+.wk-rt-upgrade-status.error .wk-rt-upgrade-btn {
+    margin-left: 6px;
 }
 @keyframes upgradeDotPulse {
     0%, 100% { opacity: 1; transform: scale(1); }
@@ -1017,16 +1035,6 @@
   color: var(--wk-text-tertiary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-.wk-rt-meta-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--wk-icon-muted);
-  flex-shrink: 0;
-}
-.wk-rt-meta-dot.is-online {
-  background: var(--wk-color-success);
 }
 
 /* Primary action button hosted in the page header (Bot tab uses it for
@@ -2043,33 +2051,14 @@
   font-size: 11px;
   color: var(--text-tertiary);
 }
-.wk-rt-bot-empty {
+/* .wk-rt-bot-empty + __cta 已删 (caster 2026-06-12): Level-3 空态文案
+   "该运行时下暂无 Bot + 在此创建" 移除, 没 bot 的 runtime 直接不可展开 */
+/* 水合前回退懒加载路径的加载指示 (codex R3-3) */
+.wk-rt-bot-loading {
   margin-left: 36px;
   padding: 6px 12px;
   font-size: 11px;
   color: var(--text-tertiary);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.wk-rt-bot-empty__cta {
-  appearance: none;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
-}
-.wk-rt-bot-empty__cta:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-.wk-rt-bot-empty__cta:focus-visible {
-  outline: none;
-  border-color: var(--accent);
 }
 
 /* runtime arrow inherits the existing wk-rt-expand-arrow style; no new

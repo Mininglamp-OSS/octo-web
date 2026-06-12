@@ -26,12 +26,11 @@ interface RuntimeListEntry {
 // the parent switches the active tab to "bots" and then asks us to
 // surface that bot's detail panel.
 //
-// UI/UX review #375 follow-up (P1-4 空态 CTA): openCreate 加可选
-// preselectRuntimeId — 用户在左树 Level-3 看到"暂无 Bot"按钮直接打开
-// modal 时, modal 跳过 firstReady 自动选, 直接定位到目标 runtime + 它
-// 的 device, 用户只填名字按确认.
+// caster 2026-06-12: openCreate 的 preselectRuntimeId 参数删 — 左树
+// Level-3 空态 CTA ("在此创建") 已随 "没 bot 不可展开" 改动移除, 唯一
+// caller 消失 (codex R3-2 死链路清理). 将来有 runtime 行创建入口再加回.
 export interface BotsTabHandle {
-  openCreate: (opts?: { preselectRuntimeId?: number }) => void;
+  openCreate: () => void;
   openBot: (id: number) => void;
 }
 
@@ -69,7 +68,6 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [runtimes, setRuntimes] = useState<RuntimeListEntry[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [preselectRuntimeId, setPreselectRuntimeId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   // C10 in-flight guard: spaceEpoch 每次 space-changed 自增, refresh /
@@ -172,8 +170,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   }, []);
 
   useImperativeHandle(ref, () => ({
-    openCreate: (opts) => {
-      setPreselectRuntimeId(opts?.preselectRuntimeId ?? null);
+    openCreate: () => {
       setModalOpen(true);
     },
     openBot: (id: number) => {
@@ -264,12 +261,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
       <CreateBotModal
         visible={modalOpen}
         runtimes={modalRuntimes}
-        preselectRuntimeId={preselectRuntimeId}
-        onClose={() => {
-          setModalOpen(false);
-          // 关闭时清掉 preselect, 下次没传时不残留
-          setPreselectRuntimeId(null);
-        }}
+        onClose={() => setModalOpen(false)}
         onCreated={handleCreated}
       />
     </div>
