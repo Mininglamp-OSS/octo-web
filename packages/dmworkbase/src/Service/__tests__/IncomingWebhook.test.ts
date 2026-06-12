@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     buildIncomingWebhookUrl,
+    buildWebhookUpsertReq,
     canManageIncomingWebhook,
     isIncomingWebhookSender,
     webhookFromOfMessage,
@@ -102,6 +103,18 @@ describe("webhookFromOfMessage", () => {
         expect(webhookFromOfMessage({ fromUID: "8e5efc4f", content: { contentObj: {} } })).toBeUndefined();
         expect(webhookFromOfMessage({ fromUID: "8e5efc4f" })).toBeUndefined();
     });
+
+    it("身份伪造防御：非 iwh_ 发送者即便 payload.from.kind=webhook 也不采信", () => {
+        const from = webhookFromOfMessage({
+            fromUID: "8e5efc4f",
+            content: {
+                contentObj: {
+                    from: { kind: "webhook", name: "System Admin", avatar: "https://evil/a.png" },
+                },
+            },
+        });
+        expect(from).toBeUndefined();
+    });
 });
 
 describe("canManageIncomingWebhook", () => {
@@ -119,5 +132,108 @@ describe("canManageIncomingWebhook", () => {
     it("未登录态（myUid 缺失）不可管理", () => {
         expect(canManageIncomingWebhook(item, { isManager: false })).toBe(false);
         expect(canManageIncomingWebhook(item, { isManager: false, myUid: "" })).toBe(false);
+    });
+});
+
+describe("buildWebhookUpsertReq", () => {
+    const existing = { name: "OldName", avatar: "https://old/a.png" };
+
+    describe("新建态", () => {
+        it("name 有值才发，并 trim", () => {
+            expect(
+                buildWebhookUpsertReq({ isEdit: false, isManager: false, name: "  CI  ", avatar: "" })
+            ).toEqual({ name: "CI" });
+        });
+
+        it("name 留空 → 空对象（服务端自动命名），仍发请求", () => {
+            expect(
+                buildWebhookUpsertReq({ isEdit: false, isManager: false, name: "   ", avatar: "" })
+            ).toEqual({});
+        });
+
+        it("普通成员即便填了 avatar 也不带（避免服务端 400）", () => {
+            expect(
+                buildWebhookUpsertReq({
+                    isEdit: false,
+                    isManager: false,
+                    name: "CI",
+                    avatar: "https://x/y.png",
+                })
+            ).toEqual({ name: "CI" });
+        });
+
+        it("管理员 avatar 有值才带", () => {
+            expect(
+                buildWebhookUpsertReq({
+                    isEdit: false,
+                    isManager: true,
+                    name: "CI",
+                    avatar: "https://x/y.png",
+                })
+            ).toEqual({ name: "CI", avatar: "https://x/y.png" });
+            expect(
+                buildWebhookUpsertReq({ isEdit: false, isManager: true, name: "CI", avatar: "  " })
+            ).toEqual({ name: "CI" });
+        });
+    });
+
+    describe("编辑态", () => {
+        it("无任何变化 → 返回 null（不发请求）", () => {
+            expect(
+                buildWebhookUpsertReq({
+                    isEdit: true,
+                    isManager: true,
+                    name: "OldName",
+                    avatar: "https://old/a.png",
+                    webhook: existing,
+                })
+            ).toBeNull();
+        });
+
+        it("成员只改名、不带 avatar", () => {
+            expect(
+                buildWebhookUpsertReq({
+                    isEdit: true,
+                    isManager: false,
+                    name: "NewName",
+                    avatar: "https://whatever/x.png",
+                    webhook: existing,
+                })
+            ).toEqual({ name: "NewName" });
+        });
+
+        it("name 未变 + 非管理员 → req 空 → 返回 null", () => {
+            expect(
+                buildWebhookUpsertReq({
+                    isEdit: true,
+                    isManager: false,
+                    name: "OldName",
+                    avatar: "anything",
+                    webhook: existing,
+                })
+            ).toBeNull();
+        });
+
+        it("管理员改 avatar（含清空）才发 avatar 字段", () => {
+            expect(
+                buildWebhookUpsertReq({
+                    isEdit: true,
+                    isManager: true,
+                    name: "OldName",
+                    avatar: "https://new/b.png",
+                    webhook: existing,
+                })
+            ).toEqual({ avatar: "https://new/b.png" });
+            // 清空头像也是一种变化
+            expect(
+                buildWebhookUpsertReq({
+                    isEdit: true,
+                    isManager: true,
+                    name: "OldName",
+                    avatar: "",
+                    webhook: existing,
+                })
+            ).toEqual({ avatar: "" });
+        });
     });
 });

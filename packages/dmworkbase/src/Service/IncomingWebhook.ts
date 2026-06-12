@@ -70,6 +70,43 @@ export function canManageIncomingWebhook(
 }
 
 /**
+ * 构造 webhook 新建 / 编辑请求体（纯函数，便于单测钉死易错边界）。
+ *
+ * 规则（与服务端契约对齐）：
+ * - 名称 / 头像先 trim；
+ * - 头像仅 `isManager` 才发（普通成员带 avatar 会被服务端 400 拒绝）；
+ * - 编辑态只发「有值且与原值不同」的字段，无任何变化时返回 `null`
+ *   —— 调用方据此直接关闭弹窗、不发请求；
+ * - 新建态名称有值才发（留空由服务端自动命名），始终返回对象（可为空 `{}`）。
+ */
+export function buildWebhookUpsertReq(opts: {
+    isEdit: boolean;
+    isManager: boolean;
+    name: string;
+    avatar: string;
+    webhook?: Pick<IncomingWebhook, "name" | "avatar">;
+}): IncomingWebhookUpsertReq | null {
+    const trimmedName = opts.name.trim();
+    const trimmedAvatar = opts.avatar.trim();
+    const req: IncomingWebhookUpsertReq = {};
+
+    if (opts.isEdit && opts.webhook) {
+        if (trimmedName && trimmedName !== opts.webhook.name) {
+            req.name = trimmedName;
+        }
+        if (opts.isManager && trimmedAvatar !== (opts.webhook.avatar || "")) {
+            req.avatar = trimmedAvatar;
+        }
+        // 无任何变化 → 不发请求
+        return Object.keys(req).length === 0 ? null : req;
+    }
+
+    if (trimmedName) req.name = trimmedName;
+    if (opts.isManager && trimmedAvatar) req.avatar = trimmedAvatar;
+    return req;
+}
+
+/**
  * 把服务端返回的相对推送路径（如 `/v1/incoming-webhooks/{id}/{token}`）
  * 拼成可直接复制给外部服务的绝对 URL。
  *
@@ -119,21 +156,27 @@ export function isIncomingWebhookSender(fromUID?: string): boolean {
  *
  * payload.from 缺失（异常路径）时按 uid 前缀兜底识别，
  * 返回空身份让调用方降级到占位展示。
+ *
+ * 安全（信任边界）：webhook 身份必须以服务端权威信号 `iwh_*` UID 前缀为前置门控。
+ * payload.from 是客户端可控字段（见 sendContentProxy.ts 注入、Convert.ts 透传），
+ * 若仅凭 `from.kind === "webhook"` 就采信，普通成员即可伪造带「Webhook」徽章的
+ * 管理员/告警消息。因此先校验 fromUID 为 iwh_*，再读 payload 的展示字段。
  */
 export function webhookFromOfMessage(message: {
     fromUID?: string;
     content?: { contentObj?: { from?: unknown } };
 }): WebhookMessageFrom | undefined {
+    // 非 webhook 发送者（fromUID 不是 iwh_*）一律不采信 payload.from，杜绝身份伪造。
+    if (!isIncomingWebhookSender(message?.fromUID)) {
+        return undefined;
+    }
     const from = message?.content?.contentObj?.from as
         | WebhookMessageFrom
         | undefined;
     if (from && typeof from === "object" && from.kind === "webhook") {
         return from;
     }
-    if (isIncomingWebhookSender(message?.fromUID)) {
-        return { kind: "webhook" };
-    }
-    return undefined;
+    return { kind: "webhook" };
 }
 
 /**
@@ -149,3 +192,38 @@ export const INCOMING_WEBHOOK_DEFAULT_AVATAR =
             `stroke="#7A8299" stroke-width="2.6" stroke-linecap="round" fill="none"/>` +
             `</svg>`
     );
+
+/** webhook 发送者在消息行的展示属性（avatar / name / 徽章 / 头像是否可点） */
+export interface WebhookRowDisplay {
+    /**
+     * payload.from.avatar（管理员自定义头像）；为空时调用方走用户头像链路兜底
+     * （avatarUser(uid) / WKAvatar channel），与普通用户头像同源。
+     */
+    avatarUrl: string;
+    /** payload.from.name 缺失（异常路径）时返回空串，绝不暴露 iwh_* uid */
+    senderName: string;
+    /** webhook 消息始终展示「Webhook」徽章 */
+    showBadge: boolean;
+    /** webhook 发送者无个人资料页，头像 / 名称一律不可点击 */
+    avatarClickable: boolean;
+}
+
+/**
+ * 把 webhook 身份翻译成消息行展示字段（纯函数）。
+ *
+ * legacy `Messages/Base` 栈与新 `bridge/ui` MessageRow 栈都消费同一份映射，
+ * 避免「avatar 兜底 / name 兜底 / 徽章 / 头像不可点」这套规则在多处渲染路径
+ * 各写一遍而随双栈架构发散。
+ */
+export function resolveWebhookRowDisplay(
+    from: WebhookMessageFrom
+): WebhookRowDisplay {
+    return {
+        // payload 自带头像（管理员设置）；为空交给调用方走用户头像链路兜底。
+        avatarUrl: from.avatar || "",
+        senderName: from.name || "",
+        // 标记「这是自动推送、非真人」——头像/名字已与真人无异，徽章是唯一区分信号。
+        showBadge: true,
+        avatarClickable: false,
+    };
+}

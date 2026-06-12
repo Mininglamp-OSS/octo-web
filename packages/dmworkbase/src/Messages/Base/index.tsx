@@ -25,7 +25,7 @@ import {
 } from "../../Utils/displayName";
 import { shouldShowRealnameBadge } from "../../Utils/realnameBadge";
 import {
-  INCOMING_WEBHOOK_DEFAULT_AVATAR,
+  resolveWebhookRowDisplay,
   webhookFromOfMessage,
 } from "../../Service/IncomingWebhook";
 import { css } from "@emotion/react";
@@ -361,8 +361,11 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     // 群入站 Webhook 消息（FromUID = iwh_*，永远不是群成员）：
     // 名字/头像读 payload from 元信息，不查 ChannelInfo、不发 fetchChannelInfo
     const webhookFrom = webhookFromOfMessage(message);
-    const displayName = webhookFrom
-      ? webhookFrom.name || ""
+    const webhookDisplay = webhookFrom
+      ? resolveWebhookRowDisplay(webhookFrom)
+      : undefined;
+    const displayName = webhookDisplay
+      ? webhookDisplay.senderName
       : isOwnMessageName
       ? WKApp.loginInfo.selfDisplayName() ||
         personalRemarkName ||
@@ -515,7 +518,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
               )}
               onClick={
                 // webhook 发送者没有个人资料页，点击不响应
-                showAvatar && !webhookFrom
+                showAvatar && !(webhookDisplay && !webhookDisplay.avatarClickable)
                   ? (el) => {
                       context.onTapAvatar(message.fromUID, el);
                     }
@@ -523,12 +526,14 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
               }
             >
               {showAvatar &&
-                (webhookFrom ? (
+                (webhookDisplay && webhookDisplay.avatarUrl ? (
+                  // webhook 管理员自定义头像
                   <WKAvatar
-                    src={webhookFrom.avatar || INCOMING_WEBHOOK_DEFAULT_AVATAR}
+                    src={webhookDisplay.avatarUrl}
                     style={{ width: "32px", height: "32px" }}
                   />
                 ) : (
+                  // 普通消息，以及无自定义头像的 webhook：都走用户头像链路
                   <WKAvatar
                     channel={avatarChannel}
                     style={{ width: "32px", height: "32px" }}
@@ -567,7 +572,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
                   {channelInfo?.orgData?.robot === 1 && (
                     <AiBadge size="small" />
                   )}
-                  {webhookFrom && <WebhookBadge />}
+                  {webhookDisplay?.showBadge && <WebhookBadge />}
                   <span className="wk-msg-head-time">{timeStr}</span>
                 </div>
               )}

@@ -7,9 +7,9 @@ import WKApp from "../../App";
 import { useI18n } from "../../i18n";
 import { extractErrorMsg } from "../../Service/APIClient";
 import {
+    buildWebhookUpsertReq,
     IncomingWebhook,
     IncomingWebhookCreateResp,
-    IncomingWebhookUpsertReq,
 } from "../../Service/IncomingWebhook";
 import "./index.css";
 
@@ -48,29 +48,29 @@ export default function WebhookEditModal({
     const [name, setName] = useState<string>(webhook?.name ?? "");
     const [avatar, setAvatar] = useState<string>(webhook?.avatar ?? "");
     const [saving, setSaving] = useState(false);
+    // 本组件由父级条件挂载（{editTarget && <WebhookEditModal/>}），且处于
+    // WKViewQueue 路由栈的滑入动画里。若一挂载就 visible=true，Semi Modal 的
+    // 首次显示会与路由动画/portal 时序竞争，表现为「要点两次才弹出」。
+    // 这里挂载时先 false、effect 翻 true，强制走一次正常的 false→true 过渡，
+    // 与 BotManage 等常驻 + 受控 visible 的可用写法对齐。
+    const [visible, setVisible] = useState(false);
     const nameInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
+        setVisible(true);
         nameInputRef.current?.focus();
     }, []);
 
     const handleSubmit = useCallback(async () => {
         if (saving) return;
-        const trimmedName = name.trim();
-        const trimmedAvatar = avatar.trim();
 
-        // 只发送有变化 / 有值的字段：成员带 avatar 字段会被服务端 400 拒绝
-        const req: IncomingWebhookUpsertReq = {};
-        if (isEdit && webhook) {
-            if (trimmedName && trimmedName !== webhook.name) req.name = trimmedName;
-            if (isManager && trimmedAvatar !== (webhook.avatar || "")) req.avatar = trimmedAvatar;
-            if (Object.keys(req).length === 0) {
-                onClose();
-                return;
-            }
-        } else {
-            if (trimmedName) req.name = trimmedName;
-            if (isManager && trimmedAvatar) req.avatar = trimmedAvatar;
+        // 请求体构造逻辑抽到纯函数 buildWebhookUpsertReq（已单测）：
+        // 成员不得带 avatar、编辑态仅发变化字段、无变化返回 null。
+        const req = buildWebhookUpsertReq({ isEdit, isManager, name, avatar, webhook });
+        if (req === null) {
+            // 编辑态无任何变化 → 不发请求，直接关闭
+            onClose();
+            return;
         }
 
         setSaving(true);
@@ -109,7 +109,7 @@ export default function WebhookEditModal({
 
     return (
         <WKModal
-            visible
+            visible={visible}
             title={
                 isEdit
                     ? t("base.channelWebhook.form.editTitle")

@@ -1807,7 +1807,9 @@ export default class BaseModule implements IModule {
                 onClick: () => {
                   const rd = context.routeData() as ChannelSettingRouteData;
                   const me = rd?.subscriberOfMe;
-                  const isManager = me?.role === 1 || me?.role === 2;
+                  const isManager =
+                    me?.role === GroupRole.owner ||
+                    me?.role === GroupRole.manager;
                   context.push(
                     <ChannelWebhookPanel
                       channel={channel}

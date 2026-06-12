@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import { IconAlertTriangle, IconCopy } from "@douyinfe/semi-icons";
 import WKModal from "../WKModal";
@@ -26,6 +26,12 @@ export interface WebhookUrlModalProps {
  */
 export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps) {
     const { t } = useI18n();
+    // 同 WebhookEditModal：条件挂载 + 路由滑入动画下，挂载即 visible=true 会让
+    // 首次显示与动画竞争（要点两次）。挂载先 false、effect 翻 true 走正常过渡。
+    const [visible, setVisible] = useState(false);
+    useEffect(() => {
+        setVisible(true);
+    }, []);
 
     const absolute = useCallback((relative?: string): string => {
         if (!relative) return "";
@@ -69,7 +75,7 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
 
     return (
         <WKModal
-            visible
+            visible={visible}
             title={t("base.channelWebhook.url.title")}
             onCancel={onClose}
             size="lg"
@@ -82,29 +88,40 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
             className="wk-webhook-modal"
         >
             <div className="wk-webhook-url">
-                <div className="wk-webhook-url__warning">
-                    <IconAlertTriangle className="wk-webhook-url__warning-icon" />
-                    <span>{t("base.channelWebhook.url.onceWarning")}</span>
-                </div>
-                {rows.map((row) => (
-                    <div key={row.key} className="wk-webhook-url__row">
-                        <div className="wk-webhook-url__label">{row.label}</div>
-                        <div className="wk-webhook-url__value-wrap">
-                            <code className="wk-webhook-url__value" title={row.url}>
-                                {row.url}
-                            </code>
-                            <button
-                                type="button"
-                                className="wk-webhook-card__icon-btn"
-                                onClick={() => void handleCopy(row.url)}
-                                title={t("base.channelWebhook.url.copy")}
-                                aria-label={t("base.channelWebhook.url.copy")}
-                            >
-                                <IconCopy />
-                            </button>
-                        </div>
+                {rows.length === 0 ? (
+                    // 退化态：服务端契约里 url 非可选，理论不可达；仍兜底提示而非
+                    // 展示「立即复制」警示却无可复制项。
+                    <div className="wk-webhook-url__warning">
+                        <IconAlertTriangle className="wk-webhook-url__warning-icon" />
+                        <span>{t("base.channelWebhook.url.empty")}</span>
                     </div>
-                ))}
+                ) : (
+                    <>
+                        <div className="wk-webhook-url__warning">
+                            <IconAlertTriangle className="wk-webhook-url__warning-icon" />
+                            <span>{t("base.channelWebhook.url.onceWarning")}</span>
+                        </div>
+                        {rows.map((row) => (
+                            <div key={row.key} className="wk-webhook-url__row">
+                                <div className="wk-webhook-url__label">{row.label}</div>
+                                <div className="wk-webhook-url__value-wrap">
+                                    <code className="wk-webhook-url__value" title={row.url}>
+                                        {row.url}
+                                    </code>
+                                    <button
+                                        type="button"
+                                        className="wk-webhook-card__icon-btn"
+                                        onClick={() => void handleCopy(row.url)}
+                                        title={t("base.channelWebhook.url.copy")}
+                                        aria-label={t("base.channelWebhook.url.copy")}
+                                    >
+                                        <IconCopy />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </>
+                )}
             </div>
         </WKModal>
     );

@@ -6,7 +6,7 @@ import AiBadge from "../../Components/AiBadge";
 import WebhookBadge from "../../Components/WebhookBadge";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
-import { webhookFromOfMessage } from "../../Service/IncomingWebhook";
+import { resolveWebhookRowDisplay, webhookFromOfMessage } from "../../Service/IncomingWebhook";
 
 const titleColors = ["#8C8DFF", "#7983C2", "#6D8DDE", "#5979F0", "#6695DF", "#8F7AC5",
     "#9D77A5", "#8A64D0", "#AA66C3", "#A75C96", "#C8697D", "#B74D62",
@@ -57,13 +57,13 @@ export default class MessageHead extends Component<MessageHeadProps> {
         // 不走 ChannelInfo（iwh_* 不是真实用户，必落空）
         const webhookFrom = webhookFromOfMessage(message)
         if (webhookFrom) {
-            const name = webhookFrom.name || ""
+            const { senderName: name, showBadge } = resolveWebhookRowDisplay(webhookFrom)
             return <>
                 {this.needTitle() ? (
                     <div className="textTitle" style={{ color: getTitleColor(name) }}>
                         <div className="textTitle-name-row">
                             <span>{name}</span>
-                            <WebhookBadge />
+                            {showBadge && <WebhookBadge />}
                         </div>
                     </div>
                 ) : null}

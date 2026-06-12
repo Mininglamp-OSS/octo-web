@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, WKSDK } from "wukongimjssdk";
 import { Spin, Switch, Toast } from "@douyinfe/semi-ui";
 import {
@@ -38,6 +38,9 @@ type EditTarget =
     | { mode: "edit"; webhook: IncomingWebhook }
     | null;
 
+/** 测试推送冷却窗口（毫秒）：防止连点刷屏（每次测试都会向群内发真实消息）。 */
+const TEST_COOLDOWN_MS = 3000;
+
 /**
  * 群设置 →「群 Webhook」子页面。
  *
@@ -58,6 +61,14 @@ export default function ChannelWebhookPanel({
     const [urlResult, setUrlResult] = useState<IncomingWebhookCreateResp | null>(null);
     const [testingId, setTestingId] = useState<string | null>(null);
     const [togglingId, setTogglingId] = useState<string | null>(null);
+    // 测试推送会向群内发真实消息，连点会刷屏。点一次后该 webhook 进入冷却，
+    // 冷却期间按钮置灰、忽略再次点击。
+    const [coolingTestId, setCoolingTestId] = useState<string | null>(null);
+    const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => () => {
+        if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+    }, []);
 
     const myUid = WKApp.loginInfo.uid || "";
 
@@ -109,6 +120,9 @@ export default function ChannelWebhookPanel({
     }, [items, channel, myUid, t]);
 
     const handleToggle = async (item: IncomingWebhook, next: boolean) => {
+        // in-flight 守卫：Semi 的 Switch loading 不保证拦截 onChange，
+        // 疯狂拨动会连发请求，这里与 handleTest 同款，请求未回前直接忽略。
+        if (togglingId) return;
         setTogglingId(item.webhook_id);
         try {
             await WKApp.dataSource.channelDataSource.updateIncomingWebhook(
@@ -126,7 +140,8 @@ export default function ChannelWebhookPanel({
     };
 
     const handleTest = async (item: IncomingWebhook) => {
-        if (testingId) return;
+        // 已有测试在飞 / 该 webhook 处于冷却中 → 忽略，避免连点刷屏。
+        if (testingId || coolingTestId === item.webhook_id) return;
         setTestingId(item.webhook_id);
         try {
             await WKApp.dataSource.channelDataSource.testIncomingWebhook(channel, item.webhook_id);
@@ -135,6 +150,13 @@ export default function ChannelWebhookPanel({
             Toast.error(extractErrorMsg(e) || t("base.channelWebhook.error.testFailed"));
         } finally {
             setTestingId(null);
+            // 进入冷却：本 webhook 的测试按钮置灰若干秒后恢复。
+            setCoolingTestId(item.webhook_id);
+            if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+            cooldownTimerRef.current = setTimeout(
+                () => setCoolingTestId(null),
+                TEST_COOLDOWN_MS
+            );
         }
     };
 
@@ -192,6 +214,7 @@ export default function ChannelWebhookPanel({
         const createdLine = name
             ? t("base.channelWebhook.meta.createdBy", { values: { name, time: created } })
             : t("base.channelWebhook.meta.created", { values: { time: created } });
+        // 从未使用时不展示用法行（去掉「从未使用」描述）；仅在有过推送时显示统计。
         const usage = item.call_count > 0
             ? t("base.channelWebhook.meta.usage", {
                   values: {
@@ -201,11 +224,11 @@ export default function ChannelWebhookPanel({
                           : "",
                   },
               })
-            : t("base.channelWebhook.meta.neverUsed");
+            : null;
         return (
             <>
                 <div className="wk-webhook-card__meta">{createdLine}</div>
-                <div className="wk-webhook-card__meta">{usage}</div>
+                {usage && <div className="wk-webhook-card__meta">{usage}</div>}
             </>
         );
     };
@@ -214,14 +237,18 @@ export default function ChannelWebhookPanel({
         <div className="wk-webhook">
             <div className="wk-webhook__header">
                 <p className="wk-webhook__desc">{t("base.channelWebhook.description")}</p>
-                <WKButton
-                    variant="primary"
-                    size="sm"
-                    icon={<IconPlus />}
-                    onClick={() => setEditTarget({ mode: "create" })}
-                >
-                    {t("base.channelWebhook.add")}
-                </WKButton>
+                {/* 列表非空时才显示 header 的新建按钮；空态有自己的醒目 CTA，
+                    避免出现两个「新建」。加载中也不显示。 */}
+                {!loading && items.length > 0 && (
+                    <WKButton
+                        variant="primary"
+                        size="sm"
+                        icon={<IconPlus />}
+                        onClick={() => setEditTarget({ mode: "create" })}
+                    >
+                        {t("base.channelWebhook.add")}
+                    </WKButton>
+                )}
             </div>
 
             {loading ? (
@@ -312,7 +339,10 @@ export default function ChannelWebhookPanel({
                                         <button
                                             type="button"
                                             className="wk-webhook-card__icon-btn"
-                                            disabled={testingId === item.webhook_id}
+                                            disabled={
+                                                testingId === item.webhook_id ||
+                                                coolingTestId === item.webhook_id
+                                            }
                                             onClick={() => void handleTest(item)}
                                             title={t("base.channelWebhook.action.test")}
                                             aria-label={t("base.channelWebhook.action.test")}

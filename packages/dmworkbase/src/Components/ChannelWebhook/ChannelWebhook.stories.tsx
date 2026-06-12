@@ -79,15 +79,6 @@ function installMock(list: IncomingWebhook[] = mockList) {
     WKApp.dataSource.channelDataSource = ds as never;
 }
 
-const fakeContext = {
-    push: () => undefined,
-    pop: () => undefined,
-    popToRoot: () => undefined,
-    replace: () => undefined,
-    setRouteData: () => undefined,
-    routeData: () => undefined,
-} as never;
-
 const channel = new Channel("g1", ChannelTypeGroup);
 
 const meta: Meta = {
@@ -105,7 +96,7 @@ export const ListAdmin: Story = {
         installMock();
         return (
             <div style={{ width: 360, height: 640, border: "1px solid #eee", margin: "0 auto" }}>
-                <ChannelWebhookPanel channel={channel} isManager context={fakeContext} />
+                <ChannelWebhookPanel channel={channel} isManager />
             </div>
         );
     },
@@ -119,7 +110,7 @@ export const ListMember: Story = {
         WKApp.loginInfo.uid = "uid_member";
         return (
             <div style={{ width: 360, height: 640, border: "1px solid #eee", margin: "0 auto" }}>
-                <ChannelWebhookPanel channel={channel} isManager={false} context={fakeContext} />
+                <ChannelWebhookPanel channel={channel} isManager={false} />
             </div>
         );
     },
@@ -131,7 +122,7 @@ export const EmptyState: Story = {
         installMock([]);
         return (
             <div style={{ width: 360, height: 640, border: "1px solid #eee", margin: "0 auto" }}>
-                <ChannelWebhookPanel channel={channel} isManager context={fakeContext} />
+                <ChannelWebhookPanel channel={channel} isManager />
             </div>
         );
     },

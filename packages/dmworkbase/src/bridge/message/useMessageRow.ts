@@ -8,8 +8,8 @@ import { resolveExternalForViewer } from '../../Utils/externalViewer'
 import { personalRemarkDisplayName, subscriberDisplayName } from '../../Utils/displayName'
 import { shouldShowRealnameBadge } from '../../Utils/realnameBadge'
 import {
-  INCOMING_WEBHOOK_DEFAULT_AVATAR,
   isIncomingWebhookSender,
+  resolveWebhookRowDisplay,
   webhookFromOfMessage,
 } from '../../Service/IncomingWebhook'
 import moment from 'moment'
@@ -103,6 +103,7 @@ export function getMessageRow(
   const timeOnly = formatTimeOnly(message.timestamp)
 
   if (webhookFrom) {
+    const display = resolveWebhookRowDisplay(webhookFrom)
     return {
       isSend: message.send,
       isContinue,
@@ -110,11 +111,13 @@ export function getMessageRow(
       showCheckbox: selection?.showCheckbox ?? false,
       selectionMode: selection?.selectionMode ?? selection?.showCheckbox ?? false,
       showAvatar: !isContinue,
-      avatarUrl: webhookFrom.avatar || INCOMING_WEBHOOK_DEFAULT_AVATAR,
+      // payload 自带头像优先；否则走与普通用户同源的头像链路（avatarUser(uid)）。
+      avatarUrl: display.avatarUrl || WKApp.shared.avatarUser(message.fromUID),
       // payload.from 缺失的异常路径返回空串，不把 iwh_* 暴露到 UI
-      senderName: webhookFrom.name || '',
+      senderName: display.senderName,
       isBot: false,
-      isWebhook: true,
+      // 徽章跟随 display.showBadge。isWebhook 仅驱动 MessageRow 的「机器人」徽章。
+      isWebhook: display.showBadge,
       timestamp,
       timeOnly,
       isEdit: message.message?.remoteExtra?.isEdit ?? false,
