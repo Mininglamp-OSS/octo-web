@@ -475,6 +475,7 @@
   "channelWebhook.action.edit": "Edit",
   "channelWebhook.action.regenerate": "Reset push URL",
   "channelWebhook.action.test": "Send test message",
+  "channelWebhook.action.testDisabledHint": "Webhook is disabled — enable it to send a test message",
   "channelWebhook.action.delete": "Delete",
   "channelWebhook.form.createTitle": "New webhook",
   "channelWebhook.form.editTitle": "Edit webhook",

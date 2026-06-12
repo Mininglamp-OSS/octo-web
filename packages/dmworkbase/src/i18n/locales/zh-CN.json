@@ -475,6 +475,7 @@
   "channelWebhook.action.edit": "编辑",
   "channelWebhook.action.regenerate": "重置推送地址",
   "channelWebhook.action.test": "发送测试消息",
+  "channelWebhook.action.testDisabledHint": "Webhook 已禁用，启用后才能发送测试消息",
   "channelWebhook.action.delete": "删除",
   "channelWebhook.form.createTitle": "新建 Webhook",
   "channelWebhook.form.editTitle": "编辑 Webhook",

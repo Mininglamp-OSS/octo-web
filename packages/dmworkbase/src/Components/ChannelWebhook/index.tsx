@@ -140,6 +140,10 @@ export default function ChannelWebhookPanel({
     };
 
     const handleTest = async (item: IncomingWebhook) => {
+        // 已禁用的 webhook 不允许测试：test 走管理面、绕开推送面的 enabled 检查，
+        // 仍会向群内发真实消息，且「测试成功」会对一个真实推送被 401 挡掉的 webhook
+        // 给出假信心。与「禁用=不再发消息」的语义保持一致。
+        if (item.status !== IncomingWebhookStatus.enabled) return;
         // 已有测试在飞 / 该 webhook 处于冷却中 → 忽略，避免连点刷屏。
         if (testingId || coolingTestId === item.webhook_id) return;
         setTestingId(item.webhook_id);
@@ -343,14 +347,20 @@ export default function ChannelWebhookPanel({
                                             type="button"
                                             className="wk-webhook-card__icon-btn"
                                             disabled={
+                                                // 已禁用的 webhook 不可测试（语义一致 + 避免假信心）；
                                                 // handleTest 全局串行化（任一测试在飞即忽略），
                                                 // 故任一在飞时所有测试按钮都置灰，避免点了没反应；
                                                 // 叠加本 webhook 的冷却态。
+                                                !enabled ||
                                                 !!testingId ||
                                                 coolingTestId === item.webhook_id
                                             }
                                             onClick={() => void handleTest(item)}
-                                            title={t("base.channelWebhook.action.test")}
+                                            title={
+                                                enabled
+                                                    ? t("base.channelWebhook.action.test")
+                                                    : t("base.channelWebhook.action.testDisabledHint")
+                                            }
                                             aria-label={t("base.channelWebhook.action.test")}
                                         >
                                             <IconSend />
