@@ -25,14 +25,29 @@ interface RuntimeListEntry {
 // invoked when the user clicks a bot row inside a Runtime's detail page —
 // the parent switches the active tab to "bots" and then asks us to
 // surface that bot's detail panel.
+//
+// UI/UX review #375 follow-up (P1-4 空态 CTA): openCreate 加可选
+// preselectRuntimeId — 用户在左树 Level-3 看到"暂无 Bot"按钮直接打开
+// modal 时, modal 跳过 firstReady 自动选, 直接定位到目标 runtime + 它
+// 的 device, 用户只填名字按确认.
 export interface BotsTabHandle {
-  openCreate: () => void;
+  openCreate: (opts?: { preselectRuntimeId?: number }) => void;
   openBot: (id: number) => void;
 }
 
 // PR-2: cc-channel-octo (claude) adapter 已落地 (吕思佳 daemon-cli #34) +
 // 本机 ~/.cc-channel-octo 已切本地 server, 开放 claude 创建. codex/hermes
 // adapter 仍在收尾 (codex skeleton, hermes 未跑通), 暂不开放.
+//
+// UI/UX review #375 follow-up: claude 跟 openclaw 走两条不同的执行路径:
+//   - openclaw → 经 daemon adapter Provision (internal/adapter/openclaw.go)
+//   - claude   → 不经 daemon adapter Provision. cc-channel-octo 是用户自
+//                己起的独立 gateway 进程 (从 /v1/runtime-onboarding 拿命令
+//                启动), 它注册自己的 IM bot_uid 接 WS 收消息, 直接调
+//                Claude SDK. daemon-cli internal/adapter/claude.go 的
+//                ErrUnsupported skeleton 在这条路径上不会被踩到 — 创建
+//                claude bot 时 fleet 不派 provision 给 daemon, 派给
+//                cc-channel-octo gateway. 已 e2e 验过.
 const SUPPORTED_KINDS: RuntimeKind[] = ['openclaw', 'claude'];
 
 export interface BotsTabProps {
@@ -54,6 +69,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [runtimes, setRuntimes] = useState<RuntimeListEntry[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [preselectRuntimeId, setPreselectRuntimeId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   // C10 in-flight guard: spaceEpoch 每次 space-changed 自增, refresh /
@@ -156,7 +172,10 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   }, []);
 
   useImperativeHandle(ref, () => ({
-    openCreate: () => setModalOpen(true),
+    openCreate: (opts) => {
+      setPreselectRuntimeId(opts?.preselectRuntimeId ?? null);
+      setModalOpen(true);
+    },
     openBot: (id: number) => {
       const found = bots.find(b => b.id === id);
       if (found) {
@@ -245,7 +264,12 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
       <CreateBotModal
         visible={modalOpen}
         runtimes={modalRuntimes}
-        onClose={() => setModalOpen(false)}
+        preselectRuntimeId={preselectRuntimeId}
+        onClose={() => {
+          setModalOpen(false);
+          // 关闭时清掉 preselect, 下次没传时不残留
+          setPreselectRuntimeId(null);
+        }}
         onCreated={handleCreated}
       />
     </div>
