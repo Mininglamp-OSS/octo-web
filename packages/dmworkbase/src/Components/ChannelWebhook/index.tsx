@@ -178,6 +178,8 @@ export default function ChannelWebhookPanel({
                     void load();
                 } catch (e) {
                     Toast.error(extractErrorMsg(e) || t("base.channelWebhook.error.regenerateFailed"));
+                    // 重新抛出：wkConfirm 的 onOk 捕获 reject 后保持弹窗打开、按钮复位
+                    // 供用户重试（见 WKModal/confirm.tsx 的 .catch(updatePending(null))）。
                     throw e;
                 }
             },
@@ -200,6 +202,7 @@ export default function ChannelWebhookPanel({
                     );
                 } catch (e) {
                     Toast.error(extractErrorMsg(e) || t("base.channelWebhook.error.deleteFailed"));
+                    // 重新抛出：wkConfirm 捕获 reject 后保持弹窗打开供重试（同 handleRegenerate）。
                     throw e;
                 }
                 Toast.success(t("base.channelWebhook.toast.deleted"));
@@ -340,7 +343,10 @@ export default function ChannelWebhookPanel({
                                             type="button"
                                             className="wk-webhook-card__icon-btn"
                                             disabled={
-                                                testingId === item.webhook_id ||
+                                                // handleTest 全局串行化（任一测试在飞即忽略），
+                                                // 故任一在飞时所有测试按钮都置灰，避免点了没反应；
+                                                // 叠加本 webhook 的冷却态。
+                                                !!testingId ||
                                                 coolingTestId === item.webhook_id
                                             }
                                             onClick={() => void handleTest(item)}

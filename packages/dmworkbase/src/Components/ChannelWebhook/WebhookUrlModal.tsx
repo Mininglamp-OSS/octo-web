@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import { IconAlertTriangle, IconCopy } from "@douyinfe/semi-icons";
 import WKModal from "../WKModal";
@@ -8,7 +8,7 @@ import { useI18n } from "../../i18n";
 import { copyToClipboard } from "../../Utils/clipboard";
 import {
     IncomingWebhookCreateResp,
-    buildIncomingWebhookUrl,
+    buildWebhookUrlRows,
 } from "../../Service/IncomingWebhook";
 import "./index.css";
 
@@ -33,32 +33,12 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
         setVisible(true);
     }, []);
 
-    const absolute = useCallback((relative?: string): string => {
-        if (!relative) return "";
-        return buildIncomingWebhookUrl(
-            relative,
-            WKApp.apiClient.config.apiURL || "/",
-            window.location.origin
-        );
-    }, []);
-
-    const rows: Array<{ key: string; label: string; url: string }> = [
-        {
-            key: "native",
-            label: t("base.channelWebhook.url.native"),
-            url: absolute(resp.urls?.native || resp.url),
-        },
-        {
-            key: "github",
-            label: t("base.channelWebhook.url.github"),
-            url: absolute(resp.urls?.github),
-        },
-        {
-            key: "wecom",
-            label: t("base.channelWebhook.url.wecom"),
-            url: absolute(resp.urls?.wecom),
-        },
-    ].filter((r) => !!r.url);
+    // 行构造（native 回退 url、按适配器过滤空地址）抽到纯函数 buildWebhookUrlRows，已单测。
+    const rows = buildWebhookUrlRows(
+        resp,
+        WKApp.apiClient.config.apiURL || "/",
+        window.location.origin
+    );
 
     const handleCopy = async (url: string) => {
         try {
@@ -103,7 +83,7 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                         </div>
                         {rows.map((row) => (
                             <div key={row.key} className="wk-webhook-url__row">
-                                <div className="wk-webhook-url__label">{row.label}</div>
+                                <div className="wk-webhook-url__label">{t(`base.${row.labelKey}`)}</div>
                                 <div className="wk-webhook-url__value-wrap">
                                     <code className="wk-webhook-url__value" title={row.url}>
                                         {row.url}

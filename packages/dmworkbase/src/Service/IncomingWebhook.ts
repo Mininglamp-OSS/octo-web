@@ -134,6 +134,34 @@ export function buildIncomingWebhookUrl(
     return `${abs.origin}${basePath}${rel}`;
 }
 
+/** 一次性推送地址弹窗里的一行（一个适配器） */
+export interface WebhookUrlRow {
+    key: "native" | "github" | "wecom";
+    /** i18n key 后缀，调用方自行拼 `base.` 前缀 */
+    labelKey: string;
+    url: string;
+}
+
+/**
+ * 由 create/regenerate 响应构造一次性推送地址列表（纯函数，便于单测）。
+ *
+ * 决策点：native 适配器优先用 `urls.native`，回退到顶层 `url`（旧契约只给 `url`）；
+ * github / wecom 仅在响应提供对应 `urls.*` 时出现；最终过滤掉空地址。
+ */
+export function buildWebhookUrlRows(
+    resp: Pick<IncomingWebhookCreateResp, "url" | "urls">,
+    apiURL: string,
+    origin: string
+): WebhookUrlRow[] {
+    const abs = (rel?: string): string =>
+        rel ? buildIncomingWebhookUrl(rel, apiURL || "/", origin) : "";
+    return [
+        { key: "native", labelKey: "channelWebhook.url.native", url: abs(resp.urls?.native || resp.url) },
+        { key: "github", labelKey: "channelWebhook.url.github", url: abs(resp.urls?.github) },
+        { key: "wecom", labelKey: "channelWebhook.url.wecom", url: abs(resp.urls?.wecom) },
+    ].filter((row) => !!row.url);
+}
+
 /** push 消息 payload 里的发送者展示身份（DeliveredMessagePayload.from） */
 export interface WebhookMessageFrom {
     kind?: string;

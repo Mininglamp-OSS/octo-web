@@ -40,7 +40,6 @@ export interface MessageRowUIProps {
    */
   isWebhook?: boolean
 
-
   /** 时间戳（格式化后的字符串，如 "10:30" 或 "2026-03-28 10:30:12"） */
   timestamp: string
 

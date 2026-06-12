@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     buildIncomingWebhookUrl,
     buildWebhookUpsertReq,
+    buildWebhookUrlRows,
     canManageIncomingWebhook,
     isIncomingWebhookSender,
     webhookFromOfMessage,
@@ -235,5 +236,61 @@ describe("buildWebhookUpsertReq", () => {
                 })
             ).toEqual({ avatar: "" });
         });
+    });
+});
+
+describe("buildWebhookUrlRows", () => {
+    const apiURL = "/api/v1/";
+    const origin = "https://host.example";
+    const full = (rel: string) => `https://host.example/api/v1${rel}`;
+
+    it("三个适配器 URL 齐全 → 三行，标签 key 正确", () => {
+        const rows = buildWebhookUrlRows(
+            {
+                url: "/v1/incoming-webhooks/iwh_a/t",
+                urls: {
+                    native: "/v1/incoming-webhooks/iwh_a/t",
+                    github: "/v1/incoming-webhooks/iwh_a/t/github",
+                    wecom: "/v1/incoming-webhooks/iwh_a/t/wecom",
+                },
+            },
+            apiURL,
+            origin
+        );
+        expect(rows).toEqual([
+            { key: "native", labelKey: "channelWebhook.url.native", url: full("/incoming-webhooks/iwh_a/t") },
+            { key: "github", labelKey: "channelWebhook.url.github", url: full("/incoming-webhooks/iwh_a/t/github") },
+            { key: "wecom", labelKey: "channelWebhook.url.wecom", url: full("/incoming-webhooks/iwh_a/t/wecom") },
+        ]);
+    });
+
+    it("旧契约只给顶层 url（无 urls）→ native 回退到 url，github/wecom 过滤掉", () => {
+        const rows = buildWebhookUrlRows(
+            { url: "/v1/incoming-webhooks/iwh_a/t" },
+            apiURL,
+            origin
+        );
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toEqual({
+            key: "native",
+            labelKey: "channelWebhook.url.native",
+            url: full("/incoming-webhooks/iwh_a/t"),
+        });
+    });
+
+    it("urls 提供部分适配器 → 只出现非空的行", () => {
+        const rows = buildWebhookUrlRows(
+            {
+                url: "/v1/incoming-webhooks/iwh_a/t",
+                urls: { native: "/v1/incoming-webhooks/iwh_a/t", wecom: "/v1/incoming-webhooks/iwh_a/t/wecom" },
+            },
+            apiURL,
+            origin
+        );
+        expect(rows.map((r) => r.key)).toEqual(["native", "wecom"]);
+    });
+
+    it("既无 url 也无 urls（退化态）→ 空数组", () => {
+        expect(buildWebhookUrlRows({ url: "" }, apiURL, origin)).toEqual([]);
     });
 });
