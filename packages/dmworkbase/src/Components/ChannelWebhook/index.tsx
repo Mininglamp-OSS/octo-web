@@ -22,6 +22,7 @@ import {
     IncomingWebhookStatus,
     INCOMING_WEBHOOK_DEFAULT_AVATAR,
     canManageIncomingWebhook,
+    canTestWebhook,
 } from "../../Service/IncomingWebhook";
 import WebhookEditModal from "./WebhookEditModal";
 import WebhookUrlModal from "./WebhookUrlModal";
@@ -143,7 +144,10 @@ export default function ChannelWebhookPanel({
         // 已禁用的 webhook 不允许测试：test 走管理面、绕开推送面的 enabled 检查，
         // 仍会向群内发真实消息，且「测试成功」会对一个真实推送被 401 挡掉的 webhook
         // 给出假信心。与「禁用=不再发消息」的语义保持一致。
-        if (item.status !== IncomingWebhookStatus.enabled) return;
+        if (!canTestWebhook(item)) return;
+        // 正在切换启停时 item.status 仍是刷新前的旧值，此刻放行会用过期状态发测试，
+        // 故该 webhook 切换在飞期间一并拦截（与按钮 disabled 同源）。
+        if (togglingId === item.webhook_id) return;
         // 已有测试在飞 / 该 webhook 处于冷却中 → 忽略，避免连点刷屏。
         if (testingId || coolingTestId === item.webhook_id) return;
         setTestingId(item.webhook_id);
@@ -290,6 +294,8 @@ export default function ChannelWebhookPanel({
                     {items.map((item) => {
                         const manageable = canManageIncomingWebhook(item, { isManager, myUid });
                         const enabled = item.status === IncomingWebhookStatus.enabled;
+                        // 测试按钮的可用性单独走 canTestWebhook（与 handleTest 守卫同源）。
+                        const canTest = canTestWebhook(item);
                         return (
                             <li key={item.webhook_id} className="wk-webhook-card">
                                 <div className="wk-webhook-card__head">
@@ -348,16 +354,18 @@ export default function ChannelWebhookPanel({
                                             className="wk-webhook-card__icon-btn"
                                             disabled={
                                                 // 已禁用的 webhook 不可测试（语义一致 + 避免假信心）；
+                                                // 切换启停在飞期间 status 尚未刷新，一并置灰避免用旧状态测试；
                                                 // handleTest 全局串行化（任一测试在飞即忽略），
                                                 // 故任一在飞时所有测试按钮都置灰，避免点了没反应；
                                                 // 叠加本 webhook 的冷却态。
-                                                !enabled ||
+                                                !canTest ||
+                                                togglingId === item.webhook_id ||
                                                 !!testingId ||
                                                 coolingTestId === item.webhook_id
                                             }
                                             onClick={() => void handleTest(item)}
                                             title={
-                                                enabled
+                                                canTest
                                                     ? t("base.channelWebhook.action.test")
                                                     : t("base.channelWebhook.action.testDisabledHint")
                                             }

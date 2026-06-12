@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+    IncomingWebhookStatus,
     buildIncomingWebhookUrl,
     buildWebhookCurlExample,
     buildWebhookUpsertReq,
     buildWebhookUrlRows,
     canManageIncomingWebhook,
+    canTestWebhook,
     isIncomingWebhookSender,
     webhookFromOfMessage,
 } from "../IncomingWebhook";
@@ -323,5 +325,28 @@ describe("buildWebhookCurlExample", () => {
         expect(buildWebhookCurlExample("wecom", url, sample)).not.toMatch(
             /username|avatar_url/
         );
+    });
+
+    it("样例文案含单引号时做 POSIX 转义，复制出的命令仍可执行", () => {
+        const out = buildWebhookCurlExample("native", url, "C'est fait ✅");
+        // 转义后 -d 实参形如 '...'\''...'：不应出现未转义的裸 ' 提前终止引号串。
+        expect(out).toContain("'\\''");
+        // 仍是合法的单引号包裹串：去掉 '\'' 续接记法后，content 应原样还原。
+        const dArg = out.match(/-d '(.*)'$/s)![1];
+        const unquoted = dArg.replace(/'\\''/g, "'");
+        expect(JSON.parse(unquoted)).toEqual({ content: "C'est fait ✅" });
+    });
+
+    it("URL 含单引号时同样转义，不会破坏 curl 目标", () => {
+        const out = buildWebhookCurlExample("native", "https://h/x'y", sample);
+        expect(out).toContain("curl -X POST 'https://h/x'\\''y'");
+    });
+});
+
+describe("canTestWebhook", () => {
+    it("仅 enabled 可测试，disabled / deleted 一律拒绝", () => {
+        expect(canTestWebhook({ status: IncomingWebhookStatus.enabled })).toBe(true);
+        expect(canTestWebhook({ status: IncomingWebhookStatus.disabled })).toBe(false);
+        expect(canTestWebhook({ status: IncomingWebhookStatus.deleted })).toBe(false);
     });
 });

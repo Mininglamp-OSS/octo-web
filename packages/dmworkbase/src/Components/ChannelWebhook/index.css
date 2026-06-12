@@ -295,7 +295,7 @@
   align-items: center;
   gap: var(--wk-sp-1);
   padding: var(--wk-sp-1) var(--wk-sp-2);
-  border: 1px solid var(--wk-border, rgba(28, 28, 35, 0.12));
+  border: 1px solid var(--wk-border-default, rgba(28, 28, 35, 0.12));
   border-radius: var(--wk-r-sm);
   background: none;
   cursor: pointer;
@@ -309,7 +309,7 @@
 
 /* 复制成功的即时反馈：图标短暂变绿 ✓ */
 .wk-webhook-url__copied-icon {
-  color: var(--wk-success, #2eb872);
+  color: var(--wk-color-success, #2eb872);
 }
 
 .wk-webhook-url__example-note {

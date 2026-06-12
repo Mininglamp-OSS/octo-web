@@ -74,7 +74,10 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
     // 调用示例：native / wecom 是可复制的 curl（body 结构不同，由纯函数区分）；
     // github 不是 curl，而是「把 Payload URL 贴到仓库 Webhook 设置」的地址 + 步骤。
     const renderExample = (row: WebhookUrlRow) => {
-        const copied = copiedKey === `example:${row.key}`;
+        // 单点定义本行的复制反馈 key，下方 copied 判定与各分支 handleCopy 复用，
+        // 避免同一字面量多处拼接漂移导致 ✓ 反馈失效。
+        const feedbackKey = `example:${row.key}`;
+        const copied = copiedKey === feedbackKey;
         if (row.key === "github") {
             // GitHub 用法是把这个带 /github 后缀的地址填进仓库 Webhook 设置，
             // 所以单独给一行可复制的 Payload URL，而不是 curl。
@@ -90,7 +93,7 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                         <button
                             type="button"
                             className="wk-webhook-card__icon-btn"
-                            onClick={() => void handleCopy(row.url, `example:${row.key}`)}
+                            onClick={() => void handleCopy(row.url, feedbackKey)}
                             title={t("base.channelWebhook.url.copy")}
                             aria-label={t("base.channelWebhook.url.copy")}
                         >
@@ -127,7 +130,7 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                 <button
                     type="button"
                     className="wk-webhook-url__example-copy"
-                    onClick={() => void handleCopy(curl, `example:${row.key}`)}
+                    onClick={() => void handleCopy(curl, feedbackKey)}
                 >
                     {copied ? (
                         <IconTickCircle className="wk-webhook-url__copied-icon" />
