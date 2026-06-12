@@ -186,6 +186,19 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
         return `${WKApp.shared.currentSpaceId}:${this.props.group.daemonId}`
     }
 
+    componentDidMount() {
+        // R4-3 (cc) / R3-5 (codex), round 4 双方同抓: DeviceDetail 跟
+        // RuntimeDetail 893 行同款 remount 续看 — replaceToRoot remount 后
+        // 原 handleUpgrade 轮询协程死 (isStale), 新实例若初始 state 是
+        // in-progress 必须续看, 否则 upgradeStatus 冻结在 remount 时刻值,
+        // 3s 自适应轮询带来的新 prop 也救不了 (此前 componentDidUpdate 只
+        // 在 daemonId 变化时重读).
+        const upg = this.props.activeUpgrade
+        if (upg?.task_id && isUpgradeInProgress(this.state.upgradeStatus)) {
+            this.resumeUpgradePoll(upg.task_id)
+        }
+    }
+
     componentDidUpdate(prevProps: DeviceDetailProps) {
         if (prevProps.group.daemonId !== this.props.group.daemonId) {
             const cached = this.props.pingCache.get(this.cacheKey)
@@ -196,6 +209,20 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                 ? { pingStatus: cached.status, pingMs: cached.ms, upgradeStatus: upgStatus, upgradeError: upgError }
                 : { pingStatus: "idle", pingMs: 0, upgradeStatus: upgStatus, upgradeError: upgError }
             )
+            return
+        }
+        // R4-3/R3-5: 同 daemon 下 activeUpgrade prop 变化 → state 跟进
+        // (RuntimeDetail syncUpgradeStateFromProp 同款语义): 页面级轮询
+        // (15s/3s) 经 B-4 re-replaceToRoot 推新 prop, React 原地复用实例
+        // 时走这里. prop 消失 (任务终态出 active_upgrades) 时若本地还是
+        // in-progress 复位 idle — 让 detect 上报后的终态能落地.
+        const prevUpg = prevProps.activeUpgrade
+        const currUpg = this.props.activeUpgrade
+        if (prevUpg?.status === currUpg?.status && prevUpg?.error_msg === currUpg?.error_msg) return
+        if (currUpg) {
+            this.setState({ upgradeStatus: currUpg.status as any, upgradeError: currUpg.error_msg || "" })
+        } else if (isUpgradeInProgress(this.state.upgradeStatus)) {
+            this.setState({ upgradeStatus: "idle", upgradeError: "" })
         }
     }
 
@@ -233,13 +260,25 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
     handleUpgrade = async () => {
         this.setState({ upgradeStatus: "pending", upgradeError: "" })
         const daemonId = this.props.group.daemonId
-        const isStale = () => this._unmounted || this.props.group.daemonId !== daemonId
         try {
             const initRes = await WKApp.apiClient.post("/runtimes/upgrade", { daemon_id: daemonId, space_id: WKApp.shared.currentSpaceId })
             const taskId = initRes.task_id
             // C-1: task 已创建, 立即让父层重拉 active_upgrades, 其他 detail
             // 的 daemonBusy ~1s 内生效 (不等 15s 轮询).
             this.props.onUpgradeStarted?.()
+            await this.resumeUpgradePoll(taskId)
+        } catch (err: any) {
+            this.setState({ upgradeStatus: "failed", upgradeError: err?.msg || err?.message || "upgrade failed" })
+        }
+    }
+
+    // 轮询已知 taskId 的进度. 抽出复用 (R4-3/R3-5 round 4): 1) handleUpgrade
+    // 首次点击; 2) componentDidMount remount 续看 — 跟 RuntimeDetail
+    // pollPluginUpgrade/pollComponentUpgrade 同款双入口模式.
+    resumeUpgradePoll = async (taskId: string) => {
+        const daemonId = this.props.group.daemonId
+        const isStale = () => this._unmounted || this.props.group.daemonId !== daemonId
+        try {
             for (let i = 0; i < 60; i++) {
                 if (isStale()) return
                 await new Promise(r => setTimeout(r, 2000))
@@ -295,7 +334,11 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
             }
             this.setState({ upgradeStatus: "timeout", upgradeError: "polling timeout" })
         } catch (err: any) {
-            this.setState({ upgradeStatus: "failed", upgradeError: err?.msg || err?.message || "upgrade failed" })
+            // resumeUpgradePoll 自身的网络/解析异常: 不标 failed (任务可能
+            // 还在跑), 留给页面级轮询兜底纠正.
+            if (!isStale()) {
+                this.setState({ upgradeError: err?.msg || err?.message || "" })
+            }
         }
     }
 
@@ -1544,6 +1587,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             botsLoading: new Set(),
             botsHydrated: false,
         })
+        // R4-2: 新 space 的首次全量 bot 拉取不受旧 space 节流时间戳约束
+        this.lastAllBotsAt = 0
         WKApp.routeRight.popToRoot()
         this.loadData()
     }
@@ -1754,14 +1799,19 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     // 更早起飞的全量覆盖, 新 bot 左树短暂消失). botsSeq 模块级序号统一
     // 两路: 任一新请求起飞使旧响应作废.
     private botsSeq = 0
+    // R4-2 (cc + codex round 4): refreshAllBots 自带 15s 节流 — 升级期间
+    // loadData 降到 3s 档时, bot 数据跟升级无关, 不该连带 5 倍 listBots.
+    private lastAllBotsAt = 0
 
-    refreshAllBots = async () => {
+    refreshAllBots = async (force = false) => {
+        if (!force && Date.now() - this.lastAllBotsAt < POLL_IDLE_MS) return
         const epoch = this.spaceEpoch
         const seq = ++this.botsSeq
         const isStale = () => this.spaceEpoch !== epoch || seq !== this.botsSeq
         try {
             const all = await listBots()
             if (isStale()) return
+            this.lastAllBotsAt = Date.now()
             this.setState((prev) => {
                 if (isStale()) return null
                 const next = new Map<number, Bot[]>()
@@ -1835,6 +1885,22 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 loading.delete(runtimeId)
                 return { botsLoading: loading }
             })
+        } finally {
+            // R4-1 (cc + codex round 4 同抓): 本请求被 botsSeq 作废 (更新
+            // 的 refreshAllBots / 别的单 key 请求起飞) 时, 上面所有
+            // setState 都被 isStale 挡住 — botsLoading 里的标记没人清,
+            // 若接班的全量请求恰好失败, "加载中…" 挂死且 needFirstLoad
+            // 被 botsLoading.has 抑制无法重试. epoch 没变 (同 space) 时
+            // 兜底清掉本 runtime 的 loading 标记 (幂等, 接班请求成功路径
+            // 也会清). epoch 变了不管 — handleSpaceChanged 整体重置.
+            if (this.spaceEpoch === epoch && seq !== this.botsSeq) {
+                this.setState((prev) => {
+                    if (this.spaceEpoch !== epoch || !prev.botsLoading.has(runtimeId)) return null
+                    const loading = new Set(prev.botsLoading)
+                    loading.delete(runtimeId)
+                    return { botsLoading: loading }
+                })
+            }
         }
     }
 
