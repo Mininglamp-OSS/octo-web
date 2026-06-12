@@ -268,17 +268,40 @@ export class GroupManagement extends Component<
             Toast.warning(t("base.groupManagement.selectBot"));
             return;
           }
-          const uid = selectedItems[0].uid;
-          try {
-            await WKApp.dataSource.channelDataSource.setBotAdmin(
-              channel,
-              uid
-            );
-            Toast.success(t("base.groupManagement.added"));
+          const items = [...selectedItems];
+          const results = await Promise.allSettled(
+            items.map((item) =>
+              WKApp.dataSource.channelDataSource.setBotAdmin(channel, item.uid)
+            )
+          );
+          const failed = results.filter((r, i) => {
+            if (r.status === "rejected") {
+              console.warn(
+                "setBotAdmin failed for uid",
+                items[i].uid,
+                r.reason
+              );
+              return true;
+            }
+            return false;
+          });
+          if (failed.length < results.length) {
             context.pop();
             this.loadMembers();
-          } catch (err: any) {
-            Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
+          }
+          if (failed.length === 0) {
+            Toast.success(t("base.groupManagement.added"));
+          } else if (failed.length === results.length) {
+            const firstRejected = failed[0] as PromiseRejectedResult;
+            Toast.error(
+              (firstRejected.reason as any)?.msg ||
+                t("base.groupManagement.operationFailed")
+            );
+          } else {
+            Toast.error(
+              t("base.groupManagement.operationFailed") +
+                ` (${failed.length}/${results.length})`
+            );
           }
         },
       })
