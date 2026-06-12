@@ -242,7 +242,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
     <div className="wk-rt-bots-list" style={props.hidden ? { display: 'none' } : undefined}>
       {loading && bots.length === 0 && <div className="wk-rt-bots__empty">加载中…</div>}
       {!loading && bots.length === 0 && (
-        <div className="wk-rt-bots__empty">还没有智能体，点右上角 + 新建</div>
+        <div className="wk-rt-bots__empty">还没有 Bot，点右上角 + 新建</div>
       )}
       <ul className="wk-rt-bots__items">
         {bots.map(b => (

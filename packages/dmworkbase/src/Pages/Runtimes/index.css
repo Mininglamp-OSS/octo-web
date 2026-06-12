@@ -1031,7 +1031,7 @@
 
 /* Toolbar row above the list — minimal, only carries the create CTA
  * and an inline count. No section title — the page tab already says
- * "Bot", so a "智能体" heading here would be duplicative. */
+ * "Bot", so a duplicate "Bot" heading here would be redundant. */
 .wk-rt-bots__item {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border-light);
@@ -1230,6 +1230,18 @@
   color: var(--text-primary);
   border-bottom-color: var(--text-primary);
   font-weight: 600;
+}
+/* 「待上线」角标 — 标注本期未开放的 tab (动态/Tasks/Skills) */
+.wk-bd-tab__soon {
+  margin-left: 5px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--text-tertiary);
+  background: var(--bg-hover);
+  border-radius: 4px;
+  vertical-align: middle;
 }
 
 /* ── Body / section cards ── */

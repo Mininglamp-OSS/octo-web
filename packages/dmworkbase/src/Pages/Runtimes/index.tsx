@@ -1250,7 +1250,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     })()}
                 </div>
 
-                {/* PR-2: 删 BotsSection (智能体列表 + 新建按钮) — 跟左侧
+                {/* PR-2: 删 BotsSection (Bot 列表 + 新建按钮) — 跟左侧
                     树 Level 3 的 bot rows 重复, "新建" 也跟顶部 + popover
                     的"创建 Bot"重复. caster 拍的去重. */}
 
