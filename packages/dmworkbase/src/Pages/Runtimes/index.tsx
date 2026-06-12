@@ -1325,15 +1325,19 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     private handleBotCreated = (bot: Bot) => {
         this.refreshRuntimeBots(bot.runtime_id)
         const rt = this.state.runtimes.find(r => r.id === bot.runtime_id)
-        const daemonId = rt?.daemon_id
+        // 空 daemon_id 走 'unknown' fallback, 跟 groupByDevice line 89
+        // (rt.daemon_id || 'unknown') 同公式 — device 行身份在那里 fallback
+        // 到 'unknown', 这里若用原始 '' 加进 expandedDevices 会因短路不
+        // 展开父 device, 用户看不到刚建的 bot. (lml2468 review #375 nit)
+        const daemonKey = rt?.daemon_id || "unknown"
         this.selectedDaemonId = undefined
         this.setState((prev) => {
             const expandedRuntimes = prev.expandedRuntimes.has(bot.runtime_id)
                 ? prev.expandedRuntimes
                 : new Set(prev.expandedRuntimes).add(bot.runtime_id)
-            const expandedDevices = (daemonId && !prev.expandedDevices.has(daemonId))
-                ? new Set(prev.expandedDevices).add(daemonId)
-                : prev.expandedDevices
+            const expandedDevices = prev.expandedDevices.has(daemonKey)
+                ? prev.expandedDevices
+                : new Set(prev.expandedDevices).add(daemonKey)
             return { selectedId: null, expandedRuntimes, expandedDevices }
         })
     }
