@@ -167,6 +167,10 @@
     margin-bottom: 20px;
 }
 
+.wk-rt-detail-grid--single {
+    grid-template-columns: 1fr;
+}
+
 .wk-rt-field {
     display: flex;
     flex-direction: column;
