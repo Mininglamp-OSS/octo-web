@@ -1000,7 +1000,7 @@
  * is the only divider; section subheader takes over below.
  */
 .wk-rt-pageheader {
-  padding: 12px 16px 0;
+  padding: 14px 16px;
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-light);
 }
