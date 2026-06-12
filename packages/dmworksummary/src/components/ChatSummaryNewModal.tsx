@@ -129,6 +129,8 @@ export default class ChatSummaryNewModal extends Component<
         this.setState({ submitting: true });
         try {
             const sources = selectedChats.length > 0
+                // 不传 source_name：让后端按 source_id 现查 IM 库最新群名（带类型后缀），
+                // 与下方 fallback 分支一致，避免把群名冻结进配置。
                 ? selectedChats.map((c) => ({
                     source_type: (c.chat_type === 'group'
                         ? SourceType.GROUP_CHAT
@@ -136,7 +138,6 @@ export default class ChatSummaryNewModal extends Component<
                         ? SourceType.THREAD
                         : SourceType.DIRECT_MESSAGE),
                     source_id: c.chat_id,
-                    source_name: c.name,
                 }))
                 : [{
                     source_type: sourceType as 1 | 2 | 3,
