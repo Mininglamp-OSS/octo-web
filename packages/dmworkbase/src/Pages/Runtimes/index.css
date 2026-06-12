@@ -1000,21 +1000,33 @@
  * is the only divider; section subheader takes over below.
  */
 .wk-rt-pageheader {
-  padding: 12px 16px 0;
+  padding: 14px 16px;
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-light);
 }
 
-/* Meta info (count / status summary) sits at the trailing edge of the
- * tab row — keeps page metadata visible without a second header line. */
+/* Meta info (count / online status) sits at the trailing edge of the
+ * header, next to the create button — mirrors the conversation list's
+ * "ping" chip. Online count leads, with a status dot for quick scanning. */
 .wk-rt-pageheader__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   margin-left: auto;
-  align-self: center;
-  padding-bottom: 4px;       /* visually align with active tab baseline */
   font-size: 12px;
-  color: var(--text-tertiary);
+  color: var(--wk-text-tertiary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.wk-rt-meta-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--wk-icon-muted);
+  flex-shrink: 0;
+}
+.wk-rt-meta-dot.is-online {
+  background: var(--wk-color-success);
 }
 
 /* Primary action button hosted in the page header (Bot tab uses it for
@@ -1031,7 +1043,7 @@
 
 /* Toolbar row above the list — minimal, only carries the create CTA
  * and an inline count. No section title — the page tab already says
- * "Bot", so a "智能体" heading here would be duplicative. */
+ * "Bot", so a duplicate "Bot" heading here would be redundant. */
 .wk-rt-bots__item {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border-light);
@@ -1230,6 +1242,18 @@
   color: var(--text-primary);
   border-bottom-color: var(--text-primary);
   font-weight: 600;
+}
+/* 「待上线」角标 — 标注本期未开放的 tab (动态/Tasks/Skills) */
+.wk-bd-tab__soon {
+  margin-left: 5px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--text-tertiary);
+  background: var(--bg-hover);
+  border-radius: 4px;
+  vertical-align: middle;
 }
 
 /* ── Body / section cards ── */
@@ -1616,37 +1640,37 @@
    page. */
 .wk-rt-pagetitle {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
 }
 .wk-rt-pagetitle-text {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  line-height: 1.4;
+  font-size: var(--wk-text-size-xl);
+  font-weight: var(--wk-font-semibold);
+  line-height: 24px;
+  color: var(--wk-text-primary);
 }
 .wk-rt-create-wrap {
   position: relative;
-  margin-left: auto;
 }
 .wk-rt-create-btn {
-  border: 1px solid var(--border-color);
-  background: transparent;
-  color: var(--text-primary);
-  width: 28px;
-  height: 28px;
-  border-radius: 4px;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--wk-icon-muted);
+  cursor: pointer;
+  border-radius: var(--wk-r-sm);
+  transition: color var(--wk-dur-fast), background var(--wk-dur-fast);
 }
 .wk-rt-create-btn:hover {
-  background: var(--bg-hover);
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-primary);
 }
 .wk-rt-create-btn:focus-visible {
   outline: 2px solid var(--accent);
