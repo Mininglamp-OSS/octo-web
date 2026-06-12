@@ -70,12 +70,15 @@ server {
         }
 
         # PR-A.2: runtime/bot endpoints moved to octo-fleet (default :8092).
-        # MUST come before the generic /api/ catch-all below — vite.config.ts
-        # has the same ordering for dev. /api/v1/runtimes/* and
-        # /api/v1/daemon/* live on fleet (list / create / update / ping /
-        # upgrade / runtime-onboarding flows). Set FLEET_API_URL (e.g.
-        # http://octo-fleet:8092) at container start; blank yields a 503
-        # so a missing fleet does not break nginx startup.
+        # vite.config.ts has these listed before the catch-all /api/ rule for
+        # the dev proxy (which is first-match). nginx itself uses
+        # longest-prefix matching independent of file order, so the order
+        # below is for parity with vite + readability, not correctness.
+        # /api/v1/runtimes/* and /api/v1/daemon/* live on fleet (list /
+        # create / update / ping / upgrade / runtime-onboarding flows).
+        # Set FLEET_API_URL (e.g. http://octo-fleet:8092 — NO trailing
+        # slash, see docker-entrypoint.sh) at container start; blank yields
+        # a 503 so a missing fleet does not break nginx startup.
         #
         # Path rewrite: web sends /api/v1/runtimes/* but fleet serves
         # /v1/runtimes/* directly (no /api/ prefix), so we strip /api before

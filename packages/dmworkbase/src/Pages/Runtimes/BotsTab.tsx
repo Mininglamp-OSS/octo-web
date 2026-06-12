@@ -1,6 +1,6 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import WKApp from '../../App';
-import { Bot, listBots, RuntimeKind } from './botsApi';
+import { Bot, botStatusLabel, listBots, RuntimeKind } from './botsApi';
 import { CreateBotModal } from './CreateBotModal';
 import { BotDetailPanel } from './BotDetailPanel';
 
@@ -151,9 +151,9 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   const selectBot = useCallback((bot: Bot) => {
     setSelectedId(bot.id);
     (WKApp as any).routeRight.replaceToRoot(
-      <BotDetailPanel bot={bot} onArchived={refresh} />,
+      <BotDetailPanel bot={bot} />,
     );
-  }, [refresh]);
+  }, []);
 
   useImperativeHandle(ref, () => ({
     openCreate: () => setModalOpen(true),
@@ -236,10 +236,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
             <div className="wk-rt-bots__item-meta">
               <span className="wk-rt-bots__item-kind">{b.runtime_kind}</span>
               <span className={`wk-rt-bots__item-status wk-rt-bots__item-status--${b.status}`}>
-                {b.status === 'active' ? '在线' :
-                 b.status === 'failed' ? '失败' :
-                 (b.status === 'provisioning' || b.status === 'bot_minted' || b.status === 'dispatched') ? '初始化中' :
-                 b.status}
+                {botStatusLabel(b.status)}
               </span>
             </div>
           </li>

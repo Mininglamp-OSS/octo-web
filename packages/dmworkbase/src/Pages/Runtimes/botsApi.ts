@@ -21,6 +21,24 @@ export interface Bot {
   updated_at: string;
 }
 
+// PR-2: bot.status enum → 用户可读中文标签. fleet 内部状态机的多个中
+// 间态归为同一面向用户的"配置中"桶, 终态保持区分. 单源放 botsApi.ts
+// 跟 Bot 类型一起, 让 index.tsx 左树跟 BotsTab 列表共用同一映射 (上轮
+// review yujiawei 提到 BotsTab 内联 ternary 漏 draft/archived 跟左树不
+// 一致, 抽到这里两侧 import 同一份).
+export function botStatusLabel(s: string): string {
+  switch (s) {
+    case 'active':       return '在线';
+    case 'failed':       return '失败';
+    case 'archived':     return '已归档';
+    case 'draft':        return '草稿';
+    case 'provisioning':
+    case 'bot_minted':
+    case 'dispatched':   return '配置中';
+    default:             return s;
+  }
+}
+
 export interface CreateBotReq {
   runtime_id: number;
   name: string;
@@ -134,20 +152,15 @@ export async function createBot(req: CreateBotReq): Promise<Bot> {
   return unwrap<Bot>(await patchRes.json());
 }
 
-export async function getBot(id: number): Promise<Bot> {
-  const res = await fetch(`${base}/v1/runtimes/bots/${id}`, { headers: await authHeaders() });
-  if (!res.ok) throw new Error(`getBot: ${res.status}`);
-  const env = await res.json();
-  return unwrap<Bot>(env);
-}
-
-export async function archiveBot(id: number): Promise<void> {
-  const res = await fetch(`${base}/v1/runtimes/bots/${id}`, {
-    method: 'DELETE',
-    headers: await authHeaders(),
-  });
-  if (!res.ok) throw new Error(`archiveBot: ${res.status}`);
-}
+// PR-2 review (yujiawei #375): 删 getBot / archiveBot 死代码.
+// archiveBot 当前是 fleet-only soft-delete, 完整 deprovision (跨 server
+// robot row + WuKongIM channel + daemon 端 adapter resources e.g. openclaw
+// workspace / cc-channel-octo bot config / hermes .env line) 还没接通,
+// 接通后再加回入口比留半截 dead export 干净. PR-N adapter.Deprovision
+// 落地时一起加回.
+//
+// getBot 同样无 caller — 列表来自 listBots, 详情通过 BotsTab 持有的
+// state.bots 拿. 真要单点查一个 id 时再加回.
 
 export async function getBotFeed(botUid: string, limit = 50): Promise<BotFeedItem[]> {
   // Skip the round-trip for draft/provisioning bots where bot_uid is empty —
