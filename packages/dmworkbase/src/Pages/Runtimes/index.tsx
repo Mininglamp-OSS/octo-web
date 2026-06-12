@@ -249,7 +249,10 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                 this.setState({ upgradeStatus: res.status })
                 if (res.status === "completed") {
                     this.setState({ upgradeStatus: "completed" })
-                    await new Promise(r => setTimeout(r, 8000))
+                    // 方案 3 (升级状态不刷新修复): 原 8s 固定等待砍到 2s —
+                    // 后面的确认循环本身已有 2s×10 重试, 足够覆盖 daemon
+                    // detect 上报延迟, 固定 8s 只是让 UI 终态白等.
+                    await new Promise(r => setTimeout(r, 2000))
                     if (isStale()) return
                     for (let j = 0; j < 10; j++) {
                         if (isStale()) return
@@ -922,6 +925,11 @@ function isUpgradeInProgress(status: string): boolean {
 // 全英文 (cc R3-4: 同面板 Windows disabled title 也是英文, 语言保持一致).
 const UPGRADE_BUSY_TITLE = "Another upgrade is in progress on this device, please wait"
 
+// 页面级轮询两档间隔: 空闲 15s; 有 in-progress 升级任务时 3s (升级状态
+// 不刷新修复方案 2 — 详见 RuntimesPage.adjustPollInterval 注释).
+const POLL_IDLE_MS = 15000
+const POLL_UPGRADE_MS = 3000
+
 // 允许远程升级的 provider（和服务端 providerComponents / daemon componentUpgradeSpecs 保持一致）
 const COMPONENT_UPGRADE_ENABLED = new Set<string>(["claude", "codex", "hermes", "openclaw"])
 
@@ -1067,7 +1075,10 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             if (isStale()) return
             this.setState({ pluginUpgradeStatus: res.status, pluginUpgradeError: res.error_msg || "" })
             if (res.status === "completed") {
-                await new Promise(r => setTimeout(r, 8000))
+                // 方案 3 (升级状态不刷新修复): 原 8s 固定等待砍到 2s — 后面的确认
+                // 循环本身已有 2s×10 重试, 足够覆盖 daemon detect 上报延迟,
+                // 固定 8s 只是让 UI 终态白等.
+                await new Promise(r => setTimeout(r, 2000))
                 if (isStale()) return
                 for (let j = 0; j < 10; j++) {
                     if (isStale()) return
@@ -1190,7 +1201,10 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             this.setState({ componentUpgradeStatus: res.status, componentUpgradeError: res.error_msg || "" })
             if (res.status === "completed") {
                 // 服务端关单（register 匹配新版本）后再刷一次 runtimes 拿最新 version_hints
-                await new Promise(r => setTimeout(r, 8000))
+                // 方案 3 (升级状态不刷新修复): 原 8s 固定等待砍到 2s — 后面的确认
+                // 循环本身已有 2s×10 重试, 足够覆盖 daemon detect 上报延迟,
+                // 固定 8s 只是让 UI 终态白等.
+                await new Promise(r => setTimeout(r, 2000))
                 if (isStale()) return
                 for (let j = 0; j < 10; j++) {
                     if (isStale()) return
@@ -1547,7 +1561,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
 
     componentDidMount() {
         this.loadData()
-        this.pollTimer = setInterval(() => this.loadData(true), 15000)
+        this.startPollTimer(POLL_IDLE_MS)
         WKApp.mittBus.on("space-changed", this.handleSpaceChanged)
         document.addEventListener("keydown", this.handleGlobalKeyDown)
     }
@@ -1556,6 +1570,28 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         if (this.pollTimer) clearInterval(this.pollTimer)
         WKApp.mittBus.off("space-changed", this.handleSpaceChanged)
         document.removeEventListener("keydown", this.handleGlobalKeyDown)
+    }
+
+    // 升级期间临时加速兜底轮询 (runtime页升级状态不刷新 修复方案 2):
+    // pollPluginUpgrade/pollComponentUpgrade 协程寄生在 detail 组件实例上
+    // (isStale = unmounted || runtime.id 变), 分钟级升级期间用户切走节点
+    // 协程就死 — 只剩页面级轮询兜底. 15s 间隔让"升级完成→页面终态"最坏
+    // ~20s+, 体感是"一直不刷新". 有 in-progress 升级任务时把页面级轮询
+    // 降到 3s, 全部终态后恢复 15s — 兜底不再依赖组件实例协程死活.
+    // 间隔切换只在档位翻转时重建 timer (防每 tick 重建).
+    private currentPollMs = POLL_IDLE_MS
+
+    private startPollTimer(ms: number) {
+        if (this.pollTimer) clearInterval(this.pollTimer)
+        this.currentPollMs = ms
+        this.pollTimer = setInterval(() => this.loadData(true), ms)
+    }
+
+    private adjustPollInterval() {
+        const anyInProgress = Object.values(this.state.activeUpgrades)
+            .some(u => isUpgradeInProgress(u.status))
+        const want = anyInProgress ? POLL_UPGRADE_MS : POLL_IDLE_MS
+        if (want !== this.currentPollMs) this.startPollTimer(want)
     }
 
     // C-2 (plan-upgrade-mutex-ux X1): 同 space 请求序号. onUpgradeStarted
@@ -1624,6 +1660,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                     // 左树 Level-3 需要每个 runtime 的 bot 数判断"能否展开"
                     // (没 bot 不可展开) — 批量回填 botsByRuntime.
                     this.refreshAllBots()
+                    // 升级期间临时加速轮询 (15s ↔ 3s 两档, 见 adjustPollInterval)
+                    this.adjustPollInterval()
                     // 放 callback 里：保证 showAgentDetail / showDeviceDetail 里读到的
                     // this.state.activeUpgrades 是本轮刚拉到的，而不是 setState 之前的快照
                     if (silent && WKApp.route.currentPath === "/runtimes") {
