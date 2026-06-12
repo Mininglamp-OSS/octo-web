@@ -1,0 +1,255 @@
+/* 群入站 Webhook 管理面板。全部走 dmworkbase 设计 token，禁止硬编码颜色/间距/圆角。 */
+
+.wk-webhook {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+  padding: var(--wk-sp-4);
+  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* 头部：说明 + 新建按钮 */
+.wk-webhook__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--wk-sp-3);
+}
+
+.wk-webhook__desc {
+  margin: 0;
+  font-size: var(--wk-text-size-sm);
+  line-height: var(--wk-leading-normal);
+  color: var(--wk-text-tertiary);
+}
+
+/* 状态：loading / error / 空 */
+.wk-webhook__state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-8) var(--wk-sp-4);
+}
+
+.wk-webhook__state-text {
+  margin: 0;
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-tertiary);
+}
+
+.wk-webhook__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-8) var(--wk-sp-4);
+  text-align: center;
+}
+
+.wk-webhook__empty-icon {
+  color: var(--wk-text-tertiary);
+}
+
+.wk-webhook__empty-text {
+  margin: 0;
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-tertiary);
+}
+
+/* 卡片列表 */
+.wk-webhook__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-3);
+}
+
+.wk-webhook-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-primary, #fff);
+}
+
+.wk-webhook-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+}
+
+.wk-webhook-card__titlebox {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.wk-webhook-card__name {
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-semibold);
+  color: var(--wk-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-webhook-card__chip {
+  flex-shrink: 0;
+  font-size: var(--wk-text-size-xs);
+  line-height: 1.6;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-webhook-card__chip--off {
+  color: var(--wk-text-tertiary);
+  background: var(--wk-bg-tertiary, rgba(28, 28, 35, 0.06));
+}
+
+.wk-webhook-card__meta {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 卡片操作行 */
+.wk-webhook-card__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  margin-top: var(--wk-sp-1);
+}
+
+.wk-webhook-card__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-secondary);
+  cursor: pointer;
+}
+
+.wk-webhook-card__icon-btn:hover {
+  background: var(--wk-bg-tertiary, rgba(28, 28, 35, 0.06));
+}
+
+.wk-webhook-card__icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wk-webhook-card__icon-btn--danger:hover {
+  color: var(--wk-danger, #e54545);
+}
+
+/* 表单（创建 / 编辑弹窗） */
+.wk-webhook-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+}
+
+.wk-webhook-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+}
+
+.wk-webhook-form__label {
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  color: var(--wk-text-primary);
+}
+
+.wk-webhook-form__input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-primary, #fff);
+  outline: none;
+}
+
+.wk-webhook-form__input:focus {
+  border-color: var(--wk-brand-primary);
+}
+
+.wk-webhook-form__hint {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  line-height: var(--wk-leading-normal);
+}
+
+/* 一次性 URL 弹窗 */
+.wk-webhook-url {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+}
+
+.wk-webhook-url__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-3);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-warning-bg, rgba(250, 173, 20, 0.1));
+  color: var(--wk-warning, #b88217);
+  font-size: var(--wk-text-size-sm);
+  line-height: var(--wk-leading-normal);
+}
+
+.wk-webhook-url__warning-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.wk-webhook-url__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+}
+
+.wk-webhook-url__label {
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  color: var(--wk-text-primary);
+}
+
+.wk-webhook-url__value-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+}
+
+.wk-webhook-url__value {
+  flex: 1;
+  min-width: 0;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-tertiary, rgba(28, 28, 35, 0.06));
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

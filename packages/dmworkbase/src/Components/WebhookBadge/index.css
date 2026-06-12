@@ -1,0 +1,9 @@
+.wk-webhook-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 0 5px;
+  border-radius: 4px;
+  color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.55));
+  background: var(--wk-bg-tertiary, rgba(28, 28, 35, 0.07));
+}

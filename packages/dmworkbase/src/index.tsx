@@ -16,6 +16,7 @@ export * from './Service/DataSource/DataProvider'
 export { default as ChatPage } from "./Pages/Chat"
 export * from './Components/ChannelSetting/context'
 export * from './Service/DataSource/DataSource'
+export * from './Service/IncomingWebhook'
 export * from './Components/WKLayout'
 
 export * from './Components/Conversation/context'

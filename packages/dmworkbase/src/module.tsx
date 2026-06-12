@@ -97,6 +97,7 @@ import { SubscriberList } from "./Components/Subscribers/list";
 import GlobalSearch from "./Components/GlobalSearch";
 import { GroupMdEditor } from "./Components/GroupMdEditor";
 import { GroupManagement } from "./Components/GroupManagement";
+import ChannelWebhookPanel from "./Components/ChannelWebhook";
 import { handleGlobalSearchClick } from "./Pages/Chat/vm";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
 import { notificationUtil } from "./Utils/NotificationUtil";
@@ -1789,6 +1790,31 @@ export default class BaseModule implements IModule {
                     <GroupMdEditor channel={channel} canEdit={canEditMd} />,
                     new RouteContextConfig({
                       title: "GROUP.md",
+                    })
+                  );
+                },
+              },
+            })
+          );
+
+          // 群入站 Webhook：列表对全员只读可见，操作权限由面板内按
+          // 「管理员 / 自己创建」矩阵控制（服务端兜底裁决）
+          rows.push(
+            new Row({
+              cell: ListItem,
+              properties: {
+                title: t("base.module.channelSettings.incomingWebhook"),
+                onClick: () => {
+                  const rd = context.routeData() as ChannelSettingRouteData;
+                  const me = rd?.subscriberOfMe;
+                  const isManager = me?.role === 1 || me?.role === 2;
+                  context.push(
+                    <ChannelWebhookPanel
+                      channel={channel}
+                      isManager={!!isManager}
+                    />,
+                    new RouteContextConfig({
+                      title: t("base.module.channelSettings.incomingWebhook"),
                     })
                   );
                 },

@@ -1,6 +1,11 @@
 import { Channel, ChannelInfo, ConversationExtra, Message, Subscriber } from "wukongimjssdk";
 import { APIResp } from "../APIClient";
 import type { Thread, ThreadListStatus } from "../Thread";
+import type {
+    IncomingWebhook,
+    IncomingWebhookCreateResp,
+    IncomingWebhookUpsertReq,
+} from "../IncomingWebhook";
 
 export type ContactsChangeListener = () => void;
 
@@ -319,6 +324,20 @@ export interface IChannelDataSource {
     getGroupMd(channel: Channel): Promise<{ content: string; version: number }>
     updateGroupMd(channel: Channel, content: string): Promise<{ version: number }>
     deleteGroupMd(channel: Channel): Promise<void>
+
+    // 群入站 Webhook（octo-server incoming-webhooks #250/#254/#297/#340）
+    // 列表对任意群成员只读可见；其余操作的权限矩阵由服务端裁决（403/409）。
+    incomingWebhooks(channel: Channel): Promise<IncomingWebhook[]>
+    /** 创建。返回体里的 token / 推送 URL 仅此一次出现。 */
+    createIncomingWebhook(channel: Channel, req: IncomingWebhookUpsertReq): Promise<IncomingWebhookCreateResp>
+    /** 部分更新（改名 / 启停；avatar 仅管理员），未传字段不变。 */
+    updateIncomingWebhook(channel: Channel, webhookId: string, req: IncomingWebhookUpsertReq): Promise<IncomingWebhook>
+    /** 软删除，token 立即失效。 */
+    deleteIncomingWebhook(channel: Channel, webhookId: string): Promise<void>
+    /** 重置 token，旧 token 立即失效。新 token / URL 仅此一次返回。 */
+    regenerateIncomingWebhook(channel: Channel, webhookId: string): Promise<IncomingWebhookCreateResp>
+    /** 发送一条样例消息验证配置（不计入 call_count）。 */
+    testIncomingWebhook(channel: Channel, webhookId: string): Promise<void>
 
     // 子区 GROUP.md
     getThreadMd(groupNo: string, shortId: string): Promise<{ content: string; version: number }>
