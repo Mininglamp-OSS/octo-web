@@ -195,7 +195,7 @@ export default function MessageRow({
             isOnline={isOnline}
             showOnlineDot
             alt={senderName}
-            onClick={isSelecting ? undefined : onAvatarClick}
+            onClick={isSelecting || isWebhook ? undefined : onAvatarClick}
           />
         )}
         {/* 连续消息：头像占位,hover 时显示时间戳 */}
@@ -214,8 +214,8 @@ export default function MessageRow({
           <div className="wk-msg-row-header">
             <span
               className="wk-msg-row-sender"
-              style={{ cursor: !isSelecting && onSenderNameClick ? 'pointer' : undefined }}
-              onClick={isSelecting ? undefined : onSenderNameClick}
+              style={{ cursor: !isSelecting && !isWebhook && onSenderNameClick ? 'pointer' : undefined }}
+              onClick={isSelecting || isWebhook ? undefined : onSenderNameClick}
             >{senderName}</span>
             {/* Epic dmwork-web#1169 Phase A: 实名徽章紧贴作者名右侧，
                 只 variant="icon" 迷你形态，已实名才渲染。*/}

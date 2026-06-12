@@ -99,6 +99,7 @@ import {
   uploadChatMedia,
 } from "../../Service/UploadCredentials";
 import { isMessageSelectable } from "../../Service/messageSelection";
+import { isIncomingWebhookSender } from "../../Service/IncomingWebhook";
 import { I18nContext, t } from "../../i18n";
 import {
   buildRichTextMixedCandidate,
@@ -1030,6 +1031,12 @@ export class Conversation
     );
   }
   onTapAvatar(uid: string, event: React.MouseEvent<Element, MouseEvent>): void {
+    // webhook 发送者（iwh_*）不是群成员，没有个人资料 / 可执行动作。
+    // MessageRow 已在 isWebhook 时省略头像点击 handler，这里做 defense-in-depth：
+    // 即便其它调用方硬传了 onTapAvatar，也不为 iwh_* 弹出头像动作菜单。
+    if (isIncomingWebhookSender(uid)) {
+      return;
+    }
     this.vm.selectUID = uid;
     this.avatarMenusContext.show(event);
   }
