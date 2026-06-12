@@ -255,3 +255,32 @@ export function resolveWebhookRowDisplay(
         avatarClickable: false,
     };
 }
+
+/**
+ * 构造 native / wecom 适配器的 curl 调用示例（纯函数，便于单测）。
+ *
+ * 关键：两种适配器 body 结构不同，不可互换（否则 push 返回 400）：
+ *   - native：`{"content":"..."}`（content 按 markdown 渲染，`text` 是 Slack 别名）；
+ *   - wecom ：企业微信群机器人格式 `{"msgtype":"text","text":{"content":"..."}}`。
+ *
+ * 安全：刻意不带 `username` / `avatar_url`——这两个发送者覆盖字段仅当 webhook
+ * 创建者当前为群管理员时才生效，对成员 / bot 创建的 webhook 一律忽略，默认带上反而误导。
+ *
+ * 注意：`sampleContent` 由调用方传入已本地化的固定样例文案（不含单引号），
+ * 以单引号包裹 `-d` 实参，避免 shell 转义问题。
+ */
+export function buildWebhookCurlExample(
+    key: "native" | "wecom",
+    url: string,
+    sampleContent: string
+): string {
+    const body =
+        key === "wecom"
+            ? { msgtype: "text", text: { content: sampleContent } }
+            : { content: sampleContent };
+    return [
+        `curl -X POST '${url}' \\`,
+        `  -H 'Content-Type: application/json' \\`,
+        `  -d '${JSON.stringify(body)}'`,
+    ].join("\n");
+}

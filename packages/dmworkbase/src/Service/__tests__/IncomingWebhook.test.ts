@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     buildIncomingWebhookUrl,
+    buildWebhookCurlExample,
     buildWebhookUpsertReq,
     buildWebhookUrlRows,
     canManageIncomingWebhook,
@@ -292,5 +293,35 @@ describe("buildWebhookUrlRows", () => {
 
     it("既无 url 也无 urls（退化态）→ 空数组", () => {
         expect(buildWebhookUrlRows({ url: "" }, apiURL, origin)).toEqual([]);
+    });
+});
+
+describe("buildWebhookCurlExample", () => {
+    const url = "https://im-test.example.com/api/v1/incoming-webhooks/iwh_abc/tok";
+    const sample = "构建成功 ✅";
+
+    it("native：body 用 content，不含 msgtype", () => {
+        const out = buildWebhookCurlExample("native", url, sample);
+        expect(out).toContain(`curl -X POST '${url}'`);
+        expect(out).toContain("-H 'Content-Type: application/json'");
+        // native 直接 content；解析 -d 实参核对结构，避免转义/字段名漂移。
+        const body = JSON.parse(out.match(/-d '(.+)'$/)![1]);
+        expect(body).toEqual({ content: sample });
+        expect(out).not.toContain("msgtype");
+    });
+
+    it("wecom：body 用企微 msgtype/text 结构", () => {
+        const out = buildWebhookCurlExample("wecom", url, sample);
+        const body = JSON.parse(out.match(/-d '(.+)'$/)![1]);
+        expect(body).toEqual({ msgtype: "text", text: { content: sample } });
+    });
+
+    it("刻意不带 username / avatar_url（管理员专属覆盖字段，默认带上会误导）", () => {
+        expect(buildWebhookCurlExample("native", url, sample)).not.toMatch(
+            /username|avatar_url/
+        );
+        expect(buildWebhookCurlExample("wecom", url, sample)).not.toMatch(
+            /username|avatar_url/
+        );
     });
 });

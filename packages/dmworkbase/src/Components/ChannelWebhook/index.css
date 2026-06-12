@@ -253,3 +253,77 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 调用示例：URL 框只有通用一个，三种用法（含 github/wecom 实际地址）都在这里 */
+.wk-webhook-url__examples-title {
+  margin-top: var(--wk-sp-2);
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  color: var(--wk-text-primary);
+}
+
+.wk-webhook-url__example-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+}
+
+.wk-webhook-url__example {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+  margin-top: var(--wk-sp-1);
+}
+
+.wk-webhook-url__example-code {
+  position: relative;
+  margin: 0;
+  padding: var(--wk-sp-3);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-tertiary, rgba(28, 28, 35, 0.06));
+  font-family: var(--wk-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--wk-text-size-xs);
+  line-height: var(--wk-leading-normal);
+  color: var(--wk-text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.wk-webhook-url__example-copy {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+  border: 1px solid var(--wk-border, rgba(28, 28, 35, 0.12));
+  border-radius: var(--wk-r-sm);
+  background: none;
+  cursor: pointer;
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-secondary);
+}
+
+.wk-webhook-url__example-copy:hover {
+  background: var(--wk-bg-tertiary, rgba(28, 28, 35, 0.06));
+}
+
+/* 复制成功的即时反馈：图标短暂变绿 ✓ */
+.wk-webhook-url__copied-icon {
+  color: var(--wk-success, #2eb872);
+}
+
+.wk-webhook-url__example-note {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary, var(--wk-text-secondary));
+}
+
+.wk-webhook-url__steps {
+  margin: 0;
+  padding-left: var(--wk-sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-secondary);
+  line-height: var(--wk-leading-normal);
+}
