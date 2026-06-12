@@ -5,6 +5,19 @@ import WKApp from '../../App';
 
 export type RuntimeKind = 'openclaw' | 'claude' | 'codex' | 'hermes';
 
+// providerLabels: runtime kind 的用户可读名. 单源 export 让所有渲染入口
+// (左树 device 行 / RuntimeDetail / CreateBotModal kind 列表) 显示
+// 完全一致, 不再 "kind 列表用裸 'claude' / detail 显示 'Claude Code'" 漂移.
+//
+// 'Claude' 不加 'Code' 后缀 — caster review 决策, 跟其他 kind (Codex /
+// OpenClaw / Hermes) 简洁度对齐.
+export const providerLabels: Record<string, string> = {
+  claude:   'Claude',
+  codex:    'Codex',
+  openclaw: 'OpenClaw',
+  hermes:   'Hermes',
+};
+
 export interface Bot {
   id: number;
   space_id: string;

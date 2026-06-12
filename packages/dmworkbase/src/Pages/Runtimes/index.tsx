@@ -5,7 +5,7 @@ import WKApp from "../../App"
 import WKAvatar from "../../Components/WKAvatar"
 import { BotsTab, type BotsTabHandle } from "./BotsTab"
 import { CreateRuntimeModal } from "./CreateRuntimeModal"
-import { Bot, botStatusLabel, listBots } from "./botsApi"
+import { Bot, botStatusLabel, listBots, providerLabels } from "./botsApi"
 import "./index.css"
 
 interface AgentRuntime {
@@ -71,16 +71,49 @@ const providerColors: Record<string, string> = {
     hermes: "#4B5563",
 }
 
-const providerLabels: Record<string, string> = {
-    claude: "Claude Code",
-    codex: "Codex",
-    openclaw: "OpenClaw",
-    hermes: "Hermes",
-}
+// providerLabels 已抽到 botsApi.ts (单源 export), CreateBotModal 也共用同
+// 一份, 避免 "kind 列表用裸 'claude' / detail 显示 'Claude Code'" 三层
+// 概念名漂移. (UI/UX review #375 follow-up: P0-1 术语统一)
 
 function parseMetadata(raw: string): Record<string, unknown> | null {
     if (!raw) return null
     try { return JSON.parse(raw) } catch { return null }
+}
+
+// humanizeLastSeen: ISO 时间戳 -> "刚刚" / "X 分钟前" / "X 小时前" / "X 天前".
+// 用于 DeviceDetail "最近活跃" 字段.
+//
+// ⚠️ 时区前提: fleet 写 last_seen_at 用 MySQL NOW(), 字符串 'YYYY-MM-DD HH:MM:SS'
+// 不带 timezone marker. 前端 + 'Z' 按 UTC 解析 — 这要求 **server tz = UTC**
+// (testenv-mysql container 默认 UTC, 已 verify NOW()===UTC_TIMESTAMP()).
+// 若 prod mysql 配本地时区, last_seen_at 写的是本地时间, 前端按 UTC 解析
+// 会偏 (e.g. UTC+8 sever 写 20:00, 前端按 20:00Z 解析 → 算成本地 28:00 即
+// 第二天 04:00 → diff 是负值 → 显示"刚刚"但其实显示永远卡在"刚刚").
+//
+// TODO(PR-N): 让 fleet/server 返 RFC3339 with timezone (e.g. 2026-06-12T04:11:31Z)
+// 而非 naive 'YYYY-MM-DD HH:MM:SS', 前端就不需要假设. 当前 docker testenv +
+// k8s prod 都配 UTC 是项目约定.
+function humanizeAge(epochMs: number): string {
+    if (!epochMs) return "—"
+    const diff = Date.now() - epochMs
+    if (diff < 60_000)     return "刚刚"
+    if (diff < 3_600_000)  return `${Math.floor(diff / 60_000)} 分钟前`
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
+    return `${Math.floor(diff / 86_400_000)} 天前`
+}
+
+// 取 device 下所有 runtime 的 max last_seen_at, 返 epoch ms (无则 0).
+// 4 个 runtime 跑同一 daemon 同一 heartbeatLoop, 4 个 last_seen_at 几乎同步,
+// 取 max 等价 daemon 整体最后心跳时间. 直接返 epoch 让 caller 自己决定渲染
+// (避免 string ↔ epoch 来回往返).
+function deviceLastSeenMs(group: DeviceGroup): number {
+    let max = 0
+    for (const r of group.runtimes) {
+        if (!r.last_seen_at) continue
+        const ts = new Date(r.last_seen_at.replace(" ", "T") + "Z").getTime()
+        if (!isNaN(ts) && ts > max) max = ts
+    }
+    return max
 }
 
 function groupByDevice(runtimes: AgentRuntime[]): DeviceGroup[] {
@@ -319,6 +352,24 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                         <label>Daemon ID</label>
                         <span className="wk-rt-mono">{group.daemonId}</span>
                     </div>
+                    {(() => {
+                        // 最近活跃: humanize 该 device 下所有 runtime 的
+                        // max last_seen_at. 4 个 runtime 走同一 daemon
+                        // 同一 heartbeatLoop, 实务上 4 个值几乎同步. daemon
+                        // 在跑 → "刚刚"; daemon 挂 → 反映挂多久了.
+                        // title 走本地时区 (toLocaleString) 让 hover 看到的精确
+                        // 时间符合用户本地预期.
+                        const ms = deviceLastSeenMs(group)
+                        if (!ms) return null
+                        return (
+                            <div className="wk-rt-field">
+                                <label>最近活跃</label>
+                                <span title={new Date(ms).toLocaleString()}>
+                                    {humanizeAge(ms)}
+                                </span>
+                            </div>
+                        )
+                    })()}
                     <div className="wk-rt-field">
                         <label>Server Ping</label>
                         <span className="wk-rt-ping-result" onClick={this.handlePing}>
@@ -801,6 +852,12 @@ interface RuntimeDetailProps {
     componentActiveUpgrade?: ActiveUpgrade
     onDelete: (id: number) => void
     onAgentsChanged?: () => void
+    // UI/UX review #375 follow-up (P1-3): RuntimeDetail 详情页信息密度
+    // 低 (只 Runtime Mode / Provider / Version / Octo Plugin). 父侧
+    // RuntimesPage 持有 botsByRuntime cache, 把"已绑定 Bot 数" prop 注入
+    // 让 detail 页有 runtime-级别的真实信息 (跟 last_seen_at 那种 daemon-
+    // 级别冗余的不同).
+    botCount?: number
 }
 
 type PluginUpgradeStatus = "idle" | "pending" | "dispatched" | "installing" | "completed" | "failed" | "timeout"
@@ -966,7 +1023,10 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                     <RuntimeDetail
                                         runtime={updated}
                                         versionHints={hints}
+                                        pluginActiveUpgrade={this.props.pluginActiveUpgrade}
+                                        componentActiveUpgrade={this.props.componentActiveUpgrade}
                                         onDelete={this.props.onDelete}
+                                        botCount={this.props.botCount}
                                     />
                                 )
                             }
@@ -1068,7 +1128,10 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                     <RuntimeDetail
                                         runtime={updated}
                                         versionHints={hints}
+                                        pluginActiveUpgrade={this.props.pluginActiveUpgrade}
+                                        componentActiveUpgrade={this.props.componentActiveUpgrade}
                                         onDelete={this.props.onDelete}
+                                        botCount={this.props.botCount}
                                     />
                                 )
                             }
@@ -1150,6 +1213,10 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     <div className="wk-rt-field">
                         <label>Provider</label>
                         <span>{providerLabels[rt.provider] || rt.provider}</span>
+                    </div>
+                    <div className="wk-rt-field">
+                        <label>已绑定 Bot</label>
+                        <span>{this.props.botCount ?? 0} 个</span>
                     </div>
                     {/* PR-2: 探活由 device row 绿点 + daemon heartbeat
                         体现; runtime 级 last_seen_at / device_name /
@@ -1268,7 +1335,12 @@ function BotRow({ bot, onOpen }: BotRowProps) {
                 {isOnline && <span className="wk-rt-online-dot" title="Online" />}
             </div>
             <span className="wk-rt-bot-name">{bot.name}</span>
-            <span className="wk-rt-bot-status">{botStatusLabel(bot.status)}</span>
+            {/* P0-1 follow-up (UI/UX review): bot.status==='active' 时
+                头像绿点已经表达"在线", 不再显示"在线"文字避免重复 — 仅
+                非 active 状态显示 (配置中/失败/草稿/已归档 是有信息量的). */}
+            {bot.status !== "active" && (
+                <span className="wk-rt-bot-status">{botStatusLabel(bot.status)}</span>
+            )}
         </div>
     )
 }
@@ -1527,6 +1599,19 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 const loading = new Set(prev.botsLoading)
                 loading.delete(runtimeId)
                 return { botsByRuntime: next, botsLoading: loading }
+            }, () => {
+                // R1-3 fix (cc + codex review #PR-3): RuntimeDetail 经
+                // routeRight.replaceToRoot 命令式渲染, 不在 React tree 内
+                // 接收新 props. cache miss 后这里的 setState 只刷新左树
+                // botsByRuntime cache, 已 mount 的 RuntimeDetail 不会自动
+                // 拿到新 botCount. 所以 setState 完成后, 若当前右侧 detail
+                // 正指向该 runtimeId, 重新调 showAgentDetail 把带新
+                // botCount 的 RuntimeDetail replaceToRoot 推过去.
+                if (isStale()) return
+                if (this.state.selectedId === runtimeId) {
+                    const rt = this.state.runtimes.find(r => r.id === runtimeId)
+                    if (rt) this.showAgentDetail(rt)
+                }
             })
         } catch (e) {
             this.setState((prev) => {
@@ -1556,12 +1641,22 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         this.selectedDaemonId = undefined
         const pluginUpgrade = this.state.activeUpgrades[`${rt.id}:octo`]
         const componentUpgrade = this.state.activeUpgrades[`${rt.id}:${rt.provider}`]
+        // botCount 先用 botsByRuntime cache 当前值 (miss 时为 0). cache miss
+        // 时触发一次 refreshRuntimeBots, 它的 setState callback 会在数据
+        // 回来后 re-replaceToRoot 注入正确 botCount (见 refreshRuntimeBots
+        // 注释) — RuntimeDetail 走命令式 routeRight 渲染不在 React tree
+        // 内, 不会自动收到新 props 必须命令式 re-replace.
+        const cachedBots = this.state.botsByRuntime.get(rt.id)
+        if (cachedBots === undefined && !this.state.botsLoading.has(rt.id)) {
+            this.refreshRuntimeBots(rt.id)
+        }
         WKApp.routeRight.replaceToRoot(
             <RuntimeDetail
                 runtime={rt}
                 versionHints={this.state.versionHints}
                 pluginActiveUpgrade={pluginUpgrade}
                 componentActiveUpgrade={componentUpgrade}
+                botCount={cachedBots?.length ?? 0}
                 onDelete={() => {
                     this.setState({ selectedId: null })
                     WKApp.routeRight.popToRoot()
@@ -1575,7 +1670,15 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     render() {
         const { runtimes, selectedId, loading, expandedDevices, createMenuOpen, runtimeModalOpen } = this.state
         const groups = groupByDevice(runtimes)
-        const totalOnline = runtimes.filter(r => r.status === "online").length
+        // P1 follow-up (UI/UX review): "M online" 含义重定义 — 不再是
+        // runtime.status='online' 的 runtime 数 (实务上一个 daemon 4 个
+        // runtime 几乎同时上下线, 单算 runtime 在线粒度太细). 现在表达
+        // "活着的 daemon 下提供的 runtime 总数" — daemon 活 (任一 runtime
+        // 在线) 就把它的 4 个 runtime 全计入. 跟左树展开后看到的"槽位"
+        // 数对得上.
+        const totalOnline = groups
+            .filter(g => g.onlineCount > 0)
+            .reduce((sum, g) => sum + g.runtimes.length, 0)
 
         return (
             <div className="wk-rt-list">
@@ -1690,8 +1793,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                     >
                                         <div className="wk-rt-device-name">{group.deviceName}</div>
                                         <div className="wk-rt-device-sub">
-                                            {group.runtimes.length} agent{group.runtimes.length !== 1 ? "s" : ""}
-                                                                                    </div>
+                                            {group.runtimes.length} 个运行时
+                                        </div>
                                     </div>
                                     <div className={`wk-rt-status-dot ${anyOnline ? "online" : "offline"}`} />
                                 </div>
@@ -1745,7 +1848,17 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                                         <div className="wk-rt-bot-empty">加载中…</div>
                                                     )}
                                                     {!botsLoading && bots.length === 0 && (
-                                                        <div className="wk-rt-bot-empty">该运行时下暂无智能体</div>
+                                                        <div className="wk-rt-bot-empty">
+                                                            <span>该运行时下暂无 Bot</span>
+                                                            <button
+                                                                type="button"
+                                                                className="wk-rt-bot-empty__cta"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    this.botsTabRef.current?.openCreate({ preselectRuntimeId: rt.id })
+                                                                }}
+                                                            >+ 在此创建</button>
+                                                        </div>
                                                     )}
                                                     {bots.map((b) => (
                                                         <BotRow
