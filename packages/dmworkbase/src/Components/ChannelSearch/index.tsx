@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Toast } from "@douyinfe/semi-ui";
+import { DatePicker, Toast } from "@douyinfe/semi-ui";
 import {
   CalendarDays,
   ChevronDown,
@@ -23,6 +23,7 @@ import WKButton from "../WKButton";
 import IconClick from "../IconClick";
 import ConversationContext from "../Conversation/context";
 import FileHelper from "../../Utils/filehelper";
+import { downloadFile } from "../../Utils/download";
 import { useI18n } from "../../i18n";
 import { channelSearchEmptyDataSource } from "./adapter";
 import { defaultChannelSearchFilters } from "./types";
@@ -31,6 +32,7 @@ import type {
   ChannelSearchFilters,
   ChannelSearchItem,
   ChannelSearchResponse,
+  ChannelSearchSender,
   ChannelSearchTab,
 } from "./types";
 import WKApp from "../../App";
@@ -41,6 +43,8 @@ interface ChannelSearchPanelProps {
   conversationContext?: ConversationContext;
   onClose: () => void;
   dataSource?: ChannelSearchDataSource;
+  onLocateMessage?: (item: ChannelSearchItem) => void;
+  onPreviewFile?: (item: ChannelSearchItem) => void;
   initialState?: {
     activeTab?: ChannelSearchTab;
     filterOpen?: boolean;
@@ -64,6 +68,13 @@ const emptySearchImage = new URL(
 ).href;
 
 type GetChannelSearchSender = ChannelSearchDataSource["getSender"];
+
+function resolveSender(
+  item: ChannelSearchItem,
+  getSender: GetChannelSearchSender
+): ChannelSearchSender {
+  return item.sender || getSender(item.senderUid);
+}
 
 function activeFilterCount(filters: ChannelSearchFilters) {
   return (
@@ -89,13 +100,19 @@ function toSeconds(date: Date) {
   return Math.floor(date.getTime() / 1000);
 }
 
-function dateInputValue(seconds?: number) {
-  if (!seconds) return "";
-  const date = new Date(seconds * 1000);
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function dateFromSeconds(seconds?: number) {
+  if (!seconds) return undefined;
+  return new Date(seconds * 1000);
+}
+
+function datePickerValueToDate(
+  value?: Date | Date[] | string | string[] | null
+) {
+  if (!value) return undefined;
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return undefined;
+  const date = raw instanceof Date ? raw : new Date(raw);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 function dateDisplayValue(seconds?: number) {
@@ -133,10 +150,71 @@ function assetUrl(value: unknown): string | undefined {
   return undefined;
 }
 
+function useOutsideDismiss(
+  open: boolean,
+  getContainers: () => Array<HTMLElement | null | undefined>,
+  onDismiss: () => void
+) {
+  useEffect(() => {
+    if (!open) return;
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (getContainers().some((element) => element?.contains(target))) {
+        return;
+      }
+      onDismiss();
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onDismiss();
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown, true);
+    document.addEventListener("keydown", closeOnEscape, true);
+    return () => {
+      document.removeEventListener(
+        "pointerdown",
+        closeOnOutsidePointerDown,
+        true
+      );
+      document.removeEventListener("keydown", closeOnEscape, true);
+    };
+  }, [getContainers, onDismiss, open]);
+}
+
 const HighlightText: React.FC<{ text?: string; keyword: string }> = ({
   text = "",
   keyword,
 }) => {
+  if (/<\/?mark>/i.test(text)) {
+    const parts: React.ReactNode[] = [];
+    const pattern = /<mark>(.*?)<\/mark>/gi;
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text))) {
+      if (match.index > cursor) {
+        parts.push(text.slice(cursor, match.index));
+      }
+      parts.push(
+        <mark
+          key={`${match.index}-${pattern.lastIndex}`}
+          className="wk-channel-search-highlight"
+        >
+          {match[1]}
+        </mark>
+      );
+      cursor = pattern.lastIndex;
+    }
+    if (cursor < text.length) {
+      parts.push(text.slice(cursor));
+    }
+    return <>{parts}</>;
+  }
+
   const needle = keyword.trim();
   if (!needle) return <>{text}</>;
 
@@ -206,63 +284,80 @@ const FilterPopover: React.FC<{
   );
   const [draft, setDraft] = useState<ChannelSearchFilters>(filters);
   const [senderKeyword, setSenderKeyword] = useState("");
+  const [senderOptions, setSenderOptions] = useState<ChannelSearchSender[]>([]);
   const [senderOpen, setSenderOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
-  const [startDateInput, setStartDateInput] = useState(
-    dateInputValue(filters.startAt)
-  );
-  const [endDateInput, setEndDateInput] = useState(
-    dateInputValue(filters.endAt)
-  );
   const senderFieldRef = useRef<HTMLDivElement>(null);
+  const sortFieldRef = useRef<HTMLDivElement>(null);
+
+  const getSenderDismissContainers = useCallback(
+    () => [senderFieldRef.current],
+    []
+  );
+  const getSortDismissContainers = useCallback(
+    () => [sortFieldRef.current],
+    []
+  );
+  const closeSenderDropdown = useCallback(() => {
+    setSenderOpen(false);
+  }, []);
+  const closeSortDropdown = useCallback(() => {
+    setSortOpen(false);
+  }, []);
 
   useEffect(() => {
     if (open) {
       setDraft(filters);
       setSenderKeyword("");
+      setSenderOptions(dataSource.getSenders());
       setSenderOpen(false);
       setSortOpen(false);
-      setStartDateInput(dateInputValue(filters.startAt));
-      setEndDateInput(dateInputValue(filters.endAt));
     }
   }, [filters, open]);
 
+  useOutsideDismiss(
+    senderOpen,
+    getSenderDismissContainers,
+    closeSenderDropdown
+  );
+  useOutsideDismiss(sortOpen, getSortDismissContainers, closeSortDropdown);
+
   useEffect(() => {
-    if (!senderOpen) return;
+    if (!open || !senderOpen || !dataSource.searchSenders) {
+      setSenderOptions(dataSource.getSenders());
+      return;
+    }
 
-    const closeOnOutsidePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Node && senderFieldRef.current?.contains(target)) {
-        return;
-      }
-      setSenderOpen(false);
-    };
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      dataSource
+        .searchSenders?.(senderKeyword)
+        .then((senders) => {
+          if (!cancelled) {
+            setSenderOptions(senders);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setSenderOptions(dataSource.getSenders());
+          }
+        });
+    }, 160);
 
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setSenderOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", closeOnOutsidePointerDown, true);
-    document.addEventListener("keydown", closeOnEscape, true);
     return () => {
-      document.removeEventListener(
-        "pointerdown",
-        closeOnOutsidePointerDown,
-        true
-      );
-      document.removeEventListener("keydown", closeOnEscape, true);
+      cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [senderOpen]);
+  }, [dataSource, open, senderKeyword, senderOpen]);
 
   const filteredSenders = useMemo(() => {
+    const source = senderOptions.length > 0 ? senderOptions : senders;
     const keyword = senderKeyword.trim().toLowerCase();
-    if (!keyword) return senders;
-    return senders.filter((sender) =>
+    if (!keyword || dataSource.searchSenders) return source;
+    return source.filter((sender) =>
       `${sender.name}${sender.uid}`.toLowerCase().includes(keyword)
     );
-  }, [senderKeyword, senders]);
+  }, [dataSource.searchSenders, senderKeyword, senderOptions, senders]);
 
   const setDatePreset = (preset: ChannelSearchFilters["datePreset"]) => {
     const now = new Date();
@@ -278,36 +373,30 @@ const FilterPopover: React.FC<{
       startAt: toSeconds(start),
       endAt: toSeconds(endOfDay(now)),
     });
-    setStartDateInput(dateInputValue(toSeconds(start)));
-    setEndDateInput(dateInputValue(toSeconds(endOfDay(now))));
   };
 
-  const setCustomDate = (field: "startAt" | "endAt", value: string) => {
-    const normalizedValue = value.trim().split(/\s+/)[0].replace(/\//g, "-");
-    if (field === "startAt") {
-      setStartDateInput(normalizedValue);
-    } else {
-      setEndDateInput(normalizedValue);
-    }
-    if (!normalizedValue) {
-      setDraft({ ...draft, datePreset: undefined, [field]: undefined });
-      return;
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
-      setDraft({ ...draft, datePreset: undefined, [field]: undefined });
-      return;
-    }
-    const date = new Date(
-      `${normalizedValue}T${field === "startAt" ? "00:00:00" : "23:59:59"}`
-    );
-    if (Number.isNaN(date.getTime())) {
-      setDraft({ ...draft, datePreset: undefined, [field]: undefined });
-      return;
-    }
-    setDraft({
-      ...draft,
-      datePreset: undefined,
-      [field]: toSeconds(date),
+  const setCustomDate = (
+    field: "startAt" | "endAt",
+    value?: Date | Date[] | string | string[] | null
+  ) => {
+    const date = datePickerValueToDate(value);
+    const nextSeconds = date
+      ? toSeconds(field === "startAt" ? startOfDay(date) : endOfDay(date))
+      : undefined;
+
+    setDraft((current) => {
+      const next = {
+        ...current,
+        datePreset: undefined,
+        [field]: nextSeconds,
+      };
+      if (field === "startAt" && next.startAt && next.endAt) {
+        next.endAt = next.startAt > next.endAt ? undefined : next.endAt;
+      }
+      if (field === "endAt" && next.startAt && next.endAt) {
+        next.startAt = next.startAt > next.endAt ? undefined : next.startAt;
+      }
+      return next;
     });
   };
 
@@ -343,8 +432,6 @@ const FilterPopover: React.FC<{
       startAt: undefined,
       endAt: undefined,
     });
-    setStartDateInput("");
-    setEndDateInput("");
   };
 
   const hasSenderFilter = draft.senderUids.length > 0;
@@ -458,7 +545,7 @@ const FilterPopover: React.FC<{
             </button>
           )}
         </div>
-        <div className="wk-channel-search-select-wrap">
+        <div className="wk-channel-search-select-wrap" ref={sortFieldRef}>
           <button
             type="button"
             className="wk-channel-search-select-field"
@@ -532,28 +619,50 @@ const FilterPopover: React.FC<{
             </button>
           ))}
         </div>
-        <label className="wk-channel-search-date-input">
-          <input
-            type="text"
-            inputMode="numeric"
-            value={
-              draft.startAt ? dateDisplayValue(draft.startAt) : startDateInput
-            }
-            placeholder={t("base.channelSearch.filter.startDate")}
-            onChange={(event) => setCustomDate("startAt", event.target.value)}
-          />
-          <CalendarDays size={16} />
-        </label>
-        <label className="wk-channel-search-date-input">
-          <input
-            type="text"
-            inputMode="numeric"
-            value={draft.endAt ? dateDisplayValue(draft.endAt) : endDateInput}
-            placeholder={t("base.channelSearch.filter.endDate")}
-            onChange={(event) => setCustomDate("endAt", event.target.value)}
-          />
-          <CalendarDays size={16} />
-        </label>
+        <DatePicker
+          className="wk-channel-search-date-picker"
+          value={dateFromSeconds(draft.startAt)}
+          onChange={(value) => setCustomDate("startAt", value)}
+          density="compact"
+          position="bottomLeft"
+          autoSwitchDate={false}
+          disabledDate={(date) => {
+            if (!date || !draft.endAt) return false;
+            return toSeconds(startOfDay(date)) > draft.endAt;
+          }}
+          triggerRender={() => (
+            <button className="wk-channel-search-date-input" type="button">
+              <span className={draft.startAt ? undefined : "is-placeholder"}>
+                {draft.startAt
+                  ? dateDisplayValue(draft.startAt)
+                  : t("base.channelSearch.filter.startDate")}
+              </span>
+              <CalendarDays size={16} />
+            </button>
+          )}
+        />
+        <DatePicker
+          className="wk-channel-search-date-picker"
+          value={dateFromSeconds(draft.endAt)}
+          onChange={(value) => setCustomDate("endAt", value)}
+          density="compact"
+          position="bottomLeft"
+          autoSwitchDate={false}
+          disabledDate={(date) => {
+            if (!date || !draft.startAt) return false;
+            return toSeconds(endOfDay(date)) < draft.startAt;
+          }}
+          triggerRender={() => (
+            <button className="wk-channel-search-date-input" type="button">
+              <span className={draft.endAt ? undefined : "is-placeholder"}>
+                {draft.endAt
+                  ? dateDisplayValue(draft.endAt)
+                  : t("base.channelSearch.filter.endDate")}
+              </span>
+              <CalendarDays size={16} />
+            </button>
+          )}
+        />
       </div>
 
       <div className="wk-channel-search-filter-actions">
@@ -582,7 +691,7 @@ const MessageResultItem: React.FC<{
   onLocate: (item: ChannelSearchItem) => void;
 }> = ({ item, keyword, getSender, onLocate }) => {
   const { format, t } = useI18n();
-  const sender = getSender(item.senderUid);
+  const sender = resolveSender(item, getSender);
   const isForward = item.kind === "merge_forward";
 
   return (
@@ -679,7 +788,7 @@ const MediaInlineResult: React.FC<{
   onLocate: (item: ChannelSearchItem) => void;
 }> = ({ item, keyword, getSender, onLocate }) => {
   const { format, t } = useI18n();
-  const sender = getSender(item.senderUid);
+  const sender = resolveSender(item, getSender);
   return (
     <div className="wk-channel-search-result wk-channel-search-media-inline">
       <SenderAvatar uid={item.senderUid} getSender={getSender} />
@@ -732,7 +841,6 @@ const MediaThumb: React.FC<{
         .join(" ")}
       style={thumbUrl ? { backgroundImage: `url(${thumbUrl})` } : undefined}
     >
-      <span>{item.media?.thumbLabel}</span>
       {item.kind === "video" && (
         <div className="wk-channel-search-media-play">
           <Play size={18} fill="currentColor" />
@@ -742,7 +850,6 @@ const MediaThumb: React.FC<{
         className="wk-channel-search-media-locate"
         type="button"
         onClick={() => onLocate(item)}
-        title={item.media?.name}
       >
         <LocateFixed size={16} />
       </button>
@@ -757,7 +864,7 @@ const FileInlineResult: React.FC<{
   onLocate: (item: ChannelSearchItem) => void;
 }> = ({ item, keyword, getSender, onLocate }) => {
   const { format, t } = useI18n();
-  const sender = getSender(item.senderUid);
+  const sender = resolveSender(item, getSender);
   const fileName = item.file?.name || t("base.conversation.file.unknown");
   const inlineFileName = fileName.replace(/\.[^.]+$/, "");
   const fileIconInfo = FileHelper.getFileIconInfo(fileName);
@@ -809,7 +916,7 @@ const MediaResultGrid: React.FC<{
 }> = ({ items, onLocate }) => {
   const grouped = useMemo(() => {
     return items.reduce<Record<string, ChannelSearchItem[]>>((acc, item) => {
-      const label = monthLabel(item.timestamp);
+      const label = item.media?.monthBucket || monthLabel(item.timestamp);
       acc[label] = acc[label] || [];
       acc[label].push(item);
       return acc;
@@ -839,46 +946,59 @@ const FileResultItem: React.FC<{
   menuOpen: boolean;
   onMenuOpenChange: (open: boolean) => void;
   onLocate: (item: ChannelSearchItem) => void;
-}> = ({ item, keyword, getSender, menuOpen, onMenuOpenChange, onLocate }) => {
+  onPreviewFile?: (item: ChannelSearchItem) => void;
+}> = ({
+  item,
+  keyword,
+  getSender,
+  menuOpen,
+  onMenuOpenChange,
+  onLocate,
+  onPreviewFile,
+}) => {
   const { format, t } = useI18n();
   const menuRef = useRef<HTMLDivElement>(null);
-  const sender = getSender(item.senderUid);
+  const sender = resolveSender(item, getSender);
   const fileName = item.file?.name || t("base.conversation.file.unknown");
   const fileIconInfo = FileHelper.getFileIconInfo(fileName);
   const fileIconSrc = item.file?.iconUrl || assetUrl(fileIconInfo?.icon);
   const hasFigmaIcon = !!item.file?.iconUrl;
 
-  useEffect(() => {
-    if (!menuOpen) return;
+  const handleDownload = async () => {
+    const url = item.file?.downloadUrl || item.file?.url;
+    if (!url) {
+      Toast.warning(t("base.channelSearch.downloadUnavailable"));
+      return;
+    }
+    try {
+      await downloadFile(url, fileName);
+    } catch (_) {
+      Toast.error(t("base.channelSearch.downloadFailed"));
+    }
+  };
 
-    const closeOnOutsidePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Node && menuRef.current?.contains(target)) {
-        return;
-      }
-      onMenuOpenChange(false);
-    };
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onMenuOpenChange(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", closeOnOutsidePointerDown, true);
-    document.addEventListener("keydown", closeOnEscape, true);
-    return () => {
-      document.removeEventListener(
-        "pointerdown",
-        closeOnOutsidePointerDown,
-        true
-      );
-      document.removeEventListener("keydown", closeOnEscape, true);
-    };
-  }, [menuOpen, onMenuOpenChange]);
+  const getFileMenuDismissContainers = useCallback(
+    () => [menuRef.current],
+    []
+  );
+  const closeFileMenu = useCallback(() => {
+    onMenuOpenChange(false);
+  }, [onMenuOpenChange]);
+  useOutsideDismiss(menuOpen, getFileMenuDismissContainers, closeFileMenu);
 
   return (
-    <div className="wk-channel-search-file-result">
+    <div
+      className="wk-channel-search-file-result"
+      role="button"
+      tabIndex={0}
+      onClick={() => onPreviewFile?.(item)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onPreviewFile?.(item);
+        }
+      }}
+    >
       <div
         className={[
           "wk-channel-search-file-icon",
@@ -915,6 +1035,7 @@ const FileResultItem: React.FC<{
         ]
           .filter(Boolean)
           .join(" ")}
+        onClick={(event) => event.stopPropagation()}
       >
         <IconClick
           size="sm"
@@ -938,7 +1059,7 @@ const FileResultItem: React.FC<{
               type="button"
               onClick={() => {
                 onMenuOpenChange(false);
-                Toast.info(t("base.channelSearch.mockDownload"));
+                void handleDownload();
               }}
             >
               <Download size={14} />
@@ -972,6 +1093,8 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   conversationContext,
   onClose,
   dataSource = channelSearchEmptyDataSource,
+  onLocateMessage,
+  onPreviewFile,
   initialState,
 }) => {
   const { t } = useI18n();
@@ -993,10 +1116,9 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const [queryStarted, setQueryStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
-  const composingRef = useRef(false);
+  const [isComposing, setIsComposing] = useState(false);
 
   const filterCount = activeFilterCount(filters);
-  const canSearch = keyword.trim().length > 0 || filterCount > 0;
   const getSender = useCallback(
     (uid: string) => dataSource.getSender(uid),
     [dataSource]
@@ -1004,10 +1126,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
 
   const runSearch = useCallback(
     async (cursor?: string) => {
-      if (!canSearch) {
-        setQueryStarted(false);
-        setResponse({ items: [], hasMore: false });
-        setError(null);
+      if (isComposing) {
         return;
       }
 
@@ -1048,7 +1167,15 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         }
       }
     },
-    [activeTab, canSearch, channel, dataSource, filters, keyword, t]
+    [
+      activeTab,
+      channel,
+      dataSource,
+      filters,
+      isComposing,
+      keyword,
+      t,
+    ]
   );
 
   useEffect(() => {
@@ -1059,6 +1186,10 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   }, [runSearch]);
 
   const handleLocate = (item: ChannelSearchItem) => {
+    if (onLocateMessage) {
+      onLocateMessage(item);
+      return;
+    }
     conversationContext?.locateMessage(item.messageSeq);
   };
 
@@ -1101,6 +1232,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
                 setOpenFileMenuId(open ? item.id : null);
               }}
               onLocate={handleLocate}
+              onPreviewFile={onPreviewFile}
             />
           ))}
         </div>
@@ -1133,17 +1265,16 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
           <input
             value={keyword}
             placeholder={t("base.channelSearch.placeholder")}
+            autoFocus
             onCompositionStart={() => {
-              composingRef.current = true;
+              setIsComposing(true);
             }}
             onCompositionEnd={(event) => {
-              composingRef.current = false;
+              setIsComposing(false);
               setKeyword(event.currentTarget.value);
             }}
             onChange={(event) => {
-              if (!composingRef.current) {
-                setKeyword(event.currentTarget.value);
-              }
+              setKeyword(event.currentTarget.value);
             }}
           />
         </div>
@@ -1189,6 +1320,11 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
       </div>
 
       <div className="wk-channel-search-content">
+        {activeTab === "media" && (
+          <div className="wk-channel-search-media-tip">
+            {t("base.channelSearch.mediaKeywordTip")}
+          </div>
+        )}
         {renderResults()}
         {response.hasMore && !loading && (
           <div className="wk-channel-search-load-more">

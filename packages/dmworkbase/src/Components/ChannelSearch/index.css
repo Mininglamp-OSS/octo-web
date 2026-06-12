@@ -124,7 +124,7 @@
 }
 
 .wk-channel-search-filter-trigger > svg:first-child {
-  color: var(--channel-search-text-primary);
+  color: inherit;
 }
 
 .wk-channel-search-filter-trigger span {
@@ -143,6 +143,15 @@
   flex: 1;
   overflow-y: auto;
   padding: 8px 0 16px;
+}
+
+.wk-channel-search-media-tip {
+  margin: 0 16px 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--channel-search-field-bg);
+  color: var(--channel-search-text-tertiary);
+  font: 400 12px/18px var(--wk-font-sans);
 }
 
 .wk-channel-search-empty,
@@ -839,28 +848,34 @@
   border: 5px solid var(--channel-search-accent);
 }
 
+.wk-channel-search-date-picker {
+  display: block;
+  margin-top: 4px;
+}
+
 .wk-channel-search-date-input {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  width: 100%;
   height: 32px;
-  margin-top: 4px;
   padding: 0 8px;
+  border: none;
   border-radius: 6px;
   background: var(--channel-search-field-bg);
   color: var(--channel-search-text-placeholder);
+  cursor: pointer;
 }
 
-.wk-channel-search-date-input input {
+.wk-channel-search-date-input span {
   min-width: 0;
   flex: 1;
-  border: none;
-  outline: none;
-  background: transparent;
   color: var(--channel-search-text-primary);
   font: 400 14px/20px var(--wk-font-sans);
+  text-align: left;
 }
 
-.wk-channel-search-date-input input::placeholder {
+.wk-channel-search-date-input span.is-placeholder {
   color: var(--channel-search-text-placeholder);
 }
 

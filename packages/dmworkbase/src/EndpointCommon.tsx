@@ -14,6 +14,8 @@ export class MessageContextMenus {
 export class ShowConversationOptions {
   // 聊天消息定位的messageSeq
   initLocateMessageSeq?: number;
+  /** 打开会话后同时展开右侧聊天记录搜索面板 */
+  openChannelSearch?: boolean;
   /**
    * sidebar 列表内点击会话时传 true，避免被强制切到 recent。外部入口
    * （联系人/全局搜索/通知/bot store 等）不传，让 EndpointCommon 默认
@@ -166,6 +168,7 @@ export class EndpointCommon {
             key={key}
             channel={channel}
             initLocateMessageSeq={initLocateMessageSeq}
+            initialShowChannelSearch={!!opts.openChannelSearch}
           ></ChatContentPage>
         );
       },

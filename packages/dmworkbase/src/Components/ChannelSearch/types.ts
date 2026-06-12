@@ -5,12 +5,14 @@ export type ChannelSearchItemKind =
   | "image"
   | "video"
   | "file"
-  | "merge_forward";
+  | "merge_forward"
+  | "quote";
 
 export interface ChannelSearchSender {
   uid: string;
   name: string;
   avatarUrl?: string;
+  isCurrentMember?: boolean;
 }
 
 export interface ChannelSearchFilters {
@@ -34,16 +36,21 @@ export interface ChannelSearchQuery {
 export interface ChannelSearchFileInfo {
   name: string;
   size: number;
+  extension?: string;
   iconUrl?: string;
   url?: string;
+  downloadUrl?: string;
+  previewUrl?: string | null;
 }
 
 export interface ChannelSearchMediaInfo {
-  name: string;
-  thumbLabel: string;
+  name?: string;
   thumbUrl?: string;
   inlineThumbUrl?: string;
   duration?: number;
+  width?: number;
+  height?: number;
+  monthBucket?: string;
   tone: "warm" | "cool" | "green" | "purple" | "orange";
 }
 
@@ -56,7 +63,10 @@ export interface ChannelSearchItem {
   id: string;
   messageId: string;
   messageSeq: number;
+  channelId?: string;
+  channelType?: number;
   senderUid: string;
+  sender?: ChannelSearchSender;
   timestamp: number;
   kind: ChannelSearchItemKind;
   text?: string;
@@ -75,6 +85,7 @@ export interface ChannelSearchResponse {
 export interface ChannelSearchDataSource {
   getSenders: () => ChannelSearchSender[];
   getSender: (uid: string) => ChannelSearchSender;
+  searchSenders?: (keyword: string) => Promise<ChannelSearchSender[]>;
   searchMessages: (query: ChannelSearchQuery) => Promise<ChannelSearchResponse>;
 }
 

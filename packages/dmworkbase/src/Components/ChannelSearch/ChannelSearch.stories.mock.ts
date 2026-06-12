@@ -78,10 +78,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "liuhaier",
     timestamp: toSeconds("2026-06-03T15:05:00+08:00"),
     kind: "image",
-    matchReason: "图片名称含“哈哈”",
     media: {
-      name: "图片名称显示哈哈.png",
-      thumbLabel: "图片名称显示...",
       thumbUrl: figmaMediaThumbs[0],
       inlineThumbUrl: figmaInlineImage,
       tone: "cool",
@@ -94,10 +91,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "liubo",
     timestamp: toSeconds("2026-06-01T15:04:30+08:00"),
     kind: "image",
-    matchReason: "图片名称含“哈哈”",
     media: {
-      name: "哈哈白板记录.png",
-      thumbLabel: "图片名称显示...",
       thumbUrl: figmaMediaThumbs[5],
       tone: "warm",
     },
@@ -109,10 +103,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "zhangxingchao",
     timestamp: toSeconds("2026-06-01T15:04:10+08:00"),
     kind: "video",
-    matchReason: "视频名称含“哈哈”",
     media: {
-      name: "哈哈走查片段.mp4",
-      thumbLabel: "视频名称显示...",
       thumbUrl: figmaMediaThumbs[6],
       duration: 62,
       tone: "purple",
@@ -148,10 +139,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "liuhaier",
     timestamp: toSeconds("2026-06-02T18:10:00+08:00"),
     kind: "video",
-    matchReason: "视频名称含“哈哈”",
     media: {
-      name: "视频名称显示哈哈.mp4",
-      thumbLabel: "视频名称显示...",
       thumbUrl: figmaMediaThumbs[1],
       inlineThumbUrl: figmaInlineVideo,
       duration: 46,
@@ -183,10 +171,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "zhangxingchao",
     timestamp: toSeconds("2026-06-01T10:24:00+08:00"),
     kind: "image",
-    matchReason: "图片名称含“哈哈”",
     media: {
-      name: "哈哈方案截图.jpg",
-      thumbLabel: "图片名称显示...",
       thumbUrl: figmaMediaThumbs[2],
       tone: "green",
     },
@@ -198,10 +183,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "liubo",
     timestamp: toSeconds("2026-06-01T09:46:00+08:00"),
     kind: "video",
-    matchReason: "视频名称含“哈哈”",
     media: {
-      name: "哈哈会议片段.mp4",
-      thumbLabel: "视频名称显示...",
       thumbUrl: figmaMediaThumbs[3],
       duration: 88,
       tone: "purple",
@@ -228,10 +210,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "liubo",
     timestamp: toSeconds("2026-05-01T11:18:00+08:00"),
     kind: "image",
-    matchReason: "图片名称含“哈哈”",
     media: {
-      name: "哈哈复盘素材.png",
-      thumbLabel: "图片名称显示...",
       thumbUrl: figmaMediaThumbs[7],
       tone: "cool",
     },
@@ -243,10 +222,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "liuhaier",
     timestamp: toSeconds("2026-05-20T16:30:00+08:00"),
     kind: "video",
-    matchReason: "视频名称含“哈哈”",
     media: {
-      name: "五月哈哈演示.mp4",
-      thumbLabel: "视频名称显示...",
       thumbUrl: figmaMediaThumbs[1],
       duration: 38,
       tone: "orange",
@@ -259,10 +235,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "liubo",
     timestamp: toSeconds("2026-05-12T13:10:00+08:00"),
     kind: "image",
-    matchReason: "图片名称含“哈哈”",
     media: {
-      name: "哈哈页面状态.png",
-      thumbLabel: "图片名称显示...",
       thumbUrl: figmaMediaThumbs[2],
       tone: "green",
     },
@@ -274,10 +247,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "liuba",
     timestamp: toSeconds("2026-05-06T19:12:00+08:00"),
     kind: "image",
-    matchReason: "图片名称含“哈哈”",
     media: {
-      name: "哈哈动效参考.png",
-      thumbLabel: "图片名称显示...",
       thumbUrl: figmaMediaThumbs[3],
       tone: "purple",
     },
@@ -289,10 +259,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "liuba",
     timestamp: toSeconds("2026-04-18T12:00:00+08:00"),
     kind: "image",
-    matchReason: "图片名称含“哈哈”",
     media: {
-      name: "四月哈哈素材.png",
-      thumbLabel: "图片名称显示...",
       thumbUrl: figmaMediaThumbs[4],
       tone: "warm",
     },
@@ -300,7 +267,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
 ];
 
 const tabKinds: Record<ChannelSearchTab, ChannelSearchItem["kind"][]> = {
-  all: ["text", "image", "video", "file", "merge_forward"],
+  all: ["text", "file", "merge_forward"],
   message: ["text", "merge_forward"],
   media: ["image", "video"],
   file: ["file"],
@@ -313,11 +280,11 @@ const containsKeyword = (value: string | undefined, keyword: string) => {
 
 const itemMatchesKeyword = (item: ChannelSearchItem, keyword: string) => {
   if (!keyword.trim()) return true;
+  if (item.kind === "image" || item.kind === "video") return true;
   return [
     item.text,
     item.matchReason,
     item.file?.name,
-    item.media?.name,
     item.forward?.title,
     ...(item.forward?.snippets || []),
   ].some((value) => containsKeyword(value, keyword));
@@ -348,7 +315,9 @@ export const mockChannelSearchDataSource: ChannelSearchDataSource = {
         senderFilter.size > 0 ? senderFilter.has(item.senderUid) : true
       )
       .filter((item) => itemMatchesDate(item, query))
-      .filter((item) => itemMatchesKeyword(item, query.keyword))
+      .filter((item) =>
+        query.tab === "media" ? true : itemMatchesKeyword(item, query.keyword)
+      )
       .sort((left, right) =>
         query.filters.sort === "time_asc"
           ? left.timestamp - right.timestamp
