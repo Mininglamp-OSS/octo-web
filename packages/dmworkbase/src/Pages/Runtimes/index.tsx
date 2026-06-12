@@ -1142,7 +1142,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     </div>
                 </div>
 
-                <div className="wk-rt-detail-grid">
+                <div className="wk-rt-detail-grid wk-rt-detail-grid--single">
                     <div className="wk-rt-field">
                         <label>Runtime Mode</label>
                         <span>{rt.runtime_mode}</span>

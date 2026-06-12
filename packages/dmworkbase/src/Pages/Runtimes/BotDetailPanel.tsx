@@ -69,8 +69,11 @@ export function BotDetailPanel({ bot, onArchived }: { bot: Bot; onArchived: () =
           <h1 className="wk-bd-name">{bot.name}</h1>
           <div className="wk-bd-meta">
             {/* PR-2: 删独立"● 在线"chip, 在线状态走头像旁绿点 (跟私聊一致). */}
+            {/* PR-2: 删 workspace_id chip — 是 dev 级实现细节, 用户只
+                需要知道 Bot, 它对应的 agent workspace 是后端自动派生
+                的 (openclaw workspace 命名 / cc-channel-octo bot dir
+                等), 用户没必要看到. */}
             <span className="wk-bd-chip wk-bd-chip--kind">{bot.runtime_kind}</span>
-            {bot.workspace_id && <span className="wk-bd-chip wk-bd-chip--ws">{bot.workspace_id}</span>}
           </div>
         </div>
         {/* PR-2: hide "归档" button until cross-tier deprovision works:
@@ -121,7 +124,7 @@ function InfoTab({ bot }: { bot: Bot }) {
         <PropRow label="Runtime" value={<span className="wk-bd-mono">{bot.runtime_kind}</span>} />
         <PropRow label="所有者" value={<OwnerLabel ownerUid={bot.owner_uid} />} />
         <PropRow label="状态" value={<span className="wk-bd-mono">{bot.status}</span>} />
-        {bot.workspace_id && <PropRow label="Workspace" value={<Copyable text={bot.workspace_id} mono />} />}
+        {/* PR-2: 删 Workspace 字段 — dev 级实现细节, 用户不需要管. */}
       </dl>
       <h3 className="wk-bd-section__title wk-bd-section__title--secondary">身份</h3>
       <dl className="wk-bd-props">
