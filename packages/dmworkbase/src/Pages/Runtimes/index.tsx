@@ -155,6 +155,9 @@ interface DeviceDetailProps {
     pingCache: PingCache
     daemonVersionHint?: { has_update?: boolean; latest_version?: string; current?: string }
     activeUpgrade?: ActiveUpgrade
+    // 升级互斥 UX: 同 RuntimeDetailProps.daemonBusy / onUpgradeStarted.
+    daemonBusy?: boolean
+    onUpgradeStarted?: () => void
 }
 
 interface DeviceDetailState {
@@ -234,6 +237,9 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
         try {
             const initRes = await WKApp.apiClient.post("/runtimes/upgrade", { daemon_id: daemonId, space_id: WKApp.shared.currentSpaceId })
             const taskId = initRes.task_id
+            // C-1: task 已创建, 立即让父层重拉 active_upgrades, 其他 detail
+            // 的 daemonBusy ~1s 内生效 (不等 15s 轮询).
+            this.props.onUpgradeStarted?.()
             for (let i = 0; i < 60; i++) {
                 if (isStale()) return
                 await new Promise(r => setTimeout(r, 2000))
@@ -258,8 +264,19 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                                 const groups = groupByDevice(allRuntimes)
                                 const updated = groups.find((g: DeviceGroup) => g.daemonId === daemonId)
                                 if (updated) {
+                                    // B-5 (X3): 自我重渲染同样透传 daemonBusy /
+                                    // onUpgradeStarted, 否则这条路径 remount 的
+                                    // detail 丢互斥 props. 注: 此刻本 daemon 升级
+                                    // 刚完成, busy 取自己 props 当前值 (15s 轮询
+                                    // 链路会在下轮带来准确值).
                                     WKApp.routeRight.replaceToRoot(
-                                        <DeviceDetail group={updated} pingCache={this.props.pingCache} daemonVersionHint={hints[daemonId]} />
+                                        <DeviceDetail
+                                            group={updated}
+                                            pingCache={this.props.pingCache}
+                                            daemonVersionHint={hints[daemonId]}
+                                            daemonBusy={this.props.daemonBusy}
+                                            onUpgradeStarted={this.props.onUpgradeStarted}
+                                        />
                                     )
                                 }
                                 return
@@ -329,19 +346,37 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                                 {this.props.daemonVersionHint?.has_update && (() => {
                                     const isWindows = group.osName?.toLowerCase() === "windows"
                                     const { upgradeStatus, upgradeError } = this.state
-                                    const inProgress = upgradeStatus !== "idle" && upgradeStatus !== "completed" && upgradeStatus !== "failed" && upgradeStatus !== "timeout"
+                                    const inProgress = isUpgradeInProgress(upgradeStatus)
+                                    // busy 且不是自己在升级 → 其他升级在跑, fleet 会拒
+                                    const busyByOther = !!this.props.daemonBusy && !inProgress
 
                                     if (upgradeStatus === "completed") {
                                         return <span className="wk-rt-upgrade-status success"><span className="upgrade-dot" />Upgraded</span>
                                     }
                                     if (upgradeStatus === "failed" || upgradeStatus === "timeout") {
-                                        return <span className="wk-rt-upgrade-status error" title={upgradeError}><span className="upgrade-dot" />Failed</span>
+                                        // A-1: error_msg 内联展示 (原来藏 hover title 像升级真坏了);
+                                        // A-2: 旁挂 Retry, busy 时禁用 (P7/X6 — 互斥拒后 daemon
+                                        // 仍忙, Retry 可点必再撞墙).
+                                        return (
+                                            <span className="wk-rt-upgrade-status error" title={upgradeError}>
+                                                <span className="upgrade-dot" />
+                                                {upgradeStatus === "timeout" ? "Timeout" : "Failed"}
+                                                {upgradeError && <span className="wk-rt-upgrade-reason">· {upgradeError.length > 40 ? upgradeError.slice(0, 40) + "…" : upgradeError}</span>}
+                                                {!isWindows && (busyByOther
+                                                    ? <span className="wk-rt-upgrade-btn disabled" title="同设备已有升级进行中, 请稍候">Upgrade</span>
+                                                    : <span className="wk-rt-upgrade-btn" onClick={this.handleUpgrade}>Upgrade</span>)}
+                                            </span>
+                                        )
                                     }
                                     if (inProgress) {
                                         return <span className="wk-rt-upgrade-status progress"><span className="upgrade-dot" />{upgradeStatus}...</span>
                                     }
                                     if (isWindows) {
                                         return <span className="wk-rt-upgrade-btn disabled" title="Windows remote upgrade is not supported yet">Upgrade</span>
+                                    }
+                                    if (busyByOther) {
+                                        // B-3: 同 daemon 其他升级在跑, 点了 fleet 必拒 — 预防性禁用
+                                        return <span className="wk-rt-upgrade-btn disabled" title="同设备已有升级进行中, 请稍候">Upgrade</span>
                                     }
                                     if (!anyOnline) return null
                                     return <span className="wk-rt-upgrade-btn" onClick={this.handleUpgrade}>Upgrade</span>
@@ -853,6 +888,14 @@ interface RuntimeDetailProps {
     componentActiveUpgrade?: ActiveUpgrade
     onDelete: (id: number) => void
     onAgentsChanged?: () => void
+    // 升级互斥 UX (plan-upgrade-mutex-ux §2.B): 该 runtime 所属 daemon 是否
+    // 有任一 in-progress 升级 task (无论 component). fleet insertUpgradeTask
+    // 同 daemon 互斥 (upgrade.go:359), busy 时其他 Upgrade 按钮必失败 —
+    // 禁用 + title 预防, 替代点了才报错.
+    daemonBusy?: boolean
+    // §2.C: POST /runtimes/upgrade 成功后通知父层立即 silent loadData,
+    // 让其他已打开 detail 的 daemonBusy 在 ~1s 内更新 (不等 15s 轮询).
+    onUpgradeStarted?: () => void
     // UI/UX review #375 follow-up (P1-3): RuntimeDetail 详情页信息密度
     // 低 (只 Runtime Mode / Provider / Version / Octo Plugin). 父侧
     // RuntimesPage 持有 botsByRuntime cache, 把"已绑定 Bot 数" prop 注入
@@ -861,7 +904,19 @@ interface RuntimeDetailProps {
     botCount?: number
 }
 
-type PluginUpgradeStatus = "idle" | "pending" | "dispatched" | "installing" | "completed" | "failed" | "timeout"
+type PluginUpgradeStatus = "idle" | "pending" | "dispatched" | "downloading" | "installing" | "restarting" | "completed" | "failed" | "timeout"
+
+// in-progress 状态全集 — 必须跟 fleet upgrade.go:401 互斥判定集合严格一致
+// (5 态). web 早期只枚举 pending/dispatched/installing 三态, 漏 downloading/
+// restarting — daemon 升级走 downloading→installing→restarting, 漏态期间
+// busyDaemons 误判不忙 (plan-upgrade-mutex-ux P2).
+const UPGRADE_IN_PROGRESS_STATUSES = new Set<string>([
+    "pending", "dispatched", "downloading", "installing", "restarting",
+])
+
+function isUpgradeInProgress(status: string): boolean {
+    return UPGRADE_IN_PROGRESS_STATUSES.has(status)
+}
 
 // 允许远程升级的 provider（和服务端 providerComponents / daemon componentUpgradeSpecs 保持一致）
 const COMPONENT_UPGRADE_ENABLED = new Set<string>(["claude", "codex", "hermes", "openclaw"])
@@ -897,11 +952,11 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         // 停留在 installing/dispatched 永不更新，用户要切页面才能跳出。
         const { pluginUpgradeStatus, componentUpgradeStatus } = this.state
         const pluginUpg = this.props.pluginActiveUpgrade
-        if (pluginUpg?.task_id && (pluginUpgradeStatus === "pending" || pluginUpgradeStatus === "dispatched" || pluginUpgradeStatus === "installing")) {
+        if (pluginUpg?.task_id && isUpgradeInProgress(pluginUpgradeStatus)) {
             this.pollPluginUpgrade(pluginUpg.task_id, this.props.runtime.id)
         }
         const compUpg = this.props.componentActiveUpgrade
-        if (compUpg?.task_id && (componentUpgradeStatus === "pending" || componentUpgradeStatus === "dispatched" || componentUpgradeStatus === "installing")) {
+        if (compUpg?.task_id && isUpgradeInProgress(componentUpgradeStatus)) {
             this.pollComponentUpgrade(compUpg.task_id, this.props.runtime.id)
         }
     }
@@ -983,6 +1038,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 space_id: WKApp.shared.currentSpaceId,
                 component: "octo",
             })
+            // C-1: 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
+            this.props.onUpgradeStarted?.()
             await this.pollPluginUpgrade(initRes.task_id, runtimeId)
         } catch (err: any) {
             const msg = err?.msg || err?.message || "upgrade failed"
@@ -1020,6 +1077,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                             const allRuntimes = runtimesRes?.runtimes || []
                             const updated = allRuntimes.find((r: AgentRuntime) => r.id === runtimeId)
                             if (updated) {
+                                // B-5 (X3): 透传互斥 props, 同 DeviceDetail 注释
                                 WKApp.routeRight.replaceToRoot(
                                     <RuntimeDetail
                                         runtime={updated}
@@ -1028,6 +1086,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                         componentActiveUpgrade={this.props.componentActiveUpgrade}
                                         onDelete={this.props.onDelete}
                                         botCount={this.props.botCount}
+                                        daemonBusy={this.props.daemonBusy}
+                                        onUpgradeStarted={this.props.onUpgradeStarted}
                                     />
                                 )
                             }
@@ -1048,14 +1108,23 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
 
     renderPluginUpgradeBtn(pluginName: string, hasUpdate: boolean | undefined) {
         const { pluginUpgradeStatus, pluginUpgradeError } = this.state
+        // busy 来源是否本按钮自己的 task — 自己升级显示进度态; 别的 task
+        // 在跑则本按钮 busy-disabled (按钮粒度豁免, plan §2.B-3 / X4).
+        const selfInProgress = isUpgradeInProgress(pluginUpgradeStatus)
+        const busyByOther = !!this.props.daemonBusy && !selfInProgress
         if (pluginUpgradeStatus === "completed") {
             return <span className="wk-rt-upgrade-status success"><span className="upgrade-dot" />Completed</span>
         }
         if (pluginUpgradeStatus === "failed" || pluginUpgradeStatus === "timeout") {
+            // A-1 错误内联 + A-2 Retry (busy 时禁用 — P7/X6)
             return (
                 <span className="wk-rt-upgrade-status error" title={pluginUpgradeError}>
                     <span className="upgrade-dot" />
                     {pluginUpgradeStatus === "timeout" ? "Timeout" : "Failed"}
+                    {pluginUpgradeError && <span className="wk-rt-upgrade-reason">· {pluginUpgradeError.length > 40 ? pluginUpgradeError.slice(0, 40) + "…" : pluginUpgradeError}</span>}
+                    {pluginName === "octo" && (busyByOther
+                        ? <span className="wk-rt-upgrade-btn disabled" title="同设备已有升级进行中, 请稍候">Upgrade</span>
+                        : <span className="wk-rt-upgrade-btn" onClick={this.handlePluginUpgrade}>Upgrade</span>)}
                 </span>
             )
         }
@@ -1068,6 +1137,10 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             )
         }
         if (hasUpdate && pluginName === "octo") {
+            if (busyByOther) {
+                // B-3: 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
+                return <span className="wk-rt-upgrade-btn disabled" title="同设备已有升级进行中, 请稍候">Upgrade</span>
+            }
             return <span className="wk-rt-upgrade-btn" onClick={this.handlePluginUpgrade}>Upgrade</span>
         }
         return null
@@ -1088,6 +1161,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 space_id: WKApp.shared.currentSpaceId,
                 component,
             })
+            // C-1: 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
+            this.props.onUpgradeStarted?.()
             await this.pollComponentUpgrade(initRes.task_id, runtimeId)
         } catch (err: any) {
             const msg = err?.msg || err?.message || "upgrade failed"
@@ -1125,6 +1200,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                             const allRuntimes = runtimesRes?.runtimes || []
                             const updated = allRuntimes.find((r: AgentRuntime) => r.id === runtimeId)
                             if (updated) {
+                                // B-5 (X3): 透传互斥 props, 同 DeviceDetail 注释
                                 WKApp.routeRight.replaceToRoot(
                                     <RuntimeDetail
                                         runtime={updated}
@@ -1133,6 +1209,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                         componentActiveUpgrade={this.props.componentActiveUpgrade}
                                         onDelete={this.props.onDelete}
                                         botCount={this.props.botCount}
+                                        daemonBusy={this.props.daemonBusy}
+                                        onUpgradeStarted={this.props.onUpgradeStarted}
                                     />
                                 )
                             }
@@ -1156,14 +1234,22 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         if (!COMPONENT_UPGRADE_ENABLED.has(rt.provider)) return null
 
         const { componentUpgradeStatus, componentUpgradeError } = this.state
+        // 同 renderPluginUpgradeBtn: 按钮粒度豁免 (plan §2.B-3 / X4)
+        const selfInProgress = isUpgradeInProgress(componentUpgradeStatus)
+        const busyByOther = !!this.props.daemonBusy && !selfInProgress
         if (componentUpgradeStatus === "completed") {
             return <span className="wk-rt-upgrade-status success"><span className="upgrade-dot" />Completed</span>
         }
         if (componentUpgradeStatus === "failed" || componentUpgradeStatus === "timeout") {
+            // A-1 错误内联 + A-2 Retry (busy 时禁用 — P7/X6)
             return (
                 <span className="wk-rt-upgrade-status error" title={componentUpgradeError}>
                     <span className="upgrade-dot" />
                     {componentUpgradeStatus === "timeout" ? "Timeout" : "Failed"}
+                    {componentUpgradeError && <span className="wk-rt-upgrade-reason">· {componentUpgradeError.length > 40 ? componentUpgradeError.slice(0, 40) + "…" : componentUpgradeError}</span>}
+                    {busyByOther
+                        ? <span className="wk-rt-upgrade-btn disabled" title="同设备已有升级进行中, 请稍候">Upgrade</span>
+                        : <span className="wk-rt-upgrade-btn" onClick={this.handleComponentUpgrade}>Upgrade</span>}
                 </span>
             )
         }
@@ -1176,6 +1262,10 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             )
         }
         if (hasUpdate) {
+            if (busyByOther) {
+                // B-3: 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
+                return <span className="wk-rt-upgrade-btn disabled" title="同设备已有升级进行中, 请稍候">Upgrade</span>
+            }
             return <span className="wk-rt-upgrade-btn" onClick={this.handleComponentUpgrade}>Upgrade</span>
         }
         return null
@@ -1457,12 +1547,21 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         document.removeEventListener("keydown", this.handleGlobalKeyDown)
     }
 
+    // C-2 (plan-upgrade-mutex-ux X1): 同 space 请求序号. onUpgradeStarted
+    // 立即 loadData 跟 15s 定时轮询并发时, 旧响应晚到会覆盖新 activeUpgrades
+    // (busyDaemons 短暂清空 → 按钮闪烁可点). 序号比 epoch 细一级: epoch
+    // 隔离跨 space, seq 隔离同 space 多请求.
+    private loadSeq = 0
+
     async loadData(silent = false) {
         // C9 in-flight guard: 切 space 时 epoch++, 旧 space 在飞的
         // /runtimes 响应回来时若 epoch 变了就丢弃, 防旧 space runtimes /
         // versionHints / activeUpgrades 回填到新 space.
+        // C-2: seq 一并入 isStale 闭包, 覆盖全部三个检查点 (await 后 /
+        // setState updater 内 / setState callback 内).
         const epoch = this.spaceEpoch
-        const isStale = () => this.spaceEpoch !== epoch
+        const seq = ++this.loadSeq
+        const isStale = () => this.spaceEpoch !== epoch || seq !== this.loadSeq
         if (!silent) this.setState({ loading: true })
         try {
             const spaceId = WKApp.shared.currentSpaceId
@@ -1511,6 +1610,9 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 },
                 () => {
                     if (isStale()) return
+                    // 左树 Level-3 需要每个 runtime 的 bot 数判断"能否展开"
+                    // (没 bot 不可展开) — 批量回填 botsByRuntime.
+                    this.refreshAllBots()
                     // 放 callback 里：保证 showAgentDetail / showDeviceDetail 里读到的
                     // this.state.activeUpgrades 是本轮刚拉到的，而不是 setState 之前的快照
                     if (silent && WKApp.route.currentPath === "/runtimes") {
@@ -1522,7 +1624,14 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                 this.setState({ selectedId: null })
                                 WKApp.routeRight.popToRoot()
                             }
-                        } else if (this.selectedDaemonId && activeUpgrades[`${this.selectedDaemonId}:octo-daemon`]) {
+                        } else if (this.selectedDaemonId) {
+                            // B-4 (P1/X2): 原条件还要求 activeUpgrades 里有
+                            // `${daemonId}:octo-daemon` — 只覆盖 daemon 自身
+                            // 升级, component/plugin 升级引起的 daemonBusy
+                            // 变化 (出现和消失两个方向) 推不到已打开的
+                            // DeviceDetail. 放宽为打开着就重渲染, 跟上面
+                            // RuntimeDetail 分支对齐. replaceToRoot 幂等,
+                            // 15s 一次成本可忽略.
                             const groups = groupByDevice(runtimes)
                             const updated = groups.find(g => g.daemonId === this.selectedDaemonId)
                             if (updated) {
@@ -1535,6 +1644,11 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         } catch {
             if (isStale()) return
             if (!silent) this.setState({ loading: false })
+        } finally {
+            // X7: non-silent 请求被后发 silent 请求淘汰 (isStale 早退) 时,
+            // 没人翻回 loading=false 会卡屏 Loading. 兜底: 本请求是
+            // non-silent 且 loading 仍真 (后续成功响应没翻掉) 时翻 false.
+            if (!silent && this.state.loading) this.setState({ loading: false })
         }
     }
 
@@ -1573,6 +1687,37 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         }, () => {
             if (needFirstLoad) this.refreshRuntimeBots(runtimeId)
         })
+    }
+
+    // caster 2026-06-12: 左树 Level-3 空态简化 — "没 bot 的 runtime 不能
+    // 展开" 需要预先知道每个 runtime 的 bot 数 (原来是展开时懒加载).
+    // listBots() 本来就一次返回全 space 的 bot (refreshRuntimeBots 是客户
+    // 端过滤), 这里批量按 runtime_id 分组回填 botsByRuntime. 由 loadData
+    // 每 15s 调用 — 也顺带让 Level-3 bot 行保持新鲜 (别处创建的 bot 会出现).
+    refreshAllBots = async () => {
+        const epoch = this.spaceEpoch
+        const isStale = () => this.spaceEpoch !== epoch
+        try {
+            const all = await listBots()
+            if (isStale()) return
+            this.setState((prev) => {
+                if (isStale()) return null
+                const next = new Map<number, Bot[]>()
+                for (const b of all) {
+                    const arr = next.get(b.runtime_id)
+                    if (arr) arr.push(b)
+                    else next.set(b.runtime_id, [b])
+                }
+                // 没 bot 的 runtime 也写空数组 — 区分 "已加载, 0 个" 跟
+                // "没加载过" (后者不再出现, 但 Map.get undefined 兜底仍在).
+                for (const rt of prev.runtimes) {
+                    if (!next.has(rt.id)) next.set(rt.id, [])
+                }
+                return { botsByRuntime: next }
+            })
+        } catch {
+            // 静默: 保留旧 cache, 下轮 15s 再试
+        }
     }
 
     refreshRuntimeBots = async (runtimeId: number) => {
@@ -1624,6 +1769,21 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         }
     }
 
+    // B-1/B-2 (plan-upgrade-mutex-ux): 该 daemon 是否有任一 in-progress
+    // 升级 task (无论 component). 集合语义跟 fleet insertUpgradeTask 互斥
+    // 判定一致 — busy 时同 daemon 其他 Upgrade 必被 fleet 拒.
+    private isDaemonBusy = (daemonId: string): boolean => {
+        return Object.values(this.state.activeUpgrades).some(
+            u => u.daemon_id === daemonId && isUpgradeInProgress(u.status)
+        )
+    }
+
+    // C-1: detail 页 POST /runtimes/upgrade 成功后立即 silent 重拉, 让
+    // busyDaemons ~1s 内更新到所有打开的 detail (不等 15s 轮询). silent
+    // 必须 true — loadData 的 re-replaceToRoot callback 只在 silent 分支
+    // 执行, false 还会闪 loading.
+    private handleUpgradeStarted = () => { this.loadData(true) }
+
     showDeviceDetail = (group: DeviceGroup) => {
         this.setState({ selectedId: null })
         this.selectedDaemonId = group.daemonId
@@ -1633,6 +1793,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 pingCache={this.pingCache}
                 daemonVersionHint={this.state.daemonVersionHints[group.daemonId]}
                 activeUpgrade={this.state.activeUpgrades[`${group.daemonId}:octo-daemon`]}
+                daemonBusy={this.isDaemonBusy(group.daemonId)}
+                onUpgradeStarted={this.handleUpgradeStarted}
             />
         )
     }
@@ -1658,6 +1820,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 pluginActiveUpgrade={pluginUpgrade}
                 componentActiveUpgrade={componentUpgrade}
                 botCount={cachedBots?.length ?? 0}
+                daemonBusy={this.isDaemonBusy(rt.daemon_id)}
+                onUpgradeStarted={this.handleUpgradeStarted}
                 onDelete={() => {
                     this.setState({ selectedId: null })
                     WKApp.routeRight.popToRoot()
@@ -1672,14 +1836,10 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         const { runtimes, selectedId, loading, expandedDevices, createMenuOpen, runtimeModalOpen } = this.state
         const groups = groupByDevice(runtimes)
         // P1 follow-up (UI/UX review): "M online" 含义重定义 — 不再是
-        // runtime.status='online' 的 runtime 数 (实务上一个 daemon 4 个
-        // runtime 几乎同时上下线, 单算 runtime 在线粒度太细). 现在表达
-        // "活着的 daemon 下提供的 runtime 总数" — daemon 活 (任一 runtime
-        // 在线) 就把它的 4 个 runtime 全计入. 跟左树展开后看到的"槽位"
-        // 数对得上.
-        const totalOnline = groups
-            .filter(g => g.onlineCount > 0)
-            .reduce((sum, g) => sum + g.runtimes.length, 0)
+        // 顶部计数纯报"装置-运行时"槽位规模, 不报死活. 单 runtime 死活
+        // 由 DeviceDetail 右上角 "X/Y Online" 表达; 顶栏只回答 "我有几个
+        // device, 加起来几个 runtime", 跟左树展开后的总条数一致.
+        const totalRuntimes = groups.reduce((sum, g) => sum + g.runtimes.length, 0)
 
         return (
             <div className="wk-rt-list">
@@ -1693,8 +1853,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                     <div className="wk-rt-pagetitle">
                         <h2 className="wk-rt-pagetitle-text">运行时</h2>
                         <span className="wk-rt-pageheader__meta" aria-live="polite">
-                            <span className={`wk-rt-meta-dot${totalOnline > 0 ? " is-online" : ""}`} aria-hidden="true" />
-                            {totalOnline} online · {groups.length} device{groups.length !== 1 ? "s" : ""}
+                            {groups.length} device{groups.length !== 1 ? "s" : ""} · {totalRuntimes} runtime{totalRuntimes !== 1 ? "s" : ""}
                         </span>
                         <div className="wk-rt-create-wrap">
                             <button
@@ -1793,19 +1952,22 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                         className="wk-rt-device-info"
                                         onClick={(e) => { e.stopPropagation(); this.showDeviceDetail(group) }}
                                     >
+                                        {/* caster 2026-06-12: 删 "N 个运行时" 副标题 — 顶栏已有
+                                            "N devices · M runtimes" 计数, device 行重复显示噪音 */}
                                         <div className="wk-rt-device-name">{group.deviceName}</div>
-                                        <div className="wk-rt-device-sub">
-                                            {group.runtimes.length} 个运行时
-                                        </div>
                                     </div>
                                     <div className={`wk-rt-status-dot ${anyOnline ? "online" : "offline"}`} />
                                 </div>
 
                                 {/* Level 2: Agents (runtime kind) */}
                                 {expanded && group.runtimes.map((rt) => {
-                                    const rtExpanded = this.state.expandedRuntimes.has(rt.id)
+                                    // caster 2026-06-12: 没 bot 的 runtime 不可展开 — 删掉
+                                    // "该运行时下暂无 Bot + 在此创建" 空态 (创建入口顶栏 +
+                                    // 已有). botsByRuntime 由 loadData → refreshAllBots 批量
+                                    // 预填 (15s), 不再依赖展开时懒加载.
                                     const bots = this.state.botsByRuntime.get(rt.id) || []
-                                    const botsLoading = this.state.botsLoading.has(rt.id)
+                                    const expandable = bots.length > 0
+                                    const rtExpanded = expandable && this.state.expandedRuntimes.has(rt.id)
                                     return (
                                         <div key={rt.id} className="wk-rt-rt-block">
                                             <div
@@ -1813,15 +1975,18 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                                 role="button"
                                                 tabIndex={0}
                                                 aria-expanded={rtExpanded}
-                                                onClick={() => this.toggleRuntime(rt.id)}
+                                                onClick={() => { if (expandable) this.toggleRuntime(rt.id) }}
                                                 onKeyDown={(e) => {
                                                     if (e.key === "Enter" || e.key === " ") {
                                                         e.preventDefault()
-                                                        this.toggleRuntime(rt.id)
+                                                        if (expandable) this.toggleRuntime(rt.id)
                                                     }
                                                 }}
                                             >
-                                                <span className={`wk-rt-expand-arrow ${rtExpanded ? "expanded" : ""}`}>&#9654;</span>
+                                                {/* 没 bot 时不渲染箭头, 占位保持缩进对齐 */}
+                                                {expandable
+                                                    ? <span className={`wk-rt-expand-arrow ${rtExpanded ? "expanded" : ""}`}>&#9654;</span>
+                                                    : <span className="wk-rt-expand-arrow placeholder" aria-hidden="true" />}
                                                 <div
                                                     className="wk-rt-provider-icon small"
                                                     style={{ background: providerColors[rt.provider] || "#6B7280" }}
@@ -1843,25 +2008,10 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                                     探活. caster 拍的去重. */}
                                             </div>
 
-                                            {/* Level 3: Bots under this runtime */}
+                                            {/* Level 3: Bots under this runtime (没 bot 不可展开,
+                                                空态文案 + 在此创建 CTA 已删 — caster 2026-06-12) */}
                                             {rtExpanded && (
                                                 <div className="wk-rt-bot-rows">
-                                                    {botsLoading && bots.length === 0 && (
-                                                        <div className="wk-rt-bot-empty">加载中…</div>
-                                                    )}
-                                                    {!botsLoading && bots.length === 0 && (
-                                                        <div className="wk-rt-bot-empty">
-                                                            <span>该运行时下暂无 Bot</span>
-                                                            <button
-                                                                type="button"
-                                                                className="wk-rt-bot-empty__cta"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation()
-                                                                    this.botsTabRef.current?.openCreate({ preselectRuntimeId: rt.id })
-                                                                }}
-                                                            >+ 在此创建</button>
-                                                        </div>
-                                                    )}
                                                     {bots.map((b) => (
                                                         <BotRow
                                                             key={b.id}
