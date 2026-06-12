@@ -278,68 +278,67 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
     resumeUpgradePoll = async (taskId: string) => {
         const daemonId = this.props.group.daemonId
         const isStale = () => this._unmounted || this.props.group.daemonId !== daemonId
-        try {
-            for (let i = 0; i < 60; i++) {
-                if (isStale()) return
+        for (let i = 0; i < 60; i++) {
+            if (isStale()) return
+            await new Promise(r => setTimeout(r, 2000))
+            if (isStale()) return
+            let res: any
+            try {
+                // R5-2: 单次容错 — 跟 RuntimeDetail pollPluginUpgrade 对齐,
+                // 瞬时网络抖动 continue 重试而不是终止整条轮询协程.
+                res = await WKApp.apiClient.get(`/runtimes/upgrade/${taskId}`)
+            } catch {
+                continue
+            }
+            if (isStale()) return
+            this.setState({ upgradeStatus: res.status })
+            if (res.status === "completed") {
+                this.setState({ upgradeStatus: "completed" })
+                // 方案 3 (升级状态不刷新修复): 原 8s 固定等待砍到 2s —
+                // 后面的确认循环本身已有 2s×10 重试, 足够覆盖 daemon
+                // detect 上报延迟, 固定 8s 只是让 UI 终态白等.
                 await new Promise(r => setTimeout(r, 2000))
                 if (isStale()) return
-                const res = await WKApp.apiClient.get(`/runtimes/upgrade/${taskId}`)
-                if (isStale()) return
-                this.setState({ upgradeStatus: res.status })
-                if (res.status === "completed") {
-                    this.setState({ upgradeStatus: "completed" })
-                    // 方案 3 (升级状态不刷新修复): 原 8s 固定等待砍到 2s —
-                    // 后面的确认循环本身已有 2s×10 重试, 足够覆盖 daemon
-                    // detect 上报延迟, 固定 8s 只是让 UI 终态白等.
+                for (let j = 0; j < 10; j++) {
+                    if (isStale()) return
                     await new Promise(r => setTimeout(r, 2000))
                     if (isStale()) return
-                    for (let j = 0; j < 10; j++) {
+                    try {
+                        const runtimesRes = await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } })
                         if (isStale()) return
-                        await new Promise(r => setTimeout(r, 2000))
-                        if (isStale()) return
-                        try {
-                            const runtimesRes = await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } })
-                            if (isStale()) return
-                            const hints = runtimesRes?.daemon_version_hints || {}
-                            if (!hints[daemonId]?.has_update) {
-                                const allRuntimes = runtimesRes?.runtimes || []
-                                const groups = groupByDevice(allRuntimes)
-                                const updated = groups.find((g: DeviceGroup) => g.daemonId === daemonId)
-                                if (updated) {
-                                    // B-5 (X3): 自我重渲染同样透传 daemonBusy /
-                                    // onUpgradeStarted, 否则这条路径 remount 的
-                                    // detail 丢互斥 props. 注: 此刻本 daemon 升级
-                                    // 刚完成, busy 取自己 props 当前值 (15s 轮询
-                                    // 链路会在下轮带来准确值).
-                                    WKApp.routeRight.replaceToRoot(
-                                        <DeviceDetail
-                                            group={updated}
-                                            pingCache={this.props.pingCache}
-                                            daemonVersionHint={hints[daemonId]}
-                                            daemonBusy={this.props.daemonBusy}
-                                            onUpgradeStarted={this.props.onUpgradeStarted}
-                                        />
-                                    )
-                                }
-                                return
+                        const hints = runtimesRes?.daemon_version_hints || {}
+                        if (!hints[daemonId]?.has_update) {
+                            const allRuntimes = runtimesRes?.runtimes || []
+                            const groups = groupByDevice(allRuntimes)
+                            const updated = groups.find((g: DeviceGroup) => g.daemonId === daemonId)
+                            if (updated) {
+                                // B-5 (X3): 自我重渲染同样透传 daemonBusy /
+                                // onUpgradeStarted, 否则这条路径 remount 的
+                                // detail 丢互斥 props. 注: 此刻本 daemon 升级
+                                // 刚完成, busy 取自己 props 当前值 (15s 轮询
+                                // 链路会在下轮带来准确值).
+                                WKApp.routeRight.replaceToRoot(
+                                    <DeviceDetail
+                                        group={updated}
+                                        pingCache={this.props.pingCache}
+                                        daemonVersionHint={hints[daemonId]}
+                                        daemonBusy={this.props.daemonBusy}
+                                        onUpgradeStarted={this.props.onUpgradeStarted}
+                                    />
+                                )
                             }
-                        } catch {}
-                    }
-                    return
+                            return
+                        }
+                    } catch {}
                 }
-                if (res.status === "failed" || res.status === "timeout") {
-                    this.setState({ upgradeError: res.error_msg || res.status })
-                    return
-                }
+                return
             }
-            this.setState({ upgradeStatus: "timeout", upgradeError: "polling timeout" })
-        } catch (err: any) {
-            // resumeUpgradePoll 自身的网络/解析异常: 不标 failed (任务可能
-            // 还在跑), 留给页面级轮询兜底纠正.
-            if (!isStale()) {
-                this.setState({ upgradeError: err?.msg || err?.message || "" })
+            if (res.status === "failed" || res.status === "timeout") {
+                this.setState({ upgradeError: res.error_msg || res.status })
+                return
             }
         }
+        this.setState({ upgradeStatus: "timeout", upgradeError: "polling timeout" })
     }
 
     render() {
@@ -1799,12 +1798,14 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     // 更早起飞的全量覆盖, 新 bot 左树短暂消失). botsSeq 模块级序号统一
     // 两路: 任一新请求起飞使旧响应作废.
     private botsSeq = 0
-    // R4-2 (cc + codex round 4): refreshAllBots 自带 15s 节流 — 升级期间
+    // R4-2 (cc + codex round 4): refreshAllBots 自带节流 — 升级期间
     // loadData 降到 3s 档时, bot 数据跟升级无关, 不该连带 5 倍 listBots.
+    // R5-1: 阈值取 0.8× 轮询间隔 (12s) 而不是打平 15s — 打平时 15s tick
+    // 到达常差几十 ms 不满阈值被跳过, 空闲态退化成 ~30s 隔轮生效.
     private lastAllBotsAt = 0
 
-    refreshAllBots = async (force = false) => {
-        if (!force && Date.now() - this.lastAllBotsAt < POLL_IDLE_MS) return
+    refreshAllBots = async () => {
+        if (Date.now() - this.lastAllBotsAt < POLL_IDLE_MS * 0.8) return
         const epoch = this.spaceEpoch
         const seq = ++this.botsSeq
         const isStale = () => this.spaceEpoch !== epoch || seq !== this.botsSeq
