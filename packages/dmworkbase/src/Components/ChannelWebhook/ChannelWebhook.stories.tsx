@@ -56,12 +56,12 @@ const mockList: IncomingWebhook[] = [
 
 const mockCreateResp: IncomingWebhookCreateResp = {
     ...mockList[0],
-    token: "ae1c921dd2fc7b036023397e33b8c301",
-    url: "/v1/incoming-webhooks/iwh_becd9cdbeda34190a91339757d64c184/ae1c921dd2fc7b036023397e33b8c301",
+    token: "sample-token-storybook-only",
+    url: "/v1/incoming-webhooks/iwh_becd9cdbeda34190a91339757d64c184/sample-token-storybook-only",
     urls: {
-        native: "/v1/incoming-webhooks/iwh_becd9cdbeda34190a91339757d64c184/ae1c921dd2fc7b036023397e33b8c301",
-        github: "/v1/incoming-webhooks/iwh_becd9cdbeda34190a91339757d64c184/ae1c921dd2fc7b036023397e33b8c301/github",
-        wecom: "/v1/incoming-webhooks/iwh_becd9cdbeda34190a91339757d64c184/ae1c921dd2fc7b036023397e33b8c301/wecom",
+        native: "/v1/incoming-webhooks/iwh_becd9cdbeda34190a91339757d64c184/sample-token-storybook-only",
+        github: "/v1/incoming-webhooks/iwh_becd9cdbeda34190a91339757d64c184/sample-token-storybook-only/github",
+        wecom: "/v1/incoming-webhooks/iwh_becd9cdbeda34190a91339757d64c184/sample-token-storybook-only/wecom",
     },
 };
 
