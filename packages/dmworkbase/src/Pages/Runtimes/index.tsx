@@ -1693,7 +1693,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                     <div className="wk-rt-pagetitle">
                         <h2 className="wk-rt-pagetitle-text">运行时</h2>
                         <span className="wk-rt-pageheader__meta" aria-live="polite">
-                            {groups.length} device{groups.length !== 1 ? "s" : ""} · {totalOnline} online
+                            <span className={`wk-rt-meta-dot${totalOnline > 0 ? " is-online" : ""}`} aria-hidden="true" />
+                            {totalOnline} online · {groups.length} device{groups.length !== 1 ? "s" : ""}
                         </span>
                         <div className="wk-rt-create-wrap">
                             <button
@@ -1704,7 +1705,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                 aria-expanded={createMenuOpen}
                                 aria-label="新建"
                                 onClick={() => this.setState({ createMenuOpen: !createMenuOpen })}
-                            >+</button>
+                            ><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.67v10.66M2.67 8h10.66" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg></button>
                             {createMenuOpen && (
                                 <>
                                     <div
