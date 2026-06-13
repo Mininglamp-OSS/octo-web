@@ -71,20 +71,27 @@
 .wk-rt-provider-icon {
     width: 36px;
     height: 36px;
-    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 15px;
+    font-size: var(--wk-text-size-lg);
     font-weight: 700;
-    color: var(--bg-primary);
+    color: var(--text-primary);
     flex-shrink: 0;
+    overflow: hidden;
 }
 
 .wk-rt-provider-icon.large {
     width: 40px;
     height: 40px;
-    font-size: 18px;
+    font-size: var(--wk-text-size-2xl);
+}
+
+.wk-rt-provider-mark {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
 }
 
 /* ── Status Dot ── */
@@ -352,8 +359,7 @@
 .wk-rt-provider-icon.small {
     width: 28px;
     height: 28px;
-    border-radius: 6px;
-    font-size: 12px;
+    font-size: var(--wk-text-size-sm);
 }
 
 /* ── Device Detail: agent list ── */
@@ -2012,17 +2018,29 @@
 .wk-rt-bot-rows {
   display: flex;
   flex-direction: column;
-  margin-left: 36px;
+  position: relative;
+  margin-left: 86px;
+  padding: 2px 0 4px 8px;
+}
+.wk-rt-bot-rows::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 6px;
+  width: 1px;
+  background: var(--border-light);
 }
 .wk-rt-bot-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px 6px 12px;
-  font-size: 12px;
-  color: var(--text-primary);
+  gap: 10px;
+  min-height: 26px;
+  padding: 3px 10px 3px 0;
+  font-size: var(--wk-text-size-sm);
+  color: var(--text-secondary);
   cursor: pointer;
-  border-radius: 0 4px 4px 0;
+  border-radius: var(--wk-r-xs);
   transition: background-color 0.12s ease;
 }
 .wk-rt-bot-row:hover {
@@ -2044,20 +2062,24 @@
 .wk-rt-bot-dot.pending  { background: var(--wk-color-warning); }
 .wk-rt-bot-name {
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .wk-rt-bot-status {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--wk-text-size-xs);
   color: var(--text-tertiary);
+  flex: 0 0 auto;
 }
 /* .wk-rt-bot-empty + __cta 已删 (caster 2026-06-12): Level-3 空态文案
    "该运行时下暂无 Bot + 在此创建" 移除, 没 bot 的 runtime 直接不可展开 */
 /* 水合前回退懒加载路径的加载指示 (codex R3-3) */
 .wk-rt-bot-loading {
-  margin-left: 36px;
-  padding: 6px 12px;
-  font-size: 11px;
+  margin-left: 86px;
+  padding: 6px 10px;
+  font-size: var(--wk-text-size-xs);
   color: var(--text-tertiary);
 }
 
@@ -2074,4 +2096,18 @@
   position: relative;
   display: inline-flex;
   flex-shrink: 0;
+}
+
+.wk-rt-bot-avatar-wrap {
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+}
+
+.wk-rt-bot-avatar-wrap .wk-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--wk-r-xs);
+  display: block;
 }
