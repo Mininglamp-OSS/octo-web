@@ -9,7 +9,7 @@ export type RuntimeKind = 'openclaw' | 'claude' | 'codex' | 'hermes';
 // (左树 device 行 / RuntimeDetail / CreateBotModal kind 列表) 显示
 // 完全一致, 不再 "kind 列表用裸 'claude' / detail 显示 'Claude Code'" 漂移.
 //
-// 'Claude' 不加 'Code' 后缀 — caster review 决策, 跟其他 kind (Codex /
+// 'Claude' 不加 'Code' 后缀 — 跟其他 kind (Codex /
 // OpenClaw / Hermes) 简洁度对齐.
 export const providerLabels: Record<string, string> = {
   claude:   'Claude',
@@ -36,9 +36,9 @@ export interface Bot {
 
 // PR-2: bot.status enum → 用户可读中文标签. fleet 内部状态机的多个中
 // 间态归为同一面向用户的"配置中"桶, 终态保持区分. 单源放 botsApi.ts
-// 跟 Bot 类型一起, 让 index.tsx 左树跟 BotsTab 列表共用同一映射 (上轮
-// review yujiawei 提到 BotsTab 内联 ternary 漏 draft/archived 跟左树不
-// 一致, 抽到这里两侧 import 同一份).
+// 跟 Bot 类型一起, 让 index.tsx 左树跟 BotsTab 列表共用同一映射 (避免
+// BotsTab 内联 ternary 漏 draft/archived 跟左树不一致, 抽到这里两侧
+// import 同一份).
 export function botStatusLabel(s: string): string {
   switch (s) {
     case 'active':       return '在线';
@@ -165,7 +165,7 @@ export async function createBot(req: CreateBotReq): Promise<Bot> {
   return unwrap<Bot>(await patchRes.json());
 }
 
-// PR-2 review (yujiawei #375): 删 getBot / archiveBot 死代码.
+// PR-2: 删 getBot / archiveBot 死代码.
 // archiveBot 当前是 fleet-only soft-delete, 完整 deprovision (跨 server
 // robot row + WuKongIM channel + daemon 端 adapter resources e.g. openclaw
 // workspace / cc-channel-octo bot config / hermes .env line) 还没接通,

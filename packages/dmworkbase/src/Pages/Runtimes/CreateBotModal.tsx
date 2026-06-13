@@ -25,10 +25,10 @@ interface RuntimeOption {
 interface Props {
   visible: boolean;
   runtimes: RuntimeOption[];
-  // caster 2026-06-12 (codex R3-2): preselectRuntimeId prop 删 — 左树
+  // caster 2026-06-12: preselectRuntimeId prop 删 — 左树
   // Level-3 空态 CTA (唯一 caller) 已随 "没 bot 不可展开" 改动移除.
-  // 将来 runtime 行加创建入口时从 git history 取回 (含 R1-2 的
-  // supported+online 校验逻辑).
+  // 将来 runtime 行加创建入口时从 git history 取回 (含 supported+online
+  // 校验逻辑).
   onClose: () => void;
   onCreated: (botId: number) => void;
 }
@@ -39,7 +39,7 @@ interface DeviceGroup {
   // (chip key prop / setDeviceKey / activeGroup find / handleDevicePick)
   // goes through ONE field. daemon_id below is purely for display.
   //
-  // Why this matters: review F1 (PR #375) found that using daemon_id alone
+  // Why this matters: using daemon_id alone
   // for selection silently mis-binds when ≥2 devices have empty daemon_id
   // (both 'find(g => g.daemon_id === "")' return the first group regardless
   // of which chip the user clicked) — exactly the failure mode the
@@ -92,7 +92,7 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
   // 优先级:
   //   (1) firstReady (有 supported+online runtime 的第一个 device)
   //   (2) 否则随便选第一个 device, runtime 留空
-  // (preselectRuntimeId 分支已删 — codex R3-2 死链路, 见 Props 注释)
+  // (preselectRuntimeId 分支已删 — 死链路, 见 Props 注释)
   useEffect(() => {
     if (!visible) return;
     setName('');
