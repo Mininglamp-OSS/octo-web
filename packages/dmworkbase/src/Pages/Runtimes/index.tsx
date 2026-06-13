@@ -408,7 +408,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                                         )
                                     }
                                     if (inProgress) {
-                                        return <span className="wk-rt-upgrade-status progress"><span className="upgrade-dot" />{upgradeStatus}...</span>
+                                        return <span className="wk-rt-upgrade-status progress"><span className="upgrade-dot" />{upgradeStageLabel(upgradeStatus)}…</span>
                                     }
                                     if (isWindows) {
                                         return <span className="wk-rt-upgrade-btn disabled" title="Windows remote upgrade is not supported yet">Upgrade</span>
@@ -956,6 +956,22 @@ function isUpgradeInProgress(status: string): boolean {
     return UPGRADE_IN_PROGRESS_STATUSES.has(status)
 }
 
+// 升级 in-progress 阶段的展示文案 (单源, 3 处升级按钮共用). 英文 — 跟
+// detail 面板 label 一致. daemon 逐阶段上报 (downloading→installing→
+// restarting), 自适应轮询 3s 拉到变化, 这里把原始 status 映射成可读阶段
+// 让用户看到"在动、在哪一步", 而非一个静态 installing. 终态
+// (completed/failed/timeout) 由各 renderer 自己处理, 不走这里.
+function upgradeStageLabel(status: string): string {
+    switch (status) {
+        case "pending":
+        case "dispatched":  return "Queued"
+        case "downloading": return "Downloading"
+        case "installing":  return "Installing"
+        case "restarting":  return "Restarting"
+        default:            return status
+    }
+}
+
 // busy-disabled title 单源 (6 个按钮共用). 英文 — detail 面板 label 已统一
 // 全英文 (同面板 Windows disabled title 也是英文, 语言保持一致).
 const UPGRADE_BUSY_TITLE = "Another upgrade is in progress on this device, please wait"
@@ -1182,7 +1198,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             return (
                 <span className="wk-rt-upgrade-status progress">
                     <span className="upgrade-dot" />
-                    {pluginUpgradeStatus}
+                    {upgradeStageLabel(pluginUpgradeStatus)}…
                 </span>
             )
         }
@@ -1310,7 +1326,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             return (
                 <span className="wk-rt-upgrade-status progress">
                     <span className="upgrade-dot" />
-                    {componentUpgradeStatus}
+                    {upgradeStageLabel(componentUpgradeStatus)}…
                 </span>
             )
         }
@@ -1593,17 +1609,34 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         }
     }
 
+    // 页面重新可见 / 窗口聚焦时立即拉一次最新 — 自适应轮询管页面内,
+    // 管不到"用户切走 tab 期间不看、切回看到旧帧"这个盲区. visibilitychange
+    // 与 focus 同一次切回会双触发, 且 focus 在页面内点击也乱触发, 故 1.5s
+    // 节流去重 (loadData 的 loadSeq 再兜竞态). silent 不闪 loading.
+    private lastVisRefresh = 0
+    private onVisible = () => {
+        if (document.visibilityState !== "visible") return
+        const now = Date.now()
+        if (now - this.lastVisRefresh < 1500) return
+        this.lastVisRefresh = now
+        this.loadData(true)
+    }
+
     componentDidMount() {
         this.loadData()
         this.startPollTimer(POLL_IDLE_MS)
         WKApp.mittBus.on("space-changed", this.handleSpaceChanged)
         document.addEventListener("keydown", this.handleGlobalKeyDown)
+        document.addEventListener("visibilitychange", this.onVisible)
+        window.addEventListener("focus", this.onVisible)
     }
 
     componentWillUnmount() {
         if (this.pollTimer) clearInterval(this.pollTimer)
         WKApp.mittBus.off("space-changed", this.handleSpaceChanged)
         document.removeEventListener("keydown", this.handleGlobalKeyDown)
+        document.removeEventListener("visibilitychange", this.onVisible)
+        window.removeEventListener("focus", this.onVisible)
     }
 
     // 升级期间临时加速兜底轮询 (runtime页升级状态不刷新 修复方案 2):
