@@ -961,6 +961,8 @@ function isUpgradeInProgress(status: string): boolean {
 // restarting), 自适应轮询 3s 拉到变化, 这里把原始 status 映射成可读阶段
 // 让用户看到"在动、在哪一步", 而非一个静态 installing. 终态
 // (completed/failed/timeout) 由各 renderer 自己处理, 不走这里.
+// ⚠️ 新增 in-progress 状态时同步 UPGRADE_IN_PROGRESS_STATUSES + 这里,
+// 否则漏的态走 default 显示原始 snake_case (不崩, 但用户看着别扭).
 function upgradeStageLabel(status: string): string {
     switch (status) {
         case "pending":
@@ -1619,7 +1621,12 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         const now = Date.now()
         if (now - this.lastVisRefresh < 1500) return
         this.lastVisRefresh = now
-        this.loadData(true)
+        void this.loadData(true)
+        // 重置 pollTimer 对齐到"刚刷过"的点: tab 切后台时 setInterval 可能被
+        // 浏览器节流堆积, 切回时补跑的 poll 若紧随本次 loadData 启动会递增
+        // loadSeq 把这次"切回刷新"的响应判 stale (轻则延迟、重则该 poll 失败
+        // 时本次切回不落数据). 重置后下一轮 poll 从现在起算, 不抢这次刷新.
+        this.startPollTimer(this.currentPollMs)
     }
 
     componentDidMount() {
