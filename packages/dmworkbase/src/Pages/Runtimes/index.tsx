@@ -67,7 +67,7 @@ interface RuntimesState {
 
 // providerLabels 已抽到 botsApi.ts (单源 export), CreateBotModal 也共用同
 // 一份, 避免 "kind 列表用裸 'claude' / detail 显示 'Claude Code'" 三层
-// 概念名漂移. (UI/UX review #375 follow-up: P0-1 术语统一)
+// 概念名漂移 (术语统一).
 
 function parseMetadata(raw: string): Record<string, unknown> | null {
     if (!raw) return null
@@ -181,7 +181,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
     }
 
     componentDidMount() {
-        // R4-3 (cc) / R3-5 (codex), round 4 双方同抓: DeviceDetail 跟
+        // DeviceDetail 跟
         // RuntimeDetail 893 行同款 remount 续看 — replaceToRoot remount 后
         // 原 handleUpgrade 轮询协程死 (isStale), 新实例若初始 state 是
         // in-progress 必须续看, 否则 upgradeStatus 冻结在 remount 时刻值,
@@ -205,7 +205,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
             )
             return
         }
-        // R4-3/R3-5: 同 daemon 下 activeUpgrade prop 变化 → state 跟进
+        // 同 daemon 下 activeUpgrade prop 变化 → state 跟进
         // (RuntimeDetail syncUpgradeStateFromProp 同款语义): 页面级轮询
         // (15s/3s) 经 B-4 re-replaceToRoot 推新 prop, React 原地复用实例
         // 时走这里. prop 消失 (任务终态出 active_upgrades) 时若本地还是
@@ -266,7 +266,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
         }
     }
 
-    // 轮询已知 taskId 的进度. 抽出复用 (R4-3/R3-5 round 4): 1) handleUpgrade
+    // 轮询已知 taskId 的进度. 抽出复用: 1) handleUpgrade
     // 首次点击; 2) componentDidMount remount 续看 — 跟 RuntimeDetail
     // pollPluginUpgrade/pollComponentUpgrade 同款双入口模式.
     resumeUpgradePoll = async (taskId: string) => {
@@ -278,7 +278,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
             if (isStale()) return
             let res: any
             try {
-                // R5-2: 单次容错 — 跟 RuntimeDetail pollPluginUpgrade 对齐,
+                // 单次容错 — 跟 RuntimeDetail pollPluginUpgrade 对齐,
                 // 瞬时网络抖动 continue 重试而不是终止整条轮询协程.
                 res = await WKApp.apiClient.get(`/runtimes/upgrade/${taskId}`)
             } catch {
@@ -912,7 +912,7 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
     }
 }
 
-// ─── BotsSection 已删 (PR-2 review-fix round 2):
+// ─── BotsSection 已删 (PR-2):
 //     左树 Level-3 (BotRow) 已显示该 runtime 的 bot 列表 + 顶部 + popover
 //     提供"创建 Bot" 入口, 这一段嵌入式 BotsSection 完全 dead code.
 // ────────────────────────────────────────────────────────────────────────
@@ -934,7 +934,7 @@ interface RuntimeDetailProps {
     // §2.C: POST /runtimes/upgrade 成功后通知父层立即 silent loadData,
     // 让其他已打开 detail 的 daemonBusy 在 ~1s 内更新 (不等 15s 轮询).
     onUpgradeStarted?: () => void
-    // UI/UX review #375 follow-up (P1-3): RuntimeDetail 详情页信息密度
+    // RuntimeDetail 详情页信息密度
     // 低 (只 Runtime Mode / Provider / Version / Octo Plugin). 父侧
     // RuntimesPage 持有 botsByRuntime cache, 把"已绑定 Bot 数" prop 注入
     // 让 detail 页有 runtime-级别的真实信息 (跟 last_seen_at 那种 daemon-
@@ -957,7 +957,7 @@ function isUpgradeInProgress(status: string): boolean {
 }
 
 // busy-disabled title 单源 (6 个按钮共用). 英文 — detail 面板 label 已统一
-// 全英文 (cc R3-4: 同面板 Windows disabled title 也是英文, 语言保持一致).
+// 全英文 (同面板 Windows disabled title 也是英文, 语言保持一致).
 const UPGRADE_BUSY_TITLE = "Another upgrade is in progress on this device, please wait"
 
 // 页面级轮询两档间隔: 空闲 15s; 有 in-progress 升级任务时 3s (升级状态
@@ -1476,7 +1476,7 @@ function BotRow({ bot, onOpen }: BotRowProps) {
                 {isOnline && <span className="wk-rt-online-dot" title="Online" />}
             </div>
             <span className="wk-rt-bot-name">{bot.name}</span>
-            {/* P0-1 follow-up (UI/UX review): bot.status==='active' 时
+            {/* bot.status==='active' 时
                 头像绿点已经表达"在线", 不再显示"在线"文字避免重复 — 仅
                 非 active 状态显示 (配置中/失败/草稿/已归档 是有信息量的). */}
             {bot.status !== "active" && (
@@ -1496,7 +1496,7 @@ interface RuntimesPageState extends RuntimesState {
     expandedRuntimes: Set<number>
     botsByRuntime: Map<number, Bot[]>
     botsLoading: Set<number>
-    // codex R3-3: botsByRuntime 首次水合标记. 没水合前 (首屏 loadData →
+    // botsByRuntime 首次水合标记. 没水合前 (首屏 loadData →
     // refreshAllBots 在飞) 不能把所有 runtime 按 "0 bot" 渲染成不可展开 —
     // 回退到旧的 "可展开 + 展开时懒加载" 行为, 水合后才用 "没 bot 不可
     // 展开" 新逻辑.
@@ -1532,12 +1532,12 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     private pollTimer?: ReturnType<typeof setInterval>
     private selectedDaemonId?: string
 
-    // C1 + R1: BotsTab 创建成功后刷该 runtime 的 Level-3 cache, 用户当前
-    // 看到的 bot 列表立刻包含新建项. R1: 同时把父 device 也展开 — 用户
+    // C1: BotsTab 创建成功后刷该 runtime 的 Level-3 cache, 用户当前
+    // 看到的 bot 列表立刻包含新建项. 同时把父 device 也展开 — 用户
     // 从顶部 + popover 创建时 device 行可能未展开, 仅展开 runtime 看不
     // 到 (上层 device 折叠把整 subtree 藏了), tree 链路体感断.
     //
-    // P1 fix (yujiawei review #375): 创建成功后 BotsTab.selectBot 会把
+    // 创建成功后 BotsTab.selectBot 会把
     // BotDetailPanel 推到 routeRight, 此时 selectedId 不能停留在某个
     // agent 上 — 否则 silent loadData 15s 后 showAgentDetail 把 Bot pane
     // 替换回 RuntimeDetail. selectedDaemonId 同理 (DeviceDetail 路径).
@@ -1547,7 +1547,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         // 空 daemon_id 走 'unknown' fallback, 跟 groupByDevice line 89
         // (rt.daemon_id || 'unknown') 同公式 — device 行身份在那里 fallback
         // 到 'unknown', 这里若用原始 '' 加进 expandedDevices 会因短路不
-        // 展开父 device, 用户看不到刚建的 bot. (lml2468 review #375 nit)
+        // 展开父 device, 用户看不到刚建的 bot.
         const daemonKey = rt?.daemon_id || "unknown"
         this.selectedDaemonId = undefined
         this.setState((prev) => {
@@ -1576,7 +1576,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             botsLoading: new Set(),
             botsHydrated: false,
         })
-        // R4-2: 新 space 的首次全量 bot 拉取不受旧 space 节流时间戳约束
+        // 新 space 的首次全量 bot 拉取不受旧 space 节流时间戳约束
         this.lastAllBotsAt = 0
         WKApp.routeRight.popToRoot()
         this.loadData()
@@ -1728,7 +1728,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             if (isStale()) return
             if (!silent) this.setState({ loading: false })
         } finally {
-            // X7 + cc R3-3: loading 兜底归"最新请求"管 — seq 不是最新说明
+            // X7: loading 兜底归"最新请求"管 — seq 不是最新说明
             // 有更新的请求在飞, 它的成功/finally 路径会收尾, 本请求不动
             // (防旧 non-silent 把新 non-silent 刚设的 loading 提前翻掉).
             // seq 是最新且 loading 还挂着 (e.g. non-silent 被 silent 抢先
@@ -1782,15 +1782,15 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     // 端过滤), 这里批量按 runtime_id 分组回填 botsByRuntime. 由 loadData
     // 每 15s 调用 — 也顺带让 Level-3 bot 行保持新鲜 (别处创建的 bot 会出现).
     //
-    // R3 review (cc R3-2 / codex R3-1): refreshAllBots 整 Map 替换跟
+    // refreshAllBots 整 Map 替换跟
     // refreshRuntimeBots 单 key 合并是双路并发写 — 旧全量响应晚到会覆盖
     // 新单 key 结果 (e.g. 刚创建 bot 后 handleBotCreated 的单 key 刷新被
     // 更早起飞的全量覆盖, 新 bot 左树短暂消失). botsSeq 模块级序号统一
     // 两路: 任一新请求起飞使旧响应作废.
     private botsSeq = 0
-    // R4-2 (cc + codex round 4): refreshAllBots 自带节流 — 升级期间
+    // refreshAllBots 自带节流 — 升级期间
     // loadData 降到 3s 档时, bot 数据跟升级无关, 不该连带 5 倍 listBots.
-    // R5-1: 阈值取 0.8× 轮询间隔 (12s) 而不是打平 15s — 打平时 15s tick
+    // 阈值取 0.8× 轮询间隔 (12s) 而不是打平 15s — 打平时 15s tick
     // 到达常差几十 ms 不满阈值被跳过, 空闲态退化成 ~30s 隔轮生效.
     private lastAllBotsAt = 0
 
@@ -1816,7 +1816,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 for (const rt of prev.runtimes) {
                     if (!next.has(rt.id)) next.set(rt.id, [])
                 }
-                // codex R3-3: 首屏 botsByRuntime 未水合前不能按 "0 bot" 渲染
+                // 首屏 botsByRuntime 未水合前不能按 "0 bot" 渲染
                 // (所有 runtime 都没箭头, 数据回来箭头才冒出来). hydrated
                 // 标记让 render 在水合前回退到 "可展开 + 懒加载" 旧行为.
                 return { botsByRuntime: next, botsHydrated: true }
@@ -1830,7 +1830,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     refreshRuntimeBots = async (runtimeId: number) => {
         // C9 in-flight guard: 进 epoch 闭包, 响应回来时若 epoch 变过
         // (期间切了 space) 就丢弃, 防旧 space 数据回填.
-        // R3-2/R3-1: botsSeq 跟 refreshAllBots 共用 — 单 key 刷新起飞也
+        // botsSeq 跟 refreshAllBots 共用 — 单 key 刷新起飞也
         // 使在飞的全量响应作废 (双路写 botsByRuntime 的最新 wins).
         const epoch = this.spaceEpoch
         const seq = ++this.botsSeq
@@ -1856,7 +1856,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 loading.delete(runtimeId)
                 return { botsByRuntime: next, botsLoading: loading }
             }, () => {
-                // R1-3 fix (cc + codex review #PR-3): RuntimeDetail 经
+                // RuntimeDetail 经
                 // routeRight.replaceToRoot 命令式渲染, 不在 React tree 内
                 // 接收新 props. cache miss 后这里的 setState 只刷新左树
                 // botsByRuntime cache, 已 mount 的 RuntimeDetail 不会自动
@@ -1877,7 +1877,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 return { botsLoading: loading }
             })
         } finally {
-            // R4-1 (cc + codex round 4 同抓): 本请求被 botsSeq 作废 (更新
+            // 本请求被 botsSeq 作废 (更新
             // 的 refreshAllBots / 别的单 key 请求起飞) 时, 上面所有
             // setState 都被 isStale 挡住 — botsLoading 里的标记没人清,
             // 若接班的全量请求恰好失败, "加载中…" 挂死且 needFirstLoad
@@ -1961,7 +1961,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     render() {
         const { runtimes, selectedId, loading, expandedDevices, createMenuOpen, runtimeModalOpen } = this.state
         const groups = groupByDevice(runtimes)
-        // P1 follow-up (UI/UX review): "M online" 含义重定义 — 不再是
+        // "M online" 含义重定义 — 不再是
         // 顶部计数纯报"装置-运行时"槽位规模, 不报死活. 单 runtime 死活
         // 由 DeviceDetail 右上角 "X/Y Online" 表达; 顶栏只回答 "我有几个
         // device, 加起来几个 runtime", 跟左树展开后的总条数一致.
@@ -2092,7 +2092,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                     // 已有). botsByRuntime 由 loadData → refreshAllBots 批量
                                     // 预填 (15s), 不再依赖展开时懒加载.
                                     //
-                                    // codex R3-3: 首屏水合前 (refreshAllBots 还没回来)
+                                    // 首屏水合前 (refreshAllBots 还没回来)
                                     // botsByRuntime 全空, 不能按 "0 bot" 把全树渲染成不可
                                     // 展开 — 回退旧 "可展开 + 懒加载" 行为, 水合后才启用
                                     // 新逻辑. 失败时 botsHydrated 维持 false 同样回退.
@@ -2104,7 +2104,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                         <div key={rt.id} className="wk-rt-rt-block">
                                             <div
                                                 className={`wk-rt-agent-row ${selectedId === rt.id ? "selected" : ""}`}
-                                                // cc R3-5 (a11y): 不可展开行不再播报成可操作的
+                                                // a11y: 不可展开行不再播报成可操作的
                                                 // 折叠按钮 — role/tabIndex/aria-expanded 仅在
                                                 // expandable 时给 (此页 a11y 之前 C6 专门修过).
                                                 role={expandable ? "button" : undefined}
@@ -2153,7 +2153,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                                             key={b.id}
                                                             bot={b}
                                                             onOpen={(id) => {
-                                                                // P1 fix (yujiawei review #375): 打开 Bot 详情前清
+                                                                // 打开 Bot 详情前清
                                                                 // selectedId / selectedDaemonId, 否则 15s silent
                                                                 // loadData 触发 showAgentDetail() 把 routeRight 上
                                                                 // 当前 BotDetailPanel 强行 replaceToRoot 回 RuntimeDetail

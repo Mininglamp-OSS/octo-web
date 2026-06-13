@@ -98,7 +98,7 @@ export function BotDetailPanel({ bot }: { bot: Bot }) {
             resources (openclaw workspace, cc-channel-octo bot config,
             hermes .env line) are NOT cleaned up — leaving stale state
             on multiple ends. Restore once adapter.Deprovision is
-            implemented end-to-end across runtimes (吕思佳 PR #34
+            implemented end-to-end across runtimes (the daemon-side
             interface is in place; claude/hermes/codex still TODO). */}
       </header>
 
