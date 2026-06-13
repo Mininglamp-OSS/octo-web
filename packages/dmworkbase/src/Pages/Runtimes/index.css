@@ -71,20 +71,34 @@
 .wk-rt-provider-icon {
     width: 36px;
     height: 36px;
-    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 15px;
+    font-size: var(--wk-text-size-lg);
     font-weight: 700;
-    color: var(--bg-primary);
+    color: var(--text-primary);
     flex-shrink: 0;
+    overflow: hidden;
+    /* 白底 + 细边框卡片容器 — 跟 device 灰底 (bg-secondary) 区分层级
+       (device 灰基座 → runtime 白卡), 且白底衬彩色品牌 logo 比浅灰更清晰.
+       不用品牌实色底: logo 本身已彩色, 实色底会与之争色. (caster 2026-06-13) */
+    border-radius: var(--wk-r-md, 8px);
+    background: var(--card-bg);
+    border: 1px solid var(--border-light);
 }
 
 .wk-rt-provider-icon.large {
     width: 40px;
     height: 40px;
-    font-size: 18px;
+    font-size: var(--wk-text-size-2xl);
+}
+
+.wk-rt-provider-mark {
+    /* 留白露出圆角底, 像 app 图标; contain 防非方形 logo 变形. */
+    width: 72%;
+    height: 72%;
+    display: block;
+    object-fit: contain;
 }
 
 /* ── Status Dot ── */
@@ -352,8 +366,7 @@
 .wk-rt-provider-icon.small {
     width: 28px;
     height: 28px;
-    border-radius: 6px;
-    font-size: 12px;
+    font-size: var(--wk-text-size-sm);
 }
 
 /* ── Device Detail: agent list ── */
@@ -1018,7 +1031,9 @@
  * is the only divider; section subheader takes over below.
  */
 .wk-rt-pageheader {
-  padding: 14px 16px;
+  /* 右 padding 收窄让 + 更贴右缘; 下 padding 收窄让分割横线上移,
+     减少标题与横线间留白 (caster 2026-06-13). */
+  padding: 14px 12px 9px 16px;
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border-light);
 }
@@ -2012,18 +2027,50 @@
 .wk-rt-bot-rows {
   display: flex;
   flex-direction: column;
-  margin-left: 36px;
+  /* 竖线对齐 runtime provider-icon 水平中心 (agent-row padding-left 24 +
+     arrow 14 + gap 10 = 48 icon 左缘, + 28/2 = 62) — 竖线从 runtime 头像
+     正下方垂下. bot avatar 落在 padding-left(18) 后 = 62+18 = 80px, 在
+     runtime 头像右缘(76)之外, 形成子级缩进层级 (├/└ 连接线串起). */
+  margin-left: 62px;
+  padding: 2px 0 4px 0;
 }
 .wk-rt-bot-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px 6px 12px;
-  font-size: 12px;
-  color: var(--text-primary);
+  gap: 10px;
+  min-height: 26px;
+  padding: 3px 10px 3px 18px;
+  font-size: var(--wk-text-size-sm);
+  color: var(--text-secondary);
   cursor: pointer;
-  border-radius: 0 4px 4px 0;
+  border-radius: var(--wk-r-xs);
   transition: background-color 0.12s ease;
+}
+/* 树形连接线 ├: 竖线段 (贯穿整行) + 横线段 (行垂直中心伸向 avatar).
+   gridline-subtle: 用 border-light 低对比, 不与内容争视觉. */
+.wk-rt-bot-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-light);
+}
+.wk-rt-bot-row::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 12px;
+  height: 1px;
+  background: var(--border-light);
+}
+/* 最后一个 bot └ 拐弯: 竖线只到行垂直中心, 与横线交汇成 L. */
+.wk-rt-bot-row:last-child::before {
+  bottom: auto;
+  height: 50%;
 }
 .wk-rt-bot-row:hover {
   background: var(--bg-hover);
@@ -2044,20 +2091,25 @@
 .wk-rt-bot-dot.pending  { background: var(--wk-color-warning); }
 .wk-rt-bot-name {
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .wk-rt-bot-status {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--wk-text-size-xs);
   color: var(--text-tertiary);
+  flex: 0 0 auto;
 }
 /* .wk-rt-bot-empty + __cta 已删 (caster 2026-06-12): Level-3 空态文案
    "该运行时下暂无 Bot + 在此创建" 移除, 没 bot 的 runtime 直接不可展开 */
-/* 水合前回退懒加载路径的加载指示 (codex R3-3) */
+/* 水合前回退懒加载路径的加载指示 — 在 bot-rows 内 (父已 margin-left:62),
+   只需 padding-left 对齐 bot avatar @80, 不再叠加 margin-left 否则双重
+   偏移过深. */
 .wk-rt-bot-loading {
-  margin-left: 36px;
-  padding: 6px 12px;
-  font-size: 11px;
+  padding: 6px 10px 6px 18px;
+  font-size: var(--wk-text-size-xs);
   color: var(--text-tertiary);
 }
 
@@ -2074,4 +2126,18 @@
   position: relative;
   display: inline-flex;
   flex-shrink: 0;
+}
+
+.wk-rt-bot-avatar-wrap {
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+}
+
+.wk-rt-bot-avatar-wrap .wk-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--wk-r-xs);
+  display: block;
 }
