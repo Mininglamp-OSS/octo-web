@@ -867,6 +867,16 @@ export default class WKApp extends ProviderListener {
         if (res.id) {
           WKSDK.shared().config.clientMsgDeviceId = res.id;
         }
+      })
+      .catch((err) => {
+        // 设备记录不存在（status===400）或其它读取失败时，仅记录告警以消除
+        // unhandled promise rejection；不写 clientMsgDeviceId，保持原值降级运行。
+        // 服务端暂无设备注册端点，此处不做注册，仅兜底。
+        const notFound = err?.status === 400;
+        console.warn(
+          `[startMain] fetch device record failed${notFound ? " (device not found)" : ""}`,
+          { deviceId: WKApp.shared.deviceId, status: err?.status, code: err?.code }
+        );
       });
   }
 
