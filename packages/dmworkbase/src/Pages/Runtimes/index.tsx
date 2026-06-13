@@ -6,6 +6,7 @@ import WKAvatar from "../../Components/WKAvatar"
 import { BotsTab, type BotsTabHandle } from "./BotsTab"
 import { CreateRuntimeModal } from "./CreateRuntimeModal"
 import { Bot, botStatusLabel, listBots, providerLabels } from "./botsApi"
+import { ProviderLogo } from "./providerLogos"
 import "./index.css"
 
 interface AgentRuntime {
@@ -62,13 +63,6 @@ interface RuntimesState {
     loading: boolean
     selectedId: number | null
     expandedDevices: Set<string>
-}
-
-const providerColors: Record<string, string> = {
-    claude: "#D97706",
-    codex: "#059669",
-    openclaw: "#DC2626",
-    hermes: "#4B5563",
 }
 
 // providerLabels 已抽到 botsApi.ts (单源 export), CreateBotModal 也共用同
@@ -923,7 +917,6 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
 //     提供"创建 Bot" 入口, 这一段嵌入式 BotsSection 完全 dead code.
 // ────────────────────────────────────────────────────────────────────────
 
-
 // ─── RuntimeDetail: rendered in RIGHT panel when clicking an agent ──────
 
 interface RuntimeDetailProps {
@@ -1340,11 +1333,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         return (
             <div className="wk-rt-detail">
                 <div className="wk-rt-detail-header">
-                    <div
-                        className="wk-rt-provider-icon large"
-                        style={{ background: providerColors[rt.provider] || "#6B7280" }}
-                    >
-                        {(providerLabels[rt.provider] || rt.provider).charAt(0).toUpperCase()}
+                    <div className="wk-rt-provider-icon large">
+                        <ProviderLogo provider={rt.provider} className="wk-rt-provider-mark" />
                     </div>
                     <div className="wk-rt-detail-title">
                         <h2>{rt.name}</h2>
@@ -2132,11 +2122,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                                 {expandable
                                                     ? <span className={`wk-rt-expand-arrow ${rtExpanded ? "expanded" : ""}`}>&#9654;</span>
                                                     : <span className="wk-rt-expand-arrow placeholder" aria-hidden="true" />}
-                                                <div
-                                                    className="wk-rt-provider-icon small"
-                                                    style={{ background: providerColors[rt.provider] || "#6B7280" }}
-                                                >
-                                                    {(providerLabels[rt.provider] || rt.provider).charAt(0).toUpperCase()}
+                                                <div className="wk-rt-provider-icon small">
+                                                    <ProviderLogo provider={rt.provider} className="wk-rt-provider-mark" />
                                                 </div>
                                                 <div
                                                     className="wk-rt-list-item-info"
