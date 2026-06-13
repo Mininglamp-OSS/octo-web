@@ -297,7 +297,7 @@ export const FilterApplied: Story = {
     if (
       canvasElement
         .querySelector(".wk-channel-search-filter-trigger")
-        ?.textContent?.trim() !== "筛选8"
+        ?.textContent?.trim() !== "筛选3"
     ) {
       throw new Error(
         "Expected filter trigger to show selected condition count"

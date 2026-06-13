@@ -641,6 +641,7 @@ export default class ThreadPanel extends Component<
 
     const opts = new ShowConversationOptions();
     opts.openChannelSearch = true;
+    opts.fromSidebarList = true;
     this.setState({ showMoreMenu: false });
     WKApp.endpoints.showConversation(threadChannel, opts);
     this.props.onClose();

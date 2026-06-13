@@ -568,8 +568,8 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
   top: 0;
   right: 0;
   margin-right: calc(0px - var(--wk-width-chat-search-panel));
-  background-color: #ffffff;
-  border-left: 1px solid rgba(28, 28, 35, 0.08);
+  background-color: var(--wk-bg-surface);
+  border-left: 1px solid var(--wk-border-default);
 }
 
 .wk-chat-content-right.wk-chat-channel-search-open .wk-chat-content-chat {

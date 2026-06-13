@@ -15,7 +15,7 @@ import ChatConversationList, {
 import Provider from "../../Service/Provider";
 import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
-import { Spin, Popover } from "@douyinfe/semi-ui";
+import { Spin, Popover, Toast } from "@douyinfe/semi-ui";
 import WKButton from "../../Components/WKButton";
 import WKModal from "../../Components/WKModal";
 import { Columns2 } from "lucide-react";
@@ -30,6 +30,7 @@ import { createChannelSearchApiDataSource } from "../../Components/ChannelSearch
 import type {
   ChannelSearchDataSource,
   ChannelSearchItem,
+  ChannelSearchPanelState,
 } from "../../Components/ChannelSearch/types";
 import classNames from "classnames";
 import {
@@ -244,6 +245,8 @@ export interface ChatContentPageState {
   summaryPanelView: "history" | "new";
   /** 频道内聊天搜索面板是否显示 */
   showChannelSearch: boolean;
+  /** 当前文件预览关闭后是否需要回到频道内搜索面板 */
+  previewReturnChannelSearch: boolean;
 }
 export class ChatContentPage extends Component<
   ChatContentPageProps,
@@ -257,6 +260,7 @@ export class ChatContentPage extends Component<
   private parentGroupChannel?: Channel;
   private channelSearchDataSourceKey = "";
   private channelSearchDataSource?: ChannelSearchDataSource;
+  private channelSearchPanelState?: ChannelSearchPanelState;
 
   constructor(props: any) {
     super(props);
@@ -275,10 +279,14 @@ export class ChatContentPage extends Component<
       showSummaryPanel: false,
       summaryPanelView: "new",
       showChannelSearch: !!props.initialShowChannelSearch,
+      previewReturnChannelSearch: false,
     };
   }
 
-  private _onFilePreview = (file: FilePreviewInfo) => {
+  private _onFilePreview = (
+    file: FilePreviewInfo,
+    options?: { returnToChannelSearch?: boolean }
+  ) => {
     const { channel } = this.props;
     const { showThreadPanel, activeThread } = this.state;
 
@@ -311,6 +319,7 @@ export class ChatContentPage extends Component<
         activeThread: null,
         previewFile: null,
         activePreviewMessageId: null,
+        previewReturnChannelSearch: false,
       });
       // 切换到子区完整视图
       const threadChannel = new Channel(
@@ -331,6 +340,7 @@ export class ChatContentPage extends Component<
     // 内部 state (tab / 展开的时间线 / 选中的 matter) 全部保留, 用户感受
     // 上跟 "回到事项详情" 一致, 且不会闪一下重新拉数据。
     const fromMatter = !!file.originMatterId;
+    const fromChannelSearch = !!options?.returnToChannelSearch;
     this.setState({
       previewFile: file,
       showThreadPanel: true, // 确保面板打开
@@ -343,10 +353,13 @@ export class ChatContentPage extends Component<
       showSummaryPanel: false,
       activePreviewMessageId: file.messageId || null, // 保存激活的消息 ID
       previewReturnMatterId: file.originMatterId || null,
+      previewReturnChannelSearch: fromChannelSearch,
       // 仅当预览触发前用户已经在子区面板里 (showThreadPanel 已经是 true)
       // 才允许显示 ← 返回箭头, 让 ← 真正回到子区列表/详情。其他来源
       // (消息附件、事项详情等) 一律隐藏 ← , 避免误导用户跳到子区。
-      previewHadThreadShell: this.state.showThreadPanel,
+      previewHadThreadShell: fromChannelSearch
+        ? false
+        : this.state.showThreadPanel,
     });
   };
 
@@ -371,17 +384,32 @@ export class ChatContentPage extends Component<
     const { channel } = this.props;
     const name = file.name || t("base.conversation.file.unknown");
     const url = file.previewUrl || file.downloadUrl || file.url || "";
-    this._onFilePreview({
-      url,
-      name,
-      extension: getExtension(file.extension || "", name),
-      size: file.size,
-      sourceChannelId: item.channelId || channel.channelID,
-      sourceChannelType: item.channelType || channel.channelType,
-      messageId: item.messageId,
-      messageSeq: item.messageSeq,
-      fromUID: item.senderUid,
-    });
+    if (!url) {
+      Toast.warning(t("base.channelSearch.downloadUnavailable"));
+      return;
+    }
+    this._onFilePreview(
+      {
+        url,
+        name,
+        extension: getExtension(file.extension || "", name),
+        size: file.size,
+        sourceChannelId: item.channelId || channel.channelID,
+        sourceChannelType: item.channelType || channel.channelType,
+        messageId: item.messageId,
+        messageSeq: item.messageSeq,
+        fromUID: item.senderUid,
+      },
+      { returnToChannelSearch: true }
+    );
+  };
+
+  private _onChannelSearchStateChange = (state: ChannelSearchPanelState) => {
+    this.channelSearchPanelState = state;
+  };
+
+  private _clearChannelSearchState = () => {
+    this.channelSearchPanelState = undefined;
   };
 
   /**
@@ -395,12 +423,18 @@ export class ChatContentPage extends Component<
    */
   private _closePreviewAndMaybeRestoreMatter = (resetThreadShell: boolean) => {
     const fromMatter = !!this.state.previewReturnMatterId;
-    const shouldResetThread = fromMatter || resetThreadShell;
+    const fromChannelSearch = !!this.state.previewReturnChannelSearch;
+    const shouldResetThread =
+      fromMatter || fromChannelSearch || resetThreadShell;
     this.setState({
       previewFile: null,
       activePreviewMessageId: null,
       previewReturnMatterId: null,
+      previewReturnChannelSearch: false,
       previewHadThreadShell: false,
+      showChannelSearch: fromChannelSearch
+        ? true
+        : this.state.showChannelSearch,
       ...(shouldResetThread
         ? { showThreadPanel: false, activeThread: null }
         : {}),
@@ -441,6 +475,7 @@ export class ChatContentPage extends Component<
           showMatterDetailPanel: false, // 关闭事项详情面板
           showSummaryPanel: false,
           showChannelSearch: false,
+          previewReturnChannelSearch: false,
         });
       }
     };
@@ -473,6 +508,9 @@ export class ChatContentPage extends Component<
           showThreadPanel: opening ? false : prevState.showThreadPanel,
           activeThread: opening ? null : prevState.activeThread,
           previewFile: opening ? null : prevState.previewFile,
+          previewReturnChannelSearch: opening
+            ? false
+            : prevState.previewReturnChannelSearch,
           activePreviewMessageId: opening
             ? null
             : prevState.activePreviewMessageId,
@@ -504,6 +542,7 @@ export class ChatContentPage extends Component<
           activeThread: null,
           previewFile: null,
           activePreviewMessageId: null,
+          previewReturnChannelSearch: false,
           showSummaryPanel: false,
           showChannelSearch: false,
         };
@@ -535,6 +574,9 @@ export class ChatContentPage extends Component<
           showThreadPanel: opening ? false : prevState.showThreadPanel,
           activeThread: opening ? null : prevState.activeThread,
           previewFile: opening ? null : prevState.previewFile,
+          previewReturnChannelSearch: opening
+            ? false
+            : prevState.previewReturnChannelSearch,
           activePreviewMessageId: opening
             ? null
             : prevState.activePreviewMessageId,
@@ -551,6 +593,7 @@ export class ChatContentPage extends Component<
         activeThread: null,
         previewFile: null,
         activePreviewMessageId: null,
+        previewReturnChannelSearch: false,
         showMatterPanel: false, // 互斥
         showMatterDetailPanel: false, // 互斥
         showSummaryPanel: false,
@@ -581,6 +624,7 @@ export class ChatContentPage extends Component<
         showMatterDetailPanel: false, // 互斥
         showSummaryPanel: false,
         showChannelSearch: false,
+        previewReturnChannelSearch: false,
       });
     }
 
@@ -603,6 +647,13 @@ export class ChatContentPage extends Component<
 
   componentDidUpdate(prevProps: ChatContentPageProps) {
     const { channel } = this.props;
+    const channelChanged =
+      channel.channelID !== prevProps.channel.channelID ||
+      channel.channelType !== prevProps.channel.channelType;
+
+    if (channelChanged) {
+      this._clearChannelSearchState();
+    }
 
     if (
       this.props.initialShowChannelSearch &&
@@ -615,6 +666,7 @@ export class ChatContentPage extends Component<
         activeThread: null,
         previewFile: null,
         activePreviewMessageId: null,
+        previewReturnChannelSearch: false,
         showMatterPanel: false,
         showMatterDetailPanel: false,
         showSummaryPanel: false,
@@ -623,7 +675,7 @@ export class ChatContentPage extends Component<
 
     // 切换频道时消费 pendingThreadPanel 和 pendingFilePreview。
     // 两个场景都要跟事项列表 / 事项详情互斥 (同一侧边容器)。
-    if (channel.channelID !== prevProps.channel.channelID) {
+    if (channelChanged) {
       // 打开全部子区列表
       if (WKApp.shared.pendingThreadPanel === channel.channelID) {
         WKApp.shared.pendingThreadPanel = undefined;
@@ -632,6 +684,7 @@ export class ChatContentPage extends Component<
           activeThread: null,
           previewFile: null, // 关闭文件预览（互斥）
           activePreviewMessageId: null,
+          previewReturnChannelSearch: false,
           showMatterPanel: false, // 互斥
           showMatterDetailPanel: false, // 互斥
           showSummaryPanel: false,
@@ -662,6 +715,7 @@ export class ChatContentPage extends Component<
           showMatterDetailPanel: false, // 互斥
           showSummaryPanel: false,
           showChannelSearch: false,
+          previewReturnChannelSearch: false,
         });
         return;
       }
@@ -827,6 +881,7 @@ export class ChatContentPage extends Component<
       showMatterDetailPanel,
       showSummaryPanel,
       summaryPanelView,
+      showChannelSearch,
     } = this.state;
     // 子区页面不显示讨论串按钮
     const isThreadChannel = channel.channelType === ChannelTypeCommunityTopic;
@@ -835,7 +890,6 @@ export class ChatContentPage extends Component<
       WKSDK.shared().channelManager.fetchChannelInfo(channel);
     }
     const threadStatus = this.getThreadStatus(channelInfo);
-    const showChannelSearch = this.state.showChannelSearch;
     return (
       <div
         className={classNames(
@@ -1116,6 +1170,7 @@ export class ChatContentPage extends Component<
               key={channel.getChannelKey()}
               channel={channel}
               onOpenChannelSearch={() => {
+                this._clearChannelSearchState();
                 this.setState({
                   showChannelSearch: true,
                   showChannelSetting: false,
@@ -1123,6 +1178,7 @@ export class ChatContentPage extends Component<
                   activeThread: null,
                   previewFile: null,
                   activePreviewMessageId: null,
+                  previewReturnChannelSearch: false,
                   showMatterPanel: false,
                   showMatterDetailPanel: false,
                   showSummaryPanel: false,
@@ -1146,7 +1202,10 @@ export class ChatContentPage extends Component<
                 conversationContext={this.conversationContext}
                 dataSource={this.getChannelSearchDataSource(channel)}
                 onPreviewFile={this._onSearchFilePreview}
+                initialState={this.channelSearchPanelState}
+                onStateChange={this._onChannelSearchStateChange}
                 onClose={() => {
+                  this._clearChannelSearchState();
                   this.setState({
                     showChannelSearch: false,
                   });
@@ -1167,7 +1226,11 @@ export class ChatContentPage extends Component<
               onClose={() => {
                 // X 关闭: 若当前是从事项详情打开的预览, 回到事项详情;
                 // 否则沿用原行为, 把整个侧边壳 (子区 + 预览) 一起关掉。
-                if (previewFile && this.state.previewReturnMatterId) {
+                if (
+                  previewFile &&
+                  (this.state.previewReturnMatterId ||
+                    this.state.previewReturnChannelSearch)
+                ) {
                   this._closePreviewAndMaybeRestoreMatter(true);
                   return;
                 }
@@ -1177,6 +1240,7 @@ export class ChatContentPage extends Component<
                   previewFile: null,
                   activePreviewMessageId: null,
                   previewReturnMatterId: null,
+                  previewReturnChannelSearch: false,
                   previewHadThreadShell: false,
                 });
               }}

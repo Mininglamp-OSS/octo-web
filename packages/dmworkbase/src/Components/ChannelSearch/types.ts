@@ -89,6 +89,13 @@ export interface ChannelSearchDataSource {
   searchMessages: (query: ChannelSearchQuery) => Promise<ChannelSearchResponse>;
 }
 
+export interface ChannelSearchPanelState {
+  activeTab?: ChannelSearchTab;
+  filterOpen?: boolean;
+  filters?: ChannelSearchFilters;
+  keyword?: string;
+}
+
 export const defaultChannelSearchFilters = (): ChannelSearchFilters => ({
   senderUids: [],
   sort: "time_desc",

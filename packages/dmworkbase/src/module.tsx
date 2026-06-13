@@ -1889,7 +1889,15 @@ export default class BaseModule implements IModule {
       "channel.base.settingMessageHistory",
       (context) => {
         const data = context.routeData() as ChannelSettingRouteData;
+        const channelType = data.channel.channelType;
+        const supportsChannelSearch =
+          channelType === ChannelTypeGroup ||
+          channelType === ChannelTypePerson ||
+          channelType === ChannelTypeCommunityTopic;
         if (!data.onOpenChannelSearch) {
+          return undefined;
+        }
+        if (!supportsChannelSearch) {
           return undefined;
         }
 

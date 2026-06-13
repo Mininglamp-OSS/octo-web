@@ -26,11 +26,16 @@ import FileHelper from "../../Utils/filehelper";
 import { downloadFile } from "../../Utils/download";
 import { useI18n } from "../../i18n";
 import { channelSearchEmptyDataSource } from "./adapter";
+import {
+  canLocateChannelSearchItem,
+  resolveChannelSearchLocateTarget,
+} from "./locate";
 import { defaultChannelSearchFilters } from "./types";
 import type {
   ChannelSearchDataSource,
   ChannelSearchFilters,
   ChannelSearchItem,
+  ChannelSearchPanelState,
   ChannelSearchResponse,
   ChannelSearchSender,
   ChannelSearchTab,
@@ -45,15 +50,12 @@ interface ChannelSearchPanelProps {
   dataSource?: ChannelSearchDataSource;
   onLocateMessage?: (item: ChannelSearchItem) => void;
   onPreviewFile?: (item: ChannelSearchItem) => void;
-  initialState?: {
-    activeTab?: ChannelSearchTab;
-    filterOpen?: boolean;
-    filters?: ChannelSearchFilters;
-    keyword?: string;
-  };
+  initialState?: ChannelSearchPanelState;
+  onStateChange?: (state: ChannelSearchPanelState) => void;
 }
 
 const tabs: ChannelSearchTab[] = ["all", "message", "media", "file"];
+const SEARCH_DEBOUNCE_MS = 300;
 
 const tabI18nKey: Record<ChannelSearchTab, string> = {
   all: "base.channelSearch.tabs.all",
@@ -78,7 +80,7 @@ function resolveSender(
 
 function activeFilterCount(filters: ChannelSearchFilters) {
   return (
-    filters.senderUids.length +
+    (filters.senderUids.length > 0 ? 1 : 0) +
     (filters.sort !== "time_desc" ? 1 : 0) +
     (filters.datePreset || filters.startAt || filters.endAt ? 1 : 0)
   );
@@ -115,13 +117,13 @@ function datePickerValueToDate(
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-function dateDisplayValue(seconds?: number) {
+function dateDisplayValue(seconds?: number, locale?: string) {
   if (!seconds) return "";
   const date = new Date(seconds * 1000);
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
-  const weekday = new Intl.DateTimeFormat("zh-CN", {
+  const weekday = new Intl.DateTimeFormat(locale, {
     weekday: "short",
   }).format(date);
   return `${year}/${month}/${day} ${weekday}`;
@@ -153,7 +155,8 @@ function assetUrl(value: unknown): string | undefined {
 function useOutsideDismiss(
   open: boolean,
   getContainers: () => Array<HTMLElement | null | undefined>,
-  onDismiss: () => void
+  onDismiss: () => void,
+  shouldIgnoreTarget?: (target: Node) => boolean
 ) {
   useEffect(() => {
     if (!open) return;
@@ -164,6 +167,7 @@ function useOutsideDismiss(
       if (getContainers().some((element) => element?.contains(target))) {
         return;
       }
+      if (shouldIgnoreTarget?.(target)) return;
       onDismiss();
     };
 
@@ -183,66 +187,73 @@ function useOutsideDismiss(
       );
       document.removeEventListener("keydown", closeOnEscape, true);
     };
-  }, [getContainers, onDismiss, open]);
+  }, [getContainers, onDismiss, open, shouldIgnoreTarget]);
 }
 
-const HighlightText: React.FC<{ text?: string; keyword: string }> = ({
+const HighlightText = React.memo(function HighlightText({
   text = "",
   keyword,
-}) => {
-  if (/<\/?mark>/i.test(text)) {
-    const parts: React.ReactNode[] = [];
-    const pattern = /<mark>(.*?)<\/mark>/gi;
-    let cursor = 0;
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(text))) {
-      if (match.index > cursor) {
-        parts.push(text.slice(cursor, match.index));
+}: {
+  text?: string;
+  keyword: string;
+}) {
+  const content = useMemo(() => {
+    if (/<\/?mark>/i.test(text)) {
+      const parts: React.ReactNode[] = [];
+      const pattern = /<mark>(.*?)<\/mark>/gi;
+      let cursor = 0;
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(text))) {
+        if (match.index > cursor) {
+          parts.push(text.slice(cursor, match.index));
+        }
+        parts.push(
+          <mark
+            key={`${match.index}-${pattern.lastIndex}`}
+            className="wk-channel-search-highlight"
+          >
+            {match[1]}
+          </mark>
+        );
+        cursor = pattern.lastIndex;
       }
+      if (cursor < text.length) {
+        parts.push(text.slice(cursor));
+      }
+      return parts;
+    }
+
+    const needle = keyword.trim();
+    if (!needle) return text;
+
+    const lowerText = text.toLowerCase();
+    const lowerNeedle = needle.toLowerCase();
+    const parts: React.ReactNode[] = [];
+    let cursor = 0;
+    let index = lowerText.indexOf(lowerNeedle);
+
+    while (index !== -1) {
+      if (index > cursor) {
+        parts.push(text.slice(cursor, index));
+      }
+      const end = index + needle.length;
       parts.push(
-        <mark
-          key={`${match.index}-${pattern.lastIndex}`}
-          className="wk-channel-search-highlight"
-        >
-          {match[1]}
+        <mark key={`${index}-${end}`} className="wk-channel-search-highlight">
+          {text.slice(index, end)}
         </mark>
       );
-      cursor = pattern.lastIndex;
+      cursor = end;
+      index = lowerText.indexOf(lowerNeedle, cursor);
     }
+
     if (cursor < text.length) {
       parts.push(text.slice(cursor));
     }
-    return <>{parts}</>;
-  }
+    return parts;
+  }, [keyword, text]);
 
-  const needle = keyword.trim();
-  if (!needle) return <>{text}</>;
-
-  const lowerText = text.toLowerCase();
-  const lowerNeedle = needle.toLowerCase();
-  const parts: React.ReactNode[] = [];
-  let cursor = 0;
-  let index = lowerText.indexOf(lowerNeedle);
-
-  while (index !== -1) {
-    if (index > cursor) {
-      parts.push(text.slice(cursor, index));
-    }
-    const end = index + needle.length;
-    parts.push(
-      <mark key={`${index}-${end}`} className="wk-channel-search-highlight">
-        {text.slice(index, end)}
-      </mark>
-    );
-    cursor = end;
-    index = lowerText.indexOf(lowerNeedle, cursor);
-  }
-
-  if (cursor < text.length) {
-    parts.push(text.slice(cursor));
-  }
-  return <>{parts}</>;
-};
+  return <>{content}</>;
+});
 
 const SenderAvatar: React.FC<{
   uid: string;
@@ -276,8 +287,9 @@ const FilterPopover: React.FC<{
   onApply: (filters: ChannelSearchFilters) => void;
   onClose: () => void;
 }> = ({ open, filters, dataSource, onApply, onClose }) => {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const senders = dataSource.getSenders();
+  const senderListId = "wk-channel-search-sender-list";
   const getSender = useCallback(
     (uid: string) => dataSource.getSender(uid),
     [dataSource]
@@ -351,7 +363,9 @@ const FilterPopover: React.FC<{
   }, [dataSource, open, senderKeyword, senderOpen]);
 
   const filteredSenders = useMemo(() => {
-    const source = senderOptions.length > 0 ? senderOptions : senders;
+    const shouldUseSenderOptions =
+      !!dataSource.searchSenders || senderOptions.length > 0;
+    const source = shouldUseSenderOptions ? senderOptions : senders;
     const keyword = senderKeyword.trim().toLowerCase();
     if (!keyword || dataSource.searchSenders) return source;
     return source.filter((sender) =>
@@ -466,7 +480,18 @@ const FilterPopover: React.FC<{
             ]
               .filter(Boolean)
               .join(" ")}
+            role="combobox"
+            aria-expanded={senderOpen}
+            aria-controls={senderListId}
+            aria-haspopup="listbox"
+            tabIndex={0}
             onClick={() => setSenderOpen(true)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === "ArrowDown") {
+                event.preventDefault();
+                setSenderOpen(true);
+              }
+            }}
           >
             {draft.senderUids.map((uid) => {
               const sender = getSender(uid);
@@ -502,7 +527,11 @@ const FilterPopover: React.FC<{
             <ChevronDown size={16} />
           </div>
           {senderOpen && (
-            <div className="wk-channel-search-filter-senders">
+            <div
+              className="wk-channel-search-filter-senders"
+              id={senderListId}
+              role="listbox"
+            >
               {filteredSenders.map((sender) => {
                 const selected = draft.senderUids.includes(sender.uid);
                 return (
@@ -634,7 +663,7 @@ const FilterPopover: React.FC<{
             <button className="wk-channel-search-date-input" type="button">
               <span className={draft.startAt ? undefined : "is-placeholder"}>
                 {draft.startAt
-                  ? dateDisplayValue(draft.startAt)
+                  ? dateDisplayValue(draft.startAt, locale)
                   : t("base.channelSearch.filter.startDate")}
               </span>
               <CalendarDays size={16} />
@@ -656,7 +685,7 @@ const FilterPopover: React.FC<{
             <button className="wk-channel-search-date-input" type="button">
               <span className={draft.endAt ? undefined : "is-placeholder"}>
                 {draft.endAt
-                  ? dateDisplayValue(draft.endAt)
+                  ? dateDisplayValue(draft.endAt, locale)
                   : t("base.channelSearch.filter.endDate")}
               </span>
               <CalendarDays size={16} />
@@ -684,12 +713,19 @@ const FilterPopover: React.FC<{
   );
 };
 
-const MessageResultItem: React.FC<{
+type ResultItemProps = {
   item: ChannelSearchItem;
   keyword: string;
   getSender: GetChannelSearchSender;
   onLocate: (item: ChannelSearchItem) => void;
-}> = ({ item, keyword, getSender, onLocate }) => {
+};
+
+const MessageResultItem = React.memo(function MessageResultItem({
+  item,
+  keyword,
+  getSender,
+  onLocate,
+}: ResultItemProps) {
   const { format, t } = useI18n();
   const sender = resolveSender(item, getSender);
   const isForward = item.kind === "merge_forward";
@@ -734,23 +770,25 @@ const MessageResultItem: React.FC<{
           </div>
         )}
       </div>
-      <button
-        className="wk-channel-search-locate-action"
-        type="button"
-        onClick={() => onLocate(item)}
-      >
-        {t("base.channelSearch.locateToChat")}
-      </button>
+      {canLocateChannelSearchItem(item) && (
+        <button
+          className="wk-channel-search-locate-action"
+          type="button"
+          onClick={() => onLocate(item)}
+        >
+          {t("base.channelSearch.locateToChat")}
+        </button>
+      )}
     </div>
   );
-};
+});
 
-const MixedResultItem: React.FC<{
-  item: ChannelSearchItem;
-  keyword: string;
-  getSender: GetChannelSearchSender;
-  onLocate: (item: ChannelSearchItem) => void;
-}> = ({ item, keyword, getSender, onLocate }) => {
+const MixedResultItem = React.memo(function MixedResultItem({
+  item,
+  keyword,
+  getSender,
+  onLocate,
+}: ResultItemProps) {
   if (item.kind === "file") {
     return (
       <FileInlineResult
@@ -779,14 +817,14 @@ const MixedResultItem: React.FC<{
       onLocate={onLocate}
     />
   );
-};
+});
 
-const MediaInlineResult: React.FC<{
-  item: ChannelSearchItem;
-  keyword: string;
-  getSender: GetChannelSearchSender;
-  onLocate: (item: ChannelSearchItem) => void;
-}> = ({ item, keyword, getSender, onLocate }) => {
+const MediaInlineResult = React.memo(function MediaInlineResult({
+  item,
+  keyword,
+  getSender,
+  onLocate,
+}: ResultItemProps) {
   const { format, t } = useI18n();
   const sender = resolveSender(item, getSender);
   return (
@@ -809,22 +847,30 @@ const MediaInlineResult: React.FC<{
         </div>
         <MediaThumb item={item} onLocate={onLocate} compact />
       </div>
-      <button
-        className="wk-channel-search-locate-action"
-        type="button"
-        onClick={() => onLocate(item)}
-      >
-        {t("base.channelSearch.locateToChat")}
-      </button>
+      {canLocateChannelSearchItem(item) && (
+        <button
+          className="wk-channel-search-locate-action"
+          type="button"
+          onClick={() => onLocate(item)}
+        >
+          {t("base.channelSearch.locateToChat")}
+        </button>
+      )}
     </div>
   );
-};
+});
 
-const MediaThumb: React.FC<{
+type MediaThumbProps = {
   item: ChannelSearchItem;
   onLocate: (item: ChannelSearchItem) => void;
   compact?: boolean;
-}> = ({ item, onLocate, compact = false }) => {
+};
+
+const MediaThumb = React.memo(function MediaThumb({
+  item,
+  onLocate,
+  compact = false,
+}: MediaThumbProps) {
   const thumbUrl = compact
     ? item.media?.inlineThumbUrl || item.media?.thumbUrl
     : item.media?.thumbUrl;
@@ -846,23 +892,25 @@ const MediaThumb: React.FC<{
           <Play size={18} fill="currentColor" />
         </div>
       )}
-      <button
-        className="wk-channel-search-media-locate"
-        type="button"
-        onClick={() => onLocate(item)}
-      >
-        <LocateFixed size={16} />
-      </button>
+      {canLocateChannelSearchItem(item) && (
+        <button
+          className="wk-channel-search-media-locate"
+          type="button"
+          onClick={() => onLocate(item)}
+        >
+          <LocateFixed size={16} />
+        </button>
+      )}
     </div>
   );
-};
+});
 
-const FileInlineResult: React.FC<{
-  item: ChannelSearchItem;
-  keyword: string;
-  getSender: GetChannelSearchSender;
-  onLocate: (item: ChannelSearchItem) => void;
-}> = ({ item, keyword, getSender, onLocate }) => {
+const FileInlineResult = React.memo(function FileInlineResult({
+  item,
+  keyword,
+  getSender,
+  onLocate,
+}: ResultItemProps) {
   const { format, t } = useI18n();
   const sender = resolveSender(item, getSender);
   const fileName = item.file?.name || t("base.conversation.file.unknown");
@@ -899,21 +947,28 @@ const FileInlineResult: React.FC<{
           </div>
         </div>
       </div>
-      <button
-        className="wk-channel-search-locate-action"
-        type="button"
-        onClick={() => onLocate(item)}
-      >
-        {t("base.channelSearch.locateToChat")}
-      </button>
+      {canLocateChannelSearchItem(item) && (
+        <button
+          className="wk-channel-search-locate-action"
+          type="button"
+          onClick={() => onLocate(item)}
+        >
+          {t("base.channelSearch.locateToChat")}
+        </button>
+      )}
     </div>
   );
-};
+});
 
-const MediaResultGrid: React.FC<{
+type MediaResultGridProps = {
   items: ChannelSearchItem[];
   onLocate: (item: ChannelSearchItem) => void;
-}> = ({ items, onLocate }) => {
+};
+
+const MediaResultGrid = React.memo(function MediaResultGrid({
+  items,
+  onLocate,
+}: MediaResultGridProps) {
   const grouped = useMemo(() => {
     return items.reduce<Record<string, ChannelSearchItem[]>>((acc, item) => {
       const label = item.media?.monthBucket || monthLabel(item.timestamp);
@@ -937,17 +992,19 @@ const MediaResultGrid: React.FC<{
       ))}
     </div>
   );
-};
+});
 
-const FileResultItem: React.FC<{
+type FileResultItemProps = {
   item: ChannelSearchItem;
   keyword: string;
   getSender: GetChannelSearchSender;
   menuOpen: boolean;
-  onMenuOpenChange: (open: boolean) => void;
+  onMenuOpenChange: (itemId: string, open: boolean) => void;
   onLocate: (item: ChannelSearchItem) => void;
   onPreviewFile?: (item: ChannelSearchItem) => void;
-}> = ({
+};
+
+const FileResultItem = React.memo(function FileResultItem({
   item,
   keyword,
   getSender,
@@ -955,7 +1012,7 @@ const FileResultItem: React.FC<{
   onMenuOpenChange,
   onLocate,
   onPreviewFile,
-}) => {
+}: FileResultItemProps) {
   const { format, t } = useI18n();
   const menuRef = useRef<HTMLDivElement>(null);
   const sender = resolveSender(item, getSender);
@@ -977,13 +1034,10 @@ const FileResultItem: React.FC<{
     }
   };
 
-  const getFileMenuDismissContainers = useCallback(
-    () => [menuRef.current],
-    []
-  );
+  const getFileMenuDismissContainers = useCallback(() => [menuRef.current], []);
   const closeFileMenu = useCallback(() => {
-    onMenuOpenChange(false);
-  }, [onMenuOpenChange]);
+    onMenuOpenChange(item.id, false);
+  }, [item.id, onMenuOpenChange]);
   useOutsideDismiss(menuOpen, getFileMenuDismissContainers, closeFileMenu);
 
   return (
@@ -1018,7 +1072,7 @@ const FileResultItem: React.FC<{
         </div>
         <div className="wk-channel-search-file-meta">
           <span>{sender.name}</span>
-          <span>{FileHelper.getFileSizeFormat(item.file?.size || 0)}</span>
+          <span>{compactFileSize(item.file?.size || 0)}</span>
           <span>
             {format.date(item.timestamp * 1000, {
               month: "2-digit",
@@ -1041,24 +1095,26 @@ const FileResultItem: React.FC<{
           size="sm"
           icon={<MoreHorizontal size={16} />}
           title={t("base.channelSearch.fileMore")}
-          onClick={() => onMenuOpenChange(!menuOpen)}
+          onClick={() => onMenuOpenChange(item.id, !menuOpen)}
         />
         {menuOpen && (
           <div className="wk-channel-search-file-menu">
+            {canLocateChannelSearchItem(item) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onMenuOpenChange(item.id, false);
+                  onLocate(item);
+                }}
+              >
+                <LocateFixed size={14} />
+                {t("base.channelSearch.locateToChatPosition")}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
-                onMenuOpenChange(false);
-                onLocate(item);
-              }}
-            >
-              <LocateFixed size={14} />
-              {t("base.channelSearch.locateToChatPosition")}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onMenuOpenChange(false);
+                onMenuOpenChange(item.id, false);
                 void handleDownload();
               }}
             >
@@ -1070,7 +1126,7 @@ const FileResultItem: React.FC<{
       </div>
     </div>
   );
-};
+});
 
 const SearchEmpty: React.FC<{ queryStarted: boolean }> = ({ queryStarted }) => {
   const { t } = useI18n();
@@ -1096,6 +1152,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   onLocateMessage,
   onPreviewFile,
   initialState,
+  onStateChange,
 }) => {
   const { t } = useI18n();
   const [keyword, setKeyword] = useState(initialState?.keyword || "");
@@ -1117,12 +1174,42 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const [isComposing, setIsComposing] = useState(false);
+  const filterWrapRef = useRef<HTMLDivElement>(null);
 
   const filterCount = activeFilterCount(filters);
   const getSender = useCallback(
     (uid: string) => dataSource.getSender(uid),
     [dataSource]
   );
+  const getFilterDismissContainers = useCallback(
+    () => [filterWrapRef.current],
+    []
+  );
+  const closeFilterPopover = useCallback(() => {
+    setFilterOpen(false);
+  }, []);
+  const shouldKeepSemiPopupOpen = useCallback((target: Node) => {
+    return (
+      target instanceof Element &&
+      !!target.closest(".semi-datepicker, .semi-popover, .semi-portal")
+    );
+  }, []);
+
+  useOutsideDismiss(
+    filterOpen,
+    getFilterDismissContainers,
+    closeFilterPopover,
+    shouldKeepSemiPopupOpen
+  );
+
+  useEffect(() => {
+    onStateChange?.({
+      activeTab,
+      filterOpen,
+      filters,
+      keyword,
+    });
+  }, [activeTab, filterOpen, filters, keyword, onStateChange]);
 
   const runSearch = useCallback(
     async (cursor?: string) => {
@@ -1167,36 +1254,58 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         }
       }
     },
-    [
-      activeTab,
-      channel,
-      dataSource,
-      filters,
-      isComposing,
-      keyword,
-      t,
-    ]
+    [activeTab, channel, dataSource, filters, isComposing, keyword, t]
   );
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      void runSearch();
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [runSearch]);
+    if (isComposing) return;
+    requestIdRef.current += 1;
+    setQueryStarted(true);
+    setResponse({ items: [], hasMore: false });
+    setLoading(true);
+    setLoadingMore(false);
+    setError(null);
 
-  const handleLocate = (item: ChannelSearchItem) => {
-    if (onLocateMessage) {
-      onLocateMessage(item);
-      return;
-    }
-    conversationContext?.locateMessage(item.messageSeq);
-  };
+    const timer = window.setTimeout(() => {
+      void runSearch();
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [isComposing, runSearch]);
+
+  const handleLocate = useCallback(
+    (item: ChannelSearchItem) => {
+      const locateTarget = resolveChannelSearchLocateTarget(item, channel);
+      if (!locateTarget) {
+        return;
+      }
+      if (onLocateMessage) {
+        onLocateMessage(item);
+        return;
+      }
+      if (!locateTarget.isCurrentChannel || !conversationContext) {
+        WKApp.endpoints.showConversation(locateTarget.channel, {
+          initLocateMessageSeq: locateTarget.messageSeq,
+        });
+        return;
+      }
+      conversationContext.locateMessage(locateTarget.messageSeq);
+    },
+    [channel, conversationContext, onLocateMessage]
+  );
 
   const toggleFilterOpen = () => {
     setOpenFileMenuId(null);
     setFilterOpen((open) => !open);
   };
+  const handleFileMenuOpenChange = useCallback(
+    (itemId: string, open: boolean) => {
+      if (open) {
+        setFilterOpen(false);
+      }
+      setOpenFileMenuId(open ? itemId : null);
+    },
+    []
+  );
 
   const renderResults = () => {
     if (loading) {
@@ -1225,12 +1334,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
               keyword={keyword}
               getSender={getSender}
               menuOpen={openFileMenuId === item.id}
-              onMenuOpenChange={(open) => {
-                if (open) {
-                  setFilterOpen(false);
-                }
-                setOpenFileMenuId(open ? item.id : null);
-              }}
+              onMenuOpenChange={handleFileMenuOpenChange}
               onLocate={handleLocate}
               onPreviewFile={onPreviewFile}
             />
@@ -1299,13 +1403,13 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
             </button>
           ))}
         </div>
-        <div className="wk-channel-search-filter-wrap">
+        <div className="wk-channel-search-filter-wrap" ref={filterWrapRef}>
           <button
             className="wk-channel-search-filter-trigger"
             type="button"
             onClick={toggleFilterOpen}
           >
-            <Filter size={16} fill="currentColor" />
+            <Filter size={16} />
             {t("base.channelSearch.filter.title")}
             {filterCount > 0 && <span>{filterCount}</span>}
           </button>

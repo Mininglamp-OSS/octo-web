@@ -48,6 +48,7 @@ type MessageSearchHit = {
     };
   };
   channel_id?: string;
+  channel_type?: number;
 };
 
 type MediaSearchHit = {
@@ -60,8 +61,11 @@ type MediaSearchHit = {
   height?: number;
   sender_id?: string;
   sender_name?: string;
+  sender_avatar_url?: string;
   sent_at?: string;
   month_bucket?: string;
+  channel_id?: string;
+  channel_type?: number;
 };
 
 type FileSearchHit = {
@@ -76,13 +80,16 @@ type FileSearchHit = {
   sender_name?: string;
   sender_avatar_url?: string;
   sent_at?: string;
+  channel_id?: string;
+  channel_type?: number;
 };
 
 type CombinedSearchHit = {
-  result_type?: "message" | "file";
+  result_type?: "message" | "file" | "media";
   sorted_at?: string;
   message?: MessageSearchHit;
   file?: FileSearchHit;
+  media?: MediaSearchHit;
 };
 
 const PAGE_SIZE_SENDERS = 50;
@@ -176,11 +183,25 @@ function senderFromHit(hit: {
   };
 }
 
+function channelFromHit(
+  hit: { channel_id?: string; channel_type?: number },
+  query: ChannelSearchQuery
+) {
+  return {
+    channelId: hit.channel_id || query.channelId,
+    channelType:
+      typeof hit.channel_type === "number"
+        ? hit.channel_type
+        : query.channelType,
+  };
+}
+
 function mapMessageHit(
   hit: MessageSearchHit,
   query: ChannelSearchQuery
 ): ChannelSearchItem {
   const sender = senderFromHit(hit);
+  const hitChannel = channelFromHit(hit, query);
   const sentAt = hit.sent_at || "";
   const messageKind = hit.message_kind || "text";
   const kind =
@@ -194,8 +215,8 @@ function mapMessageHit(
     id: hit.message_id || `${hit.message_seq || 0}`,
     messageId: hit.message_id || "",
     messageSeq: hit.message_seq || 0,
-    channelId: hit.channel_id || query.channelId,
-    channelType: query.channelType,
+    channelId: hitChannel.channelId,
+    channelType: hitChannel.channelType,
     senderUid: sender.uid,
     sender,
     timestamp: sentAtToSeconds(sentAt),
@@ -217,6 +238,7 @@ function mapFileHit(
   query: ChannelSearchQuery
 ): ChannelSearchItem {
   const sender = senderFromHit(hit);
+  const hitChannel = channelFromHit(hit, query);
   const file: ChannelSearchFileInfo = {
     name: hit.file_name || "",
     size: hit.file_size_bytes || 0,
@@ -229,8 +251,8 @@ function mapFileHit(
     id: hit.message_id || `${hit.message_seq || 0}`,
     messageId: hit.message_id || "",
     messageSeq: hit.message_seq || 0,
-    channelId: query.channelId,
-    channelType: query.channelType,
+    channelId: hitChannel.channelId,
+    channelType: hitChannel.channelType,
     senderUid: sender.uid,
     sender,
     timestamp: sentAtToSeconds(hit.sent_at),
@@ -244,6 +266,7 @@ function mapMediaHit(
   query: ChannelSearchQuery
 ): ChannelSearchItem {
   const sender = senderFromHit(hit);
+  const hitChannel = channelFromHit(hit, query);
   const media: ChannelSearchMediaInfo = {
     thumbUrl: hit.thumb_url,
     duration: hit.duration_ms,
@@ -256,8 +279,8 @@ function mapMediaHit(
     id: hit.message_id || `${hit.message_seq || 0}`,
     messageId: hit.message_id || "",
     messageSeq: hit.message_seq || 0,
-    channelId: query.channelId,
-    channelType: query.channelType,
+    channelId: hitChannel.channelId,
+    channelType: hitChannel.channelType,
     senderUid: sender.uid,
     sender,
     timestamp: sentAtToSeconds(hit.sent_at),
@@ -279,6 +302,14 @@ function mapCombinedHit(
     const item = mapMessageHit(hit.message, query);
     if (hit.sorted_at) item.timestamp = sentAtToSeconds(hit.sorted_at);
     return item;
+  }
+  if (hit.result_type === "media" && hit.media) {
+    const item = mapMediaHit(hit.media, query);
+    if (hit.sorted_at) item.timestamp = sentAtToSeconds(hit.sorted_at);
+    return item;
+  }
+  if (import.meta.env.DEV) {
+    console.warn("[ChannelSearch] unknown combined search hit", hit);
   }
   return undefined;
 }
@@ -394,3 +425,18 @@ export function createChannelSearchApiDataSource(
     },
   };
 }
+
+export const channelSearchApiAdapterTestUtils = {
+  searchEndpoint,
+  sentAtToSeconds,
+  secondsToDateOnly,
+  monthBucketFromSentAt,
+  normalizeItems,
+  cleanFilters,
+  toRequestBody,
+  mapMessageHit,
+  mapFileHit,
+  mapMediaHit,
+  mapCombinedHit,
+  parentGroupChannel,
+};
