@@ -984,7 +984,7 @@ const POLL_IDLE_MS = 15000
 const POLL_UPGRADE_MS = 3000
 
 // 允许远程升级的 provider（和服务端 providerComponents / daemon componentUpgradeSpecs 保持一致）
-const COMPONENT_UPGRADE_ENABLED = new Set<string>(["claude", "codex", "hermes", "openclaw"])
+const COMPONENT_UPGRADE_ENABLED = new Set<string>(["claude", "openclaw"])
 
 interface RuntimeDetailState {
     deleting: boolean
@@ -1214,7 +1214,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         return null
     }
 
-    // ── Component 升级（claude/codex/hermes/openclaw） ──────────────────────
+    // ── Component 升级（claude/openclaw） ──────────────────────
 
     handleComponentUpgrade = async () => {
         const rt = this.props.runtime
