@@ -5,6 +5,7 @@ import WKApp from "../../App"
 import WKAvatar from "../../Components/WKAvatar"
 import { BotsTab, type BotsTabHandle } from "./BotsTab"
 import { CreateRuntimeModal } from "./CreateRuntimeModal"
+import { deviceRuntimeMode } from "./deviceRuntimeMode"
 import { Bot, botStatusLabel, listBots, providerLabels } from "./botsApi"
 import { ProviderLogo } from "./providerLogos"
 import "./index.css"
@@ -321,6 +322,10 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                     <div className="wk-rt-field">
                         <label>Runtimes</label>
                         <span>{group.runtimes.length}</span>
+                    </div>
+                    <div className="wk-rt-field">
+                        <label>运行模式</label>
+                        <span>{deviceRuntimeMode(group)}</span>
                     </div>
                     {(group.osName || group.arch) && (
                         <div className="wk-rt-field">
@@ -1309,10 +1314,6 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 </div>
 
                 <div className="wk-rt-detail-grid wk-rt-detail-grid--single">
-                    <div className="wk-rt-field">
-                        <label>Runtime Mode</label>
-                        <span>{rt.runtime_mode}</span>
-                    </div>
                     <div className="wk-rt-field">
                         <label>Provider</label>
                         <span>{providerLabels[rt.provider] || rt.provider}</span>
