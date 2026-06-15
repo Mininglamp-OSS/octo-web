@@ -30,6 +30,7 @@ export default defineConfig({
       { find: /^@octo\/base\/src\/Components\/AiBadge$/, replacement: path.resolve(__dirname, 'src/__mocks__/AiBadge.tsx') },
       { find: /^@octo\/base\/src\/EndpointCommon$/, replacement: path.resolve(__dirname, 'src/__mocks__/EndpointCommon.ts') },
       { find: /^@octo\/base\/src\/Service\/Const$/, replacement: path.resolve(__dirname, 'src/__mocks__/Const.ts') },
+      { find: /^@octo\/base\/src\/Service\/SidebarService$/, replacement: path.resolve(root, 'packages/dmworkbase/src/Service/SidebarService.ts') },
       { find: /^@octo\/base\/src\/App$/, replacement: path.resolve(__dirname, 'src/__mocks__/dmworkBase.ts') },
       { find: /^@octo\/base\/src\/Components\/WKLayout\/layoutWidth$/, replacement: path.resolve(root, 'packages/dmworkbase/src/Components/WKLayout/layoutWidth.ts') },
       { find: '@octo/base', replacement: path.resolve(__dirname, 'src/__mocks__/dmworkBase.ts') },

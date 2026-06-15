@@ -64,12 +64,15 @@ export default class ChatSelectorModal extends Component<Props, State> {
         const seq = ++this.reqSeq;
         this.setState({ loading: true });
         const deviceUuid = WKApp.shared.deviceId || "";
+        // device_uuid 为空时后端 validateSidebarRequest 必拒（SidebarService.ts），
+        // 跳过注定失败的 sidebar 请求，followed/recent 退化为空集。
+        const skipSidebar = deviceUuid === "";
         try {
             const params = includeArchived ? { include_archived: true } : {};
             const [candidates, followResp, recentResp] = await Promise.all([
                 api.getChatCandidates(params),
-                SidebarService.sync({ tab: "follow", device_uuid: deviceUuid }).catch(() => null),
-                SidebarService.sync({ tab: "recent", device_uuid: deviceUuid }).catch(() => null),
+                skipSidebar ? Promise.resolve(null) : SidebarService.sync({ tab: "follow", device_uuid: deviceUuid }).catch(() => null),
+                skipSidebar ? Promise.resolve(null) : SidebarService.sync({ tab: "recent", device_uuid: deviceUuid }).catch(() => null),
             ]);
 
             const followedIds = new Set<string>();
