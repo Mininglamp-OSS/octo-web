@@ -94,3 +94,37 @@ describe("canManageThread", () => {
     expect(canManageThread({ creator_uid: "someone-else" }, "")).toBe(false);
   });
 });
+
+// issue #394：子区设置页「改名」入口此前用 data.isManagerOrCreatorOfMe（读子区频道
+// 成员缓存，从未同步、恒 false），把非创建者的父群群主/管理员误拦在前端、不发请求。
+// 修复后改名复用 canManageThread，与归档入口同口径。下面锁定该口径，防止再次回退。
+describe("thread rename permission gate (issue #394)", () => {
+  beforeEach(() => {
+    subscribesByKey.clear();
+  });
+
+  it("allows the thread creator to rename", () => {
+    expect(canManageThread({ creator_uid: "me" }, GROUP_NO)).toBe(true);
+  });
+
+  it("allows a non-creator parent-group owner to rename", () => {
+    setGroupMembers([{ uid: "me", role: GroupRole.owner }]);
+    expect(canManageThread({ creator_uid: "someone-else" }, GROUP_NO)).toBe(
+      true
+    );
+  });
+
+  it("allows a non-creator parent-group manager to rename", () => {
+    setGroupMembers([{ uid: "me", role: GroupRole.manager }]);
+    expect(canManageThread({ creator_uid: "someone-else" }, GROUP_NO)).toBe(
+      true
+    );
+  });
+
+  it("blocks an ordinary parent-group member from renaming", () => {
+    setGroupMembers([{ uid: "me", role: GroupRole.normal }]);
+    expect(canManageThread({ creator_uid: "someone-else" }, GROUP_NO)).toBe(
+      false
+    );
+  });
+});
