@@ -316,11 +316,11 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
 
                 <div className="wk-rt-detail-grid">
                     <div className="wk-rt-field">
-                        <label>Device Name</label>
+                        <label>设备名称</label>
                         <span>{group.deviceName}</span>
                     </div>
                     <div className="wk-rt-field">
-                        <label>Runtimes</label>
+                        <label>运行时</label>
                         <span>{group.runtimes.length}</span>
                     </div>
                     <div className="wk-rt-field">
@@ -329,13 +329,13 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                     </div>
                     {(group.osName || group.arch) && (
                         <div className="wk-rt-field">
-                            <label>OS / Arch</label>
+                            <label>系统 / 架构</label>
                             <span>{[group.osName, group.arch].filter(Boolean).join(" ")}</span>
                         </div>
                     )}
                     {group.cliVersion && (
                         <div className="wk-rt-field">
-                            <label>Daemon Version</label>
+                            <label>Daemon 版本</label>
                             <span className="wk-rt-mono">
                                 {group.cliVersion}
                                 {this.props.daemonVersionHint?.has_update && (
@@ -383,7 +383,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                         </div>
                     )}
                     <div className="wk-rt-field">
-                        <label>Daemon ID</label>
+                        <label>设备 ID</label>
                         <span className="wk-rt-mono">{group.daemonId}</span>
                     </div>
                     {(() => {
@@ -397,7 +397,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                         if (!ms) return null
                         return (
                             <div className="wk-rt-field">
-                                <label>Last Active</label>
+                                <label>最近活跃</label>
                                 <span title={new Date(ms).toLocaleString()}>
                                     {humanizeAge(ms)}
                                 </span>
@@ -1315,18 +1315,18 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
 
                 <div className="wk-rt-detail-grid wk-rt-detail-grid--single">
                     <div className="wk-rt-field">
-                        <label>Provider</label>
+                        <label>提供方</label>
                         <span>{providerLabels[rt.provider] || rt.provider}</span>
                     </div>
                     <div className="wk-rt-field">
-                        <label>Bots</label>
+                        <label>Bot 数量</label>
                         <span>{this.props.botCount ?? 0}</span>
                     </div>
                     {/* PR-2: 探活由 device row 绿点 + daemon heartbeat
                         体现; runtime 级 last_seen_at / device_name /
                         daemon_id 都是 dev 调试字段, 用户不需要看到, 全删. */}
                     <div className="wk-rt-field">
-                        <label>Version</label>
+                        <label>版本</label>
                         <span className="wk-rt-mono">
                             {rt.version || "N/A"}
                             {this.props.versionHints[rt.id]?.has_update && (
@@ -1340,7 +1340,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                         const pluginHint = this.props.versionHints[rt.id]
                         return octoPlugin ? (
                             <div className="wk-rt-field">
-                                <label>Octo Plugin</label>
+                                <label>Octo 插件</label>
                                 <span className="wk-rt-mono">
                                     {octoPlugin.version}
                                     {pluginHint?.plugin_has_update && (
@@ -1358,8 +1358,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     的"创建 Bot"重复. caster 拍的去重. */}
 
                 <div className="wk-rt-detail-footer">
-                    <span>Created: {rt.created_at}</span>
-                    <span>Updated: {rt.updated_at}</span>
+                    <span>创建于:{rt.created_at}</span>
+                    <span>更新于:{rt.updated_at}</span>
                 </div>
                 {deleting && <div className="wk-rt-deleting-overlay">Deleting...</div>}
             </div>
