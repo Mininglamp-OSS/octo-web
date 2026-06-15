@@ -9,11 +9,11 @@ interface RuntimeListEntry {
   name: string;
   provider: string;
   // PR-2: device grouping for the create-bot 2-step selector. Same kind
-  // can have multiple instances across devices (one daemon = 4 runtimes:
-  // openclaw / claude / codex / hermes — each daemon contributes its own
-  // set), so the user must first pick a device, then a runtime kind under
-  // that device. Without this disambiguation the create-bot SELECT would
-  // silently bind to whichever "openclaw" entry happened to be first.
+  // can have multiple instances across devices (one daemon contributes
+  // its own set of runtimes — openclaw / claude), so the user must first
+  // pick a device, then a runtime kind under that device. Without this
+  // disambiguation the create-bot SELECT would silently bind to whichever
+  // "openclaw" entry happened to be first.
   daemon_id: string;
   device_name: string;
   status: string;

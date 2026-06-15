@@ -5,8 +5,8 @@ import { createBot, providerLabels, RuntimeKind } from './botsApi';
 // CreateBotModal — 2-step device-first selector.
 //
 // Background: a single user can register multiple devices (= multiple
-// daemons). Each device contributes its own set of 4 runtimes (openclaw
-// / claude / codex / hermes). If the modal showed a flat runtime list
+// daemons). Each device contributes its own set of runtimes (openclaw
+// / claude). If the modal showed a flat runtime list
 // keyed only on `kind`, the user couldn't distinguish "openclaw on
 // laptop-1" from "openclaw on laptop-2" — picking by kind alone would
 // silently bind to whichever entry was first. So the modal asks for

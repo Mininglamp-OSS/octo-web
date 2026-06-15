@@ -95,11 +95,11 @@ export function BotDetailPanel({ bot }: { bot: Bot }) {
         {/* PR-2: hide "归档" button until cross-tier deprovision works:
             current archiveBot only flips fleet bot.status=archived; the
             server robot row + WuKongIM channel + daemon-side adapter
-            resources (openclaw workspace, cc-channel-octo bot config,
-            hermes .env line) are NOT cleaned up — leaving stale state
+            resources (openclaw workspace, cc-channel-octo bot config)
+            are NOT cleaned up — leaving stale state
             on multiple ends. Restore once adapter.Deprovision is
             implemented end-to-end across runtimes (the daemon-side
-            interface is in place; claude/hermes/codex still TODO). */}
+            interface is in place; claude still TODO). */}
       </header>
 
       {/* ── Tabs ──────────────────────────────────────────── */}

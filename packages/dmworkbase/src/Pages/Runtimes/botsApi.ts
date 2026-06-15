@@ -171,7 +171,7 @@ export async function createBot(req: CreateBotReq): Promise<Bot> {
 // PR-2: 删 getBot / archiveBot 死代码.
 // archiveBot 当前是 fleet-only soft-delete, 完整 deprovision (跨 server
 // robot row + WuKongIM channel + daemon 端 adapter resources e.g. openclaw
-// workspace / cc-channel-octo bot config / hermes .env line) 还没接通,
+// workspace / cc-channel-octo bot config) 还没接通,
 // 接通后再加回入口比留半截 dead export 干净. PR-N adapter.Deprovision
 // 落地时一起加回.
 //
