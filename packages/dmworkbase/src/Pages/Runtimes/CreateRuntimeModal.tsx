@@ -92,7 +92,7 @@ export function CreateRuntimeModal({ visible, onClose }: Props) {
           <>
             <Section
               title="① 安装"
-              hint="Go ≥ 1.21 环境"
+              hint="Node.js ≥ 18"
               cmd={data.commands.install}
               onCopy={() => copy(data.commands.install, '安装命令')}
             />
