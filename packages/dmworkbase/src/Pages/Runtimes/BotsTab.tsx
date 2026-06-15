@@ -1,6 +1,6 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import WKApp from '../../App';
-import { Bot, botStatusLabel, isSupportedRuntimeKind, listBots, RuntimeKind } from './botsApi';
+import { Bot, botStatusLabel, isSupportedRuntimeKind, listBots } from './botsApi';
 import { CreateBotModal } from './CreateBotModal';
 import { BotDetailPanel } from './BotDetailPanel';
 
@@ -205,7 +205,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   const modalRuntimes = useMemo(() => runtimes.map(r => ({
     id: r.id,
     name: r.name,
-    kind: (r.provider as RuntimeKind),
+    kind: r.provider,
     supported: isSupportedRuntimeKind(r.provider),
     daemon_id: r.daemon_id,
     device_name: r.device_name,
