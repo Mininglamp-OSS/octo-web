@@ -12,7 +12,7 @@ import WKApp from '../../App';
 //     api_key, space_id,
 //     server_url, fleet_url, matter_url,
 //     commands: { install, start },
-//     env_vars: { OCTO_SERVER_URL, OCTO_FLEET_URL, OCTO_MATTER_URL }
+//     env_vars: { OCTO_SERVER_URL, OCTO_FLEET_URL }
 //   }
 
 interface OnboardingResp {
