@@ -12,7 +12,7 @@ import WKApp from '../../App';
 //     api_key, space_id,
 //     server_url, fleet_url, matter_url,
 //     commands: { install, start },
-//     env_vars: { OCTO_SERVER_URL, OCTO_FLEET_URL, OCTO_MATTER_URL }
+//     env_vars: { OCTO_SERVER_URL, OCTO_FLEET_URL }
 //   }
 
 interface OnboardingResp {
@@ -92,7 +92,7 @@ export function CreateRuntimeModal({ visible, onClose }: Props) {
           <>
             <Section
               title="① 安装"
-              hint="Go ≥ 1.21 环境"
+              hint="Node.js ≥ 18"
               cmd={data.commands.install}
               onCopy={() => copy(data.commands.install, '安装命令')}
             />
