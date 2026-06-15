@@ -117,7 +117,7 @@ import { SummaryCardCell } from "./Messages/SummaryCard";
 import { parseThreadChannelId, ThreadStatus } from "./Service/Thread";
 import {
   shouldShowThreadArchiveAction,
-  canManageThread,
+  canRenameThread,
 } from "./Service/threadPermission";
 import { runChannelSettingThreadArchive } from "./Service/threadArchiveAction";
 import { canShowRevokeMenu } from "./Service/revokePermission";
@@ -2214,12 +2214,12 @@ export default class BaseModule implements IModule {
         const channelInfo = data.channelInfo;
         const threadName = channelInfo?.title;
 
-        // 权限：创建者 / 父群群主 / 父群管理员可改名。必须走 canManageThread
+        // 权限：创建者 / 父群群主 / 父群管理员可改名。必须走 canRenameThread
         // （父群成员口径），与归档入口保持一致；data.isManagerOrCreatorOfMe 读的是
         // 子区频道成员缓存，从未同步，对非创建者的群主/管理员恒为 false，会误拦他们
         // （见 issue #394：#314 统一归档可见性时遗漏了此改名入口）。
         const thread = channelInfo?.orgData?.thread as any;
-        const canEdit = canManageThread(thread, threadInfo?.groupNo ?? "");
+        const canEdit = canRenameThread(thread, threadInfo?.groupNo);
         const statusTitle =
           thread?.status === ThreadStatus.Archived
             ? t("base.module.thread.status.archived")

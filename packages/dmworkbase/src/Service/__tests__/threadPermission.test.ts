@@ -32,7 +32,7 @@ vi.mock("../../App", () => ({
   },
 }));
 
-import { canManageThread } from "../threadPermission";
+import { canManageThread, canRenameThread } from "../threadPermission";
 import { GroupRole } from "../Const";
 
 const GROUP_NO = "g1";
@@ -97,34 +97,70 @@ describe("canManageThread", () => {
 
 // issue #394：子区设置页「改名」入口此前用 data.isManagerOrCreatorOfMe（读子区频道
 // 成员缓存，从未同步、恒 false），把非创建者的父群群主/管理员误拦在前端、不发请求。
-// 修复后改名复用 canManageThread，与归档入口同口径。下面锁定该口径，防止再次回退。
-describe("thread rename permission gate (issue #394)", () => {
+// 修复后改名入口（module.tsx）改调 canRenameThread —— 与归档入口同口径。
+// 这里直接测 module.tsx 实际调用的 canRenameThread（而非底层 canManageThread），
+// 并断言「改名口径 == canManageThread 父群口径」，锁住此入口、防止再次回退。
+describe("canRenameThread (thread rename gate, issue #394)", () => {
   beforeEach(() => {
     subscribesByKey.clear();
   });
 
   it("allows the thread creator to rename", () => {
-    expect(canManageThread({ creator_uid: "me" }, GROUP_NO)).toBe(true);
+    expect(canRenameThread({ creator_uid: "me" }, GROUP_NO)).toBe(true);
   });
 
   it("allows a non-creator parent-group owner to rename", () => {
     setGroupMembers([{ uid: "me", role: GroupRole.owner }]);
-    expect(canManageThread({ creator_uid: "someone-else" }, GROUP_NO)).toBe(
+    expect(canRenameThread({ creator_uid: "someone-else" }, GROUP_NO)).toBe(
       true
     );
   });
 
   it("allows a non-creator parent-group manager to rename", () => {
     setGroupMembers([{ uid: "me", role: GroupRole.manager }]);
-    expect(canManageThread({ creator_uid: "someone-else" }, GROUP_NO)).toBe(
+    expect(canRenameThread({ creator_uid: "someone-else" }, GROUP_NO)).toBe(
       true
     );
   });
 
   it("blocks an ordinary parent-group member from renaming", () => {
     setGroupMembers([{ uid: "me", role: GroupRole.normal }]);
-    expect(canManageThread({ creator_uid: "someone-else" }, GROUP_NO)).toBe(
+    expect(canRenameThread({ creator_uid: "someone-else" }, GROUP_NO)).toBe(
       false
+    );
+  });
+
+  it("fails closed when groupNo is undefined for a non-creator", () => {
+    // module.tsx 传入的是 threadInfo?.groupNo，可能为 undefined
+    setGroupMembers([{ uid: "me", role: GroupRole.owner }]);
+    expect(canRenameThread({ creator_uid: "someone-else" }, undefined)).toBe(
+      false
+    );
+  });
+
+  it("matches canManageThread (parent-group gate) across all role tiers", () => {
+    // 一致性回归：改名入口必须与归档/管理口径完全一致。若 module.tsx 改名 gate
+    // 漂移回 data.isManagerOrCreatorOfMe（子区缓存口径），canRenameThread 仍会与
+    // canManageThread 对齐，本断言保证两者不会分叉。
+    const tiers: Array<Array<{ uid: string; role: number }>> = [
+      [],
+      [{ uid: "me", role: GroupRole.owner }],
+      [{ uid: "me", role: GroupRole.manager }],
+      [{ uid: "me", role: GroupRole.normal }],
+    ];
+    const thread = { creator_uid: "someone-else" };
+    for (const members of tiers) {
+      subscribesByKey.clear();
+      if (members.length > 0) {
+        setGroupMembers(members);
+      }
+      expect(canRenameThread(thread, GROUP_NO)).toBe(
+        canManageThread(thread, GROUP_NO)
+      );
+    }
+    // 创建者快路径同样应一致
+    expect(canRenameThread({ creator_uid: "me" }, GROUP_NO)).toBe(
+      canManageThread({ creator_uid: "me" }, GROUP_NO)
     );
   });
 });
