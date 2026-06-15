@@ -98,8 +98,8 @@ function humanizeAge(epochMs: number): string {
 }
 
 // 取 device 下所有 runtime 的 max last_seen_at, 返 epoch ms (无则 0).
-// 4 个 runtime 跑同一 daemon 同一 heartbeatLoop, 4 个 last_seen_at 几乎同步,
-// 取 max 等价 daemon 整体最后心跳时间. 直接返 epoch 让 caller 自己决定渲染
+// 同 device 的多个 runtime 跑同一 daemon 同一 heartbeatLoop, 各 last_seen_at
+// 几乎同步, 取 max 等价 daemon 整体最后心跳时间. 直接返 epoch 让 caller 自己决定渲染
 // (避免 string ↔ epoch 来回往返).
 function deviceLastSeenMs(group: DeviceGroup): number {
     let max = 0
@@ -429,8 +429,8 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                     </div>
                     {(() => {
                         // 最近活跃: humanize 该 device 下所有 runtime 的
-                        // max last_seen_at. 4 个 runtime 走同一 daemon
-                        // 同一 heartbeatLoop, 实务上 4 个值几乎同步. daemon
+                        // max last_seen_at. 同 device 的多个 runtime 走同一 daemon
+                        // 同一 heartbeatLoop, 实务上各值几乎同步. daemon
                         // 在跑 → "刚刚"; daemon 挂 → 反映挂多久了.
                         // title 走本地时区 (toLocaleString) 让 hover 看到的精确
                         // 时间符合用户本地预期.
