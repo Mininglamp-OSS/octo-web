@@ -1942,11 +1942,6 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     render() {
         const { runtimes, selectedId, loading, expandedDevices, createMenuOpen, runtimeModalOpen } = this.state
         const groups = groupByDevice(runtimes)
-        // "M online" 含义重定义 — 不再是
-        // 顶部计数纯报"装置-运行时"槽位规模, 不报死活. 单 runtime 死活
-        // 由 DeviceDetail 右上角 "X/Y Online" 表达; 顶栏只回答 "我有几个
-        // device, 加起来几个 runtime", 跟左树展开后的总条数一致.
-        const totalRuntimes = groups.reduce((sum, g) => sum + g.runtimes.length, 0)
 
         return (
             <div className="wk-rt-list">
@@ -1959,9 +1954,6 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 <div className="wk-rt-pageheader">
                     <div className="wk-rt-pagetitle">
                         <h2 className="wk-rt-pagetitle-text">运行时</h2>
-                        <span className="wk-rt-pageheader__meta" aria-live="polite">
-                            {groups.length} device{groups.length !== 1 ? "s" : ""} · {totalRuntimes} runtime{totalRuntimes !== 1 ? "s" : ""}
-                        </span>
                         <div className="wk-rt-create-wrap">
                             <button
                                 ref={this.createBtnRef}
