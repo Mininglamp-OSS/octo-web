@@ -996,20 +996,6 @@
   border-bottom: 1px solid var(--border-light);
 }
 
-/* Meta info (count / online status) sits at the trailing edge of the
- * header, next to the create button — mirrors the conversation list's
- * "ping" chip. Online count leads, with a status dot for quick scanning. */
-.wk-rt-pageheader__meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--wk-text-tertiary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 /* Primary action button hosted in the page header (Bot tab uses it for
  * "+ 新建"). Style mirrors .wk-rt-upgrade-btn — light grey on hairline
  * border — so it reads as a secondary chrome control, not a hero CTA. */
@@ -1634,6 +1620,10 @@
 }
 .wk-rt-create-wrap {
   position: relative;
+  /* 把 + 推到顶栏最右(原由已删的 .wk-rt-pageheader__meta 的 margin-left:auto
+     承担)。这样创建下拉(.wk-rt-create-menu right:0)从右缘往左展开,落在可见
+     内容区,而不是贴标题左侧、被左侧栏裁掉。 */
+  margin-left: auto;
 }
 .wk-rt-create-btn {
   display: inline-flex;
