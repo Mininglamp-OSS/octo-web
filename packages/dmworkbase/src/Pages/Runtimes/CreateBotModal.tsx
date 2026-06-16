@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Toast } from '@douyinfe/semi-ui';
-import { createBot, providerLabels, RuntimeKind } from './botsApi';
+import { createBot, isSupportedRuntimeKind, providerLabels } from './botsApi';
 
 // CreateBotModal — 2-step device-first selector.
 //
 // Background: a single user can register multiple devices (= multiple
-// daemons). Each device contributes its own set of 4 runtimes (openclaw
-// / claude / codex / hermes). If the modal showed a flat runtime list
+// daemons). Each device contributes its own set of runtimes (openclaw
+// / claude). If the modal showed a flat runtime list
 // keyed only on `kind`, the user couldn't distinguish "openclaw on
 // laptop-1" from "openclaw on laptop-2" — picking by kind alone would
 // silently bind to whichever entry was first. So the modal asks for
@@ -15,7 +15,7 @@ import { createBot, providerLabels, RuntimeKind } from './botsApi';
 interface RuntimeOption {
   id: number;
   name: string;
-  kind: RuntimeKind;
+  kind: string;
   supported: boolean;
   daemon_id: string;
   device_name: string;
@@ -138,6 +138,9 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
 
   const handleSubmit = async () => {
     if (!canSubmit || !selectedRuntime) return;
+    // 类型守卫窄化:kind 是后端任意字符串,createBot 只接受受支持的 RuntimeKind。
+    // canSubmit 已用 supported gate,这里再窄化让类型诚实(不支持的直接拦下)。
+    if (!isSupportedRuntimeKind(selectedRuntime.kind)) return;
     setBusy(true);
     try {
       const bot = await createBot({

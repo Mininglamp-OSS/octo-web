@@ -1,6 +1,6 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import WKApp from '../../App';
-import { Bot, botStatusLabel, listBots, RuntimeKind } from './botsApi';
+import { Bot, botStatusLabel, isSupportedRuntimeKind, listBots } from './botsApi';
 import { CreateBotModal } from './CreateBotModal';
 import { BotDetailPanel } from './BotDetailPanel';
 
@@ -9,11 +9,11 @@ interface RuntimeListEntry {
   name: string;
   provider: string;
   // PR-2: device grouping for the create-bot 2-step selector. Same kind
-  // can have multiple instances across devices (one daemon = 4 runtimes:
-  // openclaw / claude / codex / hermes — each daemon contributes its own
-  // set), so the user must first pick a device, then a runtime kind under
-  // that device. Without this disambiguation the create-bot SELECT would
-  // silently bind to whichever "openclaw" entry happened to be first.
+  // can have multiple instances across devices (one daemon contributes
+  // its own set of runtimes — openclaw / claude), so the user must first
+  // pick a device, then a runtime kind under that device. Without this
+  // disambiguation the create-bot SELECT would silently bind to whichever
+  // "openclaw" entry happened to be first.
   daemon_id: string;
   device_name: string;
   status: string;
@@ -35,19 +35,17 @@ export interface BotsTabHandle {
 }
 
 // PR-2: cc-channel-octo (claude) adapter 已落地 +
-// 本机 ~/.cc-channel-octo 已切本地 server, 开放 claude 创建. codex/hermes
-// adapter 仍在收尾 (codex skeleton, hermes 未跑通), 暂不开放.
+// 本机 ~/.cc-channel-octo 已切本地 server, 开放 claude 创建. 本期已从
+// 全栈移除 codex/hermes, 平台只放行 claude + openclaw (单源守卫见
+// botsApi.ts isSupportedRuntimeKind / SUPPORTED_RUNTIME_KINDS).
 //
 // claude 跟 openclaw 走两条不同的执行路径:
 //   - openclaw → 经 daemon adapter Provision (internal/adapter/openclaw.go)
 //   - claude   → 不经 daemon adapter Provision. cc-channel-octo 是用户自
 //                己起的独立 gateway 进程 (从 /v1/runtime-onboarding 拿命令
 //                启动), 它注册自己的 IM bot_uid 接 WS 收消息, 直接调
-//                Claude SDK. daemon-cli internal/adapter/claude.go 的
-//                ErrUnsupported skeleton 在这条路径上不会被踩到 — 创建
-//                claude bot 时 fleet 不派 provision 给 daemon, 派给
-//                cc-channel-octo gateway. 已 e2e 验过.
-const SUPPORTED_KINDS: RuntimeKind[] = ['openclaw', 'claude'];
+//                Claude SDK. 创建 claude bot 时 fleet 不派 provision 给
+//                daemon, 派给 cc-channel-octo gateway. 已 e2e 验过.
 
 export interface BotsTabProps {
   // PR-2 (runtime tree UI): when true, only the create modal is rendered
@@ -207,8 +205,8 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   const modalRuntimes = useMemo(() => runtimes.map(r => ({
     id: r.id,
     name: r.name,
-    kind: (r.provider as RuntimeKind),
-    supported: SUPPORTED_KINDS.includes(r.provider as RuntimeKind),
+    kind: r.provider,
+    supported: isSupportedRuntimeKind(r.provider),
     daemon_id: r.daemon_id,
     device_name: r.device_name,
     status: r.status,
