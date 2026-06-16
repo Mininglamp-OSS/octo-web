@@ -12,6 +12,7 @@ import MessageRow from "../../ui/message/MessageRow"
 import ReplyBlock from "../../ui/message/ReplyBlock";
 import TextContent from "../../ui/message/TextContent";
 import { getTextMessageUI } from "../../bridge/message/useTextMessageUI";
+import { isMessageSelectable } from "../../Service/messageSelection";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import "./index.css"
 
@@ -175,10 +176,13 @@ export class TextCell extends MessageCell {
 
         // 新 UI 实现
         if (useNewUI) {
+            const selectionMode = context.editOn()
+            const selectable = isMessageSelectable(message)
             const uiProps = getTextMessageUI(message, {
-                showCheckbox: context.editOn(),
-                isSelected: !!message.checked,
-                onSelect: (selected) => context.checkeMessage(message.message, selected),
+                selectionMode,
+                showCheckbox: selectionMode && selectable,
+                isSelected: selectable && !!message.checked,
+                onSelect: selectable ? (selected) => context.checkeMessage(message.message, selected) : undefined,
             })
 
             return (
@@ -186,7 +190,6 @@ export class TextCell extends MessageCell {
                     {...uiProps.row}
                     onContextMenu={(event) => context.showContextMenus(message, event)}
                     isActive={context.isContextMenuOpen(message.message)}
-                    onClick={context.editOn() ? () => context.checkeMessage(message.message, !message.checked) : undefined}
                     onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
                     onSenderNameClick={() => context.showUser(message.fromUID)}
                 >

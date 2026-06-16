@@ -19,7 +19,7 @@
 .wk-reply-block__bar {
   width: 2px;
   border-radius: 1px;
-  background: rgba(28, 28, 35, 0.40);
+  background: rgba(28, 28, 35, 0.4);
   flex-shrink: 0;
   align-self: stretch;
   min-height: 18px;
@@ -45,7 +45,7 @@
 .wk-reply-block__name {
   font-size: 12px;
   font-weight: 400;
-  color: rgba(28, 28, 35, 0.60);
+  color: rgba(28, 28, 35, 0.6);
   line-height: 18px;
   white-space: nowrap;
   overflow: hidden;
@@ -69,9 +69,19 @@
 .wk-reply-block__digest {
   font-size: 12px;
   font-weight: 400;
-  color: rgba(28, 28, 35, 0.60);
+  color: rgba(28, 28, 35, 0.6);
   line-height: 18px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.wk-reply-block__digest-link {
+  color: var(--wk-text-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.wk-reply-block__digest-link:hover {
+  opacity: 0.8;
 }

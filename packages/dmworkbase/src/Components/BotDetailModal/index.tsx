@@ -1,14 +1,20 @@
 import React, { Component } from "react";
 import { Button, Spin, Toast, Input, TextArea } from "@douyinfe/semi-ui";
+import { IconEdit } from "@douyinfe/semi-icons";
 import axios from "axios";
 import WKModal from "../WKModal";
 import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import WKApp from "../../App";
 import WKAvatar from "../WKAvatar";
+import { WKAvatarEditor } from "../WKAvatarEditor";
+import { WKAvatarUploadPreview } from "../WKAvatarUploadPreview";
+import WKAvatarPreviewImage from "../WKAvatarPreviewImage";
 import AiBadge from "../AiBadge";
 import ClawInfoModal from "../ClawInfoModal/ClawInfoModal";
+import BotManageModal from "../BotManage";
 import AgentCardService from "../../Service/AgentCardService";
 import { I18nContext, t } from "../../i18n";
+import { canvasToPngFile, isAvatarFileTooLarge, isGifImageFile } from "../avatarUpload";
 import "./index.css";
 
 interface BotDetailModalProps {
@@ -21,6 +27,7 @@ interface BotDetailModalProps {
 interface BotDetailModalState {
     loading: boolean;
     name: string;
+    remark: string;
     username: string;
     description: string;
     creatorName: string;
@@ -34,10 +41,16 @@ interface BotDetailModalState {
     editingDescription: boolean;
     descriptionDraft: string;
     savingDescription: boolean;
+    editingRemark: boolean;
+    remarkDraft: string;
+    savingRemark: boolean;
     // Agent Card 上报状态（true=已上报，false=未上报，null=加载中）
     reported: boolean | null;
     reportStatusLoading: boolean;
     showClawInfo: boolean;
+    showBotManage: boolean;
+    avatarCropFile: File | null;
+    avatarPreviewFile: File | null;
 }
 
 export default class BotDetailModal extends Component<BotDetailModalProps, BotDetailModalState> {
@@ -46,10 +59,13 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
 
     private refreshTimer: ReturnType<typeof setTimeout> | null = null;
     private $fileInput: HTMLInputElement | null = null;
+    private avatarEdit: WKAvatarEditor | null = null;
+    private mounted = false;
 
     state: BotDetailModalState = {
         loading: true,
         name: "",
+        remark: "",
         username: "",
         description: "",
         creatorName: "",
@@ -63,12 +79,19 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         editingDescription: false,
         descriptionDraft: "",
         savingDescription: false,
+        editingRemark: false,
+        remarkDraft: "",
+        savingRemark: false,
         reported: null,
         reportStatusLoading: false,
         showClawInfo: false,
+        showBotManage: false,
+        avatarCropFile: null,
+        avatarPreviewFile: null,
     };
 
     componentDidMount() {
+        this.mounted = true;
         if (this.props.uid) {
             this.loadBotInfo();
         }
@@ -76,11 +99,20 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
 
     componentDidUpdate(prevProps: BotDetailModalProps) {
         if (prevProps.uid !== this.props.uid && this.props.uid) {
+            // 复用同一 BotDetailModal 实例切到新 bot 时，先关掉「Bot 管理」子模态。
+            // 否则在 loadBotInfo() 重算 isOwner 之前会有一帧用「旧 bot 的 creatorUid」
+            // 判定 owner，却把「新 uid」透传给 BotManageModal —— 可能让用户在所有权
+            // 重新校验前对一个未必属于自己的 bot 触发一次群数据加载（codex P2）。
+            this.setState({ showBotManage: false });
             this.loadBotInfo();
+        }
+        if (prevProps.visible && !this.props.visible) {
+            this.setState({ avatarCropFile: null, avatarPreviewFile: null });
         }
     }
 
     componentWillUnmount() {
+        this.mounted = false;
         if (this.refreshTimer) {
             clearTimeout(this.refreshTimer);
             this.refreshTimer = null;
@@ -121,6 +153,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         this.setState({
             loading: true,
             name: "",
+            remark: "",
             username: "",
             description: "",
             creatorName: "",
@@ -134,6 +167,11 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             editingDescription: false,
             descriptionDraft: "",
             savingDescription: false,
+            avatarCropFile: null,
+            avatarPreviewFile: null,
+            editingRemark: false,
+            remarkDraft: "",
+            savingRemark: false,
         });
 
         const isStale = () => this.props.uid !== requestedUid;
@@ -146,6 +184,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             this.setState({
                 loading: false,
                 name: data.name || requestedUid,
+                remark: data.remark || "",
                 username: data.username || requestedUid,
                 description: data.bot_description || "",
                 creatorName: data.bot_creator_name || "",
@@ -170,6 +209,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                 this.setState({
                     loading: false,
                     name: channelInfo?.title || requestedUid,
+                    remark: channelInfo?.orgData?.remark || "",
                     username: requestedUid,
                     description: channelInfo?.orgData?.bot_description || "",
                     creatorName: channelInfo?.orgData?.bot_creator_name || "",
@@ -190,6 +230,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                 this.setState({
                     loading: false,
                     name: requestedUid,
+                    remark: "",
                     username: requestedUid,
                     description: "",
                     creatorName: "",
@@ -202,11 +243,20 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         }
     };
 
+    stripDisplayName = (value: string) => {
+        return value.replace(/\*\*/g, "");
+    };
+
     handleChat = () => {
         const { uid, onChat, onClose } = this.props;
         // WuKongIM DM 只认裸 uid
         onChat(new Channel(uid, ChannelTypePerson));
         onClose();
+    };
+
+    handleClose = () => {
+        this.setState({ avatarCropFile: null, avatarPreviewFile: null });
+        this.props.onClose();
     };
 
     // === Owner 头像编辑 ===
@@ -229,15 +279,19 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         }
     };
 
+    handleEditRemarkKeyDown = (event: React.KeyboardEvent<HTMLSpanElement>) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            this.handleStartEditRemark();
+        }
+    };
+
     handleAvatarInputClick = (event: React.MouseEvent<HTMLInputElement>) => {
         // 允许连续选中同一文件
         (event.target as HTMLInputElement).value = "";
     };
 
-    handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const files = event.target.files;
-        if (!files || files.length === 0) return;
-        const file = files[0];
+    uploadBotAvatar = async (file: File): Promise<boolean> => {
         const { uid } = this.props;
         const param = new FormData();
         param.append("file", file);
@@ -254,10 +308,62 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             WKSDK.shared().channelManager.fetchChannelInfo(new Channel(uid, ChannelTypePerson));
             Toast.success(t("base.botDetail.avatarUpdated"));
             this.forceUpdate();
+            return true;
         } catch (err) {
             Toast.error(t("base.botDetail.avatarUploadFailed"));
+            return false;
         } finally {
             this.setState({ uploadingAvatar: false });
+        }
+    };
+
+    handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files;
+        if (!files || files.length === 0) return;
+        const file = files[0];
+        if (isAvatarFileTooLarge(file)) {
+            Toast.error(t("base.channelAvatar.fileTooLarge"));
+            return;
+        }
+        if (isGifImageFile(file)) {
+            this.setState({ avatarPreviewFile: file });
+            return;
+        }
+        this.setState({ avatarCropFile: file });
+    };
+
+    handleAvatarCropCancel = () => {
+        if (this.state.uploadingAvatar) return;
+        this.setState({ avatarCropFile: null });
+    };
+
+    handleAvatarPreviewCancel = () => {
+        if (this.state.uploadingAvatar) return;
+        this.setState({ avatarPreviewFile: null });
+    };
+
+    handleAvatarPreviewSave = async () => {
+        const { avatarPreviewFile } = this.state;
+        if (!avatarPreviewFile) return;
+        const uploaded = await this.uploadBotAvatar(avatarPreviewFile);
+        if (uploaded) {
+            this.setState({ avatarPreviewFile: null });
+        }
+    };
+
+    handleAvatarCropSave = async () => {
+        const canvas = this.avatarEdit?.getImageScaledToCanvas();
+        if (!canvas) return;
+        let file: File;
+        try {
+            file = await canvasToPngFile(canvas, "botAvatarPicture.png");
+        } catch {
+            Toast.error(t("base.botDetail.imageProcessFailedRetry"));
+            return;
+        }
+        const uploaded = await this.uploadBotAvatar(file);
+        if (uploaded) {
+            this.setState({ avatarCropFile: null });
         }
     };
 
@@ -294,6 +400,49 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         }
     };
 
+    // === 个人备注编辑 ===
+    handleStartEditRemark = () => {
+        this.setState({
+            editingRemark: true,
+            remarkDraft: this.stripDisplayName(this.state.remark),
+        });
+    };
+
+    handleCancelEditRemark = () => {
+        this.setState({ editingRemark: false, remarkDraft: "" });
+    };
+
+    handleSaveRemark = async () => {
+        const requestedUid = this.props.uid;
+        const { remarkDraft } = this.state;
+        const remark = remarkDraft.trim();
+        const isCurrent = () => this.mounted && this.props.uid === requestedUid;
+        this.setState({ savingRemark: true });
+        try {
+            await WKApp.apiClient.put("friend/remark", { uid: requestedUid, remark });
+            if (!isCurrent()) return;
+            Toast.success(t("base.botDetail.remarkUpdated"));
+            this.setState({
+                remark,
+                editingRemark: false,
+                remarkDraft: "",
+            });
+            Promise.resolve(
+                WKSDK.shared().channelManager.fetchChannelInfo(new Channel(requestedUid, ChannelTypePerson))
+            ).catch((error: unknown) => {
+                console.warn("[BotDetailModal] refresh channel after remark failed:", error);
+            });
+        } catch {
+            if (isCurrent()) {
+                Toast.error(t("base.botDetail.remarkUpdateFailed"));
+            }
+        } finally {
+            if (isCurrent()) {
+                this.setState({ savingRemark: false });
+            }
+        }
+    };
+
     isOwner = () => {
         const { creatorUid } = this.state;
         const loginUid = WKApp.loginInfo.uid;
@@ -305,7 +454,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
         this.setState({
             showApplyInput: true,
             applyRemark: t("base.botDetail.apply.defaultMessage", {
-                values: { name: name.replace(/\*\*/g, '') },
+                values: { name: this.stripDisplayName(name) },
             }),
         });
     };
@@ -336,10 +485,11 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
     };
 
     render() {
-        const { visible, onClose, uid } = this.props;
+        const { visible, uid } = this.props;
         const {
             loading,
             name,
+            remark,
             username,
             description,
             creatorName,
@@ -352,13 +502,21 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             editingDescription,
             descriptionDraft,
             savingDescription,
+            editingRemark,
+            remarkDraft,
+            savingRemark,
             reported,
             reportStatusLoading,
             showClawInfo,
+            showBotManage,
+            avatarCropFile,
+            avatarPreviewFile,
         } = this.state;
         const isOwner = this.isOwner();
+        const botName = this.stripDisplayName(name);
+        const displayName = this.stripDisplayName(remark || name);
         const displayDescription = description
-            ? description.replace(/\*\*/g, '')
+            ? this.stripDisplayName(description)
             : t("base.botDetail.noDescription");
 
         let commands: { cmd: string; remark: string }[] = [];
@@ -371,7 +529,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             <WKModal
                 title={null}
                 visible={visible}
-                onCancel={onClose}
+                onCancel={this.handleClose}
                 className="wk-bot-detail-modal"
             >
                 {loading ? (
@@ -410,10 +568,12 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                     />
                                 </div>
                             ) : (
-                                <WKAvatar channel={new Channel(uid, ChannelTypePerson)} size={64} />
+                                <div className="wk-bot-detail-avatar wk-bot-detail-avatar--preview">
+                                    <WKAvatarPreviewImage channel={new Channel(uid, ChannelTypePerson)} />
+                                </div>
                             )}
                             <div className="wk-bot-detail-name">
-                                {name.replace(/\*\*/g, '')} <AiBadge />
+                                {displayName} <AiBadge />
                             </div>
                             <div className="wk-bot-detail-id">@{username}</div>
                             {isOwner && reported !== null && (
@@ -448,19 +608,80 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                             )}
                         </div>
                         <div className="wk-bot-detail-desc">
-                            <div className="wk-bot-detail-label">
-                                {t("base.botDetail.description")}
+                            <div className="wk-bot-detail-field-header">
+                                <div className="wk-bot-detail-label">{t("base.botDetail.remark")}</div>
+                            </div>
+                            {editingRemark ? (
+                                <div>
+                                    <Input
+                                        value={remarkDraft}
+                                        onChange={(v) => this.setState({ remarkDraft: v })}
+                                        placeholder={t("base.botDetail.remarkPlaceholder")}
+                                        maxLength={30}
+                                        style={{ marginBottom: 8 }}
+                                    />
+                                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                                        <Button
+                                            size="small"
+                                            onClick={this.handleCancelEditRemark}
+                                            disabled={savingRemark}
+                                        >
+                                            {t("base.common.cancel")}
+                                        </Button>
+                                        <Button
+                                            size="small"
+                                            theme="solid"
+                                            type="primary"
+                                            loading={savingRemark}
+                                            onClick={this.handleSaveRemark}
+                                        >
+                                            {t("base.botDetail.save")}
+                                        </Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="wk-bot-detail-remark-line">
+                                    {remark ? (
+                                        <span>{this.stripDisplayName(remark)}</span>
+                                    ) : (
+                                        <span className="wk-bot-detail-empty">{t("base.botDetail.noRemark")}</span>
+                                    )}
+                                    <Button
+                                        className="wk-bot-detail-value-edit"
+                                        theme="borderless"
+                                        type="tertiary"
+                                        size="small"
+                                        icon={<IconEdit />}
+                                        onClick={this.handleStartEditRemark}
+                                        onKeyDown={this.handleEditRemarkKeyDown}
+                                        aria-label={t("base.botDetail.editRemark")}
+                                        title={t("base.botDetail.editRemark")}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                        {remark && (
+                            <div className="wk-bot-detail-desc">
+                                <div className="wk-bot-detail-label">{t("base.botDetail.nickname")}</div>
+                                <div>{botName}</div>
+                            </div>
+                        )}
+                        <div className="wk-bot-detail-desc">
+                            <div className="wk-bot-detail-field-header">
+                                <div className="wk-bot-detail-label">{t("base.botDetail.description")}</div>
                                 {isOwner && !editingDescription && (
-                                    <span
-                                        className="wk-bot-detail-edit-icon"
+                                    <Button
+                                        className="wk-bot-detail-edit-action"
+                                        theme="borderless"
+                                        type="tertiary"
+                                        size="small"
+                                        icon={<IconEdit />}
                                         onClick={this.handleStartEditDescription}
                                         onKeyDown={this.handleEditDescriptionKeyDown}
-                                        role="button"
-                                        tabIndex={0}
                                         aria-label={t("base.botDetail.editDescription")}
                                     >
-                                        ✏️
-                                    </span>
+                                        {t("base.botDetail.edit")}
+                                    </Button>
                                 )}
                             </div>
                             {isOwner && editingDescription ? (
@@ -513,13 +734,24 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                                 ))}
                             </div>
                         )}
+                        {isOwner && (
+                            <Button
+                                block
+                                onClick={() => this.setState({ showBotManage: true })}
+                                className="wk-bot-detail-manage-btn"
+                                style={{ marginTop: 16 }}
+                                aria-label={t("base.botManage.title")}
+                            >
+                                {`⚙️ ${t("base.botManage.title")}`}
+                            </Button>
+                        )}
                         {isOwner && reported !== null && (
                             <Button
                                 block
                                 disabled={!reported}
                                 onClick={this.handleViewClawInfo}
                                 className={`wk-bot-detail-claw-btn${!reported ? " wk-bot-detail-claw-btn--disabled" : ""}`}
-                                style={{ marginTop: 16 }}
+                                style={{ marginTop: 10 }}
                                 aria-label={reported ? t("base.botDetail.viewClawInfo") : undefined}
                                 data-tooltip={!reported ? t("base.botDetail.reportHelp") : undefined}
                             >
@@ -576,6 +808,62 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                 visible={showClawInfo}
                 onClose={() => this.setState({ showClawInfo: false })}
             />
+            {isOwner && showBotManage && (
+                <BotManageModal
+                    robotId={uid}
+                    visible={showBotManage}
+                    onClose={() => this.setState({ showBotManage: false })}
+                />
+            )}
+            <WKModal
+                title={t("base.botDetail.previewAvatar")}
+                visible={visible && !!avatarPreviewFile}
+                onCancel={this.handleAvatarPreviewCancel}
+                width={460}
+                className="wk-bot-avatar-preview-modal"
+                footerConfig={{
+                    okText: t("base.botDetail.save"),
+                    cancelText: t("base.common.cancel"),
+                    isOkLoading: uploadingAvatar,
+                    onOk: this.handleAvatarPreviewSave,
+                }}
+                options={{
+                    maskClosable: !uploadingAvatar,
+                    closeOnEsc: !uploadingAvatar,
+                }}
+            >
+                {avatarPreviewFile && (
+                    <WKAvatarUploadPreview file={avatarPreviewFile} shape="bot" />
+                )}
+            </WKModal>
+            <WKModal
+                title={t("base.botDetail.cropAvatar")}
+                visible={visible && !!avatarCropFile}
+                onCancel={this.handleAvatarCropCancel}
+                width={460}
+                className="wk-bot-avatar-crop-modal"
+                footerConfig={{
+                    okText: t("base.botDetail.save"),
+                    cancelText: t("base.common.cancel"),
+                    isOkLoading: uploadingAvatar,
+                    onOk: this.handleAvatarCropSave,
+                }}
+                options={{
+                    maskClosable: !uploadingAvatar,
+                    closeOnEsc: !uploadingAvatar,
+                }}
+            >
+                {avatarCropFile && (
+                    <div className="wk-bot-avatar-crop-editor">
+                        <WKAvatarEditor
+                            ref={(ref) => {
+                                this.avatarEdit = ref;
+                            }}
+                            file={avatarCropFile}
+                        />
+                    </div>
+                )}
+            </WKModal>
         </>
         );
     }

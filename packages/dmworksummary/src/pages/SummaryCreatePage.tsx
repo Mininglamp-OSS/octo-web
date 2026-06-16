@@ -6,25 +6,30 @@ import {
     Tag,
     Avatar,
 } from "@douyinfe/semi-ui";
-import { IconPlus } from "@douyinfe/semi-icons";
+import { IconPlus, IconClock } from "@douyinfe/semi-icons";
 import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import * as api from "../api/summaryApi";
+import { getTopicTemplates } from "../api/summaryApi";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
 import MemberSelectorModal from "../components/MemberSelectorModal";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
+import TemplateCard from "../components/TemplateCard";
+import { TOPIC_TEMPLATES } from "../constants/templates";
+import { MAX_CHAT_SELECT } from "../constants/limits";
 import type {
-    SummaryTemplate,
     CreateSummaryParams,
     ChatCandidate,
     MemberCandidate,
     ScheduleConfig,
+    TopicTemplate,
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
-import { getWeekdayName, scheduleToCron } from "../utils/summaryHelpers";
+import { describeSchedule, scheduleToParams } from "../utils/summaryHelpers";
+import { resolveTemplate, computeTemplateSelection, type ResolvableTemplate } from "../utils/templateResolver";
 
 const { Text } = Typography;
 
@@ -34,8 +39,8 @@ interface SummaryCreatePageProps {
 
 interface SummaryCreatePageState {
     topic: string;
-    templates: SummaryTemplate[];
-    selectedTemplateId: string;
+    templates: ResolvableTemplate[];
+    templatePlaceholderRange: [number, number] | null;
     selectedChats: ChatCandidate[];
     selectedMembers: MemberCandidate[];
     scheduleConfig: ScheduleConfig | null;
@@ -46,13 +51,6 @@ interface SummaryCreatePageState {
     error: string | null;
 }
 
-const TEMPLATE_ICONS: Record<string, string> = {
-    project: "📋",
-    tasks: "☰",
-    weekly: "📅",
-    docs: "📄",
-};
-
 export default class SummaryCreatePage extends Component<SummaryCreatePageProps, SummaryCreatePageState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
@@ -61,8 +59,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     state: SummaryCreatePageState = {
         topic: "",
-        templates: [],
-        selectedTemplateId: "",
+        templates: TOPIC_TEMPLATES,
+        templatePlaceholderRange: null,
         selectedChats: [],
         selectedMembers: [],
         scheduleConfig: null,
@@ -74,37 +72,62 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     componentDidMount() {
-        this.loadTemplates();
+        void this.loadTemplates();
     }
 
-    async loadTemplates() {
+    private async loadTemplates() {
         try {
-            const templates = await api.getTemplates();
-            this.setState({ templates });
+            const templates = await getTopicTemplates();
+            if (templates.length > 0) {
+                this.setState({ templates });
+            }
         } catch {
-            // non-critical
+            // fallback to constants already in state
         }
     }
 
-    handleTemplateClick = (tpl: SummaryTemplate) => {
-        this.setState({
-            selectedTemplateId: tpl.template_id,
-            topic: this.state.topic || tpl.name,
+    private handleTemplateClick = (template: TopicTemplate) => {
+        const { text, range } = computeTemplateSelection(template);
+
+        if (range) {
+            const [start, end] = range;
+            this.setState({ topic: text, templatePlaceholderRange: [start, end] }, this.autoResizeTextarea);
+
+            setTimeout(() => {
+                const input = this.textareaRef.current;
+                if (!input) return;
+                input.focus();
+                input.setSelectionRange(start, end);
+            }, 0);
+        } else {
+            this.setState({ topic: text, templatePlaceholderRange: null }, this.autoResizeTextarea);
+
+            setTimeout(() => {
+                this.textareaRef.current?.focus();
+            }, 0);
+        }
+    };
+
+    private handleInputFocus = () => {
+        const { templatePlaceholderRange, topic } = this.state;
+        if (!templatePlaceholderRange) return;
+        const [start, end] = templatePlaceholderRange;
+        const newTopic = topic.substring(0, start) + topic.substring(end);
+        this.setState({ topic: newTopic, templatePlaceholderRange: null }, () => {
+            this.textareaRef.current?.setSelectionRange(start, start);
         });
     };
 
+    autoResizeTextarea = () => {
+        const el = this.textareaRef.current;
+        if (!el) return;
+        el.style.height = "auto";
+        el.style.height = `${el.scrollHeight}px`;
+    };
+
     getScheduleLabel(cfg: ScheduleConfig): string {
-        if (cfg.period === "daily") {
-            return t("summary.create.scheduleDaily", { values: { time: cfg.time } });
-        }
-        if (cfg.period === "weekly") {
-            return t("summary.create.scheduleWeekly", {
-                values: { day: getWeekdayName(cfg.dayOfWeek ?? 1), time: cfg.time },
-            });
-        }
-        return t("summary.create.scheduleMonthly", {
-            values: { day: cfg.dayOfMonth ?? 1, time: cfg.time },
-        });
+        const { cron_expr, interval_days, interval_months, run_time, day_of_week, day_of_month } = scheduleToParams(cfg);
+        return describeSchedule(cron_expr, interval_days, interval_months, run_time, day_of_week, day_of_month);
     }
 
     canSubmit(): boolean {
@@ -113,19 +136,19 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     handleVoiceTranscribed = (text: string, mode: ReplaceMode, savedRange?: SelectionRange) => {
         if (mode === "all") {
-            this.setState({ topic: text.slice(0, 1000) });
+            this.setState({ topic: text.slice(0, 1000) }, this.autoResizeTextarea);
         } else if (mode === "selection" && savedRange) {
             // Note: savedRange indices are from recording start; assumes input is read-only during recording
             this.setState((prev) => {
                 const updated = prev.topic.slice(0, savedRange.from) + text + prev.topic.slice(savedRange.to);
                 return { topic: updated.slice(0, 1000) };
-            });
+            }, this.autoResizeTextarea);
         } else {
             this.setState((prev) => {
                 const pos = savedRange?.from ?? prev.topic.length;
                 const updated = prev.topic.slice(0, pos) + text + prev.topic.slice(pos);
                 return { topic: updated.slice(0, 1000) };
-            });
+            }, this.autoResizeTextarea);
         }
     };
 
@@ -142,12 +165,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             };
 
             if (selectedChats.length > 0) {
+                // 不传 source_name：让后端按 source_id 现查 IM 库最新群名（带类型后缀）。
+                // 避免把创建那一刻的群名冻结进定时配置，从而群改名后定时仍显示旧名。
                 params.sources = selectedChats.map((c) => ({
                     source_type: c.chat_type === "group" ? SourceType.GROUP_CHAT
                                : c.chat_type === "thread" ? SourceType.THREAD
                                : SourceType.DIRECT_MESSAGE,
                     source_id: c.chat_id,
-                    source_name: c.name,
                 }));
             }
 
@@ -158,21 +182,31 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
             const result = await api.createSummary(params);
 
-            // If schedule is configured, create schedule too
+            // If schedule is configured, create it in ONE step bound to the new task.
+            // 后端 create 接口在 scope='task' + task_id 下已在一个事务里原子完成
+            //   校验 task 归属 → 建定时 → Update summary_task.schedule_id 绑定（一对一约束）。
+            // 不再需要第二步 update 绑定，也不会产生游离定时，所以去掉 B2 回滚。
             if (scheduleConfig !== null) {
-                const cronExpr = scheduleToCron(scheduleConfig);
+                const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time } = scheduleToParams(scheduleConfig);
                 try {
                     await api.createSchedule({
                         title: topic.trim(),
                         summary_mode: params.summary_mode || SummaryMode.BY_PERSON,
-                        cron_expr: cronExpr,
+                        cron_expr,
+                        interval_days,
+                        interval_months,
+                        day_of_week,
+                        day_of_month,
+                        run_time,
                         time_range_type: 2,
                         sources: params.sources || [],
                         participants: params.participants,
+                        scope: 'task',
+                        task_id: result.task_id,
                     });
-                } catch {
-                    // non-fatal: schedule creation failed
-                    Toast.warning(t("summary.create.scheduleFailed"));
+                } catch (scheduleErr: any) {
+                    // 总结本身已创建成功；定时创建失败仅提示（后端返回中文 message）。
+                    Toast.error(scheduleErr.message || t("summary.create.scheduleFailed"));
                 }
             }
 
@@ -190,12 +224,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     render() {
         const {
-            topic, templates, selectedTemplateId,
+            topic,
+            templates,
             selectedChats, selectedMembers, scheduleConfig,
             showChatSelector, showMemberSelector, showScheduleConfig,
             submitting, error,
         } = this.state;
         const { t: translate } = this.context;
+        // 模板在 render() 用当前 locale 解析，切语言即时刷新（不在 state 烘焙）。
+        const resolvedTemplates = templates.map((tpl) => resolveTemplate(tpl, translate));
 
         return (
             <div className="summary-workbench">
@@ -217,9 +254,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             ref={this.textareaRef}
                             className="summary-workbench-textarea"
                             value={topic}
-                            onChange={(e) => this.setState({ topic: e.target.value.slice(0, 1000) })}
+                            onChange={(e) => {
+                                this.setState({ topic: e.target.value.slice(0, 1000), templatePlaceholderRange: null });
+                                this.autoResizeTextarea();
+                            }}
+                            onFocus={this.handleInputFocus}
                             placeholder={translate("summary.create.topicPlaceholder")}
-                            rows={4}
+                            rows={1}
                             maxLength={1000}
                         />
                         <VoiceInputButton
@@ -232,9 +273,25 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         />
                     </div>
                     {topic.length >= 1000 && (
-                        <div style={{ color: "var(--semi-color-warning)", fontSize: 12, marginTop: 4, padding: "0 12px 8px" }}>
+                        <div style={{ color: "var(--semi-color-warning)", fontSize: 12, marginTop: 4, padding: "0 16px 8px" }}>
                             {translate("summary.common.charLimitReached", { values: { count: 1000 } })}
                         </div>
+                    )}
+
+                    {/* Templates (nested inside the input panel, like the modal) */}
+                    {!topic.trim() && (
+                        <>
+                            <div className="summary-workbench-templates-label">{translate("summary.create.templatesTitle")}</div>
+                            <div className="summary-workbench-templates">
+                                {resolvedTemplates.map((tpl) => (
+                                    <TemplateCard
+                                        key={tpl.id}
+                                        template={tpl}
+                                        onClick={this.handleTemplateClick}
+                                    />
+                                ))}
+                            </div>
+                        </>
                     )}
 
                     {/* Action bar */}
@@ -252,6 +309,20 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     ? translate("summary.create.selectedChats", { values: { count: selectedChats.length } })
                                     : translate("summary.create.selectChat")}
                             </Button>
+                            <Button
+                                theme="borderless"
+                                icon={<IconClock />}
+                                size="small"
+                                onClick={() => this.setState({ showScheduleConfig: true })}
+                                style={{ color: scheduleConfig ? "var(--semi-color-primary)" : undefined }}
+                            >
+                                {scheduleConfig
+                                    ? this.getScheduleLabel(scheduleConfig)
+                                    : translate("summary.schedule.config.title")}
+                            </Button>
+                            <span style={{ marginLeft: 8, fontSize: 12, color: "var(--semi-color-text-2)" }}>
+                                {translate("summary.create.archivedNotice")}
+                            </span>
                         </div>
 
                         <Button
@@ -309,35 +380,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     </Text>
                 )}
 
-                {/* Template cards */}
-                {templates.length > 0 && (
-                    <div className="summary-workbench-templates">
-                        <div className="summary-workbench-templates-title">{translate("summary.create.templatesTitle")}</div>
-                        <div className="summary-workbench-template-grid">
-                            {templates.map((tpl) => (
-                                <div
-                                    key={tpl.template_id}
-                                    className={`summary-workbench-template-card${selectedTemplateId === tpl.template_id ? " selected" : ""}`}
-                                    onClick={() => this.handleTemplateClick(tpl)}
-                                >
-                                    <div className="summary-template-card-icon">
-                                        {TEMPLATE_ICONS[tpl.template_id] || "📝"}
-                                    </div>
-                                    <div className="summary-template-card-title">{tpl.name}</div>
-                                    <div className="summary-template-card-desc">{tpl.description}</div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
                 {/* Modals */}
                 <ChatSelectorModal
                     visible={showChatSelector}
                     selected={selectedChats}
+                    maxSelect={MAX_CHAT_SELECT}
                     onConfirm={(chats) => this.setState({ selectedChats: chats, showChatSelector: false })}
                     onCancel={() => this.setState({ showChatSelector: false })}
-                    maxSelect={10}
                 />
                 <MemberSelectorModal
                     visible={showMemberSelector}
@@ -347,7 +396,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 />
                 <ScheduleConfigModal
                     visible={showScheduleConfig}
-                    value={scheduleConfig ?? { period: "daily", time: "09:00" }}
+                    value={scheduleConfig ?? { unit: "week", every: 1, time: "09:00" }}
                     onConfirm={(cfg) => this.setState({ scheduleConfig: cfg, showScheduleConfig: false })}
                     onCancel={() => this.setState({ showScheduleConfig: false })}
                 />

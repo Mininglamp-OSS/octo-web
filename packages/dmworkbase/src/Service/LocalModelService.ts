@@ -197,6 +197,7 @@ export default class LocalModelService {
     personalContext?: string,
     memberContext?: string,
     mode?: VoiceMode,
+    selfName?: string,
   ): Promise<TranscribeResult | null> {
     const available = await this.probe();
     if (!available) return null;
@@ -223,6 +224,7 @@ export default class LocalModelService {
       if (personalContext) formData.append("personal_context", personalContext);
       if (memberContext) formData.append("member_context", memberContext);
       if (mode) formData.append("mode", mode);
+      if (selfName) formData.append("self_name", selfName);
 
       const resp = await fetch(
         this._config.transcribeUrl,

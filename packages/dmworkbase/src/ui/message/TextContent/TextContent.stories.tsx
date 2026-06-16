@@ -139,7 +139,7 @@ export const MentionLevels: Story = {
       
       <div>
         <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-          强调色（纯紫色文字）
+          广播 mention（同普通 @ 用户视觉，不可点击）
         </p>
         <TextContent
           content="看一下 @所有人"

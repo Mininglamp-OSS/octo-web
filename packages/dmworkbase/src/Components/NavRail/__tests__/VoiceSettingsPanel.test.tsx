@@ -137,9 +137,10 @@ const renderPanel = async (onClose = vi.fn()) => {
 };
 
 describe('VoiceSettingsPanel', () => {
-  it('renders modal with title 语音设置', async () => {
+  it('renders voice transcription as the primary row instead of a modal header', async () => {
     await renderPanel();
-    expect(container.querySelector('[data-testid="modal-title"]')?.textContent).toBe('语音设置');
+    expect(container.querySelector('[data-testid="modal-title"]')?.textContent).toBe('');
+    expect(container.querySelector('.wk-voice-settings__row--primary')?.textContent).toContain('语音转写');
   });
 
   it('shows voice transcription label', async () => {

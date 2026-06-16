@@ -6,14 +6,14 @@
  * - 其他 filter：渲染 ConversationList，右键群聊有「移到分组」子菜单
  * - CreateCategoryModal 在此层管理，不依赖子组件挂载
  */
-import React, { useState, useMemo } from "react"
-import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
+import React, { useState } from "react"
+import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK } from "wukongimjssdk"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import WKApp from "../../App"
 import { useCategoryList } from "../../Hooks/useCategoryList"
 import { useFollowSidebarContext } from "../../Hooks/useFollowSidebar"
 import FollowService from "../../Service/FollowService"
-import { parseThreadChannelId } from "../../Service/Thread"
+import { isEffectivelyMuted, parseThreadChannelId } from "../../Service/Thread"
 import { ConversationWrap } from "../../Service/Model"
 import { ConvFilter } from "../ConversationList"
 import ConversationList from "../ConversationList"
@@ -22,23 +22,29 @@ import CreateCategoryModal from "../CreateCategoryModal"
 import { ContextMenusData } from "../ContextMenus"
 import { useI18n } from "../../i18n"
 
-/** 最近 Tab 3 天不活跃过滤阈值。tab 角标和列表必须共用同一阈值。 */
-export const RECENT_INACTIVE_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000
-
-/**
- * 最近 Tab 是否可见：群聊超过 3 天无消息隐藏；私聊 / 子区 不过滤。
- * tab 角标计算和列表渲染必须用同一函数，否则角标 N 但列表看不到的情况就会出现。
- */
-export function isVisibleInRecentTab(conv: ConversationWrap, now: number = Date.now()): boolean {
-    if (conv.channel.channelType !== ChannelTypeGroup) return true
-    return (now - conv.timestamp * 1000) < RECENT_INACTIVE_THRESHOLD_MS
+export function isMutedForRecentConversation(conv: ConversationWrap): boolean {
+    const isThread = conv.channel.channelType === ChannelTypeCommunityTopic
+    let parentChannelInfo: any | undefined
+    if (isThread) {
+        const parentGroupNo =
+            (conv.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
+            parseThreadChannelId(conv.channel.channelID)?.groupNo
+        if (parentGroupNo) {
+            parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
+                new Channel(parentGroupNo, ChannelTypeGroup)
+            )
+        }
+    }
+    return isEffectivelyMuted({
+        isThread,
+        channelInfo: conv.channelInfo,
+        parentChannelInfo,
+    })
 }
 
 export interface ChatConversationListProps {
     conversations: ConversationWrap[]
     filter: ConvFilter
-    /** 是否隐藏 3 天不活跃的群聊（最近 Tab 使用） */
-    hideInactiveGroups?: boolean
     select?: Channel
     onConversationClick: (conv: ConversationWrap) => void
     onClearMessages: (channel: Channel) => void
@@ -47,6 +53,8 @@ export interface ChatConversationListProps {
     onOpenCreateCategoryRef?: React.MutableRefObject<(() => void) | null>
     /** 群聊创建成功后回调，用于刷新会话列表 */
     onGroupCreated?: () => void
+    /** 递增 token：变化时最近列表滚到第一条可导航未读 */
+    scrollToUnreadToken?: number
 }
 
 // 「+ 新建分组」入口在三个右键场景共用同一个 modal。建分类成功后,要把当时
@@ -65,13 +73,13 @@ type PendingAction = NewCategoryTarget | null
 const ChatConversationList: React.FC<ChatConversationListProps> = ({
     conversations,
     filter,
-    hideInactiveGroups = false,
     select,
     onConversationClick,
     onClearMessages,
     onThreadOverflowClick,
     onOpenCreateCategoryRef,
     onGroupCreated,
+    scrollToUnreadToken,
 }) => {
     const { t } = useI18n()
     const {
@@ -202,13 +210,14 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
 
     const existingCategoryNames = categories.map(c => c.name)
 
-    // 最近 Tab 3 天不活跃群聊隐藏逻辑：列表渲染、tab 角标、其它复用方都必须共用一套
-    // 判定，否则会出现「badge 显示 N 但列表里看不到对应未读」。
-    const filteredConversations = useMemo(() => {
-        if (!hideInactiveGroups) return conversations
-        const now = Date.now()
-        return conversations.filter(conv => isVisibleInRecentTab(conv, now))
-    }, [conversations, hideInactiveGroups])
+    const shouldScrollToRecentUnreadTarget = React.useCallback(
+        (conv: ConversationWrap) => {
+            if (filter === 'group') return false
+            if (conv.unread <= 0) return false
+            return !isMutedForRecentConversation(conv)
+        },
+        [filter]
+    )
 
     // 按 conv.channelType 把会话归入指定分类。三种 channel 走三套写操作:
     // - 子区:父群先 refollow + moveCategory,再 followThread(子区不能脱离父群单独分组)
@@ -363,7 +372,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
         <>
             {filter === 'group' ? (
                 <ConversationListGrouped
-                    conversations={filteredConversations}
+                    conversations={conversations}
                     select={select}
                     onConversationClick={onConversationClick}
                     onClearMessages={onClearMessages}
@@ -411,13 +420,15 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                 />
             ) : (
                 <ConversationList
-                    conversations={filteredConversations}
+                    conversations={conversations}
                     select={select}
                     filter={filter}
                     onClick={onConversationClick}
                     onClearMessages={onClearMessages}
                     onThreadOverflowClick={onThreadOverflowClick}
                     extraContextMenus={buildExtraMenus}
+                    scrollToUnreadToken={scrollToUnreadToken}
+                    shouldScrollToUnreadTarget={shouldScrollToRecentUnreadTarget}
                 />
             )}
 

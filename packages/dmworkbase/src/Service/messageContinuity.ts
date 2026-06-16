@@ -21,6 +21,7 @@ function isBoundaryMessage(message: ContinuityMessage): boolean {
     return contentType === MessageContentTypeConst.time
         || contentType === MessageContentTypeConst.historySplit
         || contentType === MessageContentTypeConst.typing
+        || contentType === MessageContentTypeConst.screenshot
         || !!message.revoke
 }
 

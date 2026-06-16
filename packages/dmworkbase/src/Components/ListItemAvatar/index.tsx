@@ -1,10 +1,12 @@
-import React, { useRef } from "react";
+import React from "react";
 import { Component, ReactNode } from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import { ListItemProps } from "../ListItem";
 import RouteContext, { FinishButtonContext, RouteContextConfig } from "../../Service/Context";
 import { WKAvatarEditor } from "../WKAvatarEditor";
 import { t } from "../../i18n";
+import { canvasToPngFile, isAvatarFileTooLarge, isGifImageFile } from "../avatarUpload";
+import { WKAvatarUploadPreview } from "../WKAvatarUploadPreview";
 
 export interface ListItemAvatarProps extends ListItemProps {
     avatar?: JSX.Element
@@ -26,9 +28,45 @@ export class ListItemAvatar extends Component<ListItemAvatarProps>{
     chooseFile = () => {
         this.$fileInput.click();
     }
-    showFile(file: any) {
+    async showFile(file: File) {
         const { context,onFileUpload } = this.props
-        let finishButtonContext:FinishButtonContext
+        if (!file || !onFileUpload) return;
+        if (isAvatarFileTooLarge(file)) {
+            Toast.error(t("base.channelAvatar.fileTooLarge"));
+            return;
+        }
+        if (isGifImageFile(file)) {
+            let finishButtonContext:FinishButtonContext | undefined
+            if (context) {
+                context.push(<WKAvatarUploadPreview file={file} />, new RouteContextConfig({
+                    title: t("base.channelAvatar.previewAvatar"),
+                    showFinishButton: true,
+                    onFinishContext(ctx) {
+                        finishButtonContext = ctx
+                    },
+                    onFinish: async () => {
+                        try {
+                            finishButtonContext?.loading(true)
+                            await onFileUpload(file);
+                            finishButtonContext?.loading(false)
+                            context.pop()
+                        } catch {
+                            Toast.error(t("base.channelAvatar.uploadFailedRetry"));
+                        } finally {
+                            finishButtonContext?.loading(false)
+                        }
+                    }
+                }))
+                return;
+            }
+            try {
+                await onFileUpload(file);
+            } catch {
+                Toast.error(t("base.channelAvatar.uploadFailedRetry"));
+            }
+            return;
+        }
+        let finishButtonContext:FinishButtonContext | undefined
         if (context) {
             context.push(<WKAvatarEditor ref={(rf)=>{
                 this.avatarEdit = rf
@@ -40,24 +78,34 @@ export class ListItemAvatar extends Component<ListItemAvatarProps>{
                 onFinish: async () => {
                     let canvas = this.avatarEdit?.getImageScaledToCanvas()
                     if(canvas) {
-                        canvas.toBlob( async (bob: Blob | null)  => {
-                            if (!bob) {
-                                Toast.error(t("base.channelAvatar.imageProcessFailedRetry"));
-                                return;
-                            }
-                            const file = new File([bob], `profilePicture.png`, {
-                                type: "image/png"
-                            });
-                            if(onFileUpload) {
+                        let file: File;
+                        try {
+                            file = await canvasToPngFile(canvas, `profilePicture.png`);
+                        } catch {
+                            Toast.error(t("base.channelAvatar.imageProcessFailedRetry"));
+                            return;
+                        }
+                        try {
+                            if(finishButtonContext) {
                                 finishButtonContext.loading(true)
-                                await onFileUpload(file)
-                                finishButtonContext.loading(false)
-                                context.pop()
                             }
-                        })
+                            await onFileUpload(file)
+                            finishButtonContext?.loading(false)
+                            context.pop()
+                        } catch {
+                            Toast.error(t("base.channelAvatar.uploadFailedRetry"));
+                        } finally {
+                            finishButtonContext?.loading(false)
+                        }
                     }
                 }
             }))
+            return;
+        }
+        try {
+            await onFileUpload(file);
+        } catch {
+            Toast.error(t("base.channelAvatar.uploadFailedRetry"));
         }
     }
     render(): ReactNode {

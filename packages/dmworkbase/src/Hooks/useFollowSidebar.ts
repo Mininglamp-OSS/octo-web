@@ -1,7 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
+import WKSDK, { ConversationAction, type Conversation, type ConversationListener } from "wukongimjssdk"
 import WKApp from "../App"
 import { t } from "../i18n"
+import { ChannelTypeCommunityTopic } from "../Service/Const"
+import FollowService from "../Service/FollowService"
 import SidebarService, { SidebarItem } from "../Service/SidebarService"
+import { buildThreadChannelId, parseThreadChannelId } from "../Service/Thread"
 
 export interface UseFollowSidebarResult {
     /** 已关注的 sidebar items（target_type 全集，is_followed=true 由后端保证） */
@@ -37,6 +41,29 @@ export interface UseFollowSidebarResult {
 }
 
 const NULL_CATEGORY = ""
+const THREAD_SIDEBAR_RELOAD_DELAYS_MS = [300, 1000, 2000]
+type LoadOptions = { silent?: boolean }
+
+export function shouldReloadFollowSidebarForThreadConversation(args: {
+    conversation?: Conversation | null
+    action: ConversationAction
+    followedKeys: Set<string>
+    followedGroupNos: Set<string>
+    requestedThreadIds: Set<string>
+}): boolean {
+    const { conversation, action, followedKeys, followedGroupNos, requestedThreadIds } = args
+    if (action !== ConversationAction.add && action !== ConversationAction.update) return false
+    const channel = conversation?.channel
+    if (!channel || channel.channelType !== ChannelTypeCommunityTopic) return false
+    if (!channel.channelID || requestedThreadIds.has(channel.channelID)) return false
+
+    const threadKey = `${ChannelTypeCommunityTopic}::${channel.channelID}`
+    if (followedKeys.has(threadKey)) return false
+
+    const parentGroupNo = conversation?.channelInfo?.orgData?.parentGroupNo
+        || parseThreadChannelId(channel.channelID)?.groupNo
+    return !!parentGroupNo && followedGroupNos.has(parentGroupNo)
+}
 
 /**
  * 拉取关注 tab 的 sidebar items，并按 category_id 分桶。
@@ -57,11 +84,18 @@ export function useFollowSidebar(): UseFollowSidebarResult {
     // 与 followVersion state 同步的 ref：消费者通过 ref 读到的永远是最新值，
     // 不受 React 渲染节奏 / useCallback 闭包过期影响。
     const versionRef = useRef<number>(0)
+    const followedKeysRef = useRef<Set<string>>(new Set())
+    const followedGroupNosRef = useRef<Set<string>>(new Set())
+    const requestedThreadReloadsRef = useRef<Set<string>>(new Set())
+    const threadReloadTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
 
-    const load = useCallback(async () => {
+    const load = useCallback(async (options: LoadOptions = {}) => {
         if (!spaceId) return
-        setIsLoading(true)
-        setError(null)
+        const silent = options.silent === true
+        if (!silent) {
+            setIsLoading(true)
+            setError(null)
+        }
         try {
             const resp = await SidebarService.sync({
                 tab: "follow",
@@ -72,9 +106,13 @@ export function useFollowSidebar(): UseFollowSidebarResult {
             setFollowVersion(v)
             versionRef.current = v
         } catch (e: any) {
-            setError(e?.message || t("base.followSidebar.loadFailed"))
+            if (!silent) {
+                setError(e?.message || t("base.followSidebar.loadFailed"))
+            }
         } finally {
-            setIsLoading(false)
+            if (!silent) {
+                setIsLoading(false)
+            }
         }
     }, [spaceId])
 
@@ -82,6 +120,123 @@ export function useFollowSidebar(): UseFollowSidebarResult {
         load()
     }, [load])
 
+    // 外部触发重载（如 ThreadPanel 关注子区后、会话未读数变化后 #203）
+    // 使用 silent 模式：不翻转 isLoading，避免关注 tab 列表 remount 闪烁 / 丢失滚动位置
+    useEffect(() => {
+        const handler = () => load({ silent: true })
+        WKApp.mittBus.on("sidebar-reload" as any, handler)
+        return () => { WKApp.mittBus.off("sidebar-reload" as any, handler) }
+    }, [load])
+
+    useEffect(() => {
+        requestedThreadReloadsRef.current.clear()
+        for (const timer of threadReloadTimersRef.current) {
+            clearTimeout(timer)
+        }
+        threadReloadTimersRef.current.clear()
+    }, [spaceId])
+
+    const scheduleThreadReload = useCallback((threadChannelId?: string | null) => {
+        if (!threadChannelId) return
+
+        const threadKey = `${ChannelTypeCommunityTopic}::${threadChannelId}`
+        if (followedKeysRef.current.has(threadKey)) return
+        if (requestedThreadReloadsRef.current.has(threadChannelId)) return
+
+        requestedThreadReloadsRef.current.add(threadChannelId)
+        THREAD_SIDEBAR_RELOAD_DELAYS_MS.forEach((delay, index) => {
+            const timer = setTimeout(() => {
+                threadReloadTimersRef.current.delete(timer)
+                if (followedKeysRef.current.has(threadKey)) {
+                    requestedThreadReloadsRef.current.delete(threadChannelId)
+                    return
+                }
+
+                void load({ silent: true }).finally(() => {
+                    if (index === THREAD_SIDEBAR_RELOAD_DELAYS_MS.length - 1) {
+                        requestedThreadReloadsRef.current.delete(threadChannelId)
+                    }
+                })
+            }, delay)
+            threadReloadTimersRef.current.add(timer)
+        })
+    }, [load])
+
+    useEffect(() => {
+        const conversationManager = WKSDK.shared().conversationManager
+        if (!conversationManager?.addConversationListener) return
+
+        const listener: ConversationListener = (conversation: Conversation, action: ConversationAction) => {
+            if (!shouldReloadFollowSidebarForThreadConversation({
+                conversation,
+                action,
+                followedKeys: followedKeysRef.current,
+                followedGroupNos: followedGroupNosRef.current,
+                requestedThreadIds: requestedThreadReloadsRef.current,
+            })) {
+                return
+            }
+
+            scheduleThreadReload(conversation.channel.channelID)
+        }
+
+        conversationManager.addConversationListener(listener)
+        return () => {
+            conversationManager.removeConversationListener?.(listener)
+            for (const timer of threadReloadTimersRef.current) {
+                clearTimeout(timer)
+            }
+            threadReloadTimersRef.current.clear()
+        }
+    }, [scheduleThreadReload])
+
+    useEffect(() => {
+        const listener = (event: {
+            groupNo: string
+            threadChannelId: string
+            shortId?: string
+            thread?: { channel_id?: string }
+        }) => {
+            if (!event?.groupNo) return
+
+            const threadChannelId = event.threadChannelId
+                || event.thread?.channel_id
+                || (event.shortId ? buildThreadChannelId(event.groupNo, event.shortId) : undefined)
+
+            // Auto-follow the newly created thread when its parent channel
+            // is already followed.  This covers all create entry points
+            // (ThreadCreate, ThreadCreateModal, ThreadPanel) without each
+            // needing access to follow state.  Best-effort: failure is
+            // logged but does not affect the create UX.
+            if (threadChannelId && followedGroupNosRef.current.has(event.groupNo)) {
+                const threadKey = `${ChannelTypeCommunityTopic}::${threadChannelId}`
+                if (!followedKeysRef.current.has(threadKey)) {
+                    FollowService.followThread({ thread_channel_id: threadChannelId })
+                        .then(() => load({ silent: true }))
+                        .catch((err) => console.warn("[useFollowSidebar] auto-follow thread failed (non-fatal)", err))
+                }
+            }
+
+            scheduleThreadReload(threadChannelId)
+        }
+
+        WKApp.mittBus.on("wk:thread-created", listener)
+        return () => {
+            WKApp.mittBus.off("wk:thread-created", listener)
+            for (const timer of threadReloadTimersRef.current) {
+                clearTimeout(timer)
+            }
+            threadReloadTimersRef.current.clear()
+        }
+    }, [scheduleThreadReload])
+
+    useEffect(() => {
+        const listener = () => load({ silent: true })
+        WKApp.mittBus.on("wk:thread-deleted", listener)
+        return () => {
+            WKApp.mittBus.off("wk:thread-deleted", listener)
+        }
+    }, [load])
     // sort 成功后调，乐观自增 ref，避免连续拖拽用旧版本号触发 CAS conflict
     const bumpVersion = useCallback(() => {
         versionRef.current = versionRef.current + 1
@@ -141,6 +296,8 @@ export function useFollowSidebar(): UseFollowSidebarResult {
             followedGroupNos.add(it.target_id)
         }
     }
+    followedKeysRef.current = followedKeys
+    followedGroupNosRef.current = followedGroupNos
     // 每个 category 内按 follow_sort ASC 排，覆盖 sidebar 响应里的 pinned DESC 拆段。
     // PM #337 spec 是用户主导的统一排序，pinned 只是标记不影响位置 —— 后端响应仍按
     // (pinned DESC, follow_sort ASC) 多键排，前端这里按 follow_sort 一锤定音。

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import React from "react";
 import ReplyBlock from "./index";
 
@@ -53,5 +53,13 @@ export const LongSpaceName: Story = {
       "This is a very long quoted digest that should be truncated after one line",
     sourceSpaceName:
       "A very very long external workspace name for truncation demo",
+  },
+};
+
+/** 摘要中的链接：高亮并可点击，不影响点击引用块定位原消息 */
+export const LinkDigest: Story = {
+  args: {
+    fromName: "沈鑫",
+    digest: "图文混排摘要 https://example.com/docs 后面还有文字",
   },
 };

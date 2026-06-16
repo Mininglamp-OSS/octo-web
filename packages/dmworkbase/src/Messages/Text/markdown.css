@@ -189,6 +189,19 @@
   border-radius: var(--wk-r-sm);
 }
 
+/* RichText / Markdown 内联图片：可点击放大 */
+.wk-markdown-img {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: var(--wk-r-sm);
+  cursor: zoom-in;
+}
+
+/* url 安全校验未通过的图片占位（降级为文本，绝不渲染图片） */
+.wk-markdown-img-unsafe {
+  color: var(--wk-text-secondary);
+}
+
 /* ── @mention（消息气泡内的 mention span）── */
 .wk-message-mention {
   display: inline;

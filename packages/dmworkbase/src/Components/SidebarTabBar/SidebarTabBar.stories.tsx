@@ -18,6 +18,7 @@ const meta: Meta<typeof SidebarTabBar> = {
 - \`followUnread\`：关注未读总数
 - \`recentUnread\`：最近未读总数
 - \`onTabChange\`：切换回调
+- \`onActiveTabClick\`：点击当前已激活 Tab 时触发
 
 **States：**
 - 关注激活
@@ -136,5 +137,34 @@ export const TabSwitch: Story = {
     // 再点回关注
     await userEvent.click(btns[0])
     expect(btns[0].className).toContain('active')
+  },
+}
+
+export const ActiveTabClick: Story = {
+  name: '点击已激活 Tab',
+  render: () => {
+    const [activeClicks, setActiveClicks] = useState<SidebarTab[]>([])
+    return (
+      <div>
+        <SidebarTabBar
+          activeTab="recent"
+          followUnread={0}
+          recentUnread={3}
+          onTabChange={() => {}}
+          onActiveTabClick={(tab) => setActiveClicks((items) => [...items, tab])}
+        />
+        <div data-testid="active-clicks">{activeClicks.join(',')}</div>
+      </div>
+    )
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const btns = canvas.getAllByRole('button')
+
+    await userEvent.click(btns[1])
+    expect(canvas.getByTestId('active-clicks').textContent).toBe('recent')
+
+    await userEvent.click(canvas.getByText('3'))
+    expect(canvas.getByTestId('active-clicks').textContent).toBe('recent,recent')
   },
 }

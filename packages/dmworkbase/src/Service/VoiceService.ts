@@ -65,9 +65,10 @@ export default class VoiceService {
     skipLocal?: boolean,
     channelType?: number,
     allowFeedback?: boolean,
+    selfName?: string,
   ): Promise<TranscribeResult> {
     if (!skipLocal) {
-      const localResult = await LocalModelService.shared.transcribe(audio, contextText, chatContext, personalContext, memberContext, mode);
+      const localResult = await LocalModelService.shared.transcribe(audio, contextText, chatContext, personalContext, memberContext, mode, selfName);
       if (localResult) {
         return localResult;
       }
@@ -96,6 +97,9 @@ export default class VoiceService {
     }
     if (allowFeedback !== undefined) {
       formData.append("allow_feedback", String(allowFeedback));
+    }
+    if (selfName) {
+      formData.append("self_name", selfName);
     }
     return APIClient.shared.post("/voice/transcribe", formData);
   }

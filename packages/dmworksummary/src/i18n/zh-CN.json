@@ -4,8 +4,10 @@
     "cancel": "取消",
     "confirm": "确定",
     "createFailed": "创建失败",
+    "createFailedRetry": "创建失败，请稍后重试",
     "deleteFailed": "删除失败",
     "edit": "编辑",
+    "loading": "加载中...",
     "loadingFailed": "加载失败",
     "operationFailed": "操作失败",
     "retry": "重试",
@@ -109,7 +111,11 @@
       "thu": "周四",
       "fri": "周五",
       "sat": "周六"
-    }
+    },
+    "biweekly": "每两周",
+    "everyNDays": "每 {{days}} 天{{at}}",
+    "everyNWeeks": "每 {{weeks}} 周{{at}}",
+    "everyNMonths": "每 {{months}} 个月{{at}}"
   },
   "list": {
     "title": "智能总结",
@@ -126,21 +132,63 @@
     "title": "智能总结",
     "desc": "邀请同事一起总结信息，并根据聊天等内容自动总结",
     "topicPlaceholder": "输入你想总结的主题，例如：总结本周项目进展、整理客户反馈要点...",
+    "topicPlaceholderInChat": "输入聊天内你想总结的主题",
+    "templatesTitle": "试试总结",
+    "submitting": "总结中...",
     "scheduleFailed": "总结已创建，但定时更新配置失败",
     "success": "总结任务已创建",
     "selectChat": "选择聊天",
     "selectedChats": "已选 {{count}} 个聊天",
     "start": "开始总结",
-    "templatesTitle": "试试这些总结模板",
     "scheduleDaily": "按天 {{time}}",
     "scheduleWeekly": "每{{day}} {{time}}",
-    "scheduleMonthly": "每月{{day}}日 {{time}}"
+    "scheduleMonthly": "每月{{day}}日 {{time}}",
+    "scheduleBindFailed": "总结已创建，但定时绑定失败，已撤销该定时，请到详情页重试",
+    "scheduleBindFailedOrphan": "总结已创建，但定时绑定失败且撤销未成功，可能残留未绑定定时，请到定时列表检查清理",
+    "archivedNotice": "默认总结活跃子区，不含已归档子区"
+  },
+  "chatSummary": {
+    "panelTitle": "聊天内的智能总结",
+    "createNew": "新建总结",
+    "back": "返回",
+    "starTooltip": "智能总结"
+  },
+  "templates": {
+    "project_progress": {
+      "label": "汇总项目进展",
+      "description": "与团队成员一起总结进展",
+      "pattern": "总结 {project_name} 的项目进展",
+      "placeholder": "输入项目名称"
+    },
+    "task_tracking": {
+      "label": "跟踪任务进度",
+      "description": "邀请同事汇总任务完成情况",
+      "pattern": "总结 {task_name} 的完成情况",
+      "placeholder": "输入任务名称"
+    },
+    "weekly_report": {
+      "label": "总结团队周报",
+      "description": "总结团队成员每周的工作",
+      "pattern": "总结每周的工作周报"
+    },
+    "chat_content": {
+      "label": "总结聊天内容",
+      "description": "总结指定聊天中的事情进展",
+      "pattern": "总结本群中的关键内容"
+    }
   },
   "chatSelector": {
     "title": "选择聊天",
     "searchPlaceholder": "搜索群聊或联系人",
     "all": "全部",
-    "noData": "暂无数据"
+    "followed": "关注",
+    "recent": "最近",
+    "allGroups": "全部群聊",
+    "allDirects": "全部私聊",
+    "noData": "暂无数据",
+    "includeArchived": "包含已归档子区",
+    "includeArchivedHelper": "默认不含已归档子区，开启后可选择归档子区",
+    "archivedTag": "已归档"
   },
   "memberSelector": {
     "title": "添加成员",
@@ -180,7 +228,39 @@
       "time": "时间",
       "daily": "按天更新",
       "weekly": "按周更新",
-      "monthly": "按月更新"
+      "monthly": "按月更新",
+      "biweekly": "按两周更新",
+      "everyPrefix": "每",
+      "atPrefix": "在",
+      "unitDay": "天",
+      "unitWeek": "周",
+      "unitMonth": "月",
+      "everyMin": "数量必须为不小于 1 的整数",
+      "everyMaxDays": "间隔过大，按天换算不能超过 {{max}} 天",
+      "everyMaxMonths": "间隔过大，最多 {{max}} 个月",
+      "onWeekdayPrefix": "周",
+      "onDayOfMonthPrefix": "每月",
+      "weekdayLabel": "周几",
+      "dayOfMonthFieldLabel": "几号",
+      "weekdayPlaceholder": "选择周几",
+      "dayOfMonthPlaceholder": "选择日期",
+      "dayOfMonthLabel": "{{day}} 号",
+      "dayOfMonthHint": "选 29/30/31 号时，遇到小月会自动顺延到当月最后一天",
+      "legacyCronWarning": "此定时为旧版自定义周期，新版表单不支持精确回填。保存将把它转换为上方所选的间隔（天/周/月）模式，请确认周期设置无误。",
+      "weekday": {
+        "mon": "周一",
+        "tue": "周二",
+        "wed": "周三",
+        "thu": "周四",
+        "fri": "周五",
+        "sat": "周六",
+        "sun": "周日"
+      }
+    },
+    "summary": {
+      "everyNDays": "每 {{days}} 天",
+      "everyNWeeks": "每 {{weeks}} 周",
+      "everyNMonths": "每 {{months}} 个月"
     }
   },
   "confirmPage": {
@@ -229,6 +309,8 @@
     "expandAll": "展开全部 ▼",
     "waitingSubmit": "{{name}} · 等待提交...",
     "regenerate": "重新生成",
+    "regenerateEditTitle": "修改提示词并重新生成",
+    "regenerateTopicLabel": "提示词",
     "cancelTask": "取消任务",
     "errorCause": "可能由网络波动或服务异常导致",
     "inviteQuestion": "你被邀请参与此总结任务，是否同意？",
@@ -236,12 +318,23 @@
     "cancelledDesc": "此总结任务已被取消，不会继续执行",
     "waitingConfirmTitle": "等待参与者确认中",
     "waitingConfirmDesc": "需要所有参与者确认后才能开始生成",
-    "viewConfirmStatus": "查看确认状态"
+    "viewConfirmStatus": "查看确认状态",
+    "scheduleBindFailed": "定时创建但绑定到该总结失败，已撤销，请重试",
+    "scheduleBindFailedOrphan": "定时绑定失败且自动撤销未成功，可能残留未绑定的定时，请到定时列表检查清理",
+    "setSchedule": "设置定时更新",
+    "editSchedule": "修改定时更新",
+    "disableSchedule": "关闭定时",
+    "scheduleDisabled": "定时已关闭",
+    "scheduleDisabledHint": "定时已关闭",
+    "scheduleActiveLabel": "已开启定时",
+    "schedulePrefix": "定时：",
+    "scheduleNextRun": "下次 {{time}}"
   },
   "summaryCard": {
     "createdBy": "{{name}} 发起",
     "deleteTitle": "确认删除",
-    "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。"
+    "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。",
+    "deleteScheduledContent": "「{{title}}」是定时更新的总结。删除后将停止定时更新，并移除该总结的全部历史记录，确定删除吗？"
   },
   "editor": {
     "saveSuccess": "保存成功",

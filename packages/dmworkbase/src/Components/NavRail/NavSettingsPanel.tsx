@@ -5,6 +5,7 @@ import React, { Component } from "react";
 import { Toast, Spin, Button, Progress } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import NavVoiceSettingsItem from "./NavVoiceSettingsItem";
+import NavSecretsSettingsItem from "./NavSecretsSettingsItem";
 import { i18n, t } from "../../i18n";
 import { apiFetchJson } from "../../Service/apiFetch";
 
@@ -177,9 +178,10 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                             : t("base.navRail.settingsPanel.desktopNotification.off")}
                     </li>
                     <NavVoiceSettingsItem />
+                    <NavSecretsSettingsItem />
                     <li onClick={() => {
                         onToggleSetting();
-                        WKApp.shared.logout();
+                        void WKApp.shared.logoutUserInitiated();
                     }}>
                         {t("base.navRail.settingsPanel.logout")}
                     </li>

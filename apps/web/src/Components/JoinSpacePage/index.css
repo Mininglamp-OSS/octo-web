@@ -86,6 +86,46 @@
     margin-top: 16px;
 }
 
+.wk-join-space-logout {
+    margin-top: var(--wk-sp-5);
+}
+
+.wk-join-space-logout-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--wk-sp-1);
+    min-height: 30px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-base);
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.wk-join-space-logout-btn:hover {
+    color: var(--wk-brand-primary);
+}
+
+.wk-join-space-logout-btn:hover span {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.wk-join-space-logout-btn:focus-visible {
+    outline: 2px solid var(--wk-brand-primary-ring);
+    outline-offset: 2px;
+    border-radius: var(--wk-r-xs);
+}
+
+.wk-join-space-logout-btn svg {
+    flex: 0 0 auto;
+}
+
 /* Primary 按钮颜色统一 */
 .wk-join-space-btn.semi-button-primary {
     background-color: var(--wk-color-primary, #1C1C23) !important;

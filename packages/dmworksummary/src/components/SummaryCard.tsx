@@ -4,7 +4,7 @@ import { IconDelete } from "@douyinfe/semi-icons";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryListItem } from "../types/summary";
-import { ParticipantStatus } from "../types/summary";
+import { ParticipantStatus, TriggerType } from "../types/summary";
 import TaskStatusBadge from "./TaskStatusBadge";
 import OverflowTooltip from "./OverflowTooltip";
 
@@ -19,12 +19,17 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
     const { t } = useI18n();
     const currentUid = WKApp.loginInfo.uid;
     const myParticipant = task.participants?.find((p) => p.user_id === currentUid);
-    const isPendingInvite = myParticipant != null && myParticipant.status === ParticipantStatus.PENDING;
+    const isMultiParticipant = (task.participants?.length ?? 0) > 1;
+    const isPendingInvite = isMultiParticipant && myParticipant != null && myParticipant.status === ParticipantStatus.PENDING;
+
+    // 是否定时任务：以 schedule_id 为准，trigger_type===SCHEDULED 作兜底，
+    // 以覆盖「绑定了定时但尚未执行过」的任务。
+    const isScheduledTask = (task.schedule_id != null && task.schedule_id > 0) || task.trigger_type === TriggerType.SCHEDULED;
 
     return (
         <div className="summary-card" onClick={() => onClick(task.task_id)}>
             <div className="summary-card-header">
-                <OverflowTooltip className="summary-card-title">
+                <OverflowTooltip className="summary-card-title" title={task.title || task.task_no}>
                     {task.title || task.task_no}
                 </OverflowTooltip>
                 <TaskStatusBadge status={task.status} />
@@ -58,7 +63,11 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
                 <span className="summary-card-date">{task.created_at?.substring(0, 10) || ''}</span>
                 <Popconfirm
                     title={t("summary.summaryCard.deleteTitle")}
-                    content={t("summary.summaryCard.deleteContent", { values: { title: task.title || task.task_no } })}
+                    content={
+                        isScheduledTask
+                            ? t("summary.summaryCard.deleteScheduledContent", { values: { title: task.title || task.task_no } })
+                            : t("summary.summaryCard.deleteContent", { values: { title: task.title || task.task_no } })
+                    }
                     onConfirm={(e) => {
                         e?.stopPropagation();
                         onDelete(task.task_id);

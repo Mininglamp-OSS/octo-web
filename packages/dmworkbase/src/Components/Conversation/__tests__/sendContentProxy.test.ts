@@ -56,6 +56,25 @@ describe("wrapSendContentForInjection", () => {
         expect(wrapped.contentObj.mention.ais).toBe(1)
     })
 
+    it("preserves mention.entities in the wire payload when SDK encode overwrites mention", () => {
+        const msg = new MessageText("@所有AI ping @ops")
+        const mn = new Mention()
+        ;(mn as any).ais = 1
+        ;(mn as any).entities = [{ uid: "-3", offset: 0, length: 5 }]
+        mn.uids = ["bot_a"]
+        msg.mention = mn
+
+        const wrapped = wrapSendContentForInjection(msg, { mentionAis: true })
+
+        const wire = decodeWire(wrapped)
+        expect(wire.mention.uids).toEqual(["bot_a"])
+        expect(wire.mention.ais).toBe(1)
+        expect(wire.mention.entities).toEqual([{ uid: "-3", offset: 0, length: 5 }])
+        expect(wrapped.contentObj.mention.entities).toEqual([
+            { uid: "-3", offset: 0, length: 5 },
+        ])
+    })
+
     it("injects mention.humans=1 (@所有人 three-state path)", () => {
         const msg = new MessageText("@所有人 ping")
         const mn = new Mention()

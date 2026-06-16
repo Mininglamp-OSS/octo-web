@@ -16,7 +16,7 @@ permissions: {}
 
 jobs:
   check-sprint:
-    uses: Mininglamp-OSS/.github/.github/workflows/reusable-check-sprint.yml@main
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-check-sprint.yml@v1
     with:
       pr-number: ${{ github.event.pull_request.number }}
       repo-name: ${{ github.repository }}

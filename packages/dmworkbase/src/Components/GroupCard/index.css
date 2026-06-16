@@ -1,5 +1,5 @@
-.wk-group-card-modal .semi-modal-body {
-    padding: 0 !important;
+.wk-group-card-modal .wk-modal-shell {
+    padding: 0;
 }
 .wk-group-card-content {
     padding: 24px;

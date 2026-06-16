@@ -1,5 +1,5 @@
 import React, { Component } from "react"
-import { Button, Spin, Modal, Toast, Tooltip } from "@douyinfe/semi-ui"
+import { Button, Spin, Toast, Tooltip } from "@douyinfe/semi-ui"
 import { Channel } from "wukongimjssdk"
 import { UserPlus, LogOut, Trash2 } from "lucide-react"
 import { Thread, ThreadStatus } from "../../Service/Thread"
@@ -9,6 +9,7 @@ import RouteContext from "../../Service/Context"
 import { ThreadListVM, ThreadListState } from "./vm"
 import { ThreadCreate } from "../ThreadCreate"
 import { I18nContext, t } from "../../i18n"
+import { wkConfirm } from "../WKModal"
 import "./index.css"
 
 export interface ThreadListProps {
@@ -62,7 +63,7 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
 
   handleDelete = (thread: Thread, e: React.MouseEvent) => {
     e.stopPropagation()
-    Modal.confirm({
+    wkConfirm({
       title: t("base.threadPanel.delete"),
       content: t("base.threadList.deleteConfirm", { values: { name: thread.name } }),
       okType: "danger",
@@ -89,7 +90,7 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
 
   handleLeave = (thread: Thread, e: React.MouseEvent) => {
     e.stopPropagation()
-    Modal.confirm({
+    wkConfirm({
       title: t("base.module.thread.leave"),
       content: t("base.threadList.leaveConfirm", { values: { name: thread.name } }),
       onOk: async () => {

@@ -8,6 +8,7 @@ import { InputEdit } from "../InputEdit";
 import { ListItem, ListItemIcon } from "../ListItem";
 import { Sex, SexSelect } from "../SexSelect";
 import { ListItemAvatar } from "../ListItemAvatar";
+import WKAvatar from "../WKAvatar";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
 import axios from "axios";
 import { Toast } from "@douyinfe/semi-ui";
@@ -279,7 +280,6 @@ export class MeInfoVM extends ProviderListener {
         param.append("file", file);
         return axios.post(`users/${WKApp.loginInfo.uid}/avatar`, param, {
             headers: { "Content-Type": "multipart/form-data", "token": WKApp.loginInfo.token || "" },
-        }).catch(error => {
         })
     }
 
@@ -367,7 +367,10 @@ export class MeInfoVM extends ProviderListener {
                     properties: {
                         title: t("base.me.avatar"),
                         context: context,
-                        avatar: <img style={{ "width": "24px", "height": "24px", "borderRadius": "50%" }} src={WKApp.shared.avatarUser(WKApp.loginInfo.uid || "")}></img>,
+                        avatar: <WKAvatar
+                            channel={new Channel(WKApp.loginInfo.uid || "", ChannelTypePerson)}
+                            style={{ "width": "24px", "height": "24px", "borderRadius": "50%" }}
+                        />,
                         onFileUpload: async (f: File) => {
                             await this.uploadAvatar(f)
                             WKApp.shared.changeChannelAvatarTag(new Channel(WKApp.loginInfo.uid||"", ChannelTypePerson))

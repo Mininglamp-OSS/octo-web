@@ -848,3 +848,39 @@ body[theme-mode="dark"] .wk-chat-popover {
     var(--wk-width-matter-detail-panel) + var(--wk-width-thread-panel)
   );
 }
+
+/* ============================================
+   智能总结面板
+   ============================================ */
+:root {
+  --wk-width-summary-panel: 360px;
+}
+
+.wk-summary-panel {
+  pointer-events: auto;
+  width: var(--wk-width-summary-panel);
+  height: 100%;
+  position: absolute;
+  z-index: 100;
+  top: 0;
+  right: 0;
+  border-left: 1px solid var(--wk-border-default);
+  background-color: var(--wk-bg-surface);
+  box-shadow: var(--wk-shadow-md);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  /* 容器查询上下文：详情按面板自身宽度自适应（与视口解耦，拖宽后仍生效） */
+  container-type: inline-size;
+  container-name: wk-summary;
+}
+
+.wk-chat-content-right.wk-chat-summary-panel-open .wk-chat-content-chat {
+  width: calc(100% - var(--wk-width-summary-panel));
+}
+
+/* 总结面板打开时，设置面板贴在总结面板左侧（对齐子区/事项让位行为，避免被遮挡） */
+.wk-chat-content-right.wk-chat-summary-panel-open.wk-chat-channelsetting-open
+  .wk-chat-channelsetting {
+  right: var(--wk-width-summary-panel);
+}

@@ -44,7 +44,7 @@ export default function MultiImage({
           width={img.width}
           height={img.height}
           transferState={img.transferState || transferState}
-          onClick={() => onImageClick?.(index)}
+          onClick={onImageClick ? () => onImageClick(index) : undefined}
         />
       ))}
     </div>

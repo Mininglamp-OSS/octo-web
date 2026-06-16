@@ -1,8 +1,9 @@
 import React, { Component } from "react";
-import { Input, TextArea, Toast, Modal, Button } from "@douyinfe/semi-ui";
+import { Input, TextArea, Toast, Button } from "@douyinfe/semi-ui";
 import { IconCopy, IconLink } from "@douyinfe/semi-icons";
 import { Space, SpaceService } from "../../Service/SpaceService";
 import { I18nContext, t } from "../../i18n";
+import { wkConfirm } from "../WKModal";
 import "./index.css";
 
 export interface SpaceSettingsProps {
@@ -57,7 +58,7 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
     };
 
     handleLeave = () => {
-        Modal.confirm({
+        wkConfirm({
             title: t("base.spaceSettings.leaveTitle"),
             content: t("base.spaceSettings.leaveContent"),
             okText: t("base.common.ok"),
@@ -76,7 +77,7 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
     };
 
     handleDisband = () => {
-        Modal.confirm({
+        wkConfirm({
             title: t("base.spaceSettings.disbandTitle"),
             content: t("base.spaceSettings.disbandContent"),
             okType: "danger",

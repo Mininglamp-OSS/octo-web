@@ -727,6 +727,42 @@ describe("LocalModelService", () => {
       expect(body.get("mode")).toBe("smart");
     });
 
+    it("should include self_name when a non-empty selfName is provided", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ data: [] }), { status: 200 })
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ status: 200, text: "hi", m: "local" }), { status: 200 })
+        );
+
+      const audio = new Blob(["data"], { type: "audio/webm" });
+      await service.transcribe(audio, undefined, undefined, undefined, undefined, undefined, "张三/zhangsan");
+
+      const transcribeCall = fetchSpy.mock.calls[1];
+      const body = transcribeCall[1]?.body as FormData;
+      expect(body.get("self_name")).toBe("张三/zhangsan");
+    });
+
+    it("should not include self_name when selfName is empty", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ data: [] }), { status: 200 })
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ status: 200, text: "hi", m: "local" }), { status: 200 })
+        );
+
+      const audio = new Blob(["data"], { type: "audio/webm" });
+      await service.transcribe(audio, undefined, undefined, undefined, undefined, undefined, "");
+
+      const transcribeCall = fetchSpy.mock.calls[1];
+      const body = transcribeCall[1]?.body as FormData;
+      expect(body.get("self_name")).toBeNull();
+    });
+
     it("should not include context params when not provided", async () => {
       const fetchSpy = vi
         .spyOn(globalThis, "fetch")
@@ -747,6 +783,7 @@ describe("LocalModelService", () => {
       expect(body.get("personal_context")).toBeNull();
       expect(body.get("member_context")).toBeNull();
       expect(body.get("mode")).toBeNull();
+      expect(body.get("self_name")).toBeNull();
     });
 
     it("should return null when text is empty", async () => {

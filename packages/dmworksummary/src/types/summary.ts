@@ -120,12 +120,16 @@ export interface SummaryListItem {
     summary_mode: SummaryModeType;
     status: TaskStatusType;
     trigger_type: number;
+    /** 绑定的定时配置 id。存在即表示该总结是定时任务（无论是否已执行过）。 */
+    schedule_id?: number | null;
     time_range_start: string;
     time_range_end: string;
     sources: SourceItem[];
     participants?: Participant[];
     total_msg_count: number;
     creator_name?: string;
+    origin_channel_id: string;
+    origin_channel_type: number;
     created_at: string;
     completed_at: string | null;
 }
@@ -144,7 +148,9 @@ export interface SummaryDetail {
     participants: Participant[];
     result: SummaryResult | null;
     error_message: string | null;
-    schedule_id?: number;
+    schedule_id?: number | null;
+    origin_channel_id: string;
+    origin_channel_type: number;
     created_at: string;
     updated_at: string;
     result_id?: number;
@@ -158,12 +164,14 @@ export interface SummaryDetail {
 /** 创建请求 */
 export interface CreateSummaryParams {
     topic: string;
-    title: string;
+    title?: string;
     summary_mode?: SummaryModeType;
     time_range?: TimeRange;
     sources?: SourceItem[];
     participants?: { user_id: string }[];
     confirm_timeout_hours?: number;
+    origin_channel_id?: string;
+    origin_channel_type?: number;
 }
 
 /** 列表查询参数 */
@@ -178,14 +186,13 @@ export interface ListSummariesParams {
     created_before?: string;
     trigger_type?: number;
     keyword?: string;
+    origin_channel_id?: string;
 }
 
 /** 列表响应 */
 export interface ListSummariesResponse {
     items: SummaryListItem[];
     total: number;
-    page: number;
-    page_size: number;
 }
 
 /** 定时配置 */
@@ -194,6 +201,13 @@ export interface ScheduleItem {
     title: string;
     summary_mode: SummaryModeType;
     cron_expr: string;
+    interval_days?: number;
+    interval_months?: number;
+    /** 周模式：1=周一 .. 7=周日，0=不限 */
+    day_of_week?: number;
+    /** 月模式：1..31（月末自动钳位），0=不限 */
+    day_of_month?: number;
+    run_time?: string;
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
     participants: { user_id: string }[];
@@ -207,18 +221,50 @@ export interface CreateScheduleParams {
     title: string;
     summary_mode: SummaryModeType;
     cron_expr: string;
+    interval_days?: number;
+    interval_months?: number;
+    /** 周模式：1=周一 .. 7=周日，0=不限 */
+    day_of_week?: number;
+    /** 月模式：1..31（月末自动钳位），0=不限 */
+    day_of_month?: number;
+    run_time?: string;
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
     participants?: { user_id: string }[];
+    /**
+     * scope='task' 让后端在一个事务里原子完成「建定时 + 绑定到 task_id」：
+     * 校验 task 归属 → 建定时 → Update summary_task.schedule_id 绑定（一对一约束）。
+     * 不带 scope 的旧两步式（create 再 update 绑定）已被后端 C1 直接 400 拒绝。
+     */
+    scope?: 'task';
+    /** scope==='task' 时必填：把新建定时原子绑定到该 task。 */
+    task_id?: number;
 }
 
 export interface UpdateScheduleParams {
     title?: string;
     summary_mode?: SummaryModeType;
     cron_expr?: string;
+    interval_days?: number;
+    interval_months?: number;
+    /** 周模式：1=周一 .. 7=周日，0=不限 */
+    day_of_week?: number;
+    /** 月模式：1..31（月末自动钳位），0=不限 */
+    day_of_month?: number;
+    run_time?: string;
     time_range_type?: 1 | 2 | 3 | 4;
     sources?: SourceItem[];
     participants?: { user_id: string }[];
+    /**
+     * Plan A1: scope distinguishes the caller. "task" means a summary detail
+     * page is editing the period of ONE summary — if the schedule is shared by
+     * multiple tasks the backend clones a new schedule for this task instead of
+     * mutating the shared row. Omit (schedule list page) to edit the template
+     * in place.
+     */
+    scope?: 'task';
+    /** Required when scope === 'task': the task whose schedule_id is rebound. */
+    task_id?: number;
 }
 
 /** API 统一响应 */
@@ -265,6 +311,8 @@ export interface ChatCandidate {
     member_count: number | null;
     parent_group_no?: string;
     is_bot?: boolean;
+    /** 是否为已归档子区（status=2）；群聊/私聊恒为 false */
+    is_archived?: boolean;
 }
 
 /** 成员候选项（添加成员弹窗用） */
@@ -275,10 +323,59 @@ export interface MemberCandidate {
     department: string;
 }
 
-/** 定时配置（内部状态用） */
+/** 定时配置（内部状态用）：通用「数量 × 单位」组合 */
+export type ScheduleUnit = "day" | "week" | "month";
+
 export interface ScheduleConfig {
-    period: "daily" | "weekly" | "monthly";
-    dayOfWeek?: number;   // 1=Mon, 2=Tue, ..., 7=Sun (ISO weekday)
-    dayOfMonth?: number;  // 1..28
-    time: string;         // "HH:MM"
+    unit: ScheduleUnit;   // 天 / 周 / 月
+    every: number;        // 正整数数量，如 every=2 + unit="week" => 每 2 周
+    time: string;         // "HH:MM" — 运行时刻，始终保留
+    dayOfWeek?: number;   // 周模式：1=周一 .. 7=周日，0/undefined=不限
+    dayOfMonth?: number;  // 月模式：1..31，0/undefined=不限
+    /**
+     * 非阻塞1：原始遗留 cron 表达式（仅当回填的定时是遗留 cron 时存在）。
+     * 新表单仅支持 interval(天/周/月)，无法精确回填 cron。带此标记时弹窗会
+     * 提示「保存将把该遗留 cron 转换为间隔模式」，避免用户没改周期却被默默
+     * 转成「每 1 天」。用户改动周期字段后该标记清空。
+     */
+    legacyCron?: string;
+}
+
+/** 主题模板占位符 */
+export interface TopicTemplatePlaceholder {
+    key: string;
+    label: string;
+    position?: [number, number];
+}
+
+/** 主题模板 */
+export interface TopicTemplate {
+    id: string;
+    label: string;
+    icon: string;
+    description: string;
+    type: 'fixed' | 'parameterized';
+    pattern: string;
+    placeholders?: TopicTemplatePlaceholder[];
+}
+
+/** 前端兜底主题模板占位符（存 i18n key，渲染期解析为明文） */
+export interface LocalTopicTemplatePlaceholder {
+    key: string;
+    labelKey: string;
+    position?: [number, number];
+}
+
+/**
+ * 前端离线兜底模板：字段存 i18n key 而非明文，进组件后由 resolveTemplate
+ * 在 render() 期用当前 locale 解析为明文 TopicTemplate，保证切语言即时刷新。
+ */
+export interface LocalTopicTemplate {
+    id: string;
+    icon: string;
+    type: 'fixed' | 'parameterized';
+    labelKey: string;
+    descriptionKey: string;
+    patternKey: string;
+    placeholders?: LocalTopicTemplatePlaceholder[];
 }

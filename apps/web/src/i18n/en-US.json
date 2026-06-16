@@ -46,6 +46,7 @@
   "joinSpace.inviteInvalidOrExpired": "The invite code is invalid or expired.",
   "joinSpace.joinFailedRetry": "Failed to join. Please try again.",
   "joinSpace.joinedSpace": "Joined {{spaceName}}",
+  "joinSpace.logout": "Log out",
   "joinSpace.memberCountWithLimit": "{{count}} / {{max}} people",
   "joinSpace.reenterInvite": "Re-enter invite code",
   "joinSpace.serverTerms.alreadyMember": "已是成员",
@@ -83,6 +84,7 @@
   "spaceGate.join": "Join",
   "spaceGate.joinByInvite": "Join team with invite code",
   "spaceGate.joinedSpace": "Joined Space",
+  "spaceGate.logout": "Log out",
   "spaceGate.subtitle": "Join a team or create a new workspace",
   "spaceGate.welcome": "Welcome to {{appName}}!",
   "toast.realnameVerified": "Real-name verification completed"

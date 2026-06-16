@@ -30,6 +30,7 @@
     border-radius: var(--wk-r-md);
     cursor: pointer;
     transition: opacity var(--wk-dur-fast) var(--wk-ease);
+    flex-shrink: 0;
 }
 
 .wk-contacts-botfather-banner:hover {
@@ -68,6 +69,7 @@
    ============================================================ */
 .wk-contacts-search {
     padding: var(--wk-sp-2) var(--wk-sp-3);
+    flex-shrink: 0;
 }
 
 .wk-contacts-search-input {
@@ -121,6 +123,9 @@
    搜索结果
    ============================================================ */
 .wk-contacts-search-results {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     padding: var(--wk-sp-1) 0;
 }
 

@@ -19,8 +19,15 @@ import {
 import { IConversationProvider } from "../../Service/DataSource/DataProvider";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
-import { subscriberDisplayName } from "../../Utils/displayName";
+import {
+  personalRemarkDisplayName,
+  subscriberDisplayName,
+} from "../../Utils/displayName";
 import { shouldShowRealnameBadge } from "../../Utils/realnameBadge";
+import {
+  resolveWebhookRowDisplay,
+  webhookFromOfMessage,
+} from "../../Service/IncomingWebhook";
 import { css } from "@emotion/react";
 // import ClockLoader from "react-spinners/ClockLoader";
 import Checkbox from "../../Components/Checkbox";
@@ -28,14 +35,16 @@ import classNames from "classnames";
 import { Popconfirm } from "@douyinfe/semi-ui";
 import WKAvatar from "../../Components/WKAvatar";
 import AiBadge from "../../Components/AiBadge";
+import WebhookBadge from "../../Components/WebhookBadge";
 import RealnameVerifiedBadge from "../../Components/RealnameVerifiedBadge";
 import { getTitleColor } from "./head";
-import moment from "moment";
 import ThreadIndicator, {
   ThreadIndicatorData,
 } from "../../Components/ThreadIndicator";
 import { isMessageContinuation } from "../../Service/messageContinuity";
+import { isMessageSelectable } from "../../Service/messageSelection";
 import { I18nContext } from "../../i18n";
+import { formatMessageTimestamp } from "../../Utils/time";
 
 interface MessageBaseProps extends HTMLProps<any> {
   message: MessageWrap;
@@ -345,17 +354,31 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     //   即可拿到。规则改动请同步 bridge/message/useMessageRow.ts。
     const isOwnMessageName =
       message.fromUID && message.fromUID === WKApp.loginInfo.uid;
-    const displayName = isOwnMessageName
+    // 个人备注来自 sender 的 Person channelInfo。群消息虽然主路径读 subscriber，
+    // 但个人备注必须优先于群成员名，才能在 friend/remark 保存并刷新
+    // Person channelInfo 后立即反映到聊天框。
+    const personalRemarkName = personalRemarkDisplayName(channelInfo);
+    // 群入站 Webhook 消息（FromUID = iwh_*，永远不是群成员）：
+    // 名字/头像读 payload from 元信息，不查 ChannelInfo、不发 fetchChannelInfo
+    const webhookFrom = webhookFromOfMessage(message);
+    const webhookDisplay = webhookFrom
+      ? resolveWebhookRowDisplay(webhookFrom)
+      : undefined;
+    const displayName = webhookDisplay
+      ? webhookDisplay.senderName
+      : isOwnMessageName
       ? WKApp.loginInfo.selfDisplayName() ||
+        personalRemarkName ||
         groupMemberName ||
         channelInfo?.orgData?.displayName ||
         channelInfo?.title ||
         ""
-      : groupMemberName ||
+      : personalRemarkName ||
+        groupMemberName ||
         channelInfo?.orgData?.displayName ||
         channelInfo?.title ||
         "";
-    if (!channelInfo && message.fromUID && message.fromUID !== "") {
+    if (!channelInfo && !webhookFrom && message.fromUID && message.fromUID !== "") {
       WKSDK.shared().channelManager.fetchChannelInfo(
         new Channel(message.fromUID, ChannelTypePerson)
       );
@@ -364,7 +387,9 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     const isAi = this.isAiMessage();
     const showHead = this.needHead();
     const showAvatar = this.needAvatar();
-    const timeStr = moment(message.timestamp * 1000).format("HH:mm");
+    const timeStr = formatMessageTimestamp(message.timestamp);
+    const selectionMode = context.editOn();
+    const selectable = isMessageSelectable(message);
 
     // 外部群成员来源标记：按当前查看 Space 相对渲染。
     // 优先读 msg-level 新字段 from_home_space_id / from_home_space_name；
@@ -440,22 +465,24 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
       <div
         className={classNames(
           "wk-message-base",
-          context.editOn() ? "wk-message-base-check-open" : undefined
+          selectionMode && selectable ? "wk-message-base-check-open" : undefined
         )}
         onClick={
-          context.editOn()
-            ? (event) => {
-                context.checkeMessage(message.message, !message.checked);
+          selectionMode
+            ? () => {
+                if (selectable) {
+                  context.checkeMessage(message.message, !message.checked);
+                }
               }
             : undefined
         }
       >
-        {context.editOn() ? (
+        {selectionMode && selectable ? (
           <div
             className="wk-message-base-checkBox"
             style={{ marginBottom: messageStyle.marginBottom }}
           >
-            <Checkbox checked={message.checked} />
+            <Checkbox checked={selectable && message.checked} />
           </div>
         ) : null}
         <div
@@ -466,7 +493,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
         >
           <div
             className={"wk-message-base-box"}
-            style={{ pointerEvents: context.editOn() ? "none" : undefined }}
+            style={{ pointerEvents: selectionMode ? "none" : undefined }}
           >
             {message.send && message.status === MessageStatus.Fail ? (
               <Popconfirm
@@ -490,19 +517,28 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
                 showAvatar ? undefined : "senderAvatar-placeholder"
               )}
               onClick={
-                showAvatar
+                // webhook 发送者没有个人资料页，点击不响应
+                showAvatar && !(webhookDisplay && !webhookDisplay.avatarClickable)
                   ? (el) => {
                       context.onTapAvatar(message.fromUID, el);
                     }
                   : undefined
               }
             >
-              {showAvatar && (
-                <WKAvatar
-                  channel={avatarChannel}
-                  style={{ width: "32px", height: "32px" }}
-                />
-              )}
+              {showAvatar &&
+                (webhookDisplay && webhookDisplay.avatarUrl ? (
+                  // webhook 管理员自定义头像
+                  <WKAvatar
+                    src={webhookDisplay.avatarUrl}
+                    style={{ width: "32px", height: "32px" }}
+                  />
+                ) : (
+                  // 普通消息，以及无自定义头像的 webhook：都走用户头像链路
+                  <WKAvatar
+                    channel={avatarChannel}
+                    style={{ width: "32px", height: "32px" }}
+                  />
+                ))}
             </div>
 
             {/* 消息体列 */}
@@ -536,6 +572,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
                   {channelInfo?.orgData?.robot === 1 && (
                     <AiBadge size="small" />
                   )}
+                  {webhookDisplay?.showBadge && <WebhookBadge />}
                   <span className="wk-msg-head-time">{timeStr}</span>
                 </div>
               )}

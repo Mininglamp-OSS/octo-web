@@ -5,7 +5,10 @@ import ConversationList, {
 } from "../../Components/ConversationList";
 import SidebarTabBar, { SidebarTab } from "../../Components/SidebarTabBar";
 import ConversationListGrouped from "../../Components/ConversationListGrouped";
-import ChatConversationList, { isVisibleInRecentTab } from "../../Components/ChatConversationList";
+import { isThreadArchivedForBadge, type ThreadSidebarStatusMap } from "../../Components/ConversationListGrouped/archivedThreads";
+import ChatConversationList, {
+  isMutedForRecentConversation,
+} from "../../Components/ChatConversationList";
 import Provider from "../../Service/Provider";
 import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
@@ -61,6 +64,7 @@ interface SidebarTabBarWithBadgesProps {
   conversations: ConversationWrap[];
   activeTab: SidebarTab;
   onTabChange: (tab: SidebarTab) => void;
+  onRecentUnreadNavigate?: () => void;
 }
 
 /**
@@ -79,6 +83,7 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
   conversations,
   activeTab,
   onTabChange,
+  onRecentUnreadNavigate,
 }) => {
   const { items } = useFollowSidebarContext();
 
@@ -110,26 +115,19 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     return isEffectivelyMuted({ isThread, channelInfo: info, parentChannelInfo });
   };
 
-  const isConversationMuted = (c: ConversationWrap): boolean => {
-    const isThread = c.channel.channelType === ChannelTypeCommunityTopic;
-    let parentChannelInfo: any | undefined;
-    if (isThread) {
-      const parentGroupNo =
-        (c.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
-        parseThreadChannelId(c.channel.channelID)?.groupNo;
-      if (parentGroupNo) {
-        parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
-          new Channel(parentGroupNo, ChannelTypeGroup),
-        );
-      }
-    }
-    return isEffectivelyMuted({ isThread, channelInfo: c.channelInfo, parentChannelInfo });
-  };
-
   // sidebar items 是 /sidebar/sync 的快照，IM 缓存里 conv 才是 reactive 的。
   // IM 缓存有这条会话就用 live unread；没有（sidebar-only 关注，从未聊过）才
   // fallback sidebar 的 unread 快照——这样新消息一来 badge 即刻同步，sidebar-
   // only 关注又不会被漏算。
+  // 子区 channelID → sidebar status（来自 /sidebar/sync 的 target_type=5 项）。
+  // 与展开列表(ConversationListGrouped)用同一路信号：冷启动刷新后第一帧即可用，
+  // 无需等 channelInfo 异步补齐。下方角标过滤据此与列表的冷启动隐藏保持一致。
+  const threadSidebarStatus: ThreadSidebarStatusMap = new Map();
+  for (const it of items) {
+    if (it.target_type !== SidebarTargetType.THREAD) continue;
+    if (it.status == null) continue;
+    threadSidebarStatus.set(it.target_id, it.status);
+  }
   const followUnread = items.reduce((sum, it) => {
     if (isItemMuted(it)) return sum;
     let channelType: number | null = null;
@@ -141,16 +139,25 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
           c.channel.channelType === channelType && c.channel.channelID === it.target_id,
         )
       : undefined;
+    // 与展开列表的展示层过滤一致：明确已归档的子区已从列表隐藏，未读也不计入
+    // 角标，否则会出现「红点 N 但列表里看不到对应未读」。
+    //   - liveConv 存在：走 channelInfo 优先（回退 sidebar statusMap）判归档；
+    //   - liveConv 缺失（sidebar-only 关注，从未聊过、无 channelInfo）：回退 sidebar
+    //     statusMap，sidebar=Archived 即隐藏，与列表的冷启动隐藏对齐。
+    // fail-open：status 未知（既非 archived，也无 liveConv channelInfo）仍累加，不漏算。
+    if (
+      it.target_type === SidebarTargetType.THREAD &&
+      isThreadArchivedForBadge(liveConv, it.target_id, threadSidebarStatus)
+    ) {
+      return sum;
+    }
     const unread = liveConv ? (liveConv.unread || 0) : (it.unread || 0);
     return sum + unread;
   }, 0);
 
   const recentUnread = conversations.reduce(
     (sum: number, c: ConversationWrap) => {
-      // 与 ChatConversationList 的 hideInactiveGroups 渲染过滤一致：3 天不活跃的群
-      // 不算入 badge，否则会出现「红点 N 但列表里看不到对应未读」。
-      if (!isVisibleInRecentTab(c)) return sum;
-      if (isConversationMuted(c)) return sum;
+      if (isMutedForRecentConversation(c)) return sum;
       return sum + (c.unread || 0);
     },
     0,
@@ -162,6 +169,11 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
       followUnread={followUnread}
       recentUnread={recentUnread}
       onTabChange={onTabChange}
+      onActiveTabClick={(tab) => {
+        if (tab === "recent" && activeTab === "recent" && recentUnread > 0) {
+          onRecentUnreadNavigate?.();
+        }
+      }}
     />
   );
 };
@@ -199,6 +211,10 @@ export interface ChatContentPageState {
    * 没来过子区的情况下让 ← 把用户带到子区列表会很突兀。
    */
   previewHadThreadShell: boolean;
+  /** 智能总结面板是否显示 */
+  showSummaryPanel: boolean;
+  /** 总结面板初始视图 */
+  summaryPanelView: 'history' | 'new';
 }
 export class ChatContentPage extends Component<
   ChatContentPageProps,
@@ -225,6 +241,8 @@ export class ChatContentPage extends Component<
       showMatterDetailPanel: false,
       previewReturnMatterId: null,
       previewHadThreadShell: false,
+      showSummaryPanel: false,
+      summaryPanelView: 'new',
     };
   }
 
@@ -289,6 +307,7 @@ export class ChatContentPage extends Component<
       showMatterDetailPanel: fromMatter
         ? this.state.showMatterDetailPanel
         : false,
+      showSummaryPanel: false,
       activePreviewMessageId: file.messageId || null, // 保存激活的消息 ID
       previewReturnMatterId: file.originMatterId || null,
       // 仅当预览触发前用户已经在子区面板里 (showThreadPanel 已经是 true)
@@ -351,6 +370,7 @@ export class ChatContentPage extends Component<
           activePreviewMessageId: null,
           showMatterPanel: false, // 关闭事项列表面板
           showMatterDetailPanel: false, // 关闭事项详情面板
+          showSummaryPanel: false,
         });
       }
     };
@@ -386,6 +406,7 @@ export class ChatContentPage extends Component<
           activePreviewMessageId: opening
             ? null
             : prevState.activePreviewMessageId,
+          showSummaryPanel: opening ? false : prevState.showSummaryPanel,
         };
       });
     };
@@ -412,6 +433,7 @@ export class ChatContentPage extends Component<
           activeThread: null,
           previewFile: null,
           activePreviewMessageId: null,
+          showSummaryPanel: false,
         };
       });
     };
@@ -419,6 +441,29 @@ export class ChatContentPage extends Component<
       "wk:toggle-matter-detail-panel",
       this._onToggleMatterDetailPanel,
     );
+
+    this._onToggleSummaryPanel = (data) => {
+      if (
+        data.channelId !== channel.channelID ||
+        data.channelType !== channel.channelType
+      )
+        return;
+      this.setState((prevState) => {
+        // forceOpen：始终打开（用于聊天内创建总结后展示），不做 toggle 关闭
+        const opening = data.forceOpen ? true : !prevState.showSummaryPanel;
+        return {
+          showSummaryPanel: opening,
+          summaryPanelView: opening ? data.summaryPanelView : prevState.summaryPanelView,
+          showMatterPanel: opening ? false : prevState.showMatterPanel,
+          showMatterDetailPanel: opening ? false : prevState.showMatterDetailPanel,
+          showThreadPanel: opening ? false : prevState.showThreadPanel,
+          activeThread: opening ? null : prevState.activeThread,
+          previewFile: opening ? null : prevState.previewFile,
+          activePreviewMessageId: opening ? null : prevState.activePreviewMessageId,
+        };
+      });
+    };
+    WKApp.mittBus.on("wk:toggle-summary-panel", this._onToggleSummaryPanel);
 
     // 检查是否需要自动打开子区面板（查看全部子区）
     if (WKApp.shared.pendingThreadPanel === channel.channelID) {
@@ -429,6 +474,7 @@ export class ChatContentPage extends Component<
         activePreviewMessageId: null,
         showMatterPanel: false, // 互斥
         showMatterDetailPanel: false, // 互斥
+        showSummaryPanel: false,
       });
       WKApp.shared.pendingThreadPanel = undefined;
     }
@@ -453,6 +499,7 @@ export class ChatContentPage extends Component<
         activePreviewMessageId: pending.messageId || null,
         showMatterPanel: false, // 互斥
         showMatterDetailPanel: false, // 互斥
+        showSummaryPanel: false,
       });
     }
 
@@ -489,6 +536,7 @@ export class ChatContentPage extends Component<
           activePreviewMessageId: null,
           showMatterPanel: false, // 互斥
           showMatterDetailPanel: false, // 互斥
+          showSummaryPanel: false,
         });
         return;
       }
@@ -513,6 +561,7 @@ export class ChatContentPage extends Component<
           activePreviewMessageId: pending.messageId || null,
           showMatterPanel: false, // 互斥
           showMatterDetailPanel: false, // 互斥
+          showSummaryPanel: false,
         });
         return;
       }
@@ -551,6 +600,12 @@ export class ChatContentPage extends Component<
     channelId: string;
     channelType: number;
   }) => void;
+  private _onToggleSummaryPanel?: (data: {
+    channelId: string;
+    channelType: number;
+    summaryPanelView: 'history' | 'new';
+    forceOpen?: boolean;
+  }) => void;
 
   componentWillUnmount() {
     WKApp.mittBus.off("wk:file-preview", this._onFilePreview);
@@ -568,6 +623,9 @@ export class ChatContentPage extends Component<
         "wk:toggle-matter-detail-panel",
         this._onToggleMatterDetailPanel,
       );
+    }
+    if (this._onToggleSummaryPanel) {
+      WKApp.mittBus.off("wk:toggle-summary-panel", this._onToggleSummaryPanel);
     }
     WKSDK.shared().channelManager.removeListener(this.channelInfoListener);
   }
@@ -667,6 +725,8 @@ export class ChatContentPage extends Component<
       previewFile,
       showMatterPanel,
       showMatterDetailPanel,
+      showSummaryPanel,
+      summaryPanelView,
     } = this.state;
     // 子区页面不显示讨论串按钮
     const isThreadChannel = channel.channelType === ChannelTypeCommunityTopic;
@@ -684,6 +744,7 @@ export class ChatContentPage extends Component<
             ? "wk-chat-threadpanel-open"
             : "",
           showMatterDetailPanel ? "wk-chat-matter-detail-panel-open" : "",
+          showSummaryPanel ? "wk-chat-summary-panel-open" : "",
         )}
       >
         <div
@@ -846,6 +907,7 @@ export class ChatContentPage extends Component<
                                 showThreadPanel: !isThreadListVisible,
                                 showMatterPanel: false, // 与事项列表面板互斥
                                 showMatterDetailPanel: false, // 与事项详情面板互斥
+                                showSummaryPanel: false,
                                 activeThread: null,
                                 previewFile: null, // 关闭文件预览（互斥）
                                 activePreviewMessageId: null,
@@ -911,6 +973,7 @@ export class ChatContentPage extends Component<
                       showThreadPanel: true,
                       showMatterPanel: false, // 与事项列表面板互斥
                       showMatterDetailPanel: false, // 与事项详情面板互斥
+                      showSummaryPanel: false,
                       previewFile: null, // 关闭文件预览（互斥）
                       activePreviewMessageId: null,
                       activeThread: buildThreadStub(
@@ -1062,6 +1125,15 @@ export class ChatContentPage extends Component<
             )}
           </div>
         )}
+
+        {showSummaryPanel && (
+          <div className="wk-summary-panel">
+            {WKApp.endpoints.chatSummaryPanel(
+              channel,
+              () => this.setState({ showSummaryPanel: false }),
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -1084,6 +1156,7 @@ interface ChatPageState {
   activeTab: SidebarTab;
   currentSpaceName: string;
   pendingConfirm: null | { onOk: () => void }; // 附件切换确认弹窗
+  recentUnreadJumpToken: number;
 }
 
 export default class ChatPage extends Component<any, ChatPageState> {
@@ -1101,6 +1174,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
       activeTab: getSavedTab(),
       currentSpaceName: WKApp.config.appName,
       pendingConfirm: null,
+      recentUnreadJumpToken: 0,
     };
   }
 
@@ -1109,6 +1183,12 @@ export default class ChatPage extends Component<any, ChatPageState> {
       localStorage.setItem(SIDEBAR_TAB_KEY, tab);
     } catch {}
     this.setState({ activeTab: tab });
+  };
+
+  _handleRecentUnreadNavigate = () => {
+    this.setState((state) => ({
+      recentUnreadJumpToken: state.recentUnreadJumpToken + 1,
+    }));
   };
 
   private _onSpaceChanged?: (space: any) => void;
@@ -1178,7 +1258,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
           return this.vm;
         }}
         render={(vm: ChatVM) => {
-          const { activeTab } = this.state;
+          const { activeTab, recentUnreadJumpToken } = this.state;
           // filter 用于 ConversationList
           // follow Tab 用 group（分组视图），recent Tab 用 all（所有会话混合）
           const filter: ConvFilter = activeTab === "follow" ? "group" : "all";
@@ -1280,6 +1360,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     conversations={vm.conversations}
                     activeTab={activeTab}
                     onTabChange={this._handleTabChange}
+                    onRecentUnreadNavigate={this._handleRecentUnreadNavigate}
                   />
                   <div className="wk-chat-conversation-list">
                     {vm.loading ? (
@@ -1287,9 +1368,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         <Spin style={{ marginTop: "20px" }} />
                       </div>
                     ) : activeTab === "recent" &&
-                      vm.filteredConversations.every(
-                        (c: ConversationWrap) => !isVisibleInRecentTab(c),
-                      ) ? (
+                      vm.filteredConversations.length === 0 ? (
                       <div className="wk-chat-empty-guide">
                         <div style={{ fontSize: 28, marginBottom: 12 }}>💬</div>
                         <div
@@ -1347,8 +1426,12 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         <ChatConversationList
                           conversations={vm.filteredConversations}
                           filter={filter}
-                          hideInactiveGroups={activeTab === "recent"}
                           select={WKApp.shared.openChannel}
+                          scrollToUnreadToken={
+                            activeTab === "recent"
+                              ? recentUnreadJumpToken
+                              : undefined
+                          }
                           onOpenCreateCategoryRef={this.openCreateCategoryRef}
                           onGroupCreated={() =>
                             vm.reloadRequestConversationList()
@@ -1464,41 +1547,18 @@ export default class ChatPage extends Component<any, ChatPageState> {
               <WKModal
                 visible={!!this.state.pendingConfirm}
                 title={t("base.chatPage.unsentAttachmentTitle")}
-                footer={
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      gap: "var(--wk-sp-2)",
-                    }}
-                  >
-                    <WKButton
-                      variant="secondary"
-                      onClick={() => this.setState({ pendingConfirm: null })}
-                    >
-                      {t("base.common.cancel")}
-                    </WKButton>
-                    <WKButton
-                      variant="primary"
-                      onClick={() => {
-                        this.state.pendingConfirm?.onOk();
-                        this.setState({ pendingConfirm: null });
-                      }}
-                    >
-                      {t("base.chatPage.continueSwitch")}
-                    </WKButton>
-                  </div>
-                }
+                footerConfig={{
+                  cancelText: t("base.common.cancel"),
+                  okText: t("base.chatPage.continueSwitch"),
+                  onOk: () => {
+                    this.state.pendingConfirm?.onOk();
+                    this.setState({ pendingConfirm: null });
+                  },
+                }}
                 onCancel={() => this.setState({ pendingConfirm: null })}
                 options={{ closable: false }}
               >
-                <p
-                  style={{
-                    margin: 0,
-                    color: "var(--wk-text-secondary)",
-                    fontSize: "var(--wk-text-size-md)",
-                  }}
-                >
+                <p className="wk-modal-confirm-text">
                   {t("base.chatPage.unsentAttachmentContent")}
                 </p>
               </WKModal>

@@ -1,0 +1,132 @@
+.wk-msg-mixed-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1-5);
+  max-width: min(100%, 680px);
+  word-break: break-word;
+}
+
+.wk-msg-mixed-text {
+  font: var(--wk-text-body);
+  color: var(--wk-text-primary);
+}
+
+.wk-msg-mixed-text + .wk-msg-mixed-text {
+  margin-top: calc(var(--wk-sp-1) * -1);
+}
+
+.wk-msg-mixed-image {
+  display: flex;
+  max-width: 100%;
+}
+
+.wk-msg-mixed-file {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  width: min(100%, 300px);
+  box-sizing: border-box;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+}
+
+.wk-msg-mixed-file-icon {
+  --wk-msg-mixed-file-icon-bg: var(--wk-brand-primary);
+
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-msg-mixed-file-icon-bg);
+  color: var(--wk-text-on-brand);
+  font: var(--wk-text-tiny);
+  letter-spacing: 0;
+}
+
+.wk-msg-mixed-file-icon-pdf {
+  --wk-msg-mixed-file-icon-bg: var(--wk-color-error);
+}
+
+.wk-msg-mixed-file-icon-doc {
+  --wk-msg-mixed-file-icon-bg: var(--wk-color-info);
+}
+
+.wk-msg-mixed-file-icon-sheet {
+  --wk-msg-mixed-file-icon-bg: var(--wk-color-success);
+}
+
+.wk-msg-mixed-file-icon-slide,
+.wk-msg-mixed-file-icon-archive {
+  --wk-msg-mixed-file-icon-bg: var(--wk-color-warning);
+}
+
+.wk-msg-mixed-file-icon-audio,
+.wk-msg-mixed-file-icon-video {
+  --wk-msg-mixed-file-icon-bg: var(--wk-text-accent);
+}
+
+.wk-msg-mixed-file-icon-image {
+  --wk-msg-mixed-file-icon-bg: var(--wk-color-info);
+}
+
+.wk-msg-mixed-file-icon-text {
+  --wk-msg-mixed-file-icon-bg: var(--wk-text-tertiary);
+}
+
+.wk-msg-mixed-file-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+}
+
+.wk-msg-mixed-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--wk-text-body-medium);
+  color: var(--wk-text-primary);
+}
+
+.wk-msg-mixed-file-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  overflow: hidden;
+  white-space: nowrap;
+  font: var(--wk-text-caption);
+  color: var(--wk-text-tertiary);
+}
+
+.wk-msg-mixed-file-caption {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--wk-text-caption);
+  color: var(--wk-text-secondary);
+}
+
+.wk-msg-mixed-file-download {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  color: var(--wk-brand-primary);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.wk-msg-mixed-file-download:hover {
+  background: var(--wk-brand-tint-08);
+}

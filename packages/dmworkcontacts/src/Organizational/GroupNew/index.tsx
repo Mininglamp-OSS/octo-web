@@ -17,6 +17,7 @@ import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import "./index.css";
 import { SuperGroup } from "@octo/base/src/Utils/const";
+import { buildPrivateChatGroupMemberUids } from "./memberUids";
 
 export enum OrganizationalGroupNewAction {
   createGroup, // 创建群聊
@@ -486,10 +487,26 @@ export class OrganizationalGroupNew extends Component<
     // 添加联系人
     if (this.props.action === OrganizationalGroupNewAction.AddMember) {
       try {
-        await WKApp.dataSource.channelDataSource.addSubscribers(
-          channel,
-          getOptPersonnelData
-        );
+        if (channel.channelType === ChannelTypePerson) {
+          const memberUids = buildPrivateChatGroupMemberUids(
+            WKApp.loginInfo.uid,
+            channel.channelID,
+            getOptPersonnelData
+          );
+          const result = await WKApp.dataSource.channelDataSource.createChannel(
+            memberUids
+          );
+          if (result?.group_no) {
+            WKApp.endpoints.showConversation(
+              new Channel(result.group_no, ChannelTypeGroup)
+            );
+          }
+        } else {
+          await WKApp.dataSource.channelDataSource.addSubscribers(
+            channel,
+            getOptPersonnelData
+          );
+        }
       } catch (error: any) {
         Toast.error(error.msg);
         return

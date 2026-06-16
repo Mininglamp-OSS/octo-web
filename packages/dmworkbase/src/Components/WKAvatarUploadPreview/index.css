@@ -1,0 +1,21 @@
+.wk-avatar-upload-preview {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 8px 0;
+}
+
+.wk-avatar-upload-preview__image {
+    width: 262px;
+    height: 262px;
+    background: var(--wk-color-item);
+    object-fit: cover;
+}
+
+.wk-avatar-upload-preview__image--circle {
+    border-radius: 50%;
+}
+
+.wk-avatar-upload-preview__image--bot {
+    border-radius: var(--wk-r-sm, 8px);
+}

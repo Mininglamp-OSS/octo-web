@@ -219,6 +219,59 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   box-sizing: border-box;
 }
 
+.wk-conv-unread-num--nudge-a {
+  animation: wk-conv-unread-num-nudge-a 560ms ease;
+}
+
+.wk-conv-unread-num--nudge-b {
+  animation: wk-conv-unread-num-nudge-b 560ms ease;
+}
+
+@keyframes wk-conv-unread-num-nudge-a {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-2px);
+  }
+  40% {
+    transform: translateX(2px);
+  }
+  60% {
+    transform: translateX(-1px);
+  }
+  80% {
+    transform: translateX(1px);
+  }
+}
+
+@keyframes wk-conv-unread-num-nudge-b {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-2px);
+  }
+  40% {
+    transform: translateX(2px);
+  }
+  60% {
+    transform: translateX(-1px);
+  }
+  80% {
+    transform: translateX(1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wk-conv-unread-num--nudge-a,
+  .wk-conv-unread-num--nudge-b {
+    animation: none;
+  }
+}
+
 /* 头像右上角小红点（静音 + 有未读，低打扰提示） */
 .wk-conv-unread-dot {
   position: absolute;
@@ -301,7 +354,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   }
 }
 
-/* @我 mention badge：红底白字小色块，紧跟预览右侧 */
+/* @我 mention badge：第二行右侧，对齐时间区域 */
 .wk-mention {
   font-size: var(--wk-text-size-tiny);
   font-weight: 600;
@@ -310,7 +363,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   padding: 0 var(--wk-sp-1);
   border-radius: var(--wk-r-xs);
   flex-shrink: 0;
-  margin-right: var(--wk-sp-1);
+  margin-left: var(--wk-sp-1);
 }
 
 /* 草稿、提醒 */
@@ -536,6 +589,24 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   flex-shrink: 0;
 }
 
+.wk-conv-compact-mention {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 var(--wk-sp-1);
+  border-radius: var(--wk-r-full);
+  background: color-mix(in srgb, var(--wk-color-error) 10%, transparent);
+  color: var(--wk-color-error);
+  font-family: var(--wk-font-sans);
+  font-size: var(--wk-text-size-tiny);
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  user-select: none;
+}
+
 .wk-conv-compact-badge {
   min-width: 16px;
   height: 16px;
@@ -726,24 +797,6 @@ body[theme-mode="dark"] .wk-conv-compact-thread-badge {
   flex-shrink: 0;
   margin-left: var(--wk-sp-0-5);
   opacity: 0.6;
-}
-
-/* @ 未读 mention 徽章（design v3.1：红底白字色块） */
-.wk-mention-badge {
-  background: var(--wk-color-danger);
-  color: var(--wk-color-white);
-  padding: 0 var(--wk-sp-1);
-  height: 14px;
-  border-radius: var(--wk-r-xs);
-  font-size: var(--wk-text-size-tiny);
-  font-weight: 600;
-  font-family: var(--wk-font-sans);
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  user-select: none;
-  margin-left: var(--wk-sp-1);
 }
 
 /* ── 外部群角标 ── */

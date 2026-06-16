@@ -1,0 +1,9 @@
+/* ──────────────────────────────────────────────────────────────
+   RichText(=14) 图文混排消息：按 blocks 顺序穿插文本/图片
+   ────────────────────────────────────────────────────────────── */
+.wk-message-richtext {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1-5);
+  word-break: break-word;
+}

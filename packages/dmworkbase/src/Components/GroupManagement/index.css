@@ -86,3 +86,34 @@
   font-size: 13px;
   padding: 8px 0;
 }
+
+.wk-group-mgmt-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--wk-sp-2) 0;
+}
+
+.wk-group-mgmt-switch-label {
+  font-size: var(--wk-text-size-md);
+  color: var(--wk-color-text-0, rgba(9, 30, 66, 0.87));
+}
+
+/* Switch 包一层 non-shrinking 容器，避免被父 flex row 压缩（同 PersonaEdit）。 */
+.wk-group-mgmt-switch-control {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-left: var(--wk-sp-3);
+  min-width: 44px;
+  /* 允许 Switch 的 ripple / focus ring 略微溢出而不被裁切。 */
+  overflow: visible;
+}
+
+.wk-group-mgmt-switch-desc {
+  color: var(--wk-text-tertiary, #999);
+  font-size: var(--wk-text-size-sm);
+  line-height: 1.5;
+  padding-top: var(--wk-sp-1);
+}

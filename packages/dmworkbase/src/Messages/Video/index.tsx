@@ -7,6 +7,7 @@ import { MessageCell } from "../MessageCell";
 import MessageRow from "../../ui/message/MessageRow";
 import VideoContentUI from "../../ui/message/VideoContent"
 import { getMessageRow } from "../../bridge/message/useMessageRow"
+import { isMessageSelectable } from "../../Service/messageSelection"
 import { I18nContext, t } from "../../i18n"
 import "./index.css"
 
@@ -140,6 +141,8 @@ export class VideoCell extends MessageCell<any, VideoCellState> {
         const useNewUI = true
         if (useNewUI) {
             const rowProps = getMessageRow(message)
+            const selectionMode = context.editOn()
+            const selectable = isMessageSelectable(message)
             const src = WKApp.dataSource.commonDataSource.getFileURL(content.url)
             const coverSrc = WKApp.dataSource.commonDataSource.getImageURL(content.cover)
             const isUploading =
@@ -154,9 +157,10 @@ export class VideoCell extends MessageCell<any, VideoCellState> {
                     {...rowProps}
                     onContextMenu={(event) => context.showContextMenus(message, event)}
                     isActive={context.isContextMenuOpen(message.message)}
-                    showCheckbox={context.editOn()}
-                    isSelected={!!message.checked}
-                    onSelect={(selected) => context.checkeMessage(message.message, selected)}
+                    selectionMode={selectionMode}
+                    showCheckbox={selectionMode && selectable}
+                    isSelected={selectable && !!message.checked}
+                    onSelect={selectable ? (selected) => context.checkeMessage(message.message, selected) : undefined}
                     onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
                     onSenderNameClick={() => context.showUser(message.fromUID)}
                 >

@@ -11,6 +11,7 @@ import WKModal from "../../Components/WKModal";
 import MarkdownContent from "../Text/MarkdownContent";
 import MessageRow from "../../ui/message/MessageRow";
 import { getFileMessageUI } from "../../bridge/message/useFileMessageUI";
+import { isMessageSelectable } from "../../Service/messageSelection";
 import { isSafeUrl } from "../../Utils/security";
 import { I18nContext } from "../../i18n";
 
@@ -608,6 +609,8 @@ export class FileCell extends MessageCell<any, FileCellState> {
     }
 
     const uiProps = getFileMessageUI(message);
+    const selectionMode = context.editOn();
+    const selectable = isMessageSelectable(message);
     // 检查是否为当前正在预览的文件
     const isActive =
       context.getActivePreviewMessageId?.() === message.messageID;
@@ -618,10 +621,12 @@ export class FileCell extends MessageCell<any, FileCellState> {
           {...uiProps.row}
           onContextMenu={(event) => context.showContextMenus(message, event)}
           isActive={context.isContextMenuOpen(message.message)}
-          showCheckbox={context.editOn()}
-          isSelected={!!message.checked}
-          onSelect={(selected) =>
-            context.checkeMessage(message.message, selected)
+          selectionMode={selectionMode}
+          showCheckbox={selectionMode && selectable}
+          isSelected={selectable && !!message.checked}
+          onSelect={selectable
+            ? (selected) => context.checkeMessage(message.message, selected)
+            : undefined
           }
           onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
           onSenderNameClick={() => context.showUser(message.fromUID)}

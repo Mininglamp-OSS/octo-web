@@ -33,8 +33,8 @@ export interface MentionRenderFlags {
  * Build the render-time MentionInfo[] for a message: combine ordinary
  * `@member` parts with synthetic `@所有人` / `@所有AI` entries derived
  * from the three-state mention flags. Synthetic entries reuse the
- * `uid: "all"` sentinel so MarkdownContent applies the same
- * `mention-highlight` class.
+ * `uid: "all"` sentinel so MarkdownContent can keep them non-clickable
+ * while applying the same visual style as ordinary member mentions.
  *
  * Dedup is by visible name — if the conversation already contains a
  * literal `@所有人` member part (rare; admins can rename members), the
@@ -117,6 +117,14 @@ export const MENTION_UID_AIS = "-3";
 export const MENTION_LABEL_HUMANS = "所有人";
 export const MENTION_LABEL_AIS = "所有AI";
 
+export type MentionUidState = "bot" | "user" | "unknown";
+
+export function mentionUidStateFromRobot(robot: unknown): MentionUidState {
+  if (robot === 1) return "bot";
+  if (robot === 0) return "user";
+  return "unknown";
+}
+
 /**
  * Dropdown item shape returned by the @-mention suggestion factory.
  * Exported so unit tests can assert the exact selection order and
@@ -142,6 +150,8 @@ export interface MentionDropdownItem {
  * dropdown shows only matching members, so `MentionList`'s default
  * `selectedIndex = 0` correctly lands on the first member match and
  * Enter inserts the typed member instead of broadcasting to everyone.
+ * Callers can set `includeBroadcastMentions=false` for direct chats,
+ * where broadcasting to everyone or all AIs does not make sense.
  *
  * `iconResolver` and `externalResolver` are injected so callers can
  * pass the production avatar lookup / external-space resolver, while
@@ -168,12 +178,20 @@ export function buildMentionDropdownItems<
     sourceSpaceName: string;
   };
   stickyIcon: string;
+  includeBroadcastMentions?: boolean;
 }): MentionDropdownItem[] {
-  const { query, members, iconResolver, externalResolver, stickyIcon } = args;
+  const {
+    query,
+    members,
+    iconResolver,
+    externalResolver,
+    stickyIcon,
+    includeBroadcastMentions = true,
+  } = args;
 
   const trimmedQuery = (query ?? "").trim();
   const stickyTop: MentionDropdownItem[] =
-    trimmedQuery.length === 0
+    includeBroadcastMentions && trimmedQuery.length === 0
       ? [
           {
             uid: MENTION_UID_HUMANS,

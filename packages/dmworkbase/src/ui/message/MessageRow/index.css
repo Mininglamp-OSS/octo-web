@@ -189,6 +189,10 @@
   cursor: pointer;
 }
 
+.wk-msg-row--selection-mode .wk-msg-row-content {
+  pointer-events: none;
+}
+
 .wk-msg-row-checkbox-inner {
   width: 18px;
   height: 18px;

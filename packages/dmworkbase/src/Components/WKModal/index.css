@@ -1,6 +1,6 @@
 /*
- * WKModal — 覆盖 Semi Modal 的 Token 变量
- * 规范：禁止直接写 .semi-xxx selector，通过根节点 Token 覆盖（DEVELOPMENT.md §十三）
+ * WKModal centralizes Semi Modal adaptation.
+ * Callers must target WKModal classes instead of Semi internals.
  */
 
 .wk-modal {
@@ -11,6 +11,44 @@
   --semi-color-bg-1: var(--wk-bg-base);
   --semi-font-size-header-2: var(--wk-text-size-xl);
   --semi-color-text-0: var(--wk-text-primary);
+  --semi-color-bg-2: var(--wk-bg-surface);
+  --semi-color-overlay-bg: var(--wk-brand-tint-35);
+  --semi-shadow-elevated: var(--wk-shadow-lg);
+}
+
+.wk-modal-content {
+  border: none;
+  padding: 0;
+}
+
+.wk-modal-content > .semi-modal-body-wrapper {
+  margin: 0;
+}
+
+.wk-modal-shell,
+.wk-modal-confirm-shell {
+  box-sizing: border-box;
+  padding: var(--wk-sp-6);
+}
+
+.wk-modal-title {
+  margin: 0 0 var(--wk-sp-4);
+  padding-right: var(--wk-sp-8);
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-xl);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-snug);
+}
+
+.wk-modal-body {
+  box-sizing: border-box;
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-md);
+  line-height: var(--wk-leading-normal);
+}
+
+.wk-modal-body:empty {
+  display: none;
 }
 
 /* footer 按钮行 */
@@ -18,14 +56,41 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--wk-sp-2);
-  padding: var(--wk-sp-4) var(--wk-sp-6) var(--wk-sp-6);
+  align-items: center;
+  min-height: var(--wk-sp-8);
+  margin-top: var(--wk-sp-6);
+}
+
+.wk-modal-footer > .wk-modal-footer-fill {
+  width: 100%;
+}
+
+.wk-modal-confirm-footer {
+  margin-top: var(--wk-sp-5);
+}
+
+.wk-modal-confirm-title {
+  margin-bottom: var(--wk-sp-2);
+}
+
+.wk-modal-confirm-body {
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-md);
+  line-height: var(--wk-leading-normal);
+}
+
+.wk-modal-confirm-text {
+  margin: 0;
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-md);
+  line-height: var(--wk-leading-normal);
 }
 
 /* 自定义关闭按钮（用于 title=null 时） */
 .wk-modal-custom-close-btn {
   position: absolute;
-  top: var(--wk-sp-6);
-  right: var(--wk-sp-6);
+  top: var(--wk-sp-4);
+  right: var(--wk-sp-4);
   z-index: 10;
   display: flex;
   align-items: center;

@@ -1,8 +1,40 @@
-import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId } from "@octo/base";
+import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId, IncomingWebhook, IncomingWebhookCreateResp, IncomingWebhookUpsertReq } from "@octo/base";
 import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContentType,ConversationExtra,Subscriber } from "wukongimjssdk";
 
 const MAX_GROUP_LIST_LIMIT = 100000;
 const MAX_FAVORITES_PAGE_SIZE = 10000;
+
+interface GroupMemberMap {
+    uid: string;
+    name?: string;
+    remark?: string;
+    role?: number;
+    version?: number;
+    is_deleted?: number;
+    status?: number;
+    bot_admin?: number;
+    [key: string]: unknown;
+}
+
+interface GroupMemberLookupResp {
+    exists?: boolean;
+    member?: GroupMemberMap;
+}
+
+function toSubscriber(memberMap: GroupMemberMap): Subscriber {
+    const member = new Subscriber();
+    member.uid = memberMap.uid;
+    member.name = memberMap.name;
+    member.remark = memberMap.remark;
+    member.role = memberMap.role;
+    member.version = memberMap.version;
+    member.isDeleted = memberMap.is_deleted;
+    member.status = memberMap.status;
+    member.orgData = memberMap
+    member.orgData.bot_admin = memberMap.bot_admin || 0;
+    member.avatar = WKApp.shared.avatarUser(member.uid)
+    return member
+}
 
 export class ChannelDataSource implements IChannelDataSource {
 
@@ -94,21 +126,19 @@ export class ChannelDataSource implements IChannelDataSource {
         if (resp) {
             for (let i = 0; i < resp.length; i++) {
                 let memberMap = resp[i];
-                let member = new Subscriber();
-                member.uid = memberMap.uid;
-                member.name = memberMap.name;
-                member.remark = memberMap.remark;
-                member.role = memberMap.role;
-                member.version = memberMap.version;
-                member.isDeleted = memberMap.is_deleted;
-                member.status = memberMap.status;
-                member.orgData = memberMap
-                member.orgData.bot_admin = memberMap.bot_admin || 0;
-                member.avatar = WKApp.shared.avatarUser(member.uid)
-                members.push(member);
+                members.push(toSubscriber(memberMap));
             }
         }
         return members
+    }
+
+    async subscriber(channel: Channel, uid: string): Promise<Subscriber | undefined> {
+        const resp: GroupMemberLookupResp | undefined = await WKApp.apiClient.get(`groups/${channel.channelID}/members/${uid}`)
+        const memberMap = resp?.member
+        if (!resp?.exists || !memberMap) {
+            return undefined
+        }
+        return toSubscriber(memberMap)
     }
 
     updateField(channel: Channel, field: string, value: string): Promise<void> {
@@ -170,6 +200,34 @@ export class ChannelDataSource implements IChannelDataSource {
         return WKApp.apiClient.delete(`groups/${channel.channelID}/md`)
     }
 
+    // ---------- 群入站 Webhook ----------
+
+    incomingWebhooks(channel: Channel): Promise<IncomingWebhook[]> {
+        return WKApp.apiClient
+            .get(`groups/${channel.channelID}/incoming-webhooks`)
+            .then((resp?: { list?: IncomingWebhook[] }) => resp?.list || [])
+    }
+
+    createIncomingWebhook(channel: Channel, req: IncomingWebhookUpsertReq): Promise<IncomingWebhookCreateResp> {
+        return WKApp.apiClient.post(`groups/${channel.channelID}/incoming-webhooks`, req)
+    }
+
+    updateIncomingWebhook(channel: Channel, webhookId: string, req: IncomingWebhookUpsertReq): Promise<IncomingWebhook> {
+        return WKApp.apiClient.put(`groups/${channel.channelID}/incoming-webhooks/${webhookId}`, req)
+    }
+
+    deleteIncomingWebhook(channel: Channel, webhookId: string): Promise<void> {
+        return WKApp.apiClient.delete(`groups/${channel.channelID}/incoming-webhooks/${webhookId}`)
+    }
+
+    regenerateIncomingWebhook(channel: Channel, webhookId: string): Promise<IncomingWebhookCreateResp> {
+        return WKApp.apiClient.post(`groups/${channel.channelID}/incoming-webhooks/${webhookId}/regenerate`)
+    }
+
+    testIncomingWebhook(channel: Channel, webhookId: string): Promise<void> {
+        return WKApp.apiClient.post(`groups/${channel.channelID}/incoming-webhooks/${webhookId}/test`)
+    }
+
     getThreadMd(groupNo: string, shortId: string): Promise<{ content: string; version: number }> {
         return WKApp.apiClient.get(`groups/${groupNo}/threads/${shortId}/md`)
     }
@@ -224,7 +282,14 @@ export class ChannelDataSource implements IChannelDataSource {
             body.source_message_id = sourceMessageId
         }
         const resp = await WKApp.apiClient.post(`groups/${groupNo}/threads`, body)
-        return this.toThread(resp, groupNo)
+        const thread = this.toThread(resp, groupNo)
+        WKApp.mittBus.emit("wk:thread-created", {
+            groupNo,
+            shortId: thread.short_id,
+            threadChannelId: thread.channel_id,
+            thread,
+        })
+        return thread
     }
 
     async threadGet(groupNo: string, shortId: string): Promise<Thread> {
@@ -241,7 +306,16 @@ export class ChannelDataSource implements IChannelDataSource {
     }
 
     async threadDelete(groupNo: string, shortId: string): Promise<void> {
-        return WKApp.apiClient.delete(`groups/${groupNo}/threads/${shortId}`)
+        await WKApp.apiClient.delete(`groups/${groupNo}/threads/${shortId}`)
+        const threadChannelId = buildThreadChannelId(groupNo, shortId)
+        const threadChannel = new Channel(threadChannelId, ChannelTypeCommunityTopic)
+        WKSDK.shared().channelManager.deleteChannelInfo(threadChannel)
+        WKSDK.shared().conversationManager.removeConversation(threadChannel)
+        WKApp.mittBus.emit("wk:thread-deleted", {
+            groupNo,
+            shortId,
+            threadChannelId,
+        })
     }
 
     async threadUpdate(groupNo: string, shortId: string, data: { name: string }): Promise<void> {

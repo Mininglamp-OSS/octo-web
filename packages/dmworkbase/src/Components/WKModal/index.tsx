@@ -4,6 +4,8 @@ import { IconClose } from '@douyinfe/semi-icons'
 import WKButton from '../WKButton'
 import { t } from '../../i18n'
 import './index.css'
+export { wkConfirm } from './confirm'
+export type { WKConfirmProps } from './confirm'
 
 export type WKModalSize = 'md' | 'lg' | 'full'
 // md = 400px（默认，覆盖原 380/400/420）
@@ -67,7 +69,11 @@ function resolveFooter(
 ): React.ReactNode {
   // 显式传了 footer JSX（包括空字符串等 falsy 要排除，但 null 表示"不渲染"）
   if (footer !== undefined) {
-    return footer === null ? null : footer
+    return footer === null ? null : (
+      <div className="wk-modal-footer">
+        {footer}
+      </div>
+    )
   }
   if (footerConfig?.onOk) {
     const { okText = t('base.common.ok'), cancelText = t('base.common.cancel'), isOkLoading, isDanger, onOk } = footerConfig
@@ -114,37 +120,40 @@ const WKModal: React.FC<WKModalProps> = ({
 
   const cls = ['wk-modal', className].filter(Boolean).join(' ')
 
-  // 当 title=null 且 closable=true 时，需要自定义关闭按钮
-  // 因为 Semi Modal 的关闭按钮依赖 header，title=null 时 header 不渲染导致按钮位置错位
-  const needCustomCloseBtn = title === null && closable
-
   return (
     <Modal
       visible={visible}
       onCancel={onCancel}
-      title={customHeader ? undefined : title}
-      header={customHeader}
+      title={null}
+      header={null}
       width={width}
-      footer={resolvedFooter}
-      closable={needCustomCloseBtn ? false : closable} // 自定义关闭按钮时禁用 Semi 默认按钮
+      footer={null}
+      closable={false}
       maskClosable={maskClosable}
       mask={mask}
       closeOnEsc={closeOnEsc}
       centered
       className={cls}
+      modalContentClass="wk-modal-content"
       style={style}
-      bodyStyle={bodyStyle}
     >
-      {needCustomCloseBtn && (
-        <button
-          className="wk-modal-custom-close-btn"
-          onClick={onCancel}
-          aria-label={t('base.common.close')}
-        >
-          <IconClose />
-        </button>
-      )}
-      {children}
+      <div className="wk-modal-shell">
+        {closable && (
+          <button
+            className="wk-modal-custom-close-btn"
+            onClick={onCancel}
+            aria-label={t('base.common.close')}
+          >
+            <IconClose />
+          </button>
+        )}
+        {customHeader}
+        {!customHeader && title !== null && title !== undefined && (
+          <div className="wk-modal-title">{title}</div>
+        )}
+        <div className="wk-modal-body" style={bodyStyle}>{children}</div>
+        {resolvedFooter}
+      </div>
     </Modal>
   )
 }

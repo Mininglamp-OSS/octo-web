@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { SpaceCreate, WKApp, toJoinApprovalStatus, useI18n } from "@octo/base";
 import { SpaceService } from "@octo/base";
 import { Button, Input, Toast } from "@douyinfe/semi-ui";
+import { LogOut } from "lucide-react";
 import "./index.css";
 
 type View = "home" | "join" | "join-confirm";
@@ -113,6 +114,10 @@ export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
         ? colors[inviteInfo.space_name.charCodeAt(0) % colors.length]
         : ACCENT;
 
+    const handleLogout = () => {
+        void WKApp.shared.logoutUserInitiated();
+    };
+
     return (
         <div className="wk-join-space">
             <div className="wk-join-space-card">
@@ -216,6 +221,12 @@ export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
                         </button>
                     </>
                 )}
+                <div className="wk-join-space-logout">
+                    <button type="button" className="wk-join-space-logout-btn" onClick={handleLogout}>
+                        <LogOut size={14} aria-hidden="true" />
+                        <span>{t("app.joinSpace.logout")}</span>
+                    </button>
+                </div>
             </div>
             <SpaceCreate
                 visible={canCreateSpace && showCreate}

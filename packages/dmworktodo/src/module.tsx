@@ -22,7 +22,7 @@ import {
 } from "./api/todoApi";
 import { Toast } from "./utils/toast";
 import { parseMentions } from "./utils/mention";
-import CreateTaskModal from "./ui/CreateTaskModal";
+
 import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
 import "./ui/tokens.css";
@@ -163,7 +163,7 @@ export default class MatterModule implements IModule {
       4001,
     );
 
-    // Mount global CreateTaskModal portal (handles Alt+Enter from any conversation)
+    // Mount global SmartCreateModal portal (handles Alt+Enter from any conversation)
     mountGlobalMatterModal();
     // Mount global MatterLinkMenu portal (handles "添加到事项" button from MultiplePanel)
     mountGlobalMatterLinkMenu();
@@ -228,7 +228,7 @@ export default class MatterModule implements IModule {
   /**
    * Register matter toggle button in the chat toolbar.
    * Only visible in group and topic channels.
-   * Clicking opens CreateTaskModal with prefilled title (from input box) and channel info.
+   * Clicking opens SmartCreateModal with prefilled title (from input box) and channel info.
    */
   private registerChatToolbar(): void {
     WKApp.endpoints.registerChatToolbar("chattoolbar.matter", (ctx) => {
@@ -342,7 +342,7 @@ function ChatToolbarTodoButton({ ctx }: { ctx: ConversationContext }) {
 }
 
 /**
- * Global CreateTaskModal driven by mittBus 'wk:open-create-matter-modal'.
+ * Global SmartCreateModal driven by mittBus 'wk:open-create-matter-modal'.
  * Mounted once at module init — handles Alt+Enter from any conversation.
  */
 let _globalTodoModalMounted = false;
@@ -397,7 +397,7 @@ function GlobalMatterModal() {
       await createMatter(req);
     } catch (e) {
       Toast.error(t("todo.toast.createFailed"));
-      throw e; // re-throw 让 CreateTaskModal 保持打开
+      throw e; // re-throw 让 SmartCreateModal 保持打开
     }
     // Send input content (with mention) + clear when triggered from toolbar / Alt+Enter
     // 只在有预填文本时才发送（prefillTitle 非空 = 用户从输入框触发），纯附件场景不发消息
@@ -413,8 +413,9 @@ function GlobalMatterModal() {
   };
 
   return (
-    <CreateTaskModal
+    <SmartCreateModal
       visible={open}
+      blank
       onClose={handleClose}
       onDirtyClose={handleDirtyClose}
       onConfirm={handleConfirm}

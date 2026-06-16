@@ -384,6 +384,7 @@ export default function useVoiceInput(
             const chatCtxResult = (await chatCtxPromise) ?? {};
             const memberContext = chatCtxResult.memberContext;
             const chatContext = chatCtxResult.chatContext;
+            const selfName = chatCtxResult.selfName;
 
             const localResult =
               await LocalModelService.shared.transcribe(
@@ -393,6 +394,7 @@ export default function useVoiceInput(
                 personalContext,
                 memberContext,
                 recordingModeRef.current,
+                selfName,
               );
             if (localResult) {
               if (localResult.text) {
@@ -401,6 +403,7 @@ export default function useVoiceInput(
                   chatContext,
                   personalContext,
                   memberContext,
+                  selfName,
                   mode: recordingModeRef.current,
                   channelType: chatCtxResult.channelType,
                   model: localResult.m,
@@ -427,6 +430,7 @@ export default function useVoiceInput(
               true,
               chatCtxResult.channelType,
               allowFeedback,
+              selfName,
             );
             if (result.text) {
               notifyFeedback(result.text, "remote", result.request_id);
@@ -449,6 +453,7 @@ export default function useVoiceInput(
           const chatCtxResult = (await getChatContextRef.current?.()) ?? {};
           const memberContext = chatCtxResult.memberContext;
           const chatContext = chatCtxResult.chatContext;
+          const selfName = chatCtxResult.selfName;
 
           if (!backendEnabledRef.current) {
             Toast.error(t("base.voiceInput.error.unavailable"));
@@ -466,6 +471,7 @@ export default function useVoiceInput(
             true,
             chatCtxResult.channelType,
             allowFeedback,
+            selfName,
           );
           if (result.text) {
             notifyFeedback(result.text, "remote", result.request_id);

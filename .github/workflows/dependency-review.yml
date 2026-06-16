@@ -1,0 +1,14 @@
+name: Dependency Review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  dependency-review:
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-dependency-review.yml@v1
+    permissions:
+      contents: read
+      pull-requests: write

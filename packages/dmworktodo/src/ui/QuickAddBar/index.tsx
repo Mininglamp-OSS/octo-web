@@ -3,7 +3,7 @@ import * as api from '../../api/todoApi';
 import { useI18n } from '@octo/base';
 import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';
 import type { CreateMatterReq, Matter } from '../../bridge/types';
-import CreateTaskModal from '../CreateTaskModal';
+import SmartCreateModal from '../SmartCreateModal';
 import { Toast } from '../../utils/toast';
 import './index.css';
 
@@ -18,7 +18,7 @@ export interface QuickAddBarProps {
 /**
  * QuickAddBar — 底部快速添加事项输入框。
  * - Enter：乐观插入假数据，后台创建，失败时回滚
- * - ⊕ 按钮：展开 CreateTaskModal 完整表单
+ * - ⊕ 按钮：展开 SmartCreateModal 完整表单
  */
 export default function QuickAddBar({
   channelId,
@@ -128,8 +128,9 @@ export default function QuickAddBar({
         </button>
       </div>
 
-      <CreateTaskModal
+      <SmartCreateModal
         visible={showModal}
+        blank
         onClose={() => setShowModal(false)}
         onDirtyClose={() => setShowModal(false)}
         onConfirm={handleModalConfirm}

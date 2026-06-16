@@ -35,7 +35,7 @@
     width: 40px;
     height: 40px;
     border-radius: var(--wk-r-circle, 50%);
-    background: var(--wk-bg-elevated) center/cover no-repeat;
+    background: var(--wk-bg-elevated);
     border: none;
     cursor: pointer;
     padding: 0;
@@ -46,6 +46,12 @@
 
 .wk-navrail__user-avatar:hover {
     transform: scale(1.08);
+}
+
+.wk-navrail__user-avatar .wk-avatar {
+    display: block;
+    width: 40px;
+    height: 40px;
 }
 
 /* ── Online status dot ── */

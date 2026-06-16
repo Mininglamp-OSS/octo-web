@@ -3,6 +3,8 @@ import { I18nContext, WKApp, t } from "@octo/base";
 import { SpaceService } from "@octo/base";
 import { Input, Button, Toast, Spin } from "@douyinfe/semi-ui";
 import { SpaceCreate } from "@octo/base";
+import { LogOut } from "lucide-react";
+import "./index.css";
 
 interface SpaceGateState {
     loading: boolean;
@@ -117,6 +119,10 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
         }
     };
 
+    logout = () => {
+        void WKApp.shared.logoutUserInitiated();
+    };
+
     render() {
         const { loading, noSpace, inviteCode, joining, showCreate, showInviteInput } = this.state;
         const { t } = this.context;
@@ -178,6 +184,12 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
                             </Button>
                         </div>
                     )}
+                    <div className="wk-spacegate-logout">
+                        <button type="button" className="wk-spacegate-logout-btn" onClick={this.logout}>
+                            <LogOut size={14} aria-hidden="true" />
+                            <span>{t("app.spaceGate.logout")}</span>
+                        </button>
+                    </div>
                 </div>
 
                 <SpaceCreate

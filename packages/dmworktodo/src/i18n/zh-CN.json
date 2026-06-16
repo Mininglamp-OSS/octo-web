@@ -208,7 +208,8 @@
     "onlyCreatorOrAssignee": "仅创建人或负责人可修改",
     "open": "进行中",
     "pending": "待处理",
-    "unarchived": "未归档"
+    "unarchived": "未归档",
+    "unarchivedCount": "未归档 {{count}}"
   },
   "sync": {
     "daysAgo": "{{count}} 天前同步",
