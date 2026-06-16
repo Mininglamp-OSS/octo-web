@@ -252,12 +252,6 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
             </div>
           )}
         </div>
-
-        {selectedRuntime?.supported && selectedRuntime.kind === 'openclaw' && (
-          <div className="wk-rt-cb__hint">
-            openclaw workspace 名将自动派生
-          </div>
-        )}
       </div>
     </Modal>
   );
