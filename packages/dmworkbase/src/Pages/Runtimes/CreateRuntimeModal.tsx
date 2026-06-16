@@ -74,8 +74,8 @@ export function CreateRuntimeModal({ visible, onClose }: Props) {
     >
       <div className="wk-rt-onb">
         <p className="wk-rt-onb__lead">
-          在你的电脑或服务器上运行下面的命令，让本机的 Claude Code / Codex /
-          OpenClaw / Hermes 注册到 Octo 平台。
+          在你的电脑或服务器上运行下面的命令，让本机的 Claude Code /
+          OpenClaw 注册到 Octo 平台。
         </p>
 
         {loading && (

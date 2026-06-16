@@ -3,19 +3,22 @@
 // it to dmworkbase/src/api.
 import WKApp from '../../App';
 
-export type RuntimeKind = 'openclaw' | 'claude' | 'codex' | 'hermes';
+export type RuntimeKind = 'openclaw' | 'claude';
+
+export const SUPPORTED_RUNTIME_KINDS: RuntimeKind[] = ['openclaw', 'claude'];
+
+export function isSupportedRuntimeKind(s: string): s is RuntimeKind {
+  return (SUPPORTED_RUNTIME_KINDS as string[]).includes(s);
+}
 
 // providerLabels: runtime kind 的用户可读名. 单源 export 让所有渲染入口
 // (左树 device 行 / RuntimeDetail / CreateBotModal kind 列表) 显示
 // 完全一致, 不再 "kind 列表用裸 'claude' / detail 显示 'Claude Code'" 漂移.
 //
-// 'Claude' 不加 'Code' 后缀 — 跟其他 kind (Codex /
-// OpenClaw / Hermes) 简洁度对齐.
+// 'Claude' 不加 'Code' 后缀 — 跟 OpenClaw 简洁度对齐.
 export const providerLabels: Record<string, string> = {
   claude:   'Claude',
-  codex:    'Codex',
   openclaw: 'OpenClaw',
-  hermes:   'Hermes',
 };
 
 export interface Bot {
@@ -168,7 +171,7 @@ export async function createBot(req: CreateBotReq): Promise<Bot> {
 // PR-2: 删 getBot / archiveBot 死代码.
 // archiveBot 当前是 fleet-only soft-delete, 完整 deprovision (跨 server
 // robot row + WuKongIM channel + daemon 端 adapter resources e.g. openclaw
-// workspace / cc-channel-octo bot config / hermes .env line) 还没接通,
+// workspace / cc-channel-octo bot config) 还没接通,
 // 接通后再加回入口比留半截 dead export 干净. PR-N adapter.Deprovision
 // 落地时一起加回.
 //
