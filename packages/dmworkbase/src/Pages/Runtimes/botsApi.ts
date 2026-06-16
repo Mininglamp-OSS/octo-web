@@ -99,11 +99,13 @@ export async function listBots(params: { runtime_kind?: RuntimeKind; owner_uid?:
   sp.set('space_id', (WKApp as any)?.shared?.currentSpaceId ?? '');
   if (params.runtime_kind) sp.set('runtime_kind', params.runtime_kind);
   if (params.owner_uid) sp.set('owner_uid', params.owner_uid);
-  const res = await fetch(`${base}/v1/runtimes/bots?${sp}`, { headers: await authHeaders() });
+  // fleet GET /v1/bots is offset-paginated; pull the max page (100) since the
+  // UI has no pager yet. Response is the R1 OffsetList {data:[...],pagination}.
+  sp.set('page_size', '100');
+  const res = await fetch(`${base}/v1/bots?${sp}`, { headers: await authHeaders() });
   if (!res.ok) throw new Error(`listBots: ${res.status}`);
   const env = await res.json();
-  const payload = unwrap<{ bots?: Bot[] }>(env);
-  return (payload as any)?.bots ?? (env.bots ?? []);
+  return unwrap<Bot[]>(env) ?? [];
 }
 
 // createBot orchestrates the 3-step PR-A.2 bot mint flow because
@@ -129,7 +131,7 @@ export async function listBots(params: { runtime_kind?: RuntimeKind; owner_uid?:
 //     exist but aren't linked. UX shows retry; manual cleanup possible.
 export async function createBot(req: CreateBotReq): Promise<Bot> {
   // Step 1: fleet draft.
-  const draftRes = await fetch(`${base}/v1/runtimes/bots`, {
+  const draftRes = await fetch(`${base}/v1/bots`, {
     method: 'POST',
     headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -157,7 +159,7 @@ export async function createBot(req: CreateBotReq): Promise<Bot> {
   if (!minted?.bot_uid) throw new Error('createBot mint returned no bot_uid');
 
   // Step 3: fleet patch to link bot_uid + promote status.
-  const patchRes = await fetch(`${base}/v1/runtimes/bots/${draft.id}/mint`, {
+  const patchRes = await fetch(`${base}/v1/bots/${draft.id}/mint`, {
     method: 'POST',
     headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
     body: JSON.stringify({ bot_uid: minted.bot_uid }),

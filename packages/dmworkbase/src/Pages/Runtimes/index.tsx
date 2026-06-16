@@ -59,7 +59,7 @@ function upgradeKey(u: Pick<ActiveUpgrade, "daemon_id" | "component" | "runtime_
 
 interface RuntimesState {
     runtimes: AgentRuntime[]
-    versionHints: Record<number, { has_update?: boolean; latest_version?: string; plugin_has_update?: boolean; plugin_latest_version?: string }>
+    versionHints: Record<number, { has_update?: boolean; latest_version?: string; has_plugin_update?: boolean; plugin_latest_version?: string }>
     daemonVersionHints: Record<string, { has_update?: boolean; latest_version?: string; current?: string }>
     activeUpgrades: Record<string, ActiveUpgrade>
     loading: boolean
@@ -221,8 +221,8 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
         this.setState({ upgradeStatus: "pending", upgradeError: "" })
         const daemonId = this.props.group.daemonId
         try {
-            const initRes = await WKApp.apiClient.post("/runtimes/upgrade", { daemon_id: daemonId, space_id: WKApp.shared.currentSpaceId })
-            const taskId = initRes.task_id
+            const initRes = await WKApp.apiClient.post("/upgrades", { daemon_id: daemonId, space_id: WKApp.shared.currentSpaceId })
+            const taskId = initRes?.data?.task_id
             // C-1: task 已创建, 立即让父层重拉 active_upgrades, 其他 detail
             // 的 daemonBusy ~1s 内生效 (不等 15s 轮询).
             this.props.onUpgradeStarted?.()
@@ -246,7 +246,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
             try {
                 // 单次容错 — 跟 RuntimeDetail pollPluginUpgrade 对齐,
                 // 瞬时网络抖动 continue 重试而不是终止整条轮询协程.
-                res = await WKApp.apiClient.get(`/runtimes/upgrade/${taskId}`)
+                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`))?.data
             } catch {
                 continue
             }
@@ -264,7 +264,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                     await new Promise(r => setTimeout(r, 2000))
                     if (isStale()) return
                     try {
-                        const runtimesRes = await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } })
+                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } }))?.data
                         if (isStale()) return
                         const hints = runtimesRes?.daemon_version_hints || {}
                         if (!hints[daemonId]?.has_update) {
@@ -635,6 +635,11 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
         this.setState({ modalMode: null, modalAgentId: null })
     }
 
+    // TODO(fleet-api): the managed-agents endpoints (/runtimes/managed-agents*,
+    // /runtimes/{id}/agents/.../bots) no longer exist on fleet — bot creation
+    // moved to botsApi.createBot (POST /v1/bots + mint). This whole modal path
+    // is dead against the current fleet API; migrate it to botsApi or remove.
+    // Left intact here to avoid a UI-flow rewrite outside the API-sync scope.
     private pollManagedAgent = async (id: number): Promise<ManagedAgent> => {
         const deadline = Date.now() + 60_000
         for (;;) {
@@ -879,7 +884,7 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
 
 interface RuntimeDetailProps {
     runtime: AgentRuntime
-    versionHints: Record<number, { has_update?: boolean; latest_version?: string; plugin_has_update?: boolean; plugin_latest_version?: string }>
+    versionHints: Record<number, { has_update?: boolean; latest_version?: string; has_plugin_update?: boolean; plugin_latest_version?: string }>
     pluginActiveUpgrade?: ActiveUpgrade
     componentActiveUpgrade?: ActiveUpgrade
     onDelete: (id: number) => void
@@ -1057,7 +1062,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
 
         this.setState({ pluginUpgradeStatus: "pending", pluginUpgradeError: "" })
         try {
-            const initRes = await WKApp.apiClient.post("/runtimes/upgrade", {
+            const initRes = await WKApp.apiClient.post("/upgrades", {
                 runtime_id: runtimeId,
                 daemon_id: rt.daemon_id,
                 space_id: WKApp.shared.currentSpaceId,
@@ -1065,7 +1070,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             })
             // C-1: 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
             this.props.onUpgradeStarted?.()
-            await this.pollPluginUpgrade(initRes.task_id, runtimeId)
+            await this.pollPluginUpgrade(initRes?.data?.task_id, runtimeId)
         } catch (err: any) {
             const msg = err?.msg || err?.message || t("base.runtimes.upgrade.errFailed")
             this.setState({ pluginUpgradeStatus: "failed", pluginUpgradeError: msg })
@@ -1081,7 +1086,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             if (isStale()) return
             let res: any
             try {
-                res = await WKApp.apiClient.get(`/runtimes/upgrade/${taskId}`)
+                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`))?.data
             } catch {
                 continue
             }
@@ -1098,10 +1103,10 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     await new Promise(r => setTimeout(r, 2000))
                     if (isStale()) return
                     try {
-                        const runtimesRes = await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } })
+                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } }))?.data
                         if (isStale()) return
                         const hints = runtimesRes?.version_hints || {}
-                        if (!hints[runtimeId]?.plugin_has_update) {
+                        if (!hints[runtimeId]?.has_plugin_update) {
                             const allRuntimes = runtimesRes?.runtimes || []
                             const updated = allRuntimes.find((r: AgentRuntime) => r.id === runtimeId)
                             if (updated) {
@@ -1183,7 +1188,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
 
         this.setState({ componentUpgradeStatus: "pending", componentUpgradeError: "" })
         try {
-            const initRes = await WKApp.apiClient.post("/runtimes/upgrade", {
+            const initRes = await WKApp.apiClient.post("/upgrades", {
                 runtime_id: runtimeId,
                 daemon_id: rt.daemon_id,
                 space_id: WKApp.shared.currentSpaceId,
@@ -1191,7 +1196,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             })
             // C-1: 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
             this.props.onUpgradeStarted?.()
-            await this.pollComponentUpgrade(initRes.task_id, runtimeId)
+            await this.pollComponentUpgrade(initRes?.data?.task_id, runtimeId)
         } catch (err: any) {
             const msg = err?.msg || err?.message || t("base.runtimes.upgrade.errFailed")
             this.setState({ componentUpgradeStatus: "failed", componentUpgradeError: msg })
@@ -1206,7 +1211,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             if (isStale()) return
             let res: any
             try {
-                res = await WKApp.apiClient.get(`/runtimes/upgrade/${taskId}`)
+                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`))?.data
             } catch {
                 continue
             }
@@ -1224,7 +1229,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     await new Promise(r => setTimeout(r, 2000))
                     if (isStale()) return
                     try {
-                        const runtimesRes = await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } })
+                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } }))?.data
                         if (isStale()) return
                         const hints = runtimesRes?.version_hints || {}
                         if (!hints[runtimeId]?.has_update) {
@@ -1354,10 +1359,10 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                 <label>{t("base.runtimes.runtime.octoPluginVersion")}</label>
                                 <span className="wk-rt-mono">
                                     {octoPlugin.version}
-                                    {pluginHint?.plugin_has_update && (
+                                    {pluginHint?.has_plugin_update && (
                                         <span className="wk-rt-update-hint"> → {pluginHint.plugin_latest_version}</span>
                                     )}
-                                    {this.renderPluginUpgradeBtn("octo", pluginHint?.plugin_has_update)}
+                                    {this.renderPluginUpgradeBtn("octo", pluginHint?.has_plugin_update)}
                                 </span>
                             </div>
                         ) : null
@@ -1655,7 +1660,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 this.setState({ runtimes: [], loading: false })
                 return
             }
-            const res = await WKApp.apiClient.get("/runtimes", { param: { space_id: spaceId } })
+            const res = (await WKApp.apiClient.get("/runtimes", { param: { space_id: spaceId } }))?.data
             if (isStale()) return
             // Compatible with both array (old) and object (new) response
             const runtimes: AgentRuntime[] = Array.isArray(res) ? res : (res?.runtimes || [])
