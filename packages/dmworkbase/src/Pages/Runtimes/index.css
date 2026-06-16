@@ -648,48 +648,6 @@
     50% { opacity: 0.4; transform: scale(0.7); }
 }
 
-/* ── Ping Result ── */
-.wk-rt-ping-result {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    font-size: 14px;
-}
-
-.wk-rt-ping-result:hover {
-    opacity: 0.7;
-}
-
-.wk-rt-ping-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    display: inline-block;
-}
-
-.wk-rt-ping-dot.idle {
-    background: var(--text-tertiary);
-}
-
-.wk-rt-ping-dot.testing {
-    background: var(--wk-color-warning);
-    animation: wk-rt-pulse 1s infinite;
-}
-
-.wk-rt-ping-dot.done {
-    background: var(--wk-color-success);
-}
-
-.wk-rt-ping-dot.error {
-    background: var(--wk-color-error);
-}
-
-@keyframes wk-rt-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-}
-
 /* ── Agent Badge ── */
 .wk-rt-agent-badge {
     width: 28px;
