@@ -142,11 +142,8 @@ function groupByDevice(runtimes: AgentRuntime[]): DeviceGroup[] {
 
 // ─── DeviceDetail: rendered in RIGHT panel when clicking a device row ───
 
-type PingCache = Map<string, { status: "done" | "error"; ms: number }>
-
 interface DeviceDetailProps {
     group: DeviceGroup
-    pingCache: PingCache
     daemonVersionHint?: { has_update?: boolean; latest_version?: string; current?: string }
     activeUpgrade?: ActiveUpgrade
     // 升级互斥 UX: 同 RuntimeDetailProps.daemonBusy / onUpgradeStarted.
@@ -155,8 +152,6 @@ interface DeviceDetailProps {
 }
 
 interface DeviceDetailState {
-    pingStatus: "idle" | "testing" | "done" | "error"
-    pingMs: number
     upgradeStatus: "idle" | "pending" | "dispatched" | "downloading" | "installing" | "restarting" | "completed" | "failed" | "timeout"
     upgradeError: string
 }
@@ -166,18 +161,10 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
 
     constructor(props: DeviceDetailProps) {
         super(props)
-        const cacheKey = `${WKApp.shared.currentSpaceId}:${props.group.daemonId}`
-        const cached = props.pingCache.get(cacheKey)
         const upg = props.activeUpgrade
         const initUpgradeStatus = upg ? upg.status as any : "idle"
         const initUpgradeError = upg?.error_msg || ""
-        this.state = cached
-            ? { pingStatus: cached.status, pingMs: cached.ms, upgradeStatus: initUpgradeStatus, upgradeError: initUpgradeError }
-            : { pingStatus: "idle", pingMs: 0, upgradeStatus: initUpgradeStatus, upgradeError: initUpgradeError }
-    }
-
-    private get cacheKey() {
-        return `${WKApp.shared.currentSpaceId}:${this.props.group.daemonId}`
+        this.state = { upgradeStatus: initUpgradeStatus, upgradeError: initUpgradeError }
     }
 
     componentDidMount() {
@@ -195,14 +182,10 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
 
     componentDidUpdate(prevProps: DeviceDetailProps) {
         if (prevProps.group.daemonId !== this.props.group.daemonId) {
-            const cached = this.props.pingCache.get(this.cacheKey)
             const upg = this.props.activeUpgrade
             const upgStatus = upg ? upg.status as any : "idle"
             const upgError = upg?.error_msg || ""
-            this.setState(cached
-                ? { pingStatus: cached.status, pingMs: cached.ms, upgradeStatus: upgStatus, upgradeError: upgError }
-                : { pingStatus: "idle", pingMs: 0, upgradeStatus: upgStatus, upgradeError: upgError }
-            )
+            this.setState({ upgradeStatus: upgStatus, upgradeError: upgError })
             return
         }
         // 同 daemon 下 activeUpgrade prop 变化 → state 跟进
@@ -222,33 +205,6 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
 
     componentWillUnmount() {
         this._unmounted = true
-    }
-
-    handlePing = async () => {
-        this.setState({ pingStatus: "testing" })
-        const daemonId = this.props.group.daemonId
-        try {
-            const initRes = await WKApp.apiClient.post("/runtimes/ping", { daemon_id: daemonId, space_id: WKApp.shared.currentSpaceId })
-            const pingId = initRes.ping_id
-            // Poll for result (max 15 seconds, every 1 second)
-            for (let i = 0; i < 15; i++) {
-                await new Promise(r => setTimeout(r, 1000))
-                const res = await WKApp.apiClient.get(`/runtimes/ping/${pingId}`)
-                if (res.status === "done") {
-                    this.setState({ pingStatus: "done", pingMs: res.rtt_ms })
-                    this.props.pingCache.set(this.cacheKey, { status: "done", ms: res.rtt_ms })
-                    return
-                }
-                if (res.status === "timeout") {
-                    break
-                }
-            }
-            this.setState({ pingStatus: "error" })
-            this.props.pingCache.set(this.cacheKey, { status: "error", ms: 0 })
-        } catch {
-            this.setState({ pingStatus: "error" })
-            this.props.pingCache.set(this.cacheKey, { status: "error", ms: 0 })
-        }
     }
 
     handleUpgrade = async () => {
@@ -314,7 +270,6 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                                 WKApp.routeRight.replaceToRoot(
                                     <DeviceDetail
                                         group={updated}
-                                        pingCache={this.props.pingCache}
                                         daemonVersionHint={hints[daemonId]}
                                         daemonBusy={this.props.daemonBusy}
                                         onUpgradeStarted={this.props.onUpgradeStarted}
@@ -337,7 +292,6 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
 
     render() {
         const { group } = this.props
-        const { pingStatus, pingMs } = this.state
         const allOnline = group.onlineCount === group.runtimes.length && group.runtimes.length > 0
         const anyOnline = group.onlineCount > 0
 
@@ -445,21 +399,11 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                             </div>
                         )
                     })()}
-                    <div className="wk-rt-field">
-                        <label>Server Ping</label>
-                        <span className="wk-rt-ping-result" onClick={this.handlePing}>
-                            {pingStatus === "testing" && <span className="wk-rt-ping-dot testing" />}
-                            {pingStatus === "done" && <><span className="wk-rt-ping-dot done" />{pingMs}ms</>}
-                            {pingStatus === "error" && <><span className="wk-rt-ping-dot error" />Failed</>}
-                            {pingStatus === "idle" && <><span className="wk-rt-ping-dot idle" />Click to test</>}
-                        </span>
-                    </div>
                 </div>
 
                 {/* PR-2: "Agents on this device" 列表去掉, 跟左侧树重复.
                     左侧树 device 展开后已显示该 device 下的 4 runtime, 右侧
-                    panel 只保留 device 元数据 (name / OS / Daemon ID / Server
-                    Ping / 版本 + Upgrade) 即可. */}
+                    panel 只保留 device 元数据 (name / OS / Daemon ID / 版本 + Upgrade) 即可. */}
             </div>
         )
     }
@@ -1522,7 +1466,6 @@ interface RuntimesPageState extends RuntimesState {
 }
 
 export default class RuntimesPage extends Component<{}, RuntimesPageState> {
-    pingCache: PingCache = new Map()
     botsTabRef = React.createRef<BotsTabHandle>()
 
     // C9 in-flight guard: 切 space 时 epoch++ , refreshRuntimeBots 的
@@ -1580,7 +1523,6 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     }
 
     private handleSpaceChanged = () => {
-        this.pingCache.clear()
         this.spaceEpoch++
         // C5: 切 space 时也得清 expandedRuntimes / botsByRuntime / botsLoading,
         // 否则 fleet 给 runtime id 是全局递增的不会重复, 但 bot 缓存仍然会绑到
@@ -1956,7 +1898,6 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         WKApp.routeRight.replaceToRoot(
             <DeviceDetail
                 group={group}
-                pingCache={this.pingCache}
                 daemonVersionHint={this.state.daemonVersionHints[group.daemonId]}
                 activeUpgrade={this.state.activeUpgrades[`${group.daemonId}:octo-daemon`]}
                 daemonBusy={this.isDaemonBusy(group.daemonId)}
