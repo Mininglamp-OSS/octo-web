@@ -6,35 +6,44 @@ interface OverflowTooltipProps {
     className?: string;
     style?: React.CSSProperties;
     as?: React.ElementType;
+    title?: string;
 }
 
-const OverflowTooltip: React.FC<OverflowTooltipProps> = ({ children, className, style, as: Component = "div" }) => {
+const OverflowTooltip: React.FC<OverflowTooltipProps> = ({ children, className, style, as: Component = "div", title }) => {
     const containerRef = useRef<HTMLElement>(null);
     const [visible, setVisible] = useState(false);
 
-    const handleVisibleChange = useCallback((newVisible: boolean) => {
-        if (newVisible) {
-            const el = containerRef.current;
-            if (el && el.scrollWidth > el.clientWidth) {
-                setVisible(true);
-            }
-        } else {
-            setVisible(false);
+    // NOTE: we intentionally use trigger="custom" instead of trigger="hover".
+    // With trigger="hover", semi binds its own mouseenter/focus handlers that mount
+    // the overlay from internal state and bypass the controlled `visible` prop. The
+    // content is now a stable, caller-supplied `title` string (not deferred state),
+    // so the overlay never mounts with empty content and never produces a stray empty
+    // dark bubble. Visibility depends solely on `visible`, which we flip on only when
+    // the title is actually overflowing.
+    const handleMouseEnter = useCallback(() => {
+        const el = containerRef.current;
+        if (el && el.scrollWidth > el.clientWidth) {
+            setVisible(true);
         }
+    }, []);
+
+    const handleMouseLeave = useCallback(() => {
+        setVisible(false);
     }, []);
 
     return (
         <Tooltip
-            content={containerRef.current?.textContent ?? ""}
+            content={title ?? ""}
             position="bottom"
-            trigger="hover"
+            trigger="custom"
             visible={visible}
-            onVisibleChange={handleVisibleChange}
         >
             <Component
                 ref={containerRef}
                 className={className}
                 style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...style }}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
             >
                 {children}
             </Component>

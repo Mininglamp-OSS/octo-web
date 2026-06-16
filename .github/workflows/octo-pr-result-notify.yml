@@ -11,7 +11,7 @@ permissions: {}
 jobs:
   pr-result:
     if: github.event_name == 'pull_request_target'
-    uses: Mininglamp-OSS/.github/.github/workflows/octo-pr-result-notify.yml@main
+    uses: Mininglamp-OSS/.github/.github/workflows/octo-pr-result-notify.yml@v1
     with:
       repo_name: ${{ github.event.repository.name }}
       pr_number: ${{ github.event.pull_request.number }}
@@ -31,7 +31,7 @@ jobs:
       github.event_name == 'pull_request_review' &&
       (github.event.review.state == 'approved' || github.event.review.state == 'changes_requested') &&
       github.event.pull_request.head.repo.full_name == github.repository
-    uses: Mininglamp-OSS/.github/.github/workflows/octo-pr-result-notify.yml@main
+    uses: Mininglamp-OSS/.github/.github/workflows/octo-pr-result-notify.yml@v1
     with:
       repo_name: ${{ github.event.repository.name }}
       pr_number: ${{ github.event.pull_request.number }}

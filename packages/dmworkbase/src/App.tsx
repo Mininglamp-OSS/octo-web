@@ -9,10 +9,23 @@ export type MittEvents = {
     groupNo: string;
     thread: import("./Service/Thread").Thread | null;
   };
+  "wk:thread-created": {
+    groupNo: string;
+    threadChannelId: string;
+    shortId?: string;
+    thread?: import("./Service/Thread").Thread;
+  };
+  "wk:thread-deleted": {
+    groupNo: string;
+    threadChannelId: string;
+    shortId?: string;
+  };
   "wk:close-thread-panel": undefined;
   "wk:toggle-matter-panel": { channelId: string; channelType: number };
   /** v0.7 Matter 详情面板切换（跟子区/文件预览/任务列表可并存） */
   "wk:toggle-matter-detail-panel": { channelId: string; channelType: number };
+  "wk:toggle-summary-panel": { channelId: string; channelType: number; summaryPanelView: 'history' | 'new'; forceOpen?: boolean };
+  "wk:open-summary-modal": { channelId: string; channelType: number };
   /** 打开多选→添加到事项的弹出菜单（由 dmworktodo 模块接管渲染） */
   "wk:open-matter-link-menu": { anchor: HTMLElement; channelId: string; channelType: number; messages?: Array<{ messageSeq?: number; messageID?: string; fromUID?: string; fromUName?: string; content?: string; timestamp?: number; attachments?: any[] }> };
   "wk:switch-sidebar-tab": string;
@@ -49,6 +62,16 @@ export type MittEvents = {
    * 不会自动 remount, 接收方需要主动 reload。
    */
   'wk:nav-menu-activated': { menuId: string };
+  /**
+   * 打开「密钥 / Secrets」管理面板（YUJ-3539）。由聊天反向跳转（bot 消息里的
+   * 「去添加密钥」按钮）或输入框防手滑提示触发；payload 可携带预填名字 / 明文，
+   * 接收方 NavSecretsSettingsItem 据此打开面板并预填新增弹窗（绝不自动发送/保存）。
+   */
+  'wk:open-secrets': {
+    create?: boolean;
+    name?: string;
+    value?: string;
+  } | undefined;
   /**
    * Matter 任一字段被编辑后广播 (标题 / 主要目标 / DDL / 状态 / 负责人 /
    * 关联群聊等)。接收方 (通常是左侧事项列表) 据此 reload, 避免跨 React
@@ -102,6 +125,15 @@ import { WKBaseContext } from "./Components/WKBase";
 import StorageService from "./Service/StorageService";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { TypingManager } from "./Service/TypingManager";
+import {
+  clearAuthStorage,
+  consumeOidcPostLogoutCleanup,
+  isOidcLoginProvider,
+  markOidcPostLogoutCleanup,
+  overridePostLogoutRedirectUri,
+  requestOidcLogout,
+  safeEndSessionUrl,
+} from "./Service/oidcLogout";
 
 export enum ThemeMode {
   light,
@@ -419,6 +451,10 @@ export class LoginInfo {
    * load 加载登录信息
    */
   public load() {
+    if (consumeOidcPostLogoutCleanup()) {
+      this.logout();
+      clearAuthStorage();
+    }
     this.uid = this.getStorageItemForSID("uid") || "";
     this.shortNo = this.getStorageItemForSID("short_no") || "";
     this.token = this.getStorageItemForSID("token") || "";
@@ -476,6 +512,11 @@ export class LoginInfo {
     this.token = undefined;
     this.appID = "";
     this.role = "";
+    this.uid = "";
+    this.shortNo = "";
+    this.name = "";
+    this.isWork = false;
+    this.sex = 0;
     this.loginProvider = undefined;
     this.removeStorageItemForSID("token");
     this.removeStorageItemForSID("app_id");
@@ -631,6 +672,9 @@ export default class WKApp extends ProviderListener {
 
   // app启动
   startup() {
+    if (consumeOidcPostLogoutCleanup()) {
+      this.clearLocalLoginState();
+    }
     WKApp.loginInfo.load(); // 加载登录信息
 
     // 是否是PC端
@@ -845,15 +889,46 @@ export default class WKApp extends ProviderListener {
   isLogined() {
     return WKApp.loginInfo.isLogined();
   }
-  // 登出
-  logout() {
+  private clearLocalLoginState() {
     WKApp.loginInfo.logout();
-    localStorage.removeItem("currentSpaceId");
+    clearAuthStorage();
     this.currentSpaceId = "";
     this.channelSpaceMap.clear();
     this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
+  }
+
+  // 登出
+  logout() {
+    this.clearLocalLoginState();
     window.location.reload();
+  }
+
+  async logoutUserInitiated() {
+    const providerId = WKApp.loginInfo.loginProvider;
+    const token = WKApp.loginInfo.token || "";
+    if (isOidcLoginProvider(providerId) && token) {
+      try {
+        const resp = await requestOidcLogout(providerId, token);
+        const rawEndSessionUrl = safeEndSessionUrl(resp.end_session_url);
+        const endSessionUrl =
+          rawEndSessionUrl && import.meta.env.DEV
+            ? overridePostLogoutRedirectUri(
+                rawEndSessionUrl,
+                import.meta.env.VITE_OIDC_POST_LOGOUT_REDIRECT_URI
+              )
+            : rawEndSessionUrl;
+        if (endSessionUrl) {
+          this.clearLocalLoginState();
+          markOidcPostLogoutCleanup();
+          window.location.href = endSessionUrl;
+          return;
+        }
+      } catch (e) {
+        console.warn("OIDC logout failed, falling back to local logout", e);
+      }
+    }
+    this.logout();
   }
 
   avatarChannel(channel: Channel) {

@@ -25,8 +25,9 @@ import type {
 } from "../types/summary";
 import {
     getModeLabel,
-    describeCron,
+    describeSchedule,
     getTimeRangeTypeLabel,
+    scheduleItemToConfig,
 } from "../utils/summaryHelpers";
 import ScheduleForm from "../components/ScheduleForm";
 
@@ -94,6 +95,11 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                 title: params.title,
                 summary_mode: params.summary_mode,
                 cron_expr: params.cron_expr,
+                interval_days: params.interval_days ?? 0,
+                interval_months: params.interval_months ?? 0,
+                day_of_week: params.day_of_week ?? 0,
+                day_of_month: params.day_of_month ?? 0,
+                run_time: params.run_time ?? "",
                 time_range_type: params.time_range_type,
                 sources: params.sources,
             };
@@ -191,13 +197,13 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                 </div>
                                 <div className="summary-schedule-card-meta">
                                     <Tag size="small" color="blue">{getModeLabel(item.summary_mode)}</Tag>
-                                    <span style={{ marginLeft: 8 }}>{describeCron(item.cron_expr)}</span>
+                                    <span style={{ marginLeft: 8 }}>{describeSchedule(item.cron_expr, item.interval_days, item.interval_months, item.run_time, item.day_of_week, item.day_of_month)}</span>
                                     <span style={{ marginLeft: 8, color: "var(--semi-color-text-2)" }}>
                                         {getTimeRangeTypeLabel(item.time_range_type)}
                                     </span>
                                 </div>
                                 <div className="summary-schedule-card-sources">
-                                    {translate("summary.source.label")}{item.sources.map((s) => s.source_name || s.source_id).join("、") || "-"}
+                                    {translate("summary.source.label")}{(item.sources ?? []).map((s) => s.source_name || s.source_id).join("、") || "-"}
                                 </div>
                                 <div className="summary-schedule-card-actions">
                                     <Button
@@ -249,18 +255,42 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                     width={520}
                 >
                     {editingSchedule && (
-                        <ScheduleForm
-                            initialValues={{
-                                title: editingSchedule.title,
-                                summary_mode: editingSchedule.summary_mode,
+                        <>
+                            {/* Blocking 3：列表页编辑 legacy cron 定时时补与详情页一致的警告。
+                                ScheduleForm 总是 scheduleToParams 清空 cron_expr，若不提示，打开
+                                旧的每周/每月 cron 定时不改频率直接保存，会被静默改成每天（数据丢失）。 */}
+                            {scheduleItemToConfig({
                                 cron_expr: editingSchedule.cron_expr,
-                                time_range_type: editingSchedule.time_range_type,
-                                sources: editingSchedule.sources,
-                            }}
-                            onSubmit={this.handleUpdate}
-                            onCancel={() => this.setState({ showEditModal: false, editingSchedule: null })}
-                            loading={formLoading}
-                        />
+                                interval_days: editingSchedule.interval_days,
+                                interval_months: editingSchedule.interval_months,
+                                run_time: editingSchedule.run_time,
+                            }).legacyCron && (
+                                <Banner
+                                    type="warning"
+                                    closeIcon={null}
+                                    description={translate("summary.schedule.config.legacyCronWarning")}
+                                    style={{ marginBottom: 16 }}
+                                    fullMode={false}
+                                />
+                            )}
+                            <ScheduleForm
+                                initialValues={{
+                                    title: editingSchedule.title,
+                                    summary_mode: editingSchedule.summary_mode,
+                                    cron_expr: editingSchedule.cron_expr,
+                                    interval_days: editingSchedule.interval_days ?? 0,
+                                    interval_months: editingSchedule.interval_months ?? 0,
+                                    day_of_week: editingSchedule.day_of_week ?? 0,
+                                    day_of_month: editingSchedule.day_of_month ?? 0,
+                                    run_time: editingSchedule.run_time ?? "",
+                                    time_range_type: editingSchedule.time_range_type,
+                                    sources: editingSchedule.sources ?? [],
+                                }}
+                                onSubmit={this.handleUpdate}
+                                onCancel={() => this.setState({ showEditModal: false, editingSchedule: null })}
+                                loading={formLoading}
+                            />
+                        </>
                     )}
                 </Modal>
             </div>

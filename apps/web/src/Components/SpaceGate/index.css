@@ -1,0 +1,39 @@
+.wk-spacegate-logout {
+    margin-top: var(--wk-sp-5);
+}
+
+.wk-spacegate-logout-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--wk-sp-1);
+    min-height: 30px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-base);
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.wk-spacegate-logout-btn:hover {
+    color: var(--wk-brand-primary);
+}
+
+.wk-spacegate-logout-btn:hover span {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.wk-spacegate-logout-btn:focus-visible {
+    outline: 2px solid var(--wk-brand-primary-ring);
+    outline-offset: 2px;
+    border-radius: var(--wk-r-xs);
+}
+
+.wk-spacegate-logout-btn svg {
+    flex: 0 0 auto;
+}

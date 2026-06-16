@@ -1,13 +1,37 @@
 import { useMemo } from "react";
 import WKApp from "../../App";
-import { MessageWrap, Part, PartType } from "../../Service/Model";
-import { TextContentUIProps } from "./types";
-import { MentionInfo, EmojiInfo } from "../../Messages/Text/MarkdownContent";
+import type { MessageWrap, Part } from "../../Service/Model";
+import { PartType } from "../../Service/Model";
+import type { TextContentUIProps } from "./types";
+import type { MentionInfo, EmojiInfo } from "../../Messages/Text/MarkdownContent";
+import { buildTextMessageMentions } from "./textMessageMentions";
 import {
   useMessageRow,
   getMessageRow,
   MessageRowSelectionState,
 } from "./useMessageRow";
+
+function getEffectiveContent(message: MessageWrap): unknown {
+  const remoteExtra = message.remoteExtra ?? (message.message as any)?.remoteExtra;
+  return remoteExtra?.isEdit && remoteExtra?.contentEdit
+    ? remoteExtra.contentEdit
+    : message.content;
+}
+
+function getRenderMentions(message: MessageWrap, parts: Part[]): MentionInfo[] {
+  const remoteExtra = message.remoteExtra ?? (message.message as any)?.remoteExtra;
+  const editContent =
+    remoteExtra?.isEdit && remoteExtra?.contentEdit
+      ? remoteExtra.contentEdit
+      : undefined;
+
+  return buildTextMessageMentions({
+    parts: parts as any,
+    content: message.content,
+    editContent,
+    partMentionType: PartType.mention as unknown as number,
+  }) as MentionInfo[];
+}
 
 /**
  * getTextMessageUI - 纯函数版本
@@ -41,13 +65,7 @@ export function getTextMessageUI(
 
   const parts = message.parts || [];
 
-  // 提取 @ 提及列表
-  const mentions: MentionInfo[] = parts
-    .filter((p: Part) => p.type === PartType.mention && p.data?.uid)
-    .map((p: Part) => ({
-      name: p.text,
-      uid: p.data.uid,
-    }));
+  const mentions = getRenderMentions(message, parts);
 
   // 提取 emoji 列表（过滤掉无效 URL）
   const emojis: EmojiInfo[] = parts
@@ -70,12 +88,7 @@ export function getTextMessageUI(
     emojis[0].url.includes("/emoji/custom_");
 
   // 获取纯文本内容（优先使用编辑后的内容）
-  const rawContent = message.content as any;
-  const remoteExtra = (message.message as any)?.remoteExtra;
-  const effectiveContent =
-    remoteExtra?.isEdit && remoteExtra?.contentEdit
-      ? (remoteExtra.contentEdit as any)
-      : rawContent;
+  const effectiveContent = getEffectiveContent(message) as any;
   const plainText =
     effectiveContent?.text || parts.map((p: Part) => p.text).join("") || "";
 
@@ -105,13 +118,7 @@ export function useTextMessageUI(message: MessageWrap) {
   const contentProps = useMemo((): TextContentUIProps => {
     const parts = message.parts || [];
 
-    // 提取 @ 提及列表
-    const mentions: MentionInfo[] = parts
-      .filter((p: Part) => p.type === PartType.mention && p.data?.uid)
-      .map((p: Part) => ({
-        name: p.text,
-        uid: p.data.uid,
-      }));
+    const mentions = getRenderMentions(message, parts);
 
     // 提取 emoji 列表（过滤掉无效 URL）
     const emojis: EmojiInfo[] = parts
@@ -134,12 +141,7 @@ export function useTextMessageUI(message: MessageWrap) {
       emojis[0].url.includes("/emoji/custom_");
 
     // 获取纯文本内容（优先使用编辑后的内容）
-    const rawContent = message.content as any;
-    const remoteExtra = (message.message as any)?.remoteExtra;
-    const effectiveContent =
-      remoteExtra?.isEdit && remoteExtra?.contentEdit
-        ? (remoteExtra.contentEdit as any)
-        : rawContent;
+    const effectiveContent = getEffectiveContent(message) as any;
     const plainText =
       effectiveContent?.text || parts.map((p: Part) => p.text).join("") || "";
 

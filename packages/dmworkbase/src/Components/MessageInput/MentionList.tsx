@@ -1,4 +1,10 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react'
 import AiBadge from '../AiBadge'
 import { useI18n } from '../../i18n'
 import './MentionList.css'
@@ -22,10 +28,25 @@ interface MentionListProps {
   command: (item: { id: string; label: string }) => void
 }
 
+type InteractionMode = 'keyboard' | 'mouse'
+type KeyboardDirection = 'up' | 'down'
+type PointerPosition = { x: number; y: number }
+
+const SCROLL_EDGE_EPSILON = 1
+const POINTER_MOVE_EPSILON = 1
+
 export default forwardRef((props: MentionListProps, ref) => {
   const { t } = useI18n()
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [interactionMode, setInteractionMode] =
+    useState<InteractionMode>('keyboard')
+  const listRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+  const selectedIndexRef = useRef(0)
+  const hoveredIndexRef = useRef<number | null>(null)
+  const interactionModeRef = useRef<InteractionMode>('keyboard')
+  const suppressMouseHoverUntilMoveRef = useRef(false)
+  const lastPointerPositionRef = useRef<PointerPosition | null>(null)
 
   const selectItem = (index: number) => {
     const item = props.items[index]
@@ -37,26 +58,153 @@ export default forwardRef((props: MentionListProps, ref) => {
     }
   }
 
+  const scrollKeyboardItemIntoView = (index: number, direction: KeyboardDirection) => {
+    const list = listRef.current
+    const item = itemRefs.current[index]
+
+    if (!list || !item) return
+
+    const itemTop = item.offsetTop
+    const itemBottom = itemTop + item.offsetHeight
+    const viewTop = list.scrollTop
+    const viewBottom = viewTop + list.clientHeight
+    let nextScrollTop = viewTop
+
+    if (direction === 'up') {
+      if (itemTop < viewTop - SCROLL_EDGE_EPSILON) {
+        nextScrollTop = itemTop
+      }
+    } else if (itemBottom > viewBottom + SCROLL_EDGE_EPSILON) {
+      nextScrollTop = itemBottom - list.clientHeight
+    }
+
+    const maxScrollTop = Math.max(0, list.scrollHeight - list.clientHeight)
+    const clampedScrollTop = Math.min(Math.max(nextScrollTop, 0), maxScrollTop)
+
+    if (Math.abs(clampedScrollTop - viewTop) > SCROLL_EDGE_EPSILON) {
+      list.scrollTop = clampedScrollTop
+    }
+  }
+
+  const scrollWrappedKeyboardItemIntoView = (direction: KeyboardDirection) => {
+    const list = listRef.current
+    if (!list) return
+
+    if (direction === 'up') {
+      list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight)
+    } else {
+      list.scrollTop = 0
+    }
+  }
+
+  const moveKeyboardSelection = (direction: KeyboardDirection) => {
+    if (!props.items.length) return
+
+    const startingIndex = interactionModeRef.current === 'mouse'
+      ? hoveredIndexRef.current ?? selectedIndexRef.current
+      : selectedIndexRef.current
+    const nextIndex = direction === 'up'
+      ? (startingIndex + props.items.length - 1) % props.items.length
+      : (startingIndex + 1) % props.items.length
+    const wrapped =
+      (direction === 'up' && startingIndex === 0) ||
+      (direction === 'down' && startingIndex === props.items.length - 1)
+
+    if (wrapped) {
+      scrollWrappedKeyboardItemIntoView(direction)
+    } else {
+      scrollKeyboardItemIntoView(nextIndex, direction)
+    }
+    selectedIndexRef.current = nextIndex
+    suppressMouseHoverUntilMoveRef.current = true
+    interactionModeRef.current = 'keyboard'
+    setInteractionMode('keyboard')
+    hoveredIndexRef.current = null
+    setSelectedIndex(nextIndex)
+  }
+
   const upHandler = () => {
-    setSelectedIndex((selectedIndex + props.items.length - 1) % props.items.length)
+    moveKeyboardSelection('up')
   }
 
   const downHandler = () => {
-    setSelectedIndex((selectedIndex + 1) % props.items.length)
+    moveKeyboardSelection('down')
   }
 
   const enterHandler = () => {
-    selectItem(selectedIndex)
+    const commandIndex = interactionModeRef.current === 'mouse'
+      ? hoveredIndexRef.current ?? selectedIndexRef.current
+      : selectedIndexRef.current
+
+    selectedIndexRef.current = commandIndex
+    interactionModeRef.current = 'keyboard'
+    setInteractionMode('keyboard')
+    hoveredIndexRef.current = null
+    selectItem(commandIndex)
   }
 
-  useEffect(() => setSelectedIndex(0), [props.items])
+  const hasNativeMouseMovement = (event: React.MouseEvent<HTMLDivElement>) => {
+    const nativeEvent = event.nativeEvent as MouseEvent
+    return (
+      Math.abs(nativeEvent.movementX || 0) > POINTER_MOVE_EPSILON ||
+      Math.abs(nativeEvent.movementY || 0) > POINTER_MOVE_EPSILON
+    )
+  }
+
+  const hasPointerMoved = (pointerPosition: PointerPosition) => {
+    const lastPointerPosition = lastPointerPositionRef.current
+    if (!lastPointerPosition) return false
+
+    return (
+      Math.abs(pointerPosition.x - lastPointerPosition.x) > POINTER_MOVE_EPSILON ||
+      Math.abs(pointerPosition.y - lastPointerPosition.y) > POINTER_MOVE_EPSILON
+    )
+  }
+
+  const mouseHandler = (index: number, event: React.MouseEvent<HTMLDivElement>) => {
+    const pointerPosition = { x: event.clientX, y: event.clientY }
+    const pointerMoved = hasPointerMoved(pointerPosition)
+
+    if (
+      suppressMouseHoverUntilMoveRef.current &&
+      (event.type !== 'mousemove' || (!hasNativeMouseMovement(event) && !pointerMoved))
+    ) {
+      return
+    }
+
+    suppressMouseHoverUntilMoveRef.current = false
+    lastPointerPositionRef.current = pointerPosition
+    interactionModeRef.current = 'mouse'
+    setInteractionMode((currentMode) =>
+      currentMode === 'mouse' ? currentMode : 'mouse'
+    )
+    hoveredIndexRef.current = index
+  }
+
+  const mouseLeaveHandler = () => {
+    if (interactionModeRef.current !== 'mouse') return
+
+    suppressMouseHoverUntilMoveRef.current = false
+    lastPointerPositionRef.current = null
+    hoveredIndexRef.current = null
+    selectedIndexRef.current = 0
+    interactionModeRef.current = 'keyboard'
+    setSelectedIndex(0)
+    setInteractionMode('keyboard')
+  }
 
   useEffect(() => {
-    itemRefs.current[selectedIndex]?.scrollIntoView({
-      block: 'nearest',
-      behavior: 'smooth',
-    })
-  }, [selectedIndex])
+    selectedIndexRef.current = 0
+    hoveredIndexRef.current = null
+    interactionModeRef.current = 'keyboard'
+    suppressMouseHoverUntilMoveRef.current = false
+    lastPointerPositionRef.current = null
+    setSelectedIndex(0)
+    setInteractionMode('keyboard')
+    if (listRef.current) {
+      listRef.current.scrollTop = 0
+    }
+  }, [props.items])
 
   useImperativeHandle(ref, () => ({
     onKeyDown: ({ event }: any) => {
@@ -80,42 +228,60 @@ export default forwardRef((props: MentionListProps, ref) => {
   }))
 
   return (
-    <div className="mention-list" role="listbox">
+    <div
+      ref={listRef}
+      className={`mention-list mention-list--${interactionMode}`}
+      role="listbox"
+      onMouseLeave={mouseLeaveHandler}
+    >
       {props.items.length ? (
-        props.items.map((item, index) => (
-          <div
-            ref={(el) => {
-              itemRefs.current[index] = el
-            }}
-            className={`mention-list-item ${index === selectedIndex ? 'is-selected' : ''}`}
-            key={item.uid || item.id || index}
-            role="option"
-            aria-selected={index === selectedIndex}
-            onClick={() => selectItem(index)}
-          >
-            <div className="wk-messageinput-iconbox">
-              <img
-                className="wk-messageinput-icon"
-                src={item.icon}
-                alt=""
-                style={{ width: '24px', height: '24px', borderRadius: '24px' }}
-              />
+        props.items.map((item, index) => {
+          const isKeyboardSelected =
+            interactionMode === 'keyboard' && index === selectedIndex
+
+          return (
+            <div
+              ref={(el) => {
+                itemRefs.current[index] = el
+              }}
+              className={`mention-list-item ${
+                isKeyboardSelected ? 'is-selected' : ''
+              }`}
+              key={item.uid || item.id || index}
+              role="option"
+              aria-selected={isKeyboardSelected}
+              onMouseEnter={(event) => mouseHandler(index, event)}
+              onMouseMove={(event) => mouseHandler(index, event)}
+              onClick={() => selectItem(index)}
+            >
+              <div className="wk-messageinput-iconbox">
+                <img
+                  className="wk-messageinput-icon"
+                  src={item.icon}
+                  alt=""
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '24px',
+                  }}
+                />
+              </div>
+              <div>
+                <strong>{item.name || item.display}</strong>
+                {/* @ 提醒选人弹窗的「@SpaceName」后缀（企微风格） */}
+                {item.sourceSpaceName && (
+                  <span
+                    className="mention-list-item-space"
+                    title={`@${item.sourceSpaceName}`}
+                  >
+                    @{item.sourceSpaceName}
+                  </span>
+                )}
+                {item.isBot && <AiBadge size="small" />}
+              </div>
             </div>
-            <div>
-              <strong>{item.name || item.display}</strong>
-              {/* @ 提醒选人弹窗的「@SpaceName」后缀（企微风格） */}
-              {item.sourceSpaceName && (
-                <span
-                  className="mention-list-item-space"
-                  title={`@${item.sourceSpaceName}`}
-                >
-                  @{item.sourceSpaceName}
-                </span>
-              )}
-              {item.isBot && <AiBadge size="small" />}
-            </div>
-          </div>
-        ))
+          )
+        })
       ) : (
         <div className="mention-list-item">{t("base.mentionList.noMembers")}</div>
       )}

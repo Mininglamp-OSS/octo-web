@@ -1,0 +1,114 @@
+.wk-voice-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-3);
+}
+
+.wk-voice-settings__notice {
+  color: var(--wk-color-warning);
+  font-size: var(--wk-text-size-base);
+  line-height: var(--wk-leading-normal);
+}
+
+.wk-voice-settings__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--wk-sp-4);
+  min-height: var(--wk-sp-6);
+}
+
+.wk-voice-settings__row--primary {
+  min-height: var(--wk-sp-6);
+}
+
+.wk-voice-settings__row--primary .wk-voice-settings__label {
+  font-size: var(--wk-text-size-xl);
+  font-weight: var(--wk-font-medium);
+}
+
+.wk-voice-settings__label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--wk-sp-1);
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-md);
+  line-height: var(--wk-leading-snug);
+}
+
+.wk-voice-settings__help {
+  flex-shrink: 0;
+  color: var(--wk-text-tertiary);
+  cursor: help;
+}
+
+.wk-voice-settings__local-config {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-3);
+  margin-top: var(--wk-sp-1);
+  padding: var(--wk-sp-3);
+  background: var(--wk-bg-elevated);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-sm);
+  font-size: var(--wk-text-size-base);
+}
+
+.wk-voice-settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+}
+
+.wk-voice-settings__field-label {
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-base);
+  line-height: var(--wk-leading-normal);
+}
+
+.wk-voice-settings__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--wk-sp-1-5) var(--wk-sp-2);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  font: var(--wk-text-body);
+  outline: none;
+}
+
+.wk-voice-settings__input:focus {
+  border-color: var(--wk-brand-primary);
+  box-shadow: 0 0 0 2px var(--wk-border-glow);
+}
+
+.wk-voice-settings__test-btn {
+  align-self: flex-start;
+}
+
+.wk-voice-settings__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2);
+  margin-top: var(--wk-sp-1);
+}
+
+.wk-voice-settings__links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+  margin-top: var(--wk-sp-2);
+}
+
+.wk-voice-settings__link {
+  color: var(--wk-text-accent);
+  font-size: var(--wk-text-size-base);
+  line-height: var(--wk-leading-normal);
+  text-decoration: none;
+}
+
+.wk-voice-settings__link:hover {
+  text-decoration: underline;
+}

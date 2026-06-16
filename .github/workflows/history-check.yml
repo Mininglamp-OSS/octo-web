@@ -1,0 +1,12 @@
+name: History Check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  history:
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-history-check.yml@v1

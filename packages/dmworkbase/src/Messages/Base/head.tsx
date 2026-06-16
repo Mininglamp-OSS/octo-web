@@ -3,8 +3,10 @@ import React from "react";
 import { Component } from "react";
 import { BubblePosition, MessageWrap } from "../../Service/Model";
 import AiBadge from "../../Components/AiBadge";
+import WebhookBadge from "../../Components/WebhookBadge";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
+import { resolveWebhookRowDisplay, webhookFromOfMessage } from "../../Service/IncomingWebhook";
 
 const titleColors = ["#8C8DFF", "#7983C2", "#6D8DDE", "#5979F0", "#6695DF", "#8F7AC5",
     "#9D77A5", "#8A64D0", "#AA66C3", "#A75C96", "#C8697D", "#B74D62",
@@ -51,6 +53,22 @@ export default class MessageHead extends Component<MessageHeadProps> {
 
     render() {
         const { message } = this.props
+        // 群入站 Webhook 消息：发送者名读 payload from 元信息，
+        // 不走 ChannelInfo（iwh_* 不是真实用户，必落空）
+        const webhookFrom = webhookFromOfMessage(message)
+        if (webhookFrom) {
+            const { senderName: name, showBadge } = resolveWebhookRowDisplay(webhookFrom)
+            return <>
+                {this.needTitle() ? (
+                    <div className="textTitle" style={{ color: getTitleColor(name) }}>
+                        <div className="textTitle-name-row">
+                            <span>{name}</span>
+                            {showBadge && <WebhookBadge />}
+                        </div>
+                    </div>
+                ) : null}
+            </>
+        }
         const channelInfo = WKSDK.shared().channelManager.getChannelInfo(new Channel(message.fromUID, ChannelTypePerson))
         const isGroupMsg = message.channel.channelType === ChannelTypeGroup
         const isBot = channelInfo?.orgData?.robot === 1

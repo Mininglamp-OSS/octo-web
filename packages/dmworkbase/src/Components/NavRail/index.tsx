@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { Space } from "wukongimjssdk";
+import { Channel, ChannelTypePerson, Space } from "wukongimjssdk";
 import WKApp from "../../App";
 import { Menus } from "../../Service/Menus";
 import NavSpaceSwitcher from "./NavSpaceSwitcher";
@@ -7,6 +7,7 @@ import NavSpaceSwitcher from "./NavSpaceSwitcher";
 import NavItem from "./NavItem";
 import NavBottom from "./NavBottom";
 import NavSettingsPanel from "./NavSettingsPanel";
+import WKAvatar from "../WKAvatar";
 import { t } from "../../i18n";
 import "./index.css";
 
@@ -76,6 +77,7 @@ export default class NavRail extends Component<NavRailProps> {
             onCreateSpace,
             canManageSpace = false,
         } = this.props;
+        const userChannel = new Channel(WKApp.loginInfo.uid || "", ChannelTypePerson);
 
         return (
             <>
@@ -89,10 +91,9 @@ export default class NavRail extends Component<NavRailProps> {
                                 title={t("base.navRail.me")}
                                 aria-label={t("base.navRail.me")}
                                 onClick={onAvatarClick}
-                                style={{
-                                    backgroundImage: `url(${WKApp.shared.avatarUser(WKApp.loginInfo.uid || "")})`,
-                                }}
-                            />
+                            >
+                                <WKAvatar channel={userChannel} />
+                            </button>
                             {isOnline && <div className="wk-navrail__user-status" />}
                         </div>
                     </div>

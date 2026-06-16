@@ -348,6 +348,31 @@ export class EndpointCommon {
     );
   }
 
+  chatSummaryPanel(
+    channel: Channel,
+    onClose: () => void,
+  ): JSX.Element | undefined {
+    return EndpointManager.shared.invoke(EndpointCategory.chatSummaryPanel, {
+      channel,
+      onClose,
+    });
+  }
+
+  registerChatSummaryPanel(
+    sid: string,
+    callback: (param: any) => JSX.Element | undefined
+  ) {
+    EndpointManager.shared.setMethod(
+      EndpointCategory.chatSummaryPanel,
+      (param) => {
+        return callback(param);
+      },
+      {
+        category: EndpointCategory.chatSummaryPanel,
+      }
+    );
+  }
+
   callOnLogin() {
     [...this._onLogins].forEach(fn => fn());
   }

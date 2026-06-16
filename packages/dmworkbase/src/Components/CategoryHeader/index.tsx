@@ -18,7 +18,9 @@ export interface CategoryHeaderProps {
     onRenameConfirm?: (newName: string) => void
     onRenameCancel?: () => void
     // 拖拽 handle props（由 useSortable 传入）
-    dragHandleProps?: React.HTMLAttributes<HTMLSpanElement>
+    dragHandleRef?: React.RefCallback<HTMLElement>
+    dragHandleAttributes?: React.HTMLAttributes<HTMLSpanElement>
+    dragHandleListeners?: Record<string, React.EventHandler<any>>
 }
 
 const CategoryHeader: React.FC<CategoryHeaderProps> = ({
@@ -34,7 +36,9 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
     isEditing,
     onRenameConfirm,
     onRenameCancel,
-    dragHandleProps,
+    dragHandleRef,
+    dragHandleAttributes,
+    dragHandleListeners,
 }) => {
     const { t } = useI18n()
     const inputRef = useRef<HTMLInputElement>(null)
@@ -126,11 +130,13 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
             onClick={onToggle}
             onContextMenu={onContextMenu}
         >
-            {/* 拖拽 handle（由父组件传入 useSortable listeners） */}
-            {dragHandleProps && (
+            {/* 拖拽 handle（由父组件传入 useSortable setActivatorNodeRef + attributes/listeners） */}
+            {dragHandleRef && (
                 <span
+                    ref={dragHandleRef}
                     className="wk-category-header__drag-handle"
-                    {...dragHandleProps}
+                    {...dragHandleAttributes}
+                    {...dragHandleListeners}
                     onClick={e => e.stopPropagation()}
                 >
                     <svg width="10" height="14" viewBox="0 0 10 14" fill="none">

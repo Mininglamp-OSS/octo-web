@@ -141,9 +141,10 @@ function SheetTable({ sheetData }: { sheetData: SheetData }) {
   const { t } = useI18n();
 
   const renderCellContent = (value: unknown): string => {
-    if (value === null || value === undefined) return "-";
+    if (value === null || value === undefined || value === "") return "-";
     if (typeof value === "object") return JSON.stringify(value);
-    return String(value);
+    const str = String(value);
+    return str.trim() === "" ? "-" : str;
   };
 
   if (!data || data.length === 0) {

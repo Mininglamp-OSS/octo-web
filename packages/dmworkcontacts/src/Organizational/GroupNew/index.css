@@ -1,16 +1,11 @@
-.wk-main-modal-organizational-group-new .semi-modal-body-wrapper {
-  margin: 0;
+.wk-main-modal-organizational-group-new .wk-modal-shell {
+  padding: 0;
 }
-.wk-main-modal-organizational-group-new .semi-modal-close {
-  display: none;
-}
-.wk-main-modal-organizational-group-new .semi-modal-body {
+
+.wk-main-modal-organizational-group-new .wk-modal-body {
   height: 500px;
   display: flex;
-}
-.wk-main-modal-organizational-group-new .semi-modal-content {
-  border: none !important;
-  padding: 0px !important;
+  overflow: hidden;
 }
 
 .wk-organizational-group-new-left {

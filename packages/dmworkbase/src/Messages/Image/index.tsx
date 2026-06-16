@@ -14,6 +14,7 @@ import SingleImage from "../../ui/message/ImageContent/SingleImage"
 import MultiImage from "../../ui/message/ImageContent/MultiImage"
 import type { ImageTransferState } from "../../ui/message/ImageContent/SingleImage"
 import { getImageMessageUI } from "../../bridge/message/useImageMessageUI"
+import { isMessageSelectable } from "../../Service/messageSelection"
 import { t } from "../../i18n"
 
 const SMALL_FILE_THRESHOLD = 1024 * 1024 // 1MB 以下不显示进度覆盖层
@@ -235,16 +236,20 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                 onUploadRetry: this.handleRetry,
                 onMessageRetry: () => context.resendMessage(message.message),
             })
+            const selectionMode = context.editOn()
+            const selectable = isMessageSelectable(message)
             const canPreview = !transferState && hasRemoteUrl
+            const canOpenPreview = canPreview && !selectionMode
             return (
                 <>
                     <MessageRow
                         {...uiProps.row}
                         onContextMenu={(event) => context.showContextMenus(message, event)}
                         isActive={context.isContextMenuOpen(message.message)}
-                        showCheckbox={context.editOn()}
-                        isSelected={!!message.checked}
-                        onSelect={(selected) => context.checkeMessage(message.message, selected)}
+                        selectionMode={selectionMode}
+                        showCheckbox={selectionMode && selectable}
+                        isSelected={selectable && !!message.checked}
+                        onSelect={selectable ? (selected) => context.checkeMessage(message.message, selected) : undefined}
                         onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
                         onSenderNameClick={() => context.showUser(message.fromUID)}
                     >
@@ -252,15 +257,15 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                             ? <MultiImage
                                 images={uiProps.images}
                                 transferState={transferState}
-                                onImageClick={(index) => {
+                                onImageClick={canOpenPreview ? (index) => {
                                     // TODO: 多图预览
-                                }}
+                                } : undefined}
                               />
                             : uiProps.singleImage
                                 ? <SingleImage
                                     {...uiProps.singleImage}
                                     transferState={transferState}
-                                    onClick={canPreview ? () => this.setState({ showPreview: true }) : undefined}
+                                    onClick={canOpenPreview ? () => this.setState({ showPreview: true }) : undefined}
                                   />
                                 : null
                         }

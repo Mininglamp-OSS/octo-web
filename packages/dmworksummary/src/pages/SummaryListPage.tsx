@@ -67,9 +67,16 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
 
     private handleTaskRegenerated_ = () => this.loadData();
 
+    private handleNavMenuActivated_ = ({ menuId }: { menuId: string }) => {
+        if (menuId === "summary") {
+            this.loadData();
+        }
+    };
+
     componentDidMount() {
         this.loadData();
         WKApp.mittBus.on("summary-space-changed", this.handleSpaceChanged_);
+        WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated_);
         window.addEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
     }
 
@@ -78,6 +85,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         if (this.searchTimer) clearTimeout(this.searchTimer);
         this.stopBatchPoll();
         WKApp.mittBus.off("summary-space-changed", this.handleSpaceChanged_);
+        WKApp.mittBus.off("wk:nav-menu-activated", this.handleNavMenuActivated_);
         window.removeEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
     }
 
@@ -94,6 +102,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
             const resp = await api.listSummaries(params);
             this.setState({ items: resp.items, total: resp.total, loading: false }, () => {
                 this.maybeStartBatchPoll();
+                this.emitBadgeUpdate();
             });
         } catch (err: any) {
             this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
@@ -154,7 +163,10 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
                 return item;
             });
             if (changed) {
-                this.setState({ items: newItems }, () => this.maybeStartBatchPoll());
+                this.setState({ items: newItems }, () => {
+                    this.maybeStartBatchPoll();
+                    this.emitBadgeUpdate();
+                });
                 window.dispatchEvent(new CustomEvent("summary-status-change", { detail: { taskIds: changedIds } }));
             }
         } catch {
@@ -169,6 +181,20 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
             clearInterval(this.batchPollTimer);
             this.batchPollTimer = null;
         }
+    }
+
+    /**
+     * Fire badge update event — badge = count of WAITING_CONFIRM tasks
+     * (summary ready, waiting for user to confirm).
+     * Uses a separate unfiltered query so badge is independent of list filter.
+     */
+    private emitBadgeUpdate() {
+        // Fire-and-forget: fetch total WAITING_CONFIRM count unfiltered
+        api.listSummaries({ status: TaskStatus.WAITING_CONFIRM, page_size: 1 })
+            .then(resp => {
+                WKApp.mittBus.emit("summary-badge-update" as any, { count: resp.total });
+            })
+            .catch(() => { /* ignore */ });
     }
 
     handleStatusChange = (value: string | number) => {

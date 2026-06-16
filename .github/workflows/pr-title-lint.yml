@@ -1,0 +1,18 @@
+name: PR Title Lint
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  pr-title-lint:
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-pr-title-lint.yml@v1
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      pr_title: ${{ github.event.pull_request.title }}
+      repo_owner: ${{ github.event.repository.owner.login }}
+      repo_name: ${{ github.event.repository.name }}
+    permissions:
+      pull-requests: write

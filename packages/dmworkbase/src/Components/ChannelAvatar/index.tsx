@@ -7,6 +7,7 @@ import WKApp from "../../App";
 import RouteContext, { FinishButtonContext, RouteContextConfig } from "../../Service/Context";
 import { WKAvatarEditor } from "../WKAvatarEditor";
 import { I18nContext } from "../../i18n";
+import { isAvatarFileTooLarge } from "../avatarUpload";
 import "./index.css"
 
 export interface ChannelAvatarProps {
@@ -47,6 +48,10 @@ export class ChannelAvatar extends Component<ChannelAvatarProps>{
     }
     showFile(file: any) {
         const { context,onFileUpload,channel } = this.props
+        if (isAvatarFileTooLarge(file)) {
+            Toast.error(this.context.t('base.channelAvatar.fileTooLarge'));
+            return;
+        }
         let finishButtonContext:FinishButtonContext
         if (context) {
             context.push(<WKAvatarEditor ref={(rf)=>{

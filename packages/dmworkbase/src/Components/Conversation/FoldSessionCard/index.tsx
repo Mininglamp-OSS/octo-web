@@ -25,6 +25,7 @@ export interface FoldSessionCardProps extends HTMLProps<HTMLDivElement> {
   summaryId?: string;
   summarySender?: string;
   summaryTime?: string;
+  summaryShowMeta?: boolean;
   summaryContent?: ReactNode;
   summaryIcon?: ReactNode;
 
@@ -53,6 +54,7 @@ const FoldSessionCard: React.FC<FoldSessionCardProps> = ({
   summaryId,
   summarySender,
   summaryTime,
+  summaryShowMeta = true,
   summaryContent,
   summaryIcon,
   expandedContent,
@@ -163,7 +165,14 @@ const FoldSessionCard: React.FC<FoldSessionCardProps> = ({
             highlightSummary && "wk-fold-session-card-summary-highlight"
           )}
           onAnimationEnd={onSummaryAnimationEnd}
-          onContextMenu={selectionMode ? undefined : onSummaryContextMenu}
+          onContextMenu={
+            selectionMode
+              ? (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }
+              : onSummaryContextMenu
+          }
         >
           <div
             className={classNames(
@@ -210,15 +219,16 @@ const FoldSessionCard: React.FC<FoldSessionCardProps> = ({
             <div
               className="wk-fold-session-card-summary-main"
               style={{
-                pointerEvents:
-                  selectionMode && summarySelectable ? "none" : undefined,
+                pointerEvents: selectionMode ? "none" : undefined,
               }}
             >
               {/* 折叠状态显示完整消息:姓名tag + 时间 + 内容 */}
-              <div className="wk-fold-msg-head">
-                <span className="wk-fold-msg-name">{summarySender}</span>
-                <span className="wk-fold-msg-time">{summaryTime}</span>
-              </div>
+              {summaryShowMeta ? (
+                <div className="wk-fold-msg-head">
+                  <span className="wk-fold-msg-name">{summarySender}</span>
+                  <span className="wk-fold-msg-time">{summaryTime}</span>
+                </div>
+              ) : null}
               {summaryContent ? (
                 <div className="wk-fold-msg-text">
                   {summaryContent}

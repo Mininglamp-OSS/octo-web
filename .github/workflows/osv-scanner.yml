@@ -1,0 +1,38 @@
+name: OSV-Scanner
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "30 4 * * 1" # Weekly Monday 04:30 UTC (12:30 CST)
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  scan-scheduled:
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+    with:
+      scan-args: |-
+        -r
+        ./
+      fail-on-vuln: false
+
+  scan-pr:
+    if: github.event_name == 'pull_request'
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+    with:
+      scan-args: |-
+        -r
+        ./
+      # Skip SARIF upload when GITHUB_TOKEN is read-only:
+      # - Fork PRs: token is inherently read-only
+      # - Dependabot PRs: GitHub enforces read-only token for dependabot[bot]
+      # Scan still runs; results visible in workflow output.
+      upload-sarif: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]' }}

@@ -46,6 +46,7 @@
   "joinSpace.inviteInvalidOrExpired": "邀请码无效或已过期",
   "joinSpace.joinFailedRetry": "加入失败，请重试",
   "joinSpace.joinedSpace": "已加入 {{spaceName}}",
+  "joinSpace.logout": "退出登录",
   "joinSpace.memberCountWithLimit": "{{count}} / {{max}} 人",
   "joinSpace.reenterInvite": "重新输入邀请码",
   "joinSpace.serverTerms.alreadyMember": "已是成员",
@@ -83,6 +84,7 @@
   "spaceGate.join": "加入",
   "spaceGate.joinByInvite": "输入邀请码加入团队",
   "spaceGate.joinedSpace": "已加入 Space",
+  "spaceGate.logout": "退出登录",
   "spaceGate.subtitle": "加入团队或创建新的工作空间",
   "spaceGate.welcome": "欢迎使用 {{appName}}！",
   "toast.realnameVerified": "实名认证已完成"

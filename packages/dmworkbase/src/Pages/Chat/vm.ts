@@ -36,6 +36,9 @@ export class ChatVM extends ProviderListener {
     private _showSpaceCreate = false // 是否显示创建 Space 弹窗
     private _spaceMemberUids: Set<string> = new Set() // 当前 space 的成员 uid 集合
     private _pendingSpaceConversations: Map<string, Conversation> = new Map() // 等待 channelInfo 的新群会话
+    // 子区(CommunityTopic) sidebar-only 关注项的最近一次 thread.status 快照，按 channelID。
+    // 仅用于 channelListener 里收敛重渲染：status 未变化时跳过 notifyListener（N2）。
+    private _lastThreadStatusByChannel: Map<string, number | undefined> = new Map()
 
     set showAddPopover(v: boolean) {
         this._showAddPopover = v
@@ -309,6 +312,22 @@ export class ChatVM extends ProviderListener {
                 conversation.extra.top = channelInfo.top ? 1 : 0
                 this.sortConversations()
                 this.notifyListener()
+            } else if (channelInfo.channel.channelType === ChannelTypeCommunityTopic) {
+                // 子区(CommunityTopic) channelInfo 到达：sidebar 关注 tab 里大量子区是
+                // sidebar-only 关注（synthesizeFromItem 合成、不在最近列表），findConversation
+                // 返回 undefined。归档/取消归档后三入口都会把权威 thread.status 写回
+                // channelInfo 缓存并 notifyListeners，让关注 tab 的 filterArchivedThreads
+                // 重新计算，否则列表不实时同步（issue #345）。
+                // N2：仅在 thread.status 真正变化（含首次出现）时 notifyListener，
+                // 避免与归档无关的 channelInfo 刷新（名称/未读等）放大重渲染。
+                const channelID = channelInfo.channel.channelID
+                const nextStatus = (channelInfo as any).orgData?.thread?.status as number | undefined
+                const prevTracked = this._lastThreadStatusByChannel.has(channelID)
+                const prevStatus = this._lastThreadStatusByChannel.get(channelID)
+                if (!prevTracked || prevStatus !== nextStatus) {
+                    this._lastThreadStatusByChannel.set(channelID, nextStatus)
+                    this.notifyListener()
+                }
             } else if (channelInfo.channel.channelType === ChannelTypeGroup) {
                 // 新群 channelInfo 异步返回：用真实 space_id 纠正 fail-open 假定值 + 补插遗漏的会话
                 const key = `${channelInfo.channel.channelID}_${channelInfo.channel.channelType}`

@@ -208,7 +208,8 @@
     "onlyCreatorOrAssignee": "Only the creator or assignees can edit this",
     "open": "In progress",
     "pending": "Pending",
-    "unarchived": "Unarchived"
+    "unarchived": "Unarchived",
+    "unarchivedCount": "Unarchived {{count}}"
   },
   "sync": {
     "daysAgo": "Synced {{count}} days ago",

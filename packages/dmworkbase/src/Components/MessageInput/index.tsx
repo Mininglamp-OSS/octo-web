@@ -17,6 +17,12 @@ import WKSDK, { Channel, ChannelInfo, ChannelTypePerson, Subscriber } from "wuko
 import hotkeys from "hotkeys-js";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
+import {
+  MemberInfo,
+  buildMemberInfos,
+  buildMentionRegex,
+  parseMentionMarkers,
+} from "./mentionResolve";
 import "./index.css";
 import { Notification } from "@douyinfe/semi-ui";
 import SlashCommandMenu, { BotCommand } from "../SlashCommandMenu";
@@ -33,6 +39,14 @@ import {
   videoPlayIcon,
 } from "./AttachmentNode";
 import { t as translate, useI18n } from "../../i18n";
+import { runSendWithCleanup, SendResultDetail } from "./sendFlow";
+import { extractOctoRichTextClipboardPayloadFromHtml } from "../../Utils/richTextClipboard";
+import { subscriberDisplayName } from "../../Utils/displayName";
+import {
+  imageBlockToPasteFile,
+  restoreOctoRichTextClipboardToEditor,
+} from "./richTextPaste";
+import { handleSecretPaste } from "./secretPasteDetect";
 
 const MAX_MESSAGE_LENGTH = 5000;
 
@@ -163,6 +177,25 @@ function stripInvisibleChars(text: string): string {
   return text.replace(INVISIBLE_CHARS_RE, "");
 }
 
+/**
+ * 防手滑提示（YUJ-3539）：粘贴到聊天框的明文疑似 API 密钥时弹一条引导通知，
+ * 提供「去保存」动作 → 打开密钥管理新增弹窗并本地预填该明文（不发送）。
+ *
+ * 注意：detectedValue 是用户自己刚粘贴的明文，只在本机本地预填，不经任何网络/聊天流。
+ */
+function notifySecretPaste(detectedValue: string): void {
+  Notification.warning({
+    title: translate("base.secrets.pasteGuard.title"),
+    content: translate("base.secrets.pasteGuard.content"),
+    duration: 8,
+    showClose: true,
+    onClick: () => {
+      WKApp.mittBus.emit("wk:open-secrets", { create: true, value: detectedValue });
+    },
+  });
+}
+
+
 export type OnInsertFnc = (text: string) => void;
 export type OnAddMentionFnc = (uid: string, name: string) => void;
 
@@ -174,6 +207,19 @@ export interface AttachmentFile {
 
 interface MessageInputProps {
   context: ConversationContext;
+  /**
+   * 发送回调。返回值决定是否清空编辑器/附件：
+   *   - resolve `true`（或 `undefined`/`void`，向后兼容）→ 发送成功，清空编辑器
+   *     草稿与全部本次附件；
+   *   - resolve `false` → 发送失败/未发送，保留编辑器内容、附件引用与预览 URL；
+   *   - resolve `{ editorConsumed, consumedTopIds }` → 部分成功：可表达「顶部
+   *     附件已发出但编辑器混排失败需保留」，仅清掉已消费的 top 附件，避免重试
+   *     重复发送 (octo-web#227 Jerry-Xin non-blocking)。
+   * 必须在 send 内被 `await`，否则同步清理会先于异步发送结果丢掉混排草稿。
+   * 注意 (第二轮 octo-web#227)：清理是 snapshot-aware 的——onSend 返回成功后，
+   * 仅当编辑器内容仍等于发送时的快照才会清空；用户在 await 期间输入的新草稿
+   * 不会被旧 send 误删。
+   */
   onSend?: (
     text: string,
     mention?: MentionModel,
@@ -182,7 +228,7 @@ interface MessageInputProps {
     topFiles?: AttachmentFile[],
     /** 编辑器中按文档顺序排列的内容块（文本段和粘贴图片交替） */
     editorBlocks?: EditorContentBlock[]
-  ) => void;
+  ) => void | boolean | SendResultDetail | Promise<void | boolean | SendResultDetail>;
   members?: Array<Subscriber>;
   onInputRef?: any;
   onInsertText?: (fnc: OnInsertFnc) => void;
@@ -190,6 +236,10 @@ interface MessageInputProps {
   onAddAttachment?: (
     fnc: (files: File[], source?: "paste" | "upload") => void
   ) => void;
+  onAddPendingAttachments?: (
+    files: File[],
+    source?: "paste" | "upload"
+  ) => boolean | Promise<boolean>;
   hideMention?: boolean;
   toolbar?: JSX.Element;
   /** Extra action nodes rendered inside the actionbox, before voice input */
@@ -275,14 +325,26 @@ function formatMentionTextV2(text: string): {
       humans = true;
       result += `@${MENTION_LABEL_HUMANS}`;
     } else if (uid === MENTION_UID_AIS) {
-      // 新的三态：ais=1，文本插入 @所有AI，不进 entities 列表
+      // 新的三态：ais=1。这里也为 @所有AI 写入 sentinel entity：
+      // bot routing UIDs 会放进 mention.uids，entity 能让接收端走精确解析路径，
+      // 避免这些 routing UID 被 legacy parser 误绑到其它裸写的 @xxx 文本。
       ais = true;
-      result += `@${MENTION_LABEL_AIS}`;
+      const atName = `@${MENTION_LABEL_AIS}`;
+      const offset = result.length;
+      entities.push({
+        uid,
+        offset,
+        length: atName.length,
+      });
+      result += atName;
     } else {
-      // 普通成员：以最新的 member.name 优先（avoid stale display label），fallback to label。
-      const atName = membersRef.current?.find((m) => m.uid === uid)?.name
-        ? `@${membersRef.current.find((m) => m.uid === uid)!.name}`
-        : `@${name}`;
+      // 普通成员：用规范展示名（real_name(verified) → remark → name），
+      // 与输入框 chip 标签（mentionResolve.buildMemberInfos 同样走
+      // subscriberDisplayName）保持一致，避免「框里 @王大棍、发出去 @大棍子」。
+      // 找不到成员 / 解析为空时回落到匹配到的 label 文本。
+      const member = membersRef.current?.find((m) => m.uid === uid);
+      const resolved = member ? subscriberDisplayName(member) : "";
+      const atName = resolved ? `@${resolved}` : `@${name}`;
       const offset = result.length;
       uids.push(uid);
       entities.push({
@@ -341,102 +403,8 @@ export interface MessageInputContext {
   clear: () => void;
 }
 
-interface MemberInfo {
-  uid: string;
-  name: string;
-}
-
-// Escape special regex characters in a string
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// Build a dynamic regex that matches @name for all known members.
-// Names are sorted longest-first so "Cindy Che" matches before "Cindy".
-function buildMentionRegex(members: MemberInfo[]): RegExp {
-  const specialNames = [MENTION_LABEL_HUMANS, "all", "everyone", MENTION_LABEL_AIS, "All AIs"];
-  const allNames = [...specialNames, ...members.map((m) => m.name)];
-  // Deduplicate and sort by length descending (longest match first)
-  const unique = [...new Set(allNames)];
-  unique.sort((a, b) => b.length - a.length);
-  const pattern = unique.map(escapeRegExp).join("|");
-  // Boundary: whitespace, CJK punctuation, or end of string
-  return new RegExp(`@(${pattern})(?=[\\s，。！？,!?]|$)`, "gi");
-}
-
-// Parse voice-transcribed text for @mentions, converting to Tiptap content
-function parseMentionMarkers(
-  text: string,
-  members: MemberInfo[]
-): Array<{
-  type: string;
-  text?: string;
-  attrs?: { id: string; label: string };
-}> {
-  const result: Array<{
-    type: string;
-    text?: string;
-    attrs?: { id: string; label: string };
-  }> = [];
-  const regex = buildMentionRegex(members);
-  let lastIndex = 0;
-  let match;
-
-  while ((match = regex.exec(text)) !== null) {
-    const name = match[1];
-    const matchStart = match.index;
-
-    if (matchStart > lastIndex) {
-      result.push({ type: "text", text: text.slice(lastIndex, matchStart) });
-    }
-
-    const isHumans =
-      name === MENTION_LABEL_HUMANS ||
-      name.toLowerCase() === "all" ||
-      name.toLowerCase() === "everyone";
-    const isAis =
-      name === MENTION_LABEL_AIS || name.toLowerCase() === "all ais";
-    const member = members.find(
-      (m) => m.name.toLowerCase() === name.toLowerCase()
-    );
-
-    if (isHumans) {
-      result.push({
-        type: "mention",
-        attrs: { id: MENTION_UID_HUMANS, label: MENTION_LABEL_HUMANS },
-      });
-      result.push({ type: "text", text: " " });
-    } else if (isAis) {
-      result.push({
-        type: "mention",
-        attrs: { id: MENTION_UID_AIS, label: MENTION_LABEL_AIS },
-      });
-      result.push({ type: "text", text: " " });
-    } else if (member) {
-      result.push({
-        type: "mention",
-        attrs: { id: member.uid, label: member.name },
-      });
-      result.push({ type: "text", text: " " });
-    } else {
-      // Unrecognized @, keep as plain text
-      result.push({ type: "text", text: match[0] });
-    }
-
-    lastIndex = match.index + match[0].length;
-    if (isHumans || isAis || member) {
-      if (lastIndex < text.length && /\s/.test(text[lastIndex])) {
-        lastIndex++;
-      }
-    }
-  }
-
-  if (lastIndex < text.length) {
-    result.push({ type: "text", text: text.slice(lastIndex) });
-  }
-
-  return result;
-}
+// MemberInfo / buildMentionRegex / parseMentionMarkers / buildMemberInfos live
+// in ./mentionResolve so the editor and unit tests share one implementation.
 
 // 保持 membersRef 在模块级别供 formatMentionTextV2 使用
 let membersRef: React.MutableRefObject<Array<Subscriber> | undefined>;
@@ -591,34 +559,32 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     };
   }, [props.context, t]);
 
-  const memberInfos = useMemo<MemberInfo[]>(() => {
-    const infos: MemberInfo[] = props.members
-      ? props.members.map((s) => ({
-          uid: s.uid,
-          name: s.remark || s.name || s.uid,
-        }))
-      : [];
-    if (props.members) {
-      for (const s of props.members) {
-        if (s.name && s.remark && s.remark !== s.name) {
-          infos.push({ uid: s.uid, name: s.name });
-        }
-      }
-    }
-    return infos;
-  }, [props.members]);
+  const memberInfos = useMemo<MemberInfo[]>(
+    () => buildMemberInfos(props.members),
+    [props.members],
+  );
 
   const localMembersRef = useRef(props.members);
-  const sendRef = useRef<(() => void) | null>(null);
+  const isDirectChannelRef = useRef(
+    props.context.channel().channelType === ChannelTypePerson,
+  );
+  const sendRef = useRef<(() => void | Promise<void>) | null>(null);
+  // 发送进行中标志：onSend 现在被 await，发送窗口内防止重复触发 (octo-web#227)。
+  const sendingRef = useRef(false);
   const mentionActiveRef = useRef(false);
   const botCommandsRef = useRef(props.botCommands);
   // editorHandleKeyDownRef 持有最新的键盘处理函数，通过 useEffect 更新
   const editorHandleKeyDownRef = useRef<
     ((view: any, event: KeyboardEvent) => boolean) | null
   >(null);
+  const editorHandlePasteRef = useRef<
+    ((view: any, event: ClipboardEvent) => boolean) | null
+  >(null);
 
   // 更新模块级别的 membersRef
   membersRef = localMembersRef;
+  isDirectChannelRef.current =
+    props.context.channel().channelType === ChannelTypePerson;
 
   // 更新 membersRef
   useEffect(() => {
@@ -674,6 +640,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                   sourceSpaceNameLegacy: member.orgData?.source_space_name,
                 }),
               stickyIcon: mentionAllIcon,
+              includeBroadcastMentions: !isDirectChannelRef.current,
             });
           },
           (active) => {
@@ -690,6 +657,20 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       // ProseMirror 级别的键盘处理，在所有 keymap 之前执行
       handleKeyDown: (_view, event) => {
         return editorHandleKeyDownRef.current?.(_view, event) ?? false;
+      },
+      // 防手滑（YUJ-3539，Jerry-Xin/lml2468 P0-1）：检测到粘贴明文像 API 密钥
+      // （sk-/bf-/app- 开头）时，**硬拦截这次粘贴**——明文绝不进编辑器，因此也不
+      // 可能被后续 send（editor.getText()）读到发进聊天；同时弹引导提示去密钥管理
+      // 保存。preventDefault + 返回 true 阻断 ProseMirror 默认粘贴，仅本地预填新增
+      // 弹窗，绝不把明文发送出去。
+      handlePaste: (_view, event) => {
+        const pasted = event.clipboardData?.getData("text/plain") ?? "";
+        const blocked = handleSecretPaste(pasted, notifySecretPaste);
+        if (blocked) {
+          event.preventDefault();
+          return true; // 已处理：阻断默认粘贴，明文不进编辑器
+        }
+        return editorHandlePasteRef.current?.(_view, event) ?? false;
       },
     },
     onUpdate: ({ editor }) => {
@@ -844,6 +825,43 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     },
     [editor]
   );
+
+  useEffect(() => {
+    editorHandlePasteRef.current = (_view: any, event: ClipboardEvent) => {
+      if (!editor || !event.clipboardData) return false;
+      const payload = extractOctoRichTextClipboardPayloadFromHtml(
+        event.clipboardData.getData("text/html")
+      );
+      if (!payload) return false;
+
+      event.preventDefault();
+      const beforePasteContent = JSON.stringify(editor.getJSON());
+      const addRichTextPasteAttachment =
+        props.onAddPendingAttachments || addAttachment;
+      restoreOctoRichTextClipboardToEditor(
+        payload,
+        editor,
+        addRichTextPasteAttachment,
+        {
+          imageBlockToFile: (block) =>
+            imageBlockToPasteFile(
+              block,
+              WKApp.dataSource.commonDataSource.getImageURL.bind(
+                WKApp.dataSource.commonDataSource
+              )
+            ),
+        }
+      ).catch(() => {
+        if (
+          payload.plain &&
+          JSON.stringify(editor.getJSON()) === beforePasteContent
+        ) {
+          editor.commands.insertContent(payload.plain);
+        }
+      });
+      return true;
+    };
+  }, [addAttachment, editor, props.onAddPendingAttachments]);
 
   // 移除顶部附件区的附件
   const removeTopAttachment = useCallback((id: string) => {
@@ -1005,8 +1023,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     [editor]
   );
 
-  const send = useCallback(() => {
+  const send = useCallback(async () => {
     if (!editor) return;
+    // 重入保护：onSend 现在被 await，发送期间可能再次触发 Enter/快捷键，
+    // 避免同一份草稿被发送两次 (octo-web#227)。
+    if (sendingRef.current) return;
 
     const text = editor.getText();
     if (text.length > MAX_MESSAGE_LENGTH) {
@@ -1040,45 +1061,85 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     const hasText = text.trim() !== "";
     const hasAttachments = allAttachments.length > 0;
 
-    if (props.onSend && (hasText || hasAttachments)) {
-      // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）
-      const formattedText = extractMentionsFromEditor(editor);
-      const { content, mention } = formatMentionTextV2(formattedText);
-
-      // 提取编辑器中有序内容块（文本段和粘贴图片按文档顺序交替）
-      const orderedBlocks = extractOrderedBlocks(editor, attachmentFilesRef.current);
-
-      props.onSend(
-        content,
-        mention,
-        allAttachments.length > 0 ? allAttachments : undefined,
-        topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
-        orderedBlocks.length > 0 ? orderedBlocks : undefined
-      );
+    // 没有 onSend 或没有任何内容时无需发送，直接退出（不清空，保持现状）。
+    if (!props.onSend || (!hasText && !hasAttachments)) {
+      return;
     }
 
-    // 清理编辑器附件文件引用和图片预览 URL
-    attachmentAttrs.forEach((attr) => {
-      attachmentFilesRef.current.delete(attr.id);
-      // 释放图片预览 URL，避免内存泄漏
-      if (attr.previewUrl) {
-        URL.revokeObjectURL(attr.previewUrl);
-      }
-    });
+    // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）
+    const formattedText = extractMentionsFromEditor(editor);
+    const { content, mention } = formatMentionTextV2(formattedText);
 
-    // 清理顶部附件区
-    topAttachments.forEach((item) => {
-      if (item.previewUrl) {
-        URL.revokeObjectURL(item.previewUrl);
-      }
-    });
-    setTopAttachments([]);
+    // 提取编辑器中有序内容块（文本段和粘贴图片按文档顺序交替）
+    const orderedBlocks = extractOrderedBlocks(editor, attachmentFilesRef.current);
 
-    editor.commands.clearContent();
-
-    if (expanded) {
-      setExpanded(false);
-      props.onExpandChange?.(false);
+    // ⚠️ 关键修复 (octo-web#227, Jerry-Xin P1 第二轮)：
+    // round 1 已把同步清理改成「await onSend、仅成功才清」，避免混排上传失败
+    // 丢整条草稿。但 await 期间编辑器仍可编辑，onSend 可能耗时数秒（上传图片 +
+    // 等 ack），用户趁发送 pending 时打的下一条草稿，会被上一条 send 成功后的
+    // 清理误删。本轮改为 snapshot-aware：
+    //   • 发送前对编辑器文档拍 JSON 快照 (editorSnapshot)；成功回来时只有当
+    //     编辑器内容仍 === 快照（用户没开始新草稿）才 clearContent，否则保留。
+    //   • 顶部附件按本次实际消费的 id 精确移除，绝不 setTopAttachments([])
+    //     全清，等待期间新加的附件因此不丢。
+    //   • onSend 可返回 { editorConsumed, consumedTopIds } 表达「顶部附件已发、
+    //     但编辑器混排失败」，让已发文件不被重试重复 (Jerry-Xin non-blocking)。
+    // 编排逻辑在纯函数 runSendWithCleanup，便于单测覆盖各竞态场景。
+    const editorSnapshot = JSON.stringify(editor.getJSON());
+    const consumedAttachmentAttrs = attachmentAttrs;
+    const topItemsAtSend = topAttachments;
+    const allTopIds = topItemsAtSend.map((item) => item.id);
+    sendingRef.current = true;
+    try {
+      await runSendWithCleanup(
+        () =>
+          props.onSend!(
+            content,
+            mention,
+            allAttachments.length > 0 ? allAttachments : undefined,
+            topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
+            orderedBlocks.length > 0 ? orderedBlocks : undefined
+          ),
+        allTopIds,
+        {
+          isEditorUnchanged: () =>
+            JSON.stringify(editor.getJSON()) === editorSnapshot,
+          deleteEditorAttachmentRefs: () => {
+            consumedAttachmentAttrs.forEach((attr) => {
+              attachmentFilesRef.current.delete(attr.id);
+            });
+          },
+          revokeEditorPreviewUrls: () => {
+            consumedAttachmentAttrs.forEach((attr) => {
+              if (attr.previewUrl) {
+                URL.revokeObjectURL(attr.previewUrl);
+              }
+            });
+          },
+          clearEditor: () => editor.commands.clearContent(),
+          removeTopAttachments: (ids: string[]) => {
+            const idSet = new Set(ids);
+            // 先 revoke 被消费项的预览 URL（避免内存泄漏），用拍快照时的列表
+            // 取 previewUrl，再按 id 过滤当前 state——保留等待期间新加的附件。
+            topItemsAtSend.forEach((item: TopAttachmentItem) => {
+              if (idSet.has(item.id) && item.previewUrl) {
+                URL.revokeObjectURL(item.previewUrl);
+              }
+            });
+            setTopAttachments((prev: TopAttachmentItem[]) =>
+              prev.filter((a: TopAttachmentItem) => !idSet.has(a.id))
+            );
+          },
+          collapseExpanded: () => {
+            if (expanded) {
+              setExpanded(false);
+              props.onExpandChange?.(false);
+            }
+          },
+        }
+      );
+    } finally {
+      sendingRef.current = false;
     }
   }, [editor, expanded, topAttachments, props.onSend, props.onExpandChange, t]);
 
@@ -1437,24 +1498,36 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               }}
               getCurrentText={() => {
                 if (!editor) return "";
-                // 过滤非文本节点（如图片/附件），只返回纯文本内容
+                // 序列化编辑器内容为纯文本，处理各类 leaf 节点
+                const leafText = (node: any) => {
+                  if (node.type.name === "attachment") return "";
+                  if (node.type.name === "mention") return `@${node.attrs.label ?? node.attrs.id}`;
+                  if (node.type.name === "hardBreak") return "\n";
+                  return "";
+                };
                 return editor.state.doc.textBetween(
                   0,
                   editor.state.doc.content.size,
                   " ",
-                  (node) => (node.type.name === "attachment" ? "" : undefined)
+                  leafText
                 );
               }}
               getSelectedText={() => {
                 if (!editor) return undefined;
                 const { from, to } = editor.state.selection;
                 if (from === to) return undefined; // 没有选中文字
-                // 过滤非文本节点（如图片/附件），只返回纯文本内容
+                // 序列化编辑器内容为纯文本，处理各类 leaf 节点
+                const leafText = (node: any) => {
+                  if (node.type.name === "attachment") return "";
+                  if (node.type.name === "mention") return `@${node.attrs.label ?? node.attrs.id}`;
+                  if (node.type.name === "hardBreak") return "\n";
+                  return "";
+                };
                 const text = editor.state.doc.textBetween(
                   from,
                   to,
                   " ",
-                  (node) => (node.type.name === "attachment" ? "" : undefined)
+                  leafText
                 );
                 return text || undefined;
               }}

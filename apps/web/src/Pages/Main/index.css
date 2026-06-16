@@ -15,20 +15,11 @@
 }
 
 /* ========== MeInfo Modal（原 tab_normal_screen.css 迁移过来） ========== */
-.wk-main-sider-modal .semi-modal-content {
-    border: none !important;
-    padding: 0px !important;
+.wk-main-sider-modal .wk-modal-shell {
+    padding: 0;
 }
 
-.wk-main-sider-modal .semi-modal-close {
-    display: none;
-}
-
-.wk-main-sider-modal .semi-modal-body-wrapper {
-    margin: 0px;
-}
-
-.wk-main-sider-meinfo .semi-modal-body {
+.wk-main-sider-meinfo .wk-modal-body {
     height: 500px;
 }
 

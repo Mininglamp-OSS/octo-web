@@ -1,17 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson, ChannelTypeGroup } from 'wukongimjssdk'
+import WKSDK, { Channel, ChannelTypePerson, ChannelTypeGroup } from 'wukongimjssdk'
+import type { ChannelInfo, ChannelInfoListener } from 'wukongimjssdk'
 import WKApp from '../../App'
-import { MessageWrap } from '../../Service/Model'
-import { MessageRowUIProps } from './types'
+import type { MessageWrap } from '../../Service/Model'
+import type { MessageRowUIProps } from './types'
 import { resolveExternalForViewer } from '../../Utils/externalViewer'
-import { subscriberDisplayName } from '../../Utils/displayName'
+import { personalRemarkDisplayName, subscriberDisplayName } from '../../Utils/displayName'
 import { shouldShowRealnameBadge } from '../../Utils/realnameBadge'
+import {
+  isIncomingWebhookSender,
+  resolveWebhookRowDisplay,
+  webhookFromOfMessage,
+} from '../../Service/IncomingWebhook'
 import moment from 'moment'
 import { isMessageContinuation } from '../../Service/messageContinuity'
-import { t } from '../../i18n'
+import { formatMessageTimestamp } from '../../Utils/time'
 
 export interface MessageRowSelectionState {
-  /** 是否处于多选模式（来自 context.editOn()） */
+  /** 当前会话是否处于多选模式（不可选消息也需要知道，用于禁用行内操作） */
+  selectionMode?: boolean
+  /** 当前消息是否显示多选 Checkbox */
   showCheckbox: boolean
   /** 当前消息是否被选中（来自 message.checked） */
   isSelected: boolean
@@ -81,13 +89,43 @@ export function getMessageRow(
     new Channel(message.fromUID, ChannelTypePerson)
   )
 
+  // 群入站 Webhook 消息（FromUID = iwh_*，永远不是群成员）：
+  // 名称/头像读 payload 的 from 元信息，不走群成员 / Person ChannelInfo
+  // 解析（必落空），也不提供头像/名称点击（无个人资料页）。
+  const webhookFrom = webhookFromOfMessage(message)
+
   // 判断是否为连续消息（对齐 Model.tsx preIsSamePerson 逻辑）
   // 时间分隔符或撤回消息之后不算连续
   const isContinue = isMessageContinuation(message.preMessage, message)
 
   // 格式化时间戳
-  const timestamp = formatTimestamp(message.timestamp)
+  const timestamp = formatMessageTimestamp(message.timestamp)
   const timeOnly = formatTimeOnly(message.timestamp)
+
+  if (webhookFrom) {
+    const display = resolveWebhookRowDisplay(webhookFrom)
+    return {
+      isSend: message.send,
+      isContinue,
+      isSelected: selection?.isSelected ?? false,
+      showCheckbox: selection?.showCheckbox ?? false,
+      selectionMode: selection?.selectionMode ?? selection?.showCheckbox ?? false,
+      showAvatar: !isContinue,
+      // payload 自带头像优先；否则走与普通用户同源的头像链路（avatarUser(uid)）。
+      avatarUrl: display.avatarUrl || WKApp.shared.avatarUser(message.fromUID),
+      // payload.from 缺失的异常路径返回空串，不把 iwh_* 暴露到 UI
+      senderName: display.senderName,
+      isBot: false,
+      // 徽章跟随 display.showBadge。isWebhook 仅驱动 MessageRow 的「机器人」徽章。
+      isWebhook: display.showBadge,
+      timestamp,
+      timeOnly,
+      isEdit: message.message?.remoteExtra?.isEdit ?? false,
+      isExternal: false,
+      isRealnameVerified: false,
+      onSelect: selection?.onSelect,
+    }
+  }
 
   // 把 uid 绑定到回调
   const uid = message.fromUID
@@ -129,6 +167,10 @@ export function getMessageRow(
   // 单次群成员查找，同时拿到 memberName 和 member 对象，
   // 避免重复 .find()。
   const { member: groupMember, memberName: groupMemberName } = getGroupMemberInfo(message)
+  // 个人备注来自 sender 的 Person channelInfo。群消息虽然主路径读 subscriber，
+  // 但用户手动设置的个人备注必须优先于群成员名，否则 friend/remark 保存后
+  // fetchChannelInfo 已刷新也会被 subscriber.name 挡住。
+  const personalRemarkName = personalRemarkDisplayName(channelInfo)
 
   // Epic dmwork-web#1169 Phase A: 发送者实名徽章。
   // 优先群成员 orgData（群消息命中率最高），回落 Person channelInfo.orgData
@@ -194,6 +236,7 @@ export function getMessageRow(
     isContinue,
     isSelected: selection?.isSelected ?? false,
     showCheckbox: selection?.showCheckbox ?? false,
+    selectionMode: selection?.selectionMode ?? selection?.showCheckbox ?? false,
     showAvatar: !isContinue,
     avatarUrl: WKApp.shared.avatarUser(message.fromUID),
     // self 气泡名字走 loginInfo.selfDisplayName() —— 已实名时
@@ -202,9 +245,10 @@ export function getMessageRow(
     // payload 下发的 loginInfo 是可靠源。规则改动同步 Messages/Base/index.tsx。
     senderName: isOwnMessage
       ? WKApp.loginInfo.selfDisplayName() ||
+        personalRemarkName ||
         groupMemberName ||
         getSenderName(channelInfo, message.fromUID)
-      : groupMemberName || getSenderName(channelInfo, message.fromUID),
+      : personalRemarkName || groupMemberName || getSenderName(channelInfo, message.fromUID),
     isBot: channelInfo?.orgData?.robot === 1,
     timestamp,
     timeOnly,
@@ -245,6 +289,9 @@ export function useMessageRow(
   useEffect(() => {
     const fromUID = message.fromUID
     if (!fromUID) return
+    // webhook 发送者（iwh_*）不是真实用户：fetchChannelInfo 必落空，
+    // 群成员列表里也不存在，跳过所有 fetch / listener
+    if (isIncomingWebhookSender(fromUID)) return
 
     const channel = new Channel(fromUID, ChannelTypePerson)
 
@@ -321,41 +368,4 @@ export function useMessageRow(
 function formatTimeOnly(timestamp: number): string {
   const ms = timestamp < 10000000000 ? timestamp * 1000 : timestamp
   return moment(ms).format('HH:mm')
-}
-
-/**
- * 格式化时间戳
- * 
- * @param timestamp - 时间戳（秒或毫秒）
- * @returns 格式化后的时间字符串
- */
-function formatTimestamp(timestamp: number): string {
-  const ms = timestamp < 10000000000 ? timestamp * 1000 : timestamp
-  const now = Date.now()
-  const diff = now - ms
-  
-  // 今天：显示 HH:mm
-  if (diff < 86400 * 1000 && moment(ms).isSame(moment(), 'day')) {
-    return moment(ms).format('HH:mm')
-  }
-  
-  // 昨天：显示 "昨天 HH:mm"
-  if (diff < 86400 * 2000 && moment(ms).isSame(moment().subtract(1, 'day'), 'day')) {
-    return t('base.time.yesterdayWithTime', {
-      values: { time: moment(ms).format('HH:mm') },
-    })
-  }
-  
-  // 一周内：显示 "周X HH:mm"
-  if (diff < 86400 * 7000) {
-    return moment(ms).format('ddd HH:mm')
-  }
-  
-  // 今年：显示 "MM-DD HH:mm"
-  if (moment(ms).isSame(moment(), 'year')) {
-    return moment(ms).format('MM-DD HH:mm')
-  }
-  
-  // 跨年：显示 "YYYY-MM-DD HH:mm"
-  return moment(ms).format('YYYY-MM-DD HH:mm')
 }

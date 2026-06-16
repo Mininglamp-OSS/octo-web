@@ -25,6 +25,7 @@ export default class FileToolbar extends Component<FileToolbarProps> {
     // 通过比较焦点所在的 .wk-messageinput-box 和当前 toolbar 所在的 .wk-messageinput-box
     // 确保只有焦点所在的输入框响应粘贴，避免重复上传。
     this.pasteListen = (event: ClipboardEvent) => {
+      if (event.defaultPrevented) return;
       const activeBox = document.activeElement?.closest?.(
         ".wk-messageinput-box"
       );

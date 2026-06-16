@@ -1,9 +1,12 @@
 /* ===== ClawInfoModal 龙虾详情弹窗样式 ===== */
 
 /* 弹窗容器 */
-.claw-info-modal .semi-modal-content {
-  padding: 0 !important;
-  border-radius: 18px;
+.claw-info-modal .wk-modal-shell {
+  padding: 0;
+}
+
+.claw-info-modal .wk-modal-content {
+  border-radius: var(--wk-r-lg);
   overflow: hidden;
 }
 

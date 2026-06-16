@@ -4,8 +4,10 @@
     "cancel": "Cancel",
     "confirm": "OK",
     "createFailed": "Failed to create",
+    "createFailedRetry": "Failed to create. Please try again.",
     "deleteFailed": "Failed to delete",
     "edit": "Edit",
+    "loading": "Loading...",
     "loadingFailed": "Failed to load",
     "operationFailed": "Operation failed",
     "retry": "Retry",
@@ -109,7 +111,11 @@
       "thu": "Thursday",
       "fri": "Friday",
       "sat": "Saturday"
-    }
+    },
+    "biweekly": "Every two weeks",
+    "everyNDays": "Every {{days}} day(s){{at}}",
+    "everyNWeeks": "Every {{weeks}} week(s){{at}}",
+    "everyNMonths": "Every {{months}} month(s){{at}}"
   },
   "list": {
     "title": "AI Summary",
@@ -126,21 +132,63 @@
     "title": "AI Summary",
     "desc": "Invite teammates to summarize information together, with automatic summaries from chats and related content.",
     "topicPlaceholder": "Enter a topic, for example: summarize this week's project progress, organize customer feedback...",
+    "topicPlaceholderInChat": "Enter a topic to summarize in this chat",
+    "templatesTitle": "Try summarizing",
+    "submitting": "Summarizing...",
     "scheduleFailed": "Summary was created, but scheduled updates failed",
     "success": "Summary task created",
     "selectChat": "Select chats",
     "selectedChats": "{{count}} chats selected",
     "start": "Start summary",
-    "templatesTitle": "Try these summary templates",
     "scheduleDaily": "Daily {{time}}",
     "scheduleWeekly": "Every {{day}} {{time}}",
-    "scheduleMonthly": "Monthly on day {{day}} {{time}}"
+    "scheduleMonthly": "Monthly on day {{day}} {{time}}",
+    "scheduleBindFailed": "Summary was created, but binding the schedule failed; the schedule was rolled back. Please retry on the detail page.",
+    "scheduleBindFailedOrphan": "Summary was created, but binding the schedule failed and rollback did not succeed; an unbound schedule may remain. Please check and clean it up in the schedule list.",
+    "archivedNotice": "Active threads are summarized by default; archived threads are excluded"
+  },
+  "chatSummary": {
+    "panelTitle": "Summaries in this chat",
+    "createNew": "New summary",
+    "back": "Back",
+    "starTooltip": "AI Summary"
+  },
+  "templates": {
+    "project_progress": {
+      "label": "Summarize project progress",
+      "description": "Summarize progress with your team",
+      "pattern": "Summarize the progress of {project_name}",
+      "placeholder": "Enter project name"
+    },
+    "task_tracking": {
+      "label": "Track task progress",
+      "description": "Invite colleagues to summarize task status",
+      "pattern": "Summarize the status of {task_name}",
+      "placeholder": "Enter task name"
+    },
+    "weekly_report": {
+      "label": "Summarize team weekly report",
+      "description": "Summarize the team's weekly work",
+      "pattern": "Summarize the weekly work report"
+    },
+    "chat_content": {
+      "label": "Summarize chat content",
+      "description": "Summarize what's happening in a chat",
+      "pattern": "Summarize key content in this chat"
+    }
   },
   "chatSelector": {
     "title": "Select chats",
     "searchPlaceholder": "Search groups or contacts",
     "all": "All",
-    "noData": "No data"
+    "followed": "Followed",
+    "recent": "Recent",
+    "allGroups": "All groups",
+    "allDirects": "All directs",
+    "noData": "No data",
+    "includeArchived": "Include archived threads",
+    "includeArchivedHelper": "Archived threads are excluded by default; enable to select them",
+    "archivedTag": "Archived"
   },
   "memberSelector": {
     "title": "Add members",
@@ -180,7 +228,39 @@
       "time": "Time",
       "daily": "Daily",
       "weekly": "Weekly",
-      "monthly": "Monthly"
+      "monthly": "Monthly",
+      "biweekly": "Every two weeks",
+      "everyPrefix": "Every",
+      "atPrefix": "at",
+      "unitDay": "day(s)",
+      "unitWeek": "week(s)",
+      "unitMonth": "month(s)",
+      "everyMin": "Count must be an integer >= 1",
+      "everyMaxDays": "Interval too large; cannot exceed {{max}} days",
+      "everyMaxMonths": "Interval too large; at most {{max}} months",
+      "onWeekdayPrefix": "on",
+      "onDayOfMonthPrefix": "on day",
+      "weekdayLabel": "Day of week",
+      "dayOfMonthFieldLabel": "Day of month",
+      "weekdayPlaceholder": "Select a day",
+      "dayOfMonthPlaceholder": "Select a date",
+      "dayOfMonthLabel": "Day {{day}}",
+      "dayOfMonthHint": "For day 29/30/31, short months automatically roll over to the last day of the month",
+      "legacyCronWarning": "This schedule uses a legacy custom cron and cannot be edited precisely here. Saving will convert it to the interval (day/week/month) selected above — please verify the period before saving.",
+      "weekday": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday",
+        "sun": "Sunday"
+      }
+    },
+    "summary": {
+      "everyNDays": "Every {{days}} days",
+      "everyNWeeks": "Every {{weeks}} weeks",
+      "everyNMonths": "Every {{months}} months"
     }
   },
   "confirmPage": {
@@ -229,6 +309,8 @@
     "expandAll": "Expand all ▼",
     "waitingSubmit": "{{name}} · Waiting to submit...",
     "regenerate": "Regenerate",
+    "regenerateEditTitle": "Edit prompt and regenerate",
+    "regenerateTopicLabel": "Prompt",
     "cancelTask": "Cancel task",
     "errorCause": "This may be caused by network instability or a service error.",
     "inviteQuestion": "You have been invited to participate in this summary task. Accept?",
@@ -236,12 +318,23 @@
     "cancelledDesc": "This summary task was cancelled and will not continue.",
     "waitingConfirmTitle": "Waiting for participant confirmation",
     "waitingConfirmDesc": "All participants need to confirm before generation can start.",
-    "viewConfirmStatus": "View confirmation status"
+    "viewConfirmStatus": "View confirmation status",
+    "scheduleBindFailed": "Schedule was created but binding it to this summary failed; it has been rolled back. Please retry.",
+    "scheduleBindFailedOrphan": "Binding the schedule failed and the automatic rollback did not succeed; an unbound schedule may remain. Please check and clean it up in the schedule list.",
+    "setSchedule": "Set schedule",
+    "editSchedule": "Edit schedule",
+    "disableSchedule": "Turn off schedule",
+    "scheduleDisabled": "Schedule turned off",
+    "scheduleDisabledHint": "Schedule is off",
+    "scheduleActiveLabel": "Schedule on",
+    "schedulePrefix": "Schedule: ",
+    "scheduleNextRun": "next {{time}}"
   },
   "summaryCard": {
     "createdBy": "Created by {{name}}",
     "deleteTitle": "Confirm deletion",
-    "deleteContent": "Delete \"{{title}}\"? Historical versions will also be removed."
+    "deleteContent": "Delete \"{{title}}\"? Historical versions will also be removed.",
+    "deleteScheduledContent": "\"{{title}}\" is a scheduled summary. Deleting it will stop the scheduled updates and remove all of its history. Delete it?"
   },
   "editor": {
     "saveSuccess": "Saved",

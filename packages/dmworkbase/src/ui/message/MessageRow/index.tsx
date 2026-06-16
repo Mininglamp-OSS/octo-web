@@ -3,6 +3,7 @@ import classNames from 'classnames'
 import Avatar from '../Avatar'
 import Timestamp from '../Timestamp'
 import AiBadge from '../../../Components/AiBadge'
+import WebhookBadge from '../../../Components/WebhookBadge'
 import RealnameVerifiedBadge from '../../../Components/RealnameVerifiedBadge'
 import { useI18n } from '../../../i18n'
 import './index.css'
@@ -64,6 +65,9 @@ export interface MessageRowProps {
   
   /** 是否显示多选 Checkbox */
   showCheckbox?: boolean
+
+  /** 会话是否处于多选模式（即使当前消息不可选） */
+  selectionMode?: boolean
   
   /** 右键菜单事件 */
   onContextMenu?: (event: React.MouseEvent) => void
@@ -82,6 +86,9 @@ export interface MessageRowProps {
 
   /** 发送者是否为 bot（AI），名称后显示 AI 标识 */
   isBot?: boolean
+
+  /** 发送者是否为群入站 Webhook，名称后显示 Webhook 标识 */
+  isWebhook?: boolean
 }
 
 /**
@@ -103,6 +110,7 @@ export default function MessageRow({
   avatarUrl,
   senderName,
   isBot,
+  isWebhook,
   timestamp,
   timeOnly,
   isOnline,
@@ -113,6 +121,7 @@ export default function MessageRow({
   onSelect,
   children,
   showCheckbox = false,
+  selectionMode = false,
   onContextMenu,
   onClick,
   isActive,
@@ -120,6 +129,27 @@ export default function MessageRow({
   onSenderNameClick,
 }: MessageRowProps) {
   const { t } = useI18n()
+  const isSelecting = selectionMode || showCheckbox
+  const handleRowClick = isSelecting || onClick
+    ? () => {
+        if (isSelecting) {
+          if (showCheckbox) {
+            onSelect?.(!isSelected)
+          }
+          return
+        }
+        onClick?.()
+      }
+    : undefined
+  const handleContextMenu = (event: React.MouseEvent) => {
+    if (isSelecting) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    onContextMenu?.(event)
+  }
+
   return (
     <div
       className={classNames(
@@ -128,10 +158,11 @@ export default function MessageRow({
         isContinue && 'wk-msg-row--continue',
         isSelected && 'wk-msg-row--selected',
         showCheckbox && 'wk-msg-row--selecting',
+        isSelecting && 'wk-msg-row--selection-mode',
         isActive && 'wk-msg-row--active',
       )}
-      onContextMenu={onContextMenu}
-      onClick={onClick}
+      onContextMenu={handleContextMenu}
+      onClick={handleRowClick}
     >
       {/* 多选 Checkbox */}
       {showCheckbox && (
@@ -164,7 +195,7 @@ export default function MessageRow({
             isOnline={isOnline}
             showOnlineDot
             alt={senderName}
-            onClick={onAvatarClick}
+            onClick={isSelecting || isWebhook ? undefined : onAvatarClick}
           />
         )}
         {/* 连续消息：头像占位,hover 时显示时间戳 */}
@@ -183,8 +214,8 @@ export default function MessageRow({
           <div className="wk-msg-row-header">
             <span
               className="wk-msg-row-sender"
-              style={{ cursor: onSenderNameClick ? 'pointer' : undefined }}
-              onClick={onSenderNameClick}
+              style={{ cursor: !isSelecting && !isWebhook && onSenderNameClick ? 'pointer' : undefined }}
+              onClick={isSelecting || isWebhook ? undefined : onSenderNameClick}
             >{senderName}</span>
             {/* Epic dmwork-web#1169 Phase A: 实名徽章紧贴作者名右侧，
                 只 variant="icon" 迷你形态，已实名才渲染。*/}
@@ -208,6 +239,7 @@ export default function MessageRow({
               </span>
             )}
             {isBot && <AiBadge size="small" />}
+            {isWebhook && <WebhookBadge />}
             {isEdit && <span className="wk-msg-row-edited">{t("base.message.edited")}</span>}
             <span className="wk-msg-row-timestamp">{timestamp}</span>
           </div>

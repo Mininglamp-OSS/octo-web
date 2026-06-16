@@ -190,6 +190,13 @@
     font-weight: 500;
 }
 
+/* Sidebar reuses SummaryCard in a narrow column: tighten spacing without dropping fields. */
+.chat-summary-history .summary-card {
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
 /* ========== Create Page ========== */
 .summary-create-header {
     display: flex;
@@ -1222,9 +1229,12 @@
 
 .summary-workbench-input-area {
     border: 1px solid var(--semi-color-border);
-    border-radius: 12px;
+    border-radius: 8px;
     overflow: hidden;
     margin-bottom: 16px;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
     background: var(--semi-color-fill-0);
     box-shadow: none;
     transition: border-color 0.2s;
@@ -1233,6 +1243,10 @@
 .summary-workbench-input-area:focus-within {
     border-color: var(--semi-color-primary);
     box-shadow: none;
+}
+
+.summary-workbench-input-area > div:first-child {
+    position: relative;
 }
 
 .summary-workbench-input-area .semi-input-textarea-wrapper {
@@ -1250,10 +1264,17 @@
     background: transparent;
     padding: 12px 16px;
     font-family: inherit;
-    font-size: 15px;
-    line-height: 1.6;
+    font-size: 14px;
+    line-height: 20px;
+    min-height: 40px;
+    max-height: 160px;
+    overflow-y: auto;
     color: var(--semi-color-text-0);
     box-sizing: border-box;
+}
+
+.summary-workbench-textarea::placeholder {
+    color: #999;
 }
 
 .summary-workbench-actions {
@@ -1261,7 +1282,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 10px 16px;
-    border-top: 1px solid var(--semi-color-border);
+    margin-top: auto;
     background: var(--semi-color-fill-0);
 }
 
@@ -1285,64 +1306,18 @@
     flex-wrap: wrap;
 }
 
-.summary-workbench-templates {
-    margin-top: 32px;
-}
-
-.summary-workbench-templates-title {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--semi-color-text-1);
-    margin-bottom: 16px;
-}
-
-.summary-workbench-template-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-}
-
-.summary-workbench-template-card {
-    display: flex;
-    flex-direction: column;
-    padding: 16px;
-    border: 1px solid var(--semi-color-border);
-    border-radius: 12px;
-    cursor: pointer;
-    background: transparent;
-    transition: all 0.2s;
-    box-shadow: none;
-}
-
-.summary-workbench-template-card:hover {
-    border-color: var(--semi-color-primary);
-    background: var(--semi-color-primary-light-default);
-    box-shadow: none;
-    transform: translateY(-1px);
-}
-
-.summary-workbench-template-card.selected {
-    border-color: var(--semi-color-primary);
-    background: var(--semi-color-primary-light-default);
-    box-shadow: 0 0 0 2px var(--semi-color-primary-light-hover);
-}
-
-.summary-template-card-icon {
-    font-size: 24px;
-    margin-bottom: 8px;
-}
-
-.summary-template-card-title {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--semi-color-text-0);
-    margin-bottom: 6px;
-}
-
-.summary-template-card-desc {
+.summary-workbench-templates-label {
     font-size: 13px;
-    color: var(--semi-color-text-2);
-    line-height: 1.5;
+    color: var(--semi-color-text-1);
+    margin-bottom: 12px;
+    padding: 0 16px;
+}
+
+.summary-workbench-templates {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 0 16px 12px;
 }
 
 /* ========== Mobile Responsive ========== */
@@ -1446,4 +1421,178 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 500;
+}
+
+/* ========== 侧边栏内详情视图（列表 ↔ 详情 二级导航） ========== */
+.wk-summary-panel-detail {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.wk-summary-panel-detail-back {
+    flex-shrink: 0;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--semi-color-border);
+}
+
+.wk-summary-panel-detail-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 6px;
+    font-size: 14px;
+    color: var(--semi-color-text-1);
+    border-radius: 6px;
+    transition: background-color 0.15s;
+}
+
+.wk-summary-panel-detail-back-btn:hover {
+    background-color: var(--semi-color-fill-0);
+}
+
+.wk-summary-panel-detail-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   侧边栏内详情：按「面板自身宽度」自适应（容器查询），分窄/中/宽三档。
+   旧的视口媒体查询与侧边栏宽度解耦，拖宽后会误触发/失效，故改用
+   @container wk-summary（容器上下文定义在 .wk-summary-panel）。
+   ────────────────────────────────────────────────────────────────── */
+
+/* A. 全宽通用（所有档位都生效）：去掉整页 max-width、长串溢出兜底、按钮换行 */
+.wk-summary-panel-detail .summary-detail-content-inner,
+.wk-summary-panel-detail .summary-detail-header-inner {
+    max-width: 100%;
+}
+
+.wk-summary-panel-detail .summary-detail-header-actions {
+    flex-wrap: wrap;
+}
+
+/* flex 子项默认 min-width:auto 会被长内容撑破，统一兜底 */
+.wk-summary-panel-detail .summary-detail-result-content,
+.wk-summary-panel-detail .summary-detail-content-box,
+.wk-summary-panel-detail .summary-detail-personal-content,
+.wk-summary-panel-detail .summary-detail-result,
+.wk-summary-panel-detail .summary-detail-personal,
+.wk-summary-panel-detail .summary-detail-team,
+.wk-summary-panel-detail .summary-detail-members {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+/* B. 静态 fallback（容器查询不支持的老 WebView）：等同窄档基本收敛 */
+.wk-summary-panel-detail .summary-detail-header-inner {
+    padding: 12px 16px 10px;
+    gap: 8px;
+}
+
+.wk-summary-panel-detail .summary-detail-title {
+    font-size: 17px;
+}
+
+.wk-summary-panel-detail .summary-detail-content-inner {
+    padding: 12px 16px;
+}
+
+/* C. 窄档（面板 ≤ 420px）：纵向堆叠、单列、小字、padding 收敛 */
+@container wk-summary (max-width: 420px) {
+    .wk-summary-panel-detail .summary-detail-content-inner {
+        padding: 12px 14px;
+    }
+
+    .wk-summary-panel-detail .summary-detail-header-inner {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 12px 14px 8px;
+    }
+
+    .wk-summary-panel-detail .summary-detail-title {
+        font-size: 16px;
+        line-height: 1.4;
+    }
+
+    /* header 按钮窄屏铺满，避免互相挤压 */
+    .wk-summary-panel-detail .summary-detail-header-actions {
+        gap: 6px;
+    }
+
+    .wk-summary-panel-detail .summary-detail-processing,
+    .wk-summary-panel-detail .summary-detail-failed,
+    .wk-summary-panel-detail .summary-detail-cancelled,
+    .wk-summary-panel-detail .summary-detail-waiting {
+        padding: 32px 16px;
+        margin: 16px 0;
+    }
+
+    .wk-summary-panel-detail .summary-detail-result {
+        padding: 16px 14px;
+    }
+
+    .wk-summary-panel-detail .summary-detail-personal,
+    .wk-summary-panel-detail .summary-detail-team,
+    .wk-summary-panel-detail .summary-detail-members {
+        padding: 16px 14px;
+    }
+
+    /* 两端对齐在窄屏会相撞，改为换行 */
+    .wk-summary-panel-detail .summary-detail-result-header,
+    .wk-summary-panel-detail .summary-detail-result-footer,
+    .wk-summary-panel-detail .summary-detail-section-header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    /* mode-cards / 网格在窄屏强制单列 */
+    .wk-summary-panel-detail .summary-mode-cards {
+        flex-direction: column;
+    }
+}
+
+/* D. 中档（420 < 面板 ≤ 600px）：恢复横向 header、标题中等字号 */
+@container wk-summary (min-width: 421px) {
+    .wk-summary-panel-detail .summary-detail-title {
+        font-size: 19px;
+    }
+
+    .wk-summary-panel-detail .summary-detail-header-inner {
+        padding: 14px 18px 12px;
+    }
+
+    .wk-summary-panel-detail .summary-detail-content-inner {
+        padding: 16px 18px;
+    }
+
+    .wk-summary-panel-detail .summary-detail-result {
+        padding: 20px 18px;
+    }
+}
+
+/* E. 宽档（面板 > 600px）：接近整页观感 */
+@container wk-summary (min-width: 601px) {
+    .wk-summary-panel-detail .summary-detail-title {
+        font-size: 22px;
+    }
+
+    .wk-summary-panel-detail .summary-detail-header-inner {
+        padding: 18px 24px 16px;
+    }
+
+    .wk-summary-panel-detail .summary-detail-content-inner {
+        padding: 20px 24px;
+    }
+
+    .wk-summary-panel-detail .summary-detail-result {
+        padding: 24px;
+    }
 }

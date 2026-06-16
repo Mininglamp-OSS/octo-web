@@ -1,5 +1,11 @@
 import React, { Component } from "react";
-import WKSDK, { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson } from "wukongimjssdk";
+import WKSDK, {
+    Channel,
+    ChannelInfo,
+    ChannelInfoListener,
+    ChannelTypeGroup,
+    ChannelTypePerson,
+} from "wukongimjssdk";
 import ConversationContext from "../Components/Conversation/context";
 import { MessageWrap } from "../Service/Model";
 
@@ -21,6 +27,7 @@ export class MessageBaseCell<P extends MessageBaseCellProps = MessageBaseCellPro
 
 export class MessageCell<P extends MessageBaseCellProps = MessageBaseCellPropsImp, S = {}> extends MessageBaseCell<P, S> {
     private _channelInfoListener!: ChannelInfoListener
+    private _subscriberChangeListener?: (channel: Channel) => void
 
     componentDidMount() {
         const { message } = this.props
@@ -74,10 +81,24 @@ export class MessageCell<P extends MessageBaseCellProps = MessageBaseCellPropsIm
                 WKSDK.shared().channelManager.fetchChannelInfo(convChannel)
             }
         }
+
+        // class + MessageRow 渲染路径依赖 group subscribers 解析群昵称/实名标。
+        // 群成员列表异步到达时需要主动刷新，对齐旧 MessageBase 行为。
+        if (message.channel?.channelType === ChannelTypeGroup) {
+            this._subscriberChangeListener = (channel: Channel) => {
+                if (message.channel?.isEqual(channel)) {
+                    this.setState({})
+                }
+            }
+            WKSDK.shared().channelManager.addSubscriberChangeListener(this._subscriberChangeListener)
+        }
     }
 
     componentWillUnmount() {
         WKSDK.shared().channelManager.removeListener(this._channelInfoListener)
+        if (this._subscriberChangeListener) {
+            WKSDK.shared().channelManager.removeSubscriberChangeListener(this._subscriberChangeListener)
+        }
     }
 
     render() {

@@ -3,45 +3,23 @@
   height: 100%;
 }
 
-.wk-base-modal .semi-modal-content {
-  border: none !important;
-  padding: 0px !important;
+.wk-base-modal .wk-modal-shell {
+  padding: 0;
 }
 
-.wk-base-modal .semi-modal-close {
-  display: none;
-}
-
-.wk-base-modal .semi-modal-body-wrapper {
-  margin: 0px;
-}
-
-.wk-base-modal-userinfo .semi-modal-body {
+.wk-base-modal-userinfo .wk-modal-body {
   height: 500px;
 }
 
 /* 加入组织 */
-.wk-base-modal-join-org .semi-modal-content {
-  border: none !important;
-  padding: 12px !important;
+.wk-base-modal-join-org .wk-modal-shell {
+  padding: var(--wk-sp-3);
 }
-.wk-base-modal-join-org .semi-modal-header {
-  margin: 12px !important;
-}
-.wk-base-modal-join-org .semi-modal-body-wrapper {
-  margin: 0px;
-}
-.wk-base-modal-join-org .semi-modal-body {
+.wk-base-modal-join-org .wk-modal-body {
   height: 420px;
 }
 
-/* 转发弹窗宽度 */
-.wk-base-modal-forward .semi-modal-content {
-  width: 625px !important;
-}
-
-.wk-base-modal-forward .semi-modal-body {
-  padding: 0 !important;
+.wk-base-modal-forward .wk-modal-body {
   height: 560px;
   overflow: hidden;
 }

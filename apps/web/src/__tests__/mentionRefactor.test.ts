@@ -12,6 +12,7 @@ import {
     buildMessageMentions as productionBuildMessageMentions,
     readMentionFlags,
     buildMentionDropdownItems,
+    MENTION_UID_LEGACY_ALL,
     MENTION_UID_HUMANS,
     MENTION_UID_AIS,
     MENTION_LABEL_HUMANS,
@@ -51,6 +52,8 @@ class MentionModel {
     all: boolean = false
     uids?: Array<string>
     entities?: MentionEntity[]
+    humans?: number
+    ais?: number
 }
 
 // ─── Extracted functions (mirroring production code) ─────────────
@@ -64,6 +67,8 @@ function formatMentionTextV2(text: string): {
     let result = '';
     let cursor = 0;
     let all = false;
+    let humans = false;
+    let ais = false;
 
     const placeholderPattern = /@\[([^:\]]+):([^\]]+)\]/g;
     let match;
@@ -78,6 +83,17 @@ function formatMentionTextV2(text: string): {
             all = true;
             const atName = `@${name}`;
             result += atName;
+        } else if (uid === MENTION_UID_HUMANS) {
+            humans = true;
+            const atName = `@${MENTION_LABEL_HUMANS}`;
+            result += atName;
+        } else if (uid === MENTION_UID_AIS) {
+            ais = true;
+            const atName = `@${MENTION_LABEL_AIS}`;
+            const offset = result.length;
+            result += atName;
+
+            entities.push({ uid, offset, length: atName.length });
         } else {
             const atName = `@${name}`;
             const offset = result.length;
@@ -92,20 +108,17 @@ function formatMentionTextV2(text: string): {
 
     result += text.substring(cursor);
 
-    if (all) {
+    if (all || humans || ais || entities.length > 0) {
         const mention = new MentionModel();
-        mention.all = true;
+        mention.all = all;
+        mention.uids = uids.length > 0 ? uids : undefined;
+        mention.entities = entities.length > 0 ? entities : undefined;
+        if (humans) mention.humans = 1;
+        if (ais) mention.ais = 1;
         return { content: result, mention };
     }
 
-    if (entities.length === 0) {
-        return { content: result, mention: undefined };
-    }
-
-    const mention = new MentionModel();
-    mention.uids = uids;
-    mention.entities = entities;
-    return { content: result, mention };
+    return { content: result, mention: undefined };
 }
 
 function parseMentionWithEntities(
@@ -153,6 +166,16 @@ function parseMentionWithEntities(
         const mentionText = text.substring(entity.offset, entity.offset + entity.length);
 
         if (!mentionText.startsWith('@')) {
+            parts.push(new Part(PartType.text, mentionText));
+            cursor = entity.offset + entity.length;
+            continue;
+        }
+
+        if (
+            entity.uid === MENTION_UID_LEGACY_ALL ||
+            entity.uid === MENTION_UID_HUMANS ||
+            entity.uid === MENTION_UID_AIS
+        ) {
             parts.push(new Part(PartType.text, mentionText));
             cursor = entity.offset + entity.length;
             continue;
@@ -213,7 +236,19 @@ function parseMentionLegacy(text: string, uids: string[]): Part[] {
 
 function parseMention(
     text: string,
-    mention?: { uids?: string[]; entities?: any[]; all?: boolean }
+    mention?: {
+        uids?: string[];
+        entities?: any[];
+        all?: boolean;
+        ais?: number;
+        botUids?: string[];
+        userUids?: string[];
+        subscriberBotUids?: string[];
+        subscriberUserUids?: string[];
+        channelInfoBotUids?: string[];
+        channelInfoUserUids?: string[];
+        channelInfoUnknownUids?: string[];
+    }
 ): Part[] {
     if (!mention) {
         return [new Part(PartType.text, text)];
@@ -225,12 +260,47 @@ function parseMention(
     }
 
     if (mention.uids && Array.isArray(mention.uids) && mention.uids.length > 0) {
-        return parseMentionLegacy(text, mention.uids);
+        const subscriberBotUids = new Set(mention.subscriberBotUids ?? mention.botUids ?? []);
+        const subscriberUserUids = new Set(mention.subscriberUserUids ?? mention.userUids ?? []);
+        const channelInfoBotUids = new Set(mention.channelInfoBotUids ?? mention.botUids ?? []);
+        const channelInfoUserUids = new Set(mention.channelInfoUserUids ?? mention.userUids ?? []);
+        const channelInfoUnknownUids = new Set(mention.channelInfoUnknownUids ?? []);
+        const legacyUids = mention.ais
+            ? (() => {
+                let trailingBotCount = 0;
+                for (let idx = mention.uids!.length - 1; idx >= 0; idx--) {
+                    const uid = mention.uids![idx];
+                    const subscriberState = subscriberBotUids.has(uid)
+                        ? 'bot'
+                        : subscriberUserUids.has(uid)
+                            ? 'user'
+                            : undefined;
+                    const state = subscriberState ?? (
+                        channelInfoBotUids.has(uid)
+                            ? 'bot'
+                            : channelInfoUserUids.has(uid)
+                                ? 'user'
+                                : channelInfoUnknownUids.has(uid)
+                                    ? 'unknown'
+                                    : 'unknown'
+                    );
+                    if (state === 'bot') {
+                        trailingBotCount++;
+                        continue;
+                    }
+                    if (state === 'user') {
+                        return mention.uids!.slice(0, mention.uids!.length - trailingBotCount);
+                    }
+                    return [];
+                }
+                return [];
+            })()
+            : mention.uids;
+        return parseMentionLegacy(text, legacyUids);
     }
 
     return [new Part(PartType.text, text)];
 }
-
 // ═════════════════════════════════════════════════════════════════
 // Tests
 // ═════════════════════════════════════════════════════════════════
@@ -278,6 +348,18 @@ describe('formatMentionTextV2', () => {
         expect(result.content).toBe('大家注意 @所有人 ');
         expect(result.mention?.all).toBe(true);
         expect(result.mention?.entities).toBeUndefined();
+    });
+
+    it('should mark @所有AI with a sentinel entity', () => {
+        const input = '@[-3:所有AI] ping @ops';
+        const result = formatMentionTextV2(input);
+
+        expect(result.content).toBe('@所有AI ping @ops');
+        expect(result.mention?.ais).toBe(1);
+        expect(result.mention?.uids).toBeUndefined();
+        expect(result.mention?.entities).toEqual([
+            { uid: MENTION_UID_AIS, offset: 0, length: 5 },
+        ]);
     });
 
     it('should return undefined mention when no mentions', () => {
@@ -485,6 +567,14 @@ describe('parseMentionWithEntities', () => {
         expect(result![0].data.uid).toBe('uid_alice');
         expect(result![2].data.uid).toBe('uid_bob');
     });
+
+    it('should bind a real member entity even when its label is reserved text', () => {
+        const text = '@所有AI 请看下';
+        const entities = [{ uid: 'real_member_uid', offset: 0, length: 5 }];
+        const parts = parseMentionWithEntities(text, entities);
+
+        expect(parts![0]).toEqual(new Part(PartType.mention, '@所有AI', { uid: 'real_member_uid' }));
+    });
 });
 
 describe('parseMentionLegacy', () => {
@@ -589,6 +679,125 @@ describe('parseMention dispatcher (v2 priority + v1 fallback)', () => {
         expect(mentionPart?.data?.uid).toBe('uid_bob');
     });
 
+    it('should not bind routing uids to raw @text when @所有AI has an entity', () => {
+        const parts = parseMention('@所有AI ping @ops', {
+            uids: ['bot_a'],
+            entities: [{ uid: MENTION_UID_AIS, offset: 0, length: 5 }],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.text, '@所有AI'),
+            new Part(PartType.text, ' ping @ops'),
+        ]);
+    });
+
+    it('should not bind mobile @所有AI routing uids to raw @text without entities', () => {
+        const parts = parseMention('@所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['bot_a'],
+            botUids: ['bot_a'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.text, '@所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should fail closed when @所有AI legacy routing uids have no bot metadata', () => {
+        const parts = parseMention('@所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['bot_a'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.text, '@所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should keep real uid mentions before @所有AI routing uids in legacy payloads', () => {
+        const parts = parseMention('@Alice @所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['uid_alice', 'bot_a'],
+            botUids: ['bot_a'],
+            userUids: ['uid_alice'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.mention, '@Alice', { uid: 'uid_alice' }),
+            new Part(PartType.text, ' @所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should check each trailing routing uid before keeping legacy mentions', () => {
+        const parts = parseMention('@Alice @所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['uid_alice', 'bot_a', 'bot_b'],
+            botUids: ['bot_a', 'bot_b'],
+            userUids: ['uid_alice'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.mention, '@Alice', { uid: 'uid_alice' }),
+            new Part(PartType.text, ' @所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should fallback from partial subscriber metadata to channelInfo for each trailing bot', () => {
+        const parts = parseMention('@Alice @所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['uid_alice', 'bot_a', 'bot_b'],
+            subscriberBotUids: ['bot_b'],
+            channelInfoBotUids: ['bot_a', 'bot_b'],
+            channelInfoUserUids: ['uid_alice'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.mention, '@Alice', { uid: 'uid_alice' }),
+            new Part(PartType.text, ' @所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should fail closed when a trailing all-ai uid cannot be classified', () => {
+        const parts = parseMention('@Alice @所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['uid_alice', 'bot_a', 'bot_b'],
+            subscriberBotUids: ['bot_b'],
+            userUids: ['uid_alice'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.text, '@Alice @所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should fallback when a subscriber record exists but lacks robot metadata', () => {
+        const parts = parseMention('@Alice @所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['uid_alice', 'bot_a', 'bot_b'],
+            subscriberBotUids: ['bot_b'],
+            channelInfoBotUids: ['bot_a', 'bot_b'],
+            channelInfoUserUids: ['uid_alice'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.mention, '@Alice', { uid: 'uid_alice' }),
+            new Part(PartType.text, ' @所有AI 测试 @ops'),
+        ]);
+    });
+
+    it('should fail closed when subscriber and channelInfo records lack robot metadata', () => {
+        const parts = parseMention('@Alice @所有AI 测试 @ops', {
+            ais: 1,
+            uids: ['uid_alice', 'bot_a'],
+            channelInfoUnknownUids: ['bot_a'],
+            channelInfoUserUids: ['uid_alice'],
+        });
+
+        expect(parts).toEqual([
+            new Part(PartType.text, '@Alice @所有AI 测试 @ops'),
+        ]);
+    });
+
     it('should return plain text when no mention', () => {
         const parts = parseMention('你好世界', undefined);
 
@@ -680,7 +889,7 @@ describe('end-to-end: formatMentionTextV2 -> parseMentionWithEntities', () => {
 // Mirrors the production logic in:
 //   - packages/dmworkbase/src/Components/Conversation/index.tsx
 //     ::getMessageMentions  (synthesizes @所有人 / @所有AI MentionInfo entries
-//     so MarkdownContent applies the existing mention-highlight class)
+//     so MarkdownContent applies the existing member mention pill style)
 //
 // Matrix:
 //   humans=1                       → highlight @所有人
@@ -735,8 +944,8 @@ describe('render matrix: three-state mention highlight (GH#58)', () => {
         const names = mentions.map((m) => m.name)
         expect(names).toContain('@所有人')
         expect(names).not.toContain('@所有AI')
-        // All synthesized highlights reuse the existing "@member" highlight
-        // pathway by setting uid='all' (mention-highlight class).
+        // All synthesized highlights reuse the existing "@member" visual
+        // pathway by setting uid='all' while staying non-clickable.
         expect(mentions.every((m) => m.uid === 'all')).toBe(true)
         // sanity: the literal "@所有人" text exists in the message body so
         // MarkdownContent will actually match it.

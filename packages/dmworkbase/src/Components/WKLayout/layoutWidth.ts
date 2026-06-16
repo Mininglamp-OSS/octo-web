@@ -20,6 +20,14 @@ export const THREAD_MAX_WIDTH = 1600  // effective max is clamped by screen rati
 export const THREAD_DEFAULT_WIDTH = 432
 export const THREAD_STORAGE_KEY = 'wk-thread-panel-width'
 
+// ── Right panel (smart summary panel) ──
+// Independent constants + storage key so the summary panel width never
+// collides with the thread panel's (THREAD_MIN_WIDTH=432 > summary default 360).
+export const SUMMARY_MIN_WIDTH = 320
+export const SUMMARY_MAX_WIDTH = 720
+export const SUMMARY_DEFAULT_WIDTH = 360
+export const SUMMARY_STORAGE_KEY = 'wk-summary-panel-width'
+
 /**
  * Generic clamp utility: min(maxWidth, containerWidth * ratio), floored to minWidth.
  */
@@ -75,6 +83,35 @@ export function restoreThreadWidth(): number {
 
 export function persistThreadWidth(width: number): void {
     persistStoredWidth(THREAD_STORAGE_KEY, width)
+}
+
+// ── Right (summary) panel helpers ──
+
+/**
+ * Summary panel max width based on available space (window - left panel).
+ * Like the thread panel, the chat area keeps at least 50% of available space.
+ *
+ * @param windowWidth - Total window width
+ * @param leftPanelWidth - Left conversation list width (default 300px)
+ * @returns Maximum allowed summary panel width
+ */
+export function getMaxSummaryWidth(windowWidth: number, leftPanelWidth = SPLITTER_DEFAULT_WIDTH): number {
+    const availableSpace = windowWidth - leftPanelWidth
+    const dynamicMax = Math.floor(availableSpace * 0.5)
+    return Math.max(SUMMARY_MIN_WIDTH, Math.min(SUMMARY_MAX_WIDTH, dynamicMax))
+}
+
+export function clampSummaryWidth(width: number, windowWidth: number, leftPanelWidth = SPLITTER_DEFAULT_WIDTH): number {
+    const max = getMaxSummaryWidth(windowWidth, leftPanelWidth)
+    return Math.max(SUMMARY_MIN_WIDTH, Math.min(max, width))
+}
+
+export function restoreSummaryWidth(): number {
+    return restoreStoredWidth(SUMMARY_STORAGE_KEY, SUMMARY_MIN_WIDTH, SUMMARY_MAX_WIDTH, SUMMARY_DEFAULT_WIDTH)
+}
+
+export function persistSummaryWidth(width: number): void {
+    persistStoredWidth(SUMMARY_STORAGE_KEY, width)
 }
 
 // ── Shared localStorage helpers ──

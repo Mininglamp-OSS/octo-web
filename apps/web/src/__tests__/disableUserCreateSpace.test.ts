@@ -54,6 +54,17 @@ describe("disable_user_create_space web integration", () => {
     expect(source).toMatch(/visible=\{canCreateSpace\s*&&\s*showCreate\}/);
   });
 
+  it("keeps a logout path on the no-space welcome page", () => {
+    const source = readRepoFile("apps/web/src/Components/SpaceGate/index.tsx");
+    const zh = JSON.parse(readRepoFile("apps/web/src/i18n/zh-CN.json"));
+    const en = JSON.parse(readRepoFile("apps/web/src/i18n/en-US.json"));
+
+    expect(source).toContain("WKApp.shared.logoutUserInitiated()");
+    expect(source).toContain('t("app.spaceGate.logout")');
+    expect(zh["spaceGate.logout"]).toBe("退出登录");
+    expect(en["spaceGate.logout"]).toBe("Log out");
+  });
+
   it("shows create-space in the no-space join page only when enabled", () => {
     const source = readRepoFile("apps/web/src/Components/JoinSpacePage/index.tsx");
 
@@ -62,6 +73,17 @@ describe("disable_user_create_space web integration", () => {
     expect(source).toContain("addConfigChangeListener");
     expect(source).toMatch(/\{canCreateSpace\s*&&\s*\(/);
     expect(source).toMatch(/visible=\{canCreateSpace\s*&&\s*showCreate\}/);
+  });
+
+  it("keeps a logout path on the no-space join page", () => {
+    const source = readRepoFile("apps/web/src/Components/JoinSpacePage/index.tsx");
+    const zh = JSON.parse(readRepoFile("apps/web/src/i18n/zh-CN.json"));
+    const en = JSON.parse(readRepoFile("apps/web/src/i18n/en-US.json"));
+
+    expect(source).toContain("WKApp.shared.logoutUserInitiated()");
+    expect(source).toContain('t("app.joinSpace.logout")');
+    expect(zh["joinSpace.logout"]).toBe("退出登录");
+    expect(en["joinSpace.logout"]).toBe("Log out");
   });
 
   it("shows create-space in the nav space switcher only when enabled", () => {

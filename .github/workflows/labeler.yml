@@ -16,7 +16,7 @@ permissions: {}
 
 jobs:
   label:
-    uses: Mininglamp-OSS/.github/.github/workflows/reusable-pr-labeler.yml@main
+    uses: Mininglamp-OSS/.github/.github/workflows/reusable-pr-labeler.yml@v1
     with:
       pr_number: ${{ github.event.pull_request.number }}
       repo_owner: ${{ github.repository_owner }}

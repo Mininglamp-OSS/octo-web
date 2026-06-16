@@ -12,6 +12,8 @@ import VoiceFeedbackNotice from '../MessageInput/VoiceFeedbackNotice';
 import WKApp from '../../App';
 import VoiceService from '../../Service/VoiceService';
 import { useI18n } from '../../i18n';
+import WKButton from '../WKButton';
+import './VoiceSettingsPanel.css';
 
 interface VoiceSettingsPanelProps {
   onClose: () => void;
@@ -215,20 +217,21 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
   return (
     <WKModal
       visible
-      title={t('base.navRail.voiceSettings.title')}
+      title={null}
       onCancel={onClose}
-      options={{ closeOnEsc: true, maskClosable: true }}
+      options={{ closeOnEsc: true, maskClosable: true, closable: false }}
       footer={null}
+      className="wk-voice-settings-modal"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="wk-voice-settings">
         {loaded && !apiAvailable && (
-          <div style={{ color: 'var(--semi-color-warning)', fontSize: 13 }}>
+          <div className="wk-voice-settings__notice">
             {t('base.navRail.voiceSettings.serviceUnavailable')}
           </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>{t('base.navRail.voiceSettings.transcription')}</span>
+        <div className="wk-voice-settings__row wk-voice-settings__row--primary">
+          <span className="wk-voice-settings__label">{t('base.navRail.voiceSettings.transcription')}</span>
           <Switch
             size="small"
             checked={isVoiceEnabled}
@@ -238,11 +241,11 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
         </div>
 
         {isVoiceEnabled && voiceConfig?.feedback_url && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <div className="wk-voice-settings__row">
+            <span className="wk-voice-settings__label">
               {t('base.navRail.voiceSettings.feedback')}
               <Tooltip content={t('base.navRail.voiceSettings.feedbackTooltip')}>
-                <IconHelpCircle size="small" style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                <IconHelpCircle className="wk-voice-settings__help" size="small" />
               </Tooltip>
             </span>
             <Switch
@@ -256,11 +259,11 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
 
         {isVoiceEnabled && voiceConfig?.local_enabled !== undefined && localConfigLoaded && (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <div className="wk-voice-settings__row">
+              <span className="wk-voice-settings__label">
                 {t('base.navRail.voiceSettings.localTranscription')}
                 <Tooltip content={t('base.navRail.voiceSettings.localTranscriptionTooltip')}>
-                  <IconHelpCircle size="small" style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+                  <IconHelpCircle className="wk-voice-settings__help" size="small" />
                 </Tooltip>
               </span>
               <Switch
@@ -272,94 +275,72 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
             </div>
 
             {localEnabled && (
-              <div style={{
-                display: 'flex', flexDirection: 'column', gap: 12,
-                padding: '12px', marginTop: 4,
-                background: 'var(--semi-color-fill-0)',
-                borderRadius: 6, fontSize: 13,
-              }}>
-                <div>
-                  <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)' }}>
+              <div className="wk-voice-settings__local-config">
+                <div className="wk-voice-settings__field">
+                  <label className="wk-voice-settings__field-label">
                     {t('base.navRail.voiceSettings.localTimeoutMs')}
-                  </div>
+                  </label>
                   <input
                     type="number"
                     value={localTimeoutMs}
                     placeholder="10000"
                     onChange={(e) => { setLocalTimeoutMs(e.target.value); setLocalDirty(true); }}
-                    style={{
-                      width: '100%', padding: '6px 8px',
-                      border: '1px solid var(--semi-color-border)',
-                      borderRadius: 4, fontSize: 13,
-                    }}
+                    className="wk-voice-settings__input"
                   />
                 </div>
-                <div>
-                  <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)' }}>
+                <div className="wk-voice-settings__field">
+                  <label className="wk-voice-settings__field-label">
                     {t('base.navRail.voiceSettings.localProbeUrl')}
-                  </div>
+                  </label>
                   <input
                     type="url"
                     value={localProbeUrl}
                     placeholder="http://localhost:8787/"
                     onChange={(e) => { setLocalProbeUrl(e.target.value); setLocalDirty(true); }}
-                    style={{
-                      width: '100%', padding: '6px 8px',
-                      border: '1px solid var(--semi-color-border)',
-                      borderRadius: 4, fontSize: 13,
-                    }}
+                    className="wk-voice-settings__input"
                   />
-                  <button
+                  <WKButton
+                    size="sm"
+                    variant="secondary"
                     onClick={handleTestProbe}
                     disabled={probeTestStatus === 'loading' || !localProbeUrl.trim()}
-                    style={{ marginLeft: 8, fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}
+                    className="wk-voice-settings__test-btn"
                   >
                     {probeTestStatus === 'idle' && t('base.navRail.voiceSettings.testConnection')}
                     {probeTestStatus === 'loading' && t('base.navRail.voiceSettings.testingConnection')}
                     {probeTestStatus === 'success' && t('base.navRail.voiceSettings.connectionSuccess')}
                     {probeTestStatus === 'fail' && t('base.navRail.voiceSettings.connectionFailed')}
-                  </button>
+                  </WKButton>
                 </div>
-                <div>
-                  <div style={{ marginBottom: 4, color: 'var(--semi-color-text-2)' }}>
+                <div className="wk-voice-settings__field">
+                  <label className="wk-voice-settings__field-label">
                     {t('base.navRail.voiceSettings.localTranscribeUrl')}
-                  </div>
+                  </label>
                   <input
                     type="url"
                     value={localTranscribeUrl}
                     placeholder="http://localhost:8787/v1/voice/transcribe"
                     onChange={(e) => { setLocalTranscribeUrl(e.target.value); setLocalDirty(true); }}
-                    style={{
-                      width: '100%', padding: '6px 8px',
-                      border: '1px solid var(--semi-color-border)',
-                      borderRadius: 4, fontSize: 13,
-                    }}
+                    className="wk-voice-settings__input"
                   />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-                  <button
+                <div className="wk-voice-settings__actions">
+                  <WKButton
+                    size="sm"
+                    variant="secondary"
                     onClick={handleLocalConfigReset}
                     disabled={localSaving}
-                    style={{
-                      padding: '4px 12px', fontSize: 13, borderRadius: 4,
-                      border: '1px solid var(--semi-color-border)',
-                      background: 'transparent', cursor: 'pointer',
-                    }}
                   >
                     {t('base.navRail.voiceSettings.restoreDefaults')}
-                  </button>
-                  <button
+                  </WKButton>
+                  <WKButton
+                    size="sm"
+                    variant="primary"
                     onClick={handleLocalConfigSave}
                     disabled={localSaving || !localDirty}
-                    style={{
-                      padding: '4px 12px', fontSize: 13, borderRadius: 4,
-                      border: 'none', color: '#fff',
-                      background: localDirty ? 'var(--semi-color-primary)' : 'var(--semi-color-disabled-bg)',
-                      cursor: localDirty ? 'pointer' : 'not-allowed',
-                    }}
                   >
                     {t('base.navRail.voiceSettings.save')}
-                  </button>
+                  </WKButton>
                 </div>
               </div>
             )}
@@ -367,13 +348,13 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
         )}
 
         {(privacyUrl || agreementUrl) && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+          <div className="wk-voice-settings__links">
             {privacyUrl && (
               <a
                 href={privacyUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: 'var(--semi-color-link)', fontSize: 13 }}
+                className="wk-voice-settings__link"
               >
                 {t('base.navRail.voiceSettings.privacyPolicy')}
               </a>
@@ -383,7 +364,7 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
                 href={agreementUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: 'var(--semi-color-link)', fontSize: 13 }}
+                className="wk-voice-settings__link"
               >
                 {t('base.navRail.voiceSettings.userAgreement')}
               </a>

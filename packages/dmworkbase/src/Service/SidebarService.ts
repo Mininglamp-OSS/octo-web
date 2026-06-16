@@ -25,6 +25,9 @@ export interface SidebarItem {
     follow_sort?: number
     /** 子区携带，指向父群 channelID */
     parent_channel_id?: string
+    /** 仅子区(target_type=5)携带：1=active, 2=archived。
+     *  缺失=状态未知（旧后端 / 非子区），消费方应回退到 channelInfo。 */
+    status?: number
 }
 
 export interface SidebarSyncReq {

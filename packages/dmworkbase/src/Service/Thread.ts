@@ -12,6 +12,7 @@ export interface Thread {
   created_at: string
   updated_at: string
   is_member?: boolean  // 当前用户是否是成员
+  is_followed?: boolean  // 当前用户是否已关注
   member_count?: number  // 成员数量
   message_count?: number  // 消息数量
   unread_count?: number  // 未读数量

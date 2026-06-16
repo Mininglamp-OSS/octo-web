@@ -11,10 +11,10 @@ import "./index.css"
 import { UserInfoRouteData, UserInfoVM } from "./vm";
 import FriendApplyUI from "../FriendApply";
 import RouteContext, { FinishButtonContext } from "../../Service/Context";
-import { Image } from '@douyinfe/semi-ui';
 import AiBadge from "../AiBadge";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
 import { I18nContext } from "../../i18n";
+import WKAvatarPreviewImage from "../WKAvatarPreviewImage";
 
 
 export interface UserInfoProps extends HTMLProps<any> {
@@ -187,7 +187,7 @@ export default class UserInfo extends Component<UserInfoProps> {
                                 <div className="wk-userinfo-header">
                                     <div className="wk-userinfo-user">
                                         <div className="wk-userinfo-user-avatar">
-                                            <Image src={WKApp.shared.avatarUser(uid)}></Image>
+                                            <WKAvatarPreviewImage channel={new Channel(uid, ChannelTypePerson)} />
                                         </div>
                                         <div className="wk-userinfo-user-info">
                                             <div className="wk-userinfo-user-info-name">

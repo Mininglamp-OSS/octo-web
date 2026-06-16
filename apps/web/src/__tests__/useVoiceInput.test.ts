@@ -407,7 +407,8 @@ describe("useVoiceInput - getChatContext", () => {
       "smart",
       true,
       1,
-      false
+      false,
+      undefined
     );
   });
 
@@ -451,7 +452,8 @@ describe("useVoiceInput - getChatContext", () => {
       "smart",
       true,
       2,
-      false
+      false,
+      undefined
     );
   });
 
@@ -648,7 +650,8 @@ describe("useVoiceInput - personal voice context", () => {
       "smart", // mode
       true, // skipLocal
       undefined, // channelType
-      false // allowFeedback
+      false, // allowFeedback
+      undefined // selfName
     );
     expect(getChatContext).toHaveBeenCalled();
   });
@@ -691,7 +694,8 @@ describe("useVoiceInput - personal voice context", () => {
       "smart", // mode
       true, // skipLocal
       undefined, // channelType
-      false // allowFeedback
+      false, // allowFeedback
+      undefined // selfName
     );
     expect(getChatContext).toHaveBeenCalled();
   });
@@ -734,7 +738,8 @@ describe("useVoiceInput - personal voice context", () => {
       "smart", // mode
       true, // skipLocal
       undefined, // channelType
-      false // allowFeedback
+      false, // allowFeedback
+      undefined // selfName
     );
   });
 
@@ -773,7 +778,8 @@ describe("useVoiceInput - personal voice context", () => {
       "smart", // mode
       true, // skipLocal
       undefined, // channelType
-      false // allowFeedback
+      false, // allowFeedback
+      undefined // selfName
     );
   });
 
@@ -834,7 +840,8 @@ describe("useVoiceInput - personal voice context", () => {
       "smart", // mode
       true, // skipLocal
       undefined, // channelType
-      false // allowFeedback
+      false, // allowFeedback
+      undefined // selfName
     );
   });
 

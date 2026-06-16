@@ -46,4 +46,19 @@ describe("isMessageContinuation", () => {
     it("does not continue across different senders", () => {
         expect(isMessageContinuation(msg("u1", 1_000), msg("u2", 1_030))).toBe(false)
     })
+
+    it("breaks on screenshot system message (same fromUID should not hide avatar)", () => {
+        // 截屏消息虽然 fromUID 与下一条相同，但它是居中胶囊/system tag，
+        // 应该打断连续性，确保下一条正常显示头像（#308）
+        expect(isMessageContinuation(
+            msg("u1", 1_000, { contentType: MessageContentTypeConst.screenshot }),
+            msg("u1", 1_030),
+        )).toBe(false)
+
+        // 前一条正常消息接入截屏也打断
+        expect(isMessageContinuation(
+            msg("u1", 1_000),
+            msg("u1", 1_030, { contentType: MessageContentTypeConst.screenshot }),
+        )).toBe(false)
+    })
 })

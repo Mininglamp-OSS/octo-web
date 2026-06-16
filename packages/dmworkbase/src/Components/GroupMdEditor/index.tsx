@@ -1,11 +1,13 @@
 import React, { Component } from "react";
-import { Button, TextArea, Spin, Modal } from "@douyinfe/semi-ui";
+import { Button, TextArea, Spin } from "@douyinfe/semi-ui";
 import { Toast } from "@douyinfe/semi-ui";
 import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import { parseThreadChannelId } from "../../Service/Thread";
 import { I18nContext } from "../../i18n";
+import { wkConfirm } from "../WKModal";
+import MarkdownContent from "../../Messages/Text/MarkdownContent";
 import "./index.css";
 
 export interface GroupMdEditorProps {
@@ -26,6 +28,17 @@ const MAX_BYTES = 10240;
 
 function getByteLength(str: string): number {
   return new TextEncoder().encode(str).length;
+}
+
+export function normalizeGroupMdContent(content: string): string {
+  if (
+    !content ||
+    content.includes("\n") ||
+    (!content.includes("\\n") && !content.includes("\\r\\n"))
+  ) {
+    return content;
+  }
+  return content.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
 }
 
 export class GroupMdEditor extends Component<
@@ -77,9 +90,10 @@ export class GroupMdEditor extends Component<
           this.props.channel
         );
       }
+      const content = normalizeGroupMdContent(resp?.content || "");
       this.setState({
-        content: resp?.content || "",
-        originalContent: resp?.content || "",
+        content,
+        originalContent: content,
         version: resp?.version || 0,
         loading: false,
       });
@@ -130,7 +144,7 @@ export class GroupMdEditor extends Component<
   };
 
   handleDelete = () => {
-    Modal.confirm({
+    wkConfirm({
       title: this.context.t("base.groupMd.deleteTitle"),
       content: this.context.t("base.groupMd.deleteContent"),
       onOk: async () => {
@@ -246,7 +260,9 @@ export class GroupMdEditor extends Component<
         ) : (
           <div className="wk-groupmd-preview">
             {content ? (
-              <pre className="wk-groupmd-preview-content">{content}</pre>
+              <div className="wk-groupmd-preview-content">
+                <MarkdownContent content={content} enableMath />
+              </div>
             ) : (
               <div className="wk-groupmd-empty">{t("base.groupMd.empty")}</div>
             )}

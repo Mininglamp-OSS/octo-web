@@ -234,6 +234,52 @@ describe("getMessageRow — realname badge branch logic", () => {
         expect(row.isRealnameVerified).toBe(false)
     })
 
+    it("GH#326: 群消息存在个人备注时，senderName 优先使用 Person channelInfo 备注", () => {
+        mockState.subscribesByChannel.set("g_remark", [
+            {
+                uid: "u_bot",
+                name: "Bot Original",
+                remark: "Group Bot Name",
+            },
+        ])
+        mockState.channelInfoByUID.set("u_bot", {
+            channel: new Channel("u_bot", ChannelTypePerson),
+            title: "Bot Original",
+            orgData: {
+                remark: "Personal Bot Alias",
+                displayName: "Personal Bot Alias",
+                robot: 1,
+            },
+        })
+        const row = getMessageRow(
+            makeGroupMessage({ fromUID: "u_bot", groupID: "g_remark" })
+        )
+        expect(row.senderName).toBe("Personal Bot Alias")
+    })
+
+    it("GH#326: 个人备注为空时仍回退到群成员名，避免 Person displayName 抢占群昵称", () => {
+        mockState.subscribesByChannel.set("g_no_remark", [
+            {
+                uid: "u_bot",
+                name: "Bot Original",
+                remark: "Group Bot Name",
+            },
+        ])
+        mockState.channelInfoByUID.set("u_bot", {
+            channel: new Channel("u_bot", ChannelTypePerson),
+            title: "Bot Original",
+            orgData: {
+                remark: "",
+                displayName: "Bot Real Name",
+                robot: 1,
+            },
+        })
+        const row = getMessageRow(
+            makeGroupMessage({ fromUID: "u_bot", groupID: "g_no_remark" })
+        )
+        expect(row.senderName).toBe("Group Bot Name")
+    })
+
     // ---------------------------------------------------------------------
     // 自己看自己的消息也显示实名徽章
     //

@@ -78,9 +78,10 @@ const JsonlRenderer: React.FC<JsonlRendererProps> = ({ file, onError }) => {
 
   // 渲染单元格内容
   const renderCellContent = (value: unknown): string => {
-    if (value === null || value === undefined) return "-";
+    if (value === null || value === undefined || value === "") return "-";
     if (typeof value === "object") return JSON.stringify(value);
-    return String(value);
+    const str = String(value);
+    return str.trim() === "" ? "-" : str;
   };
 
   // 复用 CodeRendererBase 处理边界状态（too-large / loading / error）

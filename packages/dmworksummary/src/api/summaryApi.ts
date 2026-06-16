@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 import { WKApp, buildAcceptLanguage } from '@octo/base';
 import type {
     ApiResponse,
@@ -18,8 +18,10 @@ import type {
     SourceItem,
     SummaryDetail,
     SummaryTemplate,
+    TopicTemplate,
     UpdateScheduleParams,
 } from '../types/summary';
+import { SummaryMode } from '../types/summary';
 
 const summaryAxios = axios.create({ baseURL: '' });
 
@@ -50,18 +52,20 @@ summaryAxios.interceptors.response.use(
 const BASE = '/summary/api/v1';
 
 function extractErrorMessage(err: unknown): string {
-    const axiosErr = err as { response?: { data?: { error?: { message?: string } } } };
-    const msg = axiosErr?.response?.data?.error?.message;
+    const axiosErr = err as { response?: { data?: { message?: string } } };
+    const msg = axiosErr?.response?.data?.message;
     const raw = msg || (err instanceof Error ? err.message : 'Request failed');
     return raw.length > 200 ? raw.slice(0, 200) + '…' : raw;
 }
 
 // Backend wraps responses in {code, message, data} envelope — unwrap .data
-async function get<T>(path: string, params?: Record<string, unknown>): Promise<T> {
+async function get<T>(path: string, params?: Record<string, unknown>, config?: AxiosRequestConfig): Promise<T> {
     try {
-        const resp = await summaryAxios.get(`${BASE}${path}`, { params });
+        const resp = await summaryAxios.get(`${BASE}${path}`, { params, ...config });
         return resp.data?.data ?? resp.data;
     } catch (err) {
+        // Preserve cancellation identity so callers can use axios.isCancel(err)
+        if (axios.isCancel(err)) throw err;
         throw new Error(extractErrorMessage(err));
     }
 }
@@ -71,6 +75,7 @@ async function post<T>(path: string, data?: unknown): Promise<T> {
         const resp = await summaryAxios.post(`${BASE}${path}`, data);
         return resp.data?.data ?? resp.data;
     } catch (err) {
+        if (axios.isCancel(err)) throw err;
         throw new Error(extractErrorMessage(err));
     }
 }
@@ -80,6 +85,7 @@ async function put<T>(path: string, data?: unknown): Promise<T> {
         const resp = await summaryAxios.put(`${BASE}${path}`, data);
         return resp.data?.data ?? resp.data;
     } catch (err) {
+        if (axios.isCancel(err)) throw err;
         throw new Error(extractErrorMessage(err));
     }
 }
@@ -89,6 +95,7 @@ async function del<T>(path: string): Promise<T> {
         const resp = await summaryAxios.delete(`${BASE}${path}`);
         return resp.data?.data ?? resp.data;
     } catch (err) {
+        if (axios.isCancel(err)) throw err;
         throw new Error(extractErrorMessage(err));
     }
 }
@@ -99,8 +106,11 @@ export async function createSummary(params: CreateSummaryParams): Promise<{ task
     return post('/summaries', params);
 }
 
-export async function listSummaries(params: ListSummariesParams): Promise<ListSummariesResponse> {
-    return get('/summaries', params as Record<string, unknown>);
+export async function listSummaries(
+    params: ListSummariesParams,
+    config?: { signal?: AbortSignal },
+): Promise<ListSummariesResponse> {
+    return get('/summaries', params as Record<string, unknown>, config);
 }
 
 export async function getSummaryDetail(taskId: number): Promise<SummaryDetail> {
@@ -111,8 +121,8 @@ export async function deleteSummary(taskId: number): Promise<void> {
     return del(`/summaries/${taskId}`);
 }
 
-export async function regenerateSummary(taskId: number): Promise<{ task_id: number }> {
-    return post(`/summaries/${taskId}/regenerate`);
+export async function regenerateSummary(taskId: number, body?: { topic?: string }): Promise<{ task_id: number }> {
+    return post(`/summaries/${taskId}/regenerate`, body);
 }
 
 // 不复用 put helper，因为需要保留 HTTP status 区分 409（冲突）和 5xx（服务错误）
@@ -128,6 +138,8 @@ export async function editSummary(
         });
         return resp.data?.data ?? resp.data;
     } catch (err: unknown) {
+        // Preserve cancellation identity so callers can use axios.isCancel(err)
+        if (axios.isCancel(err)) throw err;
         const axiosErr = err as { response?: { status?: number; data?: { error?: { message?: string } } } };
         const status = axiosErr?.response?.status;
         const msg = extractErrorMessage(err);
@@ -194,8 +206,19 @@ export async function getParticipants(taskId: number): Promise<Participant[]> {
 }
 
 export async function getTemplates(): Promise<SummaryTemplate[]> {
-    const data = await get<SummaryTemplate[]>('/summary-templates');
-    return data || [];
+    const data = await get<{ templates: TopicTemplate[] }>('/summary-templates');
+    return (data?.templates || []).map(t => ({
+        template_id: t.id,
+        name: t.label,
+        description: t.description,
+        default_mode: SummaryMode.BY_GROUP,
+        default_time_range_type: 1 as const,
+    }));
+}
+
+export async function getTopicTemplates(): Promise<TopicTemplate[]> {
+    const data = await get<{ templates: TopicTemplate[] }>('/summary-templates');
+    return data?.templates || [];
 }
 
 export async function inferScope(topic: string): Promise<InferResult> {
@@ -204,21 +227,31 @@ export async function inferScope(topic: string): Promise<InferResult> {
 
 // ─── Schedule CRUD ─────────────────────────────────────
 
+// 后端 is_active 序列化为 number(0/1)，而前端 ScheduleItem.is_active 声明为 boolean，
+// 且多处用严格比较（`is_active === false` / `!== false`）判断定时是否生效。
+// `0 === false` 为 false，会导致「关闭后刷新仍显示定时生效」。这里在 API 边界统一
+// 把 is_active 归一为 boolean，所有消费方判断即可正确（不依赖后端类型，亦无需改后端）。
+function normalizeScheduleItem<T extends { is_active?: unknown } | null | undefined>(item: T): T {
+    if (!item || typeof item !== 'object') return item;
+    const v = (item as { is_active?: unknown }).is_active;
+    return { ...(item as object), is_active: v === true || v === 1 || v === '1' } as T;
+}
+
 export async function getSchedule(scheduleId: number): Promise<ScheduleItem> {
-    return get(`/summary-schedules/${scheduleId}`);
+    return normalizeScheduleItem(await get<ScheduleItem>(`/summary-schedules/${scheduleId}`));
 }
 
 export async function createSchedule(params: CreateScheduleParams): Promise<ScheduleItem> {
-    return post('/summary-schedules', params);
+    return normalizeScheduleItem(await post<ScheduleItem>('/summary-schedules', params));
 }
 
 export async function listSchedules(): Promise<ScheduleItem[]> {
     const data = await get<ScheduleItem[]>('/summary-schedules');
-    return data || [];
+    return (data || []).map(normalizeScheduleItem);
 }
 
 export async function updateSchedule(scheduleId: number, params: UpdateScheduleParams): Promise<ScheduleItem> {
-    return put(`/summary-schedules/${scheduleId}`, params);
+    return normalizeScheduleItem(await put<ScheduleItem>(`/summary-schedules/${scheduleId}`, params));
 }
 
 export async function deleteSchedule(scheduleId: number): Promise<void> {
@@ -226,12 +259,12 @@ export async function deleteSchedule(scheduleId: number): Promise<void> {
 }
 
 export async function toggleSchedule(scheduleId: number, isActive: boolean): Promise<ScheduleItem> {
-    return put(`/summary-schedules/${scheduleId}/toggle`, { is_active: isActive });
+    return normalizeScheduleItem(await put<ScheduleItem>(`/summary-schedules/${scheduleId}/toggle`, { is_active: isActive }));
 }
 
 // ─── Candidate Selection ───────────────────────────────
 
-export async function getChatCandidates(params?: { keyword?: string; chat_type?: string }): Promise<ChatCandidate[]> {
+export async function getChatCandidates(params?: { keyword?: string; chat_type?: string; include_archived?: boolean }): Promise<ChatCandidate[]> {
     const data = await get<ChatCandidate[]>('/summary-chat-candidates', params as Record<string, unknown>);
     return data || [];
 }

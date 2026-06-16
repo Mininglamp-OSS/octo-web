@@ -1,20 +1,39 @@
-import React from 'react'
-import './index.css'
+import React from "react";
+import { linkifySafeUrls } from "../../../Utils/linkify";
+import "./index.css";
 
 export interface ReplyBlockProps {
   /** 被引用消息的发送者名字 */
-  fromName: string
+  fromName: string;
   /** 引用内容摘要 */
-  digest: string
+  digest: string;
   /**
    * 被引用消息发送者的来源 Space 名称（相对当前查看 Space 解析后）。
    * 非空时，在昵称后以 `@{sourceSpaceName}` 形式内联展示，匹配消息头
    * 「@SpaceName」后缀（企微风格，dmwork-web#1069）。
    * 调用方负责调用 `resolveExternalForViewer`，避免把 WKApp 副作用引入纯 UI 组件。
    */
-  sourceSpaceName?: string
+  sourceSpaceName?: string;
   /** 点击跳转到原消息 */
-  onClick?: () => void
+  onClick?: () => void;
+}
+
+function renderDigest(digest: string) {
+  return linkifySafeUrls(digest).map((segment, index) => {
+    if (segment.type === "text") return segment.content;
+    return (
+      <a
+        key={`${index}-${segment.text}`}
+        className="wk-reply-block__digest-link"
+        href={segment.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(event) => event.stopPropagation()}
+      >
+        {segment.text}
+      </a>
+    );
+  });
 }
 
 /**
@@ -34,7 +53,7 @@ export default function ReplyBlock({
   onClick,
 }: ReplyBlockProps) {
   const hasSpaceSuffix =
-    typeof sourceSpaceName === 'string' && sourceSpaceName.length > 0
+    typeof sourceSpaceName === "string" && sourceSpaceName.length > 0;
   return (
     <div className="wk-reply-block" onClick={onClick}>
       <div className="wk-reply-block__bar" />
@@ -50,8 +69,8 @@ export default function ReplyBlock({
             </span>
           )}
         </span>
-        <span className="wk-reply-block__digest">{digest}</span>
+        <span className="wk-reply-block__digest">{renderDigest(digest)}</span>
       </div>
     </div>
-  )
+  );
 }

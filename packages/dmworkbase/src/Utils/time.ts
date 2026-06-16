@@ -1,4 +1,5 @@
-import { i18n, t } from "../i18n";
+import moment from "moment";
+import { i18n, t } from "../i18n/instance";
 
 /**
 * 对Date的扩展，将 Date 转化为指定格式的String。
@@ -42,6 +43,10 @@ function formatCalendarDate(date: Date) {
 
 function formatWeekday(date: Date) {
     return new Intl.DateTimeFormat(i18n.getLocale(), { weekday: "long" }).format(date);
+}
+
+function formatShortWeekday(date: Date) {
+    return new Intl.DateTimeFormat(i18n.getLocale(), { weekday: "short" }).format(date);
 }
 
 /**
@@ -139,6 +144,42 @@ export function getTimeStringAutoShort2(timestamp:number, mustIncludeTime:boolea
 export function dateFormat(date:Date, fmt:string) {
 
     return _formatDate(date,fmt)
+}
+
+/**
+ * 格式化聊天消息行时间。
+ *
+ * 对齐新 MessageRow 现有规则：
+ * - 今天：HH:mm
+ * - 昨天：昨天 HH:mm
+ * - 一周内：周X HH:mm
+ * - 今年：MM-DD HH:mm
+ * - 跨年：YYYY-MM-DD HH:mm
+ */
+export function formatMessageTimestamp(timestamp: number): string {
+    const ms = timestamp < 10000000000 ? timestamp * 1000 : timestamp
+    const now = Date.now()
+    const diff = now - ms
+
+    if (diff < 86400 * 1000 && moment(ms).isSame(moment(), "day")) {
+        return moment(ms).format("HH:mm")
+    }
+
+    if (diff < 86400 * 2000 && moment(ms).isSame(moment().subtract(1, "day"), "day")) {
+        return t("base.time.yesterdayWithTime", {
+            values: { time: moment(ms).format("HH:mm") },
+        })
+    }
+
+    if (diff < 86400 * 7000) {
+        return `${formatShortWeekday(new Date(ms))} ${moment(ms).format("HH:mm")}`
+    }
+
+    if (moment(ms).isSame(moment(), "year")) {
+        return moment(ms).format("MM-DD HH:mm")
+    }
+
+    return moment(ms).format("YYYY-MM-DD HH:mm")
 }
 
 export function formatRelativeTime(dateStr?: string): string {

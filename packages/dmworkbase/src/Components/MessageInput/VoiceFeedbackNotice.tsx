@@ -61,7 +61,7 @@ export default function VoiceFeedbackNotice({
       onCancel={onCancel}
       options={{ closeOnEsc: true, maskClosable: false }}
       footer={
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="wk-modal-footer-fill" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ borderTop: "1px solid var(--semi-color-border)", margin: 0 }} />
           <Checkbox
             checked={feedbackChecked}

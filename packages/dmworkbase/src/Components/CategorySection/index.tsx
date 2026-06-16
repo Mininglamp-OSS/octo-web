@@ -43,6 +43,7 @@ const CategorySectionInner: React.FC<CategorySectionProps> = ({
         attributes,
         listeners,
         setNodeRef,
+        setActivatorNodeRef,
         transform,
         transition,
         isDragging,
@@ -61,7 +62,7 @@ const CategorySectionInner: React.FC<CategorySectionProps> = ({
         <div
             ref={setNodeRef}
             style={style}
-            className={`wk-category-section${isOver ? ' wk-category-section--drop-over' : ''}`}
+            className={`wk-category-section${isOver ? ' wk-category-section--drop-over' : ''}${isDragging ? ' wk-category-section--dragging' : ''}`}
         >
             <CategoryHeader
                 name={category.name}
@@ -76,7 +77,9 @@ const CategorySectionInner: React.FC<CategorySectionProps> = ({
                 isEditing={isEditing}
                 onRenameConfirm={onRenameConfirm}
                 onRenameCancel={onRenameCancel}
-                dragHandleProps={{ ...attributes, ...listeners }}
+                dragHandleRef={setActivatorNodeRef}
+                dragHandleAttributes={attributes}
+                dragHandleListeners={listeners}
             />
             <div
                 className={`wk-category-section__content ${

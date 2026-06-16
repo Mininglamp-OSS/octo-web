@@ -102,7 +102,7 @@ export class ThreadCreatedCell extends MessageCell {
   }
 
   render() {
-    const { message } = this.props
+    const { message, context } = this.props
     const content = message.content as ThreadCreatedContent
     const messageCount = content.message_count || 0
     const timeStr = content.last_message
@@ -132,10 +132,11 @@ export class ThreadCreatedCell extends MessageCell {
     return (
       <MessageRow 
         {...rowProps}
-        onContextMenu={(event) => this.props.context.showContextMenus(message, event)}
-        isActive={this.props.context.isContextMenuOpen(message.message)}
-        onAvatarClick={(e) => this.props.context.onTapAvatar(content.from_uid || message.fromUID, e)}
-        onSenderNameClick={() => this.props.context.showUser(content.from_uid || message.fromUID)}
+        selectionMode={context.editOn()}
+        onContextMenu={(event) => context.showContextMenus(message, event)}
+        isActive={context.isContextMenuOpen(message.message)}
+        onAvatarClick={(e) => context.onTapAvatar(content.from_uid || message.fromUID, e)}
+        onSenderNameClick={() => context.showUser(content.from_uid || message.fromUID)}
       >
         <div className="wk-thread-created-card" onClick={this.handleClick}>
         {/* 消息正文预览 */}

@@ -3,6 +3,7 @@ export interface AsrParams {
   chatContext?: string;
   personalContext?: string;
   memberContext?: string;
+  selfName?: string;
   mode?: string;
   channelType?: number;
   model?: string;
@@ -121,6 +122,7 @@ export default class VoiceFeedback {
           chat_context: u.asrParams?.chatContext || "",
           personal_context: u.asrParams?.personalContext || "",
           member_context: u.asrParams?.memberContext || "",
+          self_name: u.asrParams?.selfName || "",
           mode: u.asrParams?.mode || "",
           channel_type: u.asrParams?.channelType ?? 0,
           model: u.asrParams?.model || "",

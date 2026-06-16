@@ -13,15 +13,35 @@ describe("displayName (GH dmwork-web#1121)", () => {
         expect(displayName({ name: "Alice", realname_verified: 0 })).toBe("Alice");
     });
 
-    it("returns remark when set (highest priority)", () => {
+    it("returns remark when set and not verified", () => {
         expect(displayName({ name: "Alice", remark: "Ally" })).toBe("Ally");
-        // remark 优先于 real_name
+        // verified real_name 优先于 remark
         expect(
             displayName({
                 name: "alice",
                 remark: "A-remark",
                 real_name: "Alice Real",
                 realname_verified: true,
+            })
+        ).toBe("Alice Real");
+    });
+
+    it("verified real_name beats remark and nickname (highest priority)", () => {
+        expect(
+            displayName({
+                name: "alice",
+                remark: "A-remark",
+                real_name: "Alice Real",
+                realname_verified: 1,
+            })
+        ).toBe("Alice Real");
+        // 未实名时 remark 仍优先于 nickname
+        expect(
+            displayName({
+                name: "alice",
+                remark: "A-remark",
+                real_name: "Alice Real",
+                realname_verified: false,
             })
         ).toBe("A-remark");
     });

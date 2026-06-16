@@ -22,6 +22,9 @@ import { downloadFile } from "../../Utils/download";
 import { isSafeUrl } from "../../Utils/security";
 import { getExtension } from "../FilePreviewPanel/types";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
+import { RichTextContent } from "../../Messages/RichText/RichTextContent";
+import { getRichTextBlocksUI } from "../../bridge/message/useRichTextMessageUI";
+import MixedContent from "../../ui/message/MixedContent";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import "yet-another-react-lightbox/styles.css";
@@ -276,6 +279,19 @@ export default class MergeforwardMessageList extends Component<
               previewImageContent: imageContent,
             })
           }
+        />
+      );
+    }
+    if (msg.contentType === MessageContentTypeConst.richText) {
+      const richTextContent = msg.content as RichTextContent;
+      return (
+        <MixedContent
+          blocks={getRichTextBlocksUI(richTextContent.content || [])}
+          onFileDownload={(block) => {
+            if (block.url) {
+              downloadFile(block.url, block.name);
+            }
+          }}
         />
       );
     }

@@ -5,21 +5,35 @@ import {
   ChannelTypeGroup,
   WKSDK,
 } from "wukongimjssdk";
-import { Modal, Toast, Spin, Popover } from "@douyinfe/semi-ui";
+import { Toast, Spin, Popover } from "@douyinfe/semi-ui";
 import {
   Thread,
   ThreadStatus,
   buildThreadChannelId,
 } from "../../Service/Thread";
 import { ThreadPanelVM, ThreadPanelState } from "./vm";
-import { X, Plus, ChevronDown, ArrowLeft, MoreHorizontal } from "lucide-react";
+import {
+  X,
+  Plus,
+  ChevronDown,
+  ArrowLeft,
+  MoreHorizontal,
+  Star,
+  Archive,
+  ArchiveRestore,
+} from "lucide-react";
 import ThreadIcon from "../Icons/ThreadIcon";
 import classNames from "classnames";
 import { Conversation } from "../Conversation";
-import { ChannelTypeCommunityTopic, GroupRole } from "../../Service/Const";
+import { ChannelTypeCommunityTopic } from "../../Service/Const";
+import { canManageThread } from "../../Service/threadPermission";
 import { ErrorBoundary } from "../ErrorBoundary";
 import WKApp from "../../App";
 import { formatRelativeTime } from "../../Utils/time";
+import FollowService from "../../Service/FollowService";
+import SidebarService from "../../Service/SidebarService";
+import CategoryService from "../../Service/CategoryService";
+import { syncThreadArchiveState } from "../../Service/threadArchiveSync";
 import { FilePreviewInfo } from "../FilePreviewPanel/types";
 import { fileRendererRegistry } from "../FilePreviewPanel/registry";
 import { getExtension } from "../FilePreviewPanel/types";
@@ -31,6 +45,12 @@ import { MarkdownRenderer } from "../FilePreviewPanel/renderers/MarkdownRenderer
 import { HtmlRenderer } from "../FilePreviewPanel/renderers/HtmlRenderer";
 import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
 import { I18nContext, t } from "../../i18n";
+import { wkConfirm } from "../WKModal";
+import {
+  ArchiveAction,
+  deriveArchiveAction,
+  shouldShowArchiveButton,
+} from "./archiveActions";
 import {
   SMALL_SCREEN_WIDTH,
   THREAD_DEFAULT_WIDTH,
@@ -137,6 +157,14 @@ export default class ThreadPanel extends Component<
   private cachedLeftPanelWidth = 300; // cached on drag start
   /** 同步标志，防止 loadMore 竞态条件 */
   private _loadingMore = false;
+  /** 行内归档操作进行中的子区集合，防止重复点击 / 撤销窗口竞态 */
+  private archivingShortIds = new Set<string>();
+  /** 撤销 Toast 的自动关闭计时器，按 short_id 记录，卸载时统一清理 */
+  private undoToastTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** 撤销 Toast 的 id，便于点击撤销后主动关闭 */
+  private undoToastIds = new Map<string, string>();
+  /** 组件是否已卸载，撤销 Toast 渲染在全局 portal，卸载后回调需短路 */
+  private isUnmounted = false;
 
   constructor(props: ThreadPanelProps) {
     super(props);
@@ -194,12 +222,21 @@ export default class ThreadPanel extends Component<
   }
 
   componentWillUnmount() {
+    this.isUnmounted = true;
     document.removeEventListener("mousemove", this.onPanelDragMove);
     document.removeEventListener("mouseup", this.onPanelDragEnd);
     if (this.state.isDragging) {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     }
+    // 清理撤销 Toast：撤销 Toast 渲染在 Semi 全局 portal，不随本组件卸载销毁，
+    // 其「撤销」按钮仍持有已卸载实例的 handleUndoArchive。卸载时必须主动关闭
+    // 这些 Toast 并清空计时器与 id 两个集合，避免卸载后点撤销对已卸载组件
+    // setState 并发出无意义请求。
+    this.undoToastIds.forEach((toastId) => Toast.close(toastId));
+    this.undoToastTimers.forEach((timer) => clearTimeout(timer));
+    this.undoToastTimers.clear();
+    this.undoToastIds.clear();
   }
 
   // ── Helper to get left panel width from CSS variable or default ──
@@ -456,29 +493,52 @@ export default class ThreadPanel extends Component<
     }
   };
 
-  private async loadThreads() {
+  private async loadThreads(silent?: boolean) {
     const { groupNo } = this.props;
     // 纯文件预览模式时跳过
     if (!groupNo) return;
 
-    this.setState({ threadsLoading: true });
+    if (!silent) {
+      this.setState({ threadsLoading: true });
+    }
     try {
-      const threads = await WKApp.dataSource.channelDataSource.threadList(
-        groupNo,
-        {
+      // 并行拉取子区列表 + 关注状态（用 recent tab，含 is_followed 字段）
+      const [threads, sidebarResp] = await Promise.all([
+        WKApp.dataSource.channelDataSource.threadList(groupNo, {
           page_index: 1,
           page_size: 100,
           status: "all",
+        }),
+        SidebarService.sync({
+          tab: "follow",
+          device_uuid: WKApp.shared.deviceId,
+        }).catch(() => null),
+      ]);
+
+      // 建立已关注子区的 channel_id 集合（target_type=5，is_followed=true）
+      const followedChannelIds = new Set<string>();
+      if (sidebarResp?.items) {
+        for (const item of sidebarResp.items) {
+          if (item.target_type === ChannelTypeCommunityTopic && item.is_followed) {
+            followedChannelIds.add(item.target_id);
+          }
         }
-      );
-      threads.sort((a, b) => this.threadSortTime(b) - this.threadSortTime(a));
+      }
+
+      // 合并 is_followed 状态
+      const threadsWithFollow = threads.map((t) => ({
+        ...t,
+        is_followed: followedChannelIds.has(t.channel_id),
+      }));
+
+      threadsWithFollow.sort((a, b) => this.threadSortTime(b) - this.threadSortTime(a));
       this.setState((prevState) => {
         const currentThread = prevState.vmState.thread;
         const refreshedCurrentThread = currentThread
-          ? threads.find((item) => item.short_id === currentThread.short_id)
+          ? threadsWithFollow.find((item) => item.short_id === currentThread.short_id)
           : undefined;
         return {
-          threads,
+          threads: threadsWithFollow,
           threadsLoading: false,
           vmState: currentThread && refreshedCurrentThread
             ? {
@@ -554,14 +614,7 @@ export default class ThreadPanel extends Component<
 
   private canEditThread(thread: Thread): boolean {
     if (!this.props.groupNo) return false;
-    const isCreator = thread.creator_uid === WKApp.loginInfo.uid;
-    const groupChannel = new Channel(this.props.groupNo, ChannelTypeGroup);
-    const subscribers =
-      WKSDK.shared().channelManager.getSubscribes(groupChannel);
-    const me = subscribers?.find((s) => s.uid === WKApp.loginInfo.uid);
-    const isManagerOrOwner =
-      me?.role === GroupRole.owner || me?.role === GroupRole.manager;
-    return isCreator || isManagerOrOwner;
+    return canManageThread(thread, this.props.groupNo);
   }
 
   private handleEditThread = () => {
@@ -574,9 +627,8 @@ export default class ThreadPanel extends Component<
     // 延迟弹窗，等 Popover 完全关闭后再触发，避免 Modal 被 Popover 关闭事件误关
     setTimeout(() => {
       let newName = thread.name;
-      Modal.confirm({
+      wkConfirm({
         title: t("base.threadPanel.editNameTitle"),
-        icon: null,
         okText: t("base.threadPanel.save"),
         cancelText: t("base.common.cancel"),
         content: (
@@ -637,24 +689,77 @@ export default class ThreadPanel extends Component<
     }, 100);
   };
 
+  /**
+   * 参数化的归档 / 取消归档执行函数，不依赖当前打开的子区（vmState.thread）。
+   * detail 菜单（确认弹窗后）与未来其它入口都复用这里，避免逻辑重复。
+   *
+   * 副作用链与原实现保持一致：threadArchive/threadUnarchive → threadGet 拿到
+   * 后端权威状态 → Toast 提示 → 仅当更新的是「当前打开的子区」时同步 vmState.thread
+   * 与 onThreadSelect → refreshThreadChannelInfo 清 SDK 缓存 → loadThreads 刷新列表。
+   * 动作由 thread.status 推导，非活跃 / 已归档（如已删除）直接忽略。
+   */
+  private archiveThreadById = async (thread: Thread): Promise<void> => {
+    const { groupNo } = this.props;
+    if (!groupNo) return;
+    const action = deriveArchiveAction(thread);
+    if (!action) return;
+    const archiving = action === "archive";
+
+    if (archiving) {
+      await WKApp.dataSource.channelDataSource.threadArchive(
+        groupNo,
+        thread.short_id
+      );
+    } else {
+      await WKApp.dataSource.channelDataSource.threadUnarchive(
+        groupNo,
+        thread.short_id
+      );
+    }
+
+    const updatedThread = await WKApp.dataSource.channelDataSource.threadGet(
+      groupNo,
+      thread.short_id
+    );
+    Toast.success(
+      archiving
+        ? t("base.module.thread.archiveSuccess")
+        : t("base.module.thread.unarchiveSuccess")
+    );
+    this.setState((prevState) =>
+      prevState.vmState.thread?.short_id === updatedThread.short_id
+        ? {
+            vmState: {
+              ...prevState.vmState,
+              thread: updatedThread,
+            },
+          }
+        : null
+    );
+    if (this.state.vmState.thread?.short_id === updatedThread.short_id) {
+      this.props.onThreadSelect?.(updatedThread);
+    }
+    this.syncThreadArchiveToSidebar(updatedThread);
+    await this.loadThreads();
+  };
+
   private handleToggleArchiveThread = () => {
     const { vmState } = this.state;
     const { groupNo } = this.props;
     const thread = vmState.thread;
     if (!thread || !groupNo) return;
 
-    const archiving = thread.status === ThreadStatus.Active;
-    const unarchiving = thread.status === ThreadStatus.Archived;
-    if (!archiving && !unarchiving) return;
+    const action = deriveArchiveAction(thread);
+    if (!action) return;
+    const archiving = action === "archive";
 
     this.setState({ showMoreMenu: false });
 
     setTimeout(() => {
-      Modal.confirm({
+      wkConfirm({
         title: archiving
           ? t("base.module.thread.archiveConfirmTitle", { values: { name: thread.name } })
           : t("base.module.thread.unarchiveConfirmTitle", { values: { name: thread.name } }),
-        icon: null,
         okText: archiving ? t("base.module.thread.archiveOk") : t("base.module.thread.unarchive"),
         cancelText: t("base.common.cancel"),
         content: archiving
@@ -662,35 +767,7 @@ export default class ThreadPanel extends Component<
           : t("base.module.thread.unarchiveConfirmContent"),
         onOk: async () => {
           try {
-            if (archiving) {
-              await WKApp.dataSource.channelDataSource.threadArchive(
-                groupNo,
-                thread.short_id
-              );
-            } else {
-              await WKApp.dataSource.channelDataSource.threadUnarchive(
-                groupNo,
-                thread.short_id
-              );
-            }
-
-            const updatedThread =
-              await WKApp.dataSource.channelDataSource.threadGet(
-                groupNo,
-                thread.short_id
-              );
-            Toast.success(archiving
-              ? t("base.module.thread.archiveSuccess")
-              : t("base.module.thread.unarchiveSuccess"));
-            this.setState((prevState) => ({
-              vmState: {
-                ...prevState.vmState,
-                thread: updatedThread,
-              },
-            }));
-            this.props.onThreadSelect?.(updatedThread);
-            this.refreshThreadChannelInfo(updatedThread);
-            await this.loadThreads();
+            await this.archiveThreadById(thread);
           } catch {
             Toast.error(archiving
               ? t("base.module.thread.archiveFailedRetry")
@@ -800,6 +877,23 @@ export default class ThreadPanel extends Component<
     WKSDK.shared().channelManager.fetchChannelInfo(threadChannel);
   }
 
+  /**
+   * 归档 / 取消归档成功后同步左侧 sidebar（issue #345）。收口到共享的
+   * syncThreadArchiveState：用调用方传入的权威 thread.status 直接写回 channelInfo
+   * 缓存并 notifyListeners，再 emit("sidebar-reload")。传权威 status 而非绕异步
+   * fetchChannelInfo，避免被归档前在途的旧请求覆盖（B1 去重竞态）。
+   * 各入口在调用前已把 thread.status 设为操作后的权威值。
+   */
+  private syncThreadArchiveToSidebar(thread: Thread) {
+    const channelID =
+      thread.channel_id ||
+      (this.props.groupNo
+        ? buildThreadChannelId(this.props.groupNo, thread.short_id)
+        : "");
+    if (!channelID) return;
+    syncThreadArchiveState(channelID, thread.status);
+  }
+
   private handleDeleteThread = () => {
     const { vmState } = this.state;
     const { groupNo } = this.props;
@@ -808,9 +902,8 @@ export default class ThreadPanel extends Component<
     this.setState({ showMoreMenu: false });
 
     setTimeout(() => {
-      Modal.confirm({
+      wkConfirm({
         title: t("base.threadPanel.deleteConfirmTitle", { values: { name: thread.name } }),
-        icon: null,
         okText: t("base.threadPanel.delete"),
         okType: "danger",
         cancelText: t("base.common.cancel"),
@@ -840,9 +933,8 @@ export default class ThreadPanel extends Component<
     if (!groupNo) return;
 
     let threadName = "";
-    Modal.confirm({
+    wkConfirm({
       title: t("base.module.createThread.title"),
-      icon: null,
       okText: t("base.module.createThread.ok"),
       cancelText: t("base.common.cancel"),
       content: (
@@ -1230,6 +1322,251 @@ export default class ThreadPanel extends Component<
     return t("base.common.unknown");
   }
 
+  private handleFollow = async (thread: Thread, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const threadChannelId = thread.channel_id;
+    const wasFollowed = thread.is_followed;
+
+    // 乐观更新
+    this.setState((prev) => ({
+      threads: prev.threads.map((t) =>
+        t.short_id === thread.short_id ? { ...t, is_followed: !wasFollowed } : t
+      ),
+    }));
+
+    try {
+      if (wasFollowed) {
+        await FollowService.unfollowThread(threadChannelId);
+        Toast.success(t("base.threadList.unfollowed"));
+      } else {
+        await this.ensureParentGroupInFollowSet(thread.group_no);
+        await FollowService.followThread({ thread_channel_id: threadChannelId });
+        Toast.success(t("base.threadList.followed"));
+      }
+      WKApp.mittBus.emit("sidebar-reload" as any);
+    } catch (err: any) {
+      this.setState((prev) => ({
+        threads: prev.threads.map((t) =>
+          t.short_id === thread.short_id ? { ...t, is_followed: wasFollowed } : t
+        ),
+      }));
+      Toast.error(err?.msg || err?.message || t(wasFollowed ? "base.threadList.unfollowFailed" : "base.threadList.followFailed"));
+    }
+  };
+
+  /** 撤销 Toast 自动关闭时间（秒），与 setTimeout 清理保持一致 */
+  private static readonly ARCHIVE_UNDO_DURATION_S = 5;
+
+  /** 乐观更新某子区的 status（活跃 ⇄ 已归档），自动在活跃组 / 已归档组间移动 */
+  private setThreadStatusOptimistic(shortId: string, status: number) {
+    this.setState((prev) => ({
+      threads: prev.threads.map((item) =>
+        item.short_id === shortId ? { ...item, status } : item
+      ),
+    }));
+  }
+
+  /**
+   * 行内归档按钮入口（方案 B）。照搬 handleFollow 行内范式：
+   * e.stopPropagation() 阻止冒泡到整行 handleThreadClick + 乐观更新。
+   * 活跃 → 一键归档并弹「撤销」Toast；已归档 → 直接取消归档（无需撤销）。
+   * archivingShortIds 防重复点击与撤销窗口竞态。
+   */
+  private handleInlineArchiveToggle = (thread: Thread, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const { groupNo } = this.props;
+    if (!groupNo) return;
+    const action = deriveArchiveAction(thread);
+    if (!action) return;
+    if (this.archivingShortIds.has(thread.short_id)) return;
+
+    if (action === "archive") {
+      void this.inlineArchive(groupNo, thread);
+    } else {
+      void this.inlineUnarchive(groupNo, thread);
+    }
+  };
+
+  private async inlineArchive(groupNo: string, thread: Thread) {
+    this.archivingShortIds.add(thread.short_id);
+    // 乐观：活跃 → 已归档（自动移到已归档组）
+    this.setThreadStatusOptimistic(thread.short_id, ThreadStatus.Archived);
+    try {
+      await WKApp.dataSource.channelDataSource.threadArchive(
+        groupNo,
+        thread.short_id
+      );
+      // 卸载后短路：撤销 Toast 渲染在全局 portal，卸载后再创建会绕过 cleanup。
+      if (this.isUnmounted) return;
+      this.syncThreadArchiveToSidebar({
+        ...thread,
+        status: ThreadStatus.Archived,
+      });
+      this.showArchiveUndoToast(groupNo, thread);
+    } catch {
+      if (this.isUnmounted) return;
+      // 失败回滚乐观状态
+      this.setThreadStatusOptimistic(thread.short_id, ThreadStatus.Active);
+      Toast.error(t("base.module.thread.archiveFailedRetry"));
+    } finally {
+      this.archivingShortIds.delete(thread.short_id);
+    }
+  }
+
+  private async inlineUnarchive(groupNo: string, thread: Thread) {
+    this.archivingShortIds.add(thread.short_id);
+    // 乐观：已归档 → 活跃
+    this.setThreadStatusOptimistic(thread.short_id, ThreadStatus.Active);
+    try {
+      await WKApp.dataSource.channelDataSource.threadUnarchive(
+        groupNo,
+        thread.short_id
+      );
+      // 卸载后短路：避免对已卸载组件 setState 并刷新列表。
+      if (this.isUnmounted) return;
+      Toast.success(t("base.module.thread.unarchiveSuccess"));
+      this.syncThreadArchiveToSidebar({ ...thread, status: ThreadStatus.Active });
+      await this.loadThreads();
+    } catch {
+      if (this.isUnmounted) return;
+      this.setThreadStatusOptimistic(thread.short_id, ThreadStatus.Archived);
+      Toast.error(t("base.module.thread.unarchiveFailedRetry"));
+    } finally {
+      this.archivingShortIds.delete(thread.short_id);
+    }
+  }
+
+  /** 弹出带「撤销」按钮的自定义 Toast，约 5s 后自动消失 */
+  private showArchiveUndoToast(groupNo: string, thread: Thread) {
+    const duration = ThreadPanel.ARCHIVE_UNDO_DURATION_S;
+    const toastId = Toast.info({
+      duration,
+      content: (
+        <div className="wk-thread-archive-undo-toast">
+          <span>{t("base.module.thread.archiveSuccess")}</span>
+          <button
+            type="button"
+            className="wk-thread-archive-undo-btn"
+            onClick={() => this.handleUndoArchive(groupNo, thread)}
+          >
+            {t("base.module.thread.archiveUndo")}
+          </button>
+        </div>
+      ),
+    });
+    this.undoToastIds.set(thread.short_id, toastId);
+    const timer = setTimeout(() => {
+      this.undoToastTimers.delete(thread.short_id);
+      this.undoToastIds.delete(thread.short_id);
+      // 撤销窗口结束后做一次静默对账：行内归档成功路径只有前端拼的乐观对象，
+      // 后端权威字段（archived_at/updated_at/排序时间等）未刷新。窗口内不立即
+      // loadThreads 以免行抖动；到点后静默刷新与其它路径对齐。卸载后跳过。
+      if (this.isUnmounted) return;
+      void this.loadThreads(true);
+    }, duration * 1000);
+    this.undoToastTimers.set(thread.short_id, timer);
+  }
+
+  /** 点击撤销：关闭 Toast、清理计时器，并取消归档恢复活跃 */
+  private handleUndoArchive = async (groupNo: string, thread: Thread) => {
+    // 撤销 Toast 渲染在全局 portal，本组件卸载后仍可能被点击：短路避免对已卸载
+    // 组件 setState 并发出无意义请求。卸载时已统一 Toast.close，这里兜底。
+    if (this.isUnmounted) return;
+    const toastId = this.undoToastIds.get(thread.short_id);
+    if (toastId) Toast.close(toastId);
+    const timer = this.undoToastTimers.get(thread.short_id);
+    if (timer) clearTimeout(timer);
+    this.undoToastTimers.delete(thread.short_id);
+    this.undoToastIds.delete(thread.short_id);
+
+    if (this.archivingShortIds.has(thread.short_id)) return;
+    this.archivingShortIds.add(thread.short_id);
+    // 乐观恢复活跃
+    this.setThreadStatusOptimistic(thread.short_id, ThreadStatus.Active);
+    try {
+      await WKApp.dataSource.channelDataSource.threadUnarchive(
+        groupNo,
+        thread.short_id
+      );
+      // 卸载后短路：避免对已卸载组件 setState 并刷新列表。
+      if (this.isUnmounted) return;
+      this.syncThreadArchiveToSidebar({ ...thread, status: ThreadStatus.Active });
+      await this.loadThreads();
+    } catch {
+      if (this.isUnmounted) return;
+      this.setThreadStatusOptimistic(thread.short_id, ThreadStatus.Archived);
+      Toast.error(t("base.module.thread.unarchiveFailedRetry"));
+    } finally {
+      this.archivingShortIds.delete(thread.short_id);
+    }
+  };
+
+  /** 行内归档 / 取消归档按钮：无权限或状态不可操作时返回 null */
+  private renderArchiveButton(thread: Thread) {
+    if (!shouldShowArchiveButton(thread, this.canEditThread(thread))) {
+      return null;
+    }
+    const action: ArchiveAction | null = deriveArchiveAction(thread);
+    const archiving = action === "archive";
+    const label = archiving
+      ? t("base.module.thread.archive")
+      : t("base.module.thread.unarchive");
+    return (
+      <button
+        type="button"
+        className="wk-thread-panel-item-archive-btn"
+        data-action={action ?? ""}
+        title={label}
+        aria-label={label}
+        onClick={(e) => this.handleInlineArchiveToggle(thread, e)}
+      >
+        {archiving ? (
+          <Archive size={13} />
+        ) : (
+          <ArchiveRestore size={13} />
+        )}
+        <span className="wk-thread-panel-item-archive-btn-label">{label}</span>
+      </button>
+    );
+  }
+  /**
+   * 确保父群已进入关注集合（有关联的 category）。
+   * 子区关注依赖父群在 sidebar follow tab 的 follow set 里，
+   * 否则 mergeThreadEntries 会将子区过滤掉。
+   * 这里静默操作：父群已在某分组则跳过，否则移入默认分组。
+   * 如果用户之前手动取消关注了父群，这里会将其重新关注 —— 这是子区关注的前提条件。
+   */
+  private async ensureParentGroupInFollowSet(parentGroupNo: string) {
+    const spaceId = WKApp.shared.currentSpaceId;
+    if (!spaceId) return;
+
+    try {
+      // 清除父群取消关注标记（幂等，已关注则无操作）
+      await FollowService.refollowChannel({ group_no: parentGroupNo });
+    } catch (err) {
+      console.warn("[ThreadPanel] refollowChannel failed for parent group", parentGroupNo, err);
+    }
+
+    try {
+      const categories = await CategoryService.list(spaceId);
+      const alreadyInCategory = categories.some((cat) =>
+        cat.groups?.some((g) => g.group_no === parentGroupNo)
+      );
+      if (alreadyInCategory) return;
+
+      const targetCategory =
+        categories.find((cat) => cat.is_default && cat.category_id) ||
+        categories.find((cat) => cat.category_id);
+      if (targetCategory?.category_id) {
+        await CategoryService.moveGroupToCategory(parentGroupNo, {
+          category_id: targetCategory.category_id,
+        });
+      }
+    } catch (err) {
+      console.warn("[ThreadPanel] ensureParentGroupInFollowSet category failed", parentGroupNo, err);
+    }
+  }
+
   private renderThreadItem(thread: Thread) {
     const hasUnread = (thread.unread_count ?? 0) > 0;
     const creatorName = this.getCreatorName(thread);
@@ -1245,9 +1582,26 @@ export default class ThreadPanel extends Component<
             {hasUnread && <span className="wk-thread-panel-item-unread" />}
             <span className="wk-thread-panel-item-name">{thread.name}</span>
           </div>
-          <span className="wk-thread-panel-item-time">
-            {formatRelativeTime(thread.updated_at)}
-          </span>
+          <div className="wk-thread-panel-item-header-right">
+            {this.renderArchiveButton(thread)}
+            <button
+              type="button"
+              className="wk-thread-panel-item-follow-btn"
+              data-followed={thread.is_followed ? "true" : "false"}
+              title={thread.is_followed ? t("base.threadList.unfollow") : t("base.threadList.follow")}
+              aria-label={thread.is_followed ? t("base.threadList.unfollow") : t("base.threadList.follow")}
+              onClick={(e) => this.handleFollow(thread, e)}
+            >
+              <Star
+                size={15}
+                fill={thread.is_followed ? "var(--semi-color-warning)" : "none"}
+                color={thread.is_followed ? "var(--semi-color-warning)" : "var(--semi-color-text-2)"}
+              />
+            </button>
+            <span className="wk-thread-panel-item-time">
+              {formatRelativeTime(thread.updated_at)}
+            </span>
+          </div>
         </div>
         <div className="wk-thread-panel-item-meta">
           {t("base.threadPanel.itemMeta", {

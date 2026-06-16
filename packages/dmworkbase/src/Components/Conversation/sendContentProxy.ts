@@ -9,7 +9,7 @@
  *   1. **space_id**（仅 DM / ChannelTypePerson）—— `filterPersonMessagesBySpace`
  *      (#784) 依赖。BotFather 等 Bot 用此判断用户当前 Space。
  *
- *   2. **mention.humans / mention.ais**（任意 channel）——
+ *   2. **mention.humans / mention.ais / mention.entities**（任意 channel）——
  *      `wukongimjssdk@1.3.5` 的 `MessageContent.encode()` 写 mention 时
  *      只取 `this.mention.all` / `this.mention.uids`，**整段覆盖**
  *      `contentObj.mention`：
@@ -25,9 +25,9 @@
  *      }
  *      ```
  *
- *      所以仅靠 `encodeJSON` 注入 `mention.humans|ais` 不够—— SDK encode 后
- *      仍会被覆盖。必须在 `encode()` 的 wire bytes 出炉后做 post-process
- *      （decode-modify-encode）才能保住三态字段。
+ *      所以仅靠 `encodeJSON` 注入 `mention.humans|ais|entities` 不够——
+ *      SDK encode 后仍会被覆盖。必须在 `encode()` 的 wire bytes 出炉后做
+ *      post-process（decode-modify-encode）才能保住这些字段。
  *
  *      群聊里发 "@所有AI" 时若不修复，server 端收不到 `mention.ais=1`，
  *      AI bot 不响应。参考 octo-web#62 / YUJ-1378。
@@ -79,7 +79,16 @@ export function wrapSendContentForInjection(
     const injectSpaceId = !!injection.spaceId
     const injectMentionHumans = !!injection.mentionHumans
     const injectMentionAis = !!injection.mentionAis
-    const injectMention = injectMentionHumans || injectMentionAis
+    const mentionAny = (content as any).mention
+    const mentionEntities =
+        Array.isArray(mentionAny?.entities) && mentionAny.entities.length > 0
+            ? mentionAny.entities
+            : Array.isArray((content as any).contentObj?.mention?.entities) &&
+                (content as any).contentObj.mention.entities.length > 0
+              ? (content as any).contentObj.mention.entities
+              : undefined
+    const injectMentionEntities = !!mentionEntities
+    const injectMention = injectMentionHumans || injectMentionAis || injectMentionEntities
     if (!injectSpaceId && !injectMention) {
         return content
     }
@@ -100,6 +109,7 @@ export function wrapSendContentForInjection(
         // 不同入口的输出一致。
         if (injectMention) {
             if (!obj.mention) obj.mention = {}
+            if (injectMentionEntities) obj.mention.entities = mentionEntities
             if (injectMentionHumans) obj.mention.humans = 1
             if (injectMentionAis) obj.mention.ais = 1
         }
@@ -154,6 +164,7 @@ export function wrapSendContentForInjection(
                 const str = new TextDecoder().decode(bytes)
                 const obj = JSON.parse(str)
                 if (!obj.mention) obj.mention = {}
+                if (injectMentionEntities) obj.mention.entities = mentionEntities
                 if (injectMentionHumans) obj.mention.humans = 1
                 if (injectMentionAis) obj.mention.ais = 1
                 bytes = new TextEncoder().encode(JSON.stringify(obj))
@@ -178,6 +189,7 @@ export function wrapSendContentForInjection(
     }
     if (injectMention) {
         mergedObj.mention = { ...(mergedObj.mention || {}) }
+        if (injectMentionEntities) mergedObj.mention.entities = mentionEntities
         if (injectMentionHumans) mergedObj.mention.humans = 1
         if (injectMentionAis) mergedObj.mention.ais = 1
     }

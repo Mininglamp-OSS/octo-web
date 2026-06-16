@@ -75,6 +75,7 @@ export default function Message({
     <MessageRow
       {...row}
       isSelected={isSelected}
+      selectionMode={selectionMode}
       showCheckbox={selectionMode}
       onSelect={onSelect}
     >

@@ -362,7 +362,7 @@ export class Convert {
         channelInfo.orgData = { ...channelInfo.orgData, ...data }
         channelInfo.orgData.remark = data.remark ?? "";
         // GH #1121: 展示名解析接入 OCTO 实名认证。
-        // 优先级：remark（本地备注）> real_name（已实名时）> name（昵称）。
+        // 优先级：real_name（已实名时）> remark（本地备注）> name（昵称）。
         // 所有消费方统一读 `orgData.displayName`，无需逐点判断 real_name。
         // 硬约束：仅在 realname_verified 为 true/1 且 real_name 非空时才覆盖昵称；
         // 字段缺失（老后端）时 behavior 与原实现一致（退化到 remark 或 title）。
@@ -410,6 +410,8 @@ export class Convert {
         channelInfo.orgData.invite = data.invite;
         channelInfo.orgData.forbiddenAddFriend = data.forbidden_add_friend;
         channelInfo.orgData.save = data.save;
+        // 群级「允许免@回答」总开关：老数据无字段时回退 1（允许），零回归。
+        channelInfo.orgData.allow_no_mention = data.allow_no_mention ?? 1;
 
         channelInfo.logo = data.logo
         if (!channelInfo.logo || channelInfo.logo === "") {

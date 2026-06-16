@@ -12,6 +12,9 @@ import { RuntimesIcon } from '../Components/Icons/RuntimesIcon';
 import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
 
+let _summaryBadgeCount = 0;
+let _badgeListenerSetup = false;
+
 /**
  * 全局 ?verified=1 处理：CAS 实名认证完成后 verify-service 会 302 回
  * `${origin}${pathname}?verified=1`。不论落到 App 哪个路径都应该：
@@ -64,6 +67,15 @@ async function registerMenus() {
   }, {
     category: EndpointCategory.friendApplyDataChange,
   })
+
+  // Listen for summary badge count updates (emitted from dmworksummary)
+  if (!_badgeListenerSetup) {
+    _badgeListenerSetup = true;
+    WKApp.mittBus.on("summary-badge-update" as any, (payload: { count: number }) => {
+      _summaryBadgeCount = payload?.count ?? 0;
+      WKApp.menus.refresh();
+    });
+  }
 
   WKApp.menus.register("chat", (_context) => {
     const m = new Menus("chat", "/", t("app.nav.chat"), <ChatIcon />, <ChatIcon />)
@@ -126,6 +138,9 @@ async function registerMenus() {
 
   WKApp.menus.register("summary", (_context) => {
     const m = new Menus("summary", "/summary", t("app.nav.summary"), <SummaryIcon />, <SummaryIcon />)
+    if (_summaryBadgeCount > 0) {
+      m.badge = _summaryBadgeCount;
+    }
     m.onPress = () => {
       WKApp.routeLeft.popToRoot()
       const page = WKApp.route.get("/summary/create")
