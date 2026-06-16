@@ -138,7 +138,7 @@ function InfoTab({ bot }: { bot: Bot }) {
       <h3 className="wk-bd-section__title">配置</h3>
       <dl className="wk-bd-props">
         {/* PR-2: 删 #runtime_id (dev 级 PK, 用户用不到), 只留 kind. */}
-        <PropRow label="Runtime" value={<span className="wk-bd-mono">{bot.runtime_kind}</span>} />
+        <PropRow label="运行时" value={<span className="wk-bd-mono">{bot.runtime_kind}</span>} />
         <PropRow label="所有者" value={<OwnerLabel ownerUid={bot.owner_uid} />} />
         <PropRow label="状态" value={<span className="wk-bd-mono">{bot.status}</span>} />
         {/* PR-2: 删 Workspace 字段 — dev 级实现细节, 用户不需要管. */}
