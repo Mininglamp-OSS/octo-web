@@ -15,6 +15,8 @@ interface GlobalSearchProps {
     channel?: Channel; // 查询指定频道的聊天记录
     // item点击事件，传递item和type，type为contacts、group、message,file
     onClick?: (item: any, type: string) => void;
+    // #397: 关闭外层搜索框（透传给 TabContacts）
+    onClose?: () => void;
 }
 
 export default class GlobalSearch extends Component<GlobalSearchProps> {
@@ -61,6 +63,7 @@ export default class GlobalSearch extends Component<GlobalSearchProps> {
                     friends={vm.searchResult?.friends}
                     keyword={vm.keyword}
                     onClick={onClickOf("contacts")}
+                    onClose={this.props.onClose}
                 />
             </div>
             <div style={panelStyle("groups")}>

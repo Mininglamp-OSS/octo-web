@@ -1538,6 +1538,9 @@ export default class ChatPage extends Component<any, ChatPageState> {
                           vm.showGlobalSearch = false;
                         });
                       }}
+                      onClose={() => {
+                        vm.showGlobalSearch = false;
+                      }}
                     />
                   </ErrorBoundary>
                 </div>
