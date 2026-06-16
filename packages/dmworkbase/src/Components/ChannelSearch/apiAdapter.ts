@@ -108,6 +108,18 @@ function sentAtToSeconds(value?: string) {
   return Math.floor(time / 1000);
 }
 
+function normalizeImageUrl(path?: string) {
+  if (!path) return undefined;
+  if (/^(https?:|data:|blob:)/i.test(path)) return path;
+  const normalizedPath = path.replace(/^\/+/, "");
+  const commonDataSource = WKApp.dataSource?.commonDataSource;
+  if (commonDataSource?.getImageURL) {
+    return commonDataSource.getImageURL(normalizedPath);
+  }
+  const baseURL = WKApp.apiClient.config.apiURL || "";
+  return `${baseURL}${normalizedPath}`;
+}
+
 function secondsToDateOnly(seconds?: number) {
   if (!seconds) return undefined;
   const date = new Date(seconds * 1000);
@@ -179,7 +191,7 @@ function senderFromHit(hit: {
   return {
     uid,
     name: hit.sender_name || uid,
-    avatarUrl: hit.sender_avatar_url,
+    avatarUrl: normalizeImageUrl(hit.sender_avatar_url),
   };
 }
 
@@ -227,7 +239,8 @@ function mapMessageHit(
       messageKind === "forward"
         ? {
             title: hit.outer_preview?.title || "",
-            snippets: hit.snippet ? [hit.snippet] : [],
+            snippets: [],
+            childCount: hit.outer_preview?.child_count,
           }
         : undefined,
   };

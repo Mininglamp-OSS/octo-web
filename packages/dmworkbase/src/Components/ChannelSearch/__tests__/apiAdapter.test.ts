@@ -4,6 +4,7 @@ const mockState = vi.hoisted(() => ({
   post: vi.fn(),
   subscribers: vi.fn(),
   getChannelInfo: vi.fn(),
+  getImageURL: vi.fn((path: string) => `/api/v1/${path}`),
   parseThreadChannelId: vi.fn(),
 }));
 
@@ -50,9 +51,13 @@ vi.mock("../../../App", () => ({
       avatarUser: (uid: string) => `/avatar/${uid}`,
     },
     apiClient: {
+      config: { apiURL: "/api/v1/" },
       post: mockState.post,
     },
     dataSource: {
+      commonDataSource: {
+        getImageURL: mockState.getImageURL,
+      },
       channelDataSource: {
         subscribers: mockState.subscribers,
       },
@@ -230,6 +235,55 @@ describe("channel search API adapter response mapping", () => {
       channelType: 5,
       messageSeq: 14,
       kind: "video",
+    });
+  });
+
+  it("normalizes relative sender avatar paths from search hits", () => {
+    const item = mapMessageHit(
+      {
+        message_id: "m1",
+        message_seq: 12,
+        sender_id: "u1",
+        sender_name: "Alice",
+        sender_avatar_url: "users/u1/avatar",
+        sent_at: "2026-01-02T00:00:00Z",
+      },
+      baseQuery("message")
+    );
+
+    expect(mockState.getImageURL).toHaveBeenCalledWith("users/u1/avatar");
+    expect(item.sender).toMatchObject({
+      uid: "u1",
+      name: "Alice",
+      avatarUrl: "/api/v1/users/u1/avatar",
+    });
+  });
+
+  it("keeps forward matches as inner hit text and outer preview metadata", () => {
+    const item = mapMessageHit(
+      {
+        message_id: "m-forward",
+        message_seq: 16,
+        message_kind: "forward",
+        snippet: "命中的<mark>聊天</mark>记录正文",
+        sender_id: "u1",
+        sent_at: "2026-01-02T00:00:00Z",
+        outer_preview: {
+          child_count: 2,
+        },
+      },
+      baseQuery("message")
+    );
+
+    expect(item).toMatchObject({
+      kind: "merge_forward",
+      text: "命中的<mark>聊天</mark>记录正文",
+      matchReason: "命中的<mark>聊天</mark>记录正文",
+      forward: {
+        title: "",
+        snippets: [],
+        childCount: 2,
+      },
     });
   });
 

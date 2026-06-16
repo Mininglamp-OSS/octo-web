@@ -72,6 +72,8 @@
   "channelSearch.filter.timeDesc": "时间倒序",
   "channelSearch.filter.title": "筛选",
   "channelSearch.filter.today": "今天",
+  "channelSearch.forward.childCount": "共 {{count}} 条聊天记录",
+  "channelSearch.forward.defaultTitle": "聊天记录",
   "channelSearch.loadMore": "加载更多",
   "channelSearch.loading": "搜索中...",
   "channelSearch.locateToChat": "点击定位到聊天",

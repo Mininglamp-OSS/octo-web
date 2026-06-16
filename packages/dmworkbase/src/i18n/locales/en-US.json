@@ -72,6 +72,8 @@
   "channelSearch.filter.timeDesc": "Newest first",
   "channelSearch.filter.title": "Filter",
   "channelSearch.filter.today": "Today",
+  "channelSearch.forward.childCount": "{{count}} chat messages",
+  "channelSearch.forward.defaultTitle": "Chat history",
   "channelSearch.loadMore": "Load more",
   "channelSearch.loading": "Searching...",
   "channelSearch.locateToChat": "Locate in chat",

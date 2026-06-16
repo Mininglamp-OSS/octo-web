@@ -1677,6 +1677,88 @@ export default class ConversationVM extends ProviderListener {
             this.ensureBotChannelInfos()
         }, locateOffsetY)
     }
+
+    async requestMessagesAroundMessageSeq(messageSeq: number, stateCallback?: () => void) {
+        if (!messageSeq || messageSeq <= 0) {
+            if (stateCallback) {
+                stateCallback()
+            }
+            return
+        }
+
+        this.loading = true
+        this.initLocateMessageSeq = 0
+        this.liveFoldRevokeClientMsgNos.clear()
+        this.notifyListener()
+
+        // 搜索定位不依赖当前已加载列表，而是以目标 seq 建立一个前后都可继续分页的窗口。
+        const anchorStartMessageSeq = Math.max(0, messageSeq - 1)
+        const olderOpts = new SyncMessageOptions()
+        olderOpts.limit = WKApp.config.pageSizeOfMessage
+        olderOpts.pullMode = PullMode.Down
+        olderOpts.startMessageSeq = anchorStartMessageSeq
+
+        const newerOpts = new SyncMessageOptions()
+        newerOpts.limit = WKApp.config.pageSizeOfMessage
+        newerOpts.pullMode = PullMode.Up
+        newerOpts.startMessageSeq = anchorStartMessageSeq
+
+        const [olderRemoteMessages, newerRemoteMessages] = await Promise.all([
+            WKApp.conversationProvider.syncMessages(this.channel, olderOpts),
+            WKApp.conversationProvider.syncMessages(this.channel, newerOpts),
+        ])
+        const toAvailableMessageWraps = (remoteMessages?: Message[]) => {
+            const messages = new Array<Message>()
+            if (remoteMessages && remoteMessages.length > 0) {
+                remoteMessages.forEach(msg => {
+                    if (!msg.isDeleted) {
+                        messages.push(msg)
+                    }
+                })
+            }
+            return this.sortMessages(this.toMessageWraps(messages))
+        }
+
+        const olderWraps = toAvailableMessageWraps(olderRemoteMessages)
+        const newerWraps = toAvailableMessageWraps(newerRemoteMessages)
+        const sendingMessages = this.getSendingMessages(this.channel)
+        let allMessages = ConversationVM.deduplicateMessages([...olderWraps, ...newerWraps, ...sendingMessages])
+        allMessages = this.sortMessages(allMessages)
+
+        const firstSeq = olderWraps.find(msg => msg.messageSeq > 0)?.messageSeq
+            || newerWraps.find(msg => msg.messageSeq > 0)?.messageSeq
+            || 0
+        const lastSeq = [...newerWraps].reverse().find(msg => msg.messageSeq > 0)?.messageSeq
+            || [...olderWraps].reverse().find(msg => msg.messageSeq > 0)?.messageSeq
+            || 0
+        const lastRemoteMessageSeq = this.conversationLastMessageSeq()
+        const olderRemoteCount = olderRemoteMessages?.length || 0
+        const newerRemoteCount = newerRemoteMessages?.length || 0
+
+        this.pulldownFinished = firstSeq > 0
+            ? firstSeq <= 1
+            : olderRemoteCount <= 0
+        if (lastRemoteMessageSeq > 0 && lastSeq > 0) {
+            this.pullupHasMore = lastSeq < lastRemoteMessageSeq
+        } else {
+            this.pullupHasMore = newerRemoteCount >= newerOpts.limit
+        }
+
+        if (!this.pullupHasMore && this.pendingMessages.length > 0) {
+            allMessages = this.sortMessages([...allMessages, ...this.pendingMessages])
+            this.pendingMessages = []
+        }
+
+        this.messagesOfOrigin = allMessages
+        this.refreshMessages(this.messagesOfOrigin, () => {
+            this.loading = false
+            if (stateCallback) {
+                stateCallback()
+            }
+            this.ensureBotChannelInfos()
+        })
+    }
+
     private getMessageSortOrder(message: MessageWrap): number {
         if (message.messageSeq && message.messageSeq > 0) {
             return message.messageSeq * OrderFactor

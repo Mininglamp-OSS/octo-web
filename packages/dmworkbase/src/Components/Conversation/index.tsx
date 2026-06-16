@@ -1080,7 +1080,7 @@ export class Conversation
       highlightAndScroll(messageWrap);
       return;
     }
-    this.vm.requestMessagesOfFirstPage(messageSeq, () => {
+    this.vm.requestMessagesAroundMessageSeq(messageSeq, () => {
       if (this.vm.findMessageWithMessageSeq(messageSeq)) {
         this.locateMessage(messageSeq);
       }

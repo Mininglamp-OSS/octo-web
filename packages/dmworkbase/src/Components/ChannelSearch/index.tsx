@@ -257,14 +257,18 @@ const HighlightText = React.memo(function HighlightText({
 
 const SenderAvatar: React.FC<{
   uid: string;
+  sender?: ChannelSearchSender;
   getSender: GetChannelSearchSender;
-}> = ({ uid, getSender }) => (
-  <WKAvatar
-    src={getSender(uid).avatarUrl || WKApp.shared.avatarUser(uid)}
-    style={{ width: "24px", height: "24px" }}
-    lazy
-  />
-);
+}> = ({ uid, sender, getSender }) => {
+  const resolvedSender = sender || getSender(uid);
+  return (
+    <WKAvatar
+      src={resolvedSender.avatarUrl || WKApp.shared.avatarUser(uid)}
+      style={{ width: "24px", height: "24px" }}
+      lazy
+    />
+  );
+};
 
 const FilterSenderAvatar: React.FC<{
   uid: string;
@@ -732,7 +736,11 @@ const MessageResultItem = React.memo(function MessageResultItem({
 
   return (
     <div className="wk-channel-search-result wk-channel-search-message-result">
-      <SenderAvatar uid={item.senderUid} getSender={getSender} />
+      <SenderAvatar
+        uid={item.senderUid}
+        sender={item.sender}
+        getSender={getSender}
+      />
       <div className="wk-channel-search-result-body">
         <div className="wk-channel-search-result-meta">
           <span>{sender.name}</span>
@@ -752,7 +760,13 @@ const MessageResultItem = React.memo(function MessageResultItem({
             </div>
             <div className="wk-channel-search-forward-card">
               <div className="wk-channel-search-forward-title">
-                <HighlightText text={item.forward?.title} keyword={keyword} />
+                <HighlightText
+                  text={
+                    item.forward?.title ||
+                    t("base.channelSearch.forward.defaultTitle")
+                  }
+                  keyword={keyword}
+                />
               </div>
               {item.forward?.snippets.map((snippet) => (
                 <div
@@ -762,6 +776,14 @@ const MessageResultItem = React.memo(function MessageResultItem({
                   <HighlightText text={snippet} keyword={keyword} />
                 </div>
               ))}
+              {item.forward?.snippets.length === 0 &&
+                !!item.forward?.childCount && (
+                  <div className="wk-channel-search-forward-snippet">
+                    {t("base.channelSearch.forward.childCount", {
+                      values: { count: item.forward.childCount },
+                    })}
+                  </div>
+                )}
             </div>
           </>
         ) : (
@@ -829,7 +851,11 @@ const MediaInlineResult = React.memo(function MediaInlineResult({
   const sender = resolveSender(item, getSender);
   return (
     <div className="wk-channel-search-result wk-channel-search-media-inline">
-      <SenderAvatar uid={item.senderUid} getSender={getSender} />
+      <SenderAvatar
+        uid={item.senderUid}
+        sender={item.sender}
+        getSender={getSender}
+      />
       <div className="wk-channel-search-result-body">
         <div className="wk-channel-search-result-meta">
           <span>{sender.name}</span>
@@ -920,7 +946,11 @@ const FileInlineResult = React.memo(function FileInlineResult({
 
   return (
     <div className="wk-channel-search-result wk-channel-search-file-inline">
-      <SenderAvatar uid={item.senderUid} getSender={getSender} />
+      <SenderAvatar
+        uid={item.senderUid}
+        sender={item.sender}
+        getSender={getSender}
+      />
       <div className="wk-channel-search-result-body">
         <div className="wk-channel-search-result-meta">
           <span>{sender.name}</span>

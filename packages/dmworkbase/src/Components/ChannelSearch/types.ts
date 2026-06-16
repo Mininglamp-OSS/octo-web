@@ -57,6 +57,7 @@ export interface ChannelSearchMediaInfo {
 export interface ChannelSearchForwardInfo {
   title: string;
   snippets: string[];
+  childCount?: number;
 }
 
 export interface ChannelSearchItem {
