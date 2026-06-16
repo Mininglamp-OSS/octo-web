@@ -6,12 +6,17 @@
 //
 // 独立无副作用文件:index.tsx 与单测都从这里 import,避免把页面模块的
 // 顶层副作用(WKApp / Semi / CSS / BotsTab 等)拉进 vitest。
+// i18n 也只从 instance 子模块取单例 t,绕开 i18n barrel 里 I18nProvider →
+// @douyinfe/semi-ui → lottie-web(canvas)的重副作用链,保持本文件可被
+// 纯单测安全 import。
+import { t } from "../../i18n/instance"
+
 export function deviceRuntimeMode(group: { runtimes: Array<{ runtime_mode?: string | null }> }): string {
     const modes = new Set<string>()
     for (const r of group.runtimes) {
         if (r.runtime_mode) modes.add(r.runtime_mode)
     }
-    if (modes.size === 0) return "未知"
+    if (modes.size === 0) return t("base.runtimes.common.unknown")
     if (modes.size === 1) return modes.values().next().value as string
-    return "混合"
+    return t("base.runtimes.mode.mixed")
 }

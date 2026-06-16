@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Toast } from '@douyinfe/semi-ui';
 import { createBot, isSupportedRuntimeKind, providerLabels } from './botsApi';
+import { useI18n } from '../../i18n';
 
 // CreateBotModal — 2-step device-first selector.
 //
@@ -81,6 +82,7 @@ function groupByDevice(runtimes: RuntimeOption[]): DeviceGroup[] {
 }
 
 export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props) {
+  const { t } = useI18n();
   const [name, setName] = useState('');
   const [deviceKey, setDeviceKey] = useState<string | null>(null);
   const [runtimeId, setRuntimeId] = useState<number | null>(null);
@@ -148,11 +150,11 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
         name: name.trim(),
         runtime_kind: selectedRuntime.kind,
       });
-      Toast.success(`已创建：${bot.name}`);
+      Toast.success(t("base.runtimes.createBot.created", { values: { name: bot.name } }));
       onCreated(bot.id);
       onClose();
     } catch (e: any) {
-      Toast.error(`创建失败：${String(e?.message || e)}`);
+      Toast.error(t("base.runtimes.createBot.createFailed", { values: { error: String(e?.message || e) } }));
     } finally {
       setBusy(false);
     }
@@ -160,23 +162,23 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
 
   return (
     <Modal
-      title="新建 Bot"
+      title={t("base.runtimes.createBot.title")}
       visible={visible}
       onCancel={onClose}
       onOk={handleSubmit}
-      okText={busy ? '创建中…' : '创建'}
+      okText={busy ? t("base.runtimes.createBot.creating") : t("base.runtimes.createBot.create")}
       okButtonProps={{ disabled: !canSubmit }}
       maskClosable={!busy}
       width={520}
     >
       <div className="wk-rt-cb__form">
         <div className="wk-rt-cb__field">
-          <label className="wk-rt-cb__label">名称</label>
+          <label className="wk-rt-cb__label">{t("base.runtimes.createBot.name")}</label>
           <input
             className="wk-rt-cb__input"
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="如：dev / reviewer / writer"
+            placeholder={t("base.runtimes.createBot.namePlaceholder")}
             disabled={busy}
             autoFocus
             maxLength={64}
@@ -184,13 +186,13 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
         </div>
 
         <div className="wk-rt-cb__field">
-          <label className="wk-rt-cb__label">设备</label>
+          <label className="wk-rt-cb__label">{t("base.runtimes.createBot.device")}</label>
           {groups.length === 0 ? (
             <div className="wk-rt-cb__empty">
-              暂无可用设备。请先创建 Runtime（点上方 + → 创建 Runtime）。
+              {t("base.runtimes.createBot.noDevices")}
             </div>
           ) : (
-            <div className="wk-rt-cb__chips" role="radiogroup" aria-label="选择设备">
+            <div className="wk-rt-cb__chips" role="radiogroup" aria-label={t("base.runtimes.createBot.selectDeviceAria")}>
               {groups.map(g => {
                 const active = deviceKey === g.key;
                 return (
@@ -207,7 +209,7 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
                   >
                     <span className="wk-rt-cb__chip-name">{g.device_name}</span>
                     <span className="wk-rt-cb__chip-meta">
-                      {g.runtimes.filter(r => r.status === 'online').length}/{g.runtimes.length} 在线
+                      {t("base.runtimes.createBot.onlineCount", { values: { online: g.runtimes.filter(r => r.status === 'online').length, total: g.runtimes.length } })}
                     </span>
                   </button>
                 );
@@ -217,11 +219,11 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
         </div>
 
         <div className="wk-rt-cb__field">
-          <label className="wk-rt-cb__label">运行时</label>
+          <label className="wk-rt-cb__label">{t("base.runtimes.createBot.runtime")}</label>
           {!activeGroup ? (
-            <div className="wk-rt-cb__empty">先选择设备</div>
+            <div className="wk-rt-cb__empty">{t("base.runtimes.createBot.selectDeviceFirst")}</div>
           ) : (
-            <div className="wk-rt-cb__rt-list" role="radiogroup" aria-label="选择运行时">
+            <div className="wk-rt-cb__rt-list" role="radiogroup" aria-label={t("base.runtimes.createBot.selectRuntimeAria")}>
               {activeGroup.runtimes.map(r => {
                 const isOnline = r.status === 'online';
                 const enabled = r.supported && isOnline && !busy;
@@ -241,10 +243,10 @@ export function CreateBotModal({ visible, runtimes, onClose, onCreated }: Props)
                     />
                     <span className="wk-rt-cb__rt-kind">{providerLabels[r.kind] ?? r.kind}</span>
                     <span className="wk-rt-cb__rt-status" data-status={isOnline ? 'online' : 'offline'}>
-                      {isOnline ? '在线' : '离线'}
+                      {isOnline ? t("base.runtimes.common.online") : t("base.runtimes.common.offline")}
                     </span>
                     {!r.supported && (
-                      <span className="wk-rt-cb__rt-tag">暂不支持</span>
+                      <span className="wk-rt-cb__rt-tag">{t("base.runtimes.createBot.unsupported")}</span>
                     )}
                   </label>
                 );
