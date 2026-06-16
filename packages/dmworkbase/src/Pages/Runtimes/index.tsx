@@ -92,10 +92,10 @@ function humanizeAge(epochMs: number): string {
     if (!epochMs) return "—"
     const diff = Date.now() - epochMs
     if (diff < 0)          return "—"
-    if (diff < 60_000)     return "Just now"
-    if (diff < 3_600_000)  return `${Math.floor(diff / 60_000)} min ago`
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hr ago`
-    return `${Math.floor(diff / 86_400_000)} day${Math.floor(diff / 86_400_000) === 1 ? "" : "s"} ago`
+    if (diff < 60_000)     return "刚刚"
+    if (diff < 3_600_000)  return `${Math.floor(diff / 60_000)} 分钟前`
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
+    return `${Math.floor(diff / 86_400_000)} 天前`
 }
 
 // 取 device 下所有 runtime 的 max last_seen_at, 返 epoch ms (无则 0).
@@ -1340,7 +1340,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                         const pluginHint = this.props.versionHints[rt.id]
                         return octoPlugin ? (
                             <div className="wk-rt-field">
-                                <label>Octo 插件</label>
+                                <label>Octo 插件版本</label>
                                 <span className="wk-rt-mono">
                                     {octoPlugin.version}
                                     {pluginHint?.plugin_has_update && (
