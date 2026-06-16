@@ -5,6 +5,7 @@ import WKApp from "../../App"
 import WKAvatar from "../../Components/WKAvatar"
 import { BotsTab, type BotsTabHandle } from "./BotsTab"
 import { CreateRuntimeModal } from "./CreateRuntimeModal"
+import { deviceRuntimeMode } from "./deviceRuntimeMode"
 import { Bot, botStatusLabel, listBots, providerLabels } from "./botsApi"
 import { ProviderLogo } from "./providerLogos"
 import "./index.css"
@@ -91,10 +92,10 @@ function humanizeAge(epochMs: number): string {
     if (!epochMs) return "—"
     const diff = Date.now() - epochMs
     if (diff < 0)          return "—"
-    if (diff < 60_000)     return "Just now"
-    if (diff < 3_600_000)  return `${Math.floor(diff / 60_000)} min ago`
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hr ago`
-    return `${Math.floor(diff / 86_400_000)} day${Math.floor(diff / 86_400_000) === 1 ? "" : "s"} ago`
+    if (diff < 60_000)     return "刚刚"
+    if (diff < 3_600_000)  return `${Math.floor(diff / 60_000)} 分钟前`
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
+    return `${Math.floor(diff / 86_400_000)} 天前`
 }
 
 // 取 device 下所有 runtime 的 max last_seen_at, 返 epoch ms (无则 0).
@@ -315,22 +316,26 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
 
                 <div className="wk-rt-detail-grid">
                     <div className="wk-rt-field">
-                        <label>Device Name</label>
+                        <label>设备名称</label>
                         <span>{group.deviceName}</span>
                     </div>
                     <div className="wk-rt-field">
-                        <label>Runtimes</label>
+                        <label>运行时</label>
                         <span>{group.runtimes.length}</span>
+                    </div>
+                    <div className="wk-rt-field">
+                        <label>运行模式</label>
+                        <span>{deviceRuntimeMode(group)}</span>
                     </div>
                     {(group.osName || group.arch) && (
                         <div className="wk-rt-field">
-                            <label>OS / Arch</label>
+                            <label>系统 / 架构</label>
                             <span>{[group.osName, group.arch].filter(Boolean).join(" ")}</span>
                         </div>
                     )}
                     {group.cliVersion && (
                         <div className="wk-rt-field">
-                            <label>Daemon Version</label>
+                            <label>Daemon 版本</label>
                             <span className="wk-rt-mono">
                                 {group.cliVersion}
                                 {this.props.daemonVersionHint?.has_update && (
@@ -378,7 +383,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                         </div>
                     )}
                     <div className="wk-rt-field">
-                        <label>Daemon ID</label>
+                        <label>设备 ID</label>
                         <span className="wk-rt-mono">{group.daemonId}</span>
                     </div>
                     {(() => {
@@ -392,7 +397,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                         if (!ms) return null
                         return (
                             <div className="wk-rt-field">
-                                <label>Last Active</label>
+                                <label>最近活跃</label>
                                 <span title={new Date(ms).toLocaleString()}>
                                     {humanizeAge(ms)}
                                 </span>
@@ -1310,22 +1315,18 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
 
                 <div className="wk-rt-detail-grid wk-rt-detail-grid--single">
                     <div className="wk-rt-field">
-                        <label>Runtime Mode</label>
-                        <span>{rt.runtime_mode}</span>
-                    </div>
-                    <div className="wk-rt-field">
-                        <label>Provider</label>
+                        <label>提供方</label>
                         <span>{providerLabels[rt.provider] || rt.provider}</span>
                     </div>
                     <div className="wk-rt-field">
-                        <label>Bots</label>
+                        <label>Bot 数量</label>
                         <span>{this.props.botCount ?? 0}</span>
                     </div>
                     {/* PR-2: 探活由 device row 绿点 + daemon heartbeat
                         体现; runtime 级 last_seen_at / device_name /
                         daemon_id 都是 dev 调试字段, 用户不需要看到, 全删. */}
                     <div className="wk-rt-field">
-                        <label>Version</label>
+                        <label>版本</label>
                         <span className="wk-rt-mono">
                             {rt.version || "N/A"}
                             {this.props.versionHints[rt.id]?.has_update && (
@@ -1339,7 +1340,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                         const pluginHint = this.props.versionHints[rt.id]
                         return octoPlugin ? (
                             <div className="wk-rt-field">
-                                <label>Octo Plugin</label>
+                                <label>Octo 插件版本</label>
                                 <span className="wk-rt-mono">
                                     {octoPlugin.version}
                                     {pluginHint?.plugin_has_update && (
@@ -1357,8 +1358,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     的"创建 Bot"重复. caster 拍的去重. */}
 
                 <div className="wk-rt-detail-footer">
-                    <span>Created: {rt.created_at}</span>
-                    <span>Updated: {rt.updated_at}</span>
+                    <span>创建于:{rt.created_at}</span>
+                    <span>更新于:{rt.updated_at}</span>
                 </div>
                 {deleting && <div className="wk-rt-deleting-overlay">Deleting...</div>}
             </div>
@@ -1942,11 +1943,6 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     render() {
         const { runtimes, selectedId, loading, expandedDevices, createMenuOpen, runtimeModalOpen } = this.state
         const groups = groupByDevice(runtimes)
-        // "M online" 含义重定义 — 不再是
-        // 顶部计数纯报"装置-运行时"槽位规模, 不报死活. 单 runtime 死活
-        // 由 DeviceDetail 右上角 "X/Y Online" 表达; 顶栏只回答 "我有几个
-        // device, 加起来几个 runtime", 跟左树展开后的总条数一致.
-        const totalRuntimes = groups.reduce((sum, g) => sum + g.runtimes.length, 0)
 
         return (
             <div className="wk-rt-list">
@@ -1959,9 +1955,6 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 <div className="wk-rt-pageheader">
                     <div className="wk-rt-pagetitle">
                         <h2 className="wk-rt-pagetitle-text">运行时</h2>
-                        <span className="wk-rt-pageheader__meta" aria-live="polite">
-                            {groups.length} device{groups.length !== 1 ? "s" : ""} · {totalRuntimes} runtime{totalRuntimes !== 1 ? "s" : ""}
-                        </span>
                         <div className="wk-rt-create-wrap">
                             <button
                                 ref={this.createBtnRef}
