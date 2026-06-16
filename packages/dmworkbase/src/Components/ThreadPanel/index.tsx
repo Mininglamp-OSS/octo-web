@@ -45,6 +45,7 @@ import { FileListPanel } from "../FilePreviewPanel/FileListPanel";
 import { MarkdownRenderer } from "../FilePreviewPanel/renderers/MarkdownRenderer";
 import { HtmlRenderer } from "../FilePreviewPanel/renderers/HtmlRenderer";
 import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
+import { isChannelSearchEnabled } from "../ChannelSearch/feature";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
 import {
@@ -166,6 +167,7 @@ export default class ThreadPanel extends Component<
   private undoToastIds = new Map<string, string>();
   /** 组件是否已卸载，撤销 Toast 渲染在全局 portal，卸载后回调需短路 */
   private isUnmounted = false;
+  private _unsubscribeRemoteConfig?: () => void;
 
   constructor(props: ThreadPanelProps) {
     super(props);
@@ -220,10 +222,17 @@ export default class ThreadPanel extends Component<
     }
     // Set CSS variable on mount so chat area calc has the correct width
     this.syncCssVariable(this.state.panelWidth);
+    this._unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(
+      () => {
+        if (!this.isUnmounted) this.forceUpdate();
+      }
+    );
   }
 
   componentWillUnmount() {
     this.isUnmounted = true;
+    this._unsubscribeRemoteConfig?.();
+    this._unsubscribeRemoteConfig = undefined;
     document.removeEventListener("mousemove", this.onPanelDragMove);
     document.removeEventListener("mouseup", this.onPanelDragEnd);
     if (this.state.isDragging) {
@@ -637,7 +646,7 @@ export default class ThreadPanel extends Component<
     const threadChannel = this.getThreadSearchChannel(
       this.state.vmState.thread
     );
-    if (!threadChannel) return;
+    if (!isChannelSearchEnabled(threadChannel)) return;
 
     const opts = new ShowConversationOptions();
     opts.openChannelSearch = true;
@@ -1079,6 +1088,8 @@ export default class ThreadPanel extends Component<
     const { onClose, filePreview, onFilePreviewClose } = this.props;
     const { view, vmState, showMoreMenu, fileViewMode, isTocOpen } = this.state;
     const thread = vmState.thread;
+    const threadSearchChannel = this.getThreadSearchChannel(thread);
+    const canOpenChannelSearch = isChannelSearchEnabled(threadSearchChannel);
 
     // 文件预览模式：使用 FilePreviewHeader 组件
     if (filePreview) {
@@ -1249,7 +1260,7 @@ export default class ThreadPanel extends Component<
                       )}
                     </>
                   )}
-                  {vmState.thread && (
+                  {vmState.thread && canOpenChannelSearch && (
                     <div
                       className="wk-thread-more-menu-item"
                       onClick={this.handleOpenChannelSearch}

@@ -191,6 +191,7 @@ export type { OidcProviderConfig } from "./Service/OidcConfig";
 export class WKRemoteConfig {
   revokeSecond: number = 2 * 60; // 撤回时间
   threadOn: boolean = false; // 子区功能开关，默认关闭
+  messagesSearchOn: boolean = false; // 会话内聊天记录搜索开关，默认关闭
   disableUserCreateSpace: boolean = false; // 是否关闭普通用户创建 Space 入口
   /**
    * 是否关闭 Web 登录页的前端临时迁移提示。
@@ -296,11 +297,13 @@ export class WKRemoteConfig {
     return WKApp.apiClient.get("common/appconfig").then((result) => {
       const wasSuccessful = this.requestSuccess;
       const previousDisableUserCreateSpace = this.disableUserCreateSpace;
+      const previousMessagesSearchOn = this.messagesSearchOn;
       const previousSuppressLoginMigrationNotice =
         this.suppressLoginMigrationNotice;
       this.requestSuccess = true;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
+      this.messagesSearchOn = parseRemoteBool(result["messages_search_on"]);
       this.disableUserCreateSpace = parseRemoteBool(
         result["disable_user_create_space"]
       );
@@ -312,6 +315,7 @@ export class WKRemoteConfig {
       if (!wasSuccessful) this.notifyListeners();
       if (
         previousDisableUserCreateSpace !== this.disableUserCreateSpace ||
+        previousMessagesSearchOn !== this.messagesSearchOn ||
         previousSuppressLoginMigrationNotice !==
           this.suppressLoginMigrationNotice
       ) {

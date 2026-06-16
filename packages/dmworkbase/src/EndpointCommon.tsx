@@ -5,6 +5,7 @@ import { ChatContentPage } from "./Pages/Chat";
 import { EndpointCategory, EndpointID } from "./Service/Const";
 import { EndpointManager } from "./Service/Module";
 import ConversationContext from "./Components/Conversation/context";
+import { isChannelSearchEnabled } from "./Components/ChannelSearch/feature";
 
 export class MessageContextMenus {
   title!: string;
@@ -168,7 +169,9 @@ export class EndpointCommon {
             key={key}
             channel={channel}
             initLocateMessageSeq={initLocateMessageSeq}
-            initialShowChannelSearch={!!opts.openChannelSearch}
+            initialShowChannelSearch={
+              !!opts.openChannelSearch && isChannelSearchEnabled(channel)
+            }
           ></ChatContentPage>
         );
       },

@@ -18,6 +18,7 @@ import React, { ElementType } from "react";
 import { Smile, Scissors, ImagePlus, Paperclip, AtSign } from "lucide-react";
 import { Howl, Howler } from "howler";
 import WKApp, { FriendApply, FriendApplyState, ThemeMode } from "./App";
+import { isChannelSearchEnabled } from "./Components/ChannelSearch/feature";
 import ChannelQRCode from "./Components/ChannelQRCode";
 import { ChannelSettingRouteData } from "./Components/ChannelSetting/context";
 import { IndexTableItem } from "./Components/IndexTable";
@@ -1889,15 +1890,10 @@ export default class BaseModule implements IModule {
       "channel.base.settingMessageHistory",
       (context) => {
         const data = context.routeData() as ChannelSettingRouteData;
-        const channelType = data.channel.channelType;
-        const supportsChannelSearch =
-          channelType === ChannelTypeGroup ||
-          channelType === ChannelTypePerson ||
-          channelType === ChannelTypeCommunityTopic;
         if (!data.onOpenChannelSearch) {
           return undefined;
         }
-        if (!supportsChannelSearch) {
+        if (!isChannelSearchEnabled(data.channel)) {
           return undefined;
         }
 

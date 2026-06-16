@@ -27,6 +27,7 @@ import WKApp, { ThemeMode } from "../../App";
 import ChannelSetting from "../../Components/ChannelSetting";
 import ChannelSearchPanel from "../../Components/ChannelSearch";
 import { createChannelSearchApiDataSource } from "../../Components/ChannelSearch/apiAdapter";
+import { isChannelSearchEnabled } from "../../Components/ChannelSearch/feature";
 import type {
   ChannelSearchDataSource,
   ChannelSearchItem,
@@ -261,6 +262,7 @@ export class ChatContentPage extends Component<
   private channelSearchDataSourceKey = "";
   private channelSearchDataSource?: ChannelSearchDataSource;
   private channelSearchPanelState?: ChannelSearchPanelState;
+  private _unsubscribeChannelSearchConfig?: () => void;
 
   constructor(props: any) {
     super(props);
@@ -278,7 +280,9 @@ export class ChatContentPage extends Component<
       previewHadThreadShell: false,
       showSummaryPanel: false,
       summaryPanelView: "new",
-      showChannelSearch: !!props.initialShowChannelSearch,
+      showChannelSearch:
+        !!props.initialShowChannelSearch &&
+        isChannelSearchEnabled(props.channel),
       previewReturnChannelSearch: false,
     };
   }
@@ -412,6 +416,23 @@ export class ChatContentPage extends Component<
     this.channelSearchPanelState = undefined;
   };
 
+  private _openChannelSearchPanel = () => {
+    if (!isChannelSearchEnabled(this.props.channel)) return;
+    this._clearChannelSearchState();
+    this.setState({
+      showChannelSearch: true,
+      showChannelSetting: false,
+      showThreadPanel: false,
+      activeThread: null,
+      previewFile: null,
+      activePreviewMessageId: null,
+      previewReturnChannelSearch: false,
+      showMatterPanel: false,
+      showMatterDetailPanel: false,
+      showSummaryPanel: false,
+    });
+  };
+
   /**
    * 关闭文件预览 (X 或 ←) 的统一收尾。
    *   - 来源 = 事项详情 (previewReturnMatterId 非空): 事项面板被 display:none
@@ -432,9 +453,10 @@ export class ChatContentPage extends Component<
       previewReturnMatterId: null,
       previewReturnChannelSearch: false,
       previewHadThreadShell: false,
-      showChannelSearch: fromChannelSearch
-        ? true
-        : this.state.showChannelSearch,
+      showChannelSearch:
+        fromChannelSearch && isChannelSearchEnabled(this.props.channel)
+          ? true
+          : this.state.showChannelSearch,
       ...(shouldResetThread
         ? { showThreadPanel: false, activeThread: null }
         : {}),
@@ -458,6 +480,22 @@ export class ChatContentPage extends Component<
       }
     };
     WKSDK.shared().channelManager.addListener(this.channelInfoListener);
+    this._unsubscribeChannelSearchConfig =
+      WKApp.remoteConfig.addConfigChangeListener(() => {
+        if (
+          !isChannelSearchEnabled(this.props.channel) &&
+          (this.state.showChannelSearch ||
+            this.state.previewReturnChannelSearch)
+        ) {
+          this._clearChannelSearchState();
+          this.setState({
+            showChannelSearch: false,
+            previewReturnChannelSearch: false,
+          });
+          return;
+        }
+        this.forceUpdate();
+      });
 
     // 注册 pending-thread 事件监听（当前频道已打开时直接导航到子区）。
     // 跟文件预览 / 事项列表 / 事项详情互斥 (同一侧边容器)。
@@ -657,19 +695,17 @@ export class ChatContentPage extends Component<
 
     if (
       this.props.initialShowChannelSearch &&
-      !prevProps.initialShowChannelSearch
+      !prevProps.initialShowChannelSearch &&
+      isChannelSearchEnabled(channel)
     ) {
+      this._openChannelSearchPanel();
+    }
+
+    if (!isChannelSearchEnabled(channel) && this.state.showChannelSearch) {
+      this._clearChannelSearchState();
       this.setState({
-        showChannelSearch: true,
-        showChannelSetting: false,
-        showThreadPanel: false,
-        activeThread: null,
-        previewFile: null,
-        activePreviewMessageId: null,
+        showChannelSearch: false,
         previewReturnChannelSearch: false,
-        showMatterPanel: false,
-        showMatterDetailPanel: false,
-        showSummaryPanel: false,
       });
     }
 
@@ -781,6 +817,8 @@ export class ChatContentPage extends Component<
     if (this._onToggleSummaryPanel) {
       WKApp.mittBus.off("wk:toggle-summary-panel", this._onToggleSummaryPanel);
     }
+    this._unsubscribeChannelSearchConfig?.();
+    this._unsubscribeChannelSearchConfig = undefined;
     WKSDK.shared().channelManager.removeListener(this.channelInfoListener);
   }
 
@@ -1169,21 +1207,11 @@ export class ChatContentPage extends Component<
               conversationContext={this.conversationContext}
               key={channel.getChannelKey()}
               channel={channel}
-              onOpenChannelSearch={() => {
-                this._clearChannelSearchState();
-                this.setState({
-                  showChannelSearch: true,
-                  showChannelSetting: false,
-                  showThreadPanel: false,
-                  activeThread: null,
-                  previewFile: null,
-                  activePreviewMessageId: null,
-                  previewReturnChannelSearch: false,
-                  showMatterPanel: false,
-                  showMatterDetailPanel: false,
-                  showSummaryPanel: false,
-                });
-              }}
+              onOpenChannelSearch={
+                isChannelSearchEnabled(channel)
+                  ? this._openChannelSearchPanel
+                  : undefined
+              }
               onClose={() => {
                 this.setState({
                   showChannelSetting: false,
