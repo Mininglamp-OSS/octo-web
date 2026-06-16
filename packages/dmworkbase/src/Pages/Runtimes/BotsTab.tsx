@@ -3,6 +3,7 @@ import WKApp from '../../App';
 import { Bot, botStatusLabel, isSupportedRuntimeKind, listBots } from './botsApi';
 import { CreateBotModal } from './CreateBotModal';
 import { BotDetailPanel } from './BotDetailPanel';
+import { useI18n } from '../../i18n';
 
 interface RuntimeListEntry {
   id: number;
@@ -62,6 +63,7 @@ export interface BotsTabProps {
 }
 
 export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(props, ref) {
+  const { t } = useI18n();
   const [bots, setBots] = useState<Bot[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [runtimes, setRuntimes] = useState<RuntimeListEntry[]>([]);
@@ -153,8 +155,8 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   // refreshRuntimeBots 单源, 这条 polling 是冗余.
   useEffect(() => {
     if (props.hidden) return;
-    const t = window.setInterval(refresh, 5000);
-    return () => window.clearInterval(t);
+    const timer = window.setInterval(refresh, 5000);
+    return () => window.clearInterval(timer);
   }, [refresh, props.hidden]);
 
   // Selecting a bot pushes the detail to the right pane (same mechanism
@@ -235,9 +237,9 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
 
   return (
     <div className="wk-rt-bots-list" style={props.hidden ? { display: 'none' } : undefined}>
-      {loading && bots.length === 0 && <div className="wk-rt-bots__empty">加载中…</div>}
+      {loading && bots.length === 0 && <div className="wk-rt-bots__empty">{t("base.runtimes.common.loading")}</div>}
       {!loading && bots.length === 0 && (
-        <div className="wk-rt-bots__empty">还没有 Bot，点右上角 + 新建</div>
+        <div className="wk-rt-bots__empty">{t("base.runtimes.bots.empty")}</div>
       )}
       <ul className="wk-rt-bots__items">
         {bots.map(b => (
