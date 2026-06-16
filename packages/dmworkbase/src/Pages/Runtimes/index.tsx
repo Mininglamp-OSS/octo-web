@@ -8,6 +8,7 @@ import { CreateRuntimeModal } from "./CreateRuntimeModal"
 import { deviceRuntimeMode } from "./deviceRuntimeMode"
 import { Bot, botStatusLabel, listBots, providerLabels } from "./botsApi"
 import { ProviderLogo } from "./providerLogos"
+import { i18n, t } from "../../i18n"
 import "./index.css"
 
 interface AgentRuntime {
@@ -92,10 +93,10 @@ function humanizeAge(epochMs: number): string {
     if (!epochMs) return "—"
     const diff = Date.now() - epochMs
     if (diff < 0)          return "—"
-    if (diff < 60_000)     return "刚刚"
-    if (diff < 3_600_000)  return `${Math.floor(diff / 60_000)} 分钟前`
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
-    return `${Math.floor(diff / 86_400_000)} 天前`
+    if (diff < 60_000)     return t("base.runtimes.time.justNow")
+    if (diff < 3_600_000)  return t("base.runtimes.time.minutesAgo", { values: { n: Math.floor(diff / 60_000) } })
+    if (diff < 86_400_000) return t("base.runtimes.time.hoursAgo", { values: { n: Math.floor(diff / 3_600_000) } })
+    return t("base.runtimes.time.daysAgo", { values: { n: Math.floor(diff / 86_400_000) } })
 }
 
 // 取 device 下所有 runtime 的 max last_seen_at, 返 epoch ms (无则 0).
@@ -168,6 +169,8 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
         this.state = { upgradeStatus: initUpgradeStatus, upgradeError: initUpgradeError }
     }
 
+    private unsubscribeLocale?: () => void
+
     componentDidMount() {
         // DeviceDetail 跟
         // RuntimeDetail 893 行同款 remount 续看 — replaceToRoot remount 后
@@ -179,6 +182,11 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
         if (upg?.task_id && isUpgradeInProgress(this.state.upgradeStatus)) {
             this.resumeUpgradePoll(upg.task_id)
         }
+        // 本面板由 WKApp.routeRight.replaceToRoot 命令式挂载, 不在 I18nProvider
+        // 的 React 子树里, 拿不到 useI18n 的 context 刷新. 这里直接订阅 i18n
+        // 单例 (等价于 useI18n 做的事), locale 切换时 forceUpdate 重渲染本面板,
+        // 否则切语言后当前详情页不变、要切走再回来才更新.
+        this.unsubscribeLocale = i18n.subscribe(() => this.forceUpdate())
     }
 
     componentDidUpdate(prevProps: DeviceDetailProps) {
@@ -206,6 +214,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
 
     componentWillUnmount() {
         this._unmounted = true
+        this.unsubscribeLocale?.()
     }
 
     handleUpgrade = async () => {
@@ -219,7 +228,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
             this.props.onUpgradeStarted?.()
             await this.resumeUpgradePoll(taskId)
         } catch (err: any) {
-            this.setState({ upgradeStatus: "failed", upgradeError: err?.msg || err?.message || "upgrade failed" })
+            this.setState({ upgradeStatus: "failed", upgradeError: err?.msg || err?.message || t("base.runtimes.upgrade.errFailed") })
         }
     }
 
@@ -288,7 +297,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                 return
             }
         }
-        this.setState({ upgradeStatus: "timeout", upgradeError: "polling timeout" })
+        this.setState({ upgradeStatus: "timeout", upgradeError: t("base.runtimes.upgrade.errPollingTimeout") })
     }
 
     render() {
@@ -310,32 +319,32 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                         <h2>{group.deviceName}</h2>
                     </div>
                     <span className={`wk-rt-status-badge ${anyOnline ? "online" : "offline"}`}>
-                        {allOnline ? "All Online" : anyOnline ? `${group.onlineCount}/${group.runtimes.length} Online` : "Offline"}
+                        {allOnline ? t("base.runtimes.device.allOnline") : anyOnline ? t("base.runtimes.createBot.onlineCount", { values: { online: group.onlineCount, total: group.runtimes.length } }) : t("base.runtimes.common.offline")}
                     </span>
                 </div>
 
                 <div className="wk-rt-detail-grid">
                     <div className="wk-rt-field">
-                        <label>设备名称</label>
+                        <label>{t("base.runtimes.device.name")}</label>
                         <span>{group.deviceName}</span>
                     </div>
                     <div className="wk-rt-field">
-                        <label>运行时</label>
+                        <label>{t("base.runtimes.device.runtimes")}</label>
                         <span>{group.runtimes.length}</span>
                     </div>
                     <div className="wk-rt-field">
-                        <label>运行模式</label>
+                        <label>{t("base.runtimes.device.mode")}</label>
                         <span>{deviceRuntimeMode(group)}</span>
                     </div>
                     {(group.osName || group.arch) && (
                         <div className="wk-rt-field">
-                            <label>系统 / 架构</label>
+                            <label>{t("base.runtimes.device.osArch")}</label>
                             <span>{[group.osName, group.arch].filter(Boolean).join(" ")}</span>
                         </div>
                     )}
                     {group.cliVersion && (
                         <div className="wk-rt-field">
-                            <label>Daemon 版本</label>
+                            <label>{t("base.runtimes.device.daemonVersion")}</label>
                             <span className="wk-rt-mono">
                                 {group.cliVersion}
                                 {this.props.daemonVersionHint?.has_update && (
@@ -349,7 +358,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                                     const busyByOther = !!this.props.daemonBusy && !inProgress
 
                                     if (upgradeStatus === "completed") {
-                                        return <span className="wk-rt-upgrade-status success"><span className="upgrade-dot" />Upgraded</span>
+                                        return <span className="wk-rt-upgrade-status success"><span className="upgrade-dot" />{t("base.runtimes.upgrade.upgraded")}</span>
                                     }
                                     if (upgradeStatus === "failed" || upgradeStatus === "timeout") {
                                         // A-1: error_msg 内联展示 (原来藏 hover title 像升级真坏了);
@@ -358,11 +367,11 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                                         return (
                                             <span className="wk-rt-upgrade-status error" title={upgradeError}>
                                                 <span className="upgrade-dot" />
-                                                {upgradeStatus === "timeout" ? "Timeout" : "Failed"}
+                                                {upgradeStatus === "timeout" ? t("base.runtimes.upgrade.timeout") : t("base.runtimes.upgrade.failed")}
                                                 {upgradeError && <span className="wk-rt-upgrade-reason">· {upgradeError.length > 40 ? upgradeError.slice(0, 40) + "…" : upgradeError}</span>}
                                                 {!isWindows && (busyByOther
-                                                    ? <span className="wk-rt-upgrade-btn disabled" title={UPGRADE_BUSY_TITLE}>Upgrade</span>
-                                                    : <span className="wk-rt-upgrade-btn" onClick={this.handleUpgrade}>Upgrade</span>)}
+                                                    ? <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{t("base.runtimes.upgrade.upgrade")}</span>
+                                                    : <span className="wk-rt-upgrade-btn" onClick={this.handleUpgrade}>{t("base.runtimes.upgrade.upgrade")}</span>)}
                                             </span>
                                         )
                                     }
@@ -370,20 +379,20 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                                         return <span className="wk-rt-upgrade-status progress"><span className="upgrade-dot" />{upgradeStageLabel(upgradeStatus)}…</span>
                                     }
                                     if (isWindows) {
-                                        return <span className="wk-rt-upgrade-btn disabled" title="Windows remote upgrade is not supported yet">Upgrade</span>
+                                        return <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.windowsUnsupported")}>{t("base.runtimes.upgrade.upgrade")}</span>
                                     }
                                     if (busyByOther) {
                                         // B-3: 同 daemon 其他升级在跑, 点了 fleet 必拒 — 预防性禁用
-                                        return <span className="wk-rt-upgrade-btn disabled" title={UPGRADE_BUSY_TITLE}>Upgrade</span>
+                                        return <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{t("base.runtimes.upgrade.upgrade")}</span>
                                     }
                                     if (!anyOnline) return null
-                                    return <span className="wk-rt-upgrade-btn" onClick={this.handleUpgrade}>Upgrade</span>
+                                    return <span className="wk-rt-upgrade-btn" onClick={this.handleUpgrade}>{t("base.runtimes.upgrade.upgrade")}</span>
                                 })()}
                             </span>
                         </div>
                     )}
                     <div className="wk-rt-field">
-                        <label>设备 ID</label>
+                        <label>{t("base.runtimes.device.id")}</label>
                         <span className="wk-rt-mono">{group.daemonId}</span>
                     </div>
                     {(() => {
@@ -397,7 +406,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                         if (!ms) return null
                         return (
                             <div className="wk-rt-field">
-                                <label>最近活跃</label>
+                                <label>{t("base.runtimes.device.lastActive")}</label>
                                 <span title={new Date(ms).toLocaleString()}>
                                     {humanizeAge(ms)}
                                 </span>
@@ -479,12 +488,12 @@ function copyMention(mention: string, e: React.MouseEvent) {
     }
     const p = ok(mention)
     if (!p) {
-        Toast.warning({ content: "当前环境不支持剪贴板复制", duration: 2 })
+        Toast.warning({ content: t("base.runtimes.common.clipboardUnsupported"), duration: 2 })
         return
     }
     p.then(
-        () => Toast.success({ content: `已复制 ${mention}`, duration: 2 }),
-        () => Toast.warning({ content: "复制失败", duration: 2 }),
+        () => Toast.success({ content: t("base.runtimes.common.copied", { values: { text: mention } }), duration: 2 }),
+        () => Toast.warning({ content: t("base.runtimes.common.copyFailed"), duration: 2 }),
     )
 }
 
@@ -502,16 +511,16 @@ function BotRouteRow({ route }: { route: RouteInfo }) {
             <div className="wk-rt-binding-row wk-rt-binding-row-bot">
                 <div
                     className="wk-rt-binding-avatar-wrap wk-rt-clickable"
-                    title="打开与该 Bot 的私聊"
+                    title={t("base.runtimes.botDetail.openDM")}
                     onClick={openChat}
                 >
                     <WKAvatar channel={channel} style={{ width: 32, height: 32, borderRadius: "50%" }} />
-                    {route.online && <span className="wk-rt-online-dot" title="Online" />}
+                    {route.online && <span className="wk-rt-online-dot" title={t("base.runtimes.common.online")} />}
                 </div>
                 <div className="wk-rt-binding-text">
                     <span
                         className="wk-rt-binding-primary wk-rt-clickable"
-                        title="打开与该 Bot 的私聊"
+                        title={t("base.runtimes.botDetail.openDM")}
                         onClick={openChat}
                     >
                         {displayName}
@@ -519,7 +528,7 @@ function BotRouteRow({ route }: { route: RouteInfo }) {
                     {showSecondary && (
                         <span
                             className="wk-rt-binding-mention"
-                            title="点击复制 @mention"
+                            title={t("base.runtimes.botDetail.copyMention")}
                             onClick={(e) => copyMention(mention, e)}
                         >
                             {mention}
@@ -537,7 +546,7 @@ function BotRouteRow({ route }: { route: RouteInfo }) {
             <span className="wk-rt-binding-channel">{route.channel || "?"}</span>
             <span
                 className="wk-rt-binding-mention"
-                title="点击复制 @mention"
+                title={t("base.runtimes.botDetail.copyMention")}
                 onClick={(e) => copyMention(fallbackMention, e)}
             >
                 {fallbackMention}
@@ -632,7 +641,7 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
             const ma: ManagedAgent = await WKApp.apiClient.get(`/runtimes/managed-agents/${id}`)
             if (ma.status === "active" || ma.status === "failed") return ma
             if (Date.now() > deadline) {
-                return { ...ma, status: "failed", error_msg: "timeout waiting for daemon (60s)" }
+                return { ...ma, status: "failed", error_msg: t("base.runtimes.agentModal.errDaemonTimeout") }
             }
             await new Promise(r => setTimeout(r, 3000))
         }
@@ -650,7 +659,7 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
                     runtime_id: runtime.id,
                     display_name: values.display_name,
                 })
-                Toast.info(`Agent 已注册，等待 daemon 在本地 openclaw 创建 workspace…`)
+                Toast.info(t("base.runtimes.agentModal.toastRegistered"))
             } else {
                 // add-bot
                 if (!modalAgentId) return
@@ -658,17 +667,17 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
                     `/runtimes/${runtime.id}/agents/${encodeURIComponent(modalAgentId)}/bots`,
                     { display_name: values.display_name },
                 )
-                Toast.info(`Bot ${created.bot_uid} 已 mint，等待 daemon 绑定到 ${modalAgentId}…`)
+                Toast.info(t("base.runtimes.agentModal.toastMinted", { values: { bot: created.bot_uid, agent: modalAgentId } }))
             }
             const final = await this.pollManagedAgent(created.id)
             if (final.status === "active") {
                 Toast.success(
                     modalMode === "create-agent"
-                        ? `Agent ${final.agent_id} 已创建`
-                        : `Bot ${final.display_name} 已绑定到 ${final.agent_id}`
+                        ? t("base.runtimes.agentModal.toastAgentCreated", { values: { agent: final.agent_id } })
+                        : t("base.runtimes.agentModal.toastBotBound", { values: { bot: final.display_name, agent: final.agent_id } })
                 )
             } else {
-                Toast.error(`操作失败：${final.error_msg || "unknown error"}`)
+                Toast.error(t("base.runtimes.common.opFailed", { values: { error: final.error_msg || t("base.runtimes.common.unknownError") } }))
             }
             this.setState({ modalMode: null, modalAgentId: null, submitting: false })
             // Daemon force-syncs server metadata before ack, so a single
@@ -677,7 +686,7 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
         } catch (err: any) {
             console.error("managed agent op failed", err)
             const msg = err?.msg || err?.message || String(err)
-            Toast.error(`操作失败：${msg}`)
+            Toast.error(t("base.runtimes.common.opFailed", { values: { error: msg } }))
             this.setState({ submitting: false })
         }
     }
@@ -688,7 +697,7 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
         const isAddBot = modalMode === "add-bot"
         return (
             <Modal
-                title={isAddBot ? `给 ${modalAgentId} 添加 Bot` : "创建新 Agent"}
+                title={isAddBot ? t("base.runtimes.agentModal.titleAddBot", { values: { agent: modalAgentId } }) : t("base.runtimes.agentModal.titleCreateAgent")}
                 visible
                 onCancel={this.closeModal}
                 footer={null}
@@ -698,25 +707,25 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
                 <Form onSubmit={this.submitForm}>
                     <Form.Input
                         field="display_name"
-                        label={isAddBot ? "Bot 显示名" : "Agent 名称"}
-                        placeholder={isAddBot ? "例如：my-bot" : "例如：caster"}
+                        label={isAddBot ? t("base.runtimes.agentModal.labelBotName") : t("base.runtimes.agentModal.labelAgentName")}
+                        placeholder={isAddBot ? t("base.runtimes.agentModal.placeholderBot") : t("base.runtimes.agentModal.placeholderAgent")}
                         rules={[
-                            { required: true, message: "必填" },
-                            { max: 60, message: "最多 60 字符" },
+                            { required: true, message: t("base.runtimes.agentModal.required") },
+                            { max: 60, message: t("base.runtimes.agentModal.maxChars") },
                         ]}
                         disabled={submitting}
                     />
                     <div className="wk-rt-modal-footer">
-                        <Button onClick={this.closeModal} disabled={submitting}>取消</Button>
+                        <Button onClick={this.closeModal} disabled={submitting}>{t("base.runtimes.common.cancel")}</Button>
                         <Button type="primary" theme="solid" htmlType="submit" loading={submitting}>
-                            {isAddBot ? "添加 Bot" : "创建 Agent"}
+                            {isAddBot ? t("base.runtimes.agentModal.submitAddBot") : t("base.runtimes.agentModal.submitCreateAgent")}
                         </Button>
                     </div>
                 </Form>
                 <div className="wk-rt-modal-hint">
                     {isAddBot
-                        ? `服务端会 mint 一个新 bot，等待下次 daemon heartbeat（最长 15s）通过 openclaw agents bind 绑定到 ${modalAgentId}。`
-                        : "服务端只在本地 openclaw 创建一个 agent workspace（不会自动 mint bot）。创建完成后可在 agent 下面手动 Add Bot。"}
+                        ? t("base.runtimes.agentModal.hintAddBot", { values: { agent: modalAgentId } })
+                        : t("base.runtimes.agentModal.hintCreateAgent")}
                 </div>
             </Modal>
         )
@@ -731,14 +740,14 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
         return (
             <div className="wk-rt-managed-card">
                 <div className="wk-rt-managed-header">
-                    <span className="wk-rt-managed-title">Agents</span>
+                    <span className="wk-rt-managed-title">{t("base.runtimes.agents.title")}</span>
                     <span className="wk-rt-managed-count">{agents.length}</span>
                     {agents.length > 0 && (
                         <button
                             type="button"
                             className="wk-rt-managed-toggle-all"
                             onClick={this.toggleAll}
-                            title={allExpanded ? "折叠全部" : "展开全部"}
+                            title={allExpanded ? t("base.runtimes.create.collapseAll") : t("base.runtimes.create.expandAll")}
                         >
                             {allExpanded ? (
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -755,7 +764,7 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
                                     <line x1="3" y1="21" x2="10" y2="14" />
                                 </svg>
                             )}
-                            <span>{allExpanded ? "Collapse all" : "Expand all"}</span>
+                            <span>{allExpanded ? t("base.runtimes.create.collapseAll") : t("base.runtimes.create.expandAll")}</span>
                         </button>
                     )}
                     {manageable && (
@@ -768,7 +777,7 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
                                 <line x1="12" y1="5" x2="12" y2="19" />
                                 <line x1="5" y1="12" x2="19" y2="12" />
                             </svg>
-                            <span>New Agent</span>
+                            <span>{t("base.runtimes.agents.newAgent")}</span>
                         </button>
                     )}
                 </div>
@@ -781,9 +790,9 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
                                 <path d="M9 9h6v6H9z" />
                             </svg>
                         </div>
-                        <div className="wk-rt-managed-empty-text">No agents yet</div>
+                        <div className="wk-rt-managed-empty-text">{t("base.runtimes.agents.noAgents")}</div>
                         {manageable && (
-                            <div className="wk-rt-managed-empty-hint">点击右上「+ New Agent」创建第一个</div>
+                            <div className="wk-rt-managed-empty-hint">{t("base.runtimes.create.createFirst")}</div>
                         )}
                     </div>
                 ) : (
@@ -809,10 +818,10 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
                                         <div className="wk-rt-managed-agent-info">
                                             <div className="wk-rt-managed-agent-name">
                                                 {agent.name || agent.id}
-                                                {agent.is_default && <span className="wk-rt-default-tag">default</span>}
+                                                {agent.is_default && <span className="wk-rt-default-tag">{t("base.runtimes.agents.defaultTag")}</span>}
                                             </div>
                                             <div className="wk-rt-managed-agent-meta">
-                                                {routeInfos.length} bot{routeInfos.length !== 1 ? "s" : ""}
+                                                {t("base.runtimes.agents.botCount", { values: { count: routeInfos.length } })}
                                             </div>
                                         </div>
                                         <svg
@@ -828,7 +837,7 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
                                     {isExpanded && (
                                         <div className="wk-rt-managed-bots">
                                             {routeInfos.length === 0 ? (
-                                                <div className="wk-rt-managed-no-bots">No bots bound</div>
+                                                <div className="wk-rt-managed-no-bots">{t("base.runtimes.agents.noBotsBound")}</div>
                                             ) : (
                                                 routeInfos.map((info: RouteInfo, i: number) => (
                                                     <BotRouteRow key={info.raw || i} route={info} />
@@ -844,7 +853,7 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
                                                         <line x1="12" y1="5" x2="12" y2="19" />
                                                         <line x1="5" y1="12" x2="19" y2="12" />
                                                     </svg>
-                                                    <span>Add Bot</span>
+                                                    <span>{t("base.runtimes.agents.addBot")}</span>
                                                 </button>
                                             )}
                                         </div>
@@ -915,17 +924,13 @@ function isUpgradeInProgress(status: string): boolean {
 function upgradeStageLabel(status: string): string {
     switch (status) {
         case "pending":
-        case "dispatched":  return "Queued"
-        case "downloading": return "Downloading"
-        case "installing":  return "Installing"
-        case "restarting":  return "Restarting"
+        case "dispatched":  return t("base.runtimes.upgrade.stageQueued")
+        case "downloading": return t("base.runtimes.upgrade.stageDownloading")
+        case "installing":  return t("base.runtimes.upgrade.stageInstalling")
+        case "restarting":  return t("base.runtimes.upgrade.stageRestarting")
         default:            return status
     }
 }
-
-// busy-disabled title 单源 (6 个按钮共用). 英文 — detail 面板 label 已统一
-// 全英文 (同面板 Windows disabled title 也是英文, 语言保持一致).
-const UPGRADE_BUSY_TITLE = "Another upgrade is in progress on this device, please wait"
 
 // 页面级轮询两档间隔: 空闲 15s; 有 in-progress 升级任务时 3s (升级状态
 // 不刷新修复方案 2 — 详见 RuntimesPage.adjustPollInterval 注释).
@@ -959,6 +964,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         }
     }
 
+    private unsubscribeLocale?: () => void
+
     componentDidMount() {
         // WKApp.routeRight.replaceToRoot 有时真的会 unmount + remount 组件，
         // 此时原 handlePluginUpgrade 里的轮询协程 isStale() 退出，
@@ -973,6 +980,9 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         if (compUpg?.task_id && isUpgradeInProgress(componentUpgradeStatus)) {
             this.pollComponentUpgrade(compUpg.task_id, this.props.runtime.id)
         }
+        // 同 DeviceDetail: 本面板由 routeRight.replaceToRoot 命令式挂载, 不在
+        // I18nProvider 子树里, 订阅 i18n 单例 + forceUpdate 让切语言后实时刷新.
+        this.unsubscribeLocale = i18n.subscribe(() => this.forceUpdate())
     }
 
     componentDidUpdate(prevProps: RuntimeDetailProps) {
@@ -1027,10 +1037,11 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
 
     componentWillUnmount() {
         this._unmounted = true
+        this.unsubscribeLocale?.()
     }
 
     handleDelete = async () => {
-        if (!window.confirm("确定删除此 Runtime？")) return
+        if (!window.confirm(t("base.runtimes.runtime.deleteConfirm"))) return
         this.setState({ deleting: true })
         try {
             await WKApp.apiClient.delete(`/runtimes/${this.props.runtime.id}`)
@@ -1056,7 +1067,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             this.props.onUpgradeStarted?.()
             await this.pollPluginUpgrade(initRes.task_id, runtimeId)
         } catch (err: any) {
-            const msg = err?.msg || err?.message || "upgrade failed"
+            const msg = err?.msg || err?.message || t("base.runtimes.upgrade.errFailed")
             this.setState({ pluginUpgradeStatus: "failed", pluginUpgradeError: msg })
         }
     }
@@ -1120,7 +1131,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 return
             }
         }
-        this.setState({ pluginUpgradeStatus: "timeout", pluginUpgradeError: "polling timeout" })
+        this.setState({ pluginUpgradeStatus: "timeout", pluginUpgradeError: t("base.runtimes.upgrade.errPollingTimeout") })
     }
 
     renderPluginUpgradeBtn(pluginName: string, hasUpdate: boolean | undefined) {
@@ -1130,18 +1141,18 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         const selfInProgress = isUpgradeInProgress(pluginUpgradeStatus)
         const busyByOther = !!this.props.daemonBusy && !selfInProgress
         if (pluginUpgradeStatus === "completed") {
-            return <span className="wk-rt-upgrade-status success"><span className="upgrade-dot" />Completed</span>
+            return <span className="wk-rt-upgrade-status success"><span className="upgrade-dot" />{t("base.runtimes.upgrade.completed")}</span>
         }
         if (pluginUpgradeStatus === "failed" || pluginUpgradeStatus === "timeout") {
             // A-1 错误内联 + A-2 Retry (busy 时禁用 — P7/X6)
             return (
                 <span className="wk-rt-upgrade-status error" title={pluginUpgradeError}>
                     <span className="upgrade-dot" />
-                    {pluginUpgradeStatus === "timeout" ? "Timeout" : "Failed"}
+                    {pluginUpgradeStatus === "timeout" ? t("base.runtimes.upgrade.timeout") : t("base.runtimes.upgrade.failed")}
                     {pluginUpgradeError && <span className="wk-rt-upgrade-reason">· {pluginUpgradeError.length > 40 ? pluginUpgradeError.slice(0, 40) + "…" : pluginUpgradeError}</span>}
                     {pluginName === "octo" && (busyByOther
-                        ? <span className="wk-rt-upgrade-btn disabled" title={UPGRADE_BUSY_TITLE}>Upgrade</span>
-                        : <span className="wk-rt-upgrade-btn" onClick={this.handlePluginUpgrade}>Upgrade</span>)}
+                        ? <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{t("base.runtimes.upgrade.upgrade")}</span>
+                        : <span className="wk-rt-upgrade-btn" onClick={this.handlePluginUpgrade}>{t("base.runtimes.upgrade.upgrade")}</span>)}
                 </span>
             )
         }
@@ -1156,9 +1167,9 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         if (hasUpdate && pluginName === "octo") {
             if (busyByOther) {
                 // B-3: 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
-                return <span className="wk-rt-upgrade-btn disabled" title={UPGRADE_BUSY_TITLE}>Upgrade</span>
+                return <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{t("base.runtimes.upgrade.upgrade")}</span>
             }
-            return <span className="wk-rt-upgrade-btn" onClick={this.handlePluginUpgrade}>Upgrade</span>
+            return <span className="wk-rt-upgrade-btn" onClick={this.handlePluginUpgrade}>{t("base.runtimes.upgrade.upgrade")}</span>
         }
         return null
     }
@@ -1182,7 +1193,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             this.props.onUpgradeStarted?.()
             await this.pollComponentUpgrade(initRes.task_id, runtimeId)
         } catch (err: any) {
-            const msg = err?.msg || err?.message || "upgrade failed"
+            const msg = err?.msg || err?.message || t("base.runtimes.upgrade.errFailed")
             this.setState({ componentUpgradeStatus: "failed", componentUpgradeError: msg })
         }
     }
@@ -1246,7 +1257,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 return
             }
         }
-        this.setState({ componentUpgradeStatus: "timeout", componentUpgradeError: "polling timeout" })
+        this.setState({ componentUpgradeStatus: "timeout", componentUpgradeError: t("base.runtimes.upgrade.errPollingTimeout") })
     }
 
     renderComponentUpgradeBtn(hasUpdate: boolean | undefined) {
@@ -1258,18 +1269,18 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         const selfInProgress = isUpgradeInProgress(componentUpgradeStatus)
         const busyByOther = !!this.props.daemonBusy && !selfInProgress
         if (componentUpgradeStatus === "completed") {
-            return <span className="wk-rt-upgrade-status success"><span className="upgrade-dot" />Completed</span>
+            return <span className="wk-rt-upgrade-status success"><span className="upgrade-dot" />{t("base.runtimes.upgrade.completed")}</span>
         }
         if (componentUpgradeStatus === "failed" || componentUpgradeStatus === "timeout") {
             // A-1 错误内联 + A-2 Retry (busy 时禁用 — P7/X6)
             return (
                 <span className="wk-rt-upgrade-status error" title={componentUpgradeError}>
                     <span className="upgrade-dot" />
-                    {componentUpgradeStatus === "timeout" ? "Timeout" : "Failed"}
+                    {componentUpgradeStatus === "timeout" ? t("base.runtimes.upgrade.timeout") : t("base.runtimes.upgrade.failed")}
                     {componentUpgradeError && <span className="wk-rt-upgrade-reason">· {componentUpgradeError.length > 40 ? componentUpgradeError.slice(0, 40) + "…" : componentUpgradeError}</span>}
                     {busyByOther
-                        ? <span className="wk-rt-upgrade-btn disabled" title={UPGRADE_BUSY_TITLE}>Upgrade</span>
-                        : <span className="wk-rt-upgrade-btn" onClick={this.handleComponentUpgrade}>Upgrade</span>}
+                        ? <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{t("base.runtimes.upgrade.upgrade")}</span>
+                        : <span className="wk-rt-upgrade-btn" onClick={this.handleComponentUpgrade}>{t("base.runtimes.upgrade.upgrade")}</span>}
                 </span>
             )
         }
@@ -1284,9 +1295,9 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         if (hasUpdate) {
             if (busyByOther) {
                 // B-3: 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
-                return <span className="wk-rt-upgrade-btn disabled" title={UPGRADE_BUSY_TITLE}>Upgrade</span>
+                return <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{t("base.runtimes.upgrade.upgrade")}</span>
             }
-            return <span className="wk-rt-upgrade-btn" onClick={this.handleComponentUpgrade}>Upgrade</span>
+            return <span className="wk-rt-upgrade-btn" onClick={this.handleComponentUpgrade}>{t("base.runtimes.upgrade.upgrade")}</span>
         }
         return null
     }
@@ -1308,25 +1319,25 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     </div>
                     <div className="wk-rt-detail-actions">
                         <span className={`wk-rt-status-badge ${isOnline ? "online" : "offline"}`}>
-                            {isOnline ? "Online" : "Offline"}
+                            {isOnline ? t("base.runtimes.common.online") : t("base.runtimes.common.offline")}
                         </span>
                     </div>
                 </div>
 
                 <div className="wk-rt-detail-grid wk-rt-detail-grid--single">
                     <div className="wk-rt-field">
-                        <label>提供方</label>
+                        <label>{t("base.runtimes.runtime.provider")}</label>
                         <span>{providerLabels[rt.provider] || rt.provider}</span>
                     </div>
                     <div className="wk-rt-field">
-                        <label>Bot 数量</label>
+                        <label>{t("base.runtimes.runtime.botCount")}</label>
                         <span>{this.props.botCount ?? 0}</span>
                     </div>
                     {/* PR-2: 探活由 device row 绿点 + daemon heartbeat
                         体现; runtime 级 last_seen_at / device_name /
                         daemon_id 都是 dev 调试字段, 用户不需要看到, 全删. */}
                     <div className="wk-rt-field">
-                        <label>版本</label>
+                        <label>{t("base.runtimes.common.version")}</label>
                         <span className="wk-rt-mono">
                             {rt.version || "N/A"}
                             {this.props.versionHints[rt.id]?.has_update && (
@@ -1340,7 +1351,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                         const pluginHint = this.props.versionHints[rt.id]
                         return octoPlugin ? (
                             <div className="wk-rt-field">
-                                <label>Octo 插件版本</label>
+                                <label>{t("base.runtimes.runtime.octoPluginVersion")}</label>
                                 <span className="wk-rt-mono">
                                     {octoPlugin.version}
                                     {pluginHint?.plugin_has_update && (
@@ -1358,10 +1369,10 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     的"创建 Bot"重复. caster 拍的去重. */}
 
                 <div className="wk-rt-detail-footer">
-                    <span>创建于:{rt.created_at}</span>
-                    <span>更新于:{rt.updated_at}</span>
+                    <span>{t("base.runtimes.runtime.createdAt", { values: { time: rt.created_at } })}</span>
+                    <span>{t("base.runtimes.runtime.updatedAt", { values: { time: rt.updated_at } })}</span>
                 </div>
-                {deleting && <div className="wk-rt-deleting-overlay">Deleting...</div>}
+                {deleting && <div className="wk-rt-deleting-overlay">{t("base.runtimes.runtime.deleting")}</div>}
             </div>
         )
     }
@@ -1425,7 +1436,7 @@ function BotRow({ bot, onOpen }: BotRowProps) {
         >
             <div
                 className={`wk-rt-bot-avatar-wrap${botChannel ? " wk-rt-clickable" : ""}`}
-                title={botChannel ? "打开与该 Bot 的私聊" : undefined}
+                title={botChannel ? t("base.runtimes.botDetail.openDM") : undefined}
                 // C9 fix: 没 botChannel 时不挂 onClick, 否则空 handler
                 // stopPropagation 会吞掉点击, 让头像区变 dead zone (用户
                 // 看到头像点没反应, 行级 onOpen 也不触发).
@@ -1436,7 +1447,7 @@ function BotRow({ bot, onOpen }: BotRowProps) {
                 ) : (
                     <span className={`wk-rt-bot-dot ${bot.status === "failed" ? "failed" : "pending"}`} />
                 )}
-                {isOnline && <span className="wk-rt-online-dot" title="Online" />}
+                {isOnline && <span className="wk-rt-online-dot" title={t("base.runtimes.common.online")} />}
             </div>
             <span className="wk-rt-bot-name">{bot.name}</span>
             {/* bot.status==='active' 时
@@ -1572,6 +1583,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         this.startPollTimer(this.currentPollMs)
     }
 
+    private unsubscribeLocale?: () => void
+
     componentDidMount() {
         this.loadData()
         this.startPollTimer(POLL_IDLE_MS)
@@ -1579,6 +1592,13 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         document.addEventListener("keydown", this.handleGlobalKeyDown)
         document.addEventListener("visibilitychange", this.onVisible)
         window.addEventListener("focus", this.onVisible)
+        // These are class components and don't consume the I18nProvider context,
+        // so a live locale switch wouldn't re-render them (the page kept the old
+        // language until navigating away and back). Subscribe at the page root
+        // and forceUpdate — re-rendering RuntimesPage cascades through the whole
+        // Runtimes tree (DeviceDetail / RuntimeDetail / rows) so every t() call
+        // re-evaluates against the new locale.
+        this.unsubscribeLocale = i18n.subscribe(() => this.forceUpdate())
     }
 
     componentWillUnmount() {
@@ -1587,6 +1607,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         document.removeEventListener("keydown", this.handleGlobalKeyDown)
         document.removeEventListener("visibilitychange", this.onVisible)
         window.removeEventListener("focus", this.onVisible)
+        this.unsubscribeLocale?.()
     }
 
     // 升级期间临时加速兜底轮询 (runtime页升级状态不刷新 修复方案 2):
@@ -1954,7 +1975,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
 
                 <div className="wk-rt-pageheader">
                     <div className="wk-rt-pagetitle">
-                        <h2 className="wk-rt-pagetitle-text">运行时</h2>
+                        <h2 className="wk-rt-pagetitle-text">{t("base.runtimes.title")}</h2>
                         <div className="wk-rt-create-wrap">
                             <button
                                 ref={this.createBtnRef}
@@ -1962,7 +1983,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                 className="wk-rt-create-btn"
                                 aria-haspopup="menu"
                                 aria-expanded={createMenuOpen}
-                                aria-label="新建"
+                                aria-label={t("base.runtimes.create.newAria")}
                                 onClick={() => this.setState({ createMenuOpen: !createMenuOpen })}
                             ><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.67v10.66M2.67 8h10.66" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg></button>
                             {createMenuOpen && (
@@ -1986,8 +2007,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                                 </svg>
                                             </span>
                                             <span className="wk-rt-create-menu-text">
-                                                <span className="wk-rt-create-menu-title">创建 Runtime</span>
-                                                <span className="wk-rt-create-menu-desc">在新设备上接入 daemon</span>
+                                                <span className="wk-rt-create-menu-title">{t("base.runtimes.create.createRuntime")}</span>
+                                                <span className="wk-rt-create-menu-desc">{t("base.runtimes.create.createRuntimeDesc")}</span>
                                             </span>
                                         </button>
                                         <button
@@ -2006,8 +2027,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                                 </svg>
                                             </span>
                                             <span className="wk-rt-create-menu-text">
-                                                <span className="wk-rt-create-menu-title">创建 Bot</span>
-                                                <span className="wk-rt-create-menu-desc">基于已有 runtime 起一个 Bot</span>
+                                                <span className="wk-rt-create-menu-title">{t("base.runtimes.create.createBot")}</span>
+                                                <span className="wk-rt-create-menu-desc">{t("base.runtimes.create.createBotDesc")}</span>
                                             </span>
                                         </button>
                                     </div>
@@ -2017,9 +2038,9 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                     </div>
                 </div>
                 <div className="wk-rt-list-items">
-                    {loading && <div className="wk-rt-empty">Loading...</div>}
+                    {loading && <div className="wk-rt-empty">{t("base.runtimes.common.loading")}</div>}
                     {!loading && groups.length === 0 && (
-                        <div className="wk-rt-empty">No runtimes registered</div>
+                        <div className="wk-rt-empty">{t("base.runtimes.empty")}</div>
                     )}
                     {groups.map((group) => {
                         const expanded = expandedDevices.has(group.daemonId)
@@ -2120,7 +2141,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                             {rtExpanded && (
                                                 <div className="wk-rt-bot-rows">
                                                     {botsLoading && bots.length === 0 && (
-                                                        <div className="wk-rt-bot-loading">加载中…</div>
+                                                        <div className="wk-rt-bot-loading">{t("base.runtimes.common.loading")}</div>
                                                     )}
                                                     {bots.map((b) => (
                                                         <BotRow

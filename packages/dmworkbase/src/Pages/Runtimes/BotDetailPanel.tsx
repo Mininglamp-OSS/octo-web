@@ -3,6 +3,7 @@ import WKSDK, { Channel, ChannelTypePerson } from 'wukongimjssdk';
 import WKApp from '../../App';
 import WKAvatar from '../../Components/WKAvatar';
 import { Bot, BotFeedItem, getBotFeed } from './botsApi';
+import { i18n, t as tt, useI18n } from '../../i18n';
 
 type DetailTab = 'info' | 'feed' | 'tasks' | 'skills';
 
@@ -42,7 +43,16 @@ function useChannelOnline(channel: Channel | null): boolean {
 }
 
 export function BotDetailPanel({ bot }: { bot: Bot }) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<DetailTab>('info');
+
+  // BotDetailPanel 由 WKApp.routeRight.replaceToRoot 命令式挂载, 不在
+  // I18nProvider 子树里, useI18n 的 context 永不触发本面板 (及子 tab)
+  // 在 locale 实时切换时重渲染. 直接订阅 i18n 单例 + 自我 forceUpdate,
+  // 让切语言后 Info/Feed/Tasks/Skills 全部刷新 (subscribe 返回的取消订阅
+  // 函数作为 effect cleanup, 卸载时退订).
+  const [, forceLocaleRerender] = useState(0);
+  useEffect(() => i18n.subscribe(() => forceLocaleRerender(n => n + 1)), []);
 
   const botChannel = useMemo(
     () => bot.bot_uid ? new Channel(bot.bot_uid, ChannelTypePerson) : null,
@@ -63,7 +73,7 @@ export function BotDetailPanel({ bot }: { bot: Bot }) {
         <div
           className={`wk-bd-avatar-wrap${botChannel ? ' wk-rt-clickable' : ''}`}
           onClick={botChannel ? openChat : undefined}
-          title={botChannel ? '打开与该 Bot 的私聊' : undefined}
+          title={botChannel ? t("base.runtimes.botDetail.openDM") : undefined}
         >
           {botChannel ? (
             <WKAvatar
@@ -79,7 +89,7 @@ export function BotDetailPanel({ bot }: { bot: Bot }) {
               channel.online (channelInfo.online === 1), 跟主 IM 私聊
               列表完全一致, 不是 fleet 的 bot.status — 后者 'active'
               是 fleet 状态机里"已派发完成"的语义, 不等于 IM 真在线. */}
-          {isOnline && <span className="wk-rt-online-dot" title="Online" />}
+          {isOnline && <span className="wk-rt-online-dot" title={t("base.runtimes.common.online")} />}
         </div>
         <div className="wk-bd-headinfo">
           <h1 className="wk-bd-name">{bot.name}</h1>
@@ -103,18 +113,18 @@ export function BotDetailPanel({ bot }: { bot: Bot }) {
       </header>
 
       {/* ── Tabs ──────────────────────────────────────────── */}
-      <nav className="wk-bd-tabs" role="tablist" aria-label="Bot 详情切换">
-        {(['info','feed','tasks','skills'] as DetailTab[]).map(t => (
+      <nav className="wk-bd-tabs" role="tablist" aria-label={t("base.runtimes.botDetail.tabsAria")}>
+        {(['info','feed','tasks','skills'] as DetailTab[]).map(tabKey => (
           <button
-            key={t}
+            key={tabKey}
             type="button"
             role="tab"
-            aria-selected={tab === t}
-            className={`wk-bd-tab${tab === t ? ' is-active' : ''}`}
-            onClick={() => setTab(t)}
+            aria-selected={tab === tabKey}
+            className={`wk-bd-tab${tab === tabKey ? ' is-active' : ''}`}
+            onClick={() => setTab(tabKey)}
           >
-            {t === 'info' ? '基本信息' : t === 'feed' ? '动态' : t === 'tasks' ? 'Tasks' : 'Skills'}
-            {!TAB_READY[t] && <span className="wk-bd-tab__soon">待上线</span>}
+            {tabKey === 'info' ? t("base.runtimes.botDetail.tabInfo") : tabKey === 'feed' ? t("base.runtimes.botDetail.tabFeed") : tabKey === 'tasks' ? t("base.runtimes.botDetail.tabTasks") : t("base.runtimes.botDetail.tabSkills")}
+            {!TAB_READY[tabKey] && <span className="wk-bd-tab__soon">{t("base.runtimes.botDetail.soon")}</span>}
           </button>
         ))}
       </nav>
@@ -122,9 +132,9 @@ export function BotDetailPanel({ bot }: { bot: Bot }) {
       {/* ── Body ──────────────────────────────────────────── */}
       <div className="wk-bd-body">
         {tab === 'info' && <InfoTab bot={bot} />}
-        {tab === 'feed' && (TAB_READY.feed ? <FeedTab bot={bot} /> : <ComingSoon title="动态" />)}
-        {tab === 'tasks' && (TAB_READY.tasks ? <TasksTab bot={bot} /> : <ComingSoon title="任务记录" />)}
-        {tab === 'skills' && (TAB_READY.skills ? <SkillsTab /> : <ComingSoon title="Skills" />)}
+        {tab === 'feed' && (TAB_READY.feed ? <FeedTab bot={bot} /> : <ComingSoon title={t("base.runtimes.botDetail.tabFeed")} />)}
+        {tab === 'tasks' && (TAB_READY.tasks ? <TasksTab bot={bot} /> : <ComingSoon title={t("base.runtimes.botDetail.taskHistory")} />)}
+        {tab === 'skills' && (TAB_READY.skills ? <SkillsTab /> : <ComingSoon title={t("base.runtimes.botDetail.tabSkills")} />)}
       </div>
     </div>
   );
@@ -133,26 +143,27 @@ export function BotDetailPanel({ bot }: { bot: Bot }) {
 // ─── Tabs ──────────────────────────────────────────────────────
 
 function InfoTab({ bot }: { bot: Bot }) {
+  const { t } = useI18n();
   return (
     <div className="wk-bd-section">
-      <h3 className="wk-bd-section__title">配置</h3>
+      <h3 className="wk-bd-section__title">{t("base.runtimes.botDetail.sectionConfig")}</h3>
       <dl className="wk-bd-props">
         {/* PR-2: 删 #runtime_id (dev 级 PK, 用户用不到), 只留 kind. */}
-        <PropRow label="运行时" value={<span className="wk-bd-mono">{bot.runtime_kind}</span>} />
-        <PropRow label="所有者" value={<OwnerLabel ownerUid={bot.owner_uid} />} />
-        <PropRow label="状态" value={<span className="wk-bd-mono">{bot.status}</span>} />
+        <PropRow label={t("base.runtimes.botDetail.propRuntime")} value={<span className="wk-bd-mono">{bot.runtime_kind}</span>} />
+        <PropRow label={t("base.runtimes.botDetail.propOwner")} value={<OwnerLabel ownerUid={bot.owner_uid} />} />
+        <PropRow label={t("base.runtimes.botDetail.propStatus")} value={<span className="wk-bd-mono">{bot.status}</span>} />
         {/* PR-2: 删 Workspace 字段 — dev 级实现细节, 用户不需要管. */}
       </dl>
-      <h3 className="wk-bd-section__title wk-bd-section__title--secondary">身份</h3>
+      <h3 className="wk-bd-section__title wk-bd-section__title--secondary">{t("base.runtimes.botDetail.sectionIdentity")}</h3>
       <dl className="wk-bd-props">
         <PropRow label="Bot UID" value={<Copyable text={bot.bot_uid} mono />} />
         {/* PR-2: 删 Daemon ID 字段, 是 dev 级 UUID, 用户用不到. */}
-        <PropRow label="创建于" value={<span className="wk-bd-props__time">{bot.created_at}</span>} />
-        <PropRow label="更新于" value={<span className="wk-bd-props__time">{bot.updated_at}</span>} />
+        <PropRow label={t("base.runtimes.botDetail.propCreatedAt")} value={<span className="wk-bd-props__time">{bot.created_at}</span>} />
+        <PropRow label={t("base.runtimes.botDetail.propUpdatedAt")} value={<span className="wk-bd-props__time">{bot.updated_at}</span>} />
       </dl>
       {bot.error_msg && (
         <div className="wk-bd-callout wk-bd-callout--err">
-          <span className="wk-bd-callout__label">最近错误</span>
+          <span className="wk-bd-callout__label">{t("base.runtimes.botDetail.lastError")}</span>
           <span className="wk-bd-callout__body">{bot.error_msg}</span>
         </div>
       )}
@@ -165,10 +176,11 @@ function InfoTab({ bot }: { bot: Bot }) {
 // (短号) 显示, 跟其他业务侧用户标识保持一致. 万一 owner ≠ 登录用户
 // (未来转移所有权), fallback 回 UUID 缩写.
 function OwnerLabel({ ownerUid }: { ownerUid: string }) {
+  const { t } = useI18n();
   const login = (WKApp as any).loginInfo;
   const isMe = login?.uid === ownerUid;
   if (isMe) {
-    const name = login?.name || '我';
+    const name = login?.name || t("base.runtimes.botDetail.me");
     const shortNo = login?.shortNo;
     return (
       <span className="wk-bd-owner">
@@ -196,6 +208,7 @@ function PropRow({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 function Copyable({ text, mono = false }: { text: string; mono?: boolean }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const onCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -212,7 +225,7 @@ function Copyable({ text, mono = false }: { text: string; mono?: boolean }) {
           type="button"
           className="wk-bd-copyable__btn"
           onClick={onCopy}
-          aria-label="复制"
+          aria-label={t("base.runtimes.common.copy")}
         >{copied ? '✓' : '⧉'}</button>
       )}
     </span>
@@ -220,6 +233,7 @@ function Copyable({ text, mono = false }: { text: string; mono?: boolean }) {
 }
 
 function FeedTab({ bot }: { bot: Bot }) {
+  const { t } = useI18n();
   const [items, setItems] = useState<BotFeedItem[] | null>(null);
   const load = useCallback(async () => {
     try {
@@ -231,8 +245,8 @@ function FeedTab({ bot }: { bot: Bot }) {
   }, [bot.bot_uid]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const t = window.setInterval(load, 3000);
-    return () => window.clearInterval(t);
+    const timer = window.setInterval(load, 3000);
+    return () => window.clearInterval(timer);
   }, [load]);
 
   const stats = useMemo(() => {
@@ -244,7 +258,7 @@ function FeedTab({ bot }: { bot: Bot }) {
     const successPct = total > 0 ? Math.round((completed / total) * 100) : null;
     const avgMs = (() => {
       const els = tasks
-        .map(t => t.detail?.elapsed_ms as number | undefined)
+        .map(task => task.detail?.elapsed_ms as number | undefined)
         .filter((n): n is number => typeof n === 'number' && n > 0);
       if (els.length === 0) return null;
       return Math.round(els.reduce((a, b) => a + b, 0) / els.length);
@@ -252,29 +266,29 @@ function FeedTab({ bot }: { bot: Bot }) {
     return { total, completed, failed, successPct, avgMs };
   }, [items]);
 
-  if (items === null) return <div className="wk-bd-empty">加载中…</div>;
+  if (items === null) return <div className="wk-bd-empty">{t("base.runtimes.common.loading")}</div>;
 
   return (
     <>
       {/* Recent performance card */}
       {stats && stats.total > 0 && (
         <section className="wk-bd-section wk-bd-section--card">
-          <h3 className="wk-bd-section__title">表现</h3>
+          <h3 className="wk-bd-section__title">{t("base.runtimes.botDetail.sectionPerformance")}</h3>
           <div className="wk-bd-stats">
             <div className="wk-bd-stats__col">
               <div className="wk-bd-stats__big">{stats.total}</div>
-              <div className="wk-bd-stats__sub">次运行</div>
+              <div className="wk-bd-stats__sub">{t("base.runtimes.botDetail.statRuns")}</div>
             </div>
             {stats.successPct !== null && (
               <div className="wk-bd-stats__col">
                 <div className="wk-bd-stats__big">{stats.successPct}%</div>
-                <div className="wk-bd-stats__sub">成功率</div>
+                <div className="wk-bd-stats__sub">{t("base.runtimes.botDetail.statSuccessRate")}</div>
               </div>
             )}
             {stats.avgMs !== null && (
               <div className="wk-bd-stats__col">
                 <div className="wk-bd-stats__big">{(stats.avgMs / 1000).toFixed(1)}<span className="wk-bd-stats__unit">s</span></div>
-                <div className="wk-bd-stats__sub">平均耗时</div>
+                <div className="wk-bd-stats__sub">{t("base.runtimes.botDetail.statAvgDuration")}</div>
               </div>
             )}
           </div>
@@ -283,9 +297,9 @@ function FeedTab({ bot }: { bot: Bot }) {
 
       {/* Activity feed */}
       <section className="wk-bd-section wk-bd-section--card">
-        <h3 className="wk-bd-section__title">动态</h3>
+        <h3 className="wk-bd-section__title">{t("base.runtimes.botDetail.tabFeed")}</h3>
         {items.length === 0 ? (
-          <div className="wk-bd-empty wk-bd-empty--inline">暂无动态</div>
+          <div className="wk-bd-empty wk-bd-empty--inline">{t("base.runtimes.botDetail.noActivity")}</div>
         ) : (
           <ul className="wk-bd-feed">
             {items.map(it => (
@@ -313,39 +327,40 @@ function FeedTab({ bot }: { bot: Bot }) {
 }
 
 function TasksTab({ bot }: { bot: Bot }) {
+  const { t } = useI18n();
   const [items, setItems] = useState<BotFeedItem[] | null>(null);
   useEffect(() => {
     getBotFeed(bot.bot_uid, 100)
       .then(data => setItems(data.filter(i => i.kind === 'activity' && i.action?.startsWith('agent_task'))))
       .catch(() => setItems([]));
   }, [bot.bot_uid]);
-  if (items === null) return <div className="wk-bd-empty">加载中…</div>;
+  if (items === null) return <div className="wk-bd-empty">{t("base.runtimes.common.loading")}</div>;
   if (items.length === 0) return (
     <section className="wk-bd-section wk-bd-section--card">
-      <h3 className="wk-bd-section__title">任务记录</h3>
-      <div className="wk-bd-empty wk-bd-empty--inline">还没有任务记录 — 在事项里 @ 此 Bot 即可派任务</div>
+      <h3 className="wk-bd-section__title">{t("base.runtimes.botDetail.taskHistory")}</h3>
+      <div className="wk-bd-empty wk-bd-empty--inline">{t("base.runtimes.botDetail.noTaskHistory")}</div>
     </section>
   );
   return (
     <section className="wk-bd-section wk-bd-section--card">
-      <h3 className="wk-bd-section__title">任务记录 <span className="wk-bd-section__count">{items.length}</span></h3>
+      <h3 className="wk-bd-section__title">{t("base.runtimes.botDetail.taskHistory")} <span className="wk-bd-section__count">{items.length}</span></h3>
       <ul className="wk-bd-tasks">
-        {items.map(t => {
-          const ok = t.action === 'agent_task_completed';
-          const elapsed = (t.detail?.elapsed_ms as number | undefined);
-          const bytes = (t.detail?.bytes as number | undefined);
-          const err = (t.detail?.error as string | undefined);
+        {items.map(task => {
+          const ok = task.action === 'agent_task_completed';
+          const elapsed = (task.detail?.elapsed_ms as number | undefined);
+          const bytes = (task.detail?.bytes as number | undefined);
+          const err = (task.detail?.error as string | undefined);
           return (
-            <li key={t.id} className={`wk-bd-task${ok ? '' : ' wk-bd-task--failed'}`}>
+            <li key={task.id} className={`wk-bd-task${ok ? '' : ' wk-bd-task--failed'}`}>
               <span className={`wk-bd-task__icon wk-bd-task__icon--${ok ? 'ok' : 'fail'}`} aria-hidden="true">
                 {ok ? '✓' : '✗'}
               </span>
               <div className="wk-bd-task__main">
-                <div className="wk-bd-task__title">{matterLabel(t)}</div>
+                <div className="wk-bd-task__title">{matterLabel(task)}</div>
                 <div className="wk-bd-task__meta">
-                  <span>{formatTime(t.created_at)}</span>
+                  <span>{formatTime(task.created_at)}</span>
                   {elapsed != null && <><span>·</span><span>{(elapsed / 1000).toFixed(1)}s</span></>}
-                  {bytes != null && bytes > 0 && <><span>·</span><span>{bytes} 字节</span></>}
+                  {bytes != null && bytes > 0 && <><span>·</span><span>{t("base.runtimes.botDetail.bytes", { values: { n: bytes } })}</span></>}
                   {err && <><span>·</span><span className="wk-bd-task__err">{err.slice(0, 80)}</span></>}
                 </div>
               </div>
@@ -358,20 +373,22 @@ function TasksTab({ bot }: { bot: Bot }) {
 }
 
 function SkillsTab() {
+  const { t } = useI18n();
   return (
     <section className="wk-bd-section wk-bd-section--card">
-      <h3 className="wk-bd-section__title">Skills</h3>
-      <div className="wk-bd-empty wk-bd-empty--inline">Skills 配置（占位 — 下个迭代）</div>
+      <h3 className="wk-bd-section__title">{t("base.runtimes.botDetail.tabSkills")}</h3>
+      <div className="wk-bd-empty wk-bd-empty--inline">{t("base.runtimes.botDetail.skillsPlaceholder")}</div>
     </section>
   );
 }
 
 // 「待上线」占位 — 用于本期未开放的 tab (动态/任务记录依赖 matter; Skills 待开发).
 function ComingSoon({ title }: { title: string }) {
+  const { t } = useI18n();
   return (
     <section className="wk-bd-section wk-bd-section--card">
       <h3 className="wk-bd-section__title">{title}</h3>
-      <div className="wk-bd-empty wk-bd-empty--inline">该功能开发中，即将上线，敬请期待</div>
+      <div className="wk-bd-empty wk-bd-empty--inline">{t("base.runtimes.botDetail.featureInDev")}</div>
     </section>
   );
 }
@@ -394,16 +411,17 @@ function agentActionLabel(action?: string, detail?: Record<string, unknown>): st
   if (!action) return '';
   switch (action) {
     case 'agent_dispatched':
-      return '派发任务';
+      return tt("base.runtimes.botDetail.actDispatch");
     case 'agent_task_completed': {
       const ms = (detail?.elapsed_ms as number | undefined);
       const bytes = (detail?.bytes as number | undefined);
-      const t = ms != null ? `${(ms / 1000).toFixed(1)}s` : '';
-      const b = bytes != null && bytes > 0 ? `${bytes} 字节` : '';
-      return `完成任务${t || b ? ' · ' : ''}${[t, b].filter(Boolean).join(' · ')}`;
+      const tStr = ms != null ? `${(ms / 1000).toFixed(1)}s` : '';
+      const b = bytes != null && bytes > 0 ? tt("base.runtimes.botDetail.bytes", { values: { n: bytes } }) : '';
+      const suffix = `${tStr || b ? ' · ' : ''}${[tStr, b].filter(Boolean).join(' · ')}`;
+      return tt("base.runtimes.botDetail.actComplete", { values: { suffix } });
     }
     case 'agent_task_failed':
-      return `任务失败 · ${String(detail?.error ?? '').slice(0, 60)}`;
+      return tt("base.runtimes.botDetail.actFailed", { values: { error: String(detail?.error ?? '').slice(0, 60) } });
     default:
       return action;
   }
