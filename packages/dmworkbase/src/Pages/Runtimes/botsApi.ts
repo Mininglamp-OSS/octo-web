@@ -2,6 +2,7 @@
 // localized to the runtimes module — if we promote this later we can move
 // it to dmworkbase/src/api.
 import WKApp from '../../App';
+import { t } from '../../i18n';
 
 export type RuntimeKind = 'openclaw' | 'claude';
 
@@ -44,13 +45,13 @@ export interface Bot {
 // import 同一份).
 export function botStatusLabel(s: string): string {
   switch (s) {
-    case 'active':       return '在线';
-    case 'failed':       return '失败';
-    case 'archived':     return '已归档';
-    case 'draft':        return '草稿';
+    case 'active':       return t("base.runtimes.common.online");
+    case 'failed':       return t("base.runtimes.botStatus.failed");
+    case 'archived':     return t("base.runtimes.botStatus.archived");
+    case 'draft':        return t("base.runtimes.botStatus.draft");
     case 'provisioning':
     case 'bot_minted':
-    case 'dispatched':   return '配置中';
+    case 'dispatched':   return t("base.runtimes.botStatus.dispatched");
     default:             return s;
   }
 }
