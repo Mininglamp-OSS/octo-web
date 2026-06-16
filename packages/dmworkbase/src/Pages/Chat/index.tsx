@@ -1262,6 +1262,10 @@ export default class ChatPage extends Component<any, ChatPageState> {
           // filter 用于 ConversationList
           // follow Tab 用 group（分组视图），recent Tab 用 all（所有会话混合）
           const filter: ConvFilter = activeTab === "follow" ? "group" : "all";
+          // #397: 关闭全局搜索弹窗的统一语义（onCancel / 选中项点击 / bot 发消息后均复用）
+          const closeSearch = () => {
+            vm.showGlobalSearch = false;
+          };
           return (
             <div className="wk-chat">
               <div
@@ -1526,21 +1530,15 @@ export default class ChatPage extends Component<any, ChatPageState> {
               <WKModal
                 size="full"
                 visible={vm.showGlobalSearch}
-                onCancel={() => {
-                  vm.showGlobalSearch = false;
-                }}
+                onCancel={closeSearch}
               >
                 <div style={{ marginTop: "30px" }}>
                   <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
                     <GlobalSearch
                       onClick={(item, type: string) => {
-                        void handleGlobalSearchClick(item, type, () => {
-                          vm.showGlobalSearch = false;
-                        });
+                        void handleGlobalSearchClick(item, type, closeSearch);
                       }}
-                      onClose={() => {
-                        vm.showGlobalSearch = false;
-                      }}
+                      onClose={closeSearch}
                     />
                   </ErrorBoundary>
                 </div>

@@ -152,4 +152,28 @@ describe("TabContacts #397 close outer GlobalSearch on bot send", () => {
         expect(onClick).toHaveBeenCalledTimes(1);
         expect(onClose).not.toHaveBeenCalled();
     });
+
+    it("bot path without onClose prop: send message still navigates and does not throw", () => {
+        // Guards the optional-chaining `this.props.onClose?.()`: callers that
+        // omit onClose (e.g. Contacts/Subscribers) must not crash on bot send.
+        mocks.isBot.mockReturnValue(true);
+        const onClick = vi.fn();
+
+        // No onClose passed.
+        renderTab({ onClick });
+
+        act(() => {
+            fireEvent.click(friendItem());
+        });
+        const sendBtn = container.querySelector(
+            '[data-testid="bot-send"]'
+        ) as HTMLElement;
+        expect(() => {
+            act(() => {
+                fireEvent.click(sendBtn);
+            });
+        }).not.toThrow();
+
+        expect(mocks.showConversation).toHaveBeenCalledTimes(1);
+    });
 });
