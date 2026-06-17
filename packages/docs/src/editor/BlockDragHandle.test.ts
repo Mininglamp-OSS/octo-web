@@ -8,7 +8,7 @@ import { topLevelBlockPosAt } from './BlockDragHandle.ts'
 // ProseMirror's posAtCoords lands in. We drive it with a real document and a stub
 // posAtCoords so the resolution logic is tested without a rendered view.
 function makeEditor(html: string): Editor {
-  return new Editor({ extensions: [StarterKit.configure({ history: false })], content: html })
+  return new Editor({ extensions: [StarterKit.configure({ undoRedo: false })], content: html })
 }
 
 function viewFor(editor: Editor, posAtCoords: EditorView['posAtCoords']): EditorView {

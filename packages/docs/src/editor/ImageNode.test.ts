@@ -13,7 +13,7 @@ import { OctoImage } from './ImageNode.ts'
 // NodeView / network) and exercise toDOM/parseDOM via DOMSerializer / DOMParser.
 function buildSchema() {
   return getSchema([
-    StarterKit.configure({ history: false, codeBlock: false }),
+    StarterKit.configure({ undoRedo: false, codeBlock: false }),
     OctoImage.configure({ docId: 'd_test' }),
   ])
 }

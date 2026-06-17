@@ -2,7 +2,7 @@
 //
 // A Tiptap extension whose ProseMirror plugin paints inline `octo-comment-highlight` decorations
 // over the ranges of the live (non-resolved, non-orphan) comments. It is VIEW-ONLY, exactly like
-// the collaboration cursor layer: it never dispatches content steps and never writes to the Y.Doc,
+// the collaboration caret layer: it never dispatches content steps and never writes to the Y.Doc,
 // so it cannot fight y-sync. Decorations are derived state — recomputed from the comment anchors on
 // every transaction (so they remap as the doc changes, local or remote) and whenever React pushes a
 // new comment set.
@@ -15,13 +15,19 @@
 // Clicking a highlight activates that comment's thread: the plugin invokes the `onActivate`
 // callback stored in extension storage (React sets it), keeping the wiring decoupled from how the
 // editor was constructed. ProseMirror imports stay on @tiptap/pm (single instance; check:dedupe).
+//
+// Tiptap v3's Collaboration extension binds the Y.Doc via @tiptap/y-tiptap (its own fork of
+// y-prosemirror), so we MUST read the ySync state through @tiptap/y-tiptap's `ySyncPluginKey` and
+// remap with its `relativePositionToAbsolutePosition` — the standalone y-prosemirror package
+// registers a DIFFERENT PluginKey, so its getState() would return undefined against the live
+// editor and the highlights would silently never paint.
 
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import type { EditorState } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import * as Y from 'yjs'
-import { ySyncPluginKey, relativePositionToAbsolutePosition } from 'y-prosemirror'
+import { ySyncPluginKey, relativePositionToAbsolutePosition } from '@tiptap/y-tiptap'
 
 export const commentDecorationPluginKey = new PluginKey<CommentDecorationState>('octoCommentHighlight')
 
@@ -43,7 +49,7 @@ export interface CommentHighlightStorage {
 }
 
 function buildDecorations(anchors: CommentAnchor[], state: EditorState): DecorationSet {
-  // ySync's binding/type are y-prosemirror-internal; treat them opaquely at this boundary.
+  // ySync's binding/type are y-tiptap-internal; treat them opaquely at this boundary.
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   const ystate = ySyncPluginKey.getState(state) as
     | { type?: any; doc?: Y.Doc; binding?: { mapping: any } } // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -123,11 +129,16 @@ export const CommentHighlight = Extension.create<Record<string, never>, CommentH
   },
 })
 
-// Tiptap command typing.
+// Tiptap command + storage typing. v3 types `editor.storage` against a strict `Storage`
+// interface (v2 typed it as Record<string, any>), so the extension's storage key must be
+// declared here for `editor.storage.octoCommentHighlight` to type-check at the call sites.
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     octoCommentHighlight: {
       setCommentAnchors: (anchors: CommentAnchor[]) => ReturnType
     }
+  }
+  interface Storage {
+    octoCommentHighlight: CommentHighlightStorage
   }
 }

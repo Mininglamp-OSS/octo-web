@@ -11,20 +11,25 @@
 // so the highlight grows/shrinks correctly at its boundaries and does not swallow text typed
 // immediately outside the range.
 //
-// ENCODE APPROACH (documented, since y-prosemirror gives us no assoc-aware seam directly):
-// y-prosemirror's `absolutePositionToRelativePosition(pos, type, mapping)` is the robust way to
+// ENCODE APPROACH (documented, since the ySync binding gives us no assoc-aware seam directly):
+// `absolutePositionToRelativePosition(pos, type, mapping)` is the robust way to
 // turn a ProseMirror absolute position into the right Yjs (type, index) — but it hard-codes assoc
 // -1 internally and returns a finished RelativePosition. We cannot simply flip `.assoc` on that
 // object, because `Y.createRelativePositionFromTypeIndex` resolves a *different anchor item*
 // depending on assoc (for assoc<0 it decrements the index and binds to the left item). So instead
-// we (1) get the assoc(-1) relpos from y-prosemirror, (2) resolve it back to a concrete Yjs
+// we (1) get the assoc(-1) relpos from the binding, (2) resolve it back to a concrete Yjs
 // {type, index} via `Y.createAbsolutePositionFromRelativePosition` — Yjs guarantees this round-trip
 // returns the original index — and (3) re-create the relpos at that exact (type, index) with the
 // assoc we actually want. Public APIs only, no tree-walking re-implementation.
 //
 // DECODE: base64 -> bytes -> `Y.decodeRelativePosition` -> `relativePositionToAbsolutePosition`
-// (y-prosemirror) back to a ProseMirror position. A null result means the anchored content was
+// back to a ProseMirror position. A null result means the anchored content was
 // deleted => ORPHAN: we never throw, the caller renders the comment from its `anchorText` snapshot.
+//
+// BINDING SOURCE: Tiptap v3's Collaboration extension binds the Y.Doc via @tiptap/y-tiptap (its
+// own y-prosemirror fork). We read `ySyncPluginKey` and the abs<->rel position helpers from
+// @tiptap/y-tiptap so the PluginKey and the PM<->Y mapping match the live editor's binding — the
+// standalone y-prosemirror package registers a different key and would return a null state here.
 
 import * as Y from 'yjs'
 import type { Editor } from '@tiptap/core'
@@ -32,7 +37,7 @@ import {
   ySyncPluginKey,
   absolutePositionToRelativePosition,
   relativePositionToAbsolutePosition,
-} from 'y-prosemirror'
+} from '@tiptap/y-tiptap'
 
 /** START sticks to the char AFTER the anchor (design M3). */
 export const ANCHOR_ASSOC_START = 1
@@ -69,7 +74,7 @@ export function decodeRelPos(b64: string): Y.RelativePosition {
  * Pure over Yjs primitives so it's unit-testable with a constructed Y.Doc/type. The high-level
  * editor path passes ANCHOR_ASSOC_START for the range start and ANCHOR_ASSOC_END for the end.
  */
-// y-prosemirror's typings (ProsemirrorMapping, XmlFragment) are looser than ours at this boundary;
+// the binding's typings (ProsemirrorMapping, XmlFragment) are looser than ours at this boundary;
 // we keep our own surface typed and cast only where we hand values to those untyped library fns.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -96,7 +101,7 @@ export function relPosToIndex(relPos: Y.RelativePosition, ydoc: Y.Doc): number |
 interface YBinding {
   ydoc: Y.Doc
   type: Y.XmlFragment
-  // y-prosemirror's ProsemirrorMapping (Map<Y.AbstractType, Node | Node[]>); opaque to us.
+  // the binding's ProsemirrorMapping (Map<Y.AbstractType, Node | Node[]>); opaque to us.
   mapping: any
 }
 
