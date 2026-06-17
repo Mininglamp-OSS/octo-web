@@ -191,25 +191,31 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   font-weight: 600;
 }
 
-/* 静音状态：名字 / 预览 / 计数提示降为 icon-muted */
+/* 静音状态：名字 / 预览降为 icon-muted */
 .wk-conversationlist-item-muted .wk-conversationlist-item-name h3,
-.wk-conversationlist-item-muted .wk-conversationlist-item-lastmsg,
-.wk-conversationlist-item-muted .wk-conv-count-hint {
+.wk-conversationlist-item-muted .wk-conversationlist-item-lastmsg {
   color: var(--wk-icon-muted);
 }
 
-/* 头像右上角未读数字 badge（非静音） */
+/* 第二行右侧状态区：对齐在时间下方 */
+.wk-conversationlist-item-indicators {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--wk-sp-1);
+  flex-shrink: 0;
+  margin-left: var(--wk-sp-1);
+  min-height: var(--wk-sp-4);
+}
+
+/* 时间下方未读数字 badge（非静音） */
 .wk-conv-unread-num {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  min-width: 16px;
-  height: 16px;
+  min-width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
   padding: 0 var(--wk-sp-1);
-  background: var(--wk-color-danger);
-  color: var(--wk-color-white);
-  border: 2px solid var(--wk-bg-base);
-  border-radius: 9px;
+  background: var(--wk-badge-danger-bg);
+  color: var(--wk-badge-danger-text);
+  border-radius: var(--wk-r-full);
   font-size: var(--wk-text-size-tiny);
   font-weight: 600;
   line-height: 1;
@@ -217,6 +223,11 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+}
+
+.wk-conv-unread-num--muted {
+  background: color-mix(in srgb, var(--wk-icon-muted) 14%, transparent);
+  color: var(--wk-icon-muted);
 }
 
 .wk-conv-unread-num--nudge-a {
@@ -272,33 +283,12 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   }
 }
 
-/* 头像右上角小红点（静音 + 有未读，低打扰提示） */
-.wk-conv-unread-dot {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 9px;
-  height: 9px;
-  border-radius: var(--wk-r-circle);
-  background: var(--wk-color-danger);
-  border: 2px solid var(--wk-bg-base);
-  box-sizing: border-box;
-}
-
 /* name 行内的免打扰小图标 */
 .wk-conv-mute-icon {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
   color: var(--wk-icon-muted);
-}
-
-/* 静音 + 多条未读：[N 条] 红字提示前置预览 */
-.wk-conv-count-hint {
-  color: var(--wk-color-danger);
-  font-weight: 500;
-  margin-right: var(--wk-sp-1);
-  flex-shrink: 0;
 }
 
 /* AI 协作中预览 */
@@ -363,7 +353,6 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   padding: 0 var(--wk-sp-1);
   border-radius: var(--wk-r-xs);
   flex-shrink: 0;
-  margin-left: var(--wk-sp-1);
 }
 
 /* 草稿、提醒 */

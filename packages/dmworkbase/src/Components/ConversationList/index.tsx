@@ -747,19 +747,6 @@ export default class ConversationList extends Component<
                   tip={this.getOnlineTip(channelInfo)}
                 ></OnlineStatusBadge>
               ) : undefined}
-              {totalUnread > 0 && !effectiveMute && (
-                <span
-                  className={classNames(
-                    "wk-conv-unread-num",
-                    unreadNudgeClass
-                  )}
-                >
-                  {totalUnread > 99 ? "99+" : totalUnread}
-                </span>
-              )}
-              {totalUnread > 0 && effectiveMute && (
-                <span className="wk-conv-unread-dot" />
-              )}
             </div>
           </div>
           <div className="wk-conversationlist-item-right">
@@ -849,21 +836,28 @@ export default class ConversationList extends Component<
                       );
                     })
                   : undefined}
-                {/* 静音 + 多条未读：预览前置 [N 条] 红字提示（design v3.1 低打扰） */}
-                {effectiveMute && totalUnread > 1 && !typing && (
-                  <span className="wk-conv-count-hint">
-                    {t("base.conversationList.unreadCountHint", {
-                      values: { count: totalUnread > 99 ? "99+" : totalUnread },
-                    })}
-                  </span>
-                )}
                 {typing
                   ? this._getTypingUI(conversationWrap)
                   : this.lastContent(conversationWrap)}
               </div>
-              {hasMention && (
-                <span className="wk-mention" aria-hidden="true">
-                  {t("base.conversationList.mentionMarker")}
+              {(hasMention || totalUnread > 0) && (
+                <span className="wk-conversationlist-item-indicators">
+                  {hasMention && (
+                    <span className="wk-mention" aria-hidden="true">
+                      {t("base.conversationList.mentionMarker")}
+                    </span>
+                  )}
+                  {totalUnread > 0 && (
+                    <span
+                      className={classNames(
+                        "wk-conv-unread-num",
+                        effectiveMute ? "wk-conv-unread-num--muted" : undefined,
+                        unreadNudgeClass
+                      )}
+                    >
+                      {totalUnread > 99 ? "99+" : totalUnread}
+                    </span>
+                  )}
                 </span>
               )}
             </div>
