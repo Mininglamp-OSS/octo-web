@@ -1,6 +1,6 @@
 import axios, { AxiosResponse } from "axios";
 import { buildAcceptLanguage } from "./apiLanguage";
-import { isAuthExpiredApiError, normalizeApiError, NormalizedApiError } from "./apiError";
+import { isAuthExpiredApiError, isStaleLocalResourceApiError, normalizeApiError, NormalizedApiError } from "./apiError";
 
 export interface APIClientRejectedError {
     error: unknown;
@@ -55,6 +55,7 @@ export default class APIClient {
     public static shared = new APIClient()
     public config = new APIClientConfig()
     public logoutCallback?:()=>void
+    public staleLocalResourceCallback?:(code: string)=>void
 
     initAxios() {
         const self = this
@@ -88,8 +89,18 @@ export default class APIClient {
                 httpStatus: error?.response?.status,
                 raw: error,
             });
+            // Plan F: classification is mutually exclusive. else if (not two
+            // independent ifs) ensures a single error response triggers at
+            // most one recovery callback, even if a future code lands in both
+            // sets by mistake.
             if (isAuthExpiredApiError(normalized) && self.logoutCallback) {
                 self.logoutCallback()
+            } else if (
+                isStaleLocalResourceApiError(normalized) &&
+                self.staleLocalResourceCallback &&
+                normalized.code
+            ) {
+                self.staleLocalResourceCallback(normalized.code)
             }
             const rejected: APIClientRejectedError = {
                 error: error,

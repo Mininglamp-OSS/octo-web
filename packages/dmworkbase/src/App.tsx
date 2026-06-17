@@ -134,6 +134,7 @@ import {
   requestOidcLogout,
   safeEndSessionUrl,
 } from "./Service/oidcLogout";
+import type { APIClientRejectedError } from "./Service/APIClient";
 
 export enum ThemeMode {
   light,
@@ -650,6 +651,7 @@ export default class WKApp extends ProviderListener {
 
   private wsaddrs = new Array<string>(); // ws的连接地址
   private addrUsed = false; // 地址是否被使用
+  private loggingOut = false; // Plan F: in-flight guard for logout() to short-circuit concurrent reload attempts from racing callbacks (auth-expired + stale-device). One-way per session — reset only by the actual page reload.
 
   isPC = false; // 是否是PC端
   deviceId: string = ""; // 设备ID
@@ -871,6 +873,20 @@ export default class WKApp extends ProviderListener {
         if (res.id) {
           WKSDK.shared().config.clientMsgDeviceId = res.id;
         }
+      })
+      .catch((err: APIClientRejectedError) => {
+        // Plan F: stale device recovery is handled centrally by the
+        // APIClient staleLocalResourceCallback (see module.tsx). This catch
+        // only exists to (a) consume the promise rejection so it doesn't
+        // surface as Uncaught and (b) keep observability of non-stale
+        // failures of this endpoint. The recovery side-effect has already
+        // fired by the time this runs (interceptor → callback → handler).
+        if (err?.code !== "err.server.user.device_not_found") {
+          console.warn(
+            "[App.startMain] /user/devices fetch failed (non-stale):",
+            { status: err?.status, code: err?.code, msg: err?.msg },
+          );
+        }
       });
   }
 
@@ -904,7 +920,27 @@ export default class WKApp extends ProviderListener {
 
   // 登出
   logout() {
-    this.clearLocalLoginState();
+    // Plan F bundled fix #1: in-flight guard. Multiple concurrent API
+    // errors (e.g., auth-expired + stale-device, or N parallel stale
+    // responses) can call logout() in rapid succession before the page
+    // actually unloads. Without this guard, clearLocalLoginState() runs N
+    // times. Idempotent in practice but wasteful and noisy. One-way: only
+    // a real page reload resets the flag.
+    if (this.loggingOut) return;
+    this.loggingOut = true;
+    // Plan F Task 9 hardening: clearLocalLoginState performs raw
+    // localStorage/sessionStorage writes (via StorageService) that throw in
+    // Safari private mode, on QuotaExceededError, or under SecurityError.
+    // Without the try/catch, a throw here would leave loggingOut=true
+    // forever AND skip the reload — every subsequent logout attempt
+    // short-circuits and the user is permanently wedged. The reload must
+    // happen regardless so the next bootstrap can detect the broken auth
+    // state and route to login.
+    try {
+      this.clearLocalLoginState();
+    } catch (e) {
+      console.warn("[WKApp.logout] clearLocalLoginState threw, reloading anyway", e);
+    }
     window.location.reload();
   }
 
