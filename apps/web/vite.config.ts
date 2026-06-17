@@ -52,17 +52,26 @@ export default defineConfig(({ mode }) => {
       tsconfigPaths({ root: "../../" }),
       {
         name: "exclude-test-files",
+        // enforce: "pre" 让本插件的 resolveId 早于 commonjs() 等其它插件执行。
+        // filehelper.ts 里 require(`./${fileIcon}`) 会被 vite-plugin-commonjs 展开
+        // 成对整个目录的 glob 引用，把同级的 *.test.* / __tests__/* 一并扫进生产
+        // 依赖图。若不抢在 commonjs() 之前 resolve，这些测试文件会先被 commonjs()
+        // 拿走、绕过本 stub，最终把 vitest / @vitest/mocker(vi.queueMock) 打进生产
+        // bundle，加载即抛、React 挂不上 → 白屏。
+        enforce: "pre",
         resolveId(id, importer) {
-          // 测试文件正则：匹配 .test.* / .spec.* 或 __tests__/ 目录
+          // 测试文件正则：匹配 .test.* / .spec.* / .stories.* 或 __tests__/ 目录
           const TEST_FILE_RE =
-            /[/\\](?:__tests__[/\\]|.*\.(?:test|spec)\.[jt]sx?$)/;
-          // 测试相关包：精确前缀匹配
+            /[/\\](?:__tests__[/\\]|.*\.(?:test|spec|stories)\.[jt]sx?$)/;
+          // 测试态相关包：精确前缀匹配。涵盖 vitest 运行时、Storybook 运行时
+          // (@storybook/react-vite / @storybook/test / addon-vitest 等) 及
+          // @testing-library/*（user-event 会传递依赖到 @vitest/mocker）。
           const TEST_PACKAGES = [
             "vitest",
             "expect-type",
             "@vitest/",
-            "@storybook/addon-vitest",
-            "@storybook/test",
+            "@storybook/",
+            "@testing-library/",
           ];
 
           const isTestFile = TEST_FILE_RE.test(id);
@@ -86,8 +95,9 @@ export default defineConfig(({ mode }) => {
           server.middlewares.use((req, res, next) => {
             const url = req.url || "";
             const TEST_URL_RE =
-              /\/(vitest|expect-type|@vitest\/|@storybook\/(addon-vitest|test))\//;
-            const TEST_FILE_URL_RE = /\.(test|spec)\.[jt]sx?|__tests__\//;
+              /\/(vitest|expect-type|@vitest\/|@storybook\/|@testing-library\/)/;
+            const TEST_FILE_URL_RE =
+              /\.(test|spec|stories)\.[jt]sx?|__tests__\//;
 
             if (TEST_URL_RE.test(url) || TEST_FILE_URL_RE.test(url)) {
               res.statusCode = 200;
