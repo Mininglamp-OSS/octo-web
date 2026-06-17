@@ -17,8 +17,24 @@ export interface InstallGuide {
 // cc-channel-octo 全局配置: 只需 apiUrl(daemon 不写全局, 用户配一次).
 // 用真实可执行 shell 命令(mkdir + heredoc 写文件), 复制到终端可直接跑;
 // 每个 bot 的 token/model 由 daemon 在 web 添加 bot 时自动下发, 用户无需手配.
+// <OCTO_API_URL> 是占位符: 调用方可传入真实 server_url 自动替换(见 getInstallGuide
+// 的 apiUrl 参数), 拿不到时保留占位让用户手填.
+const OCTO_API_URL_PLACEHOLDER = "<OCTO_API_URL>"
 const CLAUDE_CONFIG_TEMPLATE = `mkdir -p ~/.cc-channel-octo && cat > ~/.cc-channel-octo/config.json <<'EOF'
-{ "apiUrl": "<OCTO_API_URL>" }
+{ "apiUrl": "${OCTO_API_URL_PLACEHOLDER}" }
+EOF`
+
+// 模型认证配置: cc-channel-octo 经 Claude Code SDK 调模型, 模型网关 + API Key 由
+// 用户自备(Octo 不提供). anthropicBaseUrl / ANTHROPIC_AUTH_TOKEN 是占位, 必须用户
+// 替换成自己的值 —— 这步天然不能直接执行(密钥是用户私有), 与 step2 的可执行配置不同.
+const CLAUDE_MODEL_CONFIG_TEMPLATE = `mkdir -p ~/.cc-channel-octo && cat > ~/.cc-channel-octo/config.json <<'EOF'
+{
+  "apiUrl": "${OCTO_API_URL_PLACEHOLDER}",
+  "sdk": {
+    "anthropicBaseUrl": "https://your-model-gateway",
+    "env": { "ANTHROPIC_AUTH_TOKEN": "your-api-key" }
+  }
+}
 EOF`
 
 const INSTALL_GUIDES: Record<RuntimeKind, InstallGuide> = {
@@ -45,17 +61,39 @@ const INSTALL_GUIDES: Record<RuntimeKind, InstallGuide> = {
             },
             {
                 titleKey: "base.runtimes.install.claude.step3.title",
+                command: CLAUDE_MODEL_CONFIG_TEMPLATE,
+                noteKey: "base.runtimes.install.claude.step3.note",
+            },
+            {
+                titleKey: "base.runtimes.install.claude.step4.title",
                 command: "cc-channel-octo",
             },
         ],
     },
 }
 
-export function getInstallGuide(provider: string): InstallGuide | null {
+export function getInstallGuide(provider: string, apiUrl?: string): InstallGuide | null {
     // hasOwnProperty 守卫: 防 'constructor'/'toString' 等原型链键绕过白名单
     // 返回继承自 Object.prototype 的函数(真值).
     if (!Object.prototype.hasOwnProperty.call(INSTALL_GUIDES, provider)) return null
-    return (INSTALL_GUIDES as Record<string, InstallGuide>)[provider]
+    const guide = (INSTALL_GUIDES as Record<string, InstallGuide>)[provider]
+    return applyApiUrl(guide, apiUrl)
+}
+
+// 把命令里的 <OCTO_API_URL> 占位替换成真实 server_url(来自 daemon onboarding,
+// 与 daemon 的 OCTO_SERVER_URL 同源)。apiUrl 为空时原样返回(保留占位让用户手填)。
+// 注意 server_url 是基址(不含 /v1)—— cc-channel-octo 自己拼 /v1/bot/...。
+function applyApiUrl(guide: InstallGuide, apiUrl?: string): InstallGuide {
+    const url = apiUrl?.trim()
+    if (!url) return guide
+    return {
+        ...guide,
+        steps: guide.steps.map((step) =>
+            step.command.includes(OCTO_API_URL_PLACEHOLDER)
+                ? { ...step, command: step.command.split(OCTO_API_URL_PLACEHOLDER).join(url) }
+                : step,
+        ),
+    }
 }
 
 // buildInstallCopyText 的 t 只用无插值的 key, 故签名收窄到 (key) => string;
@@ -63,8 +101,8 @@ export function getInstallGuide(provider: string): InstallGuide | null {
 // 避免 TranslateOptions.values 在 strictFunctionTypes 下逆变不兼容.
 type TFn = (key: string) => string
 
-export function buildInstallCopyText(provider: string, t: TFn): string {
-    const guide = getInstallGuide(provider)
+export function buildInstallCopyText(provider: string, t: TFn, apiUrl?: string): string {
+    const guide = getInstallGuide(provider, apiUrl)
     if (!guide) return ""
     const lines: string[] = [t(guide.introKey)]
     guide.steps.forEach((step, i) => {
