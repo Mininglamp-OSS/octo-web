@@ -42,6 +42,48 @@ describe('summaryApi interceptors', () => {
   });
 });
 
+// The summary service lives at <origin>/summary/api/v1. On Web, apiClient.apiURL
+// is relative ("/api/v1/") so same-origin requests work with an empty baseURL.
+// In the extension/Electron the page origin is chrome-extension:// / app://, so
+// the request must target the API origin derived from apiClient.config.apiURL.
+// GH #420 — sidepanel forward menu could not search channels/subzones.
+describe('summaryApi baseURL resolution (GH #420)', () => {
+  async function getRequestInterceptor(apiClient: unknown) {
+    vi.resetModules();
+    mockRequestUse.mockClear();
+    // Mutate the WKApp instance from the post-reset module graph — the same one
+    // summaryApi will import — so the interceptor reads this apiClient at call time.
+    const { default: freshWKApp } = await import('@octo/base');
+    (freshWKApp as any).apiClient = apiClient;
+    await import('../summaryApi');
+    return mockRequestUse.mock.calls[0]?.[0];
+  }
+
+  it('uses the API origin when apiClient.apiURL is absolute (extension/Electron)', async () => {
+    const interceptor = await getRequestInterceptor({ config: { apiURL: 'https://api.example.com/api/v1/' } });
+
+    const result = interceptor({ headers: {} } as any);
+
+    expect(result.baseURL).toBe('https://api.example.com');
+  });
+
+  it('stays same-origin (empty baseURL) when apiClient.apiURL is relative (Web)', async () => {
+    const interceptor = await getRequestInterceptor({ config: { apiURL: '/api/v1/' } });
+
+    const result = interceptor({ headers: {} } as any);
+
+    expect(result.baseURL).toBe('');
+  });
+
+  it('stays same-origin when apiClient.config is absent', async () => {
+    const interceptor = await getRequestInterceptor({});
+
+    const result = interceptor({ headers: {} } as any);
+
+    expect(result.baseURL).toBe('');
+  });
+});
+
 describe('summaryApi', () => {
     beforeEach(() => {
         vi.clearAllMocks();

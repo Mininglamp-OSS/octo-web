@@ -25,7 +25,25 @@ import { SummaryMode } from '../types/summary';
 
 const summaryAxios = axios.create({ baseURL: '' });
 
+// The summary service is mounted at <origin>/summary/api/v1 (nginx proxies it).
+// On Web, apiClient.apiURL is relative ("/api/v1/"), so same-origin requests
+// resolve correctly with an empty baseURL. In the browser extension (and
+// Electron) the page origin is chrome-extension://… / app://…, so a relative
+// "/summary/api/v1/…" request never reaches the backend; derive the API origin
+// from apiClient.config.apiURL in those runtimes. GH #420.
+function resolveSummaryBaseURL(): string {
+    const apiURL = WKApp.apiClient?.config?.apiURL;
+    if (!apiURL) return '';
+    try {
+        return new URL(apiURL).origin;
+    } catch {
+        // Relative apiURL (Web) has no parsable origin → stay same-origin.
+        return '';
+    }
+}
+
 summaryAxios.interceptors.request.use((config) => {
+    config.baseURL = resolveSummaryBaseURL();
     config.headers = config.headers ?? {};
     config.headers['Accept-Language'] = buildAcceptLanguage();
     const token = WKApp.loginInfo.token;

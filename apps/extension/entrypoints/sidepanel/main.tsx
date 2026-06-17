@@ -12,6 +12,7 @@ import StorageService from '@octo/base/src/Service/StorageService';
 import { LoginModule } from '@octo/login';
 import { DataSourceModule } from '@octo/datasource';
 import { ContactsModule } from '@octo/contacts';
+import { getChatCandidates } from '@dmwork/summary/src/api/summaryApi';
 import { version as pkgVersion } from '../../../web/package.json';
 import { Channel, ChannelTypePerson, WKSDK } from 'wukongimjssdk';
 import App from '../../../web/src/App';
@@ -164,6 +165,12 @@ WKApp.shared.registerModule(new BaseModule());
 WKApp.shared.registerModule(new DataSourceModule());
 WKApp.shared.registerModule(new LoginModule());
 WKApp.shared.registerModule(new ContactsModule());
+
+// 转发目标选择器（ForwardModal/useForwardModal）通过 WKApp.searchChatCandidates
+// 搜索群聊/子区（联系人走 ContactsModule）。Web 端由 SummaryModule 注册该回调，
+// 但侧边面板不挂载完整 Summary 模块（路由/全局弹窗/聊天头部按钮均不需要），
+// 因此这里只补一个等价回调，使转发菜单能搜到 channels/subzones。GH #420。
+WKApp.searchChatCandidates = (params) => getChatCandidates(params);
 
 WKApp.shared.startup();
 void syncExtensionAuthState();
