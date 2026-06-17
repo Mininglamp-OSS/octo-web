@@ -5,7 +5,8 @@ import type { RuntimeKind } from "./botsApi"
 
 export interface InstallStep {
     titleKey: string
-    command: string
+    /** Shell command. Omitted for manual/instruction-only steps (no copy button). */
+    command?: string
     noteKey?: string
 }
 
@@ -22,19 +23,6 @@ export interface InstallGuide {
 const OCTO_API_URL_PLACEHOLDER = "<OCTO_API_URL>"
 const CLAUDE_CONFIG_TEMPLATE = `mkdir -p ~/.cc-channel-octo && cat > ~/.cc-channel-octo/config.json <<'EOF'
 { "apiUrl": "${OCTO_API_URL_PLACEHOLDER}" }
-EOF`
-
-// 模型认证配置: cc-channel-octo 经 Claude Code SDK 调模型, 模型网关 + API Key 由
-// 用户自备(Octo 不提供). anthropicBaseUrl / ANTHROPIC_AUTH_TOKEN 是占位, 必须用户
-// 替换成自己的值 —— 这步天然不能直接执行(密钥是用户私有), 与 step2 的可执行配置不同.
-const CLAUDE_MODEL_CONFIG_TEMPLATE = `mkdir -p ~/.cc-channel-octo && cat > ~/.cc-channel-octo/config.json <<'EOF'
-{
-  "apiUrl": "${OCTO_API_URL_PLACEHOLDER}",
-  "sdk": {
-    "anthropicBaseUrl": "https://your-model-gateway",
-    "env": { "ANTHROPIC_AUTH_TOKEN": "your-api-key" }
-  }
-}
 EOF`
 
 const INSTALL_GUIDES: Record<RuntimeKind, InstallGuide> = {
@@ -60,8 +48,11 @@ const INSTALL_GUIDES: Record<RuntimeKind, InstallGuide> = {
                 noteKey: "base.runtimes.install.claude.step2.note",
             },
             {
+                // Manual step, no command: model creds are the user's own secret,
+                // and a second `cat > config.json` would overwrite step2's good
+                // config with placeholders on copy-all. The note lists the sdk
+                // fields to add. (Jerry-Xin/lml2468 #414)
                 titleKey: "base.runtimes.install.claude.step3.title",
-                command: CLAUDE_MODEL_CONFIG_TEMPLATE,
                 noteKey: "base.runtimes.install.claude.step3.note",
             },
             {
@@ -89,7 +80,7 @@ function applyApiUrl(guide: InstallGuide, apiUrl?: string): InstallGuide {
     return {
         ...guide,
         steps: guide.steps.map((step) =>
-            step.command.includes(OCTO_API_URL_PLACEHOLDER)
+            step.command?.includes(OCTO_API_URL_PLACEHOLDER)
                 ? { ...step, command: step.command.split(OCTO_API_URL_PLACEHOLDER).join(url) }
                 : step,
         ),
@@ -106,7 +97,9 @@ export function buildInstallCopyText(provider: string, t: TFn, apiUrl?: string):
     if (!guide) return ""
     const lines: string[] = [t(guide.introKey)]
     guide.steps.forEach((step, i) => {
-        lines.push(`${i + 1}. ${t(step.titleKey)}: ${step.command}`)
+        // Manual steps (no command) render as a numbered instruction; steps with
+        // a command append it after the title.
+        lines.push(step.command ? `${i + 1}. ${t(step.titleKey)}: ${step.command}` : `${i + 1}. ${t(step.titleKey)}`)
         if (step.noteKey) lines.push(`   (${t(step.noteKey)})`)
     })
     return lines.join("\n")

@@ -14,9 +14,10 @@ describe("getInstallGuide — provider 安装步骤", () => {
         expect(g).not.toBeNull()
         expect(g!.steps).toHaveLength(4)
         expect(g!.steps[0].command).toBe("npm install -g @mininglamp-oss/cc-channel-octo")
-        // step3 = 模型认证: 含 sdk.anthropicBaseUrl + ANTHROPIC_AUTH_TOKEN 占位
-        expect(g!.steps[2].command).toContain("anthropicBaseUrl")
-        expect(g!.steps[2].command).toContain("ANTHROPIC_AUTH_TOKEN")
+        // step3 = 模型认证: 手动步骤, 无 command(不能用可执行 heredoc 覆盖 step2 的好配置),
+        // 模型字段在 note 里说明
+        expect(g!.steps[2].command).toBeUndefined()
+        expect(g!.steps[2].noteKey).toBeTruthy()
         expect(g!.steps[3].command).toBe("cc-channel-octo")
     })
     it("未知 provider → null", () => {
