@@ -7,7 +7,7 @@
 // formatting BubbleMenu in Toolbar.tsx.
 
 import { useState } from 'react'
-import { BubbleMenu } from '@tiptap/react'
+import { BubbleMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
 import { encodeAnchorRange, type EncodedAnchor } from './anchor.ts'
 import type { CreateRootInput } from './api.ts'
@@ -65,7 +65,7 @@ export function CommentBubble({
     <BubbleMenu
       editor={editor}
       pluginKey="octoCommentBubble"
-      tippyOptions={{ duration: 100, placement: 'bottom' }}
+      options={{ placement: 'bottom' }}
       shouldShow={({ from, to }) => from !== to}
     >
       <div className="octo-comment-bubble">

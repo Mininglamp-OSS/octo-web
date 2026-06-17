@@ -4,6 +4,13 @@ import { SCHEMA_VERSION, SCHEMA_NODES, SCHEMA_MARKS, COLLAB_FIELD } from './inde
 // These assertions track docs/schema/SCHEMA-SPEC.md (single source of truth).
 // SCHEMA_VERSION 4 (§4) adds the table nodes; the schema is cumulative, so the v2
 // `image` node and the v3 `highlight`/`textStyle` marks are carried forward.
+//
+// FOLLOW-UP (design §2.5): these are name-membership assertions only. The golden
+// schema round-trip regression — encode a fixture doc to a Yjs update, decode it back,
+// and assert NORMALIZED STRUCTURAL EQUIVALENCE (NOT a raw encodeStateAsUpdate byte
+// compare, which is flaky across clientID / insertion-order differences) — is a
+// separate phase. It is intentionally not built here: the v3 binding now runs through
+// @tiptap/y-tiptap, so the golden mechanism must be authored against that binding.
 describe('docs schema stub (mirrors SCHEMA-SPEC.md)', () => {
   it('is at SCHEMA_VERSION 4', () => {
     expect(SCHEMA_VERSION).toBe(4)

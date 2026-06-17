@@ -344,8 +344,10 @@
   gap: 8px;
 }
 
-/* Remote collaboration cursors (collaboration-cursor). */
-.octo-prose .collaboration-cursor__caret {
+/* Remote collaboration carets (collaboration-caret; v3 default render uses
+   the `collaboration-carets__*` class names, renamed from v2's
+   `collaboration-cursor__*`). */
+.octo-prose .collaboration-carets__caret {
   border-left: 1px solid;
   border-right: 1px solid;
   margin-left: -1px;
@@ -354,7 +356,7 @@
   word-break: normal;
   pointer-events: none;
 }
-.octo-prose .collaboration-cursor__label {
+.octo-prose .collaboration-carets__label {
   font-size: 11px;
   font-weight: 600;
   color: #fff;
