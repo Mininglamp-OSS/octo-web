@@ -9,8 +9,10 @@
 * @Mininglamp-OSS/maintainers @Mininglamp-OSS/web-maintainers
 
 # Web/desktop application code and shared packages
-/apps/      @Mininglamp-OSS/web-maintainers
-/packages/  @Mininglamp-OSS/web-maintainers
+# @maintainers is listed first so these paths always resolve to a valid code
+# owner even if @web-maintainers lacks repo access/visibility on octo-web.
+/apps/      @Mininglamp-OSS/maintainers @Mininglamp-OSS/web-maintainers
+/packages/  @Mininglamp-OSS/maintainers @Mininglamp-OSS/web-maintainers
 
 # CI, automation, and repo governance — keep these with core maintainers
 /.github/   @Mininglamp-OSS/maintainers
