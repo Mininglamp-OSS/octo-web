@@ -6,7 +6,7 @@
 // createMockWKApp(), see octoweb/mock.ts) and fall back to the real `@octo/base` WKApp
 // whenever no override has been set — i.e. in production and dev.
 
-import { WKApp, i18n } from '@octo/base'
+import { WKApp, i18n, t, useI18n } from '@octo/base'
 import type { WKAppShape } from './types.ts'
 
 // Test-only override. When unset (production / dev), getWKApp() returns the real
@@ -43,5 +43,13 @@ export function getCurrentUid(): string {
 
 /** Re-export the real i18n so docs code can register namespaces without importing @octo/base directly. */
 export { i18n }
+
+/**
+ * Re-export the translation helpers through the same seam. `t(key)` reads the current locale
+ * synchronously (use in non-component code / one-shot reads); `useI18n()` subscribes a React
+ * component to locale changes via the host's I18nProvider context. Both resolve to the REAL
+ * `@octo/base` implementation in production and to the lightweight stub in tests.
+ */
+export { t, useI18n }
 
 export * from './types.ts'

@@ -31,3 +31,14 @@ export const i18n = {
   getLocale: () => 'en-US',
   subscribe() {},
 }
+
+// Translation stub: returns the key unchanged so tests can assert on stable, locale-independent
+// strings (the real `@octo/base` t() resolves against registered namespaces).
+export function t(key: string) {
+  return key
+}
+
+// useI18n stub: mirrors the I18nProvider context shape the real hook returns.
+export function useI18n() {
+  return { t: (key: string) => key, locale: 'en-US' as const }
+}
