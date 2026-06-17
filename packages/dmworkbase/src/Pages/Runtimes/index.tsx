@@ -5,6 +5,8 @@ import WKApp from "../../App"
 import WKAvatar from "../../Components/WKAvatar"
 import { BotsTab, type BotsTabHandle } from "./BotsTab"
 import { CreateRuntimeModal } from "./CreateRuntimeModal"
+import { InstallGuidePopover } from "./InstallGuidePopover"
+import { getInstallGuide } from "./installGuide"
 import { deviceRuntimeMode } from "./deviceRuntimeMode"
 import { Bot, botStatusLabel, listBots, providerLabels } from "./botsApi"
 import { ProviderLogo } from "./providerLogos"
@@ -1179,6 +1181,12 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         return null
     }
 
+    renderInstallGuideBtn(provider: string) {
+        // 未知 provider 无安装指导 → 不渲染 (InstallGuidePopover 内部同样守卫).
+        if (!getInstallGuide(provider)) return null
+        return <InstallGuidePopover provider={provider} />
+    }
+
     // ── Component 升级（claude/openclaw） ──────────────────────
 
     handleComponentUpgrade = async () => {
@@ -1351,21 +1359,40 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                             {this.renderComponentUpgradeBtn(this.props.versionHints[rt.id]?.has_update)}
                         </span>
                     </div>
-                    {metadata && Array.isArray((metadata as any).plugins) && (() => {
-                        const octoPlugin = ((metadata as any).plugins as any[]).find((p: any) => p.name === "octo")
+                    {(() => {
+                        // 该 provider 有安装指导就显示本字段(挂安装指导入口); 已上报
+                        // octo 插件则显示版本(+升级), 否则显示中性占位「—」.
+                        // 安装状态检测 / cc 版本上报是下个 PR, 本 PR 不做检测.
+                        const plugins = (metadata as any)?.plugins
+                        const octoPlugin = Array.isArray(plugins)
+                            ? (plugins as any[]).find((p: any) => p.name === "octo")
+                            : undefined
+                        const hasGuide = !!getInstallGuide(rt.provider)
+                        if (!octoPlugin && !hasGuide) return null
                         const pluginHint = this.props.versionHints[rt.id]
-                        return octoPlugin ? (
+                        return (
                             <div className="wk-rt-field">
-                                <label>{t("base.runtimes.runtime.octoPluginVersion")}</label>
+                                <div className="wk-rt-field__label-row">
+                                    <label>{t("base.runtimes.runtime.octoPluginVersion")}</label>
+                                    {this.renderInstallGuideBtn(rt.provider)}
+                                </div>
                                 <span className="wk-rt-mono">
-                                    {octoPlugin.version}
-                                    {pluginHint?.has_plugin_update && (
-                                        <span className="wk-rt-update-hint"> → {pluginHint.plugin_latest_version}</span>
+                                    {octoPlugin ? (
+                                        <>
+                                            {octoPlugin.version}
+                                            {pluginHint?.has_plugin_update && (
+                                                <span className="wk-rt-update-hint"> → {pluginHint.plugin_latest_version}</span>
+                                            )}
+                                            {this.renderPluginUpgradeBtn("octo", pluginHint?.has_plugin_update)}
+                                        </>
+                                    ) : (
+                                        // 当前 PR 不做安装状态检测(cc 版本上报是下个 PR);
+                                        // 无 octo plugin 数据时用中性占位, 不断言「未安装」.
+                                        <span className="wk-rt-install-empty">—</span>
                                     )}
-                                    {this.renderPluginUpgradeBtn("octo", pluginHint?.has_plugin_update)}
                                 </span>
                             </div>
-                        ) : null
+                        )
                     })()}
                 </div>
 
