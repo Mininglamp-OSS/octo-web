@@ -4,6 +4,7 @@ import { MessageTask } from "wukongimjssdk";
 import { ConversationProvider } from "./conversation";
 import { ChannelDataSource, CommonDataSource } from "./datasource";
 import { MediaMessageUploadTask } from "./task";
+import { getChatCandidates } from "./chatCandidates";
 
 export default class DataSourceModule implements IModule {
     id(): string {
@@ -25,6 +26,13 @@ export default class DataSourceModule implements IModule {
         this.setSyncRemindersCallback() // 同步提醒
         this.setReminderDoneCallback() // 提醒项完成
         this.setMessageReadedCallback() // 消息已读未读
+
+        // 候选会话（群/子区）搜索回调：供 ForwardModal 等 base 组件使用。
+        // 注册在此处而非 summary 模块，保证 web 与浏览器扩展（仅加载 DataSourceModule）
+        // 都能搜索到群/子区，而不仅是联系人。
+        WKApp.searchChatCandidates = async (params) => {
+            return getChatCandidates(params)
+        }
     }
 
     // 从 Space channel_id (s{spaceId}_{uid}) 中提取真实 uid

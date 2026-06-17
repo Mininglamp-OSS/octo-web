@@ -7,7 +7,6 @@ import SummaryCreatePage from "./pages/SummaryCreatePage";
 import SummaryDetailPage from "./pages/SummaryDetailPage";
 import SummaryConfirmPage from "./pages/SummaryConfirmPage";
 import ScheduleListPage from "./pages/ScheduleListPage";
-import { getChatCandidates } from "./api/summaryApi";
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
 import { isSupportedChannelType } from "./utils/channelType";
 import ChatSummaryStarButton from "./components/ChatSummaryStarButton";
@@ -62,10 +61,6 @@ export class SummaryModule implements IModule {
             WKApp.mittBus.emit('summary-space-changed');
         };
         WKApp.mittBus.on('space-changed', _spaceChangedHandler);
-
-        WKApp.searchChatCandidates = async (params) => {
-            return getChatCandidates(params);
-        };
 
         mountGlobalSummaryModal();
 
