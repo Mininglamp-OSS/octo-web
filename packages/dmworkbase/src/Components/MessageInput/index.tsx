@@ -850,6 +850,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                 WKApp.dataSource.commonDataSource
               )
             ),
+          // Validate pasted mentions against the live channel roster so a
+          // forged clipboard payload cannot inject mentions for non-members
+          // or broadcast-routing sentinels (octo-web#330).
+          members: buildMemberInfos(localMembersRef.current),
         }
       ).catch(() => {
         if (
