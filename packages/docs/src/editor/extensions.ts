@@ -1,26 +1,29 @@
 // Editor extension assembly (frontend-design §3.2 / §4.2).
 //
-// CRITICAL: StarterKit history is disabled — collaborative undo/redo comes from the
-// Collaboration extension (yUndo), and a local history plugin would conflict with it.
+// CRITICAL: StarterKit's undo/redo is disabled (Tiptap v3 renamed the `history`
+// option to `undoRedo`) — collaborative undo/redo comes from the Collaboration
+// extension (yUndo), and a local history plugin would conflict with it.
 // StarterKit's codeBlock is also disabled — it is replaced by CodeBlockLowlight
 // (syntax highlighting); leaving the StarterKit codeBlock on would register a second
-// node with the same name and conflict.
+// node with the same name and conflict. StarterKit's `link` is disabled too: v3
+// bundles Link into StarterKit, but docs installs a sanitised Link separately, so
+// leaving the bundled one on would register a duplicate `link` mark.
 // All ProseMirror imports stay on @tiptap/pm (single instance, §2.2).
 
 import StarterKit from '@tiptap/starter-kit'
 import Collaboration from '@tiptap/extension-collaboration'
-import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
+import CollaborationCaret from '@tiptap/extension-collaboration-caret'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import Highlight from '@tiptap/extension-highlight'
-import TextStyle from '@tiptap/extension-text-style'
+import { TextStyle } from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
 import { BlockDragHandle } from './BlockDragHandle.ts'
-import Table from '@tiptap/extension-table'
+import { Table } from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
@@ -57,14 +60,15 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
   const { ydoc, provider, user, docId } = opts
   return [
     StarterKit.configure({
-      history: false, // MUST be off — yUndo handles collaborative history.
+      undoRedo: false, // MUST be off — yUndo handles collaborative history (v3 renamed `history`).
       codeBlock: false, // MUST be off — replaced by CodeBlockLowlight (same node name).
+      link: false, // MUST be off — v3 bundles Link; docs installs a sanitised Link separately.
     }),
     Collaboration.configure({
       document: ydoc,
       field: COLLAB_FIELD,
     }),
-    CollaborationCursor.configure({
+    CollaborationCaret.configure({
       provider,
       user: { id: user.id, name: user.name, color: colorFromId(user.id), avatar: user.avatar },
     }),
@@ -121,7 +125,7 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     }),
     SlashCommand,
     // View-only comment highlight layer (feature #3 §). Paints inline decorations for the
-    // current comment anchors; never writes to the Y.Doc (like CollaborationCursor), so it
+    // current comment anchors; never writes to the Y.Doc (like CollaborationCaret), so it
     // does not disturb collaboration. React pushes anchors via the setCommentAnchors command.
     CommentHighlight,
   ]
@@ -129,17 +133,18 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
 
 // Read-only preview/diff extension set (feature #4 §1.3). Mirrors the SAME node/mark
 // schema as the live editor (so a historical version renders faithfully) but OMITS the
-// live-only machinery: NO Collaboration / CollaborationCursor (no Y.Doc binding, no
+// live-only machinery: NO Collaboration / CollaborationCaret (no Y.Doc binding, no
 // provider), NO editing affordances (BlockDragHandle / SlashCommand / Placeholder). The
 // resulting Editor is built with editable:false and a throwaway document, so it never
 // touches the live collaborative editor. Table cells use the plain extensions here — the
-// TableCellView NodeView exists only to keep collaborative cursors in sync, which a static
+// TableCellView NodeView exists only to keep collaborative carets in sync, which a static
 // preview doesn't have.
 export function buildPreviewExtensions(docId: string): Extensions {
   return [
     StarterKit.configure({
-      history: false, // no local history in a static preview.
+      undoRedo: false, // no local history in a static preview (v3 renamed `history`).
       codeBlock: false, // replaced by CodeBlockLowlight (same node name).
+      link: false, // v3 bundles Link; docs installs a sanitised Link separately.
     }),
     Link.configure({
       autolink: true,

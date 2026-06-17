@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { BubbleMenu, FloatingMenu } from '@tiptap/react'
+import { BubbleMenu, FloatingMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
 
@@ -72,7 +72,6 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
   return (
     <BubbleMenu
       editor={editor}
-      tippyOptions={{ duration: 100 }}
       shouldShow={({ editor: e, from, to }) => from !== to && e.isEditable}
     >
       <div className="octo-bubble-menu">

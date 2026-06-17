@@ -6,7 +6,7 @@ import { collectOutline } from './Outline.tsx'
 // Build a minimal headless editor (no collaboration) for outline extraction.
 function makeEditor(html: string): Editor {
   return new Editor({
-    extensions: [StarterKit.configure({ history: false })],
+    extensions: [StarterKit.configure({ undoRedo: false })],
     content: html,
   })
 }
