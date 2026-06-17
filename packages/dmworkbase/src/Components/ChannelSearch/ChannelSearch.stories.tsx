@@ -179,13 +179,13 @@ export const Default: Story = {
 };
 
 export const OpenEmpty: Story = {
-  name: "Open default results",
+  name: "Open empty (no request)",
   play: async ({ canvasElement }) => {
-    await waitForElement(canvasElement, ".wk-channel-search-result-list");
-    if (
-      canvasElement.querySelectorAll(".wk-channel-search-result").length === 0
-    ) {
-      throw new Error("Expected empty keyword to browse default results");
+    // Empty keyword + no filter on the default "all" tab must NOT fire a request
+    // (the backend rejects it with 400). The panel shows the empty-state prompt.
+    await waitForElement(canvasElement, ".wk-channel-search-empty");
+    if (canvasElement.querySelector(".wk-channel-search-result")) {
+      throw new Error("Expected empty keyword to render the empty state, not results");
     }
   },
 };

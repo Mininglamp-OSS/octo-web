@@ -89,6 +89,7 @@ const {
   secondsToDateOnly,
   sentAtToSeconds,
   toRequestBody,
+  shouldRunSearch,
 } = channelSearchApiAdapterTestUtils;
 
 function baseQuery(tab: ChannelSearchQuery["tab"]): ChannelSearchQuery {
@@ -173,6 +174,65 @@ describe("channel search API adapter request construction", () => {
       page_size: 30,
       cursor: "next-cursor",
     });
+  });
+});
+
+describe("channel search empty-state guard", () => {
+  const noFilters = { senderUids: [], sort: "time_desc" as const };
+
+  it("does not run all/message tabs with empty keyword and no filters (would 400)", () => {
+    expect(
+      shouldRunSearch({ keyword: "   ", filters: noFilters, tab: "all" })
+    ).toBe(false);
+    expect(
+      shouldRunSearch({ keyword: "", filters: noFilters, tab: "message" })
+    ).toBe(false);
+  });
+
+  it("runs all/message tabs once a keyword is present", () => {
+    expect(
+      shouldRunSearch({ keyword: "  hello  ", filters: noFilters, tab: "all" })
+    ).toBe(true);
+    expect(
+      shouldRunSearch({ keyword: "hi", filters: noFilters, tab: "message" })
+    ).toBe(true);
+  });
+
+  it("runs all/message tabs with a filter-only query (no keyword)", () => {
+    expect(
+      shouldRunSearch({
+        keyword: "",
+        filters: { senderUids: ["u1"], sort: "time_desc" },
+        tab: "all",
+      })
+    ).toBe(true);
+    const startAt = Math.floor(new Date(2026, 0, 5).getTime() / 1000);
+    expect(
+      shouldRunSearch({
+        keyword: "",
+        filters: { senderUids: [], sort: "time_desc", startAt },
+        tab: "message",
+      })
+    ).toBe(true);
+  });
+
+  it("treats a sort-only change as not searchable (sort is not an effective filter)", () => {
+    expect(
+      shouldRunSearch({
+        keyword: "",
+        filters: { senderUids: [], sort: "time_asc" },
+        tab: "all",
+      })
+    ).toBe(false);
+  });
+
+  it("always runs media and file tabs even with empty keyword and no filters", () => {
+    expect(
+      shouldRunSearch({ keyword: "", filters: noFilters, tab: "media" })
+    ).toBe(true);
+    expect(
+      shouldRunSearch({ keyword: "", filters: noFilters, tab: "file" })
+    ).toBe(true);
   });
 });
 

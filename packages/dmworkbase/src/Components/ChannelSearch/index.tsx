@@ -26,6 +26,7 @@ import FileHelper from "../../Utils/filehelper";
 import { downloadFile } from "../../Utils/download";
 import { useI18n } from "../../i18n";
 import { channelSearchEmptyDataSource } from "./adapter";
+import { shouldRunSearch } from "./apiAdapter";
 import {
   canLocateChannelSearchItem,
   resolveChannelSearchLocateTarget,
@@ -1207,6 +1208,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const filterWrapRef = useRef<HTMLDivElement>(null);
 
   const filterCount = activeFilterCount(filters);
+  const canSearch = shouldRunSearch({ keyword, filters, tab: activeTab });
   const getSender = useCallback(
     (uid: string) => dataSource.getSender(uid),
     [dataSource]
@@ -1244,6 +1246,14 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const runSearch = useCallback(
     async (cursor?: string) => {
       if (isComposing) {
+        return;
+      }
+
+      // Empty-state guard: the keyword-optional `_search`/`_search_all` endpoints
+      // reject an empty keyword + empty filter with 400 (validateSearchNotEmpty).
+      // Don't fire it — show the empty-state view. Media/file tabs are exempt
+      // (they browse without a keyword), which shouldRunSearch encodes.
+      if (!shouldRunSearch({ keyword, filters, tab: activeTab })) {
         return;
       }
 
@@ -1290,17 +1300,26 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   useEffect(() => {
     if (isComposing) return;
     requestIdRef.current += 1;
-    setQueryStarted(true);
     setResponse({ items: [], hasMore: false });
-    setLoading(true);
     setLoadingMore(false);
     setError(null);
+
+    // No keyword and no effective filter → don't hit the backend (it would 400).
+    // Reset to the initial empty-state prompt instead of a spinner.
+    if (!canSearch) {
+      setQueryStarted(false);
+      setLoading(false);
+      return;
+    }
+
+    setQueryStarted(true);
+    setLoading(true);
 
     const timer = window.setTimeout(() => {
       void runSearch();
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [isComposing, runSearch]);
+  }, [canSearch, isComposing, runSearch]);
 
   const handleLocate = useCallback(
     (item: ChannelSearchItem) => {

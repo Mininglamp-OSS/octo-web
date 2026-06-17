@@ -162,6 +162,27 @@ function cleanFilters(filters: ChannelSearchFilters) {
   return next;
 }
 
+function hasEffectiveFilters(filters: ChannelSearchFilters) {
+  return Object.keys(cleanFilters(filters)).length > 0;
+}
+
+// Decide whether a search request should actually be sent. Only the keyword-
+// optional endpoints `_search` (message tab) and `_search_all` (all tab) carry
+// the backend empty-search guard (validateSearchNotEmpty): with an empty keyword
+// AND no effective filter they fail-fast with 400. Mirror that guard here so an
+// empty panel never fires a request that is guaranteed to 400 — it falls back to
+// the empty-state view instead. The media (`_search_media`) and file
+// (`_search_files`) tabs have no such backend guard and legitimately browse
+// without a keyword, so they always run.
+export function shouldRunSearch(
+  query: Pick<ChannelSearchQuery, "keyword" | "filters" | "tab">
+) {
+  if (query.tab !== "all" && query.tab !== "message") {
+    return true;
+  }
+  return query.keyword.trim().length > 0 || hasEffectiveFilters(query.filters);
+}
+
 function toRequestBody(query: ChannelSearchQuery) {
   const body: Record<string, unknown> = {
     channel_type: query.channelType,
@@ -446,6 +467,8 @@ export const channelSearchApiAdapterTestUtils = {
   monthBucketFromSentAt,
   normalizeItems,
   cleanFilters,
+  hasEffectiveFilters,
+  shouldRunSearch,
   toRequestBody,
   mapMessageHit,
   mapFileHit,
