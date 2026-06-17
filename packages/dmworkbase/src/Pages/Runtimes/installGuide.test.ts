@@ -19,17 +19,26 @@ describe("getInstallGuide — provider 安装步骤", () => {
     it("未知 provider → null", () => {
         expect(getInstallGuide("unknown")).toBeNull()
     })
+    it("原型链键 (constructor/toString/hasOwnProperty) → null, 不绕过白名单", () => {
+        expect(getInstallGuide("constructor")).toBeNull()
+        expect(getInstallGuide("toString")).toBeNull()
+        expect(getInstallGuide("hasOwnProperty")).toBeNull()
+    })
 })
 
 describe("buildInstallCopyText — 整段复制文本", () => {
-    it("claude: 含安装/配置/启动命令 + apiUrl 占位符 + 编号", () => {
+    it("claude: 含安装/配置/启动命令 + 可执行配置 + 全编号 + note + i18n 解析", () => {
         const text = buildInstallCopyText("claude", t)
         expect(text).toContain("npm install -g @mininglamp-oss/cc-channel-octo")
+        expect(text).toContain("mkdir -p ~/.cc-channel-octo")
         expect(text).toContain("~/.cc-channel-octo/config.json")
         expect(text).toContain("<OCTO_API_URL>")
-        expect(text).toContain("cc-channel-octo")
         expect(text).toMatch(/^1\. /m)
+        expect(text).toMatch(/^2\. /m)
         expect(text).toMatch(/^3\. /m)
+        expect(text).toMatch(/^ {3}\(/m)
+        // 所有 i18n key 都解析了 (t 缺 key 时回退为 key 本身, 拼错会留下前缀)
+        expect(text).not.toContain("base.runtimes.install")
     })
     it("openclaw: 含 create-openclaw-octo 命令", () => {
         const text = buildInstallCopyText("openclaw", t)

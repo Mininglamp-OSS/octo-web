@@ -15,9 +15,11 @@ export interface InstallGuide {
 }
 
 // cc-channel-octo 全局配置: 只需 apiUrl(daemon 不写全局, 用户配一次).
+// 用真实可执行 shell 命令(mkdir + heredoc 写文件), 复制到终端可直接跑;
 // 每个 bot 的 token/model 由 daemon 在 web 添加 bot 时自动下发, 用户无需手配.
-const CLAUDE_CONFIG_TEMPLATE = `# ~/.cc-channel-octo/config.json
-{ "apiUrl": "<OCTO_API_URL>" }`
+const CLAUDE_CONFIG_TEMPLATE = `mkdir -p ~/.cc-channel-octo && cat > ~/.cc-channel-octo/config.json <<'EOF'
+{ "apiUrl": "<OCTO_API_URL>" }
+EOF`
 
 const INSTALL_GUIDES: Record<RuntimeKind, InstallGuide> = {
     openclaw: {
@@ -50,7 +52,10 @@ const INSTALL_GUIDES: Record<RuntimeKind, InstallGuide> = {
 }
 
 export function getInstallGuide(provider: string): InstallGuide | null {
-    return (INSTALL_GUIDES as Record<string, InstallGuide>)[provider] ?? null
+    // hasOwnProperty 守卫: 防 'constructor'/'toString' 等原型链键绕过白名单
+    // 返回继承自 Object.prototype 的函数(真值).
+    if (!Object.prototype.hasOwnProperty.call(INSTALL_GUIDES, provider)) return null
+    return (INSTALL_GUIDES as Record<string, InstallGuide>)[provider]
 }
 
 // buildInstallCopyText 的 t 只用无插值的 key, 故签名收窄到 (key) => string;

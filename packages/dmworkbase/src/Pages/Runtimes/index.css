@@ -2094,134 +2094,134 @@
 .wk-rt-field__label-row {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
+    gap: var(--wk-sp-1);
 }
 .wk-rt-guide__trigger {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
-    margin-left: 2px;
+    width: var(--wk-sp-5);
+    height: var(--wk-sp-5);
+    margin-left: var(--wk-sp-1);
     padding: 0;
     border: none;
-    border-radius: 50%;
+    border-radius: var(--wk-r-circle);
     background: transparent;
-    color: var(--wk-text-secondary, #8a8f99);
+    color: var(--wk-icon-muted);
     cursor: pointer;
     vertical-align: middle;
-    transition: color 0.15s ease, background 0.15s ease;
+    transition: color var(--wk-dur-fast) ease, background var(--wk-dur-fast) ease;
 }
 .wk-rt-guide__trigger:hover {
-    color: var(--wk-primary, #3370ff);
-    background: var(--wk-fill-0, rgba(31, 35, 41, 0.06));
+    color: var(--wk-brand-primary);
+    background: var(--wk-bg-item-hover);
 }
 
 /* 安装指导 — popover 内容 */
 .wk-rt-guide {
     width: 420px;
     max-width: 92vw;
-    padding: 2px;
+    padding: var(--wk-sp-1);
 }
 .wk-rt-guide__head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 8px;
+    gap: var(--wk-sp-3);
+    margin-bottom: var(--wk-sp-2);
 }
 .wk-rt-guide__title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--wk-text-primary, #1f2329);
+    font-size: var(--wk-text-size-md);
+    font-weight: var(--wk-font-semibold);
+    color: var(--wk-text-primary);
 }
 .wk-rt-guide__copyall {
     flex: none;
-    padding: 3px 10px;
-    border: 1px solid var(--wk-primary, #3370ff);
-    border-radius: 4px;
-    background: var(--wk-primary, #3370ff);
-    color: #fff;
-    font-size: 12px;
+    padding: var(--wk-sp-1) var(--wk-sp-3);
+    border: none;
+    border-radius: var(--wk-r-xs);
+    background: var(--wk-brand-primary);
+    color: var(--wk-text-on-brand);
+    font-size: var(--wk-text-size-sm);
     cursor: pointer;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--wk-dur-fast) ease;
 }
 .wk-rt-guide__copyall:hover {
     opacity: 0.88;
 }
 .wk-rt-guide__intro {
-    margin: 0 0 12px;
-    font-size: 12px;
+    margin: 0 0 var(--wk-sp-3);
+    font-size: var(--wk-text-size-sm);
     line-height: 1.6;
-    color: var(--wk-text-secondary, #646a73);
+    color: var(--wk-text-secondary);
 }
 .wk-rt-guide__steps {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--wk-sp-3);
 }
 .wk-rt-guide__step-head {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 5px;
+    gap: var(--wk-sp-2);
+    margin-bottom: var(--wk-sp-1);
 }
 .wk-rt-guide__step-idx {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex: none;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--wk-fill-1, #eff0f1);
-    color: var(--wk-text-secondary, #646a73);
-    font-size: 11px;
-    font-weight: 600;
+    width: var(--wk-sp-4);
+    height: var(--wk-sp-4);
+    border-radius: var(--wk-r-circle);
+    background: var(--wk-bg-elevated);
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-xs);
+    font-weight: var(--wk-font-semibold);
 }
 .wk-rt-guide__step-title {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--wk-text-primary, #1f2329);
+    font-size: var(--wk-text-size-base);
+    font-weight: var(--wk-font-medium);
+    color: var(--wk-text-primary);
 }
 .wk-rt-guide__step-note {
-    font-size: 11px;
-    color: var(--wk-text-secondary, #8a8f99);
+    font-size: var(--wk-text-size-xs);
+    color: var(--wk-text-secondary);
 }
 .wk-rt-guide__cmd {
     position: relative;
     display: flex;
     align-items: flex-start;
-    gap: 8px;
-    padding: 8px 10px;
-    border-radius: 4px;
-    background: var(--wk-fill-0, #f5f6f7);
+    gap: var(--wk-sp-2);
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    border-radius: var(--wk-r-xs);
+    background: var(--wk-bg-elevated);
 }
 .wk-rt-guide__cmd-text {
     flex: 1;
     min-width: 0;
     margin: 0;
-    font-family: var(--wk-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-    font-size: 12px;
+    font-family: var(--wk-font-mono);
+    font-size: var(--wk-text-size-sm);
     line-height: 1.6;
-    color: var(--wk-text-primary, #1f2329);
+    color: var(--wk-text-primary);
     white-space: pre-wrap;
     word-break: break-all;
 }
 .wk-rt-guide__cmd-copy {
     flex: none;
-    padding: 2px;
+    padding: var(--wk-sp-1);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--wk-r-xs);
     background: transparent;
-    color: var(--wk-text-secondary, #8a8f99);
+    color: var(--wk-icon-muted);
     cursor: pointer;
-    transition: color 0.15s ease, background 0.15s ease;
+    transition: color var(--wk-dur-fast) ease, background var(--wk-dur-fast) ease;
 }
 .wk-rt-guide__cmd-copy:hover {
-    color: var(--wk-primary, #3370ff);
-    background: var(--wk-fill-1, #eff0f1);
+    color: var(--wk-brand-primary);
+    background: var(--wk-bg-item-hover);
 }
 .wk-rt-install-empty {
-    color: var(--wk-text-secondary, #8a8f99);
+    color: var(--wk-text-tertiary);
 }
