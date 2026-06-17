@@ -13,6 +13,7 @@ describe("APIClient backend i18n contract", () => {
         client.config.tokenCallback = undefined
         client.config.spaceIdCallback = undefined
         client.logoutCallback = undefined
+        client.staleLocalResourceCallback = undefined
     })
 
     it("adds Accept-Language without trusted backend-only i18n headers", async () => {

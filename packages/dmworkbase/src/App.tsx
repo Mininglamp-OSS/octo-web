@@ -123,6 +123,11 @@ import RouteContext from "./Service/Context";
 import { ConnectStatus } from "wukongimjssdk";
 import { WKBaseContext } from "./Components/WKBase";
 import StorageService from "./Service/StorageService";
+import {
+  loadCachedNumericDeviceId,
+  saveNumericDeviceId,
+  clearCachedNumericDeviceId,
+} from "./Service/clientMsgDeviceIdCache";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { TypingManager } from "./Service/TypingManager";
 import {
@@ -134,6 +139,7 @@ import {
   requestOidcLogout,
   safeEndSessionUrl,
 } from "./Service/oidcLogout";
+import type { APIClientRejectedError } from "./Service/APIClient";
 
 export enum ThemeMode {
   light,
@@ -650,6 +656,7 @@ export default class WKApp extends ProviderListener {
 
   private wsaddrs = new Array<string>(); // ws的连接地址
   private addrUsed = false; // 地址是否被使用
+  private loggingOut = false; // Plan F: in-flight guard for logout() to short-circuit concurrent reload attempts from racing callbacks (auth-expired + stale-device). One-way per session — reset only by the actual page reload.
 
   isPC = false; // 是否是PC端
   deviceId: string = ""; // 设备ID
@@ -860,18 +867,121 @@ export default class WKApp extends ProviderListener {
     }
   }
 
-  startMain() {
-    this.connectIM();
-    WKApp.dataSource.contactsSync(); // 同步通讯录
-    ProhibitwordsService.shared.sync(); // 同步敏感词
+  // Issue #256: dual-track to eliminate the clientMsgDeviceId=0 race window.
+  // Cache hit → use cached id, connectIM immediately, refresh in background.
+  // Cache miss → await device fetch with 5s timeout, then connectIM.
+  // Either way, the WS is never opened with clientMsgDeviceId=0 unless the
+  // first-login fetch times out (graceful degradation to current behavior).
+  async startMain() {
+    const cached = loadCachedNumericDeviceId();
 
+    if (cached !== null) {
+      // Fast path: cache hit. Set optimistically, connect, sync in parallel,
+      // then refresh the cache in background to pick up any server-side
+      // changes (rare but possible if device id was reassigned).
+      WKSDK.shared().config.clientMsgDeviceId = cached;
+      this.connectIM();
+      WKApp.dataSource.contactsSync();
+      ProhibitwordsService.shared.sync();
+      this.fetchAndCacheDeviceId();
+      return;
+    }
+
+    // First-login path: no cache. Await device fetch (with 5s timeout
+    // safety net so a hung server can never permanently block WS connect).
+    // Errors are handled centrally by the APIClient staleLocalResourceCallback
+    // (Plan F) for stale device; non-stale errors are logged and we proceed
+    // with the SDK default clientMsgDeviceId=0 (current pre-#256 behavior).
+    await this.awaitDeviceIdOrTimeout(5000);
+    // Task E guard: if the await resolved because Plan F's interceptor fired
+    // (stale device → staleLocalResourceCallback → WKApp.shared.logout()),
+    // `loggingOut` is now true and a reload is pending. Continuing to call
+    // connectIM / contactsSync / prohibitWordsSync here would fire requests
+    // against the just-cleared token (token/uid emptied by clearLocalLoginState),
+    // returning 401 and producing unhandled Uncaught (in promise) noise.
+    // Short-circuit instead — the pending reload will reset the page.
+    if (this.loggingOut) return;
+    this.connectIM();
+    WKApp.dataSource.contactsSync();
+    ProhibitwordsService.shared.sync();
+  }
+
+  // Background refresh of the cached numeric device id. Fire-and-forget.
+  // Used by the cache-hit path so the cache stays current with the server.
+  //
+  // The .catch is REQUIRED — without it, a rejection from the fetch (or any
+  // error in the .then handler) becomes an Uncaught (in promise), defeating
+  // the purpose of Plan F.
+  //
+  // Risk A guard: if logout fires between dispatch and resolve, skip writes.
+  // Otherwise the .then could repopulate the cache that clearLocalLoginState
+  // just emptied (microscopic race window, but real).
+  private fetchAndCacheDeviceId(): void {
     WKApp.apiClient
       .get(`/user/devices/${WKApp.shared.deviceId}`)
       .then((res) => {
-        if (res.id) {
+        if (this.loggingOut) return;
+        if (res?.id) {
           WKSDK.shared().config.clientMsgDeviceId = res.id;
+          saveNumericDeviceId(res.id);
         }
+      })
+      .catch((err: APIClientRejectedError) => {
+        if (err?.code !== "err.server.user.device_not_found") {
+          console.warn(
+            "[App.startMain] /user/devices background refresh failed (non-stale):",
+            { status: err?.status, code: err?.code, msg: err?.msg },
+          );
+        }
+        // stale device handled centrally by APIClient interceptor (Plan F)
       });
+  }
+
+  // First-login await with timeout. Returns when EITHER the device fetch's
+  // .then-or-.catch chain resolves OR the timer expires — whichever first.
+  //
+  // CRITICAL: fetchPromise has its OWN .catch (chained inline). This makes
+  // fetchPromise never-rejecting, so the only way Promise.race can reject is
+  // via timeoutPromise. Without the inline .catch, a fetch rejection that
+  // arrives AFTER timeout already won would surface as Uncaught (in promise)
+  // — exactly the noise Plan F was designed to eliminate.
+  //
+  // Risk A guard: same as fetchAndCacheDeviceId — skip writes if logout
+  // started between dispatch and resolve.
+  private async awaitDeviceIdOrTimeout(timeoutMs: number): Promise<void> {
+    const fetchPromise = WKApp.apiClient
+      .get(`/user/devices/${WKApp.shared.deviceId}`)
+      .then((res) => {
+        if (this.loggingOut) return;
+        if (res?.id) {
+          WKSDK.shared().config.clientMsgDeviceId = res.id;
+          saveNumericDeviceId(res.id);
+        }
+      })
+      .catch((err: APIClientRejectedError) => {
+        if (err?.code !== "err.server.user.device_not_found") {
+          console.warn(
+            "[App.startMain] first-login /user/devices fetch failed (non-stale):",
+            { status: err?.status, code: err?.code, msg: err?.msg },
+          );
+        }
+        // stale device handled centrally by APIClient interceptor (Plan F)
+      });
+
+    const timeoutPromise = new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error("FIRST_LOGIN_TIMEOUT")), timeoutMs),
+    );
+
+    try {
+      await Promise.race([fetchPromise, timeoutPromise]);
+    } catch (err) {
+      // Only timeout can reach here — fetchPromise is self-handled above.
+      if ((err as Error)?.message === "FIRST_LOGIN_TIMEOUT") {
+        console.warn(
+          `[App.startMain] first-login /user/devices fetch timed out after ${timeoutMs}ms; proceeding with default clientMsgDeviceId. The original fetch is still in flight and will update the cache if it eventually succeeds.`,
+        );
+      }
+    }
   }
 
   connectIM() {
@@ -896,6 +1006,10 @@ export default class WKApp extends ProviderListener {
   private clearLocalLoginState() {
     WKApp.loginInfo.logout();
     clearAuthStorage();
+    // Issue #256: clear the cached numeric device id so a same-tab relogin
+    // or user-switch always re-traverses the first-login flow (correct
+    // numeric id for the new auth session).
+    clearCachedNumericDeviceId();
     this.currentSpaceId = "";
     this.channelSpaceMap.clear();
     this.channelMySourceSpaceMap.clear();
@@ -904,7 +1018,27 @@ export default class WKApp extends ProviderListener {
 
   // 登出
   logout() {
-    this.clearLocalLoginState();
+    // Plan F bundled fix #1: in-flight guard. Multiple concurrent API
+    // errors (e.g., auth-expired + stale-device, or N parallel stale
+    // responses) can call logout() in rapid succession before the page
+    // actually unloads. Without this guard, clearLocalLoginState() runs N
+    // times. Idempotent in practice but wasteful and noisy. One-way: only
+    // a real page reload resets the flag.
+    if (this.loggingOut) return;
+    this.loggingOut = true;
+    // Plan F Task 9 hardening: clearLocalLoginState performs raw
+    // localStorage/sessionStorage writes (via StorageService) that throw in
+    // Safari private mode, on QuotaExceededError, or under SecurityError.
+    // Without the try/catch, a throw here would leave loggingOut=true
+    // forever AND skip the reload — every subsequent logout attempt
+    // short-circuits and the user is permanently wedged. The reload must
+    // happen regardless so the next bootstrap can detect the broken auth
+    // state and route to login.
+    try {
+      this.clearLocalLoginState();
+    } catch (e) {
+      console.warn("[WKApp.logout] clearLocalLoginState threw, reloading anyway", e);
+    }
     window.location.reload();
   }
 

@@ -87,6 +87,8 @@ import { UserInfoRouteData } from "./Components/UserInfo/vm";
 import { IconAlertCircle } from "@douyinfe/semi-icons";
 import { TypingManager } from "./Service/TypingManager";
 import APIClient from "./Service/APIClient";
+import StorageService from "./Service/StorageService";
+import { handleDeviceFetchError } from "./Service/deviceFailure";
 import { patchSdkDecodeForExternalFields } from "./Service/Convert";
 import { isMessageSelectable } from "./Service/messageSelection";
 import ConversationVM from "./Components/Conversation/vm";
@@ -225,6 +227,25 @@ export default class BaseModule implements IModule {
 
     APIClient.shared.logoutCallback = () => {
       WKApp.shared.logout();
+    };
+
+    // Plan F: generic stale-local-resource recovery dispatcher. First
+    // customer is the device_not_found code (octo-web#270 / #76). Future
+    // siblings (e.g., err.server.space.not_found for stale currentSpaceId)
+    // can be added to the staleLocalResourceCodes set in apiError.ts and
+    // routed here without touching the interceptor or business catch sites.
+    APIClient.shared.staleLocalResourceCallback = (code: string) => {
+      if (code === "err.server.user.device_not_found") {
+        handleDeviceFetchError(
+          { code } as any,
+          {
+            removeDeviceId: () => StorageService.shared.removeItem("deviceId"),
+            resetInMemoryDeviceId: () => { WKApp.shared.deviceId = ""; },
+            triggerLogout: () => WKApp.shared.logout(),
+          }
+        );
+      }
+      // Future siblings (space.not_found, etc.) add their else-if branches here.
     };
 
     WKApp.endpointManager.setMethod(
