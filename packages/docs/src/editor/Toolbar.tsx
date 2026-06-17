@@ -2,6 +2,7 @@ import { useState, useSyncExternalStore } from 'react'
 import { BubbleMenu, FloatingMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
+import { t } from '../octoweb/index.ts'
 
 // Languages offered in the code-block language selector. A curated subset of the
 // highlight.js `common` set registered in extensions.ts; "auto" (empty value)
@@ -47,16 +48,19 @@ function Btn({
   active,
   label,
   disabled,
+  title,
 }: {
   onClick: () => void
   active?: boolean
   label: string
   disabled?: boolean
+  title?: string
 }) {
   return (
     <button
       type="button"
       className={'octo-tb-btn' + (active ? ' is-active' : '')}
+      title={title}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       disabled={disabled}
@@ -230,43 +234,44 @@ export function Toolbar({ editor }: { editor: Editor }) {
 
   return (
     <div className="octo-toolbar">
-      <Btn label="H1" active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} />
-      <Btn label="H2" active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />
-      <Btn label="H3" active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} />
-      <Btn label="H4" active={editor.isActive('heading', { level: 4 })} onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()} />
-      <Btn label="H5" active={editor.isActive('heading', { level: 5 })} onClick={() => editor.chain().focus().toggleHeading({ level: 5 }).run()} />
-      <Btn label="H6" active={editor.isActive('heading', { level: 6 })} onClick={() => editor.chain().focus().toggleHeading({ level: 6 }).run()} />
+      <Btn label="H1" title={t('docs.toolbar.heading1')} active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} />
+      <Btn label="H2" title={t('docs.toolbar.heading2')} active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />
+      <Btn label="H3" title={t('docs.toolbar.heading3')} active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} />
+      <Btn label="H4" title={t('docs.toolbar.heading4')} active={editor.isActive('heading', { level: 4 })} onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()} />
+      <Btn label="H5" title={t('docs.toolbar.heading5')} active={editor.isActive('heading', { level: 5 })} onClick={() => editor.chain().focus().toggleHeading({ level: 5 }).run()} />
+      <Btn label="H6" title={t('docs.toolbar.heading6')} active={editor.isActive('heading', { level: 6 })} onClick={() => editor.chain().focus().toggleHeading({ level: 6 }).run()} />
       <span className="octo-tb-sep" />
-      <Btn label="B" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
-      <Btn label="I" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
-      <Btn label="S" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
+      <Btn label="B" title={t('docs.toolbar.bold')} active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
+      <Btn label="I" title={t('docs.toolbar.italic')} active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
+      <Btn label="S" title={t('docs.toolbar.strike')} active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
       <span className="octo-tb-sep" />
-      <Btn label="• List" active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()} />
-      <Btn label="1. List" active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()} />
-      <Btn label="Todo" active={editor.isActive('taskList')} onClick={() => editor.chain().focus().toggleTaskList().run()} />
-      <Btn label="Quote" active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} />
-      <Btn label="Code" active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().toggleCodeBlock().run()} />
+      <Btn label="• List" title={t('docs.toolbar.bulletList')} active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()} />
+      <Btn label="1. List" title={t('docs.toolbar.orderedList')} active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()} />
+      <Btn label="Todo" title={t('docs.toolbar.taskList')} active={editor.isActive('taskList')} onClick={() => editor.chain().focus().toggleTaskList().run()} />
+      <Btn label="Quote" title={t('docs.toolbar.quote')} active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} />
+      <Btn label="Code" title={t('docs.toolbar.codeBlock')} active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().toggleCodeBlock().run()} />
       <CodeLanguageSelect editor={editor} />
       <span className="octo-tb-sep" />
       <HighlightControl editor={editor} />
       <TextColorControl editor={editor} />
       <Btn
         label="Table"
+        title={t('docs.toolbar.table')}
         active={editor.isActive('table')}
         onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
       />
-      <Btn label="Image" onClick={() => void pickAndUploadImage(editor)} />
+      <Btn label="Image" title={t('docs.toolbar.image')} onClick={() => void pickAndUploadImage(editor)} />
       <span className="octo-tb-sep" />
-      <Btn label="Link" active={editor.isActive('link')} onClick={() => setLinkOpen((v) => !v)} />
+      <Btn label="Link" title={t('docs.toolbar.link')} active={editor.isActive('link')} onClick={() => setLinkOpen((v) => !v)} />
       {linkOpen && (
         <span className="octo-link-input">
           <input
             value={linkValue}
             onChange={(e) => setLinkValue(e.target.value)}
-            placeholder="https://…"
+            placeholder={t('docs.toolbar.linkPlaceholder')}
           />
           <Btn
-            label="Set"
+            label={t('docs.toolbar.linkSet')}
             onClick={() => {
               // Link extension's validate() enforces the scheme whitelist (§3.7).
               editor.chain().focus().extendMarkRange('link').setLink({ href: linkValue }).run()
@@ -277,8 +282,8 @@ export function Toolbar({ editor }: { editor: Editor }) {
         </span>
       )}
       <span className="octo-tb-spacer" />
-      <Btn label="Undo" onClick={() => editor.chain().focus().undo().run()} />
-      <Btn label="Redo" onClick={() => editor.chain().focus().redo().run()} />
+      <Btn label="Undo" title={t('docs.toolbar.undo')} onClick={() => editor.chain().focus().undo().run()} />
+      <Btn label="Redo" title={t('docs.toolbar.redo')} onClick={() => editor.chain().focus().redo().run()} />
     </div>
   )
 }

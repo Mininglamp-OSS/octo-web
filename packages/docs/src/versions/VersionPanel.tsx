@@ -19,6 +19,7 @@ import { stateToProsemirrorJSON } from './preview.ts'
 import { createPreviewGuard } from './previewGuard.ts'
 import { diffDocs, type DiffEntry, type PMNode } from './diff.ts'
 import { formatRelative, formatAbsolute, autosaveLabel } from './format.ts'
+import { t } from '../octoweb/index.ts'
 
 const PAGE_SIZE = 25
 
@@ -36,17 +37,21 @@ function VersionPreview({ docId, content }: { docId: string; content: PMNode }) 
 }
 
 function kindBadge(v: VersionMeta): string {
-  if (v.kind === 'named') return 'named'
+  if (v.kind === 'named') return t('docs.version.badgeNamed')
   if (v.kind === 'restore-marker') {
-    return v.restoredFrom != null ? `restored from #${v.restoredFrom}` : 'restored'
+    return v.restoredFrom != null
+      ? t('docs.version.badgeRestoredFrom', { values: { from: v.restoredFrom } })
+      : t('docs.version.badgeRestored')
   }
-  return 'auto'
+  return t('docs.version.badgeAuto')
 }
 
 function displayLabel(v: VersionMeta): string {
   if (v.label && v.label.trim() !== '') return v.label
   if (v.kind === 'restore-marker') {
-    return v.restoredFrom != null ? `Restored from #${v.restoredFrom}` : 'Restored'
+    return v.restoredFrom != null
+      ? t('docs.version.labelRestoredFrom', { values: { from: v.restoredFrom } })
+      : t('docs.version.labelRestored')
   }
   return autosaveLabel(v.createdAt)
 }
@@ -103,7 +108,7 @@ export function VersionPanel({
       setVersions(res.items)
       setNextCursor(res.nextCursor)
     } catch {
-      setError('Failed to load version history.')
+      setError(t('docs.version.errorList'))
     } finally {
       setLoading(false)
     }
@@ -121,7 +126,7 @@ export function VersionPanel({
       setVersions((prev) => [...prev, ...res.items])
       setNextCursor(res.nextCursor)
     } catch {
-      setError('Failed to load more versions.')
+      setError(t('docs.version.errorMore'))
     } finally {
       setLoading(false)
     }
@@ -169,7 +174,7 @@ export function VersionPanel({
       setSnapshotLabel('')
       await refresh()
     } catch {
-      setError('Failed to save version.')
+      setError(t('docs.version.errorSave'))
     } finally {
       setBusy(false)
     }
@@ -184,14 +189,14 @@ export function VersionPanel({
       setRenameValue('')
       await refresh()
     } catch {
-      setError('Failed to rename version.')
+      setError(t('docs.version.errorRename'))
     } finally {
       setBusy(false)
     }
   }
 
   async function onDelete(v: VersionMeta) {
-    if (!window.confirm(`Delete version #${v.docVersionSeq}? This cannot be undone.`)) return
+    if (!window.confirm(t('docs.version.deleteConfirm', { values: { seq: v.docVersionSeq } }))) return
     setBusy(true)
     setError(null)
     try {
@@ -203,7 +208,7 @@ export function VersionPanel({
       }
       await refresh()
     } catch {
-      setError('Failed to delete version.')
+      setError(t('docs.version.errorDelete'))
     } finally {
       setBusy(false)
     }
@@ -217,16 +222,16 @@ export function VersionPanel({
       const res = await restoreVersion(docId, v.docVersionSeq)
       setConfirmRestore(null)
       setNotice(
-        `Restored from #${res.restoredFrom}. A new version (#${res.newDocVersionSeq}) was created; the document will update shortly.`,
+        t('docs.version.restoredNotice', {
+          values: { from: res.restoredFrom, seq: res.newDocVersionSeq },
+        }),
       )
       await refresh()
     } catch (e) {
       if (e instanceof VersionSchemaIncompatibleError || e instanceof VersionSchemaNewerError) {
-        setError(
-          "This version was saved under an incompatible document format and can't be restored.",
-        )
+        setError(t('docs.version.errorRestoreIncompatible'))
       } else {
-        setError('Failed to restore version.')
+        setError(t('docs.version.errorRestore'))
       }
       setConfirmRestore(null)
     } finally {
@@ -237,10 +242,10 @@ export function VersionPanel({
   return (
     <section className="octo-version-panel">
       <div className="octo-member-row">
-        <h3 style={{ flex: 1, margin: 0 }}>Version history</h3>
+        <h3 style={{ flex: 1, margin: 0 }}>{t('docs.version.title')}</h3>
         {onClose && (
           <button type="button" className="octo-tb-btn" onClick={onClose}>
-            Close
+            {t('docs.version.close')}
           </button>
         )}
       </div>
@@ -251,13 +256,13 @@ export function VersionPanel({
             <div className="octo-member-row">
               <input
                 className="octo-uid"
-                placeholder="Version label (optional)"
+                placeholder={t('docs.version.labelPlaceholder')}
                 value={snapshotLabel}
                 onChange={(e) => setSnapshotLabel(e.target.value)}
                 autoFocus
               />
               <button type="button" className="octo-tb-btn" disabled={busy} onClick={onCreateSnapshot}>
-                Save
+                {t('docs.version.save')}
               </button>
               <button
                 type="button"
@@ -268,12 +273,12 @@ export function VersionPanel({
                   setSnapshotLabel('')
                 }}
               >
-                Cancel
+                {t('docs.version.cancel')}
               </button>
             </div>
           ) : (
             <button type="button" className="octo-tb-btn" onClick={() => setSnapshotOpen(true)}>
-              Save current version
+              {t('docs.version.saveCurrent')}
             </button>
           )}
         </div>
@@ -281,9 +286,9 @@ export function VersionPanel({
 
       {notice && <p className="octo-version-notice">{notice}</p>}
       {error && <p className="octo-member-error">{error}</p>}
-      {loading && versions.length === 0 && <p className="octo-loading">Loading versions…</p>}
+      {loading && versions.length === 0 && <p className="octo-loading">{t('docs.version.loadingList')}</p>}
       {!loading && versions.length === 0 && (
-        <p className="octo-version-empty">No saved versions yet.</p>
+        <p className="octo-version-empty">{t('docs.version.empty')}</p>
       )}
 
       <ul className="octo-version-list">
@@ -325,20 +330,20 @@ export function VersionPanel({
                       disabled={busy || renameValue.trim() === ''}
                       onClick={() => onRename(v.docVersionSeq)}
                     >
-                      Save
+                      {t('docs.version.save')}
                     </button>
                     <button
                       type="button"
                       className="octo-tb-btn"
                       onClick={() => setRenamingSeq(null)}
                     >
-                      Cancel
+                      {t('docs.version.cancel')}
                     </button>
                   </>
                 ) : (
                   <>
                     <button type="button" className="octo-tb-btn" onClick={() => onPreview(v)}>
-                      Preview
+                      {t('docs.version.preview')}
                     </button>
                     {renameable && (
                       <button
@@ -349,7 +354,7 @@ export function VersionPanel({
                           setRenameValue(v.label)
                         }}
                       >
-                        Rename
+                        {t('docs.version.rename')}
                       </button>
                     )}
                     {myRestore && (
@@ -358,7 +363,7 @@ export function VersionPanel({
                         className="octo-tb-btn"
                         onClick={() => setConfirmRestore(v)}
                       >
-                        Restore
+                        {t('docs.version.restore')}
                       </button>
                     )}
                     {myRestore && (
@@ -368,7 +373,7 @@ export function VersionPanel({
                         disabled={busy}
                         onClick={() => onDelete(v)}
                       >
-                        Delete
+                        {t('docs.version.delete')}
                       </button>
                     )}
                   </>
@@ -381,19 +386,14 @@ export function VersionPanel({
 
       {nextCursor != null && (
         <button type="button" className="octo-tb-btn" disabled={loading} onClick={loadMore}>
-          Load more
+          {t('docs.version.loadMore')}
         </button>
       )}
 
       {confirmRestore && (
         <div className="octo-version-confirm">
-          <p>
-            Restore version <strong>#{confirmRestore.docVersionSeq}</strong>?
-          </p>
-          <p className="octo-version-confirm-detail">
-            This is non-destructive: the current document is saved as a new version first, then a
-            new version is created from the restored content. Nothing is overwritten.
-          </p>
+          <p>{t('docs.version.confirmTitle', { values: { seq: confirmRestore.docVersionSeq } })}</p>
+          <p className="octo-version-confirm-detail">{t('docs.version.confirmDetail')}</p>
           <div className="octo-member-row">
             <button
               type="button"
@@ -401,7 +401,7 @@ export function VersionPanel({
               disabled={busy}
               onClick={() => onConfirmRestore(confirmRestore)}
             >
-              Restore
+              {t('docs.version.restore')}
             </button>
             <button
               type="button"
@@ -409,7 +409,7 @@ export function VersionPanel({
               disabled={busy}
               onClick={() => setConfirmRestore(null)}
             >
-              Cancel
+              {t('docs.version.cancel')}
             </button>
           </div>
         </div>
@@ -419,7 +419,7 @@ export function VersionPanel({
         <div className="octo-version-detail">
           <div className="octo-member-row">
             <h4 style={{ flex: 1, margin: 0 }}>
-              {compare ? 'Compare with current' : 'Preview'} — #{selected.docVersionSeq}
+              {compare ? t('docs.version.compareTitle') : t('docs.version.previewTitle')} — #{selected.docVersionSeq}
             </h4>
             <button
               type="button"
@@ -427,13 +427,13 @@ export function VersionPanel({
               disabled={previewState !== 'ready'}
               onClick={() => setCompare((c) => !c)}
             >
-              {compare ? 'Show preview' : 'Compare with current'}
+              {compare ? t('docs.version.showPreview') : t('docs.version.compare')}
             </button>
           </div>
 
-          {previewState === 'loading' && <p className="octo-loading">Loading preview…</p>}
+          {previewState === 'loading' && <p className="octo-loading">{t('docs.version.loadingPreview')}</p>}
           {previewState === 'error' && (
-            <p className="octo-member-error">Failed to load this version.</p>
+            <p className="octo-member-error">{t('docs.version.previewError')}</p>
           )}
 
           {previewState === 'ready' && previewJSON && !compare && (
@@ -451,13 +451,11 @@ export function VersionPanel({
 function DiffView({ diff }: { diff: DiffEntry[] }) {
   if (diff.length === 1 && diff[0].type === 'too-large') {
     return (
-      <p className="octo-version-empty">
-        This document is too large to compare here. Preview each version instead.
-      </p>
+      <p className="octo-version-empty">{t('docs.version.tooLarge')}</p>
     )
   }
   if (diff.every((d) => d.type === 'unchanged')) {
-    return <p className="octo-version-empty">No block-level changes.</p>
+    return <p className="octo-version-empty">{t('docs.version.noChanges')}</p>
   }
   return (
     <div className="octo-version-diff">

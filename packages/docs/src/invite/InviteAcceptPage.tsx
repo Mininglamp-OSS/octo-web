@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { acceptInvite, type AcceptResult } from './api.ts'
 import { safeReturnTo } from './safeReturnTo.ts'
+import { t } from '../octoweb/index.ts'
 
 export interface InviteAcceptPageProps {
   token: string
@@ -61,25 +62,26 @@ export function InviteAcceptPage({ token, onEnterDocument, redirectToLogin }: In
 
   return (
     <div className="octo-doc octo-theme">
-      {view.kind === 'accepting' && <p className="octo-loading">Accepting invitation…</p>}
+      {view.kind === 'accepting' && <p className="octo-loading">{t('docs.invite.accepting')}</p>}
       {view.kind === 'entered' && (
         <div>
-          <h2>You&apos;ve joined this document</h2>
+          <h2>{t('docs.invite.joinedTitle')}</h2>
           <p>
-            Your role: <strong>{view.role}</strong>
+            {t('docs.invite.roleLabel')}{' '}
+            <strong>{t(`docs.role.${view.role}`, { defaultValue: view.role })}</strong>
           </p>
         </div>
       )}
       {view.kind === 'invalid' && (
         <div>
-          <h2>Invitation unavailable</h2>
-          <p className="octo-terminal-msg">This invite has been revoked, expired, or used up.</p>
+          <h2>{t('docs.invite.invalidTitle')}</h2>
+          <p className="octo-terminal-msg">{t('docs.invite.invalidBody')}</p>
         </div>
       )}
       {view.kind === 'error' && (
         <div>
-          <h2>Something went wrong</h2>
-          <p className="octo-terminal-msg">Could not process this invitation. Please try again.</p>
+          <h2>{t('docs.invite.errorTitle')}</h2>
+          <p className="octo-terminal-msg">{t('docs.invite.errorBody')}</p>
         </div>
       )}
     </div>
