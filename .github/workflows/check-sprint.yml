@@ -16,6 +16,11 @@ permissions: {}
 
 jobs:
   check-sprint:
+    # Non-blocking: sprint hygiene is an internal tracking aid, not a merge gate.
+    # External/contributor PRs routinely lack a sprint-linked issue, so a failure
+    # here must not paint the PR red or imply the change is unmergeable.
+    # (check-sprint is intentionally NOT a required status check on `main`.)
+    continue-on-error: true
     uses: Mininglamp-OSS/.github/.github/workflows/reusable-check-sprint.yml@v1
     with:
       pr-number: ${{ github.event.pull_request.number }}
