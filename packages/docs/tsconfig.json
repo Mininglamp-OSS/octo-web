@@ -1,0 +1,15 @@
+{
+  "extends": "../../packages/tsconfig/react-library.json",
+  "compilerOptions": {
+    // The migrated docs source uses explicit `.ts` / `.tsx` import specifiers and the
+    // automatic JSX runtime, so override the base (node resolution, classic JSX) here.
+    // No build step is needed — the package is consumed source-direct via "main".
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "types": ["vite/client", "node"]
+  },
+  "include": ["."],
+  "exclude": ["dist", "build", "node_modules"]
+}

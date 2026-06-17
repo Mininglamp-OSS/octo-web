@@ -1,0 +1,33 @@
+// Test stub for `@octo/base`, wired via the vitest alias in vitest.config.ts.
+//
+// Importing the real `@octo/base` would pull the whole app (WKSDK, semi-ui, the full
+// WKApp/App.tsx tree) into jsdom. Docs tests inject behaviour through
+// `setWKApp(createMockWKApp())` (octoweb/mock.ts); this stub only needs to satisfy the
+// top-level `import { WKApp, i18n } from '@octo/base'` in octoweb/index.ts and provide a
+// sane fallback if a test forgets to call setWKApp.
+
+export const WKApp = {
+  shared: {
+    registerModule(module: { id(): string; init(): void }) {
+      module.init()
+    },
+  },
+  route: {
+    register() {},
+  },
+  apiClient: {
+    get: async () => ({ data: {}, status: 200 }),
+    post: async () => ({ data: {}, status: 200 }),
+    put: async () => ({ data: {}, status: 200 }),
+    patch: async () => ({ data: {}, status: 200 }),
+    delete: async () => ({ data: {}, status: 200 }),
+  },
+  loginInfo: { uid: 'u_stub', token: 'stub-token' },
+}
+
+export const i18n = {
+  registerNamespace() {},
+  init() {},
+  getLocale: () => 'en-US',
+  subscribe() {},
+}
