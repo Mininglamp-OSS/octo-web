@@ -56,6 +56,26 @@ export function canArchiveThread(args: {
 }
 
 /**
+ * ChannelSetting 子区设置页「改名」入口（module.tsx 的 thread.base.info）的权限判定。
+ *
+ * 修复 issue #394：旧代码用恒为 false 的 `data.isManagerOrCreatorOfMe`（子区频道
+ * 成员缓存，从未同步）判定，导致非创建者的父群群主/管理员被前端拦截、根本不
+ * 调用 `threadUpdate`。现统一走父群口径（{@link canManageThread}），与归档入口
+ * （{@link canArchiveThread}）、ThreadPanel 入口 B（canEditThread）完全一致。
+ *
+ * 与 canArchiveThread 同口径（canManageThread || fallback）。差异仅在于改名没有
+ * 「状态须为 Active/Archived」的门槛，故单独成函数，不复用
+ * {@link shouldShowThreadArchiveAction}。
+ */
+export function canEditThreadName(args: {
+  thread: { creator_uid?: string } | null | undefined;
+  groupNo: string | undefined;
+  isManagerOrCreatorOfMeFallback?: boolean;
+}): boolean {
+  return canArchiveThread(args);
+}
+
+/**
  * 入口 A（thread.actions）归档/取消归档菜单项是否应渲染：
  * 既要有权限（canArchiveThread），状态又必须是 Active 或 Archived。
  * 抽成纯函数以便与入口 B 做「一致性回归」断言。

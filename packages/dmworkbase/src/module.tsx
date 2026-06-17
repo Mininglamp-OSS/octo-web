@@ -114,7 +114,10 @@ import {
 import { SummaryCardContent } from "./Messages/SummaryCard/SummaryCardContent";
 import { SummaryCardCell } from "./Messages/SummaryCard";
 import { parseThreadChannelId, ThreadStatus } from "./Service/Thread";
-import { shouldShowThreadArchiveAction } from "./Service/threadPermission";
+import {
+  canEditThreadName,
+  shouldShowThreadArchiveAction,
+} from "./Service/threadPermission";
 import { runChannelSettingThreadArchive } from "./Service/threadArchiveAction";
 import { canShowRevokeMenu } from "./Service/revokePermission";
 
@@ -2203,11 +2206,17 @@ export default class BaseModule implements IModule {
         const channelInfo = data.channelInfo;
         const threadName = channelInfo?.title;
 
-        // 权限：只有创建者或群管理者可以修改名称
+        // 权限：创建者或【父群】群主/管理员可改名。统一走 canEditThreadName
+        // （父群口径，与归档入口 canArchiveThread、ThreadPanel 入口 B 完全一致，
+        // 见 issue #394 / #283）。旧代码读 data.isManagerOrCreatorOfMe（子区频道成员
+        // 缓存，从未同步、对非创建者群主/管理员恒为 false），导致被前端拦截、根本
+        // 不调用 threadUpdate；现仅作兜底（fallback）。
         const thread = channelInfo?.orgData?.thread as any;
-        const isCreator = thread?.creator_uid === WKApp.loginInfo.uid;
-        const isManagerOrOwner = data.isManagerOrCreatorOfMe;
-        const canEdit = isCreator || isManagerOrOwner;
+        const canEdit = canEditThreadName({
+          thread,
+          groupNo: threadInfo?.groupNo,
+          isManagerOrCreatorOfMeFallback: data.isManagerOrCreatorOfMe,
+        });
         const statusTitle =
           thread?.status === ThreadStatus.Archived
             ? t("base.module.thread.status.archived")
