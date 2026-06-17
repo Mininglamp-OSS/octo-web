@@ -12,6 +12,7 @@ import { CommentBubble } from '../comments/CommentBubble.tsx'
 import { useDocComments } from '../comments/useDocComments.ts'
 import { useCommentHighlights } from '../comments/useCommentHighlights.ts'
 import { useEffect, useState } from 'react'
+import { t } from '../octoweb/index.ts'
 import './styles.css'
 
 export interface EditorShellProps extends CollabEditorOptions {
@@ -48,10 +49,10 @@ export function EditorShell(props: EditorShellProps) {
 
   if (terminal.kind !== 'none') {
     const messages: Record<string, string> = {
-      forbidden: 'You no longer have access to this document.',
-      'not-found': 'This document does not exist or was deleted.',
-      locked: 'This document is locked or archived.',
-      login: 'Your session expired. Please sign in again.',
+      forbidden: t('docs.error.permission.forbidden'),
+      'not-found': t('docs.error.permission.notFound'),
+      locked: t('docs.error.permission.locked'),
+      login: t('docs.error.permission.login'),
     }
     return (
       <div className="octo-doc octo-terminal">
@@ -64,7 +65,7 @@ export function EditorShell(props: EditorShellProps) {
   if (!instance) {
     return (
       <div className="octo-doc">
-        <p className="octo-loading">Loading document…</p>
+        <p className="octo-loading">{t('docs.state.loading')}</p>
       </div>
     )
   }
@@ -82,23 +83,23 @@ export function EditorShell(props: EditorShellProps) {
           <button
             type="button"
             className="octo-tb-btn"
-            title="Version history"
+            title={t('docs.toolbar.history')}
             onClick={() => setShowHistory((v) => !v)}
           >
-            🕐 History
+            🕐 {t('docs.toolbar.history')}
           </button>
           {/* Comments are reader+ (everyone with access — "can see → can comment"). */}
           <button
             type="button"
             className="octo-tb-btn"
-            title="Comments"
+            title={t('docs.toolbar.comments')}
             onClick={() => setShowComments((v) => !v)}
           >
-            💬 Comments
+            💬 {t('docs.toolbar.comments')}
           </button>
           {manage && (
             <button type="button" className="octo-tb-btn" onClick={() => setShowMembers((v) => !v)}>
-              Members
+              {t('docs.toolbar.members')}
             </button>
           )}
         </div>
