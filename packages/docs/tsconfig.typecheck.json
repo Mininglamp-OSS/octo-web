@@ -1,0 +1,19 @@
+{
+  // Isolated typecheck config for the @octo/docs package.
+  //
+  // Scopes `tsc --noEmit` to docs' OWN source and stops at the `@octo/base`
+  // boundary via a `paths` alias to a typecheck-only shim (types/octo-base.shim.d.ts).
+  // Without this, tsc follows the source-direct `@octo/base` import into the entire
+  // dmworkbase host source (react@17 typings) and reports ~2400 errors that are not
+  // docs problems — which would drag a CI typecheck gate red. Runtime/build resolution
+  // is unaffected (vite build uses the real @octo/base).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@octo/base": ["./types/octo-base.shim.d.ts"]
+    }
+  },
+  "include": ["src", "types"],
+  "exclude": ["dist", "build", "node_modules"]
+}
