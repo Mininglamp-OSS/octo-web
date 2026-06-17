@@ -2089,3 +2089,139 @@
   border-radius: var(--wk-r-xs);
   display: block;
 }
+
+/* 安装指导 — 问号入口 */
+.wk-rt-field__label-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+.wk-rt-guide__trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-left: 2px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--wk-text-secondary, #8a8f99);
+    cursor: pointer;
+    vertical-align: middle;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+.wk-rt-guide__trigger:hover {
+    color: var(--wk-primary, #3370ff);
+    background: var(--wk-fill-0, rgba(31, 35, 41, 0.06));
+}
+
+/* 安装指导 — popover 内容 */
+.wk-rt-guide {
+    width: 420px;
+    max-width: 92vw;
+    padding: 2px;
+}
+.wk-rt-guide__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+.wk-rt-guide__title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--wk-text-primary, #1f2329);
+}
+.wk-rt-guide__copyall {
+    flex: none;
+    padding: 3px 10px;
+    border: 1px solid var(--wk-primary, #3370ff);
+    border-radius: 4px;
+    background: var(--wk-primary, #3370ff);
+    color: #fff;
+    font-size: 12px;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+.wk-rt-guide__copyall:hover {
+    opacity: 0.88;
+}
+.wk-rt-guide__intro {
+    margin: 0 0 12px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--wk-text-secondary, #646a73);
+}
+.wk-rt-guide__steps {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.wk-rt-guide__step-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+}
+.wk-rt-guide__step-idx {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--wk-fill-1, #eff0f1);
+    color: var(--wk-text-secondary, #646a73);
+    font-size: 11px;
+    font-weight: 600;
+}
+.wk-rt-guide__step-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--wk-text-primary, #1f2329);
+}
+.wk-rt-guide__step-note {
+    font-size: 11px;
+    color: var(--wk-text-secondary, #8a8f99);
+}
+.wk-rt-guide__cmd {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: var(--wk-fill-0, #f5f6f7);
+}
+.wk-rt-guide__cmd-text {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-family: var(--wk-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--wk-text-primary, #1f2329);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.wk-rt-guide__cmd-copy {
+    flex: none;
+    padding: 2px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--wk-text-secondary, #8a8f99);
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+.wk-rt-guide__cmd-copy:hover {
+    color: var(--wk-primary, #3370ff);
+    background: var(--wk-fill-1, #eff0f1);
+}
+.wk-rt-install-empty {
+    color: var(--wk-text-secondary, #8a8f99);
+}
