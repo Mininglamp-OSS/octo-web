@@ -85,6 +85,8 @@ export interface LoginInfo {
 
 export interface ModuleManager {
   registerModule(module: IModule): void
+  /** Currently selected octo Space id (App.shared.currentSpaceId); '' when none. */
+  currentSpaceId?: string
 }
 
 /** The WKApp singleton surface the docs module touches. */

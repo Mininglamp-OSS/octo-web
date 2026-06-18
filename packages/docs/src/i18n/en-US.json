@@ -2,6 +2,9 @@
   "menu": {
     "title": "Docs"
   },
+  "list": {
+    "new": "New document"
+  },
   "toolbar": {
     "heading1": "Heading 1",
     "heading2": "Heading 2",

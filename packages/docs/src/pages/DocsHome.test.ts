@@ -11,6 +11,8 @@ describe('resolveDocTarget', () => {
   })
 
   it('returns null when no doc is addressed and no default doc is configured', () => {
+    // null target -> DocsHome renders the document list (GET /api/v1/docs) instead of
+    // mounting an editor against a non-existent doc.
     expect(resolveDocTarget('')).toBeNull()
     expect(resolveDocTarget('?space=s1&folder=f1')).toBeNull()
   })
@@ -39,7 +41,7 @@ describe('resolveDocTarget', () => {
   it('does not hardcode the non-existent d_welcome demo doc', () => {
     // Regression (2026-06-18): the editor hung on "Loading document…" because DocsHome
     // hardcoded doc='d_welcome', which exists in no DB. The default doc must be empty
-    // (env-configurable) so an un-addressed /docs shows an empty state instead.
+    // (env-configurable) so an un-addressed /docs lists real documents instead.
     const t = resolveDocTarget('')
     expect(t).toBeNull()
   })
