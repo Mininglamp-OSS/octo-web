@@ -89,7 +89,8 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 function unwrap<T>(env: any): T {
-  // octo-server wraps responses; data may be at top-level or under .data
+  // Peel exactly ONE top-level envelope layer: { data: X } -> X, else passthrough.
+  // fleet/server both wrap success bodies as { data: ... } (R1 envelope).
   if (env && typeof env === 'object' && 'data' in env) return env.data as T;
   return env as T;
 }
@@ -105,6 +106,15 @@ export async function listBots(params: { runtime_kind?: RuntimeKind; owner_uid?:
   const res = await fetch(`${base}/v1/bots?${sp}`, { headers: await authHeaders() });
   if (!res.ok) throw new Error(`listBots: ${res.status}`);
   const env = await res.json();
+  // fleet's list response is a SINGLE-layer R1 OffsetList — the top level IS
+  // { "data": Bot[], "pagination": {...} }, i.e. `data` is ALREADY the array,
+  // NOT a double-wrapped { "data": { "data": [...] } }.
+  // Source of truth: octo-fleet internal/envelope OffsetList struct has
+  // `Data []T json:"data"`, and ResponseOffset emits c.JSON(OffsetList{...})
+  // directly — there is NO extra Data envelope wrapped around the OffsetList.
+  // So unwrap() peels this one `.data` layer and yields Bot[] for the
+  // downstream .map() / for..of. (A second unwrap would wrongly hit the
+  // pagination object's absence of `.data` and return undefined.)
   return unwrap<Bot[]>(env) ?? [];
 }
 
