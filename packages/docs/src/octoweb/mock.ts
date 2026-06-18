@@ -66,17 +66,28 @@ export class MockRouteManager implements RouteManager {
   }
 }
 
+export class MockMenusManager {
+  menus = new Map<string, (param?: any) => unknown>()
+  register(sid: string, f: (param?: any) => unknown): void {
+    this.menus.set(sid, f)
+  }
+}
+
 export function createMockWKApp(loginInfo: LoginInfo = { uid: 'u_self', token: 'octo-session-token' }): WKAppShape & {
   apiClient: MockApiClient
   route: MockRouteManager
+  mockMenus: MockMenusManager
   registeredModules: IModule[]
 } {
   const apiClient = new MockApiClient()
   const route = new MockRouteManager()
+  const menus = new MockMenusManager()
   const registeredModules: IModule[] = []
   return {
     apiClient,
     route,
+    menus: menus as unknown as WKAppShape['menus'],
+    mockMenus: menus,
     loginInfo,
     registeredModules,
     shared: {

@@ -66,6 +66,17 @@ export interface RouteManager {
   register(path: string, handler: (param?: any) => ReactElement | ElementType): void
 }
 
+/**
+ * NavRail menu entry — packages/dmworkbase/src/Service/Menus.ts.
+ * The real class is constructed as `new Menus(id, routePath, title, icon, selectedIcon, onPress?)`;
+ * the docs module imports that class through the octoweb seam (re-exported from @octo/base).
+ * Here we only need the manager's register surface, so the menu instance is typed loosely
+ * (`unknown`) to avoid a second, conflicting `Menus` declaration alongside the seam re-export.
+ */
+export interface MenusManager {
+  register(sid: string, f: (param?: any) => unknown, sort?: number): void
+}
+
 /** Current login session — packages/dmworkbase/src/Service/...; token is opaque (non-JWT). */
 export interface LoginInfo {
   uid: string
@@ -80,6 +91,7 @@ export interface ModuleManager {
 export interface WKAppShape {
   shared: ModuleManager
   route: RouteManager
+  menus: MenusManager
   apiClient: APIClient
   loginInfo: LoginInfo
 }
