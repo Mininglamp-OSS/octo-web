@@ -933,7 +933,7 @@
   font: 400 12px/20px var(--wk-font-sans);
 }
 
-.wk-channel-search-load-more--error button {
+.wk-channel-search-load-more button {
   border: none;
   padding: 0;
   background: transparent;

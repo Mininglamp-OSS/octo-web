@@ -6,6 +6,8 @@ import {
 
 const { isNearChannelSearchScrollBottom, shouldStopPaginationForCursor } =
   channelSearchPaginationTestUtils;
+const { shouldPauseAutoPaginationForEmptyPage } =
+  channelSearchPaginationTestUtils;
 
 function scrollMetrics({
   clientHeight = 400,
@@ -56,6 +58,38 @@ describe("channel search scroll pagination helpers", () => {
         hasMore: true,
         nextCursor: "cursor-3",
         requestedCursor: "cursor-2",
+      })
+    ).toBe(false);
+  });
+
+  it("pauses auto pagination when an empty page advances the cursor", () => {
+    expect(
+      shouldPauseAutoPaginationForEmptyPage({
+        hasMore: true,
+        itemCount: 0,
+        nextCursor: "cursor-3",
+        requestedCursor: "cursor-2",
+      })
+    ).toBe(true);
+  });
+
+  it("keeps auto pagination active when a page appends items", () => {
+    expect(
+      shouldPauseAutoPaginationForEmptyPage({
+        hasMore: true,
+        itemCount: 2,
+        nextCursor: "cursor-3",
+        requestedCursor: "cursor-2",
+      })
+    ).toBe(false);
+  });
+
+  it("does not pause the initial empty result page", () => {
+    expect(
+      shouldPauseAutoPaginationForEmptyPage({
+        hasMore: true,
+        itemCount: 0,
+        nextCursor: "cursor-1",
       })
     ).toBe(false);
   });

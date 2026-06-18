@@ -24,7 +24,28 @@ export function shouldStopPaginationForCursor({
   return Boolean(requestedCursor && hasMore && nextCursor === requestedCursor);
 }
 
+export function shouldPauseAutoPaginationForEmptyPage({
+  hasMore,
+  itemCount,
+  nextCursor,
+  requestedCursor,
+}: {
+  hasMore: boolean;
+  itemCount: number;
+  nextCursor?: string;
+  requestedCursor?: string;
+}) {
+  return Boolean(
+    requestedCursor &&
+      hasMore &&
+      nextCursor &&
+      nextCursor !== requestedCursor &&
+      itemCount === 0
+  );
+}
+
 export const channelSearchPaginationTestUtils = {
   isNearChannelSearchScrollBottom,
+  shouldPauseAutoPaginationForEmptyPage,
   shouldStopPaginationForCursor,
 };

@@ -34,6 +34,7 @@ import {
 } from "./locate";
 import {
   isNearChannelSearchScrollBottom,
+  shouldPauseAutoPaginationForEmptyPage,
   shouldStopPaginationForCursor,
 } from "./pagination";
 import { defaultChannelSearchFilters } from "./types";
@@ -1192,6 +1193,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const [queryStarted, setQueryStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paginationError, setPaginationError] = useState<string | null>(null);
+  const [autoPaginationPaused, setAutoPaginationPaused] = useState(false);
   const requestIdRef = useRef(0);
   const loadingMoreCursorRef = useRef<string | null>(null);
   const [isComposing, setIsComposing] = useState(false);
@@ -1261,6 +1263,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
       } else {
         setError(null);
         setPaginationError(null);
+        setAutoPaginationPaused(false);
         setLoading(true);
       }
 
@@ -1280,6 +1283,13 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
           nextCursor: next.nextCursor,
           requestedCursor: cursor,
         });
+        const pauseAutoPagination = shouldPauseAutoPaginationForEmptyPage({
+          hasMore: next.hasMore,
+          itemCount: next.items.length,
+          nextCursor: next.nextCursor,
+          requestedCursor: cursor,
+        });
+        setAutoPaginationPaused(pauseAutoPagination);
         setResponse((prev) => ({
           items: cursor ? [...prev.items, ...next.items] : next.items,
           nextCursor: stopPagination ? undefined : next.nextCursor,
@@ -1312,12 +1322,13 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
       if (loading || loadingMore || !response.hasMore || !response.nextCursor) {
         return;
       }
-      if (paginationError && !force) {
+      if ((paginationError || autoPaginationPaused) && !force) {
         return;
       }
       void runSearch(response.nextCursor);
     },
     [
+      autoPaginationPaused,
       loading,
       loadingMore,
       paginationError,
@@ -1344,6 +1355,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     setLoadingMore(false);
     setError(null);
     setPaginationError(null);
+    setAutoPaginationPaused(false);
 
     // No keyword and no effective filter → don't hit the backend (it would 400).
     // Reset to the initial empty-state prompt instead of a spinner.
@@ -1545,6 +1557,16 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
             </button>
           </div>
         )}
+        {autoPaginationPaused &&
+          !paginationError &&
+          !loadingMore &&
+          response.hasMore && (
+            <div className="wk-channel-search-load-more">
+              <button type="button" onClick={() => loadNextPage(true)}>
+                {t("base.channelSearch.loadMore")}
+              </button>
+            </div>
+          )}
       </div>
     </div>
   );
