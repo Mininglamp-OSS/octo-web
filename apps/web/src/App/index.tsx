@@ -10,6 +10,7 @@ import { ChatIcon } from '../Components/Icons/ChatIcon';
 import { ContactsIcon } from '../Components/Icons/ContactsIcon';
 import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
+import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
 
 let _summaryBadgeCount = 0;
 let _badgeListenerSetup = false;
@@ -45,11 +46,40 @@ function useRealnameVerifiedLandingHandler() {
 }
 
 function App() {
-  registerMenus()
   useRealnameVerifiedLandingHandler()
+  useDeprecatedFriendApplyReddotCleanup()
+  registerMenus()
   return (
     <AppLayout />
   );
+}
+
+function useDeprecatedFriendApplyReddotCleanup() {
+  const isLogined = WKApp.loginInfo.isLogined()
+  const uid = WKApp.loginInfo.uid
+
+  useEffect(() => {
+    if (!isLogined || !uid) {
+      return
+    }
+    void clearDeprecatedFriendApplyReddotOnce({
+      isLoggedIn: () => WKApp.loginInfo.isLogined(),
+      getUid: () => WKApp.loginInfo.uid,
+      clearReddot: () => WKApp.apiClient.delete(`/user/reddot/friendApply`),
+      emitUnreadCount: (count) => {
+        WKApp.mittBus.emit('friend-applys-unread-count', count)
+      },
+      setUnreadCount: (currentUid, count) => {
+        WKApp.loginInfo.setStorageItem(`${currentUid}-friend-applys-unread-count`, count)
+      },
+      refreshMenus: () => {
+        WKApp.menus.refresh()
+      },
+      warn: (message, error) => {
+        console.warn(message, error)
+      },
+    })
+  }, [isLogined, uid])
 }
 
 async function registerMenus() {
@@ -107,16 +137,6 @@ async function registerMenus() {
 
     return m
   }, 1000)
-
-  if (WKApp.loginInfo.isLogined()) {
-    WKApp.apiClient.delete(`/user/reddot/friendApply`).then(() => {
-      WKApp.mittBus.emit('friend-applys-unread-count', 0)
-      WKApp.loginInfo.setStorageItem(`${WKApp.loginInfo.uid}-friend-applys-unread-count`, "0")
-      WKApp.menus.refresh();
-    }).catch(error => {
-      console.warn('Failed to clear friend apply count:', error);
-    });
-  }
 
   WKApp.menus.register("contacts", (param) => {
     const m = new Menus("contacts", "/contacts", t("app.nav.contacts"), <ContactsIcon />, <ContactsIcon />)

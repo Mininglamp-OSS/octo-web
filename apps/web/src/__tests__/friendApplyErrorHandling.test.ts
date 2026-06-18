@@ -1,80 +1,98 @@
-import { vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+    clearDeprecatedFriendApplyReddotOnce,
+    resetDeprecatedFriendApplyReddotCleanupForTest,
+} from '../App/friendApplyReddotCleanup'
+
 /**
- * Unit tests for friendApply API error handling in App/index.tsx
- * Tests that the startup cleanup call properly handles errors with .catch()
+ * Unit tests for friendApply reddot cleanup in App/index.tsx.
+ * The cleanup is guarded so React re-renders / StrictMode duplicate effects
+ * cannot repeatedly issue DELETE /user/reddot/friendApply for the same user.
  */
 
-describe('friendApply API error handling', () => {
-    // Simulates the friendApply reddot cleanup logic with error handling
-    function createFriendApplyManager(initialCount = 0) {
+describe('friendApply reddot cleanup', () => {
+    function createCleanupDeps(initialCount = 0, uid = 'user-1') {
         let friendApplyCount = initialCount;
         let errorLogged: unknown = null;
+        let apiCalled = 0;
         let menusRefreshed = false;
         let storageUpdated = false;
         let eventEmitted = false;
+        let isLoggedIn = true;
+        let currentUid = uid;
+        let shouldReject = false;
 
         return {
+            deps: {
+                isLoggedIn: () => isLoggedIn,
+                getUid: () => currentUid,
+                clearReddot: async () => {
+                    apiCalled++;
+                    if (shouldReject) {
+                        throw new Error('API Error');
+                    }
+                },
+                emitUnreadCount: (count: number) => {
+                    friendApplyCount = count;
+                    eventEmitted = true;
+                },
+                setUnreadCount: (_uid: string, count: string) => {
+                    friendApplyCount = Number(count);
+                    storageUpdated = true;
+                },
+                refreshMenus: () => {
+                    menusRefreshed = true;
+                },
+                warn: (_message: string, error: unknown) => {
+                    errorLogged = error;
+                    console.warn('Failed to clear friend apply count:', error);
+                },
+            },
             getCount: () => friendApplyCount,
             getError: () => errorLogged,
+            getApiCalled: () => apiCalled,
             isMenusRefreshed: () => menusRefreshed,
             isStorageUpdated: () => storageUpdated,
             isEventEmitted: () => eventEmitted,
-            reset: () => {
-                friendApplyCount = 0;
-                errorLogged = null;
-                menusRefreshed = false;
-                storageUpdated = false;
-                eventEmitted = false;
+            setLoggedIn: (value: boolean) => {
+                isLoggedIn = value;
             },
-            // Simulates the fixed friendApply cleanup with .catch()
-            async clearFriendApplyCount(
-                apiCall: () => Promise<void>,
-                isLoggedIn: boolean
-            ) {
-                if (!isLoggedIn) {
-                    return;
-                }
-
-                await apiCall()
-                    .then(() => {
-                        friendApplyCount = 0;
-                        eventEmitted = true;
-                        storageUpdated = true;
-                        menusRefreshed = true;
-                    })
-                    .catch(error => {
-                        errorLogged = error;
-                        console.warn('Failed to clear friend apply count:', error);
-                    });
+            setUid: (value: string) => {
+                currentUid = value;
+            },
+            rejectNextCalls: () => {
+                shouldReject = true;
             },
         };
     }
 
+    beforeEach(() => {
+        resetDeprecatedFriendApplyReddotCleanupForTest();
+    });
+
     it('should have zero count initially', () => {
-        const manager = createFriendApplyManager();
+        const manager = createCleanupDeps();
         expect(manager.getCount()).toBe(0);
     });
 
     it('should not clear when user is not logged in', async () => {
-        const manager = createFriendApplyManager(5);
-        let apiCalled = false;
+        const manager = createCleanupDeps(5);
+        manager.setLoggedIn(false);
 
-        await manager.clearFriendApplyCount(async () => {
-            apiCalled = true;
-            return;
-        }, false);
+        const started = await clearDeprecatedFriendApplyReddotOnce(manager.deps);
 
-        expect(apiCalled).toBe(false);
+        expect(started).toBe(false);
+        expect(manager.getApiCalled()).toBe(0);
         expect(manager.getCount()).toBe(5);
     });
 
     it('should clear count on successful API call', async () => {
-        const manager = createFriendApplyManager(5);
+        const manager = createCleanupDeps(5);
 
-        await manager.clearFriendApplyCount(async () => {
-            return;
-        }, true);
+        const started = await clearDeprecatedFriendApplyReddotOnce(manager.deps);
 
+        expect(started).toBe(true);
+        expect(manager.getApiCalled()).toBe(1);
         expect(manager.getCount()).toBe(0);
         expect(manager.getError()).toBeNull();
         expect(manager.isEventEmitted()).toBe(true);
@@ -82,75 +100,63 @@ describe('friendApply API error handling', () => {
         expect(manager.isMenusRefreshed()).toBe(true);
     });
 
+    it('should only clear once for the same logged-in user', async () => {
+        const manager = createCleanupDeps(5);
+
+        const firstStarted = await clearDeprecatedFriendApplyReddotOnce(manager.deps);
+        const secondStarted = await clearDeprecatedFriendApplyReddotOnce(manager.deps);
+
+        expect(firstStarted).toBe(true);
+        expect(secondStarted).toBe(false);
+        expect(manager.getApiCalled()).toBe(1);
+    });
+
+    it('should clear once for each logged-in user', async () => {
+        const manager = createCleanupDeps(5, 'user-1');
+
+        await clearDeprecatedFriendApplyReddotOnce(manager.deps);
+        manager.setUid('user-2');
+        const secondUserStarted = await clearDeprecatedFriendApplyReddotOnce(manager.deps);
+
+        expect(secondUserStarted).toBe(true);
+        expect(manager.getApiCalled()).toBe(2);
+    });
+
     it('should catch error and not crash when API call fails', async () => {
-        const manager = createFriendApplyManager(5);
-        const testError = new Error('Network error');
+        const manager = createCleanupDeps(5);
+        manager.rejectNextCalls();
 
-        // This should NOT throw - the error should be caught
-        await manager.clearFriendApplyCount(async () => {
-            throw testError;
-        }, true);
+        const started = await clearDeprecatedFriendApplyReddotOnce(manager.deps);
 
+        expect(started).toBe(true);
+        expect(manager.getApiCalled()).toBe(1);
         expect(manager.getCount()).toBe(5);
-        expect(manager.getError()).toBe(testError);
+        expect(manager.getError()).toBeInstanceOf(Error);
         expect(manager.isEventEmitted()).toBe(false);
         expect(manager.isStorageUpdated()).toBe(false);
         expect(manager.isMenusRefreshed()).toBe(false);
     });
 
     it('should log warning when API call fails', async () => {
-        const manager = createFriendApplyManager();
+        const manager = createCleanupDeps();
+        manager.rejectNextCalls();
         const consoleSpy = vi.spyOn(console, 'warn').mockImplementation();
 
-        const testError = new Error('API Error');
-        await manager.clearFriendApplyCount(async () => {
-            throw testError;
-        }, true);
+        await clearDeprecatedFriendApplyReddotOnce(manager.deps);
 
-        expect(consoleSpy).toHaveBeenCalledWith('Failed to clear friend apply count:', testError);
+        expect(consoleSpy).toHaveBeenCalledWith('Failed to clear friend apply count:', expect.any(Error));
         consoleSpy.mockRestore();
     });
 
-    it('should handle server error gracefully', async () => {
-        const manager = createFriendApplyManager();
+    it('should not retry the same user after failure', async () => {
+        const manager = createCleanupDeps(5);
+        manager.rejectNextCalls();
 
-        await manager.clearFriendApplyCount(async () => {
-            throw new Error('500 Internal Server Error');
-        }, true);
+        const firstStarted = await clearDeprecatedFriendApplyReddotOnce(manager.deps);
+        const secondStarted = await clearDeprecatedFriendApplyReddotOnce(manager.deps);
 
-        expect(manager.getCount()).toBe(0);
-        expect(manager.getError()).toBeInstanceOf(Error);
-    });
-
-    it('should handle timeout error gracefully', async () => {
-        const manager = createFriendApplyManager();
-
-        await manager.clearFriendApplyCount(async () => {
-            throw new Error('Request timeout');
-        }, true);
-
-        expect(manager.getCount()).toBe(0);
-        expect(manager.getError()?.toString()).toContain('timeout');
-    });
-
-    it('should allow retry after failure', async () => {
-        const manager = createFriendApplyManager();
-
-        // First call fails
-        await manager.clearFriendApplyCount(async () => {
-            throw new Error('First failure');
-        }, true);
-
-        expect(manager.getError()).toBeTruthy();
-
-        manager.reset();
-
-        // Second call succeeds
-        await manager.clearFriendApplyCount(async () => {
-            return;
-        }, true);
-
-        expect(manager.getCount()).toBe(0);
-        expect(manager.getError()).toBeNull();
+        expect(firstStarted).toBe(true);
+        expect(secondStarted).toBe(false);
+        expect(manager.getApiCalled()).toBe(1);
     });
 });
