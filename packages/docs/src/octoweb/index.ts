@@ -32,6 +32,18 @@ export function getWKApp(): WKAppShape {
 }
 
 /**
+ * The host's RIGHT (main) route pane manager. Production: the real static WKApp.routeRight
+ * (a ContextRouteManager) — the same one Matter/Summary push their detail panel into so it
+ * fills the main content area while the list stays in the left route slot. Tests: the
+ * override's routeRight stub if provided, else null (DocsHome falls back to inline render).
+ */
+export function getRouteRight(): import('./types.ts').RouteRight | null {
+  if (override) return override.routeRight ?? null
+  const rr = (WKApp as unknown as { routeRight?: import('./types.ts').RouteRight }).routeRight
+  return rr ?? null
+}
+
+/**
  * Re-wrap the REAL host APIClient so its responses look axios-style to docs callers.
  *
  * WHY: the host APIClient (packages/dmworkbase/src/Service/APIClient.ts) `wrapResult()`

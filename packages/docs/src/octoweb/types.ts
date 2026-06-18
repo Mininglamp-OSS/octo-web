@@ -96,4 +96,17 @@ export interface WKAppShape {
   menus: MenusManager
   apiClient: APIClient
   loginInfo: LoginInfo
+  /**
+   * The host's RIGHT (main) route pane manager (App.routeRight, a ContextRouteManager).
+   * Matter/Summary push their detail view here so it fills the main content area while the
+   * list stays in the left route slot. Optional in the shape because the test mock provides
+   * a lightweight stub; in production this is the real static WKApp.routeRight.
+   */
+  routeRight?: RouteRight
+}
+
+/** Minimal surface of the host's right-pane route manager (ContextRouteManager). */
+export interface RouteRight {
+  replaceToRoot(view: unknown): void
+  popToRoot(): void
 }
