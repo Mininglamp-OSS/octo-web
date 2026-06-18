@@ -116,6 +116,7 @@
   "state": {
     "loading": "正在加载文档…",
     "empty": "这里还没有内容。",
+    "untitled": "无标题文档",
     "error": "出错了。",
     "syncing": "正在同步…"
   },
