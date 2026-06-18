@@ -17,7 +17,7 @@ export function InstallGuidePopover({ provider }: { provider: string }) {
     const mounted = React.useRef(true)
     React.useEffect(() => () => { mounted.current = false }, [])
 
-    const guide = getInstallGuide(provider, apiUrl)
+    const guide = getInstallGuide(provider, { apiUrl })
     if (!guide) return null
     const providerLabel = providerLabels[provider] || provider
 
@@ -57,7 +57,7 @@ export function InstallGuidePopover({ provider }: { provider: string }) {
                 <button
                     type="button"
                     className="wk-rt-guide__copyall"
-                    onClick={() => copy(buildInstallCopyText(provider, t, apiUrl), t("base.runtimes.install.copyAllLabel"))}
+                    onClick={() => copy(buildInstallCopyText(provider, t, { apiUrl }), t("base.runtimes.install.copyAllLabel"))}
                 >
                     {t("base.runtimes.install.copyAll")}
                 </button>

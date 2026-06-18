@@ -58,8 +58,8 @@ describe("buildInstallCopyText — 整段复制文本", () => {
 })
 
 describe("apiUrl 自动填充", () => {
-    it("getInstallGuide(claude, url): 占位被替换成真实 server_url(不带 /v1)", () => {
-        const g = getInstallGuide("claude", "http://localhost:8090")
+    it("getInstallGuide(claude, {apiUrl}): 占位被替换成真实 server_url(不带 /v1)", () => {
+        const g = getInstallGuide("claude", { apiUrl: "http://localhost:8090" })
         const step2 = g!.steps[1].command
         expect(step2).toContain(`"apiUrl": "http://localhost:8090"`)
         expect(step2).not.toContain("<OCTO_API_URL>")
@@ -69,13 +69,30 @@ describe("apiUrl 自动填充", () => {
         expect(g!.steps[1].command).toContain("<OCTO_API_URL>")
     })
     it("空/空白 url: 保留占位", () => {
-        expect(getInstallGuide("claude", "")!.steps[1].command).toContain("<OCTO_API_URL>")
-        expect(getInstallGuide("claude", "   ")!.steps[1].command).toContain("<OCTO_API_URL>")
+        expect(getInstallGuide("claude", { apiUrl: "" })!.steps[1].command).toContain("<OCTO_API_URL>")
+        expect(getInstallGuide("claude", { apiUrl: "   " })!.steps[1].command).toContain("<OCTO_API_URL>")
     })
     it("buildInstallCopyText 带 url: 整段含真实地址、无占位", () => {
-        const text = buildInstallCopyText("claude", t, "http://localhost:8090")
+        const text = buildInstallCopyText("claude", t, { apiUrl: "http://localhost:8090" })
         expect(text).toContain(`"apiUrl": "http://localhost:8090"`)
         expect(text).not.toContain("<OCTO_API_URL>")
+    })
+})
+
+describe("octo_daemon: apiUrl + apiKey 占位替换", () => {
+    it("同时填充 <OCTO_SERVER_URL> 和 <OCTO_API_KEY>", () => {
+        const g = getInstallGuide("octo_daemon", { apiUrl: "https://octo.example.com", apiKey: "ak_123" })
+        const cfg = g!.steps[1].command!
+        expect(cfg).toContain('--server-url "https://octo.example.com"')
+        expect(cfg).toContain('--api-key "ak_123"')
+        expect(cfg).not.toContain("<OCTO_SERVER_URL>")
+        expect(cfg).not.toContain("<OCTO_API_KEY>")
+    })
+    it("只传 apiUrl: server 填真值, api-key 保留占位", () => {
+        const g = getInstallGuide("octo_daemon", { apiUrl: "https://octo.example.com" })
+        const cfg = g!.steps[1].command!
+        expect(cfg).toContain('--server-url "https://octo.example.com"')
+        expect(cfg).toContain("<OCTO_API_KEY>")
     })
 })
 
