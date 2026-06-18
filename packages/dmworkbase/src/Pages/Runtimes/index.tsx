@@ -9,6 +9,7 @@ import { InstallGuidePopover } from "./InstallGuidePopover"
 import { getInstallGuide } from "./installGuide"
 import { octoComponentName } from "./octoComponent"
 import { deviceRuntimeMode } from "./deviceRuntimeMode"
+import { canInstallOctoPlugin } from "./pluginInstall"
 import { canCreateBot } from "./botGating"
 import { Bot, botStatusLabel, listBots, providerLabels, FLEET_API_BASE } from "./botsApi"
 import { ProviderLogo } from "./providerLogos"
@@ -1148,12 +1149,14 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         this.setState({ pluginUpgradeStatus: "timeout", pluginUpgradeError: t("base.runtimes.upgrade.errPollingTimeout") })
     }
 
-    renderPluginUpgradeBtn(pluginName: string, hasUpdate: boolean | undefined) {
+    renderPluginUpgradeBtn(pluginName: string, hasUpdate: boolean | undefined, action: "upgrade" | "install" = "upgrade") {
         const { pluginUpgradeStatus, pluginUpgradeError } = this.state
         // busy 来源是否本按钮自己的 task — 自己升级显示进度态; 别的 task
         // 在跑则本按钮 busy-disabled (按钮粒度豁免, plan §2.B-3 / X4).
         const selfInProgress = isUpgradeInProgress(pluginUpgradeStatus)
         const busyByOther = !!this.props.daemonBusy && !selfInProgress
+        // install: 用「安装」文案、空闲即显按钮; upgrade: 用「升级」文案、仅有更新时显。
+        const actionLabel = action === "install" ? t("base.runtimes.upgrade.install") : t("base.runtimes.upgrade.upgrade")
         if (pluginUpgradeStatus === "completed") {
             return <span className="wk-rt-upgrade-status success"><span className="upgrade-dot" />{t("base.runtimes.upgrade.completed")}</span>
         }
@@ -1165,8 +1168,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     {pluginUpgradeStatus === "timeout" ? t("base.runtimes.upgrade.timeout") : t("base.runtimes.upgrade.failed")}
                     {pluginUpgradeError && <span className="wk-rt-upgrade-reason">· {pluginUpgradeError.length > 40 ? pluginUpgradeError.slice(0, 40) + "…" : pluginUpgradeError}</span>}
                     {!!pluginName && (busyByOther
-                        ? <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{t("base.runtimes.upgrade.upgrade")}</span>
-                        : <span className="wk-rt-upgrade-btn" onClick={() => this.handlePluginUpgrade(pluginName)}>{t("base.runtimes.upgrade.upgrade")}</span>)}
+                        ? <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{actionLabel}</span>
+                        : <span className="wk-rt-upgrade-btn" onClick={() => this.handlePluginUpgrade(pluginName)}>{actionLabel}</span>)}
                 </span>
             )
         }
@@ -1178,12 +1181,13 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 </span>
             )
         }
-        if (hasUpdate && !!pluginName) {
+        const showIdle = action === "install" ? !!pluginName : (hasUpdate && !!pluginName)
+        if (showIdle) {
             if (busyByOther) {
                 // B-3: 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
-                return <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{t("base.runtimes.upgrade.upgrade")}</span>
+                return <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{actionLabel}</span>
             }
-            return <span className="wk-rt-upgrade-btn" onClick={() => this.handlePluginUpgrade(pluginName)}>{t("base.runtimes.upgrade.upgrade")}</span>
+            return <span className="wk-rt-upgrade-btn" onClick={() => this.handlePluginUpgrade(pluginName)}>{actionLabel}</span>
         }
         return null
     }
@@ -1397,8 +1401,11 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                             {this.renderPluginUpgradeBtn(octoComponent ?? "", pluginHint?.has_plugin_update)}
                                         </>
                                     ) : (
-                                        // 无 octo 适配插件数据时用中性占位, 不断言「未安装」.
-                                        <span className="wk-rt-install-empty">—</span>
+                                        // openclaw 的 octo 插件未装 → 显「安装」按钮(一键装到 latest);
+                                        // 其它(如 cc-octo)无插件数据时用中性占位「—」(指引 popover 已挂在 label 行)。
+                                        canInstallOctoPlugin(rt.provider, !!octoPlugin)
+                                            ? this.renderPluginUpgradeBtn(octoComponent ?? "", true, "install")
+                                            : <span className="wk-rt-install-empty">—</span>
                                     )}
                                 </span>
                             </div>
