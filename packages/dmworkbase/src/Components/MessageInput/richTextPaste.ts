@@ -7,25 +7,17 @@ import type {
   OctoRichTextClipboardMention,
   OctoRichTextClipboardPayload,
 } from "../../Utils/richTextClipboard";
-import {
-  MENTION_UID_AIS,
-  MENTION_UID_HUMANS,
-  MENTION_UID_LEGACY_ALL,
-} from "../../Utils/mentionRender";
+import { isBroadcastSentinelUid } from "../../Utils/mentionRender";
 import { isSafeUrl } from "../../Utils/security";
 
 // Clipboard payloads are a forgeable, untrusted source (plain HTML the user can
 // hand-author). A broadcast/all-routing sentinel UID lets a single paste fan a
 // message out to every human / AI in the channel, so we never reconstruct a
-// mention node for one — it degrades to plain "@label" text. Covers the legacy
-// `@所有人` (`-1`) and the three-state `@所有人`/`@所有AI` sentinels (`-2`/`-3`),
-// plus the render-side `"all"` synthetic uid.
-const BROADCAST_SENTINEL_UIDS: ReadonlySet<string> = new Set([
-  MENTION_UID_LEGACY_ALL,
-  MENTION_UID_HUMANS,
-  MENTION_UID_AIS,
-  "all",
-]);
+// mention node for one — it degrades to plain "@label" text. The sentinel set
+// (legacy `@所有人` `-1`, three-state `-2`/`-3`, render-side `"all"`) lives in
+// `isBroadcastSentinelUid` (Utils/mentionRender) so the paste guard, the
+// send-side re-parse, and the render path share one definition (octo-web#330,
+// helper grafted from #361).
 
 // Minimal structural shape of a channel member used to validate pasted
 // mentions. `MemberInfo` from mentionResolve (uid/name/label) is assignable.
@@ -127,7 +119,7 @@ export function buildInlineContentForRichTextPaste(
     // missing members list) renders as plain "@label" text.
     if (
       label &&
-      !BROADCAST_SENTINEL_UIDS.has(mention.uid) &&
+      !isBroadcastSentinelUid(mention.uid) &&
       allowedKeys.has(mentionAllowKey(mention.uid, label))
     ) {
       nodes.push({
