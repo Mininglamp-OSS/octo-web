@@ -1587,7 +1587,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             // 切 space 即清空 runtime 视图 —— 否则旧 space 的 runtimes 会残留到新 space
             // 首次 loadData 返回前;若该 loadData 失败 (catch 仅复位 loading=false 不清
             // runtimes),`canBot=!loading && canCreateBot(runtimes)` 会用旧 space 的在线
-            // 运行时误启用「创建 Bot」(codex code-review C1)。清空后失败也回落到禁用。
+            // 运行时误启用「创建 Bot」。清空后失败也回落到禁用。
             runtimes: [],
             versionHints: {},
             daemonVersionHints: {},
@@ -2017,7 +2017,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         // gating「创建 Bot」: 仅当本 space 已加载完成(非 loading)且有 ≥1 在线运行时才允许。
         // 切 space 时 handleSpaceChanged 已清空 runtimes:[];!loading 为兜底 —— 覆盖加载
         // 窗口期,以及 loadData 失败(catch 仅复位 loading=false、runtimes 保持 [])的场景,
-        // 防旧 space 在线运行时短暂误启用(codex code-review C1)。
+        // 防旧 space 在线运行时短暂误启用。
         const canBot = !loading && canCreateBot(runtimes)
 
         return (

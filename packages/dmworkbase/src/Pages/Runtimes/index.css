@@ -1728,7 +1728,7 @@
   background: transparent;
 }
 /* 禁用项仍可聚焦 (aria-disabled),保留 box-shadow 焦点环但去掉 hover 背景,
-   免得看起来像可激活态 (Octo-Q review P2)。 */
+   免得看起来像可激活态。 */
 .wk-rt-create-menu-item--disabled:focus-visible {
   background: transparent;
 }

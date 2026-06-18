@@ -182,12 +182,12 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
       // effect),runtimes 只在 mount / 切 space 时拉过。用户「先装运行时→等菜单变
       // 可点→点创建」时,本缓存仍是装之前的(无/离线)数据,弹窗 runtime 选择器为空
       // 导致建不了 bot。await 后再开,确保弹窗一上来就是刷新后的列表,不会先用旧
-      // (尤其首屏空)缓存渲染再跳变(codex code-review C1)。loadRuntimes 内有
+      // (尤其首屏空)缓存渲染再跳变。loadRuntimes 内有
       // try/catch + epoch guard,不会 reject、不会跨 space 回填。
       const epoch = spaceEpochRef.current;
       await loadRuntimes();
       // await 期间可能切了 space (onSpaceChanged 已 setModalOpen(false))——epoch 变了
-      // 就别在新 space 里用旧调用重开弹窗 (cc+codex round 8 一致)。
+      // 就别在新 space 里用旧调用重开弹窗。
       if (epoch !== spaceEpochRef.current) return;
       setModalOpen(true);
     },
