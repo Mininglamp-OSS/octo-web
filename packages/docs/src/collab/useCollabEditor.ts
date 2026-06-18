@@ -18,6 +18,27 @@ interface RegistryEntry {
 
 const registry = new Map<string, RegistryEntry>()
 
+/**
+ * Map a collab-token issuance failure (the awaited step in CollabEditor.create) to a terminal
+ * state, so a failed editor bootstrap shows a clear reason instead of an infinite
+ * "Loading document…" spinner. Unknown/networkless errors fall back to 'not-found'.
+ */
+export function terminalForCreateError(err: unknown): TerminalState['kind'] {
+  const status = (err as { response?: { status?: number } })?.response?.status
+  switch (status) {
+    case 403:
+      return 'forbidden'
+    case 404:
+      return 'not-found'
+    case 401:
+      return 'login'
+    case 423:
+      return 'locked'
+    default:
+      return 'not-found'
+  }
+}
+
 function acquire(key: string, opts: CollabEditorOptions): RegistryEntry {
   let entry = registry.get(key)
   if (!entry) {
@@ -88,6 +109,15 @@ export function useCollabEditor(opts: CollabEditorOptions): UseCollabEditorResul
       instRef.current = inst
       setRole(inst.getRole())
       force((n) => n + 1)
+    }).catch((err: unknown) => {
+      // CollabEditor.create() awaits the collab-token exchange before constructing the
+      // editor. If that POST fails (403 non-member, 404 missing doc, 401 expired session,
+      // network error) the create promise rejects and `instance` would otherwise stay null
+      // forever — EditorShell then shows "Loading document…" indefinitely with no editor.
+      // Map the failure to a terminal state so the user sees a clear reason instead of an
+      // infinite spinner.
+      if (!active) return
+      setTerminal({ kind: terminalForCreateError(err) })
     })
     return () => {
       active = false
