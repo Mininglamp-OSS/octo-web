@@ -22,7 +22,7 @@ import WKAvatar from "../WKAvatar";
 import WKButton from "../WKButton";
 import IconClick from "../IconClick";
 import ConversationContext from "../Conversation/context";
-import FileHelper from "../../Utils/filehelper";
+import { getFileIcon as getFileIconUrl } from "../MessageInput/AttachmentNode";
 import { downloadFile } from "../../Utils/download";
 import { useI18n } from "../../i18n";
 import { channelSearchEmptyDataSource } from "./adapter";
@@ -57,6 +57,7 @@ interface ChannelSearchPanelProps {
 
 const tabs: ChannelSearchTab[] = ["all", "message", "media", "file"];
 const SEARCH_DEBOUNCE_MS = 300;
+const LOAD_MORE_SCROLL_THRESHOLD = 120;
 
 const tabI18nKey: Record<ChannelSearchTab, string> = {
   all: "base.channelSearch.tabs.all",
@@ -145,12 +146,12 @@ function compactFileSize(bytes: number) {
   return `${bytes}B`;
 }
 
-function assetUrl(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object" && "default" in value) {
-    return assetUrl((value as { default?: unknown }).default);
+function getFileIconName(fileName: string, extension?: string) {
+  const ext = extension?.replace(/^\./, "").trim();
+  if (!ext || /\.[^.]+$/.test(fileName)) {
+    return fileName;
   }
-  return undefined;
+  return `${fileName}.${ext}`;
 }
 
 function useOutsideDismiss(
@@ -942,8 +943,10 @@ const FileInlineResult = React.memo(function FileInlineResult({
   const sender = resolveSender(item, getSender);
   const fileName = item.file?.name || t("base.conversation.file.unknown");
   const inlineFileName = fileName.replace(/\.[^.]+$/, "");
-  const fileIconInfo = FileHelper.getFileIconInfo(fileName);
-  const fileIconSrc = item.file?.iconUrl || assetUrl(fileIconInfo?.icon);
+  const fileIconSrc = getFileIconUrl(
+    getFileIconName(fileName, item.file?.extension),
+    ""
+  );
 
   return (
     <div className="wk-channel-search-result wk-channel-search-file-inline">
@@ -1048,9 +1051,10 @@ const FileResultItem = React.memo(function FileResultItem({
   const menuRef = useRef<HTMLDivElement>(null);
   const sender = resolveSender(item, getSender);
   const fileName = item.file?.name || t("base.conversation.file.unknown");
-  const fileIconInfo = FileHelper.getFileIconInfo(fileName);
-  const fileIconSrc = item.file?.iconUrl || assetUrl(fileIconInfo?.icon);
-  const hasFigmaIcon = !!item.file?.iconUrl;
+  const fileIconSrc = getFileIconUrl(
+    getFileIconName(fileName, item.file?.extension),
+    ""
+  );
 
   const handleDownload = async () => {
     const url = item.file?.downloadUrl || item.file?.url;
@@ -1084,18 +1088,8 @@ const FileResultItem = React.memo(function FileResultItem({
         }
       }}
     >
-      <div
-        className={[
-          "wk-channel-search-file-icon",
-          hasFigmaIcon ? "wk-channel-search-file-icon--figma" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        style={{
-          backgroundColor: hasFigmaIcon ? undefined : fileIconInfo?.color,
-        }}
-      >
-        {fileIconSrc && <img src={fileIconSrc} alt="" />}
+      <div className="wk-channel-search-file-icon">
+        <img src={fileIconSrc} alt="" />
       </div>
       <div className="wk-channel-search-file-body">
         <div className="wk-channel-search-file-name">
@@ -1204,7 +1198,9 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   const [queryStarted, setQueryStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const loadingMoreCursorRef = useRef<string | null>(null);
   const [isComposing, setIsComposing] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   const filterWrapRef = useRef<HTMLDivElement>(null);
 
   const filterCount = activeFilterCount(filters);
@@ -1248,6 +1244,10 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
       if (isComposing) {
         return;
       }
+      if (cursor && loadingMoreCursorRef.current === cursor) {
+        return;
+      }
+      loadingMoreCursorRef.current = cursor || null;
 
       // Empty-state guard: the keyword-optional `_search`/`_search_all` endpoints
       // reject an empty keyword + empty filter with 400 (validateSearchNotEmpty).
@@ -1291,15 +1291,44 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         if (requestIdRef.current === requestId) {
           setLoading(false);
           setLoadingMore(false);
+          if (loadingMoreCursorRef.current === cursor) {
+            loadingMoreCursorRef.current = null;
+          }
         }
       }
     },
     [activeTab, channel, dataSource, filters, isComposing, keyword, t]
   );
 
+  const loadNextPage = useCallback(() => {
+    if (loading || loadingMore || !response.hasMore || !response.nextCursor) {
+      return;
+    }
+    void runSearch(response.nextCursor);
+  }, [
+    loading,
+    loadingMore,
+    response.hasMore,
+    response.nextCursor,
+    runSearch,
+  ]);
+
+  const handleContentScroll = useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      const target = event.currentTarget;
+      const distanceToBottom =
+        target.scrollHeight - target.scrollTop - target.clientHeight;
+      if (distanceToBottom <= LOAD_MORE_SCROLL_THRESHOLD) {
+        loadNextPage();
+      }
+    },
+    [loadNextPage]
+  );
+
   useEffect(() => {
     if (isComposing) return;
     requestIdRef.current += 1;
+    loadingMoreCursorRef.current = null;
     setResponse({ items: [], hasMore: false });
     setLoadingMore(false);
     setError(null);
@@ -1320,6 +1349,16 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
   }, [canSearch, isComposing, runSearch]);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const distanceToBottom =
+      content.scrollHeight - content.scrollTop - content.clientHeight;
+    if (distanceToBottom <= LOAD_MORE_SCROLL_THRESHOLD) {
+      loadNextPage();
+    }
+  }, [activeTab, loadNextPage, response.items.length]);
 
   const handleLocate = useCallback(
     (item: ChannelSearchItem) => {
@@ -1472,23 +1511,20 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         </div>
       </div>
 
-      <div className="wk-channel-search-content">
+      <div
+        className="wk-channel-search-content"
+        ref={contentRef}
+        onScroll={handleContentScroll}
+      >
         {activeTab === "media" && (
           <div className="wk-channel-search-media-tip">
             {t("base.channelSearch.mediaKeywordTip")}
           </div>
         )}
         {renderResults()}
-        {response.hasMore && !loading && (
-          <div className="wk-channel-search-load-more">
-            <WKButton
-              size="sm"
-              variant="secondary"
-              loading={loadingMore}
-              onClick={() => void runSearch(response.nextCursor)}
-            >
-              {t("base.channelSearch.loadMore")}
-            </WKButton>
+        {loadingMore && (
+          <div className="wk-channel-search-load-more" role="status">
+            {t("base.channelSearch.loading")}
           </div>
         )}
       </div>

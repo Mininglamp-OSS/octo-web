@@ -20,9 +20,6 @@ const figmaMediaThumbs = [
   new URL("./assets/figma-media-08.png", import.meta.url).href,
 ];
 
-const figmaPdfIcon = new URL("./assets/figma-file-pdf.png", import.meta.url)
-  .href;
-const figmaMdIcon = new URL("./assets/figma-file-md.png", import.meta.url).href;
 const figmaInlineImage = new URL(
   "./assets/figma-inline-image-01.png",
   import.meta.url
@@ -128,7 +125,6 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     file: {
       name: "一个名叫哈哈帮的文件.pdf",
       size: 2411724,
-      iconUrl: figmaPdfIcon,
       url: "",
     },
   },
@@ -199,7 +195,6 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     file: {
       name: "文件名称文件名称文件名称.md",
       size: 2411724,
-      iconUrl: figmaMdIcon,
       url: "",
     },
   },
