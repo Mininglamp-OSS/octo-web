@@ -170,12 +170,14 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   }, []);
 
   useImperativeHandle(ref, () => ({
-    openCreate: () => {
+    openCreate: async () => {
       // 刷新弹窗用的 runtime 缓存再开 —— hidden 的 BotsTab 不轮询 (见下方 polling
       // effect),runtimes 只在 mount / 切 space 时拉过。用户「先装运行时→等菜单变
       // 可点→点创建」时,本缓存仍是装之前的(无/离线)数据,弹窗 runtime 选择器为空
-      // 导致建不了 bot。openCreate 主动重拉,与 RuntimesPage 的 gating 数据对齐。
-      loadRuntimes();
+      // 导致建不了 bot。await 后再开,确保弹窗一上来就是刷新后的列表,不会先用旧
+      // (尤其首屏空)缓存渲染再跳变(codex code-review C1)。loadRuntimes 内有
+      // try/catch + epoch guard,不会 reject、不会跨 space 回填。
+      await loadRuntimes();
       setModalOpen(true);
     },
     openBot: (id: number) => {
