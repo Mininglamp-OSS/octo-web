@@ -1160,6 +1160,7 @@
   "runtimes.create.createRuntimeDesc": "在新设备上接入 daemon",
   "runtimes.create.createBot": "创建 Bot",
   "runtimes.create.createBotDesc": "基于已有 runtime 起一个 Bot",
+  "runtimes.create.createBotDisabledHint": "需先安装并上线运行时",
   "runtimes.create.createFirst": "点击右上「+ 新建 Agent」创建第一个",
   "runtimes.agentModal.titleAddBot": "给 {{agent}} 添加 Bot",
   "runtimes.agentModal.titleCreateAgent": "创建新 Agent",

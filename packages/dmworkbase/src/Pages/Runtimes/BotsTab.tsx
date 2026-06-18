@@ -31,7 +31,7 @@ interface RuntimeListEntry {
 // Level-3 空态 CTA ("在此创建") 已随 "没 bot 不可展开" 改动移除, 唯一
 // caller 消失 (死链路清理). 将来有 runtime 行创建入口再加回.
 export interface BotsTabHandle {
-  openCreate: () => void;
+  openCreate: () => void | Promise<void>;
   openBot: (id: number) => void;
 }
 
@@ -75,6 +75,11 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   // space 的请求覆盖新 space 的 setRuntimes/setBots.
   const spaceEpochRef = useRef(0);
 
+  // 同 space 内的请求序号 (跟 RuntimesPage.loadData 的 loadSeq 同模式)。
+  // loadRuntimes 可能被 mount / space-change / openCreate 并发触发,fetch 响应
+  // 顺序不保证;只让最新一次请求 setRuntimes,防早发晚归的请求覆盖成旧列表。
+  const loadRuntimesSeqRef = useRef(0);
+
   // When a parent calls openBot(id) before the bots list has loaded, we
   // stash the id here and let a [bots]-watching effect apply it once the
   // list arrives. Without this, jumping in from a Runtime detail page on
@@ -98,6 +103,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   // mittBus 监听 space-changed (跟 RuntimesPage 同源信号), 命中时重拉.
   const loadRuntimes = useCallback(async () => {
     const epoch = spaceEpochRef.current;
+    const seq = ++loadRuntimesSeqRef.current;
     const spaceId = (WKApp as any)?.shared?.currentSpaceId ?? '';
     const sessionToken = (WKApp as any)?.loginInfo?.token ?? '';
     // 合并 plan 决策一+二 Phase 3A: fleet 切到 AuthMiddleware 接 session
@@ -110,7 +116,8 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
         headers,
       });
       const env = await res.json();
-      if (epoch !== spaceEpochRef.current) return; // stale
+      // stale: 切了 space (epoch) 或被更新的 loadRuntimes 请求超越 (seq) 都丢弃
+      if (epoch !== spaceEpochRef.current || seq !== loadRuntimesSeqRef.current) return;
       const list = (env?.data?.runtimes ?? env?.runtimes ?? []) as any[];
       setRuntimes(list.map(r => ({
         id: r.id,
@@ -121,7 +128,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
         status: r.status || 'unknown',
       })));
     } catch {
-      if (epoch === spaceEpochRef.current) setRuntimes([]);
+      if (epoch === spaceEpochRef.current && seq === loadRuntimesSeqRef.current) setRuntimes([]);
     }
   }, []);
 
@@ -170,7 +177,18 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   }, []);
 
   useImperativeHandle(ref, () => ({
-    openCreate: () => {
+    openCreate: async () => {
+      // 刷新弹窗用的 runtime 缓存再开 —— hidden 的 BotsTab 不轮询 (见下方 polling
+      // effect),runtimes 只在 mount / 切 space 时拉过。用户「先装运行时→等菜单变
+      // 可点→点创建」时,本缓存仍是装之前的(无/离线)数据,弹窗 runtime 选择器为空
+      // 导致建不了 bot。await 后再开,确保弹窗一上来就是刷新后的列表,不会先用旧
+      // (尤其首屏空)缓存渲染再跳变。loadRuntimes 内有
+      // try/catch + epoch guard,不会 reject、不会跨 space 回填。
+      const epoch = spaceEpochRef.current;
+      await loadRuntimes();
+      // await 期间可能切了 space (onSpaceChanged 已 setModalOpen(false))——epoch 变了
+      // 就别在新 space 里用旧调用重开弹窗。
+      if (epoch !== spaceEpochRef.current) return;
       setModalOpen(true);
     },
     openBot: (id: number) => {
@@ -187,7 +205,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
         refresh();
       }
     },
-  }), [bots, selectBot, refresh]);
+  }), [bots, selectBot, refresh, loadRuntimes]);
 
   // Apply any parked openBot request once the bots list (or a refresh)
   // delivers the matching entry. Cleared regardless of match — a missing
