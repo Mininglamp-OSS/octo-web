@@ -829,3 +829,61 @@
   padding: 6px 0 0 12px;
   border-left: 2px solid var(--octo-border, #e5e6eb);
 }
+
+/* ── Split-pane docs layout (left list resident + right editor) ──────────────
+   Mirrors the octo-smart-summary / matter list+detail layout: the document list
+   stays resident on the left; selecting an item opens the editor inline on the
+   right (state-driven, no full navigation), so the list never disappears. */
+.octo-docs-split {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.octo-docs-split-left {
+  flex: 0 0 280px;
+  width: 280px;
+  min-width: 220px;
+  max-width: 360px;
+  border-right: 1px solid var(--octo-border, #e5e6eb);
+  overflow-y: auto;
+  background: var(--octo-bg-2, #fafbfc);
+}
+.octo-docs-split-right {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+}
+/* The left pane hosts the list; reset the list's own centering/padding so it
+   fills the sidebar column instead of the old centered single-column page. */
+.octo-docs-split-left .octo-docs-list {
+  max-width: none;
+  margin: 0;
+  padding: 12px;
+}
+/* The right pane hosts the editor; the editor's inner .octo-doc keeps its own
+   reading width but is centered within the right pane. */
+.octo-docs-split-right .octo-doc {
+  max-width: 820px;
+  margin: 0 auto;
+}
+.octo-docs-list-item-active > button {
+  background: var(--octo-active-bg, #e8f3ff);
+  color: var(--octo-active-fg, #1664ff);
+  font-weight: 600;
+}
+.octo-docs-split-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 240px;
+  color: var(--octo-fg-3, #86909c);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
