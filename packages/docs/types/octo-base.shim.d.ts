@@ -42,4 +42,20 @@ declare module '@octo/base' {
 
   // React hook returning a `t` bound to the current locale via I18nProvider context.
   export function useI18n(): { t: (key: string, values?: Record<string, unknown>) => string }
+
+  // NavRail menu entry class. DocsModule.init() constructs `new Menus(id, routePath,
+  // title, icon, selectedIcon)` and registers it via WKApp.menus.register. Only the
+  // constructor surface is needed for the isolated docs typecheck; the real class
+  // lives in packages/dmworkbase/src/Service/Menus.ts. `icon`/`selectedIcon` are
+  // React elements but typed loosely here to avoid pulling host react typings.
+  export class Menus {
+    constructor(
+      id: string,
+      routePath: string,
+      title: string,
+      icon: unknown,
+      selectedIcon: unknown,
+      onPress?: () => void,
+    )
+  }
 }

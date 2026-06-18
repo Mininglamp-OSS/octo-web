@@ -1,4 +1,7 @@
 {
+  "menu": {
+    "title": "文档"
+  },
   "toolbar": {
     "heading1": "一级标题",
     "heading2": "二级标题",

@@ -6,7 +6,7 @@
 // createMockWKApp(), see octoweb/mock.ts) and fall back to the real `@octo/base` WKApp
 // whenever no override has been set — i.e. in production and dev.
 
-import { WKApp, i18n, t, useI18n } from '@octo/base'
+import { WKApp, i18n, t, useI18n, Menus } from '@octo/base'
 import type { WKAppShape } from './types.ts'
 
 // Test-only override. When unset (production / dev), getWKApp() returns the real
@@ -51,5 +51,9 @@ export { i18n }
  * `@octo/base` implementation in production and to the lightweight stub in tests.
  */
 export { t, useI18n }
+
+/** Re-export the real Menus class so the docs module can register a NavRail entry
+ * through the seam without importing @octo/base directly. */
+export { Menus }
 
 export * from './types.ts'
