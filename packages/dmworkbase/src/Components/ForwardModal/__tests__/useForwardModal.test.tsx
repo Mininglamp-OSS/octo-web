@@ -45,6 +45,9 @@ const hoisted = vi.hoisted(() => {
         // 可配置的 Space 裁决桩：默认全保留(false)。需要模拟「外部成员豁免保留」
         // 与「跨 Space 非外部成员剔除」时，用例按 channel 覆写 mockImplementation。
         shouldSkip: vi.fn((_channel: any) => false),
+        // WKApp.searchChatCandidates 桩：默认 undefined（复刻 #420 修复前侧边面板
+        // 未注册回调的状态）。GH #420 用例按需赋一个返回群/子区/联系人候选的 fn。
+        searchChatCandidates: undefined as undefined | ((params: any) => Promise<any[]>),
     }
 })
 
@@ -96,6 +99,7 @@ vi.mock("wukongimjssdk", () => {
         Channel,
         ChannelInfo: class {},
         ChannelTypeGroup: 2,
+        ChannelTypePerson: 1,
     }
 })
 
@@ -127,7 +131,9 @@ vi.mock("../../../App", () => ({
             commonDataSource: { searchFriends: hoisted.searchFriends },
         },
         mittBus: { on: hoisted.mittOn, off: hoisted.mittOff },
-        searchChatCandidates: undefined,
+        get searchChatCandidates() {
+            return hoisted.searchChatCandidates
+        },
     },
 }))
 
@@ -187,6 +193,7 @@ function resetHoisted() {
     hoisted.channelListeners = []
     hoisted.refreshHandlers = []
     hoisted.conversations = []
+    hoisted.searchChatCandidates = undefined
 }
 
 async function renderForward() {
@@ -553,3 +560,120 @@ describe("useForwardModal — group/my fallback groups + thread re-homing", () =
     })
 })
 
+/**
+ * GH #420 / OCT-34 回归守护：转发目标选择器搜索群聊/子区。
+ *
+ * 根因：群/子区结果来自 WKApp.searchChatCandidates。Web 端由 SummaryModule
+ * 注册该回调，但扩展侧边面板从未挂载它 → 回调为 undefined → useForwardModal
+ * 的搜索 effect 清空群/子区结果，搜索只剩联系人。修复在侧边面板入口注册了一个
+ * 等价回调。这里直接驱动 useForwardModal 的「已注册 searchChatCandidates」路径
+ * （此前 App mock 恒为 undefined，从未覆盖），守护：
+ *   - 搜到频道(group) / 子区(thread)，命中子区时父群被带出；
+ *   - 联系人(direct)候选不被丢失（无回归）；
+ *   - 非默认 Space 下，currentSpaceId 作为 space_id 透传给回调（Space 作用域）。
+ *
+ * keyword 经 setInputValue 的 300ms debounce 才生效，故用 fake timers 推进。
+ */
+describe("useForwardModal — registered searchChatCandidates surfaces channels & subzones (GH #420)", () => {
+    beforeEach(() => {
+        resetHoisted()
+        vi.useFakeTimers()
+    })
+
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    // 群「Engineering」、子区「Daily Standup」(父群=g-eng)、联系人「Alice」。
+    const candidates = [
+        { chat_id: "g-eng", chat_type: "group", name: "Engineering", member_count: 12 },
+        { chat_id: "t-standup", chat_type: "thread", name: "Daily Standup", parent_group_no: "g-eng" },
+        { chat_id: "d-alice", chat_type: "direct", name: "Alice", member_count: null },
+    ]
+
+    async function search(view: Awaited<ReturnType<typeof renderForward>>, kw: string) {
+        await act(async () => {
+            view.current.setInputValue(kw)
+            await vi.advanceTimersByTimeAsync(350) // 越过 300ms debounce → setKeyword
+            await flushMicrotasks() // searchChatCandidates(...).then(setSearchGroupItems)
+            await flushMicrotasks()
+        })
+    }
+
+    it("surfaces a channel(group) result when searching its name", async () => {
+        hoisted.searchChatCandidates = vi.fn(async () => candidates)
+        const view = await renderForward()
+
+        await search(view, "engineering")
+        const found = view.current.items.find((i) => i.channelID === "g-eng")
+
+        expect(found).toBeTruthy()
+        expect(found!.isThread).toBe(false)
+        expect(found!.displayName).toBe("Engineering")
+
+        view.unmount()
+    })
+
+    it("surfaces a subzone(thread) result AND brings out its parent group (方案 A)", async () => {
+        hoisted.searchChatCandidates = vi.fn(async () => candidates)
+        const view = await renderForward()
+
+        await search(view, "standup")
+        const ids = view.current.items.map((i) => i.channelID)
+        const thread = view.current.items.find((i) => i.channelID === "t-standup")
+
+        // 命中子区本身
+        expect(ids).toContain("t-standup")
+        expect(thread!.isThread).toBe(true)
+        expect(thread!.parentChannelID).toBe("g-eng")
+        // 父群被带出（即使父群名未命中关键字）
+        expect(ids).toContain("g-eng")
+
+        view.unmount()
+    })
+
+    it("still surfaces a contact(direct) result (no regression)", async () => {
+        hoisted.searchChatCandidates = vi.fn(async () => candidates)
+        const view = await renderForward()
+
+        await search(view, "alice")
+        const found = view.current.items.find((i) => i.channelID === "d-alice")
+
+        expect(found).toBeTruthy()
+        expect(found!.isThread).toBe(false)
+        expect(found!.displayName).toBe("Alice")
+
+        view.unmount()
+    })
+
+    it("forwards currentSpaceId as space_id to searchChatCandidates under a non-default Space", async () => {
+        hoisted.currentSpaceId = "space-非默认"
+        const spy = vi.fn(async () => candidates)
+        hoisted.searchChatCandidates = spy
+        const view = await renderForward()
+
+        await search(view, "engineering")
+
+        expect(spy).toHaveBeenCalled()
+        const arg = spy.mock.calls[spy.mock.calls.length - 1][0]
+        expect(arg.keyword).toBe("engineering")
+        expect(arg.space_id).toBe("space-非默认")
+
+        view.unmount()
+    })
+
+    it("clears group/thread results when searchChatCandidates is unregistered (pre-fix sidepanel state)", async () => {
+        // 复刻修复前：回调未注册 → 群/子区结果应为空（只可能剩本地会话/联系人，
+        // 本用例无本地数据 → items 不含群/子区候选）。
+        hoisted.searchChatCandidates = undefined
+        const view = await renderForward()
+
+        await search(view, "engineering")
+        const ids = view.current.items.map((i) => i.channelID)
+
+        expect(ids).not.toContain("g-eng")
+        expect(ids).not.toContain("t-standup")
+
+        view.unmount()
+    })
+})
