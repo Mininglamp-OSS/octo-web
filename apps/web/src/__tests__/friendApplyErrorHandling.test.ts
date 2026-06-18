@@ -1,13 +1,13 @@
 import { vi } from 'vitest'
 /**
  * Unit tests for friendApply API error handling in App/index.tsx
- * Tests that the API call properly handles errors with .catch() (fix for issue #324)
+ * Tests that the startup cleanup call properly handles errors with .catch()
  */
 
 describe('friendApply API error handling', () => {
-    // Simulates the friendApply fetch logic with error handling
-    function createFriendApplyManager() {
-        let friendApplyCount = 0;
+    // Simulates the friendApply reddot cleanup logic with error handling
+    function createFriendApplyManager(initialCount = 0) {
+        let friendApplyCount = initialCount;
         let errorLogged: unknown = null;
         let menusRefreshed = false;
         let storageUpdated = false;
@@ -26,9 +26,9 @@ describe('friendApply API error handling', () => {
                 storageUpdated = false;
                 eventEmitted = false;
             },
-            // Simulates the fixed friendApply fetch with .catch()
-            async fetchFriendApplyCount(
-                apiCall: () => Promise<{ count: number }>,
+            // Simulates the fixed friendApply cleanup with .catch()
+            async clearFriendApplyCount(
+                apiCall: () => Promise<void>,
                 isLoggedIn: boolean
             ) {
                 if (!isLoggedIn) {
@@ -36,15 +36,15 @@ describe('friendApply API error handling', () => {
                 }
 
                 await apiCall()
-                    .then(res => {
-                        friendApplyCount = res.count;
+                    .then(() => {
+                        friendApplyCount = 0;
                         eventEmitted = true;
                         storageUpdated = true;
                         menusRefreshed = true;
                     })
                     .catch(error => {
                         errorLogged = error;
-                        console.warn('Failed to fetch friend apply count:', error);
+                        console.warn('Failed to clear friend apply count:', error);
                     });
             },
         };
@@ -55,27 +55,27 @@ describe('friendApply API error handling', () => {
         expect(manager.getCount()).toBe(0);
     });
 
-    it('should not fetch when user is not logged in', async () => {
-        const manager = createFriendApplyManager();
+    it('should not clear when user is not logged in', async () => {
+        const manager = createFriendApplyManager(5);
         let apiCalled = false;
 
-        await manager.fetchFriendApplyCount(async () => {
+        await manager.clearFriendApplyCount(async () => {
             apiCalled = true;
-            return { count: 5 };
+            return;
         }, false);
 
         expect(apiCalled).toBe(false);
-        expect(manager.getCount()).toBe(0);
+        expect(manager.getCount()).toBe(5);
     });
 
-    it('should update count on successful API call', async () => {
-        const manager = createFriendApplyManager();
+    it('should clear count on successful API call', async () => {
+        const manager = createFriendApplyManager(5);
 
-        await manager.fetchFriendApplyCount(async () => {
-            return { count: 5 };
+        await manager.clearFriendApplyCount(async () => {
+            return;
         }, true);
 
-        expect(manager.getCount()).toBe(5);
+        expect(manager.getCount()).toBe(0);
         expect(manager.getError()).toBeNull();
         expect(manager.isEventEmitted()).toBe(true);
         expect(manager.isStorageUpdated()).toBe(true);
@@ -83,15 +83,15 @@ describe('friendApply API error handling', () => {
     });
 
     it('should catch error and not crash when API call fails', async () => {
-        const manager = createFriendApplyManager();
+        const manager = createFriendApplyManager(5);
         const testError = new Error('Network error');
 
         // This should NOT throw - the error should be caught
-        await manager.fetchFriendApplyCount(async () => {
+        await manager.clearFriendApplyCount(async () => {
             throw testError;
         }, true);
 
-        expect(manager.getCount()).toBe(0);
+        expect(manager.getCount()).toBe(5);
         expect(manager.getError()).toBe(testError);
         expect(manager.isEventEmitted()).toBe(false);
         expect(manager.isStorageUpdated()).toBe(false);
@@ -103,18 +103,18 @@ describe('friendApply API error handling', () => {
         const consoleSpy = vi.spyOn(console, 'warn').mockImplementation();
 
         const testError = new Error('API Error');
-        await manager.fetchFriendApplyCount(async () => {
+        await manager.clearFriendApplyCount(async () => {
             throw testError;
         }, true);
 
-        expect(consoleSpy).toHaveBeenCalledWith('Failed to fetch friend apply count:', testError);
+        expect(consoleSpy).toHaveBeenCalledWith('Failed to clear friend apply count:', testError);
         consoleSpy.mockRestore();
     });
 
     it('should handle server error gracefully', async () => {
         const manager = createFriendApplyManager();
 
-        await manager.fetchFriendApplyCount(async () => {
+        await manager.clearFriendApplyCount(async () => {
             throw new Error('500 Internal Server Error');
         }, true);
 
@@ -125,7 +125,7 @@ describe('friendApply API error handling', () => {
     it('should handle timeout error gracefully', async () => {
         const manager = createFriendApplyManager();
 
-        await manager.fetchFriendApplyCount(async () => {
+        await manager.clearFriendApplyCount(async () => {
             throw new Error('Request timeout');
         }, true);
 
@@ -137,7 +137,7 @@ describe('friendApply API error handling', () => {
         const manager = createFriendApplyManager();
 
         // First call fails
-        await manager.fetchFriendApplyCount(async () => {
+        await manager.clearFriendApplyCount(async () => {
             throw new Error('First failure');
         }, true);
 
@@ -146,11 +146,11 @@ describe('friendApply API error handling', () => {
         manager.reset();
 
         // Second call succeeds
-        await manager.fetchFriendApplyCount(async () => {
-            return { count: 3 };
+        await manager.clearFriendApplyCount(async () => {
+            return;
         }, true);
 
-        expect(manager.getCount()).toBe(3);
+        expect(manager.getCount()).toBe(0);
         expect(manager.getError()).toBeNull();
     });
 });

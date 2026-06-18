@@ -109,18 +109,17 @@ async function registerMenus() {
   }, 1000)
 
   if (WKApp.loginInfo.isLogined()) {
-    WKApp.apiClient.get(`/user/reddot/friendApply`).then(res => {
-      WKApp.mittBus.emit('friend-applys-unread-count', res.count)
-      WKApp.loginInfo.setStorageItem(`${WKApp.loginInfo.uid}-friend-applys-unread-count`, res.count)
+    WKApp.apiClient.delete(`/user/reddot/friendApply`).then(() => {
+      WKApp.mittBus.emit('friend-applys-unread-count', 0)
+      WKApp.loginInfo.setStorageItem(`${WKApp.loginInfo.uid}-friend-applys-unread-count`, "0")
       WKApp.menus.refresh();
     }).catch(error => {
-      console.warn('Failed to fetch friend apply count:', error);
+      console.warn('Failed to clear friend apply count:', error);
     });
   }
 
   WKApp.menus.register("contacts", (param) => {
     const m = new Menus("contacts", "/contacts", t("app.nav.contacts"), <ContactsIcon />, <ContactsIcon />)
-    m.badge = WKApp.shared.getFriendApplysUnreadCount();
     return m
   }, 4000)
 
