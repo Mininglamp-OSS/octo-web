@@ -107,16 +107,20 @@ export default class APIClient {
 
      get<T>(path: string, config?: RequestConfig) {
        return this.wrapResult<T>(axios.get(path, {
-        params: config?.param
+        params: config?.param,
+        baseURL: config?.baseURL,
     }), config)
     }
     post(path: string, data?: any, config?: RequestConfig) {
-        return this.wrapResult(axios.post(path, data, {}), config)
+        return this.wrapResult(axios.post(path, data, {
+            baseURL: config?.baseURL,
+        }), config)
     }
 
     put(path: string, data?: any, config?: RequestConfig) {
         return this.wrapResult(axios.put(path, data, {
             params: config?.param,
+            baseURL: config?.baseURL,
         }), config)
     }
 
@@ -124,6 +128,7 @@ export default class APIClient {
         return this.wrapResult(axios.delete(path, {
             params: config?.param,
             data: config?.data,
+            baseURL: config?.baseURL,
         }), config)
     }
 
@@ -162,6 +167,12 @@ export class RequestConfig {
     param?: any
     data?:any
     resp?: () => APIResp
+    /**
+     * 逐请求覆盖 axios 全局 baseURL。用于走独立挂载段的后端服务
+     * (如 fleet 经 nginx 的 /fleet/api 段挂载),而无需污染全局 baseURL
+     * 或新建一套 client。不传则沿用 axios.defaults.baseURL。
+     */
+    baseURL?: string
 }
 
 export interface APIResp {

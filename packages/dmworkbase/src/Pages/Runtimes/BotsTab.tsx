@@ -106,7 +106,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
       const headers: Record<string, string> = {};
       if (sessionToken) headers.token = sessionToken;
       if (spaceId) headers['X-Space-Id'] = spaceId;
-      const res = await fetch('/api/v1/runtimes?space_id=' + encodeURIComponent(spaceId), {
+      const res = await fetch('/fleet/api/v1/runtimes?space_id=' + encodeURIComponent(spaceId), {
         headers,
       });
       const env = await res.json();

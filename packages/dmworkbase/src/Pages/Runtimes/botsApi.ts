@@ -74,7 +74,12 @@ export interface BotFeedItem {
   detail?: Record<string, unknown>;
 }
 
-const base = '/api'; // vite proxy strips /api → /v1; /api/v1/runtimes goes to fleet :8092
+// fleet 经 nginx 的 /fleet/api 段挂载(fleet api.go A.1: `fleet/api` segment
+// 由 nginx 加, strip 后转 fleet 的 /v1/<resource>); octo-server 主后端走 /api。
+const fleetBase = '/fleet/api';
+const serverBase = '/api';
+// 给走全局 apiClient 的 fleet 调用复用(apiClient.baseURL 形式, 含 /v1/)。
+export const FLEET_API_BASE = '/fleet/api/v1/';
 
 // 合并 plan 决策一+二 Phase 3A: fleet 已切到 AuthMiddleware 接 session token
 // 直接 (跟 matter user-auth 一致), 不再换 JWT。authHeaders 注入 token: +
@@ -89,7 +94,8 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 function unwrap<T>(env: any): T {
-  // octo-server wraps responses; data may be at top-level or under .data
+  // Peel exactly ONE top-level envelope layer: { data: X } -> X, else passthrough.
+  // fleet/server both wrap success bodies as { data: ... } (R1 envelope).
   if (env && typeof env === 'object' && 'data' in env) return env.data as T;
   return env as T;
 }
@@ -99,11 +105,22 @@ export async function listBots(params: { runtime_kind?: RuntimeKind; owner_uid?:
   sp.set('space_id', (WKApp as any)?.shared?.currentSpaceId ?? '');
   if (params.runtime_kind) sp.set('runtime_kind', params.runtime_kind);
   if (params.owner_uid) sp.set('owner_uid', params.owner_uid);
-  const res = await fetch(`${base}/v1/runtimes/bots?${sp}`, { headers: await authHeaders() });
+  // fleet GET /v1/bots is offset-paginated; pull the max page (100) since the
+  // UI has no pager yet. Response is the R1 OffsetList {data:[...],pagination}.
+  sp.set('page_size', '100');
+  const res = await fetch(`${fleetBase}/v1/bots?${sp}`, { headers: await authHeaders() });
   if (!res.ok) throw new Error(`listBots: ${res.status}`);
   const env = await res.json();
-  const payload = unwrap<{ bots?: Bot[] }>(env);
-  return (payload as any)?.bots ?? (env.bots ?? []);
+  // fleet's list response is a SINGLE-layer R1 OffsetList — the top level IS
+  // { "data": Bot[], "pagination": {...} }, i.e. `data` is ALREADY the array,
+  // NOT a double-wrapped { "data": { "data": [...] } }.
+  // Source of truth: octo-fleet internal/envelope OffsetList struct has
+  // `Data []T json:"data"`, and ResponseOffset emits c.JSON(OffsetList{...})
+  // directly — there is NO extra Data envelope wrapped around the OffsetList.
+  // So unwrap() peels this one `.data` layer and yields Bot[] for the
+  // downstream .map() / for..of. (A second unwrap would wrongly hit the
+  // pagination object's absence of `.data` and return undefined.)
+  return unwrap<Bot[]>(env) ?? [];
 }
 
 // createBot orchestrates the 3-step PR-A.2 bot mint flow because
@@ -129,7 +146,7 @@ export async function listBots(params: { runtime_kind?: RuntimeKind; owner_uid?:
 //     exist but aren't linked. UX shows retry; manual cleanup possible.
 export async function createBot(req: CreateBotReq): Promise<Bot> {
   // Step 1: fleet draft.
-  const draftRes = await fetch(`${base}/v1/runtimes/bots`, {
+  const draftRes = await fetch(`${fleetBase}/v1/bots`, {
     method: 'POST',
     headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -144,7 +161,7 @@ export async function createBot(req: CreateBotReq): Promise<Bot> {
   // session auth), NOT the fleet JWT.
   const spaceId = (WKApp as any)?.shared?.currentSpaceId || '';
   const sessionToken = (WKApp as any)?.loginInfo?.token || '';
-  const mintRes = await fetch(`${base}/v1/bot/mint`, {
+  const mintRes = await fetch(`${serverBase}/v1/bot/mint`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', token: sessionToken },
     body: JSON.stringify({ display_name: req.name, space_id: spaceId }),
@@ -157,7 +174,7 @@ export async function createBot(req: CreateBotReq): Promise<Bot> {
   if (!minted?.bot_uid) throw new Error('createBot mint returned no bot_uid');
 
   // Step 3: fleet patch to link bot_uid + promote status.
-  const patchRes = await fetch(`${base}/v1/runtimes/bots/${draft.id}/mint`, {
+  const patchRes = await fetch(`${fleetBase}/v1/bots/${draft.id}/mint`, {
     method: 'POST',
     headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
     body: JSON.stringify({ bot_uid: minted.bot_uid }),
