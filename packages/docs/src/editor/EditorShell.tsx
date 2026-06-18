@@ -17,11 +17,13 @@ import './styles.css'
 
 export interface EditorShellProps extends CollabEditorOptions {
   title: string
+  /** Optional "back to the document list" handler — renders a back control when provided. */
+  onBack?: () => void
 }
 
 /** Page shell (frontend-design §3.1): title / toolbar / content / presence + member panel. */
 export function EditorShell(props: EditorShellProps) {
-  const { title, ...collabOpts } = props
+  const { title, onBack, ...collabOpts } = props
   const docId = props.docId
   const { instance, ready, role, connState, terminal } = useCollabEditor(collabOpts)
   const [showMembers, setShowMembers] = useState(false)
@@ -56,6 +58,11 @@ export function EditorShell(props: EditorShellProps) {
     }
     return (
       <div className="octo-doc octo-terminal">
+        {onBack && (
+          <button type="button" className="octo-doc-back" onClick={onBack}>
+            ← {t('docs.list.back')}
+          </button>
+        )}
         <h2>{title}</h2>
         <p className="octo-terminal-msg">{messages[terminal.kind]}</p>
       </div>
@@ -76,6 +83,16 @@ export function EditorShell(props: EditorShellProps) {
   return (
     <div className="octo-doc octo-theme">
       <header className="octo-doc-header">
+        {onBack && (
+          <button
+            type="button"
+            className="octo-doc-back"
+            title={t('docs.list.back')}
+            onClick={onBack}
+          >
+            ← {t('docs.list.back')}
+          </button>
+        )}
         <h1 className="octo-doc-title">{title}</h1>
         <div className="octo-doc-header-right">
           <PresenceBar provider={instance.provider} connState={connState} synced={ready} />
