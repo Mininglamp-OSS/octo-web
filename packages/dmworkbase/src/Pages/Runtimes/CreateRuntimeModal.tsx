@@ -1,31 +1,26 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Modal, Toast } from '@douyinfe/semi-ui';
 import WKApp from '../../App';
+import { t } from '../../i18n';
+import { copyToClipboard } from '../../Utils/clipboard';
+import { getInstallGuide, buildInstallCopyText } from './installGuide';
 
-// CreateRuntimeModal — Onboarding modal that replaces the BotFather IM
-// `/daemon` command. Calls GET /v1/runtime-onboarding to fetch the user's
-// api_key (lazy-create) + service URLs, then renders the install + start
-// commands for the user to copy + run on their machine.
-//
-// Backend contract (server: feat/runtime-onboarding-endpoint):
-//   {
-//     api_key, space_id,
-//     server_url, fleet_url, matter_url,
-//     commands: { install, start },
-//     env_vars: { OCTO_SERVER_URL, OCTO_FLEET_URL }
-//   }
+// CreateRuntimeModal — 新增 Runtime 的安装指导弹框。蹭 installGuide 的
+// octo_daemon 条目, 展示「安装 octo-daemon → 配置 → 启动」三步(i18n)。
+// 打开时拉一次 /runtime-onboarding 取 space 的 api_key 填进配置命令;
+// server-url 由前端从 apiClient.config.apiURL 推导(见 deriveServerUrl)。
 
-interface OnboardingResp {
-  api_key: string;
-  space_id: string;
-  server_url: string;
-  fleet_url: string;
-  matter_url: string;
-  commands: {
-    install: string;
-    start: string;
-  };
-  env_vars: Record<string, string>;
+// daemon 的 OCTO_SERVER_URL 是对外可达基址(不含 /v1, daemon 自己拼 /v1、
+// /fleet/api)。apiClient.config.apiURL: web 是相对的 "/api/v1/", electron 是
+// 绝对的 "<origin>/v1/"。统一解析成绝对 URL 再取 .origin:
+//   web      → 当前浏览器 origin (/api/v1 是浏览器约定, daemon 走原生 /v1)
+//   electron → VITE_API_URL 的 origin (如 http://127.0.0.1:3000)
+function deriveServerUrl(): string {
+  try {
+    return new URL(WKApp.apiClient.config.apiURL, window.location.origin).origin;
+  } catch {
+    return window.location.origin;
+  }
 }
 
 interface Props {
@@ -34,110 +29,96 @@ interface Props {
 }
 
 export function CreateRuntimeModal({ visible, onClose }: Props) {
-  const [data, setData] = useState<OnboardingResp | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [apiKey, setApiKey] = React.useState<string | undefined>(undefined);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  useEffect(() => {
-    if (!visible) return;
+  const fetchApiKey = React.useCallback(() => {
     setLoading(true);
     setError(null);
-    setData(null);
-    const spaceId = WKApp.shared.currentSpaceId;
     WKApp.apiClient
-      .get('/runtime-onboarding', { param: { space_id: spaceId } })
-      .then((resp: OnboardingResp) => setData(resp))
-      .catch((e: any) => setError(String(e?.message || e)))
+      .get('/runtime-onboarding')
+      .then((resp: { api_key?: string }) => {
+        if (resp?.api_key) setApiKey(resp.api_key);
+        else setError(t('base.runtimes.create.onboardingError'));
+      })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
-  }, [visible]);
+  }, []);
+
+  React.useEffect(() => {
+    if (!visible) return;
+    setApiKey(undefined);
+    fetchApiKey();
+  }, [visible, fetchApiKey]);
 
   const copy = async (text: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      Toast.success(`已复制：${label}`);
-    } catch {
-      Toast.error('复制失败，请手动选中');
+    const ok = await copyToClipboard(text);
+    if (ok) {
+      Toast.success({ content: t('base.runtimes.common.copied', { values: { text: label } }), duration: 2 });
+    } else {
+      Toast.warning({ content: t('base.runtimes.common.clipboardUnsupported'), duration: 2 });
     }
   };
 
-  // server 直接返 standalone start block (含 export OCTO_*_URL + octo-daemon
-  // 启动行), 直接用 commands.start 字段, 不在前端拼.
-  const fullStartBlock = data?.commands.start ?? '';
+  const vars = { apiUrl: deriveServerUrl(), apiKey };
+  const guide = getInstallGuide('octo_daemon', vars);
 
   return (
     <Modal
-      title="创建 Runtime"
+      title={t('base.runtimes.create.createRuntime')}
       visible={visible}
       onCancel={onClose}
       footer={null}
       width={640}
     >
       <div className="wk-rt-onb">
-        <p className="wk-rt-onb__lead">
-          在你的电脑或服务器上运行下面的命令，让本机的 Claude Code /
-          OpenClaw 注册到 Octo 平台。
-        </p>
+        {loading && <div className="wk-rt-onb__placeholder">{t('base.runtimes.common.loading')}</div>}
 
-        {loading && (
-          <div className="wk-rt-onb__placeholder">正在生成启动命令…</div>
-        )}
-
-        {error && (
+        {!loading && error && (
           <div className="wk-rt-onb__error" role="alert">
-            获取启动命令失败：{error}
+            <span>{t('base.runtimes.create.onboardingError')}</span>
+            <button type="button" className="wk-rt-onb__copy" onClick={fetchApiKey}>
+              {t('base.runtimes.common.retry')}
+            </button>
           </div>
         )}
 
-        {data && (
+        {!loading && !error && guide && (
           <>
-            <Section
-              title="① 安装"
-              hint="Node.js ≥ 18"
-              cmd={data.commands.install}
-              onCopy={() => copy(data.commands.install, '安装命令')}
-            />
-            <Section
-              title="② 启动"
-              hint="macOS / Linux"
-              cmd={fullStartBlock}
-              onCopy={() => copy(fullStartBlock, '启动命令')}
-            />
-
-            <div className="wk-rt-onb__note">
-              如果这台机器跟 server 不在同一台主机，把 URL 中的 host
-              换成实际可达的地址；启动后回到本页面，新 daemon
-              注册的 runtime 会出现在列表里。
+            <div className="wk-rt-onb__section-head">
+              <span className="wk-rt-onb__lead">{t(guide.introKey)}</span>
+              <button
+                type="button"
+                className="wk-rt-onb__copy"
+                onClick={() => copy(buildInstallCopyText('octo_daemon', t, vars), t('base.runtimes.install.copyAllLabel'))}
+              >
+                {t('base.runtimes.install.copyAll')}
+              </button>
             </div>
+
+            {guide.steps.map((step, i) => (
+              <section className="wk-rt-onb__section" key={i}>
+                <header className="wk-rt-onb__section-head">
+                  <span className="wk-rt-onb__section-title">{`${i + 1}. ${t(step.titleKey)}`}</span>
+                  {step.command && (
+                    <button
+                      type="button"
+                      className="wk-rt-onb__copy"
+                      onClick={() => copy(step.command!, t(step.titleKey))}
+                      aria-label={t('base.runtimes.install.copyStep')}
+                    >
+                      {t('base.runtimes.install.copyStep')}
+                    </button>
+                  )}
+                </header>
+                {step.command && <pre className="wk-rt-onb__code">{step.command}</pre>}
+                {step.noteKey && <div className="wk-rt-onb__note">{t(step.noteKey)}</div>}
+              </section>
+            ))}
           </>
         )}
       </div>
     </Modal>
-  );
-}
-
-interface SectionProps {
-  title: string;
-  hint: string;
-  cmd: string;
-  onCopy: () => void;
-}
-
-function Section({ title, hint, cmd, onCopy }: SectionProps) {
-  return (
-    <section className="wk-rt-onb__section">
-      <header className="wk-rt-onb__section-head">
-        <span className="wk-rt-onb__section-title">{title}</span>
-        <span className="wk-rt-onb__section-hint">{hint}</span>
-        <button
-          type="button"
-          className="wk-rt-onb__copy"
-          onClick={onCopy}
-          aria-label={`复制 ${title}`}
-        >
-          复制
-        </button>
-      </header>
-      <pre className="wk-rt-onb__code">{cmd}</pre>
-    </section>
   );
 }
