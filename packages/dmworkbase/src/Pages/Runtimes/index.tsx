@@ -5,8 +5,11 @@ import WKApp from "../../App"
 import WKAvatar from "../../Components/WKAvatar"
 import { BotsTab, type BotsTabHandle } from "./BotsTab"
 import { CreateRuntimeModal } from "./CreateRuntimeModal"
+import { InstallGuidePopover } from "./InstallGuidePopover"
+import { getInstallGuide } from "./installGuide"
+import { octoComponentName } from "./octoComponent"
 import { deviceRuntimeMode } from "./deviceRuntimeMode"
-import { Bot, botStatusLabel, listBots, providerLabels } from "./botsApi"
+import { Bot, botStatusLabel, listBots, providerLabels, FLEET_API_BASE } from "./botsApi"
 import { ProviderLogo } from "./providerLogos"
 import { i18n, t } from "../../i18n"
 import "./index.css"
@@ -221,7 +224,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
         this.setState({ upgradeStatus: "pending", upgradeError: "" })
         const daemonId = this.props.group.daemonId
         try {
-            const initRes = await WKApp.apiClient.post("/upgrades", { daemon_id: daemonId, space_id: WKApp.shared.currentSpaceId })
+            const initRes = await WKApp.apiClient.post("/upgrades", { daemon_id: daemonId, space_id: WKApp.shared.currentSpaceId }, { baseURL: FLEET_API_BASE })
             const taskId = initRes?.data?.task_id
             // C-1: task 已创建, 立即让父层重拉 active_upgrades, 其他 detail
             // 的 daemonBusy ~1s 内生效 (不等 15s 轮询).
@@ -246,7 +249,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
             try {
                 // 单次容错 — 跟 RuntimeDetail pollPluginUpgrade 对齐,
                 // 瞬时网络抖动 continue 重试而不是终止整条轮询协程.
-                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`))?.data
+                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`, { baseURL: FLEET_API_BASE }))?.data
             } catch {
                 continue
             }
@@ -264,7 +267,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                     await new Promise(r => setTimeout(r, 2000))
                     if (isStale()) return
                     try {
-                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } }))?.data
+                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId }, baseURL: FLEET_API_BASE }))?.data
                         if (isStale()) return
                         const hints = runtimesRes?.daemon_version_hints || {}
                         if (!hints[daemonId]?.has_update) {
@@ -1049,14 +1052,14 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         if (!window.confirm(t("base.runtimes.runtime.deleteConfirm"))) return
         this.setState({ deleting: true })
         try {
-            await WKApp.apiClient.delete(`/runtimes/${this.props.runtime.id}`)
+            await WKApp.apiClient.delete(`/runtimes/${this.props.runtime.id}`, { baseURL: FLEET_API_BASE })
             this.props.onDelete(this.props.runtime.id)
         } catch {
             this.setState({ deleting: false })
         }
     }
 
-    handlePluginUpgrade = async () => {
+    handlePluginUpgrade = async (pluginComponent: string) => {
         const rt = this.props.runtime
         const runtimeId = rt.id
 
@@ -1066,8 +1069,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 runtime_id: runtimeId,
                 daemon_id: rt.daemon_id,
                 space_id: WKApp.shared.currentSpaceId,
-                component: "octo",
-            })
+                component: pluginComponent,
+            }, { baseURL: FLEET_API_BASE })
             // C-1: 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
             this.props.onUpgradeStarted?.()
             await this.pollPluginUpgrade(initRes?.data?.task_id, runtimeId)
@@ -1086,7 +1089,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             if (isStale()) return
             let res: any
             try {
-                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`))?.data
+                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`, { baseURL: FLEET_API_BASE }))?.data
             } catch {
                 continue
             }
@@ -1103,7 +1106,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     await new Promise(r => setTimeout(r, 2000))
                     if (isStale()) return
                     try {
-                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } }))?.data
+                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId }, baseURL: FLEET_API_BASE }))?.data
                         if (isStale()) return
                         const hints = runtimesRes?.version_hints || {}
                         if (!hints[runtimeId]?.has_plugin_update) {
@@ -1155,9 +1158,9 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     <span className="upgrade-dot" />
                     {pluginUpgradeStatus === "timeout" ? t("base.runtimes.upgrade.timeout") : t("base.runtimes.upgrade.failed")}
                     {pluginUpgradeError && <span className="wk-rt-upgrade-reason">· {pluginUpgradeError.length > 40 ? pluginUpgradeError.slice(0, 40) + "…" : pluginUpgradeError}</span>}
-                    {pluginName === "octo" && (busyByOther
+                    {!!pluginName && (busyByOther
                         ? <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{t("base.runtimes.upgrade.upgrade")}</span>
-                        : <span className="wk-rt-upgrade-btn" onClick={this.handlePluginUpgrade}>{t("base.runtimes.upgrade.upgrade")}</span>)}
+                        : <span className="wk-rt-upgrade-btn" onClick={() => this.handlePluginUpgrade(pluginName)}>{t("base.runtimes.upgrade.upgrade")}</span>)}
                 </span>
             )
         }
@@ -1169,14 +1172,20 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 </span>
             )
         }
-        if (hasUpdate && pluginName === "octo") {
+        if (hasUpdate && !!pluginName) {
             if (busyByOther) {
                 // B-3: 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
                 return <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{t("base.runtimes.upgrade.upgrade")}</span>
             }
-            return <span className="wk-rt-upgrade-btn" onClick={this.handlePluginUpgrade}>{t("base.runtimes.upgrade.upgrade")}</span>
+            return <span className="wk-rt-upgrade-btn" onClick={() => this.handlePluginUpgrade(pluginName)}>{t("base.runtimes.upgrade.upgrade")}</span>
         }
         return null
+    }
+
+    renderInstallGuideBtn(provider: string) {
+        // 未知 provider 无安装指导 → 不渲染 (InstallGuidePopover 内部同样守卫).
+        if (!getInstallGuide(provider)) return null
+        return <InstallGuidePopover provider={provider} />
     }
 
     // ── Component 升级（claude/openclaw） ──────────────────────
@@ -1193,7 +1202,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 daemon_id: rt.daemon_id,
                 space_id: WKApp.shared.currentSpaceId,
                 component,
-            })
+            }, { baseURL: FLEET_API_BASE })
             // C-1: 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
             this.props.onUpgradeStarted?.()
             await this.pollComponentUpgrade(initRes?.data?.task_id, runtimeId)
@@ -1211,7 +1220,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             if (isStale()) return
             let res: any
             try {
-                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`))?.data
+                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`, { baseURL: FLEET_API_BASE }))?.data
             } catch {
                 continue
             }
@@ -1229,7 +1238,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     await new Promise(r => setTimeout(r, 2000))
                     if (isStale()) return
                     try {
-                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } }))?.data
+                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId }, baseURL: FLEET_API_BASE }))?.data
                         if (isStale()) return
                         const hints = runtimesRes?.version_hints || {}
                         if (!hints[runtimeId]?.has_update) {
@@ -1351,21 +1360,40 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                             {this.renderComponentUpgradeBtn(this.props.versionHints[rt.id]?.has_update)}
                         </span>
                     </div>
-                    {metadata && Array.isArray((metadata as any).plugins) && (() => {
-                        const octoPlugin = ((metadata as any).plugins as any[]).find((p: any) => p.name === "octo")
+                    {(() => {
+                        // 该 provider 有安装指导就显示本字段(挂安装指导入口); 已上报
+                        // octo 适配插件(openclaw→octo / claude→cc-octo)则显示版本
+                        // (+升级), 否则显示中性占位「—」.
+                        const plugins = (metadata as any)?.plugins
+                        const octoComponent = octoComponentName(rt.provider)
+                        const octoPlugin = Array.isArray(plugins) && octoComponent
+                            ? (plugins as any[]).find((p: any) => p.name === octoComponent)
+                            : undefined
+                        const hasGuide = !!getInstallGuide(rt.provider)
+                        if (!octoPlugin && !hasGuide) return null
                         const pluginHint = this.props.versionHints[rt.id]
-                        return octoPlugin ? (
+                        return (
                             <div className="wk-rt-field">
-                                <label>{t("base.runtimes.runtime.octoPluginVersion")}</label>
+                                <div className="wk-rt-field__label-row">
+                                    <label>{t("base.runtimes.runtime.octoPluginVersion")}</label>
+                                    {this.renderInstallGuideBtn(rt.provider)}
+                                </div>
                                 <span className="wk-rt-mono">
-                                    {octoPlugin.version}
-                                    {pluginHint?.has_plugin_update && (
-                                        <span className="wk-rt-update-hint"> → {pluginHint.plugin_latest_version}</span>
+                                    {octoPlugin ? (
+                                        <>
+                                            {octoPlugin.version}
+                                            {pluginHint?.has_plugin_update && (
+                                                <span className="wk-rt-update-hint"> → {pluginHint.plugin_latest_version}</span>
+                                            )}
+                                            {this.renderPluginUpgradeBtn(octoComponent ?? "", pluginHint?.has_plugin_update)}
+                                        </>
+                                    ) : (
+                                        // 无 octo 适配插件数据时用中性占位, 不断言「未安装」.
+                                        <span className="wk-rt-install-empty">—</span>
                                     )}
-                                    {this.renderPluginUpgradeBtn("octo", pluginHint?.has_plugin_update)}
                                 </span>
                             </div>
-                        ) : null
+                        )
                     })()}
                 </div>
 
@@ -1660,7 +1688,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 this.setState({ runtimes: [], loading: false })
                 return
             }
-            const res = (await WKApp.apiClient.get("/runtimes", { param: { space_id: spaceId } }))?.data
+            const res = (await WKApp.apiClient.get("/runtimes", { param: { space_id: spaceId }, baseURL: FLEET_API_BASE }))?.data
             if (isStale()) return
             // Compatible with both array (old) and object (new) response
             const runtimes: AgentRuntime[] = Array.isArray(res) ? res : (res?.runtimes || [])
@@ -1936,7 +1964,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     showAgentDetail = (rt: AgentRuntime) => {
         this.setState({ selectedId: rt.id })
         this.selectedDaemonId = undefined
-        const pluginUpgrade = this.state.activeUpgrades[`${rt.id}:octo`]
+        const pluginUpgrade = this.state.activeUpgrades[`${rt.id}:${octoComponentName(rt.provider) ?? "octo"}`]
         const componentUpgrade = this.state.activeUpgrades[`${rt.id}:${rt.provider}`]
         // botCount 先用 botsByRuntime cache 当前值 (miss 时为 0). cache miss
         // 时触发一次 refreshRuntimeBots, 它的 setState callback 会在数据

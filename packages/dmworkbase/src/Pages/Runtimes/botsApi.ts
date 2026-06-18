@@ -74,7 +74,12 @@ export interface BotFeedItem {
   detail?: Record<string, unknown>;
 }
 
-const base = '/api'; // vite proxy strips /api → /v1; /api/v1/runtimes goes to fleet :8092
+// fleet 经 nginx 的 /fleet/api 段挂载(fleet api.go A.1: `fleet/api` segment
+// 由 nginx 加, strip 后转 fleet 的 /v1/<resource>); octo-server 主后端走 /api。
+const fleetBase = '/fleet/api';
+const serverBase = '/api';
+// 给走全局 apiClient 的 fleet 调用复用(apiClient.baseURL 形式, 含 /v1/)。
+export const FLEET_API_BASE = '/fleet/api/v1/';
 
 // 合并 plan 决策一+二 Phase 3A: fleet 已切到 AuthMiddleware 接 session token
 // 直接 (跟 matter user-auth 一致), 不再换 JWT。authHeaders 注入 token: +
@@ -102,7 +107,7 @@ export async function listBots(params: { runtime_kind?: RuntimeKind; owner_uid?:
   // fleet GET /v1/bots is offset-paginated; pull the max page (100) since the
   // UI has no pager yet. Response is the R1 OffsetList {data:[...],pagination}.
   sp.set('page_size', '100');
-  const res = await fetch(`${base}/v1/bots?${sp}`, { headers: await authHeaders() });
+  const res = await fetch(`${fleetBase}/v1/bots?${sp}`, { headers: await authHeaders() });
   if (!res.ok) throw new Error(`listBots: ${res.status}`);
   const env = await res.json();
   return unwrap<Bot[]>(env) ?? [];
@@ -131,7 +136,7 @@ export async function listBots(params: { runtime_kind?: RuntimeKind; owner_uid?:
 //     exist but aren't linked. UX shows retry; manual cleanup possible.
 export async function createBot(req: CreateBotReq): Promise<Bot> {
   // Step 1: fleet draft.
-  const draftRes = await fetch(`${base}/v1/bots`, {
+  const draftRes = await fetch(`${fleetBase}/v1/bots`, {
     method: 'POST',
     headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -146,7 +151,7 @@ export async function createBot(req: CreateBotReq): Promise<Bot> {
   // session auth), NOT the fleet JWT.
   const spaceId = (WKApp as any)?.shared?.currentSpaceId || '';
   const sessionToken = (WKApp as any)?.loginInfo?.token || '';
-  const mintRes = await fetch(`${base}/v1/bot/mint`, {
+  const mintRes = await fetch(`${serverBase}/v1/bot/mint`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', token: sessionToken },
     body: JSON.stringify({ display_name: req.name, space_id: spaceId }),
@@ -159,7 +164,7 @@ export async function createBot(req: CreateBotReq): Promise<Bot> {
   if (!minted?.bot_uid) throw new Error('createBot mint returned no bot_uid');
 
   // Step 3: fleet patch to link bot_uid + promote status.
-  const patchRes = await fetch(`${base}/v1/bots/${draft.id}/mint`, {
+  const patchRes = await fetch(`${fleetBase}/v1/bots/${draft.id}/mint`, {
     method: 'POST',
     headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
     body: JSON.stringify({ bot_uid: minted.bot_uid }),
