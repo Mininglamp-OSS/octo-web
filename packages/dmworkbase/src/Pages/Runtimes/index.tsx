@@ -986,7 +986,11 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         const { pluginUpgradeStatus, componentUpgradeStatus } = this.state
         const pluginUpg = this.props.pluginActiveUpgrade
         if (pluginUpg?.task_id && isUpgradeInProgress(pluginUpgradeStatus)) {
-            this.pollPluginUpgrade(pluginUpg.task_id, this.props.runtime.id)
+            // remount 续看时必须重建 install 上下文 —— 否则 install 在途也会落回升级的
+            // !has_plugin_update 完成条件,首装时它一开始即 true 会过早 remount + 「安装」
+            // 按钮闪回(与点击路径同一竞态)。在途插件还没出现在 metadata.plugins 即视为 install。
+            const isInstall = !octoPluginInstalled(this.props.runtime.metadata, pluginUpg.component)
+            this.pollPluginUpgrade(pluginUpg.task_id, this.props.runtime.id, { component: pluginUpg.component, isInstall })
         }
         const compUpg = this.props.componentActiveUpgrade
         if (compUpg?.task_id && isUpgradeInProgress(componentUpgradeStatus)) {
