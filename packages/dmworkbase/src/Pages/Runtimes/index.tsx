@@ -226,6 +226,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
         try {
             const initRes = await WKApp.apiClient.post("/upgrades", { daemon_id: daemonId, space_id: WKApp.shared.currentSpaceId }, { baseURL: FLEET_API_BASE })
             const taskId = initRes?.data?.task_id
+            if (!taskId) throw new Error("upgrade init: missing task_id in response")
             // C-1: task 已创建, 立即让父层重拉 active_upgrades, 其他 detail
             // 的 daemonBusy ~1s 内生效 (不等 15s 轮询).
             this.props.onUpgradeStarted?.()
@@ -254,6 +255,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                 continue
             }
             if (isStale()) return
+            if (!res) continue // fleet 空/异常 body → 跳过本次轮询重试, 不在 undefined 上读 .status
             this.setState({ upgradeStatus: res.status })
             if (res.status === "completed") {
                 this.setState({ upgradeStatus: "completed" })
@@ -1073,7 +1075,9 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             }, { baseURL: FLEET_API_BASE })
             // C-1: 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
             this.props.onUpgradeStarted?.()
-            await this.pollPluginUpgrade(initRes?.data?.task_id, runtimeId)
+            const taskId = initRes?.data?.task_id
+            if (!taskId) throw new Error("plugin upgrade init: missing task_id in response")
+            await this.pollPluginUpgrade(taskId, runtimeId)
         } catch (err: any) {
             const msg = err?.msg || err?.message || t("base.runtimes.upgrade.errFailed")
             this.setState({ pluginUpgradeStatus: "failed", pluginUpgradeError: msg })
@@ -1094,6 +1098,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 continue
             }
             if (isStale()) return
+            if (!res) continue // fleet 空/异常 body → 跳过本次轮询重试, 不在 undefined 上读 .status
             this.setState({ pluginUpgradeStatus: res.status, pluginUpgradeError: res.error_msg || "" })
             if (res.status === "completed") {
                 // 方案 3 (升级状态不刷新修复): 原 8s 固定等待砍到 2s — 后面的确认
@@ -1205,7 +1210,9 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             }, { baseURL: FLEET_API_BASE })
             // C-1: 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
             this.props.onUpgradeStarted?.()
-            await this.pollComponentUpgrade(initRes?.data?.task_id, runtimeId)
+            const taskId = initRes?.data?.task_id
+            if (!taskId) throw new Error("component upgrade init: missing task_id in response")
+            await this.pollComponentUpgrade(taskId, runtimeId)
         } catch (err: any) {
             const msg = err?.msg || err?.message || t("base.runtimes.upgrade.errFailed")
             this.setState({ componentUpgradeStatus: "failed", componentUpgradeError: msg })
@@ -1225,6 +1232,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 continue
             }
             if (isStale()) return
+            if (!res) continue // fleet 空/异常 body → 跳过本次轮询重试, 不在 undefined 上读 .status
             this.setState({ componentUpgradeStatus: res.status, componentUpgradeError: res.error_msg || "" })
             if (res.status === "completed") {
                 // 服务端关单（register 匹配新版本）后再刷一次 runtimes 拿最新 version_hints
