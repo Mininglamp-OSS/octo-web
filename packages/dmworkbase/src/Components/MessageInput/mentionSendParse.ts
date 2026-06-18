@@ -157,3 +157,100 @@ export function parseSendMentionText(
     mention: { all, humans, ais, uids, entities },
   };
 }
+
+// ─── Serialization helpers (the trust-boundary primitives) ────────────────
+
+// Serialize a mention NODE to its `@[uid:label]` marker. A mention node is the
+// only sanctioned broadcast origin (typed-@ dropdown), so when serializing for
+// SEND we tag a broadcast-sentinel uid with MENTION_TRUST_MARK; the send-side
+// parser routes a broadcast only for trust-marked uids. Member uids and the
+// non-send (draft) path stay canonical (octo-web#330).
+export function serializeMentionMarker(
+  id: string,
+  label: string,
+  trusted: boolean
+): string {
+  const uid =
+    trusted && isBroadcastSentinelUid(id) ? `${MENTION_TRUST_MARK}${id}` : id;
+  return `@[${uid}:${label}]`;
+}
+
+// Remove the internal trust mark from text-origin content so forged/typed text
+// can never carry it into a routable broadcast marker (octo-web#330). This is
+// the linchpin of the "cannot forge trust" guarantee: every untrusted → string
+// path must run through it.
+export function stripTrustMark(text: string): string {
+  return text.includes(MENTION_TRUST_MARK)
+    ? text.split(MENTION_TRUST_MARK).join("")
+    : text;
+}
+
+// ─── Draft deserialization ────────────────────────────────────────────────
+
+export interface DraftDocNode {
+  type: string;
+  text?: string;
+  attrs?: { id: string; label: string };
+}
+export interface DraftDoc {
+  type: "doc";
+  content: Array<{ type: "paragraph"; content: DraftDocNode[] }>;
+}
+
+/**
+ * Parse persisted draft text back into a Tiptap doc (one paragraph per line).
+ *
+ * SECURITY (octo-web#330, Finding 1): a draft is untrusted text — it is the
+ * verbatim `text()` serialization, which includes forged `@[uid:label]` strings
+ * that the paste guard had degraded to inert text. This deserializer must NOT
+ * reconstruct a broadcast-sentinel marker into a mention *node*, or the draft
+ * save → restore round-trip would launder forged text into a "trusted"
+ * node that `extractOrderedBlocks` then serializes with the trust mark and the
+ * send parser routes as a broadcast. So a sentinel uid fails closed to inert
+ * `@label` text (mirrors `richTextPaste.ts` and the send-side degrade). The
+ * trust mark is also stripped before the sentinel check so a hand-injected
+ * `@[\u0000-2:label]` cannot slip past as a non-sentinel uid.
+ *
+ * Tradeoff: a broadcast the user picked from the dropdown, saved as a draft,
+ * and restored also degrades to inert text — a fail-closed UX nick, not a
+ * security loss. The plain typed-@ → send path (no draft) is unaffected.
+ */
+export function parseDraftToContent(text: string): DraftDoc {
+  const lines = text.split("\n");
+  const paragraphs = lines.map((line) => {
+    const nodes: DraftDocNode[] = [];
+
+    // uid and label may contain any char except `]`.
+    const regex = /@\[([^\]:]+):([^\]]+)\]/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(line)) !== null) {
+      const uid = stripTrustMark(match[1]);
+      const label = match[2];
+      const matchStart = match.index;
+
+      if (matchStart > lastIndex) {
+        nodes.push({ type: "text", text: line.slice(lastIndex, matchStart) });
+      }
+
+      if (isBroadcastSentinelUid(uid)) {
+        // Fail closed: never rebuild a broadcast sentinel as a node from
+        // untrusted draft text — emit inert `@label` text instead.
+        nodes.push({ type: "text", text: `@${label}` });
+      } else {
+        nodes.push({ type: "mention", attrs: { id: uid, label } });
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < line.length) {
+      nodes.push({ type: "text", text: line.slice(lastIndex) });
+    }
+
+    return { type: "paragraph" as const, content: nodes };
+  });
+
+  return { type: "doc", content: paragraphs };
+}

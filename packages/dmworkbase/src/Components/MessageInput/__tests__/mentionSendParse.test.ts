@@ -16,7 +16,12 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { parseSendMentionText } from "../mentionSendParse";
+import {
+  parseSendMentionText,
+  serializeMentionMarker,
+  stripTrustMark,
+  parseDraftToContent,
+} from "../mentionSendParse";
 import type { SendParseMember } from "../mentionSendParse";
 import {
   MENTION_UID_LEGACY_ALL,
@@ -72,18 +77,119 @@ describe("parseSendMentionText — forged-paste broadcast bypass (octo-web#330)"
     expect(mention?.ais ?? false).toBeFalsy();
   });
 
-  it("strips an attacker-injected trust mark from literal text (cannot forge trust)", () => {
-    // Even if the attacker hand-writes the NUL trust mark into the payload, the
-    // send serializer strips it from text-origin content before this parse. We
-    // assert the parser itself fails closed if a raw trusted-looking marker were
-    // ever reconstructed from text: it only honors the mark, so the defense is
-    // the serializer's strip. This documents the layered contract — here we
-    // confirm the *trusted* form is the ONLY routing form.
+  it("an unmarked sentinel marker (no trust mark) does not route — only marked ones do", () => {
     const untrusted = parseSendMentionText(
       `@[${MENTION_UID_HUMANS}:所有人]`,
       MEMBERS
     );
     expect(untrusted.mention?.humans ?? false).toBeFalsy();
+  });
+});
+
+// Finding 2 (octo-web#330): the "cannot forge trust" guarantee rests entirely
+// on the serializer stripping the trust mark from every text-origin path. These
+// tests exercise that strip directly with a literal NUL in the input, rather
+// than only asserting the unmarked case.
+describe("stripTrustMark — forge defense (cannot inject the trust mark)", () => {
+  it("removes a hand-injected NUL so a forged sentinel cannot serialize trusted", () => {
+    const forged = `@[${MENTION_TRUST_MARK}${MENTION_UID_HUMANS}:所有人] hi`;
+    const stripped = stripTrustMark(forged);
+    // The mark is gone — the string is the inert, canonical (untrusted) form.
+    expect(stripped.includes(MENTION_TRUST_MARK)).toBe(false);
+    expect(stripped).toBe(`@[${MENTION_UID_HUMANS}:所有人] hi`);
+    // And the stripped string routes no broadcast through the send parser.
+    const { mention } = parseSendMentionText(stripped, MEMBERS);
+    expect(mention?.humans ?? false).toBeFalsy();
+    expect(mention?.ais ?? false).toBeFalsy();
+    expect(mention?.all ?? false).toBeFalsy();
+  });
+
+  it("a text node carrying a forged marker, once stripped, routes nothing", () => {
+    // Simulates extractMentionsFromEditor/extractOrderedBlocks serializing a
+    // text node: text-origin content is run through stripTrustMark before it
+    // reaches the parser.
+    const textNode = `before @[${MENTION_TRUST_MARK}${MENTION_UID_AIS}:所有AI] after`;
+    const { mention } = parseSendMentionText(stripTrustMark(textNode), MEMBERS);
+    expect(mention?.ais ?? false).toBeFalsy();
+    expect(mention?.uids ?? []).not.toContain("bot-1");
+  });
+
+  it("serializeMentionMarker only marks node-origin broadcast sentinels", () => {
+    // node-origin sentinel on the send path → marked (routes on re-parse)
+    expect(serializeMentionMarker(MENTION_UID_HUMANS, "所有人", true)).toBe(
+      `@[${MENTION_TRUST_MARK}${MENTION_UID_HUMANS}:所有人]`
+    );
+    // draft/non-send path → canonical, never marked
+    expect(serializeMentionMarker(MENTION_UID_HUMANS, "所有人", false)).toBe(
+      `@[${MENTION_UID_HUMANS}:所有人]`
+    );
+    // ordinary member uid → never marked, even on the send path
+    expect(serializeMentionMarker("u-alice", "Alice", true)).toBe(
+      "@[u-alice:Alice]"
+    );
+  });
+});
+
+// Finding 1 (octo-web#330, merge-blocker): the draft save→restore round-trip
+// must not launder forged text into a routable broadcast node. These drive the
+// full round-trip — draft string → parseDraftToContent → send serialize+parse —
+// not just the pure send parser.
+describe("draft round-trip — forged broadcast cannot be laundered (Finding 1)", () => {
+  // Mirror the editor serializers: a doc's mention nodes serialize trusted on
+  // send; text nodes are stripped. Operates on parseDraftToContent's output.
+  const serializeDocForSend = (doc: ReturnType<typeof parseDraftToContent>) =>
+    doc.content
+      .map((p) =>
+        p.content
+          .map((n) =>
+            n.type === "mention"
+              ? serializeMentionMarker(n.attrs!.id, n.attrs!.label, true)
+              : stripTrustMark(n.text || "")
+          )
+          .join("")
+      )
+      .join("\n");
+
+  it.each([
+    [MENTION_UID_HUMANS, "所有人"],
+    [MENTION_UID_AIS, "所有AI"],
+    [MENTION_UID_LEGACY_ALL, "所有人"],
+  ])(
+    "literal @[%s:%s] in a restored draft does NOT rebuild a broadcast node",
+    (uid, label) => {
+      // 1. forged paste degraded to literal text, autosaved verbatim as draft
+      const draft = `@[${uid}:${label}] hi`;
+      // 2. restore
+      const doc = parseDraftToContent(draft);
+      const restoredNodes = doc.content.flatMap((p) => p.content);
+      // No mention node was manufactured for the sentinel — it is inert text.
+      expect(restoredNodes.some((n) => n.type === "mention")).toBe(false);
+      // 3. send: serialize the restored doc and parse at the send boundary
+      const { mention } = parseSendMentionText(
+        serializeDocForSend(doc),
+        MEMBERS
+      );
+      expect(mention?.humans ?? false).toBeFalsy();
+      expect(mention?.ais ?? false).toBeFalsy();
+      expect(mention?.all ?? false).toBeFalsy();
+      expect(mention?.uids ?? []).not.toContain("bot-1");
+    }
+  );
+
+  it("strips a hand-injected trust mark in draft text before the sentinel check", () => {
+    // Even a draft string carrying the NUL mark cannot rebuild a routable node.
+    const doc = parseDraftToContent(
+      `@[${MENTION_TRUST_MARK}${MENTION_UID_AIS}:所有AI]`
+    );
+    const nodes = doc.content.flatMap((p) => p.content);
+    expect(nodes.some((n) => n.type === "mention")).toBe(false);
+  });
+
+  it("still rebuilds ordinary member mentions from a draft (no regression)", () => {
+    const doc = parseDraftToContent("hi @[u-alice:Alice] there");
+    const nodes = doc.content.flatMap((p) => p.content);
+    const mentionNode = nodes.find((n) => n.type === "mention");
+    expect(mentionNode?.attrs).toEqual({ id: "u-alice", label: "Alice" });
   });
 });
 

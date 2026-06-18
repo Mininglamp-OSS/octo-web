@@ -287,35 +287,15 @@ export class MentionModel {
 // dropdown helper (`buildMentionDropdownItems`) and unit tests can reuse
 // them without an import cycle through this large editor module.
 import {
-  MENTION_TRUST_MARK,
-  isBroadcastSentinelUid,
   buildMentionDropdownItems,
 } from "../../Utils/mentionRender";
-import { parseSendMentionText } from "./mentionSendParse";
+import {
+  parseSendMentionText,
+  serializeMentionMarker,
+  stripTrustMark,
+  parseDraftToContent,
+} from "./mentionSendParse";
 import type { SendParseMember } from "./mentionSendParse";
-
-// Serialize a mention NODE to its `@[uid:label]` send marker. A mention node is
-// the only sanctioned broadcast origin (typed-@ dropdown), so when serializing
-// for send we tag a broadcast-sentinel uid with MENTION_TRUST_MARK; the
-// send-side parser routes a broadcast only for trust-marked uids. Member uids
-// and the non-send (draft) path stay canonical. See ./mentionSendParse.
-function serializeMentionMarker(
-  id: string,
-  label: string,
-  trusted: boolean
-): string {
-  const uid =
-    trusted && isBroadcastSentinelUid(id) ? `${MENTION_TRUST_MARK}${id}` : id;
-  return `@[${uid}:${label}]`;
-}
-
-// Strip the internal trust mark from text-origin content so forged/typed text
-// can never carry it into a routable broadcast marker (octo-web#330).
-function stripTrustMark(text: string): string {
-  return text.includes(MENTION_TRUST_MARK)
-    ? text.split(MENTION_TRUST_MARK).join("")
-    : text;
-}
 
 // 解析 @[uid:name] 格式的 mention（send 边界）。安全核心在纯函数 parseSendMentionText：
 // 仅当广播 sentinel 携带 node-origin 信任标记时才路由广播，伪造的字面文本降级为纯文本。
@@ -391,50 +371,6 @@ function extractMentionsFromEditor(editor: any, trusted = false): string {
   }
 
   return stripInvisibleChars(result);
-}
-
-// 解析草稿文本中的 @[uid:label] 格式为 Tiptap 文档结构
-// 返回完整的 doc 内容，支持多行（每行一个 paragraph）
-function parseDraftToContent(
-  text: string
-): { type: "doc"; content: Array<{ type: "paragraph"; content: Array<{ type: string; text?: string; attrs?: { id: string; label: string } }> }> } {
-  const lines = text.split("\n");
-  const paragraphs = lines.map((line) => {
-    const nodes: Array<{ type: string; text?: string; attrs?: { id: string; label: string } }> = [];
-    
-    // 匹配 @[uid:label] 格式，uid和label可以包含除]外的任意字符
-    const regex = /@\[([^\]:]+):([^\]]+)\]/g;
-    let lastIndex = 0;
-    let match;
-
-    while ((match = regex.exec(line)) !== null) {
-      const uid = match[1];
-      const label = match[2];
-      const matchStart = match.index;
-
-      // 添加匹配前的普通文本
-      if (matchStart > lastIndex) {
-        nodes.push({ type: "text", text: line.slice(lastIndex, matchStart) });
-      }
-
-      // 添加 mention 节点
-      nodes.push({
-        type: "mention",
-        attrs: { id: uid, label: label },
-      });
-
-      lastIndex = match.index + match[0].length;
-    }
-
-    // 添加剩余的普通文本
-    if (lastIndex < line.length) {
-      nodes.push({ type: "text", text: line.slice(lastIndex) });
-    }
-
-    return { type: "paragraph" as const, content: nodes };
-  });
-
-  return { type: "doc", content: paragraphs };
 }
 
 // 顶部附件区的附件项接口
