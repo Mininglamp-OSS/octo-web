@@ -16,6 +16,23 @@ export const WS_ENDPOINT =
 /** Refresh collab token when it is within this window of expiry. */
 export const TOKEN_REFRESH_LEEWAY_MS = 30_000
 
+// ── Default document addressing (frontend-design §7.2) ───────────────────────
+//
+// The docs-backend currently exposes only per-doc endpoints (`/docs/:docId/...`)
+// — there is no list/create endpoint yet — so `/docs` cannot enumerate documents.
+// DocsHome therefore opens a SPECIFIC document: it reads `space`/`folder`/`doc`
+// from the URL query (`/docs?space=…&folder=…&doc=…`) and falls back to these
+// deployment-configured defaults. The previous hardcoded `d_welcome` pointed at a
+// document that does not exist in any DB, so the editor sat forever on
+// “Loading document…” (collab-token → not_found, comments → 404) and never mounted.
+// Configure these to a real, accessible doc for the target environment.
+export const DEFAULT_DOC_SPACE =
+  (import.meta.env?.VITE_DOCS_DEFAULT_SPACE as string | undefined) ?? 'demo'
+export const DEFAULT_DOC_FOLDER =
+  (import.meta.env?.VITE_DOCS_DEFAULT_FOLDER as string | undefined) ?? 'f_default'
+export const DEFAULT_DOC_ID =
+  (import.meta.env?.VITE_DOCS_DEFAULT_DOC as string | undefined) ?? ''
+
 /**
  * Octo object-storage host whitelist for image/attachment URLs (frontend-design §3.7).
  * Any host not in this set is rejected to prevent arbitrary external hotlinking.

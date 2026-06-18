@@ -116,6 +116,7 @@
   "state": {
     "loading": "Loading document…",
     "empty": "Nothing here yet.",
+    "untitled": "Untitled document",
     "error": "Something went wrong.",
     "syncing": "Syncing…"
   },
