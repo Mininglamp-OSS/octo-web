@@ -305,18 +305,37 @@ export function DocsHome() {
     [uid, space, folder],
   )
 
+  // Docs-owned empty state for the right pane. CRITICAL: the host renders its default
+  // contentRight (<EmptyStateIllustration/> = the chat "select a conversation" placeholder)
+  // as the ALWAYS-PRESENT base layer of the right viewqueue (WKViewQueue renders
+  // `{this.props.children}` beneath the imperative `queues` stack). If docs leaves the
+  // routeRight queue EMPTY (e.g. on first entry with no doc selected, or after popToRoot),
+  // that chat placeholder shows through — the non-deterministic "editor vs chat placeholder"
+  // race. Fix: docs ALWAYS occupies routeRight (this empty state when no doc, the editor when
+  // one is selected) so the queue is never empty and the chat placeholder never surfaces.
+  const buildEmptyState = useCallback(
+    () => (
+      <div className="octo-doc octo-doc--editor octo-theme octo-docs-right-empty">
+        <p>{t('docs.state.empty')}</p>
+      </div>
+    ),
+    [],
+  )
+
   const backToList = useCallback(() => {
     setSelectedDocId(null)
     clearDocTarget()
     mirrorListToUrl()
     if (routeRight) {
       try {
-        routeRight.popToRoot()
+        // Replace with the docs empty state (NOT popToRoot) — popToRoot would empty the queue
+        // and let the host chat placeholder show through. Keep docs owning the right pane.
+        routeRight.replaceToRoot(buildEmptyState() as unknown)
       } catch {
         // ignore — right pane already cleared / unavailable
       }
     }
-  }, [routeRight])
+  }, [routeRight, buildEmptyState])
 
   const openDoc = useCallback(
     (docId: string) => {
@@ -337,16 +356,23 @@ export function DocsHome() {
     [space, folder, routeRight, buildEditor, backToList],
   )
 
-  // Push the initial deep-link/persisted selection into the right pane on mount (production).
+  // On mount, ALWAYS occupy the right pane so the host chat placeholder never shows through
+  // (the contentRight race). If a doc is pre-selected (deep-link / persisted target) push the
+  // editor; otherwise push the docs empty state. Either way the routeRight queue is non-empty
+  // from first paint, so entering /docs is deterministically full-width docs — never the
+  // intermittent chat-placeholder regression.
   useEffect(() => {
-    if (routeRight && selectedDocId) {
-      try {
+    if (!routeRight) return
+    try {
+      if (selectedDocId) {
         routeRight.replaceToRoot(buildEditor(selectedDocId, backToList) as unknown)
-      } catch {
-        // ignore
+      } else {
+        routeRight.replaceToRoot(buildEmptyState() as unknown)
       }
+    } catch {
+      // ignore
     }
-    // Only on mount: subsequent selections are pushed by openDoc.
+    // Only on mount: subsequent selections are pushed by openDoc / backToList.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
