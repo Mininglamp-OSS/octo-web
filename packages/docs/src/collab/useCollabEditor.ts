@@ -117,6 +117,7 @@ export function useCollabEditor(opts: CollabEditorOptions): UseCollabEditorResul
       // Map the failure to a terminal state so the user sees a clear reason instead of an
       // infinite spinner.
       if (!active) return
+      console.error('[docs] collab editor create failed', err)
       setTerminal({ kind: terminalForCreateError(err) })
     })
     return () => {

@@ -44,6 +44,22 @@
   font-weight: 600;
   margin: 0 0 8px;
 }
+.octo-doc-back {
+  align-self: center;
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--octo-muted, #8a919e);
+  cursor: pointer;
+  border-radius: 6px;
+}
+.octo-doc-back:hover {
+  color: var(--wk-brand-primary, #7c5cfc);
+  background: rgba(124, 92, 252, 0.08);
+}
 
 .octo-toolbar {
   display: flex;
