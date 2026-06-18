@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getWKApp, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
+import '../editor/styles.css'
 import { DEFAULT_DOC_SPACE, DEFAULT_DOC_FOLDER, DEFAULT_DOC_ID } from '../config.ts'
 import { listDocs, createDoc, type DocListItem } from './docsApi.ts'
 
@@ -117,24 +118,43 @@ export function resolveDocTarget(search: string): DocTarget | null {
   return null
 }
 
-/** Build the `/docs` URL that opens a specific document, preserving octo's `sid` param. */
-function docHref(docId: string, space: string, folder: string): string {
-  const q = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-  q.set('space', space)
-  q.set('folder', folder)
-  q.set('doc', docId)
-  return `/docs?${q.toString()}`
+/**
+ * Mirror the active doc to the URL (`?doc=<id>`) WITHOUT a full navigation.
+ *
+ * Split-pane note: opening a doc is now an in-pane state change (setSelectedDoc), not a
+ * `window.location.assign`. We still reflect the selection into the URL via
+ * history.replaceState so the link is shareable/refreshable — but replaceState does NOT
+ * trigger the host RouteManager's pathname-only re-push (that fires on assign/pushState),
+ * so `?doc=` is no longer wiped. sessionStorage remains the durable mirror for the
+ * deep-link/refresh path. This is what neutralizes the `?doc=` strip should-fix.
+ */
+function mirrorDocToUrl(docId: string, space: string, folder: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    const q = new URLSearchParams(window.location.search)
+    q.set('space', space)
+    q.set('folder', folder)
+    q.set('doc', docId)
+    window.history.replaceState(window.history.state, '', `/docs?${q.toString()}`)
+  } catch {
+    // history unavailable: selection still works via state; just not URL-reflected.
+  }
 }
 
-/** Build the `/docs` list URL — strips doc addressing while preserving octo's `sid` param. */
-function listHref(): string {
-  const q = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-  q.delete('doc')
-  q.delete('docId')
-  q.delete('space')
-  q.delete('folder')
-  const qs = q.toString()
-  return qs ? `/docs?${qs}` : '/docs'
+/** Reflect "back to list" into the URL (drop doc addressing) without a full navigation. */
+function mirrorListToUrl(): void {
+  if (typeof window === 'undefined') return
+  try {
+    const q = new URLSearchParams(window.location.search)
+    q.delete('doc')
+    q.delete('docId')
+    q.delete('space')
+    q.delete('folder')
+    const qs = q.toString()
+    window.history.replaceState(window.history.state, '', qs ? `/docs?${qs}` : '/docs')
+  } catch {
+    // ignore
+  }
 }
 
 /**
@@ -142,7 +162,17 @@ function listHref(): string {
  * Lists documents the caller owns or is a member of (GET /api/v1/docs) and offers a
  * "new document" action (POST /api/v1/docs). Selecting/creating navigates to the editor.
  */
-function DocsList({ space, folder }: { space: string; folder: string }): React.ReactElement {
+function DocsList({
+  space,
+  folder,
+  selectedDocId,
+  onSelect,
+}: {
+  space: string
+  folder: string
+  selectedDocId: string | null
+  onSelect: (docId: string) => void
+}): React.ReactElement {
   const [items, setItems] = useState<DocListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -152,7 +182,7 @@ function DocsList({ space, folder }: { space: string; folder: string }): React.R
     setLoading(true)
     setError(null)
     listDocs({ spaceId: space || undefined, folderId: folder || undefined, sort: 'updatedAt:desc' })
-      .then((res) => setItems(res.items))
+      .then((res) => setItems(res?.items ?? []))
       .catch((err) => {
         // Don't swallow the failure: surface it so a first-load error is diagnosable
         // (and offer a retry below) instead of a silently sticky error state.
@@ -164,13 +194,6 @@ function DocsList({ space, folder }: { space: string; folder: string }): React.R
 
   useEffect(reload, [reload])
 
-  const openDoc = (docId: string) => {
-    // Persist the target BEFORE navigating: the host strips `?doc=` on its first pathname-only
-    // re-push, so the editor branch relies on this mirror (not the query) to stay addressable.
-    persistDocTarget({ space, folder, doc: docId })
-    if (typeof window !== 'undefined') window.location.assign(docHref(docId, space, folder))
-  }
-
   const onCreate = async () => {
     if (creating) return
     setCreating(true)
@@ -180,7 +203,10 @@ function DocsList({ space, folder }: { space: string; folder: string }): React.R
         spaceId: space || undefined,
         folderId: folder || undefined,
       })
-      openDoc(created.docId)
+      // New docs land in the list; select it inline (right pane opens, list stays).
+      onSelect(created.docId)
+      reload()
+      setCreating(false)
     } catch {
       setError(t('docs.state.error'))
       setCreating(false)
@@ -188,7 +214,7 @@ function DocsList({ space, folder }: { space: string; folder: string }): React.R
   }
 
   return (
-    <div className="octo-doc octo-docs-list">
+    <div className="octo-docs-list">
       <div className="octo-docs-list-header">
         <h2>{t('docs.menu.title')}</h2>
         <button type="button" onClick={onCreate} disabled={creating}>
@@ -210,8 +236,8 @@ function DocsList({ space, folder }: { space: string; folder: string }): React.R
       {!loading && !error && items.length > 0 && (
         <ul className="octo-docs-list-items">
           {items.map((d) => (
-            <li key={d.docId}>
-              <button type="button" onClick={() => openDoc(d.docId)}>
+            <li key={d.docId} className={d.docId === selectedDocId ? 'octo-docs-list-item-active' : undefined}>
+              <button type="button" onClick={() => onSelect(d.docId)}>
                 {d.title || t('docs.state.untitled')}
               </button>
             </li>
@@ -229,39 +255,79 @@ function DocsList({ space, folder }: { space: string; folder: string }): React.R
  * (= collab-token uid) + a palette colour via colorFromId (6-hex) in extensions.ts, so it
  * satisfies the backend validateAwarenessStates check — remote carets work once mounted.
  */
+/**
+ * Docs landing route (`/docs`) — split-pane layout (left list always resident, right editor).
+ *
+ * Selecting a list item opens the editor INLINE in the right pane via state (selectedDocId),
+ * NOT a full navigation — so the left list never disappears, matching the
+ * octo-smart-summary / matter list+detail layout. The selection is mirrored to `?doc=` +
+ * sessionStorage (mirrorDocToUrl + persistDocTarget) for shareable/deep-link/refresh, using
+ * history.replaceState (no host re-push) so `?doc=` is no longer wiped.
+ */
 export function DocsHome() {
   const wk = getWKApp()
   // Guard the session reads: a render throw here would only trade the silent hang for an
   // error-boundary screen, so default to '' and let the editor/list resolve identity from
   // the collab-token round-trip instead of crashing first paint.
   const uid = wk.loginInfo?.uid ?? ''
-  const target = resolveDocTarget(
-    typeof window !== 'undefined' ? window.location.search : '',
+  const space = wk.shared?.currentSpaceId || DEFAULT_DOC_SPACE
+  const folder = DEFAULT_DOC_FOLDER
+
+  // Initial selection from URL deep-link / persisted target (so a shared `/docs?doc=` or a
+  // refresh opens that doc in the right pane on first paint).
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(() => {
+    const initial = resolveDocTarget(
+      typeof window !== 'undefined' ? window.location.search : '',
+    )
+    return initial?.docId ?? null
+  })
+
+  const openDoc = useCallback(
+    (docId: string) => {
+      setSelectedDocId(docId)
+      // Durable mirror (survives the host's query-wiping re-push) + shareable URL (replaceState,
+      // no host re-push) — together neutralizing the `?doc=` strip should-fix.
+      persistDocTarget({ space, folder, doc: docId })
+      mirrorDocToUrl(docId, space, folder)
+    },
+    [space, folder],
   )
 
-  if (!target) {
-    // No doc addressed: list documents (space comes from the current octo Space, else default).
-    const space = wk.shared?.currentSpaceId || DEFAULT_DOC_SPACE
-    return <DocsList space={space} folder={DEFAULT_DOC_FOLDER} />
-  }
-
-  // Back to the list: forget the persisted target (otherwise resolveDocTarget keeps returning
-  // it across the host's pathname-only re-pushes) and navigate to the doc-less `/docs`.
-  const backToList = () => {
+  const backToList = useCallback(() => {
+    setSelectedDocId(null)
     clearDocTarget()
-    if (typeof window !== 'undefined') window.location.assign(listHref())
-  }
+    mirrorListToUrl()
+  }, [])
 
   return (
-    <EditorShell
-      docId={target.docId}
-      title={t('docs.state.untitled')}
-      uid={uid}
-      space={target.space}
-      folder={target.folder}
-      doc={target.doc}
-      user={{ id: uid, name: uid }}
-      onBack={backToList}
-    />
+    <div className="octo-doc octo-docs-split">
+      <aside className="octo-docs-split-left">
+        <DocsList
+          space={space}
+          folder={folder}
+          selectedDocId={selectedDocId}
+          onSelect={openDoc}
+        />
+      </aside>
+      <section className="octo-docs-split-right">
+        {selectedDocId ? (
+          <EditorShell
+            key={selectedDocId}
+            docId={selectedDocId}
+            title={t('docs.state.untitled')}
+            uid={uid}
+            space={space}
+            folder={folder}
+            doc={selectedDocId}
+            user={{ id: uid, name: uid }}
+            onBack={backToList}
+          />
+        ) : (
+          <div className="octo-docs-split-empty">
+            <p>{t('docs.state.empty')}</p>
+          </div>
+        )}
+      </section>
+    </div>
   )
 }
