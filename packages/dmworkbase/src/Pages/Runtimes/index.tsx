@@ -9,7 +9,7 @@ import { InstallGuidePopover } from "./InstallGuidePopover"
 import { getInstallGuide } from "./installGuide"
 import { octoComponentName } from "./octoComponent"
 import { deviceRuntimeMode } from "./deviceRuntimeMode"
-import { canInstallOctoPlugin } from "./pluginInstall"
+import { canInstallOctoPlugin, octoPluginInstalled } from "./pluginInstall"
 import { canCreateBot } from "./botGating"
 import { Bot, botStatusLabel, listBots, providerLabels, FLEET_API_BASE } from "./botsApi"
 import { ProviderLogo } from "./providerLogos"
@@ -1063,7 +1063,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         }
     }
 
-    handlePluginUpgrade = async (pluginComponent: string) => {
+    handlePluginUpgrade = async (pluginComponent: string, isInstall = false) => {
         const rt = this.props.runtime
         const runtimeId = rt.id
 
@@ -1079,15 +1079,17 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             this.props.onUpgradeStarted?.()
             const taskId = initRes?.data?.task_id
             if (!taskId) throw new Error("plugin upgrade init: missing task_id in response")
-            await this.pollPluginUpgrade(taskId, runtimeId)
+            await this.pollPluginUpgrade(taskId, runtimeId, { component: pluginComponent, isInstall })
         } catch (err: any) {
             const msg = err?.msg || err?.message || t("base.runtimes.upgrade.errFailed")
             this.setState({ pluginUpgradeStatus: "failed", pluginUpgradeError: msg })
         }
     }
 
-    // 轮询已知 taskId 的进度。抽出复用于：1）首次点击 Upgrade；2）remount 后续看。
-    pollPluginUpgrade = async (taskId: string, runtimeId: number) => {
+    // 轮询已知 taskId 的进度。抽出复用于：1）首次点击 Upgrade / Install；2）remount 后续看。
+    // opts.isInstall: 首装走专属完成条件(等插件出现在 metadata.plugins),升级仍用
+    // !has_plugin_update —— 否则首装时该 hint 一开始即 false 会让确认循环过早 remount。
+    pollPluginUpgrade = async (taskId: string, runtimeId: number, opts?: { component?: string; isInstall?: boolean }) => {
         const isStale = () => this._unmounted || this.props.runtime.id !== runtimeId
         for (let i = 0; i < 200; i++) {
             if (isStale()) return
@@ -1116,9 +1118,13 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                         const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId }, baseURL: FLEET_API_BASE }))?.data
                         if (isStale()) return
                         const hints = runtimesRes?.version_hints || {}
-                        if (!hints[runtimeId]?.has_plugin_update) {
-                            const allRuntimes = runtimesRes?.runtimes || []
-                            const updated = allRuntimes.find((r: AgentRuntime) => r.id === runtimeId)
+                        const allRuntimes = runtimesRes?.runtimes || []
+                        const updated = allRuntimes.find((r: AgentRuntime) => r.id === runtimeId)
+                        // install: 等插件真正出现在 metadata.plugins;upgrade: 等 has_plugin_update 翻 false。
+                        const landed = opts?.isInstall
+                            ? octoPluginInstalled(updated?.metadata, opts.component)
+                            : !hints[runtimeId]?.has_plugin_update
+                        if (landed) {
                             if (updated) {
                                 // B-5 (X3): 透传互斥 props, 同 DeviceDetail 注释
                                 WKApp.routeRight.replaceToRoot(
@@ -1169,7 +1175,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     {pluginUpgradeError && <span className="wk-rt-upgrade-reason">· {pluginUpgradeError.length > 40 ? pluginUpgradeError.slice(0, 40) + "…" : pluginUpgradeError}</span>}
                     {!!pluginName && (busyByOther
                         ? <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{actionLabel}</span>
-                        : <span className="wk-rt-upgrade-btn" onClick={() => this.handlePluginUpgrade(pluginName)}>{actionLabel}</span>)}
+                        : <span className="wk-rt-upgrade-btn" onClick={() => this.handlePluginUpgrade(pluginName, action === "install")}>{actionLabel}</span>)}
                 </span>
             )
         }
@@ -1187,7 +1193,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 // B-3: 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
                 return <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{actionLabel}</span>
             }
-            return <span className="wk-rt-upgrade-btn" onClick={() => this.handlePluginUpgrade(pluginName)}>{actionLabel}</span>
+            return <span className="wk-rt-upgrade-btn" onClick={() => this.handlePluginUpgrade(pluginName, action === "install")}>{actionLabel}</span>
         }
         return null
     }
@@ -1403,8 +1409,8 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                     ) : (
                                         // openclaw 的 octo 插件未装 → 显「安装」按钮(一键装到 latest);
                                         // 其它(如 cc-octo)无插件数据时用中性占位「—」(指引 popover 已挂在 label 行)。
-                                        canInstallOctoPlugin(rt.provider, !!octoPlugin)
-                                            ? this.renderPluginUpgradeBtn(octoComponent ?? "", true, "install")
+                                        canInstallOctoPlugin(rt.provider, false)
+                                            ? this.renderPluginUpgradeBtn(octoComponent ?? "", undefined, "install")
                                             : <span className="wk-rt-install-empty">—</span>
                                     )}
                                 </span>

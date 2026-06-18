@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { canInstallOctoPlugin } from "./pluginInstall"
+import { canInstallOctoPlugin, octoPluginInstalled } from "./pluginInstall"
 
 describe("canInstallOctoPlugin", () => {
     it("openclaw with no octo plugin installed -> true", () => {
@@ -13,5 +13,28 @@ describe("canInstallOctoPlugin", () => {
     })
     it("unknown provider -> false", () => {
         expect(canInstallOctoPlugin("codex", false)).toBe(false)
+    })
+})
+
+describe("octoPluginInstalled", () => {
+    it("true when metadata.plugins contains the component", () => {
+        const meta = JSON.stringify({ plugins: [{ name: "memory-core", version: "1" }, { name: "octo", version: "0.7.0" }] })
+        expect(octoPluginInstalled(meta, "octo")).toBe(true)
+    })
+    it("false when the component is not yet in plugins (fresh install not landed)", () => {
+        const meta = JSON.stringify({ plugins: [{ name: "memory-core", version: "1" }] })
+        expect(octoPluginInstalled(meta, "octo")).toBe(false)
+    })
+    it("false for empty / missing plugins", () => {
+        expect(octoPluginInstalled(JSON.stringify({ plugins: [] }), "octo")).toBe(false)
+        expect(octoPluginInstalled("{}", "octo")).toBe(false)
+        expect(octoPluginInstalled(undefined, "octo")).toBe(false)
+    })
+    it("false on malformed metadata json", () => {
+        expect(octoPluginInstalled("not json", "octo")).toBe(false)
+    })
+    it("false when component is empty", () => {
+        const meta = JSON.stringify({ plugins: [{ name: "octo", version: "0.7.0" }] })
+        expect(octoPluginInstalled(meta, "")).toBe(false)
     })
 })
