@@ -33,4 +33,18 @@ describe('DocsModule (octo-web same-origin integration)', () => {
     expect(wk.route.routes.has('/docs')).toBe(true)
     expect(wk.route.routes.has('/docs/invite/:token')).toBe(true)
   })
+
+  it('registers a "docs" NavRail menu pointing at /docs on init()', () => {
+    // Regression (runtime test 2026-06-18): the /docs route was registered but NO
+    // NavRail menu existed. The main view is menu-driven — MainContentLeft renders
+    // the route whose routePath matches the active menu, and MainVM.didMount only
+    // activates a route when it matches a registered menu. With no "docs" menu the
+    // editor never mounted (app fell back to the chat shell) and users had no entry.
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    new DocsModule().init()
+    expect(wk.mockMenus.menus.has('docs')).toBe(true)
+    const menu = wk.mockMenus.menus.get('docs')!() as { routePath: string }
+    expect(menu.routePath).toBe('/docs')
+  })
 })

@@ -15,6 +15,9 @@ export const WKApp = {
   route: {
     register() {},
   },
+  menus: {
+    register() {},
+  },
   apiClient: {
     get: async () => ({ data: {}, status: 200 }),
     post: async () => ({ data: {}, status: 200 }),
@@ -41,4 +44,30 @@ export function t(key: string) {
 // useI18n stub: mirrors the I18nProvider context shape the real hook returns.
 export function useI18n() {
   return { t: (key: string) => key, locale: 'en-US' as const }
+}
+
+// NavRail menu entry stub mirroring packages/dmworkbase/src/Service/Menus.ts. DocsModule
+// constructs `new Menus(id, routePath, title, icon, selectedIcon)`; tests read routePath.
+export class Menus {
+  id: string
+  routePath: string
+  title: string
+  icon: unknown
+  selectedIcon: unknown
+  onPress?: () => void
+  constructor(
+    id: string,
+    routePath: string,
+    title: string,
+    icon: unknown,
+    selectedIcon: unknown,
+    onPress?: () => void,
+  ) {
+    this.id = id
+    this.routePath = routePath
+    this.title = title
+    this.icon = icon
+    this.selectedIcon = selectedIcon
+    this.onPress = onPress
+  }
 }
