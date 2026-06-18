@@ -75,6 +75,11 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   // space 的请求覆盖新 space 的 setRuntimes/setBots.
   const spaceEpochRef = useRef(0);
 
+  // 同 space 内的请求序号 (跟 RuntimesPage.loadData 的 loadSeq 同模式)。
+  // loadRuntimes 可能被 mount / space-change / openCreate 并发触发,fetch 响应
+  // 顺序不保证;只让最新一次请求 setRuntimes,防早发晚归的请求覆盖成旧列表。
+  const loadRuntimesSeqRef = useRef(0);
+
   // When a parent calls openBot(id) before the bots list has loaded, we
   // stash the id here and let a [bots]-watching effect apply it once the
   // list arrives. Without this, jumping in from a Runtime detail page on
@@ -98,6 +103,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
   // mittBus 监听 space-changed (跟 RuntimesPage 同源信号), 命中时重拉.
   const loadRuntimes = useCallback(async () => {
     const epoch = spaceEpochRef.current;
+    const seq = ++loadRuntimesSeqRef.current;
     const spaceId = (WKApp as any)?.shared?.currentSpaceId ?? '';
     const sessionToken = (WKApp as any)?.loginInfo?.token ?? '';
     // 合并 plan 决策一+二 Phase 3A: fleet 切到 AuthMiddleware 接 session
@@ -110,7 +116,8 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
         headers,
       });
       const env = await res.json();
-      if (epoch !== spaceEpochRef.current) return; // stale
+      // stale: 切了 space (epoch) 或被更新的 loadRuntimes 请求超越 (seq) 都丢弃
+      if (epoch !== spaceEpochRef.current || seq !== loadRuntimesSeqRef.current) return;
       const list = (env?.data?.runtimes ?? env?.runtimes ?? []) as any[];
       setRuntimes(list.map(r => ({
         id: r.id,
@@ -121,7 +128,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
         status: r.status || 'unknown',
       })));
     } catch {
-      if (epoch === spaceEpochRef.current) setRuntimes([]);
+      if (epoch === spaceEpochRef.current && seq === loadRuntimesSeqRef.current) setRuntimes([]);
     }
   }, []);
 
