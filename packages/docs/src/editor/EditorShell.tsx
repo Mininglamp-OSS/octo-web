@@ -81,7 +81,7 @@ export function EditorShell(props: EditorShellProps) {
   const manage = role ? canManage(role) : false
 
   return (
-    <div className="octo-doc octo-theme">
+    <div className="octo-doc octo-doc--editor octo-theme">
       <header className="octo-doc-header">
         {onBack && (
           <button

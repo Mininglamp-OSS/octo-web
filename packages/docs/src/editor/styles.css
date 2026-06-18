@@ -28,6 +28,18 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* Editor variant: when EditorShell is mounted in the full-width routeRight (contentRight)
+   pane, fill the whole pane instead of capping+centering at 820px (the standalone-page
+   width). The inner prose column keeps its own readable max-width via octo-prose. */
+.octo-doc--editor {
+  max-width: none;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
 .octo-doc-header {
   display: flex;
   align-items: flex-start;
