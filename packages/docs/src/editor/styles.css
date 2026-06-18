@@ -887,3 +887,14 @@
   color: var(--octo-fg-3, #86909c);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
+
+/* Production path: the docs route slot renders ONLY the resident list (the editor is pushed
+   to the host's main/right pane via WKApp.routeRight, like Matter/Summary). Let the list fill
+   the route slot. */
+.octo-docs-list-only {
+  max-width: none;
+  margin: 0;
+  padding: 12px;
+  height: 100%;
+  overflow-y: auto;
+}

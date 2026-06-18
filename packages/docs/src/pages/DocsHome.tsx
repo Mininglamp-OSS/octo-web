@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { getWKApp, t } from '../octoweb/index.ts'
+import { getWKApp, getRouteRight, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import '../editor/styles.css'
 import { DEFAULT_DOC_SPACE, DEFAULT_DOC_FOLDER, DEFAULT_DOC_ID } from '../config.ts'
@@ -282,6 +282,42 @@ export function DocsHome() {
     return initial?.docId ?? null
   })
 
+  // The host's right (main) route pane. When present (production), the editor is pushed there
+  // so it fills the main content area while the list stays in the left route slot — the same
+  // full-width list+detail layout Matter/Summary use. When absent (tests / standalone), we
+  // fall back to rendering the editor inline in a CSS split pane.
+  const routeRight = getRouteRight()
+
+  const buildEditor = useCallback(
+    (docId: string, onBack: () => void) => (
+      <EditorShell
+        key={docId}
+        docId={docId}
+        title={t('docs.state.untitled')}
+        uid={uid}
+        space={space}
+        folder={folder}
+        doc={docId}
+        user={{ id: uid, name: uid }}
+        onBack={onBack}
+      />
+    ),
+    [uid, space, folder],
+  )
+
+  const backToList = useCallback(() => {
+    setSelectedDocId(null)
+    clearDocTarget()
+    mirrorListToUrl()
+    if (routeRight) {
+      try {
+        routeRight.popToRoot()
+      } catch {
+        // ignore — right pane already cleared / unavailable
+      }
+    }
+  }, [routeRight])
+
   const openDoc = useCallback(
     (docId: string) => {
       setSelectedDocId(docId)
@@ -289,15 +325,41 @@ export function DocsHome() {
       // no host re-push) — together neutralizing the `?doc=` strip should-fix.
       persistDocTarget({ space, folder, doc: docId })
       mirrorDocToUrl(docId, space, folder)
+      // Full-width path: push the editor into the host's main (right) pane, list stays left.
+      if (routeRight) {
+        try {
+          routeRight.replaceToRoot(buildEditor(docId, backToList) as unknown)
+        } catch {
+          // ignore — fall back to inline render below if the host pane rejects.
+        }
+      }
     },
-    [space, folder],
+    [space, folder, routeRight, buildEditor, backToList],
   )
 
-  const backToList = useCallback(() => {
-    setSelectedDocId(null)
-    clearDocTarget()
-    mirrorListToUrl()
+  // Push the initial deep-link/persisted selection into the right pane on mount (production).
+  useEffect(() => {
+    if (routeRight && selectedDocId) {
+      try {
+        routeRight.replaceToRoot(buildEditor(selectedDocId, backToList) as unknown)
+      } catch {
+        // ignore
+      }
+    }
+    // Only on mount: subsequent selections are pushed by openDoc.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Production (routeRight present): the editor lives in the host's main pane; this route
+  // slot renders ONLY the resident list (left). Tests / standalone (no routeRight): render
+  // the inline CSS split-pane (left list + right editor) so the layout still works.
+  if (routeRight) {
+    return (
+      <div className="octo-doc octo-docs-list-only">
+        <DocsList space={space} folder={folder} selectedDocId={selectedDocId} onSelect={openDoc} />
+      </div>
+    )
+  }
 
   return (
     <div className="octo-doc octo-docs-split">
@@ -311,17 +373,7 @@ export function DocsHome() {
       </aside>
       <section className="octo-docs-split-right">
         {selectedDocId ? (
-          <EditorShell
-            key={selectedDocId}
-            docId={selectedDocId}
-            title={t('docs.state.untitled')}
-            uid={uid}
-            space={space}
-            folder={folder}
-            doc={selectedDocId}
-            user={{ id: uid, name: uid }}
-            onBack={backToList}
-          />
+          buildEditor(selectedDocId, backToList)
         ) : (
           <div className="octo-docs-split-empty">
             <p>{t('docs.state.empty')}</p>
