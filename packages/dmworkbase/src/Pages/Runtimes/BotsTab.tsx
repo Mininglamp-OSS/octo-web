@@ -171,6 +171,11 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
 
   useImperativeHandle(ref, () => ({
     openCreate: () => {
+      // 刷新弹窗用的 runtime 缓存再开 —— hidden 的 BotsTab 不轮询 (见下方 polling
+      // effect),runtimes 只在 mount / 切 space 时拉过。用户「先装运行时→等菜单变
+      // 可点→点创建」时,本缓存仍是装之前的(无/离线)数据,弹窗 runtime 选择器为空
+      // 导致建不了 bot。openCreate 主动重拉,与 RuntimesPage 的 gating 数据对齐。
+      loadRuntimes();
       setModalOpen(true);
     },
     openBot: (id: number) => {
@@ -187,7 +192,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
         refresh();
       }
     },
-  }), [bots, selectBot, refresh]);
+  }), [bots, selectBot, refresh, loadRuntimes]);
 
   // Apply any parked openBot request once the bots list (or a refresh)
   // delivers the matching entry. Cleared regardless of match — a missing
