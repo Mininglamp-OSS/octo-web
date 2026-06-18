@@ -64,10 +64,6 @@ export type SendParseMember = SubscriberLike & {
   orgData?: SubscriberLike["orgData"] & { robot?: number };
 };
 
-// uid + name (`[^:]+`), label (`[^\]]+`). The uid group also captures a leading
-// MENTION_TRUST_MARK when the serializer tagged a node-origin sentinel.
-const MARKER_PATTERN = /@\[([^:]+):([^\]]+)\]/g;
-
 /**
  * Parse a serialized send string into `{ content, mention }`. Broadcast
  * sentinels are routed only when carried by a trust-marked (node-origin) uid;
@@ -77,6 +73,11 @@ export function parseSendMentionText(
   text: string,
   members: ReadonlyArray<SendParseMember> = []
 ): ParseSendMentionResult {
+  // uid + name (`[^:]+`), label (`[^\]]+`). The uid group also captures a
+  // leading MENTION_TRUST_MARK when the serializer tagged a node-origin
+  // sentinel. Function-local so its `g`-flag `lastIndex` can never leak
+  // between calls.
+  const markerPattern = /@\[([^:]+):([^\]]+)\]/g;
   const entities: ParsedMentionEntity[] = [];
   const uids: string[] = [];
   let result = "";
@@ -85,9 +86,8 @@ export function parseSendMentionText(
   let humans = false;
   let ais = false;
 
-  MARKER_PATTERN.lastIndex = 0;
   let match: RegExpExecArray | null;
-  while ((match = MARKER_PATTERN.exec(text)) !== null) {
+  while ((match = markerPattern.exec(text)) !== null) {
     const rawUid = match[1];
     const name = match[2];
 
@@ -124,11 +124,19 @@ export function parseSendMentionText(
       continue;
     }
 
-    // Ordinary member: canonical display name, falling back to the matched
-    // label when the member is unknown (parity with the input-box chip).
+    // Ordinary member: route ONLY when the uid is a current channel member.
+    // A forged / unknown / stale uid carried by text-origin `@[uid:label]`
+    // (e.g. a clipboard payload that drops `@[attacker:Alice]` straight into
+    // the text with no structured mention metadata) degrades to inert `@label`
+    // text — the same fail-closed contract as the paste-time allowlist and the
+    // broadcast degrade. Without this the send-side re-parse re-introduces the
+    // forged member mentions the paste guard had dropped (octo-web#330).
     const member = members.find((m) => m.uid === uid);
-    const resolved = member ? subscriberDisplayName(member) : "";
-    const atName = resolved ? `@${resolved}` : `@${name}`;
+    if (!member) {
+      result += `@${name}`;
+      continue;
+    }
+    const atName = `@${subscriberDisplayName(member) || name}`;
     uids.push(uid);
     entities.push({ uid, offset: result.length, length: atName.length });
     result += atName;

@@ -258,3 +258,63 @@ describe("parseSendMentionText — ordinary member mentions (no regression)", ()
     expect(mention).toBeUndefined();
   });
 });
+
+// Reviewer Jerry-Xin (octo-web#330): a forged text-origin `@[uid:label]` whose
+// uid is NOT a current channel member must NOT route a mention — it degrades to
+// inert text, same as the broadcast degrade and the paste-time allowlist. The
+// uid is the routing key, so an unknown/forged/stale uid is the attack surface.
+describe("parseSendMentionText — forged non-member mention degrades (Finding: Jerry-Xin)", () => {
+  it("does NOT route a non-member uid forged in literal text", () => {
+    const { content, mention } = parseSendMentionText(
+      "hi @[attacker:Alice]",
+      [{ uid: "alice", name: "Alice" }]
+    );
+    // Inert: the forged uid is never recorded as a mention.
+    expect(mention?.uids ?? []).not.toContain("attacker");
+    expect(mention).toBeUndefined();
+    // Degrades to the label as plain text, not a routable marker.
+    expect(content).toBe("hi @Alice");
+  });
+
+  it("does NOT route a stale uid no longer in the roster", () => {
+    const { mention } = parseSendMentionText("@[ghost:Bob] yo", [
+      { uid: "alice", name: "Alice" },
+    ]);
+    expect(mention).toBeUndefined();
+  });
+
+  it("a real member uid still routes (gate only blocks non-members)", () => {
+    const { mention } = parseSendMentionText("@[alice:Alice]", [
+      { uid: "alice", name: "Alice" },
+    ]);
+    expect(mention?.uids).toEqual(["alice"]);
+  });
+
+  it("forged non-member uid laundered through a draft round-trip still degrades", () => {
+    // forged paste → draft autosave → restore rebuilds a member node (the
+    // draft guard only degrades broadcast sentinels) → BUT the send-side
+    // membership gate drops the unknown uid, so no mention is routed.
+    const doc = parseDraftToContent("@[attacker:Alice] hi");
+    const serialized = doc.content
+      .map((p) =>
+        p.content
+          .map((n) =>
+            n.type === "mention"
+              ? serializeMentionMarker(n.attrs!.id, n.attrs!.label, true)
+              : stripTrustMark(n.text || "")
+          )
+          .join("")
+      )
+      .join("\n");
+    const { mention } = parseSendMentionText(serialized, [
+      { uid: "alice", name: "Alice" },
+    ]);
+    expect(mention?.uids ?? []).not.toContain("attacker");
+    expect(mention).toBeUndefined();
+  });
+
+  it("degrades all member mentions when the roster is empty (fail closed)", () => {
+    const { mention } = parseSendMentionText("@[u-alice:Alice]", []);
+    expect(mention).toBeUndefined();
+  });
+});
