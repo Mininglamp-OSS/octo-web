@@ -1237,6 +1237,7 @@
   "runtimes.create.createRuntimeDesc": "Connect a daemon on a new device",
   "runtimes.create.createBot": "Create Bot",
   "runtimes.create.createBotDesc": "Start a bot on an existing runtime",
+  "runtimes.create.createBotDisabledHint": "Install and bring a runtime online first",
   "runtimes.create.createFirst": "Click \"+ New Agent\" (top right) to create your first",
   "runtimes.agentModal.titleAddBot": "Add Bot to {{agent}}",
   "runtimes.agentModal.titleCreateAgent": "Create New Agent",

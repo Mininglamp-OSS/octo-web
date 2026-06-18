@@ -9,7 +9,8 @@ import { InstallGuidePopover } from "./InstallGuidePopover"
 import { getInstallGuide } from "./installGuide"
 import { octoComponentName } from "./octoComponent"
 import { deviceRuntimeMode } from "./deviceRuntimeMode"
-import { Bot, botStatusLabel, listBots, providerLabels } from "./botsApi"
+import { canCreateBot } from "./botGating"
+import { Bot, botStatusLabel, listBots, providerLabels, FLEET_API_BASE } from "./botsApi"
 import { ProviderLogo } from "./providerLogos"
 import { i18n, t } from "../../i18n"
 import "./index.css"
@@ -1583,6 +1584,14 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         // refreshRuntimeBots 触发.
         this.setState({
             selectedId: null,
+            // 切 space 即清空 runtime 视图 —— 否则旧 space 的 runtimes 会残留到新 space
+            // 首次 loadData 返回前;若该 loadData 失败 (catch 仅复位 loading=false 不清
+            // runtimes),`canBot=!loading && canCreateBot(runtimes)` 会用旧 space 的在线
+            // 运行时误启用「创建 Bot」。清空后失败也回落到禁用。
+            runtimes: [],
+            versionHints: {},
+            daemonVersionHints: {},
+            activeUpgrades: {},
             expandedDevices: new Set(),
             expandedRuntimes: new Set(),
             botsByRuntime: new Map(),
@@ -2005,6 +2014,11 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     render() {
         const { runtimes, selectedId, loading, expandedDevices, createMenuOpen, runtimeModalOpen } = this.state
         const groups = groupByDevice(runtimes)
+        // gating「创建 Bot」: 仅当本 space 已加载完成(非 loading)且有 ≥1 在线运行时才允许。
+        // 切 space 时 handleSpaceChanged 已清空 runtimes:[];!loading 为兜底 —— 覆盖加载
+        // 窗口期,以及 loadData 失败(catch 仅复位 loading=false、runtimes 保持 [])的场景,
+        // 防旧 space 在线运行时短暂误启用。
+        const canBot = !loading && canCreateBot(runtimes)
 
         return (
             <div className="wk-rt-list">
@@ -2055,8 +2069,13 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                         <button
                                             type="button"
                                             role="menuitem"
-                                            className="wk-rt-create-menu-item"
-                                            onClick={() => this.setState({ createMenuOpen: false }, () => this.botsTabRef.current?.openCreate())}
+                                            className={`wk-rt-create-menu-item${canBot ? "" : " wk-rt-create-menu-item--disabled"}`}
+                                            aria-disabled={!canBot}
+                                            title={canBot ? undefined : t("base.runtimes.create.createBotDisabledHint")}
+                                            onClick={() => {
+                                                if (!canBot) return
+                                                this.setState({ createMenuOpen: false }, () => this.botsTabRef.current?.openCreate())
+                                            }}
                                         >
                                             <span className="wk-rt-create-menu-icon" aria-hidden="true">
                                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -2069,7 +2088,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                             </span>
                                             <span className="wk-rt-create-menu-text">
                                                 <span className="wk-rt-create-menu-title">{t("base.runtimes.create.createBot")}</span>
-                                                <span className="wk-rt-create-menu-desc">{t("base.runtimes.create.createBotDesc")}</span>
+                                                <span className="wk-rt-create-menu-desc">{canBot ? t("base.runtimes.create.createBotDesc") : t("base.runtimes.create.createBotDisabledHint")}</span>
                                             </span>
                                         </button>
                                     </div>
