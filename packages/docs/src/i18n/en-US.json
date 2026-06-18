@@ -3,7 +3,8 @@
     "title": "Docs"
   },
   "list": {
-    "new": "New document"
+    "new": "New document",
+    "back": "All documents"
   },
   "toolbar": {
     "heading1": "Heading 1",
@@ -121,6 +122,7 @@
     "empty": "Nothing here yet.",
     "untitled": "Untitled document",
     "error": "Something went wrong.",
+    "retry": "Retry",
     "syncing": "Syncing…"
   },
   "error": {

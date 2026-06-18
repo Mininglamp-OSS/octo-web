@@ -3,21 +3,20 @@
 //   WKApp.shared.registerModule(new DocsModule())
 // alongside BaseModule / LoginModule / ContactsModule — same pattern as the other modules.
 
-import { lazy, Suspense, type ReactElement } from 'react'
+import {
+  Component,
+  useEffect,
+  useState,
+  type ComponentType,
+  type ErrorInfo,
+  type ReactElement,
+  type ReactNode,
+} from 'react'
 import { getWKApp, i18n, t, Menus } from './octoweb/index.ts'
 import type { IModule } from './octoweb/index.ts'
 import { InviteAcceptPage } from './invite/InviteAcceptPage.tsx'
 import zhCN from './i18n/zh-CN.json'
 import enUS from './i18n/en-US.json'
-
-// Code-split the docs editor: it pulls in the whole Tiptap + Yjs + Hocuspocus bundle, which
-// must NOT inflate the host app's first paint. octo-web has no global Suspense boundary (docs
-// is the first code-split consumer), so the docs package provides its own boundary here rather
-// than relying on the host. `DocsHome` is a named export, so adapt it to the default React.lazy
-// expects.
-const LazyDocsHome = lazy(() =>
-  import('./pages/DocsHome.tsx').then((m) => ({ default: m.DocsHome })),
-)
 
 /** Lightweight fallback shown while the heavy editor chunk loads. */
 function DocsLoadingFallback(): ReactElement {
@@ -47,14 +46,97 @@ function DocsIcon({ active }: { active?: boolean }): ReactElement {
   )
 }
 
-/** The main `/docs` route — the heavy editor, loaded lazily behind our own Suspense boundary. */
+/**
+ * Error boundary around the docs editor. Without it a render throw inside the editor subtree
+ * bubbles up and tears down the host tree. We surface the failure (console.error with the
+ * error and the React componentStack, so it shows up in diagnostics) and render a recoverable
+ * message instead. The chunk-load failure is handled separately in DocsHomeRoute (a rejected
+ * dynamic import is not a render throw, so it never reaches this boundary).
+ */
+class DocsErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+
+  static getDerivedStateFromError(error: Error): { error: Error } {
+    return { error }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error('[docs] editor failed to load', error, info.componentStack)
+  }
+
+  render(): ReactNode {
+    if (this.state.error) {
+      return <div className="octo-doc octo-error">{t('docs.state.error')}</div>
+    }
+    return this.props.children
+  }
+}
+
+/**
+ * The main `/docs` route — the heavy editor (Tiptap + Yjs + Hocuspocus) is code-split so it
+ * doesn't inflate the host's first paint, but we load it with a manual dynamic `import()`
+ * driven by useState/useEffect rather than React.lazy + Suspense.
+ *
+ * Why not React.lazy/Suspense: the octo-web host (apps/web Pages/Main) drives re-renders
+ * through a MobX-style store — `vm.notifyListener()` and `WKApp.menus.setRefresh =
+ * () => this.forceUpdate()` fire often, and MainContentLeft re-renders the active route on
+ * each one. Those run at React's normal/sync priority, ABOVE React 18's low-priority Suspense
+ * RetryLane. Because the host hands the route back as a single cached element, every one of
+ * those re-renders bails out at this component (oldProps === newProps) WITHOUT descending into
+ * the Suspense subtree — so the only thing that can commit the resolved lazy child is the
+ * retry lane, which the steady stream of higher-priority host renders keeps deferring. The
+ * editor chunk downloads but the Suspense boundary never gets a clean commit, leaving the UI
+ * pinned on DocsLoadingFallback forever (DocsHome's listDocs / collab-token never run).
+ *
+ * Driving the load with useState sidesteps all of that: when the import resolves, setLoaded()
+ * schedules an update ON THIS fiber, which React renders and commits regardless of how the
+ * parent reconciles — no dependency on Suspense's ping/retry under a hostile host.
+ */
 function DocsHomeRoute(): ReactElement {
+  const [Loaded, setLoaded] = useState<ComponentType | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    import('./pages/DocsHome.tsx')
+      .then((m) => {
+        // Store the component itself — wrap in a thunk so useState's updater form doesn't
+        // call it as a state reducer.
+        if (active) setLoaded(() => m.DocsHome)
+      })
+      .catch((err) => {
+        console.error('[docs] editor chunk failed to load', err)
+        if (active) setFailed(true)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (failed) {
+    return <div className="octo-doc octo-error">{t('docs.state.error')}</div>
+  }
+  if (!Loaded) {
+    return <DocsLoadingFallback />
+  }
   return (
-    <Suspense fallback={<DocsLoadingFallback />}>
-      <LazyDocsHome />
-    </Suspense>
+    <DocsErrorBoundary>
+      <Loaded />
+    </DocsErrorBoundary>
   )
 }
+
+// Build the `/docs` route element ONCE and reuse the same instance for every
+// WKApp.route.get('/docs') call. The host (apps/web Pages/Main) is a MobX observer that
+// re-invokes the route handler on every re-render and renders whatever it returns; a stable
+// element instance lets React bail out of those unrelated re-renders and preserves the
+// DocsHomeRoute fiber (so its useState load-state survives host re-renders and the chunk is
+// fetched once). The load itself no longer depends on this bailout for correctness — the
+// useState update commits regardless — but keeping the element stable avoids needless churn.
+const docsHomeRouteElement = <DocsHomeRoute />
 
 // Parse the `:token` segment from `/docs/invite/:token` (self-built RouteManager passes no
 // params in the contract example, so the route component reads it from the path).
@@ -89,7 +171,7 @@ export class DocsModule implements IModule {
 
     const wk = getWKApp()
     // Self-built RouteManager (NOT react-router).
-    wk.route.register('/docs', () => <DocsHomeRoute />)
+    wk.route.register('/docs', () => docsHomeRouteElement)
     wk.route.register('/docs/invite/:token', () => <InviteAcceptRoute />)
 
     // Register the Docs entry in the octo-web NavRail (sidebar). Without this the

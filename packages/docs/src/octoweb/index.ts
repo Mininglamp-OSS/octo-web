@@ -7,7 +7,7 @@
 // whenever no override has been set — i.e. in production and dev.
 
 import { WKApp, i18n, t, useI18n, Menus } from '@octo/base'
-import type { WKAppShape } from './types.ts'
+import type { APIClient, ApiRequestConfig, ApiResponse, WKAppShape } from './types.ts'
 
 // Test-only override. When unset (production / dev), getWKApp() returns the real
 // `@octo/base` WKApp singleton below.
@@ -31,9 +31,49 @@ export function getWKApp(): WKAppShape {
   return WKApp as unknown as WKAppShape
 }
 
-/** Convenience: the shared apiClient (bare-relative `/docs/...` paths, see types.ts). */
-export function apiClient() {
-  return getWKApp().apiClient
+/**
+ * Re-wrap the REAL host APIClient so its responses look axios-style to docs callers.
+ *
+ * WHY: the host APIClient (packages/dmworkbase/src/Service/APIClient.ts) `wrapResult()`
+ * resolves every request to the response BODY directly (`Promise.resolve(value.data)`) —
+ * NOT an axios `{ data }` envelope. But every docs call site destructures
+ * `const { data } = await apiClient().get<T>(path)`, and the test mock (octoweb/mock.ts)
+ * returns `{ data, status }`. Against the un-wrapped host client `data` is `undefined`, so
+ * e.g. DocsHome's `res.items` throws "Cannot read properties of undefined (reading 'items')"
+ * — breaking EVERY docs API call in production while all tests stay green.
+ *
+ * Fixing it here, at the single seam, re-establishes one contract for all ~20 call sites
+ * instead of touching each one: the host method resolves to the body, we re-wrap it into
+ * `{ data: <body>, status }`. Config (incl. the host's `config.param` → axios params) is
+ * forwarded untouched, so the host signature keeps working.
+ */
+export function wrapHostClient(host: APIClient): APIClient {
+  // The host RESOLVES TO THE BODY at runtime; it's typed `ApiResponse<T>` only because the
+  // seam declares the post-adapter contract. Read each result as the raw body and re-wrap.
+  const toEnvelope = <T>(p: Promise<unknown>): Promise<ApiResponse<T>> =>
+    p.then((body) => ({ data: body as T, status: 200 }))
+  return {
+    get: <T>(url: string, config?: ApiRequestConfig) => toEnvelope<T>(host.get<T>(url, config)),
+    post: <T>(url: string, body?: unknown, config?: ApiRequestConfig) =>
+      toEnvelope<T>(host.post<T>(url, body, config)),
+    put: <T>(url: string, body?: unknown, config?: ApiRequestConfig) =>
+      toEnvelope<T>(host.put<T>(url, body, config)),
+    patch: <T>(url: string, body?: unknown, config?: ApiRequestConfig) =>
+      toEnvelope<T>(host.patch<T>(url, body, config)),
+    delete: <T>(url: string, config?: ApiRequestConfig) => toEnvelope<T>(host.delete<T>(url, config)),
+  }
+}
+
+/**
+ * Convenience: the shared apiClient (bare-relative `/docs/...` paths, see types.ts).
+ *
+ * Test path: when a mock is injected via setWKApp(), return its apiClient AS-IS — the mock
+ * already produces axios-style `{ data }`. Production/dev path: wrap the REAL host client so
+ * its body-returning methods match that same `{ data }` contract (see wrapHostClient).
+ */
+export function apiClient(): APIClient {
+  if (override) return override.apiClient
+  return wrapHostClient(getWKApp().apiClient)
 }
 
 /** Current authenticated uid (frontend-design §6.1 / §7.3 — token cache is keyed by uid). */

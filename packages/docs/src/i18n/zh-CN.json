@@ -3,7 +3,8 @@
     "title": "文档"
   },
   "list": {
-    "new": "新建文档"
+    "new": "新建文档",
+    "back": "全部文档"
   },
   "toolbar": {
     "heading1": "一级标题",
@@ -121,6 +122,7 @@
     "empty": "这里还没有内容。",
     "untitled": "无标题文档",
     "error": "出错了。",
+    "retry": "重试",
     "syncing": "正在同步…"
   },
   "error": {

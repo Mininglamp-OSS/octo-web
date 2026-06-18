@@ -1,7 +1,19 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, waitFor, cleanup } from '@testing-library/react'
 import { setWKApp } from './octoweb/index.ts'
 import { createMockWKApp } from './octoweb/mock.ts'
 import { DocsModule } from './module.tsx'
+
+// Replace the heavy editor chunk (Tiptap + Yjs + Hocuspocus) with a marker component so the
+// DocsHomeRoute loading test exercises the dynamic-import → useState commit path without
+// pulling the real editor into jsdom. Path matches the dynamic import in module.tsx.
+vi.mock('./pages/DocsHome.tsx', () => ({
+  DocsHome: () => <div data-testid="docs-home-loaded">docs-home</div>,
+}))
+
+afterEach(() => {
+  cleanup()
+})
 
 describe('DocsModule (octo-web same-origin integration)', () => {
   it('has id "docs"', () => {
@@ -46,5 +58,40 @@ describe('DocsModule (octo-web same-origin integration)', () => {
     expect(wk.mockMenus.menus.has('docs')).toBe(true)
     const menu = wk.mockMenus.menus.get('docs')!() as { routePath: string }
     expect(menu.routePath).toBe('/docs')
+  })
+
+  it('returns a STABLE /docs route element across handler invocations', () => {
+    // The host (apps/web Pages/Main) is a MobX observer that re-invokes
+    // WKApp.route.get('/docs') on every re-render and renders whatever it returns. A stable
+    // element instance lets React bail out of those unrelated re-renders and — crucially —
+    // preserves the DocsHomeRoute fiber so its useState load-state survives and the editor
+    // chunk is fetched once rather than on every host re-render.
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    new DocsModule().init()
+    const factory = wk.route.routes.get('/docs')!
+    expect(factory()).toBe(factory())
+  })
+
+  it('shows the loading fallback, then commits DocsHome once the editor chunk resolves', async () => {
+    // Regression (runtime test 2026-06-18, second pass): with React.lazy + Suspense the
+    // editor chunk downloaded but the boundary never committed under the host's MobX-driven
+    // re-render model (high-priority forceUpdate renders bail out at the cached route element
+    // without descending, starving React 18's low-priority Suspense RetryLane), so the UI
+    // stayed pinned on the loading fallback and DocsHome's listDocs / collab-token never ran.
+    // The route now loads the chunk via a manual dynamic import + useState; the resolve
+    // schedules an update ON the route fiber, which React commits regardless of how the host
+    // re-renders. This test proves the loaded editor actually replaces the fallback.
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    new DocsModule().init()
+    const element = wk.route.routes.get('/docs')!()
+    render(element)
+    // First paint: the lightweight loading fallback (t() stub returns the key verbatim).
+    expect(screen.getByText('docs.state.loading')).toBeTruthy()
+    // After the dynamic import resolves, the editor mounts in its place.
+    await waitFor(() => {
+      expect(screen.getByTestId('docs-home-loaded')).toBeTruthy()
+    })
   })
 })

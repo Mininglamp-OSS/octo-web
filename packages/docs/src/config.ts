@@ -8,10 +8,22 @@
 /** collab-token issuing endpoint (bare-relative -> POST /api/v1/docs/collab-token). */
 export const COLLAB_TOKEN_PATH = '/docs/collab-token'
 
+/**
+ * Read a build-time env var, treating empty/whitespace-only values as "unset".
+ * Vite bakes `ENV FOO=${ARG}` as an EMPTY STRING when the build-arg is not passed
+ * (not `undefined`), so `?? default` would wrongly keep the empty string. Normalize
+ * blank values to the fallback so a missing build-arg falls back to the default.
+ */
+function envOr(value: unknown, fallback: string): string {
+  const s = typeof value === 'string' ? value.trim() : ''
+  return s.length > 0 ? s : fallback
+}
+
 /** Hocuspocus WebSocket endpoint (provided by backend, env-specific). */
-export const WS_ENDPOINT =
-  (import.meta.env?.VITE_COLLAB_WS_ENDPOINT as string | undefined) ??
-  'wss://collab.octo.example.com'
+export const WS_ENDPOINT = envOr(
+  import.meta.env?.VITE_COLLAB_WS_ENDPOINT,
+  'wss://collab.octo.example.com',
+)
 
 /** Refresh collab token when it is within this window of expiry. */
 export const TOKEN_REFRESH_LEEWAY_MS = 30_000
@@ -26,12 +38,11 @@ export const TOKEN_REFRESH_LEEWAY_MS = 30_000
 // document that does not exist in any DB, so the editor sat forever on
 // “Loading document…” (collab-token → not_found, comments → 404) and never mounted.
 // Configure these to a real, accessible doc for the target environment.
-export const DEFAULT_DOC_SPACE =
-  (import.meta.env?.VITE_DOCS_DEFAULT_SPACE as string | undefined) ?? 'demo'
-export const DEFAULT_DOC_FOLDER =
-  (import.meta.env?.VITE_DOCS_DEFAULT_FOLDER as string | undefined) ?? 'f_default'
+export const DEFAULT_DOC_SPACE = envOr(import.meta.env?.VITE_DOCS_DEFAULT_SPACE, 'demo')
+export const DEFAULT_DOC_FOLDER = envOr(import.meta.env?.VITE_DOCS_DEFAULT_FOLDER, 'f_default')
+// DEFAULT_DOC_ID legitimately defaults to empty (no configured default doc).
 export const DEFAULT_DOC_ID =
-  (import.meta.env?.VITE_DOCS_DEFAULT_DOC as string | undefined) ?? ''
+  (import.meta.env?.VITE_DOCS_DEFAULT_DOC as string | undefined)?.trim() || ''
 
 /**
  * Octo object-storage host whitelist for image/attachment URLs (frontend-design §3.7).
