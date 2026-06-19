@@ -86,6 +86,17 @@ describe('friendApply reddot cleanup', () => {
         expect(manager.getCount()).toBe(5);
     });
 
+    it('should not clear when logged-in user has no uid', async () => {
+        const manager = createCleanupDeps(5);
+        manager.setUid('');
+
+        const started = await clearDeprecatedFriendApplyReddotOnce(manager.deps);
+
+        expect(started).toBe(false);
+        expect(manager.getApiCalled()).toBe(0);
+        expect(manager.getCount()).toBe(5);
+    });
+
     it('should clear count on successful API call', async () => {
         const manager = createCleanupDeps(5);
 
