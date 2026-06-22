@@ -8,6 +8,15 @@ export interface CcInstallValidationResult {
 }
 
 /**
+ * Mirror cc-channel-octo's normalizeGatewayUrl: strip a trailing `/v1` (with or
+ * without a trailing slash) so the SDK's appended `/v1/messages` doesn't double
+ * into `/v1/v1/messages` (a 404 that gets misreported as a model error).
+ */
+export function normalizeGatewayUrl(raw: string): string {
+    return raw.trim().replace(/\/v1\/?$/, "");
+}
+
+/**
  * Detect whether a hostname is a private/loopback IPv4 literal.
  * Checks common RFC1918 and special-use ranges:
  *   - 127.0.0.0/8 (loopback)

@@ -1,9 +1,14 @@
 import React, { useState } from "react"
 import { t } from "../../i18n"
-import { validateCcInstall as rawValidate, type CcInstallValidationResult, type UrlErrorCode, type KeyErrorCode } from "./ccInstallValidate"
+import { validateCcInstall as rawValidate, normalizeGatewayUrl, type CcInstallValidationResult, type UrlErrorCode, type KeyErrorCode } from "./ccInstallValidate"
+
+// Deployment-provided default gateway (e.g. set at build time for the hosted
+// product). OSS default is empty → a generic placeholder. A prefilled value is
+// just a suggestion: the user can overwrite it with their own gateway.
+const DEFAULT_GATEWAY_URL: string = (import.meta.env.VITE_OCTO_DEFAULT_GATEWAY_URL as string | undefined) ?? ""
 
 export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: string) => void; onCancel: () => void }) {
-    const [gatewayUrl, setGatewayUrl] = useState("")
+    const [gatewayUrl, setGatewayUrl] = useState(DEFAULT_GATEWAY_URL)
     const [apiKey, setApiKey] = useState("")
     const [touched, setTouched] = useState(false)
     const v = rawValidate(gatewayUrl, apiKey)
@@ -15,7 +20,9 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
     const submit = () => {
         setTouched(true)
         if (!v.ok) return
-        props.onSubmit(gatewayUrl.trim(), apiKey.trim())
+        // Normalize the gateway (strip a trailing /v1) so the SDK's appended
+        // /v1/messages doesn't double — matches cc-channel-octo configure.
+        props.onSubmit(normalizeGatewayUrl(gatewayUrl), apiKey.trim())
     }
 
     return (
@@ -30,6 +37,7 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
                     value={gatewayUrl}
                     onChange={e => setGatewayUrl(e.target.value)}
                 />
+                <div className="wk-cc-install-hint">{t("base.runtimes.ccInstall.gatewayHint")}</div>
                 {touched && urlErrorText && <div className="wk-cc-install-err">{urlErrorText}</div>}
                 <label className="wk-cc-install-label">{t("base.runtimes.ccInstall.apiKey")}</label>
                 <input
