@@ -4,7 +4,8 @@
   },
   "list": {
     "new": "New document",
-    "back": "All documents"
+    "back": "All documents",
+    "updatedAt": "Updated"
   },
   "toolbar": {
     "heading1": "Heading 1",
