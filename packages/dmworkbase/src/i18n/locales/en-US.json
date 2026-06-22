@@ -1205,6 +1205,7 @@
   "runtimes.empty": "No runtimes registered",
   "runtimes.device.allOnline": "All Online",
   "runtimes.upgrade.upgrade": "Upgrade",
+  "runtimes.upgrade.install": "Install",
   "runtimes.upgrade.upgraded": "Upgraded",
   "runtimes.upgrade.completed": "Completed",
   "runtimes.upgrade.failed": "Failed",

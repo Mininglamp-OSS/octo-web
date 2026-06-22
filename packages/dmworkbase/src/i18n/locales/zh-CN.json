@@ -1205,6 +1205,7 @@
   "runtimes.empty": "还没有注册的运行时",
   "runtimes.device.allOnline": "全部在线",
   "runtimes.upgrade.upgrade": "升级",
+  "runtimes.upgrade.install": "安装",
   "runtimes.upgrade.upgraded": "已升级",
   "runtimes.upgrade.completed": "已完成",
   "runtimes.upgrade.failed": "失败",
