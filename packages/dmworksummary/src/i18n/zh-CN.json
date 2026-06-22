@@ -129,7 +129,9 @@
     "networkError": "网络连接异常，请检查网络后重试",
     "emptyTitle": "暂无总结记录",
     "emptyDesc": "快速生成群聊或个人工作总结，让 AI 帮你梳理重要信息",
-    "createFirst": "创建第一份总结"
+    "createFirst": "创建第一份总结",
+    "leaveSuccess": "已退出",
+    "leaveFailed": "退出失败"
   },
   "create": {
     "title": "智能总结",
@@ -301,11 +303,20 @@
     "lastEditedAt": "最后编辑 {{time}}",
     "mySummary": "👤 我的总结",
     "mySummaryPlain": "我的总结",
-    "submitToAll": "提交给所有人",
+    "submitToAll": "提交我的总结",
+    "mySubmitHint": "你的个人总结已生成，提交后才会汇入团队总结。",
+    "mySubmitRowName": "我（待提交）",
     "teamSummary": "👥 团队汇总",
     "submittedPeople": "{{count}} 人提交",
     "memberStatus": "成员状态",
     "participantReports": "参与者报告",
+    "editMyReport": "编辑",
+    "editTeamSummary": "编辑",
+    "addMember": "添加成员",
+    "addMemberSuccess": "成员已添加",
+    "addMemberFailed": "添加成员失败",
+    "personalEditSuccess": "个人报告已保存",
+    "personalEditFailed": "个人报告保存失败",
     "collapse": "收起 ▲",
     "expandAll": "展开全部 ▼",
     "waitingSubmit": "{{name}} · 等待提交...",
@@ -333,13 +344,23 @@
     "scheduleConfirmHint": "该定时总结需要你确认参与，确认一次后续每轮免确认。",
     "scheduleConfirmButton": "确认参与",
     "membersLoadingRetry": "成员信息加载中，请稍候重试",
-    "scheduleConfirmed": "已确认参与该定时总结"
+    "scheduleConfirmed": "已确认参与该定时总结",
+    "removeMember": "移除",
+    "removeMemberConfirm": "确定移除该成员吗？",
+    "removeMemberSuccess": "成员已移除",
+    "removeMemberFailed": "移除失败",
+    "leaveTask": "退出多人协作",
+    "leaveConfirm": "确定退出该多人协作吗？",
+    "leaveSuccess": "已退出",
+    "leaveFailed": "退出失败"
   },
   "summaryCard": {
     "createdBy": "{{name}} 发起",
     "deleteTitle": "确认删除",
     "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。",
-    "deleteScheduledContent": "「{{title}}」是定时更新的总结。删除后将停止定时更新，并移除该总结的全部历史记录，确定删除吗？"
+    "deleteScheduledContent": "「{{title}}」是定时更新的总结。删除后将停止定时更新，并移除该总结的全部历史记录，确定删除吗？",
+    "leaveTitle": "退出多人协作",
+    "leaveContent": "退出后将不再参与该多人协作，确定退出「{{title}}」吗？"
   },
   "editor": {
     "saveSuccess": "保存成功",

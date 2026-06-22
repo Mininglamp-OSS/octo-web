@@ -11,6 +11,13 @@ interface SummaryEditorProps {
     initialContent: string;
     onSave: () => void;
     onCancel: () => void;
+    /**
+     * 编辑目标：
+     *  - "team"（默认）：编辑团队/个人总结结果，走 PUT /summaries/:id/edit（editSummary）。
+     *  - "personal"（need3/6）：编辑「自己的个人报告」，走 PUT /summaries/:id/personal-edit
+     *    （personalEditSummary），成功后后端自动触发团队重算。
+     */
+    mode?: "team" | "personal";
 }
 
 interface SummaryEditorState {
@@ -64,12 +71,18 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
     };
 
     private handleSave = async () => {
-        const { taskId, baseResultId, onSave } = this.props;
+        const { taskId, baseResultId, onSave, mode } = this.props;
         const { content } = this.state;
 
         this.setState({ saving: true });
         try {
-            await api.editSummary(taskId, content, baseResultId);
+            if (mode === "personal") {
+                // need3/6：编辑自己的个人报告（只能改自己），后端会自动触发团队重算。
+                // F2：personal-edit 只传 content，不带 base_result_id。
+                await api.personalEditSummary(taskId, content);
+            } else {
+                await api.editSummary(taskId, content, baseResultId);
+            }
             Toast.success(t("summary.editor.saveSuccess"));
             onSave();
         } catch (err: unknown) {

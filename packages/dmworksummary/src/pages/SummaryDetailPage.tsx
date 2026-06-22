@@ -8,8 +8,9 @@ import {
     Tag,
     Modal,
     TextArea,
+    Popconfirm,
 } from "@douyinfe/semi-ui";
-import { IconEdit, IconMore, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser } from "@douyinfe/semi-icons";
+import { IconEdit, IconMore, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit } from "@douyinfe/semi-icons";
 import { Channel, ChannelTypeGroup, ChannelTypePerson, MessageText, WKSDK } from "wukongimjssdk";
 import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
@@ -40,6 +41,8 @@ import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import MatterPickerModal from "../components/MatterPickerModal";
 import * as matterBridge from "../api/matterBridge";
 import SummaryEditor from "../components/SummaryEditor";
+import MemberSelectorModal from "../components/MemberSelectorModal";
+import type { MemberCandidate } from "../types/summary";
 
 interface SummaryDetailPageProps {
     taskId?: number;
@@ -61,6 +64,14 @@ interface SummaryDetailPageState {
     lastKnownStatus?: number;
     expandedReports: Record<string, boolean>;
     isEditing: boolean;
+    /** need3：行内编辑「自己的个人报告」中。 */
+    editingPersonalReport: boolean;
+    /** need4：行内编辑「团队总结」中（仅 creator）。 */
+    editingTeamSummary: boolean;
+    /** need7：成员选择器弹窗显隐。 */
+    showAddMember: boolean;
+    /** need7：添加成员提交中。 */
+    addingMember: boolean;
     showMatterPicker: boolean;
     forwardingToMatter: boolean;
     showRegenerateModal: boolean;
@@ -91,6 +102,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         scheduleConfig: null,
         expandedReports: {},
         isEditing: false,
+        editingPersonalReport: false,
+        editingTeamSummary: false,
+        showAddMember: false,
+        addingMember: false,
         showMatterPicker: false,
         forwardingToMatter: false,
         showRegenerateModal: false,
@@ -162,7 +177,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // loadSchedule（包括本函数下面发起的）都会被后续轮作废，不会回填到新 task。
         const seq = this.nextScheduleSeq();
         const requestTaskId = this.taskId;
-        this.setState({ loading: true, error: null });
+        // F1：切 task / 重拉 detail 时复位全部编辑态，避免旧 task 编辑态（尤其
+        // editingTeamSummary）被带入新 task——否则切到非 creator 新 task 会绕过权限进编辑器。
+        this.setState({
+            loading: true,
+            error: null,
+            editingTeamSummary: false,
+            editingPersonalReport: false,
+            isEditing: false,
+        });
         try {
             const detail = await api.getSummaryDetail(this.taskId);
             // detail 本身也可能是旧请求：期间切了 task / 又发了一轮 loadDetail 就丢弃。
@@ -276,6 +299,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             Toast.success(t("summary.detail.submitSuccess"));
             this.loadPersonalResult();
             this.loadMembers();
+            // F1：最后一人提交后团队总结/状态由 meta 聚合产生，team 区读 state.detail，
+            // 必须 loadDetail 才能刷出新团队总结与状态，否则显示旧数据。
+            this.loadDetail();
         } catch (err: any) {
             Toast.error(err.message || t("summary.detail.submitFailed"));
         }
@@ -289,6 +315,30 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.loadDetail();
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.operationFailed"));
+        }
+    };
+
+    // 问题3：creator 移除某成员。成功后重拉详情（后端已重算团队总结）。
+    handleRemoveMember = async (uid: string) => {
+        if (this.taskId == null) return;
+        try {
+            await api.removeMember(this.taskId, uid);
+            Toast.success(t("summary.detail.removeMemberSuccess"));
+            this.loadDetail();
+        } catch (err: any) {
+            Toast.error(err.message || t("summary.detail.removeMemberFailed"));
+        }
+    };
+
+    // 问题3：非 creator 参与者退出多人协作。成功后返回列表（popToRoot 回到根）。
+    handleLeaveTask = async () => {
+        if (this.taskId == null) return;
+        try {
+            await api.leaveSummary(this.taskId);
+            Toast.success(t("summary.detail.leaveSuccess"));
+            WKApp.routeRight.popToRoot();
+        } catch (err: any) {
+            Toast.error(err.message || t("summary.detail.leaveFailed"));
         }
     };
 
@@ -503,6 +553,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     /**
+     * 需求1/5/7：是否「多人协作」= 多人（participants>1）且 BY_PERSON。
+     * 多人协作页：不单独显示「我的总结」区（need1）；定时按钮入团队框（need5）；
+     * 成员状态区可加成员（need7）。单人 BY_PERSON / BY_GROUP 不算多人协作。
+     */
+    private isMultiCollab(): boolean {
+        const { detail } = this.state;
+        return detail?.summary_mode === SummaryMode.BY_PERSON && this.isMultiPerson();
+    }
+
+    /**
      * 竞态修复（第3轮）：保存定时前判断「多人判定所依赖的数据是否已可靠就绪」。
      *
      * - 若 isMultiPerson 能从 detail.participants 得出结论（detail 已加载且带
@@ -523,6 +583,30 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return !membersLoading;
     }
 
+    /**
+     * 构造「手动转定时/改定时」要显式带给后端的协作名单 [{user_id,user_name}]。
+     * 数据源与 isMultiPerson 的可靠判据一致：优先 detail.participants（随 detail
+     * 同步返回，不受二次异步 members 竞态影响），否则退回已加载的 members。
+     * 单人（仅 creator）时返回单元素或空，由后端按真实 task participants 兜底，
+     * 不会被误判为多人。
+     */
+    private buildScheduleParticipants(): { user_id: string; user_name?: string }[] {
+        const { detail, members } = this.state;
+        const seen = new Set<string>();
+        const out: { user_id: string; user_name?: string }[] = [];
+        const push = (userId?: string, userName?: string) => {
+            if (!userId || seen.has(userId)) return;
+            seen.add(userId);
+            out.push(userName ? { user_id: userId, user_name: userName } : { user_id: userId });
+        };
+        if (detail && Array.isArray(detail.participants) && detail.participants.length > 0) {
+            detail.participants.forEach((p) => push(p.user_id, p.user_name));
+            return out;
+        }
+        members.forEach((m) => push(m.user_id, m.user_name));
+        return out;
+    }
+
     handleScheduleSave = async (config: ScheduleConfig) => {
         const { detail, scheduleItem } = this.state;
         if (!detail) return;
@@ -540,6 +624,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 触发后端一次性确认（create 全员置 confirmed=false；update 重置确认）。
         // 单人不传 confirm_policy，走后端兜底。复用 scheduleToParams 的条件透传。
         const confirmPolicy = this.isMultiPerson() ? 1 : undefined;
+        // 显式契约：手动转定时/改定时时把当前协作名单一并带给后端，
+        // 不依赖后端从 task participants 兜底也能保住全部协作成员（修复
+        // 多人手动转定时丢成员、定时轮退化成单人总结的根因之配套）。
+        // 数据源优先 detail.participants（随 detail 同步返回），否则退回
+        // 已加载的 members；二者就绪由 isMembersReadyForSave 上方 guard 把关。
+        const scheduleParticipants = this.buildScheduleParticipants();
+        const participantsParam =
+            scheduleParticipants.length > 0 ? { participants: scheduleParticipants } : {};
         const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time, confirm_policy } =
             scheduleToParams({ ...config, confirm_policy: confirmPolicy });
 
@@ -565,6 +657,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     run_time,
                     scope: 'task',
                     task_id: detail.task_id,
+                    ...participantsParam,
                     // V5：多人「改/转定时」带 confirm_policy=1 触发后端一次性确认重置。
                     ...(confirm_policy !== undefined ? { confirm_policy } : {}),
                 });
@@ -598,6 +691,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     sources: detail.sources,
                     scope: 'task',
                     task_id: detail.task_id,
+                    ...participantsParam,
                     // V5：多人「手动转定时」关键路径带 confirm_policy=1，
                     // 后端创建 participant_config 时全员（含 creator）置 confirmed=false。
                     ...(confirm_policy !== undefined ? { confirm_policy } : {}),
@@ -776,18 +870,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             <div className="summary-detail-result">
                 <div className="summary-detail-result-header">
                     <h3>{t("summary.detail.contentTitle")}</h3>
-                    <div className="summary-detail-result-badges">
-                        <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
-                            {t("summary.common.version", { values: { version: detail.result.version } })}
-                        </Tag>
-                        <Tag color="green" size="small">
-                            {t("summary.common.messagesCount", { values: { count: detail.result.total_msg_count } })}
-                        </Tag>
-                        {detail.result_is_edited && detail.result_edited_at && (
-                            <Tag color="orange" size="small">
-                                {t("summary.detail.edited")}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {/* need5：个人/单人（BY_GROUP 或单人 BY_PERSON）定时按钮放在编辑按钮左边。
+                            BY_GROUP 无独立编辑按钮，定时按钮置于结果标题行。 */}
+                        {!this.isMultiCollab() && this.renderScheduleButton()}
+                        <div className="summary-detail-result-badges">
+                            <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
+                                {t("summary.common.version", { values: { version: detail.result.version } })}
                             </Tag>
-                        )}
+                            <Tag color="green" size="small">
+                                {t("summary.common.messagesCount", { values: { count: detail.result.total_msg_count } })}
+                            </Tag>
+                            {detail.result_is_edited && detail.result_edited_at && (
+                                <Tag color="orange" size="small">
+                                    {t("summary.detail.edited")}
+                                </Tag>
+                            )}
+                        </div>
                     </div>
                 </div>
                 <div className="summary-detail-result-content">
@@ -826,6 +925,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 <div className="summary-detail-section-header">
                     <span>{t("summary.detail.mySummary")}</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {/* need5：单人 BY_PERSON 定时按钮放「编辑」按钮左边。多人协作不在此区渲染
+                            （need1 不显示我的总结区；need5 多人定时按钮在团队框）。 */}
+                        {!this.isMultiCollab() && this.renderScheduleButton()}
                         {detail && detail.status === TaskStatus.COMPLETED && detail.permissions?.can_edit && !this.state.isEditing && (
                             <Button
                                 size="small"
@@ -836,7 +938,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.common.edit")}
                             </Button>
                         )}
-                        {this.renderScheduleButton()}
                         {personalResult.worker_status === 2 && !personalResult.submitted_at && this.state.members.length > 1 && (
                             <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
                                 {t("summary.detail.submitToAll")}
@@ -853,24 +954,105 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         );
     }
 
+    /**
+     * 回归修复：多人协作页(isMultiCollab)给「我自己」补回「提交给全部」入口。
+     *
+     * need1 把多人页的 renderPersonalSummary()（我的总结正文区）整体隐藏了，
+     * 连带把原在其中的「提交给全部」按钮也一起藏掉 → 个人总结完成后无提交入口
+     * → submitted_at 永远 NULL → meta 完成判定永不满足 → 任务卡 Processing。
+     *
+     * 这里只渲染「一句提示 + 提交按钮」的轻量 bar，不展开我的总结全文，
+     * 因此不违反 need1。条件：多人协作 + 我的个人总结已完成(worker_status===2)
+     * + 尚未提交(!submitted_at) + 多人(members>1)。
+     * 提交成功后 handleSubmitPersonal 会刷新 personalResult/members，
+     * submitted_at 有值后本 bar 自动消失，我那条也会作为 submitted 出现在参与者报告区。
+     *
+     * 方案甲（老板新要求）：顶部提醒美化成「带框卡片」（圆角/浅背景/左色条/icon），
+     * 不再光秃秃一行；同时把提交入口也下放到【参与者报告区】我那条
+     * （renderMyPendingSubmitRow），两处都能提交，主入口随报告上下文更合理。
+     * 二者共用同一门控（shouldShowMySubmit）+ handleSubmitPersonal。
+     */
+    // 共享门控：是否应展示「我的提交」入口（顶部卡片 + 参与者报告区行 复用）。
+    shouldShowMySubmit(): boolean {
+        const { personalResult, members, isEditing, editingPersonalReport, editingTeamSummary } = this.state;
+        if (!this.isMultiCollab()) return false;
+        // F2：任一编辑态下隐藏提交入口，避免与编辑器并存、提交触发团队聚合与编辑冲突。
+        if (isEditing || editingPersonalReport || editingTeamSummary) return false;
+        if (personalResult?.worker_status !== 2) return false;
+        if (personalResult.submitted_at) return false;
+        if (members.length <= 1) return false;
+        return true;
+    }
+
+    renderMySubmitBar() {
+        const { t } = this.context;
+        if (!this.shouldShowMySubmit()) return null;
+        // 美化：带框卡片（圆角 + 浅背景 + 左色条 + IconInfoCircle 提示 icon），
+        // 样式见 .summary-detail-my-submit-bar（index.css）。
+        return (
+            <div className="summary-detail-my-submit-bar">
+                <IconInfoCircle className="summary-detail-my-submit-icon" />
+                <span className="summary-detail-my-submit-hint">{t("summary.detail.mySubmitHint")}</span>
+                <Button size="small" theme="solid" onClick={this.handleSubmitPersonal}>
+                    {t("summary.detail.submitToAll")}
+                </Button>
+            </div>
+        );
+    }
+
     renderTeamSummary() {
-        const { detail, members } = this.state;
+        const { detail, members, editingTeamSummary } = this.state;
         const { t } = this.context;
         if (!detail || !detail.result) return null;
         if (members.length <= 1) return null;
-        const submittedCount = members.filter((m) => m.status === "submitted").length;
+        const submittedCount = members.filter((m) => m.submitted_at && m.content).length;
         if (submittedCount === 0) return null;
+        // need4：团队总结编辑按钮仅 creator（can_edit_team）。
+        const canEditTeam = !!detail.permissions?.can_edit_team;
+        // need4：行内编辑团队总结（走既有 PUT /summaries/:id/edit，后端已放开多人 creator）。
+        // F1（纵深防御）：加 canEditTeam 双校验——即使 editingTeamSummary 残留，非 creator 也不进编辑器。
+        if (editingTeamSummary && canEditTeam && detail.result_id) {
+            return (
+                <div className="summary-detail-team">
+                    <div className="summary-detail-section-header">
+                        <span>{t("summary.detail.teamSummary")}</span>
+                    </div>
+                    <SummaryEditor
+                        taskId={detail.task_id}
+                        baseResultId={detail.result_id}
+                        initialContent={detail.result.content || ""}
+                        onSave={this.handleEditTeamSave}
+                        onCancel={this.handleEditTeamCancel}
+                    />
+                </div>
+            );
+        }
         return (
             <div className="summary-detail-team">
                 <div className="summary-detail-section-header">
                     <span>{t("summary.detail.teamSummary")}</span>
-                    <div className="summary-detail-section-badges">
-                        <Tag color="cyan" size="small" prefixIcon={<IconUser />}>
-                            {t("summary.detail.submittedPeople", { values: { count: submittedCount } })}
-                        </Tag>
-                        <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
-                            {t("summary.common.version", { values: { version: detail.result.version } })}
-                        </Tag>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div className="summary-detail-section-badges">
+                            <Tag color="cyan" size="small" prefixIcon={<IconUser />}>
+                                {t("summary.detail.submittedPeople", { values: { count: submittedCount } })}
+                            </Tag>
+                            <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
+                                {t("summary.common.version", { values: { version: detail.result.version } })}
+                            </Tag>
+                        </div>
+                        {/* need5：多人协作→定时按钮放团队框右侧、编辑按钮左边，顺序 [定时][编辑]，均仅 creator。 */}
+                        {this.isMultiCollab() && this.renderScheduleButton()}
+                        {/* need4：团队编辑按钮仅 creator（can_edit_team），非 creator 不渲染。 */}
+                        {canEditTeam && detail.status === TaskStatus.COMPLETED && (
+                            <Button
+                                size="small"
+                                theme="borderless"
+                                icon={<IconEdit />}
+                                onClick={this.handleStartEditTeam}
+                            >
+                                {t("summary.detail.editTeamSummary")}
+                            </Button>
+                        )}
                     </div>
                 </div>
                 <div className="summary-detail-content-box">
@@ -879,19 +1061,65 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         citations={detail.result.citations || []}
                         teamCitations={detail.result.team_citations || []}
                         members={members}
+                        hidePlainCitations
                     />
                 </div>
             </div>
         );
     }
 
+    // need7：成员状态区顶部标题行；标题右侧「添加成员」按钮仅 creator（can_add_member）。
+    renderMemberStatusHeader() {
+        const { detail } = this.state;
+        const { t } = this.context;
+        const canAddMember = !!detail?.permissions?.can_add_member;
+        // 问题3：非 creator 且是参与者 -> 显示“退出多人协作”。
+        const myUid = WKApp.loginInfo.uid;
+        const isCreator = detail?.creator_id != null && detail.creator_id === myUid;
+        const isParticipant = !!detail?.participants?.some((p) => p.user_id === myUid);
+        const canLeave = !isCreator && isParticipant && detail?.creator_id != null;
+        return (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <h3 style={{ margin: 0 }}>{t("summary.detail.memberStatus")}</h3>
+                <span style={{ display: "inline-flex", gap: 8 }}>
+                    {canAddMember && (
+                        <Button
+                            size="small"
+                            theme="borderless"
+                            icon={<IconPlus />}
+                            onClick={this.handleOpenAddMember}
+                        >
+                            {t("summary.detail.addMember")}
+                        </Button>
+                    )}
+                    {canLeave && (
+                        <Popconfirm
+                            title={t("summary.detail.leaveTask")}
+                            content={t("summary.detail.leaveConfirm")}
+                            onConfirm={this.handleLeaveTask}
+                        >
+                            <Button
+                                size="small"
+                                theme="borderless"
+                                type="danger"
+                                icon={<IconExit />}
+                            >
+                                {t("summary.detail.leaveTask")}
+                            </Button>
+                        </Popconfirm>
+                    )}
+                </span>
+            </div>
+        );
+    }
+
     renderMemberStatus() {
-        const { members, membersLoading } = this.state;
+        const { members, membersLoading, detail } = this.state;
         const { t } = this.context;
         if (membersLoading) {
             return (
                 <div className="summary-detail-members">
-                    <h3>{t("summary.detail.memberStatus")}</h3>
+                    {this.renderMemberStatusHeader()}
                     <Spin size="small" />
                 </div>
             );
@@ -910,11 +1138,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         return (
             <div className="summary-detail-members">
-                <h3>{t("summary.detail.memberStatus")}</h3>
+                {this.renderMemberStatusHeader()}
                 <div className="summary-detail-members-list">
                     {members.map((m) => {
                         const st = statusConfig[m.status] || statusConfig["pending"];
                         const isMe = m.user_id === WKApp.loginInfo.uid;
+                        // 问题3：creator 视角（can_remove_member）可移除非自己、非 creator 的成员。
+                        const canRemove =
+                            !!detail?.permissions?.can_remove_member &&
+                            !isMe &&
+                            m.user_id !== detail?.creator_id;
                         return (
                             <div key={m.user_id} className="summary-detail-member-item">
                                 <span className="summary-detail-member-name">{m.user_name}</span>
@@ -932,6 +1165,21 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                         {formatDate(m.submitted_at)}
                                     </span>
                                 )}
+                                {canRemove && (
+                                    <Popconfirm
+                                        title={t("summary.detail.removeMember")}
+                                        content={t("summary.detail.removeMemberConfirm")}
+                                        onConfirm={() => this.handleRemoveMember(m.user_id)}
+                                    >
+                                        <Button
+                                            size="small"
+                                            theme="borderless"
+                                            type="danger"
+                                            icon={<IconMinusCircle />}
+                                            style={{ marginLeft: "auto" }}
+                                        />
+                                    </Popconfirm>
+                                )}
                             </div>
                         );
                     })}
@@ -947,20 +1195,56 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     renderParticipantReports() {
-        const { members, membersLoading, expandedReports } = this.state;
+        const { members, membersLoading, expandedReports, editingPersonalReport, detail } = this.state;
         const { t } = this.context;
         // 如果只有 1 个人（creator 自己），不显示参与者报告区块
         if (membersLoading || members.length <= 1) return null;
         const submitted = members.filter((m) => m.submitted_at && m.content);
         const pending = members.filter((m) => !m.submitted_at || !m.content);
         if (submitted.length === 0 && pending.length === 0) return null;
+        const myUid = WKApp.loginInfo.uid;
+        // need2（排序）：把「我」那条置顶，其余保持原相对顺序（stable）。
+        const submittedSorted = [
+            ...submitted.filter((m) => m.user_id === myUid),
+            ...submitted.filter((m) => m.user_id !== myUid),
+        ];
+        // 方案甲：“我自己个人总结已完成但未提交”既不在 submitted（submitted_at 为空）
+        // 也不该以“等待提交”的被动 pending 行呈现。这里显式渲染“我（未提交）+ 提交按钮”的主入口行（renderMyPendingSubmitRow），
+        // 并从 generic pending 里排掉我那条，避免重复。不展开我的总结正文 → 不违反 need1。
+        const showMyPending = this.shouldShowMySubmit();
+        const pendingOthers = showMyPending ? pending.filter((m) => m.user_id !== myUid) : pending;
+        // need3：自己那条的「编辑」按钮 gate=can_edit_personal。
+        const canEditPersonal = !!detail?.permissions?.can_edit_personal;
         return (
             <div className="summary-detail-participant-reports">
                 <h3>{t("summary.detail.participantReports")}</h3>
-                {submitted.map((m) => {
+                {submittedSorted.map((m) => {
                     const expanded = !!expandedReports[m.user_id];
                     const content = m.content!;
-                    const needsTruncate = content.length > 100;
+                    const isMe = m.user_id === myUid;
+                    // need3：自己那条进入行内编辑（initialContent=自己的 content），保存调 personal-edit。
+                    // F1（纵深防御）：加 canEditPersonal 双校验，权限不足即使状态残留也不进 editor。
+                    if (isMe && editingPersonalReport && canEditPersonal) {
+                        return (
+                            <div key={m.user_id} className="summary-detail-participant-report-item">
+                                <div className="summary-detail-participant-report-header">
+                                    <span>{m.user_name}</span>
+                                </div>
+                                <SummaryEditor
+                                    mode="personal"
+                                    taskId={detail!.task_id}
+                                    baseResultId={detail?.result_id ?? 0}
+                                    initialContent={content}
+                                    onSave={this.handleEditPersonalReportSave}
+                                    onCancel={this.handleEditPersonalReportCancel}
+                                />
+                            </div>
+                        );
+                    }
+                    // need3：他人那条隐私收口（citations=[] 、清 [n]）不变；自己那条不被清洗，可正常显示引用。
+                    const displayContent = isMe ? content : content.replace(/\[\d+\]/g, '');
+                    const displayCitations = isMe ? (m.citations || []) : [];
+                    const needsTruncate = displayContent.length > 100;
                     return (
                         <div
                             key={m.user_id}
@@ -973,13 +1257,37 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 <span style={{ fontSize: 13, color: "var(--semi-color-text-2)", fontWeight: 400 }}>
                                     {formatDate(m.submitted_at!)}
                                 </span>
+                                {/* need3：仅自己那条加「编辑」按钮（gate=can_edit_personal）；他人无按钮。 */}
+                                {isMe && canEditPersonal && detail?.status === TaskStatus.COMPLETED && (
+                                    <Button
+                                        size="small"
+                                        theme="borderless"
+                                        icon={<IconEdit />}
+                                        style={{ marginLeft: "auto" }}
+                                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); this.handleStartEditPersonalReport(); }}
+                                    >
+                                        {t("summary.detail.editMyReport")}
+                                    </Button>
+                                )}
                             </div>
                             <div className="summary-detail-participant-report-content">
-                                {expanded ? (
-                                    <CitationText content={content} citations={m.citations || []} />
+                                {/* 问题2：「我」那条也参与 expanded/needsTruncate 收起逻辑。
+                                    isMe 始终用 CitationText 渲染（保留引用可点）；
+                                    collapsed 时传截断后的 content（截断后编号可能丢失，
+                                    可接受），展开时传完整 content。他人那条逻辑不变。 */}
+                                {isMe ? (
+                                    <CitationText
+                                        content={expanded || !needsTruncate ? displayContent : displayContent.slice(0, 100) + "..."}
+                                        citations={displayCitations}
+                                    />
+                                ) : expanded ? (
+                                    <CitationText
+                                        content={displayContent}
+                                        citations={displayCitations}
+                                    />
                                 ) : (
                                     <div>
-                                        {needsTruncate ? content.slice(0, 100) + "..." : content}
+                                        {needsTruncate ? displayContent.slice(0, 100) + "..." : displayContent}
                                     </div>
                                 )}
                             </div>
@@ -991,7 +1299,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </div>
                     );
                 })}
-                {pending.map((m) => (
+                {showMyPending && this.renderMyPendingSubmitRow()}
+                {pendingOthers.map((m) => (
                     <div key={m.user_id} className="summary-detail-participant-report-pending">
                         <IconClock style={{ fontSize: 14 }} />
                         <span>{t("summary.detail.waitingSubmit", { values: { name: m.user_name } })}</span>
@@ -1001,8 +1310,45 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         );
     }
 
+    /**
+     * 方案甲：参与者报告区里「我（未提交）」的主提交入口行。
+     * need1（修正）：提交前自己的总结也要在参与者报告里能看到正文，并可在此处提交。
+     * 正文/引用取 this.state.personalResult（members 接口对未提交的人不下发 content），
+     * 用 CitationText 渲染（引用可点）。提交按钮走 handleSubmitPersonal 不变。
+     */
+    renderMyPendingSubmitRow() {
+        const { t } = this.context;
+        const { personalResult } = this.state;
+        const myContent = personalResult?.content || "";
+        const myCitations = personalResult?.citations || [];
+        return (
+            <div
+                key="__my_pending_submit__"
+                className="summary-detail-participant-report-item summary-detail-my-pending-row"
+            >
+                <div className="summary-detail-participant-report-header">
+                    <span>{t("summary.detail.mySubmitRowName")}</span>
+                    <Button
+                        size="small"
+                        theme="solid"
+                        style={{ marginLeft: "auto" }}
+                        onClick={this.handleSubmitPersonal}
+                    >
+                        {t("summary.detail.submitToAll")}
+                    </Button>
+                </div>
+                {myContent && (
+                    <div className="summary-detail-participant-report-content">
+                        <CitationText content={myContent} citations={myCitations} />
+                    </div>
+                )}
+            </div>
+        );
+    }
+
     handleStartEdit = () => {
-        this.setState({ isEditing: true });
+        // F1：进入单人个人总结编辑时互斥关闭另两个编辑态。
+        this.setState({ isEditing: true, editingTeamSummary: false, editingPersonalReport: false });
     };
 
     handleEditSave = () => {
@@ -1014,10 +1360,64 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ isEditing: false });
     };
 
+    // need3：进入/退出「自己的个人报告」行内编辑。保存走 personal-edit（后端自动重算团队）。
+    handleStartEditPersonalReport = () => {
+        // F1：互斥——只留 editingPersonalReport，关闭团队/单人编辑态。
+        this.setState({ editingPersonalReport: true, editingTeamSummary: false, isEditing: false });
+    };
+    handleEditPersonalReportSave = () => {
+        this.setState({ editingPersonalReport: false });
+        // need6：保存后 loadDetail 刷新（后端已触发团队重算）；同时重拉个人/成员。
+        this.loadDetail();
+    };
+    handleEditPersonalReportCancel = () => {
+        this.setState({ editingPersonalReport: false });
+    };
+
+    // need4：进入/退出「团队总结」行内编辑（仅 creator）。保存走既有 PUT /summaries/:id/edit。
+    handleStartEditTeam = () => {
+        // F1：互斥——只留 editingTeamSummary，关闭个人/单人编辑态。
+        this.setState({ editingTeamSummary: true, editingPersonalReport: false, isEditing: false });
+    };
+    handleEditTeamSave = () => {
+        this.setState({ editingTeamSummary: false });
+        this.loadDetail();
+    };
+    handleEditTeamCancel = () => {
+        this.setState({ editingTeamSummary: false });
+    };
+
+    // need7：creator 添加新成员。选定后调 POST /members，成功 loadDetail 刷新（新成员 Pending）。
+    handleOpenAddMember = () => {
+        this.setState({ showAddMember: true });
+    };
+    handleAddMemberConfirm = async (selected: MemberCandidate[]) => {
+        if (this.taskId == null) return;
+        const userIds = selected.map((m) => m.user_id).filter(Boolean);
+        if (userIds.length === 0) {
+            this.setState({ showAddMember: false });
+            return;
+        }
+        this.setState({ addingMember: true });
+        try {
+            await api.addMembers(this.taskId, userIds);
+            Toast.success(t("summary.detail.addMemberSuccess"));
+            this.setState({ showAddMember: false, addingMember: false });
+            // 新成员以「待确认」出现在成员状态列表，重拉详情。
+            this.loadDetail();
+        } catch (err: any) {
+            this.setState({ addingMember: false });
+            Toast.error(err.message || t("summary.detail.addMemberFailed"));
+        }
+    };
+    handleAddMemberCancel = () => {
+        this.setState({ showAddMember: false });
+    };
+
     renderScheduleButton() {
-        const { detail, scheduleItem, scheduleLoading, isEditing } = this.state;
+        const { detail, scheduleItem, scheduleLoading, isEditing, editingTeamSummary, editingPersonalReport } = this.state;
         const { t } = this.context;
-        if (!detail?.permissions?.can_edit || isEditing) return null;
+        if (!detail?.permissions?.can_schedule || isEditing || editingTeamSummary || editingPersonalReport) return null;
 
         // 任务3：hasSchedule 仅在存在且 is_active 时为 true。
         // 停用后文案回到「设置定时更新」。
@@ -1140,9 +1540,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     // 任务2：详情页直观展示当前定时（人类可读）。
     renderScheduleSummary() {
-        const { detail, scheduleItem, isEditing } = this.state;
+        const { detail, scheduleItem } = this.state;
         const { t } = this.context;
-        if (!detail?.permissions?.can_edit || isEditing) return null;
+        // need2：定时**信息**只读展示对所有参与者可见（can_view_schedule），不再限 creator。
+        // 位置不变（header）。定时**设置**按钮仍仅 creator（renderScheduleButton, need5），两者拆开。
+        if (!detail?.permissions?.can_view_schedule) return null;
         if (!scheduleItem) return null;
 
         const inactive = scheduleItem.is_active === false;
@@ -1206,7 +1608,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {detail?.title || t("summary.detail.defaultTitle")}
                     </OverflowTooltip>
                     <div className="summary-detail-header-actions">
-                        {(detail?.summary_mode !== SummaryMode.BY_PERSON || !this.state.personalResult || this.state.personalLoading) && this.renderScheduleButton()}
                         {detail && detail.status === TaskStatus.COMPLETED && (
                             <Button
                                 theme="borderless"
@@ -1315,20 +1716,28 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             <>
                                 {detail.summary_mode === SummaryMode.BY_PERSON && (
                                     <>
-                                        {this.state.isEditing && this.state.personalResult && detail.result_id ? (
-                                            <div className="summary-detail-personal">
-                                                <h3>{t("summary.detail.mySummaryPlain")}</h3>
-                                                <SummaryEditor
-                                                    taskId={detail.task_id}
-                                                    baseResultId={detail.result_id}
-                                                    initialContent={this.state.personalResult.content || ""}
-                                                    onSave={this.handleEditSave}
-                                                    onCancel={this.handleEditCancel}
-                                                />
-                                            </div>
-                                        ) : (
-                                            this.renderPersonalSummary()
+                                        {/* need1：多人协作不再单独显示「我的总结」区块（自己内容改到参与者报告
+                                            里我那条，need3）；单人 BY_PERSON 维持显示「我的总结」及其行内编辑。 */}
+                                        {!this.isMultiCollab() && (
+                                            this.state.isEditing && this.state.personalResult && detail.result_id ? (
+                                                <div className="summary-detail-personal">
+                                                    <h3>{t("summary.detail.mySummaryPlain")}</h3>
+                                                    <SummaryEditor
+                                                        taskId={detail.task_id}
+                                                        baseResultId={detail.result_id}
+                                                        initialContent={this.state.personalResult.content || ""}
+                                                        onSave={this.handleEditSave}
+                                                        onCancel={this.handleEditCancel}
+                                                    />
+                                                </div>
+                                            ) : (
+                                                this.renderPersonalSummary()
+                                            )
                                         )}
+                                        {/* 回归修复：多人协作页给「我自己」补回「提交给全部」轻量入口。
+                                            不违反 need1（不恢复我的总结正文区），仅一句提示 + 提交按钮。
+                                            isMultiCollab 内部门控；单人/BY_GROUP 返回 null。 */}
+                                        {this.renderMySubmitBar()}
                                         {this.renderTeamSummary()}
                                         {this.renderMemberStatus()}
                                         {this.renderParticipantReports()}
@@ -1419,6 +1828,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     visible={this.state.showMatterPicker}
                     onSelect={this.handleMatterSelected}
                     onCancel={() => this.setState({ showMatterPicker: false })}
+                />
+                {/* need7：复用创建任务时的成员选择器，creator 添加新成员。 */}
+                <MemberSelectorModal
+                    visible={this.state.showAddMember}
+                    selected={[]}
+                    onConfirm={this.handleAddMemberConfirm}
+                    onCancel={this.handleAddMemberCancel}
                 />
                 <Modal
                     title={t("summary.detail.regenerateEditTitle")}

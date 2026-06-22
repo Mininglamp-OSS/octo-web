@@ -129,7 +129,9 @@
     "networkError": "Network connection error. Check your connection and retry.",
     "emptyTitle": "No summaries yet",
     "emptyDesc": "Generate group or personal work summaries quickly, and let AI organize key information for you.",
-    "createFirst": "Create first summary"
+    "createFirst": "Create first summary",
+    "leaveSuccess": "Left",
+    "leaveFailed": "Failed to leave"
   },
   "create": {
     "title": "AI Summary",
@@ -301,11 +303,20 @@
     "lastEditedAt": "Last edited {{time}}",
     "mySummary": "👤 My summary",
     "mySummaryPlain": "My summary",
-    "submitToAll": "Submit to everyone",
+    "submitToAll": "Submit my summary",
+    "mySubmitHint": "Your personal summary is ready. Submit it so it can be merged into the team summary.",
+    "mySubmitRowName": "Me (pending submission)",
     "teamSummary": "👥 Team summary",
     "submittedPeople": "{{count}} submitted",
     "memberStatus": "Member status",
     "participantReports": "Participant reports",
+    "editMyReport": "Edit",
+    "editTeamSummary": "Edit",
+    "addMember": "Add member",
+    "addMemberSuccess": "Member added",
+    "addMemberFailed": "Failed to add member",
+    "personalEditSuccess": "Personal report saved",
+    "personalEditFailed": "Failed to save personal report",
     "collapse": "Collapse ▲",
     "expandAll": "Expand all ▼",
     "waitingSubmit": "{{name}} · Waiting to submit...",
@@ -333,13 +344,23 @@
     "scheduleConfirmHint": "This scheduled summary needs your confirmation. Confirm once and every later round runs without asking again.",
     "scheduleConfirmButton": "Confirm participation",
     "membersLoadingRetry": "Member info is still loading, please try again in a moment.",
-    "scheduleConfirmed": "You have confirmed this scheduled summary"
+    "scheduleConfirmed": "You have confirmed this scheduled summary",
+    "removeMember": "Remove",
+    "removeMemberConfirm": "Remove this member?",
+    "removeMemberSuccess": "Member removed",
+    "removeMemberFailed": "Failed to remove member",
+    "leaveTask": "Leave collaboration",
+    "leaveConfirm": "Leave this collaboration?",
+    "leaveSuccess": "Left",
+    "leaveFailed": "Failed to leave"
   },
   "summaryCard": {
     "createdBy": "Created by {{name}}",
     "deleteTitle": "Confirm deletion",
     "deleteContent": "Delete \"{{title}}\"? Historical versions will also be removed.",
-    "deleteScheduledContent": "\"{{title}}\" is a scheduled summary. Deleting it will stop the scheduled updates and remove all of its history. Delete it?"
+    "deleteScheduledContent": "\"{{title}}\" is a scheduled summary. Deleting it will stop the scheduled updates and remove all of its history. Delete it?",
+    "leaveTitle": "Leave collaboration",
+    "leaveContent": "You will no longer take part in this collaboration. Leave \"{{title}}\"?"
   },
   "editor": {
     "saveSuccess": "Saved",

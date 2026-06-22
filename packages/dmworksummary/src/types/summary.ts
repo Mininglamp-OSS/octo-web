@@ -141,6 +141,8 @@ export interface SummaryListItem {
     trigger_type: number;
     /** 绑定的定时配置 id。存在即表示该总结是定时任务（无论是否已执行过）。 */
     schedule_id?: number | null;
+    /** 任务创建者 user_id。用于列表卡片区分「删除」(creator) vs「退出」(参与者)。 */
+    creator_id?: string;
     time_range_start: string;
     time_range_end: string;
     sources: SourceItem[];
@@ -168,6 +170,8 @@ export interface SummaryDetail {
     result: SummaryResult | null;
     error_message: string | null;
     schedule_id?: number | null;
+    /** 任务创建者 user_id。详情页区分 creator/participant 视角的移除/退出按钮。 */
+    creator_id?: string;
     origin_channel_id: string;
     origin_channel_type: number;
     created_at: string;
@@ -176,7 +180,20 @@ export interface SummaryDetail {
     result_edited_at?: string | null;
     result_is_edited?: boolean;
     permissions?: {
+        /** 旧字段，语义已迁移到 can_edit_team；前端勿用。 */
         can_edit: boolean;
+        /** 定时**设置**按钮（仅 creator）。 */
+        can_schedule?: boolean;
+        /** need4：团队总结编辑按钮（仅 creator，多人也放开）。 */
+        can_edit_team?: boolean;
+        /** need3：本人可编辑自己的个人报告（本人是 participant）。 */
+        can_edit_personal?: boolean;
+        /** need2：定时**信息**只读展示（任意 participant 可见）。 */
+        can_view_schedule?: boolean;
+        /** need7：添加成员入口（仅 creator）。 */
+        can_add_member?: boolean;
+        /** 移除成员入口（仅 creator）。 */
+        can_remove_member?: boolean;
     };
 }
 
@@ -276,7 +293,7 @@ export interface CreateScheduleParams {
     run_time?: string;
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
-    participants?: { user_id: string }[];
+    participants?: { user_id: string; user_name?: string }[];
     /**
      * scope='task' 让后端在一个事务里原子完成「建定时 + 绑定到 task_id」：
      * 校验 task 归属 → 建定时 → Update summary_task.schedule_id 绑定（一对一约束）。
@@ -305,7 +322,7 @@ export interface UpdateScheduleParams {
     run_time?: string;
     time_range_type?: 1 | 2 | 3 | 4;
     sources?: SourceItem[];
-    participants?: { user_id: string }[];
+    participants?: { user_id: string; user_name?: string }[];
     /**
      * Plan A1: scope distinguishes the caller. "task" means a summary detail
      * page is editing the period of ONE summary — if the schedule is shared by

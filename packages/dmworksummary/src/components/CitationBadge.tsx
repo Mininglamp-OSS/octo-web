@@ -309,7 +309,11 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({ index, tea
                             {t("summary.citation.member", { values: { name: citation.user_name } })}
                         </div>
                         {memberContent ? (
-                            <CitationText content={memberContent} citations={member?.citations || []} />
+                            <CitationText
+                                content={(memberContent || '').replace(/\[\d+\]/g, '')}
+                                citations={[]}
+                                hidePlainCitations
+                            />
                         ) : (
                             <div style={{ fontSize: 12, color: '#999' }}>
                                 {t("summary.detail.waitingSubmit", { values: { name: citation.user_name } })}

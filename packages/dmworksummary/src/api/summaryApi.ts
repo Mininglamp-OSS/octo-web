@@ -149,6 +149,35 @@ export async function editSummary(
     }
 }
 
+// need3 + need6：编辑「自己的个人报告」。后端按 (task_id, user_id=自己) 定位，
+// 只能改自己那条，无法触碰他人；成功后后端自动触发团队总结重算（meta_summary）。
+// F2：body 严格 {content}——后端 PersonalEdit 只 bind content，不带 base_result_id（契约清洁）。
+export async function personalEditSummary(
+    taskId: number,
+    content: string,
+): Promise<{ edited_at: string }> {
+    return put(`/summaries/${taskId}/personal-edit`, { content });
+}
+
+// need7：creator 添加新成员。body={user_ids:[...]}（以后端 addMembersReq.UserIDs
+// 为准，见 octo-smart-summary/internal/api/handler/personal.go AddMembers）。
+// 新成员以「待确认」(Pending) 进入成员状态列表，等其自己 Accept 才生成个人+并入团队。
+export async function addMembers(taskId: number, userIds: string[]): Promise<void> {
+    return post(`/summaries/${taskId}/members`, { user_ids: userIds });
+}
+
+// 退出多人协作（参与者，非 creator）。后端物理删除调用者的
+// participant + personal_result 行，并重算团队总结（meta_summary）。
+export async function leaveSummary(taskId: number): Promise<void> {
+    return post(`/summaries/${taskId}/leave`);
+}
+
+// creator 移除某成员。后端物理删除该成员的 participant + personal_result
+// 行，并重算团队总结。creator 不可被移除。
+export async function removeMember(taskId: number, uid: string): Promise<void> {
+    return del(`/summaries/${taskId}/members?uid=${encodeURIComponent(uid)}`);
+}
+
 // ─── Status Management ─────────────────────────────────
 
 export async function batchStatus(taskIds: number[]): Promise<BatchStatusItem[]> {

@@ -23,6 +23,7 @@ vi.mock('@douyinfe/semi-ui', () => ({
 
 vi.mock('@douyinfe/semi-icons', () => ({
     IconDelete: () => <svg data-testid="delete-icon" />,
+    IconExit: () => <svg data-testid="exit-icon" />,
 }));
 
 vi.mock('./TaskStatusBadge', () => ({
@@ -100,5 +101,50 @@ describe('SummaryCard isScheduledTask', () => {
         const content = screen.getByTestId('popconfirm-content');
         expect(content).toHaveTextContent('历史版本也将一并清除');
         expect(content).not.toHaveTextContent('是定时更新的总结');
+    });
+});
+
+describe('SummaryCard creator vs participant footer (问题1)', () => {
+    // dmworkBase mock 的 WKApp.loginInfo.uid === 'test-uid'。
+    it('creator（creator_id === 当前用户）看到删除按钮 + 删除文案', () => {
+        const onDelete = vi.fn();
+        const onLeave = vi.fn();
+        render(
+            <SummaryCard
+                task={makeItem({ creator_id: 'test-uid' }) as any}
+                onClick={noop}
+                onDelete={onDelete}
+                onLeave={onLeave}
+            />,
+        );
+        // 删除图标存在，退出图标不存在。
+        expect(screen.getByTestId('delete-icon')).toBeInTheDocument();
+        expect(screen.queryByTestId('exit-icon')).not.toBeInTheDocument();
+        const content = screen.getByTestId('popconfirm-content');
+        expect(content).toHaveTextContent('确定要删除');
+    });
+
+    it('非 creator 参与者看到退出按钮 + 退出文案', () => {
+        const onDelete = vi.fn();
+        const onLeave = vi.fn();
+        render(
+            <SummaryCard
+                task={makeItem({
+                    creator_id: 'someone-else',
+                    participants: [
+                        { user_id: 'someone-else' },
+                        { user_id: 'test-uid' },
+                    ],
+                }) as any}
+                onClick={noop}
+                onDelete={onDelete}
+                onLeave={onLeave}
+            />,
+        );
+        // 退出图标存在，删除图标不存在。
+        expect(screen.getByTestId('exit-icon')).toBeInTheDocument();
+        expect(screen.queryByTestId('delete-icon')).not.toBeInTheDocument();
+        const content = screen.getByTestId('popconfirm-content');
+        expect(content).toHaveTextContent('退出后将不再参与该多人协作');
     });
 });

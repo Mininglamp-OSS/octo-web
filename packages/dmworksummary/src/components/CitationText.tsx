@@ -29,6 +29,13 @@ interface CitationTextProps {
      * members）。不传时 `[Pn]` 退化为仅显示姓名。
      */
     members?: MemberStatus[];
+    /**
+     * 隐私收口：为 true 时只解析团队引用 `[Pn]`，把普通引用 `[n]` 当纯文本
+     * （不渲染 CitationBadge / 不可点开看原文）。用于成员间互看他人报告 /
+     * 团队总结的场景，避免暴露他人聊天原文。自己看自己（renderPersonalSummary）
+     * 不传此开关，引用照常可点。
+     */
+    hidePlainCitations?: boolean;
 }
 
 const citationSchema = {
@@ -212,7 +219,7 @@ function markdownComponents(citations: CitationItem[], teamCitations: TeamCitati
     };
 }
 
-const CitationText: React.FC<CitationTextProps> = ({ content, citations, teamCitations = [], members = [] }) => {
+const CitationText: React.FC<CitationTextProps> = ({ content, citations, teamCitations = [], members = [], hidePlainCitations = false }) => {
     const { t } = useI18n();
     const [activeKey, setActiveKey] = useState<string | null>(null);
 
@@ -229,7 +236,7 @@ const CitationText: React.FC<CitationTextProps> = ({ content, citations, teamCit
         return <div className="summary-content-empty">{t("summary.content.empty")}</div>;
     }
 
-    const hasCitations = citations && citations.length > 0;
+    const hasCitations = !hidePlainCitations && citations && citations.length > 0;
     const hasTeamCitations = teamCitations && teamCitations.length > 0;
     const citationPlugin = () => remarkCitation(citations);
     const remarkPlugins: any[] = [remarkGfm, remarkBreaks];

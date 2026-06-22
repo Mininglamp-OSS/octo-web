@@ -752,6 +752,39 @@
     margin-bottom: 0;
 }
 
+/* ========== My Submit Bar (顶部提交提醒卡片 — 方案甲美化) ========== */
+/* 带边框/圆角/浅背景/左色条/icon 的卡片，不再光秃秃一行。 */
+.summary-detail-my-submit-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    background: var(--semi-color-primary-light-default);
+    border: 1px solid var(--semi-color-primary-light-active);
+    border-left: 4px solid var(--semi-color-primary);
+    border-radius: 8px;
+}
+
+.summary-detail-my-submit-icon {
+    color: var(--semi-color-primary);
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.summary-detail-my-submit-hint {
+    flex: 1;
+    color: var(--semi-color-text-0);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* 参与者报告区「我（待提交）」主入口行：沿用 report-item 卡片，轻微高亮边框。 */
+.summary-detail-my-pending-row {
+    border-color: var(--semi-color-primary-light-active);
+    background: var(--semi-color-primary-light-default);
+}
+
 
 /* ========== Content Markdown ========== */
 .summary-content-loading {

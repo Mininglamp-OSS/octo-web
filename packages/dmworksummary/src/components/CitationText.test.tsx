@@ -256,4 +256,83 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
         expect(open.length).toBeGreaterThanOrEqual(1);
         expect(open[0].textContent).toContain('李四');
     });
+
+    // m2（隐私兜底，第二轮）：[Pn] 弹窗渲染成员单人报告时，绝不消费 member.citations，
+    // 且对 memberContent 清掉 [n] 角标——即便（旧后端/缓存）给 member 带了 citations，
+    // 也不能让他人点开看到原始聊天记录。fail-before（CitationBadge 传 member.citations）/
+    // pass-after（固定 citations=[] + hidePlainCitations + 清 [n]）。
+    it('m2) [Pn] popover never exposes member.citations and strips [n] from member content', () => {
+        const members: MemberStatus[] = [
+            {
+                user_id: 'u1',
+                user_name: '李四',
+                status: 'submitted',
+                submitted_at: '2026-01-01T10:00:00Z',
+                content: '李四的单人总结 [1] 正文',
+                // 旧后端/缓存可能仍带 citations（原始聊天记录原文）。
+                citations: [makeCitation({ index: 1, content: '不应暴露的原始聊天记录原文' })],
+            },
+        ];
+        render(
+            <CitationText
+                content="参见 [P1]"
+                citations={[]}
+                teamCitations={[makeTeamCitation({ index: 1, user_id: 'u1', user_name: '李四' })]}
+                members={members}
+            />,
+        );
+        const team = badgeByText('[P1]')!;
+        fireEvent.click(team);
+        // 弹窗展示正文，但 [n] 角标被清、不可点开，原始聊天记录绝不出现。
+        expect(document.body.textContent).toContain('李四的单人总结');
+        expect(document.body.textContent).not.toContain('不应暴露的原始聊天记录原文');
+        expect(badgeByText('[1]')).toBeFalsy();
+    });
+});
+
+// 需求2（隐私收口）：hidePlainCitations 开关——成员间互看团队总结 /
+// 他人报告时，普通引用 [n]（指向某人原始聊天记录）不可点开看原文；
+// 但团队引用 [Pn]（指向人/跳作者报告，不暴露聊天原文）仍可点。
+describe('CitationText — hidePlainCitations 隐私收口', () => {
+    // fail-before / pass-after 核心：hidePlainCitations 为 true 时，即使传了 citations，
+    // [n] 也不能渲染成可点 CitationBadge（退化为纯文本）。
+    it('hidePlainCitations=true: [n] is NOT rendered as an interactive citation badge even with citations supplied', () => {
+        render(
+            <CitationText
+                content="他人总结正文 [1]"
+                citations={[makeCitation({ index: 1, content: '原始聊天记录原文' })]}
+                hidePlainCitations
+            />,
+        );
+        // 无任何可交互的普通引用徒标。
+        expect(badgeByText('[1]')).toBeFalsy();
+        // [1] 以纯文本保留在输出里（不被渲染成 badge）。
+        expect(document.body.textContent).toContain('[1]');
+        // 点不开 → 不会出现原文弹窗。
+        expect(screen.queryAllByTestId('popover-content')).toHaveLength(0);
+    });
+
+    it('hidePlainCitations=false (default): [n] still renders an interactive badge (回归保护：自己看自己)', () => {
+        render(
+            <CitationText
+                content="自己的总结 [1]"
+                citations={[makeCitation({ index: 1 })]}
+            />,
+        );
+        expect(badgeByText('[1]')).toBeTruthy();
+    });
+
+    it('hidePlainCitations=true: team [Pn] STILL renders an interactive badge (跳作者报告不泄露原文)', () => {
+        render(
+            <CitationText
+                content="团队总结：普通引用 [1] 与团队引用 [P1]"
+                citations={[makeCitation({ index: 1, content: '原始聊天记录原文' })]}
+                teamCitations={[makeTeamCitation({ index: 1, user_name: '李四' })]}
+                hidePlainCitations
+            />,
+        );
+        // [n] 不可点，[Pn] 仍可点。
+        expect(badgeByText('[1]')).toBeFalsy();
+        expect(badgeByText('[P1]')).toBeTruthy();
+    });
 });

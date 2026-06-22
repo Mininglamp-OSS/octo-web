@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
 
-const { mockGet, mockPost, mockRequestUse, mockResponseUse } = vi.hoisted(() => ({
+const { mockGet, mockPost, mockDelete, mockRequestUse, mockResponseUse } = vi.hoisted(() => ({
     mockGet: vi.fn(),
     mockPost: vi.fn(),
+    mockDelete: vi.fn(),
     mockRequestUse: vi.fn(),
     mockResponseUse: vi.fn(),
 }));
@@ -14,7 +15,7 @@ vi.mock('axios', () => ({
             get: mockGet,
             post: mockPost,
             put: vi.fn(),
-            delete: vi.fn(),
+            delete: mockDelete,
             interceptors: {
                 request: { use: mockRequestUse },
                 response: { use: mockResponseUse },
@@ -24,7 +25,7 @@ vi.mock('axios', () => ({
     },
 }));
 
-import { getTopicTemplates, getTemplates, listSummaries } from '../summaryApi';
+import { getTopicTemplates, getTemplates, listSummaries, removeMember } from '../summaryApi';
 
 describe('summaryApi interceptors', () => {
   it('injects language, token, and space headers', async () => {
@@ -199,6 +200,18 @@ describe('summaryApi', () => {
             expect(mockPost).toHaveBeenCalledWith(
                 '/summary/api/v1/summary-schedules/42/confirm',
                 undefined,
+            );
+        });
+    });
+
+    // FIX4: removeMember 将 uid 作为 query 参数传递并 encodeURIComponent，
+    // 避免含特殊字符的 user_id（如 'a/b'、'u 1'）破坏 path 或路由。
+    describe('removeMember uid encoding', () => {
+        it('encodes uid into the DELETE query string', async () => {
+            mockDelete.mockResolvedValueOnce({ data: { data: { removed: true } } });
+            await removeMember(7, 'a/b c');
+            expect(mockDelete).toHaveBeenCalledWith(
+                '/summary/api/v1/summaries/7/members?uid=a%2Fb%20c',
             );
         });
     });

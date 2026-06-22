@@ -229,6 +229,17 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} />);
     };
 
+    handleLeave = async (taskId: number) => {
+        try {
+            await api.leaveSummary(taskId);
+            Toast.success(t("summary.list.leaveSuccess"));
+            // 退出后留在列表，重新加载（与删除不同，不跳创建页）。
+            this.loadData();
+        } catch (err: any) {
+            Toast.error(err.message || t("summary.list.leaveFailed"));
+        }
+    };
+
     handleRespond = async (taskId: number, action: "accept" | "reject") => {
         try {
             await api.respondToTask(taskId, action);
@@ -337,6 +348,7 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
                                     onClick={this.handleCardClick}
                                     onDelete={this.handleDelete}
                                     onRespond={this.handleRespond}
+                                    onLeave={this.handleLeave}
                                 />
                             ))}
                         </div>
