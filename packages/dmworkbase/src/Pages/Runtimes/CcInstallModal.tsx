@@ -1,27 +1,16 @@
 import React, { useState } from "react"
 import { t } from "../../i18n"
-import { validateCcInstall as rawValidate, type CcInstallValidationResult } from "./ccInstallValidate"
-
-const errorCodeToText: Record<string, string> = {
-    url_required: t("base.runtimes.ccInstall.urlRequired"),
-    url_invalid: t("base.runtimes.ccInstall.urlInvalid"),
-    key_required: t("base.runtimes.ccInstall.keyRequired"),
-}
-
-function validateCcInstall(gatewayUrl: string, apiKey: string): CcInstallValidationResult & { urlError?: string; keyError?: string } {
-    const result = rawValidate(gatewayUrl, apiKey)
-    return {
-        ...result,
-        urlError: result.urlError ? errorCodeToText[result.urlError] : undefined,
-        keyError: result.keyError ? errorCodeToText[result.keyError] : undefined,
-    }
-}
+import { validateCcInstall as rawValidate, type CcInstallValidationResult, type UrlErrorCode, type KeyErrorCode } from "./ccInstallValidate"
 
 export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: string) => void; onCancel: () => void }) {
     const [gatewayUrl, setGatewayUrl] = useState("")
     const [apiKey, setApiKey] = useState("")
     const [touched, setTouched] = useState(false)
-    const v = validateCcInstall(gatewayUrl, apiKey)
+    const v = rawValidate(gatewayUrl, apiKey)
+
+    // Move error text resolution into render so it updates on locale switch
+    const urlErrorText = v.urlError ? getErrorText(v.urlError) : undefined
+    const keyErrorText = v.keyError ? getErrorText(v.keyError) : undefined
 
     const submit = () => {
         setTouched(true)
@@ -41,7 +30,7 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
                     value={gatewayUrl}
                     onChange={e => setGatewayUrl(e.target.value)}
                 />
-                {touched && v.urlError && <div className="wk-cc-install-err">{v.urlError}</div>}
+                {touched && urlErrorText && <div className="wk-cc-install-err">{urlErrorText}</div>}
                 <label className="wk-cc-install-label">{t("base.runtimes.ccInstall.apiKey")}</label>
                 <input
                     className="wk-cc-install-input"
@@ -50,7 +39,7 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
                     value={apiKey}
                     onChange={e => setApiKey(e.target.value)}
                 />
-                {touched && v.keyError && <div className="wk-cc-install-err">{v.keyError}</div>}
+                {touched && keyErrorText && <div className="wk-cc-install-err">{keyErrorText}</div>}
                 <div className="wk-cc-install-actions">
                     <span className="wk-cc-install-btn cancel" onClick={props.onCancel}>{t("base.runtimes.ccInstall.cancel")}</span>
                     <span className={`wk-cc-install-btn submit${v.ok ? "" : " disabled"}`} onClick={submit}>{t("base.runtimes.ccInstall.submit")}</span>
@@ -58,4 +47,13 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
             </div>
         </div>
     )
+}
+
+function getErrorText(code: UrlErrorCode | KeyErrorCode): string {
+    switch (code) {
+        case "url_required": return t("base.runtimes.ccInstall.urlRequired")
+        case "url_invalid": return t("base.runtimes.ccInstall.urlInvalid")
+        case "key_required": return t("base.runtimes.ccInstall.keyRequired")
+        default: return String(code)
+    }
 }

@@ -26,3 +26,11 @@ export function octoPluginInstalled(metadataJson: string | undefined, component:
 export function canInstallCcPlugin(provider: string, hasCcOctoPlugin: boolean): boolean {
     return provider === "claude" && !hasCcOctoPlugin
 }
+
+/**
+ * 判定是否应显示 cc-octo 安装按钮。纯函数，供渲染和测试共用。
+ * 条件：canInstallCcPlugin 为真 AND backend 有可安装的版本 (plugin_install_version 非空)。
+ */
+export function shouldShowCcInstall(provider: string, hasCcOctoPlugin: boolean, pluginInstallVersion?: string): boolean {
+    return canInstallCcPlugin(provider, hasCcOctoPlugin) && !!pluginInstallVersion
+}

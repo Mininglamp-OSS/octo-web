@@ -9,7 +9,7 @@ import { InstallGuidePopover } from "./InstallGuidePopover"
 import { getInstallGuide } from "./installGuide"
 import { octoComponentName } from "./octoComponent"
 import { deviceRuntimeMode } from "./deviceRuntimeMode"
-import { canInstallOctoPlugin, octoPluginInstalled, canInstallCcPlugin } from "./pluginInstall"
+import { canInstallOctoPlugin, octoPluginInstalled, canInstallCcPlugin, shouldShowCcInstall } from "./pluginInstall"
 import { CcInstallModal } from "./CcInstallModal"
 import { canCreateBot } from "./botGating"
 import { Bot, botStatusLabel, listBots, providerLabels, FLEET_API_BASE } from "./botsApi"
@@ -65,7 +65,7 @@ function upgradeKey(u: Pick<ActiveUpgrade, "daemon_id" | "component" | "runtime_
 
 interface RuntimesState {
     runtimes: AgentRuntime[]
-    versionHints: Record<number, { has_update?: boolean; latest_version?: string; has_plugin_update?: boolean; plugin_latest_version?: string }>
+    versionHints: Record<number, { has_update?: boolean; latest_version?: string; has_plugin_update?: boolean; plugin_latest_version?: string; plugin_install_version?: string }>
     daemonVersionHints: Record<string, { has_update?: boolean; latest_version?: string; current?: string }>
     activeUpgrades: Record<string, ActiveUpgrade>
     loading: boolean
@@ -892,7 +892,7 @@ class AgentsList extends Component<AgentsListProps, AgentsListState> {
 
 interface RuntimeDetailProps {
     runtime: AgentRuntime
-    versionHints: Record<number, { has_update?: boolean; latest_version?: string; has_plugin_update?: boolean; plugin_latest_version?: string }>
+    versionHints: Record<number, { has_update?: boolean; latest_version?: string; has_plugin_update?: boolean; plugin_latest_version?: string; plugin_install_version?: string }>
     pluginActiveUpgrade?: ActiveUpgrade
     componentActiveUpgrade?: ActiveUpgrade
     onDelete: (id: number) => void
@@ -1416,11 +1416,11 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                         </>
                                     ) : (
                                         // openclaw 的 octo 插件未装 → 显「安装」按钮(一键装到 latest);
-                                        // claude 的 cc-octo 插件未装 → 显「安装」按钮,点击弹 modal 收集网关+key;
+                                        // claude 的 cc-octo 插件未装且有可安装版本 → 显「安装」按钮,点击弹 modal 收集网关+key;
                                         // 其它无插件数据时用中性占位「—」。
                                         canInstallOctoPlugin(rt.provider, false)
                                             ? this.renderPluginUpgradeBtn(octoComponent ?? "", undefined, "install")
-                                            : canInstallCcPlugin(rt.provider, false)
+                                            : shouldShowCcInstall(rt.provider, false, pluginHint?.plugin_install_version)
                                                 ? this.renderPluginUpgradeBtn(octoComponent ?? "", undefined, "install", () => this.setState({ ccModalOpen: true }))
                                                 : <span className="wk-rt-install-empty">—</span>
                                     )}
