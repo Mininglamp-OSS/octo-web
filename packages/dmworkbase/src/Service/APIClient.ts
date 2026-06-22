@@ -142,6 +142,12 @@ export default class APIClient {
         }), config)
     }
 
+    patch(path: string, data?: any, config?: RequestConfig) {
+        return this.wrapResult(axios.patch(path, data, {
+            params: config?.param,
+        }), config)
+    }
+
     delete(path: string, config?: RequestConfig) {
         return this.wrapResult(axios.delete(path, {
             params: config?.param,

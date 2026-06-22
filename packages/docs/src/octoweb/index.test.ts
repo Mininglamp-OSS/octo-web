@@ -47,4 +47,20 @@ describe('octoweb apiClient seam', () => {
     // Override path must hand back the mock untouched so existing tests stay green.
     expect(apiClient()).toBe(wk.apiClient)
   })
+
+  // Regression for the title-save bug: the seam's wrapHostClient calls `host.patch(...)`, but
+  // the REAL host APIClient (dmworkbase) only had get/post/put/delete — no `patch`. Tests stayed
+  // green because the host mock here *invented* a patch method. So renaming a doc threw
+  // `TypeError: host.patch is not a function` at runtime (PATCH never left the browser).
+  // Assert the real host class exposes every verb the seam delegates to.
+  it('the REAL host APIClient exposes all verbs the seam delegates to (incl. patch)', async () => {
+    const mod = (await import('../../../dmworkbase/src/Service/APIClient.ts')) as Record<string, unknown>
+    // Resolve the class whether it's a named or default export.
+    const RealAPIClient = (mod.APIClient ?? mod.default) as { prototype: Record<string, unknown> } | undefined
+    expect(RealAPIClient, 'APIClient export').toBeTruthy()
+    const proto = RealAPIClient!.prototype
+    for (const verb of ['get', 'post', 'put', 'patch', 'delete']) {
+      expect(typeof proto[verb], `host APIClient.${verb}`).toBe('function')
+    }
+  })
 })
