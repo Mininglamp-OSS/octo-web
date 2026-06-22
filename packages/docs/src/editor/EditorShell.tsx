@@ -47,9 +47,12 @@ function DocTitle({
   const [draft, setDraft] = useState(initialTitle)
   const [saving, setSaving] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  // Guards against the Enter+blur double-commit: pressing Enter blurs the input, which
-  // fires onBlur, which would commit a second time. The ref dedupes a single commit cycle.
+  // True while a commit is in flight; prevents the Enter-then-blur double commit and
+  // any concurrent re-entry. Always reset in finally so it can never get stuck.
   const committingRef = useRef(false)
+  // Set true when an edit session ends so the trailing blur (after a programmatic commit
+  // or cancel) does not re-commit. Reset when a new edit session starts.
+  const doneRef = useRef(false)
 
   // Fetch the real title once on mount (resilient: keep the fallback prop on failure).
   useEffect(() => {
@@ -72,31 +75,38 @@ function DocTitle({
 
   const startEdit = useCallback(() => {
     if (!canEdit) return
+    doneRef.current = false
     setDraft(title)
     setEditing(true)
   }, [canEdit, title])
 
   const commit = useCallback(async () => {
-    // Dedupe Enter+blur (Enter calls commit and also blurs the input -> onBlur).
-    if (committingRef.current) return
-    committingRef.current = true
-    const next = draft.trim()
+    // Read the freshest value straight from the DOM input to avoid any stale-closure
+    // draft; fall back to state draft if the input is already gone.
+    const raw = inputRef.current?.value ?? draft
+    const next = raw.trim()
+    // Re-entrancy / double-commit (Enter then blur) guard.
+    if (committingRef.current || doneRef.current) return
     // No-op (empty or unchanged): just leave edit mode, no PATCH.
     if (!next || next === title) {
+      doneRef.current = true
       setDraft(title)
       setEditing(false)
-      committingRef.current = false
       return
     }
+    committingRef.current = true
     setSaving(true)
     try {
       await updateDocTitle(docId, next)
+      doneRef.current = true
       setTitle(next)
+      setDraft(next)
       onSaved?.(docId, next)
       setEditing(false) // only leave edit mode AFTER a successful PATCH
     } catch {
       // Keep the input open with the user's draft so the edit isn't silently lost.
-      inputRef.current?.focus()
+      setEditing(true)
+      setTimeout(() => inputRef.current?.focus(), 0)
     } finally {
       setSaving(false)
       committingRef.current = false
@@ -104,10 +114,9 @@ function DocTitle({
   }, [draft, title, docId, onSaved])
 
   const cancel = useCallback(() => {
-    committingRef.current = true // suppress the blur-commit that follows programmatic blur
+    doneRef.current = true // suppress the blur-commit that follows programmatic blur
     setDraft(title)
     setEditing(false)
-    committingRef.current = false
   }, [title])
 
   const hasTitle = !!title && title.trim().length > 0
@@ -128,12 +137,10 @@ function DocTitle({
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault()
-            // Blur to commit via onBlur (single path); committingRef dedupes.
-            e.currentTarget.blur()
+            void commit() // commit directly; doneRef stops the trailing blur re-commit
           } else if (e.key === 'Escape') {
             e.preventDefault()
             cancel()
-            e.currentTarget.blur()
           }
         }}
       />
