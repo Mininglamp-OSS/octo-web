@@ -71,3 +71,18 @@ export class Menus {
     this.onPress = onPress
   }
 }
+
+// SpaceService stub mirroring packages/dmworkbase/src/Service/SpaceService.tsx. The docs seam
+// (octoweb/index.ts) imports this for the production getSpaceMembers passthrough; in tests the
+// seam routes through the injected mock's getSpaceMembers instead, so this fallback just returns
+// an empty page (a test that forgot setWKApp would see "no members" rather than crash).
+export interface SpaceMember {
+  uid: string
+  name: string
+}
+export class SpaceService {
+  static shared = new SpaceService()
+  async getMembers(_spaceId: string, _page = 1, _limit = 50): Promise<SpaceMember[]> {
+    return []
+  }
+}

@@ -257,3 +257,93 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(String(replaceStateSpy.mock.calls.at(-1)![2])).not.toContain('doc=')
   })
 })
+
+describe('DocsHome — production (routeRight) editor has no header back button (#2)', () => {
+  it('pushes the editor without onBack but with onExit (return-on-delete)', async () => {
+    window.sessionStorage.setItem(TARGET_KEY, JSON.stringify({ doc: 'd_persist' }))
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    // Give the mock a right-pane manager so DocsHome takes the production (resident-list) path.
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    // Mount effect pushes the editor element for the persisted doc into the right pane.
+    await waitFor(() => expect(replaceToRoot).toHaveBeenCalled())
+    const pushed = replaceToRoot.mock.calls.at(-1)![0] as {
+      props: { docId: string; onBack?: unknown; onExit?: unknown }
+    }
+    expect(pushed.props.docId).toBe('d_persist')
+    expect(pushed.props.onBack).toBeUndefined()
+    expect(typeof pushed.props.onExit).toBe('function')
+  })
+})
+
+describe('DocsHome — delete document (#1)', () => {
+  it('deletes an owned doc after confirmation and refreshes the list', async () => {
+    const wk = createMockWKApp() // loginInfo.uid = 'u_self'
+    setWKApp(wk)
+    let deleted = false
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'delete' && url === '/docs/d_own') {
+        deleted = true
+        return { data: {}, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: deleted
+            ? { total: 0, items: [] }
+            : { total: 1, items: [{ docId: 'd_own', title: 'My Doc', ownerId: 'u_self', role: 'admin' }] },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('My Doc')).toBeTruthy())
+
+    // Open the row "⋯" menu, choose Delete, then confirm.
+    fireEvent.click(screen.getByLabelText('docs.list.more'))
+    fireEvent.click(screen.getByText('docs.list.delete'))
+    // Confirm dialog appears; click its Delete action (the second "docs.list.delete").
+    const confirmButtons = screen.getAllByText('docs.list.delete')
+    fireEvent.click(confirmButtons[confirmButtons.length - 1])
+
+    await waitFor(() => expect(deleted).toBe(true))
+    await waitFor(() => expect(screen.queryByText('My Doc')).toBeNull())
+  })
+
+  it('shows "no permission" on a 403 and keeps the document', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'delete') {
+        throw { response: { status: 403 } }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: { total: 1, items: [{ docId: 'd_own', title: 'My Doc', ownerId: 'u_self', role: 'admin' }] },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('My Doc')).toBeTruthy())
+    fireEvent.click(screen.getByLabelText('docs.list.more'))
+    fireEvent.click(screen.getByText('docs.list.delete'))
+    const confirmButtons = screen.getAllByText('docs.list.delete')
+    fireEvent.click(confirmButtons[confirmButtons.length - 1])
+
+    await waitFor(() => expect(screen.getByText('docs.list.deleteForbidden')).toBeTruthy())
+    expect(screen.getByText('My Doc')).toBeTruthy()
+  })
+})

@@ -54,10 +54,12 @@ function useOutline(editor: Editor): OutlineItem[] {
   return collectOutline(editor)
 }
 
-/** Right-side document outline / table of contents (frontend-design §3.1). */
+/** Left-side document outline / table of contents (frontend-design §3.1). Default collapsed. */
 export function Outline({ editor }: { editor: Editor }) {
   const items = useOutline(editor)
-  const [collapsed, setCollapsed] = useState(false)
+  // #3: default COLLAPSED — the outline opens on demand via the slim title bar so it never
+  // squeezes the body text on first paint.
+  const [collapsed, setCollapsed] = useState(true)
 
   if (items.length === 0) {
     return (
@@ -76,13 +78,17 @@ export function Outline({ editor }: { editor: Editor }) {
   }
 
   return (
-    <aside className="octo-outline" aria-label="Document outline">
+    <aside
+      className={collapsed ? 'octo-outline is-collapsed' : 'octo-outline'}
+      aria-label="Document outline"
+    >
       <button
         type="button"
         className="octo-outline-title"
         onClick={() => setCollapsed((v) => !v)}
         aria-expanded={!collapsed}
       >
+        <span className="octo-outline-caret" aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
         Outline
       </button>
       {!collapsed && (

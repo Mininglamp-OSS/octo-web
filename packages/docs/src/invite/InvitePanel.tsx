@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
 import { canManage } from '../auth/roles.ts'
-import { createInvite, listInvites, revokeInvite, type Invite } from './api.ts'
+import { t } from '../octoweb/index.ts'
+import { createInvite, listInvites, revokeInvite, buildInviteUrl, type Invite } from './api.ts'
 
 const ROLES: Role[] = ['reader', 'writer', 'admin']
 
@@ -34,30 +35,39 @@ export function InvitePanel({ docId, role }: { docId: string; role: Role }) {
   return (
     <div className="octo-invite-panel">
       <div className="octo-member-row">
-        <h4 style={{ flex: 1, margin: '8px 0' }}>Invite links</h4>
+        <h4 style={{ flex: 1, margin: '8px 0' }}>{t('docs.member.inviteLinks')}</h4>
         <select value={newRole} onChange={(e) => setNewRole(e.target.value as Role)}>
           {ROLES.map((r) => (
             <option key={r} value={r}>
-              {r}
+              {t(`docs.role.${r}`)}
             </option>
           ))}
         </select>
         <button type="button" className="octo-tb-btn" onClick={onGenerate}>
-          Generate
+          {t('docs.member.generate')}
         </button>
       </div>
-      {invites.map((inv) => (
-        <div className="octo-member-row" key={inv.inviteToken}>
-          <input className="octo-uid" readOnly value={inv.url} onFocus={(e) => e.currentTarget.select()} />
-          <span style={{ fontSize: 12, color: 'var(--octo-muted)' }}>
-            {inv.role}
-            {inv.maxUses === 0 ? ' · unlimited' : inv.maxUses != null ? ` · ${inv.usedCount ?? 0}/${inv.maxUses}` : ''}
-          </span>
-          <button type="button" className="octo-tb-btn" onClick={() => onRevoke(inv.inviteToken)}>
-            Revoke
-          </button>
-        </div>
-      ))}
+      {invites.map((inv) => {
+        // Always show the link built from THIS origin (secure/correct), falling back to any
+        // url the invite already carries.
+        const url = buildInviteUrl(inv.inviteToken) || inv.url || ''
+        return (
+          <div className="octo-member-row" key={inv.inviteToken}>
+            <input className="octo-uid" readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
+            <span style={{ fontSize: 12, color: 'var(--octo-muted)' }}>
+              {t(`docs.role.${inv.role}`)}
+              {inv.maxUses === 0
+                ? ` · ${t('docs.member.unlimited')}`
+                : inv.maxUses != null
+                  ? ` · ${inv.usedCount ?? 0}/${inv.maxUses}`
+                  : ''}
+            </span>
+            <button type="button" className="octo-tb-btn" onClick={() => onRevoke(inv.inviteToken)}>
+              {t('docs.member.revoke')}
+            </button>
+          </div>
+        )
+      })}
     </div>
   )
 }

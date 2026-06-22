@@ -6,8 +6,8 @@
 // createMockWKApp(), see octoweb/mock.ts) and fall back to the real `@octo/base` WKApp
 // whenever no override has been set — i.e. in production and dev.
 
-import { WKApp, i18n, t, useI18n, Menus } from '@octo/base'
-import type { APIClient, ApiRequestConfig, ApiResponse, WKAppShape } from './types.ts'
+import { WKApp, i18n, t, useI18n, Menus, SpaceService } from '@octo/base'
+import type { APIClient, ApiRequestConfig, ApiResponse, SpaceMemberLite, WKAppShape } from './types.ts'
 
 // Test-only override. When unset (production / dev), getWKApp() returns the real
 // `@octo/base` WKApp singleton below.
@@ -41,6 +41,65 @@ export function getRouteRight(): import('./types.ts').RouteRight | null {
   if (override) return override.routeRight ?? null
   const rr = (WKApp as unknown as { routeRight?: import('./types.ts').RouteRight }).routeRight
   return rr ?? null
+}
+
+/** Page size for space-member fetches — mirrors the host useMemberList pattern (default 50). */
+const SPACE_MEMBERS_PAGE_SIZE = 50
+/** Cap total pages so an unexpectedly huge space can't loop unbounded (1000 members). */
+const SPACE_MEMBERS_MAX_PAGES = 20
+
+/** Minimal view of the host SpaceService the docs seam touches (uid + name only). */
+interface HostSpaceMember {
+  uid: string
+  name?: string
+}
+interface HostSpaceService {
+  shared: {
+    getMembers(spaceId: string, page: number, limit: number): Promise<HostSpaceMember[]>
+  }
+}
+
+/**
+ * Fetch ONE page of the current space's members through the seam, mapped to `{ uid, name }`.
+ *
+ * Test path: when a mock is injected via setWKApp(), route through its `getSpaceMembers`
+ * override (or return [] if it doesn't provide one). Production/dev path: call the REAL host
+ * `SpaceService.shared.getMembers(...)` (re-exported from `@octo/base`) and map each member
+ * down to uid + display name — docs needs nothing else. `name` falls back to the uid so a
+ * member with no display name never renders blank.
+ */
+export async function getSpaceMembers(
+  spaceId: string,
+  page: number,
+  limit: number = SPACE_MEMBERS_PAGE_SIZE,
+): Promise<SpaceMemberLite[]> {
+  if (override) {
+    if (!override.getSpaceMembers) return []
+    const batch = await override.getSpaceMembers(spaceId, page, limit)
+    return (batch ?? []).map((m) => ({ uid: m.uid, name: m.name || m.uid }))
+  }
+  const svc = SpaceService as unknown as HostSpaceService
+  const batch = await svc.shared.getMembers(spaceId, page, limit)
+  return (batch ?? []).map((m) => ({ uid: m.uid, name: m.name || m.uid }))
+}
+
+/**
+ * Fetch ALL members of a space, looping pages until exhausted (page size 50), mirroring the
+ * host useMemberList "loop to fetch all pages" pattern. Bounded by SPACE_MEMBERS_MAX_PAGES so
+ * a very large space can't loop forever. Returns `{ uid, name }` pairs.
+ */
+export async function fetchAllSpaceMembers(spaceId: string): Promise<SpaceMemberLite[]> {
+  if (!spaceId) return []
+  const all: SpaceMemberLite[] = []
+  let page = 1
+  while (page <= SPACE_MEMBERS_MAX_PAGES) {
+    const batch = await getSpaceMembers(spaceId, page, SPACE_MEMBERS_PAGE_SIZE)
+    if (!batch || batch.length === 0) break
+    all.push(...batch)
+    if (batch.length < SPACE_MEMBERS_PAGE_SIZE) break // last page
+    page++
+  }
+  return all
 }
 
 /**

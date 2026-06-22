@@ -58,4 +58,20 @@ declare module '@octo/base' {
       onPress?: () => void,
     )
   }
+
+  // Space member as returned by SpaceService.getMembers (packages/dmworkbase/src/Service/
+  // SpaceService.tsx). The docs seam only reads uid + name; the real type carries more
+  // (avatar/role/robot/created_at) but those are irrelevant to the isolated docs typecheck.
+  export interface SpaceMember {
+    uid: string
+    name: string
+  }
+
+  // Space membership service. octoweb/index.ts calls `SpaceService.shared.getMembers(...)`
+  // in the production getSpaceMembers passthrough. Re-exported from `@octo/base` via
+  // dmworkbase/src/index.tsx (`export * from "./Service/SpaceService"`).
+  export class SpaceService {
+    static shared: SpaceService
+    getMembers(spaceId: string, page?: number, limit?: number): Promise<SpaceMember[]>
+  }
 }

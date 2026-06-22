@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
-import { acceptInvite } from './api.ts'
+import { acceptInvite, createInvite, listInvites, buildInviteUrl } from './api.ts'
 
 let api: MockApiClient
 
@@ -55,5 +55,30 @@ describe('acceptInvite response -> UI state mapping', () => {
     api.responder = () => ({ data: { docId: 'd', documentName: 'octo:s:f:d', role: 'reader' }, status: 200 })
     await acceptInvite('tok123')
     expect(api.calls[0]).toMatchObject({ method: 'post', url: '/docs/invites/tok123/accept' })
+  })
+})
+
+describe('invite link is built from the front-end origin (#6)', () => {
+  it('buildInviteUrl uses window.location.origin + /docs/invite/<token>', () => {
+    expect(buildInviteUrl('tok_abc')).toBe(`${window.location.origin}/docs/invite/tok_abc`)
+  })
+
+  it('createInvite returns the locally-built url, ignoring any backend url', async () => {
+    api.responder = () => ({
+      data: { inviteToken: 'tok_new', role: 'writer', url: 'https://backend.example/legacy/tok_new' },
+      status: 200,
+    })
+    const inv = await createInvite('d_1', { role: 'writer' })
+    expect(inv.url).toBe(`${window.location.origin}/docs/invite/tok_new`)
+    expect(inv.inviteToken).toBe('tok_new')
+  })
+
+  it('listInvites re-derives each url from the current origin', async () => {
+    api.responder = () => ({
+      data: { items: [{ inviteToken: 'tok_1', role: 'reader', url: 'https://stale/tok_1' }] },
+      status: 200,
+    })
+    const items = await listInvites('d_1')
+    expect(items[0].url).toBe(`${window.location.origin}/docs/invite/tok_1`)
   })
 })
