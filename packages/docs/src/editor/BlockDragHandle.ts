@@ -13,7 +13,7 @@
 // editor's own mutation observer never sees the handle as document content.
 
 import { Extension } from '@tiptap/core'
-import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state'
+import { Plugin, PluginKey, NodeSelection, TextSelection } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 
 export const dragHandlePluginKey = new PluginKey('octoBlockDragHandle')
@@ -41,12 +41,29 @@ function createHandle(): HTMLElement {
   return el
 }
 
+/** Gutter "+" insert button. Click opens the block-insert (slash) menu on the
+ * hovered empty line. This replaces the old auto-floating menu that popped on every
+ * empty paragraph and followed the caret (boss: "too sticky, blocks the view"). The
+ * insert affordance now only appears on block hover in the gutter — never trailing
+ * the cursor while typing. (The `/` slash command remains the keyboard path.) */
+function createInsertButton(): HTMLElement {
+  const el = document.createElement('div')
+  el.className = 'octo-insert-handle'
+  el.setAttribute('contenteditable', 'false')
+  el.setAttribute('role', 'button')
+  el.setAttribute('tabindex', '0')
+  el.setAttribute('aria-label', 'Insert block')
+  el.textContent = '+'
+  return el
+}
+
 /** Block drag-handle extension. */
 export const BlockDragHandle = Extension.create({
   name: 'blockDragHandle',
 
   addProseMirrorPlugins() {
     let handle: HTMLElement | null = null
+    let insertBtn: HTMLElement | null = null
     let hoveredPos: number | null = null
 
     const showHandleFor = (view: EditorView, pos: number) => {
@@ -54,18 +71,27 @@ export const BlockDragHandle = Extension.create({
       const node = view.state.doc.nodeAt(pos)
       if (!node) {
         handle.style.display = 'none'
+        if (insertBtn) insertBtn.style.display = 'none'
         return
       }
       const dom = view.nodeDOM(pos) as HTMLElement | null
       if (!dom || !(dom instanceof HTMLElement)) {
         handle.style.display = 'none'
+        if (insertBtn) insertBtn.style.display = 'none'
         return
       }
       const editorRect = (view.dom as HTMLElement).getBoundingClientRect()
       const blockRect = dom.getBoundingClientRect()
+      const top = blockRect.top - editorRect.top
       handle.style.display = 'flex'
-      handle.style.top = `${blockRect.top - editorRect.top}px`
+      handle.style.top = `${top}px`
       handle.style.left = `${blockRect.left - editorRect.left - 24}px`
+      if (insertBtn) {
+        // "+" sits just left of the drag dots, in the same gutter row.
+        insertBtn.style.display = 'flex'
+        insertBtn.style.top = `${top}px`
+        insertBtn.style.left = `${blockRect.left - editorRect.left - 44}px`
+      }
       hoveredPos = pos
     }
 
@@ -76,12 +102,50 @@ export const BlockDragHandle = Extension.create({
           const wrapper = view.dom.parentElement
           handle = createHandle()
           handle.style.display = 'none'
+          insertBtn = createInsertButton()
+          insertBtn.style.display = 'none'
           if (wrapper) {
             // The editor region is positioned; the handle is absolutely placed
             // relative to it and is NOT part of the document.
             handle.style.position = 'absolute'
             wrapper.appendChild(handle)
+            insertBtn.style.position = 'absolute'
+            wrapper.appendChild(insertBtn)
           }
+
+          // Open the block-insert menu on the hovered block: move the cursor to the
+          // end of that block and type "/" so the existing slash-command Suggestion
+          // plugin renders its menu. No caret-following auto popup — user-triggered only.
+          const openInsertMenu = () => {
+            if (hoveredPos == null) return
+            const node = view.state.doc.nodeAt(hoveredPos)
+            if (!node) return
+            // Cursor to the end of the hovered block, then type "/" so the existing
+            // slash-command Suggestion plugin renders its menu at that position.
+            const endInside = hoveredPos + Math.max(node.nodeSize - 1, 1)
+            view.focus()
+            let tr = view.state.tr
+            try {
+              tr = tr.setSelection(TextSelection.create(tr.doc, endInside))
+            } catch {
+              return
+            }
+            tr = tr.insertText('/', tr.selection.from)
+            view.dispatch(tr)
+          }
+          const onInsertClick = (event: MouseEvent) => {
+            event.preventDefault()
+            event.stopPropagation()
+            openInsertMenu()
+          }
+          const onInsertKey = (event: KeyboardEvent) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              openInsertMenu()
+            }
+          }
+          insertBtn.addEventListener('mousedown', onInsertClick)
+          insertBtn.addEventListener('keydown', onInsertKey)
 
           const onDragStart = (event: DragEvent) => {
             if (hoveredPos == null) return
@@ -107,6 +171,10 @@ export const BlockDragHandle = Extension.create({
               handle?.removeEventListener('dragstart', onDragStart)
               handle?.remove()
               handle = null
+              insertBtn?.removeEventListener('mousedown', onInsertClick)
+              insertBtn?.removeEventListener('keydown', onInsertKey)
+              insertBtn?.remove()
+              insertBtn = null
             },
           }
         },
@@ -116,6 +184,7 @@ export const BlockDragHandle = Extension.create({
               const pos = topLevelBlockPosAt(view, event.clientX, event.clientY)
               if (pos == null) {
                 if (handle) handle.style.display = 'none'
+                if (insertBtn) insertBtn.style.display = 'none'
                 hoveredPos = null
                 return false
               }
@@ -124,6 +193,7 @@ export const BlockDragHandle = Extension.create({
             },
             mouseleave() {
               if (handle) handle.style.display = 'none'
+              if (insertBtn) insertBtn.style.display = 'none'
               hoveredPos = null
               return false
             },
