@@ -2240,3 +2240,18 @@
 .wk-rt-install-empty {
     color: var(--wk-text-tertiary);
 }
+
+/* CcInstallModal styles */
+.wk-cc-install-mask { position: fixed; inset: 0; background: var(--wk-black-alpha-40); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.wk-cc-install-modal { background: var(--wk-bg-elevated); border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-md); padding: var(--wk-sp-5); width: 360px; max-width: 90vw; }
+.wk-cc-install-title { font-weight: var(--wk-font-semibold); margin-bottom: var(--wk-sp-3); color: var(--wk-text-primary); }
+.wk-cc-install-label { display: block; font-size: var(--wk-text-size-sm); margin: var(--wk-sp-3) 0 var(--wk-sp-1); color: var(--wk-text-secondary); }
+.wk-cc-install-input { width: 100%; box-sizing: border-box; padding: var(--wk-sp-1) var(--wk-sp-2); border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-sm); font-size: var(--wk-text-size-sm); }
+.wk-cc-install-err { color: var(--wk-color-error); font-size: var(--wk-text-size-xs); margin-top: var(--wk-sp-1); }
+.wk-cc-install-actions { display: flex; justify-content: flex-end; gap: var(--wk-sp-2); margin-top: var(--wk-sp-4); }
+.wk-cc-install-btn { cursor: pointer; padding: var(--wk-sp-1) var(--wk-sp-3); border-radius: var(--wk-r-sm); font-size: var(--wk-text-size-sm); }
+.wk-cc-install-btn.cancel { color: var(--wk-text-secondary); }
+.wk-cc-install-btn.submit { background: var(--wk-brand-primary); color: #fff; }
+.wk-cc-install-btn.submit:hover { background: var(--wk-brand-primary-hover); }
+.wk-cc-install-btn.submit.disabled { opacity: .5; cursor: not-allowed; }
+
