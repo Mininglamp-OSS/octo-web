@@ -66,6 +66,7 @@ export function VersionPanel({
   role,
   currentState,
   editor,
+  names,
   onClose,
 }: {
   docId: string
@@ -74,6 +75,8 @@ export function VersionPanel({
   currentState?: ArrayBuffer
   /** Live editor — read-only here; used as the "current" side of a diff. */
   editor?: Editor
+  /** uid → display-name map (feature #7) so the author shows a name, not a raw uid. */
+  names?: Map<string, string>
   onClose?: () => void
 }) {
   const [versions, setVersions] = useState<VersionMeta[]>([])
@@ -318,7 +321,7 @@ export function VersionPanel({
                   className="octo-version-time"
                   title={formatAbsolute(v.createdAt)}
                 >
-                  {formatRelative(v.createdAt)} · {v.createdBy}
+                  {formatRelative(v.createdAt)} · {names?.get(v.createdBy) || v.createdBy}
                 </span>
               </div>
               <div className="octo-version-actions">

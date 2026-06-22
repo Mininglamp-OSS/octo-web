@@ -353,7 +353,7 @@ export function EditorShell(props: EditorShellProps) {
             <MemberPanel docId={docId} role={role!} space={props.space} onClose={closePanel} />
           )}
           {activePanel === 'history' && role && (
-            <VersionPanel docId={docId} role={role} editor={editor} onClose={closePanel} />
+            <VersionPanel docId={docId} role={role} editor={editor} names={names} onClose={closePanel} />
           )}
           {activePanel === 'comments' && role && (
             <CommentPanel
@@ -362,6 +362,7 @@ export function EditorShell(props: EditorShellProps) {
               comments={comments}
               activeCommentId={activeCommentId}
               onSelectComment={setActiveCommentId}
+              names={names}
               onClose={closePanel}
             />
           )}
