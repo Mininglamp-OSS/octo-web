@@ -73,6 +73,34 @@ describe('DocsModule (octo-web same-origin integration)', () => {
     expect(factory()).toBe(factory())
   })
 
+  it('normalizes a /docs/invite/:token deep-link to /docs and accepts the invite (BLOCKING-1)', () => {
+    // Hard navigation/refresh to /docs/invite/:token has no menu to activate (only /docs does),
+    // so the host falls back to chat and InviteAcceptPage never mounts. init() must stash the
+    // token and rewrite the URL to /docs (reusing the working /docs activation), then the /docs
+    // route element renders the invite-accept page while a pending token exists.
+    const token = 'tkn_deeplink_123'
+    window.history.replaceState(null, '', `/docs/invite/${token}`)
+    try {
+      const wk = createMockWKApp()
+      setWKApp(wk)
+      new DocsModule().init()
+      // URL normalized to /docs so the host activates the existing /docs menu.
+      expect(window.location.pathname).toBe('/docs')
+      // The /docs route element renders the invite-accept page (not docs home) for the token.
+      const factory = wk.route.routes.get('/docs')!
+      render(factory() as React.ReactElement)
+      // InviteAcceptPage shows its accepting/working state; docs-home marker must NOT appear.
+      expect(screen.queryByTestId('docs-home-loaded')).toBeNull()
+    } finally {
+      window.history.replaceState(null, '', '/docs')
+      try {
+        window.sessionStorage.removeItem('octo.docs.pendingInvite')
+      } catch {
+        // ignore
+      }
+    }
+  })
+
   it('shows the loading fallback, then commits DocsHome once the editor chunk resolves', async () => {
     // Regression (runtime test 2026-06-18, second pass): with React.lazy + Suspense the
     // editor chunk downloaded but the boundary never committed under the host's MobX-driven

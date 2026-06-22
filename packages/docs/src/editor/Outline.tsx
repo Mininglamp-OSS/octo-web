@@ -63,9 +63,19 @@ export function Outline({ editor }: { editor: Editor }) {
 
   if (items.length === 0) {
     return (
-      <aside className="octo-outline octo-outline-empty" aria-label="Document outline">
-        <div className="octo-outline-title">Outline</div>
-        <p className="octo-outline-hint">Add headings to build an outline.</p>
+      <aside
+        className={collapsed ? 'octo-outline octo-outline-empty is-collapsed' : 'octo-outline octo-outline-empty'}
+        aria-label="Document outline"
+      >
+        <button
+          type="button"
+          className="octo-outline-title"
+          onClick={() => setCollapsed((v) => !v)}
+          aria-expanded={!collapsed}
+        >
+          Outline
+        </button>
+        {!collapsed && <p className="octo-outline-hint">Add headings to build an outline.</p>}
       </aside>
     )
   }

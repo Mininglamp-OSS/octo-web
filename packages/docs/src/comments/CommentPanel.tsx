@@ -44,11 +44,13 @@ function CommentBody({
   currentUid,
   role,
   comments,
+  names,
 }: {
   comment: Comment
   currentUid: string
   role: Role
   comments: UseDocComments
+  names?: Map<string, string>
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(comment.body)
@@ -81,7 +83,7 @@ function CommentBody({
   return (
     <div className="octo-comment-body">
       <div className="octo-comment-head">
-        <span className="octo-uid">{comment.authorUid}</span>
+        <span className="octo-uid">{names?.get(comment.authorUid) || comment.authorUid}</span>
         <span className="octo-comment-time" title={formatAbsolute(comment.createdAt)}>
           {formatRelative(comment.createdAt)}
         </span>
@@ -145,6 +147,7 @@ function Thread({
   comments,
   active,
   onSelect,
+  names,
 }: {
   thread: CommentThread
   editor: Editor
@@ -153,6 +156,7 @@ function Thread({
   comments: UseDocComments
   active: boolean
   onSelect: () => void
+  names?: Map<string, string>
 }) {
   const [replyOpen, setReplyOpen] = useState(false)
   const [replyBody, setReplyBody] = useState('')
@@ -196,13 +200,13 @@ function Thread({
         {thread.resolved && <span className="octo-comment-resolved-badge">resolved</span>}
       </button>
 
-      <CommentBody comment={thread} currentUid={currentUid} role={role} comments={comments} />
+      <CommentBody comment={thread} currentUid={currentUid} role={role} comments={comments} names={names} />
 
       {thread.replies.length > 0 && (
         <ul className="octo-comment-replies">
           {thread.replies.map((r) => (
             <li key={r.id}>
-              <CommentBody comment={r} currentUid={currentUid} role={role} comments={comments} />
+              <CommentBody comment={r} currentUid={currentUid} role={role} comments={comments} names={names} />
             </li>
           ))}
         </ul>
@@ -269,6 +273,7 @@ export function CommentPanel({
   comments,
   activeCommentId,
   onSelectComment,
+  names,
   onClose,
 }: {
   role: Role
@@ -276,6 +281,7 @@ export function CommentPanel({
   comments: UseDocComments
   activeCommentId: number | null
   onSelectComment: (id: number | null) => void
+  names?: Map<string, string>
   onClose?: () => void
 }) {
   useEditorTick(editor)
@@ -319,6 +325,7 @@ export function CommentPanel({
             role={role}
             currentUid={currentUid}
             comments={comments}
+            names={names}
             active={activeCommentId === t.id}
             onSelect={() => onSelectComment(t.id)}
           />
