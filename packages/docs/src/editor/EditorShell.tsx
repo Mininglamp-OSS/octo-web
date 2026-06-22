@@ -47,6 +47,9 @@ function DocTitle({
   const [draft, setDraft] = useState(initialTitle)
   const [saving, setSaving] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Guards against the Enter+blur double-commit: pressing Enter blurs the input, which
+  // fires onBlur, which would commit a second time. The ref dedupes a single commit cycle.
+  const committingRef = useRef(false)
 
   // Fetch the real title once on mount (resilient: keep the fallback prop on failure).
   useEffect(() => {
@@ -74,10 +77,15 @@ function DocTitle({
   }, [canEdit, title])
 
   const commit = useCallback(async () => {
+    // Dedupe Enter+blur (Enter calls commit and also blurs the input -> onBlur).
+    if (committingRef.current) return
+    committingRef.current = true
     const next = draft.trim()
-    setEditing(false)
+    // No-op (empty or unchanged): just leave edit mode, no PATCH.
     if (!next || next === title) {
       setDraft(title)
+      setEditing(false)
+      committingRef.current = false
       return
     }
     setSaving(true)
@@ -85,16 +93,21 @@ function DocTitle({
       await updateDocTitle(docId, next)
       setTitle(next)
       onSaved?.(docId, next)
+      setEditing(false) // only leave edit mode AFTER a successful PATCH
     } catch {
-      setDraft(title) // revert draft on failure; leave the displayed title unchanged
+      // Keep the input open with the user's draft so the edit isn't silently lost.
+      inputRef.current?.focus()
     } finally {
       setSaving(false)
+      committingRef.current = false
     }
   }, [draft, title, docId, onSaved])
 
   const cancel = useCallback(() => {
+    committingRef.current = true // suppress the blur-commit that follows programmatic blur
     setDraft(title)
     setEditing(false)
+    committingRef.current = false
   }, [title])
 
   const hasTitle = !!title && title.trim().length > 0
@@ -109,14 +122,18 @@ function DocTitle({
         disabled={saving}
         placeholder={placeholder}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+        onBlur={() => {
+          void commit()
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault()
-            void commit()
+            // Blur to commit via onBlur (single path); committingRef dedupes.
+            e.currentTarget.blur()
           } else if (e.key === 'Escape') {
             e.preventDefault()
             cancel()
+            e.currentTarget.blur()
           }
         }}
       />
