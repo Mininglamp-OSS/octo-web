@@ -293,7 +293,6 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                                         daemonVersionHint={hints[daemonId]}
                                         daemonBusy={this.props.daemonBusy}
                                         onUpgradeStarted={this.props.onUpgradeStarted}
-                                        onCcInstallOpen={this.props.onCcInstallOpen}
                                     />
                                 )
                             }
