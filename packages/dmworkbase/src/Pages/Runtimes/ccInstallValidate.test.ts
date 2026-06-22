@@ -39,6 +39,30 @@ describe("validateCcInstall", () => {
         expect(r.urlError).toBe("url_invalid")
     })
 
+    it("rejects https to IPv6 loopback [::1] with url_invalid", () => {
+        const r = validateCcInstall("https://[::1]", "sk-1")
+        expect(r.ok).toBe(false)
+        expect(r.urlError).toBe("url_invalid")
+    })
+
+    it("rejects https to IPv6 ULA [fc00::1] / link-local [fe80::1] with url_invalid", () => {
+        expect(validateCcInstall("https://[fc00::1]", "sk-1").urlError).toBe("url_invalid")
+        expect(validateCcInstall("https://[fd12:3456::1]", "sk-1").urlError).toBe("url_invalid")
+        expect(validateCcInstall("https://[fe80::1]", "sk-1").urlError).toBe("url_invalid")
+    })
+
+    it("rejects https to IPv4-mapped IPv6 loopback [::ffff:127.0.0.1] with url_invalid", () => {
+        const r = validateCcInstall("https://[::ffff:127.0.0.1]", "sk-1")
+        expect(r.ok).toBe(false)
+        expect(r.urlError).toBe("url_invalid")
+    })
+
+    it("accepts https to a public IPv6 literal", () => {
+        const r = validateCcInstall("https://[2001:db8::1]", "sk-1")
+        expect(r.ok).toBe(true)
+        expect(r.urlError).toBeUndefined()
+    })
+
     it("accepts http localhost url", () => {
         const r = validateCcInstall("http://localhost:8080", "sk-1")
         expect(r.ok).toBe(true)

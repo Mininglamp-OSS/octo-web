@@ -50,11 +50,44 @@ function isPrivateIPv4(hostname: string): boolean {
 }
 
 /**
+ * Detect whether a hostname is a private/loopback/link-local IPv6 literal.
+ * Handles the common cases (the authoritative full matrix — NAT64, hex
+ * v4-mapped, etc. — stays in cc-channel-octo's isAllowedApiUrl at consumption):
+ *   - ::1 (loopback), :: (unspecified)
+ *   - fc00::/7 ULA (fc/fd prefix)
+ *   - fe80::/10 link-local
+ *   - ::ffff:a.b.c.d IPv4-mapped → checked against isPrivateIPv4
+ * url.hostname may include surrounding brackets for IPv6 literals; strip them.
+ */
+function isPrivateOrLoopbackIPv6(hostname: string): boolean {
+    let h = hostname.toLowerCase();
+    if (h.startsWith("[") && h.endsWith("]")) h = h.slice(1, -1);
+    if (!h.includes(":")) return false; // not an IPv6 literal
+    if (h === "::1" || h === "0:0:0:0:0:0:0:1") return true; // loopback
+    if (h === "::" || h === "0:0:0:0:0:0:0:0") return true; // unspecified
+    if (h.startsWith("fc") || h.startsWith("fd")) return true; // ULA fc00::/7
+    if (h.startsWith("fe80")) return true; // link-local fe80::/10
+    // IPv4-mapped ::ffff:a.b.c.d → checked against isPrivateIPv4
+    const mappedDotted = h.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (mappedDotted) return isPrivateIPv4(mappedDotted[1]);
+    // IPv4-mapped hex form (the WHATWG URL parser normalizes ::ffff:127.0.0.1 →
+    // ::ffff:7f00:1): reconstruct the embedded IPv4 from the two hextets.
+    const mappedHex = h.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+    if (mappedHex) {
+        const hi = parseInt(mappedHex[1], 16);
+        const lo = parseInt(mappedHex[2], 16);
+        const v4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+        return isPrivateIPv4(v4);
+    }
+    return false;
+}
+
+/**
  * Check whether a parsed URL's protocol + hostname pass the backend gateway
  * allowlist (isAllowedApiUrl / fleet isAllowedGatewayURL).
  *
  * Rule:
- *   - https: → allowed UNLESS hostname is a private/loopback IPv4 literal
+ *   - https: → allowed UNLESS hostname is a private/loopback IPv4 or IPv6 literal
  *   - http:  → allowed only for localhost or 127.0.0.1
  *   - anything else → rejected
  *
@@ -65,7 +98,7 @@ function isAllowedApiUrl(url: URL): boolean {
     const protocol = url.protocol.toLowerCase();
     if (protocol === "https:") {
         const hostname = url.hostname.toLowerCase();
-        if (isPrivateIPv4(hostname)) {
+        if (isPrivateIPv4(hostname) || isPrivateOrLoopbackIPv6(hostname)) {
             return false;
         }
         return true;
