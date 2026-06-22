@@ -30,7 +30,13 @@ MATTER_API_URL="${MATTER_API_URL%/}"
 FLEET_API_URL="${FLEET_API_URL%/}"
 export FLEET_API_URL
 
-envsubst '${API_URL} ${SUMMARY_API_URL} ${MATTER_API_URL} ${FLEET_API_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
+# Extra CSP img-src source for the object-store (minio) presign host, e.g.
+# "http://192.168.214.189:9000". Empty by default (https-only). Must match the
+# backend presign host and frontend VITE_DOCS_ASSET_HOSTS.
+: "${DOCS_ASSET_CSP_ORIGIN:=}"
+export DOCS_ASSET_CSP_ORIGIN
+
+envsubst '${API_URL} ${SUMMARY_API_URL} ${MATTER_API_URL} ${FLEET_API_URL} ${DOCS_ASSET_CSP_ORIGIN}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 
 exec "$@"
