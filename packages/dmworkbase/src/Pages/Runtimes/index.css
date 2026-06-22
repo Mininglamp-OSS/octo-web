@@ -2240,3 +2240,17 @@
 .wk-rt-install-empty {
     color: var(--wk-text-tertiary);
 }
+
+/* CcInstallModal styles */
+.wk-cc-install-mask { position: fixed; inset: 0; background: rgba(0,0,0,.32); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.wk-cc-install-modal { background: var(--wk-color-bg, #fff); border: 1px solid var(--wk-color-border, #e0e0e0); border-radius: 6px; padding: 20px; width: 360px; max-width: 90vw; }
+.wk-cc-install-title { font-weight: 600; margin-bottom: 12px; color: var(--wk-color-text, #1a1a1a); }
+.wk-cc-install-label { display: block; font-size: 13px; margin: 10px 0 4px; color: var(--wk-color-text-secondary, #666); }
+.wk-cc-install-input { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--wk-color-border, #d0d0d0); border-radius: 4px; font-size: 13px; }
+.wk-cc-install-err { color: var(--wk-color-danger, #d33); font-size: 12px; margin-top: 4px; }
+.wk-cc-install-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.wk-cc-install-btn { cursor: pointer; padding: 5px 14px; border-radius: 4px; font-size: 13px; }
+.wk-cc-install-btn.cancel { color: var(--wk-color-text-secondary, #666); }
+.wk-cc-install-btn.submit { background: var(--wk-color-primary, #2b6cf2); color: #fff; }
+.wk-cc-install-btn.submit.disabled { opacity: .5; cursor: not-allowed; }
+

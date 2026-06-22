@@ -9,7 +9,8 @@ import { InstallGuidePopover } from "./InstallGuidePopover"
 import { getInstallGuide } from "./installGuide"
 import { octoComponentName } from "./octoComponent"
 import { deviceRuntimeMode } from "./deviceRuntimeMode"
-import { canInstallOctoPlugin, octoPluginInstalled } from "./pluginInstall"
+import { canInstallOctoPlugin, octoPluginInstalled, canInstallCcPlugin } from "./pluginInstall"
+import { CcInstallModal } from "./CcInstallModal"
 import { canCreateBot } from "./botGating"
 import { Bot, botStatusLabel, listBots, providerLabels, FLEET_API_BASE } from "./botsApi"
 import { ProviderLogo } from "./providerLogos"
@@ -958,6 +959,7 @@ interface RuntimeDetailState {
     pluginUpgradeError: string
     componentUpgradeStatus: PluginUpgradeStatus
     componentUpgradeError: string
+    ccModalOpen?: boolean
 }
 
 class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
@@ -1067,7 +1069,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         }
     }
 
-    handlePluginUpgrade = async (pluginComponent: string, isInstall = false) => {
+    handlePluginUpgrade = async (pluginComponent: string, isInstall = false, secret?: { gatewayUrl: string; apiKey: string }) => {
         const rt = this.props.runtime
         const runtimeId = rt.id
 
@@ -1078,6 +1080,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 daemon_id: rt.daemon_id,
                 space_id: WKApp.shared.currentSpaceId,
                 component: pluginComponent,
+                ...(secret ? { gateway_url: secret.gatewayUrl, api_key: secret.apiKey } : {}),
             }, { baseURL: FLEET_API_BASE })
             // C-1: 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
             this.props.onUpgradeStarted?.()
@@ -1412,10 +1415,13 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                         </>
                                     ) : (
                                         // openclaw 的 octo 插件未装 → 显「安装」按钮(一键装到 latest);
-                                        // 其它(如 cc-octo)无插件数据时用中性占位「—」(指引 popover 已挂在 label 行)。
+                                        // claude 的 cc-octo 插件未装 → 显「安装」按钮,点击弹 modal 收集网关+key;
+                                        // 其它无插件数据时用中性占位「—」。
                                         canInstallOctoPlugin(rt.provider, false)
                                             ? this.renderPluginUpgradeBtn(octoComponent ?? "", undefined, "install")
-                                            : <span className="wk-rt-install-empty">—</span>
+                                            : canInstallCcPlugin(rt.provider, false)
+                                                ? <span className="wk-rt-upgrade-btn" onClick={() => this.setState({ ccModalOpen: true })}>{t("base.runtimes.upgrade.install")}</span>
+                                                : <span className="wk-rt-install-empty">—</span>
                                     )}
                                 </span>
                             </div>
@@ -1432,6 +1438,16 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     <span>{t("base.runtimes.runtime.updatedAt", { values: { time: rt.updated_at } })}</span>
                 </div>
                 {deleting && <div className="wk-rt-deleting-overlay">{t("base.runtimes.runtime.deleting")}</div>}
+                {this.state.ccModalOpen && (
+                    <CcInstallModal
+                        onCancel={() => this.setState({ ccModalOpen: false })}
+                        onSubmit={(gatewayUrl, apiKey) => {
+                            this.setState({ ccModalOpen: false })
+                            const comp = octoComponentName(this.props.runtime.provider) ?? "cc-octo"
+                            this.handlePluginUpgrade(comp, true, { gatewayUrl, apiKey })
+                        }}
+                    />
+                )}
             </div>
         )
     }
