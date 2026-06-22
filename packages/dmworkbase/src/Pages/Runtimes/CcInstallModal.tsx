@@ -31,7 +31,9 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
         try {
             const list = await fetchLlmModels(normalizeGatewayUrl(gatewayUrl), apiKey.trim())
             setModels(list)
-            if (list.length === 0) setModelsError(true)
+            // An empty list is a SUCCESSFUL response with no models — not a
+            // failure. Leave the dropdown empty and let the user type a name;
+            // only a thrown error (below) is a real fetch failure.
         } catch {
             setModelsError(true)
         } finally {
