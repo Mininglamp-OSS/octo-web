@@ -2,7 +2,7 @@ import { EditorContent } from '@tiptap/react'
 import { useCollabEditor } from '../collab/useCollabEditor.ts'
 import type { CollabEditorOptions } from '../collab/createCollabEditor.ts'
 import { canManage } from '../auth/roles.ts'
-import { Toolbar, EditorBubbleMenu, EditorFloatingMenu } from './Toolbar.tsx'
+import { Toolbar, EditorBubbleMenu } from './Toolbar.tsx'
 import { Outline } from './Outline.tsx'
 import { PresenceBar } from './PresenceBar.tsx'
 import { MemberPanel } from '../members/MemberPanel.tsx'
@@ -255,7 +255,6 @@ export function EditorShell(props: EditorShellProps) {
 
       <div className="octo-editor-region">
         <EditorBubbleMenu editor={editor} />
-        <EditorFloatingMenu editor={editor} />
         <CommentBubble editor={editor} onCreate={comments.createRoot} />
         <div className="octo-editor-main">
           <EditorContent editor={editor} className="octo-prose" />

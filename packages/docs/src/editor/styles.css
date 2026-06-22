@@ -235,6 +235,28 @@
 .octo-drag-handle:active {
   cursor: grabbing;
 }
+/* Gutter "+" insert button (replaces the old caret-following auto floating menu).
+   Shown only on block hover, in the gutter left of the drag dots; click opens the
+   slash insert menu. */
+.octo-insert-handle {
+  position: absolute;
+  width: 18px;
+  height: 22px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--octo-muted, #8a919e);
+  cursor: pointer;
+  border-radius: 4px;
+  user-select: none;
+  font-size: 16px;
+  line-height: 1;
+  z-index: 4;
+}
+.octo-insert-handle:hover {
+  background: var(--octo-hover);
+  color: var(--octo-fg);
+}
 /* Document outline / table of contents (right rail). */
 .octo-outline {
   flex: 0 0 200px;
