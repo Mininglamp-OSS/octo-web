@@ -5,7 +5,15 @@
   "list": {
     "new": "新建文档",
     "back": "全部文档",
-    "updatedAt": "更新于"
+    "updatedAt": "更新于",
+    "more": "更多操作",
+    "delete": "删除",
+    "deleteConfirmTitle": "删除文档",
+    "deleteConfirm": "删除后不可恢复，确认？",
+    "deleteCancel": "取消",
+    "deleteForbidden": "无权限",
+    "deleteArchived": "文档已归档，无法删除。",
+    "deleteFailed": "删除文档失败。"
   },
   "title": {
     "editHint": "点击编辑标题"
@@ -107,6 +115,26 @@
     "reopen": "重新打开",
     "deleteConfirm": "删除这条评论？"
   },
+  "member": {
+    "title": "成员",
+    "close": "关闭",
+    "loading": "正在加载成员…",
+    "addMember": "添加成员",
+    "uidPlaceholder": "输入用户 ID",
+    "add": "添加",
+    "remove": "移除",
+    "owner": "所有者",
+    "ownerCannotRemove": "无法移除所有者",
+    "errorAdd": "添加成员失败。",
+    "errorRemove": "移除成员失败。",
+    "errorRole": "修改角色失败。",
+    "errorUserNotFound": "该用户不是 octo 用户，无法添加。",
+    "inviteTitle": "邀请成员加入",
+    "inviteLinks": "邀请链接",
+    "generate": "生成",
+    "revoke": "撤销",
+    "unlimited": "无限"
+  },
   "invite": {
     "accepting": "正在接受邀请…",
     "joinedTitle": "你已加入该文档",
@@ -134,7 +162,8 @@
       "forbidden": "你已无权访问该文档。",
       "notFound": "该文档不存在或已被删除。",
       "locked": "该文档已被锁定或归档。",
-      "login": "登录已过期，请重新登录。"
+      "login": "登录已过期，请重新登录。",
+      "deleted": "文档已删除。"
     }
   }
 }

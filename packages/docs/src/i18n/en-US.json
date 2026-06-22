@@ -5,7 +5,15 @@
   "list": {
     "new": "New document",
     "back": "All documents",
-    "updatedAt": "Updated"
+    "updatedAt": "Updated",
+    "more": "More actions",
+    "delete": "Delete",
+    "deleteConfirmTitle": "Delete document",
+    "deleteConfirm": "This cannot be undone. Delete this document?",
+    "deleteCancel": "Cancel",
+    "deleteForbidden": "You don't have permission to delete this document.",
+    "deleteArchived": "This document is archived and cannot be deleted.",
+    "deleteFailed": "Failed to delete the document."
   },
   "title": {
     "editHint": "Click to edit title"
@@ -107,6 +115,26 @@
     "reopen": "Reopen",
     "deleteConfirm": "Delete this comment?"
   },
+  "member": {
+    "title": "Members",
+    "close": "Close",
+    "loading": "Loading members…",
+    "addMember": "Add member",
+    "uidPlaceholder": "octo user id",
+    "add": "Add",
+    "remove": "Remove",
+    "owner": "owner",
+    "ownerCannotRemove": "The owner cannot be removed",
+    "errorAdd": "Failed to add member.",
+    "errorRemove": "Failed to remove member.",
+    "errorRole": "Failed to change role.",
+    "errorUserNotFound": "That user is not an octo user and cannot be added.",
+    "inviteTitle": "Invite",
+    "inviteLinks": "Invite links",
+    "generate": "Generate",
+    "revoke": "Revoke",
+    "unlimited": "unlimited"
+  },
   "invite": {
     "accepting": "Accepting invitation…",
     "joinedTitle": "You've joined this document",
@@ -134,7 +162,8 @@
       "forbidden": "You no longer have access to this document.",
       "notFound": "This document does not exist or was deleted.",
       "locked": "This document is locked or archived.",
-      "login": "Your session expired. Please sign in again."
+      "login": "Your session expired. Please sign in again.",
+      "deleted": "Document deleted."
     }
   }
 }

@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { getWKApp, getRouteRight, t } from '../octoweb/index.ts'
+import { getWKApp, getRouteRight, t, type ApiError } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import '../editor/styles.css'
 import { DEFAULT_DOC_SPACE, DEFAULT_DOC_FOLDER, DEFAULT_DOC_ID } from '../config.ts'
-import { listDocs, createDoc, type DocListItem } from './docsApi.ts'
+import { listDocs, createDoc, deleteDoc, type DocListItem } from './docsApi.ts'
+import { canManage } from '../auth/roles.ts'
+import { useMemberNames } from '../members/useMemberNames.ts'
 import { formatRelative, formatAbsolute } from '../versions/format.ts'
 
 export interface DocTarget {
@@ -166,20 +168,30 @@ function mirrorListToUrl(): void {
 function DocsList({
   space,
   folder,
+  currentUid,
   selectedDocId,
   onSelect,
+  onDeleted,
   reloadToken,
 }: {
   space: string
   folder: string
+  currentUid: string
   selectedDocId: string | null
   onSelect: (docId: string) => void
+  onDeleted?: (docId: string) => void
   reloadToken?: number
 }): React.ReactElement {
   const [items, setItems] = useState<DocListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  // Delete flow: which row's "⋯" menu is open, which doc is pending a confirm, and the
+  // in-flight target (disables the button) + a per-list delete error banner.
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const reload = useCallback(() => {
     setLoading(true)
@@ -227,6 +239,42 @@ function DocsList({
     }
   }
 
+  /** Only the owner or an admin may delete a document (#1). */
+  const canDelete = (d: DocListItem) => canManage(d.role) || d.ownerId === currentUid
+
+  // After a delete that left the document gone (200 or 404), refresh the list and tell the
+  // parent so it can return to the empty state if that doc was open.
+  const afterGone = (docId: string) => {
+    onDeleted?.(docId)
+    reload()
+  }
+
+  const doDelete = async (docId: string) => {
+    setDeleteError(null)
+    setDeletingId(docId)
+    try {
+      await deleteDoc(docId)
+      afterGone(docId)
+    } catch (e) {
+      // Contract (DELETE /docs/{id}, C3 final): 404 → already gone (treat as deleted); 403 →
+      // not admin; 409 → archived target; anything else → generic failure.
+      const status = (e as ApiError).response?.status
+      if (status === 404) {
+        afterGone(docId)
+      } else if (status === 403) {
+        setDeleteError(t('docs.list.deleteForbidden'))
+      } else if (status === 409) {
+        setDeleteError(t('docs.list.deleteArchived'))
+      } else {
+        setDeleteError(t('docs.list.deleteFailed'))
+      }
+    } finally {
+      setDeletingId(null)
+      setConfirmId(null)
+      setMenuOpenId(null)
+    }
+  }
+
   return (
     <div className="octo-docs-list">
       <div className="octo-docs-list-header">
@@ -250,6 +298,11 @@ function DocsList({
           </button>
         </p>
       )}
+      {deleteError && (
+        <p className="octo-docs-list-state octo-error" role="alert">
+          {deleteError}
+        </p>
+      )}
       {!loading && !error && items.length === 0 && (
         <p className="octo-docs-list-state octo-docs-list-empty">{t('docs.state.empty')}</p>
       )}
@@ -259,6 +312,9 @@ function DocsList({
             const active = d.docId === selectedDocId
             const hasTitle = !!d.title && d.title.trim().length > 0
             const label = hasTitle ? d.title : t('docs.state.untitled')
+            const deletable = canDelete(d)
+            const menuOpen = menuOpenId === d.docId
+            const confirming = confirmId === d.docId
             return (
               <li
                 key={d.docId}
@@ -266,43 +322,103 @@ function DocsList({
                   active ? 'octo-docs-list-item octo-docs-list-item-active' : 'octo-docs-list-item'
                 }
               >
-                <button
-                  type="button"
-                  className="octo-docs-list-row"
-                  onClick={() => onSelect(d.docId)}
-                  aria-current={active ? 'true' : undefined}
-                >
-                  <span className="octo-docs-list-row-icon" aria-hidden="true">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path
-                        d="M4 1.5h5L12.5 5v9a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5Z"
-                        stroke="currentColor"
-                        strokeWidth="1"
-                        fill="none"
-                      />
-                      <path d="M9 1.5V5h3.5" stroke="currentColor" strokeWidth="1" fill="none" />
-                    </svg>
-                  </span>
-                  <span className="octo-docs-list-row-text">
-                    <span
-                      className={
-                        hasTitle
-                          ? 'octo-docs-list-row-title'
-                          : 'octo-docs-list-row-title octo-docs-list-row-title-untitled'
-                      }
-                    >
-                      {label}
+                <div className="octo-docs-list-row-wrap">
+                  <button
+                    type="button"
+                    className="octo-docs-list-row"
+                    onClick={() => onSelect(d.docId)}
+                    aria-current={active ? 'true' : undefined}
+                  >
+                    <span className="octo-docs-list-row-icon" aria-hidden="true">
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path
+                          d="M4 1.5h5L12.5 5v9a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5Z"
+                          stroke="currentColor"
+                          strokeWidth="1"
+                          fill="none"
+                        />
+                        <path d="M9 1.5V5h3.5" stroke="currentColor" strokeWidth="1" fill="none" />
+                      </svg>
                     </span>
-                    {d.updatedAt && (
+                    <span className="octo-docs-list-row-text">
                       <span
-                        className="octo-docs-list-row-sub"
-                        title={formatAbsolute(d.updatedAt)}
+                        className={
+                          hasTitle
+                            ? 'octo-docs-list-row-title'
+                            : 'octo-docs-list-row-title octo-docs-list-row-title-untitled'
+                        }
                       >
-                        {t('docs.list.updatedAt')} {formatRelative(d.updatedAt)}
+                        {label}
                       </span>
-                    )}
-                  </span>
-                </button>
+                      {d.updatedAt && (
+                        <span
+                          className="octo-docs-list-row-sub"
+                          title={formatAbsolute(d.updatedAt)}
+                        >
+                          {t('docs.list.updatedAt')} {formatRelative(d.updatedAt)}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                  {/* Owner/admin-only delete control. A "⋯" menu (not a bare button at the row
+                      edge) guards against mis-clicks; the actual delete needs a second confirm. */}
+                  {deletable && (
+                    <div className="octo-docs-list-row-actions">
+                      <button
+                        type="button"
+                        className="octo-docs-list-row-menu-btn"
+                        title={t('docs.list.more')}
+                        aria-label={t('docs.list.more')}
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen}
+                        onClick={() => {
+                          setMenuOpenId(menuOpen ? null : d.docId)
+                          setConfirmId(null)
+                        }}
+                      >
+                        ⋯
+                      </button>
+                      {menuOpen && !confirming && (
+                        <div className="octo-docs-list-row-menu" role="menu">
+                          <button
+                            type="button"
+                            className="octo-docs-list-row-menu-item octo-error"
+                            role="menuitem"
+                            onClick={() => setConfirmId(d.docId)}
+                          >
+                            {t('docs.list.delete')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {confirming && (
+                  <div className="octo-docs-delete-confirm" role="alertdialog" aria-label={t('docs.list.deleteConfirmTitle')}>
+                    <p className="octo-docs-delete-confirm-text">{t('docs.list.deleteConfirm')}</p>
+                    <div className="octo-docs-delete-confirm-actions">
+                      <button
+                        type="button"
+                        className="octo-tb-btn"
+                        disabled={deletingId === d.docId}
+                        onClick={() => {
+                          setConfirmId(null)
+                          setMenuOpenId(null)
+                        }}
+                      >
+                        {t('docs.list.deleteCancel')}
+                      </button>
+                      <button
+                        type="button"
+                        className="octo-tb-btn octo-docs-delete-confirm-go"
+                        disabled={deletingId === d.docId}
+                        onClick={() => void doDelete(d.docId)}
+                      >
+                        {t('docs.list.delete')}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </li>
             )
           })}
@@ -358,23 +474,10 @@ export function DocsHome() {
     setListReloadToken((n) => n + 1)
   }, [])
 
-  const buildEditor = useCallback(
-    (docId: string, onBack: () => void) => (
-      <EditorShell
-        key={docId}
-        docId={docId}
-        title={t('docs.state.untitled')}
-        uid={uid}
-        space={space}
-        folder={folder}
-        doc={docId}
-        user={{ id: uid, name: uid }}
-        onBack={onBack}
-        onTitleSaved={onTitleSaved}
-      />
-    ),
-    [uid, space, folder, onTitleSaved],
-  )
+  // uid → display name for the space (feature #8): used to set the awareness user.name so the
+  // presence avatar initial and the collaboration caret show a real name, not the raw uid.
+  // Resilient: empty until resolved (or on fetch failure) → falls back to uid.
+  const names = useMemberNames(space)
 
   // Docs-owned empty state for the right pane. CRITICAL: the host renders its default
   // contentRight (<EmptyStateIllustration/> = the chat "select a conversation" placeholder)
@@ -408,6 +511,29 @@ export function DocsHome() {
     }
   }, [routeRight, buildEmptyState])
 
+  // Build the editor element. `onBack` (header "← back" control) is passed ONLY on the inline
+  // standalone/test path; in the routeRight production path the left list is always resident, so
+  // the header back button is redundant and omitted (#2). `onExit` (= backToList) is ALWAYS
+  // wired so the editor can return to the empty/list state on an in-flight deletion (#1 / 4403).
+  const buildEditor = useCallback(
+    (docId: string, onBack?: () => void) => (
+      <EditorShell
+        key={docId}
+        docId={docId}
+        title={t('docs.state.untitled')}
+        uid={uid}
+        space={space}
+        folder={folder}
+        doc={docId}
+        user={{ id: uid, name: names.get(uid) || uid }}
+        onBack={onBack}
+        onExit={backToList}
+        onTitleSaved={onTitleSaved}
+      />
+    ),
+    [uid, space, folder, names, onTitleSaved, backToList],
+  )
+
   const openDoc = useCallback(
     (docId: string) => {
       setSelectedDocId(docId)
@@ -416,15 +542,26 @@ export function DocsHome() {
       persistDocTarget({ space, folder, doc: docId })
       mirrorDocToUrl(docId, space, folder)
       // Full-width path: push the editor into the host's main (right) pane, list stays left.
+      // No header back button here (#2) — the resident list is the way back.
       if (routeRight) {
         try {
-          routeRight.replaceToRoot(buildEditor(docId, backToList) as unknown)
+          routeRight.replaceToRoot(buildEditor(docId) as unknown)
         } catch {
           // ignore — fall back to inline render below if the host pane rejects.
         }
       }
     },
-    [space, folder, routeRight, buildEditor, backToList],
+    [space, folder, routeRight, buildEditor],
+  )
+
+  // Called by the list after a successful delete. If the deleted doc is the one open in the
+  // right pane, return to the empty/list state (which also resets the editor's drawer, #5 C4).
+  const onDocDeleted = useCallback(
+    (docId: string) => {
+      if (docId === selectedDocId) backToList()
+      setListReloadToken((n) => n + 1)
+    },
+    [selectedDocId, backToList],
   )
 
   // On mount, ALWAYS occupy the right pane so the host chat placeholder never shows through
@@ -436,7 +573,7 @@ export function DocsHome() {
     if (!routeRight) return
     try {
       if (selectedDocId) {
-        routeRight.replaceToRoot(buildEditor(selectedDocId, backToList) as unknown)
+        routeRight.replaceToRoot(buildEditor(selectedDocId) as unknown)
       } else {
         routeRight.replaceToRoot(buildEmptyState() as unknown)
       }
@@ -456,8 +593,10 @@ export function DocsHome() {
         <DocsList
           space={space}
           folder={folder}
+          currentUid={uid}
           selectedDocId={selectedDocId}
           onSelect={openDoc}
+          onDeleted={onDocDeleted}
           reloadToken={listReloadToken}
         />
       </div>
@@ -470,8 +609,10 @@ export function DocsHome() {
         <DocsList
           space={space}
           folder={folder}
+          currentUid={uid}
           selectedDocId={selectedDocId}
           onSelect={openDoc}
+          onDeleted={onDocDeleted}
           reloadToken={listReloadToken}
         />
       </aside>

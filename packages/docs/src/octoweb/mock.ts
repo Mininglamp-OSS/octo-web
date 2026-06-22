@@ -10,6 +10,7 @@ import type {
   IModule,
   LoginInfo,
   RouteManager,
+  SpaceMemberLite,
   WKAppShape,
 } from './types.ts'
 import type { ReactElement } from 'react'
@@ -78,11 +79,16 @@ export function createMockWKApp(loginInfo: LoginInfo = { uid: 'u_self', token: '
   route: MockRouteManager
   mockMenus: MockMenusManager
   registeredModules: IModule[]
+  /** Test hook: fake space members the seam's getSpaceMembers paginates over. */
+  spaceMembers: SpaceMemberLite[]
 } {
   const apiClient = new MockApiClient()
   const route = new MockRouteManager()
   const menus = new MockMenusManager()
   const registeredModules: IModule[] = []
+  // Fake space membership tests can populate (wk.spaceMembers.push(...)) so docs can resolve
+  // uid → display name through the seam without a live host.
+  const spaceMembers: SpaceMemberLite[] = []
   return {
     apiClient,
     route,
@@ -90,6 +96,13 @@ export function createMockWKApp(loginInfo: LoginInfo = { uid: 'u_self', token: '
     mockMenus: menus,
     loginInfo,
     registeredModules,
+    spaceMembers,
+    // Mirror the real host's paged getMembers: return the requested page slice. Docs loops
+    // pages until a short/empty page, so a slice-based mock terminates fetchAllSpaceMembers.
+    getSpaceMembers(_spaceId: string, page: number, limit: number) {
+      const start = Math.max(0, (page - 1) * limit)
+      return Promise.resolve(spaceMembers.slice(start, start + limit))
+    },
     shared: {
       registerModule(module: IModule) {
         registeredModules.push(module)
