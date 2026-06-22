@@ -71,6 +71,8 @@ interface RuntimesState {
     loading: boolean
     selectedId: number | null
     expandedDevices: Set<string>
+    // CC install modal state — hoisted here so it survives detail-pane remounts (15s poll)
+    ccInstallRuntime: AgentRuntime | null
 }
 
 // providerLabels 已抽到 botsApi.ts (单源 export), CreateBotModal 也共用同
@@ -911,6 +913,8 @@ interface RuntimeDetailProps {
     // 让 detail 页有 runtime-级别的真实信息 (跟 last_seen_at 那种 daemon-
     // 级别冗余的不同).
     botCount?: number
+    // Callback to request opening the CC install modal for a runtime
+    onCcInstallOpen?: (rt: AgentRuntime) => void
 }
 
 type PluginUpgradeStatus = "idle" | "pending" | "dispatched" | "downloading" | "installing" | "restarting" | "completed" | "failed" | "timeout"
@@ -959,7 +963,6 @@ interface RuntimeDetailState {
     pluginUpgradeError: string
     componentUpgradeStatus: PluginUpgradeStatus
     componentUpgradeError: string
-    ccModalOpen?: boolean
 }
 
 class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
@@ -1005,7 +1008,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
 
     componentDidUpdate(prevProps: RuntimeDetailProps) {
         if (prevProps.runtime.id !== this.props.runtime.id) {
-            // 切换 runtime 时重置升级状态（从新 props 读）+ 关闭 cc modal
+            // 切换 runtime 时重置升级状态（从新 props 读）
             const pluginUpg = this.props.pluginActiveUpgrade
             const compUpg = this.props.componentActiveUpgrade
             this.setState({
@@ -1013,7 +1016,6 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 pluginUpgradeError: pluginUpg?.error_msg || "",
                 componentUpgradeStatus: (compUpg?.status as PluginUpgradeStatus) || "idle",
                 componentUpgradeError: compUpg?.error_msg || "",
-                ccModalOpen: false,
             })
             return
         }
@@ -1421,7 +1423,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                         canInstallOctoPlugin(rt.provider, false)
                                             ? this.renderPluginUpgradeBtn(octoComponent ?? "", undefined, "install")
                                             : shouldShowCcInstall(rt.provider, false, pluginHint?.plugin_install_version)
-                                                ? this.renderPluginUpgradeBtn(octoComponent ?? "", undefined, "install", () => this.setState({ ccModalOpen: true }))
+                                                ? this.renderPluginUpgradeBtn(octoComponent ?? "", undefined, "install", () => this.props.onCcInstallOpen?.(this.props.runtime))
                                                 : <span className="wk-rt-install-empty">—</span>
                                     )}
                                 </span>
@@ -1439,16 +1441,6 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     <span>{t("base.runtimes.runtime.updatedAt", { values: { time: rt.updated_at } })}</span>
                 </div>
                 {deleting && <div className="wk-rt-deleting-overlay">{t("base.runtimes.runtime.deleting")}</div>}
-                {this.state.ccModalOpen && (
-                    <CcInstallModal
-                        onCancel={() => this.setState({ ccModalOpen: false })}
-                        onSubmit={(gatewayUrl, apiKey) => {
-                            this.setState({ ccModalOpen: false })
-                            const comp = octoComponentName(this.props.runtime.provider) ?? "cc-octo"
-                            this.handlePluginUpgrade(comp, true, { gatewayUrl, apiKey })
-                        }}
-                    />
-                )}
             </div>
         )
     }
@@ -1576,6 +1568,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         botsByRuntime: new Map<number, Bot[]>(),
         botsLoading: new Set<number>(),
         botsHydrated: false,
+        ccInstallRuntime: null,
     }
 
     private pollTimer?: ReturnType<typeof setInterval>
@@ -1631,6 +1624,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             botsByRuntime: new Map(),
             botsLoading: new Set(),
             botsHydrated: false,
+            ccInstallRuntime: null,
         })
         // 新 space 的首次全量 bot 拉取不受旧 space 节流时间戳约束
         this.lastAllBotsAt = 0
@@ -1998,6 +1992,38 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     // 执行, false 还会闪 loading.
     private handleUpgradeStarted = () => { this.loadData(true) }
 
+    // CC install modal: open for a specific runtime
+    private handleCcInstallOpen = (rt: AgentRuntime) => {
+        this.setState({ ccInstallRuntime: rt })
+    }
+
+    private handleCcInstallSubmit = async (gatewayUrl: string, apiKey: string) => {
+        const rt = this.state.ccInstallRuntime
+        if (!rt) return
+        this.setState({ ccInstallRuntime: null })
+        const comp = octoComponentName(rt.provider) ?? "cc-octo"
+        // Reuse the existing upgrade pipeline from RuntimeDetail's handlePluginUpgrade
+        // We need to trigger it via the detail component or do it here directly.
+        // Cleanest: issue POST /upgrades directly here (same as handlePluginUpgrade does)
+        try {
+            const initRes = await WKApp.apiClient.post("/upgrades", {
+                runtime_id: rt.id,
+                daemon_id: rt.daemon_id,
+                space_id: WKApp.shared.currentSpaceId,
+                component: comp,
+                gateway_url: gatewayUrl,
+                api_key: apiKey,
+            }, { baseURL: FLEET_API_BASE })
+            const taskId = initRes?.data?.task_id
+            if (!taskId) throw new Error("plugin upgrade init: missing task_id in response")
+            // Trigger refresh so activeUpgrades shows progress
+            this.handleUpgradeStarted()
+        } catch (err: any) {
+            const msg = err?.msg || err?.message || t("base.runtimes.upgrade.errFailed")
+            Toast.error(msg)
+        }
+    }
+
     showDeviceDetail = (group: DeviceGroup) => {
         this.setState({ selectedId: null })
         this.selectedDaemonId = group.daemonId
@@ -2035,6 +2061,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 botCount={cachedBots?.length ?? 0}
                 daemonBusy={this.isDaemonBusy(rt.daemon_id)}
                 onUpgradeStarted={this.handleUpgradeStarted}
+                onCcInstallOpen={this.handleCcInstallOpen}
                 onDelete={() => {
                     this.setState({ selectedId: null })
                     WKApp.routeRight.popToRoot()
@@ -2263,6 +2290,14 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                         )
                     })}
                 </div>
+
+                {/* CC install modal — rendered at page level so it survives detail-pane remounts */}
+                {this.state.ccInstallRuntime && (
+                    <CcInstallModal
+                        onCancel={() => this.setState({ ccInstallRuntime: null })}
+                        onSubmit={this.handleCcInstallSubmit}
+                    />
+                )}
             </div>
         )
     }

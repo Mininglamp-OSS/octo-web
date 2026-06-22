@@ -41,8 +41,8 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
                 />
                 {touched && keyErrorText && <div className="wk-cc-install-err">{keyErrorText}</div>}
                 <div className="wk-cc-install-actions">
-                    <span className="wk-cc-install-btn cancel" onClick={props.onCancel}>{t("base.runtimes.ccInstall.cancel")}</span>
-                    <span className={`wk-cc-install-btn submit${v.ok ? "" : " disabled"}`} onClick={submit}>{t("base.runtimes.ccInstall.submit")}</span>
+                    <button type="button" className="wk-cc-install-btn cancel" onClick={props.onCancel}>{t("base.runtimes.ccInstall.cancel")}</button>
+                    <button type="button" className={`wk-cc-install-btn submit${v.ok ? "" : " disabled"}`} disabled={!v.ok} onClick={submit}>{t("base.runtimes.ccInstall.submit")}</button>
                 </div>
             </div>
         </div>
