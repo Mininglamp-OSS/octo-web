@@ -9,10 +9,34 @@ describe("validateCcInstall", () => {
         expect(r.keyError).toBeUndefined()
     })
 
-    it("accepts https any host (including 127.0.0.1)", () => {
+    it("rejects https to loopback IPv4 (127.0.0.1) with url_invalid", () => {
         const r = validateCcInstall("https://127.0.0.1:8443", "sk-1")
-        expect(r.ok).toBe(true)
-        expect(r.urlError).toBeUndefined()
+        expect(r.ok).toBe(false)
+        expect(r.urlError).toBe("url_invalid")
+    })
+
+    it("rejects https to private IPv4 (10.x) with url_invalid", () => {
+        const r = validateCcInstall("https://10.1.2.3", "sk-1")
+        expect(r.ok).toBe(false)
+        expect(r.urlError).toBe("url_invalid")
+    })
+
+    it("rejects https to private IPv4 (192.168.x) with url_invalid", () => {
+        const r = validateCcInstall("https://192.168.1.1", "sk-1")
+        expect(r.ok).toBe(false)
+        expect(r.urlError).toBe("url_invalid")
+    })
+
+    it("rejects https to private IPv4 (172.16-31.x) with url_invalid", () => {
+        const r = validateCcInstall("https://172.16.0.1", "sk-1")
+        expect(r.ok).toBe(false)
+        expect(r.urlError).toBe("url_invalid")
+    })
+
+    it("rejects https to link-local IPv4 (169.254.x) with url_invalid", () => {
+        const r = validateCcInstall("https://169.254.169.254", "sk-1")
+        expect(r.ok).toBe(false)
+        expect(r.urlError).toBe("url_invalid")
     })
 
     it("accepts http localhost url", () => {
