@@ -47,8 +47,25 @@ export const DEFAULT_DOC_ID =
 /**
  * Octo object-storage host whitelist for image/attachment URLs (frontend-design §3.7).
  * Any host not in this set is rejected to prevent arbitrary external hotlinking.
+ *
+ * The presign service signs upload/render URLs whose host is environment-specific
+ * (e.g. the real object-store / minio host the browser can reach). That host MUST be
+ * whitelisted or sanitize.ts rejects the rendered image even when the backend signs a
+ * valid URL. Configure additional hosts at build time via `VITE_DOCS_ASSET_HOSTS`
+ * (comma/space-separated host list, e.g. "localhost:9000,minio.internal"). The example
+ * defaults below are kept only as harmless placeholders for non-configured builds.
  */
+function parseHostList(value: unknown): string[] {
+  return typeof value === 'string'
+    ? value
+        .split(/[\s,]+/)
+        .map((h) => h.trim())
+        .filter((h) => h.length > 0)
+    : []
+}
+
 export const ASSET_HOST_WHITELIST = new Set<string>([
   'assets.octo.example.com',
   'cdn.octo.example.com',
+  ...parseHostList(import.meta.env?.VITE_DOCS_ASSET_HOSTS),
 ])
