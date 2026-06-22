@@ -11,19 +11,148 @@ import { CommentPanel } from '../comments/CommentPanel.tsx'
 import { CommentBubble } from '../comments/CommentBubble.tsx'
 import { useDocComments } from '../comments/useDocComments.ts'
 import { useCommentHighlights } from '../comments/useCommentHighlights.ts'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { t } from '../octoweb/index.ts'
+import { getDoc, updateDocTitle } from '../pages/docsApi.ts'
 import './styles.css'
 
 export interface EditorShellProps extends CollabEditorOptions {
   title: string
   /** Optional "back to the document list" handler — renders a back control when provided. */
   onBack?: () => void
+  /** Called after a successful rename so the list can refresh its titles. */
+  onTitleSaved?: (docId: string, title: string) => void
+}
+
+/**
+ * Editable document title (BUG3). Renders the real document title (fetched via getDoc,
+ * falling back to the passed-in title) instead of a hardcoded placeholder. For manage-role
+ * users it is click-to-edit: Enter / blur commits via PATCH /docs/{docId}; Esc cancels.
+ * Read-only users see a plain heading.
+ */
+function DocTitle({
+  docId,
+  initialTitle,
+  canEdit,
+  onSaved,
+}: {
+  docId: string
+  initialTitle: string
+  canEdit: boolean
+  onSaved?: (docId: string, title: string) => void
+}) {
+  const placeholder = t('docs.state.untitled')
+  const [title, setTitle] = useState(initialTitle)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(initialTitle)
+  const [saving, setSaving] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Fetch the real title once on mount (resilient: keep the fallback prop on failure).
+  useEffect(() => {
+    let cancelled = false
+    getDoc(docId)
+      .then((meta) => {
+        if (!cancelled && typeof meta?.title === 'string') setTitle(meta.title)
+      })
+      .catch(() => {
+        /* keep the passed-in fallback title */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [docId])
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus()
+  }, [editing])
+
+  const startEdit = useCallback(() => {
+    if (!canEdit) return
+    setDraft(title)
+    setEditing(true)
+  }, [canEdit, title])
+
+  const commit = useCallback(async () => {
+    const next = draft.trim()
+    setEditing(false)
+    if (!next || next === title) {
+      setDraft(title)
+      return
+    }
+    setSaving(true)
+    try {
+      await updateDocTitle(docId, next)
+      setTitle(next)
+      onSaved?.(docId, next)
+    } catch {
+      setDraft(title) // revert draft on failure; leave the displayed title unchanged
+    } finally {
+      setSaving(false)
+    }
+  }, [draft, title, docId, onSaved])
+
+  const cancel = useCallback(() => {
+    setDraft(title)
+    setEditing(false)
+  }, [title])
+
+  const hasTitle = !!title && title.trim().length > 0
+  const display = hasTitle ? title : placeholder
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        className="octo-doc-title octo-doc-title-input"
+        value={draft}
+        disabled={saving}
+        placeholder={placeholder}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            void commit()
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            cancel()
+          }
+        }}
+      />
+    )
+  }
+
+  return (
+    <h1
+      className={
+        canEdit
+          ? 'octo-doc-title octo-doc-title-editable'
+          : 'octo-doc-title'
+      }
+      title={canEdit ? t('docs.title.editHint') : undefined}
+      onClick={startEdit}
+      role={canEdit ? 'button' : undefined}
+      tabIndex={canEdit ? 0 : undefined}
+      onKeyDown={
+        canEdit
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                startEdit()
+              }
+            }
+          : undefined
+      }
+    >
+      {display}
+    </h1>
+  )
 }
 
 /** Page shell (frontend-design §3.1): title / toolbar / content / presence + member panel. */
 export function EditorShell(props: EditorShellProps) {
-  const { title, onBack, ...collabOpts } = props
+  const { title, onBack, onTitleSaved, ...collabOpts } = props
   const docId = props.docId
   const { instance, ready, role, connState, terminal } = useCollabEditor(collabOpts)
   const [showMembers, setShowMembers] = useState(false)
@@ -93,7 +222,7 @@ export function EditorShell(props: EditorShellProps) {
             ← {t('docs.list.back')}
           </button>
         )}
-        <h1 className="octo-doc-title">{title}</h1>
+        <DocTitle docId={docId} initialTitle={title} canEdit={manage} onSaved={onTitleSaved} />
         <div className="octo-doc-header-right">
           <PresenceBar provider={instance.provider} connState={connState} synced={ready} />
           {/* History is reader+ (everyone with access), unlike admin-only Members. */}

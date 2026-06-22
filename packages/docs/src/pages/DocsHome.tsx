@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { getWKApp, getRouteRight, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import '../editor/styles.css'
@@ -168,11 +168,13 @@ function DocsList({
   folder,
   selectedDocId,
   onSelect,
+  reloadToken,
 }: {
   space: string
   folder: string
   selectedDocId: string | null
   onSelect: (docId: string) => void
+  reloadToken?: number
 }): React.ReactElement {
   const [items, setItems] = useState<DocListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -194,6 +196,17 @@ function DocsList({
   }, [space, folder])
 
   useEffect(reload, [reload])
+
+  // Refresh the list when the parent bumps reloadToken (e.g. after a rename) so titles update.
+  const firstReloadRef = useRef(true)
+  useEffect(() => {
+    if (firstReloadRef.current) {
+      firstReloadRef.current = false
+      return // initial load already handled by the mount effect above
+    }
+    reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadToken])
 
   const onCreate = async () => {
     if (creating) return
@@ -339,6 +352,12 @@ export function DocsHome() {
   // fall back to rendering the editor inline in a CSS split pane.
   const routeRight = getRouteRight()
 
+  // Bumped after a successful rename so the resident list refreshes its titles.
+  const [listReloadToken, setListReloadToken] = useState(0)
+  const onTitleSaved = useCallback(() => {
+    setListReloadToken((n) => n + 1)
+  }, [])
+
   const buildEditor = useCallback(
     (docId: string, onBack: () => void) => (
       <EditorShell
@@ -351,9 +370,10 @@ export function DocsHome() {
         doc={docId}
         user={{ id: uid, name: uid }}
         onBack={onBack}
+        onTitleSaved={onTitleSaved}
       />
     ),
-    [uid, space, folder],
+    [uid, space, folder, onTitleSaved],
   )
 
   // Docs-owned empty state for the right pane. CRITICAL: the host renders its default
@@ -433,7 +453,13 @@ export function DocsHome() {
   if (routeRight) {
     return (
       <div className="octo-doc octo-docs-list-only">
-        <DocsList space={space} folder={folder} selectedDocId={selectedDocId} onSelect={openDoc} />
+        <DocsList
+          space={space}
+          folder={folder}
+          selectedDocId={selectedDocId}
+          onSelect={openDoc}
+          reloadToken={listReloadToken}
+        />
       </div>
     )
   }
@@ -446,6 +472,7 @@ export function DocsHome() {
           folder={folder}
           selectedDocId={selectedDocId}
           onSelect={openDoc}
+          reloadToken={listReloadToken}
         />
       </aside>
       <section className="octo-docs-split-right">

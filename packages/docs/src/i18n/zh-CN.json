@@ -7,6 +7,9 @@
     "back": "全部文档",
     "updatedAt": "更新于"
   },
+  "title": {
+    "editHint": "点击编辑标题"
+  },
   "toolbar": {
     "heading1": "一级标题",
     "heading2": "二级标题",

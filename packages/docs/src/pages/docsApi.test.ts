@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
-import { listDocs, createDoc } from './docsApi.ts'
+import { listDocs, createDoc, getDoc, updateDocTitle } from './docsApi.ts'
 
 let api: MockApiClient
 
@@ -56,5 +56,30 @@ describe('docs list/create API (bare-relative /docs)', () => {
     expect(call.method).toBe('post')
     expect(call.url).toBe('/docs')
     expect((call.body as { title: string }).title).toBe('Untitled document')
+  })
+
+  it('fetches a single doc via GET /docs/{docId}', async () => {
+    api.responder = () => ({
+      data: { docId: 'd_real', title: 'Real Title', ownerId: 'u0', role: 'admin' },
+      status: 200,
+    })
+    const meta = await getDoc('d_real')
+    expect(meta.title).toBe('Real Title')
+    const call = api.calls.at(-1)!
+    expect(call.method).toBe('get')
+    expect(call.url).toBe('/docs/d_real')
+  })
+
+  it('renames a doc via PATCH /docs/{docId} with {title}', async () => {
+    api.responder = () => ({
+      data: { docId: 'd_real', title: 'New Name' },
+      status: 200,
+    })
+    const meta = await updateDocTitle('d_real', 'New Name')
+    expect(meta.title).toBe('New Name')
+    const call = api.calls.at(-1)!
+    expect(call.method).toBe('patch')
+    expect(call.url).toBe('/docs/d_real')
+    expect((call.body as { title: string }).title).toBe('New Name')
   })
 })
