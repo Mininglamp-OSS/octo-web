@@ -28,6 +28,13 @@ export type TerminalState =
   | { kind: 'not-found' }
   | { kind: 'locked' }
   | { kind: 'login' }
+  /**
+   * In-flight loss of access while connected — the WS reported 4403 (document deleted, member
+   * removed, or role downgraded to none). Distinct from a create-time `forbidden` (non-member
+   * opening a doc): this one returns the user to the list (#1 / passive recheck), since the doc
+   * they were editing is gone. NOT a reconnect — the close-code machine already marks it terminal.
+   */
+  | { kind: 'deleted' }
 
 export interface CollabEditorOptions {
   uid: string
@@ -106,7 +113,11 @@ export class CollabEditor {
       connect: () => this.provider.connect(),
       disconnect: () => this.provider.disconnect(),
       goLogin: () => opts.onTerminal?.({ kind: 'login' }),
-      showForbidden: () => opts.onTerminal?.({ kind: 'forbidden' }),
+      // 4403 while connected = the doc was deleted / access was revoked under us. Surface it as
+      // the terminal 'deleted' state so EditorShell returns to the list (NOT the static
+      // create-time 'forbidden' screen). The close-code machine still owns the no-reconnect
+      // decision; this only maps the side-effect to the docs-side terminal state.
+      showForbidden: () => opts.onTerminal?.({ kind: 'deleted' }),
       exitDocument: () => opts.onTerminal?.({ kind: 'not-found' }),
       showLockedOrArchived: () => opts.onTerminal?.({ kind: 'locked' }),
       clearDocCache: () => {

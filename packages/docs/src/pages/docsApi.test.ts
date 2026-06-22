@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
-import { listDocs, createDoc, getDoc, updateDocTitle } from './docsApi.ts'
+import { listDocs, createDoc, getDoc, updateDocTitle, deleteDoc } from './docsApi.ts'
 
 let api: MockApiClient
 
@@ -81,5 +81,20 @@ describe('docs list/create API (bare-relative /docs)', () => {
     expect(call.method).toBe('patch')
     expect(call.url).toBe('/docs/d_real')
     expect((call.body as { title: string }).title).toBe('New Name')
+  })
+
+  it('deletes a doc via DELETE /docs/{docId}', async () => {
+    api.responder = () => ({ data: {}, status: 200 })
+    await deleteDoc('d_real')
+    const call = api.calls.at(-1)!
+    expect(call.method).toBe('delete')
+    expect(call.url).toBe('/docs/d_real')
+  })
+
+  it('propagates the error (with status) when delete fails', async () => {
+    api.responder = () => {
+      throw { response: { status: 409 } }
+    }
+    await expect(deleteDoc('d_arch')).rejects.toMatchObject({ response: { status: 409 } })
   })
 })

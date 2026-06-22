@@ -89,3 +89,13 @@ export async function updateDocTitle(docId: string, title: string): Promise<DocM
   const { data } = await apiClient().patch<DocMeta>(`/docs/${docId}`, { title })
   return data
 }
+
+/**
+ * DELETE /api/v1/docs/{docId} — delete a document (owner/admin only; enforced server-side, the
+ * UI also gates the control on role). Contract (C3 final): 200 deleted; 404 already gone; 403
+ * not admin; 409 archived target. Callers map the ApiError status to the right message — this
+ * helper just performs the request and lets the error propagate.
+ */
+export async function deleteDoc(docId: string): Promise<void> {
+  await apiClient().delete(`/docs/${docId}`)
+}

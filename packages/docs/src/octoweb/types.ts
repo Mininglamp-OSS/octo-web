@@ -89,6 +89,19 @@ export interface ModuleManager {
   currentSpaceId?: string
 }
 
+/**
+ * Minimal space-member shape the docs module needs (uid + display name only).
+ *
+ * The host's SpaceService.getMembers returns a richer SpaceMember (avatar/role/robot/…),
+ * but docs only needs to resolve uid → display name (presence avatar initial, collaboration
+ * caret label, member panel). Keeping the seam this narrow means the docs module never
+ * depends on host member fields it doesn't use.
+ */
+export interface SpaceMemberLite {
+  uid: string
+  name: string
+}
+
 /** The WKApp singleton surface the docs module touches. */
 export interface WKAppShape {
   shared: ModuleManager
@@ -103,6 +116,14 @@ export interface WKAppShape {
    * a lightweight stub; in production this is the real static WKApp.routeRight.
    */
   routeRight?: RouteRight
+  /**
+   * Fetch one page of the CURRENT space's members (uid + display name only). Optional,
+   * declared the same way as `routeRight`: in production octoweb/index.ts wires this to the
+   * host's `SpaceService.shared.getMembers(spaceId, page, limit)` (mapping to uid/name); the
+   * test mock supplies fake members so docs can resolve uid → name without bootstrapping the
+   * host. Absent → docs falls back to showing the raw uid.
+   */
+  getSpaceMembers?(spaceId: string, page: number, limit: number): Promise<SpaceMemberLite[]>
 }
 
 /** Minimal surface of the host's right-pane route manager (ContextRouteManager). */

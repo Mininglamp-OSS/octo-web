@@ -7,7 +7,14 @@ import type { Role } from '../auth/roles.ts'
 
 export interface Invite {
   inviteToken: string
-  url: string
+  /**
+   * Shareable accept URL. Built FRONT-END from the current origin
+   * (`${window.location.origin}/docs/invite/${inviteToken}`) rather than a backend-derived
+   * field — the backend now returns only `{ inviteToken, role }`. Optional/derived: if a legacy
+   * backend still sends a `url`, the locally-built origin URL is preferred (it is the correct,
+   * environment-accurate one). May be undefined in non-browser contexts.
+   */
+  url?: string
   role: Role
   expiresAt?: string
   maxUses?: number
@@ -21,18 +28,31 @@ export interface CreateInviteOptions {
   maxUses?: number
 }
 
+/**
+ * Build the shareable invite-accept URL from the front-end's own origin. The route
+ * `/docs/invite/:token` is registered by the docs module (module.tsx). Returns an empty string
+ * in non-browser contexts (so callers can guard) — the token is still available on the Invite.
+ */
+export function buildInviteUrl(inviteToken: string): string {
+  if (typeof window === 'undefined' || !window.location?.origin) return ''
+  return `${window.location.origin}/docs/invite/${inviteToken}`
+}
+
 export async function createInvite(docId: string, opts: CreateInviteOptions = {}): Promise<Invite> {
   const { data } = await apiClient().post<Invite>(`/docs/${docId}/invites`, {
     role: opts.role ?? 'writer',
     expiresAt: opts.expiresAt,
     maxUses: opts.maxUses ?? 0, // 0 = unlimited
   })
-  return data
+  // Always prefer the locally-built origin URL over any backend `url` (the secure, correct one).
+  return { ...data, url: buildInviteUrl(data.inviteToken) || data.url }
 }
 
 export async function listInvites(docId: string): Promise<Invite[]> {
   const { data } = await apiClient().get<{ items: Invite[] }>(`/docs/${docId}/invites`)
-  return data.items ?? []
+  const items = data.items ?? []
+  // Re-derive each link from the current origin (don't trust a stale backend `url`).
+  return items.map((inv) => ({ ...inv, url: buildInviteUrl(inv.inviteToken) || inv.url }))
 }
 
 export async function revokeInvite(docId: string, inviteToken: string): Promise<void> {
