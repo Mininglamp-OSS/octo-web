@@ -19,3 +19,18 @@ export function octoPluginInstalled(metadataJson: string | undefined, component:
         return false
     }
 }
+
+// cc 适配插件(cc-channel-octo)一键安装:provider 是 claude 且其 cc-octo 插件
+// 尚未安装时,版本槽显示「安装」。与 canInstallOctoPlugin 对称,但 cc 安装需用户
+// 提供 LLM 网关 url + key(走 CcInstallModal 收集),故走不同的提交路径。
+export function canInstallCcPlugin(provider: string, hasCcOctoPlugin: boolean): boolean {
+    return provider === "claude" && !hasCcOctoPlugin
+}
+
+/**
+ * 判定是否应显示 cc-octo 安装按钮。纯函数，供渲染和测试共用。
+ * 条件：canInstallCcPlugin 为真 AND backend 有可安装的版本 (plugin_install_version 非空)。
+ */
+export function shouldShowCcInstall(provider: string, hasCcOctoPlugin: boolean, pluginInstallVersion?: string): boolean {
+    return canInstallCcPlugin(provider, hasCcOctoPlugin) && !!pluginInstallVersion
+}
