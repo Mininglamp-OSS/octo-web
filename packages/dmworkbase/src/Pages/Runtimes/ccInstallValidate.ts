@@ -8,13 +8,39 @@ export interface CcInstallValidationResult {
 }
 
 /**
+ * Check whether a parsed URL's protocol + hostname pass the backend gateway
+ * allowlist (isAllowedApiUrl / fleet isAllowedGatewayURL).
+ *
+ * Rule:
+ *   - https: → always allowed (any host)
+ *   - http:  → allowed only for localhost or 127.0.0.1
+ *   - anything else → rejected
+ */
+function isAllowedApiUrl(url: URL): boolean {
+    const protocol = url.protocol.toLowerCase();
+    if (protocol === "https:") {
+        return true;
+    }
+    if (protocol === "http:") {
+        const host = url.hostname.toLowerCase();
+        if (host === "localhost" || host === "127.0.0.1") {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Validate cc adapter plugin installation inputs.
  * Pure function — no React, no i18n dependencies.
  *
- * URL policy (aligned with backend isAllowedApiUrl):
- * - Accept https://* (any HTTPS URL)
- * - Accept http://localhost or http://127.0.0.1 (with optional port/path)
- * - Reject everything else (empty → url_required, present-but-not-allowed → url_invalid)
+ * Uses the native URL constructor so the check mirrors the backend
+ * (cc-channel-octo configure / fleet isAllowedGatewayURL) exactly.
+ *
+ * Error codes:
+ *   - empty / whitespace-only URL → url_required
+ *   - malformed or disallowed URL → url_invalid
+ *   - empty API key → key_required
  */
 export function validateCcInstall(gatewayUrl: string, apiKey: string): CcInstallValidationResult {
     let urlError: UrlErrorCode | undefined;
@@ -24,9 +50,13 @@ export function validateCcInstall(gatewayUrl: string, apiKey: string): CcInstall
     if (!trimmed) {
         urlError = "url_required";
     } else {
-        const isHttps = /^https:\/\//i.test(trimmed);
-        const isLocalHttp = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(trimmed);
-        if (!isHttps && !isLocalHttp) {
+        try {
+            const url = new URL(trimmed);
+            if (!isAllowedApiUrl(url)) {
+                urlError = "url_invalid";
+            }
+        } catch {
+            // Not a valid absolute URL (bad protocol, missing host, etc.)
             urlError = "url_invalid";
         }
     }
