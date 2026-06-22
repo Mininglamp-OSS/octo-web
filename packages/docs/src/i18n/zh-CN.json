@@ -4,7 +4,8 @@
   },
   "list": {
     "new": "新建文档",
-    "back": "全部文档"
+    "back": "全部文档",
+    "updatedAt": "更新于"
   },
   "toolbar": {
     "heading1": "一级标题",

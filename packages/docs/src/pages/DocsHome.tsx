@@ -4,6 +4,7 @@ import { EditorShell } from '../editor/EditorShell.tsx'
 import '../editor/styles.css'
 import { DEFAULT_DOC_SPACE, DEFAULT_DOC_FOLDER, DEFAULT_DOC_ID } from '../config.ts'
 import { listDocs, createDoc, type DocListItem } from './docsApi.ts'
+import { formatRelative, formatAbsolute } from '../versions/format.ts'
 
 export interface DocTarget {
   space: string
@@ -216,8 +217,14 @@ function DocsList({
   return (
     <div className="octo-docs-list">
       <div className="octo-docs-list-header">
-        <h2>{t('docs.menu.title')}</h2>
-        <button type="button" onClick={onCreate} disabled={creating}>
+        <h2 className="octo-docs-list-title">{t('docs.menu.title')}</h2>
+        <button
+          type="button"
+          className="octo-docs-list-new"
+          onClick={onCreate}
+          disabled={creating}
+        >
+          <span className="octo-docs-list-new-icon" aria-hidden="true">+</span>
           {t('docs.list.new')}
         </button>
       </div>
@@ -231,17 +238,61 @@ function DocsList({
         </p>
       )}
       {!loading && !error && items.length === 0 && (
-        <p className="octo-docs-list-state">{t('docs.state.empty')}</p>
+        <p className="octo-docs-list-state octo-docs-list-empty">{t('docs.state.empty')}</p>
       )}
       {!loading && !error && items.length > 0 && (
         <ul className="octo-docs-list-items">
-          {items.map((d) => (
-            <li key={d.docId} className={d.docId === selectedDocId ? 'octo-docs-list-item-active' : undefined}>
-              <button type="button" onClick={() => onSelect(d.docId)}>
-                {d.title || t('docs.state.untitled')}
-              </button>
-            </li>
-          ))}
+          {items.map((d) => {
+            const active = d.docId === selectedDocId
+            const hasTitle = !!d.title && d.title.trim().length > 0
+            const label = hasTitle ? d.title : t('docs.state.untitled')
+            return (
+              <li
+                key={d.docId}
+                className={
+                  active ? 'octo-docs-list-item octo-docs-list-item-active' : 'octo-docs-list-item'
+                }
+              >
+                <button
+                  type="button"
+                  className="octo-docs-list-row"
+                  onClick={() => onSelect(d.docId)}
+                  aria-current={active ? 'true' : undefined}
+                >
+                  <span className="octo-docs-list-row-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path
+                        d="M4 1.5h5L12.5 5v9a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5Z"
+                        stroke="currentColor"
+                        strokeWidth="1"
+                        fill="none"
+                      />
+                      <path d="M9 1.5V5h3.5" stroke="currentColor" strokeWidth="1" fill="none" />
+                    </svg>
+                  </span>
+                  <span className="octo-docs-list-row-text">
+                    <span
+                      className={
+                        hasTitle
+                          ? 'octo-docs-list-row-title'
+                          : 'octo-docs-list-row-title octo-docs-list-row-title-untitled'
+                      }
+                    >
+                      {label}
+                    </span>
+                    {d.updatedAt && (
+                      <span
+                        className="octo-docs-list-row-sub"
+                        title={formatAbsolute(d.updatedAt)}
+                      >
+                        {t('docs.list.updatedAt')} {formatRelative(d.updatedAt)}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>
