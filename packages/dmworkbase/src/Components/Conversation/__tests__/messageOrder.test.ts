@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const sdkState = vi.hoisted(() => ({
     sendingQueues: new Map<number, unknown>(),
     channelInfos: new Map<string, any>(),
+    syncMessages: vi.fn(),
 }))
 
 vi.mock("wukongimjssdk", () => {
@@ -35,6 +36,7 @@ vi.mock("wukongimjssdk", () => {
             shared: () => ({
                 channelManager: {
                     getChannelInfo: (channel: any) => sdkState.channelInfos.get(channel.getChannelKey()),
+                    fetchChannelInfo: () => {},
                     getSubscribes: () => [],
                     addSubscriberChangeListener: () => {},
                     removeSubscriberChangeListener: () => {},
@@ -69,7 +71,7 @@ vi.mock("wukongimjssdk", () => {
         Conversation: class {},
         MessageExtra: class {},
         CMDContent: class {},
-        PullMode: {},
+        PullMode: { Down: 0, Up: 1 },
         ChannelInfo: class {},
         ChannelInfoListener: class {},
         ConversationListener: class {},
@@ -86,9 +88,13 @@ vi.mock("wukongimjssdk", () => {
 vi.mock("../../../App", () => ({
     default: {
         loginInfo: { uid: "me" },
+        config: { pageSizeOfMessage: 30 },
         dataSource: { channelDataSource: { subscribers: () => Promise.resolve([]) } },
         mittBus: { on: () => {}, off: () => {} },
-        conversationProvider: { markConversationUnread: () => Promise.resolve() },
+        conversationProvider: {
+            markConversationUnread: () => Promise.resolve(),
+            syncMessages: sdkState.syncMessages,
+        },
         shared: { currentSpaceId: "", notifyMessageDeleteListener: () => {} },
     },
 }))
@@ -175,11 +181,29 @@ function wrap(overrides: Record<string, any>) {
     return result
 }
 
+function rawMessage(messageSeq: number, overrides: Record<string, any> = {}) {
+    return {
+        channel,
+        clientSeq: 0,
+        clientMsgNo: `msg-${messageSeq}`,
+        messageSeq,
+        messageID: `id-${messageSeq}`,
+        timestamp: messageSeq,
+        contentType: 1,
+        status: MessageStatus.Normal,
+        fromUID: "u1",
+        remoteExtra: {},
+        isDeleted: false,
+        ...overrides,
+    }
+}
+
 describe("ConversationVM message ordering", () => {
     beforeEach(() => {
         ConversationVM.sendQueue.clear()
         sdkState.sendingQueues.clear()
         sdkState.channelInfos.clear()
+        sdkState.syncMessages.mockReset()
         document.body.innerHTML = ""
     })
 
@@ -256,6 +280,58 @@ describe("ConversationVM message ordering", () => {
 
         expect(sendingMessages.map((m: any) => m.clientMsgNo)).toEqual(["active"])
         expect(ConversationVM.sendQueue.get(channel.getChannelKey())?.map((m: any) => m.clientMsgNo)).toEqual(["active"])
+    })
+
+    it("loads an anchored message window when locating an unloaded search result", async () => {
+        sdkState.syncMessages.mockImplementation(async (_channel, opts) => {
+            if (opts.pullMode === 0) {
+                return [
+                    rawMessage(55),
+                    rawMessage(54, { isDeleted: true }),
+                ]
+            }
+            return [
+                rawMessage(55),
+                rawMessage(56),
+                rawMessage(57),
+            ]
+        })
+        const vm = new ConversationVM(channel)
+        vi.spyOn(vm, "toMessageWraps").mockImplementation((messages: any[]) => (
+            messages.map((message) => wrap({
+                clientMsgNo: message.clientMsgNo,
+                messageSeq: message.messageSeq,
+                messageID: message.messageID,
+                timestamp: message.timestamp,
+                fromUID: message.fromUID,
+            }))
+        ))
+        const refreshMessages = vi.spyOn(vm, "refreshMessages").mockImplementation((_messages: any, callback?: () => void) => {
+            callback?.()
+        })
+
+        await vm.requestMessagesAroundMessageSeq(56)
+
+        expect(sdkState.syncMessages).toHaveBeenCalledWith(
+            channel,
+            expect.objectContaining({
+                limit: 30,
+                pullMode: 0,
+                startMessageSeq: 55,
+            }),
+        )
+        expect(sdkState.syncMessages).toHaveBeenCalledWith(
+            channel,
+            expect.objectContaining({
+                limit: 30,
+                pullMode: 1,
+                startMessageSeq: 55,
+            }),
+        )
+        expect(refreshMessages).toHaveBeenCalledTimes(1)
+        expect(refreshMessages.mock.calls[0][0].map((message: any) => message.messageSeq)).toEqual([55, 56, 57])
+        expect(vm.pulldownFinished).toBe(false)
+        expect(vm.loading).toBe(false)
     })
 
     it("scrolls to the expanded row when locating a message inside a fold session", () => {

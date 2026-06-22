@@ -99,6 +99,7 @@ import {
   uploadChatMedia,
 } from "../../Service/UploadCredentials";
 import { isMessageSelectable } from "../../Service/messageSelection";
+import { isIncomingWebhookSender } from "../../Service/IncomingWebhook";
 import { I18nContext, t } from "../../i18n";
 import {
   buildRichTextMixedCandidate,
@@ -259,7 +260,7 @@ function offsetMentionEntities(
  * 参考 useMessageRow.ts + Messages/Base/index.tsx 的群成员名字解析路径:
  *
  *   1. 群消息: 从 channelManager.getSubscribes(groupChannel) 拉群成员列表,
- *      按 uid 匹配后用 subscriberDisplayName (remark > real_name > name)
+ *      按 uid 匹配后用 subscriberDisplayName (real_name(verified) > remark > name)
  *      — 群内用户大概率没开过 1v1, Person channelInfo 缓存常 miss,
  *      群成员列表缓存命中率高得多, 是主路径
  *   2. fallback: Person channelInfo.title (用户真开过 1v1 时才有)
@@ -1030,6 +1031,12 @@ export class Conversation
     );
   }
   onTapAvatar(uid: string, event: React.MouseEvent<Element, MouseEvent>): void {
+    // webhook 发送者（iwh_*）不是群成员，没有个人资料 / 可执行动作。
+    // MessageRow 已在 isWebhook 时省略头像点击 handler，这里做 defense-in-depth：
+    // 即便其它调用方硬传了 onTapAvatar，也不为 iwh_* 弹出头像动作菜单。
+    if (isIncomingWebhookSender(uid)) {
+      return;
+    }
     this.vm.selectUID = uid;
     this.avatarMenusContext.show(event);
   }
@@ -1073,7 +1080,7 @@ export class Conversation
       highlightAndScroll(messageWrap);
       return;
     }
-    this.vm.requestMessagesOfFirstPage(messageSeq, () => {
+    this.vm.requestMessagesAroundMessageSeq(messageSeq, () => {
       if (this.vm.findMessageWithMessageSeq(messageSeq)) {
         this.locateMessage(messageSeq);
       }
@@ -2823,6 +2830,9 @@ export class Conversation
                           groupName = channelInfo?.title;
                         }
 
+                        const selfSub = this.vm.subscribers.find(
+                          (s) => s.uid === WKApp.loginInfo.uid
+                        );
                         return buildChatContext({
                           messages: this.vm.messagesOfOrigin || [],
                           subscribers: this.vm.subscribers,
@@ -2836,6 +2846,13 @@ export class Conversation
                               : undefined,
                           groupName,
                           threadName,
+                          self: {
+                            name: WKApp.loginInfo.name,
+                            remark: selfSub?.remark,
+                            realName: WKApp.loginInfo.realName,
+                            realnameVerified:
+                              WKApp.loginInfo.realnameVerified === true,
+                          },
                         });
                       }}
                       onSend={async (

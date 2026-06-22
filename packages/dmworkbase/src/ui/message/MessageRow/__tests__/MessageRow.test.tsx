@@ -377,3 +377,87 @@ describe("MessageRow — RealnameVerifiedBadge in wk-msg-row-header (Phase A)", 
         )
     })
 })
+
+/**
+ * 群入站 Webhook 发送者「无 profile / 无 actions」保证。
+ *
+ * 背景（PR #376 fast-follow）：
+ *   bridge 层 useMessageRow 对 webhook 行（FromUID=iwh_*）特意省略了
+ *   onAvatarClick / onSenderNameClick，但调用方（Text/Image/RichText/Video/
+ *   File/Mergeforward 6 个渲染器）spread props 后又无条件硬传 handler，
+ *   而 MessageRow 原先只判 handler 是否存在、不判 isWebhook —— 导致 webhook
+ *   头像照样可点，弹出针对 iwh_* 的头像动作菜单（含 @TA），违背 PR
+ *   「webhook 发送者无个人资料 / 无操作」的承诺。
+ *
+ *   修复：MessageRow 在 isWebhook=true 时中央抑制头像 / 名字点击 handler，
+ *   一处覆盖全部 6 个渲染器。这组测试把「webhook 行不触发点击」钉死。
+ */
+describe("MessageRow — webhook sender is non-interactive (isWebhook gate)", () => {
+    const baseProps = {
+        isSend: false,
+        isContinue: false,
+        isSelected: false,
+        showAvatar: true,
+        avatarUrl: "https://example.test/iwh-avatar.png",
+        senderName: "告警机器人",
+        timestamp: "10:30",
+    }
+
+    it("does NOT fire onAvatarClick / onSenderNameClick for webhook rows", () => {
+        const onAvatarClick = vi.fn()
+        const onSenderNameClick = vi.fn()
+
+        const root = renderRow(
+            <MessageRow
+                {...baseProps}
+                isWebhook={true}
+                onAvatarClick={onAvatarClick}
+                onSenderNameClick={onSenderNameClick}
+            >
+                <div className="msg-body">deploy succeeded</div>
+            </MessageRow>
+        )
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-avatar")!, "click")
+        expect(onAvatarClick).not.toHaveBeenCalled()
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "click")
+        expect(onSenderNameClick).not.toHaveBeenCalled()
+    })
+
+    it("does NOT show pointer cursor on the webhook sender name", () => {
+        const html = renderToStaticMarkup(
+            <MessageRow
+                {...baseProps}
+                isWebhook={true}
+                onSenderNameClick={() => {}}
+            >
+                <div className="msg-body">deploy succeeded</div>
+            </MessageRow>
+        )
+        // webhook 行的作者名不应带 cursor:pointer（暗示可点击）
+        expect(html).not.toMatch(/wk-msg-row-sender[^>]*cursor:\s*pointer/)
+    })
+
+    it("positive control: non-webhook rows still fire avatar / name clicks", () => {
+        const onAvatarClick = vi.fn()
+        const onSenderNameClick = vi.fn()
+
+        const root = renderRow(
+            <MessageRow
+                {...baseProps}
+                isWebhook={false}
+                onAvatarClick={onAvatarClick}
+                onSenderNameClick={onSenderNameClick}
+            >
+                <div className="msg-body">hi</div>
+            </MessageRow>
+        )
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-avatar")!, "click")
+        expect(onAvatarClick).toHaveBeenCalledTimes(1)
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "click")
+        expect(onSenderNameClick).toHaveBeenCalledTimes(1)
+    })
+})

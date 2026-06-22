@@ -1,4 +1,4 @@
-import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId } from "@octo/base";
+import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId, IncomingWebhook, IncomingWebhookCreateResp, IncomingWebhookUpsertReq } from "@octo/base";
 import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContentType,ConversationExtra,Subscriber } from "wukongimjssdk";
 
 const MAX_GROUP_LIST_LIMIT = 100000;
@@ -198,6 +198,34 @@ export class ChannelDataSource implements IChannelDataSource {
 
     deleteGroupMd(channel: Channel): Promise<void> {
         return WKApp.apiClient.delete(`groups/${channel.channelID}/md`)
+    }
+
+    // ---------- 群入站 Webhook ----------
+
+    incomingWebhooks(channel: Channel): Promise<IncomingWebhook[]> {
+        return WKApp.apiClient
+            .get(`groups/${channel.channelID}/incoming-webhooks`)
+            .then((resp?: { list?: IncomingWebhook[] }) => resp?.list || [])
+    }
+
+    createIncomingWebhook(channel: Channel, req: IncomingWebhookUpsertReq): Promise<IncomingWebhookCreateResp> {
+        return WKApp.apiClient.post(`groups/${channel.channelID}/incoming-webhooks`, req)
+    }
+
+    updateIncomingWebhook(channel: Channel, webhookId: string, req: IncomingWebhookUpsertReq): Promise<IncomingWebhook> {
+        return WKApp.apiClient.put(`groups/${channel.channelID}/incoming-webhooks/${webhookId}`, req)
+    }
+
+    deleteIncomingWebhook(channel: Channel, webhookId: string): Promise<void> {
+        return WKApp.apiClient.delete(`groups/${channel.channelID}/incoming-webhooks/${webhookId}`)
+    }
+
+    regenerateIncomingWebhook(channel: Channel, webhookId: string): Promise<IncomingWebhookCreateResp> {
+        return WKApp.apiClient.post(`groups/${channel.channelID}/incoming-webhooks/${webhookId}/regenerate`)
+    }
+
+    testIncomingWebhook(channel: Channel, webhookId: string): Promise<void> {
+        return WKApp.apiClient.post(`groups/${channel.channelID}/incoming-webhooks/${webhookId}/test`)
     }
 
     getThreadMd(groupNo: string, shortId: string): Promise<{ content: string; version: number }> {

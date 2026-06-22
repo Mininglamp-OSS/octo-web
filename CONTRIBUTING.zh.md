@@ -14,9 +14,21 @@
 ## 研发流程
 
 - 所有修改必须经过 Pull Request
-- PR 必须通过 CI 才能合并
-- PR 需至少 1 位 maintainer approve
-- 使用 squash merge 保持历史清爽
+- PR 必须通过 CI 才能合并（`Build` 与 `code-review` 为必需检查）
+- 合并前需要 maintainer 的 approve；评审分派通过 [`.github/CODEOWNERS`](.github/CODEOWNERS) 自动完成
+- 保持分支与 `main` 同步 —— 过旧的分支可能缺少必需的 CI 检查，合并前需要 rebase
+- 使用 squash merge 并保持线性历史，让提交记录保持清爽
+
+## 评审 SLA
+
+我们希望每个 PR 都能尽快得到首次回应，让贡献保持低门槛：
+
+- **首次评审在 3 个工作日内**完成（以 PR 创建、或从草稿转为正式的时间计）。
+- 若 PR 需要修改，maintainer 会给出具体、可执行的反馈，而不是简单驳回。
+- 若 PR 已被取代或超出范围，maintainer 会礼貌地说明原因并关闭。
+- 若 3 个工作日内仍无 maintainer 回应，欢迎在评论区或 [Discussions](https://github.com/orgs/Mininglamp-OSS/discussions) 中 ping 一下 —— 这是被鼓励的，不是打扰。
+
+Maintainer：不要让任何 PR 超过约 14 天仍未完成首次评审，按最旧优先的顺序处理。
 
 ## Commit 规范
 

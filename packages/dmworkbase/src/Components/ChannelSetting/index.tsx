@@ -15,6 +15,7 @@ import { I18nContext } from "../../i18n";
 
 export interface ChannelSettingProps {
     onClose?: () => void
+    onOpenChannelSearch?: () => void
     channel: Channel
     conversationContext:ConversationContext
 }
@@ -38,7 +39,7 @@ export default class ChannelSetting extends Component<ChannelSettingProps> {
     componentDidMount() {
     }
     render() {
-        const { onClose, channel,conversationContext } = this.props
+        const { onClose, onOpenChannelSearch, channel,conversationContext } = this.props
         return <Provider create={() => {
             this.vm = new ChannelSettingVM(channel)
             return this.vm
@@ -63,6 +64,7 @@ export default class ChannelSetting extends Component<ChannelSettingProps> {
                 }
             }} render={(context) => {
                 vm.routeData.conversationContext = conversationContext
+                vm.routeData.onOpenChannelSearch = onOpenChannelSearch
                 context.setRouteData(vm.routeData)
                 return <div className="wk-channelsetting-content">
                     {

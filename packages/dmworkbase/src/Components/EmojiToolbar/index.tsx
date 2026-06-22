@@ -111,7 +111,9 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         this.setState({
             emojis: this.emojiService.getAllEmoji()
         })
-        this.requestStickerCategory()
+        // 贴纸分类依赖后端 /sticker/* 接口，服务端尚未实现（sticker/user/category 返回 404）。
+        // 暂不调用 requestStickerCategory()，避免每次挂载都触发必失败的请求；
+        // 后端实现该端点后，恢复调用即可让贴纸分类 Tab 重新出现。
     }
 
     requestStickerCategory() {

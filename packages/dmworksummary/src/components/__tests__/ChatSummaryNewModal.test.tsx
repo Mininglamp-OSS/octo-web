@@ -68,6 +68,10 @@ vi.mock('../ChatSelectorModal', () => ({
     default: () => null,
 }));
 
+vi.mock('../ScheduleConfigModal', () => ({
+    default: () => null,
+}));
+
 vi.mock('../../constants/templates', () => ({
     TOPIC_TEMPLATES: [
         { id: 'project_progress', label: '汇总项目进展', icon: 'FileText', description: '总结进展', type: 'parameterized', pattern: '总结 {project_name} 的项目进展', placeholders: [{ key: 'project_name', label: '输入项目名称', position: [3, 9] }] },

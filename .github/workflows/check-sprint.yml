@@ -16,6 +16,14 @@ permissions: {}
 
 jobs:
   check-sprint:
+    # Non-blocking for external contributors: sprint hygiene is an internal
+    # tracking aid, not a merge gate, and is NOT a required status check on
+    # `main`. Fork PRs (outside contributors) are never on the Octo Board, so
+    # the check can only ever fail for them — a red ✗ on a first-time
+    # contributor's PR is pure noise and hurts the OSS first-PR experience.
+    # Skip it for cross-repo (fork) PRs; keep it for internal same-repo
+    # branches where maintainers own sprint assignment.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     uses: Mininglamp-OSS/.github/.github/workflows/reusable-check-sprint.yml@v1
     with:
       pr-number: ${{ github.event.pull_request.number }}

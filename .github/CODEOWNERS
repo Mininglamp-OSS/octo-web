@@ -1,4 +1,18 @@
-# CODEOWNERS — unified team ownership
+# CODEOWNERS — automatic review routing
+# Order matters: the LAST matching pattern wins for a given path.
 # See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Code-owner review is required on `main` (see branch ruleset), so every path
+# below must resolve to at least one team that can approve PRs.
 
+# Default owners for everything in the repo
 * @Mininglamp-OSS/maintainers @Mininglamp-OSS/web-maintainers
+
+# Web/desktop application code and shared packages
+# @maintainers is listed first so these paths always resolve to a valid code
+# owner even if @web-maintainers lacks repo access/visibility on octo-web.
+/apps/      @Mininglamp-OSS/maintainers @Mininglamp-OSS/web-maintainers
+/packages/  @Mininglamp-OSS/maintainers @Mininglamp-OSS/web-maintainers
+
+# CI, automation, and repo governance — keep these with core maintainers
+/.github/   @Mininglamp-OSS/maintainers

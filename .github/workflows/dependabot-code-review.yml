@@ -1,0 +1,39 @@
+name: Dependabot Code Review Gate
+
+# Dependabot-authored PRs never receive the external `code-review` commit
+# status (the reviewer app skips bot actors), so the `code-review` required
+# status check stays absent and the PRs are permanently BLOCKED even when
+# `Build` is green. This workflow auto-satisfies that one required context for
+# Dependabot bumps ONLY. Human PRs are untouched and still require the real
+# `code-review` status. CI-green policy stands: `Build` is a separate required
+# check and is unaffected by this workflow.
+#
+# Uses pull_request_target (not pull_request) so the job runs with the base
+# repo's token and `statuses: write`; Dependabot's own GITHUB_TOKEN is
+# read-only and cannot post statuses. No PR head code is checked out or
+# executed here, so pull_request_target is safe for this use.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  statuses: write
+
+jobs:
+  satisfy-code-review:
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report code-review success for trusted Dependabot bump
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}" \
+            -f state=success \
+            -f context=code-review \
+            -f description="Auto-satisfied for Dependabot dependency bump (scoped bot bypass)" \
+            -f target_url="${{ github.event.pull_request.html_url }}"

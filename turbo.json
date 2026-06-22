@@ -59,6 +59,9 @@
     "lint": {
       "outputs": []
     },
+    "test": {
+      "outputs": []
+    },
     "clean": {
       "dependsOn": [
         "^clean"

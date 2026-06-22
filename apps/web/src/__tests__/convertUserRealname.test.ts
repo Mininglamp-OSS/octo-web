@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { Convert } from "../../../../packages/dmworkbase/src/Service/Convert";
 
 // GH dmwork-web#1121: userToChannelInfo 应把 real_name / realname_verified
-// 透传到 orgData，并在 orgData.displayName 的解析优先级里放在 remark 之下、name 之上。
+// 透传到 orgData，并在 orgData.displayName 的解析优先级里：已实名时
+// real_name 最高，其次 remark，最后 name。
 
 describe("Convert.userToChannelInfo realname fields", () => {
     const base = {
@@ -42,12 +43,22 @@ describe("Convert.userToChannelInfo realname fields", () => {
         expect(c2.orgData.realname_verified).toBe(1);
     });
 
-    it("remark overrides real_name even when verified", () => {
+    it("verified real_name overrides remark", () => {
         const c = Convert.userToChannelInfo({
             ...base,
             remark: "Ally",
             real_name: "Alice Real",
             realname_verified: 1,
+        });
+        expect(c.orgData.displayName).toBe("Alice Real");
+    });
+
+    it("remark overrides name when not verified", () => {
+        const c = Convert.userToChannelInfo({
+            ...base,
+            remark: "Ally",
+            real_name: "Alice Real",
+            realname_verified: 0,
         });
         expect(c.orgData.displayName).toBe("Ally");
     });

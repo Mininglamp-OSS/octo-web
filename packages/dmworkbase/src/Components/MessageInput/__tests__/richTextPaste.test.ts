@@ -66,14 +66,124 @@ describe("richTextPaste", () => {
 
   it("builds inline content with mention nodes and hard breaks", () => {
     expect(
-      buildInlineContentForRichTextPaste("hi @Alice\nnext", [
-        { uid: "alice", offset: 3, length: "@Alice".length },
-      ])
+      buildInlineContentForRichTextPaste(
+        "hi @Alice\nnext",
+        [{ uid: "alice", offset: 3, length: "@Alice".length }],
+        [{ uid: "alice", name: "Alice" }]
+      )
     ).toEqual([
       { type: "text", text: "hi " },
       { type: "mention", attrs: { id: "alice", label: "Alice" } },
       { type: "hardBreak" },
       { type: "text", text: "next" },
+    ]);
+  });
+
+  it("keeps a valid in-channel mention matched on the canonical label", () => {
+    expect(
+      buildInlineContentForRichTextPaste(
+        "ping @Bob Smith done",
+        [{ uid: "bob", offset: 5, length: "@Bob Smith".length }],
+        [{ uid: "bob", name: "bob-alias", label: "Bob Smith" }]
+      )
+    ).toEqual([
+      { type: "text", text: "ping " },
+      { type: "mention", attrs: { id: "bob", label: "Bob Smith" } },
+      { type: "text", text: " done" },
+    ]);
+  });
+
+  it.each([
+    ["-1", "legacy @所有人"],
+    ["-2", "humans sentinel"],
+    ["-3", "ais sentinel"],
+    ["all", "render-side synthetic"],
+  ])(
+    "degrades a broadcast sentinel mention (%s) to plain text",
+    (uid) => {
+      expect(
+        buildInlineContentForRichTextPaste(
+          "hey @所有人 hello",
+          [{ uid, offset: 4, length: "@所有人".length }],
+          // Even if the forged payload also lists the sentinel as a "member",
+          // a broadcast sentinel must never reconstruct a mention node.
+          [{ uid, name: "所有人" }]
+        )
+      ).toEqual([
+        { type: "text", text: "hey " },
+        { type: "text", text: "@所有人" },
+        { type: "text", text: " hello" },
+      ]);
+    }
+  );
+
+  it("degrades a pasted mention whose uid is not a current channel member", () => {
+    expect(
+      buildInlineContentForRichTextPaste(
+        "hi @Alice next",
+        [{ uid: "attacker", offset: 3, length: "@Alice".length }],
+        [{ uid: "alice", name: "Alice" }]
+      )
+    ).toEqual([
+      { type: "text", text: "hi " },
+      { type: "text", text: "@Alice" },
+      { type: "text", text: " next" },
+    ]);
+  });
+
+  it("degrades a pasted mention whose label does not match the member name", () => {
+    expect(
+      buildInlineContentForRichTextPaste(
+        "hi @Administrator next",
+        [{ uid: "alice", offset: 3, length: "@Administrator".length }],
+        [{ uid: "alice", name: "Alice" }]
+      )
+    ).toEqual([
+      { type: "text", text: "hi " },
+      { type: "text", text: "@Administrator" },
+      { type: "text", text: " next" },
+    ]);
+  });
+
+  it("degrades every pasted mention when no members list is provided", () => {
+    expect(
+      buildInlineContentForRichTextPaste("hi @Alice next", [
+        { uid: "alice", offset: 3, length: "@Alice".length },
+      ])
+    ).toEqual([
+      { type: "text", text: "hi " },
+      { type: "text", text: "@Alice" },
+      { type: "text", text: " next" },
+    ]);
+  });
+
+  it("threads members through restore so a forged mention degrades but a valid one survives", async () => {
+    const { editor, insertContent } = fakeEditor();
+
+    await restoreOctoRichTextClipboardToEditor(
+      {
+        version: 1,
+        blocks: [
+          {
+            type: "text",
+            text: "hi @Alice and @所有人",
+            mentions: [
+              { uid: "alice", offset: 3, length: "@Alice".length },
+              { uid: "-2", offset: 14, length: "@所有人".length },
+            ],
+          },
+        ],
+      },
+      editor,
+      vi.fn(),
+      { members: [{ uid: "alice", name: "Alice" }] }
+    );
+
+    expect(insertContent).toHaveBeenCalledWith([
+      { type: "text", text: "hi " },
+      { type: "mention", attrs: { id: "alice", label: "Alice" } },
+      { type: "text", text: " and " },
+      { type: "text", text: "@所有人" },
     ]);
   });
 

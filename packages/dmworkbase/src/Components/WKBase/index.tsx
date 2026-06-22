@@ -15,6 +15,7 @@ import {
   UserInfoRouter,
 } from "./userInfoRouter";
 import { I18nContext } from "../../i18n";
+import { isIncomingWebhookSender } from "../../Service/IncomingWebhook";
 import "./index.css";
 
 /**
@@ -174,6 +175,12 @@ export default class WKBase
     this.state = {};
   }
   showUserInfo(uid: string, fromChannel?: Channel, vercode?: string): void {
+    // 群入站 Webhook 发送者（uid = iwh_*）不是真实用户，没有个人资料页：
+    // 强制不打开资料卡（否则会出现「设置备注 / 发送消息」等无效操作）。
+    // 集中在此入口拦截，覆盖头像点击 / 名字点击 / 上下文菜单等所有调用方。
+    if (isIncomingWebhookSender(uid)) {
+      return;
+    }
     // GH#1112: 统一的 "查看用户资料" 入口。机器人（robot === 1）必须走
     // BotDetailModal，这样 bot owner 才能继续编辑头像/简介，与通讯录 bot 卡片一致。
     // 此前只有 Contacts / Subscribers / GlobalSearch 等少数调用方手动区分 isBot，

@@ -101,6 +101,14 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
         const day_of_week = unit === "week" ? dayOfWeek || 0 : 0;
         const day_of_month = unit === "month" ? dayOfMonth || 0 : 0;
 
+        // 强剥 source_name：与即时总结路一致，提交时不带 name，
+        // 让后端按 source_id 现查 IM 库最新群名（带类型后缀）。
+        // 这样定时管理 UI 也不会把原始 group_no/thread id 当名写进库。
+        const cleanSources = sources.map(({ source_type, source_id }) => ({
+            source_type,
+            source_id,
+        }));
+
         onSubmit({
             title: title.trim(),
             summary_mode: summaryMode,
@@ -111,7 +119,7 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({
             day_of_month,
             run_time,
             time_range_type: timeRangeType,
-            sources,
+            sources: cleanSources,
         });
     }, [title, summaryMode, unit, every, runTime, dayOfWeek, dayOfMonth, timeRangeType, sources, onSubmit]);
 

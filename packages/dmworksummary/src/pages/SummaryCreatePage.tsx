@@ -165,12 +165,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             };
 
             if (selectedChats.length > 0) {
+                // 不传 source_name：让后端按 source_id 现查 IM 库最新群名（带类型后缀）。
+                // 避免把创建那一刻的群名冻结进定时配置，从而群改名后定时仍显示旧名。
                 params.sources = selectedChats.map((c) => ({
                     source_type: c.chat_type === "group" ? SourceType.GROUP_CHAT
                                : c.chat_type === "thread" ? SourceType.THREAD
                                : SourceType.DIRECT_MESSAGE,
                     source_id: c.chat_id,
-                    source_name: c.name,
                 }));
             }
 

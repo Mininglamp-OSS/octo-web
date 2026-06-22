@@ -3,6 +3,7 @@ import classNames from 'classnames'
 import Avatar from '../Avatar'
 import Timestamp from '../Timestamp'
 import AiBadge from '../../../Components/AiBadge'
+import WebhookBadge from '../../../Components/WebhookBadge'
 import RealnameVerifiedBadge from '../../../Components/RealnameVerifiedBadge'
 import { useI18n } from '../../../i18n'
 import './index.css'
@@ -85,6 +86,9 @@ export interface MessageRowProps {
 
   /** 发送者是否为 bot（AI），名称后显示 AI 标识 */
   isBot?: boolean
+
+  /** 发送者是否为群入站 Webhook，名称后显示 Webhook 标识 */
+  isWebhook?: boolean
 }
 
 /**
@@ -106,6 +110,7 @@ export default function MessageRow({
   avatarUrl,
   senderName,
   isBot,
+  isWebhook,
   timestamp,
   timeOnly,
   isOnline,
@@ -190,7 +195,7 @@ export default function MessageRow({
             isOnline={isOnline}
             showOnlineDot
             alt={senderName}
-            onClick={isSelecting ? undefined : onAvatarClick}
+            onClick={isSelecting || isWebhook ? undefined : onAvatarClick}
           />
         )}
         {/* 连续消息：头像占位,hover 时显示时间戳 */}
@@ -209,8 +214,8 @@ export default function MessageRow({
           <div className="wk-msg-row-header">
             <span
               className="wk-msg-row-sender"
-              style={{ cursor: !isSelecting && onSenderNameClick ? 'pointer' : undefined }}
-              onClick={isSelecting ? undefined : onSenderNameClick}
+              style={{ cursor: !isSelecting && !isWebhook && onSenderNameClick ? 'pointer' : undefined }}
+              onClick={isSelecting || isWebhook ? undefined : onSenderNameClick}
             >{senderName}</span>
             {/* Epic dmwork-web#1169 Phase A: 实名徽章紧贴作者名右侧，
                 只 variant="icon" 迷你形态，已实名才渲染。*/}
@@ -234,6 +239,7 @@ export default function MessageRow({
               </span>
             )}
             {isBot && <AiBadge size="small" />}
+            {isWebhook && <WebhookBadge />}
             {isEdit && <span className="wk-msg-row-edited">{t("base.message.edited")}</span>}
             <span className="wk-msg-row-timestamp">{timestamp}</span>
           </div>

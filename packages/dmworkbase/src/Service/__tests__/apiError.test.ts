@@ -148,4 +148,28 @@ describe("normalizeApiError", () => {
     expect(normalizeApiError({ httpStatus: 404, data: {} }).message).toBe("请求地址没有找到（404）");
     expect(normalizeApiError({ httpStatus: 418, data: {} }).message).toBe("未知错误");
   });
+
+  // YUJ-2628 — 无响应错误（请求超时/网络中断）必须归类成可读提示，
+  // 否则登录页 hang 住后用户只看到「未知错误」。
+  it("classifies axios timeout (ECONNABORTED) as timeout message", () => {
+    const raw: any = new Error("timeout of 20000ms exceeded");
+    raw.code = "ECONNABORTED";
+    expect(normalizeApiError({ raw }).message).toBe("请求超时，请检查网络后重试");
+  });
+
+  it("classifies timeout by message even without code", () => {
+    const raw: any = new Error("timeout exceeded");
+    expect(normalizeApiError({ raw }).message).toBe("请求超时，请检查网络后重试");
+  });
+
+  it("classifies axios network error (ERR_NETWORK) as network message", () => {
+    const raw: any = new Error("Network Error");
+    raw.code = "ERR_NETWORK";
+    expect(normalizeApiError({ raw }).message).toBe("网络异常，请检查网络后重试");
+  });
+
+  it("does not misclassify a normal HTTP error as timeout/network", () => {
+    const raw: any = new Error("Request failed with status code 500");
+    expect(normalizeApiError({ httpStatus: 500, data: {}, raw }).message).toBe("未知错误");
+  });
 });

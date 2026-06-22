@@ -219,6 +219,7 @@
   --wk-color-success-bg: rgba(65, 205, 89, 0.08);
   --wk-color-warning: var(--wk-amber-light); /* Figma: #FC8800 */
   --wk-color-warning-bg: rgba(252, 136, 0, 0.08);
+  --wk-color-search-highlight: #f8e6ab; /* Figma: 搜索命中高亮 */
   --wk-color-error: var(--wk-red-light); /* Figma: #F54A45 */
   --wk-color-error-bg: rgba(245, 74, 69, 0.08);
   --wk-color-info: var(--wk-blue-light); /* Figma: #0077FA */
@@ -304,6 +305,7 @@ body[theme-mode="dark"] {
   --wk-color-success-bg: var(--wk-teal-alpha-10);
   --wk-color-warning: var(--wk-amber-dark);
   --wk-color-warning-bg: rgba(255, 173, 51, 0.1);
+  --wk-color-search-highlight: rgba(248, 230, 171, 0.32);
   --wk-color-error: var(--wk-red-dark);
   --wk-color-error-bg: rgba(255, 92, 114, 0.1);
   --wk-color-info: var(--wk-blue-dark);

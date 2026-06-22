@@ -688,7 +688,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     day_of_month,
                     run_time,
                     time_range_type: 2,
-                    sources: detail.sources,
+                    // 强剥 source_name：与即时总结/ScheduleForm 一致，提交时只带
+                    // {source_type, source_id}，让后端按 source_id 现查 IM 库权威群名
+                    // （带类型后缀）。避免详情页把 detail.sources 里的客户端名
+                    // （未命名来源会退化成原始 group_no/thread id）写进定时配置。
+                    sources: detail.sources.map(({ source_type, source_id }) => ({
+                        source_type,
+                        source_id,
+                    })),
                     scope: 'task',
                     task_id: detail.task_id,
                     ...participantsParam,

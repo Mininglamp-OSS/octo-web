@@ -15,6 +15,7 @@
     "bootstrap": "yarn install",
     "clean": "turbo run clean && rimraf node_modules .turbo",
     "lint": "turbo run lint",
+    "test": "turbo run test",
     "lint:css": "stylelint '**/*.css' --config stylelint.config.mjs --allow-empty-input && pnpm lint:wkmodal",
     "lint:css:ci": "stylelint --config stylelint.ci.config.mjs --allow-empty-input && pnpm lint:wkmodal",
     "lint:wkmodal": "node scripts/check-wkmodal-semi-overrides.mjs",

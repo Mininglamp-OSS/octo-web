@@ -29,6 +29,7 @@ import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import { canManageThread } from "../../Service/threadPermission";
 import { ErrorBoundary } from "../ErrorBoundary";
 import WKApp from "../../App";
+import { ShowConversationOptions } from "../../EndpointCommon";
 import { formatRelativeTime } from "../../Utils/time";
 import FollowService from "../../Service/FollowService";
 import SidebarService from "../../Service/SidebarService";
@@ -44,6 +45,7 @@ import { FileListPanel } from "../FilePreviewPanel/FileListPanel";
 import { MarkdownRenderer } from "../FilePreviewPanel/renderers/MarkdownRenderer";
 import { HtmlRenderer } from "../FilePreviewPanel/renderers/HtmlRenderer";
 import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
+import { isChannelSearchEnabled } from "../ChannelSearch/feature";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
 import {
@@ -165,6 +167,7 @@ export default class ThreadPanel extends Component<
   private undoToastIds = new Map<string, string>();
   /** 组件是否已卸载，撤销 Toast 渲染在全局 portal，卸载后回调需短路 */
   private isUnmounted = false;
+  private _unsubscribeRemoteConfig?: () => void;
 
   constructor(props: ThreadPanelProps) {
     super(props);
@@ -219,10 +222,17 @@ export default class ThreadPanel extends Component<
     }
     // Set CSS variable on mount so chat area calc has the correct width
     this.syncCssVariable(this.state.panelWidth);
+    this._unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(
+      () => {
+        if (!this.isUnmounted) this.forceUpdate();
+      }
+    );
   }
 
   componentWillUnmount() {
     this.isUnmounted = true;
+    this._unsubscribeRemoteConfig?.();
+    this._unsubscribeRemoteConfig = undefined;
     document.removeEventListener("mousemove", this.onPanelDragMove);
     document.removeEventListener("mouseup", this.onPanelDragEnd);
     if (this.state.isDragging) {
@@ -519,7 +529,10 @@ export default class ThreadPanel extends Component<
       const followedChannelIds = new Set<string>();
       if (sidebarResp?.items) {
         for (const item of sidebarResp.items) {
-          if (item.target_type === ChannelTypeCommunityTopic && item.is_followed) {
+          if (
+            item.target_type === ChannelTypeCommunityTopic &&
+            item.is_followed
+          ) {
             followedChannelIds.add(item.target_id);
           }
         }
@@ -531,24 +544,29 @@ export default class ThreadPanel extends Component<
         is_followed: followedChannelIds.has(t.channel_id),
       }));
 
-      threadsWithFollow.sort((a, b) => this.threadSortTime(b) - this.threadSortTime(a));
+      threadsWithFollow.sort(
+        (a, b) => this.threadSortTime(b) - this.threadSortTime(a)
+      );
       this.setState((prevState) => {
         const currentThread = prevState.vmState.thread;
         const refreshedCurrentThread = currentThread
-          ? threadsWithFollow.find((item) => item.short_id === currentThread.short_id)
+          ? threadsWithFollow.find(
+              (item) => item.short_id === currentThread.short_id
+            )
           : undefined;
         return {
           threads: threadsWithFollow,
           threadsLoading: false,
-          vmState: currentThread && refreshedCurrentThread
-            ? {
-                ...prevState.vmState,
-                thread: {
-                  ...currentThread,
-                  ...refreshedCurrentThread,
-                },
-              }
-            : prevState.vmState,
+          vmState:
+            currentThread && refreshedCurrentThread
+              ? {
+                  ...prevState.vmState,
+                  thread: {
+                    ...currentThread,
+                    ...refreshedCurrentThread,
+                  },
+                }
+              : prevState.vmState,
         };
       });
     } catch {
@@ -557,7 +575,8 @@ export default class ThreadPanel extends Component<
   }
 
   private threadSortTime(thread: Thread): number {
-    const raw = thread.last_message_at || thread.updated_at || thread.created_at;
+    const raw =
+      thread.last_message_at || thread.updated_at || thread.created_at;
     const time = raw ? new Date(raw).getTime() : 0;
     return Number.isFinite(time) ? time : 0;
   }
@@ -610,6 +629,31 @@ export default class ThreadPanel extends Component<
     } catch {
       Toast.error(t("base.threadPanel.openFailedRetry"));
     }
+  };
+
+  private getThreadSearchChannel(thread?: Thread | null): Channel | null {
+    if (!thread) return null;
+    const channelId =
+      thread.channel_id ||
+      (this.props.groupNo
+        ? buildThreadChannelId(this.props.groupNo, thread.short_id)
+        : "");
+    if (!channelId) return null;
+    return new Channel(channelId, ChannelTypeCommunityTopic);
+  }
+
+  private handleOpenChannelSearch = () => {
+    const threadChannel = this.getThreadSearchChannel(
+      this.state.vmState.thread
+    );
+    if (!isChannelSearchEnabled(threadChannel)) return;
+
+    const opts = new ShowConversationOptions();
+    opts.openChannelSearch = true;
+    opts.fromSidebarList = true;
+    this.setState({ showMoreMenu: false });
+    WKApp.endpoints.showConversation(threadChannel, opts);
+    this.props.onClose();
   };
 
   private canEditThread(thread: Thread): boolean {
@@ -758,9 +802,15 @@ export default class ThreadPanel extends Component<
     setTimeout(() => {
       wkConfirm({
         title: archiving
-          ? t("base.module.thread.archiveConfirmTitle", { values: { name: thread.name } })
-          : t("base.module.thread.unarchiveConfirmTitle", { values: { name: thread.name } }),
-        okText: archiving ? t("base.module.thread.archiveOk") : t("base.module.thread.unarchive"),
+          ? t("base.module.thread.archiveConfirmTitle", {
+              values: { name: thread.name },
+            })
+          : t("base.module.thread.unarchiveConfirmTitle", {
+              values: { name: thread.name },
+            }),
+        okText: archiving
+          ? t("base.module.thread.archiveOk")
+          : t("base.module.thread.unarchive"),
         cancelText: t("base.common.cancel"),
         content: archiving
           ? t("base.module.thread.archiveConfirmContent")
@@ -769,9 +819,11 @@ export default class ThreadPanel extends Component<
           try {
             await this.archiveThreadById(thread);
           } catch {
-            Toast.error(archiving
-              ? t("base.module.thread.archiveFailedRetry")
-              : t("base.module.thread.unarchiveFailedRetry"));
+            Toast.error(
+              archiving
+                ? t("base.module.thread.archiveFailedRetry")
+                : t("base.module.thread.unarchiveFailedRetry")
+            );
           }
         },
       });
@@ -903,7 +955,9 @@ export default class ThreadPanel extends Component<
 
     setTimeout(() => {
       wkConfirm({
-        title: t("base.threadPanel.deleteConfirmTitle", { values: { name: thread.name } }),
+        title: t("base.threadPanel.deleteConfirmTitle", {
+          values: { name: thread.name },
+        }),
         okText: t("base.threadPanel.delete"),
         okType: "danger",
         cancelText: t("base.common.cancel"),
@@ -982,7 +1036,10 @@ export default class ThreadPanel extends Component<
           Toast.success(t("base.module.createThread.success"));
           this.loadThreads();
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : t("base.module.createThread.failed");
+          const msg =
+            err instanceof Error
+              ? err.message
+              : t("base.module.createThread.failed");
           Toast.error(msg);
         }
       },
@@ -1005,7 +1062,9 @@ export default class ThreadPanel extends Component<
     } else if (file.category === "video") {
       digest = t("base.threadPanel.digest.video");
     } else if (file.category) {
-      digest = t("base.threadPanel.digest.file", { values: { name: file.name } });
+      digest = t("base.threadPanel.digest.file", {
+        values: { name: file.name },
+      });
     }
 
     // 构造 FilePreviewInfo 并调用回调
@@ -1029,6 +1088,8 @@ export default class ThreadPanel extends Component<
     const { onClose, filePreview, onFilePreviewClose } = this.props;
     const { view, vmState, showMoreMenu, fileViewMode, isTocOpen } = this.state;
     const thread = vmState.thread;
+    const threadSearchChannel = this.getThreadSearchChannel(thread);
+    const canOpenChannelSearch = isChannelSearchEnabled(threadSearchChannel);
 
     // 文件预览模式：使用 FilePreviewHeader 组件
     if (filePreview) {
@@ -1147,7 +1208,9 @@ export default class ThreadPanel extends Component<
           ) : (
             <>
               <ThreadIcon className="wk-thread-panel-header-icon" size={18} />
-              <span>{thread?.name || t("base.module.thread.fallbackName")}</span>
+              <span>
+                {thread?.name || t("base.module.thread.fallbackName")}
+              </span>
             </>
           )}
         </div>
@@ -1197,6 +1260,14 @@ export default class ThreadPanel extends Component<
                       )}
                     </>
                   )}
+                  {vmState.thread && canOpenChannelSearch && (
+                    <div
+                      className="wk-thread-more-menu-item"
+                      onClick={this.handleOpenChannelSearch}
+                    >
+                      {t("base.threadPanel.searchMessages")}
+                    </div>
+                  )}
                   <div
                     className="wk-thread-more-menu-item wk-thread-more-menu-item-danger"
                     onClick={this.handleDeleteThread}
@@ -1206,7 +1277,10 @@ export default class ThreadPanel extends Component<
                 </div>
               }
             >
-              <div className="wk-thread-panel-header-btn" title={t("base.threadPanel.moreActions")}>
+              <div
+                className="wk-thread-panel-header-btn"
+                title={t("base.threadPanel.moreActions")}
+              >
                 <MoreHorizontal size={16} />
               </div>
             </Popover>
@@ -1267,7 +1341,9 @@ export default class ThreadPanel extends Component<
               {activeExpanded && (
                 <div className="wk-thread-panel-group-list">
                   {activeThreads.length === 0 ? (
-                    <div className="wk-thread-panel-empty">{t("base.threadPanel.noActiveThreads")}</div>
+                    <div className="wk-thread-panel-empty">
+                      {t("base.threadPanel.noActiveThreads")}
+                    </div>
                   ) : (
                     activeThreads.map((thread) => this.renderThreadItem(thread))
                   )}
@@ -1340,17 +1416,29 @@ export default class ThreadPanel extends Component<
         Toast.success(t("base.threadList.unfollowed"));
       } else {
         await this.ensureParentGroupInFollowSet(thread.group_no);
-        await FollowService.followThread({ thread_channel_id: threadChannelId });
+        await FollowService.followThread({
+          thread_channel_id: threadChannelId,
+        });
         Toast.success(t("base.threadList.followed"));
       }
       WKApp.mittBus.emit("sidebar-reload" as any);
     } catch (err: any) {
       this.setState((prev) => ({
         threads: prev.threads.map((t) =>
-          t.short_id === thread.short_id ? { ...t, is_followed: wasFollowed } : t
+          t.short_id === thread.short_id
+            ? { ...t, is_followed: wasFollowed }
+            : t
         ),
       }));
-      Toast.error(err?.msg || err?.message || t(wasFollowed ? "base.threadList.unfollowFailed" : "base.threadList.followFailed"));
+      Toast.error(
+        err?.msg ||
+          err?.message ||
+          t(
+            wasFollowed
+              ? "base.threadList.unfollowFailed"
+              : "base.threadList.followFailed"
+          )
+      );
     }
   };
 
@@ -1425,7 +1513,10 @@ export default class ThreadPanel extends Component<
       // 卸载后短路：避免对已卸载组件 setState 并刷新列表。
       if (this.isUnmounted) return;
       Toast.success(t("base.module.thread.unarchiveSuccess"));
-      this.syncThreadArchiveToSidebar({ ...thread, status: ThreadStatus.Active });
+      this.syncThreadArchiveToSidebar({
+        ...thread,
+        status: ThreadStatus.Active,
+      });
       await this.loadThreads();
     } catch {
       if (this.isUnmounted) return;
@@ -1490,7 +1581,10 @@ export default class ThreadPanel extends Component<
       );
       // 卸载后短路：避免对已卸载组件 setState 并刷新列表。
       if (this.isUnmounted) return;
-      this.syncThreadArchiveToSidebar({ ...thread, status: ThreadStatus.Active });
+      this.syncThreadArchiveToSidebar({
+        ...thread,
+        status: ThreadStatus.Active,
+      });
       await this.loadThreads();
     } catch {
       if (this.isUnmounted) return;
@@ -1520,11 +1614,7 @@ export default class ThreadPanel extends Component<
         aria-label={label}
         onClick={(e) => this.handleInlineArchiveToggle(thread, e)}
       >
-        {archiving ? (
-          <Archive size={13} />
-        ) : (
-          <ArchiveRestore size={13} />
-        )}
+        {archiving ? <Archive size={13} /> : <ArchiveRestore size={13} />}
         <span className="wk-thread-panel-item-archive-btn-label">{label}</span>
       </button>
     );
@@ -1544,7 +1634,11 @@ export default class ThreadPanel extends Component<
       // 清除父群取消关注标记（幂等，已关注则无操作）
       await FollowService.refollowChannel({ group_no: parentGroupNo });
     } catch (err) {
-      console.warn("[ThreadPanel] refollowChannel failed for parent group", parentGroupNo, err);
+      console.warn(
+        "[ThreadPanel] refollowChannel failed for parent group",
+        parentGroupNo,
+        err
+      );
     }
 
     try {
@@ -1563,7 +1657,11 @@ export default class ThreadPanel extends Component<
         });
       }
     } catch (err) {
-      console.warn("[ThreadPanel] ensureParentGroupInFollowSet category failed", parentGroupNo, err);
+      console.warn(
+        "[ThreadPanel] ensureParentGroupInFollowSet category failed",
+        parentGroupNo,
+        err
+      );
     }
   }
 
@@ -1588,14 +1686,26 @@ export default class ThreadPanel extends Component<
               type="button"
               className="wk-thread-panel-item-follow-btn"
               data-followed={thread.is_followed ? "true" : "false"}
-              title={thread.is_followed ? t("base.threadList.unfollow") : t("base.threadList.follow")}
-              aria-label={thread.is_followed ? t("base.threadList.unfollow") : t("base.threadList.follow")}
+              title={
+                thread.is_followed
+                  ? t("base.threadList.unfollow")
+                  : t("base.threadList.follow")
+              }
+              aria-label={
+                thread.is_followed
+                  ? t("base.threadList.unfollow")
+                  : t("base.threadList.follow")
+              }
               onClick={(e) => this.handleFollow(thread, e)}
             >
               <Star
                 size={15}
                 fill={thread.is_followed ? "var(--semi-color-warning)" : "none"}
-                color={thread.is_followed ? "var(--semi-color-warning)" : "var(--semi-color-text-2)"}
+                color={
+                  thread.is_followed
+                    ? "var(--semi-color-warning)"
+                    : "var(--semi-color-text-2)"
+                }
               />
             </button>
             <span className="wk-thread-panel-item-time">
@@ -1639,7 +1749,11 @@ export default class ThreadPanel extends Component<
     }
 
     if (!thread) {
-      return <div className="wk-thread-panel-empty">{t("base.threadPanel.notFound")}</div>;
+      return (
+        <div className="wk-thread-panel-empty">
+          {t("base.threadPanel.notFound")}
+        </div>
+      );
     }
 
     // 使用 Thread 的 channel_id 创建 Channel 对象
@@ -1740,8 +1854,14 @@ export default class ThreadPanel extends Component<
 
   render() {
     const { filePreview } = this.props;
-    const { view, panelWidth, isDragging, isFilePanelOpen, conversationFiles } =
-      this.state;
+    const {
+      view,
+      panelWidth,
+      isDragging,
+      isFilePanelOpen,
+      conversationFiles,
+      vmState,
+    } = this.state;
     const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH;
 
     const panelStyle = isSmallScreen
@@ -1765,37 +1885,39 @@ export default class ThreadPanel extends Component<
             <div className="wk-thread-panel-splitter-line" />
           </div>
         )}
-        {this.renderHeader()}
-        {/* 根据 filePreview 决定渲染文件预览还是子区内容 */}
-        {filePreview ? (
-          <div
-            className={classNames(
-              "wk-thread-panel-file-content",
-              isFilePanelOpen && "wk-thread-panel-file-content--with-list"
-            )}
-          >
-            {/* 侧边文件列表面板 */}
-            {isFilePanelOpen && (
-              <FileListPanel
-                files={conversationFiles}
-                currentFileUrl={filePreview.url}
-                onFileSelect={this.handleFileSelect}
-                onClose={() => this.setState({ isFilePanelOpen: false })}
-                hasMore={this.state.conversationFilesHasMore}
-                loadingMore={this.state.conversationFilesLoadingMore}
-                onLoadMore={this.loadMoreConversationFiles}
-                currentPage={this.state.conversationFilesPage}
-                initialLoading={this.state.conversationFilesLoading}
-              />
-            )}
-            {/* 文件预览内容 */}
-            {this.renderFilePreviewContent()}
-          </div>
-        ) : view === "list" ? (
-          this.renderListView()
-        ) : (
-          this.renderDetailView()
-        )}
+        <div className="wk-thread-panel-main">
+          {this.renderHeader()}
+          {/* 根据 filePreview 决定渲染文件预览还是子区内容 */}
+          {filePreview ? (
+            <div
+              className={classNames(
+                "wk-thread-panel-file-content",
+                isFilePanelOpen && "wk-thread-panel-file-content--with-list"
+              )}
+            >
+              {/* 侧边文件列表面板 */}
+              {isFilePanelOpen && (
+                <FileListPanel
+                  files={conversationFiles}
+                  currentFileUrl={filePreview.url}
+                  onFileSelect={this.handleFileSelect}
+                  onClose={() => this.setState({ isFilePanelOpen: false })}
+                  hasMore={this.state.conversationFilesHasMore}
+                  loadingMore={this.state.conversationFilesLoadingMore}
+                  onLoadMore={this.loadMoreConversationFiles}
+                  currentPage={this.state.conversationFilesPage}
+                  initialLoading={this.state.conversationFilesLoading}
+                />
+              )}
+              {/* 文件预览内容 */}
+              {this.renderFilePreviewContent()}
+            </div>
+          ) : view === "list" ? (
+            this.renderListView()
+          ) : (
+            this.renderDetailView()
+          )}
+        </div>
         {isDragging && <div className="wk-thread-panel-drag-overlay" />}
       </div>
     );

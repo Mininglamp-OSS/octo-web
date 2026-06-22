@@ -41,7 +41,6 @@ export default class ContactsModule implements IModule {
     WKApp.endpoints.registerContactsHeader("friends.new", (param: any) => {
       return (
         <IconListItem
-          badge={ WKApp.shared.getFriendApplysUnreadCount() }
           title={t("contacts.header.newFriends")}
           icon={require("./assets/friend_new.png")}
           backgroudColor={"var(--wk-color-secondary)"}

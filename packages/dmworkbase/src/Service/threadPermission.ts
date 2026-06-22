@@ -37,6 +37,24 @@ export function canManageThread(
 }
 
 /**
+ * 子区设置页「改名」入口（module.tsx 的 thread.base.info）的权限判定。
+ *
+ * 与归档入口（{@link shouldShowThreadArchiveAction}）共享同一份父群口径
+ * {@link canManageThread}：创建者 / 父群群主 / 父群管理员可改名。改名不像归档那样
+ * 有状态门槛（Active/Archived），所以这里不做 status 过滤。
+ *
+ * 之所以抽成独立纯函数（而非在 module.tsx 内联判断），是为了让改名 gate 可被单测
+ * 直接锁定，避免再次回退到 data.isManagerOrCreatorOfMe —— 它读子区频道成员缓存，
+ * 从未同步、对非创建者的群主/管理员恒为 false，会在前端误拦他们（见 issue #394）。
+ */
+export function canRenameThread(
+  thread: { creator_uid?: string } | null | undefined,
+  groupNo: string | undefined
+): boolean {
+  return canManageThread(thread, groupNo ?? "");
+}
+
+/**
  * ChannelSetting「子区管理」入口（module.tsx 的 thread.actions，即 issue #283 的
  * 缺陷入口 A）的归档可见性判定。
  *

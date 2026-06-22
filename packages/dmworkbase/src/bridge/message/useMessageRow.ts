@@ -7,6 +7,11 @@ import type { MessageRowUIProps } from './types'
 import { resolveExternalForViewer } from '../../Utils/externalViewer'
 import { personalRemarkDisplayName, subscriberDisplayName } from '../../Utils/displayName'
 import { shouldShowRealnameBadge } from '../../Utils/realnameBadge'
+import {
+  isIncomingWebhookSender,
+  resolveWebhookRowDisplay,
+  webhookFromOfMessage,
+} from '../../Service/IncomingWebhook'
 import moment from 'moment'
 import { isMessageContinuation } from '../../Service/messageContinuity'
 import { formatMessageTimestamp } from '../../Utils/time'
@@ -84,6 +89,11 @@ export function getMessageRow(
     new Channel(message.fromUID, ChannelTypePerson)
   )
 
+  // 群入站 Webhook 消息（FromUID = iwh_*，永远不是群成员）：
+  // 名称/头像读 payload 的 from 元信息，不走群成员 / Person ChannelInfo
+  // 解析（必落空），也不提供头像/名称点击（无个人资料页）。
+  const webhookFrom = webhookFromOfMessage(message)
+
   // 判断是否为连续消息（对齐 Model.tsx preIsSamePerson 逻辑）
   // 时间分隔符或撤回消息之后不算连续
   const isContinue = isMessageContinuation(message.preMessage, message)
@@ -91,6 +101,31 @@ export function getMessageRow(
   // 格式化时间戳
   const timestamp = formatMessageTimestamp(message.timestamp)
   const timeOnly = formatTimeOnly(message.timestamp)
+
+  if (webhookFrom) {
+    const display = resolveWebhookRowDisplay(webhookFrom)
+    return {
+      isSend: message.send,
+      isContinue,
+      isSelected: selection?.isSelected ?? false,
+      showCheckbox: selection?.showCheckbox ?? false,
+      selectionMode: selection?.selectionMode ?? selection?.showCheckbox ?? false,
+      showAvatar: !isContinue,
+      // payload 自带头像优先；否则走与普通用户同源的头像链路（avatarUser(uid)）。
+      avatarUrl: display.avatarUrl || WKApp.shared.avatarUser(message.fromUID),
+      // payload.from 缺失的异常路径返回空串，不把 iwh_* 暴露到 UI
+      senderName: display.senderName,
+      isBot: false,
+      // 徽章跟随 display.showBadge。isWebhook 仅驱动 MessageRow 的「机器人」徽章。
+      isWebhook: display.showBadge,
+      timestamp,
+      timeOnly,
+      isEdit: message.message?.remoteExtra?.isEdit ?? false,
+      isExternal: false,
+      isRealnameVerified: false,
+      onSelect: selection?.onSelect,
+    }
+  }
 
   // 把 uid 绑定到回调
   const uid = message.fromUID
@@ -254,6 +289,9 @@ export function useMessageRow(
   useEffect(() => {
     const fromUID = message.fromUID
     if (!fromUID) return
+    // webhook 发送者（iwh_*）不是真实用户：fetchChannelInfo 必落空，
+    // 群成员列表里也不存在，跳过所有 fetch / listener
+    if (isIncomingWebhookSender(fromUID)) return
 
     const channel = new Channel(fromUID, ChannelTypePerson)
 

@@ -199,9 +199,7 @@
   font-size: 13.5px;
   font-weight: 500;
   color: var(--wk-text-secondary);
-  transition:
-    background 0.15s,
-    color 0.15s;
+  transition: background 0.15s, color 0.15s;
   /* button reset */
   border: none;
   background: none;
@@ -496,8 +494,7 @@
   padding: 8px 10px;
   border-radius: var(--wk-r-sm);
   cursor: pointer;
-  transition:
-    background-color var(--wk-dur-fast) var(--wk-ease),
+  transition: background-color var(--wk-dur-fast) var(--wk-ease),
     color var(--wk-dur-fast) var(--wk-ease);
 }
 
@@ -519,9 +516,7 @@
   color: var(--wk-icon-default);
   cursor: pointer;
   border-radius: 6px;
-  transition:
-    background 0.15s,
-    color 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .wk-chat-conversation-header-right div:hover {
@@ -560,6 +555,29 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
 }
 
 .wk-chat-content-right.wk-chat-channelsetting-open .wk-chat-channelsetting {
+  margin-right: 0px;
+}
+
+.wk-chat-channel-search-panel {
+  pointer-events: auto;
+  width: var(--wk-width-chat-search-panel);
+  height: 100%;
+  transition: margin-right 150ms ease-in-out 0s;
+  position: absolute;
+  z-index: 100;
+  top: 0;
+  right: 0;
+  margin-right: calc(0px - var(--wk-width-chat-search-panel));
+  background-color: var(--wk-bg-surface);
+  border-left: 1px solid var(--wk-border-default);
+}
+
+.wk-chat-content-right.wk-chat-channel-search-open .wk-chat-content-chat {
+  width: calc(100% - var(--wk-width-chat-search-panel));
+}
+
+.wk-chat-content-right.wk-chat-channel-search-open
+  .wk-chat-channel-search-panel {
   margin-right: 0px;
 }
 
@@ -732,9 +750,7 @@ body[theme-mode="dark"] .wk-chat-popover {
   background: var(--card-bg);
   color: var(--text-primary);
   font-weight: 500;
-  transition:
-    border-color 0.15s,
-    color 0.15s;
+  transition: border-color 0.15s, color 0.15s;
 }
 .wk-chat-empty-guide-btn:hover {
   border-color: var(--accent);

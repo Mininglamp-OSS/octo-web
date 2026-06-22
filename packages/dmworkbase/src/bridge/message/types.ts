@@ -32,7 +32,14 @@ export interface MessageRowUIProps {
 
   /** 发送者是否为 bot（用于显示 AI 标识） */
   isBot?: boolean
-  
+
+  /**
+   * 发送者是否为群入站 Webhook（FromUID = iwh_*，永远不是群成员）。
+   * 为 true 时名称/头像来自消息 payload 的 `from` 元信息（bridge 层已解析），
+   * 名称旁渲染 Webhook 标识，且头像/名称不可点击（无个人资料页）。
+   */
+  isWebhook?: boolean
+
   /** 时间戳（格式化后的字符串，如 "10:30" 或 "2026-03-28 10:30:12"） */
   timestamp: string
 

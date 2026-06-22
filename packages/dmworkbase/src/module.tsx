@@ -18,6 +18,7 @@ import React, { ElementType } from "react";
 import { Smile, Scissors, ImagePlus, Paperclip, AtSign } from "lucide-react";
 import { Howl, Howler } from "howler";
 import WKApp, { FriendApply, FriendApplyState, ThemeMode } from "./App";
+import { isChannelSearchEnabled } from "./Components/ChannelSearch/feature";
 import ChannelQRCode from "./Components/ChannelQRCode";
 import { ChannelSettingRouteData } from "./Components/ChannelSetting/context";
 import { IndexTableItem } from "./Components/IndexTable";
@@ -94,10 +95,9 @@ import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
 import FileToolbar from "./Components/FileToolbar";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { SubscriberList } from "./Components/Subscribers/list";
-import GlobalSearch from "./Components/GlobalSearch";
 import { GroupMdEditor } from "./Components/GroupMdEditor";
 import { GroupManagement } from "./Components/GroupManagement";
-import { handleGlobalSearchClick } from "./Pages/Chat/vm";
+import ChannelWebhookPanel from "./Components/ChannelWebhook";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
 import { notificationUtil } from "./Utils/NotificationUtil";
 import { resolveExternalForViewer } from "./Utils/externalViewer";
@@ -114,7 +114,10 @@ import {
 import { SummaryCardContent } from "./Messages/SummaryCard/SummaryCardContent";
 import { SummaryCardCell } from "./Messages/SummaryCard";
 import { parseThreadChannelId, ThreadStatus } from "./Service/Thread";
-import { shouldShowThreadArchiveAction } from "./Service/threadPermission";
+import {
+  shouldShowThreadArchiveAction,
+  canRenameThread,
+} from "./Service/threadPermission";
 import { runChannelSettingThreadArchive } from "./Service/threadArchiveAction";
 import { canShowRevokeMenu } from "./Service/revokePermission";
 
@@ -433,7 +436,6 @@ export default class BaseModule implements IModule {
         friendApply.unread = true;
         friendApply.createdAt = message.timestamp;
         WKApp.shared.addFriendApply(friendApply);
-        WKApp.shared.setFriendApplysUnreadCount();
         this.tipsAudio();
       } else if (cmdContent.cmd === "friendAccept") {
         // 接受好友申请
@@ -1796,6 +1798,33 @@ export default class BaseModule implements IModule {
             })
           );
 
+          // 群入站 Webhook：列表对全员只读可见，操作权限由面板内按
+          // 「管理员 / 自己创建」矩阵控制（服务端兜底裁决）
+          rows.push(
+            new Row({
+              cell: ListItem,
+              properties: {
+                title: t("base.module.channelSettings.incomingWebhook"),
+                onClick: () => {
+                  const rd = context.routeData() as ChannelSettingRouteData;
+                  const me = rd?.subscriberOfMe;
+                  const isManager =
+                    me?.role === GroupRole.owner ||
+                    me?.role === GroupRole.manager;
+                  context.push(
+                    <ChannelWebhookPanel
+                      channel={channel}
+                      isManager={!!isManager}
+                    />,
+                    new RouteContextConfig({
+                      title: t("base.module.channelSettings.incomingWebhook"),
+                    })
+                  );
+                },
+              },
+            })
+          );
+
           const latestData2 = context.routeData() as ChannelSettingRouteData;
           const subscriberOfMe2 = latestData2?.subscriberOfMe;
           if (
@@ -1859,40 +1888,33 @@ export default class BaseModule implements IModule {
       1000
     );
 
-    // [隐藏] 2026-04-15 隐藏「查找聊天内容」入口，产品决策，随时可恢复
-    // WKApp.shared.channelSettingRegister(
-    //   "channel.base.settingMessageHistory",
-    //   (context) => {
-    //     const data = context.routeData() as ChannelSettingRouteData;
-    //     const channel = data.channel
-    //
-    //     return new Section({
-    //       rows: [
-    //         new Row({
-    //           cell: ListItem,
-    //           properties: {
-    //             title: "查找聊天内容",
-    //             onClick: () => {
-    //               WKApp.shared.baseContext.showGlobalModal({
-    //                 body: <GlobalSearch channel={channel} onClick={(item: any, type: string) => {
-    //                   void handleGlobalSearchClick(item, type, () => {
-    //                     WKApp.shared.baseContext.hideGlobalModal()
-    //                   })
-    //                 }} />,
-    //                 width: "80%",
-    //                 height: "80%",
-    //                 onCancel: () => {
-    //                   WKApp.shared.baseContext.hideGlobalModal()
-    //                 }
-    //               })
-    //             },
-    //           },
-    //         }),
-    //       ],
-    //     });
-    //   },
-    //   1100
-    // );
+    WKApp.shared.channelSettingRegister(
+      "channel.base.settingMessageHistory",
+      (context) => {
+        const data = context.routeData() as ChannelSettingRouteData;
+        if (!data.onOpenChannelSearch) {
+          return undefined;
+        }
+        if (!isChannelSearchEnabled(data.channel)) {
+          return undefined;
+        }
+
+        return new Section({
+          rows: [
+            new Row({
+              cell: ListItem,
+              properties: {
+                title: t("base.module.channelSettings.messageHistory"),
+                onClick: () => {
+                  data.onOpenChannelSearch?.();
+                },
+              },
+            }),
+          ],
+        });
+      },
+      1100
+    );
 
     WKApp.shared.channelSettingRegister(
       "channel.base.setting2",
@@ -2183,11 +2205,12 @@ export default class BaseModule implements IModule {
         const channelInfo = data.channelInfo;
         const threadName = channelInfo?.title;
 
-        // 权限：只有创建者或群管理者可以修改名称
+        // 权限：创建者 / 父群群主 / 父群管理员可改名。必须走 canRenameThread
+        // （父群成员口径），与归档入口保持一致；data.isManagerOrCreatorOfMe 读的是
+        // 子区频道成员缓存，从未同步，对非创建者的群主/管理员恒为 false，会误拦他们
+        // （见 issue #394：#283 统一归档可见性时遗漏了此改名入口）。
         const thread = channelInfo?.orgData?.thread as any;
-        const isCreator = thread?.creator_uid === WKApp.loginInfo.uid;
-        const isManagerOrOwner = data.isManagerOrCreatorOfMe;
-        const canEdit = isCreator || isManagerOrOwner;
+        const canEdit = canRenameThread(thread, threadInfo?.groupNo);
         const statusTitle =
           thread?.status === ThreadStatus.Archived
             ? t("base.module.thread.status.archived")

@@ -17,6 +17,12 @@ import WKSDK, { Channel, ChannelInfo, ChannelTypePerson, Subscriber } from "wuko
 import hotkeys from "hotkeys-js";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
+import {
+  MemberInfo,
+  buildMemberInfos,
+  buildMentionRegex,
+  parseMentionMarkers,
+} from "./mentionResolve";
 import "./index.css";
 import { Notification } from "@douyinfe/semi-ui";
 import SlashCommandMenu, { BotCommand } from "../SlashCommandMenu";
@@ -128,11 +134,14 @@ function extractOrderedBlocks(
     }
 
     if (node.type === "text") {
-      pendingTextParts.push(node.text || "");
+      pendingTextParts.push(stripTrustMark(node.text || ""));
       return;
     }
     if (node.type === "mention") {
-      pendingTextParts.push(`@[${node.attrs.id}:${node.attrs.label}]`);
+      // send path: tag node-origin broadcast sentinels as trusted
+      pendingTextParts.push(
+        serializeMentionMarker(node.attrs.id, node.attrs.label, true)
+      );
       return;
     }
     if (node.type === "hardBreak") {
@@ -278,104 +287,34 @@ export class MentionModel {
 // dropdown helper (`buildMentionDropdownItems`) and unit tests can reuse
 // them without an import cycle through this large editor module.
 import {
-  MENTION_UID_LEGACY_ALL,
-  MENTION_UID_HUMANS,
-  MENTION_UID_AIS,
-  MENTION_LABEL_HUMANS,
-  MENTION_LABEL_AIS,
   buildMentionDropdownItems,
 } from "../../Utils/mentionRender";
+import {
+  parseSendMentionText,
+  serializeMentionMarker,
+  stripTrustMark,
+  parseDraftToContent,
+} from "./mentionSendParse";
+import type { SendParseMember } from "./mentionSendParse";
 
-// 解析 @[uid:name] 格式的 mention
+// 解析 @[uid:name] 格式的 mention（send 边界）。安全核心在纯函数 parseSendMentionText：
+// 仅当广播 sentinel 携带 node-origin 信任标记时才路由广播，伪造的字面文本降级为纯文本。
 function formatMentionTextV2(text: string): {
   content: string;
   mention?: MentionModel;
 } {
-  const entities: MentionEntity[] = [];
-  const uids: string[] = [];
-  let result = "";
-  let cursor = 0;
-  let all = false;
-  let humans = false;
-  let ais = false;
+  const members = (membersRef.current ?? []) as unknown as SendParseMember[];
+  const parsed = parseSendMentionText(text, members);
+  if (!parsed.mention) return { content: parsed.content };
 
-  const placeholderPattern = /@\[([^:]+):([^\]]+)\]/g;
-  let match;
-
-  while ((match = placeholderPattern.exec(text)) !== null) {
-    const uid = match[1];
-    const name = match[2];
-
-    // 添加 match 之前的普通文本
-    result += text.slice(cursor, match.index);
-
-    if (uid === MENTION_UID_LEGACY_ALL) {
-      // 老的 @所有人 输入路径继续走 mention.all=1（server 端会 rewrite 成 humans=1）
-      all = true;
-      result += `@${MENTION_LABEL_HUMANS}`;
-    } else if (uid === MENTION_UID_HUMANS) {
-      // 新的三态：humans=1，文本插入 @所有人，不进 entities 列表
-      humans = true;
-      result += `@${MENTION_LABEL_HUMANS}`;
-    } else if (uid === MENTION_UID_AIS) {
-      // 新的三态：ais=1。这里也为 @所有AI 写入 sentinel entity：
-      // bot routing UIDs 会放进 mention.uids，entity 能让接收端走精确解析路径，
-      // 避免这些 routing UID 被 legacy parser 误绑到其它裸写的 @xxx 文本。
-      ais = true;
-      const atName = `@${MENTION_LABEL_AIS}`;
-      const offset = result.length;
-      entities.push({
-        uid,
-        offset,
-        length: atName.length,
-      });
-      result += atName;
-    } else {
-      // 普通成员：以最新的 member.name 优先（avoid stale display label），fallback to label。
-      const atName = membersRef.current?.find((m) => m.uid === uid)?.name
-        ? `@${membersRef.current.find((m) => m.uid === uid)!.name}`
-        : `@${name}`;
-      const offset = result.length;
-      uids.push(uid);
-      entities.push({
-        uid,
-        offset,
-        length: atName.length,
-      });
-      result += atName;
-    }
-
-    cursor = match.index + match[0].length;
-  }
-
-  // 添加剩余文本
-  result += text.slice(cursor);
-
-  if (all || humans || ais || entities.length > 0) {
-    const mention = new MentionModel();
-    mention.all = all;
-    mention.uids = uids.length > 0 ? uids : undefined;
-    mention.entities = entities.length > 0 ? entities : undefined;
-    if (humans) mention.humans = 1;
-    if (ais) {
-      mention.ais = 1;
-      // GH#100: expand bot member UIDs into mention.uids so legacy adapter
-      // bots (which only check mention.uids, not mention.ais) still recognise
-      // the @所有AI broadcast. Messages go via WuKongIM SDK direct — they
-      // never hit the server REST API, so server-side expansion (octo-server
-      // PR#145) does not apply to client-sent messages.
-      const botUids = (membersRef.current ?? [])
-        .filter((m: any) => m.orgData?.robot === 1)
-        .map((m: any) => m.uid)
-        .filter((uid: string) => !uids.includes(uid));
-      if (botUids.length > 0) {
-        mention.uids = [...(mention.uids ?? []), ...botUids];
-      }
-    }
-    return { content: result, mention };
-  }
-
-  return { content: result };
+  const p = parsed.mention;
+  const mention = new MentionModel();
+  mention.all = p.all;
+  mention.uids = p.uids.length > 0 ? p.uids : undefined;
+  mention.entities = p.entities.length > 0 ? p.entities : undefined;
+  if (p.humans) mention.humans = 1;
+  if (p.ais) mention.ais = 1;
+  return { content: parsed.content, mention };
 }
 
 export interface MessageInputContext {
@@ -393,115 +332,25 @@ export interface MessageInputContext {
   clear: () => void;
 }
 
-interface MemberInfo {
-  uid: string;
-  name: string;
-}
-
-// Escape special regex characters in a string
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// Build a dynamic regex that matches @name for all known members.
-// Names are sorted longest-first so "Cindy Che" matches before "Cindy".
-function buildMentionRegex(members: MemberInfo[]): RegExp {
-  const specialNames = [MENTION_LABEL_HUMANS, "all", "everyone", MENTION_LABEL_AIS, "All AIs"];
-  const allNames = [...specialNames, ...members.map((m) => m.name)];
-  // Deduplicate and sort by length descending (longest match first)
-  const unique = [...new Set(allNames)];
-  unique.sort((a, b) => b.length - a.length);
-  const pattern = unique.map(escapeRegExp).join("|");
-  // Boundary: whitespace, CJK punctuation, or end of string
-  return new RegExp(`@(${pattern})(?=[\\s，。！？,!?]|$)`, "gi");
-}
-
-// Parse voice-transcribed text for @mentions, converting to Tiptap content
-function parseMentionMarkers(
-  text: string,
-  members: MemberInfo[]
-): Array<{
-  type: string;
-  text?: string;
-  attrs?: { id: string; label: string };
-}> {
-  const result: Array<{
-    type: string;
-    text?: string;
-    attrs?: { id: string; label: string };
-  }> = [];
-  const regex = buildMentionRegex(members);
-  let lastIndex = 0;
-  let match;
-
-  while ((match = regex.exec(text)) !== null) {
-    const name = match[1];
-    const matchStart = match.index;
-
-    if (matchStart > lastIndex) {
-      result.push({ type: "text", text: text.slice(lastIndex, matchStart) });
-    }
-
-    const isHumans =
-      name === MENTION_LABEL_HUMANS ||
-      name.toLowerCase() === "all" ||
-      name.toLowerCase() === "everyone";
-    const isAis =
-      name === MENTION_LABEL_AIS || name.toLowerCase() === "all ais";
-    const member = members.find(
-      (m) => m.name.toLowerCase() === name.toLowerCase()
-    );
-
-    if (isHumans) {
-      result.push({
-        type: "mention",
-        attrs: { id: MENTION_UID_HUMANS, label: MENTION_LABEL_HUMANS },
-      });
-      result.push({ type: "text", text: " " });
-    } else if (isAis) {
-      result.push({
-        type: "mention",
-        attrs: { id: MENTION_UID_AIS, label: MENTION_LABEL_AIS },
-      });
-      result.push({ type: "text", text: " " });
-    } else if (member) {
-      result.push({
-        type: "mention",
-        attrs: { id: member.uid, label: member.name },
-      });
-      result.push({ type: "text", text: " " });
-    } else {
-      // Unrecognized @, keep as plain text
-      result.push({ type: "text", text: match[0] });
-    }
-
-    lastIndex = match.index + match[0].length;
-    if (isHumans || isAis || member) {
-      if (lastIndex < text.length && /\s/.test(text[lastIndex])) {
-        lastIndex++;
-      }
-    }
-  }
-
-  if (lastIndex < text.length) {
-    result.push({ type: "text", text: text.slice(lastIndex) });
-  }
-
-  return result;
-}
+// MemberInfo / buildMentionRegex / parseMentionMarkers / buildMemberInfos live
+// in ./mentionResolve so the editor and unit tests share one implementation.
 
 // 保持 membersRef 在模块级别供 formatMentionTextV2 使用
 let membersRef: React.MutableRefObject<Array<Subscriber> | undefined>;
 
-function extractMentionsFromEditor(editor: any): string {
+// `trusted` is set on the send path so node-origin broadcast sentinels are
+// tagged with MENTION_TRUST_MARK (text-origin grammar is neutralized). The
+// draft/read path (`text()`) leaves it false → canonical, mark-free markers
+// that round-trip back into mention nodes on restore (octo-web#330).
+function extractMentionsFromEditor(editor: any, trusted = false): string {
   const json = editor.getJSON();
   let result = "";
 
   function traverse(node: any) {
     if (node.type === "text") {
-      result += node.text;
+      result += stripTrustMark(node.text || "");
     } else if (node.type === "mention") {
-      result += `@[${node.attrs.id}:${node.attrs.label}]`;
+      result += serializeMentionMarker(node.attrs.id, node.attrs.label, trusted);
     } else if (node.type === "hardBreak") {
       result += "\n";
     } else if (node.content) {
@@ -522,50 +371,6 @@ function extractMentionsFromEditor(editor: any): string {
   }
 
   return stripInvisibleChars(result);
-}
-
-// 解析草稿文本中的 @[uid:label] 格式为 Tiptap 文档结构
-// 返回完整的 doc 内容，支持多行（每行一个 paragraph）
-function parseDraftToContent(
-  text: string
-): { type: "doc"; content: Array<{ type: "paragraph"; content: Array<{ type: string; text?: string; attrs?: { id: string; label: string } }> }> } {
-  const lines = text.split("\n");
-  const paragraphs = lines.map((line) => {
-    const nodes: Array<{ type: string; text?: string; attrs?: { id: string; label: string } }> = [];
-    
-    // 匹配 @[uid:label] 格式，uid和label可以包含除]外的任意字符
-    const regex = /@\[([^\]:]+):([^\]]+)\]/g;
-    let lastIndex = 0;
-    let match;
-
-    while ((match = regex.exec(line)) !== null) {
-      const uid = match[1];
-      const label = match[2];
-      const matchStart = match.index;
-
-      // 添加匹配前的普通文本
-      if (matchStart > lastIndex) {
-        nodes.push({ type: "text", text: line.slice(lastIndex, matchStart) });
-      }
-
-      // 添加 mention 节点
-      nodes.push({
-        type: "mention",
-        attrs: { id: uid, label: label },
-      });
-
-      lastIndex = match.index + match[0].length;
-    }
-
-    // 添加剩余的普通文本
-    if (lastIndex < line.length) {
-      nodes.push({ type: "text", text: line.slice(lastIndex) });
-    }
-
-    return { type: "paragraph" as const, content: nodes };
-  });
-
-  return { type: "doc", content: paragraphs };
 }
 
 // 顶部附件区的附件项接口
@@ -643,22 +448,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     };
   }, [props.context, t]);
 
-  const memberInfos = useMemo<MemberInfo[]>(() => {
-    const infos: MemberInfo[] = props.members
-      ? props.members.map((s) => ({
-          uid: s.uid,
-          name: s.remark || s.name || s.uid,
-        }))
-      : [];
-    if (props.members) {
-      for (const s of props.members) {
-        if (s.name && s.remark && s.remark !== s.name) {
-          infos.push({ uid: s.uid, name: s.name });
-        }
-      }
-    }
-    return infos;
-  }, [props.members]);
+  const memberInfos = useMemo<MemberInfo[]>(
+    () => buildMemberInfos(props.members),
+    [props.members],
+  );
 
   const localMembersRef = useRef(props.members);
   const isDirectChannelRef = useRef(
@@ -946,6 +739,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                 WKApp.dataSource.commonDataSource
               )
             ),
+          // Validate pasted mentions against the live channel roster so a
+          // forged clipboard payload cannot inject mentions for non-members
+          // or broadcast-routing sentinels (octo-web#330).
+          members: buildMemberInfos(localMembersRef.current),
         }
       ).catch(() => {
         if (
@@ -1162,8 +959,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       return;
     }
 
-    // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）
-    const formattedText = extractMentionsFromEditor(editor);
+    // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）。
+    // trusted=true：仅 node-origin 广播 sentinel 才被信任标记，伪造文本无法路由广播。
+    const formattedText = extractMentionsFromEditor(editor, true);
     const { content, mention } = formatMentionTextV2(formattedText);
 
     // 提取编辑器中有序内容块（文本段和粘贴图片按文档顺序交替）

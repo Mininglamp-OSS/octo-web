@@ -5,14 +5,17 @@ import ConversationList, {
 } from "../../Components/ConversationList";
 import SidebarTabBar, { SidebarTab } from "../../Components/SidebarTabBar";
 import ConversationListGrouped from "../../Components/ConversationListGrouped";
-import { isThreadArchivedForBadge, type ThreadSidebarStatusMap } from "../../Components/ConversationListGrouped/archivedThreads";
+import {
+  isThreadArchivedForBadge,
+  type ThreadSidebarStatusMap,
+} from "../../Components/ConversationListGrouped/archivedThreads";
 import ChatConversationList, {
   isMutedForRecentConversation,
 } from "../../Components/ChatConversationList";
 import Provider from "../../Service/Provider";
 import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
-import { Spin, Popover } from "@douyinfe/semi-ui";
+import { Spin, Popover, Toast } from "@douyinfe/semi-ui";
 import WKButton from "../../Components/WKButton";
 import WKModal from "../../Components/WKModal";
 import { Columns2 } from "lucide-react";
@@ -22,6 +25,14 @@ import "./index.css";
 import { ConversationWrap } from "../../Service/Model";
 import WKApp, { ThemeMode } from "../../App";
 import ChannelSetting from "../../Components/ChannelSetting";
+import ChannelSearchPanel from "../../Components/ChannelSearch";
+import { createChannelSearchApiDataSource } from "../../Components/ChannelSearch/apiAdapter";
+import { isChannelSearchEnabled } from "../../Components/ChannelSearch/feature";
+import type {
+  ChannelSearchDataSource,
+  ChannelSearchItem,
+  ChannelSearchPanelState,
+} from "../../Components/ChannelSearch/types";
 import classNames from "classnames";
 import {
   Channel,
@@ -51,8 +62,12 @@ import {
 } from "../../Service/Thread";
 import FilePreviewPanel, {
   FilePreviewInfo,
+  getExtension,
 } from "../../Components/FilePreviewPanel";
-import { FollowSidebarProvider, useFollowSidebarContext } from "../../Hooks/useFollowSidebar";
+import {
+  FollowSidebarProvider,
+  useFollowSidebarContext,
+} from "../../Hooks/useFollowSidebar";
 import { SidebarTargetType } from "../../Service/SidebarService";
 import { I18nContext, t } from "../../i18n";
 
@@ -88,31 +103,37 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
   const { items } = useFollowSidebarContext();
 
   const isItemMuted = (it: {
-    target_type: number
-    target_id: string
-    parent_channel_id?: string
+    target_type: number;
+    target_id: string;
+    parent_channel_id?: string;
   }): boolean => {
     let channelType: number | null = null;
-    if (it.target_type === SidebarTargetType.DM) channelType = ChannelTypePerson;
-    else if (it.target_type === SidebarTargetType.CHANNEL) channelType = ChannelTypeGroup;
-    else if (it.target_type === SidebarTargetType.THREAD) channelType = ChannelTypeCommunityTopic;
+    if (it.target_type === SidebarTargetType.DM)
+      channelType = ChannelTypePerson;
+    else if (it.target_type === SidebarTargetType.CHANNEL)
+      channelType = ChannelTypeGroup;
+    else if (it.target_type === SidebarTargetType.THREAD)
+      channelType = ChannelTypeCommunityTopic;
     if (channelType == null) return false;
     const info = WKSDK.shared().channelManager.getChannelInfo(
-      new Channel(it.target_id, channelType),
+      new Channel(it.target_id, channelType)
     );
     const isThread = it.target_type === SidebarTargetType.THREAD;
     let parentChannelInfo: any | undefined;
     if (isThread) {
       const parentGroupNo =
-        it.parent_channel_id ||
-        parseThreadChannelId(it.target_id)?.groupNo;
+        it.parent_channel_id || parseThreadChannelId(it.target_id)?.groupNo;
       if (parentGroupNo) {
         parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(
-          new Channel(parentGroupNo, ChannelTypeGroup),
+          new Channel(parentGroupNo, ChannelTypeGroup)
         );
       }
     }
-    return isEffectivelyMuted({ isThread, channelInfo: info, parentChannelInfo });
+    return isEffectivelyMuted({
+      isThread,
+      channelInfo: info,
+      parentChannelInfo,
+    });
   };
 
   // sidebar items 是 /sidebar/sync 的快照，IM 缓存里 conv 才是 reactive 的。
@@ -131,14 +152,20 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
   const followUnread = items.reduce((sum, it) => {
     if (isItemMuted(it)) return sum;
     let channelType: number | null = null;
-    if (it.target_type === SidebarTargetType.DM) channelType = ChannelTypePerson;
-    else if (it.target_type === SidebarTargetType.CHANNEL) channelType = ChannelTypeGroup;
-    else if (it.target_type === SidebarTargetType.THREAD) channelType = ChannelTypeCommunityTopic;
-    const liveConv = channelType != null
-      ? conversations.find(c =>
-          c.channel.channelType === channelType && c.channel.channelID === it.target_id,
-        )
-      : undefined;
+    if (it.target_type === SidebarTargetType.DM)
+      channelType = ChannelTypePerson;
+    else if (it.target_type === SidebarTargetType.CHANNEL)
+      channelType = ChannelTypeGroup;
+    else if (it.target_type === SidebarTargetType.THREAD)
+      channelType = ChannelTypeCommunityTopic;
+    const liveConv =
+      channelType != null
+        ? conversations.find(
+            (c) =>
+              c.channel.channelType === channelType &&
+              c.channel.channelID === it.target_id
+          )
+        : undefined;
     // 与展开列表的展示层过滤一致：明确已归档的子区已从列表隐藏，未读也不计入
     // 角标，否则会出现「红点 N 但列表里看不到对应未读」。
     //   - liveConv 存在：走 channelInfo 优先（回退 sidebar statusMap）判归档；
@@ -151,7 +178,7 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     ) {
       return sum;
     }
-    const unread = liveConv ? (liveConv.unread || 0) : (it.unread || 0);
+    const unread = liveConv ? liveConv.unread || 0 : it.unread || 0;
     return sum + unread;
   }, 0);
 
@@ -160,7 +187,7 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
       if (isMutedForRecentConversation(c)) return sum;
       return sum + (c.unread || 0);
     },
-    0,
+    0
   );
 
   return (
@@ -181,6 +208,8 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
 export interface ChatContentPageProps {
   channel: Channel;
   initLocateMessageSeq?: number; // 打开时定位到某条消息
+  /** 打开会话后默认展开右侧聊天记录搜索面板 */
+  initialShowChannelSearch?: boolean;
 }
 
 export interface ChatContentPageState {
@@ -214,7 +243,11 @@ export interface ChatContentPageState {
   /** 智能总结面板是否显示 */
   showSummaryPanel: boolean;
   /** 总结面板初始视图 */
-  summaryPanelView: 'history' | 'new';
+  summaryPanelView: "history" | "new";
+  /** 频道内聊天搜索面板是否显示 */
+  showChannelSearch: boolean;
+  /** 当前文件预览关闭后是否需要回到频道内搜索面板 */
+  previewReturnChannelSearch: boolean;
 }
 export class ChatContentPage extends Component<
   ChatContentPageProps,
@@ -226,6 +259,10 @@ export class ChatContentPage extends Component<
   channelInfoListener!: ChannelInfoListener;
   conversationContext!: ConversationContext;
   private parentGroupChannel?: Channel;
+  private channelSearchDataSourceKey = "";
+  private channelSearchDataSource?: ChannelSearchDataSource;
+  private channelSearchPanelState?: ChannelSearchPanelState;
+  private _unsubscribeChannelSearchConfig?: () => void;
 
   constructor(props: any) {
     super(props);
@@ -242,11 +279,18 @@ export class ChatContentPage extends Component<
       previewReturnMatterId: null,
       previewHadThreadShell: false,
       showSummaryPanel: false,
-      summaryPanelView: 'new',
+      summaryPanelView: "new",
+      showChannelSearch:
+        !!props.initialShowChannelSearch &&
+        isChannelSearchEnabled(props.channel),
+      previewReturnChannelSearch: false,
     };
   }
 
-  private _onFilePreview = (file: FilePreviewInfo) => {
+  private _onFilePreview = (
+    file: FilePreviewInfo,
+    options?: { returnToChannelSearch?: boolean }
+  ) => {
     const { channel } = this.props;
     const { showThreadPanel, activeThread } = this.state;
 
@@ -279,11 +323,12 @@ export class ChatContentPage extends Component<
         activeThread: null,
         previewFile: null,
         activePreviewMessageId: null,
+        previewReturnChannelSearch: false,
       });
       // 切换到子区完整视图
       const threadChannel = new Channel(
         activeThread.channel_id,
-        ChannelTypeCommunityTopic,
+        ChannelTypeCommunityTopic
       );
       WKApp.endpoints.showConversation(threadChannel);
       return;
@@ -299,10 +344,12 @@ export class ChatContentPage extends Component<
     // 内部 state (tab / 展开的时间线 / 选中的 matter) 全部保留, 用户感受
     // 上跟 "回到事项详情" 一致, 且不会闪一下重新拉数据。
     const fromMatter = !!file.originMatterId;
+    const fromChannelSearch = !!options?.returnToChannelSearch;
     this.setState({
       previewFile: file,
       showThreadPanel: true, // 确保面板打开
       showChannelSetting: false, // 关闭设置面板，避免布局冲突
+      showChannelSearch: false,
       showMatterPanel: fromMatter ? this.state.showMatterPanel : false,
       showMatterDetailPanel: fromMatter
         ? this.state.showMatterDetailPanel
@@ -310,10 +357,79 @@ export class ChatContentPage extends Component<
       showSummaryPanel: false,
       activePreviewMessageId: file.messageId || null, // 保存激活的消息 ID
       previewReturnMatterId: file.originMatterId || null,
+      previewReturnChannelSearch: fromChannelSearch,
       // 仅当预览触发前用户已经在子区面板里 (showThreadPanel 已经是 true)
       // 才允许显示 ← 返回箭头, 让 ← 真正回到子区列表/详情。其他来源
       // (消息附件、事项详情等) 一律隐藏 ← , 避免误导用户跳到子区。
-      previewHadThreadShell: this.state.showThreadPanel,
+      previewHadThreadShell: fromChannelSearch
+        ? false
+        : this.state.showThreadPanel,
+    });
+  };
+
+  private getChannelSearchDataSource(
+    channel: Channel
+  ): ChannelSearchDataSource {
+    const key = channel.getChannelKey();
+    if (
+      !this.channelSearchDataSource ||
+      this.channelSearchDataSourceKey !== key
+    ) {
+      this.channelSearchDataSourceKey = key;
+      this.channelSearchDataSource = createChannelSearchApiDataSource(channel);
+    }
+    return this.channelSearchDataSource;
+  }
+
+  private _onSearchFilePreview = (item: ChannelSearchItem) => {
+    const file = item.file;
+    if (!file) return;
+
+    const { channel } = this.props;
+    const name = file.name || t("base.conversation.file.unknown");
+    const url = file.previewUrl || file.downloadUrl || file.url || "";
+    if (!url) {
+      Toast.warning(t("base.channelSearch.downloadUnavailable"));
+      return;
+    }
+    this._onFilePreview(
+      {
+        url,
+        name,
+        extension: getExtension(file.extension || "", name),
+        size: file.size,
+        sourceChannelId: item.channelId || channel.channelID,
+        sourceChannelType: item.channelType || channel.channelType,
+        messageId: item.messageId,
+        messageSeq: item.messageSeq,
+        fromUID: item.senderUid,
+      },
+      { returnToChannelSearch: true }
+    );
+  };
+
+  private _onChannelSearchStateChange = (state: ChannelSearchPanelState) => {
+    this.channelSearchPanelState = state;
+  };
+
+  private _clearChannelSearchState = () => {
+    this.channelSearchPanelState = undefined;
+  };
+
+  private _openChannelSearchPanel = () => {
+    if (!isChannelSearchEnabled(this.props.channel)) return;
+    this._clearChannelSearchState();
+    this.setState({
+      showChannelSearch: true,
+      showChannelSetting: false,
+      showThreadPanel: false,
+      activeThread: null,
+      previewFile: null,
+      activePreviewMessageId: null,
+      previewReturnChannelSearch: false,
+      showMatterPanel: false,
+      showMatterDetailPanel: false,
+      showSummaryPanel: false,
     });
   };
 
@@ -328,13 +444,22 @@ export class ChatContentPage extends Component<
    */
   private _closePreviewAndMaybeRestoreMatter = (resetThreadShell: boolean) => {
     const fromMatter = !!this.state.previewReturnMatterId;
-    const shouldResetThread = fromMatter || resetThreadShell;
+    const fromChannelSearch = !!this.state.previewReturnChannelSearch;
+    const shouldResetThread =
+      fromMatter || fromChannelSearch || resetThreadShell;
     this.setState({
       previewFile: null,
       activePreviewMessageId: null,
       previewReturnMatterId: null,
+      previewReturnChannelSearch: false,
       previewHadThreadShell: false,
-      ...(shouldResetThread ? { showThreadPanel: false, activeThread: null } : {}),
+      showChannelSearch:
+        fromChannelSearch && isChannelSearchEnabled(this.props.channel)
+          ? true
+          : this.state.showChannelSearch,
+      ...(shouldResetThread
+        ? { showThreadPanel: false, activeThread: null }
+        : {}),
     });
   };
 
@@ -355,6 +480,22 @@ export class ChatContentPage extends Component<
       }
     };
     WKSDK.shared().channelManager.addListener(this.channelInfoListener);
+    this._unsubscribeChannelSearchConfig =
+      WKApp.remoteConfig.addConfigChangeListener(() => {
+        if (
+          !isChannelSearchEnabled(this.props.channel) &&
+          (this.state.showChannelSearch ||
+            this.state.previewReturnChannelSearch)
+        ) {
+          this._clearChannelSearchState();
+          this.setState({
+            showChannelSearch: false,
+            previewReturnChannelSearch: false,
+          });
+          return;
+        }
+        this.forceUpdate();
+      });
 
     // 注册 pending-thread 事件监听（当前频道已打开时直接导航到子区）。
     // 跟文件预览 / 事项列表 / 事项详情互斥 (同一侧边容器)。
@@ -371,6 +512,8 @@ export class ChatContentPage extends Component<
           showMatterPanel: false, // 关闭事项列表面板
           showMatterDetailPanel: false, // 关闭事项详情面板
           showSummaryPanel: false,
+          showChannelSearch: false,
+          previewReturnChannelSearch: false,
         });
       }
     };
@@ -403,10 +546,14 @@ export class ChatContentPage extends Component<
           showThreadPanel: opening ? false : prevState.showThreadPanel,
           activeThread: opening ? null : prevState.activeThread,
           previewFile: opening ? null : prevState.previewFile,
+          previewReturnChannelSearch: opening
+            ? false
+            : prevState.previewReturnChannelSearch,
           activePreviewMessageId: opening
             ? null
             : prevState.activePreviewMessageId,
           showSummaryPanel: opening ? false : prevState.showSummaryPanel,
+          showChannelSearch: opening ? false : prevState.showChannelSearch,
         };
       });
     };
@@ -433,13 +580,15 @@ export class ChatContentPage extends Component<
           activeThread: null,
           previewFile: null,
           activePreviewMessageId: null,
+          previewReturnChannelSearch: false,
           showSummaryPanel: false,
+          showChannelSearch: false,
         };
       });
     };
     WKApp.mittBus.on(
       "wk:toggle-matter-detail-panel",
-      this._onToggleMatterDetailPanel,
+      this._onToggleMatterDetailPanel
     );
 
     this._onToggleSummaryPanel = (data) => {
@@ -453,13 +602,23 @@ export class ChatContentPage extends Component<
         const opening = data.forceOpen ? true : !prevState.showSummaryPanel;
         return {
           showSummaryPanel: opening,
-          summaryPanelView: opening ? data.summaryPanelView : prevState.summaryPanelView,
+          summaryPanelView: opening
+            ? data.summaryPanelView
+            : prevState.summaryPanelView,
           showMatterPanel: opening ? false : prevState.showMatterPanel,
-          showMatterDetailPanel: opening ? false : prevState.showMatterDetailPanel,
+          showMatterDetailPanel: opening
+            ? false
+            : prevState.showMatterDetailPanel,
           showThreadPanel: opening ? false : prevState.showThreadPanel,
           activeThread: opening ? null : prevState.activeThread,
           previewFile: opening ? null : prevState.previewFile,
-          activePreviewMessageId: opening ? null : prevState.activePreviewMessageId,
+          previewReturnChannelSearch: opening
+            ? false
+            : prevState.previewReturnChannelSearch,
+          activePreviewMessageId: opening
+            ? null
+            : prevState.activePreviewMessageId,
+          showChannelSearch: opening ? false : prevState.showChannelSearch,
         };
       });
     };
@@ -472,9 +631,11 @@ export class ChatContentPage extends Component<
         activeThread: null,
         previewFile: null,
         activePreviewMessageId: null,
+        previewReturnChannelSearch: false,
         showMatterPanel: false, // 互斥
         showMatterDetailPanel: false, // 互斥
         showSummaryPanel: false,
+        showChannelSearch: false,
       });
       WKApp.shared.pendingThreadPanel = undefined;
     }
@@ -500,6 +661,8 @@ export class ChatContentPage extends Component<
         showMatterPanel: false, // 互斥
         showMatterDetailPanel: false, // 互斥
         showSummaryPanel: false,
+        showChannelSearch: false,
+        previewReturnChannelSearch: false,
       });
     }
 
@@ -513,7 +676,7 @@ export class ChatContentPage extends Component<
           !WKSDK.shared().channelManager.getChannelInfo(this.parentGroupChannel)
         ) {
           WKSDK.shared().channelManager.fetchChannelInfo(
-            this.parentGroupChannel,
+            this.parentGroupChannel
           );
         }
       }
@@ -522,10 +685,33 @@ export class ChatContentPage extends Component<
 
   componentDidUpdate(prevProps: ChatContentPageProps) {
     const { channel } = this.props;
+    const channelChanged =
+      channel.channelID !== prevProps.channel.channelID ||
+      channel.channelType !== prevProps.channel.channelType;
+
+    if (channelChanged) {
+      this._clearChannelSearchState();
+    }
+
+    if (
+      this.props.initialShowChannelSearch &&
+      !prevProps.initialShowChannelSearch &&
+      isChannelSearchEnabled(channel)
+    ) {
+      this._openChannelSearchPanel();
+    }
+
+    if (!isChannelSearchEnabled(channel) && this.state.showChannelSearch) {
+      this._clearChannelSearchState();
+      this.setState({
+        showChannelSearch: false,
+        previewReturnChannelSearch: false,
+      });
+    }
 
     // 切换频道时消费 pendingThreadPanel 和 pendingFilePreview。
     // 两个场景都要跟事项列表 / 事项详情互斥 (同一侧边容器)。
-    if (channel.channelID !== prevProps.channel.channelID) {
+    if (channelChanged) {
       // 打开全部子区列表
       if (WKApp.shared.pendingThreadPanel === channel.channelID) {
         WKApp.shared.pendingThreadPanel = undefined;
@@ -534,9 +720,11 @@ export class ChatContentPage extends Component<
           activeThread: null,
           previewFile: null, // 关闭文件预览（互斥）
           activePreviewMessageId: null,
+          previewReturnChannelSearch: false,
           showMatterPanel: false, // 互斥
           showMatterDetailPanel: false, // 互斥
           showSummaryPanel: false,
+          showChannelSearch: false,
         });
         return;
       }
@@ -562,6 +750,8 @@ export class ChatContentPage extends Component<
           showMatterPanel: false, // 互斥
           showMatterDetailPanel: false, // 互斥
           showSummaryPanel: false,
+          showChannelSearch: false,
+          previewReturnChannelSearch: false,
         });
         return;
       }
@@ -580,7 +770,7 @@ export class ChatContentPage extends Component<
           !WKSDK.shared().channelManager.getChannelInfo(this.parentGroupChannel)
         ) {
           WKSDK.shared().channelManager.fetchChannelInfo(
-            this.parentGroupChannel,
+            this.parentGroupChannel
           );
         }
       }
@@ -603,7 +793,7 @@ export class ChatContentPage extends Component<
   private _onToggleSummaryPanel?: (data: {
     channelId: string;
     channelType: number;
-    summaryPanelView: 'history' | 'new';
+    summaryPanelView: "history" | "new";
     forceOpen?: boolean;
   }) => void;
 
@@ -621,12 +811,14 @@ export class ChatContentPage extends Component<
     if (this._onToggleMatterDetailPanel) {
       WKApp.mittBus.off(
         "wk:toggle-matter-detail-panel",
-        this._onToggleMatterDetailPanel,
+        this._onToggleMatterDetailPanel
       );
     }
     if (this._onToggleSummaryPanel) {
       WKApp.mittBus.off("wk:toggle-summary-panel", this._onToggleSummaryPanel);
     }
+    this._unsubscribeChannelSearchConfig?.();
+    this._unsubscribeChannelSearchConfig = undefined;
     WKSDK.shared().channelManager.removeListener(this.channelInfoListener);
   }
 
@@ -648,7 +840,7 @@ export class ChatContentPage extends Component<
       void this.reconcileConversationThreadAfterMessageSent(
         threadInfo.groupNo,
         threadInfo.shortId,
-        channel,
+        channel
       );
     }
   };
@@ -656,12 +848,12 @@ export class ChatContentPage extends Component<
   private async reconcileConversationThreadAfterMessageSent(
     groupNo: string,
     shortId: string,
-    channel: Channel,
+    channel: Channel
   ) {
     try {
       const updatedThread = await this.fetchThreadAfterMessageSent(
         groupNo,
-        shortId,
+        shortId
       );
       if (!this.props.channel.isEqual(channel)) return;
       if (updatedThread.status === ThreadStatus.Archived) return;
@@ -680,7 +872,7 @@ export class ChatContentPage extends Component<
 
   private async fetchThreadAfterMessageSent(
     groupNo: string,
-    shortId: string,
+    shortId: string
   ): Promise<Thread> {
     let lastThread: Thread | null = null;
 
@@ -691,7 +883,7 @@ export class ChatContentPage extends Component<
 
       const updatedThread = await WKApp.dataSource.channelDataSource.threadGet(
         groupNo,
-        shortId,
+        shortId
       );
       lastThread = updatedThread;
       if (updatedThread.status !== ThreadStatus.Archived) {
@@ -727,6 +919,7 @@ export class ChatContentPage extends Component<
       showMatterDetailPanel,
       showSummaryPanel,
       summaryPanelView,
+      showChannelSearch,
     } = this.state;
     // 子区页面不显示讨论串按钮
     const isThreadChannel = channel.channelType === ChannelTypeCommunityTopic;
@@ -740,17 +933,18 @@ export class ChatContentPage extends Component<
         className={classNames(
           "wk-chat-content-right",
           showChannelSetting ? "wk-chat-channelsetting-open" : "",
+          showChannelSearch ? "wk-chat-channel-search-open" : "",
           showThreadPanel || previewFile || showMatterPanel
             ? "wk-chat-threadpanel-open"
             : "",
           showMatterDetailPanel ? "wk-chat-matter-detail-panel-open" : "",
-          showSummaryPanel ? "wk-chat-summary-panel-open" : "",
+          showSummaryPanel ? "wk-chat-summary-panel-open" : ""
         )}
       >
         <div
           className={classNames(
             "wk-chat-content-chat",
-            selectionMode ? "wk-chat-content-chat-selection" : undefined,
+            selectionMode ? "wk-chat-content-chat-selection" : undefined
           )}
         >
           <div
@@ -758,7 +952,7 @@ export class ChatContentPage extends Component<
               "wk-chat-conversation-header",
               selectionMode
                 ? "wk-chat-conversation-header-selection"
-                : undefined,
+                : undefined
             )}
           >
             <div className="wk-chat-conversation-header-content">
@@ -825,14 +1019,14 @@ export class ChatContentPage extends Component<
                                 onClick={() => {
                                   if (this.parentGroupChannel) {
                                     WKApp.endpoints.showConversation(
-                                      this.parentGroupChannel,
+                                      this.parentGroupChannel
                                     );
                                   } else {
                                     WKApp.endpoints.showConversation(
                                       new Channel(
                                         channelInfo.orgData.parentGroupNo,
-                                        ChannelTypeGroup,
-                                      ),
+                                        ChannelTypeGroup
+                                      )
                                     );
                                   }
                                 }}
@@ -840,8 +1034,8 @@ export class ChatContentPage extends Component<
                                 {WKSDK.shared().channelManager.getChannelInfo(
                                   new Channel(
                                     channelInfo.orgData.parentGroupNo,
-                                    ChannelTypeGroup,
-                                  ),
+                                    ChannelTypeGroup
+                                  )
                                 )?.title || channelInfo.orgData.parentGroupNo}
                               </span>
                               <span className="wk-chat-conversation-header-separator">
@@ -908,6 +1102,7 @@ export class ChatContentPage extends Component<
                                 showMatterPanel: false, // 与事项列表面板互斥
                                 showMatterDetailPanel: false, // 与事项详情面板互斥
                                 showSummaryPanel: false,
+                                showChannelSearch: false,
                                 activeThread: null,
                                 previewFile: null, // 关闭文件预览（互斥）
                                 activePreviewMessageId: null,
@@ -926,6 +1121,7 @@ export class ChatContentPage extends Component<
                         // 点击更多按钮只切换设置面板，不影响文件预览/子区面板状态
                         this.setState({
                           showChannelSetting: !this.state.showChannelSetting,
+                          showChannelSearch: false,
                         });
                       }}
                     >
@@ -974,13 +1170,14 @@ export class ChatContentPage extends Component<
                       showMatterPanel: false, // 与事项列表面板互斥
                       showMatterDetailPanel: false, // 与事项详情面板互斥
                       showSummaryPanel: false,
+                      showChannelSearch: false,
                       previewFile: null, // 关闭文件预览（互斥）
                       activePreviewMessageId: null,
                       activeThread: buildThreadStub(
                         threadInfo.shortId,
                         threadInfo.groupNo,
                         threadChannelId,
-                        threadName,
+                        threadName
                       ),
                     });
                   }
@@ -1010,6 +1207,11 @@ export class ChatContentPage extends Component<
               conversationContext={this.conversationContext}
               key={channel.getChannelKey()}
               channel={channel}
+              onOpenChannelSearch={
+                isChannelSearchEnabled(channel)
+                  ? this._openChannelSearchPanel
+                  : undefined
+              }
               onClose={() => {
                 this.setState({
                   showChannelSetting: false,
@@ -1018,6 +1220,28 @@ export class ChatContentPage extends Component<
             ></ChannelSetting>
           </ErrorBoundary>
         </div>
+
+        {showChannelSearch && (
+          <div className="wk-chat-channel-search-panel">
+            <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
+              <ChannelSearchPanel
+                key={channel.getChannelKey()}
+                channel={channel}
+                conversationContext={this.conversationContext}
+                dataSource={this.getChannelSearchDataSource(channel)}
+                onPreviewFile={this._onSearchFilePreview}
+                initialState={this.channelSearchPanelState}
+                onStateChange={this._onChannelSearchStateChange}
+                onClose={() => {
+                  this._clearChannelSearchState();
+                  this.setState({
+                    showChannelSearch: false,
+                  });
+                }}
+              />
+            </ErrorBoundary>
+          </div>
+        )}
 
         {/* 统一侧边面板：子区 + 文件预览共用一个壳子（仅群聊） */}
         {!isThreadChannel &&
@@ -1030,7 +1254,11 @@ export class ChatContentPage extends Component<
               onClose={() => {
                 // X 关闭: 若当前是从事项详情打开的预览, 回到事项详情;
                 // 否则沿用原行为, 把整个侧边壳 (子区 + 预览) 一起关掉。
-                if (previewFile && this.state.previewReturnMatterId) {
+                if (
+                  previewFile &&
+                  (this.state.previewReturnMatterId ||
+                    this.state.previewReturnChannelSearch)
+                ) {
                   this._closePreviewAndMaybeRestoreMatter(true);
                   return;
                 }
@@ -1040,6 +1268,7 @@ export class ChatContentPage extends Component<
                   previewFile: null,
                   activePreviewMessageId: null,
                   previewReturnMatterId: null,
+                  previewReturnChannelSearch: false,
                   previewHadThreadShell: false,
                 });
               }}
@@ -1062,6 +1291,9 @@ export class ChatContentPage extends Component<
                 this.setState({
                   previewFile: file,
                   activePreviewMessageId: file.messageId || null,
+                  previewHadThreadShell:
+                    this.state.showThreadPanel ||
+                    this.state.previewHadThreadShell,
                 });
               }}
             />
@@ -1104,7 +1336,7 @@ export class ChatContentPage extends Component<
             }
           >
             {WKApp.endpoints.chatMatterPanel(channel, () =>
-              this.setState({ showMatterPanel: false }),
+              this.setState({ showMatterPanel: false })
             )}
           </div>
         )}
@@ -1121,16 +1353,15 @@ export class ChatContentPage extends Component<
             }
           >
             {WKApp.endpoints.chatMatterDetailPanel(channel, () =>
-              this.setState({ showMatterDetailPanel: false }),
+              this.setState({ showMatterDetailPanel: false })
             )}
           </div>
         )}
 
         {showSummaryPanel && (
           <div className="wk-summary-panel">
-            {WKApp.endpoints.chatSummaryPanel(
-              channel,
-              () => this.setState({ showSummaryPanel: false }),
+            {WKApp.endpoints.chatSummaryPanel(channel, () =>
+              this.setState({ showSummaryPanel: false })
             )}
           </div>
         )}
@@ -1217,13 +1448,18 @@ export default class ChatPage extends Component<any, ChatPageState> {
     };
     WKApp.mittBus.on("wk:switch-sidebar-tab", this._onSwitchTab);
 
-    this._unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
-      if (WKApp.remoteConfig.disableUserCreateSpace && this.vm?.showSpaceCreate) {
-        this.vm.showSpaceCreate = false;
-      } else {
-        this.forceUpdate();
+    this._unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(
+      () => {
+        if (
+          WKApp.remoteConfig.disableUserCreateSpace &&
+          this.vm?.showSpaceCreate
+        ) {
+          this.vm.showSpaceCreate = false;
+        } else {
+          this.forceUpdate();
+        }
       }
-    });
+    );
 
     // 初始化：主动拉当前 Space 名称（首次渲染时 space-changed 还没触发）
     const currentSpaceId = WKApp.shared.currentSpaceId;
@@ -1267,7 +1503,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
               <div
                 className={classNames(
                   "wk-chat-content",
-                  vm.selectedConversation ? "wk-conversation-open" : undefined,
+                  vm.selectedConversation ? "wk-conversation-open" : undefined
                 )}
               >
                 <div className="wk-chat-content-left">
@@ -1356,159 +1592,168 @@ export default class ChatPage extends Component<any, ChatPageState> {
                   </div>
                   {/* 关注/最近 Tab Bar — Provider 给 tab 角标 + 列表共享一份 sidebar/sync */}
                   <FollowSidebarProvider>
-                  <SidebarTabBarWithBadges
-                    conversations={vm.conversations}
-                    activeTab={activeTab}
-                    onTabChange={this._handleTabChange}
-                    onRecentUnreadNavigate={this._handleRecentUnreadNavigate}
-                  />
-                  <div className="wk-chat-conversation-list">
-                    {vm.loading ? (
-                      <div className="wk-chat-conversation-list-loading">
-                        <Spin style={{ marginTop: "20px" }} />
-                      </div>
-                    ) : activeTab === "recent" &&
-                      vm.filteredConversations.length === 0 ? (
-                      <div className="wk-chat-empty-guide">
-                        <div style={{ fontSize: 28, marginBottom: 12 }}>💬</div>
-                        <div
-                          style={{
-                            fontSize: 16,
-                            fontWeight: 600,
-                            marginBottom: 6,
-                          }}
-                        >
-                          {t("base.chatPage.emptyTitle")}
+                    <SidebarTabBarWithBadges
+                      conversations={vm.conversations}
+                      activeTab={activeTab}
+                      onTabChange={this._handleTabChange}
+                      onRecentUnreadNavigate={this._handleRecentUnreadNavigate}
+                    />
+                    <div className="wk-chat-conversation-list">
+                      {vm.loading ? (
+                        <div className="wk-chat-conversation-list-loading">
+                          <Spin style={{ marginTop: "20px" }} />
                         </div>
-                        <div
-                          style={{
-                            fontSize: 13,
-                            color: "#999",
-                            marginBottom: 24,
-                          }}
-                        >
-                          {t("base.chatPage.emptyDescription")}
-                        </div>
-                        <div style={{ display: "flex", gap: 12 }}>
-                          <button
-                            className="wk-chat-empty-guide-btn"
-                            onClick={() => {
-                              WKApp.endpoints.showConversationSelect?.(
-                                (channels) => {
-                                  if (channels?.length > 0) {
-                                    WKApp.endpoints.showConversation(
-                                      channels[0],
-                                    );
-                                  }
-                                },
-                                t("base.chatPage.findContact"),
-                              );
+                      ) : activeTab === "recent" &&
+                        vm.filteredConversations.length === 0 ? (
+                        <div className="wk-chat-empty-guide">
+                          <div style={{ fontSize: 28, marginBottom: 12 }}>
+                            💬
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 16,
+                              fontWeight: 600,
+                              marginBottom: 6,
                             }}
                           >
-                            {t("base.chatPage.findContact")}
-                          </button>
-                          <button
-                            className="wk-chat-empty-guide-btn"
-                            onClick={() => {
-                              const menus = WKApp.shared.chatMenus();
-                              const groupMenu = menus.find(
-                                (m) => m.key === "start-group",
-                              );
-                              if (groupMenu?.onClick) groupMenu.onClick();
+                            {t("base.chatPage.emptyTitle")}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 13,
+                              color: "#999",
+                              marginBottom: 24,
                             }}
                           >
-                            {t("base.chatPage.startGroup")}
-                          </button>
+                            {t("base.chatPage.emptyDescription")}
+                          </div>
+                          <div style={{ display: "flex", gap: 12 }}>
+                            <button
+                              className="wk-chat-empty-guide-btn"
+                              onClick={() => {
+                                WKApp.endpoints.showConversationSelect?.(
+                                  (channels) => {
+                                    if (channels?.length > 0) {
+                                      WKApp.endpoints.showConversation(
+                                        channels[0]
+                                      );
+                                    }
+                                  },
+                                  t("base.chatPage.findContact")
+                                );
+                              }}
+                            >
+                              {t("base.chatPage.findContact")}
+                            </button>
+                            <button
+                              className="wk-chat-empty-guide-btn"
+                              onClick={() => {
+                                const menus = WKApp.shared.chatMenus();
+                                const groupMenu = menus.find(
+                                  (m) => m.key === "start-group"
+                                );
+                                if (groupMenu?.onClick) groupMenu.onClick();
+                              }}
+                            >
+                              {t("base.chatPage.startGroup")}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <ErrorBoundary moduleName={t("base.chatPage.conversationListModuleName")}>
-                        <ChatConversationList
-                          conversations={vm.filteredConversations}
-                          filter={filter}
-                          select={WKApp.shared.openChannel}
-                          scrollToUnreadToken={
-                            activeTab === "recent"
-                              ? recentUnreadJumpToken
-                              : undefined
-                          }
-                          onOpenCreateCategoryRef={this.openCreateCategoryRef}
-                          onGroupCreated={() =>
-                            vm.reloadRequestConversationList()
-                          }
-                          onConversationClick={(
-                            conversation: ConversationWrap,
-                          ) => {
-                            const doSwitch = () => {
-                              // 子区：直接进入完整视图（参考 Discord 逻辑）
-                              if (
-                                conversation.channel.channelType ===
-                                ChannelTypeCommunityTopic
-                              ) {
+                      ) : (
+                        <ErrorBoundary
+                          moduleName={t(
+                            "base.chatPage.conversationListModuleName"
+                          )}
+                        >
+                          <ChatConversationList
+                            conversations={vm.filteredConversations}
+                            filter={filter}
+                            select={WKApp.shared.openChannel}
+                            scrollToUnreadToken={
+                              activeTab === "recent"
+                                ? recentUnreadJumpToken
+                                : undefined
+                            }
+                            onOpenCreateCategoryRef={this.openCreateCategoryRef}
+                            onGroupCreated={() =>
+                              vm.reloadRequestConversationList()
+                            }
+                            onConversationClick={(
+                              conversation: ConversationWrap
+                            ) => {
+                              const doSwitch = () => {
+                                // 子区：直接进入完整视图（参考 Discord 逻辑）
+                                if (
+                                  conversation.channel.channelType ===
+                                  ChannelTypeCommunityTopic
+                                ) {
+                                  WKApp.mittBus.emit(
+                                    "wk:close-thread-panel",
+                                    undefined
+                                  );
+                                  vm.selectedConversation = conversation;
+                                  // 在 sidebar 列表里点击：保持当前 tab，
+                                  // 不要被 EndpointCommon 强切到 recent。
+                                  WKApp.endpoints.showConversation(
+                                    conversation.channel,
+                                    { fromSidebarList: true }
+                                  );
+                                  vm.notifyListener();
+                                  return;
+                                }
+                                // 普通会话：关闭子区面板
                                 WKApp.mittBus.emit(
                                   "wk:close-thread-panel",
-                                  undefined,
+                                  undefined
                                 );
                                 vm.selectedConversation = conversation;
-                                // 在 sidebar 列表里点击：保持当前 tab，
-                                // 不要被 EndpointCommon 强切到 recent。
                                 WKApp.endpoints.showConversation(
                                   conversation.channel,
-                                  { fromSidebarList: true },
+                                  { fromSidebarList: true }
                                 );
                                 vm.notifyListener();
+                              };
+                              const guard = WKApp.shared.pendingAttachmentGuard;
+                              if (guard && !guard()) {
+                                this.setState({
+                                  pendingConfirm: { onOk: doSwitch },
+                                });
                                 return;
                               }
-                              // 普通会话：关闭子区面板
-                              WKApp.mittBus.emit(
-                                "wk:close-thread-panel",
-                                undefined,
-                              );
-                              vm.selectedConversation = conversation;
-                              WKApp.endpoints.showConversation(
-                                conversation.channel,
-                                { fromSidebarList: true },
-                              );
-                              vm.notifyListener();
-                            };
-                            const guard = WKApp.shared.pendingAttachmentGuard;
-                            if (guard && !guard()) {
-                              this.setState({
-                                pendingConfirm: { onOk: doSwitch },
+                              doSwitch();
+                            }}
+                            onClearMessages={this.vm.clearMessages.bind(
+                              this.vm
+                            )}
+                            onThreadOverflowClick={(groupNo: string) => {
+                              // 通过 mittBus 通知导航到父群聊子区列表
+                              WKApp.mittBus.emit("wk:pending-thread", {
+                                groupNo,
+                                thread: null,
                               });
-                              return;
-                            }
-                            doSwitch();
-                          }}
-                          onClearMessages={this.vm.clearMessages.bind(this.vm)}
-                          onThreadOverflowClick={(groupNo: string) => {
-                            // 通过 mittBus 通知导航到父群聊子区列表
-                            WKApp.mittBus.emit("wk:pending-thread", {
-                              groupNo,
-                              thread: null,
-                            });
-                            // 若当前不是目标群聊，切换频道
-                            if (this.props.channel?.channelID !== groupNo) {
-                              WKApp.shared.pendingThreadPanel = groupNo;
-                              const groupConv = vm.filteredConversations.find(
-                                (c) =>
-                                  c.channel.channelType === ChannelTypeGroup &&
-                                  c.channel.channelID === groupNo,
-                              );
-                              if (groupConv) {
-                                vm.selectedConversation = groupConv;
-                                vm.notifyListener();
+                              // 若当前不是目标群聊，切换频道
+                              if (this.props.channel?.channelID !== groupNo) {
+                                WKApp.shared.pendingThreadPanel = groupNo;
+                                const groupConv = vm.filteredConversations.find(
+                                  (c) =>
+                                    c.channel.channelType ===
+                                      ChannelTypeGroup &&
+                                    c.channel.channelID === groupNo
+                                );
+                                if (groupConv) {
+                                  vm.selectedConversation = groupConv;
+                                  vm.notifyListener();
+                                }
+                                WKApp.endpoints.showConversation(
+                                  new Channel(groupNo, ChannelTypeGroup),
+                                  { fromSidebarList: true }
+                                );
                               }
-                              WKApp.endpoints.showConversation(
-                                new Channel(groupNo, ChannelTypeGroup),
-                                { fromSidebarList: true },
-                              );
-                            }
-                          }}
-                        />
-                      </ErrorBoundary>
-                    )}
-                  </div>
+                            }}
+                          />
+                        </ErrorBoundary>
+                      )}
+                    </div>
                   </FollowSidebarProvider>
                 </div>
               </div>
@@ -1531,7 +1776,9 @@ export default class ChatPage extends Component<any, ChatPageState> {
                 }}
               >
                 <div style={{ marginTop: "30px" }}>
-                  <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
+                  <ErrorBoundary
+                    moduleName={t("base.chatPage.searchModuleName")}
+                  >
                     <GlobalSearch
                       onClick={(item, type: string) => {
                         void handleGlobalSearchClick(item, type, () => {
