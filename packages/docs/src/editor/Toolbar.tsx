@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import { BubbleMenu, FloatingMenu } from '@tiptap/react/menus'
+import { BubbleMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
 import { t } from '../octoweb/index.ts'
@@ -88,11 +88,13 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
   )
 }
 
-/** Predicate for the block-insert FloatingMenu: show only on an empty, non-code
- * text block at the root depth with an empty selection. Mirrors the default
- * @tiptap/extension-floating-menu guards (the previous bare `isEditable`
- * override showed the menu on every collapsed cursor, including inside code
- * blocks, where clicking H1 destroyed the block). Exported for unit testing. */
+/**
+ * Predicate kept (and unit-tested) for the block-insert affordance: an empty, non-code
+ * text block at root depth with a collapsed selection. The old auto-popping FloatingMenu
+ * that rendered on this predicate and trailed the caret was removed (boss: "too sticky,
+ * blocks the view"); the insert menu is now triggered from the gutter "+" button
+ * (BlockDragHandle, hover-only) or the `/` slash command — never auto-following the cursor.
+ */
 export function shouldShowFloatingMenu(args: {
   isEditable: boolean
   selection: { empty: boolean; $anchor: { depth: number; parent: { isTextblock: boolean; childCount: number; type: { spec: { code?: boolean } } } } }
@@ -105,24 +107,6 @@ export function shouldShowFloatingMenu(args: {
   const isRootDepth = $anchor.depth === 1
   const isEmptyTextBlock = parent.isTextblock && !parent.type.spec.code && parent.childCount === 0
   return isRootDepth && isEmptyTextBlock
-}
-
-/** Empty-line floating menu (frontend-design §3.3) — block insert entry. */
-export function EditorFloatingMenu({ editor }: { editor: Editor }) {
-  return (
-    <FloatingMenu
-      editor={editor}
-      shouldShow={({ editor: e, state }) =>
-        shouldShowFloatingMenu({ isEditable: e.isEditable, selection: state.selection })
-      }
-    >
-      <div className="octo-floating-menu">
-        <Btn label="H1" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} />
-        <Btn label="• List" onClick={() => editor.chain().focus().toggleBulletList().run()} />
-        <Btn label="Todo" onClick={() => editor.chain().focus().toggleTaskList().run()} />
-      </div>
-    </FloatingMenu>
-  )
 }
 
 const HIGHLIGHT_COLORS = ['#fff3a3', '#ffd6cc', '#cdeccd', '#cfe2ff', '#e7d6ff'] as const
