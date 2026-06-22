@@ -1,24 +1,20 @@
 import React, { useState } from "react"
 import { t } from "../../i18n"
+import { validateCcInstall as rawValidate, type CcInstallValidationResult } from "./ccInstallValidate"
 
-export function validateCcInstall(gatewayUrl: string, apiKey: string): { ok: boolean; urlError?: string; keyError?: string } {
-    let urlError: string | undefined
-    let keyError: string | undefined
-    const trimmed = gatewayUrl.trim()
-    if (!trimmed) {
-        urlError = t("base.runtimes.ccInstall.urlRequired")
-    } else {
-        // Backend enforces: https:// OR http://localhost / http://127.0.0.1 only
-        const isHttps = /^https:\/\//i.test(trimmed)
-        const isLocalHttp = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(trimmed)
-        if (!isHttps && !isLocalHttp) {
-            urlError = t("base.runtimes.ccInstall.urlInvalid")
-        }
+const errorCodeToText: Record<string, string> = {
+    url_required: t("base.runtimes.ccInstall.urlRequired"),
+    url_invalid: t("base.runtimes.ccInstall.urlInvalid"),
+    key_required: t("base.runtimes.ccInstall.keyRequired"),
+}
+
+function validateCcInstall(gatewayUrl: string, apiKey: string): CcInstallValidationResult & { urlError?: string; keyError?: string } {
+    const result = rawValidate(gatewayUrl, apiKey)
+    return {
+        ...result,
+        urlError: result.urlError ? errorCodeToText[result.urlError] : undefined,
+        keyError: result.keyError ? errorCodeToText[result.keyError] : undefined,
     }
-    if (!apiKey.trim()) {
-        keyError = t("base.runtimes.ccInstall.keyRequired")
-    }
-    return { ok: !urlError && !keyError, urlError, keyError }
 }
 
 export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: string) => void; onCancel: () => void }) {
