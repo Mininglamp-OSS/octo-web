@@ -392,7 +392,36 @@
 }
 .octo-prose ul[data-type='taskList'] li {
   display: flex;
+  align-items: flex-start; /* align checkbox to the first text line, not stretched/centered */
   gap: 8px;
+}
+/* Checkbox column: fixed size, vertically centered on the first text line, never
+   shrinking when the item text wraps to multiple lines. */
+.octo-prose ul[data-type='taskList'] li > label {
+  flex: 0 0 auto;
+  margin: 0;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  height: 1.6em; /* matches the prose line-height so the box centers on line 1 */
+}
+.octo-prose ul[data-type='taskList'] li > label > input[type='checkbox'] {
+  margin: 0;
+  cursor: pointer;
+}
+/* Content side takes the remaining width; its paragraph has no extra top margin so
+   it lines up with the checkbox instead of dropping below it. */
+.octo-prose ul[data-type='taskList'] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.octo-prose ul[data-type='taskList'] li > div > p {
+  margin: 0;
+}
+/* Checked items read as done: muted + struck through. */
+.octo-prose ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--octo-fg-3, #86909c);
+  text-decoration: line-through;
 }
 
 /* Remote collaboration carets (collaboration-caret; v3 default render uses
