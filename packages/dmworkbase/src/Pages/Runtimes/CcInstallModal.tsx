@@ -4,10 +4,16 @@ import { t } from "../../i18n"
 export function validateCcInstall(gatewayUrl: string, apiKey: string): { ok: boolean; urlError?: string; keyError?: string } {
     let urlError: string | undefined
     let keyError: string | undefined
-    if (!gatewayUrl.trim()) {
+    const trimmed = gatewayUrl.trim()
+    if (!trimmed) {
         urlError = t("base.runtimes.ccInstall.urlRequired")
-    } else if (!/^https?:\/\/.+/i.test(gatewayUrl.trim())) {
-        urlError = t("base.runtimes.ccInstall.urlInvalid")
+    } else {
+        // Backend enforces: https:// OR http://localhost / http://127.0.0.1 only
+        const isHttps = /^https:\/\//i.test(trimmed)
+        const isLocalHttp = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(trimmed)
+        if (!isHttps && !isLocalHttp) {
+            urlError = t("base.runtimes.ccInstall.urlInvalid")
+        }
     }
     if (!apiKey.trim()) {
         keyError = t("base.runtimes.ccInstall.keyRequired")

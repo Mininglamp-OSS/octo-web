@@ -1210,7 +1210,7 @@
   "runtimes.ccInstall.gatewayUrl": "LLM Gateway URL",
   "runtimes.ccInstall.apiKey": "API Key",
   "runtimes.ccInstall.urlRequired": "LLM gateway URL is required",
-  "runtimes.ccInstall.urlInvalid": "URL must start with http:// or https://",
+  "runtimes.ccInstall.urlInvalid": "URL must be https:// (or http://localhost)",
   "runtimes.ccInstall.keyRequired": "API Key is required",
   "runtimes.ccInstall.submit": "Install",
   "runtimes.ccInstall.cancel": "Cancel",

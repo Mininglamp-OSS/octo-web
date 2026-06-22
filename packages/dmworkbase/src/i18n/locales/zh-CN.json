@@ -1210,7 +1210,7 @@
   "runtimes.ccInstall.gatewayUrl": "LLM 网关 URL",
   "runtimes.ccInstall.apiKey": "API Key",
   "runtimes.ccInstall.urlRequired": "请填写 LLM 网关 URL",
-  "runtimes.ccInstall.urlInvalid": "URL 需以 http:// 或 https:// 开头",
+  "runtimes.ccInstall.urlInvalid": "URL 需为 https:// (或 http://localhost)",
   "runtimes.ccInstall.keyRequired": "请填写 API Key",
   "runtimes.ccInstall.submit": "安装",
   "runtimes.ccInstall.cancel": "取消",

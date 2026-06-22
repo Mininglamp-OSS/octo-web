@@ -1005,7 +1005,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
 
     componentDidUpdate(prevProps: RuntimeDetailProps) {
         if (prevProps.runtime.id !== this.props.runtime.id) {
-            // 切换 runtime 时重置升级状态（从新 props 读）
+            // 切换 runtime 时重置升级状态（从新 props 读）+ 关闭 cc modal
             const pluginUpg = this.props.pluginActiveUpgrade
             const compUpg = this.props.componentActiveUpgrade
             this.setState({
@@ -1013,6 +1013,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 pluginUpgradeError: pluginUpg?.error_msg || "",
                 componentUpgradeStatus: (compUpg?.status as PluginUpgradeStatus) || "idle",
                 componentUpgradeError: compUpg?.error_msg || "",
+                ccModalOpen: false,
             })
             return
         }
@@ -1162,7 +1163,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         this.setState({ pluginUpgradeStatus: "timeout", pluginUpgradeError: t("base.runtimes.upgrade.errPollingTimeout") })
     }
 
-    renderPluginUpgradeBtn(pluginName: string, hasUpdate: boolean | undefined, action: "upgrade" | "install" = "upgrade") {
+    renderPluginUpgradeBtn(pluginName: string, hasUpdate: boolean | undefined, action: "upgrade" | "install" = "upgrade", onInstallClick?: () => void) {
         const { pluginUpgradeStatus, pluginUpgradeError } = this.state
         // busy 来源是否本按钮自己的 task — 自己升级显示进度态; 别的 task
         // 在跑则本按钮 busy-disabled (按钮粒度豁免, plan §2.B-3 / X4).
@@ -1182,7 +1183,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     {pluginUpgradeError && <span className="wk-rt-upgrade-reason">· {pluginUpgradeError.length > 40 ? pluginUpgradeError.slice(0, 40) + "…" : pluginUpgradeError}</span>}
                     {!!pluginName && (busyByOther
                         ? <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{actionLabel}</span>
-                        : <span className="wk-rt-upgrade-btn" onClick={() => this.handlePluginUpgrade(pluginName, action === "install")}>{actionLabel}</span>)}
+                        : <span className="wk-rt-upgrade-btn" onClick={() => onInstallClick ? onInstallClick() : this.handlePluginUpgrade(pluginName, action === "install")}>{actionLabel}</span>)}
                 </span>
             )
         }
@@ -1200,7 +1201,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 // B-3: 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
                 return <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{actionLabel}</span>
             }
-            return <span className="wk-rt-upgrade-btn" onClick={() => this.handlePluginUpgrade(pluginName, action === "install")}>{actionLabel}</span>
+            return <span className="wk-rt-upgrade-btn" onClick={() => onInstallClick ? onInstallClick() : this.handlePluginUpgrade(pluginName, action === "install")}>{actionLabel}</span>
         }
         return null
     }
@@ -1420,7 +1421,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                                         canInstallOctoPlugin(rt.provider, false)
                                             ? this.renderPluginUpgradeBtn(octoComponent ?? "", undefined, "install")
                                             : canInstallCcPlugin(rt.provider, false)
-                                                ? <span className="wk-rt-upgrade-btn" onClick={() => this.setState({ ccModalOpen: true })}>{t("base.runtimes.upgrade.install")}</span>
+                                                ? this.renderPluginUpgradeBtn(octoComponent ?? "", undefined, "install", () => this.setState({ ccModalOpen: true }))
                                                 : <span className="wk-rt-install-empty">—</span>
                                     )}
                                 </span>
