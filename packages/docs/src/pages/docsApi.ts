@@ -61,3 +61,31 @@ export async function createDoc(input: {
   const { data } = await apiClient().post<CreateDocResult>('/docs', input)
   return data
 }
+
+export interface DocMeta {
+  docId: string
+  title: string
+  ownerId?: string
+  role?: Role
+  updatedAt?: string
+}
+
+/**
+ * GET /api/v1/docs/{docId} — fetch a single document's metadata (title etc).
+ * Used to render the real title in the editor header instead of a hardcoded
+ * placeholder. Resilient: callers fall back to a passed-in title if this throws
+ * (e.g. the backend has no per-doc GET in a given environment).
+ */
+export async function getDoc(docId: string): Promise<DocMeta> {
+  const { data } = await apiClient().get<DocMeta>(`/docs/${docId}`)
+  return data
+}
+
+/**
+ * PATCH /api/v1/docs/{docId} — rename a document. Backend confirmed 200 + DB
+ * persistence. Manage-role only (enforced server-side; UI also gates on canManage).
+ */
+export async function updateDocTitle(docId: string, title: string): Promise<DocMeta> {
+  const { data } = await apiClient().patch<DocMeta>(`/docs/${docId}`, { title })
+  return data
+}

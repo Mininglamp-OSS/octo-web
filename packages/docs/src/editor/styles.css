@@ -56,6 +56,29 @@
   font-weight: 600;
   margin: 0 0 8px;
 }
+/* Editable title (BUG3): hint affordance on hover, inline input matches the heading. */
+.octo-doc-title-editable {
+  cursor: text;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin-left: -4px;
+  transition: background 0.12s ease;
+}
+.octo-doc-title-editable:hover {
+  background: var(--octo-hover-bg, #f2f3f5);
+}
+.octo-doc-title-input {
+  font-family: inherit;
+  border: 1px solid var(--octo-active-fg, #1664ff);
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin-left: -4px;
+  outline: none;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  width: 100%;
+  box-sizing: border-box;
+}
 .octo-doc-back {
   align-self: center;
   flex: 0 0 auto;
