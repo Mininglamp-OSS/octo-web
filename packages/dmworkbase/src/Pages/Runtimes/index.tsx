@@ -1999,7 +1999,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
         this.setState({ ccInstallRuntime: rt })
     }
 
-    private handleCcInstallSubmit = async (gatewayUrl: string, apiKey: string) => {
+    private handleCcInstallSubmit = async (gatewayUrl: string, apiKey: string, model: string) => {
         const rt = this.state.ccInstallRuntime
         if (!rt) return
         this.setState({ ccInstallRuntime: null })
@@ -2015,6 +2015,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 component: comp,
                 gateway_url: gatewayUrl,
                 api_key: apiKey,
+                ...(model ? { model } : {}),
             }, { baseURL: FLEET_API_BASE })
             const taskId = initRes?.data?.task_id
             if (!taskId) throw new Error("plugin upgrade init: missing task_id in response")
