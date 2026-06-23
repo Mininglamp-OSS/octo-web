@@ -2243,15 +2243,31 @@
 
 /* CcInstallModal styles */
 .wk-cc-install-mask { position: fixed; inset: 0; background: var(--wk-black-alpha-40); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.wk-cc-install-modal { background: var(--wk-bg-elevated); border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-md); padding: var(--wk-sp-5); width: 360px; max-width: 90vw; }
-.wk-cc-install-title { font-weight: var(--wk-font-semibold); margin-bottom: var(--wk-sp-3); color: var(--wk-text-primary); }
-.wk-cc-install-label { display: block; font-size: var(--wk-text-size-sm); margin: var(--wk-sp-3) 0 var(--wk-sp-1); color: var(--wk-text-secondary); }
-.wk-cc-install-input { width: 100%; box-sizing: border-box; padding: var(--wk-sp-1) var(--wk-sp-2); border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-sm); font-size: var(--wk-text-size-sm); }
-.wk-cc-install-err { color: var(--wk-color-error); font-size: var(--wk-text-size-xs); margin-top: var(--wk-sp-1); }
-.wk-cc-install-actions { display: flex; justify-content: flex-end; gap: var(--wk-sp-2); margin-top: var(--wk-sp-4); }
-.wk-cc-install-btn { cursor: pointer; padding: var(--wk-sp-1) var(--wk-sp-3); border-radius: var(--wk-r-sm); font-size: var(--wk-text-size-sm); }
-.wk-cc-install-btn.cancel { color: var(--wk-text-secondary); }
-.wk-cc-install-btn.submit { background: var(--wk-brand-primary); color: #fff; }
-.wk-cc-install-btn.submit:hover { background: var(--wk-brand-primary-hover); }
-.wk-cc-install-btn.submit.disabled { opacity: .5; cursor: not-allowed; }
+.wk-cc-install-modal { background: var(--wk-bg-elevated); border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-lg); padding: var(--wk-sp-6); width: 420px; max-width: 92vw; box-shadow: var(--wk-shadow-lg); animation: wk-cc-install-in 160ms ease-out; }
+@keyframes wk-cc-install-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .wk-cc-install-modal { animation: none; } }
+.wk-cc-install-title { font-size: var(--wk-text-size-xl); font-weight: var(--wk-font-semibold); margin: 0 0 var(--wk-sp-5); color: var(--wk-text-primary); }
+.wk-cc-install-field { margin-bottom: var(--wk-sp-4); }
+.wk-cc-install-field:last-of-type { margin-bottom: 0; }
+.wk-cc-install-label { display: block; font-size: var(--wk-text-size-sm); font-weight: var(--wk-font-medium); margin: 0 0 var(--wk-sp-2); color: var(--wk-text-secondary); }
+.wk-cc-install-input { width: 100%; box-sizing: border-box; height: 36px; padding: 0 var(--wk-sp-3); border: 1px solid var(--wk-border-default); border-radius: var(--wk-r-sm); font-size: var(--wk-text-size-md); color: var(--wk-text-primary); background: var(--wk-bg-surface); transition: border-color 150ms ease, box-shadow 150ms ease; }
+.wk-cc-install-input::placeholder { color: var(--wk-text-tertiary); }
+.wk-cc-install-input:hover { border-color: var(--wk-border-strong); }
+.wk-cc-install-input:focus { outline: none; border-color: var(--wk-brand-primary); box-shadow: 0 0 0 3px var(--wk-brand-primary-ring); }
+.wk-cc-install-hint { font-size: var(--wk-text-size-xs); color: var(--wk-text-tertiary); margin-top: var(--wk-sp-2); line-height: 1.5; }
+.wk-cc-install-err { color: var(--wk-color-error); font-size: var(--wk-text-size-xs); margin-top: var(--wk-sp-2); }
+.wk-cc-install-model-row { display: flex; gap: var(--wk-sp-2); align-items: center; }
+.wk-cc-install-model-row .wk-cc-install-input { flex: 1; }
+.wk-cc-install-actions { display: flex; justify-content: flex-end; gap: var(--wk-sp-3); margin-top: var(--wk-sp-6); }
+.wk-cc-install-btn { cursor: pointer; height: 34px; padding: 0 var(--wk-sp-4); border-radius: var(--wk-r-sm); font-size: var(--wk-text-size-md); font-weight: var(--wk-font-medium); border: 1px solid var(--wk-border-default); background: var(--wk-bg-surface); color: var(--wk-text-secondary); transition: background 150ms ease, border-color 150ms ease, opacity 150ms ease; }
+.wk-cc-install-btn:hover { border-color: var(--wk-border-strong); }
+.wk-cc-install-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--wk-brand-primary-ring); }
+.wk-cc-install-btn:disabled { opacity: .45; cursor: not-allowed; }
+.wk-cc-install-model-row .wk-cc-install-btn { height: 36px; white-space: nowrap; }
+.wk-cc-install-btn.cancel { border-color: transparent; background: transparent; }
+.wk-cc-install-btn.cancel:hover { background: var(--wk-bg-surface); border-color: var(--wk-border-default); }
+.wk-cc-install-btn.submit { background: var(--wk-brand-primary); color: var(--wk-text-inverse); border-color: var(--wk-brand-primary); }
+.wk-cc-install-btn.submit:hover { background: var(--wk-brand-primary-hover); border-color: var(--wk-brand-primary-hover); }
+.wk-cc-install-btn.submit.disabled, .wk-cc-install-btn.submit:disabled { opacity: .45; cursor: not-allowed; }
+
 

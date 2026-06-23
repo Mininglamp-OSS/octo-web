@@ -1,5 +1,24 @@
 import { describe, it, expect } from "vitest"
-import { validateCcInstall } from "./ccInstallValidate"
+import { validateCcInstall, normalizeGatewayUrl } from "./ccInstallValidate"
+
+describe("normalizeGatewayUrl", () => {
+    it("strips a trailing /v1 or /v1/", () => {
+        expect(normalizeGatewayUrl("https://gw.test/v1")).toBe("https://gw.test")
+        expect(normalizeGatewayUrl("https://gw.test/v1/")).toBe("https://gw.test")
+    })
+    it("trims and leaves a bare host or non-version path intact", () => {
+        expect(normalizeGatewayUrl("  https://gw.test  ")).toBe("https://gw.test")
+        expect(normalizeGatewayUrl("https://gw.test/api")).toBe("https://gw.test/api")
+    })
+    it("does not strip a mid-path v1", () => {
+        expect(normalizeGatewayUrl("https://gw.test/v1/foo")).toBe("https://gw.test/v1/foo")
+    })
+    it("strips a trailing /v1 before a query or fragment, case-insensitively", () => {
+        expect(normalizeGatewayUrl("https://gw.test/v1?foo=1")).toBe("https://gw.test?foo=1")
+        expect(normalizeGatewayUrl("https://gw.test/v1/#frag")).toBe("https://gw.test#frag")
+        expect(normalizeGatewayUrl("https://gw.test/V1")).toBe("https://gw.test")
+    })
+})
 
 describe("validateCcInstall", () => {
     it("accepts https url + non-empty key", () => {
