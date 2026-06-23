@@ -1581,3 +1581,179 @@
   cursor: pointer;
   color: inherit;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Batch-3 schema toolbar items (SCHEMA_VERSION 5–13)
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Font-size dropdown (v7) + alignment buttons share the toolbar control styling. */
+.octo-font-size {
+  height: 26px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+/* Shared dependency-free suggestion popup (mention @ + emoji :). Mirrors the slash menu. */
+.octo-suggest-menu {
+  z-index: 1000;
+  min-width: 180px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+}
+.octo-suggest-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.octo-suggest-item.is-selected,
+.octo-suggest-item:hover {
+  background: var(--octo-hover, #f2f3f5);
+}
+.octo-suggest-empty {
+  padding: 6px 10px;
+  color: var(--octo-fg-3, #86909c);
+  font-size: 12px;
+}
+.octo-emoji-menu .octo-suggest-item {
+  font-size: 15px;
+}
+
+/* Mention node (v10): pill rendering; doc mentions read as links. */
+.octo-mention {
+  color: var(--octo-active-fg, #1664ff);
+  background: var(--octo-mention-bg, rgba(22, 100, 255, 0.08));
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.octo-mention[data-mention-type='doc'] {
+  cursor: pointer;
+}
+.octo-mention[data-mention-type='doc']:hover {
+  text-decoration: underline;
+}
+
+/* Emoji toolbar picker grid (v9). */
+.octo-emoji-popover {
+  position: absolute;
+  z-index: 1000;
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  width: 280px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+}
+.octo-emoji-swatch {
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px;
+  cursor: pointer;
+}
+.octo-emoji-swatch:hover {
+  background: var(--octo-hover, #f2f3f5);
+}
+
+/* Callout block (v12): icon + tinted background per variant. */
+.octo-callout {
+  position: relative;
+  border-radius: 8px;
+  padding: 10px 12px 10px 38px;
+  margin: 8px 0;
+  border: 1px solid transparent;
+}
+.octo-callout::before {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+.octo-callout-info {
+  background: rgba(22, 100, 255, 0.08);
+  border-color: rgba(22, 100, 255, 0.2);
+}
+.octo-callout-info::before {
+  content: 'ℹ️';
+}
+.octo-callout-warn {
+  background: rgba(247, 144, 9, 0.1);
+  border-color: rgba(247, 144, 9, 0.25);
+}
+.octo-callout-warn::before {
+  content: '⚠️';
+}
+.octo-callout-tip {
+  background: rgba(0, 180, 42, 0.08);
+  border-color: rgba(0, 180, 42, 0.2);
+}
+.octo-callout-tip::before {
+  content: '💡';
+}
+.octo-callout-success {
+  background: rgba(0, 180, 42, 0.12);
+  border-color: rgba(0, 180, 42, 0.3);
+}
+.octo-callout-success::before {
+  content: '✅';
+}
+
+/* Collapsible details block (v11). */
+.octo-details {
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin: 8px 0;
+}
+.octo-details > summary,
+.octo-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+.octo-details > div[data-type='detailsContent'] {
+  margin-top: 6px;
+}
+
+/* Math nodes (v13). KaTeX styling comes from katex.min.css; these just give the block
+   formula breathing room and mark an empty/invalid formula. */
+.octo-docs-editor .Tiptap-mathematics-editor,
+.tiptap [data-type='inlineMath'],
+.tiptap [data-type='blockMath'] {
+  font-family: 'KaTeX_Main', serif;
+}
+[data-type='blockMath'] {
+  display: block;
+  text-align: center;
+  margin: 10px 0;
+}

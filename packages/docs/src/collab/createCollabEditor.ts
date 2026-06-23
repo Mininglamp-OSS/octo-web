@@ -92,7 +92,7 @@ export class CollabEditor {
 
     // 4) editor — initial editable from collab-token role (single source of truth).
     this.editor = new Editor({
-      extensions: buildExtensions({ ydoc: this.ydoc, provider: this.provider, user: opts.user, docId: opts.docId }),
+      extensions: buildExtensions({ ydoc: this.ydoc, provider: this.provider, user: opts.user, docId: opts.docId, spaceId: opts.space }),
       editable: canEdit(initialRole),
     })
 
