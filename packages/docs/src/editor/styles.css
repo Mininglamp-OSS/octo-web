@@ -38,6 +38,10 @@
   height: 100%;
   box-sizing: border-box;
   overflow-y: auto;
+  /* P7/B1: the scroll container must have NO top padding, otherwise that padding strip sits
+     ABOVE the sticky toolbar (top:0) and document content scrolls up through it. The top
+     breathing space is moved onto the header instead; horizontal + bottom padding stay here. */
+  padding: 0 32px 24px;
 }
 
 .octo-doc-header {
@@ -45,6 +49,9 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  /* The top breathing room lives here now (the scroll container's top padding was removed so the
+     sticky toolbar can pin flush to the true top of the scroll viewport). */
+  padding-top: 24px;
 }
 .octo-doc-header-right {
   display: flex;
@@ -96,16 +103,19 @@
   background: rgba(124, 92, 252, 0.08);
 }
 
-/* Sticky toolbar wrapper (P7): the WRAPPER is the sticky element so the toolbar AND the find
-   bar stick together. The 16px breathing space that used to be .octo-editor-region's transparent
-   margin-top now lives as the wrapper's own opaque padding-bottom, so nothing shows through the
-   gap while scrolling. z-index 6 sits above the prose + drag handle (4). */
+/* Sticky toolbar wrapper (P7/B1): the WRAPPER is the sticky element so the toolbar AND the find
+   bar stick together, pinned flush to the true top of the scroll container (.octo-doc--editor,
+   whose top padding was removed for exactly this reason). It is FULL-BLEED — negative horizontal
+   margins span the scroll container's 32px side padding, with matching inner padding — so its
+   opaque background covers the entire width and nothing can show through above or beside it while
+   scrolling down. z-index 6 sits above the prose + drag handle (4). */
 .octo-toolbar-wrap {
   position: sticky;
   top: 0;
   z-index: 6;
   background: var(--octo-bg);
-  padding-bottom: 16px;
+  margin: 0 -32px;
+  padding: 0 32px 16px;
   box-shadow: 0 6px 8px -6px rgba(0, 0, 0, 0.12);
 }
 .octo-toolbar {
@@ -148,11 +158,20 @@
   opacity: 0.4;
   cursor: default;
 }
+.octo-link-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .octo-link-input input {
   border: 1px solid var(--octo-border);
   border-radius: 6px;
   padding: 3px 8px;
   font-size: 13px;
+}
+/* C7: link popup stacks a "text" + "URL" field; give them a sensible min width. */
+.octo-link-popover input {
+  min-width: 150px;
 }
 
 /* Find & replace bar (toolbar item ⑪): sits directly under the toolbar, sticky with it. */
@@ -195,6 +214,18 @@
   font-size: 12px;
   color: var(--octo-muted);
   cursor: pointer;
+}
+
+/* Find & replace match highlight (C6). The FindReplace plugin paints Decoration.inline with
+   these classes over every match (and the current one); without CSS the matches were invisible. */
+.octo-find-match {
+  background: rgba(255, 213, 0, 0.45);
+  border-radius: 2px;
+}
+.octo-find-match-current {
+  background: rgba(255, 145, 0, 0.85);
+  box-shadow: 0 0 0 1px rgba(214, 105, 0, 0.9);
+  color: #1f2329;
 }
 
 /* Bottom status bar (toolbar item ⑦): live word + character counts. */
@@ -771,6 +802,194 @@
   background: var(--octo-bg, #fff);
   color: var(--octo-fg, #1f2329);
   font-size: 13px;
+}
+
+/* Multi-select checkbox indicator (#A2). */
+.octo-member-picker-check {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid var(--octo-border, #d0d3d9);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  color: #fff;
+}
+.octo-member-picker-check.is-checked {
+  background: var(--octo-accent, #3370ff);
+  border-color: var(--octo-accent, #3370ff);
+}
+
+/* Owner badge in the member list (#A1). */
+.octo-owner-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--octo-accent, #3370ff);
+  border: 1px solid var(--octo-accent, #3370ff);
+  vertical-align: middle;
+}
+
+/* ── Manage-members modal (#A4): a centered dialog overlay, replacing the inline drawer ── */
+.octo-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  overflow-y: auto;
+}
+.octo-modal {
+  width: 100%;
+  max-width: 560px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 12px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
+  padding: 20px 24px;
+  box-sizing: border-box;
+}
+/* The MemberPanel drops its own card chrome inside the modal so it fills the dialog. */
+.octo-modal .octo-member-panel {
+  margin-top: 0;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+/* ── Invite links (#A5 redesign + #A6 expiry) ─────────────────────────────── */
+.octo-invite-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.octo-invite-create {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.octo-invite-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.octo-invite-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--octo-muted, #8a919e);
+}
+.octo-invite-field select {
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  font-size: 13px;
+}
+.octo-invite-generate {
+  margin-left: auto;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #fff;
+  background: var(--octo-accent, #3370ff);
+}
+.octo-invite-generate:hover {
+  background: var(--octo-active-fg-hover, #0e4fd6);
+}
+.octo-invite-empty {
+  color: var(--octo-muted, #8a919e);
+  font-size: 13px;
+  margin: 4px 0;
+}
+.octo-invite-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.octo-invite-item {
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.octo-invite-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.octo-invite-item-spacer {
+  flex: 1 1 auto;
+}
+.octo-invite-role {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--octo-accent, #3370ff);
+  border: 1px solid var(--octo-accent, #3370ff);
+}
+.octo-invite-expiry {
+  font-size: 12px;
+  color: var(--octo-muted, #8a919e);
+}
+.octo-invite-revoke {
+  color: #eb5757;
+}
+.octo-invite-revoke:hover {
+  background: rgba(235, 87, 87, 0.1);
+}
+.octo-invite-url {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--octo-muted, #8a919e);
+  background: var(--octo-bg-2, #fafbfc);
+}
+
+/* Inline SVG toolbar icons (C2–C4): crisp underline / strikethrough / alignment glyphs. */
+.octo-tb-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: currentColor;
+}
+
+/* Block-type (heading / body) dropdown (C1) — shares the font-size control styling. */
+.octo-block-type {
+  height: 26px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  padding: 0 4px;
+  cursor: pointer;
 }
 
 /* ── Right-side drawer (#4/#5): history / comments / members open here, one at a time ──
@@ -1841,12 +2060,14 @@
   align-items: stretch;
   gap: 12px;
   margin: 8px 0;
+  min-height: 64px;
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 8px;
   overflow: hidden;
   text-decoration: none;
   color: inherit;
   cursor: pointer;
+  background: var(--octo-bg, #fff);
 }
 .octo-bookmark-card.is-inert {
   cursor: default;
@@ -1868,18 +2089,37 @@
   object-fit: cover;
   display: block;
 }
+/* D2: placeholder thumbnail when the link has no og:image — a globe glyph on a tinted panel so
+   the bookmark always reads as a CARD (never a bare link). */
+.octo-bookmark-thumb--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--octo-muted, #8a919e);
+  background: var(--octo-surface, #f2f3f5);
+}
 .octo-bookmark-body {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 10px 12px;
   min-width: 0;
+  flex: 1 1 auto;
+  justify-content: center;
 }
 .octo-bookmark-title {
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* When the card is reduced to just a URL (no title), keep it readable but clearly card-like. */
+.octo-bookmark-title.is-url {
+  font-weight: 500;
+  color: var(--octo-accent, #3370ff);
 }
 .octo-bookmark-desc {
   font-size: 13px;

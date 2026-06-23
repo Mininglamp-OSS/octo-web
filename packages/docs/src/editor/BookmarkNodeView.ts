@@ -73,18 +73,40 @@ export class BookmarkNodeView {
       img.src = image
       img.alt = ''
       img.loading = 'lazy'
-      // A broken og:image should not leave an empty box — drop the thumbnail on error.
-      img.addEventListener('error', () => thumb.remove())
+      // A broken og:image should not leave an empty box — fall back to the placeholder thumb.
+      img.addEventListener('error', () => {
+        thumb.className = 'octo-bookmark-thumb octo-bookmark-thumb--placeholder'
+        thumb.textContent = '🌐'
+      })
       thumb.appendChild(img)
+      this.dom.appendChild(thumb)
+    } else {
+      // D2: no og:image — still show a card thumbnail (globe placeholder) so a sparse bookmark
+      // never degrades into looking like a bare link.
+      const thumb = document.createElement('span')
+      thumb.className = 'octo-bookmark-thumb octo-bookmark-thumb--placeholder'
+      thumb.textContent = '🌐'
       this.dom.appendChild(thumb)
     }
 
     const body = document.createElement('span')
     body.className = 'octo-bookmark-body'
 
+    // Host derived from the url — used as the site footer and as a title fallback (D2).
+    let host = ''
+    if (url) {
+      try {
+        host = new URL(url).host
+      } catch {
+        host = ''
+      }
+    }
+
     const titleEl = document.createElement('span')
-    titleEl.className = 'octo-bookmark-title'
-    titleEl.textContent = attrs.title || url || ''
+    const hasTitle = !!attrs.title
+    titleEl.className = hasTitle ? 'octo-bookmark-title' : 'octo-bookmark-title is-url'
+    // D2: prefer the OG title; else the host; else the raw url — the title line is never blank.
+    titleEl.textContent = attrs.title || host || url || ''
     body.appendChild(titleEl)
 
     if (attrs.description) {
@@ -96,17 +118,12 @@ export class BookmarkNodeView {
 
     const site = document.createElement('span')
     site.className = 'octo-bookmark-site'
-    // Prefer the explicit siteName; else show the host of the url so the card always has a footer.
-    let host = ''
-    if (url) {
-      try {
-        host = new URL(url).host
-      } catch {
-        host = ''
-      }
+    // Prefer the explicit siteName; else the host. Only suppress when it would duplicate the title.
+    const siteText = attrs.siteName || host
+    if (siteText && siteText !== titleEl.textContent) {
+      site.textContent = siteText
+      body.appendChild(site)
     }
-    site.textContent = attrs.siteName || host
-    if (site.textContent) body.appendChild(site)
 
     this.dom.appendChild(body)
   }

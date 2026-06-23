@@ -6,12 +6,50 @@
 //   • the toolbar emoji button → setEmoji(name) (Toolbar.tsx)
 // The extension ships no default suggestion `items`/`render`, so we provide both here: a
 // shortcode/name filter over the bundled set and the shared dependency-free popup.
+//
+// D1 (Batch 4) — render the real GLYPH, not letters:
+//   1. The extension's default renderHTML falls back to a fallbackImage <img> (or, in headless
+//      tests, behaves inconsistently) when `is-emoji-supported` can't confirm support. We OVERRIDE
+//      renderHTML to ALWAYS emit the unicode glyph looked up from the bundled set by name, so an
+//      inserted emoji renders as 😀 inline (never an image, never a stray letter).
+//   2. The toolbar picker grid previously sliced the FIRST 48 entries of the bundled set, which are
+//      the `regional_indicator_*` flag letters (🇦🇧🇨 → render as boxed "A"/"B"/"C" in most fonts).
+//      `pickerEmojis()` curates a set of real emoji (regional indicators excluded) so the grid shows
+//      actual glyphs.
 
 import { Emoji, gitHubEmojis, type EmojiItem } from '@tiptap/extension-emoji'
+import { mergeAttributes } from '@tiptap/core'
 import { createSuggestionMenuRenderer } from './suggestionMenu.ts'
 
 /** Bundled GitHub emoji set, re-exported so the toolbar picker shares one source of truth. */
 export const EMOJI_SET: EmojiItem[] = gitHubEmojis
+
+/** name/shortcode → glyph lookup, built once over the bundled set. */
+const GLYPH_BY_KEY = new Map<string, string>()
+for (const e of EMOJI_SET) {
+  if (!e.emoji) continue
+  GLYPH_BY_KEY.set(e.name, e.emoji)
+  for (const sc of e.shortcodes) GLYPH_BY_KEY.set(sc, e.emoji)
+}
+
+/** Resolve an emoji node's stored `name` (a name OR shortcode) to its unicode glyph, if known. */
+export function emojiGlyph(name: string | null | undefined): string | undefined {
+  if (!name) return undefined
+  return GLYPH_BY_KEY.get(name)
+}
+
+/** True for the bundled `regional_indicator_*` flag-letter entries (render as boxed A/B/C). */
+function isRegionalIndicator(e: EmojiItem): boolean {
+  return e.name.startsWith('regional_indicator_')
+}
+
+/**
+ * Curated emoji set for the toolbar picker grid (D1): real emoji with a glyph, regional-indicator
+ * flag letters excluded so the grid shows 😀 not "A"/"B"/"C".
+ */
+export function pickerEmojis(limit = 48): EmojiItem[] {
+  return EMOJI_SET.filter((e) => !!e.emoji && !isRegionalIndicator(e)).slice(0, limit)
+}
 
 /** Max rows in the `:shortcode:` suggestion popup. */
 const MAX_SUGGESTIONS = 12
@@ -32,9 +70,21 @@ function emojiLabel(e: EmojiItem): string {
 }
 
 export function buildEmoji() {
-  return Emoji.configure({
+  return Emoji.extend({
+    // D1: always render the unicode glyph (looked up by the stored name/shortcode), never a
+    // fallback <img> or the bare `:name:`. parseHTML still keys off data-name, so round-tripping
+    // through the Y.Doc / read-only preview is unchanged.
+    renderHTML({ HTMLAttributes, node }) {
+      const name = node.attrs.name as string | null
+      const glyph = emojiGlyph(name)
+      const attrs = mergeAttributes(HTMLAttributes, { 'data-type': this.name })
+      return ['span', attrs, glyph || `:${name ?? ''}:`]
+    },
+  }).configure({
     emojis: EMOJI_SET,
     enableEmoticons: true,
+    // Never swap glyphs for the CDN fallback images — we render the glyph ourselves.
+    forceFallbackImages: false,
     suggestion: {
       items: ({ query }: { query: string }) => filterEmojis(query),
       render: () =>

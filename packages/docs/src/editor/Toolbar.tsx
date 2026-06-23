@@ -1,13 +1,49 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import type { ReactNode } from 'react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
 import { pickAndUploadFile } from './fileUpload.ts'
 import { promptAndInsertBookmark } from './bookmarkInsert.ts'
 import { getFindState } from './findReplace.ts'
-import { EMOJI_SET } from './emoji.ts'
+import { pickerEmojis } from './emoji.ts'
+import { promptAndInsertMath } from './mathInsert.ts'
+import { sanitizeLinkHref } from './sanitize.ts'
 import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { t } from '../octoweb/index.ts'
+
+// Inline SVG toolbar icons (C2–C4): crisp, correct glyphs for underline / strikethrough /
+// alignment, replacing the ambiguous text placeholders. 16×16, fill: currentColor (via .octo-tb-icon).
+const IconUnderline = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12 17c3.31 0 6-2.69 6-6V3h-2.5v8c0 1.93-1.57 3.5-3.5 3.5S8.5 12.93 8.5 11V3H6v8c0 3.31 2.69 6 6 6zM5 19v2h14v-2H5z" />
+  </svg>
+)
+const IconStrike = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M3 12.2h18v1.6H3v-1.6zM10.7 9.5c-.3-.2-.6-.5-.8-.8-.2-.3-.3-.7-.3-1.1 0-.7.3-1.3.8-1.7.6-.4 1.3-.6 2.2-.6.9 0 1.7.2 2.2.7.5.4.8 1 .9 1.8h2.1c0-.8-.3-1.5-.7-2.2-.4-.6-1-1.1-1.8-1.5-.8-.3-1.6-.5-2.6-.5-1 0-1.9.2-2.7.5-.8.3-1.4.8-1.8 1.4-.4.6-.6 1.3-.6 2 0 .9.3 1.6.9 2.3h4zM13.9 15.2c.3.3.5.7.5 1.2 0 .7-.3 1.2-.8 1.6-.5.4-1.3.6-2.2.6-1 0-1.8-.2-2.4-.7-.6-.4-.9-1.1-.9-1.9H6c0 .9.2 1.6.7 2.3.5.7 1.1 1.2 2 1.5.8.4 1.8.5 2.8.5 1.5 0 2.7-.3 3.6-1 .9-.7 1.3-1.6 1.3-2.7 0-.6-.1-1.1-.4-1.6h-2.2c.1.1.1.2.1.3z" />
+  </svg>
+)
+const IconAlignLeft = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M3 5h18v2H3V5zm0 4h12v2H3V9zm0 4h18v2H3v-2zm0 4h12v2H3v-2z" />
+  </svg>
+)
+const IconAlignCenter = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M3 5h18v2H3V5zm3 4h12v2H6V9zm-3 4h18v2H3v-2zm3 4h12v2H6v-2z" />
+  </svg>
+)
+const IconAlignRight = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M3 5h18v2H3V5zm6 4h12v2H9V9zm-6 4h18v2H3v-2zm6 4h12v2H9v-2z" />
+  </svg>
+)
+const IconAlignJustify = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M3 5h18v2H3V5zm0 4h18v2H3V9zm0 4h18v2H3v-2zm0 4h18v2H3v-2z" />
+  </svg>
+)
 
 // Languages offered in the code-block language selector. A curated subset of the
 // highlight.js `common` set registered in extensions.ts; "auto" (empty value)
@@ -57,7 +93,7 @@ function Btn({
 }: {
   onClick: () => void
   active?: boolean
-  label: string
+  label: ReactNode
   disabled?: boolean
   title?: string
 }) {
@@ -86,8 +122,8 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
       <div className="octo-bubble-menu">
         <Btn label="B" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
         <Btn label="I" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
-        <Btn label="U" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
-        <Btn label="S" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
+        <Btn label={<IconUnderline />} title={t('docs.toolbar.underline')} active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
+        <Btn label={<IconStrike />} title={t('docs.toolbar.strike')} active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
         <Btn label="<>" active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()} />
       </div>
     </BubbleMenu>
@@ -195,16 +231,16 @@ function TextColorControl({ editor }: { editor: Editor }) {
 /** Font-size presets (px) offered by the toolbar dropdown (SCHEMA_VERSION 7). */
 const FONT_SIZES = ['12', '14', '16', '18', '24', '32'] as const
 
-/** Text-alignment options (SCHEMA_VERSION 5) — value passed to setTextAlign. */
+/** Text-alignment options (SCHEMA_VERSION 5) — value passed to setTextAlign, icon per direction (C4). */
 const ALIGNMENTS = [
-  { value: 'left', label: '⬅', key: 'alignLeft' },
-  { value: 'center', label: '⬌', key: 'alignCenter' },
-  { value: 'right', label: '➡', key: 'alignRight' },
-  { value: 'justify', label: '☰', key: 'alignJustify' },
+  { value: 'left', icon: <IconAlignLeft />, key: 'alignLeft' },
+  { value: 'center', icon: <IconAlignCenter />, key: 'alignCenter' },
+  { value: 'right', icon: <IconAlignRight />, key: 'alignRight' },
+  { value: 'justify', icon: <IconAlignJustify />, key: 'alignJustify' },
 ] as const
 
-/** Curated emoji subset for the toolbar picker grid — those with a renderable glyph. */
-const EMOJI_PICKER = EMOJI_SET.filter((e) => !!e.emoji).slice(0, 48)
+/** Curated emoji subset for the toolbar picker grid — real glyphs, regional-indicator letters excluded (D1). */
+const EMOJI_PICKER = pickerEmojis(48)
 
 /** Font-size dropdown (SCHEMA_VERSION 7): sets the textStyle `fontSize` attr (px), or clears it. */
 function FontSizeSelect({ editor }: { editor: Editor }) {
@@ -232,6 +268,44 @@ function FontSizeSelect({ editor }: { editor: Editor }) {
   )
 }
 
+/** Block-type dropdown (C1): collapses H1–H6 + a "Body text" (paragraph) option into one selector
+ * that reflects the current block. Selecting a heading sets it; "Body text" sets a paragraph. */
+function BlockTypeSelect({ editor }: { editor: Editor }) {
+  useEditorTick(editor)
+  let current = 'p'
+  for (let l = 1; l <= 6; l += 1) {
+    if (editor.isActive('heading', { level: l })) {
+      current = `h${l}`
+      break
+    }
+  }
+  return (
+    <select
+      className="octo-block-type"
+      title={t('docs.toolbar.blockType')}
+      value={current}
+      onMouseDown={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        const v = e.target.value
+        if (v === 'p') editor.chain().focus().setParagraph().run()
+        else
+          editor
+            .chain()
+            .focus()
+            .setHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 | 4 | 5 | 6 })
+            .run()
+      }}
+    >
+      <option value="p">{t('docs.toolbar.bodyText')}</option>
+      {[1, 2, 3, 4, 5, 6].map((l) => (
+        <option key={l} value={`h${l}`}>
+          {t(`docs.toolbar.heading${l}`)}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 /** Text-alignment buttons (SCHEMA_VERSION 5): left/center/right/justify on heading + paragraph. */
 function AlignControls({ editor }: { editor: Editor }) {
   return (
@@ -239,7 +313,7 @@ function AlignControls({ editor }: { editor: Editor }) {
       {ALIGNMENTS.map((a) => (
         <Btn
           key={a.value}
-          label={a.label}
+          label={a.icon}
           title={t(`docs.toolbar.${a.key}`)}
           active={editor.isActive({ textAlign: a.value })}
           onClick={() => editor.chain().focus().setTextAlign(a.value).run()}
@@ -442,12 +516,108 @@ function FindBar({ editor, onClose }: { editor: Editor; onClose: () => void }) {
   )
 }
 
+/** Math insert control (C5): a small input popover that prompts for the LaTeX, then inserts inline
+ * or block math with the user's formula (no more hardcoded 'a^2 + b^2 = c^2'). Empty → no insert. */
+function MathControl({ editor, kind }: { editor: Editor; kind: 'inline' | 'block' }) {
+  const [open, setOpen] = useState(false)
+  const [latex, setLatex] = useState('')
+  function confirm() {
+    const v = latex.trim()
+    if (v) {
+      if (kind === 'inline') editor.chain().focus().insertInlineMath({ latex: v }).run()
+      else editor.chain().focus().insertBlockMath({ latex: v }).run()
+    }
+    setOpen(false)
+    setLatex('')
+  }
+  return (
+    <span className="octo-color-control">
+      <Btn
+        label={kind === 'inline' ? '∑' : '∑▤'}
+        title={t(kind === 'inline' ? 'docs.toolbar.mathInline' : 'docs.toolbar.mathBlock')}
+        active={open}
+        onClick={() => setOpen((v) => !v)}
+      />
+      {open && (
+        <span className="octo-color-popover octo-math-popover">
+          <input
+            className="octo-find-input"
+            autoFocus
+            value={latex}
+            placeholder={t('docs.toolbar.mathPlaceholder')}
+            onMouseDown={(e) => e.stopPropagation()}
+            onChange={(e) => setLatex(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                confirm()
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                setOpen(false)
+                setLatex('')
+              }
+            }}
+          />
+          <Btn label={t('docs.toolbar.insert')} onClick={confirm} />
+        </span>
+      )}
+    </span>
+  )
+}
+
 /** Fixed top toolbar (frontend-design §3.1). */
 export function Toolbar({ editor }: { editor: Editor }) {
   useEditorTick(editor)
   const [linkOpen, setLinkOpen] = useState(false)
+  const [linkText, setLinkText] = useState('')
   const [linkValue, setLinkValue] = useState('')
   const [findOpen, setFindOpen] = useState(false)
+
+  // C7: open the link popup, pre-filling the text from the current selection and the URL from any
+  // link already under the cursor.
+  function openLink() {
+    setLinkOpen((v) => {
+      const next = !v
+      if (next) {
+        const { from, to } = editor.state.selection
+        setLinkText(from !== to ? editor.state.doc.textBetween(from, to, ' ') : '')
+        setLinkValue((editor.getAttributes('link').href as string) || '')
+      }
+      return next
+    })
+  }
+
+  function closeLink() {
+    setLinkOpen(false)
+    setLinkText('')
+    setLinkValue('')
+  }
+
+  // C7: insert a link at the cursor (or apply it to the selection). With no selection a brand-new
+  // linked label is inserted at the caret; with a selection whose text is unchanged the link is
+  // applied to it (preserving any other marks); if the text was edited it replaces the selection.
+  // sanitizeLinkHref enforces the scheme whitelist (§3.7) — an unsafe or empty URL inserts nothing.
+  function confirmLink() {
+    const href = sanitizeLinkHref(linkValue.trim())
+    if (!href) {
+      closeLink()
+      return
+    }
+    const { from, to } = editor.state.selection
+    const selText = from !== to ? editor.state.doc.textBetween(from, to, ' ') : ''
+    const text = linkText.trim() || linkValue.trim()
+    if (selText && text === selText.trim()) {
+      // Unchanged selection → just apply the link mark, keeping bold/italic/etc.
+      editor.chain().focus().setLink({ href }).run()
+    } else {
+      editor
+        .chain()
+        .focus()
+        .insertContent({ type: 'text', text, marks: [{ type: 'link', attrs: { href } }] })
+        .run()
+    }
+    closeLink()
+  }
 
   // Ctrl/Cmd+F opens the find bar (without triggering the browser's native find).
   useEffect(() => {
@@ -465,17 +635,12 @@ export function Toolbar({ editor }: { editor: Editor }) {
   return (
     <div className="octo-toolbar-wrap">
     <div className="octo-toolbar">
-      <Btn label="H1" title={t('docs.toolbar.heading1')} active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} />
-      <Btn label="H2" title={t('docs.toolbar.heading2')} active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />
-      <Btn label="H3" title={t('docs.toolbar.heading3')} active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} />
-      <Btn label="H4" title={t('docs.toolbar.heading4')} active={editor.isActive('heading', { level: 4 })} onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()} />
-      <Btn label="H5" title={t('docs.toolbar.heading5')} active={editor.isActive('heading', { level: 5 })} onClick={() => editor.chain().focus().toggleHeading({ level: 5 }).run()} />
-      <Btn label="H6" title={t('docs.toolbar.heading6')} active={editor.isActive('heading', { level: 6 })} onClick={() => editor.chain().focus().toggleHeading({ level: 6 }).run()} />
+      <BlockTypeSelect editor={editor} />
       <span className="octo-tb-sep" />
       <Btn label="B" title={t('docs.toolbar.bold')} active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
       <Btn label="I" title={t('docs.toolbar.italic')} active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
-      <Btn label="U" title={t('docs.toolbar.underline')} active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
-      <Btn label="S" title={t('docs.toolbar.strike')} active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
+      <Btn label={<IconUnderline />} title={t('docs.toolbar.underline')} active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
+      <Btn label={<IconStrike />} title={t('docs.toolbar.strike')} active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
       <Btn label="x²" title={t('docs.toolbar.superscript')} active={editor.isActive('superscript')} onClick={() => editor.chain().focus().toggleSuperscript().run()} />
       <Btn label="x₂" title={t('docs.toolbar.subscript')} active={editor.isActive('subscript')} onClick={() => editor.chain().focus().toggleSubscript().run()} />
       <FontSizeSelect editor={editor} />
@@ -511,34 +676,44 @@ export function Toolbar({ editor }: { editor: Editor }) {
         onClick={() => editor.chain().focus().setDetails().run()}
       />
       <CalloutControl editor={editor} />
-      <Btn
-        label="∑"
-        title={t('docs.toolbar.mathInline')}
-        onClick={() => editor.chain().focus().insertInlineMath({ latex: 'a^2 + b^2 = c^2' }).run()}
-      />
-      <Btn
-        label="∑▤"
-        title={t('docs.toolbar.mathBlock')}
-        onClick={() => editor.chain().focus().insertBlockMath({ latex: 'a^2 + b^2 = c^2' }).run()}
-      />
+      <MathControl editor={editor} kind="inline" />
+      <MathControl editor={editor} kind="block" />
       <span className="octo-tb-sep" />
-      <Btn label="Link" title={t('docs.toolbar.link')} active={editor.isActive('link')} onClick={() => setLinkOpen((v) => !v)} />
+      <Btn label="Link" title={t('docs.toolbar.link')} active={editor.isActive('link')} onClick={openLink} />
       {linkOpen && (
-        <span className="octo-link-input">
+        <span className="octo-link-input octo-link-popover">
           <input
-            value={linkValue}
-            onChange={(e) => setLinkValue(e.target.value)}
-            placeholder={t('docs.toolbar.linkPlaceholder')}
-          />
-          <Btn
-            label={t('docs.toolbar.linkSet')}
-            onClick={() => {
-              // Link extension's validate() enforces the scheme whitelist (§3.7).
-              editor.chain().focus().extendMarkRange('link').setLink({ href: linkValue }).run()
-              setLinkOpen(false)
-              setLinkValue('')
+            value={linkText}
+            onChange={(e) => setLinkText(e.target.value)}
+            placeholder={t('docs.toolbar.linkText')}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                confirmLink()
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                closeLink()
+              }
             }}
           />
+          <input
+            value={linkValue}
+            autoFocus
+            onChange={(e) => setLinkValue(e.target.value)}
+            placeholder={t('docs.toolbar.linkPlaceholder')}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                confirmLink()
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                closeLink()
+              }
+            }}
+          />
+          <Btn label={t('docs.toolbar.linkSet')} onClick={confirmLink} />
         </span>
       )}
       <span className="octo-tb-sep" />

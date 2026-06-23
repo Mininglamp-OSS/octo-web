@@ -55,4 +55,9 @@ describe('MemberPanel — display names (#7)', () => {
     const { container } = render(<MemberPanel docId="d_1" role="writer" space="s_1" />)
     expect(container.firstChild).toBeNull()
   })
+
+  it('marks the owner row with an Owner badge (#A1)', async () => {
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_named" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+  })
 })
