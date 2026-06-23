@@ -196,6 +196,8 @@
   "member": {
     "title": "成员",
     "manage": "管理成员",
+    "currentMembers": "当前成员",
+    "empty": "暂无成员。",
     "close": "关闭",
     "loading": "正在加载成员…",
     "addMember": "添加成员",

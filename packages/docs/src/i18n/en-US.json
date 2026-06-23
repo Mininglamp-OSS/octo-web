@@ -196,6 +196,8 @@
   "member": {
     "title": "Members",
     "manage": "Manage members",
+    "currentMembers": "Current members",
+    "empty": "No members yet.",
     "close": "Close",
     "loading": "Loading members…",
     "addMember": "Add member",

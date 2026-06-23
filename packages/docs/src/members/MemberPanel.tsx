@@ -131,7 +131,11 @@ export function MemberPanel({
       </div>
 
       <div className="octo-member-section">
+        <h4 className="octo-member-subtitle">{t('docs.member.currentMembers')}</h4>
         {loading && <p className="octo-loading">{t('docs.member.loading')}</p>}
+        {!loading && members.length === 0 && (
+          <p className="octo-member-empty">{t('docs.member.empty')}</p>
+        )}
         {sortMembersForDisplay(members, resolvedOwner).map((m) => {
           const isOwner = resolvedOwner != null && m.uid === resolvedOwner
           const removable = resolvedOwner ? canRemoveMember(m, resolvedOwner) : !isOwner
