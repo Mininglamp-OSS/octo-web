@@ -301,9 +301,9 @@ export function VersionPanel({
           return (
             <li
               key={v.docVersionSeq}
-              className={`octo-version-row${isSelected ? ' is-selected' : ''}`}
+              className={`octo-version-row octo-version-row-${v.kind}${isSelected ? ' is-selected' : ''}`}
             >
-              <div className="octo-version-meta">
+              <div className="octo-version-line1">
                 <span className={`octo-version-badge octo-version-badge-${v.kind}`}>
                   {kindBadge(v)}
                 </span>
@@ -321,66 +321,69 @@ export function VersionPanel({
                   className="octo-version-time"
                   title={formatAbsolute(v.createdAt)}
                 >
-                  {formatRelative(v.createdAt)} · {names?.get(v.createdBy) || v.createdBy}
+                  {formatRelative(v.createdAt)}
                 </span>
               </div>
-              <div className="octo-version-actions">
-                {renamingSeq === v.docVersionSeq ? (
-                  <>
-                    <button
-                      type="button"
-                      className="octo-tb-btn"
-                      disabled={busy || renameValue.trim() === ''}
-                      onClick={() => onRename(v.docVersionSeq)}
-                    >
-                      {t('docs.version.save')}
-                    </button>
-                    <button
-                      type="button"
-                      className="octo-tb-btn"
-                      onClick={() => setRenamingSeq(null)}
-                    >
-                      {t('docs.version.cancel')}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button type="button" className="octo-tb-btn" onClick={() => onPreview(v)}>
-                      {t('docs.version.preview')}
-                    </button>
-                    {renameable && (
+              <div className="octo-version-line2">
+                <span className="octo-version-author">{names?.get(v.createdBy) || v.createdBy}</span>
+                <div className="octo-version-actions">
+                  {renamingSeq === v.docVersionSeq ? (
+                    <>
                       <button
                         type="button"
                         className="octo-tb-btn"
-                        onClick={() => {
-                          setRenamingSeq(v.docVersionSeq)
-                          setRenameValue(v.label)
-                        }}
+                        disabled={busy || renameValue.trim() === ''}
+                        onClick={() => onRename(v.docVersionSeq)}
                       >
-                        {t('docs.version.rename')}
+                        {t('docs.version.save')}
                       </button>
-                    )}
-                    {myRestore && (
                       <button
                         type="button"
                         className="octo-tb-btn"
-                        onClick={() => setConfirmRestore(v)}
+                        onClick={() => setRenamingSeq(null)}
                       >
-                        {t('docs.version.restore')}
+                        {t('docs.version.cancel')}
                       </button>
-                    )}
-                    {myRestore && (
-                      <button
-                        type="button"
-                        className="octo-tb-btn"
-                        disabled={busy}
-                        onClick={() => onDelete(v)}
-                      >
-                        {t('docs.version.delete')}
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="octo-tb-btn" onClick={() => onPreview(v)}>
+                        {t('docs.version.preview')}
                       </button>
-                    )}
-                  </>
-                )}
+                      {renameable && (
+                        <button
+                          type="button"
+                          className="octo-tb-btn"
+                          onClick={() => {
+                            setRenamingSeq(v.docVersionSeq)
+                            setRenameValue(v.label)
+                          }}
+                        >
+                          {t('docs.version.rename')}
+                        </button>
+                      )}
+                      {myRestore && (
+                        <button
+                          type="button"
+                          className="octo-tb-btn"
+                          onClick={() => setConfirmRestore(v)}
+                        >
+                          {t('docs.version.restore')}
+                        </button>
+                      )}
+                      {myRestore && (
+                        <button
+                          type="button"
+                          className="octo-tb-btn"
+                          disabled={busy}
+                          onClick={() => onDelete(v)}
+                        >
+                          {t('docs.version.delete')}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             </li>
           )

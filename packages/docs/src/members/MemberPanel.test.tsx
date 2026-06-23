@@ -38,8 +38,9 @@ describe('MemberPanel — display names (#7)', () => {
     wk.spaceMembers.push({ uid: 'u_named', name: 'Grace Hopper' })
     render(<MemberPanel docId="d_1" role="admin" space="s_1" />)
 
-    // The named member shows the display name…
-    await waitFor(() => expect(screen.getByText(/Grace Hopper/)).toBeTruthy())
+    // The named member shows the display name (it appears both in the picker roster and the
+    // resolved member list, so there may be more than one occurrence)…
+    await waitFor(() => expect(screen.getAllByText(/Grace Hopper/).length).toBeGreaterThan(0))
     // …and a uid with no space-member name falls back to the raw uid (never blank).
     expect(screen.getByText(/u_unknown/)).toBeTruthy()
   })

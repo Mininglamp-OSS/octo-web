@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
 import { encodeAnchorRange, type EncodedAnchor } from './anchor.ts'
+import { t } from '../octoweb/index.ts'
 import type { CreateRootInput } from './api.ts'
 
 export function CommentBubble({
@@ -28,7 +29,7 @@ export function CommentBubble({
     const { from, to } = editor.state.selection
     const enc = encodeAnchorRange(editor, from, to)
     if (!enc) {
-      setError('Could not anchor a comment here.')
+      setError(t('docs.comment.errorAnchor'))
       return
     }
     setError(null)
@@ -55,7 +56,7 @@ export function CommentBubble({
       })
       cancel()
     } catch {
-      setError('Failed to add comment.')
+      setError(t('docs.comment.errorAdd'))
     } finally {
       setBusy(false)
     }
@@ -73,7 +74,7 @@ export function CommentBubble({
           <div className="octo-comment-compose">
             <textarea
               className="octo-comment-input"
-              placeholder="Add a comment…"
+              placeholder={t('docs.comment.composePlaceholder')}
               value={body}
               autoFocus
               onChange={(e) => setBody(e.target.value)}
@@ -85,10 +86,10 @@ export function CommentBubble({
                 disabled={busy || body.trim() === ''}
                 onClick={submit}
               >
-                Comment
+                {t('docs.comment.commentButton')}
               </button>
               <button type="button" className="octo-tb-btn" disabled={busy} onClick={cancel}>
-                Cancel
+                {t('docs.comment.cancel')}
               </button>
             </div>
             {error && <p className="octo-member-error">{error}</p>}
@@ -96,7 +97,7 @@ export function CommentBubble({
         ) : (
           <>
             <button type="button" className="octo-tb-btn" onClick={startComposing}>
-              💬 Comment
+              💬 {t('docs.comment.commentButton')}
             </button>
             {error && <span className="octo-member-error">{error}</span>}
           </>

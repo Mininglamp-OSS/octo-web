@@ -90,16 +90,21 @@ export interface ModuleManager {
 }
 
 /**
- * Minimal space-member shape the docs module needs (uid + display name only).
+ * Minimal space-member shape the docs module needs (uid + display name, plus the optional
+ * avatar + human/AI flag the member picker shows).
  *
- * The host's SpaceService.getMembers returns a richer SpaceMember (avatar/role/robot/…),
- * but docs only needs to resolve uid → display name (presence avatar initial, collaboration
- * caret label, member panel). Keeping the seam this narrow means the docs module never
- * depends on host member fields it doesn't use.
+ * The host's SpaceService.getMembers returns a richer SpaceMember (avatar/role/robot/…);
+ * docs maps it down to this lite shape. `avatar` (display URL) and `isBot` (mapped from the
+ * host's `robot` flag: 0=human, 1=AI) are optional so older callers / tests that only supply
+ * uid + name keep working unchanged.
  */
 export interface SpaceMemberLite {
   uid: string
   name: string
+  /** Display avatar URL, when the host provides one. */
+  avatar?: string
+  /** True for an AI/robot member (host `robot === 1`); absent when unknown. */
+  isBot?: boolean
 }
 
 /** The WKApp singleton surface the docs module touches. */
