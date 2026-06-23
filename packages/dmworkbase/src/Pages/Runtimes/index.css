@@ -2266,7 +2266,7 @@
 .wk-cc-install-model-row .wk-cc-install-btn { height: 36px; white-space: nowrap; }
 .wk-cc-install-btn.cancel { border-color: transparent; background: transparent; }
 .wk-cc-install-btn.cancel:hover { background: var(--wk-bg-surface); border-color: var(--wk-border-default); }
-.wk-cc-install-btn.submit { background: var(--wk-brand-primary); color: #fff; border-color: var(--wk-brand-primary); }
+.wk-cc-install-btn.submit { background: var(--wk-brand-primary); color: var(--wk-text-inverse); border-color: var(--wk-brand-primary); }
 .wk-cc-install-btn.submit:hover { background: var(--wk-brand-primary-hover); border-color: var(--wk-brand-primary-hover); }
 .wk-cc-install-btn.submit.disabled, .wk-cc-install-btn.submit:disabled { opacity: .45; cursor: not-allowed; }
 

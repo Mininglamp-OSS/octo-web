@@ -1,4 +1,4 @@
-import React, { useState, useRef, useId } from "react"
+import React, { useState, useRef } from "react"
 import { t } from "../../i18n"
 import { validateCcInstall as rawValidate, normalizeGatewayUrl, type UrlErrorCode, type KeyErrorCode } from "./ccInstallValidate"
 import { fetchLlmModels } from "./ccInstallApi"
@@ -7,6 +7,10 @@ import { fetchLlmModels } from "./ccInstallApi"
 // product). OSS default is empty. Shown as the input PLACEHOLDER (grey hint) —
 // a suggestion, not a prefilled value; the user's typed value overrides it.
 const DEFAULT_GATEWAY_URL: string = (import.meta.env.VITE_OCTO_DEFAULT_GATEWAY_URL as string | undefined) ?? ""
+
+// Per-instance unique datalist id. React 17 (this monorepo's pinned version)
+// has no useId, so use a module-level counter seeded once per mount.
+let ccInstallModalSeq = 0
 
 export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: string, model: string) => void; onCancel: () => void }) {
     const [gatewayUrl, setGatewayUrl] = useState("")
@@ -18,7 +22,8 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
     const [touched, setTouched] = useState(false)
     // Per-instance datalist id so two modals (e.g. a future multi-pane layout)
     // can't have their <input list=…> resolve to the wrong list by document order.
-    const modelListId = useId()
+    // Seeded once per mount (useState initializer runs only on first render).
+    const [modelListId] = useState(() => `cc-install-model-options-${++ccInstallModalSeq}`)
     // Monotonic token: only the most recent loadModels() may publish its result,
     // so a slow earlier fetch can't overwrite the list for newer gateway/key input.
     const fetchSeq = useRef(0)
@@ -57,16 +62,26 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
         }
     }
 
-    // Editing the gateway invalidates a previously-fetched model list (it belonged
-    // to the old gateway); bump the token and clear so the datalist never shows
-    // models from a different gateway than what's in the field.
+    // A fetched model list belongs to the (gateway, key) pair it was fetched
+    // with; editing either invalidates it. Always bump the token — even mid-fetch
+    // when the list is still empty — so an in-flight request for the old
+    // gateway/key can't republish after the edit. Because the superseded fetch's
+    // `finally` will then skip its `setLoadingModels(false)` (its seq no longer
+    // matches), clear the loading flag here so the button re-enables for the new
+    // input; then drop any shown list.
+    const invalidateModels = () => {
+        fetchSeq.current++
+        setLoadingModels(false)
+        if (models.length > 0) setModels([])
+        if (modelsError) setModelsError(false)
+    }
     const onGatewayChange = (value: string) => {
         setGatewayUrl(value)
-        if (models.length > 0 || modelsError) {
-            fetchSeq.current++
-            setModels([])
-            setModelsError(false)
-        }
+        invalidateModels()
+    }
+    const onApiKeyChange = (value: string) => {
+        setApiKey(value)
+        invalidateModels()
     }
 
     const submit = () => {
@@ -109,7 +124,7 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
                         type="password"
                         name="cc-api-key"
                         value={apiKey}
-                        onChange={e => setApiKey(e.target.value)}
+                        onChange={e => onApiKeyChange(e.target.value)}
                         autoComplete="new-password"
                         spellCheck={false}
                         data-1p-ignore
