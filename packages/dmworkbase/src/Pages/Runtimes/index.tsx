@@ -9,7 +9,7 @@ import { InstallGuidePopover } from "./InstallGuidePopover"
 import { getInstallGuide } from "./installGuide"
 import { octoComponentName } from "./octoComponent"
 import { deviceRuntimeMode } from "./deviceRuntimeMode"
-import { canInstallOctoPlugin, octoPluginInstalled, canInstallCcPlugin, shouldShowCcInstall } from "./pluginInstall"
+import { canInstallOctoPlugin, octoPluginInstalled, shouldShowCcInstall } from "./pluginInstall"
 import { CcInstallModal } from "./CcInstallModal"
 import { canCreateBot } from "./botGating"
 import { Bot, botStatusLabel, listBots, providerLabels, FLEET_API_BASE } from "./botsApi"
@@ -1101,7 +1101,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 component: pluginComponent,
                 ...(secret ? { gateway_url: secret.gatewayUrl, api_key: secret.apiKey, ...(secret.model ? { model: secret.model } : {}) } : {}),
             }, { baseURL: FLEET_API_BASE })
-            // C-1: 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
+            // 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
             this.props.onUpgradeStarted?.()
             const taskId = initRes?.data?.task_id
             if (!taskId) throw new Error("plugin upgrade init: missing task_id in response")
@@ -1187,7 +1187,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
     renderPluginUpgradeBtn(pluginName: string, hasUpdate: boolean | undefined, action: "upgrade" | "install" = "upgrade", onInstallClick?: () => void) {
         const { pluginUpgradeStatus, pluginUpgradeError } = this.state
         // busy 来源是否本按钮自己的 task — 自己升级显示进度态; 别的 task
-        // 在跑则本按钮 busy-disabled (按钮粒度豁免, plan §2.B-3 / X4).
+        // 在跑则本按钮 busy-disabled (按钮粒度豁免).
         const selfInProgress = isUpgradeInProgress(pluginUpgradeStatus)
         const busyByOther = !!this.props.daemonBusy && !selfInProgress
         // install: 用「安装」文案、空闲即显按钮; upgrade: 用「升级」文案、仅有更新时显。
@@ -1224,7 +1224,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         const showIdle = action === "install" ? !!pluginName : (hasUpdate && !!pluginName)
         if (showIdle) {
             if (busyByOther) {
-                // B-3: 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
+                // 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
                 return <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{actionLabel}</span>
             }
             return <span className="wk-rt-upgrade-btn" onClick={() => onInstallClick ? onInstallClick() : this.handlePluginUpgrade(pluginName, action === "install")}>{actionLabel}</span>
@@ -1253,7 +1253,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                 space_id: WKApp.shared.currentSpaceId,
                 component,
             }, { baseURL: FLEET_API_BASE })
-            // C-1: 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
+            // 立即让父层重拉 active_upgrades (见 RuntimeDetailProps 注释)
             this.props.onUpgradeStarted?.()
             const taskId = initRes?.data?.task_id
             if (!taskId) throw new Error("component upgrade init: missing task_id in response")
@@ -1361,7 +1361,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         }
         if (hasUpdate) {
             if (busyByOther) {
-                // B-3: 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
+                // 同 daemon 其他升级在跑, fleet 必拒 — 预防性禁用
                 return <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{t("base.runtimes.upgrade.upgrade")}</span>
             }
             return <span className="wk-rt-upgrade-btn" onClick={this.handleComponentUpgrade}>{t("base.runtimes.upgrade.upgrade")}</span>

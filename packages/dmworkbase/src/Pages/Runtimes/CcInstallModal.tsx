@@ -1,6 +1,6 @@
 import React, { useState } from "react"
 import { t } from "../../i18n"
-import { validateCcInstall as rawValidate, normalizeGatewayUrl, type CcInstallValidationResult, type UrlErrorCode, type KeyErrorCode } from "./ccInstallValidate"
+import { validateCcInstall as rawValidate, normalizeGatewayUrl, type UrlErrorCode, type KeyErrorCode } from "./ccInstallValidate"
 import { fetchLlmModels } from "./ccInstallApi"
 
 // Deployment-provided default gateway (e.g. set at build time for the hosted
