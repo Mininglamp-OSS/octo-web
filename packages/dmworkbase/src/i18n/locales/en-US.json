@@ -74,6 +74,7 @@
   "channelSearch.forward.childCount": "{{count}} chat messages",
   "channelSearch.forward.defaultTitle": "Chat history",
   "channelSearch.forward.matchReason": "Forwarded chat contains \"{{keyword}}\"",
+  "channelSearch.forward.more": "{{count}} more chat messages",
   "channelSearch.forward.placeholder.file": "[File]",
   "channelSearch.forward.placeholder.image": "[Image]",
   "channelSearch.forward.placeholder.message": "[Message]",

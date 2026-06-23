@@ -22,8 +22,7 @@ import WKButton from "../WKButton";
 import IconClick from "../IconClick";
 import ConversationContext from "../Conversation/context";
 import { downloadFile } from "../../Utils/download";
-import { useI18n, type I18nContextValue } from "../../i18n";
-import { MessageContentTypeConst } from "../../Service/Const";
+import { useI18n } from "../../i18n";
 import { channelSearchEmptyDataSource } from "./adapter";
 import {
   CHANNEL_SEARCH_KEYWORD_MAX_RUNES,
@@ -32,6 +31,11 @@ import {
   truncateChannelSearchKeyword,
 } from "./apiAdapter";
 import { resolveChannelSearchFileIconSrc } from "./fileIcon";
+import {
+  FORWARD_INNER_MESSAGE_DISPLAY_LIMIT,
+  formatForwardInnerMessage,
+  getForwardInnerMessageHiddenCount,
+} from "./forwardInnerMessage";
 import {
   canLocateChannelSearchItem,
   resolveChannelSearchLocateTarget,
@@ -45,7 +49,6 @@ import { defaultChannelSearchFilters } from "./types";
 import type {
   ChannelSearchDataSource,
   ChannelSearchFilters,
-  ChannelSearchForwardInnerMessage,
   ChannelSearchItem,
   ChannelSearchPanelState,
   ChannelSearchResponse,
@@ -68,7 +71,6 @@ interface ChannelSearchPanelProps {
 
 const tabs: ChannelSearchTab[] = ["all", "message", "media", "file"];
 const SEARCH_DEBOUNCE_MS = 300;
-const FORWARD_INNER_MESSAGE_DISPLAY_LIMIT = 4;
 
 const tabI18nKey: Record<ChannelSearchTab, string> = {
   all: "base.channelSearch.tabs.all",
@@ -89,42 +91,6 @@ function resolveSender(
   getSender: GetChannelSearchSender
 ): ChannelSearchSender {
   return item.sender || getSender(item.senderUid);
-}
-
-function resolveForwardInnerMessageSenderName(
-  message: ChannelSearchForwardInnerMessage,
-  getSender: GetChannelSearchSender
-) {
-  if (message.senderName) return message.senderName;
-  if (!message.senderUid) return "";
-  const sender = getSender(message.senderUid);
-  return sender.name && sender.name !== message.senderUid ? sender.name : "";
-}
-
-function forwardInnerMessageFallbackText(
-  type: number,
-  t: I18nContextValue["t"]
-) {
-  if (type === MessageContentTypeConst.image) {
-    return t("base.channelSearch.forward.placeholder.image");
-  }
-  if (type === MessageContentTypeConst.smallVideo) {
-    return t("base.channelSearch.forward.placeholder.video");
-  }
-  if (type === MessageContentTypeConst.file) {
-    return t("base.channelSearch.forward.placeholder.file");
-  }
-  return t("base.channelSearch.forward.placeholder.message");
-}
-
-function formatForwardInnerMessage(
-  message: ChannelSearchForwardInnerMessage,
-  getSender: GetChannelSearchSender,
-  t: I18nContextValue["t"]
-) {
-  const text = message.text || forwardInnerMessageFallbackText(message.type, t);
-  const senderName = resolveForwardInnerMessageSenderName(message, getSender);
-  return senderName ? `${senderName}：${text}` : text;
 }
 
 function activeFilterCount(filters: ChannelSearchFilters) {
@@ -839,6 +805,11 @@ const MessageResultItem = React.memo(function MessageResultItem({
     0,
     FORWARD_INNER_MESSAGE_DISPLAY_LIMIT
   );
+  const hiddenForwardInnerMessageCount = getForwardInnerMessageHiddenCount(
+    forwardInnerMessages.length,
+    visibleForwardInnerMessages.length,
+    item.forward?.childCount
+  );
   const forwardMatchReason =
     isForward && keyword.trim()
       ? t("base.channelSearch.forward.matchReason", {
@@ -891,6 +862,13 @@ const MessageResultItem = React.memo(function MessageResultItem({
                   />
                 </div>
               ))}
+              {hiddenForwardInnerMessageCount > 0 && (
+                <div className="wk-channel-search-forward-snippet">
+                  {t("base.channelSearch.forward.more", {
+                    values: { count: hiddenForwardInnerMessageCount },
+                  })}
+                </div>
+              )}
               {visibleForwardInnerMessages.length === 0 &&
                 item.forward?.snippets.map((snippet) => (
                   <div

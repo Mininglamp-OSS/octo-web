@@ -74,6 +74,7 @@
   "channelSearch.forward.childCount": "共 {{count}} 条聊天记录",
   "channelSearch.forward.defaultTitle": "聊天记录",
   "channelSearch.forward.matchReason": "转发聊天记录含“{{keyword}}”",
+  "channelSearch.forward.more": "还有 {{count}} 条聊天记录",
   "channelSearch.forward.placeholder.file": "[文件]",
   "channelSearch.forward.placeholder.image": "[图片]",
   "channelSearch.forward.placeholder.message": "[消息]",

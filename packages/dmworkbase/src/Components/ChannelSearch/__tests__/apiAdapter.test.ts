@@ -356,7 +356,7 @@ describe("channel search API adapter response mapping", () => {
           {
             message_id: "m-inner-1",
             type: 1,
-            search_text: "Alice：命中的<mark>聊天</mark>记录正文",
+            search_text: "命中的<mark>聊天</mark>记录正文",
             sender_id: "u2",
             sender_name: "Alice",
             sent_at: "2026-01-02T00:00:01Z",
@@ -383,7 +383,7 @@ describe("channel search API adapter response mapping", () => {
           {
             messageId: "m-inner-1",
             type: 1,
-            text: "Alice：命中的<mark>聊天</mark>记录正文",
+            text: "命中的<mark>聊天</mark>记录正文",
             senderUid: "u2",
             senderName: "Alice",
             timestamp: 1767312001,
