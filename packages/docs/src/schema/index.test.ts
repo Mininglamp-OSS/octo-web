@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { SCHEMA_VERSION, SCHEMA_NODES, SCHEMA_MARKS, COLLAB_FIELD } from './index.ts'
 
 // These assertions track docs/schema/SCHEMA-SPEC.md (single source of truth).
-// SCHEMA_VERSION 4 (§4) adds the table nodes; the schema is cumulative, so the v2
-// `image` node and the v3 `highlight`/`textStyle` marks are carried forward.
+// SCHEMA_VERSION 13 is the latest landed; the schema is cumulative, so every earlier
+// addition (v2 image, v3 highlight/textStyle, v4 tables, v5 textAlign attr, v6 underline,
+// v7 fontSize attr, v8 super/subscript, v9 emoji, v10 mention, v11 details, v12 callout,
+// v13 math) is carried forward.
 //
 // FOLLOW-UP (design §2.5): these are name-membership assertions only. The golden
 // schema round-trip regression — encode a fixture doc to a Yjs update, decode it back,
@@ -12,8 +14,8 @@ import { SCHEMA_VERSION, SCHEMA_NODES, SCHEMA_MARKS, COLLAB_FIELD } from './inde
 // separate phase. It is intentionally not built here: the v3 binding now runs through
 // @tiptap/y-tiptap, so the golden mechanism must be authored against that binding.
 describe('docs schema stub (mirrors SCHEMA-SPEC.md)', () => {
-  it('is at SCHEMA_VERSION 4', () => {
-    expect(SCHEMA_VERSION).toBe(4)
+  it('is at SCHEMA_VERSION 13', () => {
+    expect(SCHEMA_VERSION).toBe(13)
   })
 
   it('carries the v1 baseline marks', () => {
@@ -35,6 +37,42 @@ describe('docs schema stub (mirrors SCHEMA-SPEC.md)', () => {
     for (const n of ['table', 'tableRow', 'tableCell', 'tableHeader']) {
       expect(SCHEMA_NODES).toContain(n)
     }
+  })
+
+  it('adds the v6 underline mark', () => {
+    expect(SCHEMA_MARKS).toContain('underline')
+  })
+
+  it('adds the v8 superscript and subscript marks', () => {
+    expect(SCHEMA_MARKS).toContain('superscript')
+    expect(SCHEMA_MARKS).toContain('subscript')
+  })
+
+  it('adds the v9 emoji and v10 mention inline nodes', () => {
+    expect(SCHEMA_NODES).toContain('emoji')
+    expect(SCHEMA_NODES).toContain('mention')
+  })
+
+  it('adds the v11 details nodes (details/detailsSummary/detailsContent)', () => {
+    for (const n of ['details', 'detailsSummary', 'detailsContent']) {
+      expect(SCHEMA_NODES).toContain(n)
+    }
+  })
+
+  it('adds the v12 callout node', () => {
+    expect(SCHEMA_NODES).toContain('callout')
+  })
+
+  it('adds the v13 math nodes (inlineMath/blockMath)', () => {
+    expect(SCHEMA_NODES).toContain('inlineMath')
+    expect(SCHEMA_NODES).toContain('blockMath')
+  })
+
+  it('keeps the v5/v7 attr-only additions OUT of the node/mark lists (they are attrs)', () => {
+    // textAlign rides on heading/paragraph; fontSize rides on the textStyle mark.
+    expect(SCHEMA_NODES).not.toContain('textAlign')
+    expect(SCHEMA_MARKS).not.toContain('textAlign')
+    expect(SCHEMA_MARKS).not.toContain('fontSize')
   })
 
   it('keeps the v1 baseline nodes', () => {

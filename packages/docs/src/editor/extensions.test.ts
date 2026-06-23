@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { createDocsLowlight } from './extensions.ts'
+import { getSchema } from '@tiptap/core'
+import { createDocsLowlight, buildPreviewExtensions } from './extensions.ts'
+import { SCHEMA_NODES, SCHEMA_MARKS } from '../schema/index.ts'
 
 // Code-block syntax highlighting (P1a). The editor registers CodeBlockLowlight
 // with a lowlight instance built from highlight.js' `common` language set, while
@@ -29,5 +31,57 @@ describe('docs lowlight registry (code-block syntax highlighting)', () => {
     // language degrades to plain text rather than highlighting.
     expect(lowlight.registered('not-a-real-language')).toBe(false)
     expect(lowlight.registered('javascript')).toBe(true)
+  })
+})
+
+// The Y.Doc only round-trips nodes/marks that the editor actually registers, so the
+// SCHEMA_NODES / SCHEMA_MARKS audit lists (schema/index.ts) MUST be a subset of what the
+// extensions register. buildPreviewExtensions mirrors the live editor's schema without the
+// collab/provider machinery, so we can derive the real ProseMirror schema from it directly.
+describe('editor schema mirrors the schema audit lists', () => {
+  const schema = getSchema(buildPreviewExtensions('doc-test'))
+  const nodeNames = Object.keys(schema.nodes)
+  const markNames = Object.keys(schema.marks)
+
+  it('registers every node named in SCHEMA_NODES', () => {
+    for (const n of SCHEMA_NODES) {
+      expect(nodeNames, `missing node ${n}`).toContain(n)
+    }
+  })
+
+  it('registers every mark named in SCHEMA_MARKS', () => {
+    for (const m of SCHEMA_MARKS) {
+      expect(markNames, `missing mark ${m}`).toContain(m)
+    }
+  })
+
+  it('registers the batch-3 nodes (v9–v13)', () => {
+    for (const n of [
+      'emoji',
+      'mention',
+      'details',
+      'detailsSummary',
+      'detailsContent',
+      'callout',
+      'inlineMath',
+      'blockMath',
+    ]) {
+      expect(schema.nodes[n], `node ${n} not registered`).toBeDefined()
+    }
+  })
+
+  it('registers the batch-3 marks (v6, v8)', () => {
+    for (const m of ['underline', 'superscript', 'subscript']) {
+      expect(schema.marks[m], `mark ${m} not registered`).toBeDefined()
+    }
+  })
+
+  it('adds the v5 textAlign attr to heading and paragraph (attr, not a node)', () => {
+    expect(schema.nodes.paragraph.spec.attrs?.textAlign).toBeDefined()
+    expect(schema.nodes.heading.spec.attrs?.textAlign).toBeDefined()
+  })
+
+  it('adds the v7 fontSize attr to the textStyle mark (attr, not a mark)', () => {
+    expect(schema.marks.textStyle.spec.attrs?.fontSize).toBeDefined()
   })
 })

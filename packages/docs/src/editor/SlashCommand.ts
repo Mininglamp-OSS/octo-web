@@ -3,6 +3,7 @@ import { Extension } from '@tiptap/core'
 import Suggestion from '@tiptap/suggestion'
 import type { Editor, Range } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
+import { t } from '../octoweb/index.ts'
 
 export interface SlashItem {
   title: string
@@ -102,6 +103,35 @@ export const SLASH_ITEMS: SlashItem[] = [
       editor.chain().focus().deleteRange(range).run()
       void pickAndUploadImage(editor)
     },
+  },
+  // SCHEMA_VERSION 11 — collapsible details block. Title via t() (resolved lazily at paint).
+  {
+    get title() {
+      return t('docs.slash.collapsible')
+    },
+    group: 'Basic',
+    keywords: ['collapsible', 'details', 'toggle', 'accordion', 'fold'],
+    run: (editor, range) => editor.chain().focus().deleteRange(range).setDetails().run(),
+  },
+  // SCHEMA_VERSION 12 — callout (info variant by default; change via the toolbar control).
+  {
+    get title() {
+      return t('docs.slash.callout')
+    },
+    group: 'Basic',
+    keywords: ['callout', 'admonition', 'note', 'info', 'warning', 'tip'],
+    run: (editor, range) =>
+      editor.chain().focus().deleteRange(range).setCallout({ variant: 'info' }).run(),
+  },
+  // SCHEMA_VERSION 13 — block math (KaTeX). Inserts a placeholder formula to edit.
+  {
+    get title() {
+      return t('docs.slash.mathBlock')
+    },
+    group: 'Basic',
+    keywords: ['math', 'formula', 'equation', 'latex', 'katex'],
+    run: (editor, range) =>
+      editor.chain().focus().deleteRange(range).insertBlockMath({ latex: 'a^2 + b^2 = c^2' }).run(),
   },
 ]
 
