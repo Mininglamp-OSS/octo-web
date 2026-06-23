@@ -12,6 +12,7 @@ import {
 } from './api.ts'
 import { useMemberNames } from './useMemberNames.ts'
 import { MemberPicker } from './MemberPicker.tsx'
+import { sortMembersForDisplay } from './sort.ts'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
 
 const ROLES: Role[] = ['reader', 'writer', 'admin']
@@ -63,11 +64,12 @@ export function MemberPanel({
   /** Display name for a uid (space member name), falling back to the raw uid (#7/#8). */
   const displayName = (uid: string) => names.get(uid) || uid
 
-  async function onAdd(uid: string, r: Role) {
+  async function onAdd(uids: string[], r: Role) {
     setError(null)
     setAdding(true)
     try {
-      await addOrUpdateMember(docId, uid.trim(), r)
+      // #A2: add every picked member with the one chosen role in a single action.
+      for (const uid of uids) await addOrUpdateMember(docId, uid.trim(), r)
       await refresh()
     } catch (e) {
       if (e instanceof UserNotFoundError) {
@@ -103,7 +105,7 @@ export function MemberPanel({
   return (
     <section className="octo-member-panel">
       <div className="octo-member-row">
-        <h3 style={{ flex: 1, margin: 0 }}>{t('docs.member.title')}</h3>
+        <h3 style={{ flex: 1, margin: 0 }}>{t('docs.member.manage')}</h3>
         {onClose && (
           <button type="button" className="octo-tb-btn" onClick={onClose}>
             {t('docs.member.close')}
@@ -130,13 +132,14 @@ export function MemberPanel({
 
       <div className="octo-member-section">
         {loading && <p className="octo-loading">{t('docs.member.loading')}</p>}
-        {members.map((m) => {
+        {sortMembersForDisplay(members, resolvedOwner).map((m) => {
           const isOwner = resolvedOwner != null && m.uid === resolvedOwner
           const removable = resolvedOwner ? canRemoveMember(m, resolvedOwner) : !isOwner
           return (
             <div className="octo-member-row" key={m.uid}>
               <span className="octo-uid">
-                {displayName(m.uid)} {isOwner && <em>({t('docs.member.owner')})</em>}
+                {displayName(m.uid)}{' '}
+                {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
                 <small style={{ color: 'var(--octo-muted)' }}> · {m.source}</small>
               </span>
               <select

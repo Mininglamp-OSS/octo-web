@@ -413,11 +413,9 @@ export function EditorShell(props: EditorShellProps) {
 
       <StatusBar editor={editor} />
 
-      {activePanel && (
+      {/* History + Comments live in the right-side drawer; Members opens a dedicated modal (#A4). */}
+      {(activePanel === 'history' || activePanel === 'comments') && (
         <aside className="octo-doc-drawer" role="complementary">
-          {activePanel === 'members' && manage && (
-            <MemberPanel docId={docId} role={role!} space={props.space} onClose={closePanel} />
-          )}
           {activePanel === 'history' && role && (
             <VersionPanel docId={docId} role={role} editor={editor} names={names} onClose={closePanel} />
           )}
@@ -433,6 +431,21 @@ export function EditorShell(props: EditorShellProps) {
             />
           )}
         </aside>
+      )}
+
+      {/* #A4: "Manage members" opens a dedicated modal dialog (overlay), not an inline drawer. */}
+      {activePanel === 'members' && manage && (
+        <div className="octo-modal-overlay" role="presentation" onMouseDown={closePanel}>
+          <div
+            className="octo-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('docs.member.manage')}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <MemberPanel docId={docId} role={role!} space={props.space} onClose={closePanel} />
+          </div>
+        </div>
       )}
     </div>
   )
