@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
-import { acceptInvite, createInvite, listInvites, buildInviteUrl } from './api.ts'
+import {
+  acceptInvite,
+  createInvite,
+  listInvites,
+  buildInviteUrl,
+  expiryFromNow,
+  INVITE_EXPIRY_DEFAULT_DAYS,
+  INVITE_EXPIRY_MIN_DAYS,
+  INVITE_EXPIRY_MAX_DAYS,
+} from './api.ts'
 
 let api: MockApiClient
 
@@ -80,5 +89,36 @@ describe('invite link is built from the front-end origin (#6)', () => {
     })
     const items = await listInvites('d_1')
     expect(items[0].url).toBe(`${window.location.origin}/docs/invite/tok_1`)
+  })
+})
+
+describe('invite expiry (#A6)', () => {
+  it('expiryFromNow returns an ISO timestamp the given number of days out', () => {
+    const now = Date.parse('2026-06-23T00:00:00.000Z')
+    expect(expiryFromNow(3, now)).toBe('2026-06-26T00:00:00.000Z')
+  })
+
+  it('clamps the window to 1–7 days', () => {
+    const now = Date.parse('2026-06-23T00:00:00.000Z')
+    expect(expiryFromNow(0, now)).toBe(expiryFromNow(INVITE_EXPIRY_MIN_DAYS, now))
+    expect(expiryFromNow(99, now)).toBe(expiryFromNow(INVITE_EXPIRY_MAX_DAYS, now))
+  })
+
+  it('createInvite sends an expiresAt (default 3 days) plus an expiresInDays fallback', async () => {
+    api.responder = () => ({ data: { inviteToken: 'tok_x', role: 'writer' }, status: 200 })
+    await createInvite('d_1', { role: 'writer' })
+    const body = api.calls[0].body as { expiresAt?: string; expiresInDays?: number; role?: string }
+    expect(body.expiresInDays).toBe(INVITE_EXPIRY_DEFAULT_DAYS)
+    expect(typeof body.expiresAt).toBe('string')
+    expect(Number.isNaN(Date.parse(body.expiresAt!))).toBe(false)
+    // No more "unlimited"/maxUses:0 default in the create body.
+    expect('maxUses' in body).toBe(false)
+  })
+
+  it('createInvite honours an explicit expiresInDays', async () => {
+    api.responder = () => ({ data: { inviteToken: 'tok_y', role: 'reader' }, status: 200 })
+    await createInvite('d_1', { role: 'reader', expiresInDays: 7 })
+    const body = api.calls[0].body as { expiresInDays?: number }
+    expect(body.expiresInDays).toBe(7)
   })
 })

@@ -48,18 +48,44 @@ describe('MemberPicker (Problem 1)', () => {
     expect(screen.getByText('docs.member.alreadyAdded')).toBeTruthy()
   })
 
-  it('adds the selected member with the chosen role', async () => {
+  it('adds the selected member with the chosen role (#A2)', async () => {
     const onAdd = vi.fn()
     render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
 
-    // Add is disabled until a member is selected.
+    // Add is disabled until at least one member is ticked.
     const addBtn = screen.getByText('docs.member.add').closest('button') as HTMLButtonElement
     expect(addBtn.disabled).toBe(true)
 
     fireEvent.click(screen.getByText('Ada Lovelace'))
     expect(addBtn.disabled).toBe(false)
     fireEvent.click(addBtn)
-    expect(onAdd).toHaveBeenCalledWith('u_ada', 'writer')
+    expect(onAdd).toHaveBeenCalledWith(['u_ada'], 'writer')
+  })
+
+  it('multi-selects several members and adds them all in one action (#A2)', async () => {
+    const onAdd = vi.fn()
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('Grace Hopper'))
+    // The action label switches to the count variant once more than one is selected.
+    fireEvent.click(screen.getByText('docs.member.addCount').closest('button') as HTMLButtonElement)
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    const [uids, role] = onAdd.mock.calls[0]
+    expect([...uids].sort()).toEqual(['u_ada', 'u_grace'])
+    expect(role).toBe('writer')
+  })
+
+  it('toggles a selection off when clicked twice (#A2)', async () => {
+    const onAdd = vi.fn()
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={onAdd} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    const addBtn = screen.getByText('docs.member.add').closest('button') as HTMLButtonElement
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    expect(addBtn.disabled).toBe(false)
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    expect(addBtn.disabled).toBe(true)
   })
 })
