@@ -99,3 +99,30 @@ export async function updateDocTitle(docId: string, title: string): Promise<DocM
 export async function deleteDoc(docId: string): Promise<void> {
   await apiClient().delete(`/docs/${docId}`)
 }
+
+/**
+ * Delete outcome classification (contract C3 final), kept as a pure function so the 200/404/403/409
+ * handling is unit-testable and shared wherever the delete entry lives:
+ *   200 → 'deleted'; 404 → 'gone' (already removed — treat as success); 403 → 'forbidden';
+ *   409 → 'archived'; anything else → 'failed'.
+ */
+export type DeleteOutcome = 'gone' | 'forbidden' | 'archived' | 'failed'
+
+export function classifyDeleteStatus(status: number | undefined): DeleteOutcome {
+  if (status === 404) return 'gone'
+  if (status === 403) return 'forbidden'
+  if (status === 409) return 'archived'
+  return 'failed'
+}
+
+/** i18n key for a non-success delete outcome (404/'gone' is handled as success, not an error). */
+export function deleteErrorKey(outcome: Exclude<DeleteOutcome, 'gone'>): string {
+  switch (outcome) {
+    case 'forbidden':
+      return 'docs.doc.deleteForbidden'
+    case 'archived':
+      return 'docs.doc.deleteArchived'
+    default:
+      return 'docs.doc.deleteFailed'
+  }
+}

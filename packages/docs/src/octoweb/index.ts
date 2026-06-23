@@ -48,15 +48,33 @@ const SPACE_MEMBERS_PAGE_SIZE = 50
 /** Cap total pages so an unexpectedly huge space can't loop unbounded (1000 members). */
 const SPACE_MEMBERS_MAX_PAGES = 20
 
-/** Minimal view of the host SpaceService the docs seam touches (uid + name only). */
+/** Minimal view of the host SpaceService the docs seam touches (uid + name + avatar/robot). */
 interface HostSpaceMember {
   uid: string
   name?: string
+  /** Display avatar URL from GET space/{id}/members. */
+  avatar?: string
+  /** Host robot flag: 0 = human, 1 = AI. Mapped to SpaceMemberLite.isBot. */
+  robot?: number
 }
 interface HostSpaceService {
   shared: {
     getMembers(spaceId: string, page: number, limit: number): Promise<HostSpaceMember[]>
   }
+}
+
+/**
+ * Map a host/mock member down to the lite shape, carrying avatar + isBot ONLY when present so
+ * callers that supply just `{ uid, name }` (and the existing seam tests) get back exactly that —
+ * no `avatar: undefined` / `isBot: false` noise. `robot` (host) → `isBot` (0=human, 1=AI); the
+ * test/override path already provides `isBot` directly.
+ */
+function toLite(m: HostSpaceMember & { isBot?: boolean }): SpaceMemberLite {
+  const lite: SpaceMemberLite = { uid: m.uid, name: m.name || m.uid }
+  if (m.avatar != null) lite.avatar = m.avatar
+  if (typeof m.isBot === 'boolean') lite.isBot = m.isBot
+  else if (m.robot != null) lite.isBot = m.robot === 1
+  return lite
 }
 
 /**
@@ -76,11 +94,11 @@ export async function getSpaceMembers(
   if (override) {
     if (!override.getSpaceMembers) return []
     const batch = await override.getSpaceMembers(spaceId, page, limit)
-    return (batch ?? []).map((m) => ({ uid: m.uid, name: m.name || m.uid }))
+    return (batch ?? []).map((m) => toLite(m as HostSpaceMember & { isBot?: boolean }))
   }
   const svc = SpaceService as unknown as HostSpaceService
   const batch = await svc.shared.getMembers(spaceId, page, limit)
-  return (batch ?? []).map((m) => ({ uid: m.uid, name: m.name || m.uid }))
+  return (batch ?? []).map((m) => toLite(m))
 }
 
 /**

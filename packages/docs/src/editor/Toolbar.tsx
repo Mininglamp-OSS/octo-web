@@ -1,7 +1,8 @@
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
+import { getFindState } from './findReplace.ts'
 import { t } from '../octoweb/index.ts'
 
 // Languages offered in the code-block language selector. A curated subset of the
@@ -210,13 +211,135 @@ function CodeLanguageSelect({ editor }: { editor: Editor }) {
   )
 }
 
+/**
+ * Find & replace bar (toolbar item ⑪). Drives the FindReplace extension: typing sets the search
+ * term (live match highlight via decorations), prev/next walk matches, replace acts on the current
+ * match, replace-all on all. Esc closes; the search is cleared on unmount so no stray highlights
+ * linger.
+ */
+function FindBar({ editor, onClose }: { editor: Editor; onClose: () => void }) {
+  useEditorTick(editor)
+  const [query, setQuery] = useState('')
+  const [replacement, setReplacement] = useState('')
+  const [caseSensitive, setCaseSensitive] = useState(false)
+
+  // Push the term into the plugin whenever it / the case flag changes.
+  useEffect(() => {
+    editor.commands.setFindQuery(query, caseSensitive)
+  }, [editor, query, caseSensitive])
+
+  // Clear the search (and its decorations) when the bar unmounts.
+  useEffect(() => () => editor.commands.clearFind() as unknown as void, [editor])
+
+  const fs = getFindState(editor.state)
+  const total = fs.matches.length
+  const current = fs.index >= 0 ? fs.index + 1 : 0
+
+  /** Select + scroll the editor to the current match so prev/next visibly move the caret. */
+  function revealCurrent() {
+    const f = getFindState(editor.state)
+    const m = f.matches[f.index]
+    if (m) editor.chain().setTextSelection({ from: m.from, to: m.to }).scrollIntoView().run()
+  }
+
+  return (
+    <div className="octo-find-bar">
+      <div className="octo-find-row">
+        <input
+          className="octo-find-input"
+          placeholder={t('docs.find.placeholder')}
+          value={query}
+          autoFocus
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              onClose()
+            } else if (e.key === 'Enter') {
+              e.preventDefault()
+              if (e.shiftKey) editor.commands.findPrev()
+              else editor.commands.findNext()
+              revealCurrent()
+            }
+          }}
+        />
+        <span className="octo-find-count">
+          {total > 0 ? t('docs.find.count', { values: { index: current, total } }) : t('docs.find.noResults')}
+        </span>
+        <Btn
+          label="‹"
+          title={t('docs.find.prev')}
+          disabled={total === 0}
+          onClick={() => {
+            editor.commands.findPrev()
+            revealCurrent()
+          }}
+        />
+        <Btn
+          label="›"
+          title={t('docs.find.next')}
+          disabled={total === 0}
+          onClick={() => {
+            editor.commands.findNext()
+            revealCurrent()
+          }}
+        />
+        <label className="octo-find-case" title={t('docs.find.caseSensitive')}>
+          <input
+            type="checkbox"
+            checked={caseSensitive}
+            onChange={(e) => setCaseSensitive(e.target.checked)}
+          />
+          Aa
+        </label>
+        <Btn label="✕" title={t('docs.find.close')} onClick={onClose} />
+      </div>
+      {editor.isEditable && (
+        <div className="octo-find-row">
+          <input
+            className="octo-find-input"
+            placeholder={t('docs.find.replacePlaceholder')}
+            value={replacement}
+            onChange={(e) => setReplacement(e.target.value)}
+          />
+          <Btn
+            label={t('docs.find.replace')}
+            disabled={total === 0}
+            onClick={() => editor.commands.replaceCurrent(replacement)}
+          />
+          <Btn
+            label={t('docs.find.replaceAll')}
+            disabled={total === 0}
+            onClick={() => editor.commands.replaceAll(replacement)}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Fixed top toolbar (frontend-design §3.1). */
 export function Toolbar({ editor }: { editor: Editor }) {
   useEditorTick(editor)
   const [linkOpen, setLinkOpen] = useState(false)
   const [linkValue, setLinkValue] = useState('')
+  const [findOpen, setFindOpen] = useState(false)
+
+  // Ctrl/Cmd+F opens the find bar (without triggering the browser's native find).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault()
+        setFindOpen(true)
+      }
+    }
+    const dom = editor.view.dom
+    dom.addEventListener('keydown', onKeyDown)
+    return () => dom.removeEventListener('keydown', onKeyDown)
+  }, [editor])
 
   return (
+    <div className="octo-toolbar-wrap">
     <div className="octo-toolbar">
       <Btn label="H1" title={t('docs.toolbar.heading1')} active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} />
       <Btn label="H2" title={t('docs.toolbar.heading2')} active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />
@@ -234,6 +357,7 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <Btn label="Todo" title={t('docs.toolbar.taskList')} active={editor.isActive('taskList')} onClick={() => editor.chain().focus().toggleTaskList().run()} />
       <Btn label="Quote" title={t('docs.toolbar.quote')} active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} />
       <Btn label="Code" title={t('docs.toolbar.codeBlock')} active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().toggleCodeBlock().run()} />
+      <Btn label="—" title={t('docs.toolbar.divider')} onClick={() => editor.chain().focus().setHorizontalRule().run()} />
       <CodeLanguageSelect editor={editor} />
       <span className="octo-tb-sep" />
       <HighlightControl editor={editor} />
@@ -265,9 +389,23 @@ export function Toolbar({ editor }: { editor: Editor }) {
           />
         </span>
       )}
+      <span className="octo-tb-sep" />
+      <Btn
+        label="Tx"
+        title={t('docs.toolbar.clearFormat')}
+        onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
+      />
+      <Btn
+        label="🔍"
+        title={t('docs.toolbar.find')}
+        active={findOpen}
+        onClick={() => setFindOpen((v) => !v)}
+      />
       <span className="octo-tb-spacer" />
       <Btn label="Undo" title={t('docs.toolbar.undo')} onClick={() => editor.chain().focus().undo().run()} />
       <Btn label="Redo" title={t('docs.toolbar.redo')} onClick={() => editor.chain().focus().redo().run()} />
+    </div>
+    {findOpen && <FindBar editor={editor} onClose={() => setFindOpen(false)} />}
     </div>
   )
 }

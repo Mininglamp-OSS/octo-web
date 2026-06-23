@@ -11,6 +11,7 @@ import {
   type Member,
 } from './api.ts'
 import { useMemberNames } from './useMemberNames.ts'
+import { MemberPicker } from './MemberPicker.tsx'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
 
 const ROLES: Role[] = ['reader', 'writer', 'admin']
@@ -36,10 +37,9 @@ export function MemberPanel({
   onClose?: () => void
 }) {
   const [members, setMembers] = useState<Member[]>([])
-  const [newUid, setNewUid] = useState('')
-  const [newRole, setNewRole] = useState<Role>('writer')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [adding, setAdding] = useState(false)
   const names = useMemberNames(space ?? '')
 
   const refresh = useCallback(async () => {
@@ -63,11 +63,11 @@ export function MemberPanel({
   /** Display name for a uid (space member name), falling back to the raw uid (#7/#8). */
   const displayName = (uid: string) => names.get(uid) || uid
 
-  async function onAdd() {
+  async function onAdd(uid: string, r: Role) {
     setError(null)
+    setAdding(true)
     try {
-      await addOrUpdateMember(docId, newUid.trim(), newRole)
-      setNewUid('')
+      await addOrUpdateMember(docId, uid.trim(), r)
       await refresh()
     } catch (e) {
       if (e instanceof UserNotFoundError) {
@@ -75,6 +75,8 @@ export function MemberPanel({
         return
       }
       setError(t('docs.member.errorAdd'))
+    } finally {
+      setAdding(false)
     }
   }
 
@@ -112,24 +114,12 @@ export function MemberPanel({
       {/* #5: "Add member" + "Invite" sit at the top of the members panel. */}
       <div className="octo-member-section">
         <h4 className="octo-member-subtitle">{t('docs.member.addMember')}</h4>
-        <div className="octo-member-row">
-          <input
-            className="octo-uid"
-            placeholder={t('docs.member.uidPlaceholder')}
-            value={newUid}
-            onChange={(e) => setNewUid(e.target.value)}
-          />
-          <select value={newRole} onChange={(e) => setNewRole(e.target.value as Role)}>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {t(`docs.role.${r}`)}
-              </option>
-            ))}
-          </select>
-          <button type="button" className="octo-tb-btn" disabled={!newUid.trim()} onClick={onAdd}>
-            {t('docs.member.add')}
-          </button>
-        </div>
+        <MemberPicker
+          space={space}
+          existingUids={new Set(members.map((m) => m.uid))}
+          onAdd={onAdd}
+          busy={adding}
+        />
         {error && <p className="octo-member-error">{error}</p>}
       </div>
 

@@ -60,11 +60,15 @@ declare module '@octo/base' {
   }
 
   // Space member as returned by SpaceService.getMembers (packages/dmworkbase/src/Service/
-  // SpaceService.tsx). The docs seam only reads uid + name; the real type carries more
-  // (avatar/role/robot/created_at) but those are irrelevant to the isolated docs typecheck.
+  // SpaceService.tsx). The docs seam reads uid + name, plus the optional avatar + robot flag
+  // (0=human, 1=AI) + role that the member picker surfaces. The real type carries more
+  // (created_at/…) but those are irrelevant to the isolated docs typecheck.
   export interface SpaceMember {
     uid: string
     name: string
+    avatar?: string
+    robot?: number
+    role?: number
   }
 
   // Space membership service. octoweb/index.ts calls `SpaceService.shared.getMembers(...)`

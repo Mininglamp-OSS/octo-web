@@ -79,6 +79,9 @@ export class Menus {
 export interface SpaceMember {
   uid: string
   name: string
+  avatar?: string
+  robot?: number
+  role?: number
 }
 export class SpaceService {
   static shared = new SpaceService()
