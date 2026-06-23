@@ -253,6 +253,7 @@
     "unnamed": "Untitled file",
     "tooLarge": "That file is too large (max 50 MB).",
     "mimeBlocked": "That file type is not allowed.",
+    "unsupportedType": "Unsupported file type.",
     "unavailable": "Cannot upload file: the document is unavailable.",
     "failed": "File upload failed. Please try again."
   },

@@ -253,6 +253,7 @@
     "unnamed": "未命名文件",
     "tooLarge": "文件过大（上限 50 MB）。",
     "mimeBlocked": "该文件类型不被允许。",
+    "unsupportedType": "不支持的文件类型。",
     "unavailable": "无法上传文件：文档不可用。",
     "failed": "文件上传失败，请重试。"
   },
