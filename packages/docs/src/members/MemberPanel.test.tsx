@@ -60,4 +60,24 @@ describe('MemberPanel — display names (#7)', () => {
     render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_named" />)
     await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
   })
+
+  it('always renders a "current members" section with the member rows (#A1/#A3)', async () => {
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_named" />)
+    // The list section header is always present so the panel never looks like it only has
+    // "add"+"invite" (the A1/A3 regression: rows had no home, so owner badge/pinning never showed).
+    await waitFor(() => expect(screen.getByText('docs.member.currentMembers')).toBeTruthy())
+    // Both members render as rows with the owner badge on the owner row.
+    expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy()
+  })
+
+  it('shows an empty state (not a blank/invisible section) when there are no members', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) return { data: { items: [] }, status: 200 }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      return { data: {}, status: 200 }
+    }
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" />)
+    await waitFor(() => expect(screen.getByText('docs.member.currentMembers')).toBeTruthy())
+    expect(screen.getByText('docs.member.empty')).toBeTruthy()
+  })
 })
