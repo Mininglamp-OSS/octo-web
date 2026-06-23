@@ -40,7 +40,15 @@
 //        info/warn/tip/success; round-trips via data-variant).
 //   v13 — SCHEMA-SPEC §14: add the math nodes `inlineMath` + `blockMath` (@tiptap/extension-
 //        mathematics + KaTeX); `$…$` inline and `$$…$$` block input rules.
-export const SCHEMA_VERSION = 13
+//   v14 — SCHEMA-SPEC §15: add the self-built `fileAttachment` block atom node (attrs EXACTLY
+//        attachId/fileName/mime/sizeBytes; round-trips via data-attach-id/data-file-name/
+//        data-mime/data-size-bytes). Uploads reuse the existing image presign flow (the backend
+//        opened non-image mimes); download uses the same signed read URL as images (never base64).
+//   v15 — SCHEMA-SPEC §15: add the self-built `bookmark` (link-preview) block atom node (attrs
+//        EXACTLY url/title/description/image/siteName/fetchedAt; round-trips via data-url/
+//        data-title/data-description/data-image/data-site-name/data-fetched-at). Inserting a URL
+//        calls POST /docs/{docId}/link-card for OG metadata; only http/https URLs become cards.
+export const SCHEMA_VERSION = 15
 
 // Node names present in the schema at the current SCHEMA_VERSION. Mirrors the
 // backend stub's node set (SCHEMA-SPEC); kept here so the set is auditable against
@@ -72,6 +80,8 @@ export const SCHEMA_NODES = [
   'callout', // v12 — block+ container; attr variant info/warn/tip/success; data-variant
   'inlineMath', // v13 — inline KaTeX formula; attr latex; `$…$`
   'blockMath', // v13 — block KaTeX formula; attr latex; `$$…$$`
+  'fileAttachment', // v14 — block atom; attrs attachId/fileName/mime/sizeBytes; data-* round-trip; presign upload
+  'bookmark', // v15 — block atom; attrs url/title/description/image/siteName/fetchedAt; data-* round-trip; OG link-card
 ] as const
 
 // Mark names present in the schema at the current SCHEMA_VERSION. Mirrors the
