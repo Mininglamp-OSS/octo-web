@@ -2,6 +2,8 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
+import { pickAndUploadFile } from './fileUpload.ts'
+import { promptAndInsertBookmark } from './bookmarkInsert.ts'
 import { getFindState } from './findReplace.ts'
 import { EMOJI_SET } from './emoji.ts'
 import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
@@ -497,6 +499,8 @@ export function Toolbar({ editor }: { editor: Editor }) {
         onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
       />
       <Btn label="Image" title={t('docs.toolbar.image')} onClick={() => void pickAndUploadImage(editor)} />
+      <Btn label="File" title={t('docs.toolbar.file')} onClick={() => void pickAndUploadFile(editor)} />
+      <Btn label="Bookmark" title={t('docs.toolbar.bookmark')} onClick={() => void promptAndInsertBookmark(editor)} />
       <span className="octo-tb-sep" />
       <EmojiControl editor={editor} />
       <Btn label="@" title={t('docs.toolbar.mention')} onClick={() => editor.chain().focus().insertContent('@').run()} />

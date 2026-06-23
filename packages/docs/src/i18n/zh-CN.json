@@ -52,6 +52,8 @@
     "textColor": "文字颜色",
     "table": "表格",
     "image": "图片",
+    "file": "文件",
+    "bookmark": "书签",
     "emoji": "表情",
     "mention": "提及",
     "details": "折叠块",
@@ -85,6 +87,8 @@
     "divider": "分割线",
     "table": "表格",
     "image": "图片",
+    "file": "文件",
+    "bookmark": "书签",
     "collapsible": "折叠块",
     "callout": "标注",
     "mathBlock": "公式块"
@@ -227,6 +231,21 @@
     "error": "出错了。",
     "retry": "重试",
     "syncing": "正在同步…"
+  },
+  "file": {
+    "download": "下载",
+    "uploading": "正在上传文件…",
+    "unnamed": "未命名文件",
+    "tooLarge": "文件过大（上限 50 MB）。",
+    "mimeBlocked": "该文件类型不被允许。",
+    "unavailable": "无法上传文件：文档不可用。",
+    "failed": "文件上传失败，请重试。"
+  },
+  "bookmark": {
+    "prompt": "粘贴或输入链接地址：",
+    "loading": "正在获取链接信息…",
+    "invalidUrl": "请输入有效的 http/https 链接。",
+    "failed": "无法获取链接信息。"
   },
   "error": {
     "permission": {

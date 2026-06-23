@@ -55,7 +55,7 @@ describe('editor schema mirrors the schema audit lists', () => {
     }
   })
 
-  it('registers the batch-3 nodes (v9–v13)', () => {
+  it('registers the batch-3 nodes (v9–v15)', () => {
     for (const n of [
       'emoji',
       'mention',
@@ -65,6 +65,8 @@ describe('editor schema mirrors the schema audit lists', () => {
       'callout',
       'inlineMath',
       'blockMath',
+      'fileAttachment',
+      'bookmark',
     ]) {
       expect(schema.nodes[n], `node ${n} not registered`).toBeDefined()
     }
