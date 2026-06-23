@@ -202,6 +202,24 @@ export function EditorShell(props: EditorShellProps) {
   // replacing the three independent show* booleans.
   const [activePanel, setActivePanel] = useState<DrawerPanel>(null)
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null)
+  // #A1: the document owner's uid, fetched from doc meta, so the member panel can mark the owner
+  // row with an "Owner" badge even on a brand-new single-member (self-owned) document. Without
+  // this the panel falls back to a role heuristic that never matches a fresh doc, so the badge
+  // never shows. Resilient: stays null if the meta lacks ownerId.
+  const [ownerId, setOwnerId] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    let cancelled = false
+    getDoc(docId)
+      .then((meta) => {
+        if (!cancelled && typeof meta?.ownerId === 'string' && meta.ownerId) setOwnerId(meta.ownerId)
+      })
+      .catch(() => {
+        /* non-fatal: owner badge just won't show */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [docId])
 
   // uid → display name for this space (#8): once resolved, push the real name into awareness so
   // the presence avatar initial and the collaboration caret label show the name, not the uid.
@@ -443,7 +461,7 @@ export function EditorShell(props: EditorShellProps) {
             aria-label={t('docs.member.manage')}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <MemberPanel docId={docId} role={role!} space={props.space} onClose={closePanel} />
+            <MemberPanel docId={docId} role={role!} space={props.space} ownerId={ownerId} onClose={closePanel} />
           </div>
         </div>
       )}
