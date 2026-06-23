@@ -78,12 +78,15 @@ const INSTALL_GUIDES: Record<RuntimeKind | "octo_daemon", InstallGuide> = {
             {
                 titleKey: "base.runtimes.install.octo_daemon.step2.title",
                 command: 'octo-daemon config --server-url "<OCTO_SERVER_URL>" --api-key "<OCTO_API_KEY>"',
-                noteKey: "base.runtimes.install.octo_daemon.step2.note",
             },
             {
                 titleKey: "base.runtimes.install.octo_daemon.step3.title",
-                command: "octo-daemon start",
-                noteKey: "base.runtimes.install.octo_daemon.step3.note",
+                command: "octo-daemon start --daemon",
+            },
+            {
+                titleKey: "base.runtimes.install.octo_daemon.step4.title",
+                command: "pm2 list",
+                noteKey: "base.runtimes.install.octo_daemon.step4.note",
             },
         ],
     },
