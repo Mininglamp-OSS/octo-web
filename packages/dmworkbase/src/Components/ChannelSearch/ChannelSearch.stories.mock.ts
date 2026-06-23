@@ -152,11 +152,32 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     matchReason: "转发聊天记录含“哈哈”",
     forward: {
       title: "牛爷爷和噜噜的聊天记录",
-      snippets: [
-        "牛爷爷：👌好的，需求 1 和 3 我觉得优先级高。",
-        "噜噜：[图片]",
-        "噜噜：先帮忙分析一下 Thread 功能的技术可行性🙏🙏？",
-        "牛爷爷：[视频]",
+      snippets: [],
+      innerMessages: [
+        {
+          messageId: "m-61006-1",
+          type: 1,
+          text: "👌好的，需求 1 和 3 我觉得优先级高。",
+          senderName: "牛爷爷",
+        },
+        {
+          messageId: "m-61006-2",
+          type: 2,
+          text: "[图片]",
+          senderName: "噜噜",
+        },
+        {
+          messageId: "m-61006-3",
+          type: 1,
+          text: "先帮忙分析一下 Thread 功能的技术可行性🙏🙏？",
+          senderName: "噜噜",
+        },
+        {
+          messageId: "m-61006-4",
+          type: 5,
+          text: "[视频]",
+          senderName: "牛爷爷",
+        },
       ],
     },
   },
@@ -282,6 +303,9 @@ const itemMatchesKeyword = (item: ChannelSearchItem, keyword: string) => {
     item.file?.name,
     item.forward?.title,
     ...(item.forward?.snippets || []),
+    ...(item.forward?.innerMessages || []).map((message) =>
+      [message.senderName, message.text].filter(Boolean).join("：")
+    ),
   ].some((value) => containsKeyword(value, keyword));
 };
 

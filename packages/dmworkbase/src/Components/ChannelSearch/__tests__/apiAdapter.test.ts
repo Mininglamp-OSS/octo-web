@@ -349,8 +349,25 @@ describe("channel search API adapter response mapping", () => {
         sender_id: "u1",
         sent_at: "2026-01-02T00:00:00Z",
         outer_preview: {
+          title: "Alice and Bob",
           child_count: 2,
         },
+        inner_messages: [
+          {
+            message_id: "m-inner-1",
+            type: 1,
+            search_text: "Alice：命中的<mark>聊天</mark>记录正文",
+            sender_id: "u2",
+            sender_name: "Alice",
+            sent_at: "2026-01-02T00:00:01Z",
+          },
+          {
+            message_id: "m-inner-2",
+            type: 8,
+            search_text: "",
+            sender_id: "u3",
+          },
+        ],
       },
       baseQuery("message")
     );
@@ -360,8 +377,24 @@ describe("channel search API adapter response mapping", () => {
       text: "命中的<mark>聊天</mark>记录正文",
       matchReason: "命中的<mark>聊天</mark>记录正文",
       forward: {
-        title: "",
+        title: "Alice and Bob",
         snippets: [],
+        innerMessages: [
+          {
+            messageId: "m-inner-1",
+            type: 1,
+            text: "Alice：命中的<mark>聊天</mark>记录正文",
+            senderUid: "u2",
+            senderName: "Alice",
+            timestamp: 1767312001,
+          },
+          {
+            messageId: "m-inner-2",
+            type: 8,
+            text: "",
+            senderUid: "u3",
+          },
+        ],
         childCount: 2,
       },
     });

@@ -11,6 +11,7 @@ import type {
   ChannelSearchDataSource,
   ChannelSearchFileInfo,
   ChannelSearchFilters,
+  ChannelSearchForwardInnerMessage,
   ChannelSearchItem,
   ChannelSearchMediaInfo,
   ChannelSearchQuery,
@@ -47,8 +48,18 @@ type MessageSearchHit = {
       placeholder?: string;
     };
   };
+  inner_messages?: ForwardInnerMessageHit[];
   channel_id?: string;
   channel_type?: number;
+};
+
+type ForwardInnerMessageHit = {
+  message_id?: string;
+  type?: number;
+  search_text?: string;
+  sender_id?: string;
+  sender_name?: string;
+  sent_at?: string;
 };
 
 type MediaSearchHit = {
@@ -116,6 +127,13 @@ function sentAtToSeconds(value?: string) {
   if (!value) return Math.floor(Date.now() / 1000);
   const time = new Date(value).getTime();
   if (Number.isNaN(time)) return Math.floor(Date.now() / 1000);
+  return Math.floor(time / 1000);
+}
+
+function optionalSentAtToSeconds(value?: string) {
+  if (!value) return undefined;
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) return undefined;
   return Math.floor(time / 1000);
 }
 
@@ -240,6 +258,19 @@ function channelFromHit(
   };
 }
 
+function mapForwardInnerMessage(
+  hit: ForwardInnerMessageHit
+): ChannelSearchForwardInnerMessage {
+  return {
+    messageId: hit.message_id || "",
+    type: typeof hit.type === "number" ? hit.type : 0,
+    text: hit.search_text || "",
+    senderUid: hit.sender_id || undefined,
+    senderName: hit.sender_name || undefined,
+    timestamp: optionalSentAtToSeconds(hit.sent_at),
+  };
+}
+
 function mapMessageHit(
   hit: MessageSearchHit,
   query: ChannelSearchQuery
@@ -272,6 +303,9 @@ function mapMessageHit(
         ? {
             title: hit.outer_preview?.title || "",
             snippets: [],
+            innerMessages: Array.isArray(hit.inner_messages)
+              ? hit.inner_messages.map(mapForwardInnerMessage)
+              : undefined,
             childCount: hit.outer_preview?.child_count,
           }
         : undefined,
@@ -474,6 +508,7 @@ export function createChannelSearchApiDataSource(
 export const channelSearchApiAdapterTestUtils = {
   searchEndpoint,
   sentAtToSeconds,
+  optionalSentAtToSeconds,
   secondsToDateOnly,
   monthBucketFromSentAt,
   normalizeItems,
@@ -483,6 +518,7 @@ export const channelSearchApiAdapterTestUtils = {
   shouldRunSearch,
   truncateChannelSearchKeyword,
   toRequestBody,
+  mapForwardInnerMessage,
   mapMessageHit,
   mapFileHit,
   mapMediaHit,

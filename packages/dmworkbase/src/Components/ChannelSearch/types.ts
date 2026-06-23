@@ -53,9 +53,19 @@ export interface ChannelSearchMediaInfo {
   tone: "warm" | "cool" | "green" | "purple" | "orange";
 }
 
+export interface ChannelSearchForwardInnerMessage {
+  messageId: string;
+  type: number;
+  text: string;
+  senderUid?: string;
+  senderName?: string;
+  timestamp?: number;
+}
+
 export interface ChannelSearchForwardInfo {
   title: string;
   snippets: string[];
+  innerMessages?: ChannelSearchForwardInnerMessage[];
   childCount?: number;
 }
 

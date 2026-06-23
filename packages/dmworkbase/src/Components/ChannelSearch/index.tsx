@@ -22,7 +22,8 @@ import WKButton from "../WKButton";
 import IconClick from "../IconClick";
 import ConversationContext from "../Conversation/context";
 import { downloadFile } from "../../Utils/download";
-import { useI18n } from "../../i18n";
+import { useI18n, type I18nContextValue } from "../../i18n";
+import { MessageContentTypeConst } from "../../Service/Const";
 import { channelSearchEmptyDataSource } from "./adapter";
 import {
   CHANNEL_SEARCH_KEYWORD_MAX_RUNES,
@@ -44,6 +45,7 @@ import { defaultChannelSearchFilters } from "./types";
 import type {
   ChannelSearchDataSource,
   ChannelSearchFilters,
+  ChannelSearchForwardInnerMessage,
   ChannelSearchItem,
   ChannelSearchPanelState,
   ChannelSearchResponse,
@@ -66,6 +68,7 @@ interface ChannelSearchPanelProps {
 
 const tabs: ChannelSearchTab[] = ["all", "message", "media", "file"];
 const SEARCH_DEBOUNCE_MS = 300;
+const FORWARD_INNER_MESSAGE_DISPLAY_LIMIT = 4;
 
 const tabI18nKey: Record<ChannelSearchTab, string> = {
   all: "base.channelSearch.tabs.all",
@@ -86,6 +89,42 @@ function resolveSender(
   getSender: GetChannelSearchSender
 ): ChannelSearchSender {
   return item.sender || getSender(item.senderUid);
+}
+
+function resolveForwardInnerMessageSenderName(
+  message: ChannelSearchForwardInnerMessage,
+  getSender: GetChannelSearchSender
+) {
+  if (message.senderName) return message.senderName;
+  if (!message.senderUid) return "";
+  const sender = getSender(message.senderUid);
+  return sender.name && sender.name !== message.senderUid ? sender.name : "";
+}
+
+function forwardInnerMessageFallbackText(
+  type: number,
+  t: I18nContextValue["t"]
+) {
+  if (type === MessageContentTypeConst.image) {
+    return t("base.channelSearch.forward.placeholder.image");
+  }
+  if (type === MessageContentTypeConst.smallVideo) {
+    return t("base.channelSearch.forward.placeholder.video");
+  }
+  if (type === MessageContentTypeConst.file) {
+    return t("base.channelSearch.forward.placeholder.file");
+  }
+  return t("base.channelSearch.forward.placeholder.message");
+}
+
+function formatForwardInnerMessage(
+  message: ChannelSearchForwardInnerMessage,
+  getSender: GetChannelSearchSender,
+  t: I18nContextValue["t"]
+) {
+  const text = message.text || forwardInnerMessageFallbackText(message.type, t);
+  const senderName = resolveForwardInnerMessageSenderName(message, getSender);
+  return senderName ? `${senderName}：${text}` : text;
 }
 
 function activeFilterCount(filters: ChannelSearchFilters) {
@@ -795,6 +834,17 @@ const MessageResultItem = React.memo(function MessageResultItem({
   const { format, t } = useI18n();
   const sender = resolveSender(item, getSender);
   const isForward = item.kind === "merge_forward";
+  const forwardInnerMessages = item.forward?.innerMessages || [];
+  const visibleForwardInnerMessages = forwardInnerMessages.slice(
+    0,
+    FORWARD_INNER_MESSAGE_DISPLAY_LIMIT
+  );
+  const forwardMatchReason =
+    isForward && keyword.trim()
+      ? t("base.channelSearch.forward.matchReason", {
+          values: { keyword: keyword.trim() },
+        })
+      : item.matchReason;
 
   return (
     <div className="wk-channel-search-result wk-channel-search-message-result">
@@ -818,7 +868,7 @@ const MessageResultItem = React.memo(function MessageResultItem({
         {isForward ? (
           <>
             <div className="wk-channel-search-match-reason">
-              <HighlightText text={item.matchReason} keyword={keyword} />
+              <HighlightText text={forwardMatchReason} keyword={keyword} />
             </div>
             <div className="wk-channel-search-forward-card">
               <div className="wk-channel-search-forward-title">
@@ -830,15 +880,28 @@ const MessageResultItem = React.memo(function MessageResultItem({
                   keyword={keyword}
                 />
               </div>
-              {item.forward?.snippets.map((snippet) => (
+              {visibleForwardInnerMessages.map((message, index) => (
                 <div
-                  key={snippet}
+                  key={`${message.messageId || "inner"}-${index}`}
                   className="wk-channel-search-forward-snippet"
                 >
-                  <HighlightText text={snippet} keyword={keyword} />
+                  <HighlightText
+                    text={formatForwardInnerMessage(message, getSender, t)}
+                    keyword={keyword}
+                  />
                 </div>
               ))}
-              {item.forward?.snippets.length === 0 &&
+              {visibleForwardInnerMessages.length === 0 &&
+                item.forward?.snippets.map((snippet) => (
+                  <div
+                    key={snippet}
+                    className="wk-channel-search-forward-snippet"
+                  >
+                    <HighlightText text={snippet} keyword={keyword} />
+                  </div>
+                ))}
+              {visibleForwardInnerMessages.length === 0 &&
+                item.forward?.snippets.length === 0 &&
                 !!item.forward?.childCount && (
                   <div className="wk-channel-search-forward-snippet">
                     {t("base.channelSearch.forward.childCount", {
