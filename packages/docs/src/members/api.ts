@@ -10,7 +10,7 @@ import type { Role } from '../auth/roles.ts'
 export interface Member {
   uid: string
   role: Role
-  source: 'direct' | 'invite'
+  source: 'direct' | 'invite' | 'owner'
   grantedBy: string
 }
 

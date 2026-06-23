@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sortMembersForDisplay, sortPickerMembers } from './sort.ts'
+import { sortMembersForDisplay, sortPickerMembers, withSyntheticOwner } from './sort.ts'
 import type { Member } from './api.ts'
 import type { SpaceMemberLite } from '../octoweb/index.ts'
 
@@ -22,6 +22,29 @@ describe('sortMembersForDisplay (#A3)', () => {
   it('is stable within a role group and works without an owner', () => {
     const members = [member('a', 'writer'), member('b', 'writer'), member('c', 'reader')]
     expect(sortMembersForDisplay(members).map((m) => m.uid)).toEqual(['a', 'b', 'c'])
+  })
+})
+
+describe('withSyntheticOwner (#A1/#A3, Option A)', () => {
+  it('prepends a synthetic owner row when the owner is absent from the members list', () => {
+    const members = [member('w1', 'writer'), member('w2', 'writer')]
+    const out = withSyntheticOwner(members, 'u_owner')
+    expect(out).toHaveLength(3)
+    expect(out[0]).toMatchObject({ uid: 'u_owner', source: 'owner' })
+    // sorted view pins the synthetic owner first
+    expect(sortMembersForDisplay(out, 'u_owner').map((m) => m.uid)).toEqual(['u_owner', 'w1', 'w2'])
+  })
+
+  it('does not duplicate when the owner already appears in the members list', () => {
+    const members = [member('u_owner', 'admin'), member('w1', 'writer')]
+    const out = withSyntheticOwner(members, 'u_owner')
+    expect(out).toHaveLength(2)
+    expect(out.filter((m) => m.uid === 'u_owner')).toHaveLength(1)
+  })
+
+  it('is a no-op without an ownerId', () => {
+    const members = [member('w1', 'writer')]
+    expect(withSyntheticOwner(members, undefined)).toEqual(members)
   })
 })
 
