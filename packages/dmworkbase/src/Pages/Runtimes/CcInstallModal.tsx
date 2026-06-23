@@ -20,10 +20,15 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
     const [loadingModels, setLoadingModels] = useState(false)
     const [modelsError, setModelsError] = useState(false)
     const [touched, setTouched] = useState(false)
-    // Per-instance datalist id so two modals (e.g. a future multi-pane layout)
-    // can't have their <input list=…> resolve to the wrong list by document order.
-    // Seeded once per mount (useState initializer runs only on first render).
-    const [modelListId] = useState(() => `cc-install-model-options-${++ccInstallModalSeq}`)
+    // Per-instance id base so two modals (e.g. a future multi-pane layout) can't
+    // have their <input list=…> / <label htmlFor=…> resolve to the wrong control
+    // by document order. Seeded once per mount (useState initializer runs only on
+    // first render). React 17 (this monorepo's pinned version) has no useId.
+    const [idBase] = useState(() => `cc-install-${++ccInstallModalSeq}`)
+    const gatewayId = `${idBase}-gateway`
+    const keyId = `${idBase}-key`
+    const modelId = `${idBase}-model`
+    const modelListId = `${idBase}-model-options`
     // Monotonic token: only the most recent loadModels() may publish its result,
     // so a slow earlier fetch can't overwrite the list for newer gateway/key input.
     const fetchSeq = useRef(0)
@@ -98,9 +103,9 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
             <div className="wk-cc-install-modal" onClick={e => e.stopPropagation()}>
                 <div className="wk-cc-install-title">{t("base.runtimes.ccInstall.title")}</div>
                 <div className="wk-cc-install-field">
-                    <label className="wk-cc-install-label" htmlFor="cc-install-gateway">{t("base.runtimes.ccInstall.gatewayUrl")}</label>
+                    <label className="wk-cc-install-label" htmlFor={gatewayId}>{t("base.runtimes.ccInstall.gatewayUrl")}</label>
                     <input
-                        id="cc-install-gateway"
+                        id={gatewayId}
                         className="wk-cc-install-input"
                         type="url"
                         name="cc-gateway-url"
@@ -117,9 +122,9 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
                     {touched && urlErrorText && <div className="wk-cc-install-err">{urlErrorText}</div>}
                 </div>
                 <div className="wk-cc-install-field">
-                    <label className="wk-cc-install-label" htmlFor="cc-install-key">{t("base.runtimes.ccInstall.apiKey")}</label>
+                    <label className="wk-cc-install-label" htmlFor={keyId}>{t("base.runtimes.ccInstall.apiKey")}</label>
                     <input
-                        id="cc-install-key"
+                        id={keyId}
                         className="wk-cc-install-input"
                         type="password"
                         name="cc-api-key"
@@ -133,10 +138,10 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
                     {touched && keyErrorText && <div className="wk-cc-install-err">{keyErrorText}</div>}
                 </div>
                 <div className="wk-cc-install-field">
-                    <label className="wk-cc-install-label" htmlFor="cc-install-model">{t("base.runtimes.ccInstall.modelLabel")}</label>
+                    <label className="wk-cc-install-label" htmlFor={modelId}>{t("base.runtimes.ccInstall.modelLabel")}</label>
                     <div className="wk-cc-install-model-row">
                         <input
-                            id="cc-install-model"
+                            id={modelId}
                             className="wk-cc-install-input"
                             list={modelListId}
                             name="cc-model"
