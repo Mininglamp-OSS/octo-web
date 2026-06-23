@@ -39,6 +39,8 @@ import { CommentHighlight } from '../comments/CommentDecorations.ts'
 import { buildEmoji } from './emoji.ts'
 import { buildMention } from './mention.ts'
 import { Callout } from './Callout.ts'
+import { FileAttachment } from './FileAttachment.ts'
+import { Bookmark } from './Bookmark.ts'
 import type { Extensions } from '@tiptap/core'
 import type * as Y from 'yjs'
 import type { HocuspocusProvider } from '@hocuspocus/provider'
@@ -173,6 +175,12 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // the inlineMath + blockMath nodes and the `$…$` / `$$…$$` input rules. throwOnError:false so a
     // malformed formula renders as red source text instead of throwing during collaboration.
     Mathematics.configure({ katexOptions: { throwOnError: false } }),
+    // SCHEMA-SPEC §15 (SCHEMA_VERSION 14): self-built fileAttachment block atom. Reuses the image
+    // presign flow (backend opened non-image mimes); docId is threaded for presign/read REST.
+    FileAttachment.configure({ docId }),
+    // SCHEMA-SPEC §15 (SCHEMA_VERSION 15): self-built bookmark (link-preview) block atom. docId is
+    // threaded so the insert flow can POST /docs/{docId}/link-card for OG metadata.
+    Bookmark.configure({ docId }),
     Placeholder.configure({
       placeholder: "Type '/' for commands…",
     }),
@@ -241,5 +249,11 @@ export function buildPreviewExtensions(docId: string): Extensions {
     DetailsContent,
     Callout,
     Mathematics.configure({ katexOptions: { throwOnError: false } }),
+    // Mirror the v14/v15 nodes read-only: render the file card + bookmark card from stored attrs.
+    // No upload affordance is shown (the live editor's toolbar/slash are absent here); the file
+    // download still resolves a signed read URL (a read, not an edit). The bookmark insert flow
+    // (OG fetch) never runs in a preview, so no network call happens here.
+    FileAttachment.configure({ docId }),
+    Bookmark.configure({ docId }),
   ]
 }

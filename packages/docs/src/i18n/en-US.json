@@ -52,6 +52,8 @@
     "textColor": "Text color",
     "table": "Table",
     "image": "Image",
+    "file": "File",
+    "bookmark": "Bookmark",
     "emoji": "Emoji",
     "mention": "Mention",
     "details": "Collapsible block",
@@ -85,6 +87,8 @@
     "divider": "Divider",
     "table": "Table",
     "image": "Image",
+    "file": "File",
+    "bookmark": "Bookmark",
     "collapsible": "Collapsible block",
     "callout": "Callout",
     "mathBlock": "Block formula"
@@ -227,6 +231,21 @@
     "error": "Something went wrong.",
     "retry": "Retry",
     "syncing": "Syncing…"
+  },
+  "file": {
+    "download": "Download",
+    "uploading": "Uploading file…",
+    "unnamed": "Untitled file",
+    "tooLarge": "That file is too large (max 50 MB).",
+    "mimeBlocked": "That file type is not allowed.",
+    "unavailable": "Cannot upload file: the document is unavailable.",
+    "failed": "File upload failed. Please try again."
+  },
+  "bookmark": {
+    "prompt": "Paste or type a URL:",
+    "loading": "Fetching link details…",
+    "invalidUrl": "Please enter a valid http/https URL.",
+    "failed": "Could not fetch link details."
   },
   "error": {
     "permission": {

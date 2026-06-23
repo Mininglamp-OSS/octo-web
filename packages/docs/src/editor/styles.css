@@ -1757,3 +1757,139 @@
   text-align: center;
   margin: 10px 0;
 }
+
+/* File-attachment card (v14). Block atom rendered as a download card. */
+.octo-file-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  background: var(--octo-surface, #fafafa);
+}
+.octo-file-card.is-selected {
+  border-color: var(--octo-accent, #1664ff);
+  box-shadow: 0 0 0 2px rgba(22, 100, 255, 0.18);
+}
+.octo-file-card.is-loading {
+  opacity: 0.7;
+}
+.octo-file-icon {
+  font-size: 22px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.octo-file-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.octo-file-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.octo-file-size {
+  font-size: 12px;
+  color: var(--octo-text-secondary, #86909c);
+}
+.octo-file-download {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+.octo-file-download:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.octo-file-status,
+.octo-file-error,
+.octo-bookmark-status,
+.octo-bookmark-error {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  color: #fff;
+}
+.octo-file-status,
+.octo-bookmark-status {
+  background: var(--octo-accent, #1664ff);
+}
+.octo-file-error,
+.octo-bookmark-error {
+  background: #e03131;
+}
+
+/* Bookmark / link-preview card (v15). Block atom rendered as a clickable card. */
+.octo-bookmark-card {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  margin: 8px 0;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+.octo-bookmark-card.is-inert {
+  cursor: default;
+  opacity: 0.7;
+}
+.octo-bookmark-card.is-selected {
+  border-color: var(--octo-accent, #1664ff);
+  box-shadow: 0 0 0 2px rgba(22, 100, 255, 0.18);
+}
+.octo-bookmark-thumb {
+  flex: 0 0 120px;
+  max-width: 120px;
+  overflow: hidden;
+  background: var(--octo-surface, #f2f3f5);
+}
+.octo-bookmark-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.octo-bookmark-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+.octo-bookmark-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.octo-bookmark-desc {
+  font-size: 13px;
+  color: var(--octo-text-secondary, #4e5969);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.octo-bookmark-site {
+  font-size: 12px;
+  color: var(--octo-text-secondary, #86909c);
+}

@@ -3,6 +3,8 @@ import { Extension } from '@tiptap/core'
 import Suggestion from '@tiptap/suggestion'
 import type { Editor, Range } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
+import { pickAndUploadFile } from './fileUpload.ts'
+import { promptAndInsertBookmark } from './bookmarkInsert.ts'
 import { t } from '../octoweb/index.ts'
 
 export interface SlashItem {
@@ -132,6 +134,32 @@ export const SLASH_ITEMS: SlashItem[] = [
     keywords: ['math', 'formula', 'equation', 'latex', 'katex'],
     run: (editor, range) =>
       editor.chain().focus().deleteRange(range).insertBlockMath({ latex: 'a^2 + b^2 = c^2' }).run(),
+  },
+  // SCHEMA_VERSION 14 — file attachment. Drop the slash range first (like Image), then pick +
+  // upload; the node is inserted only after the upload succeeds (no broken node on failure).
+  {
+    get title() {
+      return t('docs.slash.file')
+    },
+    group: 'Basic',
+    keywords: ['file', 'attachment', 'attach', 'upload', 'document'],
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run()
+      void pickAndUploadFile(editor)
+    },
+  },
+  // SCHEMA_VERSION 15 — bookmark (link preview). Drop the slash range first, then prompt for a
+  // URL and insert the card once the metadata resolves (or a url-only card on fetch failure).
+  {
+    get title() {
+      return t('docs.slash.bookmark')
+    },
+    group: 'Basic',
+    keywords: ['bookmark', 'link', 'url', 'embed', 'preview', 'web'],
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run()
+      void promptAndInsertBookmark(editor)
+    },
   },
 ]
 
