@@ -1331,6 +1331,12 @@
   max-width: 100%;
   position: relative;
   display: block;
+  /* Hug the (resized) image width so the absolutely-positioned resize handles + selection
+     outline anchor to the IMAGE box, not a full-width block. Without this the wrapper stays
+     editor-full-width (e.g. 1416px) while the img is 600px, leaving the corner handles floating
+     far to the right of the image (the "handles still fill the row / big empty gap" bug). */
+  width: fit-content;
+  margin-right: auto; /* default (left align): keep the hugged box at the left */
 }
 .octo-prose .octo-image img {
   max-width: 100%;
@@ -1410,26 +1416,34 @@
   right: -6px;
   cursor: nwse-resize;
 }
-/* Centered / right-aligned images: keep handles glued to the image box, which the
-   wrapper alignment already positions. */
+/* Centered / right-aligned images: align the (fit-content) wrapper box itself so the handles,
+   which anchor to the wrapper edges, stay glued to the image. */
 .octo-prose .octo-image[data-align='center'] {
   text-align: center;
+  margin-left: auto;
+  margin-right: auto;
 }
 .octo-prose .octo-image[data-align='center'] img {
   margin-left: auto;
   margin-right: auto;
+}
+.octo-prose .octo-image[data-align='right'] {
+  margin-left: auto;
+  margin-right: 0;
 }
 .octo-prose .octo-image[data-align='right'] img {
   margin-left: auto;
 }
 .octo-prose .octo-image.is-loading {
   min-height: 80px;
+  min-width: 160px; /* fit-content wrapper would otherwise collapse before the img loads */
   background: var(--octo-hover);
   border: 1px dashed var(--octo-border);
   border-radius: 4px;
 }
 .octo-prose .octo-image.is-error {
   min-height: 40px;
+  min-width: 160px;
   border: 1px solid #e03131;
   border-radius: 4px;
 }
