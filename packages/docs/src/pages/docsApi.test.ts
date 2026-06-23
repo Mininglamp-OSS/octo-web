@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
-import { listDocs, createDoc, getDoc, updateDocTitle, deleteDoc } from './docsApi.ts'
+import {
+  listDocs,
+  createDoc,
+  getDoc,
+  updateDocTitle,
+  deleteDoc,
+  classifyDeleteStatus,
+  deleteErrorKey,
+} from './docsApi.ts'
 
 let api: MockApiClient
 
@@ -96,5 +104,23 @@ describe('docs list/create API (bare-relative /docs)', () => {
       throw { response: { status: 409 } }
     }
     await expect(deleteDoc('d_arch')).rejects.toMatchObject({ response: { status: 409 } })
+  })
+})
+
+// Delete outcome classification (contract C3 final) — moved to the editor detail page but the
+// 200/404/403/409 mapping is unchanged (Problem 4).
+describe('classifyDeleteStatus / deleteErrorKey', () => {
+  it('maps statuses to outcomes', () => {
+    expect(classifyDeleteStatus(404)).toBe('gone')
+    expect(classifyDeleteStatus(403)).toBe('forbidden')
+    expect(classifyDeleteStatus(409)).toBe('archived')
+    expect(classifyDeleteStatus(500)).toBe('failed')
+    expect(classifyDeleteStatus(undefined)).toBe('failed')
+  })
+
+  it('maps non-success outcomes to i18n error keys', () => {
+    expect(deleteErrorKey('forbidden')).toBe('docs.doc.deleteForbidden')
+    expect(deleteErrorKey('archived')).toBe('docs.doc.deleteArchived')
+    expect(deleteErrorKey('failed')).toBe('docs.doc.deleteFailed')
   })
 })

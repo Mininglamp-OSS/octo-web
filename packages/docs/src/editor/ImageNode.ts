@@ -127,7 +127,8 @@ export const OctoImage = Image.extend<OctoImageOptions>({
 
   addNodeView() {
     const docId = this.options.docId
-    return ({ node }) => new ImageNodeView(node, docId)
+    const editor = this.editor
+    return ({ node, getPos }) => new ImageNodeView(node, docId, editor, getPos)
   },
 
   addProseMirrorPlugins() {

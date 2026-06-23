@@ -10,7 +10,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor } from '@tiptap/core'
 import type { Role } from '../auth/roles.ts'
 import { canComment, canEdit, canManage } from '../auth/roles.ts'
-import { getCurrentUid } from '../octoweb/index.ts'
+import { getCurrentUid, t } from '../octoweb/index.ts'
 import { formatRelative, formatAbsolute } from '../versions/format.ts'
 import { decodeRelPos, resolveAnchorRange, getYBinding } from './anchor.ts'
 import type { Comment, CommentThread } from './api.ts'
@@ -71,7 +71,7 @@ function CommentBody({
   }
 
   async function onDelete() {
-    if (!window.confirm('Delete this comment?')) return
+    if (!window.confirm(t('docs.comment.deleteConfirm'))) return
     setBusy(true)
     try {
       await comments.remove(comment.id, canHardDelete)
@@ -103,7 +103,7 @@ function CommentBody({
               disabled={busy || draft.trim() === ''}
               onClick={saveEdit}
             >
-              Save
+              {t('docs.comment.save')}
             </button>
             <button
               type="button"
@@ -114,7 +114,7 @@ function CommentBody({
                 setDraft(comment.body)
               }}
             >
-              Cancel
+              {t('docs.comment.cancel')}
             </button>
           </div>
         </div>
@@ -125,12 +125,12 @@ function CommentBody({
         <div className="octo-comment-actions">
           {isAuthor && (
             <button type="button" className="octo-tb-btn" onClick={() => setEditing(true)}>
-              Edit
+              {t('docs.comment.edit')}
             </button>
           )}
           {(isAuthor || canHardDelete) && (
             <button type="button" className="octo-tb-btn" disabled={busy} onClick={onDelete}>
-              Delete
+              {t('docs.comment.delete')}
             </button>
           )}
         </div>
@@ -193,11 +193,11 @@ function Thread({
     <li ref={ref} className={`octo-comment-thread${active ? ' is-selected' : ''}`}>
       <button type="button" className="octo-comment-anchor" onClick={scrollToHighlight}>
         {orphaned ? (
-          <span className="octo-comment-orphan">(orphaned)</span>
+          <span className="octo-comment-orphan">{t('docs.comment.orphaned')}</span>
         ) : (
           <span className="octo-comment-quote">“{thread.anchorText || '…'}”</span>
         )}
-        {thread.resolved && <span className="octo-comment-resolved-badge">resolved</span>}
+        {thread.resolved && <span className="octo-comment-resolved-badge">{t('docs.comment.resolvedBadge')}</span>}
       </button>
 
       <CommentBody comment={thread} currentUid={currentUid} role={role} comments={comments} names={names} />
@@ -220,12 +220,12 @@ function Thread({
             disabled={busy}
             onClick={() => void comments.resolve(thread.id, !thread.resolved)}
           >
-            {thread.resolved ? 'Reopen' : 'Resolve'}
+            {thread.resolved ? t('docs.comment.reopen') : t('docs.comment.resolve')}
           </button>
         )}
         {canComment(role) && !replyOpen && (
           <button type="button" className="octo-tb-btn" onClick={() => setReplyOpen(true)}>
-            Reply
+            {t('docs.comment.reply')}
           </button>
         )}
       </div>
@@ -234,7 +234,7 @@ function Thread({
         <div className="octo-comment-compose">
           <textarea
             className="octo-comment-input"
-            placeholder="Reply…"
+            placeholder={t('docs.comment.replyPlaceholder')}
             value={replyBody}
             autoFocus
             onChange={(e) => setReplyBody(e.target.value)}
@@ -246,7 +246,7 @@ function Thread({
               disabled={busy || replyBody.trim() === ''}
               onClick={submitReply}
             >
-              Reply
+              {t('docs.comment.reply')}
             </button>
             <button
               type="button"
@@ -257,7 +257,7 @@ function Thread({
                 setReplyBody('')
               }}
             >
-              Cancel
+              {t('docs.comment.cancel')}
             </button>
           </div>
         </div>
@@ -292,27 +292,27 @@ export function CommentPanel({
   return (
     <section className="octo-comment-panel">
       <div className="octo-member-row">
-        <h3 style={{ flex: 1, margin: 0 }}>Comments</h3>
+        <h3 style={{ flex: 1, margin: 0 }}>{t('docs.comment.title')}</h3>
         <label className="octo-comment-toggle">
           <input
             type="checkbox"
             checked={includeResolved}
             onChange={(e) => setIncludeResolved(e.target.checked)}
           />
-          Show resolved
+          {t('docs.comment.showResolved')}
         </label>
         {onClose && (
           <button type="button" className="octo-tb-btn" onClick={onClose}>
-            Close
+            {t('docs.comment.close')}
           </button>
         )}
       </div>
 
       {error && <p className="octo-member-error">{error}</p>}
-      {loading && threads.length === 0 && <p className="octo-loading">Loading comments…</p>}
+      {loading && threads.length === 0 && <p className="octo-loading">{t('docs.comment.loading')}</p>}
       {!loading && threads.length === 0 && (
         <p className="octo-comment-empty">
-          No comments yet. Select text in the document and click 💬 Comment to start a thread.
+          {t('docs.comment.empty')}
         </p>
       )}
 
@@ -334,7 +334,7 @@ export function CommentPanel({
 
       {nextCursor != null && (
         <button type="button" className="octo-tb-btn" disabled={loading} onClick={() => void loadMore()}>
-          Load more
+          {t('docs.comment.loadMore')}
         </button>
       )}
     </section>

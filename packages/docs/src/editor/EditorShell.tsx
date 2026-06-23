@@ -4,6 +4,7 @@ import type { CollabEditorOptions } from '../collab/createCollabEditor.ts'
 import { canManage } from '../auth/roles.ts'
 import { Toolbar, EditorBubbleMenu } from './Toolbar.tsx'
 import { Outline } from './Outline.tsx'
+import { StatusBar } from './StatusBar.tsx'
 import { PresenceBar } from './PresenceBar.tsx'
 import { MemberPanel } from '../members/MemberPanel.tsx'
 import { VersionPanel } from '../versions/VersionPanel.tsx'
@@ -11,6 +12,7 @@ import { CommentPanel } from '../comments/CommentPanel.tsx'
 import { CommentBubble } from '../comments/CommentBubble.tsx'
 import { useDocComments } from '../comments/useDocComments.ts'
 import { useCommentHighlights } from '../comments/useCommentHighlights.ts'
+import { useDocDelete } from './useDocDelete.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { useEffect, useState, useRef, useCallback } from 'react'
@@ -33,6 +35,12 @@ export interface EditorShellProps extends CollabEditorOptions {
   onExit?: () => void
   /** Called after a successful rename so the list can refresh its titles. */
   onTitleSaved?: (docId: string, title: string) => void
+  /**
+   * Called after a successful delete (Problem 4) so the list refreshes and the open doc returns
+   * to the empty/list state. Wired by DocsHome to onDocDeleted; when absent, the shell falls back
+   * to its own return-to-list handler (onExit ?? onBack).
+   */
+  onDeleted?: (docId: string) => void
 }
 
 /**
@@ -187,7 +195,7 @@ function DocTitle({
 
 /** Page shell (frontend-design §3.1): title / toolbar / content / presence + right-side drawer. */
 export function EditorShell(props: EditorShellProps) {
-  const { title, onBack, onExit, onTitleSaved, ...collabOpts } = props
+  const { title, onBack, onExit, onTitleSaved, onDeleted, ...collabOpts } = props
   const docId = props.docId
   const { instance, ready, role, connState, terminal } = useCollabEditor(collabOpts)
   // #4/#5: a single mutually-exclusive drawer panel (history | comments | members | null),
@@ -248,6 +256,17 @@ export function EditorShell(props: EditorShellProps) {
     const id = setTimeout(returnToList, 1200)
     return () => clearTimeout(id)
   }, [terminal.kind, returnToList])
+
+  // Delete entry (Problem 4): on success return to the list. Prefer the parent's onDeleted (it
+  // also refreshes the resident list); fall back to the shell's own return-to-list handler.
+  const handleDeleted = useCallback(
+    (id: string) => {
+      if (onDeleted) onDeleted(id)
+      else returnToList?.()
+    },
+    [onDeleted, returnToList],
+  )
+  const del = useDocDelete(docId, handleDeleted)
 
   const togglePanel = useCallback(
     (panel: Exclude<DrawerPanel, null>) => setActivePanel((cur) => (cur === panel ? null : panel)),
@@ -333,8 +352,53 @@ export function EditorShell(props: EditorShellProps) {
               {t('docs.toolbar.members')}
             </button>
           )}
+          {/* Delete entry (Problem 4) — owner/admin only; moved here from the list row. */}
+          {manage && (
+            <button
+              type="button"
+              className="octo-tb-btn octo-doc-delete-btn"
+              title={t('docs.doc.deleteEntry')}
+              onClick={del.requestDelete}
+            >
+              🗑 {t('docs.doc.deleteEntry')}
+            </button>
+          )}
         </div>
       </header>
+
+      {/* Delete confirm + error banner (reuses the list's confirm/error pattern). */}
+      {del.confirming && (
+        <div
+          className="octo-docs-delete-confirm octo-doc-delete-confirm"
+          role="alertdialog"
+          aria-label={t('docs.doc.deleteConfirmTitle')}
+        >
+          <p className="octo-docs-delete-confirm-text">{t('docs.doc.deleteConfirm')}</p>
+          <div className="octo-docs-delete-confirm-actions">
+            <button
+              type="button"
+              className="octo-tb-btn"
+              disabled={del.deleting}
+              onClick={del.cancel}
+            >
+              {t('docs.doc.deleteCancel')}
+            </button>
+            <button
+              type="button"
+              className="octo-tb-btn octo-docs-delete-confirm-go"
+              disabled={del.deleting}
+              onClick={() => void del.confirm()}
+            >
+              {t('docs.doc.delete')}
+            </button>
+          </div>
+        </div>
+      )}
+      {del.error && (
+        <p className="octo-member-error" role="alert">
+          {del.error}
+        </p>
+      )}
 
       <Toolbar editor={editor} />
 
@@ -346,6 +410,8 @@ export function EditorShell(props: EditorShellProps) {
           <EditorContent editor={editor} className="octo-prose" />
         </div>
       </div>
+
+      <StatusBar editor={editor} />
 
       {activePanel && (
         <aside className="octo-doc-drawer" role="complementary">

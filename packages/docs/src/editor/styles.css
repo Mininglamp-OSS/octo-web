@@ -96,6 +96,18 @@
   background: rgba(124, 92, 252, 0.08);
 }
 
+/* Sticky toolbar wrapper (P7): the WRAPPER is the sticky element so the toolbar AND the find
+   bar stick together. The 16px breathing space that used to be .octo-editor-region's transparent
+   margin-top now lives as the wrapper's own opaque padding-bottom, so nothing shows through the
+   gap while scrolling. z-index 6 sits above the prose + drag handle (4). */
+.octo-toolbar-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--octo-bg);
+  padding-bottom: 16px;
+  box-shadow: 0 6px 8px -6px rgba(0, 0, 0, 0.12);
+}
 .octo-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -104,10 +116,7 @@
   padding: 6px 0;
   border-top: 1px solid var(--octo-border);
   border-bottom: 1px solid var(--octo-border);
-  position: sticky;
-  top: 0;
   background: var(--octo-bg);
-  z-index: 5;
 }
 .octo-tb-sep {
   width: 1px;
@@ -144,6 +153,63 @@
   border-radius: 6px;
   padding: 3px 8px;
   font-size: 13px;
+}
+
+/* Find & replace bar (toolbar item ⑪): sits directly under the toolbar, sticky with it. */
+.octo-find-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--octo-border);
+  background: var(--octo-bg);
+}
+.octo-find-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.octo-find-input {
+  border: 1px solid var(--octo-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  background: var(--octo-bg);
+  color: var(--octo-fg);
+  min-width: 160px;
+}
+.octo-find-input:focus {
+  outline: none;
+  border-color: var(--octo-accent);
+}
+.octo-find-count {
+  font-size: 12px;
+  color: var(--octo-muted);
+  min-width: 64px;
+  white-space: nowrap;
+}
+.octo-find-case {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--octo-muted);
+  cursor: pointer;
+}
+
+/* Bottom status bar (toolbar item ⑦): live word + character counts. */
+.octo-editor-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--octo-border);
+  font-size: 12px;
+  color: var(--octo-muted);
+}
+.octo-editor-status-sep {
+  opacity: 0.6;
 }
 
 /* Text highlight / colour controls (SCHEMA-SPEC §3) */
@@ -200,7 +266,7 @@
 
 .octo-editor-region {
   position: relative;
-  margin-top: 16px;
+  margin-top: 0;
   display: flex;
   align-items: flex-start;
   gap: 24px;
@@ -592,6 +658,121 @@
   color: var(--octo-muted, #8a919e);
 }
 
+/* ── Member picker (Problem 1): searchable roster with avatar + name + AI badge ── */
+.octo-member-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.octo-member-picker-search {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+}
+.octo-member-picker-search:focus {
+  outline: none;
+  border-color: var(--octo-accent, #3370ff);
+}
+.octo-member-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  padding: 4px;
+}
+.octo-member-picker-empty {
+  color: var(--octo-muted, #8a919e);
+  font-size: 13px;
+  padding: 8px;
+  margin: 0;
+}
+.octo-member-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--octo-fg, #1f2329);
+  font-size: 13px;
+}
+.octo-member-picker-item:hover:not(:disabled) {
+  background: var(--octo-hover, #f2f3f5);
+}
+.octo-member-picker-item.is-selected {
+  background: var(--octo-accent-weak, #e8f3ff);
+  outline: 1px solid var(--octo-accent, #3370ff);
+}
+.octo-member-picker-item.is-added {
+  cursor: default;
+  opacity: 0.6;
+}
+.octo-member-picker-avatar {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+}
+.octo-member-picker-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.octo-member-picker-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.octo-member-picker-badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #7c5cfc;
+  border: 1px solid #7c5cfc;
+}
+.octo-member-picker-added {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--octo-muted, #8a919e);
+}
+.octo-member-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.octo-member-picker-actions select {
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  font-size: 13px;
+}
+
 /* ── Right-side drawer (#4/#5): history / comments / members open here, one at a time ──
    Anchored to the right of the editor pane, above content, scrollable, with a width
    transition. The panels it hosts drop their own card chrome so they fill the drawer. */
@@ -606,7 +787,10 @@
   border-left: 1px solid var(--octo-border, #e5e6eb);
   box-shadow: -4px 0 16px rgba(0, 0, 0, 0.08);
   overflow-y: auto;
-  z-index: 20;
+  /* Above the sticky toolbar wrapper (6) and prose/drag-handle (4); fully opaque so editor
+     content never shows through the panel (P3 "drawer content show-through"). */
+  z-index: 30;
+  isolation: isolate;
   padding: 12px 16px;
   box-sizing: border-box;
   transition: width 0.15s ease;
@@ -713,6 +897,19 @@
   background: #d64545;
 }
 
+/* Editor delete entry (Problem 4): danger-tinted header button + a confirm card that
+   sits just under the header instead of floating in a list row. */
+.octo-doc-delete-btn {
+  color: #eb5757;
+}
+.octo-doc-delete-btn:hover {
+  background: rgba(235, 87, 87, 0.1);
+}
+.octo-doc-delete-confirm {
+  margin: 8px 0 0;
+  max-width: 420px;
+}
+
 /* Version history (feature #4 §1) */
 .octo-version-panel {
   margin-top: 24px;
@@ -738,31 +935,59 @@
 }
 .octo-version-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 6px;
-  border-radius: 6px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 8px;
+  border-left: 3px solid transparent;
+}
+.octo-version-row + .octo-version-row {
+  border-top: 1px solid var(--octo-border, #e5e6eb);
 }
 .octo-version-row.is-selected {
   background: var(--octo-accent-weak, #f2f3f5);
 }
-.octo-version-meta {
-  flex: 1;
+/* Distinguish version kinds with a left accent bar. */
+.octo-version-row-named {
+  border-left-color: #1d7afc;
+}
+.octo-version-row-restore-marker {
+  border-left-color: #d4691e;
+}
+/* line 1: badge + label + relative time (absolute timestamp on hover via title attr). */
+.octo-version-line1 {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 .octo-version-label {
+  flex: 1 1 auto;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .octo-version-time {
+  flex: 0 0 auto;
   color: var(--octo-muted, #86909c);
   font-size: 12px;
   white-space: nowrap;
+}
+/* line 2: author on the left, action buttons right-aligned (no longer cramped on one row). */
+.octo-version-line2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.octo-version-author {
+  font-size: 12px;
+  color: var(--octo-muted, #86909c);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .octo-version-badge {
   font-size: 11px;
@@ -784,6 +1009,8 @@
 }
 .octo-version-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
 }
 .octo-version-confirm {
@@ -883,6 +1110,8 @@
 .octo-prose .octo-image {
   margin: 12px 0;
   max-width: 100%;
+  position: relative;
+  display: block;
 }
 .octo-prose .octo-image img {
   max-width: 100%;
@@ -890,6 +1119,80 @@
   border-radius: 4px;
   display: block;
 }
+/* Selected image: outline + reveal resize handles and the align toolbar. */
+.octo-prose .octo-image.is-selected img {
+  outline: 2px solid var(--octo-accent, #3370ff);
+  outline-offset: 1px;
+}
+.octo-image-toolbar {
+  display: none;
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  gap: 2px;
+  padding: 3px;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  z-index: 6;
+}
+.octo-prose .octo-image.is-selected .octo-image-toolbar {
+  display: inline-flex;
+}
+.octo-image-align-btn {
+  border: none;
+  background: transparent;
+  color: var(--octo-fg, #1f2329);
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.2;
+}
+.octo-image-align-btn:hover {
+  background: var(--octo-hover, #f2f3f5);
+}
+.octo-image-align-btn.is-active {
+  background: var(--octo-accent, #3370ff);
+  color: #fff;
+}
+.octo-image-handle {
+  display: none;
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--octo-accent, #3370ff);
+  border: 2px solid var(--octo-bg, #fff);
+  border-radius: 50%;
+  z-index: 6;
+}
+.octo-prose .octo-image.is-selected .octo-image-handle {
+  display: block;
+}
+.octo-image-handle-nw {
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize;
+}
+.octo-image-handle-ne {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
+}
+.octo-image-handle-sw {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
+}
+.octo-image-handle-se {
+  bottom: -6px;
+  right: -6px;
+  cursor: nwse-resize;
+}
+/* Centered / right-aligned images: keep handles glued to the image box, which the
+   wrapper alignment already positions. */
 .octo-prose .octo-image[data-align='center'] {
   text-align: center;
 }

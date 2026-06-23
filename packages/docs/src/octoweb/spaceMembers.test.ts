@@ -45,4 +45,16 @@ describe('octoweb space-member seam', () => {
   it('returns an empty list for a blank space id without touching the host', async () => {
     expect(await fetchAllSpaceMembers('')).toEqual([])
   })
+
+  it('carries avatar + isBot through when present, omitting them otherwise', async () => {
+    wk.spaceMembers.push(
+      { uid: 'u_plain', name: 'Plain' },
+      { uid: 'u_bot', name: 'Bot', avatar: 'https://cdn/x.png', isBot: true },
+    )
+    const page = await getSpaceMembers('s_1', 1, 50)
+    // Plain member: no avatar / isBot noise.
+    expect(page[0]).toEqual({ uid: 'u_plain', name: 'Plain' })
+    // Rich member: avatar + isBot preserved.
+    expect(page[1]).toEqual({ uid: 'u_bot', name: 'Bot', avatar: 'https://cdn/x.png', isBot: true })
+  })
 })

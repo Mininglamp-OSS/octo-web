@@ -10,10 +10,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
   },
   "dependencies": {
-    "@octo/base": "workspace:*",
     "@hocuspocus/provider": "2.15.2",
+    "@octo/base": "workspace:*",
     "@tiptap/core": "3.22.2",
     "@tiptap/extension-bubble-menu": "3.22.2",
+    "@tiptap/extension-character-count": "3.22.2",
     "@tiptap/extension-code-block-lowlight": "3.22.2",
     "@tiptap/extension-collaboration": "3.22.2",
     "@tiptap/extension-collaboration-caret": "3.22.2",

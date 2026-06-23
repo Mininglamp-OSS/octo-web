@@ -38,6 +38,8 @@ import { COLLAB_FIELD } from '../schema/index.ts'
 import { colorFromId, type OctoAwarenessUser } from '../awareness/presence.ts'
 import { sanitizeLinkHref } from './sanitize.ts'
 import { SlashCommand } from './SlashCommand.ts'
+import { FindReplace } from './findReplace.ts'
+import CharacterCount from '@tiptap/extension-character-count'
 
 // Shared lowlight registry for code-block syntax highlighting. `common` covers
 // the widely-used languages (js/ts/python/go/json/bash/html/css/…) without pulling
@@ -124,6 +126,13 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
       placeholder: "Type '/' for commands…",
     }),
     SlashCommand,
+    // Self-built find & replace (toolbar item ⑪): decoration-highlight of matches + replace
+    // current/all. Decorations are view-only (never written to the Y.Doc); replacements go
+    // through ordinary transactions so collaboration syncs them.
+    FindReplace,
+    // Word/character count (toolbar item ⑦): read live from editor.storage.characterCount for
+    // the status bar. No schema impact — it only counts the current doc.
+    CharacterCount,
     // View-only comment highlight layer (feature #3 §). Paints inline decorations for the
     // current comment anchors; never writes to the Y.Doc (like CollaborationCaret), so it
     // does not disturb collaboration. React pushes anchors via the setCommentAnchors command.
