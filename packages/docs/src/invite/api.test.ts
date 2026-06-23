@@ -104,15 +104,22 @@ describe('invite expiry (#A6)', () => {
     expect(expiryFromNow(99, now)).toBe(expiryFromNow(INVITE_EXPIRY_MAX_DAYS, now))
   })
 
-  it('createInvite sends an expiresAt (default 3 days) plus an expiresInDays fallback', async () => {
+  it('createInvite sends expiresInDays (default 3) and no expiresAt/maxUses', async () => {
     api.responder = () => ({ data: { inviteToken: 'tok_x', role: 'writer' }, status: 200 })
     await createInvite('d_1', { role: 'writer' })
     const body = api.calls[0].body as { expiresAt?: string; expiresInDays?: number; role?: string }
     expect(body.expiresInDays).toBe(INVITE_EXPIRY_DEFAULT_DAYS)
-    expect(typeof body.expiresAt).toBe('string')
-    expect(Number.isNaN(Date.parse(body.expiresAt!))).toBe(false)
-    // No more "unlimited"/maxUses:0 default in the create body.
+    // PM-decided wire contract: send the integer day count; the backend computes/clamps the
+    // absolute expiry. The front end no longer sends expiresAt, nor a maxUses/unlimited default.
+    expect('expiresAt' in body).toBe(false)
     expect('maxUses' in body).toBe(false)
+  })
+
+  it('createInvite clamps an out-of-range expiresInDays to the 1–7 window', async () => {
+    api.responder = () => ({ data: { inviteToken: 'tok_z', role: 'reader' }, status: 200 })
+    await createInvite('d_1', { role: 'reader', expiresInDays: 99 })
+    const body = api.calls[0].body as { expiresInDays?: number }
+    expect(body.expiresInDays).toBe(7)
   })
 
   it('createInvite honours an explicit expiresInDays', async () => {
