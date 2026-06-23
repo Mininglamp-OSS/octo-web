@@ -1050,15 +1050,18 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         // the task has usually dropped out of active_upgrades, so the prop-sync below
         // (which only reacts to activeUpgrade changes) never fires — a metadata-only
         // refresh would otherwise leave the reused instance pinned at "installing".
-        // Clear it here. Gated on the absent→present transition so an UPGRADE (plugin
-        // present throughout) is never cleared prematurely, AND on the active-upgrade
-        // prop being gone so we don't mask a still-reported terminal failure (let
-        // syncUpgradeStateFromProp own the transition while a task is still tracked).
+        // Clear it here. Gated on:
+        //   - the absent→present transition, so an UPGRADE (plugin present throughout)
+        //     is never cleared prematurely;
+        //   - the active-upgrade prop being gone, so we don't fight a still-tracked task;
+        //   - the status being an IN-PROGRESS one — a terminal failed/timeout must NOT
+        //     be wiped to idle (a cc install can land the plugin binary in metadata yet
+        //     still fail the configure/key step; that error must stay visible).
         const comp = octoComponentName(this.props.runtime.provider)
         if (
             comp &&
             !this.props.pluginActiveUpgrade &&
-            this.state.pluginUpgradeStatus !== "idle" &&
+            isUpgradeInProgress(this.state.pluginUpgradeStatus) &&
             !octoPluginInstalled(prevProps.runtime.metadata, comp) &&
             octoPluginInstalled(this.props.runtime.metadata, comp)
         ) {
@@ -1828,15 +1831,16 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                     this.adjustPollInterval()
                     // 放 callback 里：保证 showAgentDetail / showDeviceDetail 里读到的
                     // this.state.activeUpgrades 是本轮刚拉到的，而不是 setState 之前的快照。
-                    // 注意：不能用 `WKApp.route.currentPath === "/runtimes"` 做 guard ——
-                    // 左侧导航切页面不更新 route.currentPath（一直停在 "/"），该条件恒为
-                    // false，会让 silent loadData 永远不把新数据重推给已打开的右栏详情
-                    // （插件装完/升级完原地不刷新的根因）。selectedId / selectedDaemonId
-                    // 互斥维护（开 device/bot detail、切 space 都会清 selectedId），已能
-                    // 表达"当前右栏是不是某个 runtime/device detail"；且 pollTimer 在
-                    // componentWillUnmount 清掉，silent loadData 只在本页挂载时跑，无需
-                    // 再用路由字符串兜底。
-                    if (silent) {
+                    // guard 必须是"运行时页当前是否是激活菜单"：
+                    //   - 不能用 `WKApp.route.currentPath === "/runtimes"`：左侧导航切菜单
+                    //     不更新 route.currentPath（一直停在 "/"），恒为 false → silent
+                    //     loadData 永不重推右栏，是插件装完/升级完原地不刷新的根因。
+                    //   - 也不能直接 `if (silent)`：切到别的菜单时本页不会 unmount（菜单用
+                    //     display:none 保活），pollTimer 仍在跑，selectedId 也不随菜单切换
+                    //     清空；裸 silent 会把 RuntimeDetail 重推盖到共享 routeRight 右栏，
+                    //     劫持用户当前正在看的别的菜单。
+                    // WKApp.currentMenuId 每次菜单切换都维护，正好表达 ownership。
+                    if (silent && WKApp.currentMenuId === "runtimes") {
                         if (this.state.selectedId != null) {
                             const updated = runtimes.find(r => r.id === this.state.selectedId)
                             if (updated) {

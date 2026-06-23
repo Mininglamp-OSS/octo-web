@@ -9,11 +9,25 @@ export interface CcInstallValidationResult {
 
 /**
  * Mirror cc-channel-octo's normalizeGatewayUrl: strip a trailing `/v1` (with or
- * without a trailing slash) so the SDK's appended `/v1/messages` doesn't double
- * into `/v1/v1/messages` (a 404 that gets misreported as a model error).
+ * without a trailing slash, case-insensitive) so the SDK's appended
+ * `/v1/messages` doesn't double into `/v1/v1/messages` (a 404 that gets
+ * misreported as a model error). Splits off any `?query`/`#fragment` first so a
+ * trailing `/v1` is still stripped when one follows (e.g. `…/v1?foo=1`), then
+ * reattaches them — no URL re-serialization, so bare-host/`/api` inputs are
+ * returned byte-for-byte.
  */
 export function normalizeGatewayUrl(raw: string): string {
-    return raw.trim().replace(/\/v1\/?$/, "");
+    const trimmed = raw.trim();
+    const sepIdx = ((): number => {
+        const q = trimmed.indexOf("?");
+        const h = trimmed.indexOf("#");
+        if (q === -1) return h;
+        if (h === -1) return q;
+        return Math.min(q, h);
+    })();
+    const path = sepIdx === -1 ? trimmed : trimmed.slice(0, sepIdx);
+    const suffix = sepIdx === -1 ? "" : trimmed.slice(sepIdx);
+    return path.replace(/\/v1\/?$/i, "") + suffix;
 }
 
 /**

@@ -13,6 +13,11 @@ describe("normalizeGatewayUrl", () => {
     it("does not strip a mid-path v1", () => {
         expect(normalizeGatewayUrl("https://gw.test/v1/foo")).toBe("https://gw.test/v1/foo")
     })
+    it("strips a trailing /v1 before a query or fragment, case-insensitively", () => {
+        expect(normalizeGatewayUrl("https://gw.test/v1?foo=1")).toBe("https://gw.test?foo=1")
+        expect(normalizeGatewayUrl("https://gw.test/v1/#frag")).toBe("https://gw.test#frag")
+        expect(normalizeGatewayUrl("https://gw.test/V1")).toBe("https://gw.test")
+    })
 })
 
 describe("validateCcInstall", () => {
