@@ -3,6 +3,8 @@ import { BubbleMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
 import { getFindState } from './findReplace.ts'
+import { EMOJI_SET } from './emoji.ts'
+import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { t } from '../octoweb/index.ts'
 
 // Languages offered in the code-block language selector. A curated subset of the
@@ -82,6 +84,7 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
       <div className="octo-bubble-menu">
         <Btn label="B" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
         <Btn label="I" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
+        <Btn label="U" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
         <Btn label="S" active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
         <Btn label="<>" active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()} />
       </div>
@@ -181,6 +184,125 @@ function TextColorControl({ editor }: { editor: Editor }) {
               setOpen(false)
             }}
           />
+        </span>
+      )}
+    </span>
+  )
+}
+
+/** Font-size presets (px) offered by the toolbar dropdown (SCHEMA_VERSION 7). */
+const FONT_SIZES = ['12', '14', '16', '18', '24', '32'] as const
+
+/** Text-alignment options (SCHEMA_VERSION 5) — value passed to setTextAlign. */
+const ALIGNMENTS = [
+  { value: 'left', label: '⬅', key: 'alignLeft' },
+  { value: 'center', label: '⬌', key: 'alignCenter' },
+  { value: 'right', label: '➡', key: 'alignRight' },
+  { value: 'justify', label: '☰', key: 'alignJustify' },
+] as const
+
+/** Curated emoji subset for the toolbar picker grid — those with a renderable glyph. */
+const EMOJI_PICKER = EMOJI_SET.filter((e) => !!e.emoji).slice(0, 48)
+
+/** Font-size dropdown (SCHEMA_VERSION 7): sets the textStyle `fontSize` attr (px), or clears it. */
+function FontSizeSelect({ editor }: { editor: Editor }) {
+  useEditorTick(editor)
+  const current = ((editor.getAttributes('textStyle').fontSize as string) || '').replace('px', '')
+  return (
+    <select
+      className="octo-font-size"
+      title={t('docs.toolbar.fontSize')}
+      value={current}
+      onMouseDown={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        const v = e.target.value
+        if (!v) editor.chain().focus().unsetFontSize().run()
+        else editor.chain().focus().setFontSize(`${v}px`).run()
+      }}
+    >
+      <option value="">{t('docs.toolbar.fontSizeDefault')}</option>
+      {FONT_SIZES.map((s) => (
+        <option key={s} value={s}>
+          {s}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/** Text-alignment buttons (SCHEMA_VERSION 5): left/center/right/justify on heading + paragraph. */
+function AlignControls({ editor }: { editor: Editor }) {
+  return (
+    <>
+      {ALIGNMENTS.map((a) => (
+        <Btn
+          key={a.value}
+          label={a.label}
+          title={t(`docs.toolbar.${a.key}`)}
+          active={editor.isActive({ textAlign: a.value })}
+          onClick={() => editor.chain().focus().setTextAlign(a.value).run()}
+        />
+      ))}
+    </>
+  )
+}
+
+/** Emoji picker (SCHEMA_VERSION 9): a small grid that inserts via the emoji node's setEmoji. */
+function EmojiControl({ editor }: { editor: Editor }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <span className="octo-color-control">
+      <Btn label="😀" title={t('docs.toolbar.emoji')} active={open} onClick={() => setOpen((v) => !v)} />
+      {open && (
+        <span className="octo-emoji-popover">
+          {EMOJI_PICKER.map((e) => (
+            <button
+              key={e.name}
+              type="button"
+              className="octo-emoji-swatch"
+              title={`:${e.shortcodes[0] ?? e.name}:`}
+              onMouseDown={(ev) => ev.preventDefault()}
+              onClick={() => {
+                editor.chain().focus().setEmoji(e.shortcodes[0] ?? e.name).run()
+                setOpen(false)
+              }}
+            >
+              {e.emoji}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  )
+}
+
+/** Callout control (SCHEMA_VERSION 12): pick a variant (info/warn/tip/success) to wrap the block. */
+function CalloutControl({ editor }: { editor: Editor }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <span className="octo-color-control">
+      <Btn
+        label="ⓘ"
+        title={t('docs.toolbar.callout')}
+        active={editor.isActive('callout')}
+        onClick={() => setOpen((v) => !v)}
+      />
+      {open && (
+        <span className="octo-color-popover">
+          {CALLOUT_VARIANTS.map((v: CalloutVariant) => (
+            <button
+              key={v}
+              type="button"
+              className="octo-tb-btn"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                editor.chain().focus().toggleCallout({ variant: v }).run()
+                setOpen(false)
+              }}
+            >
+              {t(`docs.callout.${v}`)}
+            </button>
+          ))}
         </span>
       )}
     </span>
@@ -350,7 +472,13 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <span className="octo-tb-sep" />
       <Btn label="B" title={t('docs.toolbar.bold')} active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
       <Btn label="I" title={t('docs.toolbar.italic')} active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
+      <Btn label="U" title={t('docs.toolbar.underline')} active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
       <Btn label="S" title={t('docs.toolbar.strike')} active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
+      <Btn label="x²" title={t('docs.toolbar.superscript')} active={editor.isActive('superscript')} onClick={() => editor.chain().focus().toggleSuperscript().run()} />
+      <Btn label="x₂" title={t('docs.toolbar.subscript')} active={editor.isActive('subscript')} onClick={() => editor.chain().focus().toggleSubscript().run()} />
+      <FontSizeSelect editor={editor} />
+      <span className="octo-tb-sep" />
+      <AlignControls editor={editor} />
       <span className="octo-tb-sep" />
       <Btn label="• List" title={t('docs.toolbar.bulletList')} active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()} />
       <Btn label="1. List" title={t('docs.toolbar.orderedList')} active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()} />
@@ -369,6 +497,26 @@ export function Toolbar({ editor }: { editor: Editor }) {
         onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
       />
       <Btn label="Image" title={t('docs.toolbar.image')} onClick={() => void pickAndUploadImage(editor)} />
+      <span className="octo-tb-sep" />
+      <EmojiControl editor={editor} />
+      <Btn label="@" title={t('docs.toolbar.mention')} onClick={() => editor.chain().focus().insertContent('@').run()} />
+      <Btn
+        label="▸"
+        title={t('docs.toolbar.details')}
+        active={editor.isActive('details')}
+        onClick={() => editor.chain().focus().setDetails().run()}
+      />
+      <CalloutControl editor={editor} />
+      <Btn
+        label="∑"
+        title={t('docs.toolbar.mathInline')}
+        onClick={() => editor.chain().focus().insertInlineMath({ latex: 'a^2 + b^2 = c^2' }).run()}
+      />
+      <Btn
+        label="∑▤"
+        title={t('docs.toolbar.mathBlock')}
+        onClick={() => editor.chain().focus().insertBlockMath({ latex: 'a^2 + b^2 = c^2' }).run()}
+      />
       <span className="octo-tb-sep" />
       <Btn label="Link" title={t('docs.toolbar.link')} active={editor.isActive('link')} onClick={() => setLinkOpen((v) => !v)} />
       {linkOpen && (

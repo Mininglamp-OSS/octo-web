@@ -18,8 +18,14 @@ import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import Highlight from '@tiptap/extension-highlight'
-import { TextStyle } from '@tiptap/extension-text-style'
+import { TextStyle, FontSize } from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
+import TextAlign from '@tiptap/extension-text-align'
+import Underline from '@tiptap/extension-underline'
+import Superscript from '@tiptap/extension-superscript'
+import Subscript from '@tiptap/extension-subscript'
+import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details'
+import { Mathematics } from '@tiptap/extension-mathematics'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { createLowlight, common } from 'lowlight'
 import { BlockDragHandle } from './BlockDragHandle.ts'
@@ -30,9 +36,17 @@ import TableCell from '@tiptap/extension-table-cell'
 import { TableCellView } from './TableCellView.ts'
 import { OctoImage } from './ImageNode.ts'
 import { CommentHighlight } from '../comments/CommentDecorations.ts'
+import { buildEmoji } from './emoji.ts'
+import { buildMention } from './mention.ts'
+import { Callout } from './Callout.ts'
 import type { Extensions } from '@tiptap/core'
 import type * as Y from 'yjs'
 import type { HocuspocusProvider } from '@hocuspocus/provider'
+
+// KaTeX stylesheet — required for the math nodes (SCHEMA_VERSION 13) to render. katex is
+// installed at the repo root (katex ^0.16.45); the CSS is imported once here so both the live
+// editor and the read-only preview pick up the math typography.
+import 'katex/dist/katex.min.css'
 
 import { COLLAB_FIELD } from '../schema/index.ts'
 import { colorFromId, type OctoAwarenessUser } from '../awareness/presence.ts'
@@ -56,15 +70,18 @@ export interface BuildExtensionsOptions {
   user: Pick<OctoAwarenessUser, 'id' | 'name' | 'avatar'>
   /** Doc id for the image node's presign/read REST paths (frontend-design §3.5). */
   docId: string
+  /** Current space id — scopes the @people mention source (SCHEMA_VERSION 10). */
+  spaceId?: string
 }
 
 export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
-  const { ydoc, provider, user, docId } = opts
+  const { ydoc, provider, user, docId, spaceId } = opts
   return [
     StarterKit.configure({
       undoRedo: false, // MUST be off — yUndo handles collaborative history (v3 renamed `history`).
       codeBlock: false, // MUST be off — replaced by CodeBlockLowlight (same node name).
       link: false, // MUST be off — v3 bundles Link; docs installs a sanitised Link separately.
+      underline: false, // MUST be off — v3 bundles Underline; docs installs it standalone (v6, same pattern as link).
     }),
     Collaboration.configure({
       document: ydoc,
@@ -92,6 +109,23 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     Highlight.configure({ multicolor: true }),
     TextStyle,
     Color,
+    // SCHEMA-SPEC §6 (SCHEMA_VERSION 7): font size. FontSize ships inside
+    // @tiptap/extension-text-style (there is no standalone @tiptap/extension-font-size at
+    // 3.22.2); it adds a `fontSize` global attribute to the textStyle mark → <span
+    // style="font-size:…">. MUST be registered after TextStyle (its carrier mark).
+    FontSize,
+    // SCHEMA-SPEC §1 (SCHEMA_VERSION 5): text alignment. A global `textAlign` attr on the
+    // heading + paragraph nodes (not a new node/mark) → style="text-align:…". Configured for
+    // exactly those two types so lists/tables/etc. keep their own layout.
+    TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    // SCHEMA-SPEC §3 (SCHEMA_VERSION 6): underline mark. StarterKit's bundled Underline is
+    // disabled above; this standalone install is the single `underline` mark (same pattern as
+    // the sanitised Link).
+    Underline,
+    // SCHEMA-SPEC §13 (SCHEMA_VERSION 8): superscript + subscript marks, landed together.
+    // Mutually exclusive in the UI (toolbar x²/x₂) but independent marks in the schema.
+    Superscript,
+    Subscript,
     // Code block with syntax highlighting. Replaces StarterKit's plain codeBlock
     // (disabled above) — same node name `codeBlock`, so existing documents keep
     // working; lowlight tokenises the content for highlight.js themes.
@@ -122,6 +156,23 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // paste/drop upload flow can hit the presign/read REST paths. Never stores base64
     // — only the durable attachId + a controlled storage URL (§3.5).
     OctoImage.configure({ docId }),
+    // SCHEMA-SPEC §8 (SCHEMA_VERSION 9): emoji inline atom node. Bundled GitHub emoji set;
+    // inserts via `:shortcode:` suggestion or the toolbar picker.
+    buildEmoji(),
+    // SCHEMA-SPEC §10 (SCHEMA_VERSION 10): @-mention node. Two sources (@people via the seam,
+    // @docs via docsApi.listDocs) merged into one '@' menu; clicking a doc mention navigates.
+    buildMention({ spaceId }),
+    // SCHEMA-SPEC §11 (SCHEMA_VERSION 11): collapsible details — three nodes landed together
+    // (details > detailsSummary + detailsContent). Register all three; Details is the wrapper.
+    Details.configure({ persist: true, HTMLAttributes: { class: 'octo-details' } }),
+    DetailsSummary,
+    DetailsContent,
+    // SCHEMA-SPEC §12 (SCHEMA_VERSION 12): self-built callout block (variant info/warn/tip/success).
+    Callout,
+    // SCHEMA-SPEC §14 (SCHEMA_VERSION 13): math via KaTeX. The Mathematics meta-extension bundles
+    // the inlineMath + blockMath nodes and the `$…$` / `$$…$$` input rules. throwOnError:false so a
+    // malformed formula renders as red source text instead of throwing during collaboration.
+    Mathematics.configure({ katexOptions: { throwOnError: false } }),
     Placeholder.configure({
       placeholder: "Type '/' for commands…",
     }),
@@ -154,6 +205,7 @@ export function buildPreviewExtensions(docId: string): Extensions {
       undoRedo: false, // no local history in a static preview (v3 renamed `history`).
       codeBlock: false, // replaced by CodeBlockLowlight (same node name).
       link: false, // v3 bundles Link; docs installs a sanitised Link separately.
+      underline: false, // v3 bundles Underline; docs installs it standalone (mirror live editor).
     }),
     Link.configure({
       autolink: true,
@@ -166,11 +218,28 @@ export function buildPreviewExtensions(docId: string): Extensions {
     Highlight.configure({ multicolor: true }),
     TextStyle,
     Color,
+    // Mirror the live editor's schema-touching marks/attrs so a historical version renders
+    // faithfully (SCHEMA_VERSION 5–8): font size + alignment + underline + super/sub-script.
+    FontSize,
+    TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    Underline,
+    Superscript,
+    Subscript,
     CodeBlockLowlight.configure({ lowlight }),
     Table.configure({ resizable: false }),
     TableRow,
     TableHeader,
     TableCell,
     OctoImage.configure({ docId, uploads: false }),
+    // Mirror the schema-touching nodes (SCHEMA_VERSION 9–13). The suggestion machinery never
+    // fires in a read-only preview; buildMention's source lists load lazily, so no network call
+    // happens here. The math + callout + details nodes render faithfully from stored attrs.
+    buildEmoji(),
+    buildMention({}),
+    Details.configure({ persist: true, HTMLAttributes: { class: 'octo-details' } }),
+    DetailsSummary,
+    DetailsContent,
+    Callout,
+    Mathematics.configure({ katexOptions: { throwOnError: false } }),
   ]
 }
