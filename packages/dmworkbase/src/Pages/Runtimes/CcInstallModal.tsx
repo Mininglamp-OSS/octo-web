@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useRef, useId } from "react"
 import { t } from "../../i18n"
 import { validateCcInstall as rawValidate, normalizeGatewayUrl, type UrlErrorCode, type KeyErrorCode } from "./ccInstallValidate"
 import { fetchLlmModels } from "./ccInstallApi"
@@ -16,6 +16,12 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
     const [loadingModels, setLoadingModels] = useState(false)
     const [modelsError, setModelsError] = useState(false)
     const [touched, setTouched] = useState(false)
+    // Per-instance datalist id so two modals (e.g. a future multi-pane layout)
+    // can't have their <input list=…> resolve to the wrong list by document order.
+    const modelListId = useId()
+    // Monotonic token: only the most recent loadModels() may publish its result,
+    // so a slow earlier fetch can't overwrite the list for newer gateway/key input.
+    const fetchSeq = useRef(0)
     // The grey placeholder default is also the value USED when the field is left
     // empty — so the user can just fill the key and proceed without retyping the
     // suggested gateway. A typed value overrides it.
@@ -30,18 +36,36 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
     // valid url + key are required to ask the gateway for its model list.
     const canFetchModels = !v.urlError && !!apiKey.trim() && !loadingModels
     const loadModels = async () => {
+        const seq = ++fetchSeq.current
         setLoadingModels(true)
         setModelsError(false)
         try {
             const list = await fetchLlmModels(normalizeGatewayUrl(effectiveGatewayUrl), apiKey.trim())
+            if (seq !== fetchSeq.current) return // a newer fetch superseded this one
             setModels(list)
             // An empty list is a SUCCESSFUL response with no models — not a
             // failure. Leave the dropdown empty and let the user type a name;
             // only a thrown error (below) is a real fetch failure.
         } catch {
+            if (seq !== fetchSeq.current) return
+            // Drop any previously-fetched list so a stale gateway's models don't
+            // linger after a failed refetch against a different gateway/key.
+            setModels([])
             setModelsError(true)
         } finally {
-            setLoadingModels(false)
+            if (seq === fetchSeq.current) setLoadingModels(false)
+        }
+    }
+
+    // Editing the gateway invalidates a previously-fetched model list (it belonged
+    // to the old gateway); bump the token and clear so the datalist never shows
+    // models from a different gateway than what's in the field.
+    const onGatewayChange = (value: string) => {
+        setGatewayUrl(value)
+        if (models.length > 0 || modelsError) {
+            fetchSeq.current++
+            setModels([])
+            setModelsError(false)
         }
     }
 
@@ -67,7 +91,7 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
                         name="cc-gateway-url"
                         placeholder={DEFAULT_GATEWAY_URL || "https://"}
                         value={gatewayUrl}
-                        onChange={e => setGatewayUrl(e.target.value)}
+                        onChange={e => onGatewayChange(e.target.value)}
                         autoComplete="off"
                         autoCorrect="off"
                         autoCapitalize="off"
@@ -99,14 +123,14 @@ export function CcInstallModal(props: { onSubmit: (gatewayUrl: string, apiKey: s
                         <input
                             id="cc-install-model"
                             className="wk-cc-install-input"
-                            list="cc-install-model-options"
+                            list={modelListId}
                             name="cc-model"
                             placeholder={t("base.runtimes.ccInstall.modelPlaceholder")}
                             value={model}
                             onChange={e => setModel(e.target.value)}
                             autoComplete="off"
                         />
-                        <datalist id="cc-install-model-options">
+                        <datalist id={modelListId}>
                             {models.map((m: string) => <option key={m} value={m} />)}
                         </datalist>
                         <button
