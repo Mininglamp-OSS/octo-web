@@ -70,12 +70,23 @@ describe('MemberPanel — display names (#7)', () => {
     expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy()
   })
 
+  it('synthesizes a pinned owner row when the owner is absent from the members API (#A1/#A3)', async () => {
+    // Backend members API excludes the owner (owner lives in doc_meta, not doc_member). With an
+    // ownerId that is NOT in the returned members, the panel still shows an owner row + badge.
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner_only" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    // The synthetic owner row carries no remove button (it is not a removable member grant).
+    // The two real members each have a remove button → exactly 2 remove buttons, not 3.
+    expect(screen.getAllByText('docs.member.remove')).toHaveLength(2)
+  })
+
   it('shows an empty state (not a blank/invisible section) when there are no members', async () => {
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url.endsWith('/members')) return { data: { items: [] }, status: 200 }
       if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
       return { data: {}, status: 200 }
     }
+    // No ownerId here → no synthetic owner row → genuinely empty → empty state shows.
     render(<MemberPanel docId="d_1" role="admin" space="s_1" />)
     await waitFor(() => expect(screen.getByText('docs.member.currentMembers')).toBeTruthy())
     expect(screen.getByText('docs.member.empty')).toBeTruthy()

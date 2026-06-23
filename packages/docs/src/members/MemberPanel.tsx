@@ -12,7 +12,7 @@ import {
 } from './api.ts'
 import { useMemberNames } from './useMemberNames.ts'
 import { MemberPicker } from './MemberPicker.tsx'
-import { sortMembersForDisplay } from './sort.ts'
+import { sortMembersForDisplay, withSyntheticOwner } from './sort.ts'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
 
 const ROLES: Role[] = ['reader', 'writer', 'admin']
@@ -136,15 +136,15 @@ export function MemberPanel({
         {!loading && members.length === 0 && (
           <p className="octo-member-empty">{t('docs.member.empty')}</p>
         )}
-        {sortMembersForDisplay(members, resolvedOwner).map((m) => {
+        {sortMembersForDisplay(withSyntheticOwner(members, resolvedOwner), resolvedOwner).map((m) => {
           const isOwner = resolvedOwner != null && m.uid === resolvedOwner
-          const removable = resolvedOwner ? canRemoveMember(m, resolvedOwner) : !isOwner
+          const removable = !isOwner && (resolvedOwner ? canRemoveMember(m, resolvedOwner) : true)
           return (
             <div className="octo-member-row" key={m.uid}>
               <span className="octo-uid">
                 {displayName(m.uid)}{' '}
                 {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
-                <small style={{ color: 'var(--octo-muted)' }}> · {m.source}</small>
+                {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {m.source}</small>}
               </span>
               <select
                 value={m.role}
@@ -157,15 +157,18 @@ export function MemberPanel({
                   </option>
                 ))}
               </select>
-              <button
-                type="button"
-                className="octo-tb-btn"
-                disabled={!removable}
-                title={isOwner ? t('docs.member.ownerCannotRemove') : undefined}
-                onClick={() => onRemove(m.uid)}
-              >
-                {t('docs.member.remove')}
-              </button>
+              {/* The owner row is synthetic (owner lives in doc_meta, not doc_member) — it is not
+                  a removable member grant, so it shows no remove button. */}
+              {!isOwner && (
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  disabled={!removable}
+                  onClick={() => onRemove(m.uid)}
+                >
+                  {t('docs.member.remove')}
+                </button>
+              )}
             </div>
           )
         })}
