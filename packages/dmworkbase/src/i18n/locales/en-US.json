@@ -1214,7 +1214,6 @@
   "runtimes.ccInstall.keyRequired": "API Key is required",
   "runtimes.ccInstall.submit": "Install",
   "runtimes.ccInstall.cancel": "Cancel",
-  "runtimes.ccInstall.gatewayHint": "Enter the gateway base URL without a trailing /v1.",
   "runtimes.ccInstall.modelLabel": "Model (optional)",
   "runtimes.ccInstall.modelPlaceholder": "Pick or type a model name",
   "runtimes.ccInstall.fetchModels": "Fetch models",

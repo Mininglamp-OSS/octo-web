@@ -1214,7 +1214,6 @@
   "runtimes.ccInstall.keyRequired": "请填写 API Key",
   "runtimes.ccInstall.submit": "安装",
   "runtimes.ccInstall.cancel": "取消",
-  "runtimes.ccInstall.gatewayHint": "填写网关基础地址，不要带结尾的 /v1。",
   "runtimes.ccInstall.modelLabel": "模型（可选）",
   "runtimes.ccInstall.modelPlaceholder": "选择或输入模型名",
   "runtimes.ccInstall.fetchModels": "拉取模型",
