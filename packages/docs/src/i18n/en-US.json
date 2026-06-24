@@ -40,6 +40,7 @@
     "alignRight": "Align right",
     "alignJustify": "Justify",
     "code": "Inline code",
+    "list": "List",
     "bulletList": "Bullet list",
     "orderedList": "Numbered list",
     "taskList": "To-do list",
