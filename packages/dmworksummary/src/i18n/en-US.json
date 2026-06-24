@@ -311,6 +311,7 @@
     "mySubmitHint": "Your personal summary is ready. Submit it so it can be merged into the team summary.",
     "mySubmitRowName": "Me (pending submission)",
     "teamSummary": "👥 Team summary",
+    "teamGenerating": "Generating team summary…",
     "submittedPeople": "{{count}} submitted",
     "memberStatus": "Member status",
     "participantReports": "Participant reports",

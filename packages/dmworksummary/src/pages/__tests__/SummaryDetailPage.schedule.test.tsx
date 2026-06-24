@@ -2068,6 +2068,246 @@ describe('SummaryDetailPage — 问题3（前端）：自己那条始终用 Cita
         // 自己 [3] 保留（不被隐私清洗）。
         expect(json).toContain('[3]');
         // 他人 [1] 被清（收口逻辑不变）。
-        expect(json).not.toContain('[1]');
+    expect(json).not.toContain('[1]');
+    });
+});
+
+const PROCESSING = 2;
+
+// React 元素树小工具：递归收集所有带某 className（子串匹配）的元素。
+function collectByClass(node: any, cls: string, acc: any[] = []): any[] {
+    if (!node || typeof node !== 'object') return acc;
+    if (Array.isArray(node)) {
+        node.forEach((n) => collectByClass(n, cls, acc));
+        return acc;
+    }
+    const cn = node.props?.className;
+    if (typeof cn === 'string' && cn.split(/\s+/).includes(cls)) acc.push(node);
+    const children = node.props?.children;
+    if (children != null) collectByClass(children, cls, acc);
+    return acc;
+}
+function firstByClass(node: any, cls: string): any {
+    return collectByClass(node, cls)[0];
+}
+
+// ─── 问题2：accept/reject 成功后广播事件刷新左侧列表 ───
+describe('问题2：handleRespondToTask 成功后广播事件（左侧列表刷新）', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('accept 成功后 dispatch summary-task-regenerated + summary-status-change（含 taskId）', async () => {
+        vi.mocked(api.respondToTask).mockResolvedValue(undefined as any);
+        const page = makePage(7);
+        // loadDetail 会被调用，给个最小 mock 避免抛错。
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ task_id: 7 }) as any);
+
+        const events: { type: string; taskIds: any }[] = [];
+        const handler = (e: any) => events.push({ type: e.type, taskIds: e.detail?.taskIds });
+        window.addEventListener('summary-status-change', handler);
+        window.addEventListener('summary-task-regenerated', handler);
+
+        await (page as any).handleRespondToTask('accept');
+
+        window.removeEventListener('summary-status-change', handler);
+        window.removeEventListener('summary-task-regenerated', handler);
+
+        // fail-before：旧实现只 loadDetail()，不 dispatch 任一事件 → events 为空。
+        // pass-after：两个事件都广播，且都带当前 taskId。
+        const regen = events.find((e) => e.type === 'summary-task-regenerated');
+        const statusChange = events.find((e) => e.type === 'summary-status-change');
+        expect(regen).toBeTruthy();
+        expect(regen!.taskIds).toEqual([7]);
+        expect(statusChange).toBeTruthy();
+        expect(statusChange!.taskIds).toEqual([7]);
+    });
+
+    it('reject 成功后同样广播（列表能刷掉「待确认」）', async () => {
+        vi.mocked(api.respondToTask).mockResolvedValue(undefined as any);
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ task_id: 9 }) as any);
+        const page = makePage(9);
+
+        const seen: string[] = [];
+        const handler = (e: any) => seen.push(e.type);
+        window.addEventListener('summary-task-regenerated', handler);
+        await (page as any).handleRespondToTask('reject');
+        window.removeEventListener('summary-task-regenerated', handler);
+
+        expect(seen).toContain('summary-task-regenerated');
+    });
+
+    it('respondToTask 失败时不广播任何刷新事件', async () => {
+        vi.mocked(api.respondToTask).mockRejectedValue(new Error('boom'));
+        const page = makePage(11);
+        const seen: string[] = [];
+        const handler = (e: any) => seen.push(e.type);
+        window.addEventListener('summary-task-regenerated', handler);
+        window.addEventListener('summary-status-change', handler);
+        await (page as any).handleRespondToTask('accept');
+        window.removeEventListener('summary-task-regenerated', handler);
+        window.removeEventListener('summary-status-change', handler);
+        expect(seen).toHaveLength(0);
+    });
+});
+
+// ─── 问题3：报告卡片收起触发点收窄到 header + toggle，正文区不再绑点击 ───
+describe('问题3：展开后点正文不收起（onClick 只在 header/toggle）', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    const longContent = '正文'.repeat(80); // >100 字 → needsTruncate=true
+
+    function renderItemsTree() {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: multiCollabDetail(),
+            membersLoading: false,
+            expandedReports: { u_b: true }, // u_b 已展开（验证展开态下正文区不绑点击）
+            members: [
+                submittedMember('test-uid', '我', '我的短报告'),
+                submittedMember('u_b', '李四', longContent),
+            ],
+        };
+        return (page as any).renderParticipantReports();
+    }
+
+    it('外层卡片 item div 不再绑 onClick', () => {
+        const tree = renderItemsTree();
+        const items = collectByClass(tree, 'summary-detail-participant-report-item');
+        expect(items.length).toBeGreaterThan(0);
+        items.forEach((it) => expect(it.props.onClick).toBeUndefined());
+    });
+
+    it('正文区 content div 不绑 onClick（展开后可选字/点引用）', () => {
+        const tree = renderItemsTree();
+        const contents = collectByClass(tree, 'summary-detail-participant-report-content');
+        expect(contents.length).toBeGreaterThan(0);
+        contents.forEach((c) => expect(c.props.onClick).toBeUndefined());
+    });
+
+    it('needsTruncate 的 header 行绑 onClick 且带 clickable', () => {
+        const tree = renderItemsTree();
+        const headers = collectByClass(tree, 'summary-detail-participant-report-header');
+        // 找到 u_b（长正文，needsTruncate）那条 header：className 含 clickable。
+        const clickableHeader = headers.find(
+            (h) => typeof h.props.className === 'string' && h.props.className.includes('clickable'),
+        );
+        expect(clickableHeader).toBeTruthy();
+        expect(typeof clickableHeader.props.onClick).toBe('function');
+    });
+
+    it('toggle 行绑 onClick 且带 clickable，点击触发 toggleReport', () => {
+        const page = makePage(1);
+        const toggleSpy = vi.spyOn(page as any, 'toggleReport');
+        page.state = {
+            ...(page.state as any),
+            detail: multiCollabDetail(),
+            membersLoading: false,
+            expandedReports: {},
+            members: [
+                submittedMember('test-uid', '我', '短'),
+                submittedMember('u_b', '李四', longContent),
+            ],
+        };
+        const tree = (page as any).renderParticipantReports();
+        const toggle = firstByClass(tree, 'summary-detail-participant-report-toggle');
+        expect(toggle).toBeTruthy();
+        expect(toggle.props.className).toContain('clickable');
+        expect(typeof toggle.props.onClick).toBe('function');
+        toggle.props.onClick();
+        expect(toggleSpy).toHaveBeenCalledWith('u_b');
+    });
+
+    it('短正文（!needsTruncate）的 header 不带 clickable、onClick 是空操作', () => {
+        const page = makePage(1);
+        const toggleSpy = vi.spyOn(page as any, 'toggleReport');
+        page.state = {
+            ...(page.state as any),
+            detail: multiCollabDetail(),
+            membersLoading: false,
+            expandedReports: {},
+            members: [
+                submittedMember('test-uid', '我', '短'),
+                submittedMember('u_b', '李四', '也很短'),
+            ],
+        };
+        const tree = (page as any).renderParticipantReports();
+        const headers = collectByClass(tree, 'summary-detail-participant-report-header');
+        headers.forEach((h) => {
+            if (typeof h.props.className === 'string') {
+                expect(h.props.className).not.toContain('clickable');
+            }
+            // onClick 存在但因 needsTruncate=false 调用后不触发 toggleReport。
+            if (typeof h.props.onClick === 'function') h.props.onClick();
+        });
+        expect(toggleSpy).not.toHaveBeenCalled();
+    });
+});
+
+// ─── 问题4：团队总结「生成中」提示 ───
+describe('问题4：renderTeamSummary 在多人 + PROCESSING 时显示生成中提示', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('多人 + status=PROCESSING + result 尚未产出 → 显示 teamGenerating', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: multiCollabDetail({}, { status: PROCESSING, result: null }),
+            members: [member('test-uid'), member('u_b')],
+        };
+        const tree = (page as any).renderTeamSummary();
+        // fail-before：!detail.result → return null（无提示）。pass-after：返回生成中块。
+        expect(tree).not.toBeNull();
+        const json = JSON.stringify(tree);
+        expect(json).toContain('summary.detail.teamGenerating');
+        expect(json).toContain('summary-detail-team-generating');
+        // 仍带「团队总结」标题。
+        expect(json).toContain('summary.detail.teamSummary');
+    });
+
+    it('多人 + PROCESSING 即使有旧 result 也优先显示生成中（重算期）', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: multiCollabDetail({}, { status: PROCESSING }), // result 为旧版本
+            members: [member('test-uid'), member('u_b')],
+        };
+        const json = JSON.stringify((page as any).renderTeamSummary());
+        expect(json).toContain('summary.detail.teamGenerating');
+    });
+
+    it('单人 + PROCESSING 不显示团队生成中（members<=1 → null）', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: multiCollabDetail({}, { status: PROCESSING, result: null }),
+            members: [member('test-uid')],
+        };
+        expect((page as any).renderTeamSummary()).toBeNull();
+    });
+
+    it('多人 + COMPLETED 走原有「已完成团队总结」分支（不显示生成中）', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: multiCollabDetail({}, { status: COMPLETED }),
+            members: [submittedMember('test-uid', '我', 'a'), submittedMember('u_b', '李四', 'b')],
+        };
+        const json = JSON.stringify((page as any).renderTeamSummary());
+        expect(json).not.toContain('summary.detail.teamGenerating');
+        // 仍渲染已完成团队总结内容。
+        expect(json).toContain('team content');
+    });
+
+    it('多人 + PROCESSING + editingTeamSummary 不抢编辑态前的生成中提示（生成中优先）', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: multiCollabDetail({ can_edit_team: true }, { status: PROCESSING }),
+            editingTeamSummary: true,
+            members: [member('test-uid'), member('u_b')],
+        };
+        // 重算期(PROCESSING)应显示生成中，而非进入编辑器。
+        const json = JSON.stringify((page as any).renderTeamSummary());
+        expect(json).toContain('summary.detail.teamGenerating');
     });
 });

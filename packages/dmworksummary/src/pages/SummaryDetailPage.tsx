@@ -350,6 +350,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             await api.respondToTask(this.taskId, action);
             Toast.success(action === "accept" ? t("summary.action.accepted") : t("summary.action.rejected"));
             this.loadDetail();
+            // 问题2：accept/reject 成功后需通知左侧列表刷新状态（否则仍显“待确认”）。
+            // SummaryListPage 监听 "summary-task-regenerated" → loadData() 全量重拉，
+            // 是实际能刷新列表卡片状态的事件；同时保留 "summary-status-change"
+            // （携 taskIds，与现有广播机制一致）供详情页自身及其他潜在监听者。
+            window.dispatchEvent(new CustomEvent("summary-status-change", { detail: { taskIds: [this.taskId] } }));
+            window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskIds: [this.taskId] } }));
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.operationFailed"));
         }
@@ -1085,7 +1091,25 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     renderTeamSummary() {
         const { detail, members, editingTeamSummary } = this.state;
         const { t } = this.context;
-        if (!detail || !detail.result) return null;
+        if (!detail) return null;
+        // 问题4：多人协作任务（members.length > 1）且 status===PROCESSING 时，
+        // 团队总结正在生成/重算（参与者退出后后端把任务拉回 Processing 重算 meta worker）。
+        // 此时 detail.result 可能尚未产出或为旧版本，应显示“生成中”提示，
+        // 所以该判断必须放在 `if (!detail.result) return null` 之前。
+        if (members.length > 1 && detail.status === TaskStatus.PROCESSING) {
+            return (
+                <div className="summary-detail-team">
+                    <div className="summary-detail-section-header">
+                        <span>{t("summary.detail.teamSummary")}</span>
+                    </div>
+                    <div className="summary-detail-team-generating">
+                        <Spin size="small" />
+                        <span>{t("summary.detail.teamGenerating")}</span>
+                    </div>
+                </div>
+            );
+        }
+        if (!detail.result) return null;
         if (members.length <= 1) return null;
         const submittedCount = members.filter((m) => m.submitted_at && m.content).length;
         if (submittedCount === 0) return null;
@@ -1330,10 +1354,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     return (
                         <div
                             key={m.user_id}
-                            className={`summary-detail-participant-report-item${needsTruncate ? " clickable" : ""}`}
-                            onClick={() => needsTruncate && this.toggleReport(m.user_id)}
+                            className="summary-detail-participant-report-item"
                         >
-                            <div className="summary-detail-participant-report-header">
+                            {/* 问题3：收起触发点收窄为 header 行与底部 toggle 行，正文区不再绑点击，
+                                避免展开后选文字/点 [n] 引用误触收起。仅 needsTruncate 时可点、带手型光标。 */}
+                            <div
+                                className={`summary-detail-participant-report-header${needsTruncate ? " clickable" : ""}`}
+                                onClick={() => needsTruncate && this.toggleReport(m.user_id)}
+                            >
                                 <span>{m.user_name}</span>
                                 <span style={{ color: "var(--semi-color-text-3)", fontWeight: 400 }}>·</span>
                                 <span style={{ fontSize: 13, color: "var(--semi-color-text-2)", fontWeight: 400 }}>
@@ -1374,7 +1402,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 )}
                             </div>
                             {needsTruncate && (
-                                <div className="summary-detail-participant-report-toggle">
+                                <div
+                                    className="summary-detail-participant-report-toggle clickable"
+                                    onClick={() => this.toggleReport(m.user_id)}
+                                >
                                     {expanded ? t("summary.detail.collapse") : t("summary.detail.expandAll")}
                                 </div>
                             )}
@@ -1646,7 +1677,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         gap: 4,
                         fontSize: 12,
                         color: "var(--semi-color-text-2)",
-                        marginTop: 4,
                     }}
                 >
                     <IconClock size="small" />
@@ -1666,7 +1696,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     gap: 4,
                     fontSize: 12,
                     color: "var(--semi-color-text-1)",
-                    marginTop: 4,
                 }}
             >
                 <IconClock size="small" style={{ color: "var(--semi-color-primary)" }} />

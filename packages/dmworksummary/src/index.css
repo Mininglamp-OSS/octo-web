@@ -316,6 +316,20 @@
     border-bottom: 1px solid var(--semi-color-border);
 }
 
+/*
+ * 问题1：定时摘要行（renderScheduleSummary）是 .summary-detail-header 的直接子元素，
+ * 不在 .summary-detail-header-inner 里，所以默认贴 header 左边缘，比正文左起点更靠左。
+ * 正文容器 .summary-detail-content-inner 为 max-width:1400px; margin:0 auto; padding:20px 28px，
+ * 故让定时行也用同一套居中 + 28px 横向内边距，使其文字左起点与正文左起点视觉对齐。
+ * 同时把原内联 marginTop:4 收进 CSS，正常/inactive 两个变体共用此类。
+ */
+.summary-detail-schedule-summary {
+    max-width: 1400px;
+    margin: 4px auto 0;
+    padding: 0 28px;
+    box-sizing: border-box;
+}
+
 .summary-detail-header-inner {
     max-width: 1400px;
     margin: 0 auto;
@@ -632,6 +646,16 @@
     border-top: 1px solid var(--semi-color-border);
 }
 
+/* 问题4：团队总结“生成中”提示块（spin + 文案）。 */
+.summary-detail-team-generating {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--semi-color-text-2);
+    padding: 8px 0;
+}
+
 .summary-detail-members-list {
     display: flex;
     flex-direction: column;
@@ -710,6 +734,27 @@
 .summary-detail-participant-report-item.clickable:hover {
     background: var(--semi-color-fill-1);
     border-color: var(--semi-color-primary-light-active);
+}
+
+/*
+ * 问题3：收起触发点从整张卡片收窄到 header 行与 toggle 行。
+ * 手型光标仅加在这两个可点区域（.clickable），正文区保持默认光标可选文字。
+ * header hover 加轻微背景反馈、toggle 本身为 primary 色链接样式 hover 加深。
+ */
+.summary-detail-participant-report-header.clickable {
+    cursor: pointer;
+}
+
+.summary-detail-participant-report-header.clickable:hover {
+    color: var(--semi-color-primary);
+}
+
+.summary-detail-participant-report-toggle.clickable {
+    cursor: pointer;
+}
+
+.summary-detail-participant-report-toggle.clickable:hover {
+    color: var(--semi-color-primary-active);
 }
 
 .summary-detail-participant-report-header {

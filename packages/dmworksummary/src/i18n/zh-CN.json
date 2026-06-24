@@ -311,6 +311,7 @@
     "mySubmitHint": "你的个人总结已生成，提交后才会汇入团队总结。",
     "mySubmitRowName": "我（待提交）",
     "teamSummary": "👥 团队汇总",
+    "teamGenerating": "团队协作总结生成中…",
     "submittedPeople": "{{count}} 人提交",
     "memberStatus": "成员状态",
     "participantReports": "参与者报告",
