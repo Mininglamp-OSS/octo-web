@@ -9,7 +9,7 @@
 // mapping is unit-testable without a live editor.
 
 import { Extension } from '@tiptap/core'
-import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state'
+import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import type { Node as PMNode } from '@tiptap/pm/model'
 
@@ -62,6 +62,55 @@ export function findMatches(doc: PMNode, query: string, opts: FindOptions = {}):
     return false // text block fully handled; don't descend into its inline children
   })
   return matches
+}
+
+/**
+ * Expand every collapsed `details` block that contains `pos`, so a match hidden inside a folded
+ * (and possibly nested) details becomes visible before we scroll to it. Walks the ancestor chain
+ * of `pos`; any details node whose `open` attr is false is set open in a single transaction
+ * (handles nested folds — details inside details — by opening each level on the path).
+ *
+ * Pure over (state, dispatch): pass the editor's state + dispatch. Returns true if it opened at
+ * least one details (the caller should then re-measure coords on the next frame, since opening
+ * changes document height/layout), false if there was nothing to open.
+ */
+export function expandAncestorDetails(
+  state: EditorState,
+  dispatch: ((tr: Transaction) => void) | undefined,
+  pos: number,
+): boolean {
+  const detailsType = state.schema.nodes.details
+  if (!detailsType) return false // details extension not registered (e.g. minimal test editor)
+  const clamped = Math.max(0, Math.min(pos, state.doc.content.size))
+  let $pos
+  try {
+    $pos = state.doc.resolve(clamped)
+  } catch {
+    return false
+  }
+
+  // Collect the doc positions of every closed details ancestor on the path to `pos`.
+  const toOpen: number[] = []
+  for (let depth = $pos.depth; depth > 0; depth--) {
+    const node = $pos.node(depth)
+    if (node.type === detailsType && !node.attrs.open) {
+      toOpen.push($pos.before(depth))
+    }
+  }
+  if (toOpen.length === 0) return false
+
+  if (dispatch) {
+    const tr = state.tr
+    for (const at of toOpen) {
+      const node = tr.doc.nodeAt(at)
+      if (node && node.type === detailsType) {
+        tr.setNodeMarkup(at, undefined, { ...node.attrs, open: true })
+      }
+    }
+    // Don't disturb the find decorations/state; this is a pure layout-affecting edit.
+    dispatch(tr)
+  }
+  return true
 }
 
 /**

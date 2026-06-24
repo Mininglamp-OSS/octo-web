@@ -1,11 +1,33 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
-import { findMatches, planReplaceAll, FindReplace, getFindState, revealMatchInView } from './findReplace.ts'
+import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details'
+import {
+  findMatches,
+  planReplaceAll,
+  FindReplace,
+  getFindState,
+  revealMatchInView,
+  expandAncestorDetails,
+} from './findReplace.ts'
 
 function makeEditor(html: string): Editor {
   return new Editor({
     extensions: [StarterKit.configure({ undoRedo: false }), FindReplace],
+    content: html,
+  })
+}
+
+/** Editor with the collapsible details nodes registered, for expand-on-reveal tests. */
+function makeDetailsEditor(html: string): Editor {
+  return new Editor({
+    extensions: [
+      StarterKit.configure({ undoRedo: false }),
+      Details.configure({ persist: true }),
+      DetailsSummary,
+      DetailsContent,
+      FindReplace,
+    ],
     content: html,
   })
 }
@@ -216,5 +238,71 @@ describe('revealMatchInView (scroll-to-match)', () => {
     expect(scrollTo).toHaveBeenCalledTimes(1)
     const arg = scrollTo.mock.calls[0][0] as { top: number }
     expect(arg.top).toBeLessThan(500) // scrolled upward to clear the sticky header
+  })
+})
+
+describe('expandAncestorDetails (reveal matches hidden in collapsed details)', () => {
+  it('opens a collapsed details that contains the position', () => {
+    editor = makeDetailsEditor(
+      '<details><summary>head</summary><div data-type="detailsContent"><p>find asterisk</p></div></details>',
+    )
+    // Locate the "as" match inside the (closed) details content.
+    const matches = findMatches(editor.state.doc, 'as')
+    expect(matches.length).toBeGreaterThan(0)
+    const pos = matches[0].from
+
+    // Sanity: the enclosing details starts closed.
+    let detailsClosed = false
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'details' && !node.attrs.open) detailsClosed = true
+    })
+    expect(detailsClosed).toBe(true)
+
+    const opened = expandAncestorDetails(editor.state, editor.view.dispatch, pos)
+    expect(opened).toBe(true)
+
+    let anyOpen = false
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'details' && node.attrs.open) anyOpen = true
+    })
+    expect(anyOpen).toBe(true)
+  })
+
+  it('opens every level of nested collapsed details on the path to the match', () => {
+    editor = makeDetailsEditor(
+      '<details><summary>outer</summary><div data-type="detailsContent">' +
+        '<details><summary>inner</summary><div data-type="detailsContent"><p>deep asterisk</p></div></details>' +
+        '</div></details>',
+    )
+    const pos = findMatches(editor.state.doc, 'as')[0].from
+    const opened = expandAncestorDetails(editor.state, editor.view.dispatch, pos)
+    expect(opened).toBe(true)
+
+    // Both the outer and inner details should now be open.
+    let openCount = 0
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'details' && node.attrs.open) openCount += 1
+    })
+    expect(openCount).toBe(2)
+  })
+
+  it('is a no-op (returns false) when the details on the path is already open', () => {
+    editor = makeDetailsEditor(
+      '<details open><summary>head</summary><div data-type="detailsContent"><p>open asterisk</p></div></details>',
+    )
+    const pos = findMatches(editor.state.doc, 'as')[0].from
+    expect(expandAncestorDetails(editor.state, editor.view.dispatch, pos)).toBe(false)
+  })
+
+  it('returns false for a position not inside any details', () => {
+    editor = makeDetailsEditor('<p>plain asterisk paragraph</p>')
+    const pos = findMatches(editor.state.doc, 'as')[0].from
+    expect(expandAncestorDetails(editor.state, editor.view.dispatch, pos)).toBe(false)
+  })
+
+  it('returns false when the details node type is not registered', () => {
+    editor = makeEditor('<p>plain asterisk</p>')
+    const pos = findMatches(editor.state.doc, 'as')[0].from
+    expect(expandAncestorDetails(editor.state, editor.view.dispatch, pos)).toBe(false)
   })
 })
