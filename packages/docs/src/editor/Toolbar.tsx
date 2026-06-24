@@ -5,7 +5,7 @@ import type { Editor } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
 import { pickAndUploadFile } from './fileUpload.ts'
 import { promptAndInsertBookmark } from './bookmarkInsert.ts'
-import { getFindState } from './findReplace.ts'
+import { getFindState, revealMatchInView } from './findReplace.ts'
 import { pickerEmojis } from './emoji.ts'
 import { promptAndInsertMath } from './mathInsert.ts'
 import { sanitizeLinkHref } from './sanitize.ts'
@@ -421,9 +421,16 @@ function FindBar({ editor, onClose }: { editor: Editor; onClose: () => void }) {
   const [replacement, setReplacement] = useState('')
   const [caseSensitive, setCaseSensitive] = useState(false)
 
-  // Push the term into the plugin whenever it / the case flag changes.
+  // Push the term into the plugin whenever it / the case flag changes, then bring the first
+  // match into view (revealMatchInView no-ops if it's already comfortably visible, so live typing
+  // doesn't jerk-scroll when the first hit is already on screen).
   useEffect(() => {
     editor.commands.setFindQuery(query, caseSensitive)
+    requestAnimationFrame(() => {
+      const f = getFindState(editor.state)
+      const m = f.matches[f.index]
+      if (m) revealMatchInView(editor.view, m.from)
+    })
   }, [editor, query, caseSensitive])
 
   // Clear the search (and its decorations) when the bar unmounts.
@@ -437,7 +444,18 @@ function FindBar({ editor, onClose }: { editor: Editor; onClose: () => void }) {
   function revealCurrent() {
     const f = getFindState(editor.state)
     const m = f.matches[f.index]
-    if (m) editor.chain().setTextSelection({ from: m.from, to: m.to }).scrollIntoView().run()
+    if (!m) return
+    // Move the caret onto the match (so the active decoration + selection agree), but do the
+    // actual scrolling ourselves: ProseMirror's native scrollIntoView only clips the match to the
+    // viewport edge, where our sticky toolbar then hides it. revealMatchInView centers it in the
+    // usable area below the sticky header. Run on the next frame so the selection/decoration from
+    // this dispatch have committed and coordsAtPos is accurate.
+    editor.chain().setTextSelection({ from: m.from, to: m.to }).run()
+    requestAnimationFrame(() => {
+      const cur = getFindState(editor.state)
+      const target = cur.matches[cur.index]
+      if (target) revealMatchInView(editor.view, target.from)
+    })
   }
 
   return (

@@ -10,7 +10,7 @@
 
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state'
-import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import type { Node as PMNode } from '@tiptap/pm/model'
 
 export interface FindMatch {
@@ -62,6 +62,83 @@ export function findMatches(doc: PMNode, query: string, opts: FindOptions = {}):
     return false // text block fully handled; don't descend into its inline children
   })
   return matches
+}
+
+/**
+ * Scroll the editor so the match at `pos` (a ProseMirror document position, e.g. a match's `from`)
+ * is comfortably inside the visible viewport — fixing the bug where navigating (‹/›) to an
+ * off-screen match advanced the counter but never brought the match into view.
+ *
+ * ProseMirror's built-in tr.scrollIntoView() only scrolls just enough to clip the cursor to the
+ * viewport edge, so a match lands flush against (and behind) our sticky toolbar + find bar. We do
+ * our own scroll instead: find the scroll container, measure the sticky header that overlaps the
+ * top, and scroll the match to the vertical center of the *usable* area below that header. Works
+ * for matches anywhere (off-screen, inside table cells, inside expanded details).
+ *
+ * Returns true if it scrolled (or the match was already comfortably visible), false if it could
+ * not resolve the geometry (no live DOM — e.g. unit tests with a detached view).
+ */
+export function revealMatchInView(view: EditorView | null | undefined, pos: number): boolean {
+  if (!view || typeof view.coordsAtPos !== 'function') return false
+  let coords: { top: number; bottom: number; left: number; right: number }
+  try {
+    coords = view.coordsAtPos(pos)
+  } catch {
+    return false
+  }
+  if (!coords) return false
+
+  // The scroll container is the editor pane (.octo-doc--editor); fall back to the nearest
+  // scrollable ancestor of the editor DOM if the class ever changes.
+  const dom = view.dom as HTMLElement
+  const scroller = findScrollContainer(dom)
+  if (!scroller) return false
+
+  const scRect = scroller.getBoundingClientRect()
+  // Height of any sticky header (toolbar + find bar) pinned at the top of the scroll container,
+  // so we never scroll the match to where it would hide behind it. Measured live (the find bar
+  // grows/shrinks with the replace row), with a small safety gap.
+  const stickyOffset = measureStickyTop(scroller) + 12
+
+  const usableTop = scRect.top + stickyOffset
+  const usableBottom = scRect.bottom - 12
+  const matchTop = coords.top
+  const matchBottom = coords.bottom
+
+  // Already fully inside the usable band → nothing to do (avoid jitter on adjacent matches).
+  if (matchTop >= usableTop && matchBottom <= usableBottom) return true
+
+  // Center the match within the usable band.
+  const usableCenter = (usableTop + usableBottom) / 2
+  const matchCenter = (matchTop + matchBottom) / 2
+  const delta = matchCenter - usableCenter
+  const maxScroll = scroller.scrollHeight - scroller.clientHeight
+  const next = Math.max(0, Math.min(maxScroll, scroller.scrollTop + delta))
+  scroller.scrollTo({ top: next, behavior: 'smooth' })
+  return true
+}
+
+/** Find the closest scrollable ancestor (the editor pane), starting from the editor DOM. */
+function findScrollContainer(from: HTMLElement): HTMLElement | null {
+  let el: HTMLElement | null = from
+  while (el) {
+    const known = el.classList?.contains('octo-doc--editor')
+    const style = el.ownerDocument?.defaultView?.getComputedStyle(el)
+    const scrollable =
+      style && /(auto|scroll)/.test(style.overflowY) && el.scrollHeight > el.clientHeight
+    if (known || scrollable) return el
+    el = el.parentElement
+  }
+  return null
+}
+
+/** Measure the combined height of sticky elements pinned to the top of the scroll container. */
+function measureStickyTop(scroller: HTMLElement): number {
+  // The toolbar + find bar live in .octo-toolbar-wrap (position: sticky; top: 0).
+  const wrap = scroller.querySelector<HTMLElement>('.octo-toolbar-wrap')
+  if (!wrap) return 0
+  const r = wrap.getBoundingClientRect()
+  return Math.max(0, r.height)
 }
 
 /** Plan a replace-all as right-to-left edits so earlier positions stay valid as we splice. */
