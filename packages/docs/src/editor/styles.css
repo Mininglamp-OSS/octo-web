@@ -158,21 +158,8 @@
   opacity: 0.4;
   cursor: default;
 }
-.octo-link-input {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.octo-link-input input {
-  border: 1px solid var(--octo-border);
-  border-radius: 6px;
-  padding: 3px 8px;
-  font-size: 13px;
-}
-/* C7: link popup stacks a "text" + "URL" field; give them a sensible min width. */
-.octo-link-popover input {
-  min-width: 150px;
-}
+/* (Legacy inline link-input styles removed in batch 7 — the link editor is now a floating panel,
+   see .octo-link-popover / .octo-link-field below near the colour-popover styles.) */
 
 /* Find & replace bar (toolbar item ⑪): sits directly under the toolbar, sticky with it. */
 .octo-find-bar {
@@ -282,6 +269,78 @@
   font-size: 12px;
   padding: 3px 6px;
   cursor: pointer;
+}
+
+/* List dropdown menu (toolbar item ⑧, batch 7): floats below the list icon button (reusing the
+   .octo-color-control relative wrapper + .octo-color-popover float), but lays the items out
+   vertically as a menu of icon+label rows instead of a horizontal swatch row. */
+.octo-list-menu {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px;
+  min-width: 160px;
+}
+.octo-list-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--octo-fg);
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+.octo-list-menu-item:hover {
+  background: var(--octo-hover);
+}
+.octo-list-menu-item.is-active {
+  background: var(--octo-accent);
+  color: #fff;
+}
+.octo-list-menu-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.octo-list-menu-label {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+/* Link popover (toolbar item ⑧, batch 7 — item 5): a floating panel anchored below the link icon
+   button (via the .octo-color-control relative wrapper + .octo-color-popover absolute float), so
+   editing a URL no longer widens the toolbar in-line. Stacks the text + URL fields vertically. */
+.octo-link-control {
+  display: inline-flex;
+}
+.octo-link-popover {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px;
+  min-width: 240px;
+}
+.octo-link-field {
+  border: 1px solid var(--octo-border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  background: var(--octo-bg);
+  color: var(--octo-fg);
+  width: 100%;
+  box-sizing: border-box;
+}
+.octo-link-field:focus {
+  outline: none;
+  border-color: var(--octo-accent);
+}
+.octo-link-popover-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .octo-bubble-menu,
