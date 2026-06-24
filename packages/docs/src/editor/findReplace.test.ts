@@ -1,7 +1,7 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
-import { findMatches, planReplaceAll, FindReplace, getFindState } from './findReplace.ts'
+import { findMatches, planReplaceAll, FindReplace, getFindState, revealMatchInView } from './findReplace.ts'
 
 function makeEditor(html: string): Editor {
   return new Editor({
@@ -121,5 +121,100 @@ describe('FindReplace commands + decorations', () => {
     const fs = getFindState(editor.state)
     const decos = fs.decorations.find()
     expect(decos).toHaveLength(2)
+  })
+})
+
+describe('revealMatchInView (scroll-to-match)', () => {
+  // A minimal fake of the pieces revealMatchInView reads: a scroll container with geometry, an
+  // editor DOM whose closest scrollable ancestor is that container, and coordsAtPos. jsdom has no
+  // real layout, so we synthesize rects.
+  function makeFakeView(opts: {
+    matchTop: number
+    matchBottom: number
+    scrollerRect: { top: number; bottom: number }
+    scrollTop: number
+    scrollHeight: number
+    clientHeight: number
+    stickyHeight: number
+  }) {
+    const scrollTo = vi.fn()
+    const wrap = {
+      getBoundingClientRect: () => ({ height: opts.stickyHeight }),
+    }
+    const scroller = {
+      classList: { contains: (c: string) => c === 'octo-doc--editor' },
+      getBoundingClientRect: () => opts.scrollerRect,
+      querySelector: (sel: string) => (sel === '.octo-toolbar-wrap' ? wrap : null),
+      scrollTop: opts.scrollTop,
+      scrollHeight: opts.scrollHeight,
+      clientHeight: opts.clientHeight,
+      scrollTo,
+      parentElement: null,
+    } as unknown as HTMLElement
+    const dom = {
+      classList: { contains: () => false },
+      parentElement: scroller,
+      ownerDocument: { defaultView: { getComputedStyle: () => ({ overflowY: 'visible' }) } },
+    } as unknown as HTMLElement
+    const view = {
+      dom,
+      coordsAtPos: () => ({ top: opts.matchTop, bottom: opts.matchBottom, left: 0, right: 10 }),
+    }
+    return { view, scrollTo }
+  }
+
+  it('returns false when there is no live view', () => {
+    expect(revealMatchInView(null, 5)).toBe(false)
+    expect(revealMatchInView(undefined, 5)).toBe(false)
+  })
+
+  it('scrolls an off-screen (below the fold) match into the usable band', () => {
+    // Scroll container occupies viewport 0..600; sticky header 100px tall. Match is at 1200 —
+    // far below the visible area → must scroll down.
+    const { view, scrollTo } = makeFakeView({
+      matchTop: 1200,
+      matchBottom: 1220,
+      scrollerRect: { top: 0, bottom: 600 },
+      scrollTop: 0,
+      scrollHeight: 5000,
+      clientHeight: 600,
+      stickyHeight: 100,
+    })
+    expect(revealMatchInView(view as never, 42)).toBe(true)
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+    const arg = scrollTo.mock.calls[0][0] as { top: number }
+    expect(arg.top).toBeGreaterThan(0) // scrolled downward toward the match
+  })
+
+  it('does not scroll when the match is already comfortably visible', () => {
+    // Match at 300..320, usable band ~112..588 → already inside, no scroll.
+    const { view, scrollTo } = makeFakeView({
+      matchTop: 300,
+      matchBottom: 320,
+      scrollerRect: { top: 0, bottom: 600 },
+      scrollTop: 0,
+      scrollHeight: 5000,
+      clientHeight: 600,
+      stickyHeight: 100,
+    })
+    expect(revealMatchInView(view as never, 42)).toBe(true)
+    expect(scrollTo).not.toHaveBeenCalled()
+  })
+
+  it('keeps a match hidden behind the sticky header out, scrolling it below the header', () => {
+    // Match at top=40 sits under the 100px sticky header (usable band starts ~112) → scroll up.
+    const { view, scrollTo } = makeFakeView({
+      matchTop: 40,
+      matchBottom: 60,
+      scrollerRect: { top: 0, bottom: 600 },
+      scrollTop: 500,
+      scrollHeight: 5000,
+      clientHeight: 600,
+      stickyHeight: 100,
+    })
+    expect(revealMatchInView(view as never, 42)).toBe(true)
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+    const arg = scrollTo.mock.calls[0][0] as { top: number }
+    expect(arg.top).toBeLessThan(500) // scrolled upward to clear the sticky header
   })
 })
