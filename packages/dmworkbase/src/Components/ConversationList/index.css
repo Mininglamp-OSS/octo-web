@@ -529,6 +529,16 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   border: 1px solid var(--wk-color-white);
 }
 
+/* compact 列表头像更小（22x22 vs 最近列表 32x32），在线圆点等比缩小并贴右下角，
+ * 与左上角未读红点错开、不撑乱紧凑排版。复用 .wk-onlinestatusbadge 同色同形。 */
+.wk-conv-compact-icon .wk-onlinestatusbadge {
+  width: 7px;
+  height: 7px;
+  right: -1px;
+  bottom: -1px;
+  border-width: 1.5px;
+}
+
 .wk-conv-compact-name {
   flex: 1;
   font-size: var(--wk-text-size-base);
