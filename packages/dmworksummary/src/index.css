@@ -562,6 +562,11 @@
     flex-wrap: wrap;
 }
 
+/* 团队总结当前版本生成时间 Tag：轻量、语义与「版本」相邻。 */
+.summary-detail-team-generated-time {
+    color: var(--semi-color-text-2);
+}
+
 .summary-detail-content-box {
     background: var(--semi-color-fill-0);
     border-radius: 6px;

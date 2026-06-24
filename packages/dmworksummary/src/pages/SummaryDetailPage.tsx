@@ -225,6 +225,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 this.loadMembers(seq);
             }
         } catch (err: any) {
+            // FE-1（切 task 竞态）：迟到的失败响应也要校验归属，否则旧 task 的加载失败
+            // 会把错误/loading 状态写到已切换的新 task 上。
+            if (this.scheduleLoadSeq !== seq || this.taskId !== requestTaskId) return;
             this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
         }
     }
@@ -364,11 +367,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // 问题3：creator 移除某成员。成功后重拉详情（后端已重算团队总结）。
     handleRemoveMember = async (uid: string) => {
         if (this.taskId == null) return;
+        const requestTaskId = this.taskId;
         try {
             await api.removeMember(this.taskId, uid);
+            // FE-1（切 task 竞态）：await 期间可能已切走，迟到响应不能在新 task 上弹提示/重拉。
+            if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.removeMemberSuccess"));
             this.loadDetail();
         } catch (err: any) {
+            if (this.taskId !== requestTaskId) return;
             Toast.error(err.message || t("summary.detail.removeMemberFailed"));
         }
     };
@@ -376,11 +383,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // 问题3：非 creator 参与者退出多人协作。成功后返回列表（popToRoot 回到根）。
     handleLeaveTask = async () => {
         if (this.taskId == null) return;
+        const requestTaskId = this.taskId;
         try {
             await api.leaveSummary(this.taskId);
+            // FE-1（切 task 竞态）：await 期间可能已切走，迟到响应不能在新 task 上弹提示/导航。
+            if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.leaveSuccess"));
             WKApp.routeRight.popToRoot();
         } catch (err: any) {
+            if (this.taskId !== requestTaskId) return;
             Toast.error(err.message || t("summary.detail.leaveFailed"));
         }
     };
@@ -1144,6 +1155,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             </Tag>
                             <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
                                 {t("summary.common.version", { values: { version: detail.result.version } })}
+                            </Tag>
+                            {/* 团队总结当前版本的生成时间：与「版本」Tag 语义相邻，与 single 视图（985行）保持一致的容错（formatDate 对 null 返回 "-"）。 */}
+                            <Tag color="grey" size="small" prefixIcon={<IconClock />} className="summary-detail-team-generated-time">
+                                {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
                             </Tag>
                         </div>
                         {/* need5：多人协作→定时按钮放团队框右侧、编辑按钮左边，顺序 [定时][编辑]，均仅 creator。 */}
@@ -1949,6 +1964,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 <MemberSelectorModal
                     visible={this.state.showAddMember}
                     selected={[]}
+                    excludedUserIds={(this.state.detail?.participants || []).map((p) => p.user_id)}
+                    confirmLoading={this.state.addingMember}
                     onConfirm={this.handleAddMemberConfirm}
                     onCancel={this.handleAddMemberCancel}
                 />

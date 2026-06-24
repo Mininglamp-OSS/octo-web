@@ -10,6 +10,10 @@ interface Props {
     selected: MemberCandidate[];
     onConfirm: (selected: MemberCandidate[]) => void;
     onCancel: () => void;
+    /** 需排除的 user_id（如已是任务成员），不出现在候选列表中。 */
+    excludedUserIds?: string[];
+    /** 提交中：确认按钮 loading、取消/确认 disabled，防重复提交。 */
+    confirmLoading?: boolean;
 }
 
 interface State {
@@ -77,9 +81,11 @@ export default class MemberSelectorModal extends Component<Props, State> {
     };
 
     render() {
-        const { visible, onCancel } = this.props;
+        const { visible, onCancel, confirmLoading, excludedUserIds } = this.props;
         const { keyword, candidates, loading, localSelected } = this.state;
         const { t } = this.context;
+        const excludeSet = new Set(excludedUserIds || []);
+        const visibleCandidates = candidates.filter((c) => !excludeSet.has(c.user_id));
 
         const footer = (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
@@ -87,8 +93,8 @@ export default class MemberSelectorModal extends Component<Props, State> {
                     {t("summary.common.selectedPeopleCount", { values: { count: localSelected.length } })}
                 </span>
                 <div>
-                    <Button onClick={onCancel} style={{ marginRight: 8 }}>{t("summary.common.cancel")}</Button>
-                    <Button theme="solid" onClick={this.handleConfirm}>{t("summary.common.confirm")}</Button>
+                    <Button onClick={onCancel} disabled={confirmLoading} style={{ marginRight: 8 }}>{t("summary.common.cancel")}</Button>
+                    <Button theme="solid" loading={confirmLoading} disabled={confirmLoading} onClick={this.handleConfirm}>{t("summary.common.confirm")}</Button>
                 </div>
             </div>
         );
@@ -113,10 +119,10 @@ export default class MemberSelectorModal extends Component<Props, State> {
                 <div style={{ minHeight: 240, maxHeight: 360, overflowY: "auto" }}>
                     {loading ? (
                         <div style={{ textAlign: "center", paddingTop: 60 }}><Spin /></div>
-                    ) : candidates.length === 0 ? (
+                    ) : visibleCandidates.length === 0 ? (
                         <Empty description={t("summary.memberSelector.empty")} style={{ paddingTop: 40 }} />
                     ) : (
-                        candidates.map((item) => {
+                        visibleCandidates.map((item) => {
                             const checked = !!localSelected.find((s) => s.user_id === item.user_id);
                             return (
                                 <div
