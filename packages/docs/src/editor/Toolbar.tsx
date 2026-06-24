@@ -5,7 +5,7 @@ import type { Editor } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
 import { pickAndUploadFile } from './fileUpload.ts'
 import { promptAndInsertBookmark } from './bookmarkInsert.ts'
-import { getFindState, revealMatchInView } from './findReplace.ts'
+import { getFindState, revealMatchInView, expandAncestorDetails } from './findReplace.ts'
 import { pickerEmojis } from './emoji.ts'
 import { promptAndInsertMath } from './mathInsert.ts'
 import { sanitizeLinkHref } from './sanitize.ts'
@@ -410,6 +410,31 @@ function CodeLanguageSelect({ editor }: { editor: Editor }) {
 }
 
 /**
+ * Reveal a find match at document position `pos`: first expand any collapsed (possibly nested)
+ * details that hide it, then scroll it into view centered below the sticky toolbar.
+ *
+ * Opening a fold changes document height/layout, so when it expands we wait an extra frame before
+ * measuring coordsAtPos (stale pre-expand coords would scroll to the wrong place — the original
+ * "counter moved but nothing on screen" symptom). When nothing was folded, a single frame is
+ * enough for the just-dispatched selection/decoration to commit.
+ */
+function revealToMatch(editor: Editor, pos: number) {
+  const opened = expandAncestorDetails(editor.state, editor.view?.dispatch, pos)
+  const doScroll = () => {
+    const cur = getFindState(editor.state)
+    const target = cur.matches[cur.index]
+    revealMatchInView(editor.view, target ? target.from : pos)
+  }
+  if (opened) {
+    // Two frames: one for the open attr + NodeView to show the content, one for layout to settle
+    // so coordsAtPos reflects the expanded height.
+    requestAnimationFrame(() => requestAnimationFrame(doScroll))
+  } else {
+    requestAnimationFrame(doScroll)
+  }
+}
+
+/**
  * Find & replace bar (toolbar item ⑪). Drives the FindReplace extension: typing sets the search
  * term (live match highlight via decorations), prev/next walk matches, replace acts on the current
  * match, replace-all on all. Esc closes; the search is cleared on unmount so no stray highlights
@@ -429,7 +454,7 @@ function FindBar({ editor, onClose }: { editor: Editor; onClose: () => void }) {
     requestAnimationFrame(() => {
       const f = getFindState(editor.state)
       const m = f.matches[f.index]
-      if (m) revealMatchInView(editor.view, m.from)
+      if (m) revealToMatch(editor, m.from)
     })
   }, [editor, query, caseSensitive])
 
@@ -447,15 +472,9 @@ function FindBar({ editor, onClose }: { editor: Editor; onClose: () => void }) {
     if (!m) return
     // Move the caret onto the match (so the active decoration + selection agree), but do the
     // actual scrolling ourselves: ProseMirror's native scrollIntoView only clips the match to the
-    // viewport edge, where our sticky toolbar then hides it. revealMatchInView centers it in the
-    // usable area below the sticky header. Run on the next frame so the selection/decoration from
-    // this dispatch have committed and coordsAtPos is accurate.
+    // viewport edge, where our sticky toolbar then hides it.
     editor.chain().setTextSelection({ from: m.from, to: m.to }).run()
-    requestAnimationFrame(() => {
-      const cur = getFindState(editor.state)
-      const target = cur.matches[cur.index]
-      if (target) revealMatchInView(editor.view, target.from)
-    })
+    revealToMatch(editor, m.from)
   }
 
   return (
