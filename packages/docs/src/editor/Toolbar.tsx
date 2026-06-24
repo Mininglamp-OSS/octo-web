@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
@@ -42,6 +42,49 @@ const IconAlignRight = () => (
 const IconAlignJustify = () => (
   <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
     <path d="M3 5h18v2H3V5zm0 4h18v2H3V9zm0 4h18v2H3v-2zm0 4h18v2H3v-2z" />
+  </svg>
+)
+
+// Toolbar item ⑧ (batch 7): list group + quote/code as icon buttons, link as a chain icon.
+// 16×16, fill: currentColor via .octo-tb-icon.
+const IconList = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 6.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm0 5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm0 5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM9 7h11v2H9V7zm0 5h11v2H9v-2zm0 5h11v2H9v-2z" />
+  </svg>
+)
+const IconBulletList = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 6.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm0 5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm0 5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM9 7h11v2H9V7zm0 5h11v2H9v-2zm0 5h11v2H9v-2z" />
+  </svg>
+)
+const IconOrderedList = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M9 7h11v2H9V7zm0 5h11v2H9v-2zm0 5h11v2H9v-2zM3.5 5.5h1.6v4.1h-1V6.4h-.6v-.9zm.1 6.2h1.9v.85L4.3 14.4h1.3v.9H3.4v-.85l1.2-1.85H3.6v-.9zm-.1 5.1h2v.85H4.6v.55h.9v.8h-.9v.55h.95v.85H3.5v-4.05z" />
+  </svg>
+)
+const IconTaskList = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M10 7h10v2H10V7zm0 8h10v2H10v-2zM3.3 8.1l1.2 1.2 2.4-2.4-.85-.85L4.5 7.6l-.35-.35-.85.85zm0 8l1.2 1.2 2.4-2.4-.85-.85-1.55 1.55-.35-.35-.85.85z" />
+  </svg>
+)
+const IconQuote = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M7.2 7C5.4 7 4 8.4 4 10.2c0 1.7 1.3 3 3 3 .2 0 .4 0 .6-.1-.4 1.2-1.5 2.2-3 2.6l.6 1.3c2.7-.7 4.5-2.9 4.5-5.9V10.2C9.7 8.4 8.4 7 7.2 7zm9 0C14.4 7 13 8.4 13 10.2c0 1.7 1.3 3 3 3 .2 0 .4 0 .6-.1-.4 1.2-1.5 2.2-3 2.6l.6 1.3c2.7-.7 4.5-2.9 4.5-5.9V10.2C18.7 8.4 17.4 7 16.2 7z" />
+  </svg>
+)
+const IconCode = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z" />
+  </svg>
+)
+const IconLink = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M3.9 12a3.1 3.1 0 0 1 3.1-3.1h4V7h-4a5 5 0 0 0 0 10h4v-1.9h-4A3.1 3.1 0 0 1 3.9 12zm5.1 1h6v-2H9v2zm5-6h-4v1.9h4a3.1 3.1 0 0 1 0 6.2h-4V17h4a5 5 0 0 0 0-10z" />
+  </svg>
+)
+const IconUnlink = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M17 7h-4v1.9h4a3.1 3.1 0 0 1 2.2 5.3l1.35 1.35A5 5 0 0 0 17 7zm-2.05 4-2-2-1.4 1.4 2 2 1.4-1.4zM3.9 12a3.1 3.1 0 0 1 3.1-3.1h.7L5.8 7.0A5 5 0 0 0 7 17h4v-1.9H7A3.1 3.1 0 0 1 3.9 12zm5.15 1 .95.95V13H9.05zM2.8 4.1 1.5 5.4l17.1 17.1 1.3-1.3L2.8 4.1z" />
   </svg>
 )
 
@@ -161,6 +204,7 @@ function HighlightControl({ editor }: { editor: Editor }) {
     <span className="octo-color-control">
       <Btn
         label="🖍"
+        title={t('docs.toolbar.highlight')}
         active={editor.isActive('highlight')}
         onClick={() => setOpen((v) => !v)}
       />
@@ -198,7 +242,7 @@ function TextColorControl({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
   return (
     <span className="octo-color-control">
-      <Btn label="A̲" active={editor.isActive('textStyle')} onClick={() => setOpen((v) => !v)} />
+      <Btn label="A̲" title={t('docs.toolbar.textColor')} active={editor.isActive('textStyle')} onClick={() => setOpen((v) => !v)} />
       {open && (
         <span className="octo-color-popover">
           {TEXT_COLORS.map((c) => (
@@ -241,6 +285,83 @@ const ALIGNMENTS = [
 
 /** Curated emoji subset for the toolbar picker grid — real glyphs, regional-indicator letters excluded (D1). */
 const EMOJI_PICKER = pickerEmojis(48)
+
+/**
+ * List dropdown (toolbar item ⑧, batch 7): a single list icon button that opens a menu with
+ * Bullet / Ordered / Task list options (icon + label each). Replaces the three former standalone
+ * list buttons. The trigger is active when the caret is in any list; each item toggles its list
+ * type. Modeled on the highlight/colour popover (relative wrapper + absolute menu) so it floats
+ * over content instead of widening the toolbar. Closes on outside-click / Escape / selection.
+ */
+const LIST_ITEMS = [
+  { key: 'bulletList', icon: <IconBulletList />, isActive: 'bulletList' },
+  { key: 'orderedList', icon: <IconOrderedList />, isActive: 'orderedList' },
+  { key: 'taskList', icon: <IconTaskList />, isActive: 'taskList' },
+] as const
+
+/** Toggle the chosen list type on the editor (data-driven over the three fixed list kinds). */
+function toggleList(editor: Editor, key: (typeof LIST_ITEMS)[number]['key']): void {
+  const chain = editor.chain().focus()
+  if (key === 'bulletList') chain.toggleBulletList().run()
+  else if (key === 'orderedList') chain.toggleOrderedList().run()
+  else chain.toggleTaskList().run()
+}
+
+function ListMenu({ editor }: { editor: Editor }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+  const anyListActive = LIST_ITEMS.some((it) => editor.isActive(it.isActive))
+
+  // Close on outside-click / Escape so the floating menu doesn't linger.
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  return (
+    <span className="octo-color-control octo-list-control" ref={ref}>
+      <Btn
+        label={<IconList />}
+        title={t('docs.toolbar.list')}
+        active={anyListActive || open}
+        onClick={() => setOpen((v) => !v)}
+      />
+      {open && (
+        <span className="octo-color-popover octo-list-menu" role="menu">
+          {LIST_ITEMS.map((it) => (
+            <button
+              key={it.key}
+              type="button"
+              role="menuitem"
+              className={
+                'octo-list-menu-item' + (editor.isActive(it.isActive) ? ' is-active' : '')
+              }
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                toggleList(editor, it.key)
+                setOpen(false)
+              }}
+            >
+              <span className="octo-list-menu-icon">{it.icon}</span>
+              <span className="octo-list-menu-label">{t(`docs.toolbar.${it.key}`)}</span>
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  )
+}
 
 /** Font-size dropdown (SCHEMA_VERSION 7): sets the textStyle `fontSize` attr (px), or clears it. */
 function FontSizeSelect({ editor }: { editor: Editor }) {
@@ -609,6 +730,7 @@ export function Toolbar({ editor }: { editor: Editor }) {
   const [linkText, setLinkText] = useState('')
   const [linkValue, setLinkValue] = useState('')
   const [findOpen, setFindOpen] = useState(false)
+  const linkRef = useRef<HTMLSpanElement>(null)
 
   // C7: open the link popup, pre-filling the text from the current selection and the URL from any
   // link already under the cursor.
@@ -656,6 +778,17 @@ export function Toolbar({ editor }: { editor: Editor }) {
     closeLink()
   }
 
+  // Close the link popover on outside-click so the floating panel doesn't linger (Escape is
+  // handled per-input). Mirrors the ListMenu close behaviour.
+  useEffect(() => {
+    if (!linkOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (linkRef.current && !linkRef.current.contains(e.target as Node)) closeLink()
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [linkOpen])
+
   // Ctrl/Cmd+F opens the find bar (without triggering the browser's native find).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -684,11 +817,9 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <span className="octo-tb-sep" />
       <AlignControls editor={editor} />
       <span className="octo-tb-sep" />
-      <Btn label="• List" title={t('docs.toolbar.bulletList')} active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()} />
-      <Btn label="1. List" title={t('docs.toolbar.orderedList')} active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()} />
-      <Btn label="Todo" title={t('docs.toolbar.taskList')} active={editor.isActive('taskList')} onClick={() => editor.chain().focus().toggleTaskList().run()} />
-      <Btn label="Quote" title={t('docs.toolbar.quote')} active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} />
-      <Btn label="Code" title={t('docs.toolbar.codeBlock')} active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().toggleCodeBlock().run()} />
+      <ListMenu editor={editor} />
+      <Btn label={<IconQuote />} title={t('docs.toolbar.quote')} active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} />
+      <Btn label={<IconCode />} title={t('docs.toolbar.codeBlock')} active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().toggleCodeBlock().run()} />
       <Btn label="—" title={t('docs.toolbar.divider')} onClick={() => editor.chain().focus().setHorizontalRule().run()} />
       <CodeLanguageSelect editor={editor} />
       <span className="octo-tb-sep" />
@@ -716,43 +847,49 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <MathControl editor={editor} kind="inline" />
       <MathControl editor={editor} kind="block" />
       <span className="octo-tb-sep" />
-      <Btn label="Link" title={t('docs.toolbar.link')} active={editor.isActive('link')} onClick={openLink} />
-      {linkOpen && (
-        <span className="octo-link-input octo-link-popover">
-          <input
-            value={linkText}
-            onChange={(e) => setLinkText(e.target.value)}
-            placeholder={t('docs.toolbar.linkText')}
-            onMouseDown={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                confirmLink()
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                closeLink()
-              }
-            }}
-          />
-          <input
-            value={linkValue}
-            autoFocus
-            onChange={(e) => setLinkValue(e.target.value)}
-            placeholder={t('docs.toolbar.linkPlaceholder')}
-            onMouseDown={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                confirmLink()
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                closeLink()
-              }
-            }}
-          />
-          <Btn label={t('docs.toolbar.linkSet')} onClick={confirmLink} />
-        </span>
-      )}
+      <span className="octo-color-control octo-link-control" ref={linkRef}>
+        <Btn label={<IconLink />} title={t('docs.toolbar.link')} active={editor.isActive('link') || linkOpen} onClick={openLink} />
+        {linkOpen && (
+          <span className="octo-color-popover octo-link-popover" role="dialog">
+            <input
+              className="octo-link-field"
+              value={linkText}
+              onChange={(e) => setLinkText(e.target.value)}
+              placeholder={t('docs.toolbar.linkText')}
+              onMouseDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  confirmLink()
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  closeLink()
+                }
+              }}
+            />
+            <input
+              className="octo-link-field"
+              value={linkValue}
+              autoFocus
+              onChange={(e) => setLinkValue(e.target.value)}
+              placeholder={t('docs.toolbar.linkPlaceholder')}
+              onMouseDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  confirmLink()
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  closeLink()
+                }
+              }}
+            />
+            <div className="octo-link-popover-actions">
+              <Btn label={t('docs.toolbar.linkSet')} onClick={confirmLink} />
+            </div>
+          </span>
+        )}
+      </span>
       <span className="octo-tb-sep" />
       <Btn
         label="Tx"

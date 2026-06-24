@@ -40,6 +40,7 @@
     "alignRight": "右对齐",
     "alignJustify": "两端对齐",
     "code": "行内代码",
+    "list": "列表",
     "bulletList": "无序列表",
     "orderedList": "有序列表",
     "taskList": "待办列表",
