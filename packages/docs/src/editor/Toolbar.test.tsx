@@ -9,6 +9,7 @@ import { TextStyle } from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
 import Link from '@tiptap/extension-link'
 import { Toolbar } from './Toolbar.tsx'
+import { getFindState, FindReplace } from './findReplace.ts'
 
 // Batch 7 toolbar changes: list dropdown, quote/code/link as icon buttons (with tooltips),
 // highlight + text-colour tooltips, and a floating link popover (not an inline toolbar widget).
@@ -27,6 +28,7 @@ beforeEach(() => {
       TextStyle,
       Color,
       Link,
+      FindReplace,
     ],
     content: '<p>hello</p>',
   })
@@ -126,5 +128,62 @@ describe('Toolbar — batch 7 floating link popover (item 5)', () => {
     expect(field).toBeTruthy()
     fireEvent.keyDown(field, { key: 'Escape' })
     expect(document.querySelector('.octo-link-popover')).toBeNull()
+  })
+})
+
+describe('Toolbar — find match counter stays in sync (batch-7 regression)', () => {
+  // The counter (.octo-find-count) reads the find-plugin state. A setFindQuery transaction updates
+  // matches/index but not the selection, so a selection-only re-render subscription left the
+  // counter stale ("no results" while matches were highlighted, or the previous query's count
+  // after changing the term). useFindState fixes that by keying the re-render off the find state.
+  function openFindWith(content: string) {
+    editor = new Editor({
+      extensions: [
+        StarterKit.configure({ undoRedo: false }),
+        TaskList,
+        TaskItem,
+        Highlight.configure({ multicolor: true }),
+        TextStyle,
+        Color,
+        Link,
+        FindReplace,
+      ],
+      content,
+    })
+    render(<Toolbar editor={editor} />)
+    fireEvent.click(titleBtn('docs.toolbar.find'))
+    return document.querySelector('.octo-find-input') as HTMLInputElement
+  }
+
+  function countText(): string {
+    return (document.querySelector('.octo-find-count')?.textContent || '').trim()
+  }
+
+  it('shows a positive count (not "no results") immediately after typing a matched query', () => {
+    const input = openFindWith('<p>apple one</p><p>apple two</p><p>apple three</p><p>apple four</p>')
+    fireEvent.change(input, { target: { value: 'apple' } })
+    // 4 matches → the count line renders the count key, NOT the no-results key.
+    expect(countText()).toBe('docs.find.count')
+    expect(countText()).not.toBe('docs.find.noResults')
+  })
+
+  it('re-renders the counter when the query changes (no stale prior-query value)', () => {
+    const input = openFindWith('<p>apple one</p><p>apple two</p><p>apple three</p><p>apple four</p>')
+    fireEvent.change(input, { target: { value: 'apple' } })
+    expect(countText()).toBe('docs.find.count') // 4 matches
+
+    // Change to a term with a single match — the counter must update, not keep "apple"'s count.
+    fireEvent.change(input, { target: { value: 'two' } })
+    // Find state now has exactly 1 match; counter still renders the count key (1/1), and the
+    // underlying find state reflects the new query (proving the re-render + recompute happened).
+    const fs = getFindState(editor!.state)
+    expect(fs.query).toBe('two')
+    expect(fs.matches).toHaveLength(1)
+    expect(countText()).toBe('docs.find.count')
+
+    // A query with no matches flips the counter to the no-results key (not a stale positive count).
+    fireEvent.change(input, { target: { value: 'zzz' } })
+    expect(getFindState(editor!.state).matches).toHaveLength(0)
+    expect(countText()).toBe('docs.find.noResults')
   })
 })

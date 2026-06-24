@@ -5,7 +5,7 @@ import type { Editor } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
 import { pickAndUploadFile } from './fileUpload.ts'
 import { promptAndInsertBookmark } from './bookmarkInsert.ts'
-import { getFindState, revealMatchInView, expandAncestorDetails } from './findReplace.ts'
+import { getFindState, revealMatchInView, expandAncestorDetails, type FindReplaceState } from './findReplace.ts'
 import { pickerEmojis } from './emoji.ts'
 import { promptAndInsertMath } from './mathInsert.ts'
 import { sanitizeLinkHref } from './sanitize.ts'
@@ -125,6 +125,33 @@ function useEditorTick(editor: Editor): void {
     },
     () => editor.state.selection.from + ':' + editor.state.selection.to,
   )
+}
+
+/**
+ * Subscribe a component to the find/replace plugin state, returning the live FindReplaceState.
+ *
+ * The plain useEditorTick snapshot keys only off the selection (from:to), so a setFindQuery
+ * transaction — which updates the find plugin's matches/index but leaves the caret put — does NOT
+ * change that snapshot and React skips the re-render. That left the match counter (.octo-find-count)
+ * stale: it showed "no results" with matches highlighted, or kept the previous search's "X / Y"
+ * after the query changed (batch-7 regression). Keying the snapshot off the find state's identity
+ * (query + case flag + match count + current index) makes the counter re-render exactly when the
+ * matches/index actually change; the component then reads the fresh state via getFindState.
+ */
+function useFindState(editor: Editor): FindReplaceState {
+  useSyncExternalStore(
+    (cb) => {
+      editor.on('transaction', cb)
+      return () => {
+        editor.off('transaction', cb)
+      }
+    },
+    () => {
+      const fs = getFindState(editor.state)
+      return `${fs.query}\u0000${fs.caseSensitive ? 1 : 0}\u0000${fs.matches.length}\u0000${fs.index}`
+    },
+  )
+  return getFindState(editor.state)
 }
 
 function Btn({
@@ -562,7 +589,7 @@ function revealToMatch(editor: Editor, pos: number) {
  * linger.
  */
 function FindBar({ editor, onClose }: { editor: Editor; onClose: () => void }) {
-  useEditorTick(editor)
+  const fs = useFindState(editor)
   const [query, setQuery] = useState('')
   const [replacement, setReplacement] = useState('')
   const [caseSensitive, setCaseSensitive] = useState(false)
@@ -582,7 +609,6 @@ function FindBar({ editor, onClose }: { editor: Editor; onClose: () => void }) {
   // Clear the search (and its decorations) when the bar unmounts.
   useEffect(() => () => editor.commands.clearFind() as unknown as void, [editor])
 
-  const fs = getFindState(editor.state)
   const total = fs.matches.length
   const current = fs.index >= 0 ? fs.index + 1 : 0
 
