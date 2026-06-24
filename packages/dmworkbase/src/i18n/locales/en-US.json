@@ -285,6 +285,7 @@
   "filePreview.html.unknownError": "Unknown error",
   "filePreview.html.viewSource": "View source",
   "filePreview.image.loadFailed": "Image failed to load",
+  "filePreview.video.loadFailed": "Video failed to load",
   "filePreview.jsonl.cannotExtractStructure": "Unable to extract a table structure from the JSONL data",
   "filePreview.jsonl.cannotExtractTable": "Unable to extract table data",
   "filePreview.jsonl.code": "Code",

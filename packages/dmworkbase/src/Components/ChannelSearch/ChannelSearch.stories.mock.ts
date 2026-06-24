@@ -76,6 +76,8 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-06-03T15:05:00+08:00"),
     kind: "image",
     media: {
+      url: figmaMediaThumbs[0],
+      previewUrl: figmaMediaThumbs[0],
       thumbUrl: figmaMediaThumbs[0],
       inlineThumbUrl: figmaInlineImage,
       tone: "cool",
@@ -89,6 +91,8 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-06-01T15:04:30+08:00"),
     kind: "image",
     media: {
+      url: figmaMediaThumbs[5],
+      previewUrl: figmaMediaThumbs[5],
       thumbUrl: figmaMediaThumbs[5],
       tone: "warm",
     },
@@ -189,6 +193,8 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-06-01T10:24:00+08:00"),
     kind: "image",
     media: {
+      url: figmaMediaThumbs[2],
+      previewUrl: figmaMediaThumbs[2],
       thumbUrl: figmaMediaThumbs[2],
       tone: "green",
     },
@@ -227,6 +233,8 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-05-01T11:18:00+08:00"),
     kind: "image",
     media: {
+      url: figmaMediaThumbs[7],
+      previewUrl: figmaMediaThumbs[7],
       thumbUrl: figmaMediaThumbs[7],
       tone: "cool",
     },
@@ -252,6 +260,8 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-05-12T13:10:00+08:00"),
     kind: "image",
     media: {
+      url: figmaMediaThumbs[2],
+      previewUrl: figmaMediaThumbs[2],
       thumbUrl: figmaMediaThumbs[2],
       tone: "green",
     },
@@ -264,6 +274,8 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-05-06T19:12:00+08:00"),
     kind: "image",
     media: {
+      url: figmaMediaThumbs[3],
+      previewUrl: figmaMediaThumbs[3],
       thumbUrl: figmaMediaThumbs[3],
       tone: "purple",
     },
@@ -276,6 +288,8 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-04-18T12:00:00+08:00"),
     kind: "image",
     media: {
+      url: figmaMediaThumbs[4],
+      previewUrl: figmaMediaThumbs[4],
       thumbUrl: figmaMediaThumbs[4],
       tone: "warm",
     },

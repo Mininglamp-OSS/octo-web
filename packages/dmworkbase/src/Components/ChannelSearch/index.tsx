@@ -67,6 +67,7 @@ interface ChannelSearchPanelProps {
   dataSource?: ChannelSearchDataSource;
   onLocateMessage?: (item: ChannelSearchItem) => void;
   onPreviewFile?: (item: ChannelSearchItem) => void;
+  onPreviewMedia?: (item: ChannelSearchItem) => void;
   initialState?: ChannelSearchPanelState;
   onStateChange?: (state: ChannelSearchPanelState) => void;
 }
@@ -658,6 +659,7 @@ type ResultItemProps = {
   keyword: string;
   getSender: GetChannelSearchSender;
   onLocate: (item: ChannelSearchItem) => void;
+  onPreviewMedia?: (item: ChannelSearchItem) => void;
 };
 
 type LocateToChatIconProps = {
@@ -848,6 +850,7 @@ const MixedResultItem = React.memo(function MixedResultItem({
   keyword,
   getSender,
   onLocate,
+  onPreviewMedia,
 }: ResultItemProps) {
   if (item.kind === "file") {
     return (
@@ -866,6 +869,7 @@ const MixedResultItem = React.memo(function MixedResultItem({
         keyword={keyword}
         getSender={getSender}
         onLocate={onLocate}
+        onPreviewMedia={onPreviewMedia}
       />
     );
   }
@@ -884,6 +888,7 @@ const MediaInlineResult = React.memo(function MediaInlineResult({
   keyword,
   getSender,
   onLocate,
+  onPreviewMedia,
 }: ResultItemProps) {
   const { format, t } = useI18n();
   const sender = resolveSender(item, getSender);
@@ -912,7 +917,12 @@ const MediaInlineResult = React.memo(function MediaInlineResult({
             keyword={keyword}
           />
         </div>
-        <MediaThumb item={item} onLocate={onLocate} compact />
+        <MediaThumb
+          item={item}
+          onLocate={onLocate}
+          onPreviewMedia={onPreviewMedia}
+          compact
+        />
       </div>
       {canLocateChannelSearchItem(item) && (
         <button
@@ -930,17 +940,21 @@ const MediaInlineResult = React.memo(function MediaInlineResult({
 type MediaThumbProps = {
   item: ChannelSearchItem;
   onLocate: (item: ChannelSearchItem) => void;
+  onPreviewMedia?: (item: ChannelSearchItem) => void;
   compact?: boolean;
 };
 
 const MediaThumb = React.memo(function MediaThumb({
   item,
   onLocate,
+  onPreviewMedia,
   compact = false,
 }: MediaThumbProps) {
+  const { t } = useI18n();
   const thumbUrl = compact
     ? item.media?.inlineThumbUrl || item.media?.thumbUrl
     : item.media?.thumbUrl;
+  const previewLabel = t("base.filePreview.preview");
 
   return (
     <div
@@ -948,12 +962,29 @@ const MediaThumb = React.memo(function MediaThumb({
         "wk-channel-search-media-thumb",
         `wk-channel-search-media-thumb--${item.media?.tone || "warm"}`,
         thumbUrl ? "wk-channel-search-media-thumb--image" : "",
+        onPreviewMedia ? "wk-channel-search-media-thumb--previewable" : "",
         compact ? "wk-channel-search-media-thumb--compact" : "",
       ]
         .filter(Boolean)
         .join(" ")}
-      style={thumbUrl ? { backgroundImage: `url(${thumbUrl})` } : undefined}
     >
+      {thumbUrl && (
+        <img
+          alt=""
+          className="wk-channel-search-media-thumb-img"
+          draggable={false}
+          src={thumbUrl}
+        />
+      )}
+      {onPreviewMedia && (
+        <button
+          aria-label={previewLabel}
+          className="wk-channel-search-media-preview-trigger"
+          title={previewLabel}
+          type="button"
+          onClick={() => onPreviewMedia(item)}
+        />
+      )}
       {item.kind === "video" && (
         <div className="wk-channel-search-media-play">
           <Play size={18} fill="currentColor" />
@@ -1037,11 +1068,13 @@ const FileInlineResult = React.memo(function FileInlineResult({
 type MediaResultGridProps = {
   items: ChannelSearchItem[];
   onLocate: (item: ChannelSearchItem) => void;
+  onPreviewMedia?: (item: ChannelSearchItem) => void;
 };
 
 const MediaResultGrid = React.memo(function MediaResultGrid({
   items,
   onLocate,
+  onPreviewMedia,
 }: MediaResultGridProps) {
   const grouped = useMemo(() => {
     return items.reduce<Record<string, ChannelSearchItem[]>>((acc, item) => {
@@ -1059,7 +1092,12 @@ const MediaResultGrid = React.memo(function MediaResultGrid({
           <div className="wk-channel-search-media-month">{label}</div>
           <div className="wk-channel-search-media-grid">
             {groupItems.map((item) => (
-              <MediaThumb key={item.id} item={item} onLocate={onLocate} />
+              <MediaThumb
+                key={item.id}
+                item={item}
+                onLocate={onLocate}
+                onPreviewMedia={onPreviewMedia}
+              />
             ))}
           </div>
         </section>
@@ -1216,6 +1254,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
   dataSource = channelSearchEmptyDataSource,
   onLocateMessage,
   onPreviewFile,
+  onPreviewMedia,
   initialState,
   onStateChange,
 }) => {
@@ -1534,7 +1573,13 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
       return <SearchEmpty queryStarted={queryStarted} />;
     }
     if (activeTab === "media") {
-      return <MediaResultGrid items={response.items} onLocate={handleLocate} />;
+      return (
+        <MediaResultGrid
+          items={response.items}
+          onLocate={handleLocate}
+          onPreviewMedia={onPreviewMedia}
+        />
+      );
     }
     if (activeTab === "file") {
       return (
@@ -1563,6 +1608,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
             keyword={keyword}
             getSender={getSender}
             onLocate={handleLocate}
+            onPreviewMedia={onPreviewMedia}
           />
         ))}
       </div>

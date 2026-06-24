@@ -44,6 +44,9 @@ export interface ChannelSearchFileInfo {
 
 export interface ChannelSearchMediaInfo {
   name?: string;
+  url?: string;
+  downloadUrl?: string;
+  previewUrl?: string | null;
   thumbUrl?: string;
   inlineThumbUrl?: string;
   duration?: number;

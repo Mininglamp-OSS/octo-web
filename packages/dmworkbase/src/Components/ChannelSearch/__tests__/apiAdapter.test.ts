@@ -5,6 +5,7 @@ const mockState = vi.hoisted(() => ({
   subscribers: vi.fn(),
   getChannelInfo: vi.fn(),
   getImageURL: vi.fn((path: string) => `/api/v1/${path}`),
+  getFileURL: vi.fn((path: string) => `/files/${path}`),
   parseThreadChannelId: vi.fn(),
 }));
 
@@ -57,6 +58,7 @@ vi.mock("../../../App", () => ({
     dataSource: {
       commonDataSource: {
         getImageURL: mockState.getImageURL,
+        getFileURL: mockState.getFileURL,
       },
       channelDataSource: {
         subscribers: mockState.subscribers,
@@ -336,6 +338,44 @@ describe("channel search API adapter response mapping", () => {
       uid: "u1",
       name: "Alice",
       avatarUrl: "/api/v1/users/u1/avatar",
+    });
+  });
+
+  it("maps media preview urls and normalizes thumb paths", () => {
+    const item = mapMediaHit(
+      {
+        message_id: "video-1",
+        message_seq: 33,
+        media_kind: "video",
+        media_url: "videos/video-1.mp4",
+        download_url: "videos/video-1-download.mp4",
+        preview_url: "videos/video-1-preview.mp4",
+        thumb_url: "images/video-1-cover.jpg",
+        duration_ms: 62000,
+        sender_id: "u1",
+        sent_at: "2026-01-02T00:00:00Z",
+      },
+      baseQuery("media")
+    );
+
+    expect(mockState.getFileURL).toHaveBeenCalledWith(
+      "videos/video-1-preview.mp4"
+    );
+    expect(mockState.getFileURL).toHaveBeenCalledWith(
+      "videos/video-1-download.mp4"
+    );
+    expect(mockState.getImageURL).toHaveBeenCalledWith(
+      "images/video-1-cover.jpg"
+    );
+    expect(item).toMatchObject({
+      kind: "video",
+      media: {
+        url: "/files/videos/video-1-preview.mp4",
+        previewUrl: "/files/videos/video-1-preview.mp4",
+        downloadUrl: "/files/videos/video-1-download.mp4",
+        thumbUrl: "/api/v1/images/video-1-cover.jpg",
+        duration: 62,
+      },
     });
   });
 

@@ -570,6 +570,41 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
   margin-right: calc(0px - var(--wk-width-chat-search-panel));
   background-color: var(--wk-bg-surface);
   border-left: 1px solid var(--wk-border-default);
+  overflow: hidden;
+}
+
+.wk-chat-channel-search-stack,
+.wk-chat-channel-search-main,
+.wk-chat-channel-search-preview {
+  width: 100%;
+  height: 100%;
+}
+
+.wk-chat-channel-search-stack {
+  position: relative;
+}
+
+.wk-chat-channel-search-stack--previewing .wk-chat-channel-search-main {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.wk-chat-channel-search-preview {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background-color: var(--wk-bg-surface);
+}
+
+.wk-chat-channel-search-preview .wk-file-preview-panel {
+  position: static;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  margin-right: 0;
+  border-left: 0;
+  box-shadow: none;
+  transition: none;
 }
 
 .wk-chat-content-right.wk-chat-channel-search-open .wk-chat-content-chat {

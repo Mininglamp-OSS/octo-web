@@ -1,0 +1,57 @@
+/* ============================================
+   VideoRenderer - 视频渲染器样式
+   类名前缀: wk-file-preview-video-renderer
+   ============================================ */
+
+.wk-file-preview-video-renderer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: var(--wk-sp-6);
+  box-sizing: border-box;
+  background: var(--wk-bg-base);
+}
+
+.wk-file-preview-video-renderer__video {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--wk-r-md);
+  background: var(--wk-neutral-900);
+}
+
+.wk-file-preview-video-renderer__error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  gap: var(--wk-sp-3);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-md);
+  background: var(--wk-bg-subtle);
+  border-radius: var(--wk-r-md);
+}
+
+.wk-file-preview-video-renderer__error-text {
+  color: var(--wk-text-tertiary);
+}
+
+.wk-file-preview-video-renderer__retry {
+  padding: var(--wk-sp-2) var(--wk-sp-4);
+  border: 1px solid var(--wk-border-default);
+  background: var(--wk-bg-base);
+  color: var(--wk-text-primary);
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+  font-size: var(--wk-text-size-sm);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.wk-file-preview-video-renderer__retry:hover {
+  background: var(--wk-bg-hover);
+  border-color: var(--wk-border-strong);
+}

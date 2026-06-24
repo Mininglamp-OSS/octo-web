@@ -45,6 +45,7 @@ import { FileListPanel } from "../FilePreviewPanel/FileListPanel";
 import { MarkdownRenderer } from "../FilePreviewPanel/renderers/MarkdownRenderer";
 import { HtmlRenderer } from "../FilePreviewPanel/renderers/HtmlRenderer";
 import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
+import { VideoRenderer } from "../FilePreviewPanel/renderers/VideoRenderer";
 import { isChannelSearchEnabled } from "../ChannelSearch/feature";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
@@ -1795,6 +1796,7 @@ export default class ThreadPanel extends Component<
 
     const ext = getExtension(filePreview.extension, filePreview.name);
     const isImage = filePreview.category === "image";
+    const isVideo = filePreview.category === "video";
     const isMarkdown = ["md", "markdown"].includes(ext);
     const isHtml = ["html", "htm"].includes(ext);
 
@@ -1807,6 +1809,14 @@ export default class ThreadPanel extends Component<
       return (
         <div className="wk-thread-panel-file-preview">
           <ImageRenderer file={filePreview} onError={handleError} />
+        </div>
+      );
+    }
+
+    if (isVideo) {
+      return (
+        <div className="wk-thread-panel-file-preview">
+          <VideoRenderer file={filePreview} onError={handleError} />
         </div>
       );
     }

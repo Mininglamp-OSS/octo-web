@@ -14,6 +14,7 @@ import ExcelRenderer from "./renderers/ExcelRenderer";
 import JsonRenderer from "./renderers/JsonRenderer";
 import JsonlRenderer from "./renderers/JsonlRenderer";
 import ImageRenderer from "./renderers/ImageRenderer";
+import VideoRenderer from "./renderers/VideoRenderer";
 
 /**
  * 文件渲染器注册表
@@ -21,7 +22,7 @@ import ImageRenderer from "./renderers/ImageRenderer";
  *
  * 注意：以下文件类型明确不支持预览，走 FallbackRenderer：
  * - .docx / .xlsx / .xls / .pptx / .ppt（Office 文档）
- * - 图片、视频、音频（对话流内已渲染，不进入面板）
+ * - 音频（对话流内已渲染，不进入面板）
  */
 class FileRendererRegistry {
   private registry: Map<string, RendererRegistryItem> = new Map();
@@ -38,6 +39,14 @@ class FileRendererRegistry {
       type: "image",
       extensions: ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg"],
       renderer: ImageRenderer,
+      needsFetch: false,
+    });
+
+    // 视频
+    this.register({
+      type: "video",
+      extensions: ["mp4", "m4v", "mov", "webm", "ogv", "ogg"],
+      renderer: VideoRenderer,
       needsFetch: false,
     });
 

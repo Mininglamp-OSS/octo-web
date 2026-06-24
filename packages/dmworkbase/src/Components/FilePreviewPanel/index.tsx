@@ -12,6 +12,7 @@ import "./index.css";
 const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
   file,
   onClose,
+  showOpenExternal = true,
 }) => {
   const { t } = useI18n();
 
@@ -46,13 +47,15 @@ const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
           {file.name}
         </div>
         <div className="wk-file-preview-actions">
-          <button
-            className="wk-file-preview-action"
-            title={t("base.filePreview.openInNewWindow")}
-            onClick={handleOpenExternal}
-          >
-            <ExternalLink size={18} />
-          </button>
+          {showOpenExternal && (
+            <button
+              className="wk-file-preview-action"
+              title={t("base.filePreview.openInNewWindow")}
+              onClick={handleOpenExternal}
+            >
+              <ExternalLink size={18} />
+            </button>
+          )}
           <button
             className="wk-file-preview-action"
             title={t("base.filePreview.download")}

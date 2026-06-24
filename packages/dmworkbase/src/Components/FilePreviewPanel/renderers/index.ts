@@ -5,6 +5,9 @@
 export { default as ImageRenderer } from "./ImageRenderer";
 export type { ImageRendererProps } from "./ImageRenderer";
 
+export { default as VideoRenderer } from "./VideoRenderer";
+export type { VideoRendererProps } from "./VideoRenderer";
+
 export { default as PdfRenderer } from "./PdfRenderer";
 export type { PdfRendererProps } from "./PdfRenderer";
 

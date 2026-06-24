@@ -285,6 +285,7 @@
   "filePreview.html.unknownError": "未知错误",
   "filePreview.html.viewSource": "查看源码",
   "filePreview.image.loadFailed": "图片加载失败",
+  "filePreview.video.loadFailed": "视频加载失败",
   "filePreview.jsonl.cannotExtractStructure": "无法从 JSONL 数据中提取表格结构",
   "filePreview.jsonl.cannotExtractTable": "无法提取表格数据",
   "filePreview.jsonl.code": "代码",

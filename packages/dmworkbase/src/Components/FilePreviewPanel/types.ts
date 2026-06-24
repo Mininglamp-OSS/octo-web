@@ -14,6 +14,14 @@ export interface FilePreviewInfo {
   messageId?: string;
   /** 文件分类（image/video/document/code 等，用于判断文件类型） */
   category?: string;
+  /** 预览封面图（视频等媒体预览使用） */
+  posterUrl?: string;
+  /** 媒体原始宽度 */
+  width?: number;
+  /** 媒体原始高度 */
+  height?: number;
+  /** 媒体时长（秒） */
+  duration?: number;
   /** 消息序号（用于回复功能） */
   messageSeq?: number;
   /** 发送者 UID（用于回复功能） */
@@ -71,6 +79,7 @@ export interface RendererRegistryItem {
 export interface FilePreviewPanelProps {
   file: FilePreviewInfo | null;
   onClose: () => void;
+  showOpenExternal?: boolean;
 }
 
 /** 加载状态 Props */

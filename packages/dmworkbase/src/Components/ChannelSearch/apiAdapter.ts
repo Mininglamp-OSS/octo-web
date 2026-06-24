@@ -66,6 +66,13 @@ type MediaSearchHit = {
   message_id?: string;
   message_seq?: number;
   media_kind?: "image" | "video";
+  url?: string;
+  media_url?: string;
+  file_url?: string;
+  image_url?: string;
+  video_url?: string;
+  download_url?: string;
+  preview_url?: string | null;
   thumb_url?: string;
   duration_ms?: number;
   width?: number;
@@ -147,6 +154,27 @@ function normalizeImageUrl(path?: string) {
   }
   const baseURL = WKApp.apiClient.config.apiURL || "";
   return `${baseURL}${normalizedPath}`;
+}
+
+function normalizeFileUrl(path?: string | null) {
+  if (!path) return undefined;
+  if (/^(https?:|data:|blob:)/i.test(path)) return path;
+  const normalizedPath = path.replace(/^\/+/, "");
+  const commonDataSource = WKApp.dataSource?.commonDataSource;
+  if (commonDataSource?.getFileURL) {
+    return commonDataSource.getFileURL(normalizedPath);
+  }
+  const baseURL = WKApp.apiClient.config.apiURL || "";
+  return `${baseURL}${normalizedPath}`;
+}
+
+function normalizeMediaUrl(
+  path: string | null | undefined,
+  mediaKind?: "image" | "video"
+) {
+  return mediaKind === "image"
+    ? normalizeImageUrl(path || undefined)
+    : normalizeFileUrl(path);
 }
 
 function secondsToDateOnly(seconds?: number) {
@@ -346,13 +374,33 @@ function mapMediaHit(
 ): ChannelSearchItem {
   const sender = senderFromHit(hit);
   const hitChannel = channelFromHit(hit, query);
+  const mediaKind = hit.media_kind || "image";
+  const previewUrl = normalizeMediaUrl(hit.preview_url, mediaKind);
+  const downloadUrl = normalizeFileUrl(hit.download_url);
+  const mediaUrl =
+    previewUrl ||
+    normalizeMediaUrl(
+      hit.media_url ||
+        hit.url ||
+        hit.file_url ||
+        hit.image_url ||
+        hit.video_url,
+      mediaKind
+    ) ||
+    downloadUrl;
   const media: ChannelSearchMediaInfo = {
-    thumbUrl: hit.thumb_url,
-    duration: hit.duration_ms,
+    url: mediaUrl,
+    previewUrl,
+    downloadUrl,
+    thumbUrl: normalizeImageUrl(hit.thumb_url),
+    duration:
+      typeof hit.duration_ms === "number"
+        ? Math.round(hit.duration_ms / 1000)
+        : undefined,
     width: hit.width,
     height: hit.height,
     monthBucket: hit.month_bucket || monthBucketFromSentAt(hit.sent_at),
-    tone: hit.media_kind === "video" ? "purple" : "cool",
+    tone: mediaKind === "video" ? "purple" : "cool",
   };
   return {
     id: hit.message_id || `${hit.message_seq || 0}`,
@@ -363,7 +411,7 @@ function mapMediaHit(
     senderUid: sender.uid,
     sender,
     timestamp: sentAtToSeconds(hit.sent_at),
-    kind: hit.media_kind === "video" ? "video" : "image",
+    kind: mediaKind === "video" ? "video" : "image",
     media,
   };
 }
