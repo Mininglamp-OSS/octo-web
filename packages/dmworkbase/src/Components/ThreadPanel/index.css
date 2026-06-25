@@ -31,6 +31,14 @@ body[theme-mode="dark"] .wk-thread-panel {
   flex-direction: column;
 }
 
+/* 子区 Webhook 管理子视图内容区（#451）：填满头部以下空间并可滚动，
+   面板本体 .wk-webhook 自带内部布局。 */
+.wk-thread-panel-webhook-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* 面板头部 */
 .wk-thread-panel-header {
   height: var(--wk-height-chat-conversation-header);

@@ -26,7 +26,8 @@ import ThreadIcon from "../Icons/ThreadIcon";
 import classNames from "classnames";
 import { Conversation } from "../Conversation";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
-import { canManageThread } from "../../Service/threadPermission";
+import { canManageThread, isParentGroupManager } from "../../Service/threadPermission";
+import ChannelWebhookPanel from "../ChannelWebhook";
 import { ErrorBoundary } from "../ErrorBoundary";
 import WKApp from "../../App";
 import { ShowConversationOptions } from "../../EndpointCommon";
@@ -122,6 +123,8 @@ interface ThreadPanelComponentState {
   threads: Thread[];
   threadsLoading: boolean;
   showMoreMenu: boolean;
+  /** 子区 Webhook 管理子视图是否展开（#451）。展开时替换子区详情的头部与内容。 */
+  showWebhookPanel: boolean;
   panelWidth: number;
   isDragging: boolean;
   /** 文件预览视图模式 */
@@ -195,6 +198,7 @@ export default class ThreadPanel extends Component<
       threads: [],
       threadsLoading: true,
       showMoreMenu: false,
+      showWebhookPanel: false,
       panelWidth: savedWidth,
       isDragging: false,
       fileViewMode: "preview",
@@ -655,6 +659,17 @@ export default class ThreadPanel extends Component<
     this.setState({ showMoreMenu: false });
     WKApp.endpoints.showConversation(threadChannel, opts);
     this.props.onClose();
+  };
+
+  // 子区 Webhook 管理：复用群面板 ChannelWebhookPanel，传【父群】channel + 子区 short_id，
+  // isManager 锚父群（子区无独立角色矩阵，#451）。展开为子视图（替换头部+内容），
+  // 返回箭头回到子区详情，X 关闭整个面板。
+  private handleOpenThreadWebhook = () => {
+    this.setState({ showMoreMenu: false, showWebhookPanel: true });
+  };
+
+  private handleCloseThreadWebhook = () => {
+    this.setState({ showWebhookPanel: false });
   };
 
   private canEditThread(thread: Thread): boolean {
@@ -1186,6 +1201,37 @@ export default class ThreadPanel extends Component<
       );
     }
 
+    // 子区 Webhook 管理子视图的 header（#451）：← 回子区详情，× 关闭面板。
+    // 与 filePreview 同样在 renderHeader 内分支（filePreview 已先 return，故此处必非预览态）。
+    if (this.state.showWebhookPanel) {
+      return (
+        <div className="wk-thread-panel-header">
+          <div
+            className="wk-thread-panel-header-btn"
+            onClick={this.handleCloseThreadWebhook}
+            title={t("base.threadPanel.backToThread")}
+          >
+            <ArrowLeft size={16} />
+          </div>
+          <div className="wk-thread-panel-header-title">
+            <ThreadIcon className="wk-thread-panel-header-icon" size={18} />
+            <span>
+              {t("base.threadPanel.webhookTitle", {
+                values: {
+                  name: thread?.name || t("base.module.thread.fallbackName"),
+                },
+              })}
+            </span>
+          </div>
+          <div className="wk-thread-panel-header-actions">
+            <div className="wk-thread-panel-header-btn" onClick={onClose}>
+              <X size={18} />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // 子区模式的 header
     return (
       <div className="wk-thread-panel-header">
@@ -1269,6 +1315,17 @@ export default class ThreadPanel extends Component<
                       {t("base.threadPanel.searchMessages")}
                     </div>
                   )}
+                  {/* 子区 Webhook 管理入口（#451）：对全员可见（list 全员只读、成员可建自己的），
+                      仅活跃子区可见 —— 归档子区创建会被后端拒，避免无效 CTA。 */}
+                  {vmState.thread &&
+                    vmState.thread.status === ThreadStatus.Active && (
+                      <div
+                        className="wk-thread-more-menu-item"
+                        onClick={this.handleOpenThreadWebhook}
+                      >
+                        {t("base.threadPanel.webhook")}
+                      </div>
+                    )}
                   <div
                     className="wk-thread-more-menu-item wk-thread-more-menu-item-danger"
                     onClick={this.handleDeleteThread}
@@ -1862,6 +1919,25 @@ export default class ThreadPanel extends Component<
     );
   }
 
+  // 子区 Webhook 管理子视图的内容区（#451）：仅渲染面板本体，头部由 renderHeader 的
+  // showWebhookPanel 分支负责。channel 传【父群】（datasource 据此拼
+  // groups/{group}/threads/{short}/...），isManager 锚父群角色。
+  private renderWebhookContent() {
+    const { groupNo } = this.props;
+    const thread = this.state.vmState.thread;
+    if (!groupNo || !thread) return null;
+    const parentGroupChannel = new Channel(groupNo, ChannelTypeGroup);
+    return (
+      <div className="wk-thread-panel-webhook-content">
+        <ChannelWebhookPanel
+          channel={parentGroupChannel}
+          isManager={isParentGroupManager(groupNo)}
+          threadShortId={thread.short_id}
+        />
+      </div>
+    );
+  }
+
   render() {
     const { filePreview } = this.props;
     const {
@@ -1871,6 +1947,7 @@ export default class ThreadPanel extends Component<
       isFilePanelOpen,
       conversationFiles,
       vmState,
+      showWebhookPanel,
     } = this.state;
     const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH;
 
@@ -1922,6 +1999,8 @@ export default class ThreadPanel extends Component<
               {/* 文件预览内容 */}
               {this.renderFilePreviewContent()}
             </div>
+          ) : showWebhookPanel ? (
+            this.renderWebhookContent()
           ) : view === "list" ? (
             this.renderListView()
           ) : (

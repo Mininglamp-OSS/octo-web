@@ -37,6 +37,29 @@ export function canManageThread(
 }
 
 /**
+ * 子区入站 Webhook 管理面的「是否管理员」判定（#451）。
+ *
+ * 子区没有独立角色矩阵 —— 与归档/改名一致，权限锚定【父群】：当前登录用户是否为父群
+ * 群主 / 管理员。结果作为 isManager 传给 ChannelWebhookPanel，决定是否可设头像、是否可
+ * 管理他人创建的 webhook（普通成员不受此 gate，仍可管理自己创建的）。
+ *
+ * 与 {@link canManageThread} 的区别：这里【不含】创建者捷径 —— 子区创建者若只是普通群员，
+ * 不应获得设头像 / 管他人 webhook 的管理员权力（与群面 Webhook 的 isManager 口径一致）。
+ *
+ * 角色必须从父群成员列表解析（子区频道成员从未同步，读子区缓存会让非创建者的群主/管理员
+ * 恒为 false）；父群订阅未热时返回 false（降级为非管理员，安全）。
+ */
+export function isParentGroupManager(groupNo: string | undefined): boolean {
+  if (!groupNo) {
+    return false;
+  }
+  const groupChannel = new Channel(groupNo, ChannelTypeGroup);
+  const subscribers = WKSDK.shared().channelManager.getSubscribes(groupChannel);
+  const me = subscribers?.find((s) => s.uid === WKApp.loginInfo.uid);
+  return me?.role === GroupRole.owner || me?.role === GroupRole.manager;
+}
+
+/**
  * 子区设置页「改名」入口（module.tsx 的 thread.base.info）的权限判定。
  *
  * 与归档入口（{@link shouldShowThreadArchiveAction}）共享同一份父群口径
