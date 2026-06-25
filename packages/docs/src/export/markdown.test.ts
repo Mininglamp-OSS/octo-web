@@ -110,12 +110,16 @@ describe('exportDocToMarkdown — lists', () => {
         p(text('- not a bullet')),
         p(text('# not a heading')),
         p(text('1. not ordered')),
+        p(text('2) not ordered either')),
         p(text('> not a quote')),
       ),
     )
     expect(out).toContain('\\- not a bullet')
     expect(out).toContain('\\# not a heading')
-    expect(out).toContain('\\1. not ordered')
+    // Ordered-list markers escape the punctuation, not the digit (CommonMark form).
+    expect(out).toContain('1\\. not ordered')
+    expect(out).toContain('2\\) not ordered either')
+    expect(out).not.toContain('\\1.')
     expect(out).toContain('\\> not a quote')
   })
 
