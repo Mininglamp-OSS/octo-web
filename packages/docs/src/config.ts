@@ -64,7 +64,20 @@ function parseHostList(value: unknown): string[] {
     : []
 }
 
+/**
+ * The host the page itself is served from (e.g. `192.168.214.189:3000`). Same-origin assets
+ * are trusted by default so a deployment that serves images from its own origin (or via a
+ * same-origin reverse proxy) renders them without needing an explicit VITE_DOCS_ASSET_HOSTS.
+ * This is a safe addition: it only ever whitelists the page's OWN origin, never an arbitrary
+ * external host. A separate object-store host (e.g. MinIO on :9000, distinct from the page
+ * :3000) is NOT covered by this and still requires VITE_DOCS_ASSET_HOSTS. Empty under SSR/tests.
+ */
+function sameOriginHost(): string[] {
+  return typeof window !== 'undefined' && window.location?.host ? [window.location.host] : []
+}
+
 export const ASSET_HOST_WHITELIST = new Set<string>([
+  ...sameOriginHost(),
   'assets.octo.example.com',
   'cdn.octo.example.com',
   ...parseHostList(import.meta.env?.VITE_DOCS_ASSET_HOSTS),
