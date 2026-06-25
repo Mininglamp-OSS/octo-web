@@ -45,10 +45,13 @@ function isRegionalIndicator(e: EmojiItem): boolean {
 
 /**
  * Curated emoji set for the toolbar picker grid (D1): real emoji with a glyph, regional-indicator
- * flag letters excluded so the grid shows 😀 not "A"/"B"/"C".
+ * flag letters excluded so the grid shows 😀 not "A"/"B"/"C". Returns the FULL curated set by
+ * default (≈1900 glyphs) — the picker windows/scrolls them rather than capping at a fixed count;
+ * an optional `limit` is kept for callers/tests that want a bounded slice.
  */
-export function pickerEmojis(limit = 48): EmojiItem[] {
-  return EMOJI_SET.filter((e) => !!e.emoji && !isRegionalIndicator(e)).slice(0, limit)
+export function pickerEmojis(limit?: number): EmojiItem[] {
+  const picks = EMOJI_SET.filter((e) => !!e.emoji && !isRegionalIndicator(e))
+  return limit == null ? picks : picks.slice(0, limit)
 }
 
 /** Max rows in the `:shortcode:` suggestion popup. */

@@ -249,7 +249,27 @@ export function VersionPanel({
     }
   }
 
+  // Close the preview/compare modal: clear the selection + reset the preview machine so a
+  // re-open starts clean. Restore is unaffected (it's triggered from the row, not the modal).
+  const closePreview = useCallback(() => {
+    setSelected(null)
+    setPreviewJSON(null)
+    setPreviewState('idle')
+    setCompare(false)
+  }, [])
+
+  // Escape closes the preview modal (mirrors the manage-members modal convention).
+  useEffect(() => {
+    if (!selected) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closePreview()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [selected, closePreview])
+
   return (
+    <>
     <section className="octo-version-panel">
       <div className="octo-member-row">
         <h3 style={{ flex: 1, margin: 0 }}>{t('docs.version.title')}</h3>
@@ -427,54 +447,68 @@ export function VersionPanel({
           </div>
         </div>
       )}
+    </section>
 
       {selected && (
-        <div className="octo-version-detail">
-          <div className="octo-member-row">
-            <h4 style={{ flex: 1, margin: 0 }}>
-              {compare ? t('docs.version.compareTitle') : t('docs.version.previewTitle')} — #{selected.docVersionSeq}
-            </h4>
-            <button
-              type="button"
-              className="octo-tb-btn"
-              disabled={previewState !== 'ready'}
-              onClick={() => setCompare((c) => !c)}
-            >
-              {compare ? t('docs.version.showPreview') : t('docs.version.compare')}
-            </button>
-          </div>
-
-          {previewState === 'loading' && <p className="octo-loading">{t('docs.version.loadingPreview')}</p>}
-          {previewState === 'schema-error' && (
-            <p className="octo-member-error">
-              {t(
-                schemaErrorKind === 'newer'
-                  ? 'docs.version.previewSchemaNewer'
-                  : 'docs.version.previewSchemaIncompatible',
-              )}
-            </p>
-          )}
-          {previewState === 'network-error' && (
-            <div className="octo-version-preview-error">
-              <p className="octo-member-error">{t('docs.version.previewNetworkError')}</p>
+        <div className="octo-modal-overlay" role="presentation" onMouseDown={closePreview}>
+          <div
+            className="octo-modal docs-version-preview-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={compare ? t('docs.version.compareTitle') : t('docs.version.previewTitle')}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="octo-member-row">
+              <h4 style={{ flex: 1, margin: 0 }}>
+                {compare ? t('docs.version.compareTitle') : t('docs.version.previewTitle')} — #{selected.docVersionSeq}
+              </h4>
               <button
                 type="button"
                 className="octo-tb-btn"
-                onClick={() => selected && onPreview(selected)}
+                disabled={previewState !== 'ready'}
+                onClick={() => setCompare((c) => !c)}
               >
-                {t('docs.version.previewRetry')}
+                {compare ? t('docs.version.showPreview') : t('docs.version.compare')}
+              </button>
+              <button type="button" className="octo-tb-btn" onClick={closePreview}>
+                {t('docs.version.close')}
               </button>
             </div>
-          )}
 
-          {previewState === 'ready' && previewJSON && !compare && (
-            <VersionPreview docId={docId} content={previewJSON} />
-          )}
+            <div className="docs-version-preview-modal-body">
+              {previewState === 'loading' && <p className="octo-loading">{t('docs.version.loadingPreview')}</p>}
+              {previewState === 'schema-error' && (
+                <p className="octo-member-error">
+                  {t(
+                    schemaErrorKind === 'newer'
+                      ? 'docs.version.previewSchemaNewer'
+                      : 'docs.version.previewSchemaIncompatible',
+                  )}
+                </p>
+              )}
+              {previewState === 'network-error' && (
+                <div className="octo-version-preview-error">
+                  <p className="octo-member-error">{t('docs.version.previewNetworkError')}</p>
+                  <button
+                    type="button"
+                    className="octo-tb-btn"
+                    onClick={() => selected && onPreview(selected)}
+                  >
+                    {t('docs.version.previewRetry')}
+                  </button>
+                </div>
+              )}
 
-          {previewState === 'ready' && compare && diff && <DiffView diff={diff} />}
+              {previewState === 'ready' && previewJSON && !compare && (
+                <VersionPreview docId={docId} content={previewJSON} />
+              )}
+
+              {previewState === 'ready' && compare && diff && <DiffView diff={diff} />}
+            </div>
+          </div>
         </div>
       )}
-    </section>
+    </>
   )
 }
 

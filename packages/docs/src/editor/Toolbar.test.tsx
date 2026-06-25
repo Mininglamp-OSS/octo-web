@@ -8,6 +8,10 @@ import Highlight from '@tiptap/extension-highlight'
 import { TextStyle } from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
 import Link from '@tiptap/extension-link'
+import { Table } from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row'
+import TableHeader from '@tiptap/extension-table-header'
+import TableCell from '@tiptap/extension-table-cell'
 import { Toolbar } from './Toolbar.tsx'
 import { getFindState, FindReplace } from './findReplace.ts'
 
@@ -185,6 +189,73 @@ describe('Toolbar — find match counter stays in sync (batch-7 regression)', ()
     fireEvent.change(input, { target: { value: 'zzz' } })
     expect(getFindState(editor!.state).matches).toHaveLength(0)
     expect(countText()).toBe('docs.find.noResults')
+  })
+})
+
+describe('Toolbar — active states for insert/popup buttons (batch 8 item 8)', () => {
+  function tableEditor() {
+    return new Editor({
+      extensions: [
+        StarterKit.configure({ undoRedo: false }),
+        TaskList,
+        TaskItem,
+        Highlight.configure({ multicolor: true }),
+        TextStyle,
+        Color,
+        Link,
+        Table.configure({ resizable: false }),
+        TableRow,
+        TableHeader,
+        TableCell,
+        FindReplace,
+      ],
+      content: '<p>hello</p>',
+    })
+  }
+
+  it('never marks the Table (insert) button active, even with the caret inside a table', () => {
+    const e = tableEditor()
+    e.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run()
+    expect(e.isActive('table')).toBe(true) // caret is inside the just-inserted table…
+    render(<Toolbar editor={e} />)
+    // …yet the insert button must NOT show the toggle-active blue.
+    expect(titleBtn('docs.toolbar.table').className).not.toContain('is-active')
+    e.destroy()
+  })
+
+  it('marks highlight/text-colour triggers active only while their popover is open, not from colored text', () => {
+    // Caret sits inside highlighted + coloured text…
+    editor!.chain().focus().selectAll().toggleHighlight({ color: '#fff3a3' }).setColor('#e03131').run()
+    render(<Toolbar editor={editor!} />)
+    const highlight = titleBtn('docs.toolbar.highlight')
+    const color = titleBtn('docs.toolbar.textColor')
+    // …but the triggers are not blue purely because the cursor is in coloured text.
+    expect(highlight.className).not.toContain('is-active')
+    expect(color.className).not.toContain('is-active')
+
+    // Opening the popover (and only then) marks the trigger active.
+    fireEvent.click(highlight)
+    expect(titleBtn('docs.toolbar.highlight').className).toContain('is-active')
+    // Closing it removes the active state again.
+    fireEvent.click(titleBtn('docs.toolbar.highlight'))
+    expect(titleBtn('docs.toolbar.highlight').className).not.toContain('is-active')
+  })
+
+  it('keeps isActive on true toggle-mark buttons (bold/italic/underline)', () => {
+    editor!.chain().focus().selectAll().toggleBold().toggleItalic().toggleUnderline().run()
+    render(<Toolbar editor={editor!} />)
+    expect(titleBtn('docs.toolbar.bold').className).toContain('is-active')
+    expect(titleBtn('docs.toolbar.italic').className).toContain('is-active')
+    expect(titleBtn('docs.toolbar.underline').className).toContain('is-active')
+  })
+})
+
+describe('Toolbar — clear-format is an eraser icon (batch 8 item 7)', () => {
+  it('renders the clear-format button as an icon (no "Tx" text label)', () => {
+    render(<Toolbar editor={editor!} />)
+    const clear = titleBtn('docs.toolbar.clearFormat')
+    expect(clear.querySelector('svg.octo-tb-icon')).toBeTruthy()
+    expect(clear.textContent?.trim()).toBe('')
   })
 })
 

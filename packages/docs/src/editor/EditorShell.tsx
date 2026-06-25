@@ -46,6 +46,15 @@ export interface EditorShellProps extends CollabEditorOptions {
 }
 
 /**
+ * Base file name (no extension) for the Markdown export: the current document title, trimmed,
+ * falling back to the localized "untitled" placeholder and finally a generic "document" so the
+ * download always has a sensible name.
+ */
+export function exportDownloadName(title: string | null | undefined): string {
+  return (title || t('docs.state.untitled')).trim() || 'document'
+}
+
+/**
  * Editable document title (BUG3). Renders the real document title (fetched via getDoc,
  * falling back to the passed-in title) instead of a hardcoded placeholder. For manage-role
  * users it is click-to-edit: Enter / blur commits via PATCH /docs/{docId}; Esc cancels.
@@ -56,11 +65,14 @@ function DocTitle({
   initialTitle,
   canEdit,
   onSaved,
+  onTitleLoaded,
 }: {
   docId: string
   initialTitle: string
   canEdit: boolean
   onSaved?: (docId: string, title: string) => void
+  /** Surfaces the real title fetched on mount so the parent can lift it (e.g. the export filename). */
+  onTitleLoaded?: (title: string) => void
 }) {
   const placeholder = t('docs.state.untitled')
   const [title, setTitle] = useState(initialTitle)
@@ -75,12 +87,17 @@ function DocTitle({
   // or cancel) does not re-commit. Reset when a new edit session starts.
   const doneRef = useRef(false)
 
-  // Fetch the real title once on mount (resilient: keep the fallback prop on failure).
+  // Fetch the real title once on mount (resilient: keep the fallback prop on failure). Surface the
+  // fetched title to the parent so the live (current) title — not the initial prop — drives things
+  // like the export filename.
   useEffect(() => {
     let cancelled = false
     getDoc(docId)
       .then((meta) => {
-        if (!cancelled && typeof meta?.title === 'string') setTitle(meta.title)
+        if (!cancelled && typeof meta?.title === 'string') {
+          setTitle(meta.title)
+          onTitleLoaded?.(meta.title)
+        }
       })
       .catch(() => {
         /* keep the passed-in fallback title */
@@ -200,6 +217,10 @@ export function EditorShell(props: EditorShellProps) {
   const { title, onBack, onExit, onTitleSaved, onDeleted, ...collabOpts } = props
   const docId = props.docId
   const { instance, ready, role, connState, terminal } = useCollabEditor(collabOpts)
+  // The live document title, lifted out of DocTitle so the export filename uses the current
+  // (fetched / edited) title rather than the initial `title` prop. Seeded from the prop, then
+  // updated when DocTitle fetches the real title on mount and when the user renames the doc.
+  const [currentTitle, setCurrentTitle] = useState(title)
   // #4/#5: a single mutually-exclusive drawer panel (history | comments | members | null),
   // replacing the three independent show* booleans.
   const [activePanel, setActivePanel] = useState<DrawerPanel>(null)
@@ -304,8 +325,7 @@ export function EditorShell(props: EditorShellProps) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      const name = (title || t('docs.state.untitled')).trim() || 'document'
-      a.download = `${name}.md`
+      a.download = `${exportDownloadName(currentTitle)}.md`
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -315,7 +335,7 @@ export function EditorShell(props: EditorShellProps) {
     } finally {
       setExporting(false)
     }
-  }, [instance, docId, title, exporting])
+  }, [instance, docId, currentTitle, exporting])
 
   const togglePanel = useCallback(
     (panel: Exclude<DrawerPanel, null>) => setActivePanel((cur) => (cur === panel ? null : panel)),
@@ -368,7 +388,16 @@ export function EditorShell(props: EditorShellProps) {
             ← {t('docs.list.back')}
           </button>
         )}
-        <DocTitle docId={docId} initialTitle={title} canEdit={manage} onSaved={onTitleSaved} />
+        <DocTitle
+          docId={docId}
+          initialTitle={title}
+          canEdit={manage}
+          onSaved={(id, t) => {
+            setCurrentTitle(t)
+            onTitleSaved?.(id, t)
+          }}
+          onTitleLoaded={setCurrentTitle}
+        />
         <div className="octo-doc-header-right">
           <PresenceBar provider={instance.provider} connState={connState} synced={ready} />
           {/* History is reader+ (everyone with access), unlike admin-only Members. */}

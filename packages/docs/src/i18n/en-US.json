@@ -58,6 +58,7 @@
     "file": "File",
     "bookmark": "Bookmark",
     "emoji": "Emoji",
+    "emojiSearch": "Search emoji",
     "mention": "Mention",
     "details": "Collapsible block",
     "callout": "Callout",

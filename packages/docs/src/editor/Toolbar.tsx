@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import type { ReactNode, UIEvent } from 'react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
@@ -72,19 +72,39 @@ const IconQuote = () => (
     <path d="M7.2 7C5.4 7 4 8.4 4 10.2c0 1.7 1.3 3 3 3 .2 0 .4 0 .6-.1-.4 1.2-1.5 2.2-3 2.6l.6 1.3c2.7-.7 4.5-2.9 4.5-5.9V10.2C9.7 8.4 8.4 7 7.2 7zm9 0C14.4 7 13 8.4 13 10.2c0 1.7 1.3 3 3 3 .2 0 .4 0 .6-.1-.4 1.2-1.5 2.2-3 2.6l.6 1.3c2.7-.7 4.5-2.9 4.5-5.9V10.2C18.7 8.4 17.4 7 16.2 7z" />
   </svg>
 )
+// codeBlock: a literal `</>` — left chevron, a centered forward slash, right chevron
+// (boss reference). Filled glyph via .octo-tb-icon to match the other toolbar icons.
 const IconCode = () => (
   <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z" />
+    <path d="M8.7 17.3 3.4 12l5.3-5.3 1.3 1.4L5.9 12l4.1 4.1-1.3 1.2zm6.6 0L14 16.1l4.1-4.1-4.1-4.1 1.3-1.4L20.6 12l-5.3 5.3zM13.9 5.2l1.9.5-3.9 13.1-1.9-.5 3.9-13.1z" />
   </svg>
 )
+// Link: two interlocking pill-shaped rings linked at ~45° (classic chain-link, boss reference).
+// Filled rings via the evenodd fill-rule (outer capsule minus an inner capsule = hollow ring);
+// the whole pair is rotated 45° so the links sit on the diagonal.
 const IconLink = () => (
   <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M3.9 12a3.1 3.1 0 0 1 3.1-3.1h4V7h-4a5 5 0 0 0 0 10h4v-1.9h-4A3.1 3.1 0 0 1 3.9 12zm5.1 1h6v-2H9v2zm5-6h-4v1.9h4a3.1 3.1 0 0 1 0 6.2h-4V17h4a5 5 0 0 0 0-10z" />
+    <g transform="rotate(45 12 12)" fillRule="evenodd">
+      <path d="M4 8.6h9a3.4 3.4 0 0 1 0 6.8H4a3.4 3.4 0 0 1 0-6.8zm0 1.6a1.8 1.8 0 0 0 0 3.6h9a1.8 1.8 0 0 0 0-3.6H4z" />
+      <path d="M11 8.6h9a3.4 3.4 0 0 1 0 6.8h-9a3.4 3.4 0 0 1 0-6.8zm0 1.6a1.8 1.8 0 0 0 0 3.6h9a1.8 1.8 0 0 0 0-3.6h-9z" />
+    </g>
   </svg>
 )
+// Unlink: the same two rings pulled apart with a gap between them (broken chain).
 const IconUnlink = () => (
   <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M17 7h-4v1.9h4a3.1 3.1 0 0 1 2.2 5.3l1.35 1.35A5 5 0 0 0 17 7zm-2.05 4-2-2-1.4 1.4 2 2 1.4-1.4zM3.9 12a3.1 3.1 0 0 1 3.1-3.1h.7L5.8 7.0A5 5 0 0 0 7 17h4v-1.9H7A3.1 3.1 0 0 1 3.9 12zm5.15 1 .95.95V13H9.05zM2.8 4.1 1.5 5.4l17.1 17.1 1.3-1.3L2.8 4.1z" />
+    <g transform="rotate(45 12 12)" fillRule="evenodd">
+      <path d="M3 8.6h6.5a3.4 3.4 0 0 1 0 6.8H3a3.4 3.4 0 0 1 0-6.8zm0 1.6a1.8 1.8 0 0 0 0 3.6h6.5a1.8 1.8 0 0 0 0-3.6H3z" />
+      <path d="M14.5 8.6H21a3.4 3.4 0 0 1 0 6.8h-6.5a3.4 3.4 0 0 1 0-6.8zm0 1.6a1.8 1.8 0 0 0 0 3.6H21a1.8 1.8 0 0 0 0-3.6h-6.5z" />
+    </g>
+  </svg>
+)
+
+// Clear-format: a tilted eraser/rubber sweeping over a baseline (boss reference). Filled glyph
+// via .octo-tb-icon to match the other toolbar icons.
+const IconEraser = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M15.1 3.7 21.4 10a2 2 0 0 1 0 2.8l-7 7H17v1.7h-7.4a2 2 0 0 1-1.4-.6L3.7 16.6a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 0 1 2.8 0zM8.3 14.2l-3.2 3.2 2.9 2.9h1.7l2.8-2.8-4.2-3.3z" />
   </svg>
 )
 
@@ -260,7 +280,7 @@ function HighlightControl({ editor }: { editor: Editor }) {
       <Btn
         label="🖍"
         title={t('docs.toolbar.highlight')}
-        active={editor.isActive('highlight')}
+        active={open}
         onClick={() => setOpen((v) => !v)}
       />
       {open && (
@@ -297,7 +317,7 @@ function TextColorControl({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
   return (
     <span className="octo-color-control">
-      <Btn label="A̲" title={t('docs.toolbar.textColor')} active={editor.isActive('textStyle')} onClick={() => setOpen((v) => !v)} />
+      <Btn label="A̲" title={t('docs.toolbar.textColor')} active={open} onClick={() => setOpen((v) => !v)} />
       {open && (
         <span className="octo-color-popover">
           {TEXT_COLORS.map((c) => (
@@ -338,8 +358,13 @@ const ALIGNMENTS = [
   { value: 'justify', icon: <IconAlignJustify />, key: 'alignJustify' },
 ] as const
 
-/** Curated emoji subset for the toolbar picker grid — real glyphs, regional-indicator letters excluded (D1). */
-const EMOJI_PICKER = pickerEmojis(48)
+/** Full curated emoji set for the toolbar picker grid — real glyphs, regional indicators excluded
+ * (D1). The picker windows + scrolls these rather than capping at a fixed count (item 5). */
+const EMOJI_PICKER = pickerEmojis()
+/** Emoji rendered on first open and grown by this much each time the grid is scrolled near the
+ * bottom — keeps the initial DOM small (no ~1900-node eager render) while the full set stays
+ * reachable by scrolling or the search box. */
+const EMOJI_WINDOW = 120
 
 /**
  * List dropdown (toolbar item ⑧, batch 7): a single list icon button that opens a menu with
@@ -499,29 +524,65 @@ function AlignControls({ editor }: { editor: Editor }) {
   )
 }
 
-/** Emoji picker (SCHEMA_VERSION 9): a small grid that inserts via the emoji node's setEmoji. */
+/** Emoji picker (SCHEMA_VERSION 9): a scrollable grid that inserts via the emoji node's setEmoji.
+ * Search filters the full curated set; the grid renders an initial window and grows on scroll so
+ * the ~1900-glyph set never mounts eagerly. */
 function EmojiControl({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [visible, setVisible] = useState(EMOJI_WINDOW)
+
+  // Match name + shortcodes over the curated set (regional indicators already excluded).
+  const list = useMemo(() => {
+    const q = query.toLowerCase().trim()
+    if (!q) return EMOJI_PICKER
+    return EMOJI_PICKER.filter((e) => e.name.includes(q) || e.shortcodes.some((s) => s.includes(q)))
+  }, [query])
+
+  // Reset the window whenever the panel opens or the query changes.
+  useEffect(() => {
+    setVisible(EMOJI_WINDOW)
+  }, [open, query])
+
+  const shown = list.slice(0, visible)
+
+  function onScroll(e: UIEvent<HTMLSpanElement>) {
+    const el = e.currentTarget
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) {
+      setVisible((v) => (v < list.length ? v + EMOJI_WINDOW : v))
+    }
+  }
+
   return (
     <span className="octo-color-control">
       <Btn label="😀" title={t('docs.toolbar.emoji')} active={open} onClick={() => setOpen((v) => !v)} />
       {open && (
         <span className="octo-emoji-popover">
-          {EMOJI_PICKER.map((e) => (
-            <button
-              key={e.name}
-              type="button"
-              className="octo-emoji-swatch"
-              title={`:${e.shortcodes[0] ?? e.name}:`}
-              onMouseDown={(ev) => ev.preventDefault()}
-              onClick={() => {
-                editor.chain().focus().setEmoji(e.shortcodes[0] ?? e.name).run()
-                setOpen(false)
-              }}
-            >
-              {e.emoji}
-            </button>
-          ))}
+          <input
+            className="octo-emoji-search"
+            placeholder={t('docs.toolbar.emojiSearch')}
+            value={query}
+            autoFocus
+            onMouseDown={(e) => e.stopPropagation()}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <span className="octo-emoji-grid" onScroll={onScroll}>
+            {shown.map((e) => (
+              <button
+                key={e.name}
+                type="button"
+                className="octo-emoji-swatch"
+                title={`:${e.shortcodes[0] ?? e.name}:`}
+                onMouseDown={(ev) => ev.preventDefault()}
+                onClick={() => {
+                  editor.chain().focus().setEmoji(e.shortcodes[0] ?? e.name).run()
+                  setOpen(false)
+                }}
+              >
+                {e.emoji}
+              </button>
+            ))}
+          </span>
         </span>
       )}
     </span>
@@ -882,7 +943,6 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <Btn
         label="Table"
         title={t('docs.toolbar.table')}
-        active={editor.isActive('table')}
         onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
       />
       <Btn label="Image" title={t('docs.toolbar.image')} onClick={() => void pickAndUploadImage(editor)} />
@@ -946,7 +1006,7 @@ export function Toolbar({ editor }: { editor: Editor }) {
       </span>
       <span className="octo-tb-sep" />
       <Btn
-        label="Tx"
+        label={<IconEraser />}
         title={t('docs.toolbar.clearFormat')}
         onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
       />
