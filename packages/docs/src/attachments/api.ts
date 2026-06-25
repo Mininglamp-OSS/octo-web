@@ -92,6 +92,48 @@ export async function getReadUrl(docId: string, attachId: string): Promise<ReadR
   return data
 }
 
+/** One freshly-resolved attachment (signed display/download URL + metadata). */
+export interface ResolvedAttachment {
+  attachId: string
+  /** Freshly signed, time-limited URL — used as the image src / download href. */
+  url: string
+  expiresInSec: number
+  mime: string
+  sizeBytes: number
+  fileName: string
+}
+
+export interface ResolveResult {
+  items: ResolvedAttachment[]
+  /** attachIds the backend could not resolve (deleted / unknown). */
+  notFound: string[]
+}
+
+/**
+ * POST /docs/{docId}/attachments/resolve — batch-resolve fresh signed URLs for a set of
+ * attachIds (export / re-render use). Per RES-1 the backend caps the batch (default 200);
+ * the caller must chunk above that. 400 `attachIds_too_many` / `invalid_body` surface as
+ * AttachmentRejectedError, consistent with presignUpload.
+ */
+export async function resolveAttachments(
+  docId: string,
+  attachIds: string[],
+): Promise<ResolveResult> {
+  try {
+    const { data } = await apiClient().post<ResolveResult>(
+      `/docs/${docId}/attachments/resolve`,
+      { attachIds },
+    )
+    return { items: data.items ?? [], notFound: data.notFound ?? [] }
+  } catch (e) {
+    const err = e as ApiError<{ error?: string }>
+    if (err.response?.status === 400) {
+      throw new AttachmentRejectedError(err.response.data?.error ?? 'invalid_body')
+    }
+    throw e
+  }
+}
+
 /** Node attrs produced by a successful upload: the durable attachId + a display src. */
 export interface UploadedImage {
   attachId: string

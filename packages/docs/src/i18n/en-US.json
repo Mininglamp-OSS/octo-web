@@ -75,7 +75,9 @@
     "codeLanguageAuto": "auto",
     "history": "History",
     "comments": "Comments",
-    "members": "Members"
+    "members": "Members",
+    "exportMarkdown": "Export as Markdown",
+    "exportError": "Couldn't export this document. Please try again."
   },
   "slash": {
     "groupBasic": "Basic",
@@ -119,7 +121,10 @@
     "loadMore": "Load more",
     "preview": "Preview",
     "loadingPreview": "Loading preview…",
-    "previewError": "Failed to load this version.",
+    "previewSchemaIncompatible": "This version was saved under a document format this app can't read, so it can't be previewed.",
+    "previewSchemaNewer": "This version was saved by a newer version of the app. Update to preview it.",
+    "previewNetworkError": "Couldn't load this version. Check your connection and try again.",
+    "previewRetry": "Retry",
     "compare": "Compare with current",
     "compareTitle": "Compare with current",
     "previewTitle": "Preview",
@@ -192,7 +197,10 @@
   },
   "status": {
     "words": "{{count}} words",
-    "characters": "{{count}} characters"
+    "characters": "{{count}} characters",
+    "editing": "Editing…",
+    "saved": "Saved",
+    "savedAt": "Saved · {{time}}"
   },
   "member": {
     "title": "Members",

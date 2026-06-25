@@ -101,17 +101,22 @@ describe('version wire contract — endpoints consume/produce canonical fixtures
     expect(seq).toBe(FIXTURE_CREATE_RESPONSE.docVersionSeq)
   })
 
-  it('GET state hits the canonical docVersionSeq path with arraybuffer', async () => {
-    const buf = new ArrayBuffer(8)
-    let seenConfig: unknown
+  it('GET state hits the canonical docVersionSeq path and parses JSON { doc, schemaVersion, docVersionSeq }', async () => {
+    const stateBody = {
+      doc: { type: 'doc', content: [{ type: 'paragraph' }] },
+      schemaVersion: 13,
+      docVersionSeq: 7,
+    }
+    let seenConfig: Record<string, unknown> | undefined
     api.responder = (_m, _u, _b, config) => {
-      seenConfig = config
-      return { data: buf, status: 200 }
+      seenConfig = config as Record<string, unknown> | undefined
+      return { data: stateBody, status: 200 }
     }
     const out = await getVersionState('d_1', 7)
-    expect(out).toBe(buf)
+    expect(out).toEqual(stateBody)
     expect(api.calls[0]).toMatchObject({ method: 'get', url: '/docs/d_1/versions/7/state' })
-    expect(seenConfig).toMatchObject({ responseType: 'arraybuffer' })
+    // Contract switched from octet-stream to JSON — no arraybuffer responseType.
+    expect(seenConfig?.responseType).toBeUndefined()
   })
 
   it('POST restore reads canonical { newDocVersionSeq, restoredFrom }', async () => {

@@ -88,6 +88,34 @@ const IconUnlink = () => (
   </svg>
 )
 
+// Undo / redo: stroke-style curved-arrow glyphs (boss reference). NOT filled — they use
+// .octo-tb-icon-stroke (fill:none; stroke:currentColor) so they inherit the light-grey
+// #AAAAAA from the .octo-tb-undoredo wrapper. Redo is the horizontal mirror of Undo.
+const IconUndo = () => (
+  <svg className="octo-tb-icon-stroke" viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M9 7 4 12l5 5M4 12h11a5 5 0 0 1 0 10h-1"
+    />
+  </svg>
+)
+const IconRedo = () => (
+  <svg className="octo-tb-icon-stroke" viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M15 7l5 5-5 5M20 12H9a5 5 0 0 0 0 10h1"
+    />
+  </svg>
+)
+
 // Languages offered in the code-block language selector. A curated subset of the
 // highlight.js `common` set registered in extensions.ts; "auto" (empty value)
 // lets lowlight detect the language.
@@ -929,8 +957,20 @@ export function Toolbar({ editor }: { editor: Editor }) {
         onClick={() => setFindOpen((v) => !v)}
       />
       <span className="octo-tb-spacer" />
-      <Btn label="Undo" title={t('docs.toolbar.undo')} onClick={() => editor.chain().focus().undo().run()} />
-      <Btn label="Redo" title={t('docs.toolbar.redo')} onClick={() => editor.chain().focus().redo().run()} />
+      <span className="octo-tb-undoredo">
+        <Btn
+          label={<IconUndo />}
+          title={t('docs.toolbar.undo')}
+          disabled={!editor.can().undo?.()}
+          onClick={() => editor.chain().focus().undo().run()}
+        />
+        <Btn
+          label={<IconRedo />}
+          title={t('docs.toolbar.redo')}
+          disabled={!editor.can().redo?.()}
+          onClick={() => editor.chain().focus().redo().run()}
+        />
+      </span>
     </div>
     {findOpen && <FindBar editor={editor} onClose={() => setFindOpen(false)} />}
     </div>

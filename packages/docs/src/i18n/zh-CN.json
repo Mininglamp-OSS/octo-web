@@ -75,7 +75,9 @@
     "codeLanguageAuto": "自动",
     "history": "历史",
     "comments": "评论",
-    "members": "成员"
+    "members": "成员",
+    "exportMarkdown": "导出为 Markdown",
+    "exportError": "导出文档失败，请重试。"
   },
   "slash": {
     "groupBasic": "基础",
@@ -119,7 +121,10 @@
     "loadMore": "加载更多",
     "preview": "预览",
     "loadingPreview": "正在加载预览…",
-    "previewError": "加载该版本失败。",
+    "previewSchemaIncompatible": "该版本以当前应用无法识别的文档格式保存，无法预览。",
+    "previewSchemaNewer": "该版本由更新版本的应用保存，请升级后再预览。",
+    "previewNetworkError": "加载该版本失败，请检查网络后重试。",
+    "previewRetry": "重试",
     "compare": "与当前版本对比",
     "compareTitle": "与当前版本对比",
     "previewTitle": "预览",
@@ -192,7 +197,10 @@
   },
   "status": {
     "words": "{{count}} 词",
-    "characters": "{{count}} 字符"
+    "characters": "{{count}} 字符",
+    "editing": "编辑中…",
+    "saved": "已自动保存",
+    "savedAt": "已自动保存 · {{time}}"
   },
   "member": {
     "title": "成员",
