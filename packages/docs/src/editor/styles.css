@@ -933,6 +933,29 @@
   padding: 0;
 }
 
+/* ── Version preview/compare modal (batch 8 item 2): the preview moved out of the sidebar drawer
+   into a centered, scrollable dialog so long documents are fully viewable. ── */
+.docs-version-preview-modal {
+  max-width: 720px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.docs-version-preview-modal-body {
+  margin-top: 12px;
+  overflow: auto;
+  flex: 1 1 auto;
+}
+/* The modal body is the single scroll container, so the inner preview/diff drop their own
+   max-height + border + padding and flow naturally inside it. */
+.docs-version-preview-modal-body .octo-version-preview,
+.docs-version-preview-modal-body .octo-version-diff {
+  max-height: none;
+  border: none;
+  padding: 0;
+  overflow: visible;
+}
+
 /* ── Invite links (#A5 redesign + #A6 expiry) ─────────────────────────────── */
 .octo-invite-panel {
   display: flex;
@@ -1973,17 +1996,32 @@
   position: absolute;
   z-index: 1000;
   margin-top: 6px;
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   width: 280px;
-  max-height: 220px;
-  overflow-y: auto;
   background: var(--octo-bg, #fff);
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 8px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
   padding: 6px;
+}
+.octo-emoji-search {
+  flex: 0 0 auto;
+  height: 28px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  padding: 0 8px;
+  font-size: 13px;
+}
+.octo-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
 }
 .octo-emoji-swatch {
   border: 0;

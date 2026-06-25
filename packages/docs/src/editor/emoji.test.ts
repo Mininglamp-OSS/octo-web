@@ -24,6 +24,16 @@ describe('emoji picker set (D1)', () => {
     expect(EMOJI_SET[0].name.startsWith('regional_indicator_')).toBe(true)
     expect(pickerEmojis(3)[0].name.startsWith('regional_indicator_')).toBe(false)
   })
+
+  it('returns the full curated set (far more than the old 48 cap) when uncapped (item 5)', () => {
+    const all = pickerEmojis()
+    // The bundled set has ~1900 glyphs; the curated picker must expose hundreds, not 48.
+    expect(all.length).toBeGreaterThan(300)
+    expect(all.length).toBeGreaterThan(pickerEmojis(48).length)
+    // Still excludes regional-indicator flag letters across the whole set.
+    expect(all.some((e) => e.name.startsWith('regional_indicator_'))).toBe(false)
+    expect(all.every((e) => !!e.emoji)).toBe(true)
+  })
 })
 
 describe('emojiGlyph lookup (D1)', () => {
