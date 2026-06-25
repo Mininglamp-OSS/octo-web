@@ -17,7 +17,33 @@ const VERSION = {
   restoredFrom: null,
 }
 
-const listVersionsMock = vi.fn(async (..._a: unknown[]) => ({ items: [VERSION], nextCursor: null }))
+const AUTO_VERSION = {
+  docVersionSeq: 6,
+  kind: 'auto' as const,
+  label: '',
+  createdBy: 'u_self',
+  createdAt: '2026-06-20T09:30:00.000Z',
+  sizeBytes: 999,
+  schemaVersion: 1,
+  restoredFrom: null,
+}
+
+const COUNTS = { auto: 5, manual: 2, restore: 1, total: 8 }
+
+// Kind-aware mock: the manual stream carries named+restore rows, the auto stream carries autosaves.
+// Each stream has its own cursor; both responses embed the full per-kind counts.
+const listVersionsMock = vi.fn(
+  async (_docId: unknown, opts?: { kind?: string; cursor?: number | null }) => {
+    const kind = opts?.kind
+    const cursor = opts?.cursor
+    if (kind === 'auto') {
+      if (cursor == null) return { items: [AUTO_VERSION], nextCursor: 200, counts: COUNTS }
+      return { items: [{ ...AUTO_VERSION, docVersionSeq: 5 }], nextCursor: null, counts: COUNTS }
+    }
+    if (cursor == null) return { items: [VERSION], nextCursor: 100, counts: COUNTS }
+    return { items: [{ ...VERSION, docVersionSeq: 4 }], nextCursor: null, counts: COUNTS }
+  },
+)
 const getVersionStateMock = vi.fn(async (..._a: unknown[]) => ({
   doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'historical body' }] }] },
   schemaVersion: 1,
@@ -27,7 +53,8 @@ vi.mock('./api.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api.ts')>()
   return {
     ...actual,
-    listVersions: (...a: unknown[]) => listVersionsMock(...a),
+    listVersions: (docId: string, opts?: { kind?: string; cursor?: number | null }) =>
+      listVersionsMock(docId, opts),
     getVersionState: (...a: unknown[]) => getVersionStateMock(...a),
   }
 })
@@ -126,5 +153,120 @@ describe('VersionPanel — preview modal (item 2)', () => {
     ) as HTMLButtonElement
     fireEvent.click(close)
     await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeNull())
+  })
+})
+
+// Item 3: the history is two collapsible streams — manual (named + restore) expanded by default,
+// auto snapshots collapsed and lazily fetched. Each stream owns its items / cursor / load-more.
+describe('VersionPanel — two-stream groups (item 3)', () => {
+  const groupHeader = (root: HTMLElement, key: string) =>
+    Array.from(root.querySelectorAll('.octo-version-group-header')).find((b) =>
+      b.textContent?.includes(key),
+    ) as HTMLButtonElement
+
+  it('renders both group headers with their counts; manual expanded, auto collapsed', async () => {
+    render(<VersionPanel docId="d_1" role="admin" />)
+    await screen.findByText('docs.version.manualGroup')
+
+    const manual = groupHeader(document.body, 'docs.version.manualGroup')
+    const auto = groupHeader(document.body, 'docs.version.autoGroup')
+    // Manual count = counts.manual + counts.restore (2 + 1); auto count = counts.auto (5).
+    expect(manual.textContent).toContain('(3)')
+    expect(auto.textContent).toContain('(5)')
+    expect(manual.getAttribute('aria-expanded')).toBe('true')
+    expect(auto.getAttribute('aria-expanded')).toBe('false')
+
+    // On mount only the manual stream is fetched (auto is lazy).
+    const kinds = listVersionsMock.mock.calls.map((c) => (c[1] as { kind?: string })?.kind)
+    expect(kinds).toContain('manual')
+    expect(kinds).not.toContain('auto')
+  })
+
+  it('lazily fetches the auto stream the first time the auto group is expanded', async () => {
+    render(<VersionPanel docId="d_1" role="admin" />)
+    await screen.findByText('docs.version.autoGroup')
+    expect(listVersionsMock.mock.calls.some((c) => (c[1] as { kind?: string })?.kind === 'auto')).toBe(false)
+
+    fireEvent.click(groupHeader(document.body, 'docs.version.autoGroup'))
+
+    await waitFor(() =>
+      expect(listVersionsMock.mock.calls.some((c) => (c[1] as { kind?: string })?.kind === 'auto')).toBe(true),
+    )
+    // Auto rows show the auto badge + the autosave-time fallback label (empty wire label).
+    await screen.findByText('docs.version.badgeAuto')
+    expect(screen.getByText('docs.time.autosave')).toBeTruthy()
+  })
+
+  it('does not re-fetch the auto stream on a second expand toggle', async () => {
+    render(<VersionPanel docId="d_1" role="admin" />)
+    await screen.findByText('docs.version.autoGroup')
+    const auto = groupHeader(document.body, 'docs.version.autoGroup')
+    fireEvent.click(auto) // expand → fetch
+    await waitFor(() =>
+      expect(listVersionsMock.mock.calls.filter((c) => (c[1] as { kind?: string })?.kind === 'auto').length).toBe(1),
+    )
+    fireEvent.click(auto) // collapse
+    fireEvent.click(auto) // expand again — must reuse the already-loaded stream
+    expect(listVersionsMock.mock.calls.filter((c) => (c[1] as { kind?: string })?.kind === 'auto').length).toBe(1)
+  })
+
+  it("each group's load-more pages its OWN cursor stream", async () => {
+    render(<VersionPanel docId="d_1" role="admin" />)
+    await screen.findByText('docs.version.manualGroup')
+
+    // Manual group: load-more uses the manual cursor (100) with kind=manual.
+    const manualGroup = document.querySelector('.octo-version-group-manual') as HTMLElement
+    const manualMore = Array.from(manualGroup.querySelectorAll('button')).find(
+      (b) => b.textContent === 'docs.version.loadMore',
+    ) as HTMLButtonElement
+    fireEvent.click(manualMore)
+    await waitFor(() =>
+      expect(
+        listVersionsMock.mock.calls.some(
+          (c) => (c[1] as { kind?: string; cursor?: number })?.kind === 'manual' && (c[1] as { cursor?: number })?.cursor === 100,
+        ),
+      ).toBe(true),
+    )
+
+    // Expand auto, then its load-more uses the auto cursor (200) with kind=auto.
+    fireEvent.click(groupHeader(document.body, 'docs.version.autoGroup'))
+    await screen.findByText('docs.version.badgeAuto')
+    const autoGroup = document.querySelector('.octo-version-group-auto') as HTMLElement
+    const autoMore = Array.from(autoGroup.querySelectorAll('button')).find(
+      (b) => b.textContent === 'docs.version.loadMore',
+    ) as HTMLButtonElement
+    fireEvent.click(autoMore)
+    await waitFor(() =>
+      expect(
+        listVersionsMock.mock.calls.some(
+          (c) => (c[1] as { kind?: string; cursor?: number })?.kind === 'auto' && (c[1] as { cursor?: number })?.cursor === 200,
+        ),
+      ).toBe(true),
+    )
+  })
+
+  it('previews and restores an auto row (kind-agnostic)', async () => {
+    render(<VersionPanel docId="d_1" role="admin" />)
+    await screen.findByText('docs.version.autoGroup')
+    fireEvent.click(groupHeader(document.body, 'docs.version.autoGroup'))
+    await screen.findByText('docs.version.badgeAuto')
+
+    const autoGroup = document.querySelector('.octo-version-group-auto') as HTMLElement
+    // Preview the auto row → the shared preview modal opens.
+    const autoPreview = Array.from(autoGroup.querySelectorAll('button')).find(
+      (b) => b.textContent === 'docs.version.preview',
+    ) as HTMLButtonElement
+    fireEvent.click(autoPreview)
+    await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeTruthy())
+    expect(getVersionStateMock).toHaveBeenCalled()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeNull())
+
+    // Restore the auto row → the (kind-agnostic) confirm dialog opens.
+    const autoRestore = Array.from(autoGroup.querySelectorAll('button')).find(
+      (b) => b.textContent === 'docs.version.restore',
+    ) as HTMLButtonElement
+    fireEvent.click(autoRestore)
+    await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeTruthy())
   })
 })

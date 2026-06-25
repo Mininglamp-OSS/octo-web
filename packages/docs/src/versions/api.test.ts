@@ -41,6 +41,25 @@ describe('version API — paths / methods / mapping (feature #4 §7)', () => {
     expect(res.nextCursor).toBeNull()
   })
 
+  it('GET list sends kind=manual / kind=auto and parses the counts object', async () => {
+    const counts = { auto: 5, manual: 2, restore: 1, total: 8 }
+    api.responder = () => ({ data: { ...FIXTURE_LIST_RESPONSE, counts }, status: 200 })
+
+    const manual = await listVersions('d_1', { kind: 'manual', limit: 25 })
+    expect(api.calls[0].url).toBe('/docs/d_1/versions?limit=25&kind=manual')
+    expect(manual.counts).toEqual(counts)
+
+    const auto = await listVersions('d_1', { kind: 'auto', cursor: 9 })
+    expect(api.calls[1].url).toBe('/docs/d_1/versions?cursor=9&kind=auto')
+    expect(auto.counts).toEqual(counts)
+  })
+
+  it('GET list leaves counts undefined on a legacy payload without it', async () => {
+    api.responder = () => ({ data: FIXTURE_LIST_RESPONSE, status: 200 })
+    const res = await listVersions('d_1', { kind: 'manual' })
+    expect(res.counts).toBeUndefined()
+  })
+
   it('POST create named version sends trimmed label, returns docVersionSeq', async () => {
     api.responder = () => ({ data: { docVersionSeq: 42 }, status: 200 })
     const seq = await createNamedVersion('d_1', '  milestone  ')

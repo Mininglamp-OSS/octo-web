@@ -34,10 +34,24 @@ export interface VersionMeta {
   restoredFrom: number | null
 }
 
+/**
+ * Full per-kind counts for the document's history (NOT affected by limit/cursor). The
+ * manual stream returns named + restore rows, so the panel's "Manual versions" header count
+ * is `manual + restore`; "Auto snapshots" is `auto`.
+ */
+export interface VersionCounts {
+  auto: number
+  manual: number
+  restore: number
+  total: number
+}
+
 export interface ListVersionsResult {
   items: VersionMeta[]
   /** docVersionSeq to pass as the next `cursor`, or null when the history is exhausted. */
   nextCursor: number | null
+  /** Full history counts per kind (every list response embeds them); absent on legacy payloads. */
+  counts?: VersionCounts
 }
 
 export interface RestoreResult {
@@ -78,6 +92,15 @@ export interface ListVersionsOptions {
   /** Page anchor: return rows with docVersionSeq < cursor (reverse-chronological). */
   cursor?: number | null
   limit?: number
+  /**
+   * Which stream to page over (each has its own cursor stream on the backend):
+   *   'manual' — named + restore rows (the legacy default).
+   *   'auto'   — auto snapshots only.
+   *   'all'    — merged (legacy includeAuto=true).
+   * Omitted → the backend defaults to 'manual'; callers that page a specific group
+   * pass it explicitly so the request is self-describing.
+   */
+  kind?: 'manual' | 'auto' | 'all'
   signal?: AbortSignal
 }
 
@@ -89,15 +112,18 @@ export async function listVersions(
   const params = new URLSearchParams()
   if (opts.cursor != null) params.set('cursor', String(opts.cursor))
   if (opts.limit != null) params.set('limit', String(opts.limit))
+  if (opts.kind != null) params.set('kind', opts.kind)
   const qs = params.toString()
   const url = qs ? `/docs/${docId}/versions?${qs}` : `/docs/${docId}/versions`
-  const { data } = await apiClient().get<{ items: WireVersionMeta[]; nextCursor: number | null }>(
-    url,
-    { signal: opts.signal },
-  )
+  const { data } = await apiClient().get<{
+    items: WireVersionMeta[]
+    nextCursor: number | null
+    counts?: VersionCounts
+  }>(url, { signal: opts.signal })
   return {
     items: (data.items ?? []).map(mapVersion),
     nextCursor: data.nextCursor ?? null,
+    counts: data.counts,
   }
 }
 

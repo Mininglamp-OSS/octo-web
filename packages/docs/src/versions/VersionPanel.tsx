@@ -14,6 +14,7 @@ import {
   VersionSchemaIncompatibleError,
   VersionSchemaNewerError,
   type VersionMeta,
+  type VersionCounts,
 } from './api.ts'
 import { createPreviewGuard } from './previewGuard.ts'
 import { diffDocs, type DiffEntry, type PMNode } from './diff.ts'
@@ -75,9 +76,21 @@ export function VersionPanel({
   names?: Map<string, string>
   onClose?: () => void
 }) {
-  const [versions, setVersions] = useState<VersionMeta[]>([])
-  const [nextCursor, setNextCursor] = useState<number | null>(null)
-  const [loading, setLoading] = useState(false)
+  // Two independent streams (item 3): manual (named + restore) and auto (autosaves). Each
+  // owns its items / cursor / loading so one group's "load more" never displaces the other.
+  const [manualItems, setManualItems] = useState<VersionMeta[]>([])
+  const [manualCursor, setManualCursor] = useState<number | null>(null)
+  const [manualLoading, setManualLoading] = useState(false)
+  const [manualExpanded, setManualExpanded] = useState(true)
+  const [autoItems, setAutoItems] = useState<VersionMeta[]>([])
+  const [autoCursor, setAutoCursor] = useState<number | null>(null)
+  const [autoLoading, setAutoLoading] = useState(false)
+  // Auto group is collapsed by default and lazy: its stream is only fetched the first time the
+  // group is expanded, so opening the panel never pulls a long tail of autosave rows.
+  const [autoExpanded, setAutoExpanded] = useState(false)
+  const [autoLoaded, setAutoLoaded] = useState(false)
+  // Full per-kind history counts (server-computed, not page-limited); read from any list response.
+  const [counts, setCounts] = useState<VersionCounts | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -103,35 +116,83 @@ export function VersionPanel({
   const mySnapshot = canSnapshot(role)
   const myRestore = canRestoreVersion(role)
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
+  const loadManual = useCallback(async () => {
+    setManualLoading(true)
     setError(null)
     try {
-      const res = await listVersions(docId, { limit: PAGE_SIZE })
-      setVersions(res.items)
-      setNextCursor(res.nextCursor)
+      const res = await listVersions(docId, { kind: 'manual', limit: PAGE_SIZE })
+      setManualItems(res.items)
+      setManualCursor(res.nextCursor)
+      if (res.counts) setCounts(res.counts)
     } catch {
       setError(t('docs.version.errorList'))
     } finally {
-      setLoading(false)
+      setManualLoading(false)
     }
   }, [docId])
 
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
-
-  async function loadMore() {
-    if (nextCursor == null || loading) return
-    setLoading(true)
+  const loadAuto = useCallback(async () => {
+    setAutoLoading(true)
+    setError(null)
     try {
-      const res = await listVersions(docId, { cursor: nextCursor, limit: PAGE_SIZE })
-      setVersions((prev) => [...prev, ...res.items])
-      setNextCursor(res.nextCursor)
+      const res = await listVersions(docId, { kind: 'auto', limit: PAGE_SIZE })
+      setAutoItems(res.items)
+      setAutoCursor(res.nextCursor)
+      setAutoLoaded(true)
+      if (res.counts) setCounts(res.counts)
+    } catch {
+      setError(t('docs.version.errorList'))
+    } finally {
+      setAutoLoading(false)
+    }
+  }, [docId])
+
+  // Reload after a mutation (snapshot / rename / delete / restore). Always refresh the manual
+  // stream + counts; refresh the auto stream too only if it's already been loaded, so a restore's
+  // new auto safety-version shows without forcing the (lazy) auto group open.
+  const refresh = useCallback(async () => {
+    await loadManual()
+    if (autoLoaded) await loadAuto()
+  }, [loadManual, loadAuto, autoLoaded])
+
+  useEffect(() => {
+    void loadManual()
+  }, [loadManual])
+
+  function toggleAuto() {
+    const next = !autoExpanded
+    setAutoExpanded(next)
+    // First expansion triggers the lazy fetch of the auto stream.
+    if (next && !autoLoaded && !autoLoading) void loadAuto()
+  }
+
+  async function loadMoreManual() {
+    if (manualCursor == null || manualLoading) return
+    setManualLoading(true)
+    try {
+      const res = await listVersions(docId, { kind: 'manual', cursor: manualCursor, limit: PAGE_SIZE })
+      setManualItems((prev) => [...prev, ...res.items])
+      setManualCursor(res.nextCursor)
+      if (res.counts) setCounts(res.counts)
     } catch {
       setError(t('docs.version.errorMore'))
     } finally {
-      setLoading(false)
+      setManualLoading(false)
+    }
+  }
+
+  async function loadMoreAuto() {
+    if (autoCursor == null || autoLoading) return
+    setAutoLoading(true)
+    try {
+      const res = await listVersions(docId, { kind: 'auto', cursor: autoCursor, limit: PAGE_SIZE })
+      setAutoItems((prev) => [...prev, ...res.items])
+      setAutoCursor(res.nextCursor)
+      if (res.counts) setCounts(res.counts)
+    } catch {
+      setError(t('docs.version.errorMore'))
+    } finally {
+      setAutoLoading(false)
     }
   }
 
@@ -268,6 +329,97 @@ export function VersionPanel({
     return () => document.removeEventListener('keydown', onKey)
   }, [selected, closePreview])
 
+  // One history row (kind-agnostic): preview opens the modal, restore/rename/delete act in place.
+  // Shared verbatim between the manual and auto groups so auto rows are equally previewable/restorable.
+  function renderRow(v: VersionMeta) {
+    const isSelected = selected?.docVersionSeq === v.docVersionSeq
+    const renameable = mySnapshot && v.kind === 'named'
+    return (
+      <li
+        key={v.docVersionSeq}
+        className={`octo-version-row octo-version-row-${v.kind}${isSelected ? ' is-selected' : ''}`}
+      >
+        <div className="octo-version-line1">
+          <span className={`octo-version-badge octo-version-badge-${v.kind}`}>{kindBadge(v)}</span>
+          {renamingSeq === v.docVersionSeq ? (
+            <input
+              className="octo-uid"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              autoFocus
+            />
+          ) : (
+            <span className="octo-version-label">{displayLabel(v)}</span>
+          )}
+          <span className="octo-version-time" title={formatAbsolute(v.createdAt)}>
+            {formatRelative(v.createdAt)}
+          </span>
+        </div>
+        <div className="octo-version-line2">
+          <span className="octo-version-author">{names?.get(v.createdBy) || v.createdBy}</span>
+          <div className="octo-version-actions">
+            {renamingSeq === v.docVersionSeq ? (
+              <>
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  disabled={busy || renameValue.trim() === ''}
+                  onClick={() => onRename(v.docVersionSeq)}
+                >
+                  {t('docs.version.save')}
+                </button>
+                <button type="button" className="octo-tb-btn" onClick={() => setRenamingSeq(null)}>
+                  {t('docs.version.cancel')}
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="octo-tb-btn" onClick={() => onPreview(v)}>
+                  {t('docs.version.preview')}
+                </button>
+                {renameable && (
+                  <button
+                    type="button"
+                    className="octo-tb-btn"
+                    onClick={() => {
+                      setRenamingSeq(v.docVersionSeq)
+                      setRenameValue(v.label)
+                    }}
+                  >
+                    {t('docs.version.rename')}
+                  </button>
+                )}
+                {myRestore && (
+                  <button
+                    type="button"
+                    className="octo-tb-btn"
+                    onClick={() => setConfirmRestore(v)}
+                  >
+                    {t('docs.version.restore')}
+                  </button>
+                )}
+                {myRestore && (
+                  <button
+                    type="button"
+                    className="octo-tb-btn"
+                    disabled={busy}
+                    onClick={() => onDelete(v)}
+                  >
+                    {t('docs.version.delete')}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </li>
+    )
+  }
+
+  // Manual-stream header count = named + restore rows (the manual stream carries both); auto = autosaves.
+  const manualCount = counts ? counts.manual + counts.restore : manualItems.length
+  const autoCount = counts ? counts.auto : autoItems.length
+
   return (
     <>
     <section className="octo-version-panel">
@@ -316,112 +468,76 @@ export function VersionPanel({
 
       {notice && <p className="octo-version-notice">{notice}</p>}
       {error && <p className="octo-member-error">{error}</p>}
-      {loading && versions.length === 0 && <p className="octo-loading">{t('docs.version.loadingList')}</p>}
-      {!loading && versions.length === 0 && (
-        <p className="octo-version-empty">{t('docs.version.empty')}</p>
-      )}
 
-      <ul className="octo-version-list">
-        {versions.map((v) => {
-          const isSelected = selected?.docVersionSeq === v.docVersionSeq
-          const renameable = mySnapshot && v.kind === 'named'
-          return (
-            <li
-              key={v.docVersionSeq}
-              className={`octo-version-row octo-version-row-${v.kind}${isSelected ? ' is-selected' : ''}`}
-            >
-              <div className="octo-version-line1">
-                <span className={`octo-version-badge octo-version-badge-${v.kind}`}>
-                  {kindBadge(v)}
-                </span>
-                {renamingSeq === v.docVersionSeq ? (
-                  <input
-                    className="octo-uid"
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    autoFocus
-                  />
-                ) : (
-                  <span className="octo-version-label">{displayLabel(v)}</span>
-                )}
-                <span
-                  className="octo-version-time"
-                  title={formatAbsolute(v.createdAt)}
-                >
-                  {formatRelative(v.createdAt)}
-                </span>
-              </div>
-              <div className="octo-version-line2">
-                <span className="octo-version-author">{names?.get(v.createdBy) || v.createdBy}</span>
-                <div className="octo-version-actions">
-                  {renamingSeq === v.docVersionSeq ? (
-                    <>
-                      <button
-                        type="button"
-                        className="octo-tb-btn"
-                        disabled={busy || renameValue.trim() === ''}
-                        onClick={() => onRename(v.docVersionSeq)}
-                      >
-                        {t('docs.version.save')}
-                      </button>
-                      <button
-                        type="button"
-                        className="octo-tb-btn"
-                        onClick={() => setRenamingSeq(null)}
-                      >
-                        {t('docs.version.cancel')}
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button type="button" className="octo-tb-btn" onClick={() => onPreview(v)}>
-                        {t('docs.version.preview')}
-                      </button>
-                      {renameable && (
-                        <button
-                          type="button"
-                          className="octo-tb-btn"
-                          onClick={() => {
-                            setRenamingSeq(v.docVersionSeq)
-                            setRenameValue(v.label)
-                          }}
-                        >
-                          {t('docs.version.rename')}
-                        </button>
-                      )}
-                      {myRestore && (
-                        <button
-                          type="button"
-                          className="octo-tb-btn"
-                          onClick={() => setConfirmRestore(v)}
-                        >
-                          {t('docs.version.restore')}
-                        </button>
-                      )}
-                      {myRestore && (
-                        <button
-                          type="button"
-                          className="octo-tb-btn"
-                          disabled={busy}
-                          onClick={() => onDelete(v)}
-                        >
-                          {t('docs.version.delete')}
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </li>
-          )
-        })}
-      </ul>
-
-      {nextCursor != null && (
-        <button type="button" className="octo-tb-btn" disabled={loading} onClick={loadMore}>
-          {t('docs.version.loadMore')}
+      {/* Manual versions (named + restore) — expanded by default. */}
+      <div className="octo-version-group octo-version-group-manual">
+        <button
+          type="button"
+          className="octo-version-group-header"
+          aria-expanded={manualExpanded}
+          onClick={() => setManualExpanded((e) => !e)}
+        >
+          <span className="octo-version-group-caret">{manualExpanded ? '▾' : '▸'}</span>
+          <span className="octo-version-group-title">{t('docs.version.manualGroup')}</span>
+          <span className="octo-version-group-count">({manualCount})</span>
         </button>
-      )}
+        {manualExpanded && (
+          <>
+            {manualLoading && manualItems.length === 0 && (
+              <p className="octo-loading">{t('docs.version.loadingList')}</p>
+            )}
+            {!manualLoading && manualItems.length === 0 && (
+              <p className="octo-version-empty">{t('docs.version.empty')}</p>
+            )}
+            <ul className="octo-version-list">{manualItems.map(renderRow)}</ul>
+            {manualCursor != null && (
+              <button
+                type="button"
+                className="octo-tb-btn"
+                disabled={manualLoading}
+                onClick={loadMoreManual}
+              >
+                {t('docs.version.loadMore')}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Auto snapshots — collapsed by default, stream lazily fetched on first expand. */}
+      <div className="octo-version-group octo-version-group-auto">
+        <button
+          type="button"
+          className="octo-version-group-header"
+          aria-expanded={autoExpanded}
+          onClick={toggleAuto}
+        >
+          <span className="octo-version-group-caret">{autoExpanded ? '▾' : '▸'}</span>
+          <span className="octo-version-group-title">{t('docs.version.autoGroup')}</span>
+          <span className="octo-version-group-count">({autoCount})</span>
+        </button>
+        {autoExpanded && (
+          <>
+            {autoLoading && autoItems.length === 0 && (
+              <p className="octo-loading">{t('docs.version.loadingList')}</p>
+            )}
+            {!autoLoading && autoLoaded && autoItems.length === 0 && (
+              <p className="octo-version-empty">{t('docs.version.emptyAuto')}</p>
+            )}
+            <ul className="octo-version-list">{autoItems.map(renderRow)}</ul>
+            {autoCursor != null && (
+              <button
+                type="button"
+                className="octo-tb-btn"
+                disabled={autoLoading}
+                onClick={loadMoreAuto}
+              >
+                {t('docs.version.loadMore')}
+              </button>
+            )}
+          </>
+        )}
+      </div>
 
       {confirmRestore && (
         <div className="octo-version-confirm">
