@@ -49,6 +49,17 @@ describe('sanitizeAssetUrl', () => {
     expect(sanitizeAssetUrl('javascript:alert(1)')).toBeNull()
     expect(sanitizeAssetUrl('data:image/svg+xml,<svg>')).toBeNull()
   })
+
+  it('allows the page same-origin host by default (covers self-served / same-origin-proxied assets)', () => {
+    // The ASSET_HOST_WHITELIST seeds the page's own origin host (jsdom: localhost:3000) so a
+    // deployment serving images from its own origin renders them without an explicit
+    // VITE_DOCS_ASSET_HOSTS. A genuinely cross-origin object store (different host:port) is
+    // still rejected unless explicitly whitelisted.
+    const sameOrigin = `${window.location.origin}/docs/d_1/attachments/a_1`
+    expect(sanitizeAssetUrl(sameOrigin)).toBe(sameOrigin)
+    // A different host (e.g. a standalone MinIO on another port) is NOT auto-trusted.
+    expect(sanitizeAssetUrl('http://192.168.214.189:9000/bucket/a.png')).toBeNull()
+  })
 })
 
 describe('sanitizeSrcset', () => {
