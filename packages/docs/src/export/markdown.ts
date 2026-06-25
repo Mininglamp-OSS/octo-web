@@ -168,7 +168,17 @@ function escapeLeadingBlockMarkers(text: string): string {
   if (!text) return text
   return text
     .split('\n')
-    .map((line) => line.replace(/^(\s*)([-*+>#]|\d+[.)])(\s)/, '$1\\$2$3'))
+    .map((line) =>
+      line.replace(/^(\s*)([-*+>#]|\d+[.)])(\s)/, (_m, indent: string, marker: string, sp: string) => {
+        // For an ordered-list marker (digits + . or )) escape the punctuation, not the digit
+        // (`1.` -> `1\.`, the CommonMark-standard form); for the single-char markers
+        // (- * + > #) escape the marker itself (`-` -> `\-`).
+        const escaped = /^\d/.test(marker)
+          ? marker.replace(/([.)])$/, '\\$1')
+          : '\\' + marker
+        return indent + escaped + sp
+      }),
+    )
     .join('\n')
 }
 
