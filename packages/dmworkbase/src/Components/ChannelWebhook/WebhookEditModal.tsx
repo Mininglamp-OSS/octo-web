@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Channel } from "wukongimjssdk";
-import { Toast } from "@douyinfe/semi-ui";
+import { Switch, Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import WKButton from "../WKButton";
 import WKApp from "../../App";
@@ -47,6 +47,14 @@ export default function WebhookEditModal({
 
     const [name, setName] = useState<string>(webhook?.name ?? "");
     const [avatar, setAvatar] = useState<string>(webhook?.avatar ?? "");
+    // 能力位回显：服务端回 0/1，表单用 boolean。能管理该 webhook 者均可开关
+    // （不受 isManager 门控，与头像不同）。
+    const [mentionAll, setMentionAll] = useState<boolean>(
+        webhook?.allow_mention_all === 1
+    );
+    const [mentionBots, setMentionBots] = useState<boolean>(
+        webhook?.allow_mention_bots === 1
+    );
     const [saving, setSaving] = useState(false);
     // 本组件由父级条件挂载（{editTarget && <WebhookEditModal/>}），且处于
     // WKViewQueue 路由栈的滑入动画里。若一挂载就 visible=true，Semi Modal 的
@@ -66,7 +74,15 @@ export default function WebhookEditModal({
 
         // 请求体构造逻辑抽到纯函数 buildWebhookUpsertReq（已单测）：
         // 成员不得带 avatar、编辑态仅发变化字段、无变化返回 null。
-        const req = buildWebhookUpsertReq({ isEdit, isManager, name, avatar, webhook });
+        const req = buildWebhookUpsertReq({
+            isEdit,
+            isManager,
+            name,
+            avatar,
+            mentionAll,
+            mentionBots,
+            webhook,
+        });
         if (req === null) {
             // 编辑态无任何变化 → 不发请求，直接关闭
             onClose();
@@ -105,7 +121,7 @@ export default function WebhookEditModal({
         } finally {
             setSaving(false);
         }
-    }, [saving, name, avatar, isEdit, webhook, isManager, channel, t, onClose, onSaved]);
+    }, [saving, name, avatar, mentionAll, mentionBots, isEdit, webhook, isManager, channel, t, onClose, onSaved]);
 
     return (
         <WKModal
@@ -170,6 +186,40 @@ export default function WebhookEditModal({
                         </div>
                     </div>
                 )}
+                {/* 能力位开关：放行该 Webhook 推送时使用 @所有人 / @所有AI。
+                    能进入本表单（管理员 / 自己创建）即可开关，不受 isManager 门控。 */}
+                <div className="wk-webhook-form__field">
+                    <div className="wk-webhook-form__switch-row">
+                        <div className="wk-webhook-form__switch-text">
+                            <label className="wk-webhook-form__label">
+                                {t("base.channelWebhook.form.mentionAll")}
+                            </label>
+                            <div className="wk-webhook-form__hint">
+                                {t("base.channelWebhook.form.mentionAllHint")}
+                            </div>
+                        </div>
+                        <Switch
+                            checked={mentionAll}
+                            onChange={(v: boolean) => setMentionAll(v)}
+                            aria-label={t("base.channelWebhook.form.mentionAll")}
+                        />
+                    </div>
+                    <div className="wk-webhook-form__switch-row">
+                        <div className="wk-webhook-form__switch-text">
+                            <label className="wk-webhook-form__label">
+                                {t("base.channelWebhook.form.mentionBots")}
+                            </label>
+                            <div className="wk-webhook-form__hint">
+                                {t("base.channelWebhook.form.mentionBotsHint")}
+                            </div>
+                        </div>
+                        <Switch
+                            checked={mentionBots}
+                            onChange={(v: boolean) => setMentionBots(v)}
+                            aria-label={t("base.channelWebhook.form.mentionBots")}
+                        />
+                    </div>
+                </div>
             </div>
         </WKModal>
     );

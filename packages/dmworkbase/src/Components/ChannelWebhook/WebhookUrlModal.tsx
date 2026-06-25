@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
-import { IconAlertTriangle, IconCopy, IconTickCircle } from "@douyinfe/semi-icons";
+import { IconAlertTriangle, IconChevronDown, IconCopy, IconTickCircle } from "@douyinfe/semi-icons";
 import WKModal from "../WKModal";
 import WKButton from "../WKButton";
 import WKApp from "../../App";
@@ -44,6 +44,16 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
         window.location.origin
     );
     const nativeRow = rows.find((r) => r.key === "native");
+
+    // 适配器分两层展示：native（通用）/ wecom（企微兼容）为最常用，默认展开；
+    // github/gitlab/feishu/multica 收进「更多适配器」折叠区默认隐藏，压低默认高度。
+    const CORE_ADAPTER_KEYS: ReadonlyArray<WebhookUrlRow["key"]> = [
+        "native",
+        "wecom",
+    ];
+    const coreRows = rows.filter((r) => CORE_ADAPTER_KEYS.includes(r.key));
+    const extraRows = rows.filter((r) => !CORE_ADAPTER_KEYS.includes(r.key));
+    const [showMore, setShowMore] = useState(false);
 
     // 复制成功的即时反馈：记录最近一次复制的目标 key，按钮图标短暂变 ✓。
     // 一次性弹窗里「复制是否真成功」是核心焦虑点，按钮本身给反馈比一闪而过的 toast 更可靠。
@@ -112,35 +122,111 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                 </div>
             );
         }
-        // native 的 content 按 markdown 渲染，样例特意带 **加粗** + 链接；
-        // wecom 用的是企微 text 类型（纯文本不渲染 markdown），样例保持纯文本。
-        const sampleKey =
-            row.key === "wecom"
-                ? "base.channelWebhook.url.example.wecom.sample"
-                : "base.channelWebhook.url.example.native.sample";
-        const curl = buildWebhookCurlExample(row.key, row.url, t(sampleKey));
-        const noteKey =
-            row.key === "wecom"
-                ? "base.channelWebhook.url.example.wecom.note"
-                : "base.channelWebhook.url.example.native.note";
+        // native / wecom 是可复制的 curl（body 结构不同，由纯函数区分）。
+        // content 渲染差异：native 按 markdown（样例带 **加粗** + 链接）；
+        // wecom 用企微 text 类型（纯文本不渲染 markdown），样例保持纯文本。
+        if (row.key === "native" || row.key === "wecom") {
+            // 复用的 curl 卡片：代码块 + 说明 + 复制按钮（带 ✓ 反馈）。
+            const renderCurlBlock = (
+                curl: string,
+                noteText: string,
+                fbKey: string
+            ) => {
+                const blockCopied = copiedKey === fbKey;
+                return (
+                    <div className="wk-webhook-url__example">
+                        <pre className="wk-webhook-url__example-code">{curl}</pre>
+                        <span className="wk-webhook-url__example-note">{noteText}</span>
+                        <button
+                            type="button"
+                            className="wk-webhook-url__example-copy"
+                            onClick={() => void handleCopy(curl, fbKey)}
+                        >
+                            {blockCopied ? (
+                                <IconTickCircle className="wk-webhook-url__copied-icon" />
+                            ) : (
+                                <IconCopy />
+                            )}
+                            {blockCopied
+                                ? t("base.channelWebhook.toast.copied")
+                                : t("base.channelWebhook.url.example.copy")}
+                        </button>
+                    </div>
+                );
+            };
+
+            if (row.key === "wecom") {
+                const wecomCurl = buildWebhookCurlExample(
+                    "wecom",
+                    row.url,
+                    t("base.channelWebhook.url.example.wecom.sample")
+                );
+                return renderCurlBlock(
+                    wecomCurl,
+                    t("base.channelWebhook.url.example.wecom.note"),
+                    feedbackKey
+                );
+            }
+
+            // native：基础推送示例 + 单独一条「@提及」示例。仅 native 端点解析 mention
+            // （契约 §B），故 @ 示例只挂在 native 这一组下。
+            const basicCurl = buildWebhookCurlExample(
+                "native",
+                row.url,
+                t("base.channelWebhook.url.example.native.sample")
+            );
+            // 用 uids 定向 @（占位 UID 需替换）+ render:true 让后端自动补 @昵称气泡；
+            // @所有人/@所有AI 走 mention.all / mention.bots，由说明文案引导，避免默认
+            // 例子里塞入需能力位放行才生效的广播位造成误解。
+            const mentionCurl = buildWebhookCurlExample(
+                "native",
+                row.url,
+                t("base.channelWebhook.url.example.native.mentionSample"),
+                { uids: ["uid_xxxxxxxx"], render: true }
+            );
+            return (
+                <>
+                    {renderCurlBlock(
+                        basicCurl,
+                        t("base.channelWebhook.url.example.native.note"),
+                        feedbackKey
+                    )}
+                    <div className="wk-webhook-url__label">
+                        {t("base.channelWebhook.url.example.native.mentionTitle")}
+                    </div>
+                    {renderCurlBlock(
+                        mentionCurl,
+                        t("base.channelWebhook.url.example.native.mentionNote"),
+                        `mention:${row.key}`
+                    )}
+                </>
+            );
+        }
+        // gitlab / feishu / multica：用法是把这个地址登记到对应平台的 Webhook 设置
+        // （或替换现有兼容机器人 URL），不是 curl —— 展示可复制地址 + 各自说明即可。
         return (
             <div className="wk-webhook-url__example">
-                <pre className="wk-webhook-url__example-code">{curl}</pre>
-                <span className="wk-webhook-url__example-note">{t(noteKey)}</span>
-                <button
-                    type="button"
-                    className="wk-webhook-url__example-copy"
-                    onClick={() => void handleCopy(curl, feedbackKey)}
-                >
-                    {copied ? (
-                        <IconTickCircle className="wk-webhook-url__copied-icon" />
-                    ) : (
-                        <IconCopy />
-                    )}
-                    {copied
-                        ? t("base.channelWebhook.toast.copied")
-                        : t("base.channelWebhook.url.example.copy")}
-                </button>
+                <div className="wk-webhook-url__value-wrap">
+                    <code className="wk-webhook-url__value" title={row.url}>
+                        {row.url}
+                    </code>
+                    <button
+                        type="button"
+                        className="wk-webhook-card__icon-btn"
+                        onClick={() => void handleCopy(row.url, feedbackKey)}
+                        title={t("base.channelWebhook.url.copy")}
+                        aria-label={t("base.channelWebhook.url.copy")}
+                    >
+                        {copied ? (
+                            <IconTickCircle className="wk-webhook-url__copied-icon" />
+                        ) : (
+                            <IconCopy />
+                        )}
+                    </button>
+                </div>
+                <span className="wk-webhook-url__example-note">
+                    {t(`base.channelWebhook.url.example.${row.key}.note`)}
+                </span>
             </div>
         );
     };
@@ -200,11 +286,11 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                             </div>
                         </div>
 
-                        {/* 三种调用方式：差异（路径后缀 + body + 用法）都落在这里 */}
+                        {/* 调用方式：既有适配器默认展开，差异（路径后缀 + body + 用法）都落在这里 */}
                         <div className="wk-webhook-url__examples-title">
                             {t("base.channelWebhook.url.example.title")}
                         </div>
-                        {rows.map((row) => (
+                        {coreRows.map((row) => (
                             <div key={row.key} className="wk-webhook-url__example-group">
                                 <div className="wk-webhook-url__label">
                                     {t(`base.${row.labelKey}`)}
@@ -212,6 +298,41 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                                 {renderExample(row)}
                             </div>
                         ))}
+
+                        {/* 新增适配器（gitlab/feishu/multica）折叠区：默认收起，按需展开 */}
+                        {extraRows.length > 0 && (
+                            <div className="wk-webhook-url__more">
+                                <button
+                                    type="button"
+                                    className="wk-webhook-url__more-toggle"
+                                    onClick={() => setShowMore((v) => !v)}
+                                    aria-expanded={showMore}
+                                >
+                                    <IconChevronDown
+                                        className={`wk-webhook-url__more-icon${
+                                            showMore ? " wk-webhook-url__more-icon--open" : ""
+                                        }`}
+                                    />
+                                    {showMore
+                                        ? t("base.channelWebhook.url.example.less")
+                                        : t("base.channelWebhook.url.example.more", {
+                                              values: { count: extraRows.length },
+                                          })}
+                                </button>
+                                {showMore &&
+                                    extraRows.map((row) => (
+                                        <div
+                                            key={row.key}
+                                            className="wk-webhook-url__example-group"
+                                        >
+                                            <div className="wk-webhook-url__label">
+                                                {t(`base.${row.labelKey}`)}
+                                            </div>
+                                            {renderExample(row)}
+                                        </div>
+                                    ))}
+                            </div>
+                        )}
                     </>
                 )}
             </div>

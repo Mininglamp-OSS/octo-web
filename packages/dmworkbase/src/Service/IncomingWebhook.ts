@@ -34,13 +34,23 @@ export interface IncomingWebhook {
     call_count: number;
     /** 创建时间 Unix 秒 */
     created_at: number;
+    /** 是否放行该 webhook 用「@所有人」：0/1，表单开关回显（缺省视为 0） */
+    allow_mention_all?: number;
+    /** 是否放行该 webhook 用「@所有AI」：0/1，表单开关回显（缺省视为 0） */
+    allow_mention_bots?: number;
 }
 
-/** 三种适配器的推送 URL（服务端返回相对路径，自带 /v1 前缀） */
+/**
+ * 各适配器的推送 URL（服务端返回相对路径，自带 /v1 前缀）。
+ * native/github/wecom 为既有形态；gitlab/feishu/multica 为新增（现网 main）。
+ */
 export interface IncomingWebhookUrls {
     native?: string;
     github?: string;
     wecom?: string;
+    gitlab?: string;
+    feishu?: string;
+    multica?: string;
 }
 
 /** 创建 / 重置 token 的响应。明文 token 与推送 URL 仅此一次返回。 */
@@ -55,6 +65,10 @@ export interface IncomingWebhookUpsertReq {
     name?: string;
     avatar?: string;
     status?: number;
+    /** ★放行该 webhook 用「@所有人」（*bool，缺省 false）。能管理该 webhook 者均可设置。 */
+    allow_mention_all?: boolean;
+    /** ★放行该 webhook 用「@所有AI」（*bool，缺省 false）。能管理该 webhook 者均可设置。 */
+    allow_mention_bots?: boolean;
 }
 
 /**
@@ -86,19 +100,32 @@ export function canTestWebhook(item: Pick<IncomingWebhook, "status">): boolean {
  * 规则（与服务端契约对齐）：
  * - 名称 / 头像先 trim；
  * - 头像仅 `isManager` 才发（普通成员带 avatar 会被服务端 400 拒绝）；
+ * - `allow_mention_all` / `allow_mention_bots` 能力位：能管理该 webhook 者（管理员 /
+ *   自己创建）均可开关，不受 `isManager` 门控（与头像不同）。请求体发 *bool，
+ *   服务端响应回显 0/1；
  * - 编辑态只发「有值且与原值不同」的字段，无任何变化时返回 `null`
  *   —— 调用方据此直接关闭弹窗、不发请求；
- * - 新建态名称有值才发（留空由服务端自动命名），始终返回对象（可为空 `{}`）。
+ * - 新建态名称有值才发（留空由服务端自动命名），能力位仅 true 时附带
+ *   （缺省 false，不必显式发），始终返回对象（可为空 `{}`）。
  */
 export function buildWebhookUpsertReq(opts: {
     isEdit: boolean;
     isManager: boolean;
     name: string;
     avatar: string;
-    webhook?: Pick<IncomingWebhook, "name" | "avatar">;
+    /** 「@所有人」开关当前值（缺省视为关闭） */
+    mentionAll?: boolean;
+    /** 「@所有AI」开关当前值（缺省视为关闭） */
+    mentionBots?: boolean;
+    webhook?: Pick<
+        IncomingWebhook,
+        "name" | "avatar" | "allow_mention_all" | "allow_mention_bots"
+    >;
 }): IncomingWebhookUpsertReq | null {
     const trimmedName = opts.name.trim();
     const trimmedAvatar = opts.avatar.trim();
+    const mentionAll = !!opts.mentionAll;
+    const mentionBots = !!opts.mentionBots;
     const req: IncomingWebhookUpsertReq = {};
 
     if (opts.isEdit && opts.webhook) {
@@ -108,12 +135,22 @@ export function buildWebhookUpsertReq(opts: {
         if (opts.isManager && trimmedAvatar !== (opts.webhook.avatar || "")) {
             req.avatar = trimmedAvatar;
         }
+        // 能力位逐个对比原回显（0/1 → bool），仅在变化时下发。
+        if (mentionAll !== (opts.webhook.allow_mention_all === 1)) {
+            req.allow_mention_all = mentionAll;
+        }
+        if (mentionBots !== (opts.webhook.allow_mention_bots === 1)) {
+            req.allow_mention_bots = mentionBots;
+        }
         // 无任何变化 → 不发请求
         return Object.keys(req).length === 0 ? null : req;
     }
 
     if (trimmedName) req.name = trimmedName;
     if (opts.isManager && trimmedAvatar) req.avatar = trimmedAvatar;
+    // 缺省 false，仅 true 时附带，保持请求体精简。
+    if (mentionAll) req.allow_mention_all = true;
+    if (mentionBots) req.allow_mention_bots = true;
     return req;
 }
 
@@ -147,7 +184,7 @@ export function buildIncomingWebhookUrl(
 
 /** 一次性推送地址弹窗里的一行（一个适配器） */
 export interface WebhookUrlRow {
-    key: "native" | "github" | "wecom";
+    key: "native" | "github" | "wecom" | "gitlab" | "feishu" | "multica";
     /** i18n key 后缀，调用方自行拼 `base.` 前缀 */
     labelKey: string;
     url: string;
@@ -157,7 +194,8 @@ export interface WebhookUrlRow {
  * 由 create/regenerate 响应构造一次性推送地址列表（纯函数，便于单测）。
  *
  * 决策点：native 适配器优先用 `urls.native`，回退到顶层 `url`（旧契约只给 `url`）；
- * github / wecom 仅在响应提供对应 `urls.*` 时出现；最终过滤掉空地址。
+ * 其余适配器（github / gitlab / wecom / feishu / multica）仅在响应提供对应
+ * `urls.*` 时出现；最终过滤掉空地址，故老后端不返回的适配器自动不展示。
  */
 export function buildWebhookUrlRows(
     resp: Pick<IncomingWebhookCreateResp, "url" | "urls">,
@@ -169,7 +207,10 @@ export function buildWebhookUrlRows(
     return [
         { key: "native", labelKey: "channelWebhook.url.native", url: abs(resp.urls?.native || resp.url) },
         { key: "github", labelKey: "channelWebhook.url.github", url: abs(resp.urls?.github) },
+        { key: "gitlab", labelKey: "channelWebhook.url.gitlab", url: abs(resp.urls?.gitlab) },
         { key: "wecom", labelKey: "channelWebhook.url.wecom", url: abs(resp.urls?.wecom) },
+        { key: "feishu", labelKey: "channelWebhook.url.feishu", url: abs(resp.urls?.feishu) },
+        { key: "multica", labelKey: "channelWebhook.url.multica", url: abs(resp.urls?.multica) },
     ].filter((row) => !!row.url);
 }
 
@@ -274,6 +315,10 @@ export function resolveWebhookRowDisplay(
  *   - native：`{"content":"..."}`（content 按 markdown 渲染，`text` 是 Slack 别名）；
  *   - wecom ：企业微信群机器人格式 `{"msgtype":"text","text":{"content":"..."}}`。
  *
+ * `mention`（可选）：仅 native 端点解析 `mention`（契约 §B），传入则并入 native body
+ * （形如 `{"uids":[...],"all":true,"bots":true,"render":true}`）。wecom 不解析 mention，
+ * 即使传入也忽略，避免给出会被无视的误导示例。
+ *
  * 安全：刻意不带 `username` / `avatar_url`——这两个发送者覆盖字段仅当 webhook
  * 创建者当前为群管理员时才生效，对成员 / bot 创建的 webhook 一律忽略，默认带上反而误导。
  *
@@ -283,12 +328,15 @@ export function resolveWebhookRowDisplay(
 export function buildWebhookCurlExample(
     key: "native" | "wecom",
     url: string,
-    sampleContent: string
+    sampleContent: string,
+    mention?: Record<string, unknown>
 ): string {
     const body =
         key === "wecom"
             ? { msgtype: "text", text: { content: sampleContent } }
-            : { content: sampleContent };
+            : mention
+              ? { content: sampleContent, mention }
+              : { content: sampleContent };
     // POSIX：单引号内无转义，故对内容里的 ' 以 '\'' 收尾再续接，保证复制出的命令安全可执行。
     const shellQuote = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
     return [

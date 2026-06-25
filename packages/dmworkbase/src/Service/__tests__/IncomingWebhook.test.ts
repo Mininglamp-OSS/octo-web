@@ -318,6 +318,25 @@ describe("buildWebhookCurlExample", () => {
         expect(body).toEqual({ msgtype: "text", text: { content: sample } });
     });
 
+    it("native：传入 mention 时并入 body（uids/render 原样保留）", () => {
+        const out = buildWebhookCurlExample("native", url, sample, {
+            uids: ["uid_a"],
+            render: true,
+        });
+        const body = JSON.parse(out.match(/-d '(.+)'$/)![1]);
+        expect(body).toEqual({
+            content: sample,
+            mention: { uids: ["uid_a"], render: true },
+        });
+    });
+
+    it("wecom：即使传入 mention 也忽略（wecom 不解析 mention）", () => {
+        const out = buildWebhookCurlExample("wecom", url, sample, { all: true });
+        const body = JSON.parse(out.match(/-d '(.+)'$/)![1]);
+        expect(body).toEqual({ msgtype: "text", text: { content: sample } });
+        expect(out).not.toContain("mention");
+    });
+
     it("刻意不带 username / avatar_url（管理员专属覆盖字段，默认带上会误导）", () => {
         expect(buildWebhookCurlExample("native", url, sample)).not.toMatch(
             /username|avatar_url/
