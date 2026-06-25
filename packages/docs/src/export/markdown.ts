@@ -92,7 +92,7 @@ function serializeBlocks(nodes: MdNode[], ctx: Ctx): string {
 function serializeBlock(node: MdNode, ctx: Ctx): string {
   switch (node.type) {
     case 'paragraph':
-      return wrapAlign(serializeInline(node.content ?? [], ctx), node)
+      return wrapAlign(escapeLeadingBlockMarkers(serializeInline(node.content ?? [], ctx)), node)
     case 'heading': {
       const level = clampLevel(node.attrs?.level)
       return wrapAlign(`${'#'.repeat(level)} ${serializeInline(node.content ?? [], ctx)}`, node)
@@ -156,11 +156,31 @@ function prefixLines(text: string, prefix: string): string {
     .join('\n')
 }
 
+/**
+ * Escape a literal Markdown block marker at the start of each line so plain text that
+ * happens to begin with `- `, `* `, `+ `, `> `, `#`, or `1.` is not re-parsed as a list /
+ * quote / heading on import. Keeps export lossless: the rendered text stays exactly what
+ * the user typed (e.g. a paragraph reading "- Bullet item two" exports as "\\- Bullet item
+ * two", not a spurious list item). Only the leading marker is escaped; inline content is
+ * untouched.
+ */
+function escapeLeadingBlockMarkers(text: string): string {
+  if (!text) return text
+  return text
+    .split('\n')
+    .map((line) => line.replace(/^(\s*)([-*+>#]|\d+[.)])(\s)/, '$1\\$2$3'))
+    .join('\n')
+}
+
 // ── Lists ────────────────────────────────────────────────────────────────────
 
 function serializeList(node: MdNode, ordered: boolean, ctx: Ctx, depth: number): string {
   const items = node.content ?? []
-  return items.map((item, idx) => serializeListItem(item, ordered, idx, ctx, depth)).join('\n')
+  return items
+    .map((item, idx) => serializeListItem(item, ordered, idx, ctx, depth))
+    // Drop empty items so an item with no content never emits a bare dangling marker (`- `).
+    .filter((s) => s !== '')
+    .join('\n')
 }
 
 function serializeListItem(
@@ -177,17 +197,22 @@ function serializeListItem(
 
   const blocks = item.content ?? []
   let line = indent + marker
+  let body = ''
   const trailing: string[] = []
   blocks.forEach((b, i) => {
     if (b.type === 'bulletList' || b.type === 'orderedList' || b.type === 'taskList') {
       trailing.push(serializeList(b, b.type === 'orderedList', ctx, depth + 1))
     } else if (i === 0) {
-      line += serializeBlock(b, ctx)
+      body = serializeBlock(b, ctx)
+      line += body
     } else {
       // Continuation block under the same item — indent to align with the marker text.
       trailing.push(prefixLines(serializeBlock(b, ctx), indent + '  '))
     }
   })
+  // An item with no first-block text AND no nested/trailing content is empty — emit nothing
+  // (rather than a dangling bare marker). A task item is always kept (the checkbox is content).
+  if (item.type !== 'taskItem' && body.trim() === '' && trailing.length === 0) return ''
   return [line, ...trailing].join('\n')
 }
 
