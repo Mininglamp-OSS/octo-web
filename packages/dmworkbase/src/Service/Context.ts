@@ -2,19 +2,25 @@
 
 
 
+import type { ReactNode } from "react"
+
 export interface FinishButtonContext {
     loading(loading:boolean):void
     disable(disable:boolean):void
 }
 
 export class RouteContextConfig {
-    title?: string
+    /**
+     * 路由表头标题。可传字符串，或传 ReactNode（如 `<I18nText/>`）以获得随语言
+     * 切换实时更新的标题——title 在 push 时只存一次，纯字符串快照不会响应 i18n。
+     */
+    title?: ReactNode
     showFinishButton?: boolean
     finishButtonTitle?: string
     onFinish?: () => void
     onFinishContext?:(finishButtonContext:FinishButtonContext) => void
 
-    constructor(v: { title?: string, showFinishButton?: boolean, finishButtonTitle?: string, onFinish?: () => void,onFinishContext?:(finishButtonContext:FinishButtonContext) => void }) {
+    constructor(v: { title?: ReactNode, showFinishButton?: boolean, finishButtonTitle?: string, onFinish?: () => void,onFinishContext?:(finishButtonContext:FinishButtonContext) => void }) {
          this.title = v.title
          this.showFinishButton = v.showFinishButton
          this.finishButtonTitle = v.finishButtonTitle

@@ -177,6 +177,14 @@
   color: var(--wk-text-primary);
 }
 
+/* 字段「选填」标记：弱化、不抢主标题 */
+.wk-webhook-form__optional {
+  margin-left: var(--wk-sp-1);
+  font-weight: var(--wk-font-regular, 400);
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+}
+
 .wk-webhook-form__input {
   box-sizing: border-box;
   width: 100%;
@@ -199,11 +207,157 @@
   line-height: var(--wk-leading-normal);
 }
 
+.wk-webhook-form__switch-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--wk-sp-3);
+}
+
+.wk-webhook-form__switch-row + .wk-webhook-form__switch-row {
+  margin-top: var(--wk-sp-3);
+}
+
+.wk-webhook-form__switch-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+  min-width: 0;
+}
+
+/* mention_uids 成员多选器（Semi Select）：撑满宽度 */
+.wk-webhook-form__select {
+  width: 100%;
+}
+
+/* 下拉顶部人数标识（outerTopSlot） */
+.wk-webhook-form__select-head {
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+  border-bottom: 1px solid var(--wk-border-default);
+}
+
+/* 下拉项：renderOptionItem 自渲染，需自行接回 hover/选中样式 */
+.wk-webhook-form__option {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.wk-webhook-form__option--focused {
+  background: var(--wk-bg-item-hover);
+}
+
+.wk-webhook-form__option--selected {
+  font-weight: var(--wk-font-medium);
+}
+
+.wk-webhook-form__option-tick {
+  margin-left: auto;
+  color: var(--wk-brand-primary);
+}
+
+/* 选中项 chip 内：名字 + AI 徽章对齐，与下拉项一致 */
+.wk-webhook-form__member-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wk-webhook-form__member-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 广播开关警示块：@所有AI / @所有人 每条推送都提醒全员，易造成噪声，着重标记 */
+.wk-webhook-form__broadcast {
+  padding: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-color-warning-bg);
+}
+
+.wk-webhook-form__broadcast-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-2);
+  margin-bottom: var(--wk-sp-3);
+  font-size: var(--wk-text-size-xs);
+  line-height: var(--wk-leading-normal);
+  color: var(--wk-amber-text);
+}
+
+.wk-webhook-form__broadcast-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--wk-amber-light);
+}
+
+/* webhook 弹窗（编辑表单 / 一次性 URL）内容可能很长 —— URL 弹窗展开「更多适配器」
+   后会有 6 段示例。这里把弹窗壳限高到视口内、body 区内部滚动，标题与底部按钮固定，
+   避免 Semi centered 模式下整体溢出视口、标题与按钮被挤出屏幕。仅作用于本模块弹窗，
+   不改共享的 WKModal（短内容时 max-height 不触发，视觉零变化）。 */
+.wk-webhook-modal .wk-modal-shell {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--wk-sp-8) * 2);
+}
+
+.wk-webhook-modal .wk-modal-title,
+.wk-webhook-modal .wk-modal-footer {
+  flex-shrink: 0;
+}
+
+.wk-webhook-modal .wk-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* 仅纵向滚动。overflow-y 非 visible 会把 overflow-x 的 visible 提升为 auto，
+     导致亚像素溢出（如 Semi Switch 行）冒出多余横向滚动条；本弹窗内容无需横向
+     滚动（地址用 ellipsis、curl 块 break-all 换行），故显式关掉横向。 */
+  overflow-x: hidden;
+}
+
 /* 一次性 URL 弹窗 */
 .wk-webhook-url {
   display: flex;
   flex-direction: column;
   gap: var(--wk-sp-4);
+}
+
+/* 「更多适配器」折叠区：新增适配器（gitlab/feishu/multica）默认收起，压低默认高度 */
+.wk-webhook-url__more {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+}
+
+.wk-webhook-url__more-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-1) 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  color: var(--wk-brand-primary);
+}
+
+.wk-webhook-url__more-icon {
+  transition: transform 0.15s ease;
+}
+
+.wk-webhook-url__more-icon--open {
+  transform: rotate(180deg);
 }
 
 .wk-webhook-url__warning {

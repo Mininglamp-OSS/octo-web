@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
     IncomingWebhookStatus,
+    MENTION_UIDS_MAX,
     buildIncomingWebhookUrl,
     buildWebhookCurlExample,
     buildWebhookUpsertReq,
     buildWebhookUrlRows,
     canManageIncomingWebhook,
     canTestWebhook,
+    isFlagOn,
     isIncomingWebhookSender,
+    normalizeMentionUids,
+    validateMentionUids,
     webhookFromOfMessage,
 } from "../IncomingWebhook";
 
@@ -240,6 +244,103 @@ describe("buildWebhookUpsertReq", () => {
             ).toEqual({ avatar: "" });
         });
     });
+
+    describe("mention_uids (#465)", () => {
+        it("新建态：非空才发，并去重 + trim", () => {
+            expect(
+                buildWebhookUpsertReq({
+                    isEdit: false,
+                    isManager: false,
+                    name: "CI",
+                    avatar: "",
+                    mentionUids: [" uid_a ", "uid_b", "uid_a", "  "],
+                })
+            ).toEqual({ name: "CI", mention_uids: ["uid_a", "uid_b"] });
+        });
+
+        it("新建态：空选择不带 mention_uids 字段", () => {
+            expect(
+                buildWebhookUpsertReq({
+                    isEdit: false,
+                    isManager: false,
+                    name: "CI",
+                    avatar: "",
+                    mentionUids: [],
+                })
+            ).toEqual({ name: "CI" });
+        });
+
+        it("编辑态：集合无变化（仅顺序/重复不同）→ 不发", () => {
+            expect(
+                buildWebhookUpsertReq({
+                    isEdit: true,
+                    isManager: true,
+                    name: "OldName",
+                    avatar: "https://old/a.png",
+                    mentionUids: ["uid_b", "uid_a", "uid_a"],
+                    webhook: { ...existing, mention_uids: ["uid_a", "uid_b"] },
+                })
+            ).toBeNull();
+        });
+
+        it("编辑态：新增成员 → 发完整新集合", () => {
+            expect(
+                buildWebhookUpsertReq({
+                    isEdit: true,
+                    isManager: true,
+                    name: "OldName",
+                    avatar: "https://old/a.png",
+                    mentionUids: ["uid_a", "uid_b"],
+                    webhook: { ...existing, mention_uids: ["uid_a"] },
+                })
+            ).toEqual({ mention_uids: ["uid_a", "uid_b"] });
+        });
+
+        it("编辑态：清空（[]）是显式变化 → 发空数组", () => {
+            expect(
+                buildWebhookUpsertReq({
+                    isEdit: true,
+                    isManager: true,
+                    name: "OldName",
+                    avatar: "https://old/a.png",
+                    mentionUids: [],
+                    webhook: { ...existing, mention_uids: ["uid_a"] },
+                })
+            ).toEqual({ mention_uids: [] });
+        });
+    });
+});
+
+describe("normalizeMentionUids / validateMentionUids", () => {
+    it("normalize：trim、丢空、按首次出现去重", () => {
+        expect(normalizeMentionUids([" a ", "b", "a", "", "  ", "b"])).toEqual([
+            "a",
+            "b",
+        ]);
+    });
+
+    it("validate：合法集合返回去重后的 uids", () => {
+        const r = validateMentionUids(["a", "a", "b"]);
+        expect(r).toEqual({ ok: true, uids: ["a", "b"] });
+    });
+
+    it("validate：超过上限 → tooMany", () => {
+        const tooMany = Array.from({ length: MENTION_UIDS_MAX + 1 }, (_, i) => `u${i}`);
+        expect(validateMentionUids(tooMany)).toEqual({ ok: false, reason: "tooMany" });
+    });
+
+    it("validate：刚好上限 → ok", () => {
+        const exact = Array.from({ length: MENTION_UIDS_MAX }, (_, i) => `u${i}`);
+        const r = validateMentionUids(exact);
+        expect(r.ok).toBe(true);
+    });
+
+    it("validate：单 uid 超长（>40）→ tooLong", () => {
+        expect(validateMentionUids(["x".repeat(41)])).toEqual({
+            ok: false,
+            reason: "tooLong",
+        });
+    });
 });
 
 describe("buildWebhookUrlRows", () => {
@@ -348,5 +449,21 @@ describe("canTestWebhook", () => {
         expect(canTestWebhook({ status: IncomingWebhookStatus.enabled })).toBe(true);
         expect(canTestWebhook({ status: IncomingWebhookStatus.disabled })).toBe(false);
         expect(canTestWebhook({ status: IncomingWebhookStatus.deleted })).toBe(false);
+    });
+});
+
+describe("isFlagOn", () => {
+    it("归一化后端 0/1 能力位的各种序列化形态", () => {
+        // 真值形态（数字 / 布尔 / 字符串，覆盖后端序列化漂移）
+        expect(isFlagOn(1)).toBe(true);
+        expect(isFlagOn(true)).toBe(true);
+        expect(isFlagOn("1")).toBe(true);
+        expect(isFlagOn("true")).toBe(true);
+        // 假值 / 缺省
+        expect(isFlagOn(0)).toBe(false);
+        expect(isFlagOn(false)).toBe(false);
+        expect(isFlagOn("0")).toBe(false);
+        expect(isFlagOn(undefined)).toBe(false);
+        expect(isFlagOn(null)).toBe(false);
     });
 });

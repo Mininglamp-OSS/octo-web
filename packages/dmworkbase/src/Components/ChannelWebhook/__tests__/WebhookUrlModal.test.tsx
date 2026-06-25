@@ -28,6 +28,7 @@ vi.mock('@douyinfe/semi-icons', () => ({
   IconAlertTriangle: () => React.createElement('span', { 'data-testid': 'icon-alert' }),
   IconCopy: () => React.createElement('span', { 'data-testid': 'icon-copy' }),
   IconTickCircle: () => React.createElement('span', { 'data-testid': 'icon-tick' }),
+  IconChevronDown: () => React.createElement('span', { 'data-testid': 'icon-chevron' }),
 }));
 
 vi.mock('../../WKModal', () => ({
@@ -81,10 +82,10 @@ const flush = async (): Promise<void> => {
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 };
 
-const render = async (): Promise<void> => {
+const render = async (r: any = resp): Promise<void> => {
   act(() => {
     ReactDOM.render(
-      React.createElement(WebhookUrlModal, { resp, onClose: vi.fn() }),
+      React.createElement(WebhookUrlModal, { resp: r, onClose: vi.fn() }),
       container
     );
   });
@@ -102,15 +103,29 @@ const groupContaining = (selector: string): HTMLElement => {
 };
 
 describe('WebhookUrlModal renderExample branch mapping', () => {
-  it('renders one example group per adapter row (native/github/wecom)', async () => {
+  it('shows only native/wecom by default; github is folded behind the toggle', async () => {
     await render();
+    // 默认展开的只有 native / wecom 两组；github 收进「更多适配器」折叠区。
     expect(
       container.querySelectorAll('.wk-webhook-url__example-group')
-    ).toHaveLength(3);
+    ).toHaveLength(2);
+    const toggle = container.querySelector<HTMLButtonElement>(
+      '.wk-webhook-url__more-toggle'
+    );
+    expect(toggle).not.toBeNull();
+    expect(toggle!.textContent).toContain('1');
+    // 折叠态下 github 地址不在文档里。
+    expect(container.textContent).not.toContain('/tok/github');
   });
 
-  it('github row renders setup steps + Payload URL, NOT a curl block', async () => {
+  it('github row (after expand) renders setup steps + Payload URL, NOT a curl block', async () => {
     await render();
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>('.wk-webhook-url__more-toggle')!
+        .click();
+    });
+    await flush();
     const githubGroup = groupContaining('.wk-webhook-url__steps');
     // github 用法是「贴 Payload URL + 步骤」，不应渲染 curl <pre>。
     expect(githubGroup.querySelector('pre.wk-webhook-url__example-code')).toBeNull();
@@ -161,5 +176,82 @@ describe('WebhookUrlModal copy feedback', () => {
       '.wk-webhook-url__example-copy'
     )!;
     expect(copiedBtn.querySelector('[data-testid="icon-tick"]')).not.toBeNull();
+  });
+});
+
+// resp 额外带上新增适配器（gitlab/feishu/multica），用于折叠区行为验证。
+const respWithExtra: any = {
+  url: '/v1/incoming-webhooks/iwh_test/tok',
+  urls: {
+    native: '/v1/incoming-webhooks/iwh_test/tok',
+    github: '/v1/incoming-webhooks/iwh_test/tok/github',
+    wecom: '/v1/incoming-webhooks/iwh_test/tok/wecom',
+    gitlab: '/v1/incoming-webhooks/iwh_test/tok/gitlab',
+    feishu: '/v1/incoming-webhooks/iwh_test/tok/feishu',
+    multica: '/v1/incoming-webhooks/iwh_test/tok/multica',
+  },
+};
+
+describe('WebhookUrlModal extra adapters collapse', () => {
+  it('collapses github/gitlab/feishu/multica behind a toggle by default (only 2 core groups shown)', async () => {
+    await render(respWithExtra);
+    // 默认仅展示 native/wecom 两组；其余适配器收起、不在 DOM。
+    expect(
+      container.querySelectorAll('.wk-webhook-url__example-group')
+    ).toHaveLength(2);
+    const toggle = container.querySelector<HTMLButtonElement>(
+      '.wk-webhook-url__more-toggle'
+    );
+    expect(toggle).not.toBeNull();
+    // 折叠按钮带折叠适配器数量（github/gitlab/feishu/multica = 4）。
+    expect(toggle!.textContent).toContain('4');
+    // 折叠态下这些地址都不应出现在文档里。
+    expect(container.textContent).not.toContain('/tok/github');
+    expect(container.textContent).not.toContain('/tok/gitlab');
+  });
+
+  it('reveals the 4 folded adapters after expanding', async () => {
+    await render(respWithExtra);
+    const toggle = container.querySelector<HTMLButtonElement>(
+      '.wk-webhook-url__more-toggle'
+    )!;
+    act(() => { toggle.click(); });
+    await flush();
+
+    // 展开后 2 核心 + 4 折叠 = 6 组。
+    expect(
+      container.querySelectorAll('.wk-webhook-url__example-group')
+    ).toHaveLength(6);
+
+    // 四个折叠适配器的地址均已出现在文档中。
+    expect(container.textContent).toContain('/tok/github');
+    expect(container.textContent).toContain('/tok/gitlab');
+    expect(container.textContent).toContain('/tok/feishu');
+    expect(container.textContent).toContain('/tok/multica');
+  });
+
+  it('does NOT render a curl block nor setup steps for gitlab/feishu/multica', async () => {
+    await render(respWithExtra);
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>('.wk-webhook-url__more-toggle')!
+        .click();
+    });
+    await flush();
+
+    // 找到包含 /tok/gitlab 的示例组，断言它既无 curl <pre> 也无 github 式步骤。
+    const groups = Array.from(
+      container.querySelectorAll<HTMLElement>('.wk-webhook-url__example-group')
+    );
+    const gitlabGroup = groups.find((g) =>
+      (g.querySelector('code.wk-webhook-url__value')?.textContent || '').includes(
+        '/tok/gitlab'
+      )
+    );
+    expect(gitlabGroup).toBeTruthy();
+    expect(gitlabGroup!.querySelector('pre.wk-webhook-url__example-code')).toBeNull();
+    expect(gitlabGroup!.querySelector('.wk-webhook-url__steps')).toBeNull();
+    // 应展示该适配器的说明文案。
+    expect(gitlabGroup!.querySelector('.wk-webhook-url__example-note')).not.toBeNull();
   });
 });

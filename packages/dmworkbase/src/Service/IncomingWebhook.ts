@@ -34,13 +34,28 @@ export interface IncomingWebhook {
     call_count: number;
     /** 创建时间 Unix 秒 */
     created_at: number;
+    /** 是否放行该 webhook 用「@所有人」：0/1，表单开关回显（缺省视为 0） */
+    allow_mention_all?: number;
+    /** 是否放行该 webhook 用「@所有AI」：0/1，表单开关回显（缺省视为 0） */
+    allow_mention_bots?: number;
+    /**
+     * 每次推送自动 @ 的成员/bot uid 列表（#465）。回显恒为数组（无配置=[]）；
+     * 老后端不返回该键（undefined），调用方按「未配置」即空数组处理。
+     */
+    mention_uids?: string[];
 }
 
-/** 三种适配器的推送 URL（服务端返回相对路径，自带 /v1 前缀） */
+/**
+ * 各适配器的推送 URL（服务端返回相对路径，自带 /v1 前缀）。
+ * native/github/wecom 为既有形态；gitlab/feishu/multica 为新增（现网 main）。
+ */
 export interface IncomingWebhookUrls {
     native?: string;
     github?: string;
     wecom?: string;
+    gitlab?: string;
+    feishu?: string;
+    multica?: string;
 }
 
 /** 创建 / 重置 token 的响应。明文 token 与推送 URL 仅此一次返回。 */
@@ -55,6 +70,15 @@ export interface IncomingWebhookUpsertReq {
     name?: string;
     avatar?: string;
     status?: number;
+    /** ★放行该 webhook 用「@所有人」（*bool，缺省 false）。能管理该 webhook 者均可设置。 */
+    allow_mention_all?: boolean;
+    /** ★放行该 webhook 用「@所有AI」（*bool，缺省 false）。能管理该 webhook 者均可设置。 */
+    allow_mention_bots?: boolean;
+    /**
+     * ★#465：每次推送自动 @ 的成员/bot uid 列表。
+     * create：非空才发；update：不传=不动，传 `[]` = 显式清空（改为不 @）。
+     */
+    mention_uids?: string[];
 }
 
 /**
@@ -80,25 +104,101 @@ export function canTestWebhook(item: Pick<IncomingWebhook, "status">): boolean {
     return item.status === IncomingWebhookStatus.enabled;
 }
 
+/** mention_uids 数量上限（与服务端 DM_INCOMINGWEBHOOK_MAX_MENTION_UIDS 默认值对齐）。 */
+export const MENTION_UIDS_MAX = 50;
+/** 单个 mention uid 字符数上限（服务端校验）。 */
+export const MENTION_UID_MAX_LENGTH = 40;
+
+/**
+ * 归一化后端 0/1 能力位到 boolean。后端不同节点可能把 tinyint(1) 序列化成
+ * 数字 `1`、布尔 `true` 或字符串 `"1"`/`"true"`（与 displayName 实名位同源的序列化
+ * 漂移）；只比较 `=== 1` 会把这些读成「关」，导致开关回显错误、保存时静默清权限、
+ * 或 AI 徽章漏标。统一收敛 truthy 形态。
+ */
+export function isFlagOn(v: unknown): boolean {
+    return v === 1 || v === true || v === "1" || v === "true";
+}
+
+/** 规整 mention_uids：trim、丢空、按首次出现去重（保持选择顺序）。 */
+export function normalizeMentionUids(uids: readonly string[]): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of uids) {
+        const uid = (raw ?? "").trim();
+        if (!uid || seen.has(uid)) continue;
+        seen.add(uid);
+        out.push(uid);
+    }
+    return out;
+}
+
+/**
+ * 校验 mention_uids（前端即时反馈，服务端仍兜底）：去重后数量 ≤ {@link MENTION_UIDS_MAX}、
+ * 单个 uid 长度 ≤ {@link MENTION_UID_MAX_LENGTH}。
+ *
+ * 成员资格不在此校验：前端无权威成员名册，候选由选择器限定为本群成员，
+ * 退群等边界由服务端 400 `reason=mention_uids` / 推送时成员闸兜底。
+ */
+export function validateMentionUids(
+    uids: readonly string[]
+): { ok: true; uids: string[] } | { ok: false; reason: "tooMany" | "tooLong" } {
+    const normalized = normalizeMentionUids(uids);
+    if (normalized.length > MENTION_UIDS_MAX) {
+        return { ok: false, reason: "tooMany" };
+    }
+    if (normalized.some((uid) => uid.length > MENTION_UID_MAX_LENGTH)) {
+        return { ok: false, reason: "tooLong" };
+    }
+    return { ok: true, uids: normalized };
+}
+
+/** 两个 uid 集合是否等价（忽略顺序与重复）。 */
+function sameMentionUids(a: readonly string[], b: readonly string[]): boolean {
+    const sa = new Set(a);
+    const sb = new Set(b);
+    if (sa.size !== sb.size) return false;
+    for (const x of sa) if (!sb.has(x)) return false;
+    return true;
+}
+
 /**
  * 构造 webhook 新建 / 编辑请求体（纯函数，便于单测钉死易错边界）。
  *
  * 规则（与服务端契约对齐）：
  * - 名称 / 头像先 trim；
  * - 头像仅 `isManager` 才发（普通成员带 avatar 会被服务端 400 拒绝）；
+ * - `allow_mention_all` / `allow_mention_bots` 能力位：能管理该 webhook 者（管理员 /
+ *   自己创建）均可开关，不受 `isManager` 门控（与头像不同）。请求体发 *bool，
+ *   服务端响应回显 0/1；
+ * - `mention_uids`（#465）：每次推送自动 @ 的成员/bot。先 {@link normalizeMentionUids}
+ *   去重；create 非空才发；edit 与原回显按集合对比，变化才发——**含改为空数组**
+ *   （`[]` 是服务端约定的「显式清空」语义）；
  * - 编辑态只发「有值且与原值不同」的字段，无任何变化时返回 `null`
  *   —— 调用方据此直接关闭弹窗、不发请求；
- * - 新建态名称有值才发（留空由服务端自动命名），始终返回对象（可为空 `{}`）。
+ * - 新建态名称有值才发（留空由服务端自动命名），能力位仅 true 时附带
+ *   （缺省 false，不必显式发），始终返回对象（可为空 `{}`）。
  */
 export function buildWebhookUpsertReq(opts: {
     isEdit: boolean;
     isManager: boolean;
     name: string;
     avatar: string;
-    webhook?: Pick<IncomingWebhook, "name" | "avatar">;
+    /** 「@所有人」开关当前值（缺省视为关闭） */
+    mentionAll?: boolean;
+    /** 「@所有AI」开关当前值（缺省视为关闭） */
+    mentionBots?: boolean;
+    /** 自动 @ 成员/bot 当前选择（缺省视为空） */
+    mentionUids?: string[];
+    webhook?: Pick<
+        IncomingWebhook,
+        "name" | "avatar" | "allow_mention_all" | "allow_mention_bots" | "mention_uids"
+    >;
 }): IncomingWebhookUpsertReq | null {
     const trimmedName = opts.name.trim();
     const trimmedAvatar = opts.avatar.trim();
+    const mentionAll = !!opts.mentionAll;
+    const mentionBots = !!opts.mentionBots;
+    const mentionUids = normalizeMentionUids(opts.mentionUids ?? []);
     const req: IncomingWebhookUpsertReq = {};
 
     if (opts.isEdit && opts.webhook) {
@@ -108,12 +208,29 @@ export function buildWebhookUpsertReq(opts: {
         if (opts.isManager && trimmedAvatar !== (opts.webhook.avatar || "")) {
             req.avatar = trimmedAvatar;
         }
+        // 能力位逐个对比原回显（归一化 0/1/true/"1" → bool），仅在变化时下发。
+        if (mentionAll !== isFlagOn(opts.webhook.allow_mention_all)) {
+            req.allow_mention_all = mentionAll;
+        }
+        if (mentionBots !== isFlagOn(opts.webhook.allow_mention_bots)) {
+            req.allow_mention_bots = mentionBots;
+        }
+        // mention_uids 与原回显按集合对比；变化才发（含清空为 []）。
+        const originalUids = normalizeMentionUids(opts.webhook.mention_uids ?? []);
+        if (!sameMentionUids(mentionUids, originalUids)) {
+            req.mention_uids = mentionUids;
+        }
         // 无任何变化 → 不发请求
         return Object.keys(req).length === 0 ? null : req;
     }
 
     if (trimmedName) req.name = trimmedName;
     if (opts.isManager && trimmedAvatar) req.avatar = trimmedAvatar;
+    // 缺省 false，仅 true 时附带，保持请求体精简。
+    if (mentionAll) req.allow_mention_all = true;
+    if (mentionBots) req.allow_mention_bots = true;
+    // 新建态仅非空才发（[] 与不发等价：都=不 @）。
+    if (mentionUids.length > 0) req.mention_uids = mentionUids;
     return req;
 }
 
@@ -147,7 +264,7 @@ export function buildIncomingWebhookUrl(
 
 /** 一次性推送地址弹窗里的一行（一个适配器） */
 export interface WebhookUrlRow {
-    key: "native" | "github" | "wecom";
+    key: "native" | "github" | "wecom" | "gitlab" | "feishu" | "multica";
     /** i18n key 后缀，调用方自行拼 `base.` 前缀 */
     labelKey: string;
     url: string;
@@ -157,7 +274,8 @@ export interface WebhookUrlRow {
  * 由 create/regenerate 响应构造一次性推送地址列表（纯函数，便于单测）。
  *
  * 决策点：native 适配器优先用 `urls.native`，回退到顶层 `url`（旧契约只给 `url`）；
- * github / wecom 仅在响应提供对应 `urls.*` 时出现；最终过滤掉空地址。
+ * 其余适配器（github / gitlab / wecom / feishu / multica）仅在响应提供对应
+ * `urls.*` 时出现；最终过滤掉空地址，故老后端不返回的适配器自动不展示。
  */
 export function buildWebhookUrlRows(
     resp: Pick<IncomingWebhookCreateResp, "url" | "urls">,
@@ -169,7 +287,10 @@ export function buildWebhookUrlRows(
     return [
         { key: "native", labelKey: "channelWebhook.url.native", url: abs(resp.urls?.native || resp.url) },
         { key: "github", labelKey: "channelWebhook.url.github", url: abs(resp.urls?.github) },
+        { key: "gitlab", labelKey: "channelWebhook.url.gitlab", url: abs(resp.urls?.gitlab) },
         { key: "wecom", labelKey: "channelWebhook.url.wecom", url: abs(resp.urls?.wecom) },
+        { key: "feishu", labelKey: "channelWebhook.url.feishu", url: abs(resp.urls?.feishu) },
+        { key: "multica", labelKey: "channelWebhook.url.multica", url: abs(resp.urls?.multica) },
     ].filter((row) => !!row.url);
 }
 
@@ -271,8 +392,10 @@ export function resolveWebhookRowDisplay(
  * 构造 native / wecom 适配器的 curl 调用示例（纯函数，便于单测）。
  *
  * 关键：两种适配器 body 结构不同，不可互换（否则 push 返回 400）：
- *   - native：`{"content":"..."}`（content 按 markdown 渲染，`text` 是 Slack 别名）；
+ *   - native：`{"content":"..."}`（content 按 markdown 渲染）；
  *   - wecom ：企业微信群机器人格式 `{"msgtype":"text","text":{"content":"..."}}`。
+ *
+ * #465 起 push body 不再解析 mention（@ 谁由 webhook 配置决定），故示例只发 content。
  *
  * 安全：刻意不带 `username` / `avatar_url`——这两个发送者覆盖字段仅当 webhook
  * 创建者当前为群管理员时才生效，对成员 / bot 创建的 webhook 一律忽略，默认带上反而误导。

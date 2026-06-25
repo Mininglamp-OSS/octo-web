@@ -106,7 +106,7 @@ import {
   copyRichTextToClipboard,
 } from "./Utils/clipboard";
 import { shouldSkipMessageForSpace } from "./Service/SpaceService";
-import { t } from "./i18n";
+import { t, I18nText } from "./i18n";
 import {
   ThreadCreatedCell,
   ThreadCreatedContent,
@@ -1817,7 +1817,9 @@ export default class BaseModule implements IModule {
                       isManager={!!isManager}
                     />,
                     new RouteContextConfig({
-                      title: t("base.module.channelSettings.incomingWebhook"),
+                      title: (
+                        <I18nText k="base.module.channelSettings.incomingWebhook" />
+                      ),
                     })
                   );
                 },
