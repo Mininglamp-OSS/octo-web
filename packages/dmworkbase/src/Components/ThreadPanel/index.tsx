@@ -342,11 +342,12 @@ export default class ThreadPanel extends Component<
       const prevThreadShortId = prevProps.thread?.short_id;
       const currentThreadShortId = this.props.thread?.short_id;
       if (currentThreadShortId !== prevThreadShortId) {
+        // 切换 / 清空子区时退出 Webhook 子视图，否则会停留在上一个子区的 Webhook 面板（#451 review）。
         if (this.props.thread) {
-          this.setState({ view: "detail" });
+          this.setState({ view: "detail", showWebhookPanel: false });
           this.initVM(this.props.thread.short_id);
         } else {
-          this.setState({ view: "list" });
+          this.setState({ view: "list", showWebhookPanel: false });
         }
       } else if (this.props.thread !== prevProps.thread && this.props.thread) {
         // 同一个子区的状态同步只合并数据，不能重新 initVM。
@@ -1919,6 +1920,19 @@ export default class ThreadPanel extends Component<
     );
   }
 
+  // 父群 channel 按 groupNo 记忆化：renderWebhookContent 每次 render 都会被调用，若每次都
+  // new Channel，传给 ChannelWebhookPanel 的 channel prop 引用就会变 → 其 load useCallback
+  // （deps 含 channel）每次 render 重建 → useEffect 每次 render 重新拉取列表（#451 review）。
+  private parentGroupChannel?: Channel;
+  private parentGroupChannelKey?: string;
+  private getParentGroupChannel(groupNo: string): Channel {
+    if (this.parentGroupChannelKey !== groupNo || !this.parentGroupChannel) {
+      this.parentGroupChannelKey = groupNo;
+      this.parentGroupChannel = new Channel(groupNo, ChannelTypeGroup);
+    }
+    return this.parentGroupChannel;
+  }
+
   // 子区 Webhook 管理子视图的内容区（#451）：仅渲染面板本体，头部由 renderHeader 的
   // showWebhookPanel 分支负责。channel 传【父群】（datasource 据此拼
   // groups/{group}/threads/{short}/...），isManager 锚父群角色。
@@ -1926,11 +1940,10 @@ export default class ThreadPanel extends Component<
     const { groupNo } = this.props;
     const thread = this.state.vmState.thread;
     if (!groupNo || !thread) return null;
-    const parentGroupChannel = new Channel(groupNo, ChannelTypeGroup);
     return (
       <div className="wk-thread-panel-webhook-content">
         <ChannelWebhookPanel
-          channel={parentGroupChannel}
+          channel={this.getParentGroupChannel(groupNo)}
           isManager={isParentGroupManager(groupNo)}
           threadShortId={thread.short_id}
         />
