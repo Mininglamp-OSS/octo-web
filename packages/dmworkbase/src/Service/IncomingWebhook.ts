@@ -262,6 +262,41 @@ export function buildIncomingWebhookUrl(
     return `${abs.origin}${basePath}${rel}`;
 }
 
+/**
+ * canonical 推送路径里的「入站 webhook」段。服务端 publicURL/publicURLs 始终广告这一形态
+ * —— octo-server #456 刻意保持向后兼容，不在响应里返回短别名。
+ */
+const CANONICAL_WEBHOOK_SEGMENT = "/v1/incoming-webhooks/";
+/**
+ * 等价的短别名段（octo-server #455/#456）：`/v1/webhooks/{id}/{token}[/adapter]` 与 canonical
+ * 共用同一套 handler / 中间件链 / 限流桶，access-log token 脱敏也对两个前缀做了 parity。
+ */
+const SHORT_WEBHOOK_SEGMENT = "/v1/webhooks/";
+
+/**
+ * 把 canonical 推送地址改写成更短的 `/v1/webhooks` 别名，用于推送地址弹窗的展示 / 复制
+ * （octo-web #452）。仅替换首个 `/v1/incoming-webhooks/` 段，webhook_id / token / 适配器
+ * 后缀 / query 一律原样保留。
+ *
+ * - 幂等且前向兼容：地址已是 `/v1/webhooks/` 形态、或根本不含 canonical 段时原样返回——
+ *   将来后端若直接返回短别名也不会被二次改写（正好覆盖 issue 里「if/when the backend
+ *   returns it」）。
+ * - 只匹配 `/v1/incoming-webhooks/` 这一精确前缀，不会误伤管理面
+ *   `/v1/groups/{group_no}/incoming-webhooks`（其 `incoming-webhooks` 前不是 `/v1/`）。
+ * - 纯字符串改写，相对路径（`/v1/...`）与绝对地址（`https://host/api/v1/...`）皆可用：
+ *   用 indexOf 定位、只替换一次，避免误伤路径里其它同名子串。
+ */
+export function toShortWebhookAlias(url: string): string {
+    if (!url) return url;
+    const idx = url.indexOf(CANONICAL_WEBHOOK_SEGMENT);
+    if (idx < 0) return url;
+    return (
+        url.slice(0, idx) +
+        SHORT_WEBHOOK_SEGMENT +
+        url.slice(idx + CANONICAL_WEBHOOK_SEGMENT.length)
+    );
+}
+
 /** 一次性推送地址弹窗里的一行（一个适配器） */
 export interface WebhookUrlRow {
     key: "native" | "github" | "wecom" | "gitlab" | "feishu" | "multica";
@@ -276,6 +311,11 @@ export interface WebhookUrlRow {
  * 决策点：native 适配器优先用 `urls.native`，回退到顶层 `url`（旧契约只给 `url`）；
  * 其余适配器（github / gitlab / wecom / feishu / multica）仅在响应提供对应
  * `urls.*` 时出现；最终过滤掉空地址，故老后端不返回的适配器自动不展示。
+ *
+ * 展示偏好（octo-web #452 / octo-server #456）：后端返回的仍是 canonical
+ * `/v1/incoming-webhooks/...`，这里统一经 {@link toShortWebhookAlias} 改写成更短的等价
+ * 别名 `/v1/webhooks/...` 再展示 / 复制。两条路径服务端完全等价（同 handler / 中间件 /
+ * 限流，日志 token 脱敏亦 parity），故纯属展示层变更，不改请求契约。
  */
 export function buildWebhookUrlRows(
     resp: Pick<IncomingWebhookCreateResp, "url" | "urls">,
@@ -283,15 +323,18 @@ export function buildWebhookUrlRows(
     origin: string
 ): WebhookUrlRow[] {
     const abs = (rel?: string): string =>
-        rel ? buildIncomingWebhookUrl(rel, apiURL || "/", origin) : "";
-    return [
+        rel ? buildIncomingWebhookUrl(toShortWebhookAlias(rel), apiURL || "/", origin) : "";
+    // 显式标注元素类型：让各 key 字面量被钉到 WebhookUrlRow["key"] 联合（否则数组字面量里
+    // key 会被拓宽成 string，filter 后整体不可赋值给 WebhookUrlRow[]）。
+    const rows: WebhookUrlRow[] = [
         { key: "native", labelKey: "channelWebhook.url.native", url: abs(resp.urls?.native || resp.url) },
         { key: "github", labelKey: "channelWebhook.url.github", url: abs(resp.urls?.github) },
         { key: "gitlab", labelKey: "channelWebhook.url.gitlab", url: abs(resp.urls?.gitlab) },
         { key: "wecom", labelKey: "channelWebhook.url.wecom", url: abs(resp.urls?.wecom) },
         { key: "feishu", labelKey: "channelWebhook.url.feishu", url: abs(resp.urls?.feishu) },
         { key: "multica", labelKey: "channelWebhook.url.multica", url: abs(resp.urls?.multica) },
-    ].filter((row) => !!row.url);
+    ];
+    return rows.filter((row) => !!row.url);
 }
 
 /** push 消息 payload 里的发送者展示身份（DeliveredMessagePayload.from） */

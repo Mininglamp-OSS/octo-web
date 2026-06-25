@@ -103,6 +103,16 @@ const groupContaining = (selector: string): HTMLElement => {
 };
 
 describe('WebhookUrlModal renderExample branch mapping', () => {
+  it('renders the short /v1/webhooks alias (not canonical /incoming-webhooks) for the push address (#452)', async () => {
+    await render();
+    const addr = container.querySelector(
+      '.wk-webhook-url__row .wk-webhook-url__value'
+    );
+    // 后端返回 canonical /v1/incoming-webhooks/...，展示层应改写成更短的等价别名。
+    expect(addr?.textContent).toContain('/api/v1/webhooks/iwh_test/tok');
+    expect(container.textContent).not.toContain('/incoming-webhooks/');
+  });
+
   it('shows only native/wecom by default; github is folded behind the toggle', async () => {
     await render();
     // 默认展开的只有 native / wecom 两组；github 收进「更多适配器」折叠区。

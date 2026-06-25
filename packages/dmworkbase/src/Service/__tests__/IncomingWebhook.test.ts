@@ -11,6 +11,7 @@ import {
     isFlagOn,
     isIncomingWebhookSender,
     normalizeMentionUids,
+    toShortWebhookAlias,
     validateMentionUids,
     webhookFromOfMessage,
 } from "../IncomingWebhook";
@@ -64,6 +65,50 @@ describe("buildIncomingWebhookUrl", () => {
         expect(buildIncomingWebhookUrl(`${rel}/wecom`, "/api/v1/", "https://h.e")).toBe(
             "https://h.e/api/v1/incoming-webhooks/iwh_abc/token123/wecom"
         );
+    });
+});
+
+describe("toShortWebhookAlias (#452)", () => {
+    it("canonical 相对路径 → 短别名，webhook_id/token 保留", () => {
+        expect(toShortWebhookAlias("/v1/incoming-webhooks/iwh_a/tok")).toBe(
+            "/v1/webhooks/iwh_a/tok"
+        );
+    });
+
+    it("适配器后缀完整保留", () => {
+        expect(toShortWebhookAlias("/v1/incoming-webhooks/iwh_a/tok/github")).toBe(
+            "/v1/webhooks/iwh_a/tok/github"
+        );
+    });
+
+    it("query 串完整保留", () => {
+        expect(toShortWebhookAlias("/v1/incoming-webhooks/iwh_a/tok?foo=bar")).toBe(
+            "/v1/webhooks/iwh_a/tok?foo=bar"
+        );
+    });
+
+    it("绝对地址里的 canonical 段也被改写（仅换一次）", () => {
+        expect(
+            toShortWebhookAlias("https://h.e/api/v1/incoming-webhooks/iwh_a/tok")
+        ).toBe("https://h.e/api/v1/webhooks/iwh_a/tok");
+    });
+
+    it("幂等：已是短别名 → 原样返回（前向兼容后端将来直接返回别名）", () => {
+        const short = "/v1/webhooks/iwh_a/tok";
+        expect(toShortWebhookAlias(short)).toBe(short);
+    });
+
+    it("不含 canonical 段 → 原样返回", () => {
+        expect(toShortWebhookAlias("/v1/message/send")).toBe("/v1/message/send");
+    });
+
+    it("不误伤管理面 /v1/groups/{group_no}/incoming-webhooks（前缀不同）", () => {
+        const mgmt = "/v1/groups/g_1/incoming-webhooks";
+        expect(toShortWebhookAlias(mgmt)).toBe(mgmt);
+    });
+
+    it("空串 → 空串", () => {
+        expect(toShortWebhookAlias("")).toBe("");
     });
 });
 
@@ -348,7 +393,9 @@ describe("buildWebhookUrlRows", () => {
     const origin = "https://host.example";
     const full = (rel: string) => `https://host.example/api/v1${rel}`;
 
-    it("三个适配器 URL 齐全 → 三行，标签 key 正确", () => {
+    // 后端返回的仍是 canonical /v1/incoming-webhooks/...（#456 保持向后兼容），
+    // 展示层统一改写成更短的等价别名 /v1/webhooks/...（#452）。
+    it("三个适配器 URL 齐全 → 三行，标签 key 正确，展示为短别名（#452）", () => {
         const rows = buildWebhookUrlRows(
             {
                 url: "/v1/incoming-webhooks/iwh_a/t",
@@ -362,13 +409,13 @@ describe("buildWebhookUrlRows", () => {
             origin
         );
         expect(rows).toEqual([
-            { key: "native", labelKey: "channelWebhook.url.native", url: full("/incoming-webhooks/iwh_a/t") },
-            { key: "github", labelKey: "channelWebhook.url.github", url: full("/incoming-webhooks/iwh_a/t/github") },
-            { key: "wecom", labelKey: "channelWebhook.url.wecom", url: full("/incoming-webhooks/iwh_a/t/wecom") },
+            { key: "native", labelKey: "channelWebhook.url.native", url: full("/webhooks/iwh_a/t") },
+            { key: "github", labelKey: "channelWebhook.url.github", url: full("/webhooks/iwh_a/t/github") },
+            { key: "wecom", labelKey: "channelWebhook.url.wecom", url: full("/webhooks/iwh_a/t/wecom") },
         ]);
     });
 
-    it("旧契约只给顶层 url（无 urls）→ native 回退到 url，github/wecom 过滤掉", () => {
+    it("旧契约只给顶层 url（无 urls）→ native 回退到 url 并改写为短别名，github/wecom 过滤掉", () => {
         const rows = buildWebhookUrlRows(
             { url: "/v1/incoming-webhooks/iwh_a/t" },
             apiURL,
@@ -378,7 +425,7 @@ describe("buildWebhookUrlRows", () => {
         expect(rows[0]).toEqual({
             key: "native",
             labelKey: "channelWebhook.url.native",
-            url: full("/incoming-webhooks/iwh_a/t"),
+            url: full("/webhooks/iwh_a/t"),
         });
     });
 
