@@ -14,6 +14,8 @@ import { useDocComments } from '../comments/useDocComments.ts'
 import { useCommentHighlights } from '../comments/useCommentHighlights.ts'
 import { useDocDelete } from './useDocDelete.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
+import { exportDocToMarkdown, type MdNode } from '../export/markdown.ts'
+import { emojiGlyph } from './emoji.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { t } from '../octoweb/index.ts'
@@ -286,6 +288,35 @@ export function EditorShell(props: EditorShellProps) {
   )
   const del = useDocDelete(docId, handleDeleted)
 
+  // Export-as-Markdown (batch 8, area C): serialize the live PM JSON to Markdown with freshly
+  // resolved signed asset URLs and trigger a browser download. Display-only — never mutates
+  // the doc; failures surface a small banner instead of crashing the editor.
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const onExportMarkdown = useCallback(async () => {
+    const ed = instance?.editor
+    if (!ed || exporting) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      const md = await exportDocToMarkdown(docId, ed.getJSON() as unknown as MdNode, { emojiGlyph })
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const name = (title || t('docs.state.untitled')).trim() || 'document'
+      a.download = `${name}.md`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      setExportError(t('docs.toolbar.exportError'))
+    } finally {
+      setExporting(false)
+    }
+  }, [instance, docId, title, exporting])
+
   const togglePanel = useCallback(
     (panel: Exclude<DrawerPanel, null>) => setActivePanel((cur) => (cur === panel ? null : panel)),
     [],
@@ -360,6 +391,16 @@ export function EditorShell(props: EditorShellProps) {
           >
             💬 {t('docs.toolbar.comments')}
           </button>
+          {/* Export the document as a Markdown file (reader+ — anyone who can view can export). */}
+          <button
+            type="button"
+            className="octo-tb-btn"
+            title={t('docs.toolbar.exportMarkdown')}
+            disabled={exporting}
+            onClick={() => void onExportMarkdown()}
+          >
+            ⬇ {t('docs.toolbar.exportMarkdown')}
+          </button>
           {manage && (
             <button
               type="button"
@@ -417,6 +458,11 @@ export function EditorShell(props: EditorShellProps) {
           {del.error}
         </p>
       )}
+      {exportError && (
+        <p className="octo-member-error" role="alert">
+          {exportError}
+        </p>
+      )}
 
       <Toolbar editor={editor} />
 
@@ -429,7 +475,7 @@ export function EditorShell(props: EditorShellProps) {
         </div>
       </div>
 
-      <StatusBar editor={editor} />
+      <StatusBar editor={editor} provider={instance.provider} />
 
       {/* History + Comments live in the right-side drawer; Members opens a dedicated modal (#A4). */}
       {(activePanel === 'history' || activePanel === 'comments') && (

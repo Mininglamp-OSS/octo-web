@@ -6,6 +6,7 @@
 // the UI by role (reader/writer/admin) so disabled affordances never reach the wire.
 
 import { apiClient, type ApiError } from '../octoweb/index.ts'
+import type { PMNode } from './diff.ts'
 
 /**
  * Version kind as a string union for the UI. The backend stores `kind` as a small int
@@ -114,20 +115,45 @@ export async function createNamedVersion(docId: string, label?: string): Promise
 }
 
 /**
- * GET /docs/:docId/versions/:seq/state — binary Yjs state blob for client-side
- * preview/diff (reader+). Returned as an ArrayBuffer via responseType:'arraybuffer';
- * we never decode it to base64 — it stays binary out-of-band (repo rule §2.x).
+ * Decoded ProseMirror-JSON document for a historical version, plus its schema metadata.
+ * `doc` is the PM-JSON the preview/diff renders directly (no client-side Yjs decode).
+ */
+export interface VersionStateResult {
+  doc: PMNode
+  schemaVersion: number
+  docVersionSeq: number
+}
+
+/**
+ * GET /docs/:docId/versions/:seq/state — decoded ProseMirror-JSON document for client-side
+ * preview/diff (reader+).
+ *
+ * BREAKING CONTRACT CHANGE (方案 B): this endpoint previously returned a raw octet-stream Yjs
+ * state blob (responseType:'arraybuffer'); it now returns JSON `{ doc, schemaVersion,
+ * docVersionSeq }`. Frontend and backend MUST deploy together — an old client against the new
+ * backend (or vice versa) cannot read the response. Maps the two 409 schema codes to the same
+ * typed errors as restoreVersion so the UI can show a clear, distinct message. Keeps `signal`.
  */
 export async function getVersionState(
   docId: string,
   docVersionSeq: number,
   signal?: AbortSignal,
-): Promise<ArrayBuffer> {
-  const { data } = await apiClient().get<ArrayBuffer>(
-    `/docs/${docId}/versions/${docVersionSeq}/state`,
-    { responseType: 'arraybuffer', signal },
-  )
-  return data
+): Promise<VersionStateResult> {
+  try {
+    const { data } = await apiClient().get<VersionStateResult>(
+      `/docs/${docId}/versions/${docVersionSeq}/state`,
+      { signal },
+    )
+    return data
+  } catch (e) {
+    const err = e as ApiError<{ error?: string }>
+    if (err.response?.status === 409) {
+      const code = err.response.data?.error
+      if (code === 'version_schema_incompatible') throw new VersionSchemaIncompatibleError()
+      if (code === 'version_schema_newer') throw new VersionSchemaNewerError()
+    }
+    throw e
+  }
 }
 
 /**

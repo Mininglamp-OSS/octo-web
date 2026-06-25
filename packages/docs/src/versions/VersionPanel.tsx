@@ -15,7 +15,6 @@ import {
   VersionSchemaNewerError,
   type VersionMeta,
 } from './api.ts'
-import { stateToProsemirrorJSON } from './preview.ts'
 import { createPreviewGuard } from './previewGuard.ts'
 import { diffDocs, type DiffEntry, type PMNode } from './diff.ts'
 import { formatRelative, formatAbsolute, autosaveLabel } from './format.ts'
@@ -64,15 +63,12 @@ function displayLabel(v: VersionMeta): string {
 export function VersionPanel({
   docId,
   role,
-  currentState,
   editor,
   names,
   onClose,
 }: {
   docId: string
   role: Role
-  /** Optional binary state of the current doc (diff fallback when no live editor is given). */
-  currentState?: ArrayBuffer
   /** Live editor — read-only here; used as the "current" side of a diff. */
   editor?: Editor
   /** uid → display-name map (feature #7) so the author shows a name, not a raw uid. */
@@ -87,7 +83,11 @@ export function VersionPanel({
 
   const [selected, setSelected] = useState<VersionMeta | null>(null)
   const [previewJSON, setPreviewJSON] = useState<PMNode | null>(null)
-  const [previewState, setPreviewState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [previewState, setPreviewState] = useState<
+    'idle' | 'loading' | 'ready' | 'schema-error' | 'network-error'
+  >('idle')
+  // Which 409 schema code surfaced, so the schema-error message can be specific.
+  const [schemaErrorKind, setSchemaErrorKind] = useState<'incompatible' | 'newer'>('incompatible')
   const [compare, setCompare] = useState(false)
 
   const [snapshotOpen, setSnapshotOpen] = useState(false)
@@ -148,20 +148,27 @@ export function VersionPanel({
     // restore red line). Only the latest request may apply its result.
     const { isCurrent } = previewGuardRef.current.begin()
     try {
-      const buf = await getVersionState(docId, v.docVersionSeq)
+      const resp = await getVersionState(docId, v.docVersionSeq)
       if (!isCurrent()) return // superseded by a newer preview
-      setPreviewJSON(stateToProsemirrorJSON(buf))
+      setPreviewJSON(resp.doc)
       setPreviewState('ready')
-    } catch {
+    } catch (e) {
       if (!isCurrent()) return // superseded; swallow stale error
-      setPreviewState('error')
+      if (e instanceof VersionSchemaNewerError) {
+        setSchemaErrorKind('newer')
+        setPreviewState('schema-error')
+      } else if (e instanceof VersionSchemaIncompatibleError) {
+        setSchemaErrorKind('incompatible')
+        setPreviewState('schema-error')
+      } else {
+        setPreviewState('network-error')
+      }
     }
   }
 
-  // "Current" side of a diff: prefer the live editor's JSON; fall back to a decoded blob.
+  // "Current" side of a diff: the live editor's JSON (read-only).
   function currentDoc(): PMNode | null {
     if (editor) return editor.getJSON() as PMNode
-    if (currentState) return stateToProsemirrorJSON(currentState)
     return null
   }
 
@@ -438,8 +445,26 @@ export function VersionPanel({
           </div>
 
           {previewState === 'loading' && <p className="octo-loading">{t('docs.version.loadingPreview')}</p>}
-          {previewState === 'error' && (
-            <p className="octo-member-error">{t('docs.version.previewError')}</p>
+          {previewState === 'schema-error' && (
+            <p className="octo-member-error">
+              {t(
+                schemaErrorKind === 'newer'
+                  ? 'docs.version.previewSchemaNewer'
+                  : 'docs.version.previewSchemaIncompatible',
+              )}
+            </p>
+          )}
+          {previewState === 'network-error' && (
+            <div className="octo-version-preview-error">
+              <p className="octo-member-error">{t('docs.version.previewNetworkError')}</p>
+              <button
+                type="button"
+                className="octo-tb-btn"
+                onClick={() => selected && onPreview(selected)}
+              >
+                {t('docs.version.previewRetry')}
+              </button>
+            </div>
           )}
 
           {previewState === 'ready' && previewJSON && !compare && (
