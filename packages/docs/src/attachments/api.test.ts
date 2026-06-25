@@ -6,6 +6,7 @@ import {
   uploadBinary,
   getReadUrl,
   uploadImage,
+  resolveAttachments,
   AttachmentRejectedError,
   type PresignResult,
 } from './api.ts'
@@ -151,4 +152,44 @@ describe('uploadImage — end-to-end flow yields attachId + signed src, never ba
 // Keep the explicit error type exported for the UI layer.
 it('AttachmentRejectedError is an Error subclass', () => {
   expect(new AttachmentRejectedError('mime_blocked')).toBeInstanceOf(Error)
+})
+
+describe('resolveAttachments — batch signed-URL resolve (export, RES-1)', () => {
+  it('POSTs { attachIds } to /docs/{docId}/attachments/resolve and parses { items, notFound }', async () => {
+    api.responder = () => ({
+      data: {
+        items: [
+          {
+            attachId: 'att_1',
+            url: 'https://assets.octo.example.com/att_1?sig=z',
+            expiresInSec: 300,
+            mime: 'image/png',
+            sizeBytes: 5,
+            fileName: 'a.png',
+          },
+        ],
+        notFound: ['att_2'],
+      },
+      status: 200,
+    })
+    const res = await resolveAttachments('d_1', ['att_1', 'att_2'])
+    expect(api.calls[0]).toMatchObject({
+      method: 'post',
+      url: '/docs/d_1/attachments/resolve',
+      body: { attachIds: ['att_1', 'att_2'] },
+    })
+    expect(res.items).toHaveLength(1)
+    expect(res.items[0].url).toBe('https://assets.octo.example.com/att_1?sig=z')
+    expect(res.notFound).toEqual(['att_2'])
+  })
+
+  it('maps a 400 (attachIds_too_many / invalid_body) to AttachmentRejectedError', async () => {
+    api.responder = () => {
+      throw { response: { status: 400, data: { error: 'attachIds_too_many' } } }
+    }
+    await expect(resolveAttachments('d_1', ['x'])).rejects.toMatchObject({
+      name: 'AttachmentRejectedError',
+      reason: 'attachIds_too_many',
+    })
+  })
 })

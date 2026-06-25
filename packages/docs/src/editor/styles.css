@@ -229,6 +229,13 @@
 .octo-editor-status-sep {
   opacity: 0.6;
 }
+/* Autosave indicator: right-aligned, light grey, unobtrusive. */
+.octo-editor-autosave {
+  margin-left: auto;
+  color: #aaaaaa;
+  font-size: 12px;
+  white-space: nowrap;
+}
 
 /* Text highlight / colour controls (SCHEMA-SPEC §3) */
 .octo-color-control {
@@ -1037,6 +1044,21 @@
   height: 16px;
   display: block;
   fill: currentColor;
+}
+/* Stroke-style toolbar glyphs (undo/redo): line art, not filled. */
+.octo-tb-icon-stroke {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+}
+/* Undo/redo group: light-grey line icons with a comfortable gap (boss reference). The
+   icons inherit #AAAAAA via currentColor; disabled greying reuses .octo-tb-btn:disabled. */
+.octo-tb-undoredo {
+  display: flex;
+  gap: 20px;
+  color: #aaaaaa;
 }
 
 /* Block-type (heading / body) dropdown (C1) — shares the font-size control styling. */

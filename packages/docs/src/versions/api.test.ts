@@ -58,17 +58,36 @@ describe('version API — paths / methods / mapping (feature #4 §7)', () => {
     expect(api.calls[0]).toMatchObject({ method: 'post', url: '/docs/d_1/versions', body: {} })
   })
 
-  it('GET state requests arraybuffer and returns the blob', async () => {
-    const buf = new ArrayBuffer(8)
-    let seenConfig: unknown
+  it('GET state requests JSON and returns the decoded PM document + schema meta', async () => {
+    const stateBody = {
+      doc: { type: 'doc', content: [{ type: 'paragraph' }] },
+      schemaVersion: 13,
+      docVersionSeq: 7,
+    }
+    let seenConfig: Record<string, unknown> | undefined
     api.responder = (_m, _u, _b, config) => {
-      seenConfig = config
-      return { data: buf, status: 200 }
+      seenConfig = config as Record<string, unknown> | undefined
+      return { data: stateBody, status: 200 }
     }
     const out = await getVersionState('d_1', 7)
-    expect(out).toBe(buf)
+    expect(out).toEqual(stateBody)
     expect(api.calls[0]).toMatchObject({ method: 'get', url: '/docs/d_1/versions/7/state' })
-    expect(seenConfig).toMatchObject({ responseType: 'arraybuffer' })
+    // No longer an arraybuffer request — it is a normal JSON GET.
+    expect(seenConfig?.responseType).toBeUndefined()
+  })
+
+  it('GET state maps 409 version_schema_incompatible to a typed error', async () => {
+    api.responder = () => {
+      throw { response: { status: 409, data: { error: 'version_schema_incompatible' } } }
+    }
+    await expect(getVersionState('d_1', 7)).rejects.toBeInstanceOf(VersionSchemaIncompatibleError)
+  })
+
+  it('GET state maps 409 version_schema_newer to a typed error', async () => {
+    api.responder = () => {
+      throw { response: { status: 409, data: { error: 'version_schema_newer' } } }
+    }
+    await expect(getVersionState('d_1', 7)).rejects.toBeInstanceOf(VersionSchemaNewerError)
   })
 
   it('POST restore returns { newDocVersionSeq, restoredFrom }', async () => {

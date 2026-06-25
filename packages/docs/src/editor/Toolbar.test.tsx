@@ -187,3 +187,41 @@ describe('Toolbar — find match counter stays in sync (batch-7 regression)', ()
     expect(countText()).toBe('docs.find.noResults')
   })
 })
+
+describe('Toolbar — undo/redo are stroke icon buttons (batch 8)', () => {
+  it('renders undo/redo as icon buttons located by title (no text label), in a undo-left/redo-right group', () => {
+    render(<Toolbar editor={editor!} />)
+    const undo = titleBtn('docs.toolbar.undo')
+    const redo = titleBtn('docs.toolbar.redo')
+    // Stroke-style glyphs, no text.
+    expect(undo.querySelector('svg.octo-tb-icon-stroke')).toBeTruthy()
+    expect(redo.querySelector('svg.octo-tb-icon-stroke')).toBeTruthy()
+    expect(undo.textContent?.trim()).toBe('')
+    expect(redo.textContent?.trim()).toBe('')
+    // Grouped together; undo precedes redo in document order.
+    const group = undo.closest('.octo-tb-undoredo')
+    expect(group).toBeTruthy()
+    expect(group).toBe(redo.closest('.octo-tb-undoredo'))
+    expect(undo.compareDocumentPosition(redo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('disables undo/redo when there is no history (can().undo()/redo() is false)', () => {
+    // A fresh editor with history enabled has an empty undo/redo stack.
+    const e = new Editor({ extensions: [StarterKit], content: '<p>hello</p>' })
+    expect(e.can().undo()).toBe(false)
+    expect(e.can().redo()).toBe(false)
+    render(<Toolbar editor={e} />)
+    expect(titleBtn('docs.toolbar.undo').disabled).toBe(true)
+    expect(titleBtn('docs.toolbar.redo').disabled).toBe(true)
+    e.destroy()
+  })
+
+  it('enables undo after an edit (disabled prop wired to editor.can())', () => {
+    const e = new Editor({ extensions: [StarterKit], content: '<p>hello</p>' })
+    e.chain().focus().insertContent(' world').run()
+    expect(e.can().undo()).toBe(true)
+    render(<Toolbar editor={e} />)
+    expect(titleBtn('docs.toolbar.undo').disabled).toBe(false)
+    e.destroy()
+  })
+})
