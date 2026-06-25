@@ -92,6 +92,51 @@ describe('exportDocToMarkdown — lists', () => {
     expect(out).toContain('- [ ] todo')
     expect(out).toContain('- [x] done')
   })
+
+  it('escapes a literal leading list marker in paragraph text (no spurious nested list)', async () => {
+    const li = (t: string): MdNode => ({ type: 'listItem', content: [p(text(t))] })
+    const out = await md(
+      doc({ type: 'bulletList', content: [li('Bullet item one'), li('- Bullet item two')] }),
+    )
+    // The second item's literal "- " text must be escaped so it is not re-parsed as a
+    // nested marker (`- - Bullet item two`).
+    expect(out).toContain('- \\- Bullet item two')
+    expect(out).not.toContain('- - Bullet item two')
+  })
+
+  it('escapes leading markdown markers in a top-level paragraph', async () => {
+    const out = await md(
+      doc(
+        p(text('- not a bullet')),
+        p(text('# not a heading')),
+        p(text('1. not ordered')),
+        p(text('> not a quote')),
+      ),
+    )
+    expect(out).toContain('\\- not a bullet')
+    expect(out).toContain('\\# not a heading')
+    expect(out).toContain('\\1. not ordered')
+    expect(out).toContain('\\> not a quote')
+  })
+
+  it('does not escape markers that are mid-line (only line-leading)', async () => {
+    const out = await md(doc(p(text('a - b and c # d'))))
+    expect(out).toContain('a - b and c # d')
+    expect(out).not.toContain('\\-')
+    expect(out).not.toContain('\\#')
+  })
+
+  it('skips an empty list item instead of emitting a bare dangling marker', async () => {
+    const li = (t: string): MdNode => ({ type: 'listItem', content: [p(text(t))] })
+    const empty: MdNode = { type: 'listItem', content: [p()] }
+    const out = await md(
+      doc({ type: 'bulletList', content: [li('real item'), empty] }),
+    )
+    expect(out).toContain('- real item')
+    // No trailing bare "- " line.
+    expect(out.split('\n').some((l) => l.trim() === '-')).toBe(false)
+    expect(out).not.toMatch(/- *$/m)
+  })
 })
 
 describe('exportDocToMarkdown — blocks', () => {
