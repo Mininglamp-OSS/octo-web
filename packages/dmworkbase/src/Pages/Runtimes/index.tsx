@@ -23,6 +23,7 @@ interface AgentRuntime {
     provider: string
     status: string
     version: string
+    device_id: number
     device_name: string
     device_info: string
     runtime_mode: string
@@ -34,14 +35,37 @@ interface AgentRuntime {
     updated_at: string
 }
 
+// Device 对应 /runtimes 响应新增的顶层 `devices` map 的 value (key 是
+// device_id 字符串). 设备成为一等公民: 设备名/OS/架构/系统版本/状态/最近
+// 活跃/核心组件版本 都由服务端直接给出, 不再靠解析 runtime 的 device_info
+// / metadata 字符串. daemon_id 也在 device 上, 空设备 (未装任何 agent 框架
+// → 0 runtime) 仍能拿到 daemon_id 触发 daemon 升级.
+interface DeviceComponent {
+    name: string
+    version: string
+}
+
+interface Device {
+    device_id: number
+    device_uuid: string
+    daemon_id: string
+    name: string
+    os: string
+    arch: string
+    os_version: string
+    status: string
+    last_seen_at: string
+    components: DeviceComponent[]
+}
+
+// DeviceGroup = 一台设备 (来自权威 devices map) + 串联到它的 runtimes.
+// key 是设备身份 (String(device_id)), 用作左树展开/选中标识; daemon_id 仅
+// 用于 daemon 升级 POST 与 activeUpgrade key.
 interface DeviceGroup {
-    daemonId: string
-    deviceName: string
+    key: string
+    device: Device
     runtimes: AgentRuntime[]
     onlineCount: number
-    cliVersion: string
-    osName: string
-    arch: string
 }
 
 interface ActiveUpgrade {
@@ -65,7 +89,11 @@ function upgradeKey(u: Pick<ActiveUpgrade, "daemon_id" | "component" | "runtime_
 
 interface RuntimesState {
     runtimes: AgentRuntime[]
+    // 权威设备列表 (key = device_id 字符串). 左树 Level-1 以此为准, 空设备
+    // (无关联 runtime) 也显示.
+    devices: Record<string, Device>
     versionHints: Record<number, { has_update?: boolean; latest_version?: string; has_plugin_update?: boolean; plugin_latest_version?: string; plugin_install_version?: string }>
+    // daemon 版本升级提示, key 由 daemon_id 改为 device_id 字符串 (与 devices map 对齐).
     daemonVersionHints: Record<string, { has_update?: boolean; latest_version?: string; current?: string }>
     activeUpgrades: Record<string, ActiveUpgrade>
     loading: boolean
@@ -114,42 +142,84 @@ function humanizeAge(epochMs: number): string {
     return t("base.runtimes.time.daysAgo", { values: { n: Math.floor(diff / 86_400_000) } })
 }
 
+const OS_LABELS: Record<string, string> = { darwin: "macOS", linux: "Linux", windows: "Windows" }
+function osLabel(os: string): string {
+    return OS_LABELS[os] || os || ""
+}
+
+// 'YYYY-MM-DD HH:MM:SS' (naive, server tz=UTC 约定, 见 humanizeAge 注释) → epoch ms (无效返 0).
+function parseNaiveMs(s: string): number {
+    if (!s) return 0
+    const ts = new Date(s.replace(" ", "T") + "Z").getTime()
+    return isNaN(ts) ? 0 : ts
+}
+
+// device 级 Daemon 版本: 从 components 取 octo-daemon 的 version (新接口权威源,
+// 替代旧的 metadata.cli_version).
+function daemonVersion(device: Device): string {
+    return device.components?.find(c => c.name === "octo-daemon")?.version || ""
+}
+
+// device 在线判定: 优先用服务端给的 device.status (空设备也准); 老服务端
+// 合成的 device 无 status, 回退到该设备下 runtime 的在线数.
+function deviceOnline(group: DeviceGroup): boolean {
+    if (group.device.status) return group.device.status === "online"
+    return group.onlineCount > 0
+}
+
+// 老服务端 (响应无 devices map, 或 runtime.device_id 在 devices 里查不到的
+// 脏数据) 时, 从 runtime 自身的 device_info / metadata 合成一个 Device, 保证
+// runtime 不会因为缺设备记录而从左树消失. 新服务端正常路径不会走到这里.
+function synthDevice(rt: AgentRuntime): Device {
+    let info: Record<string, string> = {}
+    if (rt.device_info) { try { info = JSON.parse(rt.device_info) } catch {} }
+    const meta = parseMetadata(rt.metadata)
+    const cli = (meta?.cli_version as string) || ""
+    return {
+        device_id: rt.device_id || 0,
+        device_uuid: info.device_id || "",
+        daemon_id: rt.daemon_id || "",
+        name: rt.device_name || rt.daemon_id || "unknown",
+        os: info.os || "",
+        arch: info.arch || "",
+        os_version: info.os_version || "",
+        status: "",
+        last_seen_at: "",
+        components: cli ? [{ name: "octo-daemon", version: cli }] : [],
+    }
+}
+
 // 取 device 下所有 runtime 的 max last_seen_at, 返 epoch ms (无则 0).
+// 仅作 device.last_seen_at 缺失时的回退 (老服务端合成 device 无该字段).
 // 同 device 的多个 runtime 跑同一 daemon 同一 heartbeatLoop, 各 last_seen_at
-// 几乎同步, 取 max 等价 daemon 整体最后心跳时间. 直接返 epoch 让 caller 自己决定渲染
-// (避免 string ↔ epoch 来回往返).
+// 几乎同步, 取 max 等价 daemon 整体最后心跳时间.
 function deviceLastSeenMs(group: DeviceGroup): number {
     let max = 0
     for (const r of group.runtimes) {
-        if (!r.last_seen_at) continue
-        const ts = new Date(r.last_seen_at.replace(" ", "T") + "Z").getTime()
-        if (!isNaN(ts) && ts > max) max = ts
+        const ts = parseNaiveMs(r.last_seen_at)
+        if (ts > max) max = ts
     }
     return max
 }
 
-function groupByDevice(runtimes: AgentRuntime[]): DeviceGroup[] {
+// 以权威 devices map 为准建左树 Level-1: 先按 devices map 落每个设备 (空设备
+// 也保留), 再把 runtime 按 device_id 串联挂上去. device_id 查不到对应设备的
+// runtime (脏数据 / 老服务端无 devices) 走 synthDevice 兜底, 不丢 runtime.
+function groupByDevice(runtimes: AgentRuntime[], devices: Record<string, Device>): DeviceGroup[] {
     const map = new Map<string, DeviceGroup>()
+    for (const [key, dev] of Object.entries(devices || {})) {
+        map.set(key, { key, device: dev, runtimes: [], onlineCount: 0 })
+    }
     for (const rt of runtimes) {
-        const key = rt.daemon_id || "unknown"
-        let group = map.get(key)
+        const key = rt.device_id ? String(rt.device_id) : ""
+        let group = key ? map.get(key) : undefined
         if (!group) {
-            const meta = parseMetadata(rt.metadata)
-            let deviceInfo: Record<string, string> = {}
-            if (rt.device_info) {
-                try { deviceInfo = JSON.parse(rt.device_info) } catch {}
+            const fkey = key || rt.daemon_id || "unknown"
+            group = map.get(fkey)
+            if (!group) {
+                group = { key: fkey, device: synthDevice(rt), runtimes: [], onlineCount: 0 }
+                map.set(fkey, group)
             }
-            const osMap: Record<string, string> = { darwin: "macOS", linux: "Linux", windows: "Windows" }
-            group = {
-                daemonId: key,
-                deviceName: rt.device_name || key,
-                runtimes: [],
-                onlineCount: 0,
-                cliVersion: (meta?.cli_version as string) || "",
-                osName: osMap[deviceInfo.os] || deviceInfo.os || "",
-                arch: deviceInfo.arch || "",
-            }
-            map.set(key, group)
         }
         group.runtimes.push(rt)
         if (rt.status === "online") group.onlineCount++
@@ -205,7 +275,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
     }
 
     componentDidUpdate(prevProps: DeviceDetailProps) {
-        if (prevProps.group.daemonId !== this.props.group.daemonId) {
+        if (prevProps.group.device.device_id !== this.props.group.device.device_id) {
             const upg = this.props.activeUpgrade
             const upgStatus = upg ? upg.status as any : "idle"
             const upgError = upg?.error_msg || ""
@@ -234,7 +304,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
 
     handleUpgrade = async () => {
         this.setState({ upgradeStatus: "pending", upgradeError: "" })
-        const daemonId = this.props.group.daemonId
+        const daemonId = this.props.group.device.daemon_id
         try {
             const initRes = await WKApp.apiClient.post("/upgrades", { daemon_id: daemonId, space_id: WKApp.shared.currentSpaceId })
             const taskId = initRes?.data?.task_id
@@ -252,8 +322,9 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
     // 首次点击; 2) componentDidMount remount 续看 — 跟 RuntimeDetail
     // pollPluginUpgrade/pollComponentUpgrade 同款双入口模式.
     resumeUpgradePoll = async (taskId: string) => {
-        const daemonId = this.props.group.daemonId
-        const isStale = () => this._unmounted || this.props.group.daemonId !== daemonId
+        const deviceId = this.props.group.device.device_id
+        const deviceKey = this.props.group.key
+        const isStale = () => this._unmounted || this.props.group.device.device_id !== deviceId
         for (let i = 0; i < 60; i++) {
             if (isStale()) return
             await new Promise(r => setTimeout(r, 2000))
@@ -284,10 +355,11 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                         const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } }))?.data
                         if (isStale()) return
                         const hints = runtimesRes?.daemon_version_hints || {}
-                        if (!hints[daemonId]?.has_update) {
+                        if (!hints[deviceKey]?.has_update) {
                             const allRuntimes = runtimesRes?.runtimes || []
-                            const groups = groupByDevice(allRuntimes)
-                            const updated = groups.find((g: DeviceGroup) => g.daemonId === daemonId)
+                            const devices = runtimesRes?.devices || {}
+                            const groups = groupByDevice(allRuntimes, devices)
+                            const updated = groups.find((g: DeviceGroup) => g.key === deviceKey)
                             if (updated) {
                                 // B-5 (X3): 自我重渲染同样透传 daemonBusy /
                                 // onUpgradeStarted, 否则这条路径 remount 的
@@ -297,7 +369,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                                 WKApp.routeRight.replaceToRoot(
                                     <DeviceDetail
                                         group={updated}
-                                        daemonVersionHint={hints[daemonId]}
+                                        daemonVersionHint={hints[deviceKey]}
                                         daemonBusy={this.props.daemonBusy}
                                         onUpgradeStarted={this.props.onUpgradeStarted}
                                     />
@@ -319,8 +391,12 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
 
     render() {
         const { group } = this.props
-        const allOnline = group.onlineCount === group.runtimes.length && group.runtimes.length > 0
-        const anyOnline = group.onlineCount > 0
+        const device = group.device
+        const online = deviceOnline(group)
+        const allRuntimesOnline = group.onlineCount === group.runtimes.length && group.runtimes.length > 0
+        const cliVersion = daemonVersion(device)
+        const osText = [osLabel(device.os), device.arch].filter(Boolean).join(" ")
+        const isWindows = device.os === "windows"
 
         return (
             <div className="wk-rt-detail">
@@ -333,17 +409,19 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                         </svg>
                     </div>
                     <div className="wk-rt-detail-title">
-                        <h2>{group.deviceName}</h2>
+                        <h2>{device.name}</h2>
                     </div>
-                    <span className={`wk-rt-status-badge ${anyOnline ? "online" : "offline"}`}>
-                        {allOnline ? t("base.runtimes.device.allOnline") : anyOnline ? t("base.runtimes.createBot.onlineCount", { values: { online: group.onlineCount, total: group.runtimes.length } }) : t("base.runtimes.common.offline")}
+                    <span className={`wk-rt-status-badge ${online ? "online" : "offline"}`}>
+                        {group.runtimes.length > 0
+                            ? (allRuntimesOnline ? t("base.runtimes.device.allOnline") : online ? t("base.runtimes.createBot.onlineCount", { values: { online: group.onlineCount, total: group.runtimes.length } }) : t("base.runtimes.common.offline"))
+                            : (online ? t("base.runtimes.device.online") : t("base.runtimes.common.offline"))}
                     </span>
                 </div>
 
                 <div className="wk-rt-detail-grid">
                     <div className="wk-rt-field">
                         <label>{t("base.runtimes.device.name")}</label>
-                        <span>{group.deviceName}</span>
+                        <span>{device.name}</span>
                     </div>
                     <div className="wk-rt-field">
                         <label>{t("base.runtimes.device.runtimes")}</label>
@@ -353,22 +431,27 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                         <label>{t("base.runtimes.device.mode")}</label>
                         <span>{deviceRuntimeMode(group)}</span>
                     </div>
-                    {(group.osName || group.arch) && (
+                    {osText && (
                         <div className="wk-rt-field">
                             <label>{t("base.runtimes.device.osArch")}</label>
-                            <span>{[group.osName, group.arch].filter(Boolean).join(" ")}</span>
+                            <span>{osText}</span>
                         </div>
                     )}
-                    {group.cliVersion && (
+                    {device.os_version && (
+                        <div className="wk-rt-field">
+                            <label>{t("base.runtimes.device.osVersion")}</label>
+                            <span className="wk-rt-mono">{device.os_version}</span>
+                        </div>
+                    )}
+                    {cliVersion && (
                         <div className="wk-rt-field">
                             <label>{t("base.runtimes.device.daemonVersion")}</label>
                             <span className="wk-rt-mono">
-                                {group.cliVersion}
+                                {cliVersion}
                                 {this.props.daemonVersionHint?.has_update && (
                                     <span className="wk-rt-update-hint"> → {this.props.daemonVersionHint.latest_version}</span>
                                 )}
                                 {this.props.daemonVersionHint?.has_update && (() => {
-                                    const isWindows = group.osName?.toLowerCase() === "windows"
                                     const { upgradeStatus, upgradeError } = this.state
                                     const inProgress = isUpgradeInProgress(upgradeStatus)
                                     // busy 且不是自己在升级 → 其他升级在跑, fleet 会拒
@@ -402,24 +485,23 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                                         // B-3: 同 daemon 其他升级在跑, 点了 fleet 必拒 — 预防性禁用
                                         return <span className="wk-rt-upgrade-btn disabled" title={t("base.runtimes.upgrade.busyTitle")}>{t("base.runtimes.upgrade.upgrade")}</span>
                                     }
-                                    if (!anyOnline) return null
+                                    if (!online) return null
                                     return <span className="wk-rt-upgrade-btn" onClick={this.handleUpgrade}>{t("base.runtimes.upgrade.upgrade")}</span>
                                 })()}
                             </span>
                         </div>
                     )}
-                    <div className="wk-rt-field">
-                        <label>{t("base.runtimes.device.id")}</label>
-                        <span className="wk-rt-mono">{group.daemonId}</span>
-                    </div>
+                    {device.device_uuid && (
+                        <div className="wk-rt-field">
+                            <label>{t("base.runtimes.device.id")}</label>
+                            <span className="wk-rt-mono">{device.device_uuid}</span>
+                        </div>
+                    )}
                     {(() => {
-                        // 最近活跃: humanize 该 device 下所有 runtime 的
-                        // max last_seen_at. 同 device 的多个 runtime 走同一 daemon
-                        // 同一 heartbeatLoop, 实务上各值几乎同步. daemon
-                        // 在跑 → "刚刚"; daemon 挂 → 反映挂多久了.
-                        // title 走本地时区 (toLocaleString) 让 hover 看到的精确
-                        // 时间符合用户本地预期.
-                        const ms = deviceLastSeenMs(group)
+                        // 最近活跃: 优先用 device.last_seen_at (服务端权威), 缺失时
+                        // (老服务端合成 device) 回退到该 device 下 runtime 的 max
+                        // last_seen_at. title 走本地时区 (toLocaleString).
+                        const ms = parseNaiveMs(device.last_seen_at) || deviceLastSeenMs(group)
                         if (!ms) return null
                         return (
                             <div className="wk-rt-field">
@@ -432,9 +514,9 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                     })()}
                 </div>
 
-                {/* PR-2: "Agents on this device" 列表去掉, 跟左侧树重复.
-                    左侧树 device 展开后已显示该 device 下的 4 runtime, 右侧
-                    panel 只保留 device 元数据 (name / OS / Daemon ID / 版本 + Upgrade) 即可. */}
+                {/* 核心组件 (device.components 的 name+version) 暂隐藏 — 可操作的
+                    Daemon 版本已在上方字段网格展示, 其余 SDK 版本号仅诊断用, 日常
+                    价值低. Device.components 类型/解析保留, 以后要排障面板再恢复. */}
             </div>
         )
     }
@@ -1654,6 +1736,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
 
     state: RuntimesPageState = {
         runtimes: [],
+        devices: {},
         versionHints: {},
         daemonVersionHints: {},
         activeUpgrades: {},
@@ -1673,7 +1756,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     private ccInstallToken = 0
 
     private pollTimer?: ReturnType<typeof setInterval>
-    private selectedDaemonId?: string
+    private selectedDeviceKey?: string
 
     // C1: BotsTab 创建成功后刷该 runtime 的 Level-3 cache, 用户当前
     // 看到的 bot 列表立刻包含新建项. 同时把父 device 也展开 — 用户
@@ -1683,23 +1766,22 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     // 创建成功后 BotsTab.selectBot 会把
     // BotDetailPanel 推到 routeRight, 此时 selectedId 不能停留在某个
     // agent 上 — 否则 silent loadData 15s 后 showAgentDetail 把 Bot pane
-    // 替换回 RuntimeDetail. selectedDaemonId 同理 (DeviceDetail 路径).
+    // 替换回 RuntimeDetail. selectedDeviceKey 同理 (DeviceDetail 路径).
     private handleBotCreated = (bot: Bot) => {
         this.refreshRuntimeBots(bot.runtime_id)
         const rt = this.state.runtimes.find(r => r.id === bot.runtime_id)
-        // 空 daemon_id 走 'unknown' fallback, 跟 groupByDevice line 89
-        // (rt.daemon_id || 'unknown') 同公式 — device 行身份在那里 fallback
-        // 到 'unknown', 这里若用原始 '' 加进 expandedDevices 会因短路不
-        // 展开父 device, 用户看不到刚建的 bot.
-        const daemonKey = rt?.daemon_id || "unknown"
-        this.selectedDaemonId = undefined
+        // 左树 device 身份键 = device_id 字符串, 跟 groupByDevice 的 key 公式
+        // 对齐 (device_id 优先, 老数据回退 daemon_id / 'unknown'). 否则父
+        // device 行不展开, 用户看不到刚建的 bot.
+        const deviceKey = rt?.device_id ? String(rt.device_id) : (rt?.daemon_id || "unknown")
+        this.selectedDeviceKey = undefined
         this.setState((prev) => {
             const expandedRuntimes = prev.expandedRuntimes.has(bot.runtime_id)
                 ? prev.expandedRuntimes
                 : new Set(prev.expandedRuntimes).add(bot.runtime_id)
-            const expandedDevices = prev.expandedDevices.has(daemonKey)
+            const expandedDevices = prev.expandedDevices.has(deviceKey)
                 ? prev.expandedDevices
-                : new Set(prev.expandedDevices).add(daemonKey)
+                : new Set(prev.expandedDevices).add(deviceKey)
             return { selectedId: null, expandedRuntimes, expandedDevices }
         })
     }
@@ -1717,6 +1799,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             // runtimes),`canBot=!loading && canCreateBot(runtimes)` 会用旧 space 的在线
             // 运行时误启用「创建 Bot」。清空后失败也回落到禁用。
             runtimes: [],
+            devices: {},
             versionHints: {},
             daemonVersionHints: {},
             activeUpgrades: {},
@@ -1839,6 +1922,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
             if (isStale()) return
             // Compatible with both array (old) and object (new) response
             const runtimes: AgentRuntime[] = Array.isArray(res) ? res : (res?.runtimes || [])
+            const devices: Record<string, Device> = Array.isArray(res) ? {} : (res?.devices || {})
             const versionHints = Array.isArray(res) ? {} : (res?.version_hints || {})
             const daemonVersionHints = Array.isArray(res) ? {} : (res?.daemon_version_hints || {})
             // active_upgrades 从服务端返回：数组 []ActiveUpgrade（新）或 map（旧）。前端统一转为按 key 索引的 map
@@ -1867,11 +1951,11 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 (prev) => {
                     if (isStale()) return null
                     const expanded = new Set(prev.expandedDevices)
-                    if (prev.expandedDevices.size === 0 && runtimes.length > 0) {
-                        const groups = groupByDevice(runtimes)
-                        groups.forEach(g => expanded.add(g.daemonId))
+                    if (prev.expandedDevices.size === 0 && (Object.keys(devices).length > 0 || runtimes.length > 0)) {
+                        const groups = groupByDevice(runtimes, devices)
+                        groups.forEach(g => expanded.add(g.key))
                     }
-                    return { runtimes, versionHints, daemonVersionHints, activeUpgrades, loading: false, expandedDevices: expanded }
+                    return { runtimes, devices, versionHints, daemonVersionHints, activeUpgrades, loading: false, expandedDevices: expanded }
                 },
                 () => {
                     if (isStale()) return
@@ -1900,7 +1984,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                 this.setState({ selectedId: null })
                                 WKApp.routeRight.popToRoot()
                             }
-                        } else if (this.selectedDaemonId) {
+                        } else if (this.selectedDeviceKey) {
                             // B-4 (P1/X2): 原条件还要求 activeUpgrades 里有
                             // `${daemonId}:octo-daemon` — 只覆盖 daemon 自身
                             // 升级, component/plugin 升级引起的 daemonBusy
@@ -1908,8 +1992,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                             // DeviceDetail. 放宽为打开着就重渲染, 跟上面
                             // RuntimeDetail 分支对齐. replaceToRoot 幂等,
                             // 15s 一次成本可忽略.
-                            const groups = groupByDevice(runtimes)
-                            const updated = groups.find(g => g.daemonId === this.selectedDaemonId)
+                            const groups = groupByDevice(runtimes, this.state.devices)
+                            const updated = groups.find(g => g.key === this.selectedDeviceKey)
                             if (updated) {
                                 this.showDeviceDetail(updated)
                             }
@@ -2105,13 +2189,15 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
 
     showDeviceDetail = (group: DeviceGroup) => {
         this.setState({ selectedId: null })
-        this.selectedDaemonId = group.daemonId
+        this.selectedDeviceKey = group.key
+        // hint key = device_id (group.key); 升级 POST / activeUpgrade key 仍用 daemon_id.
+        const daemonId = group.device.daemon_id
         WKApp.routeRight.replaceToRoot(
             <DeviceDetail
                 group={group}
-                daemonVersionHint={this.state.daemonVersionHints[group.daemonId]}
-                activeUpgrade={this.state.activeUpgrades[`${group.daemonId}:octo-daemon`]}
-                daemonBusy={this.isDaemonBusy(group.daemonId)}
+                daemonVersionHint={this.state.daemonVersionHints[group.key]}
+                activeUpgrade={this.state.activeUpgrades[`${daemonId}:octo-daemon`]}
+                daemonBusy={this.isDaemonBusy(daemonId)}
                 onUpgradeStarted={this.handleUpgradeStarted}
             />
         )
@@ -2154,7 +2240,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
 
     showAgentDetail = (rt: AgentRuntime) => {
         this.setState({ selectedId: rt.id })
-        this.selectedDaemonId = undefined
+        this.selectedDeviceKey = undefined
         const pluginUpgrade = this.state.activeUpgrades[`${rt.id}:${octoComponentName(rt.provider) ?? "octo"}`]
         const componentUpgrade = this.state.activeUpgrades[`${rt.id}:${rt.provider}`]
         // botCount 先用 botsByRuntime cache 当前值 (miss 时为 0). cache miss
@@ -2189,8 +2275,8 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
     }
 
     render() {
-        const { runtimes, selectedId, loading, expandedDevices, createMenuOpen, runtimeModalOpen } = this.state
-        const groups = groupByDevice(runtimes)
+        const { runtimes, devices, selectedId, loading, expandedDevices, createMenuOpen, runtimeModalOpen } = this.state
+        const groups = groupByDevice(runtimes, devices)
         // gating「创建 Bot」: 仅当本 space 已加载完成(非 loading)且有 ≥1 在线运行时才允许。
         // 切 space 时 handleSpaceChanged 已清空 runtimes:[];!loading 为兜底 —— 覆盖加载
         // 窗口期,以及 loadData 失败(catch 仅复位 loading=false、runtimes 保持 [])的场景,
@@ -2280,21 +2366,21 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                         <div className="wk-rt-empty">{t("base.runtimes.empty")}</div>
                     )}
                     {groups.map((group) => {
-                        const expanded = expandedDevices.has(group.daemonId)
-                        const anyOnline = group.onlineCount > 0
+                        const expanded = expandedDevices.has(group.key)
+                        const anyOnline = deviceOnline(group)
                         return (
-                            <div key={group.daemonId} className="wk-rt-device-group">
+                            <div key={group.key} className="wk-rt-device-group">
                                 {/* Level 1: Device */}
                                 <div
                                     className="wk-rt-device-row"
                                     role="button"
                                     tabIndex={0}
                                     aria-expanded={expanded}
-                                    onClick={() => this.toggleDevice(group.daemonId)}
+                                    onClick={() => this.toggleDevice(group.key)}
                                     onKeyDown={(e) => {
                                         if (e.key === "Enter" || e.key === " ") {
                                             e.preventDefault()
-                                            this.toggleDevice(group.daemonId)
+                                            this.toggleDevice(group.key)
                                         }
                                     }}
                                 >
@@ -2312,7 +2398,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                     >
                                         {/* caster 2026-06-12: 删 "N 个运行时" 副标题 — 顶栏已有
                                             "N devices · M runtimes" 计数, device 行重复显示噪音 */}
-                                        <div className="wk-rt-device-name">{group.deviceName}</div>
+                                        <div className="wk-rt-device-name">{group.device.name}</div>
                                     </div>
                                     <div className={`wk-rt-status-dot ${anyOnline ? "online" : "offline"}`} />
                                 </div>
@@ -2386,13 +2472,13 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                                                             bot={b}
                                                             onOpen={(id) => {
                                                                 // 打开 Bot 详情前清
-                                                                // selectedId / selectedDaemonId, 否则 15s silent
+                                                                // selectedId / selectedDeviceKey, 否则 15s silent
                                                                 // loadData 触发 showAgentDetail() 把 routeRight 上
                                                                 // 当前 BotDetailPanel 强行 replaceToRoot 回 RuntimeDetail
                                                                 // (route vs routeRight 是两个 manager,
                                                                 // currentPath==='/runtimes' guard 区分不出来).
                                                                 this.setState({ selectedId: null })
-                                                                this.selectedDaemonId = undefined
+                                                                this.selectedDeviceKey = undefined
                                                                 this.botsTabRef.current?.openBot(id)
                                                             }}
                                                         />
