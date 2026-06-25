@@ -1243,6 +1243,36 @@
 .octo-version-save {
   margin: 8px 0 12px;
 }
+/* Collapsible manual / auto stream groups (version history item 3). */
+.octo-version-group {
+  margin: 4px 0;
+}
+.octo-version-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--octo-text, #1d2129);
+  text-align: left;
+}
+.octo-version-group-header:hover {
+  background: var(--octo-accent-weak, #f2f3f5);
+  border-radius: 6px;
+}
+.octo-version-group-caret {
+  width: 12px;
+  color: var(--octo-muted, #86909c);
+}
+.octo-version-group-count {
+  color: var(--octo-muted, #86909c);
+  font-weight: 400;
+}
 .octo-version-notice {
   color: var(--octo-muted, #86909c);
   font-size: 13px;
