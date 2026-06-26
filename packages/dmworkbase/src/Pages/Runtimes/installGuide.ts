@@ -1,7 +1,9 @@
-// provider → Octo 插件安装指导. 说明文字走 i18n key (调用方注入 t),
-// 命令是常量不翻译. buildInstallCopyText 把"说明 + 编号命令"拼成一整段,
-// 供用户复制后粘贴给 runtime agent 自动安装.
-import type { RuntimeKind } from "./botsApi"
+// provider → 安装指导. 说明文字走 i18n key (调用方注入 t), 命令是常量不翻译.
+// buildInstallCopyText 把"说明 + 编号命令"拼成一整段, 供用户复制后粘贴执行.
+//
+// 目前只剩 octo_daemon 一条 (CreateRuntimeModal 用): runtime 适配插件
+// (claude→cc-octo / openclaw→octo) 的安装/升级改由 runtime 页的一键
+// 「安装」/「升级」按钮处理, 不再提供手动命令指引气泡.
 
 export interface InstallStep {
     titleKey: string
@@ -15,59 +17,15 @@ export interface InstallGuide {
     steps: InstallStep[]
 }
 
-// cc-channel-octo 全局配置: 只需 apiUrl(daemon 不写全局, 用户配一次).
-// 用真实可执行 shell 命令(mkdir + heredoc 写文件), 复制到终端可直接跑;
-// 每个 bot 的 token/model 由 daemon 在 web 添加 bot 时自动下发, 用户无需手配.
-// 占位符: 调用方传入真实值时自动替换(见 getInstallGuide 的 apiUrl/apiKey 参数),
-// 拿不到时保留占位让用户手填. apiUrl 同时替换 <OCTO_API_URL>(claude) 与
-// <OCTO_SERVER_URL>(octo_daemon) 两种写法; apiKey 替换 <OCTO_API_KEY>.
-const OCTO_API_URL_PLACEHOLDER = "<OCTO_API_URL>"
+// octo_daemon 安装命令里的占位符: 调用方传入真实值时自动替换 (见 getInstallGuide
+// 的 apiUrl/apiKey 参数), 拿不到时保留占位让用户手填. apiUrl → <OCTO_SERVER_URL>
+// (基址不含 /v1, 由 daemon 自己拼 /v1、/fleet/api); apiKey → <OCTO_API_KEY>.
 const OCTO_SERVER_URL_PLACEHOLDER = "<OCTO_SERVER_URL>"
 const OCTO_API_KEY_PLACEHOLDER = "<OCTO_API_KEY>"
-const CLAUDE_CONFIG_TEMPLATE = `mkdir -p ~/.cc-channel-octo && cat > ~/.cc-channel-octo/config.json <<'EOF'
-{ "apiUrl": "${OCTO_API_URL_PLACEHOLDER}" }
-EOF`
 
-// octo_daemon 不是 RuntimeKind(它是给 CreateRuntime 弹框蹭这套 step + i18n
-// 结构用的虚拟 provider, 与 claude/openclaw 无关), 故 key 类型扩成联合。
-const INSTALL_GUIDES: Record<RuntimeKind | "octo_daemon", InstallGuide> = {
-    openclaw: {
-        introKey: "base.runtimes.install.openclaw.intro",
-        steps: [
-            {
-                titleKey: "base.runtimes.install.openclaw.step1.title",
-                command: "npx -y create-openclaw-octo install",
-            },
-        ],
-    },
-    claude: {
-        introKey: "base.runtimes.install.claude.intro",
-        steps: [
-            {
-                titleKey: "base.runtimes.install.claude.step1.title",
-                command: "npm install -g @mininglamp-oss/cc-channel-octo",
-            },
-            {
-                titleKey: "base.runtimes.install.claude.step2.title",
-                command: CLAUDE_CONFIG_TEMPLATE,
-                noteKey: "base.runtimes.install.claude.step2.note",
-            },
-            {
-                // Manual step, no command: model creds are the user's own secret,
-                // and a second `cat > config.json` would overwrite step2's good
-                // config with placeholders on copy-all. The note lists the sdk
-                // fields to add. (Jerry-Xin/lml2468 #414)
-                titleKey: "base.runtimes.install.claude.step3.title",
-                noteKey: "base.runtimes.install.claude.step3.note",
-            },
-            {
-                titleKey: "base.runtimes.install.claude.step4.title",
-                command: "cc-channel-octo",
-            },
-        ],
-    },
-    // CreateRuntime 弹框用: 安装/配置/启动 octo-daemon, 命令为常量。
-    // 不走 onboarding, server-url/api-key 用占位符让用户手填。
+// CreateRuntime 弹框用: 安装/配置/启动 octo-daemon, 命令为常量。
+// 不走 onboarding, server-url/api-key 用占位符让用户手填。
+const INSTALL_GUIDES: Record<"octo_daemon", InstallGuide> = {
     octo_daemon: {
         introKey: "base.runtimes.install.octo_daemon.intro",
         steps: [
@@ -93,7 +51,7 @@ const INSTALL_GUIDES: Record<RuntimeKind | "octo_daemon", InstallGuide> = {
 }
 
 export interface InstallGuideVars {
-    /** 真实 server_url 基址(不含 /v1): 替换 <OCTO_API_URL> / <OCTO_SERVER_URL>. */
+    /** 真实 server_url 基址(不含 /v1): 替换 <OCTO_SERVER_URL>. */
     apiUrl?: string
     /** 真实 api_key(来自 runtime onboarding): 替换 <OCTO_API_KEY>. */
     apiKey?: string
@@ -107,15 +65,12 @@ export function getInstallGuide(provider: string, vars?: InstallGuideVars): Inst
     return applyPlaceholders(guide, vars)
 }
 
-// 把命令里的占位替换成真实值: apiUrl → <OCTO_API_URL>/<OCTO_SERVER_URL>(daemon 的
-// OCTO_SERVER_URL 同源, 基址不含 /v1, 由 daemon/cc-channel-octo 自己拼 /v1/...);
-// apiKey → <OCTO_API_KEY>. 某个值为空时保留对应占位让用户手填.
+// 把命令里的占位替换成真实值: apiUrl → <OCTO_SERVER_URL>(基址不含 /v1, 由
+// daemon 自己拼 /v1/...); apiKey → <OCTO_API_KEY>. 某个值为空时保留对应占位让用户手填.
 function applyPlaceholders(guide: InstallGuide, vars?: InstallGuideVars): InstallGuide {
     const subs: [string, string][] = []
     const url = vars?.apiUrl?.trim()
-    if (url) {
-        subs.push([OCTO_API_URL_PLACEHOLDER, url], [OCTO_SERVER_URL_PLACEHOLDER, url])
-    }
+    if (url) subs.push([OCTO_SERVER_URL_PLACEHOLDER, url])
     const key = vars?.apiKey?.trim()
     if (key) subs.push([OCTO_API_KEY_PLACEHOLDER, key])
     if (subs.length === 0) return guide

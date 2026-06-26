@@ -5,8 +5,6 @@ import WKApp from "../../App"
 import WKAvatar from "../../Components/WKAvatar"
 import { BotsTab, type BotsTabHandle } from "./BotsTab"
 import { CreateRuntimeModal } from "./CreateRuntimeModal"
-import { InstallGuidePopover } from "./InstallGuidePopover"
-import { getInstallGuide } from "./installGuide"
 import { octoComponentName } from "./octoComponent"
 import { deviceRuntimeMode } from "./deviceRuntimeMode"
 import { canInstallOctoPlugin, octoPluginInstalled, shouldShowCcInstall } from "./pluginInstall"
@@ -1385,12 +1383,6 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         return null
     }
 
-    renderInstallGuideBtn(provider: string) {
-        // 未知 provider 无安装指导 → 不渲染 (InstallGuidePopover 内部同样守卫).
-        if (!getInstallGuide(provider)) return null
-        return <InstallGuidePopover provider={provider} />
-    }
-
     // ── Component 升级（claude/openclaw） ──────────────────────
 
     handleComponentUpgrade = async () => {
@@ -1570,23 +1562,22 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                         </span>
                     </div>
                     {(() => {
-                        // 该 provider 有安装指导就显示本字段(挂安装指导入口); 已上报
-                        // octo 适配插件(openclaw→octo / claude→cc-octo)则显示版本
-                        // (+升级), 否则显示中性占位「—」.
+                        // 「Octo 插件版本」行: provider 有 octo 适配插件概念
+                        // (openclaw→octo / claude→cc-octo)才显示本行 —— 已上报插件
+                        // 则显版本(+升级),未装则显「安装」按钮,否则中性占位「—」.
                         const plugins = (metadata as any)?.plugins
                         const octoComponent = octoComponentName(rt.provider)
                         const octoPlugin = Array.isArray(plugins) && octoComponent
                             ? (plugins as any[]).find((p: any) => p.name === octoComponent)
                             : undefined
-                        const hasGuide = !!getInstallGuide(rt.provider)
-                        if (!octoPlugin && !hasGuide) return null
+                        // octoComponent 非 null ⟺ provider 有 octo 适配插件概念
+                        // (openclaw/claude)。没装插件且该 provider 无适配插件概念
+                        // (unknown/codex 等)时整行不显示。
+                        if (!octoPlugin && !octoComponent) return null
                         const pluginHint = this.props.versionHints[rt.id]
                         return (
                             <div className="wk-rt-field">
-                                <div className="wk-rt-field__label-row">
-                                    <label>{t("base.runtimes.runtime.octoPluginVersion")}</label>
-                                    {this.renderInstallGuideBtn(rt.provider)}
-                                </div>
+                                <label>{t("base.runtimes.runtime.octoPluginVersion")}</label>
                                 <span className="wk-rt-mono">
                                     {octoPlugin ? (
                                         <>
