@@ -257,6 +257,38 @@
   word-break: break-word;
 }
 
+.wk-channel-search-richtext-preview {
+  max-width: 315px;
+  margin-top: 2px;
+}
+
+.wk-channel-search-richtext-preview .wk-msg-mixed-content {
+  gap: 4px;
+  max-width: 100%;
+}
+
+.wk-channel-search-richtext-preview .wk-msg-mixed-text {
+  color: var(--channel-search-text-primary);
+  font: 400 14px/20px var(--wk-font-sans);
+}
+
+.wk-channel-search-richtext-preview .wk-msg-mixed-image {
+  max-width: 180px;
+}
+
+.wk-channel-search-richtext-preview .wk-markdown-img {
+  display: block;
+  max-width: 180px;
+  max-height: 120px;
+  object-fit: contain;
+  background: var(--channel-search-elevated);
+}
+
+.wk-channel-search-richtext-preview .wk-msg-mixed-file {
+  width: min(100%, 315px);
+  padding: 8px;
+}
+
 .wk-channel-search-highlight {
   padding: 0;
   border-radius: 0;

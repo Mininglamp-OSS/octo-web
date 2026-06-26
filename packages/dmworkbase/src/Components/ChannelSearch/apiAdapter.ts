@@ -16,6 +16,8 @@ import type {
   ChannelSearchMediaInfo,
   ChannelSearchQuery,
   ChannelSearchResponse,
+  ChannelSearchRichTextInfo,
+  ChannelSearchRichTextMention,
   ChannelSearchSender,
   ChannelSearchTab,
 } from "./types";
@@ -33,7 +35,7 @@ type SearchEnvelope<T> = {
 type MessageSearchHit = {
   message_id?: string;
   message_seq?: number;
-  message_kind?: "text" | "forward" | "quote";
+  message_kind?: "text" | "forward" | "quote" | "image" | "video";
   snippet?: string;
   sender_id?: string;
   sender_name?: string;
@@ -51,6 +53,11 @@ type MessageSearchHit = {
   inner_messages?: ForwardInnerMessageHit[];
   channel_id?: string;
   channel_type?: number;
+  thumb_url?: string;
+  width?: number;
+  height?: number;
+  duration_ms?: number;
+  rich_text?: RichTextSearchHit;
 };
 
 type ForwardInnerMessageHit = {
@@ -60,6 +67,36 @@ type ForwardInnerMessageHit = {
   sender_id?: string;
   sender_name?: string;
   sent_at?: string;
+};
+
+type RichTextSearchBlock = {
+  type?: string;
+  text?: string;
+  url?: string;
+  width?: number;
+  height?: number;
+  size?: number;
+  name?: string;
+  extension?: string;
+  mime?: string;
+  caption?: string;
+};
+
+type RichTextSearchMentionEntity = {
+  uid?: string;
+  offset?: number;
+  length?: number;
+};
+
+type RichTextSearchHit = {
+  content?: RichTextSearchBlock[];
+  plain?: string;
+  mention?: {
+    entities?: RichTextSearchMentionEntity[];
+    all?: number;
+    humans?: number;
+    ais?: number;
+  };
 };
 
 type MediaSearchHit = {
@@ -223,14 +260,8 @@ function hasEffectiveFilters(filters: ChannelSearchFilters) {
   return Object.keys(cleanFilters(filters)).length > 0;
 }
 
-// Decide whether a search request should actually be sent. Only the keyword-
-// optional endpoints `_search` (message tab) and `_search_all` (all tab) carry
-// the backend empty-search guard (validateSearchNotEmpty): with an empty keyword
-// AND no effective filter they fail-fast with 400. Mirror that guard here so an
-// empty panel never fires a request that is guaranteed to 400 — it falls back to
-// the empty-state view instead. The media (`_search_media`) and file
-// (`_search_files`) tabs have no such backend guard and legitimately browse
-// without a keyword, so they always run.
+// Only send empty-keyword requests to all/message tabs when a real filter is
+// present. Media/file tabs support browse mode directly.
 export function shouldRunSearch(
   query: Pick<ChannelSearchQuery, "keyword" | "filters" | "tab">
 ) {
@@ -299,6 +330,109 @@ function mapForwardInnerMessage(
   };
 }
 
+function normalizeRichTextMention(
+  mention?: RichTextSearchHit["mention"]
+): ChannelSearchRichTextMention | undefined {
+  if (!mention) return undefined;
+  const entities = Array.isArray(mention.entities)
+    ? mention.entities
+        .filter(
+          (entity): entity is Required<RichTextSearchMentionEntity> =>
+            typeof entity?.uid === "string" &&
+            Number.isFinite(entity.offset) &&
+            Number.isFinite(entity.length) &&
+            (entity.offset || 0) >= 0 &&
+            (entity.length || 0) > 0
+        )
+        .map((entity) => ({
+          uid: entity.uid,
+          offset: entity.offset,
+          length: entity.length,
+        }))
+    : undefined;
+
+  return {
+    entities,
+    all: mention.all,
+    humans: mention.humans,
+    ais: mention.ais,
+  };
+}
+
+function normalizeRichText(
+  richText?: RichTextSearchHit
+): ChannelSearchRichTextInfo | undefined {
+  if (!richText) return undefined;
+  const content = Array.isArray(richText.content)
+    ? richText.content
+        .filter(
+          (block): block is RichTextSearchBlock & { type: string } =>
+            typeof block?.type === "string" && block.type.length > 0
+        )
+        .map((block) => ({
+          type: block.type,
+          text: block.text,
+          url: block.url,
+          width: block.width,
+          height: block.height,
+          size: block.size,
+          name: block.name,
+          extension: block.extension,
+          mime: block.mime,
+          caption: block.caption,
+        }))
+    : [];
+
+  if (content.length === 0 && !richText.plain) {
+    return undefined;
+  }
+
+  return {
+    content,
+    plain: richText.plain,
+    mention: normalizeRichTextMention(richText.mention),
+  };
+}
+
+function mapMessageMediaHit(
+  hit: MessageSearchHit,
+  query: ChannelSearchQuery,
+  mediaKind: "image" | "video"
+): ChannelSearchItem {
+  const sender = senderFromHit(hit);
+  const hitChannel = channelFromHit(hit, query);
+  const sentAt = hit.sent_at || "";
+  const thumbUrl = normalizeImageUrl(hit.thumb_url);
+  const media: ChannelSearchMediaInfo = {
+    url: mediaKind === "image" ? thumbUrl : undefined,
+    previewUrl: mediaKind === "image" ? thumbUrl : undefined,
+    thumbUrl,
+    duration:
+      typeof hit.duration_ms === "number"
+        ? Math.round(hit.duration_ms / 1000)
+        : undefined,
+    width: hit.width,
+    height: hit.height,
+    monthBucket: monthBucketFromSentAt(sentAt),
+    tone: mediaKind === "video" ? "purple" : "cool",
+  };
+
+  return {
+    id: hit.message_id || `${hit.message_seq || 0}`,
+    messageId: hit.message_id || "",
+    messageSeq: hit.message_seq || 0,
+    channelId: hitChannel.channelId,
+    channelType: hitChannel.channelType,
+    senderUid: sender.uid,
+    sender,
+    timestamp: sentAtToSeconds(sentAt),
+    kind: mediaKind,
+    text: hit.snippet || "",
+    matchReason: hit.snippet,
+    media,
+  };
+}
+
 function mapMessageHit(
   hit: MessageSearchHit,
   query: ChannelSearchQuery
@@ -307,12 +441,18 @@ function mapMessageHit(
   const hitChannel = channelFromHit(hit, query);
   const sentAt = hit.sent_at || "";
   const messageKind = hit.message_kind || "text";
+  if (messageKind === "image" || messageKind === "video") {
+    return mapMessageMediaHit(hit, query, messageKind);
+  }
+
+  const richText = normalizeRichText(hit.rich_text);
   const kind =
     messageKind === "forward"
       ? "merge_forward"
       : messageKind === "quote"
       ? "quote"
       : "text";
+  const text = hit.snippet || richText?.plain || "";
 
   return {
     id: hit.message_id || `${hit.message_seq || 0}`,
@@ -324,8 +464,9 @@ function mapMessageHit(
     sender,
     timestamp: sentAtToSeconds(sentAt),
     kind,
-    text: hit.snippet || "",
-    matchReason: hit.snippet,
+    text,
+    matchReason: hit.snippet || richText?.plain,
+    richText,
     forward:
       messageKind === "forward"
         ? {
@@ -567,6 +708,8 @@ export const channelSearchApiAdapterTestUtils = {
   truncateChannelSearchKeyword,
   toRequestBody,
   mapForwardInnerMessage,
+  normalizeRichText,
+  mapMessageMediaHit,
   mapMessageHit,
   mapFileHit,
   mapMediaHit,
