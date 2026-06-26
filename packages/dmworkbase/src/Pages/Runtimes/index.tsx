@@ -304,7 +304,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
         this.setState({ upgradeStatus: "pending", upgradeError: "" })
         const daemonId = this.props.group.device.daemon_id
         try {
-            const initRes = await WKApp.apiClient.post("/upgrades", { daemon_id: daemonId, space_id: WKApp.shared.currentSpaceId })
+            const initRes = await WKApp.apiClient.post("/upgrades", { daemon_id: daemonId, space_id: WKApp.shared.currentSpaceId }, { baseURL: FLEET_API_BASE })
             const taskId = initRes?.data?.task_id
             if (!taskId) throw new Error("upgrade init: missing task_id in response")
             // C-1: task 已创建, 立即让父层重拉 active_upgrades, 其他 detail
@@ -331,7 +331,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
             try {
                 // 单次容错 — 跟 RuntimeDetail pollPluginUpgrade 对齐,
                 // 瞬时网络抖动 continue 重试而不是终止整条轮询协程.
-                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`))?.data
+                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`, { baseURL: FLEET_API_BASE }))?.data
             } catch {
                 continue
             }
@@ -350,7 +350,7 @@ class DeviceDetail extends Component<DeviceDetailProps, DeviceDetailState> {
                     await new Promise(r => setTimeout(r, 2000))
                     if (isStale()) return
                     try {
-                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } }))?.data
+                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId }, baseURL: FLEET_API_BASE }))?.data
                         if (isStale()) return
                         const hints = runtimesRes?.daemon_version_hints || {}
                         if (!hints[deviceKey]?.has_update) {
@@ -1237,7 +1237,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
         if (!window.confirm(t("base.runtimes.runtime.deleteConfirm"))) return
         this.setState({ deleting: true })
         try {
-            await WKApp.apiClient.delete(`/runtimes/${this.props.runtime.id}`)
+            await WKApp.apiClient.delete(`/runtimes/${this.props.runtime.id}`, { baseURL: FLEET_API_BASE })
             this.props.onDelete(this.props.runtime.id)
         } catch {
             this.setState({ deleting: false })
@@ -1271,7 +1271,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             if (isStale()) return
             let res: any
             try {
-                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`))?.data
+                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`, { baseURL: FLEET_API_BASE }))?.data
             } catch {
                 continue
             }
@@ -1289,7 +1289,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     await new Promise(r => setTimeout(r, 2000))
                     if (isStale()) return
                     try {
-                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } }))?.data
+                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId }, baseURL: FLEET_API_BASE }))?.data
                         if (isStale()) return
                         const hints = runtimesRes?.version_hints || {}
                         const allRuntimes = runtimesRes?.runtimes || []
@@ -1417,7 +1417,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
             if (isStale()) return
             let res: any
             try {
-                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`))?.data
+                res = (await WKApp.apiClient.get(`/upgrades/${taskId}`, { baseURL: FLEET_API_BASE }))?.data
             } catch {
                 continue
             }
@@ -1436,7 +1436,7 @@ class RuntimeDetail extends Component<RuntimeDetailProps, RuntimeDetailState> {
                     await new Promise(r => setTimeout(r, 2000))
                     if (isStale()) return
                     try {
-                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId } }))?.data
+                        const runtimesRes = (await WKApp.apiClient.get("/runtimes", { param: { space_id: WKApp.shared.currentSpaceId }, baseURL: FLEET_API_BASE }))?.data
                         if (isStale()) return
                         const hints = runtimesRes?.version_hints || {}
                         if (!hints[runtimeId]?.has_update) {
@@ -1909,7 +1909,7 @@ export default class RuntimesPage extends Component<{}, RuntimesPageState> {
                 this.setState({ runtimes: [], loading: false })
                 return
             }
-            const res = (await WKApp.apiClient.get("/runtimes", { param: { space_id: spaceId } }))?.data
+            const res = (await WKApp.apiClient.get("/runtimes", { param: { space_id: spaceId }, baseURL: FLEET_API_BASE }))?.data
             if (isStale()) return
             // Compatible with both array (old) and object (new) response
             const runtimes: AgentRuntime[] = Array.isArray(res) ? res : (res?.runtimes || [])
