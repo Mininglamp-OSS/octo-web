@@ -69,6 +69,45 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     text: "哈哈哈哈[有品位]有趣有趣",
   },
   {
+    id: "msg-richtext-1",
+    messageId: "m-61020",
+    messageSeq: 61020,
+    senderUid: "liubo",
+    timestamp: toSeconds("2026-06-03T15:05:30+08:00"),
+    kind: "text",
+    text: "哈哈，图文混排里有两张图和一个文件",
+    matchReason: "<mark>哈哈</mark>，图文混排里有两张图和一个文件",
+    richText: {
+      plain: "哈哈，图文混排里有两张图和一个文件[图片]继续补充[图片][文件] 需求.md",
+      content: [
+        { type: "text", text: "哈哈，图文混排里有两张图和一个文件" },
+        {
+          type: "image",
+          url: figmaMediaThumbs[2],
+          width: 1200,
+          height: 800,
+          name: "design-a.png",
+        },
+        { type: "text", text: "继续补充" },
+        {
+          type: "image",
+          url: figmaMediaThumbs[3],
+          width: 960,
+          height: 1280,
+          name: "design-b.png",
+        },
+        {
+          type: "file",
+          url: "files/richtext/spec.md",
+          name: "需求.md",
+          extension: "md",
+          size: 14230,
+          caption: "富文本里的文件",
+        },
+      ],
+    },
+  },
+  {
     id: "msg-2",
     messageId: "m-61002",
     messageSeq: 61002,
@@ -297,7 +336,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
 ];
 
 const tabKinds: Record<ChannelSearchTab, ChannelSearchItem["kind"][]> = {
-  all: ["text", "file", "merge_forward"],
+  all: ["text", "file", "merge_forward", "image", "video"],
   message: ["text", "merge_forward"],
   media: ["image", "video"],
   file: ["file"],
@@ -310,10 +349,11 @@ const containsKeyword = (value: string | undefined, keyword: string) => {
 
 const itemMatchesKeyword = (item: ChannelSearchItem, keyword: string) => {
   if (!keyword.trim()) return true;
-  if (item.kind === "image" || item.kind === "video") return true;
+  if (item.kind === "image" || item.kind === "video") return false;
   return [
     item.text,
     item.matchReason,
+    item.richText?.plain,
     item.file?.name,
     item.forward?.title,
     ...(item.forward?.snippets || []),

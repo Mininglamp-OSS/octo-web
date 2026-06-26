@@ -255,7 +255,7 @@ export const OpenEmpty: Story = {
   name: "Open empty (no request)",
   play: async ({ canvasElement }) => {
     // Empty keyword + no filter on the default "all" tab must NOT fire a request
-    // (the backend rejects it with 400). The panel shows the empty-state prompt.
+    // until the backend explicitly supports all/message browse mode.
     await waitForElement(canvasElement, ".wk-channel-search-empty");
     if (canvasElement.querySelector(".wk-channel-search-result")) {
       throw new Error(

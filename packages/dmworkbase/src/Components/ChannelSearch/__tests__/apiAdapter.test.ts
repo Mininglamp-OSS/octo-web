@@ -85,6 +85,7 @@ import type { ChannelSearchQuery } from "../types";
 const {
   mapFileHit,
   mapMediaHit,
+  mapCombinedHit,
   mapMessageHit,
   normalizeItems,
   searchEndpoint,
@@ -202,7 +203,7 @@ describe("channel search API adapter request construction", () => {
 describe("channel search empty-state guard", () => {
   const noFilters = { senderUids: [], sort: "time_desc" as const };
 
-  it("does not run all/message tabs with empty keyword and no filters (would 400)", () => {
+  it("does not run all/message tabs with empty keyword and no filters", () => {
     expect(
       shouldRunSearch({ keyword: "   ", filters: noFilters, tab: "all" })
     ).toBe(false);
@@ -436,6 +437,144 @@ describe("channel search API adapter response mapping", () => {
           },
         ],
         childCount: 2,
+      },
+    });
+  });
+
+  it("maps message-kind image and video hits from search_all browse mode", () => {
+    const image = mapMessageHit(
+      {
+        message_id: "m-image",
+        message_seq: 41,
+        message_kind: "image",
+        snippet: "野餐合影",
+        thumb_url: "images/a.jpg",
+        width: 1080,
+        height: 720,
+        sender_id: "u1",
+        sent_at: "2026-01-02T00:00:00Z",
+      },
+      baseQuery("all")
+    );
+    const video = mapMessageHit(
+      {
+        message_id: "m-video",
+        message_seq: 42,
+        message_kind: "video",
+        thumb_url: "videos/a-cover.jpg",
+        width: 1280,
+        height: 720,
+        duration_ms: 42000,
+        sender_id: "u2",
+        sent_at: "2026-01-02T00:00:00Z",
+      },
+      baseQuery("all")
+    );
+
+    expect(image).toMatchObject({
+      kind: "image",
+      text: "野餐合影",
+      matchReason: "野餐合影",
+      media: {
+        url: "/api/v1/images/a.jpg",
+        previewUrl: "/api/v1/images/a.jpg",
+        thumbUrl: "/api/v1/images/a.jpg",
+        width: 1080,
+        height: 720,
+      },
+    });
+    expect(video).toMatchObject({
+      kind: "video",
+      media: {
+        thumbUrl: "/api/v1/videos/a-cover.jpg",
+        width: 1280,
+        height: 720,
+        duration: 42,
+      },
+    });
+    expect(video.media?.url).toBeUndefined();
+    expect(video.media?.previewUrl).toBeUndefined();
+  });
+
+  it("maps search_all message result media through the combined dispatcher", () => {
+    expect(
+      mapCombinedHit(
+        {
+          result_type: "message",
+          sorted_at: "2026-01-03T00:00:00Z",
+          message: {
+            message_id: "m-image",
+            message_seq: 41,
+            message_kind: "image",
+            thumb_url: "images/a.jpg",
+            sender_id: "u1",
+            sent_at: "2026-01-02T00:00:00Z",
+          },
+        },
+        baseQuery("all")
+      )
+    ).toMatchObject({
+      kind: "image",
+      timestamp: 1767398400,
+      media: {
+        thumbUrl: "/api/v1/images/a.jpg",
+      },
+    });
+  });
+
+  it("keeps rich_text detail on text hits for structured rendering", () => {
+    const item = mapMessageHit(
+      {
+        message_id: "m-richtext",
+        message_seq: 43,
+        message_kind: "text",
+        snippet: "命中的<mark>哈哈</mark>片段",
+        sender_id: "u1",
+        sent_at: "2026-01-02T00:00:00Z",
+        rich_text: {
+          plain: "命中的哈哈片段[图片][文件] 需求.md",
+          content: [
+            { type: "text", text: "命中的哈哈片段" },
+            {
+              type: "image",
+              url: "images/rich.png",
+              width: 800,
+              height: 600,
+            },
+            {
+              type: "file",
+              url: "files/spec.md",
+              name: "需求.md",
+              extension: "md",
+              size: 2048,
+            },
+          ],
+          mention: {
+            entities: [{ uid: "u1", offset: 0, length: 3 }],
+            all: 1,
+            humans: 1,
+          },
+        },
+      },
+      baseQuery("message")
+    );
+
+    expect(item).toMatchObject({
+      kind: "text",
+      text: "命中的<mark>哈哈</mark>片段",
+      matchReason: "命中的<mark>哈哈</mark>片段",
+      richText: {
+        plain: "命中的哈哈片段[图片][文件] 需求.md",
+        content: [
+          { type: "text", text: "命中的哈哈片段" },
+          { type: "image", url: "images/rich.png" },
+          { type: "file", name: "需求.md", extension: "md" },
+        ],
+        mention: {
+          entities: [{ uid: "u1", offset: 0, length: 3 }],
+          all: 1,
+          humans: 1,
+        },
       },
     });
   });

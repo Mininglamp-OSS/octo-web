@@ -23,6 +23,9 @@ import IconClick from "../IconClick";
 import ConversationContext from "../Conversation/context";
 import { downloadFile } from "../../Utils/download";
 import { useI18n } from "../../i18n";
+import { getRichTextBlocksUI } from "../../bridge/message/useRichTextMessageUI";
+import MixedContent from "../../ui/message/MixedContent";
+import type { MixedContentBlock } from "../../ui/message/MixedContent";
 import { channelSearchEmptyDataSource } from "./adapter";
 import {
   CHANNEL_SEARCH_KEYWORD_MAX_RUNES,
@@ -722,6 +725,66 @@ const LocateIconButton = React.memo(function LocateIconButton({
   );
 });
 
+const RichTextResultContent = React.memo(function RichTextResultContent({
+  item,
+  keyword,
+}: {
+  item: ChannelSearchItem;
+  keyword: string;
+}) {
+  const { t } = useI18n();
+  const richText = item.richText;
+  const blocks = useMemo(() => {
+    return getRichTextBlocksUI(richText?.content || [], {
+      entities: richText?.mention?.entities || [],
+      syntheticMentions: [],
+    });
+  }, [richText]);
+  const showMatchReason =
+    !!keyword.trim() &&
+    !!item.matchReason &&
+    item.matchReason !== richText?.plain;
+
+  const handleFileDownload = useCallback(
+    async (block: Extract<MixedContentBlock, { type: "file" }>) => {
+      if (!block.url) {
+        Toast.warning(t("base.channelSearch.downloadUnavailable"));
+        return;
+      }
+      try {
+        await downloadFile(block.url, block.name);
+      } catch (_) {
+        Toast.error(t("base.channelSearch.downloadFailed"));
+      }
+    },
+    [t]
+  );
+
+  if (blocks.length === 0) {
+    return (
+      <div className="wk-channel-search-result-text">
+        <ChannelSearchSnippetContent text={item.text} keyword={keyword} />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {showMatchReason && (
+        <div className="wk-channel-search-match-reason">
+          <ChannelSearchSnippetContent
+            text={item.matchReason}
+            keyword={keyword}
+          />
+        </div>
+      )}
+      <div className="wk-channel-search-richtext-preview">
+        <MixedContent blocks={blocks} onFileDownload={handleFileDownload} />
+      </div>
+    </>
+  );
+});
+
 const MessageResultItem = React.memo(function MessageResultItem({
   item,
   keyword,
@@ -827,9 +890,7 @@ const MessageResultItem = React.memo(function MessageResultItem({
             </div>
           </>
         ) : (
-          <div className="wk-channel-search-result-text">
-            <ChannelSearchSnippetContent text={item.text} keyword={keyword} />
-          </div>
+          <RichTextResultContent item={item} keyword={keyword} />
         )}
       </div>
       {canLocateChannelSearchItem(item) && (
@@ -955,6 +1016,14 @@ const MediaThumb = React.memo(function MediaThumb({
     ? item.media?.inlineThumbUrl || item.media?.thumbUrl
     : item.media?.thumbUrl;
   const previewLabel = t("base.filePreview.preview");
+  const canPreviewMedia =
+    !!onPreviewMedia &&
+    !!(
+      item.media?.previewUrl ||
+      item.media?.url ||
+      item.media?.downloadUrl ||
+      (item.kind === "image" && item.media?.thumbUrl)
+    );
 
   return (
     <div
@@ -962,7 +1031,7 @@ const MediaThumb = React.memo(function MediaThumb({
         "wk-channel-search-media-thumb",
         `wk-channel-search-media-thumb--${item.media?.tone || "warm"}`,
         thumbUrl ? "wk-channel-search-media-thumb--image" : "",
-        onPreviewMedia ? "wk-channel-search-media-thumb--previewable" : "",
+        canPreviewMedia ? "wk-channel-search-media-thumb--previewable" : "",
         compact ? "wk-channel-search-media-thumb--compact" : "",
       ]
         .filter(Boolean)
@@ -976,7 +1045,7 @@ const MediaThumb = React.memo(function MediaThumb({
           src={thumbUrl}
         />
       )}
-      {onPreviewMedia && (
+      {canPreviewMedia && (
         <button
           aria-label={previewLabel}
           className="wk-channel-search-media-preview-trigger"
@@ -1358,10 +1427,8 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         return;
       }
 
-      // Empty-state guard: the keyword-optional `_search`/`_search_all` endpoints
-      // reject an empty keyword + empty filter with 400 (validateSearchNotEmpty).
-      // Don't fire it — show the empty-state view. Media/file tabs are exempt
-      // (they browse without a keyword), which shouldRunSearch encodes.
+      // Empty all/message searches are only sent once keyword or filters exist.
+      // Media/file tabs browse without a keyword, which shouldRunSearch encodes.
       if (!shouldRunSearch({ keyword, filters, tab: activeTab })) {
         return;
       }
@@ -1499,8 +1566,8 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     setPaginationError(null);
     setAutoPaginationPaused(false);
 
-    // No keyword and no effective filter → don't hit the backend (it would 400).
-    // Reset to the initial empty-state prompt instead of a spinner.
+    // Keep the initial prompt until an all/message search has a keyword or a
+    // real filter. Media/file tabs can browse immediately.
     if (!canSearch) {
       setQueryStarted(false);
       setLoading(false);

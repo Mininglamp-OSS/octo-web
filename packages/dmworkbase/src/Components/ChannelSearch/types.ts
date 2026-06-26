@@ -1,3 +1,5 @@
+import type { RichTextBlock } from "../../Messages/RichText/RichTextContent";
+
 export type ChannelSearchTab = "all" | "message" | "media" | "file";
 
 export type ChannelSearchItemKind =
@@ -72,6 +74,25 @@ export interface ChannelSearchForwardInfo {
   childCount?: number;
 }
 
+export interface ChannelSearchRichTextMentionEntity {
+  uid: string;
+  offset: number;
+  length: number;
+}
+
+export interface ChannelSearchRichTextMention {
+  entities?: ChannelSearchRichTextMentionEntity[];
+  all?: number;
+  humans?: number;
+  ais?: number;
+}
+
+export interface ChannelSearchRichTextInfo {
+  content: RichTextBlock[];
+  plain?: string;
+  mention?: ChannelSearchRichTextMention;
+}
+
 export interface ChannelSearchItem {
   id: string;
   messageId: string;
@@ -87,6 +108,7 @@ export interface ChannelSearchItem {
   file?: ChannelSearchFileInfo;
   media?: ChannelSearchMediaInfo;
   forward?: ChannelSearchForwardInfo;
+  richText?: ChannelSearchRichTextInfo;
 }
 
 export interface ChannelSearchResponse {
