@@ -32,6 +32,12 @@ export interface ChannelWebhookPanelProps {
     channel: Channel;
     /** 当前用户是否群主/管理员：决定可管理范围与是否可设置头像 */
     isManager: boolean;
+    /**
+     * 子区作用域 short_id（#451）。传入即整个面板切到子区面：list / 创建 / 管理 / 测试全部打到
+     * groups/{group}/threads/{short}/incoming-webhooks，后端按 (group_no, short_id) 作用域隔离。
+     * channel 仍为【父群】channel。群面不传（历史语义不变）。
+     */
+    threadShortId?: string;
 }
 
 type EditTarget =
@@ -52,6 +58,7 @@ const TEST_COOLDOWN_MS = 3000;
 export default function ChannelWebhookPanel({
     channel,
     isManager,
+    threadShortId,
 }: ChannelWebhookPanelProps) {
     const { t, format } = useI18n();
     const [items, setItems] = useState<IncomingWebhook[]>([]);
@@ -76,7 +83,7 @@ export default function ChannelWebhookPanel({
     const load = useCallback(async () => {
         setError(false);
         try {
-            const list = await WKApp.dataSource.channelDataSource.incomingWebhooks(channel);
+            const list = await WKApp.dataSource.channelDataSource.incomingWebhooks(channel, threadShortId);
             setItems(list);
         } catch (e) {
             setError(true);
@@ -84,7 +91,7 @@ export default function ChannelWebhookPanel({
         } finally {
             setLoading(false);
         }
-    }, [channel, t]);
+    }, [channel, threadShortId, t]);
 
     useEffect(() => {
         void load();
@@ -129,7 +136,8 @@ export default function ChannelWebhookPanel({
             await WKApp.dataSource.channelDataSource.updateIncomingWebhook(
                 channel,
                 item.webhook_id,
-                { status: next ? IncomingWebhookStatus.enabled : IncomingWebhookStatus.disabled }
+                { status: next ? IncomingWebhookStatus.enabled : IncomingWebhookStatus.disabled },
+                threadShortId
             );
             void load();
         } catch (e) {
@@ -152,7 +160,7 @@ export default function ChannelWebhookPanel({
         if (testingId || coolingTestId === item.webhook_id) return;
         setTestingId(item.webhook_id);
         try {
-            await WKApp.dataSource.channelDataSource.testIncomingWebhook(channel, item.webhook_id);
+            await WKApp.dataSource.channelDataSource.testIncomingWebhook(channel, item.webhook_id, threadShortId);
             Toast.success(t("base.channelWebhook.toast.testSent"));
         } catch (e) {
             Toast.error(extractErrorMsg(e) || t("base.channelWebhook.error.testFailed"));
@@ -180,7 +188,8 @@ export default function ChannelWebhookPanel({
                 try {
                     const resp = await WKApp.dataSource.channelDataSource.regenerateIncomingWebhook(
                         channel,
-                        item.webhook_id
+                        item.webhook_id,
+                        threadShortId
                     );
                     setUrlResult(resp);
                     void load();
@@ -206,7 +215,8 @@ export default function ChannelWebhookPanel({
                 try {
                     await WKApp.dataSource.channelDataSource.deleteIncomingWebhook(
                         channel,
-                        item.webhook_id
+                        item.webhook_id,
+                        threadShortId
                     );
                 } catch (e) {
                     Toast.error(extractErrorMsg(e) || t("base.channelWebhook.error.deleteFailed"));
@@ -247,7 +257,11 @@ export default function ChannelWebhookPanel({
     return (
         <div className="wk-webhook">
             <div className="wk-webhook__header">
-                <p className="wk-webhook__desc">{t("base.channelWebhook.description")}</p>
+                <p className="wk-webhook__desc">
+                    {threadShortId
+                        ? t("base.channelWebhook.threadScopeHint")
+                        : t("base.channelWebhook.description")}
+                </p>
                 {/* 列表非空时才显示 header 的新建按钮；空态有自己的醒目 CTA，
                     避免出现两个「新建」。加载中也不显示。 */}
                 {!loading && items.length > 0 && (
@@ -394,6 +408,7 @@ export default function ChannelWebhookPanel({
                 <WebhookEditModal
                     channel={channel}
                     isManager={isManager}
+                    threadShortId={threadShortId}
                     webhook={editTarget.mode === "edit" ? editTarget.webhook : undefined}
                     onClose={() => setEditTarget(null)}
                     onSaved={(created) => {

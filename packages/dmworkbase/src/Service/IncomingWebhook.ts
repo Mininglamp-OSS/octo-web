@@ -43,6 +43,12 @@ export interface IncomingWebhook {
      * 老后端不返回该键（undefined），调用方按「未配置」即空数组处理。
      */
     mention_uids?: string[];
+    /**
+     * 该 webhook 绑定投递的子区 short_id（#451 / octo-server #454）。仅子区 webhook 非空，
+     * 群 webhook 不返回（undefined，后端 omitempty）。创建时绑定、之后不可改；不影响推送 URL
+     * （仍按 webhook_id/token）。
+     */
+    thread_short_id?: string;
 }
 
 /**

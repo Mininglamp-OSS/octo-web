@@ -4,6 +4,19 @@ import { ThreadStatus } from "./Thread";
 import WKApp from "../App";
 
 /**
+ * 当前登录用户在指定群是否为群主 / 管理员 —— 子区所有权限判定的共同底座（#451 review）。
+ *
+ * 角色必须从【父群】成员列表解析：子区频道成员从未被同步，读子区缓存会让非创建者的
+ * 群主/管理员恒为 false。父群订阅未热时 getSubscribes 返回空 → false（降级为非管理员，安全）。
+ */
+function isGroupOwnerOrManager(groupNo: string): boolean {
+  const groupChannel = new Channel(groupNo, ChannelTypeGroup);
+  const subscribers = WKSDK.shared().channelManager.getSubscribes(groupChannel);
+  const me = subscribers?.find((s) => s.uid === WKApp.loginInfo.uid);
+  return me?.role === GroupRole.owner || me?.role === GroupRole.manager;
+}
+
+/**
  * 子区「角色/权限」统一判定：当前登录用户是否可以管理（含归档/取消归档）该子区。
  *
  * 归档入口在两处出现，必须共用同一份口径，否则会像 issue #283 一样出现一处可见、
@@ -30,10 +43,27 @@ export function canManageThread(
   if (!groupNo) {
     return false;
   }
-  const groupChannel = new Channel(groupNo, ChannelTypeGroup);
-  const subscribers = WKSDK.shared().channelManager.getSubscribes(groupChannel);
-  const me = subscribers?.find((s) => s.uid === WKApp.loginInfo.uid);
-  return me?.role === GroupRole.owner || me?.role === GroupRole.manager;
+  return isGroupOwnerOrManager(groupNo);
+}
+
+/**
+ * 子区入站 Webhook 管理面的「是否管理员」判定（#451）。
+ *
+ * 子区没有独立角色矩阵 —— 与归档/改名一致，权限锚定【父群】：当前登录用户是否为父群
+ * 群主 / 管理员。结果作为 isManager 传给 ChannelWebhookPanel，决定是否可设头像、是否可
+ * 管理他人创建的 webhook（普通成员不受此 gate，仍可管理自己创建的）。
+ *
+ * 与 {@link canManageThread} 的区别：这里【不含】创建者捷径 —— 子区创建者若只是普通群员，
+ * 不应获得设头像 / 管他人 webhook 的管理员权力（与群面 Webhook 的 isManager 口径一致）。
+ *
+ * 角色必须从父群成员列表解析（子区频道成员从未同步，读子区缓存会让非创建者的群主/管理员
+ * 恒为 false）；父群订阅未热时返回 false（降级为非管理员，安全）。
+ */
+export function isParentGroupManager(groupNo: string | undefined): boolean {
+  if (!groupNo) {
+    return false;
+  }
+  return isGroupOwnerOrManager(groupNo);
 }
 
 /**

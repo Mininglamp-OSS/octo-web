@@ -27,6 +27,8 @@ export interface WebhookEditModalProps {
     isManager: boolean;
     /** 编辑模式传入现有项；新增模式不传 */
     webhook?: IncomingWebhook;
+    /** 子区作用域：传入即把创建/更新打到该子区面（#451）；群面不传。channel 始终为父群。 */
+    threadShortId?: string;
     onClose: () => void;
     /** 保存成功回调；创建成功时携带含一次性 token/URL 的响应 */
     onSaved: (created?: IncomingWebhookCreateResp) => void;
@@ -117,6 +119,7 @@ export default function WebhookEditModal({
     channel,
     isManager,
     webhook,
+    threadShortId,
     onClose,
     onSaved,
 }: WebhookEditModalProps) {
@@ -253,14 +256,16 @@ export default function WebhookEditModal({
                 await WKApp.dataSource.channelDataSource.updateIncomingWebhook(
                     channel,
                     webhook.webhook_id,
-                    req
+                    req,
+                    threadShortId
                 );
                 Toast.success(t("base.channelWebhook.toast.updated"));
                 onSaved();
             } else {
                 const resp = await WKApp.dataSource.channelDataSource.createIncomingWebhook(
                     channel,
-                    req
+                    req,
+                    threadShortId
                 );
                 Toast.success(t("base.channelWebhook.toast.created"));
                 onSaved(resp);
@@ -279,7 +284,7 @@ export default function WebhookEditModal({
         } finally {
             setSaving(false);
         }
-    }, [saving, name, avatar, mentionAll, mentionBots, mentionUids, isEdit, webhook, isManager, channel, t, onClose, onSaved]);
+    }, [saving, name, avatar, mentionAll, mentionBots, mentionUids, isEdit, webhook, isManager, channel, threadShortId, t, onClose, onSaved]);
 
     return (
         <WKModal

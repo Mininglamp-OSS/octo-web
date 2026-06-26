@@ -325,19 +325,21 @@ export interface IChannelDataSource {
     updateGroupMd(channel: Channel, content: string): Promise<{ version: number }>
     deleteGroupMd(channel: Channel): Promise<void>
 
-    // 群入站 Webhook（octo-server incoming-webhooks #250/#254/#297/#340）
+    // 群入站 Webhook（octo-server incoming-webhooks #250/#254/#297/#340/#454）
     // 列表对任意群成员只读可见；其余操作的权限矩阵由服务端裁决（403/409）。
-    incomingWebhooks(channel: Channel): Promise<IncomingWebhook[]>
+    // 每个方法的可选尾参 threadShortId：留空＝群面（历史语义不变）；传入＝子区面
+    // （投递目标绑定到子区，作用域由服务端按 group_no+short_id 隔离，#451）。channel 始终传父群。
+    incomingWebhooks(channel: Channel, threadShortId?: string): Promise<IncomingWebhook[]>
     /** 创建。返回体里的 token / 推送 URL 仅此一次出现。 */
-    createIncomingWebhook(channel: Channel, req: IncomingWebhookUpsertReq): Promise<IncomingWebhookCreateResp>
+    createIncomingWebhook(channel: Channel, req: IncomingWebhookUpsertReq, threadShortId?: string): Promise<IncomingWebhookCreateResp>
     /** 部分更新（改名 / 启停；avatar 仅管理员），未传字段不变。 */
-    updateIncomingWebhook(channel: Channel, webhookId: string, req: IncomingWebhookUpsertReq): Promise<IncomingWebhook>
+    updateIncomingWebhook(channel: Channel, webhookId: string, req: IncomingWebhookUpsertReq, threadShortId?: string): Promise<IncomingWebhook>
     /** 软删除，token 立即失效。 */
-    deleteIncomingWebhook(channel: Channel, webhookId: string): Promise<void>
+    deleteIncomingWebhook(channel: Channel, webhookId: string, threadShortId?: string): Promise<void>
     /** 重置 token，旧 token 立即失效。新 token / URL 仅此一次返回。 */
-    regenerateIncomingWebhook(channel: Channel, webhookId: string): Promise<IncomingWebhookCreateResp>
+    regenerateIncomingWebhook(channel: Channel, webhookId: string, threadShortId?: string): Promise<IncomingWebhookCreateResp>
     /** 发送一条样例消息验证配置（不计入 call_count）。 */
-    testIncomingWebhook(channel: Channel, webhookId: string): Promise<void>
+    testIncomingWebhook(channel: Channel, webhookId: string, threadShortId?: string): Promise<void>
 
     // 子区 GROUP.md
     getThreadMd(groupNo: string, shortId: string): Promise<{ content: string; version: number }>

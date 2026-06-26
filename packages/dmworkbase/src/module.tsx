@@ -117,6 +117,7 @@ import { parseThreadChannelId, ThreadStatus } from "./Service/Thread";
 import {
   shouldShowThreadArchiveAction,
   canRenameThread,
+  isParentGroupManager,
 } from "./Service/threadPermission";
 import { runChannelSettingThreadArchive } from "./Service/threadArchiveAction";
 import { canShowRevokeMenu } from "./Service/revokePermission";
@@ -2385,6 +2386,59 @@ export default class BaseModule implements IModule {
         });
       },
       1000
+    );
+
+    // 子区入站 Webhook（入口 A：聊天信息 / 完整会话设置页）。与入口 B
+    // （ThreadPanel 右上角「…」菜单）完全同口径：复用群面板 ChannelWebhookPanel，
+    // 传【父群】channel + 子区 short_id，datasource 据此拼
+    // groups/{group}/threads/{short}/incoming-webhooks 做作用域隔离；
+    // isManager 锚【父群】角色（子区无独立角色矩阵，普通成员仍可管自己创建的）。
+    // 仅【活跃中】子区显示 —— 归档子区建 webhook 会被后端拒，避免无效入口，
+    // 与入口 B 的 status 门槛保持一致。
+    WKApp.shared.channelSettingRegister(
+      "thread.webhook",
+      (context) => {
+        const data = context.routeData() as ChannelSettingRouteData;
+        const channel = data.channel;
+        if (channel.channelType !== ChannelTypeCommunityTopic) {
+          return undefined;
+        }
+        const threadInfo = parseThreadChannelId(channel.channelID);
+        if (!threadInfo) {
+          return undefined;
+        }
+        const thread = data.channelInfo?.orgData?.thread as any;
+        if (thread?.status !== ThreadStatus.Active) {
+          return undefined;
+        }
+        const parentGroupChannel = new Channel(
+          threadInfo.groupNo,
+          ChannelTypeGroup
+        );
+        return new Section({
+          rows: [
+            new Row({
+              cell: ListItem,
+              properties: {
+                title: t("base.threadPanel.webhook"),
+                onClick: () => {
+                  context.push(
+                    <ChannelWebhookPanel
+                      channel={parentGroupChannel}
+                      isManager={isParentGroupManager(threadInfo.groupNo)}
+                      threadShortId={threadInfo.shortId}
+                    />,
+                    new RouteContextConfig({
+                      title: <I18nText k="base.threadPanel.webhook" />,
+                    })
+                  );
+                },
+              },
+            }),
+          ],
+        });
+      },
+      2000
     );
 
     // 子区设置说明：
