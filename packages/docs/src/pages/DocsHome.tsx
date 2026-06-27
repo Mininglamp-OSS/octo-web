@@ -2,10 +2,9 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { getWKApp, getRouteRight, onSpaceChanged, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
-import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
-import { BoardShell } from '../board/BoardShell.tsx'
+import { BoardSession } from '../board/BoardSession.tsx'
 import { isBoardDoc, isBoardIdLocally, rememberBoard } from '../board/boardStore.ts'
 import '../editor/styles.css'
 import {
@@ -903,21 +902,25 @@ export function DocsHome() {
   )
 
   // Whiteboard counterpart of buildEditor — same lifecycle wiring (exit / rename / delete), but
-  // renders the Excalidraw shell. Used when the selected doc's kind is `'board'`.
+  // renders the Excalidraw shell. Used when the selected doc's kind is `'board'`. Unlike the M1
+  // build, this goes through BoardSession so a live collab session (Y.Doc + HocuspocusProvider) is
+  // opened and handed to BoardShell — without it the board ran local-only with no WebSocket (XIN-55).
   const buildBoard = useCallback(
     (docId: string, onBack?: () => void) => (
-      <BoardShell
+      <BoardSession
         key={docId}
         docId={docId}
         title={t('docs.state.untitled')}
+        uid={uid}
         space={space}
+        folder={folder}
         onBack={onBack}
         onExit={backToList}
         onTitleSaved={onTitleSaved}
         onDeleted={onDocDeleted}
       />
     ),
-    [space, onTitleSaved, backToList, onDocDeleted],
+    [uid, space, folder, onTitleSaved, backToList, onDocDeleted],
   )
 
   // Choose the right-pane renderer by doc type: a spreadsheet ('sheet') mounts the collaborative
