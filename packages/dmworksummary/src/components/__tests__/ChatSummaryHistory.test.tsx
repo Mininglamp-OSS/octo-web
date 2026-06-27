@@ -429,5 +429,105 @@ describe('ChatSummaryHistory', () => {
 
             expect(mockBatchStatus).not.toHaveBeenCalled();
         });
+
+        it('skips polling when summary-batch-heartbeat arrives for overlapping task IDs', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Simulate SummaryListPage sending a heartbeat for our task ID
+            window.dispatchEvent(
+                new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [1] } }),
+            );
+
+            mockBatchStatus.mockClear();
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(10000);
+            });
+
+            // Sidebar should NOT poll because heartbeat indicates list page is active
+            expect(mockBatchStatus).not.toHaveBeenCalled();
+        });
+
+        it('resumes polling after summary-list-unmount resets active flag', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Send heartbeat → sidebar stops polling
+            window.dispatchEvent(
+                new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [1] } }),
+            );
+
+            mockBatchStatus.mockClear();
+
+            // Sidebar should NOT poll while list page is active
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(10000);
+            });
+            expect(mockBatchStatus).not.toHaveBeenCalled();
+
+            // List page unmounts → sidebar should resume polling
+            window.dispatchEvent(new CustomEvent('summary-list-unmount'));
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(6000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalled();
+        });
+
+        it('reloads history on summary-status-change for overlapping task IDs', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            mockListSummaries.mockClear();
+
+            // Simulate SummaryListPage detecting a status change for our task
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Sidebar should reload its history to reflect the change
+            expect(mockListSummaries).toHaveBeenCalled();
+        });
     });
 });
