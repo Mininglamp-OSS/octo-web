@@ -403,7 +403,10 @@ export interface WebhookAdapterExampleRow {
  * 健壮性（信任边界：响应是外部数据）：
  * - 缺失 / 空数组 → 返回 `[]`（老后端 #475 之前不下发该字段，调用方据此走兜底渲染）；
  * - 跳过无 `key` 或拼接后 URL 为空的条目（无可复制地址的卡片无意义）；
- * - 文案 trim，steps 丢空行；`auth` 缺省兜底为 `{ type: "" }`。
+ * - 文案 / steps 仅采信 string，非字符串（数字 / 对象等脏数据）一律按缺省处理，
+ *   绝不在 `.trim()` / `toShortWebhookAlias` 上抛错——本函数在弹窗 render 时调用，
+ *   一旦抛错会连带一次性 token 弹窗整体崩掉、token 再也取不回；
+ * - 文案 trim，steps 丢空行；`auth` 仅采信对象，否则兜底为 `{ type: "" }`。
  * - 不对 `key` 做白名单过滤：未知适配器同样渲染，后端新增适配器时前端无需发版。
  */
 export function buildWebhookAdapterExamples(
@@ -413,19 +416,22 @@ export function buildWebhookAdapterExamples(
 ): WebhookAdapterExampleRow[] {
     const examples = resp.adapter_examples;
     if (!Array.isArray(examples) || examples.length === 0) return [];
+    // 仅对 string 做 trim，其余类型按空串处理（脏数据不抛错）。
+    const text = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
     return examples
         .filter((ex): ex is IncomingWebhookAdapterExample => !!ex && typeof ex.key === "string" && ex.key.length > 0)
         .map((ex) => ({
             key: ex.key,
-            title: (ex.title || "").trim(),
-            description: (ex.description || "").trim(),
-            url: ex.url
-                ? buildIncomingWebhookUrl(toShortWebhookAlias(ex.url), apiURL || "/", origin)
-                : "",
-            contentType: ex.content_type || "",
-            auth: ex.auth || { type: "" },
+            title: text(ex.title),
+            description: text(ex.description),
+            url:
+                typeof ex.url === "string" && ex.url
+                    ? buildIncomingWebhookUrl(toShortWebhookAlias(ex.url), apiURL || "/", origin)
+                    : "",
+            contentType: typeof ex.content_type === "string" ? ex.content_type : "",
+            auth: ex.auth && typeof ex.auth === "object" ? ex.auth : { type: "" },
             steps: Array.isArray(ex.steps)
-                ? ex.steps.map((s) => (s ?? "").trim()).filter((s) => s.length > 0)
+                ? ex.steps.map(text).filter((s) => s.length > 0)
                 : [],
         }))
         .filter((row) => !!row.url);

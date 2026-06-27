@@ -544,6 +544,37 @@ describe("buildWebhookAdapterExamples (#475)", () => {
         expect(rows[0].title).toBe("GitHub");
         expect(rows[0].steps).toEqual(["a", "b"]);
     });
+
+    it("非字符串字段（数字/对象）不抛错，按缺省降级而非崩溃", () => {
+        // 弹窗 render 时调用，脏数据若让 .trim() / toShortWebhookAlias 抛错，
+        // 一次性 token 弹窗会整体崩掉、token 取不回——这里钉死「降级不抛错」。
+        const run = () =>
+            buildWebhookAdapterExamples(
+                {
+                    adapter_examples: [
+                        // url 为数字：不得在 toShortWebhookAlias 上抛错；无可用 url → 被过滤。
+                        example({ key: "bad-url", url: 123 }),
+                        // title/description/steps 含非字符串：trim 不得抛错，非串项按空处理。
+                        example({
+                            key: "github",
+                            title: 42,
+                            description: { html: "x" },
+                            steps: ["  ok  ", 7, null, "  done  "],
+                            auth: "not-an-object",
+                        }),
+                    ] as never,
+                },
+                apiURL,
+                origin
+            );
+        expect(run).not.toThrow();
+        const rows = run();
+        expect(rows.map((r) => r.key)).toEqual(["github"]);
+        expect(rows[0].title).toBe("");
+        expect(rows[0].description).toBe("");
+        expect(rows[0].steps).toEqual(["ok", "done"]);
+        expect(rows[0].auth).toEqual({ type: "" });
+    });
 });
 
 describe("buildWebhookCurlExample", () => {
