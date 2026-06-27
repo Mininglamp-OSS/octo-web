@@ -15,6 +15,7 @@
     "@excalidraw/excalidraw": "0.18.1",
     "@hocuspocus/provider": "2.15.2",
     "@octo/base": "workspace:*",
+    "@octo/whiteboard-schema": "workspace:*",
     "@tiptap/core": "3.22.2",
     "@tiptap/extension-bubble-menu": "3.22.2",
     "@tiptap/extension-character-count": "3.22.2",

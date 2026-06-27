@@ -22,9 +22,10 @@
 // dataURL stripped) is mirrored into Y.Map('files') (XIN-16 §2.2). appState is not bound at all.
 
 import * as Y from 'yjs'
-import { ELEMENTS_FIELD, FILES_FIELD } from './schema.ts'
+import { ELEMENTS_FIELD, FILES_FIELD, REPAIR_ORIGIN } from './schema.ts'
 import { shouldOverwrite } from './reconcile.ts'
 import { jsonEqual, readAllElements, readElement, upsertElement } from './yElement.ts'
+import { repairForRender } from './repair.ts'
 import {
   AwarenessSurface,
   emptyTelemetry,
@@ -35,8 +36,12 @@ import type { BinaryFileData, ExcalidrawBindingAPI, ExcalidrawElement, Json } fr
 
 /** Transaction origin for genuine local user edits — the only origin the binding writes under. */
 export const LOCAL_ORIGIN = Symbol('octo-wb-local')
-/** Transaction origin reserved for the server-authoritative repair pass (BE writes; never FE). */
-export const REPAIR_ORIGIN = Symbol('octo-wb-repair')
+/**
+ * Origin tag for the server-authoritative repair pass (the shared `'wb-repair'` constant). The
+ * FE never writes under it (repair is backend-authoritative, XIN-16 §4); it is re-exported so the
+ * FE recognises a repair-origin transaction as remote (→ render), never as its own write.
+ */
+export { REPAIR_ORIGIN }
 
 export interface WhiteboardBindingOptions {
   /** Imperative Excalidraw API; may be supplied later via `setApi` (the canvas mounts async). */
@@ -211,15 +216,19 @@ export class ExcalidrawYjsBinding {
 
   /** Rebuild the scene from the authoritative Y.Doc state and resync the snapshot (guard 4). */
   private applyRemote(): void {
-    const elements = readAllElements(this.elements)
+    const fileIds = new Set<string>(this.files.keys() as Iterable<string>)
+    // Merge-time repair pass (selection B): normalize the rebuilt scene for local render only —
+    // dangling boundElements / frameId pruned, unrenderable + dangling-image elements dropped.
+    // The result is NEVER written back to the Y.Doc (server repair is authoritative, §4).
+    const elements = repairForRender(readAllElements(this.elements), fileIds)
     this.applyingRemote = true
     try {
       this.api?.updateScene({ elements, captureUpdate: 'never' })
     } finally {
       this.applyingRemote = false
     }
-    // Guard 4 (XIN-16 §4.2): snapshot the APPLIED state (incl. any server-bumped version) so the
-    // onChange this updateScene triggers diffs empty rather than writing the repair straight back.
+    // Guard 4 (XIN-16 §4.2): snapshot the APPLIED (repaired) state so the onChange this
+    // updateScene triggers diffs empty rather than writing the repaired scene straight back.
     const snap = new Map<string, ExcalidrawElement>()
     for (const el of elements) snap.set(el.id, el)
     this.lastKnown = snap

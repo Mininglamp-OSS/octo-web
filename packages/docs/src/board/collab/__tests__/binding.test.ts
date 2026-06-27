@@ -205,6 +205,44 @@ describe('tombstone convergence', () => {
   })
 })
 
-// Keep a reference so unused-import lint stays quiet if a case is trimmed.
-const _types: ExcalidrawElement | null = null
-void _types
+// The merge-time repair pass (selection B) runs inside applyRemote: a remote/agent write is
+// normalized for local render before updateScene, never written back to the Y.Doc.
+describe('merge-time repair pass renders a self-consistent scene (M-2/M-3/M-8)', () => {
+  function seed(doc: Y.Doc, id: string, fields: Record<string, unknown>): void {
+    doc.transact(() => {
+      const m = new Y.Map<unknown>()
+      for (const [k, v] of Object.entries({ id, version: 1, versionNonce: 1, ...fields })) m.set(k, v)
+      elsOf(doc).set(id, m as Y.Map<unknown>)
+    }, 'seed')
+  }
+
+  it('M-8 / M-3: a remote write with dangling boundElements + frameId renders pruned', () => {
+    const doc = new Y.Doc()
+    const api = new FakeExcalidrawApi()
+    new ExcalidrawYjsBinding(doc, { api })
+    const peer = new Y.Doc()
+    seed(peer, 'shape', {
+      type: 'rectangle',
+      boundElements: [{ id: 'ghost', type: 'arrow' }],
+      frameId: 'gone',
+    })
+    syncDocs(peer, doc, 'remote')
+
+    const shape = api.scene.find((e) => e.id === 'shape')!
+    expect(shape.boundElements).toEqual([]) // dangling entry pruned (M-8)
+    expect(shape.frameId).toBeNull() // dangling frame cleared (M-3)
+    // repair is render-only: the Y.Doc still holds the un-repaired element (BE is the writer)
+    expect(readElement(elsOf(doc).get('shape')!).frameId).toBe('gone')
+  })
+
+  it('M-2: a remote image with a dangling fileId is not rendered', () => {
+    const doc = new Y.Doc()
+    const api = new FakeExcalidrawApi()
+    new ExcalidrawYjsBinding(doc, { api })
+    const peer = new Y.Doc()
+    seed(peer, 'img', { type: 'image', fileId: 'gone' })
+    syncDocs(peer, doc, 'remote')
+    expect(api.scene.find((e) => e.id === 'img')).toBeUndefined()
+  })
+})
+

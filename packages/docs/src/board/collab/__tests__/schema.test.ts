@@ -1,5 +1,4 @@
-// Schema seam (XIN-16 §3) — constants + validated key codec. The `normalizeElement` rule set is
-// the ONE package-gated piece (placeholder until @octo/whiteboard-schema / XIN-26 publishes).
+// Shared schema package (@octo/whiteboard-schema, XIN-16 §3) — wired via the seam.
 import { describe, it, expect } from 'vitest'
 import {
   ELEMENTS_FIELD,
@@ -11,18 +10,21 @@ import {
   normalizeElement,
   SCHEMA_PACKAGE_WIRED,
 } from '../schema.ts'
-import { makeEl } from './helpers.ts'
 
-describe('schema seam', () => {
+describe('shared schema seam', () => {
+  it('the real @octo/whiteboard-schema is wired in (no placeholder)', () => {
+    expect(SCHEMA_PACKAGE_WIRED).toBe(true)
+  })
+
   it('locks the top-level field names (XIN-16 §1/§2)', () => {
     expect(ELEMENTS_FIELD).toBe('elements')
     expect(FILES_FIELD).toBe('files')
   })
 
   it('owns a whiteboard schema version independent of the PM docs version', () => {
-    expect(typeof WB_SCHEMA_VERSION).toBe('number')
-    expect(WB_ELEMENT_TYPES).toContain('image')
-    expect(WB_ELEMENT_TYPES).toContain('arrow')
+    expect(WB_SCHEMA_VERSION).toBe(1)
+    expect(WB_ELEMENT_TYPES.has('image')).toBe(true)
+    expect(WB_ELEMENT_TYPES.has('arrow')).toBe(true)
   })
 
   it('builds and parses the canonical board key octo:{space}:{folder}:wb:{board}', () => {
@@ -31,21 +33,20 @@ describe('schema seam', () => {
     expect(parseWhiteboardName(key)).toEqual({ space: 's1', folder: 'f1', board: 'b1' })
   })
 
-  it('rejects forged segments (injection guard via the validated codec)', () => {
+  it('rejects forged segments (injection guard) and non-board keys', () => {
     expect(() => buildWhiteboardName('s:1', 'f', 'b')).toThrow()
+    expect(() => parseWhiteboardName('octo:s:f:d')).toThrow()
   })
 
-  it('parseWhiteboardName returns null for a non-board key', () => {
-    expect(parseWhiteboardName('octo:s:f:d')).toBeNull()
-    expect(parseWhiteboardName('garbage')).toBeNull()
+  it('normalizeElement coerces a bad version and preserves unknown fields (M-12)', () => {
+    const out = normalizeElement({ id: 'a', type: 'rectangle', version: 0, mystery: 42 })
+    expect(out).not.toBeNull()
+    expect(out!.version).toBe(1)
+    expect((out as Record<string, unknown>).mystery).toBe(42)
   })
 
-  it('placeholder normalizeElement is identity + preserves unknown fields (M-12)', () => {
-    const el = makeEl('a', { mystery: 42 } as never)
-    const out = normalizeElement(el) as Record<string, unknown>
-    expect(out.id).toBe('a')
-    expect(out.mystery).toBe(42)
-    // seam is not yet wired to the real shared package
-    expect(SCHEMA_PACKAGE_WIRED).toBe(false)
+  it('normalizeElement drops unrenderable elements (bad id / non-whitelist type)', () => {
+    expect(normalizeElement({ id: '', type: 'rectangle' })).toBeNull()
+    expect(normalizeElement({ id: 'a', type: 'wormhole' })).toBeNull()
   })
 })

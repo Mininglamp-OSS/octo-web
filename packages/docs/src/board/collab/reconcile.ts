@@ -1,61 +1,33 @@
-// CAS (compare-and-set) arbitration for element writes (XIN-16 §1.1).
-//
-// Mirrors Excalidraw's official `reconcileElements` ordering so a board converges identically
-// whether two edits race through the Y.Doc or through Excalidraw's own reconciler:
-//   1. higher `version` wins;
-//   2. on equal `version`, lower `versionNonce` wins (deterministic, content-independent);
-//   3. fully equal (version + versionNonce) ⇒ same logical state ⇒ DO NOT write.
-//
-// "Write before read" is forbidden: every write path reads the current Y.Map value first and only
-// produces a transaction when this function says the incoming element should win. Skipping equal
-// writes is what keeps `observe` from firing on no-op transactions (the empty-diff guard's
-// arithmetic half — see binding.ts).
+// CAS arbitration (XIN-16 §1.1) — delegated to the shared `elementSupersedes` from
+// `@octo/whiteboard-schema`, so the front-end arbitrates writes by the exact same rule the
+// backend authoritative repair uses (higher version wins; equal version → smaller versionNonce
+// wins; fully equal → no write). Read-before-write is enforced by the caller (binding.ts): it
+// reads the current Y.Map stamp and only writes when this says the incoming element wins, so no
+// no-op transaction fires (the empty-diff guard's arithmetic half).
 
+import { elementSupersedes } from './schema.ts'
 import type { ExcalidrawElement } from './types.ts'
 
-/** A minimal version stamp; either a full element or just its CAS-relevant fields. */
+export { elementSupersedes } from './schema.ts'
+
+/** A CAS stamp: an element or just its version-relevant fields. */
 export interface VersionStamp {
-  version?: number
-  versionNonce?: number
-}
-
-function ver(e: VersionStamp | null | undefined): number {
-  return typeof e?.version === 'number' ? e.version : -1
-}
-
-function nonce(e: VersionStamp | null | undefined): number {
-  // Absent nonce sorts last (largest) so a stamped element beats an unstamped one on a version tie.
-  return typeof e?.versionNonce === 'number' ? e.versionNonce : Number.MAX_SAFE_INTEGER
+  version: number
+  versionNonce: number
 }
 
 /**
- * Decide whether `incoming` should overwrite `current`.
- *
- * @returns true iff incoming strictly wins by the §1.1 rules. Equal stamps return false (no-op).
+ * Decide whether `incoming` should overwrite `current` — thin wrapper over the shared
+ * `elementSupersedes` (treats a missing current as "incoming wins").
  */
 export function shouldOverwrite(
   current: VersionStamp | null | undefined,
   incoming: VersionStamp,
 ): boolean {
-  if (current == null) return true // nothing there yet
-  const cv = ver(current)
-  const iv = ver(incoming)
-  if (iv !== cv) return iv > cv // higher version wins
-  // version tie → lower nonce wins
-  const cn = nonce(current)
-  const inNonce = nonce(incoming)
-  if (inNonce !== cn) return inNonce < cn
-  return false // identical stamp → same state → no write
+  return elementSupersedes(current ?? undefined, incoming)
 }
 
-/**
- * Reconcile a single element against the current authoritative value, honouring tombstones.
- *
- * A delete is modelled as `isDeleted=true` with a bumped `version` (never a key removal), so
- * "one peer deletes while another edits" converges by version like any other field (XIN-16 §1.1).
- *
- * @returns the winning element (may be `current` unchanged, or `incoming`).
- */
+/** Reconcile one element against the current authoritative value (tombstones converge by version). */
 export function reconcileElement(
   current: ExcalidrawElement | null | undefined,
   incoming: ExcalidrawElement,

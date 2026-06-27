@@ -23,10 +23,6 @@ describe('CAS arbitration (T7)', () => {
     expect(shouldOverwrite({ version: 2, versionNonce: 7 }, { version: 2, versionNonce: 7 })).toBe(false)
   })
 
-  it('a stamped element beats an unstamped one on a version tie', () => {
-    expect(shouldOverwrite({ version: 2 }, { version: 2, versionNonce: 1 })).toBe(true)
-  })
-
   it('reconcileElement returns the winner, honouring tombstones by version', () => {
     const live = makeEl('a', { version: 3, isDeleted: false })
     const tomb = makeEl('a', { version: 4, isDeleted: true })

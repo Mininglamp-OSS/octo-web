@@ -1,15 +1,15 @@
 // Whiteboard v1 M2 collaborative binding — public surface.
 //
 // Forked y-excalidraw binding base (field-level Y.Map merge + CAS + anti-loop guards) plus the
-// schema seam and the deferred repair pass. The host (BoardShell) constructs an
-// `ExcalidrawYjsBinding` against a Y.Doc, wires `handleLocalChange` from Excalidraw's onChange,
-// and passes the imperative API in via `setApi`. See ./connect.ts for the provider wiring.
+// merge-time repair pass driven by the shared `@octo/whiteboard-schema` rule set. The host
+// (BoardShell) constructs an `ExcalidrawYjsBinding` against a Y.Doc, wires `handleLocalChange`
+// from Excalidraw's onChange, and passes the imperative API in via `setApi`. See ./connect.ts.
 
 export { ExcalidrawYjsBinding, LOCAL_ORIGIN, REPAIR_ORIGIN } from './binding.ts'
 export type { WhiteboardBindingOptions } from './binding.ts'
 export { createWhiteboardSession } from './connect.ts'
 export type { WhiteboardSession, WhiteboardSessionOptions } from './connect.ts'
-export { shouldOverwrite, reconcileElement } from './reconcile.ts'
+export { shouldOverwrite, reconcileElement, elementSupersedes } from './reconcile.ts'
 export type { VersionStamp } from './reconcile.ts'
 export { repairForRender } from './repair.ts'
 export {
@@ -22,6 +22,7 @@ export {
   parseWhiteboardName,
   SCHEMA_PACKAGE_WIRED,
 } from './schema.ts'
+export type { WhiteboardElement, NormalizeContext } from './schema.ts'
 export {
   readAllElements,
   readElement,
