@@ -36,6 +36,28 @@ export function jsonEqual(a: unknown, b: unknown): boolean {
   return false
 }
 
+/**
+ * Deep-clone a JSON-ish element by value. Excalidraw mutates element objects IN PLACE
+ * (`mutateElement` reassigns `width`/`height`/`points`/… and bumps `version` on the *same* object)
+ * and re-emits those same references to `onChange`. The local diff snapshot must therefore hold a
+ * by-value copy, never the live reference — otherwise the next onChange compares the mutated object
+ * against itself and the edit is invisible (XIN-80 / XIN-92: only the 0-size create reached the
+ * Y.Doc, every later geometry update was diffed away). Mirrors `jsonEqual`'s JSON value model.
+ */
+export function cloneElement<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((v) => cloneElement(v)) as unknown as T
+  }
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(value as object)) {
+      out[key] = cloneElement((value as Record<string, unknown>)[key])
+    }
+    return out as T
+  }
+  return value
+}
+
 /** Read a per-element Y.Map back into a plain element object (all fields, unknown included). */
 export function readElement(yEl: Y.Map<unknown>): ExcalidrawElement {
   const out: Record<string, unknown> = {}

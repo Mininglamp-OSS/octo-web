@@ -43,6 +43,31 @@ describe('ExcalidrawYjsBinding', () => {
     expect(binding.__telemetry.skippedOwnOrigin).toBeGreaterThanOrEqual(1)
   })
 
+  it('XIN-80: an in-place geometry update after the 0-size create propagates to the Y.Doc', () => {
+    // Real Excalidraw mutates element objects IN PLACE: `mutateElement` reassigns width/height/
+    // points and bumps version on the SAME object, then hands those same references to onChange.
+    // The local diff snapshot must copy by value, or `prev` and `el` are the same reference and
+    // jsonEqual short-circuits on `a === b` — the diff sees no change and the real geometry never
+    // reaches the Y.Doc (the XIN-80 3-point diff: only the 0-size create was written). A synthetic
+    // applyUpdate repro can't surface this because makeEl/bump return fresh objects each call.
+    const live = makeEl('rect', { width: 0, height: 0, version: 1 })
+    binding.handleLocalChange([live]) // pointer-down: element created at 0 size
+    expect(elsOf(doc).get('rect')!.get('width')).toBe(0)
+
+    // pointer-move/up: the user drags it out to a real size — Excalidraw mutates the SAME object.
+    const m = live as unknown as Record<string, number>
+    m.width = 120
+    m.height = 80
+    m.version = 2
+    m.versionNonce = 4242
+    binding.handleLocalChange([live]) // onChange re-emits the same, now-mutated reference
+
+    const yEl = elsOf(doc).get('rect')!
+    expect(yEl.get('width')).toBe(120) // real geometry reached the Y.Doc, not the 0-size initial
+    expect(yEl.get('height')).toBe(80)
+    expect(yEl.get('version')).toBe(2)
+  })
+
   it('T3 / T10: a remote (or agent) write to the Y.Doc renders via updateScene', () => {
     const peer = new Y.Doc()
     const pe = elsOf(peer)
@@ -187,6 +212,35 @@ describe('ExcalidrawYjsBinding', () => {
     doc.on('afterTransaction', (txn: Y.Transaction) => origins.push(txn.origin))
     binding.handleLocalChange([makeEl('a')])
     expect(origins).toContain(LOCAL_ORIGIN)
+  })
+})
+
+// XIN-80 acceptance at the node level: A draws a full rectangle the way real Excalidraw drives it
+// (create at 0 size, then mutate the SAME object as the user drags) and B must receive the COMPLETE
+// geometry over a real cross-doc sync — not the 0-size initial. The browser smoke (A→B render +
+// reopen non-zero) is the end-to-end gate; this pins the binding contract underneath it.
+describe('XIN-80: A-side in-place draw propagates full geometry to peer B', () => {
+  it('B receives the dragged-out size, not the 0-size create', () => {
+    const a = new Y.Doc()
+    const b = new Y.Doc()
+    const apiB = new FakeExcalidrawApi()
+    new ExcalidrawYjsBinding(b, { api: apiB }) // peer B renders remote writes via updateScene
+
+    const ba = new ExcalidrawYjsBinding(a, { api: new FakeExcalidrawApi() })
+    const live = makeEl('rect', { width: 0, height: 0, version: 1 })
+    ba.handleLocalChange([live]) // pointer-down: created at 0 size
+
+    const m = live as unknown as Record<string, number>
+    m.width = 200
+    m.height = 140
+    m.version = 2
+    m.versionNonce = 555
+    ba.handleLocalChange([live]) // drag-out: SAME mutated reference Excalidraw re-emits
+
+    syncDocs(a, b, 'remote')
+    const renderedOnB = apiB.scene.find((e) => e.id === 'rect')!
+    expect(renderedOnB.width).toBe(200) // B paints the full shape, not a 0-size point
+    expect(renderedOnB.height).toBe(140)
   })
 })
 

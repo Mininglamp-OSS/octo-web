@@ -24,7 +24,7 @@
 import * as Y from 'yjs'
 import { ELEMENTS_FIELD, FILES_FIELD, REPAIR_ORIGIN } from './schema.ts'
 import { shouldOverwrite } from './reconcile.ts'
-import { jsonEqual, readAllElements, readElement, upsertElement } from './yElement.ts'
+import { cloneElement, jsonEqual, readAllElements, readElement, upsertElement } from './yElement.ts'
 import { repairForRender } from './repair.ts'
 import {
   AwarenessSurface,
@@ -190,7 +190,11 @@ export class ExcalidrawYjsBinding {
     const changed: ExcalidrawElement[] = []
     const nextSnapshot = new Map<string, ExcalidrawElement>()
     for (const el of elements) {
-      nextSnapshot.set(el.id, el)
+      // Snapshot BY VALUE: Excalidraw mutates element objects in place and re-emits the same
+      // references, so holding the live `el` would make the next onChange diff the mutated object
+      // against itself (jsonEqual short-circuits on `a === b`) and silently drop the geometry
+      // update — the XIN-80 symptom where only the 0-size create reached the Y.Doc.
+      nextSnapshot.set(el.id, cloneElement(el))
       const prev = this.lastKnown.get(el.id)
       if (!prev || !jsonEqual(prev, el)) changed.push(el)
     }
@@ -310,8 +314,11 @@ export class ExcalidrawYjsBinding {
     }
     // Guard 4 (XIN-16 §4.2): snapshot the APPLIED (repaired) state so the onChange this
     // updateScene triggers diffs empty rather than writing the repaired scene straight back.
+    // Clone by value (XIN-92): `elements` here are the live scene objects Excalidraw will mutate
+    // in place on a later local edit; holding the live reference would blind the next diff to that
+    // edit exactly as it does on the local-create path.
     const snap = new Map<string, ExcalidrawElement>()
-    for (const el of elements) snap.set(el.id, el)
+    for (const el of elements) snap.set(el.id, cloneElement(el))
     this.lastKnown = snap
     this.telemetry.remoteApplies++
     this.telemetry.remoteElements += elements.length
