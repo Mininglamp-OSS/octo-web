@@ -67,6 +67,11 @@ vi.mock("wukongimjssdk", () => {
         },
         Message: class {},
         MessageContent: class {},
+        MessageText: class {
+            text: string
+            constructor(text: string) { this.text = text }
+            get contentType() { return 1 }
+        },
         Subscriber: class {},
         Conversation: class {},
         MessageExtra: class {},
@@ -169,7 +174,10 @@ function wrap(overrides: Record<string, any>) {
         get timestamp() { return message.timestamp },
         get fromUID() { return message.fromUID },
         get channel() { return message.channel },
-        get contentType() { return message.contentType },
+        // Faithful to the SDK: Message.contentType derefs `content.contentType`
+        // (see wukongimjssdk Message.prototype.contentType). Reading the raw
+        // field would mask the malformed-content crash this suite guards (#465).
+        get contentType() { return message.content?.contentType ?? message.contentType },
         get status() { return message.status },
         set status(value: number) { message.status = value },
         get content() { return message.content },

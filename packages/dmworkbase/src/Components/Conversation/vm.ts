@@ -1,4 +1,4 @@
-import { Channel, ChannelTypeGroup, ChannelTypePerson, ConversationAction, WKSDK, Message, MessageContent, MessageStatus, Subscriber, Conversation, MessageExtra, CMDContent, PullMode, MessageContentType, ChannelInfo, ChannelInfoListener, ConversationListener, ConnectStatus, ConnectStatusListener } from "wukongimjssdk";
+import { Channel, ChannelTypeGroup, ChannelTypePerson, ConversationAction, WKSDK, Message, MessageContent, MessageStatus, Subscriber, Conversation, MessageExtra, CMDContent, PullMode, MessageContentType, MessageText, ChannelInfo, ChannelInfoListener, ConversationListener, ConnectStatus, ConnectStatusListener } from "wukongimjssdk";
 import WKApp from "../../App";
 import { SyncMessageOptions } from "../../Service/DataSource/DataProvider";
 import { MessageWrap } from "../../Service/Model";
@@ -1865,6 +1865,16 @@ export default class ConversationVM extends ProviderListener {
 
     // 刷新消息列表
     refreshMessages(messages: MessageWrap[], callback?: () => void, options?: { allowFoldAnimation?: boolean }) {
+        // 单点归一（#465）：content 整体缺失的畸形消息（如 payload.type=text 但
+        // 解码失败）会让 SDK 的 Message.contentType getter 以及 MessageWrap 的
+        // flame / parts 解引用 undefined 而崩页，且这一步发生在下面排序 / 去重 /
+        // 渲染读取 contentType 之前。这里在任何 contentType 读取之前补一个空文本
+        // content，让畸形消息渲染成空气泡而非拖垮整个消息列表。
+        for (const m of messages) {
+            if (m.message.content == null) {
+                m.message.content = new MessageText("")
+            }
+        }
         let newMessages = messages
         // 渲染前先按 order（seq）排序，防止延迟推送/重连补推导致消息位置错乱
         newMessages = this.sortMessages(newMessages)
