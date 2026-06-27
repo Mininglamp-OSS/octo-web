@@ -205,7 +205,46 @@ describe('tombstone convergence', () => {
   })
 })
 
-// The render adapter (XIN-87): when the host wires Excalidraw's restore/reconcile contract, a
+// H1 (XIN-85 / reopen-empty): applyRemote must never push an empty scene. A size>0 guard (aligned
+// with the one setApi already applies) stops a non-local empty transaction from calling
+// updateScene([]) and wiping a canvas the local mirror just seeded.
+describe('empty-apply guard — never updateScene([]) (H1 / XIN-85)', () => {
+  it('refreshFromDoc on an empty doc does not touch the canvas', () => {
+    const doc = new Y.Doc()
+    const api = new FakeExcalidrawApi()
+    const binding = new ExcalidrawYjsBinding(doc, { api })
+    binding.refreshFromDoc()
+    expect(api.updateSceneCalls).toBe(0)
+    expect(binding.__telemetry.skippedEmptyApply).toBeGreaterThanOrEqual(1)
+    expect(binding.__telemetry.remoteApplies).toBe(0)
+  })
+
+  it('a remote transaction that empties the doc does NOT wipe the canvas', () => {
+    const doc = new Y.Doc()
+    const api = new FakeExcalidrawApi()
+    const binding = new ExcalidrawYjsBinding(doc, { api })
+
+    // A remote element arrives and renders.
+    const peer = new Y.Doc()
+    peer.transact(() => {
+      const m = new Y.Map<unknown>()
+      const el = makeEl('a', { x: 1 })
+      for (const [k, v] of Object.entries(el)) m.set(k, v as unknown)
+      elsOf(peer).set('a', m)
+    })
+    syncDocs(peer, doc, 'remote')
+    expect(api.updateSceneCalls).toBe(1)
+    expect(api.scene.find((e) => e.id === 'a')).toBeDefined()
+
+    // A foreign clear removes the key (size → 0). The guard must skip rather than render [].
+    const callsBefore = api.updateSceneCalls
+    doc.transact(() => elsOf(doc).delete('a'), 'remote-clear')
+    expect(api.updateSceneCalls).toBe(callsBefore) // no updateScene([]) — canvas untouched
+    expect(api.scene.find((e) => e.id === 'a')).toBeDefined() // last good scene preserved
+    expect(binding.__telemetry.skippedEmptyApply).toBeGreaterThanOrEqual(1)
+  })
+})
+
 // remote apply runs restore(remote) → reconcile(local, remote) → updateScene instead of pushing
 // raw Y.Doc elements straight to the canvas (which painted them as points/handles). Without an
 // adapter the default raw path is unchanged — that is the path every test above exercises.

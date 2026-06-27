@@ -267,6 +267,18 @@ export class ExcalidrawYjsBinding {
 
   /** Rebuild the scene from the authoritative Y.Doc state and resync the snapshot (guard 4). */
   private applyRemote(): void {
+    // H1 (XIN-85 / reopen-empty): never push an empty scene. A non-local empty transaction — a
+    // spurious clear, a foreign key-delete, or an observe firing before any element is present —
+    // would otherwise reach updateScene([]) and wipe a canvas the local mirror just seeded, which
+    // is the reopen-replays-empty symptom. Deletions in this binding are tombstones (the key, and
+    // so `elements.size`, is retained), so a genuine "all deleted" state never hits size 0; size 0
+    // means there is simply nothing authoritative to render. Mirrors the `size > 0` guard `setApi`
+    // already applies before calling applyRemote (see above).
+    if (this.elements.size === 0) {
+      this.telemetry.skippedEmptyApply++
+      return
+    }
+
     const fileIds = new Set<string>(this.files.keys() as Iterable<string>)
     // Merge-time repair pass (selection B): normalize the rebuilt scene for local render only —
     // dangling boundElements / frameId pruned, unrenderable + dangling-image elements dropped.

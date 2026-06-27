@@ -31,6 +31,8 @@ export interface BindingTelemetry {
   skippedOwnOrigin: number
   /** Incoming elements rejected by CAS as stale (lower/equal version). */
   casRejected: number
+  /** Remote applies skipped because the doc held no elements (size>0 guard; never push []). */
+  skippedEmptyApply: number
 }
 
 export function emptyTelemetry(): BindingTelemetry {
@@ -43,6 +45,7 @@ export function emptyTelemetry(): BindingTelemetry {
     skippedApplyingRemote: 0,
     skippedOwnOrigin: 0,
     casRejected: 0,
+    skippedEmptyApply: 0,
   }
 }
 
