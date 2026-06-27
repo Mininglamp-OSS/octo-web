@@ -299,6 +299,11 @@ describe('DocsHome navigation (split-pane)', () => {
     const wk = createMockWKApp()
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
+      // List rows from a backend that doesn't echo docType (the common legacy case). The
+      // per-doc GET (/docs/d_a) resolves the authoritative kind — here a plain document.
+      if (method === 'get' && url === '/docs/d_a') {
+        return { data: { docId: 'd_a', title: 'Doc A', role: 'admin', docType: 'doc' }, status: 200 }
+      }
       if (method === 'get' && url.startsWith('/docs')) {
         return {
           data: {
@@ -316,8 +321,8 @@ describe('DocsHome navigation (split-pane)', () => {
 
     fireEvent.click(screen.getByText('Doc A'))
 
-    // Editor mounts inline; list (Doc A) stays resident.
-    expect(screen.getByTestId('editor-shell')).toBeTruthy()
+    // Unknown kind -> resolved via getDoc (async) -> rich-text editor mounts inline; list stays.
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
     expect(screen.getByTestId('editor-doc').textContent).toBe('d_a')
     expect(screen.getByText('Doc A')).toBeTruthy()
     expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_a' })
@@ -665,5 +670,109 @@ describe('DocsHome — production (routeRight) editor has no header back button 
     expect(pushed.props.docId).toBe('d_persist')
     expect(pushed.props.onBack).toBeUndefined()
     expect(typeof pushed.props.onExit).toBe('function')
+  })
+})
+
+// Opening a list item must pick the right shell for EVERY member, not just the board's creator.
+// The M2 routing bug: board-kind detection fell back to a creator-local localStorage registry, so
+// a NON-creator (whose registry is empty) opening a shared board whose list row carried no
+// docType landed in the rich-text editor (canvas=0). Fix: when the kind is unknown, openDoc
+// resolves the authoritative docType from the per-doc GET (/docs/{id}) before choosing a shell.
+describe('DocsHome — list-open shell selection by docType (XIN-58)', () => {
+  // Build a DocsHome wired to a single list item + a per-doc GET, recording every request so a
+  // test can assert whether the authoritative kind lookup (GET /docs/{id}) was made.
+  function renderWithDoc(opts: {
+    listDocType?: string // docType the list API echoes for the row (undefined = omitted)
+    metaDocType?: string // docType the per-doc GET returns (undefined = omitted/legacy)
+    metaThrows?: boolean // simulate the per-doc GET failing
+  }): { calls: Array<{ method: string; url: string }> } {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url === '/docs/d_x') {
+        if (opts.metaThrows) throw new Error('per-doc GET failed')
+        return {
+          data: { docId: 'd_x', title: 'Shared X', role: 'admin', docType: opts.metaDocType },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              { docId: 'd_x', title: 'Shared X', ownerId: 'u_owner', role: 'admin', docType: opts.listDocType },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    return { calls }
+  }
+
+  it('docType=board from the list opens the board shell directly (no per-doc lookup)', async () => {
+    const { calls } = renderWithDoc({ listDocType: 'board' })
+    await waitFor(() => expect(screen.getByText('Shared X')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Shared X'))
+
+    await waitFor(() => expect(screen.getByTestId('board-shell')).toBeTruthy())
+    expect(screen.getByTestId('board-doc').textContent).toBe('d_x')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // The kind was already known — no authoritative round-trip needed.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/d_x')).toBe(false)
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'd_x',
+      docType: 'board',
+    })
+  })
+
+  it('docType=doc from the list opens the rich-text editor directly (no per-doc lookup)', async () => {
+    const { calls } = renderWithDoc({ listDocType: 'doc' })
+    await waitFor(() => expect(screen.getByText('Shared X')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Shared X'))
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(screen.getByTestId('editor-doc').textContent).toBe('d_x')
+    expect(screen.queryByTestId('board-shell')).toBeNull()
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/d_x')).toBe(false)
+  })
+
+  it('unknown kind (list omits docType, non-creator) resolves a board via getDoc → board shell', async () => {
+    // The core regression: registry is empty (non-creator) and the list row has no docType, yet
+    // the per-doc GET says board — so the board shell must open, NOT the rich-text editor.
+    const { calls } = renderWithDoc({ listDocType: undefined, metaDocType: 'board' })
+    await waitFor(() => expect(screen.getByText('Shared X')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Shared X'))
+
+    await waitFor(() => expect(screen.getByTestId('board-shell')).toBeTruthy())
+    expect(screen.getByTestId('board-doc').textContent).toBe('d_x')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // The authoritative kind was fetched because the list row didn't carry it.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/d_x')).toBe(true)
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'd_x',
+      docType: 'board',
+    })
+  })
+
+  it('unknown kind resolving to a non-board (or a failed lookup) opens the rich-text editor', async () => {
+    // getDoc that doesn't confirm a board → safe default to the editor (legacy docs).
+    const { calls } = renderWithDoc({ listDocType: undefined, metaThrows: true })
+    await waitFor(() => expect(screen.getByText('Shared X')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Shared X'))
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(screen.getByTestId('editor-doc').textContent).toBe('d_x')
+    expect(screen.queryByTestId('board-shell')).toBeNull()
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/d_x')).toBe(true)
   })
 })
