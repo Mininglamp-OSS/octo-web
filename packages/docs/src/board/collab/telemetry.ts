@@ -39,6 +39,12 @@ export interface BindingTelemetry {
    * (XIN-96). Growth here on (re)entry is expected; it should stay flat during steady editing.
    */
   skippedReinitDrop: number
+  /**
+   * Times a reinit onChange (cold reopen / reconnect / remount) dropped preserved remote elements
+   * and the binding repainted the authoritative doc back onto the canvas so they paint again
+   * (XIN-98 — the render half of the XIN-96 preserve). Each repaint also advances `remoteApplies`.
+   */
+  reinitRepaints: number
 }
 
 export function emptyTelemetry(): BindingTelemetry {
@@ -53,6 +59,7 @@ export function emptyTelemetry(): BindingTelemetry {
     casRejected: 0,
     skippedEmptyApply: 0,
     skippedReinitDrop: 0,
+    reinitRepaints: 0,
   }
 }
 

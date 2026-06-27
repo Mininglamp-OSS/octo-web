@@ -166,6 +166,41 @@ describe('ExcalidrawYjsBinding', () => {
     expect(binding.__telemetry.skippedReinitDrop).toBeGreaterThanOrEqual(1)
   })
 
+  it('XIN-98: a reinit onChange that drops a preserved remote element repaints it back onto the canvas', () => {
+    // The render half of XIN-96. A remote element syncs in and renders; XIN-96 keeps it in the doc
+    // when a reinit onChange reports it absent — but the data surviving is not enough: on a real
+    // reconnect / cold reopen the canvas was just repainted WITHOUT it, so it is visually gone. The
+    // drop arrived on a LOCAL onChange (no Y.Doc change), so no observe→applyRemote follows; the
+    // binding must repaint the authoritative doc itself or the element never paints back.
+    const peer = new Y.Doc()
+    const remote = new ExcalidrawYjsBinding(peer, { api: new FakeExcalidrawApi() })
+    remote.handleLocalChange([makeEl('r', { x: 7, version: 1 })])
+    syncDocs(peer, doc, 'remote') // → applyRemote on `binding`; 'r' painted onto the canvas
+    expect(api.scene.find((e) => e.id === 'r')).toBeDefined()
+
+    const repaintsBefore = binding.__telemetry.reinitRepaints
+    // Model the real canvas reinit: Excalidraw mounts a fresh scene WITHOUT the remote element and
+    // fires the onChange that reports it absent.
+    api.scene = []
+    binding.handleLocalChange([])
+
+    // The element is repainted back from the authoritative doc — visually restored, not just kept.
+    expect(api.scene.find((e) => e.id === 'r')).toBeDefined()
+    expect(binding.__telemetry.reinitRepaints).toBe(repaintsBefore + 1)
+    // And it was NOT tombstoned in the process (the XIN-96 data layer still holds).
+    expect(readElement(elsOf(doc).get('r')!).isDeleted).toBeFalsy()
+  })
+
+  it('XIN-98: a genuine local delete does NOT trigger a reinit repaint (scope guard)', () => {
+    // The repaint must fire ONLY for preserved remote drops, never for a real user delete — a delete
+    // is tombstoned and converges over the wire; repainting it back would resurrect deleted shapes.
+    binding.handleLocalChange([makeEl('a', { version: 1 })]) // locally authored
+    const repaintsBefore = binding.__telemetry.reinitRepaints
+    binding.handleLocalChange([]) // user deletes it → tombstone, not a reinit drop
+    expect(binding.__telemetry.reinitRepaints).toBe(repaintsBefore) // no repaint
+    expect(readElement(elsOf(doc).get('a')!).isDeleted).toBe(true) // tombstoned as before
+  })
+
   it('T7: a stale local edit (lower version than the doc) is rejected by CAS', () => {
     // doc advanced to v5 by a remote write
     const peer = new Y.Doc()

@@ -221,6 +221,7 @@ export class ExcalidrawYjsBinding {
     // synthesise a tombstone for an element the user actually authored on this canvas; preserve a
     // remote-rendered element that merely vanished from a reinitialising onChange (the local-write
     // twin of the H1 empty-apply guard).
+    let reinitDropped = 0
     for (const [id, prev] of this.lastKnown) {
       if (!nextSnapshot.has(id) && !prev.isDeleted) {
         if (this.locallyAuthored.has(id)) {
@@ -235,6 +236,7 @@ export class ExcalidrawYjsBinding {
           // Not the user's delete — a scene reinit dropped a remote element. Keep it so the next
           // diff still knows the canvas holds it and the synced scene survives.
           this.telemetry.skippedReinitDrop++
+          reinitDropped++
           nextSnapshot.set(id, prev)
         }
       }
@@ -245,6 +247,10 @@ export class ExcalidrawYjsBinding {
     if (changed.length === 0 && fileEntries.length === 0) {
       this.telemetry.skippedEmptyDiff++
       this.lastKnown = nextSnapshot
+      // The render half (XIN-98): even with no write, if this reinit onChange dropped preserved
+      // remote elements, the canvas was just repainted WITHOUT them — repaint from the doc so the
+      // restored elements actually paint back.
+      this.repaintAfterReinitDrop(reinitDropped)
       return
     }
 
@@ -284,6 +290,26 @@ export class ExcalidrawYjsBinding {
       this.telemetry.skippedEmptyDiff++
     }
     this.lastKnown = nextSnapshot
+    // Render half (XIN-98): a reinit onChange may both carry genuine local edits AND drop preserved
+    // remote elements. Repaint after the snapshot is set so the dropped-but-preserved elements come
+    // back on the canvas (the write above already covers the user's own edits).
+    this.repaintAfterReinitDrop(reinitDropped)
+  }
+
+  /**
+   * Render half of the XIN-96 reinit-preserve (XIN-98). When a scene-reinit onChange — a reconnect,
+   * a cold reopen, or a remount — drops remote-rendered elements we chose to PRESERVE rather than
+   * tombstone, the Y.Doc still holds them but the canvas was just repainted WITHOUT them: the data
+   * is intact yet the elements are visually gone. Nothing else fixes this, because the drop arrived
+   * on a LOCAL onChange (not a Y.Doc change), so no observe→applyRemote follows. Push the
+   * authoritative doc back through the render contract so the preserved elements actually paint
+   * again. Guard 3 (`applyingRemote`) short-circuits the onChange this updateScene triggers, so the
+   * repaint cannot loop back into a write.
+   */
+  private repaintAfterReinitDrop(count: number): void {
+    if (count === 0 || !this.api || this.destroyed) return
+    this.telemetry.reinitRepaints++
+    this.applyRemote()
   }
 
   // ── Y.Doc → canvas ─────────────────────────────────────────────────────────────────────────
