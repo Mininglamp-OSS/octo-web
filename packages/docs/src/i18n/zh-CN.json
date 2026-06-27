@@ -4,8 +4,18 @@
   },
   "list": {
     "new": "新建文档",
+    "newMenu": "新建",
+    "newDocument": "新建文档",
+    "newBoard": "新建画板",
+    "newSheet": "新建表格",
+    "comingSoon": "即将上线",
+    "kindDoc": "文档",
+    "kindBoard": "画板",
     "back": "全部文档",
     "updatedAt": "更新于"
+  },
+  "board": {
+    "readOnly": "只读"
   },
   "doc": {
     "deleteEntry": "删除文档",

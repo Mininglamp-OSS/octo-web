@@ -105,7 +105,7 @@ export function exportDownloadName(title: string | null | undefined): string {
  * users it is click-to-edit: Enter / blur commits via PATCH /docs/{docId}; Esc cancels.
  * Read-only users see a plain heading.
  */
-function DocTitle({
+export function DocTitle({
   docId,
   initialTitle,
   canEdit,

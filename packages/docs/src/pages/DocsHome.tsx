@@ -2,8 +2,11 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { getWKApp, getRouteRight, onSpaceChanged, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
+import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
+import { BoardShell } from '../board/BoardShell.tsx'
+import { isBoardDoc, isBoardIdLocally, rememberBoard } from '../board/boardStore.ts'
 import '../editor/styles.css'
 import {
   DEFAULT_DOC_SPACE,
@@ -22,6 +25,8 @@ export interface DocTarget {
   folder: string
   doc: string
   docId: string
+  /** `'board'` opens the whiteboard shell; anything else (incl. absent) opens the rich-text editor. */
+  docType?: string
 }
 
 /**
@@ -88,12 +93,12 @@ function PortalMenu({
 const TARGET_STORAGE_KEY = DOC_TARGET_STORAGE_KEY
 
 /** Mirror the active doc target to sessionStorage so it survives the host's query-wiping. */
-function persistDocTarget(target: { space: string; folder: string; doc: string }): void {
+function persistDocTarget(target: { space: string; folder: string; doc: string; docType?: string }): void {
   if (typeof window === 'undefined') return
   try {
     window.sessionStorage.setItem(
       TARGET_STORAGE_KEY,
-      JSON.stringify({ space: target.space, folder: target.folder, doc: target.doc }),
+      JSON.stringify({ space: target.space, folder: target.folder, doc: target.doc, docType: target.docType }),
     )
   } catch {
     // sessionStorage unavailable (private mode / disabled): the deep-link still opens on
@@ -125,6 +130,14 @@ function readDocTarget(): DocTarget | null {
         typeof parsed.folder === 'string' && parsed.folder ? parsed.folder : DEFAULT_DOC_FOLDER,
       doc: parsed.doc,
       docId: parsed.doc,
+      // Trust a stored docType; otherwise fall back to the local board registry so a refresh
+      // re-opens a board as a board even if the mirror predates the docType field.
+      docType:
+        typeof parsed.docType === 'string' && parsed.docType
+          ? parsed.docType
+          : isBoardIdLocally(parsed.doc)
+            ? 'board'
+            : undefined,
     }
   } catch {
     return null
@@ -159,9 +172,12 @@ export function resolveDocTarget(search: string): DocTarget | null {
   }
 
   // 1. Deep-link via query. Persist it so the editor stays addressable after the host's
-  //    pathname-only re-push wipes `?doc=` (the second-blocker root cause).
+  //    pathname-only re-push wipes `?doc=` (the second-blocker root cause). Addressing stays a
+  //    single `?doc=` param (three-party-fixed), so the kind is resolved from the local board
+  //    registry rather than a separate query param.
   if (queryDoc) {
-    const target: DocTarget = { space, folder, doc: queryDoc, docId: queryDoc }
+    const docType = isBoardIdLocally(queryDoc) ? 'board' : undefined
+    const target: DocTarget = { space, folder, doc: queryDoc, docId: queryDoc, docType }
     persistDocTarget(target)
     return target
   }
@@ -215,6 +231,31 @@ function mirrorListToUrl(): void {
   } catch {
     // ignore
   }
+}
+
+/** Document row glyph (sheet of paper with lines) — the existing Docs list icon. */
+function DocRowIcon(): React.ReactElement {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M4 1.5h5L12.5 5v9a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5Z"
+        stroke="currentColor"
+        strokeWidth="1"
+        fill="none"
+      />
+      <path d="M9 1.5V5h3.5" stroke="currentColor" strokeWidth="1" fill="none" />
+    </svg>
+  )
+}
+
+/** Board row glyph — an Excalidraw-style sketch (overlapping square + circle) to mark whiteboards. */
+function BoardRowIcon(): React.ReactElement {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="2" y="3" width="8" height="7" rx="1" stroke="currentColor" strokeWidth="1" fill="none" />
+      <circle cx="10.5" cy="9.5" r="3" stroke="currentColor" strokeWidth="1" fill="none" />
+    </svg>
+  )
 }
 
 /**
@@ -342,10 +383,14 @@ function DocsList({
         title: docType === 'sheet' ? t('docs.sheet.untitled') : t('docs.state.untitled'),
         spaceId: space || undefined,
         folderId: folder || undefined,
+        // Pass the kind through the docType seam; the backend stamps the new doc accordingly and
+        // the creator becomes admin (AC3). For boards, also record the id locally so a refresh /
+        // deep-link re-opens the whiteboard even if the list response omits docType.
         docType,
       })
+      if (docType === 'board') rememberBoard(created.docId)
       // New docs land in the list; select it inline (right pane opens, list stays).
-      onSelect(created.docId, docType)
+      onSelect(created.docId, created.docType || docType)
       reload()
       setCreating(false)
     } catch {
@@ -459,6 +504,18 @@ function DocsList({
               style={{ display: 'block', width: '100%', textAlign: 'left' }}
               onClick={() => {
                 setNewMenuAt(null)
+                void onCreate('board')
+              }}
+            >
+              ▤ {t('docs.list.newBoard')}
+            </button>
+            <button
+              type="button"
+              className="octo-tb-btn"
+              disabled={creating}
+              style={{ display: 'block', width: '100%', textAlign: 'left' }}
+              onClick={() => {
+                setNewMenuAt(null)
                 void onCreate('sheet')
               }}
             >
@@ -534,6 +591,7 @@ function DocsList({
             const active = d.docId === selectedDocId
             const hasTitle = !!d.title && d.title.trim().length > 0
             const label = hasTitle ? d.title : t('docs.state.untitled')
+            const board = isBoardDoc(d)
             return (
               <li
                 key={d.docId}
@@ -548,19 +606,15 @@ function DocsList({
                     e.preventDefault()
                     setMenu({ docId: d.docId, role: d.role, x: e.clientX, y: e.clientY })
                   }}
-                  onClick={() => onSelect(d.docId, d.docType)}
+                  onClick={() => onSelect(d.docId, board ? 'board' : d.docType)}
                   aria-current={active ? 'true' : undefined}
                 >
-                  <span className="octo-docs-list-row-icon" aria-hidden="true">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path
-                        d="M4 1.5h5L12.5 5v9a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5Z"
-                        stroke="currentColor"
-                        strokeWidth="1"
-                        fill="none"
-                      />
-                      <path d="M9 1.5V5h3.5" stroke="currentColor" strokeWidth="1" fill="none" />
-                    </svg>
+                  <span
+                    className="octo-docs-list-row-icon"
+                    aria-label={board ? t('docs.list.kindBoard') : t('docs.list.kindDoc')}
+                    title={board ? t('docs.list.kindBoard') : t('docs.list.kindDoc')}
+                  >
+                    {board ? <BoardRowIcon /> : <DocRowIcon />}
                   </span>
                   <span className="octo-docs-list-row-text">
                     <span
@@ -697,15 +751,19 @@ export function DocsHome() {
 
   // Initial selection from URL deep-link / persisted target (so a shared `/docs?doc=` or a
   // refresh opens that doc in the right pane on first paint).
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(() => {
-    const initial = resolveDocTarget(
-      typeof window !== 'undefined' ? window.location.search : '',
-    )
-    return initial?.docId ?? null
-  })
-  // Doc type of the open doc ('sheet' -> SheetView, else the Tiptap EditorShell).
-  // Unknown on a deep-link/refresh until resolved via getDoc (see the mount effect).
-  const [selectedDocType, setSelectedDocType] = useState<string | undefined>(undefined)
+  const initialTarget = useRef(
+    resolveDocTarget(typeof window !== 'undefined' ? window.location.search : ''),
+  )
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(
+    () => initialTarget.current?.docId ?? null,
+  )
+  // The kind of the open doc (`'board'` → whiteboard shell, `'sheet'` → SheetView, else rich-text
+  // editor). Tracked alongside the id so the right pane renders the correct shell across deep-link /
+  // refresh. Seeded from the initial target; a deep-link/refresh whose kind is unknown is resolved
+  // via getDoc (see the mount effect).
+  const [selectedDocType, setSelectedDocType] = useState<string | undefined>(
+    () => initialTarget.current?.docType,
+  )
 
   // The host's right (main) route pane. When present (production), the editor is pushed there
   // so it fills the main content area while the list stays in the left route slot — the same
@@ -743,6 +801,7 @@ export function DocsHome() {
 
   const backToList = useCallback(() => {
     setSelectedDocId(null)
+    setSelectedDocType(undefined)
     clearDocTarget()
     mirrorListToUrl()
     if (routeRight) {
@@ -843,8 +902,27 @@ export function DocsHome() {
     [uid, space, folder, names, onTitleSaved, backToList, onDocDeleted, onOpenInNewPage],
   )
 
-  // Choose the right-pane renderer by doc type: a spreadsheet ('sheet') mounts the
-  // collaborative Univer SheetView; everything else uses the Tiptap EditorShell.
+  // Whiteboard counterpart of buildEditor — same lifecycle wiring (exit / rename / delete), but
+  // renders the Excalidraw shell. Used when the selected doc's kind is `'board'`.
+  const buildBoard = useCallback(
+    (docId: string, onBack?: () => void) => (
+      <BoardShell
+        key={docId}
+        docId={docId}
+        title={t('docs.state.untitled')}
+        space={space}
+        onBack={onBack}
+        onExit={backToList}
+        onTitleSaved={onTitleSaved}
+        onDeleted={onDocDeleted}
+      />
+    ),
+    [space, onTitleSaved, backToList, onDocDeleted],
+  )
+
+  // Choose the right-pane renderer by doc type: a spreadsheet ('sheet') mounts the collaborative
+  // Univer SheetView; a whiteboard ('board') mounts the Excalidraw shell; everything else (incl.
+  // unknown/absent kind) uses the Tiptap EditorShell — the safe default for legacy docs.
   const buildRightPane = useCallback(
     (docId: string, docType: string | undefined, onBack?: () => void) => {
       if (docType === 'sheet') {
@@ -863,17 +941,21 @@ export function DocsHome() {
           />
         )
       }
+      if (docType === 'board') {
+        return buildBoard(docId, onBack)
+      }
       return buildEditor(docId, onBack)
     },
-    [uid, space, folder, names, buildEditor],
+    [uid, space, folder, names, onTitleSaved, onDocDeleted, buildBoard, buildEditor],
   )
 
   const openDoc = useCallback(
     (docId: string, docType?: string) => {
       setSelectedDocId(docId)
+      setSelectedDocType(docType)
       // Durable mirror (survives the host's query-wiping re-push) + shareable URL (replaceState,
       // no host re-push) — together neutralizing the `?doc=` strip should-fix.
-      persistDocTarget({ space, folder, doc: docId })
+      persistDocTarget({ space, folder, doc: docId, docType })
       mirrorDocToUrl(docId, space, folder)
       const push = (dt: string | undefined) => {
         setSelectedDocType(dt)
@@ -886,7 +968,7 @@ export function DocsHome() {
         }
       }
       // Type known from the list row → render immediately; otherwise resolve it
-      // (deep-link / created doc) so we pick SheetView vs EditorShell correctly.
+      // (deep-link / created doc) so we pick SheetView vs BoardShell vs EditorShell correctly.
       if (docType !== undefined) push(docType)
       else void getDoc(docId).then((m) => push(m.docType)).catch(() => push(undefined))
     },
@@ -895,9 +977,9 @@ export function DocsHome() {
 
   // On mount, ALWAYS occupy the right pane so the host chat placeholder never shows through
   // (the contentRight race). If a doc is pre-selected (deep-link / persisted target) push the
-  // editor; otherwise push the docs empty state. Either way the routeRight queue is non-empty
-  // from first paint, so entering /docs is deterministically full-width docs — never the
-  // intermittent chat-placeholder regression.
+  // editor/board; otherwise push the docs empty state. Either way the routeRight queue is
+  // non-empty from first paint, so entering /docs is deterministically full-width docs — never
+  // the intermittent chat-placeholder regression.
   useEffect(() => {
     if (!routeRight) return
     if (selectedDocId) {

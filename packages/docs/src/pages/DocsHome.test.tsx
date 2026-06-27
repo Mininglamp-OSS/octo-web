@@ -33,6 +33,16 @@ vi.mock('../editor/EditorShell.tsx', () => ({
   ),
 }))
 
+// Replace the whiteboard shell (which lazy-loads the heavy Excalidraw chunk + a canvas) with a
+// marker so the board-create / board-open flows are testable in jsdom without Excalidraw.
+vi.mock('../board/BoardShell.tsx', () => ({
+  BoardShell: (props: { docId: string }) => (
+    <div data-testid="board-shell">
+      <span data-testid="board-doc">{props.docId}</span>
+    </div>
+  ),
+}))
+
 const TARGET_KEY = 'octo.docs.target'
 
 let assignSpy: ReturnType<typeof vi.fn>
@@ -41,6 +51,7 @@ const realLocation = window.location
 
 beforeEach(() => {
   window.sessionStorage.clear()
+  window.localStorage.clear()
   // jsdom's window.location.assign is non-configurable and throws "Not implemented" on call.
   // Swap in a minimal stub exposing only what DocsHome touches (search + assign) so the
   // open / back navigations are observable without a real page load.
@@ -232,6 +243,56 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(assignSpy).not.toHaveBeenCalled()
     expect(replaceStateSpy).toHaveBeenCalled()
     expect(String(replaceStateSpy.mock.calls.at(-1)![2])).toContain('doc=d_new')
+  })
+
+  it('creates a board via the New dropdown and opens it in the board shell', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = (method, url, body) => {
+      calls.push({ method, url, body })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      if (method === 'post' && url === '/docs') {
+        return {
+          data: {
+            docId: 'b_new',
+            documentName: 'doc:b_new',
+            title: '',
+            spaceId: 'demo',
+            folderId: 'f_default',
+            ownerId: 'u_self',
+            role: 'admin',
+            docType: 'board',
+          },
+          status: 201,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+
+    // Open the split "New" dropdown and choose "New board".
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newBoard'))
+
+    // The board (not the rich-text editor) opens inline.
+    await waitFor(() => expect(screen.getByTestId('board-shell')).toBeTruthy())
+    expect(screen.getByTestId('board-doc').textContent).toBe('b_new')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+
+    // createDoc was sent with the board kind through the docType seam.
+    const create = calls.find((c) => c.method === 'post' && c.url === '/docs')
+    expect((create?.body as { docType?: string })?.docType).toBe('board')
+
+    // Selection persisted with its kind so a refresh re-opens the board shell.
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'b_new',
+      docType: 'board',
+    })
   })
 
   it('opens an existing document inline in the right pane and marks it active', async () => {

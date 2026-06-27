@@ -75,3 +75,6 @@ docs/superpowers/plans/
 grp_out.txt
 .cctmp/
 .codegraph/
+
+# docs standalone dev build output
+packages/docs/dev-dist/

@@ -2096,6 +2096,76 @@
   line-height: 1;
   font-weight: 600;
 }
+
+/* ── New entry: split / dropdown button (whiteboard v1, frontend-design §4.1) ──
+   Primary action (left) creates a document; the caret (right) opens a small menu to choose
+   Document / Board, with a reserved disabled Sheet row. Built on the existing .octo-docs-list-new
+   primary-button styling so it stays visually consistent with the old single button. */
+.octo-docs-new-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+/* Seam the two halves: square the inner edges, keep a hairline divider between them. */
+.octo-docs-new-primary {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.octo-docs-new-caret {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding-left: 6px;
+  padding-right: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
+}
+.octo-docs-new-caret svg {
+  display: block;
+}
+.octo-docs-new-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 1000;
+  min-width: 180px;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+}
+.octo-docs-new-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--octo-fg, #1f2329);
+  cursor: pointer;
+}
+.octo-docs-new-menu-item:hover:not(:disabled) {
+  background: var(--octo-hover-bg, #f2f3f5);
+}
+.octo-docs-new-menu-item:disabled {
+  color: var(--octo-fg-3, #86909c);
+  cursor: default;
+}
+.octo-docs-new-menu-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--octo-fg-3, #86909c);
+}
+.octo-docs-new-menu-soon {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--octo-fg-3, #86909c);
+}
 .octo-docs-list-items {
   list-style: none;
   margin: 0;

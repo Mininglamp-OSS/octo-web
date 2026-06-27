@@ -4,8 +4,18 @@
   },
   "list": {
     "new": "New document",
+    "newMenu": "New",
+    "newDocument": "New document",
+    "newBoard": "New board",
+    "newSheet": "New sheet",
+    "comingSoon": "Coming soon",
+    "kindDoc": "Document",
+    "kindBoard": "Board",
     "back": "All documents",
     "updatedAt": "Updated"
+  },
+  "board": {
+    "readOnly": "Read-only"
   },
   "doc": {
     "deleteEntry": "Delete document",

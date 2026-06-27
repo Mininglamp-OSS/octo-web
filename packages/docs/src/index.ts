@@ -7,6 +7,7 @@
 export { DocsModule } from './module.tsx'
 export { EditorShell } from './editor/EditorShell.tsx'
 export { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn, withReturnSid } from './pages/StandaloneDocPage.tsx'
+export { BoardShell } from './board/BoardShell.tsx'
 export { buildDocumentName, parseDocumentName } from './documentName/index.ts'
 export { COLLAB_FIELD, SCHEMA_VERSION } from './schema/index.ts'
 export type { Role } from './auth/roles.ts'
