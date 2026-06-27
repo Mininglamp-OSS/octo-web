@@ -549,4 +549,15 @@ describe("ConversationVM message ordering", () => {
         expect(pending.status).toBe(MessageStatus.Normal)
         expect(vm.messagesOfOrigin.map((m: any) => m.clientMsgNo)).toContain("malformed")
     })
+
+    it("updates reply content without throwing when messages hold a malformed text message (#465)", () => {
+        const vm = new ConversationVM(channel)
+        // content 整体缺失的畸形文本消息：旧逻辑会在 message.content.reply 处崩溃
+        const malformed = wrap({ clientMsgNo: "malformed", messageSeq: 1, timestamp: 100, contentType: 1 })
+        const replyMsg = wrap({ clientMsgNo: "reply", messageSeq: 2, timestamp: 200, contentType: 1, content: { reply: { messageID: "m1", content: "old" } } })
+        vm.messages = [malformed, replyMsg]
+
+        expect(() => vm.updateReplyMessageContent({ messageID: "m1", contentEdit: "edited" } as any)).not.toThrow()
+        expect(replyMsg.content.reply.content).toBe("edited")
+    })
 })

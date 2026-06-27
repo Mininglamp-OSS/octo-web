@@ -1318,7 +1318,8 @@ export default class ConversationVM extends ProviderListener {
         }
         for (let i = this.messages.length - 1; i >= 0; i--) {
             const message = this.messages[i]
-            if (message.content.reply === undefined) {
+            // 防御畸形消息：content 可能整体缺失（#465 保留了此类消息），用可选链避免读取 undefined.reply 崩溃。
+            if (message.content?.reply === undefined) {
                 continue
             }
             if (message.content.reply.messageID && message.content.reply.messageID === extra.messageID) {
