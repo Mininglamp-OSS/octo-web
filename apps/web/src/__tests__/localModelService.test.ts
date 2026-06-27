@@ -1,13 +1,13 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
+import LocalModelService, {
+  normalizeEndpoint,
+} from "@octo/base/src/Service/LocalModelService";
+
 // Must mock VoiceService to avoid importing APIClient transitively
 vi.mock("@octo/base/src/Service/APIClient", () => ({
   default: { shared: { get: vi.fn(), post: vi.fn(), config: { apiURL: "" } } },
 }));
-
-import LocalModelService, {
-  normalizeEndpoint,
-} from "@octo/base/src/Service/LocalModelService";
 
 describe("LocalModelService", () => {
   let service: typeof LocalModelService.shared;

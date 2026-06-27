@@ -2,6 +2,38 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import React, { Component } from 'react';
 import { act, render } from '@testing-library/react';
 
+// Import SUT after the mock is declared.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import type { UserInfoRouter } from '../../../../../packages/dmworkbase/src/Components/WKBase/userInfoRouter';
+import {
+    createUserInfoRouter,
+    UserInfoDispatch,
+} from '../../../../../packages/dmworkbase/src/Components/WKBase/userInfoRouter';
+
+// ---------------------------------------------------------------------------
+// round-4 blocker: external-viewer gate for bot routing.
+//
+// When UserInfoVM.isExternalToViewer would return true for a bot (cross-space
+// external group click), the router MUST demote isBot=false so the caller
+// keeps using the UserInfo path — UserInfo.getBottomPanel then renders the
+// existing "仅可在群内交流" hint. Without this demotion, a bot in an
+// external group would open BotDetailModal (which decides 发送消息 / 添加好友
+// from follow state alone) and bypass the UI guard.
+//
+// Tests below construct UserInfoRouter directly (not via createUserInfoRouter)
+// so a stub ExternalViewerGate can be injected without importing WKApp /
+// resolveExternalForViewer — that dependency chain belongs to WKBase, not
+// this helper. The host component records the last dispatch's isBot flag so
+// we can assert "bot demoted → user route" regardless of rendering details.
+// ---------------------------------------------------------------------------
+
+import {
+    ExternalViewerGate,
+    UserInfoRouter as UserInfoRouterClass,
+    ChannelManagerLike,
+} from '../../../../../packages/dmworkbase/src/Components/WKBase/userInfoRouter';
+import { Channel as ChannelCtor } from 'wukongimjssdk';
+
 /**
  * Integration tests for the production routing + stale-guard used by
  * WKBase.showUserInfo (GH Mininglamp-OSS/octo-web#1112, PR#1113).
@@ -70,14 +102,6 @@ vi.mock('wukongimjssdk', () => {
         ChannelTypePerson: 1,
     };
 });
-
-// Import SUT after the mock is declared.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type { UserInfoRouter } from '../../../../../packages/dmworkbase/src/Components/WKBase/userInfoRouter';
-import {
-    createUserInfoRouter,
-    UserInfoDispatch,
-} from '../../../../../packages/dmworkbase/src/Components/WKBase/userInfoRouter';
 
 /**
  * Host component that wires the production router exactly the way WKBase does:
@@ -277,30 +301,6 @@ describe('WKBase.showUserInfo production helper: routing + stale-guard (GH#1112)
         errSpy.mockRestore();
     });
 });
-
-// ---------------------------------------------------------------------------
-// round-4 blocker: external-viewer gate for bot routing.
-//
-// When UserInfoVM.isExternalToViewer would return true for a bot (cross-space
-// external group click), the router MUST demote isBot=false so the caller
-// keeps using the UserInfo path — UserInfo.getBottomPanel then renders the
-// existing "仅可在群内交流" hint. Without this demotion, a bot in an
-// external group would open BotDetailModal (which decides 发送消息 / 添加好友
-// from follow state alone) and bypass the UI guard.
-//
-// Tests below construct UserInfoRouter directly (not via createUserInfoRouter)
-// so a stub ExternalViewerGate can be injected without importing WKApp /
-// resolveExternalForViewer — that dependency chain belongs to WKBase, not
-// this helper. The host component records the last dispatch's isBot flag so
-// we can assert "bot demoted → user route" regardless of rendering details.
-// ---------------------------------------------------------------------------
-
-import {
-    ExternalViewerGate,
-    UserInfoRouter as UserInfoRouterClass,
-    ChannelManagerLike,
-} from '../../../../../packages/dmworkbase/src/Components/WKBase/userInfoRouter';
-import { Channel as ChannelCtor } from 'wukongimjssdk';
 
 interface GatedHostState {
     modal: 'none' | 'bot' | 'user';

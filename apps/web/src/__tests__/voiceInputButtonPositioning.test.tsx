@@ -2,6 +2,8 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render } from "@testing-library/react";
 import React, { useRef } from "react";
 
+import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
+
 const mockUseTextareaVoice = vi.fn();
 vi.mock("@octo/base/src/Components/VoiceInputButton/useTextareaVoice", () => ({
   default: (opts: unknown) => mockUseTextareaVoice(opts),
@@ -22,8 +24,6 @@ vi.mock("@douyinfe/semi-ui", () => ({
     Item: vi.fn(({ children }: any) => children),
   }),
 }));
-
-import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 
 function createMockReturn(overrides = {}) {
   return {

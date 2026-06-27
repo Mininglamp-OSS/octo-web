@@ -1,5 +1,15 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
+import WKApp from "@octo/base/src/App";
+import { getSpaceSetting } from "@octo/base/src/Service/SpaceSettingService";
+import {
+  ensureVoiceFeedbackLoaded,
+  fetchAndApplySpaceSetting,
+  getSharedSpaceFeedbackState,
+  resetSharedSpaceSetting,
+  setSharedSpaceSetting,
+} from "@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting";
+
 vi.mock("@octo/base/src/App", () => ({
   default: {
     shared: {
@@ -21,16 +31,6 @@ const mockGetConfig = vi.fn();
 vi.mock("@octo/base/src/Service/VoiceService", () => ({
   default: { shared: { getConfig: () => mockGetConfig() } },
 }));
-
-import WKApp from "@octo/base/src/App";
-import { getSpaceSetting } from "@octo/base/src/Service/SpaceSettingService";
-import {
-  ensureVoiceFeedbackLoaded,
-  fetchAndApplySpaceSetting,
-  getSharedSpaceFeedbackState,
-  resetSharedSpaceSetting,
-  setSharedSpaceSetting,
-} from "@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting";
 
 const mockGetSpaceSetting = vi.mocked(getSpaceSetting);
 

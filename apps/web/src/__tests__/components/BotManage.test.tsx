@@ -19,6 +19,10 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
+import BotManageMenu from '../../../../../packages/dmworkbase/src/Components/BotManage/BotManageMenu';
+import MentionFreeList from '../../../../../packages/dmworkbase/src/Components/BotManage/MentionFreeList';
+import { MentionFreeVM } from '../../../../../packages/dmworkbase/src/Components/BotManage/vm';
+
 const mocks = vi.hoisted(() => ({
     apiGet: vi.fn(),
     apiPut: vi.fn(),
@@ -89,10 +93,6 @@ vi.mock('../../../../../packages/dmworkbase/src/i18n', async () => {
         useI18n: () => ({ t: translate }),
     };
 });
-
-import BotManageMenu from '../../../../../packages/dmworkbase/src/Components/BotManage/BotManageMenu';
-import MentionFreeList from '../../../../../packages/dmworkbase/src/Components/BotManage/MentionFreeList';
-import { MentionFreeVM } from '../../../../../packages/dmworkbase/src/Components/BotManage/vm';
 
 beforeEach(() => {
     vi.clearAllMocks();

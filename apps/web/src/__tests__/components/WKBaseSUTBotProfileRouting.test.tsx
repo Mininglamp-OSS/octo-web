@@ -2,6 +2,12 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import React from 'react';
 import { act, render } from '@testing-library/react';
 
+// Import the real WKBase after the mocks are hoisted. This must come after
+// every vi.mock() above or the real deps would be evaluated first.
+import WKBase, {
+    WKBaseContext,
+} from '../../../../../packages/dmworkbase/src/Components/WKBase';
+
 /**
  * Round-3 regression tests for PR#1113.
  *
@@ -194,12 +200,6 @@ vi.mock(
         default: () => <div data-testid="conv-select-stub" />,
     }),
 );
-
-// Import the real WKBase after the mocks are hoisted. This must come after
-// every vi.mock() above or the real deps would be evaluated first.
-import WKBase, {
-    WKBaseContext,
-} from '../../../../../packages/dmworkbase/src/Components/WKBase';
 
 // Small harness that hands the WKBase context to the test so it can drive
 // showUserInfo without needing to synthesise click events on stubbed children.

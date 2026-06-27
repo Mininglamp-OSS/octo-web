@@ -2,6 +2,9 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, act } from "@testing-library/react";
 import React, { useRef, useState } from "react";
 
+import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
+import type { ReplaceMode } from "@octo/base/src/Components/VoiceInputButton";
+
 // Mock useVoiceInput
 let capturedOnTranscribed: ((text: string) => void) | undefined;
 let capturedStartRecording: ReturnType<typeof vi.fn>;
@@ -37,9 +40,6 @@ vi.mock("@douyinfe/semi-ui", () => ({
     Item: vi.fn(({ children }: any) => children),
   }),
 }));
-
-import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
-import type { ReplaceMode } from "@octo/base/src/Components/VoiceInputButton";
 
 function TextareaWithVoice() {
   const [value, setValue] = useState("hello world");

@@ -2,6 +2,9 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import React from "react";
 
+import VoiceInputIndicator from "@octo/base/src/Components/MessageInput/VoiceInputIndicator";
+import { Toast } from "@douyinfe/semi-ui";
+
 // Mock useVoiceInput hook
 const mockUseVoiceInput = vi.fn();
 vi.mock("@octo/base/src/Components/MessageInput/useVoiceInput", () => ({
@@ -61,9 +64,6 @@ vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => 
   getSharedSpaceFeedbackState: () => mockSharedSpaceFeedbackState,
   getSharedVoiceConfig: () => mockVoiceConfig.current,
 }));
-
-import VoiceInputIndicator from "@octo/base/src/Components/MessageInput/VoiceInputIndicator";
-import { Toast } from "@douyinfe/semi-ui";
 
 // Reset shared feedback state before each test
 beforeEach(() => {

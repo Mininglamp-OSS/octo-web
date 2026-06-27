@@ -1,6 +1,11 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
+import WKApp from "@octo/base/src/App";
+import VoiceService from "@octo/base/src/Service/VoiceService";
+import LocalModelService from "@octo/base/src/Service/LocalModelService";
+import useVoiceInput from "@octo/base/src/Components/MessageInput/useVoiceInput";
+
 const { mockOnTranscribeResult, mockLocalTranscribe } = vi.hoisted(() => ({
   mockOnTranscribeResult: vi.fn(),
   mockLocalTranscribe: vi.fn(),
@@ -70,11 +75,6 @@ vi.mock(
     subscribe: vi.fn(() => vi.fn()),
   }),
 );
-
-import WKApp from "@octo/base/src/App";
-import VoiceService from "@octo/base/src/Service/VoiceService";
-import LocalModelService from "@octo/base/src/Service/LocalModelService";
-import useVoiceInput from "@octo/base/src/Components/MessageInput/useVoiceInput";
 
 // Mock MediaRecorder
 class MockMediaRecorder {
