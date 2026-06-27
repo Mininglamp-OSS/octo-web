@@ -15,7 +15,8 @@
     "updatedAt": "Updated"
   },
   "board": {
-    "readOnly": "Read-only"
+    "readOnly": "Read-only",
+    "untitled": "Untitled board"
   },
   "doc": {
     "deleteEntry": "Delete document",

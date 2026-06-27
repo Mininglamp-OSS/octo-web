@@ -288,6 +288,9 @@ describe('DocsHome navigation (split-pane)', () => {
     const create = calls.find((c) => c.method === 'post' && c.url === '/docs')
     expect((create?.body as { docType?: string })?.docType).toBe('board')
 
+    // A new board defaults to the board-specific title, not the document fallback.
+    expect((create?.body as { title?: string })?.title).toBe('docs.board.untitled')
+
     // Selection persisted with its kind so a refresh re-opens the board shell.
     expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
       doc: 'b_new',

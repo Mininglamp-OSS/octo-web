@@ -15,7 +15,8 @@
     "updatedAt": "更新于"
   },
   "board": {
-    "readOnly": "只读"
+    "readOnly": "只读",
+    "untitled": "未命名画板"
   },
   "doc": {
     "deleteEntry": "删除文档",
