@@ -110,6 +110,15 @@ export class ExcalidrawYjsBinding {
   /** Attach (or replace) the imperative Excalidraw API once the canvas has mounted. */
   setApi(api: ExcalidrawBindingAPI | null): void {
     this.api = api
+    // The canvas mounts asynchronously (BoardShell dynamic-imports Excalidraw), so by the time the
+    // api attaches the provider — and the IndexedDB cache — have very likely ALREADY synced remote
+    // state into the Y.Doc. Every applyRemote() that ran while `this.api` was null was a silent
+    // no-op (`this.api?.updateScene`), and guard 4 then resynced the snapshot to that state, so no
+    // later observe event will re-push it. Replay the current doc onto the freshly-attached canvas
+    // so B catches up the state it received before it had somewhere to draw it (XIN-85). Guarded on
+    // a non-empty doc so a fresh board that only holds local `initialData` is not wiped to empty
+    // before its first onChange seeds the doc.
+    if (api && !this.destroyed && this.elements.size > 0) this.applyRemote()
   }
 
   /** Update local presence (selection/cursor). Never touches the Y.Doc (XIN-16 §7). */
@@ -223,7 +232,11 @@ export class ExcalidrawYjsBinding {
     const elements = repairForRender(readAllElements(this.elements), fileIds)
     this.applyingRemote = true
     try {
-      this.api?.updateScene({ elements, captureUpdate: 'never' })
+      // `captureUpdate: 'NEVER'` mirrors Excalidraw's `CaptureUpdateAction.NEVER` (the value is the
+      // literal "NEVER", uppercase) so a remote/repair apply does NOT land on this user's local undo
+      // stack (M-9). A lowercase 'never' is not a recognised CaptureUpdateActionType and silently
+      // falls back to capturing the apply into history.
+      this.api?.updateScene({ elements, captureUpdate: 'NEVER' })
     } finally {
       this.applyingRemote = false
     }
