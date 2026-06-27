@@ -16,6 +16,8 @@ import { getDoc } from '../pages/docsApi.ts'
 import type { Role } from '../auth/roles.ts'
 import { i18n, t } from '../octoweb/index.ts'
 import { loadBoardScene, persistBoardScene, clearBoardScene, type BoardScene } from './boardStore.ts'
+import type { WhiteboardSession } from './collab/index.ts'
+import type { ExcalidrawElement, BinaryFileData } from './collab/index.ts'
 import '../editor/styles.css'
 import './board.css'
 
@@ -33,6 +35,8 @@ type ExcalidrawChange = (
 interface ExcalidrawProps {
   initialData?: { elements?: unknown[]; appState?: Record<string, unknown>; files?: Record<string, unknown>; scrollToContent?: boolean } | null
   onChange?: ExcalidrawChange
+  /** Imperative API handle (M2 binding drives remote→updateScene through it). */
+  excalidrawAPI?: (api: unknown) => void
   viewModeEnabled?: boolean
   theme?: 'light' | 'dark'
   langCode?: string
@@ -56,6 +60,13 @@ export interface BoardShellProps {
   onTitleSaved?: (docId: string, title: string) => void
   /** Called after a successful delete so the list refreshes and the open board closes. */
   onDeleted?: (docId: string) => void
+  /**
+   * M2 collaborative session. When supplied, the board binds to the shared Y.Doc: local edits
+   * flow through the binding (CAS + anti-loop guards) and remote/agent writes render via
+   * `updateScene`. When omitted (M1 standalone / no backend), the board keeps the local-only
+   * persistence path below. The caller owns the session lifecycle (create/destroy).
+   */
+  collabSession?: WhiteboardSession | null
 }
 
 /** Map the app locale (`zh-CN` / `en-US`) to an Excalidraw langCode (`zh-CN` / `en`). */
@@ -109,7 +120,7 @@ class BoardErrorBoundary extends Component<{ children: ReactNode }, { error: Err
  * save will hook into in M2.
  */
 export function BoardShell(props: BoardShellProps): ReactElement {
-  const { docId, title, onBack, onExit, onTitleSaved, onDeleted } = props
+  const { docId, title, onBack, onExit, onTitleSaved, onDeleted, collabSession } = props
 
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
   const [failed, setFailed] = useState(false)
@@ -190,6 +201,15 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const onChange = useCallback<ExcalidrawChange>(
     (elements, appState, files) => {
       if (readOnly) return // never persist from a read-only session
+      // M2: when bound to a collab session, route the edit through the binding (diff → CAS →
+      // Y.Doc under LOCAL_ORIGIN; the binding's guards stop a remote apply from echoing back).
+      if (collabSession) {
+        collabSession.binding.handleLocalChange(
+          elements as readonly ExcalidrawElement[],
+          files as Record<string, BinaryFileData>,
+        )
+      }
+      // Local mirror stays as the offline-first fallback (boardStore §M1↔M2 seam).
       latestScene.current = { elements: [...elements], appState, files }
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = setTimeout(() => {
@@ -197,7 +217,16 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         if (latestScene.current) persistBoardScene(docId, latestScene.current)
       }, SAVE_DEBOUNCE_MS)
     },
-    [docId, readOnly],
+    [docId, readOnly, collabSession],
+  )
+
+  // M2: hand the imperative Excalidraw API to the binding so remote/agent writes can render via
+  // updateScene. No-op in the M1 standalone path (no session).
+  const handleApi = useCallback(
+    (api: unknown) => {
+      collabSession?.binding.setApi(api as Parameters<WhiteboardSession['binding']['setApi']>[0])
+    },
+    [collabSession],
   )
 
   // Flush any pending save when the board unmounts (switching docs / leaving) and when the tab is
@@ -286,6 +315,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
                 scrollToContent: true,
               }}
               onChange={onChange}
+              excalidrawAPI={handleApi}
               viewModeEnabled={readOnly}
               theme={dark ? 'dark' : 'light'}
               langCode={langCode}

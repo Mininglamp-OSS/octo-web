@@ -46,6 +46,19 @@ export function buildDocumentName(space: string, folder: string, doc: string): s
 }
 
 /**
+ * Build the canonical 5-segment whiteboard key `octo:{space}:{folder}:wb:{board}` (XIN-16 §3.1).
+ * Routed through the same `assertSegment` validation as documents so a `:wb:` key is equally safe
+ * from forged-segment injection — the single build path the whiteboard schema seam delegates to
+ * (no inline `octo:` concatenation elsewhere, per this module's contract).
+ */
+export function buildWhiteboardName(space: string, folder: string, board: string): string {
+  assertSegment(space, 'space')
+  assertSegment(folder, 'folder')
+  assertSegment(board, 'board')
+  return `octo:${space}:${folder}:wb:${board}`
+}
+
+/**
  * Parse a documentName using the non-symmetric rule: a 5-segment key whose 4th
  * segment is the literal `wb` is a whiteboard key; otherwise it must be exactly a
  * 4-segment document key. The whiteboard branch is parsed correctly but no

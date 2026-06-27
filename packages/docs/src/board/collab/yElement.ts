@@ -1,0 +1,100 @@
+// Element ⇆ per-element Y.Map conversion (XIN-16 §1: field-level CRDT).
+//
+// Each element is stored as its OWN `Y.Map<field, value>` inside the top-level `Y.Map('elements')`
+// (key = element id). Storing fields individually — rather than the whole element as one opaque
+// value — is the necessary and sufficient layout for "two peers edit different fields of the same
+// element" to merge losslessly (XIN-16 §1.2), and it lets the server repair rewrite a single
+// field with a diff-empty check.
+//
+// Unknown-field passthrough (XIN-16 §6 / M-12): we copy *every* own field of the element into the
+// Y.Map and read *every* key back out. We never enumerate a known-field allowlist, so a field a
+// newer client invents survives a round-trip through an older client untouched.
+
+import * as Y from 'yjs'
+import type { ExcalidrawElement, Json } from './types.ts'
+
+/** Deep structural equality for JSON-ish element field values (used by the field-level diff). */
+export function jsonEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== typeof b) return false
+  if (a === null || b === null) return false
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) if (!jsonEqual(a[i], b[i])) return false
+    return true
+  }
+  if (typeof a === 'object' && typeof b === 'object') {
+    const ak = Object.keys(a as object)
+    const bk = Object.keys(b as object)
+    if (ak.length !== bk.length) return false
+    for (const k of ak) {
+      if (!Object.prototype.hasOwnProperty.call(b, k)) return false
+      if (!jsonEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k])) return false
+    }
+    return true
+  }
+  return false
+}
+
+/** Read a per-element Y.Map back into a plain element object (all fields, unknown included). */
+export function readElement(yEl: Y.Map<unknown>): ExcalidrawElement {
+  const out: Record<string, unknown> = {}
+  yEl.forEach((value, key) => {
+    out[key] = value
+  })
+  return out as unknown as ExcalidrawElement
+}
+
+/** Read every element out of the top-level elements map (insertion order is irrelevant — z-order
+ *  comes from the `index` field, XIN-16 §1.1). */
+export function readAllElements(elements: Y.Map<Y.Map<unknown>>): ExcalidrawElement[] {
+  const out: ExcalidrawElement[] = []
+  elements.forEach((yEl) => {
+    out.push(readElement(yEl))
+  })
+  return out
+}
+
+/**
+ * Apply a plain element onto its per-element Y.Map FIELD BY FIELD, writing only the fields that
+ * actually changed (the diff-empty guard's per-field arithmetic). Returns the number of mutated
+ * fields so the caller can tell whether the transaction did anything at all.
+ *
+ * MUST be called inside a `ydoc.transact(fn, origin)` so the origin guard works.
+ */
+export function writeElementFields(yEl: Y.Map<unknown>, el: ExcalidrawElement): number {
+  let mutations = 0
+  const seen = new Set<string>()
+  // Upsert changed / new fields.
+  for (const key of Object.keys(el)) {
+    const next = (el as Record<string, unknown>)[key]
+    if (next === undefined) continue
+    seen.add(key)
+    if (!yEl.has(key) || !jsonEqual(yEl.get(key), next)) {
+      yEl.set(key, next as Json)
+      mutations++
+    }
+  }
+  // Drop fields that disappeared from the element (e.g. a binding cleared to undefined).
+  for (const key of [...yEl.keys()]) {
+    if (!seen.has(key)) {
+      yEl.delete(key)
+      mutations++
+    }
+  }
+  return mutations
+}
+
+/**
+ * Create or update an element inside the elements map, field-level. Returns true if any field was
+ * written (so the caller knows a transaction was produced). The per-element Y.Map is created
+ * lazily on first write.
+ */
+export function upsertElement(elements: Y.Map<Y.Map<unknown>>, el: ExcalidrawElement): boolean {
+  let yEl = elements.get(el.id)
+  if (!yEl) {
+    yEl = new Y.Map<unknown>()
+    elements.set(el.id, yEl)
+  }
+  return writeElementFields(yEl, el) > 0
+}
