@@ -63,6 +63,31 @@ const mockCreateResp: IncomingWebhookCreateResp = {
         github: "/v1/incoming-webhooks/iwh_becd9cdbeda34190a91339757d64c184/sample-token-storybook-only/github",
         wecom: "/v1/incoming-webhooks/iwh_becd9cdbeda34190a91339757d64c184/sample-token-storybook-only/wecom",
     },
+    // octo-server #475：服务端下发本地化「更多适配器」示例（native/wecom 不在其中）。
+    adapter_examples: [
+        {
+            key: "github",
+            title: "GitHub 事件",
+            description: "把下面的 Payload URL 登记到仓库 Webhook 设置，无需 curl。",
+            url: "/v1/incoming-webhooks/iwh_becd9cdbeda34190a91339757d64c184/sample-token-storybook-only/github",
+            content_type: "application/json",
+            auth: { type: "url_token" },
+            steps: [
+                "进入仓库 → Settings → Webhooks → Add webhook",
+                "把 Payload URL 填入，Content type 选择 application/json",
+                "勾选需要接收的事件（如 push、pull_request），保存",
+            ],
+        },
+        {
+            key: "gitlab",
+            title: "GitLab 事件",
+            description: "在 GitLab 项目 Settings → Webhooks 填入该地址。",
+            url: "/v1/incoming-webhooks/iwh_becd9cdbeda34190a91339757d64c184/sample-token-storybook-only/gitlab",
+            content_type: "application/json",
+            auth: { type: "url_token_and_header", header: "X-Gitlab-Token", value_source: "token" },
+            steps: ["进入项目 → Settings → Webhooks", "填入 URL，并把 Secret token 设为下面的 token", "勾选事件后保存"],
+        },
+    ],
 };
 
 function installMock(list: IncomingWebhook[] = mockList) {

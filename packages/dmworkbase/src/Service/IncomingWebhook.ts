@@ -64,11 +64,50 @@ export interface IncomingWebhookUrls {
     multica?: string;
 }
 
+/**
+ * 适配器接入示例的鉴权说明（octo-server #475）。
+ * - `url_token`：token 已在 URL 中，无需额外 header。
+ * - `url_token_and_header`：URL 带 token，另需在目标平台填一个 header（如 GitLab 的
+ *   `X-Gitlab-Token`）。`value_source = "token"` 表示该 header 的值就是本次响应的 token。
+ */
+export interface IncomingWebhookAdapterAuth {
+    type: string;
+    /** 需要额外 header 时的 header 名（如 `X-Gitlab-Token`）；服务端下发，前端不写死。 */
+    header?: string;
+    /** header 值来源；目前为 `"token"`（取本次响应的明文 token）。 */
+    value_source?: string;
+}
+
+/**
+ * 「更多适配器」接入示例（octo-server #475，仅 create/regenerate 响应返回）。
+ *
+ * 文案（title/description/steps）由服务端按语言协商本地化，前端直接渲染、不再写死；
+ * `key` 刻意用开放 `string`：后端将来新增适配器时前端无需发版即可兼容渲染。
+ * `url` 为相对路径（不含 host），前端按既有逻辑拼接 base（见 {@link buildWebhookAdapterExamples}）。
+ */
+export interface IncomingWebhookAdapterExample {
+    key: string;
+    title: string;
+    description: string;
+    /** 相对路径，不含 host */
+    url: string;
+    content_type: string;
+    auth: IncomingWebhookAdapterAuth;
+    /** 已是分步数组，前端按列表展示，不需自行按换行拆分 */
+    steps: string[];
+}
+
 /** 创建 / 重置 token 的响应。明文 token 与推送 URL 仅此一次返回。 */
 export interface IncomingWebhookCreateResp extends IncomingWebhook {
     token: string;
     url: string;
     urls?: IncomingWebhookUrls;
+    /**
+     * 「更多适配器」本地化接入示例（octo-server #475）。仅 create/regenerate 返回，
+     * list 不回显；老后端（#475 之前）不返回此键（undefined），调用方需有兜底渲染。
+     * native 不在其中（它是默认推送地址，单独在顶部展示）。
+     */
+    adapter_examples?: IncomingWebhookAdapterExample[];
 }
 
 /** 创建 / 更新请求体。留空字段不要传（成员传 avatar 会被服务端 400 拒绝）。 */
@@ -341,6 +380,55 @@ export function buildWebhookUrlRows(
         { key: "multica", labelKey: "channelWebhook.url.multica", url: abs(resp.urls?.multica) },
     ];
     return rows.filter((row) => !!row.url);
+}
+
+/** 「更多适配器」示例卡片的展示行（URL 已拼成可复制的绝对地址）。 */
+export interface WebhookAdapterExampleRow {
+    key: string;
+    title: string;
+    description: string;
+    /** 经短别名改写 + base 拼接后的展示绝对地址（不可复制项已被过滤） */
+    url: string;
+    contentType: string;
+    auth: IncomingWebhookAdapterAuth;
+    steps: string[];
+}
+
+/**
+ * 由 create/regenerate 响应的 `adapter_examples` 构造「更多适配器」展示行（纯函数，便于单测）。
+ *
+ * 与 {@link buildWebhookUrlRows} 共用同一套 URL 处理：相对 `url` 先经 {@link toShortWebhookAlias}
+ * 改写成短别名（octo-web #452），再用 {@link buildIncomingWebhookUrl} 拼 base。
+ *
+ * 健壮性（信任边界：响应是外部数据）：
+ * - 缺失 / 空数组 → 返回 `[]`（老后端 #475 之前不下发该字段，调用方据此走兜底渲染）；
+ * - 跳过无 `key` 或拼接后 URL 为空的条目（无可复制地址的卡片无意义）；
+ * - 文案 trim，steps 丢空行；`auth` 缺省兜底为 `{ type: "" }`。
+ * - 不对 `key` 做白名单过滤：未知适配器同样渲染，后端新增适配器时前端无需发版。
+ */
+export function buildWebhookAdapterExamples(
+    resp: Pick<IncomingWebhookCreateResp, "adapter_examples">,
+    apiURL: string,
+    origin: string
+): WebhookAdapterExampleRow[] {
+    const examples = resp.adapter_examples;
+    if (!Array.isArray(examples) || examples.length === 0) return [];
+    return examples
+        .filter((ex): ex is IncomingWebhookAdapterExample => !!ex && typeof ex.key === "string" && ex.key.length > 0)
+        .map((ex) => ({
+            key: ex.key,
+            title: (ex.title || "").trim(),
+            description: (ex.description || "").trim(),
+            url: ex.url
+                ? buildIncomingWebhookUrl(toShortWebhookAlias(ex.url), apiURL || "/", origin)
+                : "",
+            contentType: ex.content_type || "",
+            auth: ex.auth || { type: "" },
+            steps: Array.isArray(ex.steps)
+                ? ex.steps.map((s) => (s ?? "").trim()).filter((s) => s.length > 0)
+                : [],
+        }))
+        .filter((row) => !!row.url);
 }
 
 /** push 消息 payload 里的发送者展示身份（DeliveredMessagePayload.from） */

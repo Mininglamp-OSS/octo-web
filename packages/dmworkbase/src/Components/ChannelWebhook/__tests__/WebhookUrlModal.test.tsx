@@ -123,7 +123,8 @@ describe('WebhookUrlModal renderExample branch mapping', () => {
       '.wk-webhook-url__more-toggle'
     );
     expect(toggle).not.toBeNull();
-    expect(toggle!.textContent).toContain('1');
+    // 折叠按钮展示适配器短名（此处只折叠了 github → "GitHub"）。
+    expect(toggle!.textContent).toContain('GitHub');
     // 折叠态下 github 地址不在文档里。
     expect(container.textContent).not.toContain('/tok/github');
   });
@@ -213,8 +214,10 @@ describe('WebhookUrlModal extra adapters collapse', () => {
       '.wk-webhook-url__more-toggle'
     );
     expect(toggle).not.toBeNull();
-    // 折叠按钮带折叠适配器数量（github/gitlab/feishu/multica = 4）。
-    expect(toggle!.textContent).toContain('4');
+    // 折叠按钮展示适配器短名；4 个未超上限 4 → 全列出、不加「等」。
+    expect(toggle!.textContent).toContain('GitHub');
+    expect(toggle!.textContent).toContain('Multica');
+    expect(toggle!.textContent).not.toContain('等');
     // 折叠态下这些地址都不应出现在文档里。
     expect(container.textContent).not.toContain('/tok/github');
     expect(container.textContent).not.toContain('/tok/gitlab');
@@ -263,5 +266,148 @@ describe('WebhookUrlModal extra adapters collapse', () => {
     expect(gitlabGroup!.querySelector('.wk-webhook-url__steps')).toBeNull();
     // 应展示该适配器的说明文案。
     expect(gitlabGroup!.querySelector('.wk-webhook-url__example-note')).not.toBeNull();
+  });
+});
+
+// resp 带服务端下发的 adapter_examples（octo-server #475）：「更多适配器」改由它驱动，
+// 文案/steps/header 名均来自响应，不再走写死 i18n。
+const respWithExamples: any = {
+  url: '/v1/incoming-webhooks/iwh_test/tok',
+  token: 'tok',
+  urls: {
+    native: '/v1/incoming-webhooks/iwh_test/tok',
+    wecom: '/v1/incoming-webhooks/iwh_test/tok/wecom',
+  },
+  adapter_examples: [
+    {
+      key: 'github',
+      title: 'GitHub 事件 SRV',
+      description: 'desc-github-srv',
+      url: '/v1/incoming-webhooks/iwh_test/tok/github',
+      content_type: 'application/json',
+      auth: { type: 'url_token' },
+      steps: ['gh-s1', 'gh-s2', 'gh-s3'],
+    },
+    {
+      key: 'gitlab',
+      title: 'GitLab 事件 SRV',
+      description: 'desc-gitlab-srv',
+      url: '/v1/incoming-webhooks/iwh_test/tok/gitlab',
+      content_type: 'application/json',
+      auth: { type: 'url_token_and_header', header: 'X-Gitlab-Token', value_source: 'token' },
+      steps: ['gl-s1', 'gl-s2'],
+    },
+    // wecom 被后端纳入示例，但前端按 Option A 仍作核心 curl 卡片，应从「更多适配器」过滤掉。
+    {
+      key: 'wecom',
+      title: 'WeCom SRV',
+      description: 'desc-wecom-srv',
+      url: '/v1/incoming-webhooks/iwh_test/tok/wecom',
+      content_type: 'application/json',
+      auth: { type: 'url_token' },
+      steps: ['wc-s1'],
+    },
+  ],
+};
+
+describe('WebhookUrlModal server-driven adapter examples (#475)', () => {
+  it('drives the more-adapters region from adapter_examples; wecom stays a core curl (Option A)', async () => {
+    await render(respWithExamples);
+    // 核心区仍是 native + wecom 两组（wecom 不进「更多适配器」）。
+    expect(
+      container.querySelectorAll('.wk-webhook-url__example-group')
+    ).toHaveLength(2);
+    const toggle = container.querySelector<HTMLButtonElement>(
+      '.wk-webhook-url__more-toggle'
+    );
+    // 折叠按钮列出适配器短名（服务端示例去掉 wecom → GitHub、GitLab，2 个未超上限不加「等」）。
+    expect(toggle!.textContent).toContain('GitHub');
+    expect(toggle!.textContent).toContain('GitLab');
+    expect(toggle!.textContent).not.toContain('等');
+    // 折叠态下服务端示例文案不在 DOM。
+    expect(container.textContent).not.toContain('desc-github-srv');
+  });
+
+  it('renders server title/description/steps + GitLab header+token hint after expand', async () => {
+    await render(respWithExamples);
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>('.wk-webhook-url__more-toggle')!
+        .click();
+    });
+    await flush();
+
+    // 2 核心 + 2 服务端 = 4 组。
+    expect(
+      container.querySelectorAll('.wk-webhook-url__example-group')
+    ).toHaveLength(4);
+
+    // 文案来自服务端，且 steps 按数组渲染（github 3 步）。
+    expect(container.textContent).toContain('GitHub 事件 SRV');
+    expect(container.textContent).toContain('desc-github-srv');
+    const groups = Array.from(
+      container.querySelectorAll<HTMLElement>('.wk-webhook-url__example-group')
+    );
+    const githubGroup = groups.find((g) =>
+      (g.querySelector('code.wk-webhook-url__value')?.textContent || '').includes('/tok/github')
+    )!;
+    expect(githubGroup.querySelector('pre.wk-webhook-url__example-code')).toBeNull();
+    // 步骤默认收起：先只看到「接入步骤」折叠按钮，<ol> 不在 DOM。
+    expect(githubGroup.querySelector('.wk-webhook-url__steps')).toBeNull();
+    const stepsToggle = githubGroup.querySelector<HTMLButtonElement>(
+      '.wk-webhook-url__steps-toggle'
+    )!;
+    expect(stepsToggle).not.toBeNull();
+    // 展开该卡片步骤后，按服务端数组渲染（github 3 步）。
+    act(() => { stepsToggle.click(); });
+    await flush();
+    expect(githubGroup.querySelectorAll('.wk-webhook-url__steps > li')).toHaveLength(3);
+
+    // GitLab：渲染服务端给的 header 名 + 可复制的 token（前端不写死 X-Gitlab-Token）。
+    const gitlabGroup = groups.find((g) =>
+      (g.querySelector('code.wk-webhook-url__value')?.textContent || '').includes('/tok/gitlab')
+    )!;
+    expect(gitlabGroup.querySelector('.wk-webhook-url__auth-hint')).not.toBeNull();
+    expect(gitlabGroup.textContent).toContain('X-Gitlab-Token');
+    const codes = Array.from(
+      gitlabGroup.querySelectorAll<HTMLElement>('code.wk-webhook-url__value')
+    ).map((c) => c.textContent);
+    expect(codes).toContain('tok');
+  });
+
+  it('still renders native/wecom as core curls (server examples do not replace them)', async () => {
+    await render(respWithExamples);
+    const pres = Array.from(
+      container.querySelectorAll<HTMLPreElement>('pre.wk-webhook-url__example-code')
+    );
+    expect(pres.find((p) => /"content"/.test(p.textContent || ''))).toBeTruthy();
+    expect(pres.find((p) => /msgtype/.test(p.textContent || ''))).toBeTruthy();
+  });
+
+  it('truncates the teaser with 等 only when foldable adapters exceed the cap (>4)', async () => {
+    // 5 个可折叠适配器（含 1 个未知 key）→ 列前 4 个短名 + 「等」。
+    const mk = (key: string) => ({
+      key,
+      title: `${key} 事件 SRV`,
+      description: `desc-${key}`,
+      url: `/v1/incoming-webhooks/iwh_test/tok/${key}`,
+      content_type: 'application/json',
+      auth: { type: 'url_token' },
+      steps: [`${key}-s1`],
+    });
+    const resp5: any = {
+      url: '/v1/incoming-webhooks/iwh_test/tok',
+      token: 'tok',
+      urls: { native: '/v1/incoming-webhooks/iwh_test/tok' },
+      adapter_examples: ['github', 'gitlab', 'feishu', 'multica', 'slack'].map(mk),
+    };
+    await render(resp5);
+    const toggle = container.querySelector<HTMLButtonElement>(
+      '.wk-webhook-url__more-toggle'
+    )!;
+    // 已知 key 用短名（飞书），未知 key（slack）被「等」收口、不出现在 teaser。
+    expect(toggle.textContent).toContain('飞书');
+    expect(toggle.textContent).toContain('等');
+    expect(toggle.textContent).not.toContain('slack');
   });
 });

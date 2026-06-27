@@ -360,6 +360,44 @@
   transform: rotate(180deg);
 }
 
+/* 「更多适配器」区每个适配器做成独立卡片：边框 + 留白把彼此分开，避免糊成一片文字墙。
+   核心区（native/wecom）的 curl 用 <pre> 已自带底框，故卡片样式只作用于折叠区。 */
+.wk-webhook-url__more .wk-webhook-url__example-group {
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default, rgba(28, 28, 35, 0.12));
+  border-radius: var(--wk-r-md, 8px);
+  background: var(--wk-bg-secondary, rgba(28, 28, 35, 0.02));
+}
+
+/* 卡片内「接入步骤」二级折叠：默认收起，按需展开，压低默认高度。 */
+.wk-webhook-url__steps-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+}
+
+.wk-webhook-url__steps-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-secondary);
+}
+
+.wk-webhook-url__steps-icon {
+  transition: transform 0.15s ease;
+}
+
+.wk-webhook-url__steps-icon--open {
+  transform: rotate(180deg);
+}
+
 .wk-webhook-url__warning {
   display: flex;
   align-items: flex-start;
@@ -480,4 +518,11 @@
   font-size: var(--wk-text-size-xs);
   color: var(--wk-text-secondary);
   line-height: var(--wk-leading-normal);
+}
+
+/* 鉴权提示（如 GitLab：在平台 Secret token 处填本次响应的 token） */
+.wk-webhook-url__auth-hint {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
 }
