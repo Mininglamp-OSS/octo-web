@@ -128,7 +128,7 @@ vi.mock("../../../Service/TypingManager", () => ({
     TypingListener: class {},
     TypingManager: { shared: { addTypingListener: () => {}, removeTypingListener: () => {} } },
 }))
-vi.mock("../../../Service/ProhibitwordsService", () => ({ ProhibitwordsService: { shared: { filter: (text: string) => text, getProhibitwords: () => [] } } }))
+vi.mock("../../../Service/ProhibitwordsService", () => ({ ProhibitwordsService: { shared: { filter: (text: unknown) => (typeof text === "string" && text.length > 0 ? text : ""), getProhibitwords: () => [] } } }))
 vi.mock("../../../Service/SpaceService", () => ({ SYSTEM_BOTS: new Set() }))
 vi.mock("../../../Utils/const", () => ({ SuperGroup: 1 }))
 vi.mock("../foldSessionSummary", () => ({ getFoldSessionExpandedMessages: () => [] }))
@@ -156,6 +156,7 @@ function wrap(overrides: Record<string, any>) {
         contentType: overrides.contentType ?? 1,
         status: overrides.status ?? MessageStatus.Normal,
         fromUID: overrides.fromUID || "me",
+        content: overrides.content,
         remoteExtra: {},
     }
     const result: any = {
@@ -171,6 +172,8 @@ function wrap(overrides: Record<string, any>) {
         get contentType() { return message.contentType },
         get status() { return message.status },
         set status(value: number) { message.status = value },
+        get content() { return message.content },
+        set content(value: any) { message.content = value },
         get revoke() { return message.remoteExtra.revoke },
         set revoke(value: boolean) { message.remoteExtra.revoke = value },
         get revoker() { return message.remoteExtra.revoker },
@@ -506,5 +509,44 @@ describe("ConversationVM message ordering", () => {
             expect(vm.renderItems[0].session.userToggled).toBe(true)
             expect(vm.renderItems[0].session.isActive).toBe(true)
         }
+    })
+
+    it("normalizes malformed text messages during refreshMessages without throwing (#465)", () => {
+        const vm = new ConversationVM(channel)
+        // payload.type===1 但 content 缺失：SDK 解出的 content 整体为空
+        const missingContent = wrap({ clientMsgNo: "missing-content", messageSeq: 1, timestamp: 100, contentType: 1 })
+        // payload.type===1 但 content.text 缺失：content 在、text===undefined
+        const undefinedText = wrap({ clientMsgNo: "undefined-text", messageSeq: 2, timestamp: 200, contentType: 1, content: {} })
+
+        expect(() => vm.refreshMessages([missingContent, undefinedText])).not.toThrow()
+        expect(undefinedText.content.text).toBe("")
+    })
+
+    it("appends a new message when origin already holds a malformed text message (#465)", () => {
+        const vm = new ConversationVM(channel)
+        const malformed = wrap({ clientMsgNo: "malformed", messageSeq: 1, timestamp: 100, contentType: 1 })
+        vm.messagesOfOrigin = [malformed]
+        const fresh = wrap({ clientMsgNo: "fresh", messageSeq: 2, timestamp: 200, contentType: 1, content: { text: "hi" }, fromUID: "me" })
+
+        expect(() => vm.appendMessage(fresh)).not.toThrow()
+        expect(vm.messagesOfOrigin.map((m: any) => m.clientMsgNo)).toContain("fresh")
+    })
+
+    it("processes a successful send ack when origin already holds a malformed text message (#465)", () => {
+        const vm = new ConversationVM(channel)
+        const malformed = wrap({ clientMsgNo: "malformed", messageSeq: 1, timestamp: 100, contentType: 1 })
+        const pending = wrap({ clientSeq: 9, clientMsgNo: "pending", order: 1000001, timestamp: 300, status: MessageStatus.Wait, contentType: 1, content: { text: "hi" }, fromUID: "me" })
+        vm.messagesOfOrigin = [malformed, pending]
+        vm.messages = [malformed, pending]
+
+        expect(() => vm.updateMessageStatusBySendAck({
+            clientSeq: 9,
+            messageID: "m102",
+            messageSeq: 102,
+            reasonCode: 1,
+        } as any)).not.toThrow()
+
+        expect(pending.status).toBe(MessageStatus.Normal)
+        expect(vm.messagesOfOrigin.map((m: any) => m.clientMsgNo)).toContain("malformed")
     })
 })

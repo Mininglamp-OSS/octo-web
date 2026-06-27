@@ -1874,7 +1874,11 @@ export default class ConversationVM extends ProviderListener {
         for (let i = 0; i < newMessages.length; i++) {
             const message = newMessages[i]
             if (message.contentType === MessageContentType.text) {
-                message.content.text = ProhibitwordsService.shared.filter(message.content.text)
+                // 防御畸形文本消息：content 整体缺失时跳过，避免读取 undefined.text 崩溃（#465）。
+                const content = message.content
+                if (content) {
+                    content.text = ProhibitwordsService.shared.filter(content.text)
+                }
             }
         }
         this.messages = this.genMessageLinkedData(newMessages)
