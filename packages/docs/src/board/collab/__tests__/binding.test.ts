@@ -68,6 +68,40 @@ describe('ExcalidrawYjsBinding', () => {
     expect(yEl.get('version')).toBe(2)
   })
 
+  it('XIN-80/XIN-93: a multi-tick drag mirroring Excalidraw mutateElement lands real w/h, not 0x0 v2', () => {
+    // Faithful to @excalidraw/excalidraw@0.18.1 `mutateElement`: it mutates the SAME object in
+    // place and runs `element.version++; element.versionNonce = randomInteger()` on EVERY field
+    // change. So a drag-create emits the same reference through onChange at strictly increasing
+    // versions. XIN-93 observed the Y.Doc frozen at "v2 0x0": pre-fix, the first onChange the
+    // binding captured was written, then every later higher-version real-geometry onChange was
+    // diffed away (prev === el → jsonEqual short-circuits). This reproduces that exact drag and
+    // asserts the post-fix Y.Doc holds the final real geometry at the latest version — and, because
+    // version is monotonic per mutateElement, CAS never rejects the later update (no same-version
+    // edge case), so the diff fix alone is sufficient.
+    const live = makeEl('rect', { width: 0, height: 0, version: 1 })
+    const mutate = (updates: Record<string, number>): void => {
+      const obj = live as unknown as Record<string, number>
+      for (const k of Object.keys(updates)) obj[k] = updates[k]
+      obj.version++ // mutateElement bumps version on every change
+      obj.versionNonce = (obj.versionNonce % 9973) + 17 // a fresh nonce each tick (value irrelevant)
+    }
+
+    binding.handleLocalChange([live]) // pointerdown commits the element at 0x0 (v1)
+    mutate({ x: 5 }) // a non-geometry change still bumps the version → first captured state is v2, 0x0
+    binding.handleLocalChange([live])
+    expect(elsOf(doc).get('rect')!.get('width')).toBe(0) // matches XIN-93's "v2 0x0" starting point
+
+    mutate({ width: 40, height: 25 }) // pointermove ticks fill the real size at v3, v4, …
+    binding.handleLocalChange([live])
+    mutate({ width: 160, height: 90 })
+    binding.handleLocalChange([live]) // pointerup: final geometry
+
+    const yEl = elsOf(doc).get('rect')!
+    expect(yEl.get('width')).toBe(160) // final real geometry landed, not the frozen 0x0 v2
+    expect(yEl.get('height')).toBe(90)
+    expect(yEl.get('version')).toBe(4)
+  })
+
   it('T3 / T10: a remote (or agent) write to the Y.Doc renders via updateScene', () => {
     const peer = new Y.Doc()
     const pe = elsOf(peer)
