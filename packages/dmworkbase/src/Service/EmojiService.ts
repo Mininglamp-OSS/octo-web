@@ -24,6 +24,7 @@ export class DefaultEmojiService implements EmojiService {
         ["[使命必达]", "custom_mission"],
         ["[崇尚行动]", "custom_action"],
         ["[有品位]", "custom_taste"],
+        ["[尚方宝剑]", "custom_shangfang"],
         ["😀", "0_0"],
         ["😃", "0_1"],
         ["😄", "0_2"],
