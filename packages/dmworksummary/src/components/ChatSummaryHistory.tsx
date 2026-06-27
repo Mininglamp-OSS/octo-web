@@ -29,6 +29,11 @@ export default class ChatSummaryHistory extends Component<
     private abortController: AbortController | null = null;
     private pollTimer: ReturnType<typeof setInterval> | null = null;
     private isPolling = false;
+    // GH #334: heartbeat coordination with SummaryListPage.
+    // When the main summary list is already polling the same taskIds,
+    // suppress this sidebar poll to avoid duplicate batch-status requests.
+    private lastHeartbeatAt = 0;
+    private heartbeatTaskIds: Set<number> = new Set();
 
     constructor(props: ChatSummaryHistoryProps) {
         super(props);
@@ -39,6 +44,7 @@ export default class ChatSummaryHistory extends Component<
         void this.loadHistory();
         window.addEventListener('chat-summary-created', this.handleChange as EventListener);
         window.addEventListener('chat-summary-deleted', this.handleChange as EventListener);
+        window.addEventListener('summary-batch-heartbeat', this.handleBatchHeartbeat);
     }
 
     componentWillUnmount() {
@@ -46,6 +52,7 @@ export default class ChatSummaryHistory extends Component<
         this.stopPoll();
         window.removeEventListener('chat-summary-created', this.handleChange as EventListener);
         window.removeEventListener('chat-summary-deleted', this.handleChange as EventListener);
+        window.removeEventListener('summary-batch-heartbeat', this.handleBatchHeartbeat);
     }
 
     componentDidUpdate(prevProps: ChatSummaryHistoryProps) {
@@ -93,9 +100,22 @@ export default class ChatSummaryHistory extends Component<
 
     private async doPoll(taskIds: number[]) {
         if (this.isPolling) return;
+        // GH #334: skip poll when another poller (SummaryListPage) already covers
+        // the same taskIds via the heartbeat protocol. Heartbeat expires after 15s
+        // of silence — if the main list unmounts or stops polling, sidebar resumes.
+        if (
+            this.heartbeatTaskIds.size > 0 &&
+            taskIds.some(id => this.heartbeatTaskIds.has(id)) &&
+            Date.now() - this.lastHeartbeatAt < 15000
+        ) {
+            return;
+        }
         this.isPolling = true;
         try {
             const updates = await summaryApi.batchStatus(taskIds);
+            // GH #334: emit heartbeat so SummaryDetailPage can suppress its
+            // fallback poll when the sidebar is actively covering these taskIds.
+            window.dispatchEvent(new CustomEvent('summary-batch-heartbeat', { detail: { taskIds } }));
             const updateMap = new Map(updates.map(u => [u.id, u]));
             let changed = false;
             const newItems = this.state.items.map(item => {
@@ -115,6 +135,15 @@ export default class ChatSummaryHistory extends Component<
             this.isPolling = false;
         }
     }
+
+    // GH #334: heartbeat listener — SummaryListPage emits this after each of its
+    // polls. Record the covered taskIds + timestamp so doPoll can dedup.
+    private handleBatchHeartbeat = (event: Event) => {
+        const detail = (event as CustomEvent).detail;
+        if (!detail?.taskIds) return;
+        this.heartbeatTaskIds = new Set(detail.taskIds as number[]);
+        this.lastHeartbeatAt = Date.now();
+    };
 
     private handleChange = (e: CustomEvent<{ channelId: string }>) => {
         if (e.detail?.channelId === this.props.channel.channelID) {
