@@ -106,6 +106,12 @@ export function normalizeElement(
     if (typeof out.frameId === 'string' && !ctx.elementIds.has(out.frameId)) {
       out.frameId = null
     }
+    // A bound text whose container element was deleted is orphaned: clear the
+    // dangling `containerId` (M-5). Same shape as the `frameId` rule above —
+    // a ref to a non-surviving element is set to null, never deleted.
+    if (typeof out.containerId === 'string' && !ctx.elementIds.has(out.containerId)) {
+      out.containerId = null
+    }
   }
   if (ctx.fileIds && FILE_BEARING_TYPES.has(src.type)) {
     // Image with a dangling file reference is unrenderable -> drop (§2.3).

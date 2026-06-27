@@ -26,6 +26,8 @@ export interface WhiteboardElement {
   boundElements?: Array<{ id: string; type: string }> | null
   /** containing frame element id; cleared if dangling. */
   frameId?: string | null
+  /** container element a bound text belongs to; cleared if dangling (M-5). */
+  containerId?: string | null
   /** unknown / future fields preserved verbatim (§6). */
   [k: string]: unknown
 }

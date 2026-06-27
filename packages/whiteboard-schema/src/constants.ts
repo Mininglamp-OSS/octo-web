@@ -28,8 +28,14 @@ export const FILES_FIELD = 'files'
  * `doc_version.schema_version` for whiteboards gates on this value, never on the
  * PM version. Bump in lockstep with the front-end whenever the element schema /
  * normalize rule set changes.
+ *
+ *   v1 — baseline: id/type validation, version/versionNonce, numeric clamps,
+ *        fractional-index strip, dangling `boundElements` + `frameId` pruning.
+ *   v2 — M-5: dangling `containerId` pruning (orphaned bound-text whose container
+ *        element was deleted -> containerId null), same shape as the v1 frameId
+ *        rule. No new element type; unknown-field passthrough unchanged.
  */
-export const WB_SCHEMA_VERSION = 1
+export const WB_SCHEMA_VERSION = 2
 
 /**
  * Excalidraw element `type` whitelist (v1). An element whose `type` is not in

@@ -22,7 +22,7 @@ describe('shared schema seam', () => {
   })
 
   it('owns a whiteboard schema version independent of the PM docs version', () => {
-    expect(WB_SCHEMA_VERSION).toBe(1)
+    expect(WB_SCHEMA_VERSION).toBe(2)
     expect(WB_ELEMENT_TYPES.has('image')).toBe(true)
     expect(WB_ELEMENT_TYPES.has('arrow')).toBe(true)
   })
@@ -48,5 +48,13 @@ describe('shared schema seam', () => {
   it('normalizeElement drops unrenderable elements (bad id / non-whitelist type)', () => {
     expect(normalizeElement({ id: '', type: 'rectangle' })).toBeNull()
     expect(normalizeElement({ id: 'a', type: 'wormhole' })).toBeNull()
+  })
+
+  it('normalizeElement clears a dangling containerId against the surviving set (M-5, v2)', () => {
+    const ctx = { elementIds: new Set(['box']) }
+    const orphan = normalizeElement({ id: 't', type: 'text', containerId: 'gone' }, ctx)
+    expect(orphan!.containerId).toBeNull()
+    const bound = normalizeElement({ id: 't', type: 'text', containerId: 'box' }, ctx)
+    expect(bound!.containerId).toBe('box')
   })
 })

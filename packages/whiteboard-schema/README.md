@@ -8,7 +8,7 @@ contract (§3): the top-level Y.Doc field names, `WB_SCHEMA_VERSION`, the elemen
 ## Provenance
 
 Vendored **verbatim** from the canonical frozen repo
-`boris-clark/octo-whiteboard-schema` @ **v0.1.0** (`WB_SCHEMA_VERSION = 1`). The
+`boris-clark/octo-whiteboard-schema` @ **v0.2.0** (`WB_SCHEMA_VERSION = 2`). The
 only change from canonical is the internal import-specifier extension
 (`./x.js` → `./x.ts`) to match this repo's bundler/`tsc` resolution; the
 constants, types and rule logic are byte-identical.
@@ -24,6 +24,16 @@ names or rules:
 The only difference between FE and BE is **who writes the normalized result
 back**: the backend repair is the single authoritative writer (§4); the FE only
 normalizes for local render and never writes the repaired result to the Y.Doc.
+
+## Schema version history
+
+- **v1** (`WB_SCHEMA_VERSION = 1`) — baseline: id/type validation,
+  `version`/`versionNonce`, numeric clamps, fractional-index strip, dangling
+  `boundElements` + `frameId` pruning.
+- **v2** (`WB_SCHEMA_VERSION = 2`, M-5) — clears a dangling `containerId` (a bound
+  text whose container element was deleted → `containerId: null`), the same shape
+  as the v1 `frameId` rule. No new element type; unknown-field passthrough
+  unchanged. Released to FE and BE together (freeze policy below).
 
 ## Freeze policy (§3.2)
 
