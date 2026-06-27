@@ -147,6 +147,25 @@ describe('ExcalidrawYjsBinding', () => {
     expect(back.version as number).toBeGreaterThan(1) // version bumped so the delete converges
   })
 
+  it('XIN-96: a remote-rendered element that vanishes from an onChange is NOT tombstoned (reinit, not a delete)', () => {
+    // A remote peer's element syncs in and renders onto the canvas — the binding never saw it as a
+    // local edit (locallyAuthored stays empty), exactly like a cold reopen / reconnect restore.
+    const peer = new Y.Doc()
+    const remote = new ExcalidrawYjsBinding(peer, { api: new FakeExcalidrawApi() })
+    remote.handleLocalChange([makeEl('r', { x: 7, version: 1 })])
+    syncDocs(peer, doc, 'remote') // → observe → applyRemote on `binding`; 'r' is now on the canvas
+    expect(readElement(elsOf(doc).get('r')!).isDeleted).toBeFalsy()
+
+    // The canvas reinitialises (cold reopen / reconnect / remount) and fires an onChange with the
+    // element absent. Excalidraw reports a genuine delete as a PRESENT `isDeleted: true` element
+    // (see T6), so an absent remote element is a reinit — tombstoning it would wipe the synced
+    // scene (the reopen-replays-empty / reconnect-loses-state symptom).
+    binding.handleLocalChange([])
+
+    expect(readElement(elsOf(doc).get('r')!).isDeleted).toBeFalsy() // survived — not wrongly deleted
+    expect(binding.__telemetry.skippedReinitDrop).toBeGreaterThanOrEqual(1)
+  })
+
   it('T7: a stale local edit (lower version than the doc) is rejected by CAS', () => {
     // doc advanced to v5 by a remote write
     const peer = new Y.Doc()

@@ -18,8 +18,8 @@ page.on('console', (m) => {
 page.on('pageerror', (e) => console.log('[pageerror]', e.message))
 
 await page.goto(URL, { waitUntil: 'networkidle' })
-// Wait until all three initial Excalidraw canvases have mounted.
-await page.waitForFunction(() => document.querySelectorAll('.excalidraw').length >= 3, { timeout: 30000 })
+// Wait until all four initial Excalidraw canvases (A, B-fix, B-raw, Recon) have mounted.
+await page.waitForFunction(() => document.querySelectorAll('.excalidraw').length >= 4, { timeout: 30000 })
 await page.waitForTimeout(1500)
 
 // 1) Author the scene on A — flows over the wire to B-fix and is pushed raw to B-raw.
@@ -66,6 +66,46 @@ if (!reopenRect || typeof reopenRect.index !== 'string')
   fail(`Reopen element not restored: ${JSON.stringify(reopenRect)}`)
 await page.screenshot({ path: `${OUT}/03-reopen.png`, fullPage: true })
 
+// 4) Cold reopen (case 7): NEW client, empty local mirror, Y.Doc synced from the server BEFORE the
+//    canvas mounts. The only path to a non-empty canvas is the late setApi/setRenderAdapter replay.
+await page.evaluate(() => window.__smoke.coldSyncThenMount())
+await page.waitForFunction(() => document.querySelectorAll('.excalidraw').length >= 5, { timeout: 30000 })
+await page.waitForTimeout(2000)
+const cold = await page.evaluate(() => window.__smoke.coldScene())
+console.log('Cold-reopen scene count:', cold.length)
+const coldRect = cold.find((e) => e.id === 'rect-1')
+const coldArrow = cold.find((e) => e.id === 'arrow-1')
+if (cold.length < 2) fail(`Cold reopen expected >=2 elements, got ${cold.length} (board replayed empty)`)
+if (!coldRect || coldRect.width !== 220 || coldRect.height !== 130)
+  fail(`Cold reopen rectangle geometry wrong/missing: ${JSON.stringify(coldRect && { w: coldRect.width, h: coldRect.height })}`)
+if (!coldRect || typeof coldRect.index !== 'string' || coldRect.index.length === 0)
+  fail(`Cold reopen element not restored (missing fractional index): ${JSON.stringify(coldRect && coldRect.index)}`)
+if (!coldArrow || !Array.isArray(coldArrow.points) || coldArrow.points.length < 2)
+  fail(`Cold reopen arrow points missing: ${JSON.stringify(coldArrow && coldArrow.points)}`)
+console.log('Cold-reopen rect:', coldRect && { w: coldRect.width, h: coldRect.height, index: coldRect.index })
+await page.screenshot({ path: `${OUT}/04-cold-reopen.png`, fullPage: true })
+
+// 5) Reconnect (case 6): Recon is synced + rendered, the WS drops, A keeps editing (move rect +
+//    add an ellipse), then Recon reconnects and the buffered diff replays. It must converge.
+const reconBefore = await page.evaluate(() => window.__smoke.reconScene())
+console.log('Recon scene count before disconnect:', reconBefore.length)
+if (reconBefore.length < 2) fail(`Recon expected >=2 elements while connected, got ${reconBefore.length}`)
+await page.evaluate(() => window.__smoke.reconDisconnect())
+await page.evaluate(() => window.__smoke.editWhileReconOffline())
+await page.waitForTimeout(800)
+const reconDuring = await page.evaluate(() => window.__smoke.reconScene())
+console.log('Recon scene count while offline (should be stale):', reconDuring.length)
+await page.evaluate(() => window.__smoke.reconReconnect())
+await page.waitForTimeout(1500)
+const reconAfter = await page.evaluate(() => window.__smoke.reconScene())
+const reconRect = reconAfter.find((e) => e.id === 'rect-1')
+const reconEllipse = reconAfter.find((e) => e.id === 'ellipse-1')
+console.log('Recon scene count after reconnect:', reconAfter.length, '| rect at', reconRect && { x: reconRect.x, y: reconRect.y, v: reconRect.version })
+if (!reconEllipse) fail(`Reconnect did not converge: new element 'ellipse-1' missing after re-sync`)
+if (!reconRect || reconRect.x !== 320 || reconRect.y !== 240)
+  fail(`Reconnect did not converge: rect not moved to (320,240): ${JSON.stringify(reconRect && { x: reconRect.x, y: reconRect.y, v: reconRect.version })}`)
+await page.screenshot({ path: `${OUT}/05-reconnect.png`, fullPage: true })
+
 await browser.close()
 if (process.exitCode) console.error('\n=== SMOKE FAILED ===')
-else console.log('\n=== SMOKE PASSED: A→B live full render + incremental + reopen non-empty ===')
+else console.log('\n=== SMOKE PASSED: live + incremental + reopen + cold-reopen + reconnect all converge ===')

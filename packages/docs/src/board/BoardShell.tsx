@@ -312,11 +312,21 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // `initialData` unrestored is why a reopened board replayed empty. Gated on `Excalidraw` so the
   // restore helper (captured in the same import) is present; falls back to raw if unavailable.
   const initialElements = useMemo<unknown[]>(() => {
-    const raw = initialSceneRef.current?.elements ?? []
+    let raw = initialSceneRef.current?.elements ?? []
+    // Cold reopen (XIN-96): a NEW client's local mirror is empty, but the collab provider has
+    // usually synced the existing board into the Y.Doc by the time this heavy Excalidraw chunk
+    // finishes loading. Seed initialData from the Y.Doc so the canvas mounts WITH the synced scene
+    // — otherwise Excalidraw initialises empty, clobbers the binding's setApi replay, and fires a
+    // stale empty onChange, replaying the board empty. (When the doc has not synced yet this is []
+    // and the later observe→applyRemote renders it; that ordering already worked.)
+    if (raw.length === 0 && collabSession?.binding) {
+      const docEls = collabSession.binding.snapshotElements()
+      if (docEls.length > 0) raw = docEls
+    }
     const restore = restoreElementsRef.current
     return restore ? restore(raw, null) : [...raw]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [Excalidraw])
+  }, [Excalidraw, collabSession])
 
   return (
     <div className="octo-doc octo-doc--editor octo-theme octo-board">

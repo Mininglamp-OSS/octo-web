@@ -33,6 +33,12 @@ export interface BindingTelemetry {
   casRejected: number
   /** Remote applies skipped because the doc held no elements (size>0 guard; never push []). */
   skippedEmptyApply: number
+  /**
+   * Vanished elements NOT tombstoned because they were remote-rendered, not user-authored — i.e. a
+   * scene reinit (cold reopen / reconnect / remount) dropped them rather than a user delete
+   * (XIN-96). Growth here on (re)entry is expected; it should stay flat during steady editing.
+   */
+  skippedReinitDrop: number
 }
 
 export function emptyTelemetry(): BindingTelemetry {
@@ -46,6 +52,7 @@ export function emptyTelemetry(): BindingTelemetry {
     skippedOwnOrigin: 0,
     casRejected: 0,
     skippedEmptyApply: 0,
+    skippedReinitDrop: 0,
   }
 }
 

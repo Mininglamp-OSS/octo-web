@@ -110,6 +110,23 @@ function Smoke(): React.ReactElement {
   const bindingR = useRef<ExcalidrawYjsBinding | null>(null)
   const [showReopen, setShowReopen] = useState(false)
 
+  // ── case 7 (cold reopen) — a NEW client whose local mirror is empty: the scene must arrive over
+  //    the wire (server/IndexedDB sync) and, crucially, the Y.Doc is populated BEFORE the canvas
+  //    mounts (the heavy Excalidraw chunk loads slower than the provider syncs an existing board).
+  //    This is the ordering B-fix never exercises (there A seeds AFTER B's canvas + adapter wired).
+  const docCold = useRef(new Y.Doc()).current
+  const bindingCold = useRef<ExcalidrawYjsBinding | null>(null)
+  const apiCold = useRef<{ getSceneElementsIncludingDeleted?: () => readonly ExcalidrawElement[] } | null>(null)
+  const [showCold, setShowCold] = useState(false)
+
+  // ── case 6 (reconnect) — B is synced + rendered, the WS drops, A keeps editing, then B
+  //    reconnects and the buffered updates replay. B must converge to A's latest state.
+  const docRecon = useRef(new Y.Doc()).current
+  const bindingRecon = useRef<ExcalidrawYjsBinding | null>(null)
+  const apiRecon = useRef<{ getSceneElementsIncludingDeleted?: () => readonly ExcalidrawElement[] } | null>(null)
+  const reconConnected = useRef(true)
+  const reconBuffer = useRef<Uint8Array[]>([])
+
   if (!bindingA.current) bindingA.current = new ExcalidrawYjsBinding(docA)
   if (!bindingB.current) {
     bindingB.current = new ExcalidrawYjsBinding(docB)
@@ -121,10 +138,38 @@ function Smoke(): React.ReactElement {
       orig(api as Parameters<typeof orig>[0])
     }
   }
+  // Reconnect peer: a third production binding wired to A through a gateable "connection".
+  if (!bindingRecon.current) {
+    bindingRecon.current = new ExcalidrawYjsBinding(docRecon)
+    const r = bindingRecon.current
+    const orig = r.setApi.bind(r)
+    r.setApi = (api): void => {
+      apiRecon.current = api as typeof apiRecon.current
+      orig(api as Parameters<typeof orig>[0])
+    }
+  }
+  // Cold-reopen peer: constructed eagerly against an EMPTY doc (as production does — the binding is
+  // built with a fresh Y.Doc, then the provider populates it). coldSyncThenMount() applies A's
+  // state into docCold (observe fires on the still-null api → no-op) and only then mounts the board.
+  if (!bindingCold.current) {
+    bindingCold.current = new ExcalidrawYjsBinding(docCold)
+    const c = bindingCold.current
+    const orig = c.setApi.bind(c)
+    c.setApi = (api): void => {
+      apiCold.current = api as typeof apiCold.current
+      orig(api as Parameters<typeof orig>[0])
+    }
+  }
 
   useEffect(() => {
     const onA = (update: Uint8Array, origin: unknown): void => {
       if (origin !== 'wire-b') Y.applyUpdate(docB, update, 'wire-a')
+      // Reconnect peer: deliver while connected, otherwise buffer for replay on reconnect — exactly
+      // what a dropped WS does (the server queues the diff and the provider syncs it on reconnect).
+      if (origin !== 'wire-b') {
+        if (reconConnected.current) Y.applyUpdate(docRecon, update, 'provider')
+        else reconBuffer.current.push(update)
+      }
     }
     const onB = (update: Uint8Array, origin: unknown): void => {
       if (origin !== 'wire-a') Y.applyUpdate(docA, update, 'wire-b')
@@ -135,7 +180,7 @@ function Smoke(): React.ReactElement {
       docA.off('update', onA)
       docB.off('update', onB)
     }
-  }, [docA, docB])
+  }, [docA, docB, docRecon])
 
   useEffect(() => {
     const smoke = {
@@ -174,12 +219,60 @@ function Smoke(): React.ReactElement {
       reopenScene(): ExcalidrawElement[] {
         return [...(apiReopen.current?.getSceneElementsIncludingDeleted?.() ?? [])]
       },
+
+      // ── case 7 (cold reopen): the production ordering B-fix never exercises. A fresh client's
+      //    Y.Doc is synced from the server FIRST (canvas not mounted yet → applyRemote is a no-op
+      //    on the null api), then the heavy Excalidraw chunk mounts and setApi/setRenderAdapter
+      //    must replay the already-synced doc. Local mirror is empty, so initialData is empty too:
+      //    the only path to a non-empty canvas is that replay. We populate docCold from A's current
+      //    state, THEN mount the board.
+      coldSyncThenMount(): void {
+        Y.applyUpdate(docCold, Y.encodeStateAsUpdate(docA), 'provider')
+        setShowCold(true)
+      },
+      coldScene(): ExcalidrawElement[] {
+        return [...(apiCold.current?.getSceneElementsIncludingDeleted?.() ?? [])]
+      },
+
+      // ── case 6 (reconnect) ──────────────────────────────────────────────────────────────────
+      reconDisconnect(): void {
+        reconConnected.current = false
+      },
+      // A makes edits while the recon peer is offline: move the rect (version bump) and add a new
+      // element. These buffer until reconnect.
+      editWhileReconOffline(): void {
+        const [rect, arrow] = rawScene()
+        const moved = { ...rect, x: 320, y: 240, version: 5, versionNonce: 555 } as ExcalidrawElement
+        const added = {
+          ...rect,
+          id: 'ellipse-1',
+          type: 'ellipse',
+          x: 600,
+          y: 120,
+          width: 140,
+          height: 90,
+          version: 1,
+          versionNonce: 777,
+        } as unknown as ExcalidrawElement
+        bindingA.current!.handleLocalChange([moved, arrow, added])
+      },
+      reconReconnect(): void {
+        // Replay every buffered update, then resume live delivery — what the provider does on a
+        // re-established WS.
+        for (const u of reconBuffer.current) Y.applyUpdate(docRecon, u, 'provider')
+        reconBuffer.current = []
+        reconConnected.current = true
+      },
+      reconScene(): ExcalidrawElement[] {
+        return [...(apiRecon.current?.getSceneElementsIncludingDeleted?.() ?? [])]
+      },
     }
     ;(window as unknown as { __smoke: typeof smoke }).__smoke = smoke
   }, [])
 
   const sessionA = { binding: bindingA.current } as unknown as WhiteboardSession
   const sessionB = { binding: bindingB.current } as unknown as WhiteboardSession
+  const sessionRecon = { binding: bindingRecon.current } as unknown as WhiteboardSession
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -206,7 +299,26 @@ function Smoke(): React.ReactElement {
             />
           </div>
         </div>
+        <div data-panel="Recon" style={{ flex: 1, height: 420, border: '2px solid #f08c00' }}>
+          <div>Recon (case 6 reconnect)</div>
+          <div style={{ height: 390 }}>
+            <BoardShell docId="smoke-recon" title="Recon" space="demo" collabSession={sessionRecon} />
+          </div>
+        </div>
       </div>
+      {showCold && (
+        <div data-panel="Cold" style={{ height: 420, border: '2px solid #9c36b5' }}>
+          <div>Cold reopen (case 7 — empty mirror, doc synced before mount)</div>
+          <div style={{ height: 390 }}>
+            <BoardShell
+              docId="smoke-cold"
+              title="Cold"
+              space="demo"
+              collabSession={{ binding: bindingCold.current } as unknown as WhiteboardSession}
+            />
+          </div>
+        </div>
+      )}
       {showReopen && (
         <div data-panel="Reopen" style={{ height: 420, border: '2px solid #1971c2' }}>
           <div>Reopen (initialData restore)</div>

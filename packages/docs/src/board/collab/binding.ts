@@ -107,6 +107,13 @@ export class ExcalidrawYjsBinding {
   private readonly telemetry: BindingTelemetry = emptyTelemetry()
   /** Last element state this binding knows the canvas to hold, keyed by id, for the local diff. */
   private lastKnown = new Map<string, ExcalidrawElement>()
+  /**
+   * Ids the user has created or edited through a local onChange on THIS canvas. Only these may be
+   * tombstoned when they later vanish from an onChange (XIN-96): a remote-rendered element that
+   * disappears did so because the canvas reinitialised (cold reopen / reconnect / remount), not
+   * because the user deleted it — real deletes arrive as present `isDeleted: true` elements.
+   */
+  private readonly locallyAuthored = new Set<string>()
   /** Guard 3 flag: a remote apply is in flight. */
   private applyingRemote = false
   private destroyed = false
@@ -196,18 +203,40 @@ export class ExcalidrawYjsBinding {
       // update — the XIN-80 symptom where only the 0-size create reached the Y.Doc.
       nextSnapshot.set(el.id, cloneElement(el))
       const prev = this.lastKnown.get(el.id)
-      if (!prev || !jsonEqual(prev, el)) changed.push(el)
+      if (!prev || !jsonEqual(prev, el)) {
+        changed.push(el)
+        // Mark this id as locally authored/edited by the user. A genuine onChange that creates or
+        // mutates an element proves the user has this element on THEIR canvas — only such ids may
+        // later be tombstoned by absence (see the vanished-element loop below).
+        this.locallyAuthored.add(el.id)
+      }
     }
-    // Elements that vanished from the scene are deleted via tombstone, not by removing the key.
+    // Elements that vanished from the scene. CRUCIAL (XIN-96): Excalidraw's onChange always carries
+    // `getElementsIncludingDeleted()`, so a real user delete arrives as a PRESENT element flagged
+    // `isDeleted: true` (handled by the diff loop above) — it is never simply absent. An element is
+    // only absent when the canvas was (re)initialised with a different scene: the stale initial
+    // onChange a cold reopen fires (empty local-mirror initialData) right after setApi replayed the
+    // synced doc, a remount, or a reconnect-driven reset. Tombstoning those wipes exactly the scene
+    // that was just synced — the reopen-replays-empty / reconnect-loses-state symptom. So only
+    // synthesise a tombstone for an element the user actually authored on this canvas; preserve a
+    // remote-rendered element that merely vanished from a reinitialising onChange (the local-write
+    // twin of the H1 empty-apply guard).
     for (const [id, prev] of this.lastKnown) {
       if (!nextSnapshot.has(id) && !prev.isDeleted) {
-        const tomb: ExcalidrawElement = {
-          ...prev,
-          isDeleted: true,
-          version: (typeof prev.version === 'number' ? prev.version : 0) + 1,
+        if (this.locallyAuthored.has(id)) {
+          const tomb: ExcalidrawElement = {
+            ...prev,
+            isDeleted: true,
+            version: (typeof prev.version === 'number' ? prev.version : 0) + 1,
+          }
+          changed.push(tomb)
+          nextSnapshot.set(id, tomb)
+        } else {
+          // Not the user's delete — a scene reinit dropped a remote element. Keep it so the next
+          // diff still knows the canvas holds it and the synced scene survives.
+          this.telemetry.skippedReinitDrop++
+          nextSnapshot.set(id, prev)
         }
-        changed.push(tomb)
-        nextSnapshot.set(id, tomb)
       }
     }
 
@@ -322,6 +351,17 @@ export class ExcalidrawYjsBinding {
     this.lastKnown = snap
     this.telemetry.remoteApplies++
     this.telemetry.remoteElements += elements.length
+  }
+
+  /**
+   * Current raw Y.Doc elements, by value. BoardShell seeds Excalidraw's `initialData` from this on
+   * a cold reopen (XIN-96): a fresh client's local mirror is empty, but the provider has usually
+   * synced the board into the Y.Doc before the heavy Excalidraw chunk loads. Mounting the canvas
+   * WITH this state (restored) means Excalidraw initialises with the scene instead of empty — so it
+   * neither clobbers the setApi replay nor fires a stale empty onChange that wipes the board.
+   */
+  snapshotElements(): ExcalidrawElement[] {
+    return readAllElements(this.elements)
   }
 
   /** For the Agent / external write path (XIN-16 §5): force a re-read into the canvas. */
