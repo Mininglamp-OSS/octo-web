@@ -78,3 +78,5 @@ grp_out.txt
 
 # docs standalone dev build output
 packages/docs/dev-dist/
+# docs collab smoke screenshots / artifacts
+packages/docs/dev/smoke-out/

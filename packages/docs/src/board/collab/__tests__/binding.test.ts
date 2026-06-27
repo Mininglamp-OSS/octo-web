@@ -205,7 +205,72 @@ describe('tombstone convergence', () => {
   })
 })
 
-// The merge-time repair pass (selection B) runs inside applyRemote: a remote/agent write is
+// The render adapter (XIN-87): when the host wires Excalidraw's restore/reconcile contract, a
+// remote apply runs restore(remote) → reconcile(local, remote) → updateScene instead of pushing
+// raw Y.Doc elements straight to the canvas (which painted them as points/handles). Without an
+// adapter the default raw path is unchanged — that is the path every test above exercises.
+describe('render adapter — restore → reconcile → updateScene (XIN-87)', () => {
+  it('runs restore then reconcile, and applies the reconciled scene', () => {
+    const doc = new Y.Doc()
+    const api = new FakeExcalidrawApi()
+    const binding = new ExcalidrawYjsBinding(doc, { api })
+
+    const order: string[] = []
+    binding.setRenderAdapter({
+      restore: (remote) => {
+        order.push('restore')
+        // Stand in for Excalidraw rehydration: tag each element as restored.
+        return remote.map((e) => ({ ...e, restored: true }))
+      },
+      reconcile: (local, restoredRemote) => {
+        order.push('reconcile')
+        // Restore must have run first — the remote it receives is already rehydrated.
+        expect(restoredRemote.every((e) => (e as Record<string, unknown>).restored === true)).toBe(true)
+        return [...local, ...restoredRemote]
+      },
+    })
+
+    const peer = new Y.Doc()
+    peer.transact(() => {
+      const m = new Y.Map<unknown>()
+      const el = makeEl('r1', { x: 5 })
+      for (const [k, v] of Object.entries(el)) m.set(k, v as unknown)
+      elsOf(peer).set('r1', m)
+    })
+    syncDocs(peer, doc, 'remote')
+
+    expect(order).toEqual(['restore', 'reconcile'])
+    const applied = api.scene.find((e) => e.id === 'r1')
+    expect(applied).toBeDefined()
+    expect((applied as Record<string, unknown>).restored).toBe(true) // restored shape reached the canvas
+    expect(binding.__telemetry.remoteApplies).toBe(1)
+  })
+
+  it('re-applies the current doc through the contract the moment the adapter is wired', () => {
+    const doc = new Y.Doc()
+    const api = new FakeExcalidrawApi()
+    const binding = new ExcalidrawYjsBinding(doc, { api })
+
+    // A remote element arrives and is applied RAW (no adapter yet) — the points/handles state.
+    const peer = new Y.Doc()
+    peer.transact(() => {
+      const m = new Y.Map<unknown>()
+      const el = makeEl('r1', { x: 5 })
+      for (const [k, v] of Object.entries(el)) m.set(k, v as unknown)
+      elsOf(peer).set('r1', m)
+    })
+    syncDocs(peer, doc, 'remote')
+    expect((api.scene.find((e) => e.id === 'r1') as Record<string, unknown>).restored).toBeUndefined()
+
+    // Wiring the adapter (BoardShell does this once Excalidraw loads) re-renders through restore.
+    binding.setRenderAdapter({
+      restore: (remote) => remote.map((e) => ({ ...e, restored: true })),
+      reconcile: (_local, restoredRemote) => [...restoredRemote],
+    })
+    expect((api.scene.find((e) => e.id === 'r1') as Record<string, unknown>).restored).toBe(true)
+  })
+})
+
 // normalized for local render before updateScene, never written back to the Y.Doc.
 describe('merge-time repair pass renders a self-consistent scene (M-2/M-3/M-8)', () => {
   function seed(doc: Y.Doc, id: string, fields: Record<string, unknown>): void {

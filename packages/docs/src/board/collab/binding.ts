@@ -50,6 +50,34 @@ export interface WhiteboardBindingOptions {
   enableUndo?: boolean
 }
 
+/**
+ * Host-injected adapter for Excalidraw's official collaboration contract
+ * (restore → reconcile → updateScene). It is supplied by BoardShell once the
+ * client-only `@excalidraw/excalidraw` chunk has loaded, so the binding never
+ * imports Excalidraw and stays node-testable with Yjs alone.
+ *
+ * Why it exists (XIN-87 root cause): `applyRemote` used to hand the RAW Y.Doc
+ * elements straight to `updateScene`. Raw cross-peer / persisted elements are
+ * not the fully-hydrated shape Excalidraw renders from (missing computed fields,
+ * un-migrated linear `points`, …), so they painted as bare points / handles, and
+ * a reopened board replayed empty because `initialData.elements` were raw too.
+ * `restoreElements(remote)` rehydrates them; `reconcileElements(local, remote)`
+ * then merges by version against the live scene — the contract the upstream
+ * y-excalidraw / excalidraw collab clients follow.
+ *
+ * When no adapter is set the binding keeps the default raw path, which is the
+ * path the node unit tests exercise (Excalidraw cannot be imported there).
+ */
+export interface RenderAdapter {
+  /** Rehydrate raw remote elements into renderable Excalidraw elements. */
+  restore(remote: readonly ExcalidrawElement[]): ExcalidrawElement[]
+  /** Merge restored remote elements with the live local scene by version. */
+  reconcile(
+    local: readonly ExcalidrawElement[],
+    restoredRemote: readonly ExcalidrawElement[],
+  ): ExcalidrawElement[]
+}
+
 /** Strip a BinaryFileData down to Y.Doc-safe reference metadata (no dataURL/base64). */
 function toFileRef(file: BinaryFileData): Record<string, Json> {
   const ref: Record<string, Json> = { id: file.id }
@@ -74,6 +102,8 @@ export class ExcalidrawYjsBinding {
   readonly __awareness = new AwarenessSurface()
 
   private api: ExcalidrawBindingAPI | null
+  /** Host-injected restore/reconcile contract (null until BoardShell wires it). */
+  private renderAdapter: RenderAdapter | null = null
   private readonly telemetry: BindingTelemetry = emptyTelemetry()
   /** Last element state this binding knows the canvas to hold, keyed by id, for the local diff. */
   private lastKnown = new Map<string, ExcalidrawElement>()
@@ -119,6 +149,18 @@ export class ExcalidrawYjsBinding {
     // a non-empty doc so a fresh board that only holds local `initialData` is not wiped to empty
     // before its first onChange seeds the doc.
     if (api && !this.destroyed && this.elements.size > 0) this.applyRemote()
+  }
+
+  /**
+   * Inject the Excalidraw restore/reconcile contract (XIN-87 fix). BoardShell calls this once the
+   * client-only Excalidraw chunk has loaded; the binding itself never imports Excalidraw. Passing
+   * an adapter switches `applyRemote` from the raw path to restore → reconcile → updateScene. If a
+   * remote state was already applied raw before this wired up, re-apply it now through the contract
+   * so the very first synced scene renders as real shapes rather than points/handles.
+   */
+  setRenderAdapter(adapter: RenderAdapter | null): void {
+    this.renderAdapter = adapter
+    if (adapter && this.api && !this.destroyed && this.elements.size > 0) this.applyRemote()
   }
 
   /** Update local presence (selection/cursor). Never touches the Y.Doc (XIN-16 §7). */
@@ -229,7 +271,21 @@ export class ExcalidrawYjsBinding {
     // Merge-time repair pass (selection B): normalize the rebuilt scene for local render only —
     // dangling boundElements / frameId pruned, unrenderable + dangling-image elements dropped.
     // The result is NEVER written back to the Y.Doc (server repair is authoritative, §4).
-    const elements = repairForRender(readAllElements(this.elements), fileIds)
+    const repaired = repairForRender(readAllElements(this.elements), fileIds)
+
+    // XIN-87 root-cause fix: when the host has wired the restore/reconcile contract, run it before
+    // updateScene. `restore` rehydrates the raw Y.Doc elements into renderable Excalidraw shapes
+    // (the missing step that made them paint as points/handles); `reconcile` merges them with the
+    // live local scene by version so a concurrent local edit is not clobbered. Without an adapter
+    // (the node unit-test path, where Excalidraw cannot be imported) we keep the raw elements.
+    let elements = repaired
+    const adapter = this.renderAdapter
+    if (adapter) {
+      const restored = adapter.restore(repaired)
+      const local = this.api?.getSceneElementsIncludingDeleted?.() ?? []
+      elements = adapter.reconcile(local, restored)
+    }
+
     this.applyingRemote = true
     try {
       // `captureUpdate: 'NEVER'` mirrors Excalidraw's `CaptureUpdateAction.NEVER` (the value is the

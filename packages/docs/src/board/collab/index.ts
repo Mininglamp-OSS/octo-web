@@ -6,7 +6,7 @@
 // from Excalidraw's onChange, and passes the imperative API in via `setApi`. See ./connect.ts.
 
 export { ExcalidrawYjsBinding, LOCAL_ORIGIN, REPAIR_ORIGIN } from './binding.ts'
-export type { WhiteboardBindingOptions } from './binding.ts'
+export type { WhiteboardBindingOptions, RenderAdapter } from './binding.ts'
 export { createWhiteboardSession } from './connect.ts'
 export type { WhiteboardSession, WhiteboardSessionOptions } from './connect.ts'
 export { shouldOverwrite, reconcileElement, elementSupersedes } from './reconcile.ts'

@@ -2,6 +2,7 @@ import {
   Component,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentType,
@@ -43,6 +44,26 @@ interface ExcalidrawProps {
   UIOptions?: Record<string, unknown>
 }
 type ExcalidrawComponent = ComponentType<ExcalidrawProps>
+
+/**
+ * Structural view of the two Excalidraw collaboration helpers BoardShell injects into the binding
+ * (XIN-87). They are read off the same client-only dynamic import as the component, so the binding
+ * stays Yjs-only and Excalidraw's types are never pulled in at module scope.
+ *
+ * - `restoreElements` rehydrates raw (cross-peer / persisted) elements into renderable shapes —
+ *   the step whose absence made remote elements paint as points/handles and reopened boards replay
+ *   empty.
+ * - `reconcileElements` merges the live local scene with restored remote elements by version.
+ */
+type RestoreElementsFn = (
+  elements: readonly unknown[] | null | undefined,
+  localElements: readonly unknown[] | null | undefined,
+) => ExcalidrawElement[]
+type ReconcileElementsFn = (
+  localElements: readonly unknown[],
+  remoteElements: readonly unknown[],
+  localAppState: unknown,
+) => ExcalidrawElement[]
 
 /** Debounce window for persisting scene edits (M1 local persistence). */
 const SAVE_DEBOUNCE_MS = 600
@@ -127,6 +148,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const [role, setRole] = useState<Role | undefined>(undefined)
   const [dark, setDark] = useState(prefersDark)
 
+  // Excalidraw's restore/reconcile helpers, captured off the same dynamic import as the component
+  // (XIN-87). Held in refs because they are pure module functions, not render state — they are read
+  // by `handleApi` (to wire the binding's render adapter) and by the initialData memo below.
+  const restoreElementsRef = useRef<RestoreElementsFn | null>(null)
+  const reconcileElementsRef = useRef<ReconcileElementsFn | null>(null)
+
   // Initial scene is read ONCE, synchronously, from the local mirror so a reopened / refreshed
   // board paints its content on first render (no flash of empty canvas).
   const initialSceneRef = useRef<BoardScene | null>(null)
@@ -144,7 +171,16 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       import('@excalidraw/excalidraw/index.css'),
     ])
       .then(([mod]) => {
-        if (active) setExcalidraw(() => mod.Excalidraw as unknown as ExcalidrawComponent)
+        if (!active) return
+        // Capture the collab helpers before the component so the initialData memo and handleApi
+        // (both gated on `Excalidraw` becoming non-null) can rely on them being present.
+        const m = mod as unknown as {
+          restoreElements?: RestoreElementsFn
+          reconcileElements?: ReconcileElementsFn
+        }
+        restoreElementsRef.current = m.restoreElements ?? null
+        reconcileElementsRef.current = m.reconcileElements ?? null
+        setExcalidraw(() => mod.Excalidraw as unknown as ExcalidrawComponent)
       })
       .catch((err) => {
         console.error('[board] failed to load Excalidraw', err)
@@ -221,10 +257,24 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   )
 
   // M2: hand the imperative Excalidraw API to the binding so remote/agent writes can render via
-  // updateScene. No-op in the M1 standalone path (no session).
+  // updateScene, and wire the restore/reconcile contract (XIN-87) so those writes render as real
+  // shapes — not raw points/handles. The adapter captures this api for `getAppState()`, which
+  // reconcileElements needs. No-op in the M1 standalone path (no session).
   const handleApi = useCallback(
     (api: unknown) => {
-      collabSession?.binding.setApi(api as Parameters<WhiteboardSession['binding']['setApi']>[0])
+      const binding = collabSession?.binding
+      if (!binding) return
+      binding.setApi(api as Parameters<WhiteboardSession['binding']['setApi']>[0])
+
+      const restore = restoreElementsRef.current
+      const reconcile = reconcileElementsRef.current
+      if (!restore || !reconcile) return
+      const imperative = api as { getAppState?: () => unknown }
+      binding.setRenderAdapter({
+        restore: (remote) => restore(remote, null),
+        reconcile: (local, restoredRemote) =>
+          reconcile(local, restoredRemote, imperative.getAppState?.()),
+      })
     },
     [collabSession],
   )
@@ -256,6 +306,17 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const del = useDocDelete(docId, handleDeleted)
 
   const manage = role ? canManage(role) : false
+
+  // Restore the initially-loaded scene before feeding it to Excalidraw (XIN-87). The local mirror
+  // (and, on a cold reopen, the Y.Doc state that seeded it) can hold raw elements; handing those to
+  // `initialData` unrestored is why a reopened board replayed empty. Gated on `Excalidraw` so the
+  // restore helper (captured in the same import) is present; falls back to raw if unavailable.
+  const initialElements = useMemo<unknown[]>(() => {
+    const raw = initialSceneRef.current?.elements ?? []
+    const restore = restoreElementsRef.current
+    return restore ? restore(raw, null) : [...raw]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Excalidraw])
 
   return (
     <div className="octo-doc octo-doc--editor octo-theme octo-board">
@@ -309,7 +370,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           <BoardErrorBoundary>
             <Excalidraw
               initialData={{
-                elements: initialSceneRef.current?.elements ?? [],
+                elements: initialElements,
                 appState: initialSceneRef.current?.appState,
                 files: initialSceneRef.current?.files,
                 scrollToContent: true,
