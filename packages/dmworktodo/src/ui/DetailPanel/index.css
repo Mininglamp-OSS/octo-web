@@ -420,7 +420,7 @@
 .wk-matter-detail__comment-avatar {
   width: 32px;
   height: 32px;
-  border-radius: var(--wk-r-lg);
+  border-radius: var(--wk-avatar-radius, 50%);
   flex-shrink: 0;
 }
 

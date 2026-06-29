@@ -60,7 +60,7 @@
 .wk-msg-thread-badge-avatar {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   border: 1px solid var(--wk-bg-surface);
   object-fit: cover;
   margin-left: -4px;
@@ -80,7 +80,7 @@
   width: 16px;
   height: 16px;
   margin-left: -4px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   background-color: var(--wk-bg-surface-secondary);
   border: 1px solid var(--wk-bg-surface);
   font-size: 10px;

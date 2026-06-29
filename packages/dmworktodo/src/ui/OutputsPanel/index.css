@@ -215,7 +215,7 @@
   flex-shrink: 0;
   width: 20px;
   height: 20px;
-  border-radius: var(--wk-r-circle);
+  border-radius: var(--wk-avatar-radius, 50%);
   overflow: hidden;
 }
 
@@ -223,7 +223,7 @@
   flex-shrink: 0;
   width: 20px;
   height: 20px;
-  border-radius: var(--wk-r-circle);
+  border-radius: var(--wk-avatar-radius, 50%);
   display: flex;
   align-items: center;
   justify-content: center;

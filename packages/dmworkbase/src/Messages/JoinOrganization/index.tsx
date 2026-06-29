@@ -50,7 +50,7 @@ export class JoinOrganizationCell extends MessageCell {
             <div>
               <img
                 src={WKApp.shared.avatarOrg(content.org_id)}
-                style={{ width: "64px", height: "64px", borderRadius: "50%" }}
+                style={{ width: "64px", height: "64px", borderRadius: "var(--wk-avatar-radius, 50%)" }}
                 alt=""
               />
             </div>

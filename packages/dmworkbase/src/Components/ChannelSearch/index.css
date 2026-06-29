@@ -825,7 +825,7 @@
   display: block;
   width: 20px;
   height: 20px;
-  border-radius: 9999px;
+  border-radius: var(--wk-avatar-radius, 50%);
   flex-shrink: 0;
   object-fit: cover;
 }

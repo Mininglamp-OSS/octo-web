@@ -1,17 +1,16 @@
 .wk-avatar {
     width: 40px;
     height: 40px;
-    border-radius: 50%; /* default: human */
+    border-radius: var(--wk-avatar-radius, 50%);
     object-fit: cover;
     transition: border-radius 150ms ease;
 }
 
-/* AI Bot — 圆角矩形 */
+/* Identity classes are kept for metadata hooks; shape stays unified. */
 .wk-avatar.wk-avatar-ai {
-    border-radius: var(--wk-r-sm);
+    border-radius: var(--wk-avatar-radius, 50%);
 }
 
-/* 群组 — 中等圆角 */
 .wk-avatar.wk-avatar-group {
-    border-radius: var(--wk-r-md);
+    border-radius: var(--wk-avatar-radius, 50%);
 }

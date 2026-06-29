@@ -54,11 +54,11 @@ function MemberTag({
         <img
           src={avatarUrl}
           alt=""
-          style={{ width: 16, height: 16, borderRadius: '50%', objectFit: 'cover', position: 'absolute', top: 0, left: 0 }}
+          style={{ width: 16, height: 16, borderRadius: 'var(--wk-avatar-radius, 50%)', objectFit: 'cover', position: 'absolute', top: 0, left: 0 }}
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
         <span style={{
-          width: 16, height: 16, borderRadius: '50%', background: bgColor,
+          width: 16, height: 16, borderRadius: 'var(--wk-avatar-radius, 50%)', background: bgColor,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '9px', fontWeight: 700, color: '#fff',
         }}>{initial}</span>

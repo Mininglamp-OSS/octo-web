@@ -90,7 +90,7 @@ body[theme-mode=dark] .wk-spacemembers-item:hover {
 .wk-spacemembers-item-avatar {
     width: 36px;
     height: 36px;
-    border-radius: 50%;
+    border-radius: var(--wk-avatar-radius, 50%);
     object-fit: cover;
 }
 

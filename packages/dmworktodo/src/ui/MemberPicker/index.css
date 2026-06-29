@@ -157,7 +157,7 @@
 .wk-member-picker__option-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   overflow: hidden;
   flex-shrink: 0;
   background: var(--wk-bg-base, #f0f0f0);

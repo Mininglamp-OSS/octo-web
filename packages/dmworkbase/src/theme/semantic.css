@@ -160,6 +160,7 @@
   --wk-r-xl: 20px;
   --wk-r-full: 9999px;
   --wk-r-circle: 50%; /* circle — for avatars; distinct from --wk-r-full (9999px pill shape) */
+  --wk-avatar-radius: var(--wk-r-circle);
 
   /* ── Animation ── */
   --wk-ease: cubic-bezier(0.16, 1, 0.3, 1);

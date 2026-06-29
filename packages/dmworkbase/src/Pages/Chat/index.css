@@ -371,7 +371,7 @@
 .wk-chat-conversation-header-channel-avatar img {
   width: 28px;
   height: 28px;
-  border-radius: 100px;
+  border-radius: var(--wk-avatar-radius, 50%);
 }
 
 /* 群聊 header 的频道 icon（Figma: 16x16） */

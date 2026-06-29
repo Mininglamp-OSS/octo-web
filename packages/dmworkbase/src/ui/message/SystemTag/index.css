@@ -20,7 +20,7 @@
 .wk-msg-system-tag-avatar {
   width: 20px;
   height: 20px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   object-fit: cover;
 }
 

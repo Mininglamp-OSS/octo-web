@@ -48,7 +48,7 @@
 .wk-ai-message-card__avatar {
   width: 24px;
   height: 24px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   border: 2px solid #FFFFFF;
   object-fit: cover;
 }
@@ -137,7 +137,7 @@
 .wk-ai-message-card__tooltip-item img {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   object-fit: cover;
 }
 

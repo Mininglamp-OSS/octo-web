@@ -73,7 +73,7 @@ export class CardCell extends MessageCell<MessageBaseCellProps, CardCellState> {
                         WKApp.shared.baseContext.showUserInfo(content.uid,context.channel(),content.vercode)
                     }}>
                         <div>
-                            <img src={WKApp.shared.avatarUser(content.uid)} style={{ width: "64px", height: "64px", borderRadius: "50%" }} alt="" />
+                            <img src={WKApp.shared.avatarUser(content.uid)} style={{ width: "64px", height: "64px", borderRadius: "var(--wk-avatar-radius, 50%)" }} alt="" />
                         </div>
                         <div className="wk-message-card-content-name">
                             {content.name}

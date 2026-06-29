@@ -108,7 +108,7 @@
 .wk-bot-detail-avatar--preview {
     width: 64px;
     height: 64px;
-    border-radius: var(--wk-r-sm, 8px);
+    border-radius: var(--wk-avatar-radius, 50%);
     overflow: hidden;
     cursor: zoom-in;
 }
@@ -117,13 +117,13 @@
 .wk-bot-detail-avatar--preview img {
     width: 64px;
     height: 64px;
-    border-radius: var(--wk-r-sm, 8px);
+    border-radius: var(--wk-avatar-radius, 50%);
     object-fit: cover;
 }
 .wk-bot-detail-avatar-overlay {
     position: absolute;
     inset: 0;
-    border-radius: 50%;
+    border-radius: var(--wk-avatar-radius, 50%);
     background: rgba(0, 0, 0, 0.45);
     color: #fff;
     font-size: 20px;
@@ -142,12 +142,12 @@
 .wk-bot-detail-avatar--owner:focus-visible {
     outline: 2px solid var(--wk-border-glow);
     outline-offset: 2px;
-    border-radius: 50%;
+    border-radius: var(--wk-avatar-radius, 50%);
 }
 .wk-bot-detail-avatar-loading {
     position: absolute;
     inset: 0;
-    border-radius: 50%;
+    border-radius: var(--wk-avatar-radius, 50%);
     background: rgba(255, 255, 255, 0.6);
     display: flex;
     align-items: center;

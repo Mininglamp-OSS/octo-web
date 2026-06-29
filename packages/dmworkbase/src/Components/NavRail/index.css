@@ -34,7 +34,7 @@
 .wk-navrail__user-avatar {
     width: 40px;
     height: 40px;
-    border-radius: var(--wk-r-circle, 50%);
+    border-radius: var(--wk-avatar-radius, 50%);
     background: var(--wk-bg-elevated);
     border: none;
     cursor: pointer;
@@ -511,7 +511,7 @@
 .wk-navrail__avatar {
     width: 30px;
     height: 30px;
-    border-radius: var(--wk-r-circle, 50%);
+    border-radius: var(--wk-avatar-radius, 50%);
     background: var(--wk-bg-elevated) center/cover no-repeat;
     border: none;
     cursor: pointer;

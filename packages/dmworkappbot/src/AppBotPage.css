@@ -77,7 +77,7 @@
 .appbot-list-avatar {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: var(--wk-avatar-radius, 50%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -93,7 +93,7 @@
 }
 
 .appbot-list-avatar .wk-avatar {
-  border-radius: var(--wk-r-sm, 10px);
+  border-radius: var(--wk-avatar-radius, 50%);
 }
 
 .appbot-list-info {
@@ -174,7 +174,7 @@
 .appbot-chat-header-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--wk-avatar-radius, 50%);
   display: flex;
   align-items: center;
   justify-content: center;

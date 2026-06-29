@@ -121,7 +121,7 @@ export default function MatterCard({
             <div className="wk-matter-card__user">
               <WKAvatar
                 channel={new Channel(creatorUid, ChannelTypePerson)}
-                style={{ width: 16, height: 16, borderRadius: '50%' }}
+                style={{ width: 16, height: 16, borderRadius: 'var(--wk-avatar-radius, 50%)' }}
               />
               {creatorName && <span className="wk-matter-card__user-name">{creatorName}</span>}
             </div>
@@ -136,7 +136,7 @@ export default function MatterCard({
                   <WKAvatar
                     key={uid}
                     channel={new Channel(uid, ChannelTypePerson)}
-                    style={{ width: 16, height: 16, borderRadius: '50%' }}
+                    style={{ width: 16, height: 16, borderRadius: 'var(--wk-avatar-radius, 50%)' }}
                   />
                 ))}
               </div>

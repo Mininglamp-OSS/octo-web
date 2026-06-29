@@ -31,7 +31,7 @@
 .wk-mergeforwardmessagelist-content-msg-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   flex-shrink: 0;
   overflow: hidden;
 }

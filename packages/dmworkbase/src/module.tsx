@@ -1594,7 +1594,7 @@ export default class BaseModule implements IModule {
               title: t("base.module.channelSettings.groupAvatar"),
               icon: (
                 <img
-                  style={{ width: "24px", height: "24px", borderRadius: "50%" }}
+                  style={{ width: "24px", height: "24px", borderRadius: "var(--wk-avatar-radius, 50%)" }}
                   src={WKApp.shared.avatarChannel(channel)}
                   alt=""
                 />

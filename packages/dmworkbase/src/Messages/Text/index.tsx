@@ -223,7 +223,7 @@ export class TextCell extends MessageCell {
                 }}>
                     <div className="wk-message-text-reply-author">
                         <div className="wk-message-text-reply-authoravatar">
-                            <img alt="" src={WKApp.shared.avatarUser(message.content.reply.fromUID)} style={{ width: "12px", height: "12px",borderRadius:"50%" }} />
+                            <img alt="" src={WKApp.shared.avatarUser(message.content.reply.fromUID)} style={{ width: "12px", height: "12px",borderRadius:"var(--wk-avatar-radius, 50%)" }} />
                         </div>
                         <div className="wk-message-text-reply-authorname">
                             {message.content.reply.fromName}

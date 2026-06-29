@@ -459,7 +459,7 @@ textarea.wk-mp-goal__text--editing {
 .wk-mp-people__item .wk-avatar {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   display: block;
   flex-shrink: 0;
 }
@@ -484,14 +484,14 @@ textarea.wk-mp-goal__text--editing {
   display: inline-flex;
   align-items: center;
   border: 1.5px solid var(--wk-bg-surface);
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   flex-shrink: 0;
 }
 
 .wk-mp-people__avatar-wrap .wk-avatar {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   display: block;
 }
 
@@ -1474,7 +1474,7 @@ textarea.wk-mp-goal__text--editing {
 .wk-mp-activity__actor .wk-avatar {
   width: 20px;
   height: 20px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   flex-shrink: 0;
 }
 

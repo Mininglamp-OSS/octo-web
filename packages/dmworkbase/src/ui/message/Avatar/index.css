@@ -11,7 +11,7 @@
 .wk-msg-avatar-img {
   width: 100%;
   height: 100%;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   object-fit: cover;
 }
 

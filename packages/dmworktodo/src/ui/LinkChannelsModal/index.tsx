@@ -321,7 +321,7 @@ export default function LinkChannelsModal({
                         </span>
                         <WKAvatar
                           channel={avatarChannel}
-                          style={{ width: 32, height: 32, borderRadius: '50%' }}
+                          style={{ width: 32, height: 32, borderRadius: 'var(--wk-avatar-radius, 50%)' }}
                         />
                         <span className="wk-lcm__item-info">
                           <span className="wk-lcm__item-name">
@@ -373,7 +373,7 @@ export default function LinkChannelsModal({
                 <div key={c.channelId} className="wk-lcm__selected-item">
                   <WKAvatar
                     channel={avatarChannel}
-                    style={{ width: 32, height: 32, borderRadius: '50%' }}
+                    style={{ width: 32, height: 32, borderRadius: 'var(--wk-avatar-radius, 50%)' }}
                   />
                   <span className="wk-lcm__item-info">
                     <span className="wk-lcm__item-name">

@@ -104,7 +104,7 @@
 .wk-channelsetting-avatar img {
     width: 100%;
     object-fit: cover;
-    border-radius: 50%;
+    border-radius: var(--wk-avatar-radius, 50%);
 }
 
 .wk-channelsetting-name {

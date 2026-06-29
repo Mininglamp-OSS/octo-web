@@ -109,14 +109,11 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   height: 32px;
 }
 
-/* design v3.1：群组/子区头像 32x32 + 6px 圆角；DM 维持圆形 */
+/* Avatar shape is unified; identity is shown by badges/metadata, not corners. */
 .wk-conversationlist-item-avatar-box .wk-avatar {
   width: 32px;
   height: 32px;
-  border-radius: var(--wk-r-sm);
-}
-.wk-conversationlist-item-dm .wk-conversationlist-item-avatar-box .wk-avatar {
-  border-radius: var(--wk-r-circle);
+  border-radius: var(--wk-avatar-radius, 50%);
 }
 
 .wk-conversationlist-item-right-first-line {
@@ -506,14 +503,11 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   position: relative;
 }
 
-/* design v3.1：群组头像 22x22 + 5px 圆角，DM 维持圆形（由 WKAvatar 自身样式决定） */
+/* Compact avatars keep their size but share the global circular shape. */
 .wk-conv-compact-icon .wk-avatar {
   width: 22px;
   height: 22px;
-  border-radius: 5px;
-}
-.wk-conv-compact-icon .wk-avatar:not(.wk-avatar-group) {
-  border-radius: var(--wk-r-circle);
+  border-radius: var(--wk-avatar-radius, 50%);
 }
 
 /* Figma: emoji/icon 左上角 6x6 红色小圆点（有未读消息时显示） */

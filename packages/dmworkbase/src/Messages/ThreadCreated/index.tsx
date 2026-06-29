@@ -162,7 +162,7 @@ export class ThreadCreatedCell extends MessageCell {
                     width: 16,
                     height: 16,
                     fontSize: 8,
-                    borderRadius: '50%',
+                    borderRadius: 'var(--wk-avatar-radius, 50%)',
                     marginLeft: idx > 0 ? -8 : 0,
                     border: '1.5px solid rgba(255,255,255,1)',
                     flexShrink: 0,

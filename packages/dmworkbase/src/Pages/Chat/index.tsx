@@ -1065,7 +1065,7 @@ export class ChatContentPage extends Component<
                             style={{
                               width: 28,
                               height: 28,
-                              borderRadius: "50%",
+                              borderRadius: "var(--wk-avatar-radius, 50%)",
                               flexShrink: 0,
                             }}
                           />

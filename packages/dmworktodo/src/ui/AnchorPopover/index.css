@@ -143,7 +143,7 @@
 .wk-anchor-pop__msg-avatar .wk-avatar {
   width: 20px;
   height: 20px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   display: block;
 }
 

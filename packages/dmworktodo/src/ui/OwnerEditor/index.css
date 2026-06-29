@@ -64,14 +64,14 @@
   display: inline-flex;
   align-items: center;
   border: 1.5px solid var(--wk-bg-surface, #fff);
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   flex-shrink: 0;
 }
 
 .wk-owner-editor__avatar-wrap .wk-avatar {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   display: block;
 }
 
@@ -185,7 +185,7 @@
 .wk-owner-editor__option .wk-avatar {
   width: 20px;
   height: 20px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   flex-shrink: 0;
 }
 

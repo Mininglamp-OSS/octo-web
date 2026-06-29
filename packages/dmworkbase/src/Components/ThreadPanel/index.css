@@ -106,7 +106,7 @@ body[theme-mode="dark"] .wk-thread-panel {
 .wk-thread-panel-parent-avatar {
   width: 24px;
   height: 24px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
 }
 
 .wk-thread-panel-parent-name {
@@ -142,7 +142,7 @@ body[theme-mode="dark"] .wk-thread-panel {
 .wk-thread-panel-reply-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--wk-avatar-radius, 50%);
   flex-shrink: 0;
 }
 

@@ -22,7 +22,7 @@
 .wk-smalltableedit-content-item-avatar img {
     width: 32px;
     height: 32px;
-    border-radius: 50%;
+    border-radius: var(--wk-avatar-radius, 50%);
 }
 
 .wk-smalltableedit-content-item-name {

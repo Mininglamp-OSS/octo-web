@@ -59,7 +59,7 @@
   width: 24px;
   height: 24px;
   margin-right: -6px;
-  border-radius: var(--wk-r-sm);
+  border-radius: var(--wk-avatar-radius, 50%);
   border: 2px solid var(--wk-ai-panel-bg);
   overflow: hidden;
   background: var(--wk-bg-elevated);
