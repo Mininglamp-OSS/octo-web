@@ -972,7 +972,6 @@
   "channelAvatar.imageProcessFailedRetry": "图片处理失败，请重试",
   "channelAvatar.uploadFailedRetry": "头像上传失败，请重试",
   "groupAvatarEdit.title": "修改头像",
-  "groupAvatarEdit.upload": "上传头像",
   "groupAvatarEdit.customText": "自定义头像文字",
   "groupAvatarEdit.customTextPlaceholder": "最多显示4个中文/英文字符",
   "groupAvatarEdit.color": "头像颜色",

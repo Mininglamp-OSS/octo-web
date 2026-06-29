@@ -972,7 +972,6 @@
   "channelAvatar.imageProcessFailedRetry": "Failed to process image. Please try again.",
   "channelAvatar.uploadFailedRetry": "Failed to upload avatar. Please try again.",
   "groupAvatarEdit.title": "Edit avatar",
-  "groupAvatarEdit.upload": "Upload avatar",
   "groupAvatarEdit.customText": "Custom avatar text",
   "groupAvatarEdit.customTextPlaceholder": "Up to 4 Chinese / English characters",
   "groupAvatarEdit.color": "Avatar color",

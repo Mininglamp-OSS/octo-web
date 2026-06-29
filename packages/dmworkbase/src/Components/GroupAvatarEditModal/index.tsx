@@ -32,15 +32,13 @@ export interface GroupAvatarEditModalProps {
   /** 保存：回传清洗后的文字与色板下标 */
   onSave: (result: GroupAvatarEditResult) => void
   onCancel: () => void
-  /** 上传头像入口（沿用历史逻辑）。提供时显示「上传头像」，点击交由调用方处理 */
-  onUpload?: () => void
 }
 
 const MAX_VISIBLE = 4
 
 // GroupAvatarEditModal 是「修改头像」二次弹窗：自定义头像文字 + 头像颜色 + 实时预览。
 // 上下文无关（不直接调接口）——保存时把结果回传调用方：创建弹窗据此更新本地态、群设置
-// 据此调 PUT。上传能力沿用历史逻辑（由 onUpload 注入，不在本组件内实现）。
+// 据此调 PUT。
 const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
   visible,
   name = "",
@@ -49,7 +47,6 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
   initialColorIndex,
   onSave,
   onCancel,
-  onUpload,
 }) => {
   const [palette, setPalette] = useState<GroupColorHex[]>(getCachedPalette())
   const [avatarText, setAvatarText] = useState<string>(initialAvatarText)
@@ -104,11 +101,6 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
           nameAsFallback={nameAsFallback}
           size={56}
         />
-        {onUpload && (
-          <span className="wk-group-avatar-edit-upload" onClick={onUpload}>
-            {t("base.groupAvatarEdit.upload")}
-          </span>
-        )}
       </div>
 
       <div className="wk-group-avatar-edit-label">
