@@ -57,7 +57,12 @@ export class ProhibitwordsService {
         })
         this.sensitiveWordTool.addWords(words)
     }
-    filter(v:string) {
+    filter(v: unknown): string {
+        // 仅对非空字符串调用第三方库；undefined/null/空串/非字符串一律归一为空串，
+        // 避免 sensitive-word-tool 读取 content.length 时崩溃（#465 畸形文本消息）。
+        if (typeof v !== "string" || v.length === 0) {
+            return ""
+        }
         return this.sensitiveWordTool.filter(v)
     }
 }

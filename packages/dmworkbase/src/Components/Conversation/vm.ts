@@ -1,4 +1,4 @@
-import { Channel, ChannelTypeGroup, ChannelTypePerson, ConversationAction, WKSDK, Message, MessageContent, MessageStatus, Subscriber, Conversation, MessageExtra, CMDContent, PullMode, MessageContentType, ChannelInfo, ChannelInfoListener, ConversationListener, ConnectStatus, ConnectStatusListener } from "wukongimjssdk";
+import { Channel, ChannelTypeGroup, ChannelTypePerson, ConversationAction, WKSDK, Message, MessageContent, MessageStatus, Subscriber, Conversation, MessageExtra, CMDContent, PullMode, MessageContentType, MessageText, ChannelInfo, ChannelInfoListener, ConversationListener, ConnectStatus, ConnectStatusListener } from "wukongimjssdk";
 import WKApp from "../../App";
 import { SyncMessageOptions } from "../../Service/DataSource/DataProvider";
 import { MessageWrap } from "../../Service/Model";
@@ -1318,7 +1318,8 @@ export default class ConversationVM extends ProviderListener {
         }
         for (let i = this.messages.length - 1; i >= 0; i--) {
             const message = this.messages[i]
-            if (message.content.reply === undefined) {
+            // 防御畸形消息：content 可能整体缺失（#465 保留了此类消息），用可选链避免读取 undefined.reply 崩溃。
+            if (message.content?.reply === undefined) {
                 continue
             }
             if (message.content.reply.messageID && message.content.reply.messageID === extra.messageID) {
@@ -1864,6 +1865,16 @@ export default class ConversationVM extends ProviderListener {
 
     // 刷新消息列表
     refreshMessages(messages: MessageWrap[], callback?: () => void, options?: { allowFoldAnimation?: boolean }) {
+        // 单点归一（#465）：content 整体缺失的畸形消息（如 payload.type=text 但
+        // 解码失败）会让 SDK 的 Message.contentType getter 以及 MessageWrap 的
+        // flame / parts 解引用 undefined 而崩页，且这一步发生在下面排序 / 去重 /
+        // 渲染读取 contentType 之前。这里在任何 contentType 读取之前补一个空文本
+        // content，让畸形消息渲染成空气泡而非拖垮整个消息列表。
+        for (const m of messages) {
+            if (m.message.content == null) {
+                m.message.content = new MessageText("")
+            }
+        }
         let newMessages = messages
         // 渲染前先按 order（seq）排序，防止延迟推送/重连补推导致消息位置错乱
         newMessages = this.sortMessages(newMessages)
@@ -1874,7 +1885,11 @@ export default class ConversationVM extends ProviderListener {
         for (let i = 0; i < newMessages.length; i++) {
             const message = newMessages[i]
             if (message.contentType === MessageContentType.text) {
-                message.content.text = ProhibitwordsService.shared.filter(message.content.text)
+                // 防御畸形文本消息：content 整体缺失时跳过，避免读取 undefined.text 崩溃（#465）。
+                const content = message.content
+                if (content) {
+                    content.text = ProhibitwordsService.shared.filter(content.text)
+                }
             }
         }
         this.messages = this.genMessageLinkedData(newMessages)
