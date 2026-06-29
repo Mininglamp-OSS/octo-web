@@ -1,6 +1,6 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import WKApp from '../../App';
-import { Bot, botStatusLabel, isSupportedRuntimeKind, listBots } from './botsApi';
+import { Bot, botStatusLabel, isSupportedRuntimeKind, listBots, apiOrigin } from './botsApi';
 import { CreateBotModal } from './CreateBotModal';
 import { BotDetailPanel } from './BotDetailPanel';
 import { useI18n } from '../../i18n';
@@ -112,7 +112,7 @@ export const BotsTab = forwardRef<BotsTabHandle, BotsTabProps>(function BotsTab(
       const headers: Record<string, string> = {};
       if (sessionToken) headers.token = sessionToken;
       if (spaceId) headers['X-Space-Id'] = spaceId;
-      const res = await fetch('/fleet/api/v1/runtimes?space_id=' + encodeURIComponent(spaceId), {
+      const res = await fetch(`${apiOrigin()}/fleet/api/v1/runtimes?space_id=` + encodeURIComponent(spaceId), {
         headers,
       });
       const env = await res.json();

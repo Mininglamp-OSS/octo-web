@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // Mock the App module so fetchLlmModels uses a controllable apiClient.post, and
-// stub botsApi (it has heavy transitive UI deps) down to just FLEET_API_BASE.
+// stub botsApi (it has heavy transitive UI deps) down to just fleetApiBase.
 const { post } = vi.hoisted(() => ({ post: vi.fn() }))
 vi.mock("../../App", () => ({ default: { apiClient: { post } } }))
-vi.mock("./botsApi", () => ({ FLEET_API_BASE: "/fleet/api/v1/" }))
+vi.mock("./botsApi", () => ({ fleetApiBase: () => "/fleet/api/v1/" }))
 
 import { fetchLlmModels } from "./ccInstallApi"
 

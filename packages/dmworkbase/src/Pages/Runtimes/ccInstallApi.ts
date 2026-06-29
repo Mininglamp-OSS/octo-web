@@ -2,7 +2,7 @@
 // fleet proxy (POST /v1/runtimes/llm-models). Going through fleet avoids browser
 // CORS to the gateway and reuses the session/space auth the apiClient injects.
 import WKApp from '../../App';
-import { FLEET_API_BASE } from './botsApi';
+import { fleetApiBase } from './botsApi';
 
 /**
  * Ask fleet to list the models the given gateway exposes. Returns the model ids,
@@ -13,7 +13,7 @@ export async function fetchLlmModels(gatewayUrl: string, apiKey: string): Promis
   const res = await WKApp.apiClient.post(
     '/runtimes/llm-models',
     { gateway_url: gatewayUrl, api_key: apiKey },
-    { baseURL: FLEET_API_BASE },
+    { baseURL: fleetApiBase() },
   );
   const models = (res as { data?: { models?: unknown } })?.data?.models;
   return Array.isArray(models) ? (models as string[]) : [];

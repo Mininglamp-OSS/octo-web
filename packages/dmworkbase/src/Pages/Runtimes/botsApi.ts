@@ -78,8 +78,17 @@ export interface BotFeedItem {
 // 由 nginx 加, strip 后转 fleet 的 /v1/<resource>); octo-server 主后端走 /api。
 const fleetBase = '/fleet/api';
 const serverBase = '/api';
+
+// 桌面端 (Electron/Tauri) renderer 的 origin != API origin, 故所有服务路径都要
+// 用从 apiClient.config.apiURL 推导出的绝对 origin 前缀。web 下 apiURL 是相对的
+// ('/api/v1/'), apiOrigin() 解析为当前 origin, 路径保持同源、行为不变。
+export function apiOrigin(): string {
+  return new URL(WKApp.apiClient.config.apiURL, window.location.origin).origin;
+}
+
 // 给走全局 apiClient 的 fleet 调用复用(apiClient.baseURL 形式, 含 /v1/)。
-export const FLEET_API_BASE = '/fleet/api/v1/';
+// 懒求值: apiURL 在 bootstrap 时才设置, 顶层 const 会过早求值拿到空 origin。
+export const fleetApiBase = () => `${apiOrigin()}/fleet/api/v1/`;
 
 // 合并 plan 决策一+二 Phase 3A: fleet 已切到 AuthMiddleware 接 session token
 // 直接 (跟 matter user-auth 一致), 不再换 JWT。authHeaders 注入 token: +
@@ -108,7 +117,7 @@ export async function listBots(params: { runtime_kind?: RuntimeKind; owner_uid?:
   // fleet GET /v1/bots is offset-paginated; pull the max page (100) since the
   // UI has no pager yet. Response is the R1 OffsetList {data:[...],pagination}.
   sp.set('page_size', '100');
-  const res = await fetch(`${fleetBase}/v1/bots?${sp}`, { headers: await authHeaders() });
+  const res = await fetch(`${apiOrigin()}${fleetBase}/v1/bots?${sp}`, { headers: await authHeaders() });
   if (!res.ok) throw new Error(`listBots: ${res.status}`);
   const env = await res.json();
   // fleet's list response is a SINGLE-layer R1 OffsetList — the top level IS
@@ -146,7 +155,7 @@ export async function listBots(params: { runtime_kind?: RuntimeKind; owner_uid?:
 //     exist but aren't linked. UX shows retry; manual cleanup possible.
 export async function createBot(req: CreateBotReq): Promise<Bot> {
   // Step 1: fleet draft.
-  const draftRes = await fetch(`${fleetBase}/v1/bots`, {
+  const draftRes = await fetch(`${apiOrigin()}${fleetBase}/v1/bots`, {
     method: 'POST',
     headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
@@ -161,7 +170,7 @@ export async function createBot(req: CreateBotReq): Promise<Bot> {
   // session auth), NOT the fleet JWT.
   const spaceId = (WKApp as any)?.shared?.currentSpaceId || '';
   const sessionToken = (WKApp as any)?.loginInfo?.token || '';
-  const mintRes = await fetch(`${serverBase}/v1/bot/mint`, {
+  const mintRes = await fetch(`${apiOrigin()}${serverBase}/v1/bot/mint`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', token: sessionToken },
     body: JSON.stringify({ display_name: req.name, space_id: spaceId }),
@@ -174,7 +183,7 @@ export async function createBot(req: CreateBotReq): Promise<Bot> {
   if (!minted?.bot_uid) throw new Error('createBot mint returned no bot_uid');
 
   // Step 3: fleet patch to link bot_uid + promote status.
-  const patchRes = await fetch(`${fleetBase}/v1/bots/${draft.id}/mint`, {
+  const patchRes = await fetch(`${apiOrigin()}${fleetBase}/v1/bots/${draft.id}/mint`, {
     method: 'POST',
     headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
     body: JSON.stringify({ bot_uid: minted.bot_uid }),
@@ -205,7 +214,7 @@ export async function getBotFeed(botUid: string, limit = 50): Promise<BotFeedIte
   // and the new endpoint is space-agnostic (ownership checked via related_uids),
   // so X-Space-Id is omitted.
   const sessionToken = (WKApp as any)?.loginInfo?.token || '';
-  const res = await fetch(`/matter/api/v1/bots/${encodeURIComponent(botUid)}/feed?limit=${limit}`, {
+  const res = await fetch(`${apiOrigin()}/matter/api/v1/bots/${encodeURIComponent(botUid)}/feed?limit=${limit}`, {
     headers: sessionToken ? { token: sessionToken } : {},
   });
   if (!res.ok) throw new Error(`getBotFeed: ${res.status}`);
