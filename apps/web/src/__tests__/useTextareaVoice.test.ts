@@ -37,6 +37,10 @@ describe("useTextareaVoice", () => {
     overrides: Partial<HTMLTextAreaElement> = {}
   ): React.RefObject<HTMLTextAreaElement> {
     const el = {
+      // `value` is required: the hook reads `el.value.slice(selStart, selEnd)`
+      // when a selection exists. Default to empty string so the mock element
+      // behaves like a real (empty) textarea.
+      value: "",
       selectionStart: 0,
       selectionEnd: 0,
       ...overrides,

@@ -1,7 +1,14 @@
-import { vi } from 'vitest'
+import { vi, beforeEach } from 'vitest'
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ErrorBoundary, ErrorFallback } from "../../../../../packages/dmworkbase/src/Components/ErrorBoundary";
+import { i18n } from "@octo/base/src/i18n/instance";
+
+// ErrorFallback renders i18n copy; pin zh-CN so the Chinese-copy assertions are
+// deterministic regardless of jsdom's en-US navigator (matches base setup).
+beforeEach(() => {
+    i18n.setLocale("zh-CN", { persist: false, notify: false });
+});
 
 // Component that throws an error
 const ThrowingComponent = ({ shouldThrow = true }: { shouldThrow?: boolean }) => {

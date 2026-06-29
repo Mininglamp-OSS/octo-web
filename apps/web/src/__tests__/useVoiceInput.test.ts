@@ -1,10 +1,14 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
-const { mockOnTranscribeResult, mockLocalTranscribe } = vi.hoisted(() => ({
-  mockOnTranscribeResult: vi.fn(),
-  mockLocalTranscribe: vi.fn(),
-}));
+const { mockOnTranscribeResult, mockLocalTranscribe, feedbackToggle } =
+  vi.hoisted(() => ({
+    mockOnTranscribeResult: vi.fn(),
+    mockLocalTranscribe: vi.fn(),
+    // Mutable holder so the mocked getSharedSpaceFeedbackState can read a
+    // per-suite toggle for voice_input_enabled (default off).
+    feedbackToggle: { voiceInputEnabled: 0 as 0 | 1 },
+  }));
 
 // Mock WKApp
 vi.mock("@octo/base/src/App", () => ({
@@ -64,7 +68,17 @@ vi.mock(
     resetSharedSpaceSetting: vi.fn(),
     setSharedVoiceConfig: vi.fn(),
     getSharedSpaceFeedbackState: () => ({
-      spaceSetting: { voice_feedback_on: 1, voice_feedback_notice_acked: 1 },
+      // The asrParams suite needs feedback fully enabled to exercise
+      // onTranscribeResult, while the other suites assert allowFeedback=false.
+      // useVoiceInput gates feedback on BOTH voice_input_enabled === 1 AND
+      // voice_feedback_on === 1 (a prerequisite added after this mock was first
+      // written), so voice_input_enabled is driven by a per-suite toggle that
+      // defaults to 0 and is flipped on only inside the asrParams beforeEach.
+      spaceSetting: {
+        voice_input_enabled: feedbackToggle.voiceInputEnabled,
+        voice_feedback_on: 1,
+        voice_feedback_notice_acked: 1,
+      },
     }),
     getSharedVoiceConfig: () => null,
     subscribe: vi.fn(() => vi.fn()),
@@ -1080,6 +1094,10 @@ describe("useVoiceInput - notifyFeedback asrParams", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     setupMocks();
+    // This suite exercises onTranscribeResult, which is gated on
+    // voice_input_enabled === 1 && voice_feedback_on === 1. Turn the input gate
+    // on here (other suites keep it off so they observe allowFeedback=false).
+    feedbackToggle.voiceInputEnabled = 1;
     WKApp.shared.currentSpaceId = "test-space-id";
     vi.mocked(VoiceService.shared.getConfig).mockResolvedValue({
       enabled: true,
@@ -1097,6 +1115,7 @@ describe("useVoiceInput - notifyFeedback asrParams", () => {
   });
 
   afterEach(() => {
+    feedbackToggle.voiceInputEnabled = 0;
     vi.useRealTimers();
     vi.clearAllMocks();
   });
