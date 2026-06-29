@@ -1,10 +1,13 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
     # converted_to_draft kept: creates "skipped" check entries satisfying required-check rules
-    branches: [main]
+    branches:
+      - main
+      - 'release/**'
     # paths-ignore intentionally removed — use changes preflight job instead
     # (workflow-level path filters deadlock required status checks for docs-only PRs)
   push:
