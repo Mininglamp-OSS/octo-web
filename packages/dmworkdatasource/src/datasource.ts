@@ -1,4 +1,5 @@
-import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId, IncomingWebhook, IncomingWebhookCreateResp, IncomingWebhookUpsertReq } from "@octo/base";
+import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId, IncomingWebhook, IncomingWebhookCreateResp, IncomingWebhookUpsertReq, StickerItem } from "@octo/base";
+import axios from "axios";
 import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContentType,ConversationExtra,Subscriber } from "wukongimjssdk";
 
 const MAX_GROUP_LIST_LIMIT = 100000;
@@ -467,11 +468,33 @@ export class CommonDataSource implements ICommonDataSource {
     favoritiesDelete(id: string): Promise<void> {
         return WKApp.apiClient.delete(`favorites/${id}`)
     }
-    userStickerCategory(): Promise<any> {
-        return WKApp.apiClient.get(`sticker/user/category`).catch(() => [])
+    userStickers(): Promise<{ list: StickerItem[] }> {
+        // 空集合后端返回 {list:[]}（不再 404）。仍兜底为 {list:[]} 以防网络异常。
+        return WKApp.apiClient.get(`sticker/user`).then((r) => ({ list: (r && r.list) || [] })).catch(() => ({ list: [] }))
     }
-    getStickers(category: string): Promise<any> {
-        return WKApp.apiClient.get(`sticker/user/sticker?category=${encodeURIComponent(category)}`).catch(() => [])
+    addSticker(req: { path: string; format: string; placeholder?: string }): Promise<StickerItem> {
+        return WKApp.apiClient.post(`sticker/user`, req)
+    }
+    deleteSticker(stickerId: string): Promise<void> {
+        return WKApp.apiClient.delete(`sticker/user/${encodeURIComponent(stickerId)}`)
+    }
+    async uploadSticker(file: File): Promise<{ path: string; format: string }> {
+        // 两步上传：1) 申请上传地址（扩展名由文件名推导，服务端限定 gif/png/jpg/jpeg/webp）；
+        // 2) 直传文件本体。沿用本仓库既有的 multipart 上传约定（axios + token，
+        // 与头像/群头像/机器人头像上传一致）。
+        const meta: any = await WKApp.apiClient.get(`file/upload?type=sticker&filename=${encodeURIComponent(file.name)}`)
+        const uploadURL: string = meta && meta.url
+        if (!uploadURL) {
+            throw new Error("获取贴纸上传地址失败")
+        }
+        const form = new FormData()
+        form.append("file", file)
+        const resp = await axios.post(uploadURL, form, {
+            headers: { "Content-Type": "multipart/form-data", "token": WKApp.loginInfo.token || "" },
+        })
+        const data: any = resp.data || {}
+        const format = String(data.ext || "").replace(/^\./, "").toLowerCase()
+        return { path: data.path || "", format }
     }
     searchUser(keyword: string): Promise<any> {
         const spaceId = WKApp.shared.currentSpaceId

@@ -92,6 +92,16 @@ export class Contacts {
     avatar!: string
 }
 
+// StickerItem 用户自定义贴纸（个人维度，扁平不分包）。category 恒为后端下发的
+// "user" 哨兵值，沿用 LottieSticker 消息体的 category 字段，发送链路无需改动。
+export interface StickerItem {
+    sticker_id: string
+    path: string
+    category: string
+    placeholder: string
+    format: string
+}
+
 export interface ICommonDataSource {
     imConnectAddr(): Promise<string> // im的连接地址
     imConnectAddrs(): Promise<string[]> // im的连接地址
@@ -134,15 +144,26 @@ export interface ICommonDataSource {
     searchUser(keyword: string): Promise<any>
 
     /**
-     * 用户贴图类别
+     * 当前用户的自定义贴纸列表（扁平，不分包）
      */
-    userStickerCategory(): Promise<any>
+    userStickers(): Promise<{ list: StickerItem[] }>
 
     /**
-     * 通过类别获取表情 
-     * @param category 
+     * 新增一张自定义贴纸（path 来自 uploadSticker）
      */
-    getStickers(category: string): Promise<any>
+    addSticker(req: { path: string; format: string; placeholder?: string }): Promise<StickerItem>
+
+    /**
+     * 删除当前用户的一张自定义贴纸
+     * @param stickerId
+     */
+    deleteSticker(stickerId: string): Promise<void>
+
+    /**
+     * 上传贴纸文件（type=sticker），返回存储 path 与格式
+     * @param file
+     */
+    uploadSticker(file: File): Promise<{ path: string; format: string }>
 
 
     /**
