@@ -1,3 +1,14 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# Migrated from package.json's "pnpm" field — pnpm 10+ no longer reads it
+# (it logs "The pnpm field in package.json is no longer read by pnpm" and
+# silently ignores these, which had de-facto disabled the tiptap pins and the
+# esbuild build allowance). See https://pnpm.io/settings.
+onlyBuiltDependencies:
+  - esbuild
+
+overrides:
+  '@tiptap/core': 3.22.2
+  '@tiptap/suggestion': 3.22.2
