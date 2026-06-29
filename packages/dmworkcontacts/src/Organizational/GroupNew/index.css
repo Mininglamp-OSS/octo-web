@@ -286,7 +286,8 @@
    搜索框图标也用纯 CSS 伪元素注入，不改共用的 <Input> JSX。
    ==================================================================== */
 
-/* 搜索框：胶囊形 + 左侧放大镜（对齐 wk-fm-search） */
+/* 搜索框：胶囊形 + 左侧放大镜（对齐 wk-fm-search）。
+   图标用 mask + 主题色变量，颜色随主题/暗色模式变化，不写死色值。 */
 .group-create-members .group-new-left-search {
   position: relative;
 }
@@ -300,8 +301,10 @@
   transform: translateY(-50%);
   z-index: 1;
   pointer-events: none;
-  opacity: 0.4;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231C1C23' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E")
+  background-color: var(--semi-color-text-2);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E")
+    no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E")
     no-repeat center / contain;
 }
 .group-create-members .group-new-left-search .group-new-left-search-input {
@@ -330,13 +333,6 @@
   .friend-opt-item:hover,
 .group-create-members .group-new-left-main .friend-opt .organization-name:hover {
   background-color: var(--semi-color-fill-0);
-}
-
-/* 头像 24 → 28px，对齐 wk-fm-avatar-wrap（覆盖 WKAvatar 的内联尺寸） */
-.group-create-members .friend-opt-item .wk-avatar,
-.group-create-selected .opt-personnel-item .user-info .wk-avatar {
-  width: 28px !important;
-  height: 28px !important;
 }
 
 /* 右栏「已选」列表的行布局规则原本挂在 .wk-organizational-group-new-right 祖先下，
