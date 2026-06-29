@@ -56,6 +56,8 @@ function isPrivateIPv4(hostname: string): boolean {
 
     const [a, b] = parts;
 
+    // 0.0.0.0/8 ("this host" — on Linux 0.0.0.0 routes to localhost)
+    if (a === 0) return true;
     // 127.0.0.0/8
     if (a === 127) return true;
     // 10.0.0.0/8

@@ -34,6 +34,12 @@ describe("validateCcInstall", () => {
         expect(r.urlError).toBe("url_invalid")
     })
 
+    it("rejects https to 0.0.0.0/8 (0.0.0.0 routes to localhost on Linux) with url_invalid", () => {
+        const r = validateCcInstall("https://0.0.0.0:8443", "sk-1")
+        expect(r.ok).toBe(false)
+        expect(r.urlError).toBe("url_invalid")
+    })
+
     it("rejects https to private IPv4 (10.x) with url_invalid", () => {
         const r = validateCcInstall("https://10.1.2.3", "sk-1")
         expect(r.ok).toBe(false)
