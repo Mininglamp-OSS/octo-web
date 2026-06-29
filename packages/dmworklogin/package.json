@@ -9,13 +9,17 @@
     "@types/qrcode.react": "^1.0.2",
     "classnames": "^2.5.1",
     "qrcode.react": "^4.2.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
     "zxcvbn": "^4.4.2"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.28",
     "@types/zxcvbn": "^4.4.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "vitest": "^4.1.5",
     "jsdom": "^29.0.1"
   },
