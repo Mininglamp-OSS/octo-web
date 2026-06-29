@@ -420,6 +420,11 @@ describe('DocsHome navigation (split-pane)', () => {
     const wk = createMockWKApp()
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
+      // Unknown-kind deep-link: the per-doc GET resolves the authoritative kind (here a plain
+      // doc) before a shell is chosen, exactly as the list-open path does.
+      if (method === 'get' && url === '/docs/d_persist') {
+        return { data: { docId: 'd_persist', title: 'Persisted', role: 'admin', docType: 'doc' }, status: 200 }
+      }
       if (method === 'get' && url.startsWith('/docs')) {
         return { data: { total: 0, items: [] }, status: 200 }
       }
@@ -427,8 +432,69 @@ describe('DocsHome navigation (split-pane)', () => {
     }
 
     render(<DocsHome />)
-    expect(screen.getByTestId('editor-shell')).toBeTruthy()
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
     expect(screen.getByTestId('editor-doc').textContent).toBe('d_persist')
+  })
+
+  it('opens the whiteboard inline from a direct deep-link whose kind is only known to the backend (owner direct-open, XIN-132)', async () => {
+    // The owner direct-open bug: a direct `/docs?doc=<board>` deep-link resolved kind from the
+    // local registry ONLY and never fetched doc metadata, so an owner opening a whiteboard link
+    // (registry empty in that session) fell back to the rich-text editor (canvas=0). The fix
+    // resolves the authoritative docType via getDoc — the board shell must open, not the editor.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 'b_direct' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url === '/docs/b_direct') {
+        return { data: { docId: 'b_direct', title: 'Board', role: 'admin', docType: 'board' }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    // Whiteboard shell mounts after the authoritative kind lookup — NOT the rich-text editor.
+    await waitFor(() => expect(screen.getByTestId('board-shell')).toBeTruthy())
+    expect(screen.getByTestId('board-doc').textContent).toBe('b_direct')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // The kind was fetched because neither the registry nor a stored docType could assert it.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/b_direct')).toBe(true)
+    // The resolved kind is mirrored so the host's query-wiping re-render re-opens the board.
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'b_direct',
+      docType: 'board',
+    })
+  })
+
+  it('opens a board deep-link directly when this client already knows it is a board (no round-trip)', async () => {
+    // The owner on the SAME browser that created the board: the local registry asserts the kind,
+    // so the whiteboard opens immediately with no per-doc lookup (the fast path is preserved).
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 'b_known', docType: 'board' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    expect(screen.getByTestId('board-shell')).toBeTruthy()
+    expect(screen.getByTestId('board-doc').textContent).toBe('b_known')
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/b_known')).toBe(false)
   })
 
   it('back-to-list unmounts the editor and clears the persisted target (no full navigation)', async () => {
@@ -436,6 +502,9 @@ describe('DocsHome navigation (split-pane)', () => {
     const wk = createMockWKApp()
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_persist') {
+        return { data: { docId: 'd_persist', title: 'Persisted', role: 'admin', docType: 'doc' }, status: 200 }
+      }
       if (method === 'get' && url.startsWith('/docs')) {
         return { data: { total: 0, items: [] }, status: 200 }
       }
@@ -443,6 +512,8 @@ describe('DocsHome navigation (split-pane)', () => {
     }
 
     render(<DocsHome />)
+    // The unknown-kind deep-link resolves to the editor via getDoc, then the back control appears.
+    await waitFor(() => expect(screen.getByTestId('editor-back')).toBeTruthy())
     fireEvent.click(screen.getByTestId('editor-back'))
 
     // Editor unmounts (right pane empty), persisted target cleared, no full navigation.
@@ -655,6 +726,9 @@ describe('DocsHome — production (routeRight) editor has no header back button 
     ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_persist') {
+        return { data: { docId: 'd_persist', title: 'Persisted', role: 'admin', docType: 'doc' }, status: 200 }
+      }
       if (method === 'get' && url.startsWith('/docs')) {
         return { data: { total: 0, items: [] }, status: 200 }
       }
@@ -662,8 +736,12 @@ describe('DocsHome — production (routeRight) editor has no header back button 
     }
 
     render(<DocsHome />)
-    // Mount effect pushes the editor element for the persisted doc into the right pane.
-    await waitFor(() => expect(replaceToRoot).toHaveBeenCalled())
+    // The unknown-kind deep-link resolves via getDoc, then the editor element is pushed into the
+    // right pane. Wait for that specific push (the earlier empty-state push isn't the editor).
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string } } | undefined
+      expect(last?.props?.docId).toBe('d_persist')
+    })
     const pushed = replaceToRoot.mock.calls.at(-1)![0] as {
       props: { docId: string; onBack?: unknown; onExit?: unknown }
     }

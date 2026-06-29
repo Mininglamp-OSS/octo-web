@@ -763,15 +763,31 @@ export function DocsHome() {
   const initialTarget = useRef(
     resolveDocTarget(typeof window !== 'undefined' ? window.location.search : ''),
   )
+  // Kind we can assert for the initial target WITHOUT a round-trip: an explicit stored docType,
+  // or a board surfaced by this client's local registry (the creator's own board). When the
+  // target carries a docId but NO assertable kind — a direct deep-link to a shared board this
+  // client never created (owner opening the board link, B writer's shared link) — we DEFER the
+  // shell choice to an authoritative getDoc on mount (see the mount effect below) instead of
+  // seeding the rich-text editor. Seeding the editor here was the owner direct-open bug: the
+  // deep-link path resolved kind from the local registry only and never fetched doc metadata, so
+  // an owner direct-opening a whiteboard fell back to the Docs editor (canvas=0). This mirrors
+  // what the list-open path already does (openDoc → getDoc for unknown kinds), aligning the two
+  // open paths so every member lands on the whiteboard regardless of how they entered.
+  const initialKnownKind: 'board' | 'doc' | undefined =
+    initialTarget.current?.docType === 'board'
+      ? 'board'
+      : initialTarget.current?.docType === 'doc'
+        ? 'doc'
+        : undefined
   const [selectedDocId, setSelectedDocId] = useState<string | null>(
-    () => initialTarget.current?.docId ?? null,
+    () => (initialKnownKind ? (initialTarget.current?.docId ?? null) : null),
   )
   // The kind of the open doc (`'board'` → whiteboard shell, `'sheet'` → SheetView, else rich-text
   // editor). Tracked alongside the id so the right pane renders the correct shell across deep-link /
   // refresh. Seeded from the initial target; a deep-link/refresh whose kind is unknown is resolved
   // via getDoc (see the mount effect).
   const [selectedDocType, setSelectedDocType] = useState<string | undefined>(
-    () => initialTarget.current?.docType,
+    () => initialKnownKind,
   )
 
   // The host's right (main) route pane. When present (production), the editor is pushed there
@@ -1026,36 +1042,37 @@ export function DocsHome() {
   )
 
   // On mount, ALWAYS occupy the right pane so the host chat placeholder never shows through
-  // (the contentRight race). If a doc is pre-selected (deep-link / persisted target) push the
-  // editor/board; otherwise push the docs empty state. Either way the routeRight queue is
-  // non-empty from first paint, so entering /docs is deterministically full-width docs — never
-  // the intermittent chat-placeholder regression.
+  // (the contentRight race). If a doc is pre-selected with a KNOWN kind (deep-link / persisted
+  // target whose kind the registry or stored docType already settled) push the editor/board;
+  // otherwise push the docs empty state. Either way the routeRight queue is non-empty from first
+  // paint, so entering /docs is deterministically full-width docs — never the intermittent
+  // chat-placeholder regression.
+  //
+  // When the initial target carries a docId but an UNKNOWN kind (a direct deep-link to a board
+  // this client didn't create), we resolve the authoritative kind via openDoc → getDoc and let
+  // it push the right shell once known. Until then the pane shows the empty state, not a wrongly
+  // chosen editor — this is the owner direct-open fix (the deep-link path now fetches doc
+  // metadata instead of falling back to the Docs editor).
   useEffect(() => {
-    if (!routeRight) return
-    if (selectedDocId) {
-      // Resolve the doc type first so a deep-link / refresh opens the right renderer.
-      void getDoc(selectedDocId)
-        .then((m) => {
-          setSelectedDocType(m.docType)
-          try {
-            routeRight.replaceToRoot(buildRightPane(selectedDocId, m.docType) as unknown)
-          } catch {
-            // ignore
-          }
-        })
-        .catch(() => {
-          try {
-            routeRight.replaceToRoot(buildEditor(selectedDocId) as unknown)
-          } catch {
-            // ignore
-          }
-        })
-    } else {
+    const needsKindResolve = !!initialTarget.current?.docId && !initialKnownKind
+    if (routeRight) {
       try {
-        routeRight.replaceToRoot(buildEmptyState() as unknown)
+        if (selectedDocId) {
+          routeRight.replaceToRoot(buildRightPane(selectedDocId, selectedDocType) as unknown)
+        } else {
+          routeRight.replaceToRoot(buildEmptyState() as unknown)
+        }
       } catch {
         // ignore
       }
+    }
+    // Resolve an unknown-kind deep-link target authoritatively, then open the matching shell.
+    // openDoc(undefined) takes the getDoc branch (sheet → SheetView, board → whiteboard, else
+    // editor) and commits the selection (state + durable mirror + URL), so the host's later
+    // query-wiping re-render re-opens the same shell. Owner direct-open and B writer's shared link
+    // converge here.
+    if (needsKindResolve) {
+      openDoc(initialTarget.current!.docId, undefined)
     }
     // Only on mount: subsequent selections are pushed by openDoc / backToList.
     // eslint-disable-next-line react-hooks/exhaustive-deps
