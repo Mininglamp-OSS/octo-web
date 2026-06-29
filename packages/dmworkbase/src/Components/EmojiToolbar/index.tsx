@@ -184,13 +184,14 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         })
     }
 
-    // 按 format 分流：tgs/lottie 用 tgs-player，其余位图用 <img>。
-    renderStickerMedia(sticker: StickerItem, size: number): ReactNode {
+    // 按 format 分流：tgs/lottie 用 tgs-player，其余位图用 <img>。尺寸由 CSS
+    // (.wk-sticker-item img/tgs-player) 统一控制。
+    renderStickerMedia(sticker: StickerItem): ReactNode {
         const url = WKApp.dataSource.commonDataSource.getFileURL(sticker.path)
         if ((sticker.format || "").toLowerCase() === "tgs") {
-            return <tgs-player style={{ width: `${size}px`, height: `${size}px` }} autoplay mode="normal" src={url}></tgs-player>
+            return <tgs-player autoplay mode="normal" src={url}></tgs-player>
         }
-        return <img src={url} style={{ width: `${size}px`, height: `${size}px`, objectFit: "contain" }} alt="" />
+        return <img src={url} alt="" />
     }
 
     render(): React.ReactNode {
@@ -216,31 +217,37 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                         isSticker ? (
                             <li
                                 key="__add__"
-                                className="wk-emojipanel-sticker-add"
-                                onClick={(e) => { e.stopPropagation(); this.onAddClick() }}
-                                style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "74px", height: "74px", border: "1px dashed #ccc", borderRadius: "8px", cursor: "pointer", fontSize: "28px", color: "#999" }}
+                                className="wk-sticker-add"
+                                onClick={(e) => { e.stopPropagation(); if (!uploading) { this.onAddClick() } }}
+                                title="添加贴纸"
                             >
-                                {uploading ? "…" : "+"}
+                                {uploading
+                                    ? <svg className="wk-sticker-spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeDasharray="40 18" /></svg>
+                                    : <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>}
                             </li>
                         ) : undefined
                     }
                     {
                         isSticker ? stickers.map((sticker) => {
-                            return <li key={sticker.sticker_id} style={{ position: "relative" }} onClick={(e) => {
+                            return <li key={sticker.sticker_id} className="wk-sticker-item" onClick={(e) => {
                                 e.stopPropagation()
                                 if (onSticker) {
                                     onSticker(sticker)
                                 }
                             }}>
-                                {this.renderStickerMedia(sticker, 74)}
+                                {this.renderStickerMedia(sticker)}
                                 <span
-                                    className="wk-emojipanel-sticker-del"
+                                    className="wk-sticker-del"
                                     onClick={(e) => this.onDelete(e, sticker)}
                                     title="删除"
-                                    style={{ position: "absolute", top: "-4px", right: "-4px", width: "16px", height: "16px", lineHeight: "14px", textAlign: "center", borderRadius: "50%", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: "12px", cursor: "pointer" }}
                                 >×</span>
                             </li>
                         }) : undefined
+                    }
+                    {
+                        isSticker && stickers.length === 0 && !uploading
+                            ? <li key="__empty__" className="wk-sticker-empty">还没有贴纸，点 + 添加</li>
+                            : undefined
                     }
                 </ul>
             </div>
@@ -256,7 +263,12 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                     this.setState({ category: STICKER_CATEGORY })
                     this.requestStickers()
                 }} title="我的贴纸">
-                    <span style={{ fontSize: "20px", lineHeight: "1" }}>🙂</span>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="1.8" />
+                        <circle cx="9" cy="10" r="1.2" fill="currentColor" />
+                        <circle cx="15" cy="10" r="1.2" fill="currentColor" />
+                        <path d="M8.5 14 a3.5 2.5 0 0 0 7 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                    </svg>
                 </div>
             </div>
             <input
