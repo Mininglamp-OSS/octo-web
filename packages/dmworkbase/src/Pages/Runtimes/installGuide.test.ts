@@ -3,14 +3,14 @@ import { getInstallGuide, buildInstallCopyText } from "./installGuide"
 import { t } from "../../i18n/instance"
 
 describe("getInstallGuide — provider 安装步骤", () => {
-    it("octo_daemon → 4 步 (安装 / 配置 / 启动 / 查看状态)", () => {
+    it("octo_daemon → 3 步 (安装 / 配置 / 启动)", () => {
         const g = getInstallGuide("octo_daemon")
         expect(g).not.toBeNull()
-        expect(g!.steps).toHaveLength(4)
+        expect(g!.steps).toHaveLength(3)
         expect(g!.steps[0].command).toBe("npm install -g @mininglamp-oss/octo-daemon")
-        expect(g!.steps[2].command).toBe("octo-daemon start --daemon")
-        // step4 = 查看状态: 带 note
-        expect(g!.steps[3].noteKey).toBeTruthy()
+        expect(g!.steps[2].command).toBe("octo-daemon start")
+        // step3 = 启动: 带重启提示 note
+        expect(g!.steps[2].noteKey).toBeTruthy()
     })
     it("claude / openclaw → null (插件安装改走 runtime 页一键按钮, 不再有手动命令指引)", () => {
         expect(getInstallGuide("claude")).toBeNull()
@@ -31,10 +31,10 @@ describe("buildInstallCopyText — 整段复制文本", () => {
         const text = buildInstallCopyText("octo_daemon", t)
         expect(text).toContain("npm install -g @mininglamp-oss/octo-daemon")
         expect(text).toContain("octo-daemon config")
-        expect(text).toContain("octo-daemon start --daemon")
+        expect(text).toContain("octo-daemon start")
         expect(text).toMatch(/^1\. /m)
-        expect(text).toMatch(/^4\. /m)
-        expect(text).toMatch(/^ {3}\(/m) // step4 note 缩进
+        expect(text).toMatch(/^3\. /m)
+        expect(text).toMatch(/^ {3}\(/m) // step3 note 缩进
         // 所有 i18n key 都解析了 (t 缺 key 时回退为 key 本身, 拼错会留下前缀)
         expect(text).not.toContain("base.runtimes.install")
     })
