@@ -97,7 +97,13 @@ export class TextCell extends MessageCell {
         const emojiParts = parts?.filter((p: Part) => p.type === PartType.emoji) ?? []
         const nonEmojiParts = parts?.filter((p: Part) => p.type !== PartType.emoji) ?? []
         if (emojiParts.length === 1 && nonEmojiParts.length === 0) {
-            const emojiUrl = WKApp.emojiService.getImage(emojiParts[0].text)
+            const token = emojiParts[0].text
+            // 自定义表情（[xxx]）单发时放大显示。优先用服务端清单驱动的 isCustomEmoji；
+            // 旧 mock/实现未提供时，回退到历史的本地 custom_ 图路径判断。
+            if (WKApp.emojiService.isCustomEmoji) {
+                return WKApp.emojiService.isCustomEmoji(token)
+            }
+            const emojiUrl = WKApp.emojiService.getImage(token)
             return !!(emojiUrl && emojiUrl.includes("/emoji/custom_"))
         }
         return false

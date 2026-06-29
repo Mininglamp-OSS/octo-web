@@ -236,6 +236,13 @@ export default class BaseModule implements IModule {
       () => DefaultEmojiService.shared
     );
 
+    // 启动时拉取服务端内置表情清单（fire-and-forget），据此动态重建 token→图 映射，
+    // 取代各端硬编码；失败/离线时保持内置兜底，不影响首屏。apiURL 在 index.tsx 模块注册前
+    // 已配置好，故此处 get 能拿到正确 base。
+    DefaultEmojiService.shared.load?.().catch(() => {
+      /* load() 内部已兜底处理，这里只防未捕获 rejection */
+    });
+
     WKApp.messageManager.registerMessageFactor(
       (contentType: number): ElementType | undefined => {
         switch (contentType) {

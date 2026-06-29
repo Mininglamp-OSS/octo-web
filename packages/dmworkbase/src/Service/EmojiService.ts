@@ -1,3 +1,4 @@
+import WKApp from "../App"
 
 export class Emoji {
     key!: string
@@ -14,17 +15,52 @@ export interface EmojiService {
     getImage(name: string): string
     getAllEmoji(): Array<Emoji>
     emojiRegExp(): RegExp
+    // 是否自定义表情（[xxx] token）。可选：旧 mock 未实现时调用方自行回退。
+    isCustomEmoji?(key: string): boolean
+    // 启动时拉取服务端表情清单（manifest）。可选：离线/失败时回退到内置兜底。
+    load?(): Promise<void>
 }
+
+// 服务端表情清单契约：GET /v1/common/emojis → { version, list:[{key,name,url}] }。
+// key 是消息正文 token（如 "[使命必达]"），是 wire 格式，不随下发改变。
+interface EmojiManifestItem {
+    key: string
+    name: string
+    url: string
+}
+interface EmojiManifest {
+    version: number
+    list: EmojiManifestItem[]
+}
+
+// localStorage 缓存键：存整份 manifest，供下次秒开 / 离线首屏使用。HTTP 层的
+// ETag / Cache-Control(max-age + must-revalidate) 由浏览器对该 GET 自动 revalidate，
+// 故此处无需手写 If-None-Match，只做"上次结果"的本地落地。
+const EMOJI_MANIFEST_CACHE_KEY = "emoji_manifest_v1"
+
+// 内置自定义表情的**本地兜底**：服务端 manifest 拉取失败/离线/或某条目未下发 url 时，
+// 复用客户端已打包的本地 PNG（apps/*/public/emoji/custom_*.png）。
+//   key  = 消息正文 token
+//   name = 人类可读标签（选择器 title / 无障碍）
+//   base = public/emoji 下的文件名（不含扩展名）
+const BUILTIN_CUSTOM_EMOJIS: Array<{ key: string; name: string; base: string }> = [
+    { key: "[使命必达]", name: "使命必达", base: "custom_mission" },
+    { key: "[崇尚行动]", name: "崇尚行动", base: "custom_action" },
+    { key: "[有品位]", name: "有品位", base: "custom_taste" },
+    { key: "[尚方宝剑]", name: "尚方宝剑", base: "custom_shangfang" },
+]
+const BUILTIN_BASE_BY_KEY = new Map(BUILTIN_CUSTOM_EMOJIS.map((e) => [e.key, e.base]))
 
 export class DefaultEmojiService implements EmojiService {
     private constructor() {
+        // 首屏即用：优先上次缓存的 manifest，否则内置兜底。随后 load() 会刷新。
+        this.customItems = this.loadCachedManifest() ?? this.builtinManifestItems()
+        this.rebuild()
     }
     public static shared = new DefaultEmojiService()
-    emojiMap = new Map<string, string>([
-        ["[使命必达]", "custom_mission"],
-        ["[崇尚行动]", "custom_action"],
-        ["[有品位]", "custom_taste"],
-        ["[尚方宝剑]", "custom_shangfang"],
+
+    // Unicode 标准表情：本地、不变、各端一致，不走服务端下发。token → public/emoji 文件名。
+    private unicodeMap = new Map<string, string>([
         ["😀", "0_0"],
         ["😃", "0_1"],
         ["😄", "0_2"],
@@ -34,7 +70,7 @@ export class DefaultEmojiService implements EmojiService {
         ["😂", "0_6"],
         ["🤣", "0_7"],
         ["🥲", "0_8"],
-        ["\u263A\uFE0F", "0_9"],
+        ["☺️", "0_9"],
         ["😊", "0_10"],
         ["😇", "0_11"],
         ["🙂", "0_12"],
@@ -177,74 +213,156 @@ export class DefaultEmojiService implements EmojiService {
         ["👂", "0_149"],
         ["👃", "0_150"],
         ["💋", "0_151"],
-
     ])
 
-    emojiKeys? :string[]
+    // 当前生效的自定义表情集合：来自服务端 manifest（load 后）或本地兜底（首屏/离线）。
+    private customItems: EmojiManifestItem[]
+
+    // 重建产物（rebuild 时刷新）：
+    private resolvedImage = new Map<string, string>() // token → 可直接用于 <img src> 的地址
+    private customKeySet = new Set<string>() // 哪些 token 是自定义表情（供放大渲染/降级判断）
+    private emojiKeys?: string[]
     private _cachedRegExp: RegExp | null = null
 
-    emojiRegExp() {
+    emojiRegExp(): RegExp {
         if (this._cachedRegExp) {
             return this._cachedRegExp
         }
-        if(!this.emojiKeys) {
-            this.emojiKeys = new Array<string>()
-           const keys = this.emojiMap.keys()
-           for (let emojiKey of keys) {
-                this.emojiKeys.push(emojiKey)
-           }
+        if (!this.emojiKeys) {
+            this.emojiKeys = Array.from(this.resolvedImage.keys())
         }
-        // Escape regex special characters for custom emoji keys like [崇尚行动]
-        const escapedKeys = this.emojiKeys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        // 转义自定义表情 key（如 [崇尚行动]）里的正则特殊字符。
+        const escapedKeys = this.emojiKeys.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
         this._cachedRegExp = new RegExp(`(${escapedKeys.join("|")})`)
         return this._cachedRegExp
     }
 
-    // emojiValueMap: any = null  // 倒过来的emojiMap
     getImage(emojiName: string): string {
-        // if (!this.emojiValueMap) {
-        //     this.emojiValueMap = {}
-        //     let emojis = this.emojiMap.entries()
-        //     for (let [emojiKey, emojiValue] of emojis) {
-        //         this.emojiValueMap[emojiValue || ""] = emojiKey;
-        //     }
-        //     // for (let index = 0; index < emojiKeys.length; index++) {
-        //     //     let emojiKey = emojiKeys[index];
-
-
-        //     // }
-        // }
-        // console.log("emojiValueMap--->",this.emojiValueMap)
-        
-        let name = this.emojiMap.get(emojiName);
-        if (!name) {
-            return "";
-        }
-        return this.getImageWithKey(name);
+        return this.resolvedImage.get(emojiName) ?? ""
     }
-    private getImageWithKey(key: string) {
-        return `./emoji/${key}.png`
-    }
+
     getAllEmoji(): Emoji[] {
-        const emojis = new Array<Emoji>();
-        let emojiKeys = this.emojiMap.keys()
-        // emojiKeys.sort((a, b) => {
-
-        //     return parseInt(a) - parseInt(b)
-        // })
-        for (const emojiKey of emojiKeys) {
-            const emojiName = this.emojiMap.get(emojiKey)
-            const emojiImage = this.getImageWithKey(emojiName||"")
-            emojis.push(new Emoji(emojiKey, emojiName || "", emojiImage))
+        const emojis: Emoji[] = []
+        // 自定义在前（与历史顺序一致：custom token 原本排在 map 前列），再接 Unicode。
+        for (const item of this.customItems) {
+            emojis.push(new Emoji(item.key, item.name, this.customImage(item)))
         }
-        // console.log("emojiKeys--->",emojiKeys)
-        // for (let i = 0; i < emojiKeys.length; i++) {
-        //     const emojiKey = emojiKeys[i];
-        //     const emojiName = this.emojiMap[emojiKeys[i]]
-        //     const emojiPath = this.getPathWithKey(emojiKey)
-        //     emojis.push(new Emoji(emojiKey, emojiName, emojiPath))
-        // }
+        for (const [token, base] of this.unicodeMap) {
+            if (this.customKeySet.has(token)) {
+                continue
+            }
+            emojis.push(new Emoji(token, base, this.localImage(base)))
+        }
         return emojis
     }
 
+    isCustomEmoji(key: string): boolean {
+        return this.customKeySet.has(key)
+    }
+
+    // 启动时拉取 manifest（fire-and-forget）。成功则刷新清单并落地缓存；失败保持兜底，
+    // 保证首屏与降级。token 仍是 [xxx]，不变。
+    async load(): Promise<void> {
+        try {
+            const manifest = (await WKApp.apiClient.get("common/emojis")) as EmojiManifest
+            if (manifest && Array.isArray(manifest.list) && manifest.list.length > 0) {
+                this.applyManifest(manifest)
+                this.saveCachedManifest(manifest)
+            }
+        } catch (e) {
+            // 离线/失败：保留构造时的缓存或内置兜底。
+            console.warn("[EmojiService] load manifest failed, using fallback", e)
+        }
+    }
+
+    private applyManifest(manifest: EmojiManifest) {
+        this.customItems = manifest.list.map((it) => ({
+            key: it.key,
+            name: it.name ?? "",
+            url: it.url ?? "",
+        }))
+        this.rebuild()
+    }
+
+    // 重建 token→图 映射、自定义 key 集合，并失效正则缓存。
+    private rebuild() {
+        const resolved = new Map<string, string>()
+        const customKeys = new Set<string>()
+        for (const item of this.customItems) {
+            resolved.set(item.key, this.customImage(item))
+            customKeys.add(item.key)
+        }
+        for (const [token, base] of this.unicodeMap) {
+            if (!resolved.has(token)) {
+                resolved.set(token, this.localImage(base))
+            }
+        }
+        this.resolvedImage = resolved
+        this.customKeySet = customKeys
+        this.emojiKeys = undefined
+        this._cachedRegExp = null
+    }
+
+    private builtinManifestItems(): EmojiManifestItem[] {
+        return BUILTIN_CUSTOM_EMOJIS.map((e) => ({ key: e.key, name: e.name, url: "" }))
+    }
+
+    private localImage(base: string): string {
+        return `./emoji/${base}.png`
+    }
+
+    // 自定义表情最终图片地址：优先 manifest 下发的 url（绝对 url 原样用，相对 url 拼到 API
+    // v1 base 上）；url 为空则回退到内置本地 PNG。
+    private customImage(item: EmojiManifestItem): string {
+        const u = this.resolveUrl(item.url)
+        if (u) {
+            return u
+        }
+        const base = BUILTIN_BASE_BY_KEY.get(item.key)
+        return base ? this.localImage(base) : ""
+    }
+
+    private resolveUrl(url: string): string {
+        if (!url) {
+            return ""
+        }
+        if (/^(https?:)?\/\//i.test(url) || url.startsWith("data:")) {
+            return url
+        }
+        // 相对 url 拼到 API v1 base（如 "/api/v1/" 或 "https://host/v1/"）。
+        let base = ""
+        try {
+            base = ((WKApp as any)?.apiClient?.config?.apiURL as string) || ""
+        } catch {
+            base = ""
+        }
+        return base + url.replace(/^\/+/, "")
+    }
+
+    private loadCachedManifest(): EmojiManifestItem[] | null {
+        try {
+            const raw = localStorage.getItem(EMOJI_MANIFEST_CACHE_KEY)
+            if (!raw) {
+                return null
+            }
+            const m = JSON.parse(raw) as EmojiManifest
+            if (m && Array.isArray(m.list) && m.list.length > 0) {
+                return m.list.map((it) => ({ key: it.key, name: it.name ?? "", url: it.url ?? "" }))
+            }
+        } catch {
+            // 损坏/不可用：忽略，走内置兜底。
+        }
+        return null
+    }
+
+    private saveCachedManifest(manifest: EmojiManifest) {
+        try {
+            localStorage.setItem(
+                EMOJI_MANIFEST_CACHE_KEY,
+                JSON.stringify({ version: manifest.version ?? 0, list: manifest.list }),
+            )
+        } catch {
+            // 配额/隐私模式不可写：忽略，缓存只是优化。
+        }
+    }
 }
