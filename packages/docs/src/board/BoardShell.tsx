@@ -19,6 +19,14 @@ import { i18n, t } from '../octoweb/index.ts'
 import { loadBoardScene, persistBoardScene, clearBoardScene, type BoardScene } from './boardStore.ts'
 import type { WhiteboardSession } from './collab/index.ts'
 import type { ExcalidrawElement, BinaryFileData } from './collab/index.ts'
+import {
+  setLocalPresenceUser,
+  publishLocalPointer,
+  clearLocalPointer,
+  readBoardCollaborators,
+  type BoardCollaborator,
+  type BoardPresenceUser,
+} from './collab/presence.ts'
 import '../editor/styles.css'
 import './board.css'
 
@@ -33,11 +41,20 @@ type ExcalidrawChange = (
   appState: Record<string, unknown>,
   files: Record<string, unknown>,
 ) => void
+/** Excalidraw's live-pointer callback (scene coords) — drives the local→awareness presence write. */
+type ExcalidrawPointerUpdate = (payload: {
+  pointer: { x: number; y: number; tool?: string }
+  button: 'down' | 'up'
+}) => void
 interface ExcalidrawProps {
   initialData?: { elements?: unknown[]; appState?: Record<string, unknown>; files?: Record<string, unknown>; scrollToContent?: boolean } | null
   onChange?: ExcalidrawChange
   /** Imperative API handle (M2 binding drives remote→updateScene through it). */
   excalidrawAPI?: (api: unknown) => void
+  /** Remote peers' cursors + online list (XIN-111 presence). Keyed by awareness client id. */
+  collaborators?: Map<string, BoardCollaborator>
+  /** Local pointer stream we publish into provider.awareness so peers see this cursor (XIN-111). */
+  onPointerUpdate?: ExcalidrawPointerUpdate
   viewModeEnabled?: boolean
   theme?: 'light' | 'dark'
   langCode?: string
@@ -88,6 +105,12 @@ export interface BoardShellProps {
    * persistence path below. The caller owns the session lifecycle (create/destroy).
    */
   collabSession?: WhiteboardSession | null
+  /**
+   * Local peer identity for presence (XIN-111). Published into `collabSession.provider.awareness`
+   * so remote peers can label and colour this user's cursor / online avatar. Omitted on the M1
+   * standalone path (no session), where presence is inert.
+   */
+  user?: BoardPresenceUser
 }
 
 /** Map the app locale (`zh-CN` / `en-US`) to an Excalidraw langCode (`zh-CN` / `en`). */
@@ -141,12 +164,15 @@ class BoardErrorBoundary extends Component<{ children: ReactNode }, { error: Err
  * save will hook into in M2.
  */
 export function BoardShell(props: BoardShellProps): ReactElement {
-  const { docId, title, onBack, onExit, onTitleSaved, onDeleted, collabSession } = props
+  const { docId, title, onBack, onExit, onTitleSaved, onDeleted, collabSession, user } = props
 
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
   const [failed, setFailed] = useState(false)
   const [role, setRole] = useState<Role | undefined>(undefined)
   const [dark, setDark] = useState(prefersDark)
+  // Remote peers' presence (XIN-111): cursors + online list, rebuilt from provider.awareness on
+  // every awareness `change`. Empty on the M1 standalone path (no session).
+  const [collaborators, setCollaborators] = useState<Map<string, BoardCollaborator>>(() => new Map())
 
   // Excalidraw's restore/reconcile helpers, captured off the same dynamic import as the component
   // (XIN-87). Held in refs because they are pure module functions, not render state — they are read
@@ -279,6 +305,38 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     [collabSession],
   )
 
+  // Presence (XIN-111 / case8 presence_delta=0). The board opened a real HocuspocusProvider for
+  // content sync (XIN-55) but never wired presence onto it — the binding's __awareness was a
+  // local-only stub that never touched provider.awareness, so A's cursor/online state never
+  // reached B (presence_delta stayed 0 while canvas content synced fine). Mirror the doc editor:
+  // publish this peer's identity into provider.awareness and rebuild the Excalidraw `collaborators`
+  // map from remote peers on every awareness change. Volatile only — never the Y.Doc, so the 0-7
+  // content path is untouched.
+  useEffect(() => {
+    const awareness = collabSession?.provider.awareness
+    if (!awareness) return
+    if (user) setLocalPresenceUser(awareness, user)
+    const update = () => setCollaborators(readBoardCollaborators(awareness))
+    update()
+    awareness.on('change', update)
+    return () => {
+      awareness.off('change', update)
+      // Drop our cursor so peers stop drawing a stale one once we leave this board.
+      clearLocalPointer(awareness)
+    }
+  }, [collabSession, user])
+
+  // Excalidraw's live pointer (scene coords) → provider.awareness, so remote peers render this
+  // cursor. No Y.Doc write; inert when there is no session.
+  const onPointerUpdate = useCallback<ExcalidrawPointerUpdate>(
+    (payload) => {
+      const awareness = collabSession?.provider.awareness
+      if (!awareness) return
+      publishLocalPointer(awareness, payload.pointer, payload.button)
+    },
+    [collabSession],
+  )
+
   // Flush any pending save when the board unmounts (switching docs / leaving) and when the tab is
   // hidden/closed, so an edit made just before navigating away is not lost.
   useEffect(() => {
@@ -387,6 +445,8 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               }}
               onChange={onChange}
               excalidrawAPI={handleApi}
+              collaborators={collaborators}
+              onPointerUpdate={onPointerUpdate}
               viewModeEnabled={readOnly}
               theme={dark ? 'dark' : 'light'}
               langCode={langCode}

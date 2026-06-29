@@ -17,6 +17,8 @@ export interface BoardSessionProps {
   uid: string
   space: string
   folder: string
+  /** Display name for presence (awareness user.name). Falls back to uid when unresolved. */
+  userName?: string
   onBack?: () => void
   onExit?: () => void
   onTitleSaved?: (docId: string, title: string) => void
@@ -24,7 +26,7 @@ export interface BoardSessionProps {
 }
 
 export function BoardSession(props: BoardSessionProps): ReactElement {
-  const { docId, title, uid, space, folder, onBack, onExit, onTitleSaved, onDeleted } = props
+  const { docId, title, uid, space, folder, userName, onBack, onExit, onTitleSaved, onDeleted } = props
   // The board id is the whiteboard key's {board} segment: octo:{space}:{folder}:wb:{board}.
   const session = useWhiteboardSession({ uid, space, folder, board: docId })
   return (
@@ -37,6 +39,7 @@ export function BoardSession(props: BoardSessionProps): ReactElement {
       onTitleSaved={onTitleSaved}
       onDeleted={onDeleted}
       collabSession={session}
+      user={{ id: uid, name: userName || uid }}
     />
   )
 }

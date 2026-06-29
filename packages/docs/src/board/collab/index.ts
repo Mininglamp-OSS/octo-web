@@ -32,6 +32,14 @@ export {
 } from './yElement.ts'
 export { emptyTelemetry, AwarenessSurface } from './telemetry.ts'
 export type { BindingTelemetry, AwarenessState } from './telemetry.ts'
+export {
+  setLocalPresenceUser,
+  publishLocalPointer,
+  clearLocalPointer,
+  readBoardCollaborators,
+  presenceDelta,
+} from './presence.ts'
+export type { BoardCollaborator, BoardPresenceUser, BoardPointer } from './presence.ts'
 export type {
   ExcalidrawElement,
   ExcalidrawBindingAPI,

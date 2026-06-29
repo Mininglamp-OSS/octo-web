@@ -914,13 +914,14 @@ export function DocsHome() {
         uid={uid}
         space={space}
         folder={folder}
+        userName={names.get(uid) || uid}
         onBack={onBack}
         onExit={backToList}
         onTitleSaved={onTitleSaved}
         onDeleted={onDocDeleted}
       />
     ),
-    [uid, space, folder, onTitleSaved, backToList, onDocDeleted],
+    [uid, space, folder, names, onTitleSaved, backToList, onDocDeleted],
   )
 
   // Choose the right-pane renderer by doc type: a spreadsheet ('sheet') mounts the collaborative
