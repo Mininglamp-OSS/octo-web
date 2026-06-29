@@ -1,0 +1,54 @@
+/* 表情联想候选条：输入法风格的横向排列，刻意区别于 @ 提及的竖向成员列表。 */
+.emoji-suggestion-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 2px;
+  background-color: var(--wk-color-item);
+  box-shadow: var(--wk-shadow-md);
+  border-radius: 8px;
+  padding: 4px;
+  max-width: 360px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overflow-anchor: none;
+}
+
+.emoji-suggestion-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.12s ease;
+  flex-shrink: 0;
+}
+
+/* hover 与键盘选中（含联想弹出的默认项）：浅灰底高亮 + 轻微放大 */
+.emoji-suggestion-bar.emoji-suggestion-bar--mouse .emoji-suggestion-cell:hover,
+.emoji-suggestion-bar.emoji-suggestion-bar--keyboard .emoji-suggestion-cell.is-selected {
+  background-color: var(--semi-color-fill-1);
+  transform: scale(1.06);
+}
+
+.emoji-suggestion-bar.emoji-suggestion-bar--mouse .emoji-suggestion-cell:hover .emoji-suggestion-name,
+.emoji-suggestion-bar.emoji-suggestion-bar--keyboard .emoji-suggestion-cell.is-selected .emoji-suggestion-name {
+  color: var(--semi-color-text-0, var(--wk-text-primary));
+}
+
+.emoji-suggestion-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.emoji-suggestion-name {
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--wk-text-secondary, var(--semi-color-text-2));
+}

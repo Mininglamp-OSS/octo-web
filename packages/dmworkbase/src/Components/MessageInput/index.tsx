@@ -11,6 +11,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import TiptapMention from "@tiptap/extension-mention";
 import { createMentionSuggestion } from "./mentionSuggestion";
+import { createEmojiSuggestionExtension } from "./emojiSuggestion";
 import ConversationContext from "../Conversation/context";
 import clazz from "classnames";
 import WKSDK, { Channel, ChannelInfo, ChannelTypePerson, Subscriber } from "wukongimjssdk";
@@ -461,6 +462,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   // 发送进行中标志：onSend 现在被 await，发送窗口内防止重复触发 (octo-web#227)。
   const sendingRef = useRef(false);
   const mentionActiveRef = useRef(false);
+  // 表情前缀联想下拉激活标志，激活时 Enter 用于选中而非发送
+  const emojiSuggestionActiveRef = useRef(false);
   const botCommandsRef = useRef(props.botCommands);
   // editorHandleKeyDownRef 持有最新的键盘处理函数，通过 useEffect 更新
   const editorHandleKeyDownRef = useRef<
@@ -539,6 +542,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         renderLabel({ options, node }) {
           return `@${node.attrs.label}`;
         },
+      }),
+      // 表情前缀联想：输入中文片段（如「使命」）联想出自定义表情 [使命必达]
+      createEmojiSuggestionExtension((active) => {
+        emojiSuggestionActiveRef.current = active;
       }),
     ],
     content: "",
@@ -1120,6 +1127,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
       if (event.key === "Enter" && !event.shiftKey) {
         if (mentionActiveRef.current) return false;
+        if (emojiSuggestionActiveRef.current) return false;
         sendRef.current?.();
         return true;
       }
