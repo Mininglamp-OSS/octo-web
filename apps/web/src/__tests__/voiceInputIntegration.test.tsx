@@ -38,6 +38,27 @@ vi.mock("@douyinfe/semi-ui", () => ({
   }),
 }));
 
+// VoiceInputButton gates recording behind a loaded feedback setting with
+// voice_input_enabled === 1. These integration tests exercise the happy path,
+// so stub the setting hook as loaded + enabled (the real hook would stay
+// unloaded under jsdom with no API).
+vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => ({
+  default: () => ({
+    spaceSetting: { voice_input_enabled: 1 },
+    loaded: true,
+    apiAvailable: true,
+    voiceConfig: null,
+    updateSetting: vi.fn(),
+  }),
+  getSharedSpaceFeedbackState: () => ({
+    spaceSetting: { voice_input_enabled: 1 },
+    loaded: true,
+    apiAvailable: true,
+    loadedSpaceId: null,
+  }),
+  getSharedVoiceConfig: () => null,
+}));
+
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode } from "@octo/base/src/Components/VoiceInputButton";
 

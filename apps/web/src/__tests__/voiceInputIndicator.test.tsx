@@ -43,7 +43,7 @@ vi.mock("@octo/base/src/Components/MessageInput/VoiceFeedbackNotice", () => ({
 
 // Mock useSpaceFeedbackSetting
 const mockSharedSpaceFeedbackState = {
-  spaceSetting: null as { voice_feedback_on?: number; voice_feedback_notice_acked?: number } | null,
+  spaceSetting: null as { voice_input_enabled?: number; voice_feedback_on?: number; voice_feedback_notice_acked?: number } | null,
   loaded: false,
   apiAvailable: false,
 };
@@ -64,9 +64,13 @@ vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => 
 
 import VoiceInputIndicator from "@octo/base/src/Components/MessageInput/VoiceInputIndicator";
 import { Toast } from "@douyinfe/semi-ui";
+import { i18n } from "@octo/base/src/i18n/instance";
 
 // Reset shared feedback state before each test
 beforeEach(() => {
+  // Pin zh-CN so the floating-text assertions (语音输入/转写中) are deterministic
+  // regardless of jsdom's en-US navigator. Mirrors buildChatContext.test.ts.
+  i18n.setLocale("zh-CN", { persist: false, notify: false });
   mockSharedSpaceFeedbackState.spaceSetting = null;
   mockSharedSpaceFeedbackState.loaded = false;
   mockSharedSpaceFeedbackState.apiAvailable = false;
@@ -86,6 +90,17 @@ function createMockHookReturn(overrides = {}) {
     currentMode: "append_only",
     ...overrides,
   };
+}
+
+// The floating indicator only renders once updateFloatingPosition() finds the
+// `.wk-messageinput-card` ancestor (see VoiceInputIndicator); without it the
+// component falls back to the position-less button-only branch. Render inside
+// a card so the floating layer is reachable, mirroring real usage.
+function renderInCard(ui: React.ReactElement) {
+  return render(ui, {
+    wrapper: ({ children }: { children: React.ReactNode }) =>
+      React.createElement("div", { className: "wk-messageinput-card" }, children),
+  });
 }
 
 describe("VoiceInputIndicator - rendering", () => {
@@ -313,6 +328,9 @@ describe("VoiceInputIndicator - long-press ShiftLeft state machine", () => {
         cancelRecording,
       })
     );
+    // Long-press / shortcut recording requires loaded + voice enabled.
+    mockSharedSpaceFeedbackState.loaded = true;
+    mockSharedSpaceFeedbackState.spaceSetting = { voice_input_enabled: 1 };
   });
 
   afterEach(() => {
@@ -639,6 +657,9 @@ describe("VoiceInputIndicator - click interactions", () => {
         stopRecordingAndTranscribe,
       })
     );
+    // Recording paths require feedback setting loaded + voice enabled.
+    mockSharedSpaceFeedbackState.loaded = true;
+    mockSharedSpaceFeedbackState.spaceSetting = { voice_input_enabled: 1 };
   });
 
   afterEach(() => {
@@ -664,6 +685,9 @@ describe("VoiceInputIndicator - click interactions", () => {
       createMockHookReturn({
         isVoiceEnabled: true,
         isRecording: true,
+        // handleStopClick only forwards context text in edit mode (input mode
+        // sends no context_text); this case asserts the edit-mode context pass.
+        currentMode: "edit_only",
         startRecording,
         stopRecordingAndTranscribe,
       })
@@ -721,7 +745,7 @@ describe("VoiceInputIndicator - floating indicator", () => {
       })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    renderInCard(<VoiceInputIndicator onTranscribed={vi.fn()} />);
 
     const waveContainer = document.querySelector(".wk-voice-wave-container");
     expect(waveContainer).toBeTruthy();
@@ -739,7 +763,7 @@ describe("VoiceInputIndicator - floating indicator", () => {
       })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    renderInCard(<VoiceInputIndicator onTranscribed={vi.fn()} />);
 
     const spinner = document.querySelector(".wk-voice-transcribing-spinner");
     expect(spinner).toBeTruthy();
@@ -753,7 +777,7 @@ describe("VoiceInputIndicator - floating indicator", () => {
       })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    renderInCard(<VoiceInputIndicator onTranscribed={vi.fn()} />);
 
     const text = document.querySelector(".wk-voice-floating-text");
     expect(text?.textContent).toBe("语音输入");
@@ -767,7 +791,7 @@ describe("VoiceInputIndicator - floating indicator", () => {
       })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    renderInCard(<VoiceInputIndicator onTranscribed={vi.fn()} />);
 
     const text = document.querySelector(".wk-voice-floating-text");
     expect(text?.textContent).toBe("转写中");
@@ -858,6 +882,7 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
 
   it("Shift+Cmd+Space should start recording normally when notice_acked=1", async () => {
     mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 1,
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 1,
     };
@@ -884,6 +909,7 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
 
   it("long-press ShiftLeft should start recording normally when notice_acked=1", async () => {
     mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 1,
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 1,
     };
