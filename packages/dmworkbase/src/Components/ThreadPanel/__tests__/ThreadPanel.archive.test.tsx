@@ -39,6 +39,14 @@ vi.mock("../../../App", () => ({
     shared: { deviceId: "dev-1", currentSpaceId: "space-1" },
     mittBus: { emit: hoisted.emit },
     endpoints: { showConversation: vi.fn() },
+    // ThreadPanel.componentDidMount subscribes to remote config and the channel
+    // search feature gate reads remoteConfig.messagesSearchOn. Provide a stub:
+    // search disabled (matches these archive-flow tests), listener returns an
+    // unsubscribe fn so componentWillUnmount cleanup works.
+    remoteConfig: {
+      messagesSearchOn: false,
+      addConfigChangeListener: vi.fn(() => () => {}),
+    },
   },
 }));
 
@@ -53,7 +61,11 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Popover: ({ children }: any) => React.createElement(React.Fragment, null, children),
 }));
 
-vi.mock("wukongimjssdk", () => {
+vi.mock("wukongimjssdk", async () => {
+  // The ThreadPanel import chain references SDK exports beyond Channel/WKSDK
+  // (e.g. MessageContent); spread the real module so collection doesn't break,
+  // then override Channel/ChannelType*/WKSDK with the test's controllable stubs.
+  const actual = await vi.importActual<any>("wukongimjssdk");
   class Channel {
     channelID: string;
     channelType: number;
@@ -63,6 +75,7 @@ vi.mock("wukongimjssdk", () => {
     }
   }
   return {
+    ...actual,
     Channel,
     ChannelTypePerson: 1,
     ChannelTypeGroup: 2,

@@ -88,8 +88,11 @@ vi.mock("../../../bridge/message/useMergeforwardMessageUI", () => ({
   getMergeforwardMessageUI: () => null,
 }));
 vi.mock("../../../Components/WKModal", () => ({ default: () => null }));
-vi.mock("@douyinfe/semi-icons", () => ({ IconArrowLeft: () => null, IconClose: () => null }));
 vi.mock("../index.css", () => ({}));
+// Pass through real semi-icons: the component's import chain pulls in icons
+// (e.g. IconChevronDown) beyond IconArrowLeft/IconClose; stubbing only two
+// breaks collection. importActual keeps every export available.
+vi.mock("@douyinfe/semi-icons", async () => await vi.importActual("@douyinfe/semi-icons"));
 
 import MergeforwardContent from "../index";
 
