@@ -65,6 +65,7 @@
   "main.updateAlreadyLatest": "You are already on the latest version.",
   "nav.chat": "Chats",
   "nav.contacts": "Contacts",
+  "nav.runtimes": "Runtimes",
   "nav.summary": "AI Summary",
   "spaceCreate.copyLink": "Copy link",
   "spaceCreate.create": "Create",

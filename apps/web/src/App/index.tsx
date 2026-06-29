@@ -152,7 +152,7 @@ async function registerMenus() {
   // 进 /runtimes 页面后通过顶部 + 创建 Runtime 拿命令自助启 daemon-cli;
   // 不再依赖"先有 daemon 才看见菜单"那条 chicken-and-egg 链.
   WKApp.menus.register("runtimes", () => {
-    return new Menus("runtimes", "/runtimes", "运行时", <RuntimesIcon />, <RuntimesIcon />)
+    return new Menus("runtimes", "/runtimes", t("app.nav.runtimes"), <RuntimesIcon />, <RuntimesIcon />)
   }, 7000)
 
   WKApp.menus.register("summary", (_context) => {
