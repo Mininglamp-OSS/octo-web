@@ -87,7 +87,18 @@ jobs:
         run: pnpm i18n:check
       - name: Build
         run: pnpm build
+      - name: Typecheck
+        # Baseline gate (#476): fails only on NEWLY introduced type errors.
+        # ~167 pre-existing errors (44 in third-party .tsx that skipLibCheck
+        # can't cover) are frozen in scripts/typecheck-baseline.txt and burned
+        # down separately. See scripts/typecheck-gate.mjs.
+        run: pnpm typecheck:gate
       - name: Lint
         run: pnpm lint
       - name: WKModal Semi override guard
         run: pnpm lint:wkmodal
+      - name: Test
+        # --continue is a turbo flag (not vitest's): keep remaining packages
+        # running after one fails so CI reports every failure in one pass.
+        # turbo still exits non-zero on any failure, so the gate stays red.
+        run: pnpm exec turbo run test --continue

@@ -13,7 +13,9 @@
     "**/*.test.tsx",
     "**/*.spec.ts",
     "**/*.spec.tsx",
-    "vitest*.config.ts"
+    "vitest*.config.ts",
+    "vite.config.ts",
+    "**/*.stories.tsx"
   ],
   "compilerOptions": {
     "allowSyntheticDefaultImports": true,
