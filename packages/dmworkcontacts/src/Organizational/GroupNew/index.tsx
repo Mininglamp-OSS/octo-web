@@ -12,7 +12,7 @@ import {
   Toast,
 } from "@douyinfe/semi-ui";
 import { BasicTreeNodeData } from "@douyinfe/semi-foundation/lib/cjs/tree/foundation";
-import { WKApp, ThemeMode, WKViewQueueHeader, WKModal, I18nContext, t } from "@octo/base";
+import { WKApp, ThemeMode, WKViewQueueHeader, WKModal, I18nContext, t, GroupAvatarPreview, GroupAvatarEditModal } from "@octo/base";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import "./index.css";
@@ -54,6 +54,11 @@ interface ISateOrganizationalGroupNew {
   friendData: any[];
   friendSearchData: any[];
   searchVaule: string;
+  // 发起群聊（createGroup）专用：群名 + 自定义头像态 + 二次弹窗开关。
+  groupName: string;
+  avatarText: string;
+  avatarColorIndex?: number;
+  showAvatarEdit: boolean;
 }
 
 export class OrganizationalGroupNew extends Component<
@@ -75,6 +80,10 @@ export class OrganizationalGroupNew extends Component<
     friendData: [],
     friendSearchData: [],
     searchVaule: "",
+    groupName: "",
+    avatarText: "",
+    avatarColorIndex: undefined,
+    showAvatarEdit: false,
   };
   treeRef: any = React.createRef();
 
@@ -441,6 +450,10 @@ export class OrganizationalGroupNew extends Component<
     this.setState({
       showModal: true,
       optTitle: channelType === 1 ? "contacts.groupNew.title.createGroup" : "contacts.groupNew.title.selectContacts",
+      groupName: "",
+      avatarText: "",
+      avatarColorIndex: undefined,
+      showAvatarEdit: false,
     });
   }
 
@@ -449,6 +462,10 @@ export class OrganizationalGroupNew extends Component<
       showModal: false,
       isFriend: true,
       optPersonnelData: [],
+      groupName: "",
+      avatarText: "",
+      avatarColorIndex: undefined,
+      showAvatarEdit: false,
     });
     this.props.remove && this.props.remove();
   }
@@ -456,6 +473,13 @@ export class OrganizationalGroupNew extends Component<
   async onOK() {
     const channel = this.props.channel as any;
     const { optPersonnelData } = this.state;
+    const isCreate =
+      this.props.action === OrganizationalGroupNewAction.createGroup;
+    const name = this.state.groupName.trim();
+    // 群名必填（创建群）——先于成员校验，匹配「群名在上、选人在下」的视觉顺序。
+    if (isCreate && !name) {
+      return Toast.warning(t("contacts.groupCreate.nameRequired"));
+    }
     if (optPersonnelData.length === 0) {
       return Toast.warning(t("contacts.groupNew.selectContactsWarning"));
     }
@@ -465,12 +489,17 @@ export class OrganizationalGroupNew extends Component<
     });
 
     // 创建群
-    if (this.props.action === OrganizationalGroupNewAction.createGroup) {
-
+    if (isCreate) {
       try {
         const result = await WKApp.dataSource.channelDataSource.createChannel(
           [...getOptPersonnelData],
-          { categoryId: this.props.defaultCategoryId }
+          {
+            categoryId: this.props.defaultCategoryId,
+            name,
+            // 仅在用户显式设置时下发；缺省由服务端渲染默认双人图标。
+            avatarText: this.state.avatarText || undefined,
+            avatarColor: this.state.avatarColorIndex,
+          }
         )
         if (result?.group_no) {
           WKApp.endpoints.showConversation(
@@ -535,19 +564,243 @@ export class OrganizationalGroupNew extends Component<
     }
   }
 
-  render(): ReactNode {
-    const isDark = WKApp.config.themeMode === ThemeMode.dark;
+  // 选人左栏（搜索 + 好友/组织架构列表）—— 发起群聊与添加成员两种布局共用。
+  renderMemberLeft(): ReactNode {
     const {
-      showModal,
       treeData,
-      optTitle,
-      optPersonnelData,
       organizationInfo,
       isFriend,
       friendData,
       searchVaule,
+      optPersonnelData,
     } = this.state;
+    return (
+      <div className="wk-organizational-group-new-left">
+        <div className="group-new-left-search">
+          <Input
+            className="group-new-left-search-input"
+            placeholder={t("contacts.common.search")}
+            value={searchVaule}
+            showClear
+            onChange={(value) => {
+              this.onChangeSearch(value);
+            }}
+          />
+        </div>
+        <div className="group-new-left-main">
+          {isFriend ? (
+            <div className="friend-opt">
+              {/* 组织架构 */}
+              {organizationInfo?.org_id && (
+                <div
+                  className="organization-name"
+                  onClick={() => {
+                    this.onOrginzational();
+                  }}
+                >
+                  <img
+                    style={{ width: "24px", height: "24px", marginRight: "6px" }}
+                    src={require("../../assets/organizational_new.png")}
+                    alt=""
+                  />
+                  <span>{organizationInfo?.name}</span>
+                </div>
+              )}
+
+              <div className="friend-opt-main">
+                <CheckboxGroup
+                  style={{ width: "100%" }}
+                  value={optPersonnelData.map((item) => item.uid)}
+                  onChange={(value) => {
+                    this.onFriendChange(value);
+                  }}
+                >
+                  {friendData.map((friend) => (
+                    <Checkbox
+                      key={friend.uid}
+                      value={friend.uid}
+                      className="friend-opt-item"
+                    >
+                      <WKAvatar
+                        src={
+                          friend.avatar ||
+                          WKApp.shared.avatarUser(friend.uid as string)
+                        }
+                        style={{
+                          width: "24px",
+                          height: "24px",
+                          marginRight: "6px",
+                        }}
+                      />
+                      <span>{friend.name}</span>
+                      {friend.robot && <AiBadge size="small" />}
+                    </Checkbox>
+                  ))}
+                </CheckboxGroup>
+              </div>
+            </div>
+          ) : (
+            <div className="organizational-opt">
+              <div className="organizational-opt-header">
+                <WKViewQueueHeader
+                  title={organizationInfo.name}
+                  onBack={() => {
+                    this.setState({ isFriend: true, searchVaule: "" });
+                  }}
+                />
+              </div>
+              <div className="organizational-opt-main">
+                <Tree
+                  ref={this.treeRef}
+                  treeData={treeData}
+                  filterTreeNode
+                  searchRender={false}
+                  multiple
+                  showFilteredOnly={true}
+                  className="organizational-tree"
+                  onSelect={(
+                    selectedKey: string,
+                    selected: boolean,
+                    selectedNode: BasicTreeNodeData
+                  ) => {
+                    this.onSelectOrganization(
+                      selectedKey,
+                      selected,
+                      selectedNode
+                    );
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // 右侧「已选成员」列表项 —— 两种布局共用。
+  renderSelectedList(): ReactNode {
+    const { optPersonnelData } = this.state;
+    return optPersonnelData?.map((item) => (
+      <div key={item.uid} className="opt-personnel-item">
+        <div className="user-info">
+          <WKAvatar
+            src={item.avatar || WKApp.shared.avatarUser(item.uid as string)}
+            style={{ width: "24px", height: "24px", marginRight: "6px" }}
+          />
+          <span>{item.name}</span>
+          {item.robot && <AiBadge size="small" />}
+        </div>
+        <div
+          className="close-icon"
+          onClick={() => {
+            this.onDelOptPersonnel(item.uid);
+          }}
+        >
+          <span className="semi-icon semi-icon-default semi-icon-close">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              width="1em"
+              height="1em"
+              focusable="false"
+              aria-hidden="true"
+            >
+              <path
+                d="M17.6568 19.7782C18.2426 20.3639 19.1924 20.3639 19.7782 19.7782C20.3639 19.1924 20.3639 18.2426 19.7782 17.6568L14.1213 12L19.7782 6.34313C20.3639 5.75734 20.3639 4.8076 19.7782 4.22181C19.1924 3.63602 18.2426 3.63602 17.6568 4.22181L12 9.87866L6.34313 4.22181C5.75734 3.63602 4.8076 3.63602 4.22181 4.22181C3.63602 4.8076 3.63602 5.75734 4.22181 6.34313L9.87866 12L4.22181 17.6568C3.63602 18.2426 3.63602 19.1924 4.22181 19.7782C4.8076 20.3639 5.75734 20.3639 6.34313 19.7782L12 14.1213L17.6568 19.7782Z"
+                fill="currentColor"
+              ></path>
+            </svg>
+          </span>
+        </div>
+      </div>
+    ));
+  }
+
+  // 发起群聊布局：群头像（预览 + 修改头像）+ 群名（必填）+ 选人。
+  renderCreateModal(): ReactNode {
+    const { showModal, groupName, avatarText, avatarColorIndex, optPersonnelData } =
+      this.state;
+    return (
+      <WKModal
+        size="lg"
+        className="wk-main-modal-group-create"
+        visible={showModal}
+        title={t("contacts.groupCreate.title")}
+        options={{ closable: true, maskClosable: false }}
+        onCancel={() => {
+          this.onCancel();
+        }}
+        footerConfig={{
+          onOk: () => {
+            this.onOK();
+          },
+          okText: t("contacts.common.confirm"),
+          cancelText: t("contacts.common.cancel"),
+        }}
+      >
+        <div className="group-create-body">
+          <div className="group-create-field">
+            <div className="group-create-label">
+              {t("contacts.groupCreate.avatarLabel")}
+            </div>
+            <div className="group-create-avatar-row">
+              <GroupAvatarPreview
+                avatarText={avatarText}
+                colorIndex={avatarColorIndex}
+                name={groupName}
+                nameAsFallback
+                size={48}
+              />
+              <span
+                className="group-create-edit-avatar"
+                onClick={() => this.setState({ showAvatarEdit: true })}
+              >
+                {t("contacts.groupCreate.editAvatar")}
+              </span>
+            </div>
+          </div>
+
+          <div className="group-create-field">
+            <div className="group-create-label group-create-required">
+              {t("contacts.groupCreate.nameLabel")}
+            </div>
+            <Input
+              value={groupName}
+              placeholder={t("contacts.groupCreate.namePlaceholder")}
+              onChange={(value) => this.setState({ groupName: value })}
+            />
+          </div>
+
+          <div className="group-create-field">
+            <div className="group-create-label group-create-required">
+              {t("contacts.groupCreate.membersLabel")}
+            </div>
+            <div className="group-create-members">
+              {this.renderMemberLeft()}
+              <div className="group-create-selected">
+                <div className="organizational-group-new-right-title">
+                  {t("contacts.groupCreate.selectedCount", {
+                    values: { count: optPersonnelData.length },
+                  })}
+                </div>
+                <div className="organizational-group-new-right-body">
+                  {this.renderSelectedList()}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </WKModal>
+    );
+  }
+
+  render(): ReactNode {
+    const { showModal, optTitle } = this.state;
     const { showAdd, render } = this.props;
+    const isCreate =
+      this.props.action === OrganizationalGroupNewAction.createGroup;
     return (
       <div
         onClick={(e) => {
@@ -605,198 +858,68 @@ export class OrganizationalGroupNew extends Component<
           </div>
         )}
 
-        <WKModal
-          size="lg"
-          className="wk-main-modal-organizational-group-new"
-          visible={showModal}
-          options={{ closable: false, maskClosable: false }}
-          onCancel={() => {
-            this.onCancel();
-          }}
-        >
-          <div className="wk-organizational-group-new-left">
-            <div className="group-new-left-search">
-              <Input
-                className="group-new-left-search-input"
-                placeholder={t("contacts.common.search")}
-                value={searchVaule}
-                showClear
-                onChange={(value) => {
-                  this.onChangeSearch(value);
-                }}
-              />
+        {isCreate ? (
+          this.renderCreateModal()
+        ) : (
+          <WKModal
+            size="lg"
+            className="wk-main-modal-organizational-group-new"
+            visible={showModal}
+            options={{ closable: false, maskClosable: false }}
+            onCancel={() => {
+              this.onCancel();
+            }}
+          >
+            {this.renderMemberLeft()}
+            <div className="wk-organizational-group-new-right">
+              <div className="organizational-group-new-right-title">
+                {optTitle ? t(optTitle) : ""}
+              </div>
+              <div className="organizational-group-new-right-body">
+                {this.renderSelectedList()}
+              </div>
+              <div className="organizational-group-new-right-footer">
+                <Space spacing="medium">
+                  <Button
+                    style={{ width: 80 }}
+                    onClick={() => {
+                      this.onCancel();
+                    }}
+                  >
+                    {t("contacts.common.cancel")}
+                  </Button>
+                  <Button
+                    style={{ width: 80 }}
+                    className="wk-but-ok"
+                    theme="solid"
+                    type="primary"
+                    onClick={() => {
+                      this.onOK();
+                    }}
+                  >
+                    {t("contacts.common.confirm")}
+                  </Button>
+                </Space>
+              </div>
             </div>
-            <div className="group-new-left-main">
-              {isFriend ? (
-                <div className="friend-opt">
-                  {/* 组织架构 */}
-                  {organizationInfo?.org_id && (
-                    <div
-                      className="organization-name"
-                      onClick={() => {
-                        this.onOrginzational();
-                      }}
-                    >
-                      <img
-                        style={{
-                          width: "24px",
-                          height: "24px",
-                          marginRight: "6px",
-                        }}
-                        src={require("../../assets/organizational_new.png")}
-                        alt=""
-                      />
-                      <span>{organizationInfo?.name}</span>
-                    </div>
-                  )}
+          </WKModal>
+        )}
 
-                  <div className="friend-opt-main">
-                    <CheckboxGroup
-                      style={{ width: "100%" }}
-                      value={optPersonnelData.map((item) => {
-                        return item.uid;
-                      })}
-                      onChange={(value) => {
-                        this.onFriendChange(value);
-                      }}
-                    >
-                      {friendData.map((friend) => {
-                        return (
-                          <Checkbox
-                            key={friend.uid}
-                            value={friend.uid}
-                            className="friend-opt-item"
-                          >
-                            <WKAvatar
-                              src={friend.avatar || WKApp.shared.avatarUser(
-                                friend.uid as string
-                              )}
-                              style={{
-                                width: "24px",
-                                height: "24px",
-                                marginRight: "6px",
-                              }}
-                            />
-                            <span>{friend.name}</span>
-                            {friend.robot && <AiBadge size="small" />}
-                          </Checkbox>
-                        );
-                      })}
-                    </CheckboxGroup>
-                  </div>
-                </div>
-              ) : (
-                <div className="organizational-opt">
-                  <div className="organizational-opt-header">
-                    <WKViewQueueHeader
-                      title={organizationInfo.name}
-                      onBack={() => {
-                        this.setState({
-                          isFriend: true,
-                          searchVaule: "",
-                        });
-                      }}
-                    />
-                  </div>
-                  <div className="organizational-opt-main">
-                    <Tree
-                      ref={this.treeRef}
-                      treeData={treeData}
-                      filterTreeNode
-                      searchRender={false}
-                      multiple
-                      showFilteredOnly={true}
-                      className="organizational-tree"
-                      onSelect={(
-                        selectedKey: string,
-                        selected: boolean,
-                        selectedNode: BasicTreeNodeData
-                      ) => {
-                        this.onSelectOrganization(
-                          selectedKey,
-                          selected,
-                          selectedNode
-                        );
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="wk-organizational-group-new-right">
-            <div className="organizational-group-new-right-title">
-              {optTitle ? t(optTitle) : ""}
-            </div>
-            <div className="organizational-group-new-right-body">
-              {optPersonnelData &&
-                optPersonnelData.map((item, index) => {
-                  return (
-                    <div key={item.uid} className="opt-personnel-item">
-                      <div className="user-info">
-                        <WKAvatar
-                          src={item.avatar || WKApp.shared.avatarUser(item.uid as string)}
-                          style={{
-                            width: "24px",
-                            height: "24px",
-                            marginRight: "6px",
-                          }}
-                        />
-                        <span>{item.name}</span>
-                        {item.robot && <AiBadge size="small" />}
-                      </div>
-                      <div
-                        className="close-icon"
-                        onClick={() => {
-                          this.onDelOptPersonnel(item.uid);
-                        }}
-                      >
-                        <span className="semi-icon semi-icon-default semi-icon-close">
-                          <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="1em"
-                            height="1em"
-                            focusable="false"
-                            aria-hidden="true"
-                          >
-                            <path
-                              d="M17.6568 19.7782C18.2426 20.3639 19.1924 20.3639 19.7782 19.7782C20.3639 19.1924 20.3639 18.2426 19.7782 17.6568L14.1213 12L19.7782 6.34313C20.3639 5.75734 20.3639 4.8076 19.7782 4.22181C19.1924 3.63602 18.2426 3.63602 17.6568 4.22181L12 9.87866L6.34313 4.22181C5.75734 3.63602 4.8076 3.63602 4.22181 4.22181C3.63602 4.8076 3.63602 5.75734 4.22181 6.34313L9.87866 12L4.22181 17.6568C3.63602 18.2426 3.63602 19.1924 4.22181 19.7782C4.8076 20.3639 5.75734 20.3639 6.34313 19.7782L12 14.1213L17.6568 19.7782Z"
-                              fill="currentColor"
-                            ></path>
-                          </svg>
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-            <div className="organizational-group-new-right-footer">
-              <Space spacing="medium">
-                <Button
-                  style={{ width: 80 }}
-                  onClick={() => {
-                    this.onCancel();
-                  }}
-                >
-                  {t("contacts.common.cancel")}
-                </Button>
-                <Button
-                  style={{ width: 80 }}
-                  className="wk-but-ok"
-                  theme="solid"
-                  type="primary"
-                  onClick={() => {
-                    this.onOK();
-                  }}
-                >
-                  {t("contacts.common.confirm")}
-                </Button>
-              </Space>
-            </div>
-          </div>
-        </WKModal>
+        <GroupAvatarEditModal
+          visible={this.state.showAvatarEdit}
+          name={this.state.groupName}
+          nameAsFallback
+          initialAvatarText={this.state.avatarText}
+          initialColorIndex={this.state.avatarColorIndex}
+          onCancel={() => this.setState({ showAvatarEdit: false })}
+          onSave={(r) =>
+            this.setState({
+              avatarText: r.avatarText,
+              avatarColorIndex: r.colorIndex,
+              showAvatarEdit: false,
+            })
+          }
+        />
       </div>
     );
   }

@@ -263,9 +263,10 @@ export interface IChannelDataSource {
 
     /**
      *  创建频道
-     * @param uids 
+     * @param uids 成员 UID（创建者由服务端默认加入）
+     * @param options 可选：分组、群名、自定义头像文字/色板下标
      */
-    createChannel(uids: string[], options?: { categoryId?: string }): Promise<any>
+    createChannel(uids: string[], options?: { categoryId?: string; name?: string; avatarText?: string; avatarColor?: number }): Promise<any>
 
     /**
      * 更新订阅者的属性

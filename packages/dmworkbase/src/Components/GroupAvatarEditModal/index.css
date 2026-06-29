@@ -1,0 +1,36 @@
+.wk-group-avatar-edit-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.wk-group-avatar-edit-upload {
+  color: var(--semi-color-primary);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.wk-group-avatar-edit-label {
+  font-weight: 600;
+  margin: 16px 0 8px;
+}
+
+.wk-group-avatar-edit-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.wk-group-avatar-edit-color {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  box-sizing: border-box;
+}

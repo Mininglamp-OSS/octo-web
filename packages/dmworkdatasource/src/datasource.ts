@@ -58,7 +58,7 @@ export class ChannelDataSource implements IChannelDataSource {
         }
         return WKApp.apiClient.put(`groups/${channel.channelID}/members/${subscriberUID}`, attr)
     }
-    createChannel(uids: string[], options?: { categoryId?: string }): Promise<any> {
+    createChannel(uids: string[], options?: { categoryId?: string; name?: string; avatarText?: string; avatarColor?: number }): Promise<any> {
         const body: any = { members: uids }
         const spaceId = WKApp.shared.currentSpaceId
         if (spaceId) {
@@ -66,6 +66,16 @@ export class ChannelDataSource implements IChannelDataSource {
         }
         if (options?.categoryId) {
             body.category_id = options.categoryId
+        }
+        if (options?.name) {
+            body.name = options.name
+        }
+        // 自定义群头像：仅在用户显式设置时下发；缺省由服务端渲染默认双人图标。
+        if (options?.avatarText) {
+            body.avatar_text = options.avatarText
+        }
+        if (typeof options?.avatarColor === "number" && options.avatarColor >= 0) {
+            body.avatar_color = options.avatarColor
         }
         return WKApp.apiClient.post(`group/create`, body);
     }
