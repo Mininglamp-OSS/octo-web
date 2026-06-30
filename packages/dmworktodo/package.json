@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "main": "src/index.tsx",
+  "scripts": {
+    "test": "vitest run"
+  },
   "dependencies": {
     "@octo/base": "workspace:*",
     "@douyinfe/semi-icons": "^2.93.0",
