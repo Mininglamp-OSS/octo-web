@@ -5,6 +5,8 @@ export type MittEvents = {
   "friend-applys-unread-count": number;
   "space-changed": unknown;
   "task-upload-failed": { channelKey: string };
+  /** 内置表情清单(GET /v1/common/emojis)异步到达并发生变化:已渲染消息与表情选择器据此重渲染一次 */
+  "emoji-manifest-updated": undefined;
   "wk:pending-thread": {
     groupNo: string;
     thread: import("./Service/Thread").Thread | null;

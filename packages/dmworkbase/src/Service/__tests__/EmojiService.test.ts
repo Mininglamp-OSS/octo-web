@@ -146,3 +146,29 @@ describe("EmojiService load() 拉取服务端 manifest", () => {
     expect(svc.isCustomEmoji?.("[使命必达]")).toBe(false)
   })
 })
+
+describe("EmojiService onChange 订阅", () => {
+  it("清单内容变化时通知一次；相同清单不通知；取消订阅后不再通知", async () => {
+    const svc = freshService()
+    let calls = 0
+    const unsub = svc.onChange?.(() => {
+      calls++
+    })
+
+    // 引入新表情 → 与内置兜底不同 → 通知
+    apiGet.mockResolvedValueOnce({ version: 1, list: [{ key: "[新]", name: "新", url: "" }] })
+    await svc.load?.()
+    expect(calls).toBe(1)
+
+    // 相同清单再拉一次 → 无变化 → 不通知
+    apiGet.mockResolvedValueOnce({ version: 1, list: [{ key: "[新]", name: "新", url: "" }] })
+    await svc.load?.()
+    expect(calls).toBe(1)
+
+    // 取消订阅后即使变化也不再通知
+    unsub?.()
+    apiGet.mockResolvedValueOnce({ version: 2, list: [{ key: "[新2]", name: "新2", url: "" }] })
+    await svc.load?.()
+    expect(calls).toBe(1)
+  })
+})

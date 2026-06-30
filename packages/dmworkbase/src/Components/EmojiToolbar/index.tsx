@@ -111,9 +111,19 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         this.setState({
             emojis: this.emojiService.getAllEmoji()
         })
+        // 表情清单异步到达后刷新选择器（否则面板若在 load() 完成前挂载，要重开才显示新表情）。
+        WKApp.mittBus.on("emoji-manifest-updated", this._onEmojiManifestUpdated)
         // 贴纸分类依赖后端 /sticker/* 接口，服务端尚未实现（sticker/user/category 返回 404）。
         // 暂不调用 requestStickerCategory()，避免每次挂载都触发必失败的请求；
         // 后端实现该端点后，恢复调用即可让贴纸分类 Tab 重新出现。
+    }
+
+    componentWillUnmount() {
+        WKApp.mittBus.off("emoji-manifest-updated", this._onEmojiManifestUpdated)
+    }
+
+    private _onEmojiManifestUpdated = () => {
+        this.setState({ emojis: this.emojiService.getAllEmoji() })
     }
 
     requestStickerCategory() {

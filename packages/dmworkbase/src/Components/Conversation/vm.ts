@@ -1046,12 +1046,25 @@ export default class ConversationVM extends ProviderListener {
         // 订阅 task 上传失败事件（module.tsx 全局触发，这里仅处理当前 channel）
         WKApp.mittBus.on("task-upload-failed", this._taskUploadFailedHandler)
 
+        // 订阅内置表情清单更新：清单异步到达后，已解析缓存的消息按新表(token→图/正则)
+        // 重新解析并重渲染一次，修复首屏竞态下新增服务端表情显示为裸 [xxx] 的问题。
+        WKApp.mittBus.on("emoji-manifest-updated", this._emojiManifestUpdatedHandler)
+
     }
     // task 上传失败通知处理器（module.tsx 的全局订阅 emit，这里接收并刷新 UI）
     private _taskUploadFailedHandler = (data: { channelKey: string }) => {
         if (data.channelKey === this.channel.getChannelKey()) {
             this.notifyListener()
         }
+    }
+
+    // 表情清单更新处理器：清空已渲染消息的解析缓存使其按新清单重解析，再重建渲染项并刷新。
+    private _emojiManifestUpdatedHandler = () => {
+        for (const m of this.messages) {
+            m.resetParts()
+        }
+        this.rebuildRenderItems()
+        this.notifyListener()
     }
 
     didUnMount(): void {
@@ -1073,6 +1086,7 @@ export default class ConversationVM extends ProviderListener {
         this.pendingMessages = [] // 清理缓冲区
 
         WKApp.mittBus.off("task-upload-failed", this._taskUploadFailedHandler)
+        WKApp.mittBus.off("emoji-manifest-updated", this._emojiManifestUpdatedHandler)
     }
 
     // 加载频道信息完成

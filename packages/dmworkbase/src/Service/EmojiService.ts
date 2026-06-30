@@ -22,6 +22,9 @@ export interface EmojiService {
     isCustomEmoji?(key: string): boolean
     // 启动时拉取服务端表情清单（manifest）。可选：离线/失败时回退到内置兜底。
     load?(): Promise<void>
+    // 订阅"清单发生变化"。manifest 异步到达且自定义集合确有变化时触发,返回取消订阅函数。
+    // 供已渲染消息 / 表情选择器据此重渲染一次(消除首屏竞态下的裸 token / 旧选择器)。
+    onChange?(listener: () => void): () => void
 }
 
 // 服务端表情清单契约：GET /v1/common/emojis → { version, list:[{key,name,url}] }。
@@ -58,6 +61,7 @@ export class DefaultEmojiService implements EmojiService {
     private constructor() {
         // 首屏即用：优先上次缓存的 manifest，否则内置兜底。随后 load() 会刷新。
         this.customItems = this.loadCachedManifest() ?? this.builtinManifestItems()
+        this.currentSig = this.sig(this.customItems)
         this.rebuild()
     }
     public static shared = new DefaultEmojiService()
@@ -227,6 +231,10 @@ export class DefaultEmojiService implements EmojiService {
     private emojiKeys?: string[]
     private _cachedRegExp: RegExp | null = null
 
+    // 变更订阅:manifest 异步到达且自定义集合确有变化时通知(用 currentSig 去重,避免无谓重渲染)。
+    private changeListeners = new Set<() => void>()
+    private currentSig = ""
+
     emojiRegExp(): RegExp {
         if (this._cachedRegExp) {
             return this._cachedRegExp
@@ -280,8 +288,37 @@ export class DefaultEmojiService implements EmojiService {
     }
 
     private applyManifest(manifest: EmojiManifest) {
-        this.customItems = this.sanitizeItems(manifest.list)
+        const items = this.sanitizeItems(manifest.list)
+        const next = this.sig(items)
+        const changed = next !== this.currentSig
+        this.customItems = items
+        this.currentSig = next
         this.rebuild()
+        if (changed) {
+            this.emitChange()
+        }
+    }
+
+    onChange(listener: () => void): () => void {
+        this.changeListeners.add(listener)
+        return () => {
+            this.changeListeners.delete(listener)
+        }
+    }
+
+    private emitChange() {
+        for (const l of this.changeListeners) {
+            try {
+                l()
+            } catch (e) {
+                console.warn("[EmojiService] onChange listener threw", e)
+            }
+        }
+    }
+
+    // 自定义集合的内容签名,用于判断 applyManifest 是否真的改变了清单(去重通知)。
+    private sig(items: EmojiManifestItem[]): string {
+        return items.map((i) => `${i.key}${i.name}${i.url}`).join("")
     }
 
     // 规范化并过滤清单条目。服务端数据视为不可信(#480 类):丢弃 key 非字符串/为空/纯空白的条目
