@@ -48,7 +48,9 @@ async function md(node: MdNode, opts?: ExportOptions): Promise<string> {
 describe('exportDocToMarkdown — header + structure', () => {
   it('prepends the signed-link warning comment', async () => {
     const out = await md(doc(p(text('hi'))))
-    expect(out.startsWith('<!-- 注意：图片/附件为签名链接')).toBe(true)
+    // The warning is localized via the `docs` namespace; the @octo/base test stub returns
+    // the i18n key unchanged, so we assert on the stable key-based comment here.
+    expect(out.startsWith('<!-- docs.toolbar.exportSignedLinkNotice -->')).toBe(true)
     expect(out).toContain('hi')
   })
 

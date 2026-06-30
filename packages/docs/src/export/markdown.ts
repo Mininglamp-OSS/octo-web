@@ -7,6 +7,7 @@
 // the resolve endpoint (RES-1 cap: <=200 ids per call). Never base64, never a zip.
 
 import { resolveAttachments, type ResolvedAttachment } from '../attachments/api.ts'
+import { t } from '../octoweb/index.ts'
 
 /** ProseMirror-JSON node (the bits the serializer reads). */
 export interface MdNode {
@@ -26,9 +27,10 @@ export interface ExportOptions {
   emojiGlyph?: (name: string | null | undefined) => string | undefined
 }
 
-/** Header note (Chinese, per spec) warning that asset links are signed and may expire. */
-const EXPORT_HEADER =
-  '<!-- 注意：图片/附件为签名链接，可能过期；过期后请回原文档重新获取或手动下载。 -->'
+/** Header note (localized via the `docs` i18n namespace) warning that asset links are signed and may expire. */
+function exportHeader(): string {
+  return `<!-- ${t('docs.toolbar.exportSignedLinkNotice')} -->`
+}
 
 interface Ctx {
   urls: Map<string, ResolvedAttachment>
@@ -78,7 +80,8 @@ export async function exportDocToMarkdown(
 
   const ctx: Ctx = { urls, emojiGlyph: opts.emojiGlyph }
   const body = serializeBlocks(doc.content ?? [], ctx)
-  return body ? `${EXPORT_HEADER}\n\n${body}\n` : `${EXPORT_HEADER}\n`
+  const header = exportHeader()
+  return body ? `${header}\n\n${body}\n` : `${header}\n`
 }
 
 /** Join block-level nodes with a blank line between them. */
