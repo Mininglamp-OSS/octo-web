@@ -4,9 +4,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    /* anchor the absolutely-positioned panel to this button; without it the
-       panel resolves against a far ancestor and opens clipped on the left. */
-    position: relative;
 }
 
 
@@ -34,9 +31,13 @@
     width: 460px;
     height: 372px;
     background-color: var(--wk-color-item);
-    position: absolute;
-    left: 20px;
-    top: calc(-372px - 15px);
+    /* viewport-aware popover: portaled to <body> and positioned with fixed +
+       JS-computed left/top (EmojiToolbar.computePanelPos), so it is never
+       clipped by an ancestor's overflow and never overflows a narrow column.
+       left/top below are inert placeholders for the hidden/initial state. */
+    position: fixed;
+    left: 0;
+    top: 0;
     box-shadow: 0 0.25rem 0.5rem 0.125rem rgba(114,114,114,0.25098);
     border-radius: 0.75rem;
    

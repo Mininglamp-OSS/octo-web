@@ -1,5 +1,6 @@
 import classNames from "classnames";
 import React from "react";
+import ReactDOM from "react-dom";
 import { Component, ReactNode } from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import { EndpointID } from "../../Service/Const";
@@ -20,6 +21,13 @@ const STICKER_CATEGORY = "sticker"
 const MAX_STICKER_BYTES = 1 * 1024 * 1024
 const ACCEPTED_STICKER_TYPES = ["image/gif", "image/png", "image/jpeg", "image/webp"]
 
+// 面板尺寸（与 index.css 的 .wk-emojitoolbar-emojipanel 保持一致）与视口避让间距，
+// 用于把面板按按钮位置定位并夹进视口，避免溢出/被祖先裁剪。
+const EMOJI_PANEL_WIDTH = 460
+const EMOJI_PANEL_HEIGHT = 372
+const EMOJI_PANEL_GAP = 12
+const EMOJI_PANEL_MARGIN = 8
+
 interface EmojiToolbarProps {
     conversationContext: ConversationContext
     icon: string | React.ReactNode
@@ -28,62 +36,88 @@ interface EmojiToolbarProps {
 interface EmojiToolbarState {
     show: boolean
     animationStart: boolean
+    panelPos: { left: number; top: number } | null
 }
 
 export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiToolbarState>{
+    private triggerRef = React.createRef<HTMLDivElement>()
 
     constructor(props: any) {
         super(props)
         this.state = {
             show: false,
             animationStart: false,
+            panelPos: null,
         }
     }
 
+    // 按触发按钮的位置计算面板坐标，并夹进视口：默认向上弹、左对齐按钮；上方空间
+    // 不足则向下弹；左右超界则贴边。面板用 position:fixed + portal 到 body，因此
+    // 不受任何祖先 overflow:hidden / 容器宽度影响（修复之前"偏左"与"溢出右"）。
+    computePanelPos(): { left: number; top: number } {
+        const rect = this.triggerRef.current?.getBoundingClientRect()
+        const vw = typeof window !== "undefined" ? window.innerWidth : EMOJI_PANEL_WIDTH
+        const vh = typeof window !== "undefined" ? window.innerHeight : EMOJI_PANEL_HEIGHT
+        if (!rect) {
+            return { left: EMOJI_PANEL_MARGIN, top: EMOJI_PANEL_MARGIN }
+        }
+        const left = Math.max(EMOJI_PANEL_MARGIN, Math.min(rect.left, vw - EMOJI_PANEL_WIDTH - EMOJI_PANEL_MARGIN))
+        let top = rect.top - EMOJI_PANEL_HEIGHT - EMOJI_PANEL_GAP
+        if (top < EMOJI_PANEL_MARGIN) {
+            top = Math.max(EMOJI_PANEL_MARGIN, Math.min(rect.bottom + EMOJI_PANEL_GAP, vh - EMOJI_PANEL_HEIGHT - EMOJI_PANEL_MARGIN))
+        }
+        return { left, top }
+    }
+
+    togglePanel = () => {
+        if (this.state.show) {
+            this.close()
+        } else {
+            this.setState({ show: true, animationStart: true, panelPos: this.computePanelPos() })
+        }
+    }
+
+    close = () => {
+        this.setState({ show: false, animationStart: true })
+    }
+
     render(): ReactNode {
-        const { show, animationStart } = this.state
+        const { show, animationStart, panelPos } = this.state
         const { icon, conversationContext } = this.props
-        return <div className="wk-emojitoolbar" >
+        const overlay = <>
+            <div
+                onAnimationEnd={() => {
+                    if (!show) {
+                        this.setState({ animationStart: false })
+                    }
+                }}
+                style={panelPos ? { left: panelPos.left, top: panelPos.top } : undefined}
+                className={classNames("wk-emojitoolbar-emojipanel", animationStart ? (show ? "wk-emojitoolbar-emojipanel-show" : "wk-emojitoolbar-emojipanel-hide") : undefined)}
+            >
+                <EmojiPanel onSticker={(sticker) => {
+                    this.close()
+                    const lottieSticker = new LottieSticker()
+                    lottieSticker.category = sticker.category
+                    lottieSticker.url = sticker.path
+                    lottieSticker.placeholder = sticker.placeholder
+                    lottieSticker.format = sticker.format
+                    conversationContext.sendMessage(lottieSticker)
+                }} onEmoji={(emoji) => {
+                    this.close()
+                    conversationContext.messageInputContext().insertText(emoji.key)
+                }}></EmojiPanel>
+            </div>
+            {
+                show ? <div className="wk-emojitoolbar-mask" onClick={this.close}></div> : undefined
+            }
+        </>
+        return <div className="wk-emojitoolbar" ref={this.triggerRef}>
             <IconClick
                 size="sm"
                 icon={typeof icon === 'string' ? <img src={icon} alt="" /> : icon}
-                onClick={() => {
-                    this.setState({ show: !show, animationStart: true })
-                }}
+                onClick={this.togglePanel}
             />
-            <div onAnimationEnd={() => {
-                    if (!show) {
-                        this.setState({
-                            animationStart: false,
-                        })
-                    }
-                }} className={classNames("wk-emojitoolbar-emojipanel", animationStart ? (show ? "wk-emojitoolbar-emojipanel-show" : "wk-emojitoolbar-emojipanel-hide") : undefined)}>
-                    <EmojiPanel onSticker={(sticker) => {
-                        this.setState({
-                            show: false
-                        })
-                        const lottieSticker = new LottieSticker()
-                        lottieSticker.category = sticker.category
-                        lottieSticker.url = sticker.path
-                        lottieSticker.placeholder = sticker.placeholder
-                        lottieSticker.format = sticker.format
-                        conversationContext.sendMessage(lottieSticker)
-                    }} onEmoji={(emoji) => {
-                        this.setState({
-                            show: false
-                        })
-                        conversationContext.messageInputContext().insertText(emoji.key)
-                    }}></EmojiPanel>
-            </div>
-            {
-                show ? <div className="wk-emojitoolbar-mask" onClick={()=>{
-                    this.setState({
-                        show: false,
-                    })
-                }}>
-                </div> : undefined
-            }
-
+            {typeof document !== "undefined" ? ReactDOM.createPortal(overlay, document.body) : overlay}
         </div>
     }
 }
