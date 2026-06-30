@@ -1,4 +1,7 @@
-import WKApp from "../App"
+// 直接依赖 Service 层的 APIClient 单例,而不是 `../App` 的 WKApp —— App 会静态构造
+// DefaultEmojiService.shared,若再 import App 就形成 App↔Service 循环依赖(仓库刻意避免的
+// 反模式,见 APIClientConfig 回调注入 #1038)。APIClient 不 import App,故无环。
+import APIClient from "./APIClient"
 
 export class Emoji {
     key!: string
@@ -264,8 +267,9 @@ export class DefaultEmojiService implements EmojiService {
     // 保证首屏与降级。token 仍是 [xxx]，不变。
     async load(): Promise<void> {
         try {
-            const manifest = (await WKApp.apiClient.get("common/emojis")) as EmojiManifest
-            if (manifest && Array.isArray(manifest.list) && manifest.list.length > 0) {
+            const manifest = (await APIClient.shared.get("common/emojis")) as EmojiManifest
+            // 只要 list 是数组就应用(允许服务端下发空列表 = 清空自定义表情);非数组/缺失则保留兜底。
+            if (manifest && Array.isArray(manifest.list)) {
                 this.applyManifest(manifest)
                 this.saveCachedManifest(manifest)
             }
@@ -276,12 +280,30 @@ export class DefaultEmojiService implements EmojiService {
     }
 
     private applyManifest(manifest: EmojiManifest) {
-        this.customItems = manifest.list.map((it) => ({
-            key: it.key,
-            name: it.name ?? "",
-            url: it.url ?? "",
-        }))
+        this.customItems = this.sanitizeItems(manifest.list)
         this.rebuild()
+    }
+
+    // 规范化并过滤清单条目。服务端数据视为不可信(#480 类):丢弃 key 非字符串/为空/纯空白的条目
+    // —— 空 key 会让 emojiRegExp() 产生空分支 `(…|)`,在消费端(parseEmoji / getTextBlockEmojis
+    // 的 slice 推进循环)造成零宽匹配、永不前进 → 渲染死循环(DoS)。
+    private sanitizeItems(list: unknown): EmojiManifestItem[] {
+        if (!Array.isArray(list)) {
+            return []
+        }
+        const out: EmojiManifestItem[] = []
+        for (const it of list) {
+            const key = it && typeof (it as EmojiManifestItem).key === "string" ? (it as EmojiManifestItem).key : ""
+            if (!key || !key.trim()) {
+                continue
+            }
+            out.push({
+                key,
+                name: it && typeof (it as EmojiManifestItem).name === "string" ? (it as EmojiManifestItem).name : "",
+                url: it && typeof (it as EmojiManifestItem).url === "string" ? (it as EmojiManifestItem).url : "",
+            })
+        }
+        return out
     }
 
     // 重建 token→图 映射、自定义 key 集合，并失效正则缓存。
@@ -326,15 +348,23 @@ export class DefaultEmojiService implements EmojiService {
         if (!url) {
             return ""
         }
-        if (/^(https?:)?\/\//i.test(url) || url.startsWith("data:")) {
+        // 白名单收紧:仅放行 http(s)/协议相对 与图片 data URI。服务端数据不可信,不放行任意
+        // scheme;其余一律按相对路径拼到 API base(即便是诡异 scheme 也只会变成无害的相对路径)。
+        if (/^(https?:)?\/\//i.test(url)) {
+            return url
+        }
+        if (/^data:image\//i.test(url)) {
             return url
         }
         // 相对 url 拼到 API v1 base（如 "/api/v1/" 或 "https://host/v1/"）。
         let base = ""
         try {
-            base = ((WKApp as any)?.apiClient?.config?.apiURL as string) || ""
+            base = (APIClient.shared?.config?.apiURL as string) || ""
         } catch {
             base = ""
+        }
+        if (base && !base.endsWith("/")) {
+            base += "/"
         }
         return base + url.replace(/^\/+/, "")
     }
@@ -346,8 +376,9 @@ export class DefaultEmojiService implements EmojiService {
                 return null
             }
             const m = JSON.parse(raw) as EmojiManifest
-            if (m && Array.isArray(m.list) && m.list.length > 0) {
-                return m.list.map((it) => ({ key: it.key, name: it.name ?? "", url: it.url ?? "" }))
+            const items = this.sanitizeItems(m?.list)
+            if (items.length > 0) {
+                return items
             }
         } catch {
             // 损坏/不可用：忽略，走内置兜底。

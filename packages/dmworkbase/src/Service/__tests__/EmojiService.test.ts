@@ -1,17 +1,18 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-// EmojiService 通过 `import WKApp from "../App"` 读 apiClient；mock 掉以控制 manifest 拉取。
-vi.mock("../../App", () => ({
+// EmojiService 现在直接依赖 Service 层的 APIClient(不再 import App，避免循环依赖)；
+// mock 掉 APIClient 单例以控制 manifest 拉取与 apiURL base。
+vi.mock("../APIClient", () => ({
   default: {
-    apiClient: {
+    shared: {
       config: { apiURL: "/api/v1/" },
       get: vi.fn(),
     },
   },
 }))
 
-import WKApp from "../../App"
+import APIClient from "../APIClient"
 import { DefaultEmojiService, Emoji, EmojiService } from "../EmojiService"
 
 // 私有构造函数 + 单例：测试里用 `new (DefaultEmojiService as any)()` 拿到隔离实例，
@@ -20,7 +21,7 @@ function freshService(): EmojiService {
   return new (DefaultEmojiService as any)()
 }
 
-const apiGet = WKApp.apiClient.get as unknown as ReturnType<typeof vi.fn>
+const apiGet = APIClient.shared.get as unknown as ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   localStorage.clear()
@@ -93,6 +94,36 @@ describe("EmojiService load() 拉取服务端 manifest", () => {
     const cached = JSON.parse(localStorage.getItem("emoji_manifest_v1") || "{}")
     expect(cached.version).toBe(7)
     expect(cached.list).toHaveLength(3)
+  })
+
+  it("过滤空/非法 key：空分支绝不进正则（防零宽匹配渲染死循环）", async () => {
+    const manifest = {
+      version: 9,
+      list: [
+        { key: "", name: "空", url: "x.png" }, // 空 key → 丢弃
+        { key: "   ", name: "空白", url: "y.png" }, // 纯空白 → 丢弃
+        { key: 123 as unknown as string, name: "非串", url: "z.png" }, // 非字符串 → 丢弃
+        { key: "[正常]", name: "正常", url: "" }, // 保留
+      ],
+    }
+    apiGet.mockResolvedValueOnce(manifest)
+    const svc = freshService()
+    await svc.load?.()
+
+    expect(svc.isCustomEmoji?.("[正常]")).toBe(true)
+    expect(svc.isCustomEmoji?.("")).toBe(false)
+    // 关键断言：正则不含空分支，故对空串不会零宽命中（否则消费端 slice 循环会死锁）。
+    expect(svc.emojiRegExp().test("")).toBe(false)
+    expect("没有表情".match(svc.emojiRegExp())).toBeNull()
+  })
+
+  it("空列表：服务端显式清空自定义表情则生效", async () => {
+    apiGet.mockResolvedValueOnce({ version: 10, list: [] })
+    const svc = freshService()
+    await svc.load?.()
+    expect(svc.isCustomEmoji?.("[使命必达]")).toBe(false)
+    // Unicode 仍在
+    expect(svc.getImage("😀")).toBe("./emoji/0_0.png")
   })
 
   it("失败：保持内置兜底，不抛错", async () => {
