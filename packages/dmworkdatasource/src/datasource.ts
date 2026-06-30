@@ -432,23 +432,31 @@ export class ChannelDataSource implements IChannelDataSource {
 }
 
 // shouldAttachUploadToken decides whether the session token may ride along on a
-// sticker upload POST. The token is attached ONLY when the (server-returned)
-// upload URL is same-origin with the API the apiClient authenticates against.
+// sticker upload POST. The token is attached when the (server-returned) upload
+// URL is same-origin with EITHER trusted origin: the API the apiClient
+// authenticates against, OR the document (app) origin. It is withheld only when
+// the upload host matches neither — i.e. a genuinely foreign destination.
 //
 // `meta.url` is built server-side from APIBaseURL and points at the API's own
-// auth-gated `/v1/file/upload`, so in a correct deployment it is same-origin →
-// the token attaches exactly as before and the upload works. The guard is
-// defense in depth: if the backend ever returns (or is redirected to) a foreign
-// host, the session credential is withheld rather than leaked cross-origin
-// (PR#496 review: Jerry-Xin / OctoBoooot — matches the same-origin invariant
-// yujiawei verified server-side). On any URL-parse failure we conservatively
-// withhold the token.
+// auth-gated `/v1/file/upload`, so in any real deployment it equals one of those
+// two origins (the API host in a cross-origin/CORS setup, the app host behind a
+// same-origin proxy) → the token attaches exactly as before and the upload
+// works. The guard is defense in depth: a backend that returned/redirected to a
+// foreign host gets no credential. Matching against BOTH trusted origins (rather
+// than the API origin alone) is deliberate — pinning to apiURL only would strip
+// the *required* token whenever the upload host equals the app origin but apiURL
+// is a different absolute origin, breaking a working upload (a regression the
+// narrower check would introduce). On any URL-parse failure we conservatively
+// withhold the token. (PR#496 review: Jerry-Xin / OctoBoooot; consistent with
+// the same-origin invariant yujiawei verified server-side.)
 export function shouldAttachUploadToken(uploadURL: string, apiBaseURL: string, locationHref: string): boolean {
     try {
-        // apiBaseURL may be relative (e.g. "/api/v1/") or absolute; resolve both
-        // against the current document so their origins are comparable.
+        const docOrigin = new URL(locationHref).origin
+        // apiBaseURL may be relative (e.g. "/api/v1/") or absolute; resolve it
+        // against the document so its origin is comparable.
         const apiOrigin = new URL(apiBaseURL || locationHref, locationHref).origin
-        return new URL(uploadURL, locationHref).origin === apiOrigin
+        const target = new URL(uploadURL, locationHref).origin
+        return target === apiOrigin || target === docOrigin
     } catch {
         return false
     }
@@ -514,8 +522,8 @@ export class CommonDataSource implements ICommonDataSource {
         const form = new FormData()
         form.append("file", file)
         // Only attach the session token when the upload target is same-origin with
-        // the API (see shouldAttachUploadToken) — withhold it rather than leak the
-        // credential to a foreign host the server might return (PR#496 review).
+        // a trusted (API or app) origin (see shouldAttachUploadToken) — withhold it
+        // rather than leak the credential to a foreign host the server might return.
         const headers: Record<string, string> = { "Content-Type": "multipart/form-data" }
         const locationHref = typeof window !== "undefined" ? window.location.href : ""
         if (locationHref && shouldAttachUploadToken(uploadURL, WKApp.apiClient.config.apiURL, locationHref)) {
