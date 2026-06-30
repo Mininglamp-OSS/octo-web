@@ -101,6 +101,7 @@ import ChannelWebhookPanel from "./Components/ChannelWebhook";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
 import { notificationUtil } from "./Utils/NotificationUtil";
 import { resolveExternalForViewer } from "./Utils/externalViewer";
+import { isGroupDisbanded, isChannelDisbanded, isConversationDisbanded } from "./Utils/groupDisband";
 import {
   copyImageToClipboard,
   copyRichTextToClipboard,
@@ -393,7 +394,11 @@ export default class BaseModule implements IModule {
       const param = cmdContent.param;
 
       if (cmdContent.cmd === "channelUpdate") {
-        // 频道信息更新
+        // 频道信息更新——通用事件（改名/公告/头像/解散等都会触发）。
+        // 使用 fetchChannelInfo 拉取最新状态：channelUpdate 无法区分是改名/公告/头像还是解散，
+        // 不能盲目调用 syncGroupDisbandState（会把正常群标记为已解散）。
+        // 操作者本人的解散走 GroupManagement.handleDisband → syncGroupDisbandState
+        // （本地直写规避 SDK 去重竞态），远程端依赖服务端推送的 channelUpdate 事件。
         WKSDK.shared().channelManager.fetchChannelInfo(
           new Channel(param.channel_id, param.channel_type)
         );
@@ -544,6 +549,8 @@ export default class BaseModule implements IModule {
       }
       switch (message.contentType) {
         case MessageContentTypeConst.channelUpdate:
+          // 同 CMD channelUpdate：通用事件，无法区分是否解散，fetch 最新态。
+          // 操作者本人的解散走 GroupManagement.handleDisband → syncGroupDisbandState。
           WKSDK.shared().channelManager.fetchChannelInfo(message.channel);
           break;
         case MessageContentTypeConst.addMembers:
@@ -874,6 +881,12 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.revoke",
       (message, context) => {
+        // 群/子区解散后只读，撤回属写操作，一并禁用（与 createThread guard 同模式）。
+        // 用 isConversationDisbanded 而非 isChannelDisbanded：子区频道需经父群判断，
+        // 直接对子区频道用 isChannelDisbanded 会因 channelType!=Group 而 fail-open。
+        if (isConversationDisbanded(message.channel)) {
+          return null;
+        }
         const makeRevokeAction = () => ({
           title: t("base.module.contextMenus.revoke"),
           onClick: () => {
@@ -960,6 +973,12 @@ export default class BaseModule implements IModule {
         }
         // 系统消息不显示
         if (WKSDK.shared().isSystemMessage(message.contentType)) {
+          return null;
+        }
+        // 群已解散则隐藏「创建子区」——解散后全员只读，不得新建子区。
+        // 否则右键菜单会绕过 ThreadPanel 的禁用按钮直接 POST 建子区（后端虽拒，
+        // 前端不应暴露该入口）。isChannelDisbanded fail-open，正常群不受影响。
+        if (isChannelDisbanded(message.channel)) {
           return null;
         }
         return {
@@ -1439,6 +1458,12 @@ export default class BaseModule implements IModule {
         return;
       }
 
+      // 群已解散（企业微信式只读态）：隐藏成员栏，视觉上"群里没人了"，
+      // 但后端实际保留成员以支撑历史可看（A 数据 + B 皮肤）。
+      if (isGroupDisbanded(data.channelInfo)) {
+        return;
+      }
+
       let addFinishButtonContext: FinishButtonContext;
       let removeFinishButtonContext: FinishButtonContext;
       let addSelectItems: IndexTableItem[];
@@ -1560,6 +1585,10 @@ export default class BaseModule implements IModule {
           return undefined;
         }
         const rows = new Array();
+        // 企业微信式解散：解散后该 Section 只保留「备注」这一纯个人本地项，
+        // 其余群管理类入口（群名/头像/二维码/公告/转让群主/GROUP.md/群消息推送
+        // /群管理）全部隐藏。与成员栏隐藏（channel.subscribers 段）同源判定。
+        const disbanded = isGroupDisbanded(channelInfo);
         const isExternalGroup = channelInfo?.orgData?.is_external_group === 1;
         const groupNameSubTitle = isExternalGroup ? (
           <span>
@@ -1571,36 +1600,37 @@ export default class BaseModule implements IModule {
         ) : (
           channelInfo?.title
         );
-        rows.push(
-          new Row({
-            cell: ListItem,
-            properties: {
-              title: t("base.module.channelSettings.groupName"),
-              subTitle: groupNameSubTitle,
-              onClick: () => {
-                if (!data.isManagerOrCreatorOfMe) {
-                  Toast.warning(
-                    t("base.module.channelSettings.groupNameOnlyManager")
+        if (!disbanded) {
+          rows.push(
+            new Row({
+              cell: ListItem,
+              properties: {
+                title: t("base.module.channelSettings.groupName"),
+                subTitle: groupNameSubTitle,
+                onClick: () => {
+                  if (!data.isManagerOrCreatorOfMe) {
+                    Toast.warning(
+                      t("base.module.channelSettings.groupNameOnlyManager")
+                    );
+                    return;
+                  }
+                  this.inputEditPush(
+                    context,
+                    channelInfo?.title || "",
+                    (value: string) => {
+                      return WKApp.dataSource.channelDataSource
+                        .updateField(channel, ChannelField.channelName, value)
+                        .catch((err) => {
+                          Toast.error(err.msg);
+                        });
+                    },
+                    t("base.module.channelSettings.groupNamePlaceholder"),
+                    20
                   );
-                  return;
-                }
-                this.inputEditPush(
-                  context,
-                  channelInfo?.title || "",
-                  (value: string) => {
-                    return WKApp.dataSource.channelDataSource
-                      .updateField(channel, ChannelField.channelName, value)
-                      .catch((err) => {
-                        Toast.error(err.msg);
-                      });
-                  },
-                  t("base.module.channelSettings.groupNamePlaceholder"),
-                  20
-                );
+                },
               },
-            },
-          })
-        );
+            })
+          );
 
         rows.push(
           new Row({
@@ -1683,7 +1713,8 @@ export default class BaseModule implements IModule {
             },
           })
         );
-        if (data.subscriberOfMe?.role === GroupRole.owner) {
+        } // end if (!disbanded) — 群名/头像/二维码/公告 仅正常群显示
+        if (!disbanded && data.subscriberOfMe?.role === GroupRole.owner) {
           let transferOwnerFinishButtonContext: FinishButtonContext;
           let transferOwnerSelectedItems: Subscriber[] = [];
           rows.push(
@@ -1779,7 +1810,7 @@ export default class BaseModule implements IModule {
             })
           );
         }
-        if (channel.channelType === ChannelTypeGroup) {
+        if (channel.channelType === ChannelTypeGroup && !disbanded) {
           const hasGroupMd = channelInfo?.orgData?.has_group_md;
           const mdVersion = channelInfo?.orgData?.group_md_version || 0;
           rows.push(
@@ -1950,27 +1981,33 @@ export default class BaseModule implements IModule {
           return;
         }
 
-        rows.push(
-          new Row({
-            cell: ListItemSwitch,
-            properties: {
-              title: t("base.module.channelSettings.mute"),
-              checked: channelInfo?.mute,
-              onCheck: (v: boolean, ctx: ListItemSwitchContext) => {
-                ctx.loading = true;
-                ChannelSettingManager.shared
-                  .mute(v, channel)
-                  .then(() => {
-                    ctx.loading = false;
-                    data.refresh();
-                  })
-                  .catch(() => {
-                    ctx.loading = false;
-                  });
+        // 解散后隐藏「消息免打扰」（群管理类通知设置）；置顶 / 保存到通讯录
+        // 属个人本地项，仍保留。
+        const disbanded = isGroupDisbanded(channelInfo);
+
+        if (!disbanded) {
+          rows.push(
+            new Row({
+              cell: ListItemSwitch,
+              properties: {
+                title: t("base.module.channelSettings.mute"),
+                checked: channelInfo?.mute,
+                onCheck: (v: boolean, ctx: ListItemSwitchContext) => {
+                  ctx.loading = true;
+                  ChannelSettingManager.shared
+                    .mute(v, channel)
+                    .then(() => {
+                      ctx.loading = false;
+                      data.refresh();
+                    })
+                    .catch(() => {
+                      ctx.loading = false;
+                    });
+                },
               },
-            },
-          })
-        );
+            })
+          );
+        }
 
         rows.push(
           new Row({
@@ -2032,6 +2069,10 @@ export default class BaseModule implements IModule {
       (context) => {
         const data = context.routeData() as ChannelSettingRouteData;
         if (data.channel.channelType !== ChannelTypeGroup) {
+          return undefined;
+        }
+        // 解散后隐藏「我在本群的昵称」——群成员属性类项，群已解散无意义。
+        if (isGroupDisbanded(data.channelInfo)) {
           return undefined;
         }
 
@@ -2115,6 +2156,10 @@ export default class BaseModule implements IModule {
       (context) => {
         const data = context.routeData() as ChannelSettingRouteData;
         if (data.channel.channelType !== ChannelTypeGroup) {
+          return undefined;
+        }
+        // 群解散后隐藏「清空聊天记录 / 删除并退出」整段，与企业微信解散态对齐。
+        if (isGroupDisbanded(data.channelInfo)) {
           return undefined;
         }
         return new Section({
@@ -2215,6 +2260,11 @@ export default class BaseModule implements IModule {
           return undefined;
         }
         const threadInfo = parseThreadChannelId(channel.channelID);
+        // 父群是否已解散（子区解散态在父群上）。企业微信式解散后右侧面板精简：
+        // 只留「子区名称」+「所属群聊」，隐藏「子区状态」行（其余 section 各自隐藏）。
+        const disbanded =
+          !!threadInfo &&
+          isChannelDisbanded(new Channel(threadInfo.groupNo, ChannelTypeGroup));
 
         // data.channelInfo 由 ChannelSettingVM 通过 channelInfoListener 维护：
         // vm.didMount → fetchChannelInfo(channel) → channelInfoCallback（子区分支）
@@ -2287,19 +2337,22 @@ export default class BaseModule implements IModule {
             },
           })
         );
-        rows.push(
-          new Row({
-            cell: ListItem,
-            properties: {
-              title: t("base.module.thread.status.title"),
-              subTitle: (
-                <Tag color={statusColor} size="small">
-                  {statusTitle}
-                </Tag>
-              ),
-            },
-          })
-        );
+        // 父群解散后隐藏「子区状态」行（企业微信式只读，活跃/归档状态 Tag 失去意义）。
+        if (!disbanded) {
+          rows.push(
+            new Row({
+              cell: ListItem,
+              properties: {
+                title: t("base.module.thread.status.title"),
+                subTitle: (
+                  <Tag color={statusColor} size="small">
+                    {statusTitle}
+                  </Tag>
+                ),
+              },
+            })
+          );
+        }
         if (threadInfo) {
           const groupChannel = new Channel(
             threadInfo.groupNo,
@@ -2344,6 +2397,13 @@ export default class BaseModule implements IModule {
         }
         const threadInfo = parseThreadChannelId(channel.channelID);
         if (!threadInfo) {
+          return undefined;
+        }
+        // 父群解散后整段隐藏 GROUP.md（解散只读；后端 UpdateThreadMd 走 canOperate
+        // 的解散守卫亦会拒写，前端不再暴露入口）。
+        if (
+          isChannelDisbanded(new Channel(threadInfo.groupNo, ChannelTypeGroup))
+        ) {
           return undefined;
         }
 
@@ -2430,6 +2490,11 @@ export default class BaseModule implements IModule {
           threadInfo.groupNo,
           ChannelTypeGroup
         );
+        // 父群解散后隐藏 webhook 入口 —— webhook 写操作（create/update/regenerate/delete/test）
+        // 与 read-only 合约冲突，与 thread.actions 同模式。
+        if (isChannelDisbanded(parentGroupChannel)) {
+          return undefined;
+        }
         return new Section({
           rows: [
             new Row({
@@ -2468,6 +2533,13 @@ export default class BaseModule implements IModule {
           return undefined;
         }
         const threadInfo = parseThreadChannelId(channel.channelID);
+        // 父群解散后整段隐藏子区管理（归档/取消归档/离开均为写操作，后端解散守卫会拒）。
+        if (
+          threadInfo &&
+          isChannelDisbanded(new Channel(threadInfo.groupNo, ChannelTypeGroup))
+        ) {
+          return undefined;
+        }
         const thread = data.channelInfo?.orgData?.thread as any;
         // 角色/权限判定统一走 shouldShowThreadArchiveAction（内部调用
         // canArchiveThread → canManageThread，从【父群】成员列表解析

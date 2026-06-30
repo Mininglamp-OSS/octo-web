@@ -46,6 +46,14 @@ export class ChannelDataSource implements IChannelDataSource {
         return WKApp.apiClient.post(`groups/${channel.channelID}/exit`)
     }
 
+    async groupDisband(channel: Channel): Promise<void> {
+        if (channel.channelType === ChannelTypePerson) {
+            return
+        }
+        // 后端：DELETE /groups/:group_no/disband，仅群主有权，幂等。group_no === channelID。
+        return WKApp.apiClient.delete(`groups/${channel.channelID}/disband`)
+    }
+
     async channelTransferOwner(channel: Channel, toUID: string): Promise<void> {
         if (channel.channelType === ChannelTypePerson) {
             return

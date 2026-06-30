@@ -3,6 +3,7 @@ import WKApp from "../../App";
 import { SyncMessageOptions } from "../../Service/DataSource/DataProvider";
 import { MessageWrap } from "../../Service/Model";
 import { ProviderListener } from "../../Service/Provider";
+import { isConversationDisbanded } from "../../Utils/groupDisband";
 import { animateScroll, scroller } from 'react-scroll';
 import { EndpointID, MessageContentTypeConst, OrderFactor, ChannelTypeCommunityTopic } from "../../Service/Const";
 import moment from 'moment'
@@ -2222,6 +2223,14 @@ export default class ConversationVM extends ProviderListener {
 
     // 发送消息
     async sendMessage(content: MessageContent, channel: Channel): Promise<Message> {
+        // 解散守卫（中央检查·最底层）：所有发送入口最终都汇到这里再调
+        // chatManager.send，因此守卫下沉到此处即可覆盖输入框发送、单条/逐条转发、
+        // 合并转发(sendMergeforward 直接调本方法，绕过组件层)、重发等全部路径。
+        // 群/子区解散后只读，直接 reject——合并转发的 per-target .catch 会把该目标
+        // 计入 failed、不影响其余目标；组件层 sendMessage/resendMessage 另有 toast。
+        if (isConversationDisbanded(channel)) {
+            return Promise.reject(new Error("group disbanded"))
+        }
         // 发送前注入两类业务字段（详细原因见 sendContentProxy.ts header）：
         //   1. space_id —— 仅 DM (ChannelTypePerson)，让 BotFather 等 Bot
         //      知道用户当前 Space (#784)。

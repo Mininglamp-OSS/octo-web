@@ -297,9 +297,17 @@ export interface IChannelDataSource {
 
     /**
      * 退出频道
-     * @param channel 
+     * @param channel
      */
     exitChannel(channel: Channel): Promise<void>
+
+    /**
+     * 解散群聊（仅群主可调用）。
+     * 企业微信式语义：后端保留频道/成员/历史，仅置 status=Disband 触发全员只读；
+     * 前端据此隐藏成员栏、置灰发送框/建子区。后端幂等（已解散再调返回 OK）。
+     * @param channel 群频道
+     */
+    groupDisband(channel: Channel): Promise<void>
 
     /**
      * 频道拥有者转移

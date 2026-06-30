@@ -32,6 +32,7 @@ import { ErrorBoundary } from "../ErrorBoundary";
 import WKApp from "../../App";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import { formatRelativeTime } from "../../Utils/time";
+import { isChannelDisbanded } from "../../Utils/groupDisband";
 import FollowService from "../../Service/FollowService";
 import SidebarService from "../../Service/SidebarService";
 import CategoryService from "../../Service/CategoryService";
@@ -675,6 +676,14 @@ export default class ThreadPanel extends Component<
 
   private canEditThread(thread: Thread): boolean {
     if (!this.props.groupNo) return false;
+    // 父群解散后只读：更多菜单里的编辑名称 / 归档 / 取消归档全部隐藏（与创建子区
+    // 按钮的 isChannelDisbanded guard 对齐）。这三项都经 canEditThread 门控
+    // （渲染处 index.tsx ~1238、归档按钮 shouldShowArchiveButton ~1623），故在此
+    // 单点拦截即可覆盖全部写入口。注：改名能力本身在后端解散后仍解禁、右侧面板
+    // 「子区名称」行仍可改（企业微信式低风险写）；这里只是收敛 ThreadPanel 菜单入口。
+    if (isChannelDisbanded(new Channel(this.props.groupNo, ChannelTypeGroup))) {
+      return false;
+    }
     return canManageThread(thread, this.props.groupNo);
   }
 
@@ -1317,9 +1326,14 @@ export default class ThreadPanel extends Component<
                     </div>
                   )}
                   {/* 子区 Webhook 管理入口（#451）：对全员可见（list 全员只读、成员可建自己的），
-                      仅活跃子区可见 —— 归档子区创建会被后端拒，避免无效 CTA。 */}
+                      仅活跃子区可见 —— 归档子区创建会被后端拒，避免无效 CTA。
+                      父群解散后也隐藏 —— webhook 写操作（create/update/regenerate/delete）
+                      与 read-only 合约冲突，与 delete 同模式。 */}
                   {vmState.thread &&
-                    vmState.thread.status === ThreadStatus.Active && (
+                    vmState.thread.status === ThreadStatus.Active &&
+                    !isChannelDisbanded(
+                      new Channel(this.props.groupNo, ChannelTypeGroup)
+                    ) && (
                       <div
                         className="wk-thread-more-menu-item"
                         onClick={this.handleOpenThreadWebhook}
@@ -1327,12 +1341,16 @@ export default class ThreadPanel extends Component<
                         {t("base.threadPanel.webhook")}
                       </div>
                     )}
-                  <div
-                    className="wk-thread-more-menu-item wk-thread-more-menu-item-danger"
-                    onClick={this.handleDeleteThread}
-                  >
-                    {t("base.threadPanel.delete")}
-                  </div>
+                  {!isChannelDisbanded(
+                    new Channel(this.props.groupNo, ChannelTypeGroup)
+                  ) && (
+                    <div
+                      className="wk-thread-more-menu-item wk-thread-more-menu-item-danger"
+                      onClick={this.handleDeleteThread}
+                    >
+                      {t("base.threadPanel.delete")}
+                    </div>
+                  )}
                 </div>
               }
             >
@@ -1363,16 +1381,38 @@ export default class ThreadPanel extends Component<
       (t) => t.status === ThreadStatus.Archived
     );
 
+    // 父群已解散：禁止新建子区（与后端 CreateThread 解散守卫对齐）。
+    const disbanded = this.props.groupNo
+      ? isChannelDisbanded(
+          new Channel(this.props.groupNo, ChannelTypeGroup)
+        )
+      : false;
+
+    const createBtn = (
+      <div
+        className={classNames("wk-thread-panel-create-btn", {
+          "wk-thread-panel-create-btn--disabled": disbanded,
+        })}
+        onClick={disbanded ? undefined : this.handleCreateThread}
+      >
+        <Plus size={16} />
+        <span>{t("base.threadPanel.newThread")}</span>
+      </div>
+    );
+
     return (
       <div className="wk-thread-panel-list-view">
         {/* 新建子区按钮 */}
-        <div
-          className="wk-thread-panel-create-btn"
-          onClick={this.handleCreateThread}
-        >
-          <Plus size={16} />
-          <span>{t("base.threadPanel.newThread")}</span>
-        </div>
+        {disbanded ? (
+          <Popover
+            content={t("base.conversation.disband.threadCreateDisabled")}
+            position="bottom"
+          >
+            {createBtn}
+          </Popover>
+        ) : (
+          createBtn
+        )}
 
         {threadsLoading ? (
           <div className="wk-thread-panel-loading">

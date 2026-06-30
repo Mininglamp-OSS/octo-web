@@ -433,6 +433,16 @@ body[theme-mode="dark"] .wk-thread-panel {
   border-color: var(--wk-border-glow);
 }
 
+/* 群已解散：新建子区按钮置灰禁用 */
+.wk-thread-panel-create-btn--disabled,
+.wk-thread-panel-create-btn--disabled:hover {
+  cursor: not-allowed;
+  opacity: 0.5;
+  color: var(--wk-text-tertiary, var(--wk-text-secondary));
+  border-color: var(--wk-border-color, rgba(28, 28, 35, 0.12));
+  background: transparent;
+}
+
 /* 分组 */
 .wk-thread-panel-group {
   margin-bottom: var(--wk-sp-2);

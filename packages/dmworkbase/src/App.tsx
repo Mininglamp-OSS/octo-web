@@ -123,6 +123,19 @@ import "animate.css";
 import "./App.css";
 import RouteContext from "./Service/Context";
 import { ConnectStatus } from "wukongimjssdk";
+import { GroupStatusDisband } from "./Utils/groupDisband";
+
+// 解散群的默认灰色头像（内联 SVG data-URI，避免新增二进制资源）。
+const DISBANDED_GROUP_AVATAR =
+  "data:image/svg+xml;charset=utf-8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">' +
+      '<rect width="80" height="80" fill="#E5E6EB"/>' +
+      '<g fill="#A9AEB8">' +
+      '<circle cx="40" cy="33" r="14"/>' +
+      '<path d="M16 66c0-13 11-21 24-21s24 8 24 21z"/>' +
+      "</g></svg>"
+  );
 import { WKBaseContext } from "./Components/WKBase";
 import StorageService from "./Service/StorageService";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
@@ -953,6 +966,14 @@ export default class WKApp extends ProviderListener {
     }
     let avatarTag = this.getChannelAvatarTag(channel);
     const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
+    // 群已解散（企业微信式只读态）：用默认灰色头像替代群 logo，视觉上"群已遣散"。
+    // 放在 logo 判断之前，确保即便缓存里残留旧 logo 也会被覆盖（A 数据 + B 皮肤）。
+    if (
+      channel.channelType === ChannelTypeGroup &&
+      channelInfo?.orgData?.status === GroupStatusDisband
+    ) {
+      return DISBANDED_GROUP_AVATAR;
+    }
     if (channelInfo && channelInfo.logo && channelInfo.logo !== "") {
       let logo = channelInfo.logo;
       // Data URIs are self-contained — return as-is without query params or URL rewriting
