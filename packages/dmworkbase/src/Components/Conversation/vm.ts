@@ -906,6 +906,16 @@ export default class ConversationVM extends ProviderListener {
                     })
                 }
 
+            } else if (cmdContent.cmd === 'syncMessageReaction') { // 同步消息表情回应
+                // 服务端的 reaction CMD 只携带 channel（不含 message_id/emoji），
+                // 与 user 端 addOrCancelReaction 一致。收到后重新拉取本频道最近
+                // 一页消息（reactions 由 Convert.toMessage 聚合带出），把新的
+                // reactions 合并进已渲染的对应 message，再重渲染。
+                if (message.channel.isEqual(this.channel)) {
+                    this.refreshReactions().catch((err) => {
+                        console.error('[ConversationVM] refreshReactions failed:', err)
+                    })
+                }
             }
         }
         WKSDK.shared().chatManager.addCMDListener(this.cmdListener)
@@ -1324,6 +1334,31 @@ export default class ConversationVM extends ProviderListener {
         }
         this.notifyListener()
 
+    }
+
+    // 刷新消息表情回应：收到 syncMessageReaction CMD 后重新拉取本频道最近一页
+    // 消息（reactions 由 Convert.toMessage 聚合带出），把新的 reactions 合并进
+    // 已渲染的对应 message，再重渲染。CMD 不带 message_id，所以按页 diff 合并。
+    async refreshReactions() {
+        const opts = new SyncMessageOptions()
+        opts.limit = WKApp.config.pageSizeOfMessage
+        opts.startMessageSeq = 0
+        opts.pullMode = PullMode.Down
+        const remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        if (!remoteMessages || remoteMessages.length === 0) {
+            return
+        }
+        let changed = false
+        for (const remote of remoteMessages) {
+            const existing = this.findMessageWithMessageID(remote.messageID)
+            if (existing) {
+                existing.message.reactions = remote.reactions || []
+                changed = true
+            }
+        }
+        if (changed) {
+            this.notifyListener()
+        }
     }
 
     // 修改被回复的消息体
