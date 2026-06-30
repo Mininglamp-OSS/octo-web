@@ -494,8 +494,14 @@ export class CommonDataSource implements ICommonDataSource {
             headers: { "Content-Type": "multipart/form-data", "token": WKApp.loginInfo.token || "" },
         })
         const data: any = resp.data || {}
+        const path: string = data.path || ""
+        if (!path) {
+            // 200 但响应缺 path：视作上传失败，避免拿空 path 去 addSticker 产出坏贴纸
+            // （getFileURL("") → 裂图）。由调用方的本地化 Toast 兜底提示。
+            throw new Error("sticker upload returned no path")
+        }
         const format = String(data.ext || "").replace(/^\./, "").toLowerCase()
-        return { path: data.path || "", format }
+        return { path, format }
     }
     searchUser(keyword: string): Promise<any> {
         const spaceId = WKApp.shared.currentSpaceId

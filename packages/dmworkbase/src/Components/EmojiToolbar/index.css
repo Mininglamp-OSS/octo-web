@@ -29,6 +29,10 @@
     /* fixed width so the panel size is identical across Emoji / 我的贴纸 tabs
        (previously max-width only, so it shrank to content on the sticker tab). */
     width: 460px;
+    /* CSS safety net for viewports narrower than the 460px fixed width: the JS
+       clamp in computePanelPos pins left to the margin, but width stays 460 and
+       would bleed off-screen on tiny windows; cap it to the viewport. */
+    max-width: calc(100vw - 16px);
     height: 372px;
     background-color: var(--wk-color-item);
     /* viewport-aware popover: portaled to <body> and positioned with fixed +

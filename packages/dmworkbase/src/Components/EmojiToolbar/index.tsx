@@ -11,7 +11,7 @@ import ConversationContext from "../Conversation/context";
 import { t } from "../../i18n";
 
 import "./index.css"
-import { LottieSticker } from "../../Messages/LottieSticker";
+import { LottieSticker, isBitmapStickerFormat } from "../../Messages/LottieSticker";
 import IconClick from "../IconClick";
 
 // 自定义贴纸 tab 的内部标识。贴纸是扁平的（不分包），所以只有这一个固定 tab。
@@ -74,11 +74,24 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
             this.close()
         } else {
             this.setState({ show: true, animationStart: true, panelPos: this.computePanelPos() })
+            window.addEventListener("resize", this.onResize)
         }
     }
 
     close = () => {
+        window.removeEventListener("resize", this.onResize)
         this.setState({ show: false, animationStart: true })
+    }
+
+    componentWillUnmount() {
+        window.removeEventListener("resize", this.onResize)
+    }
+
+    // 打开期间窗口尺寸变化（DevTools 切换 / 分栏 / 缩放）时重新夹取面板位置（P2-4）。
+    private onResize = () => {
+        if (this.state.show) {
+            this.setState({ panelPos: this.computePanelPos() })
+        }
     }
 
     render(): ReactNode {
@@ -137,6 +150,11 @@ interface EmojiPanelProps {
 export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
     emojiService: EmojiService
     private fileInput: HTMLInputElement | null = null
+    // EmojiPanel 被 portal 且常驻（每个会话输入栏一个），切换/关闭会话时卸载。下面三个
+    // fire-and-forget 异步流在卸载后 setState 会触发 React 警告并对已离开的会话弹 toast，
+    // 故用 isUnmounted 守卫（PR#496 review，参照 ThreadPanel）。
+    private isUnmounted = false
+    private stickersLoaded = false
 
     constructor(props: any) {
         super(props)
@@ -156,25 +174,40 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         // 表情清单（服务端内置表情，web#492）异步到达后刷新选择器，否则面板若在
         // load() 完成前挂载，要重开才显示新表情。
         WKApp.mittBus.on("emoji-manifest-updated", this._onEmojiManifestUpdated)
-        // 预拉一次自定义贴纸，让「我的贴纸」tab 切过去即有内容。空集合返回
-        // {list:[]}（issue #26 起后端已提供该端点，不再 404）。
-        this.requestStickers()
+        // 贴纸列表延迟到首次切到「我的贴纸」tab 时再拉（ensureStickersLoaded），
+        // 避免每次打开表情面板都打一次 sticker/user 请求（PR#496 review P2-1）。
     }
 
     componentWillUnmount() {
+        this.isUnmounted = true
         WKApp.mittBus.off("emoji-manifest-updated", this._onEmojiManifestUpdated)
     }
 
     private _onEmojiManifestUpdated = () => {
+        if (this.isUnmounted) {
+            return
+        }
         this.setState({ emojis: this.emojiService.getAllEmoji() })
     }
 
-    requestStickers() {
-        WKApp.dataSource.commonDataSource.userStickers().then((result) => {
-            this.setState({ stickers: result.list || [] })
+    requestStickers(): Promise<void> {
+        return WKApp.dataSource.commonDataSource.userStickers().then((result) => {
+            this.stickersLoaded = true
+            if (!this.isUnmounted) {
+                this.setState({ stickers: result.list || [] })
+            }
         }).catch(() => {
-            this.setState({ stickers: [] })
+            if (!this.isUnmounted) {
+                this.setState({ stickers: [] })
+            }
         })
+    }
+
+    // 首次需要时才拉取贴纸（切到「我的贴纸」tab 时调用），之后不再重复拉。
+    ensureStickersLoaded() {
+        if (!this.stickersLoaded) {
+            this.requestStickers()
+        }
     }
 
     onAddClick = () => {
@@ -194,19 +227,25 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
             return
         }
         if (file.size > MAX_STICKER_BYTES) {
-            Toast.error(t("base.sticker.tooLarge", { size: "1MB" }))
+            Toast.error(t("base.sticker.tooLarge", { values: { size: "1MB" } }))
             return
         }
         this.setState({ uploading: true })
         try {
             const uploaded = await WKApp.dataSource.commonDataSource.uploadSticker(file)
             await WKApp.dataSource.commonDataSource.addSticker({ path: uploaded.path, format: uploaded.format })
-            this.requestStickers()
-            this.setState({ category: STICKER_CATEGORY })
+            await this.requestStickers()
+            if (!this.isUnmounted) {
+                this.setState({ category: STICKER_CATEGORY })
+            }
         } catch {
-            Toast.error(t("base.sticker.addFailed"))
+            if (!this.isUnmounted) {
+                Toast.error(t("base.sticker.addFailed"))
+            }
         } finally {
-            this.setState({ uploading: false })
+            if (!this.isUnmounted) {
+                this.setState({ uploading: false })
+            }
         }
     }
 
@@ -215,18 +254,22 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         WKApp.dataSource.commonDataSource.deleteSticker(sticker.sticker_id).then(() => {
             this.requestStickers()
         }).catch(() => {
-            Toast.error(t("base.sticker.deleteFailed"))
+            if (!this.isUnmounted) {
+                Toast.error(t("base.sticker.deleteFailed"))
+            }
         })
     }
 
-    // 按 format 分流：tgs/lottie 用 tgs-player，其余位图用 <img>。尺寸由 CSS
+    // 按 format 分流：已知位图格式用 <img>，其余(含空/未知/tgs)走 tgs-player，与
+    // 聊天气泡里的 LottieStickerCell 共用同一判定(isBitmapStickerFormat)，避免两处
+    // 分流口径漂移把历史 .tgs 贴纸喂进 <img>(PR#496 review)。尺寸由 CSS
     // (.wk-sticker-item img/tgs-player) 统一控制。
     renderStickerMedia(sticker: StickerItem): ReactNode {
         const url = WKApp.dataSource.commonDataSource.getFileURL(sticker.path)
-        if ((sticker.format || "").toLowerCase() === "tgs") {
-            return <tgs-player autoplay mode="normal" src={url}></tgs-player>
+        if (isBitmapStickerFormat(sticker.format)) {
+            return <img src={url} alt="" />
         }
-        return <img src={url} alt="" />
+        return <tgs-player autoplay mode="normal" src={url}></tgs-player>
     }
 
     render(): React.ReactNode {
@@ -296,7 +339,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                 <div className={classNames("wk-emojipanel-tab-item", isSticker ? "wk-emojipanel-tab-item-selected" : undefined)} onClick={(e) => {
                     e.stopPropagation()
                     this.setState({ category: STICKER_CATEGORY })
-                    this.requestStickers()
+                    this.ensureStickersLoaded()
                 }} title={t("base.sticker.tab")}>
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
                         <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="1.8" />
