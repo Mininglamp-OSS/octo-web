@@ -54,7 +54,13 @@ export const DEFAULT_DOC_ID =
  * valid URL. Configure additional hosts at build time via `VITE_DOCS_ASSET_HOSTS`
  * (comma/space-separated host list, e.g. "localhost:9000,minio.internal"). The example
  * defaults below are kept only as harmless placeholders for non-configured builds.
+ *
+ * When the build-arg is NOT passed we fall back to DEFAULT_ASSET_HOSTS so a rebuild that
+ * forgets the build-arg does not silently drop the production COS host and break image
+ * rendering. An explicit VITE_DOCS_ASSET_HOSTS still wins (the passed value is used as-is),
+ * so the override capability is preserved.
  */
+const DEFAULT_ASSET_HOSTS = 'cdn.deepminer.com.cn'
 function parseHostList(value: unknown): string[] {
   return typeof value === 'string'
     ? value
@@ -80,5 +86,5 @@ export const ASSET_HOST_WHITELIST = new Set<string>([
   ...sameOriginHost(),
   'assets.octo.example.com',
   'cdn.octo.example.com',
-  ...parseHostList(import.meta.env?.VITE_DOCS_ASSET_HOSTS),
+  ...parseHostList(envOr(import.meta.env?.VITE_DOCS_ASSET_HOSTS, DEFAULT_ASSET_HOSTS)),
 ])
