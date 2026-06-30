@@ -8,6 +8,12 @@ const hoisted = vi.hoisted(() => {
     const mittEmit = vi.fn()
     const deleteChannelInfo = vi.fn()
     const removeConversation = vi.fn()
+    // axios doubles: `sharedPost` is the global (interceptor-bearing) axios.post;
+    // `isolatedPost` is the post() of the axios.create() instance datasource.ts
+    // builds for foreign uploads. Routing is what the upload-bypass test asserts.
+    const sharedPost = vi.fn()
+    const isolatedPost = vi.fn()
+    const axiosCreate = vi.fn(() => ({ post: isolatedPost }))
     return {
         apiGet,
         apiPost,
@@ -16,13 +22,18 @@ const hoisted = vi.hoisted(() => {
         mittEmit,
         deleteChannelInfo,
         removeConversation,
+        sharedPost,
+        isolatedPost,
+        axiosCreate,
         mockWKApp: {
             apiClient: {
                 get: apiGet,
                 post: apiPost,
                 put: apiPut,
                 delete: apiDelete,
+                config: { apiURL: "http://localhost:3000/api/v1/" },
             },
+            loginInfo: { token: "session-token" },
             mittBus: {
                 emit: mittEmit,
             },
@@ -34,6 +45,13 @@ const hoisted = vi.hoisted(() => {
         },
     }
 })
+
+vi.mock("axios", () => ({
+    default: {
+        post: hoisted.sharedPost,
+        create: hoisted.axiosCreate,
+    },
+}))
 
 vi.mock("@octo/base", () => ({
     ChannelQrcodeResp: class {},
@@ -76,7 +94,7 @@ vi.mock("wukongimjssdk", () => ({
     },
 }))
 
-import { ChannelDataSource, shouldAttachUploadToken } from "./datasource"
+import { ChannelDataSource, CommonDataSource, shouldAttachUploadToken } from "./datasource"
 import { Channel } from "wukongimjssdk"
 
 describe("ChannelDataSource.threadDelete", () => {
@@ -207,5 +225,48 @@ describe("shouldAttachUploadToken (sticker upload same-origin guard)", () => {
 
     it("withholds on a malformed upload URL", () => {
         expect(shouldAttachUploadToken("http://[::::", "/api/v1/", loc)).toBe(false)
+    })
+})
+
+// Exercises the REAL uploadSticker() request path (not just the helper): a
+// foreign upload URL must go through the isolated, interceptor-free axios
+// instance, NOT the shared global axios — because the shared axios carries the
+// APIClient request interceptor that injects the session token unconditionally,
+// which would re-add the credential to a foreign host even though the call-site
+// withholds it (PR#496 review: Jerry-Xin / OctoBoooot). apiURL is
+// http://localhost:3000/api/v1/ and jsdom's document origin is
+// http://localhost:3000, so same-origin == localhost:3000.
+describe("uploadSticker request routing (interceptor-bypass guard)", () => {
+    const stickerResp = { data: { path: "file/preview/sticker/u/x.png", ext: "png" } }
+    let cds: CommonDataSource
+
+    beforeEach(() => {
+        vi.clearAllMocks()
+        cds = new CommonDataSource()
+    })
+
+    const file = () => new File([new Uint8Array([1, 2, 3])], "x.png", { type: "image/png" })
+
+    it("routes a same-origin upload through the shared (interceptor-bearing) axios", async () => {
+        hoisted.apiGet.mockResolvedValue({ url: "http://localhost:3000/file/upload?type=sticker" })
+        hoisted.sharedPost.mockResolvedValue(stickerResp)
+
+        await cds.uploadSticker(file())
+
+        expect(hoisted.sharedPost).toHaveBeenCalledTimes(1)
+        expect(hoisted.isolatedPost).not.toHaveBeenCalled()
+    })
+
+    it("routes a foreign-origin upload through the isolated axios so the interceptor can't re-add the token", async () => {
+        hoisted.apiGet.mockResolvedValue({ url: "https://evil.example.com/file/upload" })
+        hoisted.isolatedPost.mockResolvedValue(stickerResp)
+
+        await cds.uploadSticker(file())
+
+        expect(hoisted.isolatedPost).toHaveBeenCalledTimes(1)
+        expect(hoisted.sharedPost).not.toHaveBeenCalled()
+        // and the isolated client is given no token header at the call site
+        const [, , cfg] = hoisted.isolatedPost.mock.calls[0]
+        expect(cfg?.headers?.token).toBeUndefined()
     })
 })

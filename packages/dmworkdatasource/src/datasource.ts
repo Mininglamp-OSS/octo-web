@@ -462,6 +462,15 @@ export function shouldAttachUploadToken(uploadURL: string, apiBaseURL: string, l
     }
 }
 
+// Isolated axios instance carrying NONE of the project request interceptors. The
+// shared global axios has a request interceptor (APIClient) that injects the
+// session token into EVERY call with no origin scoping; an upload to a
+// non-same-origin URL must not carry that credential, so it goes through this
+// bare instance instead (see uploadSticker). Selecting headers at the call site
+// is not enough on its own — the global interceptor re-adds the token regardless.
+// A finite timeout avoids hanging on an unreachable foreign host.
+const noInterceptorAxios = axios.create({ timeout: 60_000 })
+
 export class CommonDataSource implements ICommonDataSource {
     blacklistAdd(uid: string): Promise<void> {
         return WKApp.apiClient.post(`user/blacklist/${uid}`)
@@ -521,15 +530,21 @@ export class CommonDataSource implements ICommonDataSource {
         }
         const form = new FormData()
         form.append("file", file)
-        // Only attach the session token when the upload target is same-origin with
-        // a trusted (API or app) origin (see shouldAttachUploadToken) — withhold it
-        // rather than leak the credential to a foreign host the server might return.
-        const headers: Record<string, string> = { "Content-Type": "multipart/form-data" }
         const locationHref = typeof window !== "undefined" ? window.location.href : ""
-        if (locationHref && shouldAttachUploadToken(uploadURL, WKApp.apiClient.config.apiURL, locationHref)) {
-            headers["token"] = WKApp.loginInfo.token || ""
-        }
-        const resp = await axios.post(uploadURL, form, { headers })
+        const sameOrigin = !!locationHref && shouldAttachUploadToken(uploadURL, WKApp.apiClient.config.apiURL, locationHref)
+        // Same-origin (the real deployment): use the shared axios so the project
+        // request interceptor (APIClient) attaches the session token exactly as the
+        // avatar uploads do — the auth-gated endpoint needs it; behaviour unchanged.
+        // Foreign host (a URL the backend should never return): use the isolated
+        // instance with NONE of the project interceptors, so the global
+        // `axios.interceptors.request.use` token injection cannot re-add the
+        // credential and leak it cross-origin. Withholding the token at the call
+        // site alone was not enough — the interceptor re-added it regardless
+        // (PR#496 review: Jerry-Xin / OctoBoooot).
+        const client = sameOrigin ? axios : noInterceptorAxios
+        const resp = await client.post(uploadURL, form, {
+            headers: { "Content-Type": "multipart/form-data" },
+        })
         const data: any = resp.data || {}
         const path: string = data.path || ""
         if (!path) {
