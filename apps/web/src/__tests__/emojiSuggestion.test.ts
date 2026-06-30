@@ -52,6 +52,28 @@ describe('matchEmojiPrefix — prefix matching (v1)', () => {
     expect(matchEmojiPrefix('我要完成使命')).toBeNull()
   })
 
+  it('does NOT co-fire inside an @ mention / slash context: 「@使命」「/使命」→ null', () => {
+    // 中文串紧邻的前一字符是其它 suggestion 触发符时不触发，避免与 mention /
+    // slash 候选同时弹出抢键盘。
+    expect(matchEmojiPrefix('@使命')).toBeNull()
+    expect(matchEmojiPrefix('/使命')).toBeNull()
+    // 句中的 @：前一字符仍是 @ → 不触发
+    expect(matchEmojiPrefix('hi @使命')).toBeNull()
+  })
+
+  it('does NOT trigger right after a bracket: 「[使命」→ null', () => {
+    // [ 是表情 key 起始符，替换 query 后会残留前导 [，故守卫掉。
+    expect(matchEmojiPrefix('[使命')).toBeNull()
+  })
+
+  it('still triggers after a non-reserved boundary char: 「[尚方宝剑]崇尚」→ 崇尚', () => {
+    // ] 不是保留前导符，紧随其后的连续中文应正常联想。
+    const r = matchEmojiPrefix('[尚方宝剑]崇尚')
+    expect(r).not.toBeNull()
+    expect(r!.query).toBe('崇尚')
+    expect(r!.items.map((e) => e.key)).toContain('[崇尚行动]')
+  })
+
   it('prefers the longest matching prefix: 「使命必」→ 使命必', () => {
     const r = matchEmojiPrefix('使命必')
     expect(r).not.toBeNull()

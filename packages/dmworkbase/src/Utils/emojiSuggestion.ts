@@ -38,6 +38,12 @@ export const MIN_QUERY_LEN = 2
 const CJK_CHAR = /[一-鿿]/
 
 /**
+ * 中文串前一字符若属于这些「保留前导符」，则不触发表情联想：
+ * @ / 分别是 mention、slash 两套 suggestion 的触发符，[ 是表情 key 起始符。
+ */
+const RESERVED_PREFIX_CHARS = new Set(['@', '/', '['])
+
+/**
  * 取光标前最长的连续中文片段（词边界为任何非中文字符或文本起点）。
  * 例：「[使命必达]崇尚」→「崇尚」；「公司的使命是」→「公司的使命是」；
  * 光标前紧邻字母时返回空串。
@@ -101,6 +107,16 @@ export function matchEmojiPrefix(
   }
   const word = trailingChineseWord(textBeforeCursor)
   if (word.length < MIN_QUERY_LEN) {
+    return null
+  }
+  // 词边界守卫：中文串紧邻的前一字符若是其它 suggestion 的触发符（@ mention、
+  // / slash）或表情 key 起始符 [，则不触发表情联想。否则输入 @使命 / /使命 时
+  // 文本字面仍是 "@使命"（mention/slash 候选未落定成 node），trailingChineseWord
+  // 会取到 "使命" 并与 [使命必达] 同时弹出，造成两个下拉抢箭头/Enter；输入
+  // [使命 时则会在替换 query 后残留前导 [。word 为整段文本时前一字符为 undefined，
+  // 不命中守卫，正常联想。
+  const charBefore = textBeforeCursor[textBeforeCursor.length - word.length - 1]
+  if (charBefore !== undefined && RESERVED_PREFIX_CHARS.has(charBefore)) {
     return null
   }
   const items = getCustomEmojiItems().filter((e) => e.label.startsWith(word))
