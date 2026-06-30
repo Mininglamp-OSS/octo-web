@@ -17,6 +17,7 @@
 // download reuses the same signed read-URL path images use — base64 never enters the Y.Doc.
 
 import { Node, mergeAttributes } from '@tiptap/core'
+import { NodeSelection } from '@tiptap/pm/state'
 import { FileAttachmentNodeView } from './FileAttachmentNodeView.ts'
 
 export interface FileAttachmentAttrs {
@@ -127,8 +128,18 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
     return {
       setFileAttachment:
         (attrs) =>
-        ({ commands }) =>
-          commands.insertContent({ type: this.name, attrs }),
+        ({ state, commands }) => {
+          // When the current selection is a NodeSelection — a block atom such as a just-
+          // uploaded image, which stays selected after insertion — a plain insertContent
+          // REPLACES that node, so inserting a file would delete the selected image
+          // (XIN-144). Insert the card immediately AFTER the selected node instead, so the
+          // image is preserved. A normal text cursor / range still inserts at the selection.
+          const { selection } = state
+          if (selection instanceof NodeSelection) {
+            return commands.insertContentAt(selection.to, { type: this.name, attrs })
+          }
+          return commands.insertContent({ type: this.name, attrs })
+        },
     }
   },
 })
