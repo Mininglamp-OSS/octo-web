@@ -370,6 +370,7 @@
   "editor": {
     "saveSuccess": "Saved",
     "contentUpdated": "Content has changed. Please refresh.",
+    "draftAlreadySubmitted": "This summary was already submitted; the page has been refreshed.",
     "saveFailed": "Failed to save. Please retry.",
     "placeholder": "Edit summary content..."
   },

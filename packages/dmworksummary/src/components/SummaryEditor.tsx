@@ -16,8 +16,11 @@ interface SummaryEditorProps {
      *  - "team"（默认）：编辑团队/个人总结结果，走 PUT /summaries/:id/edit（editSummary）。
      *  - "personal"（need3/6）：编辑「自己的个人报告」，走 PUT /summaries/:id/personal-edit
      *    （personalEditSummary），成功后后端自动触发团队重算。
+     *  - "personal_draft"（OCT-21）：提交前编辑「自己的个人报告」草稿，走
+     *    PUT /summaries/:id/personal-draft（personalDraftSummary）。**不**触发团队
+     *    重算、**不**写 edited_at。仅当 worker_status===2 && submitted_at IS NULL 时允许。
      */
-    mode?: "team" | "personal";
+    mode?: "team" | "personal" | "personal_draft";
 }
 
 interface SummaryEditorState {
@@ -76,7 +79,10 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
 
         this.setState({ saving: true });
         try {
-            if (mode === "personal") {
+            if (mode === "personal_draft") {
+                // OCT-21：提交前编辑自己的草稿（只能改自己），不触发团队重算、不写 edited_at。
+                await api.personalDraftSummary(taskId, content);
+            } else if (mode === "personal") {
                 // need3/6：编辑自己的个人报告（只能改自己），后端会自动触发团队重算。
                 // F2：personal-edit 只传 content，不带 base_result_id。
                 await api.personalEditSummary(taskId, content);
@@ -88,7 +94,12 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
         } catch (err: unknown) {
             const error = err as Error & { status?: number };
             if (error.status === 409) {
-                Toast.warning(t("summary.editor.contentUpdated"));
+                // v2 GLM-F4：409 文案按 mode 分发。personal_draft 走「该总结已提交，已为你刷新」，
+                // 其余 mode 沿用旧文案「内容已更新，请刷新」。
+                const conflictKey = mode === "personal_draft"
+                    ? "summary.editor.draftAlreadySubmitted"
+                    : "summary.editor.contentUpdated";
+                Toast.warning(t(conflictKey));
                 onSave();
             } else {
                 Toast.error(error.message || t("summary.editor.saveFailed"));

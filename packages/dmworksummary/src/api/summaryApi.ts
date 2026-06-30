@@ -177,6 +177,32 @@ export async function personalEditSummary(
     return put(`/summaries/${taskId}/personal-edit`, { content });
 }
 
+// OCT-21（提交前编辑）/ v2 F1：提交前编辑「自己的个人报告」草稿。
+// 后端按 (task_id, user_id=自己) 定位，只能改自己；不写 edited_at、不 revive、
+// 不触发团队重算。仅当 worker_status===2 && submitted_at IS NULL 时允许；
+// 已提交后请改用 personalEditSummary（后端会重算团队）。
+// 不复用 put helper（理由同 editSummary，见 line 146-168 注释）：
+// SummaryEditor.handleSave 的 409 分支硬依赖 error.status === 409，
+// put helper 的 catch 把 axios error 转成 new Error(extractErrorMessage(err))，
+// 丢失 response.status -> 409 分支永远不触发，编辑器无法关闭。
+export async function personalDraftSummary(
+    taskId: number,
+    content: string,
+): Promise<void> {
+    try {
+        await summaryAxios.put(`${BASE}/summaries/${taskId}/personal-draft`, { content });
+    } catch (err: unknown) {
+        // Preserve cancellation identity so callers can use axios.isCancel(err)
+        if (axios.isCancel(err)) throw err;
+        const axiosErr = err as { response?: { status?: number } };
+        const status = axiosErr?.response?.status;
+        const msg = extractErrorMessage(err);
+        const error = new Error(msg) as Error & { status?: number };
+        if (status) error.status = status;
+        throw error;
+    }
+}
+
 // need7：creator 添加新成员。body={user_ids:[...]}（以后端 addMembersReq.UserIDs
 // 为准，见 octo-smart-summary/internal/api/handler/personal.go AddMembers）。
 // 新成员以「待确认」(Pending) 进入成员状态列表，等其自己 Accept 才生成个人+并入团队。
