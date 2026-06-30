@@ -254,6 +254,16 @@ body[theme-mode=dark] .wk-emojipanel-tab-item-selected {
     to { transform: rotate(360deg); }
 }
 
+/* the Emoji tab uses an <img>; it previously inherited its size from
+   `.wk-emojitoolbar img`, but the panel is now portaled to <body> (no longer a
+   descendant of .wk-emojitoolbar), so constrain it explicitly here. Without
+   this the icon renders at its natural size and overflows the tab cell. */
+.wk-emojipanel-tab-item img {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+}
+
 /* tab icons pick up state via currentColor */
 .wk-emojipanel-tab-item svg {
     color: #8a8f99;
