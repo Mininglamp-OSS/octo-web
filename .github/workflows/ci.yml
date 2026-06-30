@@ -97,6 +97,11 @@ jobs:
         run: pnpm lint
       - name: WKModal Semi override guard
         run: pnpm lint:wkmodal
+      - name: Test wiring guard
+        # Critical Rule 7: a package that ships test files but no `test` script
+        # is silently skipped by `turbo run test`. Fail before the Test step if
+        # any such package exists, so coverage can't regress by non-execution.
+        run: pnpm check:test-wiring
       - name: Test
         # --continue is a turbo flag (not vitest's): keep remaining packages
         # running after one fails so CI reports every failure in one pass.
