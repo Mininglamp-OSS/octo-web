@@ -335,3 +335,80 @@ describe('exportDocToMarkdown — inline marks and atoms', () => {
     expect(out).toContain('<p align="center">mid</p>')
   })
 })
+
+// Regression (yujiawei P1 #3): markdown export interpolated hrefs and HTML-attribute values with
+// ZERO escaping, so a `javascript:` link or a `"`-bearing attribute survived into the export and
+// became a stored-XSS sink when the .md was rendered. Hrefs are scheme-gated; attribute values
+// are HTML-escaped.
+describe('exportDocToMarkdown — XSS hardening of hrefs and attributes', () => {
+  it('drops a javascript: link href, keeping the visible text', async () => {
+    const out = await md(doc(p(text('click', [{ type: 'link', attrs: { href: 'javascript:alert(1)' } }]))))
+    expect(out).not.toContain('javascript:')
+    expect(out).not.toContain('(javascript')
+    expect(out).toContain('click') // text is preserved, only the link sink is removed
+  })
+
+  it('drops a data: link href', async () => {
+    const out = await md(
+      doc(p(text('x', [{ type: 'link', attrs: { href: 'data:text/html,<script>alert(1)</script>' } }]))),
+    )
+    expect(out).not.toContain('data:text/html')
+    expect(out).not.toContain('<script>')
+  })
+
+  it('keeps a safe http(s) link unchanged (no trailing-slash normalization)', async () => {
+    const out = await md(doc(p(text('l', [{ type: 'link', attrs: { href: 'https://x.io' } }]))))
+    expect(out).toContain('[l](https://x.io)')
+  })
+
+  it('escapes parentheses in a link href so it cannot break out of the (...) destination', async () => {
+    const out = await md(doc(p(text('l', [{ type: 'link', attrs: { href: 'https://x.io/a(b)c' } }]))))
+    expect(out).toContain('[l](https://x.io/a%28b%29c)')
+  })
+
+  it('drops a javascript: bookmark url', async () => {
+    const out = await md(
+      doc({ type: 'bookmark', attrs: { url: 'javascript:alert(1)', title: 'evil' } }),
+    )
+    expect(out).not.toContain('javascript:')
+    expect(out).toContain('[evil]()') // no link target emitted
+  })
+
+  it('escapes a quoted attribute-injection in the textStyle color (style="...")', async () => {
+    const out = await md(
+      doc(p(text('c', [{ type: 'textStyle', attrs: { color: 'red"><img src=x onerror=alert(1)>' } }]))),
+    )
+    expect(out).not.toContain('"><img')
+    expect(out).not.toContain('<img src=x') // angle brackets + quote are entity-escaped
+    expect(out).toContain('&quot;&gt;&lt;img')
+  })
+
+  it('escapes a quoted attribute-injection in textAlign (align="...")', async () => {
+    const out = await md(
+      doc({ type: 'paragraph', attrs: { textAlign: 'center"><script>alert(1)</script>' }, content: [text('m')] }),
+    )
+    expect(out).not.toContain('"><script>')
+    expect(out).not.toContain('<script>')
+  })
+
+  it('escapes a quoted attribute-injection in a callout variant', async () => {
+    const out = await md(
+      doc({
+        type: 'callout',
+        attrs: { variant: 'info"><img src=x onerror=alert(1)>' },
+        content: [p(text('hi'))],
+      }),
+    )
+    expect(out).not.toContain('"><img')
+    expect(out).not.toContain('<img src=x')
+  })
+
+  it('does not emit an executable image title even with embedded quotes', async () => {
+    const out = await md(
+      doc({ type: 'image', attrs: { attachId: 'img1', alt: 'a', title: 'cap" onerror="alert(1)' } }),
+    )
+    // The injected quote is backslash-escaped inside the markdown title, never closing it early.
+    expect(out).not.toContain('cap" onerror=')
+    expect(out).toContain('\\"')
+  })
+})
