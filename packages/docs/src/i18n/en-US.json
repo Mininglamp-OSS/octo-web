@@ -78,7 +78,8 @@
     "comments": "Comments",
     "members": "Members",
     "exportMarkdown": "Export as Markdown",
-    "exportError": "Couldn't export this document. Please try again."
+    "exportError": "Couldn't export this document. Please try again.",
+    "exportSignedLinkNotice": "Note: images and attachments are signed links and may expire. Once expired, reopen the source document to fetch them again, or download them manually."
   },
   "slash": {
     "groupBasic": "Basic",
