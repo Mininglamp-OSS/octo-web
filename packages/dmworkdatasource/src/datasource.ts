@@ -485,7 +485,8 @@ export class CommonDataSource implements ICommonDataSource {
         const meta: any = await WKApp.apiClient.get(`file/upload?type=sticker&filename=${encodeURIComponent(file.name)}`)
         const uploadURL: string = meta && meta.url
         if (!uploadURL) {
-            throw new Error("获取贴纸上传地址失败")
+            // internal error — surfaced to the user via the caller's localized Toast
+            throw new Error("failed to obtain sticker upload url")
         }
         const form = new FormData()
         form.append("file", file)

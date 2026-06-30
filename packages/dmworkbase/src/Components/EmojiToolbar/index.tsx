@@ -7,6 +7,7 @@ import WKApp from "../../App";
 import { Emoji, EmojiService } from "../../Service/EmojiService";
 import { StickerItem } from "../../Service/DataSource/DataSource";
 import ConversationContext from "../Conversation/context";
+import { t } from "../../i18n";
 
 import "./index.css"
 import { LottieSticker } from "../../Messages/LottieSticker";
@@ -155,11 +156,11 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
             return
         }
         if (!ACCEPTED_STICKER_TYPES.includes(file.type)) {
-            Toast.error("仅支持 gif、png、jpg、jpeg、webp 格式")
+            Toast.error(t("base.sticker.formatUnsupported"))
             return
         }
         if (file.size > MAX_STICKER_BYTES) {
-            Toast.error("贴纸大小不能超过 1MB")
+            Toast.error(t("base.sticker.tooLarge", { size: "1MB" }))
             return
         }
         this.setState({ uploading: true })
@@ -169,7 +170,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
             this.requestStickers()
             this.setState({ category: STICKER_CATEGORY })
         } catch {
-            Toast.error("添加贴纸失败")
+            Toast.error(t("base.sticker.addFailed"))
         } finally {
             this.setState({ uploading: false })
         }
@@ -180,7 +181,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         WKApp.dataSource.commonDataSource.deleteSticker(sticker.sticker_id).then(() => {
             this.requestStickers()
         }).catch(() => {
-            Toast.error("删除贴纸失败")
+            Toast.error(t("base.sticker.deleteFailed"))
         })
     }
 
@@ -219,7 +220,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                                 key="__add__"
                                 className="wk-sticker-add"
                                 onClick={(e) => { e.stopPropagation(); if (!uploading) { this.onAddClick() } }}
-                                title="添加贴纸"
+                                title={t("base.sticker.add")}
                             >
                                 {uploading
                                     ? <svg className="wk-sticker-spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeDasharray="40 18" /></svg>
@@ -239,14 +240,14 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                                 <span
                                     className="wk-sticker-del"
                                     onClick={(e) => this.onDelete(e, sticker)}
-                                    title="删除"
+                                    title={t("base.sticker.delete")}
                                 >×</span>
                             </li>
                         }) : undefined
                     }
                     {
                         isSticker && stickers.length === 0 && !uploading
-                            ? <li key="__empty__" className="wk-sticker-empty">还没有贴纸，点 + 添加</li>
+                            ? <li key="__empty__" className="wk-sticker-empty">{t("base.sticker.empty")}</li>
                             : undefined
                     }
                 </ul>
@@ -262,7 +263,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                     e.stopPropagation()
                     this.setState({ category: STICKER_CATEGORY })
                     this.requestStickers()
-                }} title="我的贴纸">
+                }} title={t("base.sticker.tab")}>
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
                         <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="1.8" />
                         <circle cx="9" cy="10" r="1.2" fill="currentColor" />

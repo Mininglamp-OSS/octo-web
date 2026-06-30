@@ -4,6 +4,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    /* anchor the absolutely-positioned panel to this button; without it the
+       panel resolves against a far ancestor and opens clipped on the left. */
+    position: relative;
 }
 
 
@@ -26,7 +29,9 @@
 }
 
 .wk-emojitoolbar-emojipanel {
-    max-width: 460px;
+    /* fixed width so the panel size is identical across Emoji / 我的贴纸 tabs
+       (previously max-width only, so it shrank to content on the sticker tab). */
+    width: 460px;
     height: 372px;
     background-color: var(--wk-color-item);
     position: absolute;
