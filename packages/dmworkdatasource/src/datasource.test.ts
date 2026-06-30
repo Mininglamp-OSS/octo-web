@@ -76,7 +76,7 @@ vi.mock("wukongimjssdk", () => ({
     },
 }))
 
-import { ChannelDataSource } from "./datasource"
+import { ChannelDataSource, shouldAttachUploadToken } from "./datasource"
 import { Channel } from "wukongimjssdk"
 
 describe("ChannelDataSource.threadDelete", () => {
@@ -170,5 +170,37 @@ describe("ChannelDataSource incoming webhooks — thread scope (#451)", () => {
         expect(hoisted.apiDelete).toHaveBeenCalledWith("groups/g1/incoming-webhooks/wh1")
         expect(hoisted.apiPost).toHaveBeenCalledWith("groups/g1/incoming-webhooks/wh1/regenerate")
         expect(hoisted.apiPost).toHaveBeenCalledWith("groups/g1/incoming-webhooks/wh1/test")
+    })
+})
+
+// Guard for uploadSticker: the session token may ride along on the upload POST
+// only when the server-returned upload URL is same-origin with the API the
+// apiClient authenticates against — so a foreign host the backend might return
+// never receives the credential (PR#496 review: Jerry-Xin / OctoBoooot).
+describe("shouldAttachUploadToken (sticker upload same-origin guard)", () => {
+    const loc = "https://app.example.com/chat"
+
+    it("attaches when the upload URL is same-origin as an absolute apiURL", () => {
+        expect(shouldAttachUploadToken("https://api.example.com/file/upload?type=sticker", "https://api.example.com/v1/", loc)).toBe(true)
+    })
+
+    it("attaches when apiURL is relative and the upload URL is same-origin as the app", () => {
+        expect(shouldAttachUploadToken("https://app.example.com/file/upload?type=sticker", "/api/v1/", loc)).toBe(true)
+    })
+
+    it("attaches when apiURL is empty (falls back to the document origin)", () => {
+        expect(shouldAttachUploadToken("https://app.example.com/file/upload", "", loc)).toBe(true)
+    })
+
+    it("withholds when the upload URL host differs from a relative apiURL's origin", () => {
+        expect(shouldAttachUploadToken("https://evil.example.com/file/upload", "/api/v1/", loc)).toBe(false)
+    })
+
+    it("withholds when the upload URL host differs from an absolute apiURL's origin", () => {
+        expect(shouldAttachUploadToken("https://app.example.com/file/upload", "https://api.example.com/v1/", loc)).toBe(false)
+    })
+
+    it("withholds on a malformed upload URL", () => {
+        expect(shouldAttachUploadToken("http://[::::", "/api/v1/", loc)).toBe(false)
     })
 })

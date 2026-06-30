@@ -431,6 +431,29 @@ export class ChannelDataSource implements IChannelDataSource {
     }
 }
 
+// shouldAttachUploadToken decides whether the session token may ride along on a
+// sticker upload POST. The token is attached ONLY when the (server-returned)
+// upload URL is same-origin with the API the apiClient authenticates against.
+//
+// `meta.url` is built server-side from APIBaseURL and points at the API's own
+// auth-gated `/v1/file/upload`, so in a correct deployment it is same-origin →
+// the token attaches exactly as before and the upload works. The guard is
+// defense in depth: if the backend ever returns (or is redirected to) a foreign
+// host, the session credential is withheld rather than leaked cross-origin
+// (PR#496 review: Jerry-Xin / OctoBoooot — matches the same-origin invariant
+// yujiawei verified server-side). On any URL-parse failure we conservatively
+// withhold the token.
+export function shouldAttachUploadToken(uploadURL: string, apiBaseURL: string, locationHref: string): boolean {
+    try {
+        // apiBaseURL may be relative (e.g. "/api/v1/") or absolute; resolve both
+        // against the current document so their origins are comparable.
+        const apiOrigin = new URL(apiBaseURL || locationHref, locationHref).origin
+        return new URL(uploadURL, locationHref).origin === apiOrigin
+    } catch {
+        return false
+    }
+}
+
 export class CommonDataSource implements ICommonDataSource {
     blacklistAdd(uid: string): Promise<void> {
         return WKApp.apiClient.post(`user/blacklist/${uid}`)
@@ -490,9 +513,15 @@ export class CommonDataSource implements ICommonDataSource {
         }
         const form = new FormData()
         form.append("file", file)
-        const resp = await axios.post(uploadURL, form, {
-            headers: { "Content-Type": "multipart/form-data", "token": WKApp.loginInfo.token || "" },
-        })
+        // Only attach the session token when the upload target is same-origin with
+        // the API (see shouldAttachUploadToken) — withhold it rather than leak the
+        // credential to a foreign host the server might return (PR#496 review).
+        const headers: Record<string, string> = { "Content-Type": "multipart/form-data" }
+        const locationHref = typeof window !== "undefined" ? window.location.href : ""
+        if (locationHref && shouldAttachUploadToken(uploadURL, WKApp.apiClient.config.apiURL, locationHref)) {
+            headers["token"] = WKApp.loginInfo.token || ""
+        }
+        const resp = await axios.post(uploadURL, form, { headers })
         const data: any = resp.data || {}
         const path: string = data.path || ""
         if (!path) {
