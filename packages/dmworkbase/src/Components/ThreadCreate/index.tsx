@@ -3,6 +3,7 @@ import { Toast } from "@douyinfe/semi-ui"
 import { X } from "lucide-react"
 import ThreadIcon from "../Icons/ThreadIcon"
 import WKApp from "../../App"
+import { maybeFollowNewThread } from "../../Utils/followNewThread"
 import { I18nContext, t } from "../../i18n"
 import "./index.css"
 
@@ -57,11 +58,12 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
     this.setState({ loading: true })
 
     try {
-      await WKApp.dataSource.channelDataSource.threadCreate(
+      const created = await WKApp.dataSource.channelDataSource.threadCreate(
         groupNo,
         name.trim(),
         sourceMessageId
       )
+      await maybeFollowNewThread(groupNo, created)
       Toast.success(t("base.threadCreate.success"))
       onSuccess?.()
     } catch (err: unknown) {

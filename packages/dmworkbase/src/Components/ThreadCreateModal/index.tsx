@@ -3,6 +3,7 @@ import { X } from "lucide-react"
 import ThreadIcon from "../Icons/ThreadIcon"
 import classNames from "classnames"
 import WKApp from "../../App"
+import { maybeFollowNewThread } from "../../Utils/followNewThread"
 import VoiceInputButton from "../VoiceInputButton"
 import { I18nContext, t } from "../../i18n"
 import "./index.css"
@@ -77,6 +78,7 @@ export default class ThreadCreateModal extends Component<
         trimmedName,
         sourceMessageId
       )
+      await maybeFollowNewThread(groupNo, result)
       this.setState({ loading: false })
       onSuccess?.(result.short_id)
       onClose()

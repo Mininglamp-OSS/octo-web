@@ -32,6 +32,7 @@ import { ErrorBoundary } from "../ErrorBoundary";
 import WKApp from "../../App";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import { formatRelativeTime } from "../../Utils/time";
+import { maybeFollowNewThread } from "../../Utils/followNewThread";
 import FollowService from "../../Service/FollowService";
 import SidebarService from "../../Service/SidebarService";
 import CategoryService from "../../Service/CategoryService";
@@ -1046,10 +1047,11 @@ export default class ThreadPanel extends Component<
           return;
         }
         try {
-          await WKApp.dataSource.channelDataSource.threadCreate(
+          const created = await WKApp.dataSource.channelDataSource.threadCreate(
             groupNo,
             threadName.trim()
           );
+          await maybeFollowNewThread(groupNo, created);
           Toast.success(t("base.module.createThread.success"));
           this.loadThreads();
         } catch (err: unknown) {
