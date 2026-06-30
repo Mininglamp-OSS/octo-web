@@ -40,7 +40,11 @@ beforeEach(() => {
   // Split-pane mirrors selection to the URL via history.replaceState (no host re-push),
   // not a full navigation — stub it so the URL-mirror is observable.
   replaceStateSpy = vi.fn()
-  vi.spyOn(window.history, 'replaceState').mockImplementation(replaceStateSpy)
+  // Cast at the call site: vitest 4's loosely-typed `vi.fn()` isn't directly assignable to the
+  // precise `replaceState` signature mockImplementation expects (the spy still records calls).
+  vi.spyOn(window.history, 'replaceState').mockImplementation(
+    replaceStateSpy as unknown as typeof window.history.replaceState,
+  )
 })
 
 afterEach(() => {
