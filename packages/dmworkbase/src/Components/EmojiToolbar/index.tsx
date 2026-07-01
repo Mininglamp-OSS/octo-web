@@ -2,7 +2,7 @@ import classNames from "classnames";
 import React from "react";
 import ReactDOM from "react-dom";
 import { Component, ReactNode } from "react";
-import { Toast, Modal, Button, Input, TagInput } from "@douyinfe/semi-ui";
+import { Toast, Input, TagInput } from "@douyinfe/semi-ui";
 import { EndpointID } from "../../Service/Const";
 import { extractErrorMsg } from "../../Service/APIClient";
 import WKApp from "../../App";
@@ -14,6 +14,7 @@ import { t } from "../../i18n";
 import "./index.css"
 import { LottieSticker, isBitmapStickerFormat } from "../../Messages/LottieSticker";
 import IconClick from "../IconClick";
+import WKModal from "../WKModal";
 
 // 自定义贴纸 tab 的内部标识。贴纸是扁平的（不分包），所以只有这一个固定 tab。
 const STICKER_CATEGORY = "sticker"
@@ -247,16 +248,20 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         try {
             const uploaded = await WKApp.dataSource.commonDataSource.uploadSticker(file)
             // handle 原样透传给 addSticker：服务端是否强制校验由 remoteConfig.stickerHandleRequired
-            // 决定（octo-server PR#510），这里始终带上（若拿到）不影响兼容模式，还能让统计口径
-            // 更早收敛到「已带 handle」。
+            // 决定（octo-server PR#510）。这里在已知必然会被拒绝时提前失败（不打注定失败的
+            // addSticker 请求），其余情况一律带上已拿到的 handle——不影响兼容模式，还能让统计
+            // 口径更早收敛到「已带 handle」。
+            if (WKApp.remoteConfig.stickerHandleRequired && !uploaded.handle) {
+                throw new Error("sticker upload did not return a handle but the server requires one")
+            }
             await WKApp.dataSource.commonDataSource.addSticker({ path: uploaded.path, format: uploaded.format, handle: uploaded.handle })
             await this.requestStickers()
             if (!this.isUnmounted) {
                 this.setState({ category: STICKER_CATEGORY })
             }
-        } catch {
+        } catch (err) {
             if (!this.isUnmounted) {
-                Toast.error(t("base.sticker.addFailed"))
+                Toast.error(extractErrorMsg(err) || t("base.sticker.addFailed"))
             }
         } finally {
             if (!this.isUnmounted) {
@@ -427,15 +432,17 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                 accept={ACCEPTED_STICKER_TYPES.join(",")}
                 style={{ display: "none" }}
             />
-            <Modal
+            <WKModal
                 title={t("base.sticker.editTitle")}
                 visible={!!editingSticker}
                 onCancel={this.onEditCancel}
-                onOk={this.onEditSave}
-                confirmLoading={editSaving}
-                okText={t("base.sticker.editSave")}
-                cancelText={t("base.sticker.editCancel")}
-                maskClosable={false}
+                footerConfig={{
+                    okText: t("base.sticker.editSave"),
+                    cancelText: t("base.sticker.editCancel"),
+                    isOkLoading: editSaving,
+                    onOk: this.onEditSave,
+                }}
+                options={{ maskClosable: false }}
                 className="wk-sticker-edit-modal"
             >
                 {editingSticker ? <div className="wk-sticker-edit-form" onClick={(e) => e.stopPropagation()}>
@@ -456,7 +463,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                                 value={editDraft.shortcode}
                                 placeholder={t("base.sticker.editShortcodePlaceholder")}
                                 maxLength={32}
-                                onChange={(v) => this.setState({ editDraft: { ...editDraft, shortcode: v.toLowerCase() } })}
+                                onChange={(v) => this.setState({ editDraft: { ...editDraft, shortcode: v } })}
                             />
                         </div>
                         <div className="wk-sticker-edit-field">
@@ -470,7 +477,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                         </div>
                     </div>
                 </div> : null}
-            </Modal>
+            </WKModal>
         </div>
     }
 }
