@@ -87,8 +87,8 @@ export class CollabEditor {
       : new IndexeddbPersistence(this.cacheKeyStr, this.ydoc)
 
     // 3) provider — connect:false; we set initial editable then connect.
-    // WS origin is resolved from the collab-token response (backend-driven), with a legacy
-    // build-time env fallback — see resolveCollabWsUrl / create().
+    // WS origin is resolved from the collab-token response (backend-driven) — see
+    // resolveCollabWsUrl / create().
     this.provider = new HocuspocusProvider({
       url: wsUrl,
       name: this.documentName,
@@ -181,8 +181,9 @@ export class CollabEditor {
   static async create(opts: CollabEditorOptions): Promise<CollabEditor> {
     const documentName = buildDocumentName(opts.space, opts.folder, opts.doc)
     const entry = await getCollabTokenEntry(documentName)
-    // The collab-token response is the single source of truth for the WS origin too: prefer the
-    // backend-issued `collabWsUrl`, falling back to the legacy build-time env when absent.
+    // The collab-token response is the single source of truth for the WS origin: the
+    // backend-issued `collabWsUrl` is required. resolveCollabWsUrl throws when it is absent, so a
+    // misconfigured backend fails loudly here instead of silently connecting to a placeholder.
     const wsUrl = resolveCollabWsUrl(entry.collabWsUrl)
     return new CollabEditor(opts, entry.role, entry.permission_epoch, wsUrl)
   }

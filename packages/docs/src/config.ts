@@ -20,29 +20,25 @@ function envOr(value: unknown, fallback: string): string {
 }
 
 /**
- * Legacy build-time Hocuspocus WebSocket endpoint.
- *
- * The WS origin is now delivered at runtime via the collab-token response (`collabWsUrl`,
- * backend XIN-211). This build-time value is retained only as a smooth-rollout fallback for
- * deployments whose backend does not yet emit `collabWsUrl` (or has it unconfigured); it — and
- * the Dockerfile build-arg feeding it — is removed in a later cleanup issue once the runtime
- * path is validated end-to-end. Do not add new readers of this constant.
- */
-const WS_ENDPOINT_ENV_FALLBACK = envOr(
-  import.meta.env?.VITE_COLLAB_WS_ENDPOINT,
-  'wss://collab.octo.example.com',
-)
-
-/**
  * Resolve the Hocuspocus WebSocket endpoint.
  *
- * Prefers the absolute `collabWsUrl` handed down by the backend collab-token response. When the
- * backend omits it (unconfigured, or an older backend that predates the contract), fall back to
- * the legacy build-time env so existing deployments keep connecting. `envOr` also treats an
- * empty/whitespace value as "unset", so a stray empty string never wins over the fallback.
+ * The WS origin is delivered at runtime via the collab-token response (`collabWsUrl`, backend
+ * XIN-211) and is now the ONLY source — the legacy build-time env fallback
+ * (`VITE_COLLAB_WS_ENDPOINT`) has been removed. When the backend omits `collabWsUrl` (or sends a
+ * blank/whitespace value) we throw so the caller fails loudly instead of silently connecting to a
+ * placeholder origin. A missing WS URL is a backend misconfiguration and must be surfaced, not
+ * masked.
  */
 export function resolveCollabWsUrl(collabWsUrl?: string): string {
-  return envOr(collabWsUrl, WS_ENDPOINT_ENV_FALLBACK)
+  const url = typeof collabWsUrl === 'string' ? collabWsUrl.trim() : ''
+  if (url.length === 0) {
+    throw new Error(
+      'collab-token response is missing `collabWsUrl`: the backend did not deliver a collab ' +
+        'WebSocket origin. There is no build-time fallback; the backend must emit an absolute ' +
+        'WS URL. Check the docs collab-token endpoint configuration.',
+    )
+  }
+  return url
 }
 
 /** Refresh collab token when it is within this window of expiry. */

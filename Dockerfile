@@ -3,8 +3,6 @@ WORKDIR /app
 RUN npm install -g pnpm@10
 COPY . .
 RUN git config --global url."https://github.com/".insteadOf "git+ssh://git@github.com/" && git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
-ARG VITE_COLLAB_WS_ENDPOINT
-ENV VITE_COLLAB_WS_ENDPOINT=${VITE_COLLAB_WS_ENDPOINT}
 ARG VITE_DOCS_DEFAULT_SPACE
 ENV VITE_DOCS_DEFAULT_SPACE=${VITE_DOCS_DEFAULT_SPACE}
 ARG VITE_DOCS_DEFAULT_FOLDER
