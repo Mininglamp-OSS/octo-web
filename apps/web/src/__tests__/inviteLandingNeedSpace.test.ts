@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { describe, it, expect, beforeAll } from 'vitest';
+import zhCN from '../i18n/zh-CN.json';
 
 /**
  * Unit tests for dmworkim#1319 — InviteLanding need_space
@@ -88,10 +89,15 @@ describe('InviteLanding — dmworkim#1319 need_space handling', () => {
     });
 
     it('shows the guidance copy and the "去输入邀请码" CTA', () => {
+        // Copy is i18n-driven now: the need_space render block wires the
+        // app.invite.needSpace.* keys instead of literal Chinese strings.
+        // Assert the keys are referenced in the branch, and that the zh-CN
+        // values still carry the iOS/Android-aligned intent.
         const needBlock = extractNeedSpaceRenderBlock(sourceCode)!;
-        // 文案与 iOS / Android 端对齐
-        expect(needBlock).toMatch(/请先加入一个\s*Space/);
-        expect(needBlock).toContain('去输入邀请码');
+        expect(needBlock).toContain('app.invite.needSpace.title');
+        expect(needBlock).toContain('app.invite.needSpace.cta');
+        expect(zhCN['invite.needSpace.title']).toMatch(/请先加入一个\s*Space/);
+        expect(zhCN['invite.needSpace.cta']).toContain('去输入邀请码');
     });
 
     // ── CTA 行为：触发 onNeedJoinSpace ───────────────────────────────

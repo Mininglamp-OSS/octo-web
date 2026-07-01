@@ -32,10 +32,11 @@ describe('InviteLanding + MainPage — dmwork-web#1065 cross-space toast', () =>
 
     it('InviteLanding snapshots prevCurrentSpaceId before /space/join', () => {
         expect(inviteLanding).toMatch(/prevCurrentSpaceId\s*=\s*localStorage\.getItem\(\s*["']currentSpaceId["']/);
-        // The snapshot line must precede the actual fetch — prevent regression that reads
+        // The snapshot line must precede the actual join call — prevent regression that reads
         // localStorage AFTER join (which wouldn't reflect the user's "pre-join" space).
+        // The join now goes through apiFetchJson(`${apiUrl}/space/join`, ...) (was raw fetch).
         const snapIdx = inviteLanding.search(/prevCurrentSpaceId\s*=\s*localStorage/);
-        const joinIdx = inviteLanding.search(/fetch\(\s*`[^`]*\/space\/join`/);
+        const joinIdx = inviteLanding.search(/apiFetchJson<[^>]*>\(\s*`[^`]*\/space\/join`/);
         expect(snapIdx).toBeGreaterThan(0);
         expect(joinIdx).toBeGreaterThan(snapIdx);
     });

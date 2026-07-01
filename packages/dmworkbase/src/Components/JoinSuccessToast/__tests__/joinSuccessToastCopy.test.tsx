@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { showJoinSuccessToast } from '../index';
+import { i18n } from '../../../i18n';
 
 type ToastCall = { kind: 'success' | 'info'; content: any; duration?: number };
 
@@ -40,7 +41,11 @@ function renderedText(content: any): string {
 }
 
 describe('showJoinSuccessToast — copy de-duplication', () => {
-    beforeEach(() => { recorded.length = 0; });
+    beforeEach(() => {
+        // Assertions expect Chinese copy; pin zh-CN (jsdom navigator defaults to en-US).
+        i18n.setLocale('zh-CN', { persist: false, notify: false });
+        recorded.length = 0;
+    });
 
     it('same-space + sameName: single simplified line, no duplicate Space name', () => {
         showJoinSuccessToast({ entityName: 'ExampleCorp', spaceName: 'ExampleCorp', crossSpace: false });

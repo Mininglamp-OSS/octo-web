@@ -26,7 +26,7 @@ describe('Layout.onLogin — pendingInviteCode path shares joinSuccessNotice', (
 
     it('imports computeAndSaveJoinSuccess from @octo/base', () => {
         expect(layout).toMatch(/computeAndSaveJoinSuccess/);
-        expect(layout).toMatch(/from\s+["']@dmwork\/base["']/);
+        expect(layout).toMatch(/from\s+["']@octo\/base["']/);
     });
 
     it('snapshots prevCurrentSpaceId before calling /space/join', () => {

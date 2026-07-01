@@ -23,7 +23,13 @@ vi.mock("@douyinfe/semi-ui", () => ({
     error: vi.fn(),
     warning: vi.fn(),
   },
-  Dropdown: Object.assign(vi.fn(({ children }: any) => children), {
+  Dropdown: Object.assign(vi.fn(({ children, render }: any) => {
+    const React = require("react");
+    // VoiceInputButton passes the menu via the `render` prop (not children);
+    // surface it so the mode-menu items are reachable in tests, mirroring how
+    // Semi's Dropdown renders its menu content alongside the trigger.
+    return React.createElement(React.Fragment, null, render, children);
+  }), {
     Menu: vi.fn(({ children }: any) => children),
     Item: vi.fn(({ children, onClick }: any) => {
       const React = require("react");
@@ -63,6 +69,14 @@ vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => 
 
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import { Toast } from "@douyinfe/semi-ui";
+import { i18n } from "@octo/base/src/i18n/instance";
+
+// Pin the locale so the Chinese title/text assertions below are deterministic
+// regardless of the host navigator language (jsdom defaults to en-US, which
+// would render the English copy). Mirrors buildChatContext.test.ts.
+beforeEach(() => {
+  i18n.setLocale("zh-CN", { persist: false, notify: false });
+});
 
 function createMockReturn(overrides = {}) {
   return {
@@ -253,6 +267,10 @@ describe("VoiceInputButton - interactions", () => {
     mockUseTextareaVoice.mockReturnValue(
       createMockReturn({ startRecording: mockStart })
     );
+    // Precondition for the happy path: feedback setting loaded + voice enabled.
+    // handleVoiceClick short-circuits unless both hold (see VoiceInputButton).
+    mockSharedSpaceFeedbackState.loaded = true;
+    mockSharedSpaceFeedbackState.spaceSetting = { voice_input_enabled: 1 };
 
     render(
       <VoiceInputButton
@@ -551,9 +569,10 @@ describe("VoiceInputButton - mode menu", () => {
 
   it("should allow handleModeSelect when notice already acked", async () => {
     mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 1,
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 1,
-    };
+    } as typeof mockSharedSpaceFeedbackState.spaceSetting;
     mockSharedSpaceFeedbackState.loaded = true;
     mockSharedSpaceFeedbackState.apiAvailable = true;
     mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
@@ -645,10 +664,11 @@ describe("VoiceInputButton - fail-closed when settings not loaded", () => {
   it("should allow recording when loaded=true and feedback_url exists", async () => {
     mockSharedSpaceFeedbackState.loaded = true;
     mockSharedSpaceFeedbackState.apiAvailable = true;
+    // handleVoiceClick records only when voice_input_enabled === 1 (see
+    // VoiceInputButton gate); the happy path under test requires it set.
     mockSharedSpaceFeedbackState.spaceSetting = {
-      voice_feedback_on: 0,
-      voice_feedback_notice_acked: 0,
-    };
+      voice_input_enabled: 1,
+    } as typeof mockSharedSpaceFeedbackState.spaceSetting;
 
     const mockStart = vi.fn();
     mockUseTextareaVoice.mockReturnValue(

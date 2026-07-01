@@ -65,6 +65,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
 // 在所有 mock 之后再 import 被测组件 + VM。
 import PersonaEdit from "../PersonaEdit"
 import { OboGrant, OboScope } from "../vm"
+import { i18n } from "../../../i18n"
 
 const baseGrant = (overrides: Partial<OboGrant> = {}): OboGrant => ({
     id: 99,
@@ -85,6 +86,10 @@ const scope = (overrides: Partial<OboScope> & Pick<OboScope, "id" | "channel_id"
 } as OboScope)
 
 beforeEach(() => {
+    // 这些测试断言中文文案,前提是「用户语言=中文」。jsdom 默认 navigator
+    // 语言为 en-US,detectLocale() 会落到 en-US,导致组件渲染英文。显式把 i18n
+    // 单例切到 zh-CN,真实模拟中文用户场景(等价于用户在设置里选了中文)。
+    i18n.setLocale("zh-CN", { persist: false })
     hoisted.get.mockReset()
     hoisted.post.mockReset()
     hoisted.del.mockReset()

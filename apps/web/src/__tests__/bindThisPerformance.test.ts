@@ -11,12 +11,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 describe('Performance: Arrow function properties vs .bind(this) in render', () => {
+  // NOTE (architecture migration): MessageInput is no longer a class component.
+  // It is now a function component (`const MessageInput: React.FC<...>`) whose
+  // handlers are stabilised with useCallback / useRef instead of class arrow
+  // properties. The original perf intent — handler identity stays stable across
+  // renders, no fresh closure per render (which `.bind(this)` would create) — is
+  // therefore asserted differently for MessageInput below. WKAvatar is still a
+  // class component, but its old `handleLoad` arrow property was removed in a
+  // refactor (it now only tracks load errors via `handleImgError`), so that
+  // obsolete method has been dropped here. Both negative `.bind(this)` regression
+  // guards are preserved unchanged.
   const componentsToCheck = [
-    {
-      name: 'MessageInput',
-      path: 'packages/dmworkbase/src/Components/MessageInput/index.tsx',
-      methods: ['handleKeyPressed', 'handleChange'],
-    },
     {
       name: 'VoiceCell',
       path: 'packages/dmworkbase/src/Messages/Voice/index.tsx',
@@ -35,9 +40,37 @@ describe('Performance: Arrow function properties vs .bind(this) in render', () =
     {
       name: 'WKAvatar',
       path: 'packages/dmworkbase/src/Components/WKAvatar/index.tsx',
-      methods: ['handleLoad', 'handleImgError'],
+      methods: ['handleImgError'],
     },
   ];
+
+  describe('MessageInput component (function component)', () => {
+    let fileContent: string;
+
+    beforeAll(() => {
+      const fullPath = path.resolve(
+        __dirname,
+        '../../../../packages/dmworkbase/src/Components/MessageInput/index.tsx'
+      );
+      fileContent = fs.readFileSync(fullPath, 'utf-8');
+    });
+
+    it('is a function component (the class-component arrow-property rule no longer applies)', () => {
+      expect(fileContent).toMatch(/const\s+MessageInput\s*:\s*React\.FC/);
+      expect(fileContent).not.toMatch(/class\s+MessageInput\b/);
+    });
+
+    it('stabilises handlers with useCallback / useRef instead of per-render closures', () => {
+      // Function-component equivalent of the arrow-property optimisation: handler
+      // identity is memoised so children/editor do not re-bind every render.
+      expect(fileContent).toMatch(/useCallback/);
+      expect(fileContent).toMatch(/editorHandleKeyDownRef/);
+    });
+
+    it('should NOT use .bind(this) anywhere (regression guard)', () => {
+      expect(fileContent).not.toMatch(/\.bind\(this\)/);
+    });
+  });
 
   componentsToCheck.forEach(({ name, path: filePath, methods }) => {
     describe(`${name} component`, () => {

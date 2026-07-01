@@ -1,18 +1,19 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { vi } from "vitest";
 import "@testing-library/jest-dom";
 import ClawInfoModal from "../ClawInfoModal";
-import type { AgentCardData } from "../../Service/AgentCardService";
+import type { AgentCardData } from "../../../Service/AgentCardService";
+import { i18n } from "../../../i18n";
 
 // Mock AgentCardService
-vi.mock("../../Service/AgentCardService", () => ({
+vi.mock("../../../Service/AgentCardService", () => ({
   default: {
     getAgentCard: vi.fn(),
   },
 }));
 
-import AgentCardService from "../../Service/AgentCardService";
+import AgentCardService from "../../../Service/AgentCardService";
 
 // Mock WKModal
 vi.mock("../../WKModal", () => ({
@@ -26,8 +27,38 @@ vi.mock("../../ClawSessionItem", () => ({
   ),
 }));
 
+// ClawInfoModal renders the real ClawOverviewTab, which dereferences runtime
+// numeric fields (e.g. `disk_space_gb.toFixed(1)`). A `{}` runtime_info crashes
+// the render, so provide a complete RuntimeInfo fixture (mirrors
+// ClawOverviewTab.test's mockRuntimeInfo).
+const MOCK_RUNTIME_INFO = {
+  os_version: "macOS 13.2.1",
+  arch: "arm64",
+  disk_space_gb: 68.0,
+  memory_gb: 32.0,
+  app_data_dir: ".octopush/octopush-58d651",
+  claw_version: "v2026.4.11",
+  admin_url: "http://localhost:3100",
+  team_name: "DeepMiner Team",
+  process_status: "running",
+  gateway_status: "connected",
+  gateway_name: "Gateway-1",
+  claw_id: "claw-a8f3d2e1",
+  gateway_total_agents: 10,
+  gateway_alive_agents: 8,
+  nodejs_version: "v22.22.2",
+  network_latency_ms: 45.2,
+  last_heartbeat_at: "2026-05-07T10:31:00Z",
+  memory_retention_count: 50,
+  memory_retention_note: "保留最近50天记忆，已清理3条过期记录",
+} as any;
+
 describe("ClawInfoModal", () => {
   beforeEach(() => {
+    // 这些断言依赖中文文案（如「共 N 个」）。jsdom navigator 默认 en-US，
+    // detectLocale() 会落到 en-US 让组件渲染英文。显式 pin i18n 单例到 zh-CN，
+    // 等价于用户在设置里选了中文。对齐 PersonaEdit.test.tsx 的修法。
+    i18n.setLocale("zh-CN", { persist: false });
     vi.clearAllMocks();
   });
 
@@ -40,7 +71,7 @@ describe("ClawInfoModal", () => {
       session_total: 3,
       session_running_count: 2,
       last_report_at: "2026-05-07T10:30:00Z",
-      runtime_info: {} as any,
+      runtime_info: MOCK_RUNTIME_INFO,
       sessions: [
         {
           session_id: "s1",
@@ -96,6 +127,9 @@ describe("ClawInfoModal", () => {
 
     render(<ClawInfoModal botId="test_bot" visible={true} onClose={() => {}} />);
 
+    // 弹窗默认停在 overview tab，Session 列表 / 统计在 session tab，需先切过去
+    fireEvent.click(screen.getByTestId("tab-session"));
+
     // 等待数据加载
     await waitFor(() => {
       expect(screen.getByText(/2 running/)).toBeInTheDocument();
@@ -119,7 +153,7 @@ describe("ClawInfoModal", () => {
       session_total: 0,
       session_running_count: 0,
       last_report_at: "2026-05-07T10:30:00Z",
-      runtime_info: {} as any,
+      runtime_info: MOCK_RUNTIME_INFO,
       sessions: [],
       core_files: [],
       memory_files: [],
@@ -129,13 +163,16 @@ describe("ClawInfoModal", () => {
 
     render(<ClawInfoModal botId="empty_bot" visible={true} onClose={() => {}} />);
 
+    // 切到 session tab 才会渲染会话统计 / 空态
+    fireEvent.click(screen.getByTestId("tab-session"));
+
     await waitFor(() => {
       expect(screen.getByText(/0 running/)).toBeInTheDocument();
     });
 
-    // 检查空态文案
+    // 检查空态文案（对齐 i18n key base.claw.noActiveSessions 的现行文案）
     expect(
-      screen.getByText(/最近 1 小时内没有活跃的会话，有新对话产生后会出现在这里/)
+      screen.getByText(/暂无活跃的会话，有新对话产生后会出现在这里/)
     ).toBeInTheDocument();
   });
 
@@ -161,6 +198,9 @@ describe("ClawInfoModal", () => {
 
     render(<ClawInfoModal botId="error_bot" visible={true} onClose={() => {}} />);
 
+    // 错误提示在 session tab 通过 <Empty description={error}> 渲染
+    fireEvent.click(screen.getByTestId("tab-session"));
+
     await waitFor(() => {
       expect(screen.getByText(/网络错误/)).toBeInTheDocument();
     });
@@ -175,7 +215,7 @@ describe("ClawInfoModal", () => {
       session_total: 3,
       session_running_count: 2,
       last_report_at: "2026-05-07T10:30:00Z",
-      runtime_info: {} as any,
+      runtime_info: MOCK_RUNTIME_INFO,
       sessions: [
         {
           session_id: "idle_1",
@@ -230,6 +270,9 @@ describe("ClawInfoModal", () => {
     vi.mocked(AgentCardService.getAgentCard).mockResolvedValueOnce(mockData);
 
     render(<ClawInfoModal botId="sort_bot" visible={true} onClose={() => {}} />);
+
+    // 会话列表在 session tab 渲染
+    fireEvent.click(screen.getByTestId("tab-session"));
 
     await waitFor(() => {
       const sessionCards = screen.getAllByTestId("claw-session-card");

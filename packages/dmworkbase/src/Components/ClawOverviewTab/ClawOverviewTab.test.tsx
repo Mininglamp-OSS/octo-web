@@ -1,8 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ClawOverviewTab from './ClawOverviewTab';
 import type { RuntimeInfo } from './ClawOverviewTab';
+import { i18n } from '../../i18n';
 
 const mockRuntimeInfo: RuntimeInfo = {
   os_version: 'macOS 13.2.1',
@@ -27,6 +29,10 @@ const mockRuntimeInfo: RuntimeInfo = {
 };
 
 describe('ClawOverviewTab', () => {
+  beforeEach(() => {
+    // Assertions match Chinese UI copy; pin zh-CN (jsdom navigator is en-US).
+    i18n.setLocale('zh-CN', { persist: false, notify: false });
+  });
   it('renders loading state', () => {
     render(<ClawOverviewTab runtimeInfo={mockRuntimeInfo} loading />);
 

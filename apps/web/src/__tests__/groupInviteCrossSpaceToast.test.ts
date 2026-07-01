@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import baseZhCN from '../../../../packages/dmworkbase/src/i18n/locales/zh-CN.json';
 
 /**
  * dmwork-web#1100 — 跨 Space 群邀请加入后 toast 引导（kind='group'）。
@@ -70,14 +71,21 @@ describe('JoinSuccessToast + MainPage — dmwork-web#1100 cross-space group-join
     });
 
     it('B4. non-cross-space group toast shows "已加入「...」群聊"', () => {
-        // 单行 Toast.success 分支里，group 场景应渲染「<name>」群聊 文案。
-        expect(toast).toMatch(/已加入「\$\{entityName\}」群聊/);
+        // Toast copy is i18n-driven now: the non-cross-space group branch wires
+        // the base.joinSuccessToast.groupJoined key. Assert the key is referenced
+        // and the zh-CN value still carries the「<name>」群聊 product copy.
+        expect(toast).toMatch(/kind\s*===\s*["']group["']/);
+        expect(toast).toContain('base.joinSuccessToast.groupJoined');
+        expect(baseZhCN['joinSuccessToast.groupJoined']).toMatch(/已加入「\{\{name\}\}」群聊/);
     });
 
     it('B5. cross-space group toast shows "位于「<space> 空间」" + "切换过去 →"', () => {
-        // 双行分支中「位于」/「切换过去」是既有产品文案，回归保护避免无意改动。
-        expect(toast).toMatch(/位于「\{spaceName\}\s*空间」/);
-        expect(toast).toMatch(/切换过去\s*→/);
+        // 双行分支文案 i18n 化：locatedInSpace + switch 两个 key 仍是既有产品文案，
+        // 回归保护避免无意改动（key 引用 + zh-CN 翻译值双重断言）。
+        expect(toast).toContain('base.joinSuccessToast.locatedInSpace');
+        expect(toast).toContain('base.joinSuccessToast.switch');
+        expect(baseZhCN['joinSuccessToast.locatedInSpace']).toMatch(/位于「\{\{name\}\}\s*空间」/);
+        expect(baseZhCN['joinSuccessToast.switch']).toMatch(/切换过去\s*→/);
     });
 
     // ---------- C. MainPage forwards kind + prefers groupName ----------
@@ -100,7 +108,9 @@ describe('JoinSuccessToast + MainPage — dmwork-web#1100 cross-space group-join
     // ---------- D. Back-compat with "space" payloads ----------
 
     it('D1. undefined/space kind still renders the original single-line toast', () => {
-        // 确认 fallback 分支 (`已加入「${entityName}」`) 仍在源码里，避免 group 分支把 space 分支玩坏。
-        expect(toast).toMatch(/已加入「\$\{entityName\}」(?!\s*群聊)/);
+        // 确认 fallback 分支仍走 base.joinSuccessToast.joined（单行「已加入「...」」，
+        // 非群聊文案），避免 group 分支把 space 分支玩坏。key 引用 + zh-CN 值双重断言。
+        expect(toast).toContain('base.joinSuccessToast.joined');
+        expect(baseZhCN['joinSuccessToast.joined']).toMatch(/已加入「\{\{name\}\}」(?!\s*群聊)/);
     });
 });

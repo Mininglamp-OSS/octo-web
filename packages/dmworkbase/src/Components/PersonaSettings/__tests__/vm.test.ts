@@ -274,7 +274,12 @@ describe("PersonaEditVM", () => {
         const ok = await vm.toggleGlobal(true)
         expect(ok).toBe(true)
         expect(vm.grant.global_enabled).toBe(true)
-        expect(hoisted.put).toHaveBeenCalledWith("obo/grants/99", { global_enabled: true })
+        // Backend contract: PUT /obo/grants/:id `global_enabled` is `*int`
+        // (0/1), NOT a boolean — unlike `active` it has no FlexBoolInt
+        // tolerance, so sending a JSON boolean would silently 400 the PUT
+        // (see octo-server obo_api.go oboUpdateGrantReq). toggleGlobal
+        // correctly sends 1/0; the prior `true` expectation was wrong.
+        expect(hoisted.put).toHaveBeenCalledWith("obo/grants/99", { global_enabled: 1 })
     })
 
     it("addScope POST then reloads", async () => {
