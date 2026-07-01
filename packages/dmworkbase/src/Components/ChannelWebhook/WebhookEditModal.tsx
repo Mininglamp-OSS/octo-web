@@ -323,7 +323,11 @@ export default function WebhookEditModal({
                         placeholder={t("base.channelWebhook.form.namePlaceholder")}
                         onChange={(e) => setName(e.target.value)}
                         onKeyDown={(e) => {
-                            if (e.key === "Enter") void handleSubmit();
+                            // 排除输入法组字回车（中文拼音等选词/上屏），仅非组字状态
+                            // 的回车才提交，避免误触发创建（#500）。
+                            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                                void handleSubmit();
+                            }
                         }}
                     />
                     {!isManager && (

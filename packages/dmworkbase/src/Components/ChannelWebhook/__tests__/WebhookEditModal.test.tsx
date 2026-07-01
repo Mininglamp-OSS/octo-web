@@ -249,3 +249,37 @@ describe('WebhookEditModal mention_uids picker', () => {
     expect(hoisted.update).not.toHaveBeenCalled();
   });
 });
+
+describe('WebhookEditModal name input Enter / IME composition (#500)', () => {
+  const nameInput = (): HTMLInputElement =>
+    container.querySelectorAll<HTMLInputElement>('.wk-webhook-form__input')[0];
+
+  const pressEnter = (isComposing: boolean): void => {
+    act(() => {
+      nameInput().dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          isComposing,
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+    });
+  };
+
+  it('does NOT submit when Enter fires during IME composition (选词/上屏)', async () => {
+    await render({});
+    // 中文拼音等输入法组字过程中的回车仅用于上屏候选，不应触发创建。
+    pressEnter(true);
+    await flush();
+    expect(hoisted.create).not.toHaveBeenCalled();
+  });
+
+  it('submits when Enter fires outside composition', async () => {
+    await render({});
+    // 非组字状态下的回车仍应正常提交创建（名称可留空，服务端自动命名）。
+    pressEnter(false);
+    await flush();
+    expect(hoisted.create).toHaveBeenCalledTimes(1);
+  });
+});
