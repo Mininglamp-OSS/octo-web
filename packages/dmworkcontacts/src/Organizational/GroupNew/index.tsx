@@ -750,7 +750,6 @@ export class OrganizationalGroupNew extends Component<
                 avatarText={avatarText}
                 colorIndex={avatarColorIndex}
                 name={groupName}
-                nameAsFallback
                 size={48}
               />
               <span
@@ -768,6 +767,7 @@ export class OrganizationalGroupNew extends Component<
             </div>
             <Input
               value={groupName}
+              maxLength={20}
               placeholder={t("contacts.groupCreate.namePlaceholder")}
               onChange={(value) => this.setState({ groupName: value })}
             />
@@ -908,7 +908,6 @@ export class OrganizationalGroupNew extends Component<
         <GroupAvatarEditModal
           visible={this.state.showAvatarEdit}
           name={this.state.groupName}
-          nameAsFallback
           initialAvatarText={this.state.avatarText}
           initialColorIndex={this.state.avatarColorIndex}
           onCancel={() => this.setState({ showAvatarEdit: false })}
