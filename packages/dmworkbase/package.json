@@ -46,7 +46,6 @@
     "mitt": "^3.0.1",
     "moment": "^2.29.3",
     "qrcode.react": "^4.2.0",
-    "react": "^17.0.2",
     "react-avatar-editor": "^13.0.0",
     "react-color": "^2.19.3",
     "react-markdown": "8",
@@ -67,12 +66,18 @@
     "xlsx": "^0.18.5",
     "yet-another-react-lightbox": "^3.30.0"
   },
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
   "devDependencies": {
     "@storybook/test": "^8.6.18",
     "@testing-library/react": "^14.3.1",
     "@testing-library/user-event": "^14.6.1",
     "@types/react-avatar-editor": "^13.0.0",
-    "react-dom": "^17.0.2",
+    "@types/react": "^18.3.28",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "vitest": "^4.1.5"
   }
 }

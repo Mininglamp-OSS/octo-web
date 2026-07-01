@@ -1,10 +1,17 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, beforeEach } from "vitest"
 import {
     computeEffectiveCategories,
     isVirtualCategory,
     VIRTUAL_DEFAULT_CATEGORY_ID,
     type ValidCategoryItem,
 } from "../categoriesFallback"
+import { i18n, t } from "../../../i18n"
+
+// The virtual default category label comes from i18n; pin zh-CN so the label
+// assertion ("默认") is deterministic (jsdom navigator defaults to en-US).
+beforeEach(() => {
+    i18n.setLocale("zh-CN", { persist: false, notify: false })
+})
 
 // ─────────────────────────────────────────────────────────────────
 // 回归测试：新用户被邀请入群后群聊 tab 显示空状态（PR #1057 修复）
@@ -92,7 +99,9 @@ describe("computeEffectiveCategories", () => {
         const [virtualCat] = result
         expect(virtualCat.category_id).toBe(VIRTUAL_DEFAULT_CATEGORY_ID)
         expect(virtualCat.is_default).toBe(true)
-        expect(virtualCat.name).toBe("默认")
+        // The fallback label is i18n-driven; assert against the live translation
+        // value rather than a hardcoded literal so copy tweaks don't break this.
+        expect(virtualCat.name).toBe(t("base.chatSidebar.categoryFallback"))
         expect(virtualCat.groups).toEqual([])
         expect(isVirtualCategory(virtualCat.category_id)).toBe(true)
     })
