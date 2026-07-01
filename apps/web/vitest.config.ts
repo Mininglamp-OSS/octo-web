@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig, configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import path from 'path'
@@ -17,6 +17,10 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/__tests__/setup.ts'],
+    // `e2e/` holds Playwright specs (run via e2e/bind.config.ts). Their
+    // @playwright/test runner API throws if Vitest collects them, so exclude
+    // that dir from Vitest's default `**/*.spec.*` glob.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     // Force Vite to transform @tiptap/react instead of letting Node's strict
     // ESM resolver handle it. Its dist ships `import ... from 'react/jsx-runtime'`
     // without a `.js` extension, which Node's strict ESM resolver rejects under

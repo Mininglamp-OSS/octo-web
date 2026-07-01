@@ -66,8 +66,12 @@ vi.mock("@douyinfe/semi-ui", () => ({
 
 import PersonaSettings from "../index"
 import { OboGrant } from "../vm"
+import { i18n } from "../../../i18n"
 
 beforeEach(() => {
+    // 断言中文空态/错误文案,前提是中文用户。jsdom navigator 默认 en-US,
+    // 显式切到 zh-CN 真实模拟中文用户(详见 PersonaEdit.test 同款处理)。
+    i18n.setLocale("zh-CN", { persist: false })
     hoisted.get.mockReset()
     hoisted.post.mockReset()
     hoisted.del.mockReset()

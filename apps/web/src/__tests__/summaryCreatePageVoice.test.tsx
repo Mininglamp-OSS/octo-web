@@ -27,9 +27,13 @@ vi.mock("@douyinfe/semi-ui", () => ({
   }),
 }));
 
-vi.mock("@douyinfe/semi-icons", () => ({
-  IconPlus: () => <span>+</span>,
-}));
+// The SummaryCreatePage subtree pulls in many Semi icons (IconPlus,
+// IconUserGroup, …). Pass through the real icon exports so any named import
+// resolves; the icons render fine under jsdom and we don't need to stub them.
+vi.mock("@douyinfe/semi-icons", async () => {
+  const actual = await vi.importActual<Record<string, unknown>>("@douyinfe/semi-icons");
+  return actual;
+});
 
 vi.mock("@octo/base/src/App", () => ({
   default: {
