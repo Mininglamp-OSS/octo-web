@@ -18,7 +18,9 @@ import UserInfo from "@octo/base/src/Components/UserInfo";
 import GroupCard from "@octo/base/src/Components/GroupCard";
 import { Space, SpaceMember, SpaceService } from "@octo/base/src/Service/SpaceService";
 import { debounce } from "@octo/base/src/Utils/rateLimit";
+import { OnlineStatusBadge, needShowOnlineStatus, getOnlineTip } from "@octo/base/src/Components/ConversationList";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { shouldShowOnlineStatus, selectOnlineStatusUids } from "./onlineStatusGate";
 
 function OverflowTooltip({ text, children }: { text: string; children: React.ReactNode }) {
     const [visible, setVisible] = useState(false)
@@ -68,9 +70,11 @@ interface VirtualContactListProps {
     renderItem: (item: Contacts) => React.ReactNode
     initialScrollTop: number
     onScrollTopChange: (scrollTop: number) => void
+    // 仅上报当前可见项 uid，用于按需预取在线状态（避免对上万 uid 一次性发请求）
+    onVisibleUids?: (uids: string[]) => void
 }
 
-function VirtualContactList({ rows, renderItem, initialScrollTop, onScrollTopChange }: VirtualContactListProps) {
+function VirtualContactList({ rows, renderItem, initialScrollTop, onScrollTopChange, onVisibleUids }: VirtualContactListProps) {
     const parentRef = useRef<HTMLDivElement>(null)
 
     const virtualizer = useVirtualizer({
@@ -90,6 +94,23 @@ function VirtualContactList({ rows, renderItem, initialScrollTop, onScrollTopCha
         virtualizer.scrollToOffset(Math.min(initialScrollTop, maxScrollTop))
     }, [initialScrollTop, virtualizer])
 
+    const virtualItems = virtualizer.getVirtualItems()
+    const visibleStart = virtualItems.length ? virtualItems[0].index : 0
+    const visibleEnd = virtualItems.length ? virtualItems[virtualItems.length - 1].index : 0
+
+    // 滚动到哪，就为当前可见区间的项按需预取在线状态。父级用 Set 去重，
+    // 保证每个 uid 至多请求一次，绝不对整份上万条列表一次性发请求。
+    useEffect(() => {
+        if (!onVisibleUids) return
+        const uids: string[] = []
+        for (let i = visibleStart; i <= visibleEnd; i++) {
+            // 只对 AI 条目预取在线态，真人 uid 不请求（在线态仅面向 AI）
+            const item = rows[i]?.item
+            if (item && shouldShowOnlineStatus(item) && item.uid) uids.push(item.uid)
+        }
+        if (uids.length) onVisibleUids(uids)
+    }, [visibleStart, visibleEnd, rows, onVisibleUids])
+
     return (
         <div
             ref={parentRef}
@@ -97,7 +118,7 @@ function VirtualContactList({ rows, renderItem, initialScrollTop, onScrollTopCha
             onScroll={(event) => onScrollTopChange(event.currentTarget.scrollTop)}
         >
             <div style={{ height: virtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
-                {virtualizer.getVirtualItems().map(virtualItem => {
+                {virtualItems.map(virtualItem => {
                     const row = rows[virtualItem.index]
                     if (!row) return null
 
@@ -178,6 +199,8 @@ export default class ContactsList extends Component<any, ContactsState> {
     private flatItems: Contacts[] = []
     private indexCache = new Map<ContactFilterMode, ContactIndexData>()
     private filterScrollTops: Record<ContactFilterMode, number> = { all: 0, bots: 0, humans: 0 }
+    // 已预取过 channelInfo（含在线态）的 uid 集合，跨 filter/滚动去重，避免重复请求
+    private prefetchedUids = new Set<string>()
 
     constructor(props: any) {
         super(props)
@@ -187,8 +210,9 @@ export default class ContactsList extends Component<any, ContactsState> {
     componentDidMount() {
         this.channelInfoListener = (channelInfo: ChannelInfo) => {
             if (channelInfo.channel.channelType !== ChannelTypePerson) return
+            const uid = channelInfo.channel.channelID
             const idx = this.state.spaceMembers.findIndex(
-                (m) => m.uid === channelInfo.channel.channelID
+                (m) => m.uid === uid
             )
             if (idx !== -1) {
                 const members = [...this.state.spaceMembers]
@@ -197,6 +221,12 @@ export default class ContactsList extends Component<any, ContactsState> {
                     this.clearIndexCache()
                     this.rebuildIndex()
                 })
+                return
+            }
+            // WS 推送在线态变更：命中已预取的列表内 uid（如未在 spaceMembers 里的
+            // 已添加 AI / 企业 AI）时做一次轻量重渲，实时刷新在线绿点。
+            if (this.prefetchedUids.has(uid)) {
+                this.setState({})
             }
         }
 
@@ -204,6 +234,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             const sp = space as Space | undefined
             this.clearIndexCache()
             this.resetFilterScrollTops()
+            this.prefetchedUids.clear()
             if (sp) {
                 this.debouncedSearch.cancel()
                 this.setState({ currentSpace: sp, myGroups: [], myBots: [], spaceBots: [], keyword: '', isSearching: false, searchContacts: [], searchGroups: [], filterMode: 'all', loading: true }, () => {
@@ -242,6 +273,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
         WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
         this.debouncedSearch.cancel()
+        this.prefetchedUids.clear()
     }
 
     private async loadAllData(spaceId: string) {
@@ -261,6 +293,8 @@ export default class ContactsList extends Component<any, ContactsState> {
             }, () => {
                 this.clearIndexCache()
                 this.rebuildIndex()
+                // 「已添加AI」列表数量有界，数据就绪时整批预取一次在线态。
+                this.prefetchOnlineStatus((myBots || []).map((b: any) => b.uid))
             })
         } catch {
             this.setState({ loading: false })
@@ -273,6 +307,36 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     private resetFilterScrollTops() {
         this.filterScrollTops = { all: 0, bots: 0, humans: 0 }
+    }
+
+    // 按需预取一批 person uid 的 channelInfo（含在线态），用 Set 去重。
+    // 仅在成员/机器人已缓存时跳过网络请求；已请求过的 uid 不再重复请求。
+    private prefetchOnlineStatus = (uids: string[]) => {
+        for (const uid of uids) {
+            if (!uid || this.prefetchedUids.has(uid)) continue
+            this.prefetchedUids.add(uid)
+            const ch = new Channel(uid, ChannelTypePerson)
+            if (!WKSDK.shared().channelManager.getChannelInfo(ch)) {
+                WKSDK.shared().channelManager.fetchChannelInfo(ch)
+            }
+        }
+    }
+
+    // 「全部联系人」>100 条走虚拟列表，仅对可见项预取（见 VirtualContactList.onVisibleUids）；
+    // <=100 条为普通渲染、数量有界，可在数据就绪时整批预取一次。仅预取 AI 条目，真人不请求。
+    private maybePrefetchSmallList() {
+        if (this.flatItems.length > 0 && this.flatItems.length <= 100) {
+            this.prefetchOnlineStatus(selectOnlineStatusUids(this.flatItems))
+        }
+    }
+
+    // 复用会话列表/群成员列表同一份在线态判定与文案，渲染在线绿点。
+    private renderOnlineBadge(uid: string): React.ReactNode {
+        const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+            new Channel(uid, ChannelTypePerson)
+        )
+        if (!needShowOnlineStatus(channelInfo)) return null
+        return <OnlineStatusBadge tip={getOnlineTip(channelInfo!)} />
     }
 
     private handleListScroll = (scrollTop: number) => {
@@ -407,6 +471,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     private rebuildIndex() {
         const { items, indexList, indexItemMap, listRows } = this.getIndex(this.state.filterMode)
         this.flatItems = items
+        this.maybePrefetchSmallList()
         this.setState({ indexList, indexItemMap, listRows })
     }
 
@@ -484,6 +549,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         if (this.state.filterMode === mode) return
         const { items, indexList, indexItemMap, listRows } = this.getIndex(mode)
         this.flatItems = items
+        this.maybePrefetchSmallList()
         this.setState({ filterMode: mode, indexList, indexItemMap, listRows })
     }
 
@@ -678,6 +744,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             }}>
                                 <div className="wk-contacts-section-item-avatar">
                                     <WKAvatar channel={new Channel(bot.uid, ChannelTypePerson)} />
+                                    {this.renderOnlineBadge(bot.uid)}
                                 </div>
                                 <div className="wk-contacts-section-item-name">
                                     {bot.name || bot.uid}
@@ -726,6 +793,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                     renderItem={(item) => this.renderContactItem(item)}
                     initialScrollTop={this.filterScrollTops[filterMode] || 0}
                     onScrollTopChange={this.handleListScroll}
+                    onVisibleUids={this.prefetchOnlineStatus}
                 />
             )
         }
@@ -765,6 +833,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             }}>
                 <div className="wk-contacts-section-item-avatar">
                     <WKAvatar channel={new Channel(item.uid, ChannelTypePerson)} />
+                    {shouldShowOnlineStatus(item) && this.renderOnlineBadge(item.uid)}
                 </div>
                 <OverflowTooltip text={name}>
                     {item.robot === true && <AiBadge />}
