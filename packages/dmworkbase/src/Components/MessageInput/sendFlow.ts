@@ -24,11 +24,12 @@
  *    the user's newer draft is left untouched. Top attachments are removed by
  *    the specific ids that were consumed, never with a blanket reset, so items
  *    queued during the wait survive.
- *    Residual follow-up: when the editor changed mid-flight we leave the live
- *    doc untouched, so the already-sent snapshot blocks stay alongside the new
- *    draft and could be re-sent on the next send (duplicate). Accepted over the
- *    worse "draft wiped" failure; a precise per-range removal is deferred — see
- *    the `!isEditorUnchanged()` branch below.
+ *    Residual follow-up (octo-web#458, now fixed): when the editor changed
+ *    mid-flight we used to leave the live doc untouched, so the already-sent
+ *    snapshot blocks stayed alongside the new draft. The fix: a
+ *    `removeSentContent` callback surgically removes the submitted snapshot
+ *    range while preserving the new draft — opt-in via `SendCleanup`, backward
+ *    compatible with callers that don't provide it.
  *
  * `onSend` return-value contract (back-compatible):
  *   - `undefined` / `void` → success: editor consumed, all consumed top
@@ -77,6 +78,22 @@ export interface SendCleanup {
   removeTopAttachments: (ids: string[]) => void;
   /** Optional: collapse the expanded composer (only when the editor is cleared). */
   collapseExpanded?: () => void;
+
+  // ── octo-web#458: partial editor cleanup when draft changed mid-flight ──
+  //
+  // When the editor content changed during the send await, the old behavior
+  // left the entire live doc untouched — including the already-sent content.
+  // The fix: remove only the submitted snapshot range from the editor while
+  // preserving the newly typed draft. Both fields are optional for backward
+  // compatibility; when absent the old "leave as-is" behavior applies.
+
+  /** Number of content-size units (ProseMirror `content.size`) in the snapshot
+   *  document that was passed to `onSend`. Used to compute the deletion range
+   *  when removing the sent portion from the live doc. */
+  snapshotContentSize?: number;
+  /** Remove the already-sent snapshot range from the live editor document,
+   *  preserving any content the user typed after the snapshot. */
+  removeSentContent?: () => void;
 }
 
 /** Normalize the loose `SendResult` union into an explicit decision. */
@@ -143,17 +160,21 @@ export async function runSendWithCleanup(
   if (!cleanup.isEditorUnchanged()) {
     // The user started a new draft while the older send was in flight. We must
     // NOT clear the editor — doing so would wipe the newly typed draft (the
-    // round-2 data-loss bug). We deliberately leave the live document as-is.
+    // round-2 data-loss bug).
     //
-    // Known residual edge case (octo-web#227, tracked as a follow-up): the live
-    // editor now holds [already-sent snapshot blocks] + [new draft]. The
-    // already-sent blocks are NOT auto-removed here, so if the user presses send
-    // again those blocks are re-sent → a duplicate of the previous message. The
-    // message was delivered and the leftover content is visible to the user, so
-    // per the team's severity call this is accepted for now over the worse
-    // "draft wiped" failure. A precise fix (remove only the submitted snapshot
-    // range from the live doc, mirroring the by-id removeTopAttachments path)
-    // is deferred to a dedicated PR with its own ProseMirror-position tests.
+    // octo-web#458 fix: when the caller provided `removeSentContent`, surgically
+    // remove only the already-sent snapshot range from the editor, preserving
+    // the new draft. This eliminates the "sent text lingers in the input box"
+    // residual without re-introducing the round-2 data loss.
+    //
+    // When `removeSentContent` is not provided (older callers), fall back to
+    // the original "leave as-is" behavior.
+    if (cleanup.removeSentContent) {
+      cleanup.removeSentContent();
+      cleanup.deleteEditorAttachmentRefs();
+      cleanup.revokeEditorPreviewUrls();
+      cleanup.collapseExpanded?.();
+    }
     return true;
   }
 

@@ -987,6 +987,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     //     但编辑器混排失败」，让已发文件不被重试重复 (Jerry-Xin non-blocking)。
     // 编排逻辑在纯函数 runSendWithCleanup，便于单测覆盖各竞态场景。
     const editorSnapshot = JSON.stringify(editor.getJSON());
+    // octo-web#458: snapshot content size enables surgical removal of the sent
+    // range when the user typed a new draft mid-flight (editor changed).
+    const snapshotContentSize = editor.state.doc.content.size;
     const consumedAttachmentAttrs = attachmentAttrs;
     const topItemsAtSend = topAttachments;
     const allTopIds = topItemsAtSend.map((item) => item.id);
@@ -1036,6 +1039,24 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               setExpanded(false);
               props.onExpandChange?.(false);
             }
+          },
+          // octo-web#458: surgical removal of the sent snapshot range when the
+          // editor changed mid-flight. The current doc is structured as
+          // [snapshot content (sent)] [new draft (user-typed during await)].
+          // We delete the snapshot portion (positions 0→snapshotContentSize)
+          // while keeping the new draft intact.
+          snapshotContentSize,
+          removeSentContent: () => {
+            const { state } = editor;
+            const { doc, tr } = state;
+            const currentSize = doc.content.size;
+            // Nothing to remove if doc is exactly the snapshot (shouldn't happen
+            // since isEditorUnchanged() was false, but guard anyway).
+            if (currentSize <= snapshotContentSize) return;
+            // Delete the sent portion at the beginning of the document.
+            // Positions 0→snapshotContentSize cover the original snapshot; the
+            // remaining text (snapshotContentSize→currentSize) is the new draft.
+            editor.view.dispatch(tr.delete(0, snapshotContentSize));
           },
         }
       );

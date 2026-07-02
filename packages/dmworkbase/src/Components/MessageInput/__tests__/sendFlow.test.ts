@@ -34,15 +34,20 @@ interface RecordingCleanup extends SendCleanup {
   calls: string[];
   removedIds: string[];
   editorUnchanged: boolean;
+  removeSentContentCalled: boolean;
 }
 
-function makeCleanup(opts?: { editorUnchanged?: boolean }): RecordingCleanup {
+function makeCleanup(opts?: {
+  editorUnchanged?: boolean;
+  withRemoveSentContent?: boolean;
+}): RecordingCleanup {
   const calls: string[] = [];
   const removedIds: string[] = [];
   const state = {
     calls,
     removedIds,
     editorUnchanged: opts?.editorUnchanged ?? true,
+    removeSentContentCalled: false,
     isEditorUnchanged: vi.fn(() => state.editorUnchanged),
     deleteEditorAttachmentRefs: vi.fn(() => calls.push("deleteEditorAttachmentRefs")),
     revokeEditorPreviewUrls: vi.fn(() => calls.push("revokeEditorPreviewUrls")),
@@ -52,6 +57,17 @@ function makeCleanup(opts?: { editorUnchanged?: boolean }): RecordingCleanup {
       removedIds.push(...ids);
     }),
     collapseExpanded: vi.fn(() => calls.push("collapseExpanded")),
+    // octo-web#458: only wire removeSentContent when opted in, so we can test
+    // both the new behavior and the backward-compatible fallback.
+    ...(opts?.withRemoveSentContent
+      ? {
+          snapshotContentSize: 5,
+          removeSentContent: vi.fn(() => {
+            state.removeSentContentCalled = true;
+            calls.push("removeSentContent");
+          }),
+        }
+      : {}),
   };
   return state as unknown as RecordingCleanup;
 }
@@ -244,5 +260,95 @@ describe("runSendWithCleanup — partial result (top attachments sent, editor fa
     await runSendWithCleanup(send, ["t1", "t2"], cleanup);
 
     expect(cleanup.removedIds).toEqual(["t1", "t2"]);
+  });
+});
+
+describe("runSendWithCleanup — octo-web#458: partial editor cleanup when draft changed mid-flight", () => {
+  it("calls removeSentContent (not clearEditor) when editor changed AND removeSentContent is provided", async () => {
+    const cleanup = makeCleanup({
+      editorUnchanged: false,
+      withRemoveSentContent: true,
+    });
+    const send = vi.fn().mockResolvedValue(true);
+
+    const ok = await runSendWithCleanup(send, [], cleanup);
+
+    expect(ok).toBe(true);
+    // Must NOT do a full clear — that would wipe the new draft (round-2 bug).
+    expect(cleanup.clearEditor).not.toHaveBeenCalled();
+    // Must call the surgical removal instead.
+    expect(cleanup.removeSentContentCalled).toBe(true);
+    // Attachment refs / preview URLs should still be cleaned up.
+    expect(cleanup.deleteEditorAttachmentRefs).toHaveBeenCalledTimes(1);
+    expect(cleanup.revokeEditorPreviewUrls).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to leave-as-is when editor changed but removeSentContent is NOT provided (backward compat)", async () => {
+    const cleanup = makeCleanup({ editorUnchanged: false });
+    const send = vi.fn().mockResolvedValue(true);
+
+    const ok = await runSendWithCleanup(send, [], cleanup);
+
+    expect(ok).toBe(true);
+    // Old behavior: no clearEditor, no removeSentContent — just leave the doc.
+    expect(cleanup.clearEditor).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call removeSentContent when editor is unchanged (normal full-clear path)", async () => {
+    const cleanup = makeCleanup({
+      editorUnchanged: true,
+      withRemoveSentContent: true,
+    });
+    const send = vi.fn().mockResolvedValue(true);
+
+    await runSendWithCleanup(send, [], cleanup);
+
+    // Normal path: editor still holds exactly what was sent → full clear.
+    expect(cleanup.clearEditor).toHaveBeenCalledTimes(1);
+    // removeSentContent must NOT be called — it's only for the changed-editor branch.
+    expect(cleanup.removeSentContentCalled).toBe(false);
+  });
+
+  it("still removes consumed top attachments by id when using removeSentContent path", async () => {
+    const cleanup = makeCleanup({
+      editorUnchanged: false,
+      withRemoveSentContent: true,
+    });
+    const send = vi.fn().mockResolvedValue(true);
+
+    await runSendWithCleanup(send, ["t1", "t2"], cleanup);
+
+    expect(cleanup.removeTopAttachments).toHaveBeenCalledTimes(1);
+    expect(cleanup.removedIds).toEqual(["t1", "t2"]);
+    expect(cleanup.removeSentContentCalled).toBe(true);
+    expect(cleanup.clearEditor).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call removeSentContent when send resolved false (preserve draft for retry)", async () => {
+    const cleanup = makeCleanup({
+      editorUnchanged: false,
+      withRemoveSentContent: true,
+    });
+    const send = vi.fn().mockResolvedValue(false);
+
+    const ok = await runSendWithCleanup(send, [], cleanup);
+
+    expect(ok).toBe(false);
+    // send failed → preserve everything, no cleanup at all.
+    expect(cleanup.clearEditor).not.toHaveBeenCalled();
+    expect(cleanup.removeSentContentCalled).toBe(false);
+    expect(cleanup.removeTopAttachments).not.toHaveBeenCalled();
+  });
+
+  it("calls collapseExpanded via removeSentContent path when editor changed mid-flight", async () => {
+    const cleanup = makeCleanup({
+      editorUnchanged: false,
+      withRemoveSentContent: true,
+    });
+    const send = vi.fn().mockResolvedValue(true);
+
+    await runSendWithCleanup(send, [], cleanup);
+
+    expect(cleanup.collapseExpanded).toHaveBeenCalledTimes(1);
   });
 });
