@@ -14,6 +14,8 @@ interface TabContactsProps {
     keyword?: string;
     friends?: any[];
     onClick?: (item: any) => void;
+    // #397: 关闭外层 GlobalSearch 搜索框（Bot 经名片发消息后；普通联系人由 onClick 链路负责关闭）
+    onClose?: () => void;
 }
 
 interface TabContactsState {
@@ -145,6 +147,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
                 onChat={(channel) => {
                     WKApp.endpoints.showConversation(channel);
                     this.setState({ botDetailVisible: false });
+                    this.props.onClose?.(); // #397: 关名片后再关闭外层搜索框
                 }}
             />
         </div>
