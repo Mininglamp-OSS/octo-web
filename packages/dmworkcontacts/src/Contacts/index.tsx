@@ -20,6 +20,7 @@ import { Space, SpaceMember, SpaceService } from "@octo/base/src/Service/SpaceSe
 import { debounce } from "@octo/base/src/Utils/rateLimit";
 import { OnlineStatusBadge, needShowOnlineStatus, getOnlineTip } from "@octo/base/src/Components/ConversationList";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { shouldShowOnlineStatus, selectOnlineStatusUids } from "./onlineStatusGate";
 
 function OverflowTooltip({ text, children }: { text: string; children: React.ReactNode }) {
     const [visible, setVisible] = useState(false)
@@ -103,8 +104,9 @@ function VirtualContactList({ rows, renderItem, initialScrollTop, onScrollTopCha
         if (!onVisibleUids) return
         const uids: string[] = []
         for (let i = visibleStart; i <= visibleEnd; i++) {
-            const uid = rows[i]?.item.uid
-            if (uid) uids.push(uid)
+            // 只对 AI 条目预取在线态，真人 uid 不请求（在线态仅面向 AI）
+            const item = rows[i]?.item
+            if (item && shouldShowOnlineStatus(item) && item.uid) uids.push(item.uid)
         }
         if (uids.length) onVisibleUids(uids)
     }, [visibleStart, visibleEnd, rows, onVisibleUids])
@@ -321,10 +323,10 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     // 「全部联系人」>100 条走虚拟列表，仅对可见项预取（见 VirtualContactList.onVisibleUids）；
-    // <=100 条为普通渲染、数量有界，可在数据就绪时整批预取一次。
+    // <=100 条为普通渲染、数量有界，可在数据就绪时整批预取一次。仅预取 AI 条目，真人不请求。
     private maybePrefetchSmallList() {
         if (this.flatItems.length > 0 && this.flatItems.length <= 100) {
-            this.prefetchOnlineStatus(this.flatItems.map((i) => i.uid))
+            this.prefetchOnlineStatus(selectOnlineStatusUids(this.flatItems))
         }
     }
 
@@ -831,7 +833,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             }}>
                 <div className="wk-contacts-section-item-avatar">
                     <WKAvatar channel={new Channel(item.uid, ChannelTypePerson)} />
-                    {this.renderOnlineBadge(item.uid)}
+                    {shouldShowOnlineStatus(item) && this.renderOnlineBadge(item.uid)}
                 </div>
                 <OverflowTooltip text={name}>
                     {item.robot === true && <AiBadge />}
