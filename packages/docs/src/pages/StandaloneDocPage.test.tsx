@@ -27,6 +27,7 @@ vi.mock('../members/useMemberNames.ts', () => ({
 import {
   StandaloneDocPage,
   parseStandaloneDocId,
+  isStandaloneDocPath,
   STANDALONE_RETURN_KEY,
 } from './StandaloneDocPage.tsx'
 
@@ -65,6 +66,29 @@ describe('parseStandaloneDocId', () => {
     expect(parseStandaloneDocId('/d/a:b')).toBeNull()
     // Only a top-level /d/ path, not a nested one.
     expect(parseStandaloneDocId('/x/d/abc')).toBeNull()
+  })
+})
+
+describe('isStandaloneDocPath', () => {
+  it('claims the whole /d namespace so malformed ids are still intercepted (AC-9)', () => {
+    // Well-formed links.
+    expect(isStandaloneDocPath('/d/d_abc123')).toBe(true)
+    expect(isStandaloneDocPath('/d/d_abc123/')).toBe(true)
+    // Malformed / empty ids: still in the namespace → intercepted → not-found terminal, NOT the
+    // app shell.
+    expect(isStandaloneDocPath('/d/')).toBe(true)
+    expect(isStandaloneDocPath('/d')).toBe(true)
+    expect(isStandaloneDocPath('/d/a:b')).toBe(true)
+  })
+  it('does not claim unrelated paths', () => {
+    expect(isStandaloneDocPath('/docs')).toBe(false)
+    expect(isStandaloneDocPath('/docs?doc=x')).toBe(false)
+    expect(isStandaloneDocPath('/')).toBe(false)
+    // A nested /d/ is not the top-level standalone namespace.
+    expect(isStandaloneDocPath('/x/d/abc')).toBe(false)
+    // A different top-level segment that merely starts with "d".
+    expect(isStandaloneDocPath('/docs/d/abc')).toBe(false)
+    expect(isStandaloneDocPath('/download')).toBe(false)
   })
 })
 
@@ -131,6 +155,24 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     // The link is stashed so the post-login flow can bounce the user back to the doc.
     expect(window.sessionStorage.getItem(STANDALONE_RETURN_KEY)).not.toBeNull()
     expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
+  it('AC-9: a null docId (malformed /d/ link) renders not-found without any preflight', async () => {
+    // The host Layout claims the whole /d namespace and passes null here for a malformed/empty id
+    // (`/d/`, `/d/a:b`). The page must render the not-found terminal — NOT fall through to the app
+    // shell — and must issue NO preflight (there is nothing valid to fetch).
+    wk.apiClient.responder = (method, url) => {
+      throw new Error(`unexpected request ${method} ${url}`)
+    }
+
+    render(<StandaloneDocPage docId={null} />)
+
+    await waitFor(() =>
+      expect(screen.getByText('docs.error.permission.notFound')).toBeTruthy(),
+    )
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // No GET /docs/... preflight was attempted for a malformed id.
+    expect(wk.apiClient.calls.some((c) => c.url.startsWith('/docs/'))).toBe(false)
   })
 
   it('mounts the editor with Copy link + Open in App injected when the preflight succeeds', async () => {
