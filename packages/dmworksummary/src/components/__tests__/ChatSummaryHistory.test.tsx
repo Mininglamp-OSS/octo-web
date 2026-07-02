@@ -429,5 +429,111 @@ describe('ChatSummaryHistory', () => {
 
             expect(mockBatchStatus).not.toHaveBeenCalled();
         });
+
+        // GH #334: ChatSummaryHistory must honour summary-batch-heartbeat from
+        // SummaryListPage — when the main list already polls the same taskIds,
+        // the sidebar poll is redundant and must be suppressed.
+        it('suppresses its own batch-status poll when summary-batch-heartbeat covers the same taskIds', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 42, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 42, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Simulate SummaryListPage emitting a heartbeat that covers task 42
+            // (the same taskId the sidebar would poll).
+            window.dispatchEvent(
+                new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [42] } }),
+            );
+
+            mockBatchStatus.mockClear();
+
+            // Advance past the 5s poll interval — sidebar must NOT call batchStatus
+            // because the heartbeat signals the main list already covers task 42.
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(10000);
+            });
+
+            expect(mockBatchStatus).not.toHaveBeenCalled();
+        });
+
+        // GH #334: when a heartbeat fires with non-overlapping taskIds, the
+        // sidebar should NOT be suppressed (its taskIds are independent).
+        it('continues polling when heartbeat covers different taskIds', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 42, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 42, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Heartbeat covers a DIFFERENT taskId — sidebar poll must not be suppressed.
+            window.dispatchEvent(
+                new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [999] } }),
+            );
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+
+            expect(mockBatchStatus).toHaveBeenCalledWith([42]);
+        });
+
+        it('dispatches summary-batch-heartbeat after its own poll so SummaryDetailPage can suppress fallback', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 7, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 7, status: 2, progress: 30, updated_at: '' }]);
+
+            const heartbeatListener = vi.fn();
+            window.addEventListener('summary-batch-heartbeat', heartbeatListener);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            heartbeatListener.mockClear();
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+
+            // Sidebar poll happened
+            expect(mockBatchStatus).toHaveBeenCalledWith([7]);
+
+            // Sidebar should have dispatched a heartbeat covering task 7
+            const heartbeatCalls = heartbeatListener.mock.calls.filter(
+                (c) => (c[0] as CustomEvent).detail?.taskIds?.includes(7),
+            );
+            expect(heartbeatCalls.length).toBeGreaterThanOrEqual(1);
+
+            window.removeEventListener('summary-batch-heartbeat', heartbeatListener);
+        });
     });
 });
