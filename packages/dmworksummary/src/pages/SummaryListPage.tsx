@@ -89,8 +89,16 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
         window.removeEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
     }
 
-    async loadData() {
-        this.setState({ loading: true, error: null });
+    async loadData(opts?: { silent?: boolean }) {
+        if (!opts?.silent) {
+            this.setState({ loading: true, error: null });
+        } else {
+            // #290: silent reload skips the loading=true flicker (render
+            // replaces the entire list with a Spin when loading is true).
+            // Still clear error so a stale banner does not persist past a
+            // successful background refresh.
+            this.setState({ error: null });
+        }
         try {
             const { page, pageSize, statusFilter, keyword } = this.state;
             const params: ListSummariesParams = {
@@ -163,10 +171,29 @@ export default class SummaryListPage extends Component<{}, SummaryListPageState>
                 return item;
             });
             if (changed) {
-                this.setState({ items: newItems }, () => {
-                    this.maybeStartBatchPoll();
-                    this.emitBadgeUpdate();
+                // #290: terminal transitions expose fields batchStatus does not
+                // return (title, completed_at, result preview) and may surface
+                // tasks created after the original loadData snapshot. Silent
+                // reload avoids the Spin flicker that a plain loadData() would
+                // cause (render is replacement, not overlay). Intermediate
+                // transitions (e.g. PENDING -> PROCESSING) keep the existing
+                // in-place setState path — no new fields to fetch.
+                const hasTerminal = changedIds.some(taskId => {
+                    const update = updateMap.get(taskId);
+                    return update && (
+                        update.status === TaskStatus.COMPLETED ||
+                        update.status === TaskStatus.FAILED ||
+                        update.status === TaskStatus.CANCELLED
+                    );
                 });
+                if (hasTerminal) {
+                    void this.loadData({ silent: true });
+                } else {
+                    this.setState({ items: newItems }, () => {
+                        this.maybeStartBatchPoll();
+                        this.emitBadgeUpdate();
+                    });
+                }
                 window.dispatchEvent(new CustomEvent("summary-status-change", { detail: { taskIds: changedIds } }));
             }
         } catch {
