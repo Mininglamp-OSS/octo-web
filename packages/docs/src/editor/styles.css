@@ -2314,7 +2314,7 @@
   min-height: 0;
 }
 
-/* Standalone-injected header actions (Copy link + Open in App), sitting ahead of the built-in
+/* Standalone-injected header actions (Copy link), sitting ahead of the built-in
    history/comments/export cluster in .octo-doc-header-right. */
 .octo-doc-standalone-actions {
   display: flex;
@@ -2322,19 +2322,6 @@
   gap: 8px;
 }
 
-/* "Open in App" is the primary call to action (#1664ff), matching the prototype. */
-.octo-doc-open-in-app {
-  background: var(--octo-active-fg, #1664ff);
-  color: #fff;
-  border-color: var(--octo-active-fg, #1664ff);
-  font-weight: 500;
-  white-space: nowrap;
-}
-.octo-doc-open-in-app:hover {
-  background: #0f52d9;
-  border-color: #0f52d9;
-  color: #fff;
-}
 .octo-doc-copy-link {
   white-space: nowrap;
 }
@@ -2342,10 +2329,10 @@
 /* Responsive, 3 tiers (prototype v2):
    ≥1024  — full labels everywhere (default).
    768–1024 — the built-in secondary buttons collapse to their icons to reclaim width; the
-              standalone Copy link / Open in App keep their labels.
+              standalone Copy link keeps its label.
    <1024  — the header may wrap and the toolbar scrolls horizontally rather than overflowing;
             the prose column stays full-width and the title never collapses to zero width.
-   Back and Open in App are never hidden. */
+   Back is never hidden. */
 @media (max-width: 1024px) {
   .octo-doc-standalone .octo-doc-header {
     flex-wrap: wrap;

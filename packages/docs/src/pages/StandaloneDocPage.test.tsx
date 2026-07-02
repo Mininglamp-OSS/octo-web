@@ -8,7 +8,7 @@ import { createMockWKApp } from '../octoweb/mock.ts'
 // AC-12 acceptance: the standalone page's boundary states are driven entirely by the GET
 // /api/v1/docs/{docId} PREFLIGHT, so they must render WITHOUT ever mounting Tiptap/Yjs/
 // Hocuspocus — i.e. with NO WebSocket dependency. The marker echoes the docId it was addressed
-// with and renders whatever headerRight (Copy link / Open in App) the page injected.
+// with and renders whatever headerRight (Copy link) the page injected.
 vi.mock('../editor/EditorShell.tsx', () => ({
   EditorShell: (props: { docId: string; onBack?: () => void; headerRight?: ReactNode }) => (
     <div data-testid="editor-shell">
@@ -175,7 +175,7 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     expect(wk.apiClient.calls.some((c) => c.url.startsWith('/docs/'))).toBe(false)
   })
 
-  it('mounts the editor with Copy link + Open in App injected when the preflight succeeds', async () => {
+  it('mounts the editor with Copy link injected (no "Open in App") when the preflight succeeds', async () => {
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url === '/docs/d_ok') {
         return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
@@ -190,6 +190,8 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     // The standalone chrome is injected via EditorShell's headerRight prop.
     const right = screen.getByTestId('editor-header-right')
     expect(right.textContent).toContain('docs.standalone.copyLink')
-    expect(right.textContent).toContain('docs.standalone.openInApp')
+    // The reverse "Open in App" exit was removed (boss change): standalone links are opened from
+    // an external chat, not from inside the shell, so there is nothing to return to.
+    expect(right.textContent).not.toContain('docs.standalone.openInApp')
   })
 })

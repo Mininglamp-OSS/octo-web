@@ -282,7 +282,6 @@
   "standalone": {
     "copyLink": "Copy link",
     "linkCopied": "Link copied",
-    "openInApp": "Open in App",
     "openInNewPage": "Open in new page"
   },
   "error": {
