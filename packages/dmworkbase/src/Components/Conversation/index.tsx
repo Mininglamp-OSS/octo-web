@@ -95,6 +95,7 @@ import {
 } from "../../Utils/sendWaitResult";
 import { parseThreadChannelId } from "../../Service/Thread";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
+import { captureSelectionWithinContainer } from "./copySelection";
 import VoiceFeedback from "../../Service/VoiceFeedback";
 import {
   precheckUploadCredentials,
@@ -1224,23 +1225,15 @@ export class Conversation
     this.vm.selectMessage = message;
     this.setState({ contextMenuMessageID: message.messageID });
 
-    // 缓存当前选区文本（仅当选区完全在当前消息气泡内时）
-    this._cachedSelectedText = null;
-    const selection = window.getSelection();
-    if (selection && selection.rangeCount > 0) {
-      const text = selection.toString();
-      if (text.length > 0) {
-        const range = selection.getRangeAt(0);
-        const target = event.target as HTMLElement;
-        // 兼容旧气泡（.wk-message-base-bubble）和新 MessageRow 组件（.wk-msg-row-body）
-        const bubble =
-          target.closest(".wk-message-base-bubble") ??
-          target.closest(".wk-msg-row-body");
-        if (bubble && bubble.contains(range.commonAncestorContainer)) {
-          this._cachedSelectedText = text;
-        }
-      }
-    }
+    // 缓存当前选区文本（仅当选区完全落在本次右键的那条消息容器内时）。
+    // 用 event.currentTarget（收到 contextmenu 事件的那条消息容器）做归属判定，
+    // 而非枚举 CSS class 白名单——折叠摘要、折叠卡片内展开行、普通消息都把
+    // onContextMenu 绑在各自的消息容器上，因此同一套判定天然覆盖三者，且不会
+    // 因新增渲染容器漏补白名单而回归（#513）。
+    this._cachedSelectedText = captureSelectionWithinContainer(
+      window.getSelection(),
+      event.currentTarget as HTMLElement
+    );
 
     this.contextMenusContext.show(event);
   }

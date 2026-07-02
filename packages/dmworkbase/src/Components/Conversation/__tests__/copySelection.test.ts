@@ -1,167 +1,168 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, afterEach } from "vitest";
+import { captureSelectionWithinContainer } from "../copySelection";
 
 /**
- * Tests for the copy-selection behavior (Issue #814):
+ * Regression tests for the right-click "copy" selection capture (Issue #513).
  *
- * When the user right-clicks a message bubble, showContextMenus() captures
- * the current window.getSelection().  The copy handler then uses that cached
- * text if available, falling back to the full message text otherwise.
+ * These tests exercise the REAL capture function used in production
+ * (`captureSelectionWithinContainer`, called from Conversation.showContextMenus
+ * with `event.currentTarget`) — not a local re-implementation. They build the
+ * three real message-container DOM shapes and assert that a partial selection
+ * inside the right-clicked container is captured, while anything outside it
+ * falls back (returns null → copy handler uses the full message text).
  *
- * We test the two pieces of logic independently:
- *   1. Selection capture — cacheSelectedTextForBubble()
- *   2. Copy text resolution — resolveCopyText()
+ * The historical bug: the capture logic matched a hard-coded CSS class
+ * whitelist, so folded-summary and fold-expanded-row containers — never added
+ * to the list — always fell back to copying the whole message. The last test
+ * below encodes the anti-drift intent: a brand-new container class that no
+ * whitelist could know about must still work, purely by ownership.
  */
 
-// ─── helpers that mirror the production logic ──────────────────────────
-
-/**
- * Mirrors the selection-capture logic in Conversation.showContextMenus().
- * Returns the selected text when the selection is entirely inside the bubble,
- * or null otherwise.
- */
-function cacheSelectedTextForBubble(
-    selection: Selection | null,
-    eventTarget: HTMLElement
-): string | null {
-    if (!selection || selection.rangeCount === 0 || selection.toString().length === 0) {
-        return null
-    }
-    const range = selection.getRangeAt(0)
-    const bubble = eventTarget.closest(".wk-message-base-bubble")
-    if (bubble && bubble.contains(range.commonAncestorContainer)) {
-        return selection.toString()
-    }
-    return null
+// Build a faithful Selection over a real Range so the production function runs
+// against real DOM `contains` / `commonAncestorContainer` semantics.
+function selectionOver(range: Range | null): Selection {
+  return {
+    rangeCount: range ? 1 : 0,
+    getRangeAt: () => {
+      if (!range) throw new Error("no range");
+      return range;
+    },
+    toString: () => (range ? range.toString() : ""),
+  } as unknown as Selection;
 }
 
-/**
- * Mirrors the text-resolution logic in the contextmenus.copy handler.
- */
-function resolveCopyText(
-    cachedSelectedText: string | null,
-    fullMessageText: string
-): string {
-    return cachedSelectedText || fullMessageText
+function rangeWithin(node: Node, start: number, end: number): Range {
+  const range = document.createRange();
+  range.setStart(node, start);
+  range.setEnd(node, end);
+  return range;
 }
 
-// ─── tests ─────────────────────────────────────────────────────────────
+describe("captureSelectionWithinContainer — real capture path", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
 
-describe("cacheSelectedTextForBubble", () => {
-    let bubble: HTMLDivElement
-    let innerSpan: HTMLSpanElement
-    let outsideDiv: HTMLDivElement
+  it("captures a partial selection inside a normal message row (.wk-msg-row)", () => {
+    // Container the contextmenu handler is bound to is the whole row; the text
+    // lives in .wk-msg-row-body inside it.
+    const row = el("div", "wk-msg-row");
+    const body = el("div", "wk-msg-row-body");
+    const text = document.createTextNode("Hello, this is a message");
+    body.appendChild(text);
+    row.appendChild(body);
+    document.body.appendChild(row);
 
-    beforeEach(() => {
-        document.body.innerHTML = ""
+    const sel = selectionOver(rangeWithin(text, 7, 11)); // "this"
+    expect(captureSelectionWithinContainer(sel, row)).toBe("this");
+  });
 
-        bubble = document.createElement("div")
-        bubble.className = "wk-message-base-bubble"
+  it("captures a partial selection inside a folded summary (.wk-fold-session-card-summary)", () => {
+    const summary = el("div", "wk-fold-session-card-summary");
+    const inner = el("div", "wk-fold-msg-text");
+    const text = document.createTextNode("Folded digest text here");
+    inner.appendChild(text);
+    summary.appendChild(inner);
+    document.body.appendChild(summary);
 
-        innerSpan = document.createElement("span")
-        innerSpan.textContent = "Hello, this is a message"
-        bubble.appendChild(innerSpan)
+    const sel = selectionOver(rangeWithin(text, 0, 6)); // "Folded"
+    expect(captureSelectionWithinContainer(sel, summary)).toBe("Folded");
+  });
 
-        outsideDiv = document.createElement("div")
-        outsideDiv.textContent = "Outside content"
+  it("captures a partial selection inside an expanded row of a fold card (.wk-fold-msg)", () => {
+    // The onContextMenu is bound to the outer .wk-fold-msg; text is in
+    // .wk-fold-msg-body -> .wk-fold-msg-text below it.
+    const foldMsg = el("div", "wk-fold-msg");
+    const foldBody = el("div", "wk-fold-msg-body");
+    const foldText = el("div", "wk-fold-msg-text");
+    const text = document.createTextNode("Expanded row content");
+    foldText.appendChild(text);
+    foldBody.appendChild(foldText);
+    foldMsg.appendChild(foldBody);
+    document.body.appendChild(foldMsg);
 
-        document.body.appendChild(bubble)
-        document.body.appendChild(outsideDiv)
-    })
+    const sel = selectionOver(rangeWithin(text, 0, 8)); // "Expanded"
+    expect(captureSelectionWithinContainer(sel, foldMsg)).toBe("Expanded");
+  });
 
-    it("returns null when there is no selection", () => {
-        const selection = {
-            rangeCount: 0,
-            toString: () => "",
-            getRangeAt: vi.fn(),
-        } as unknown as Selection
+  it("falls back (null) when the selection is in a different message container", () => {
+    const rowA = el("div", "wk-msg-row");
+    const bodyA = el("div", "wk-msg-row-body");
+    bodyA.appendChild(document.createTextNode("Message A"));
+    rowA.appendChild(bodyA);
 
-        expect(cacheSelectedTextForBubble(selection, innerSpan)).toBeNull()
-    })
+    const rowB = el("div", "wk-msg-row");
+    const bodyB = el("div", "wk-msg-row-body");
+    const textB = document.createTextNode("Message B");
+    bodyB.appendChild(textB);
+    rowB.appendChild(bodyB);
 
-    it("returns null when selection is null", () => {
-        expect(cacheSelectedTextForBubble(null, innerSpan)).toBeNull()
-    })
+    document.body.appendChild(rowA);
+    document.body.appendChild(rowB);
 
-    it("returns selected text when selection is inside the bubble", () => {
-        const textNode = innerSpan.firstChild!
-        const range = document.createRange()
-        range.setStart(textNode, 7)
-        range.setEnd(textNode, 11)
+    // Selection lives in row B, but row A was right-clicked → must not capture.
+    const sel = selectionOver(rangeWithin(textB, 0, 7));
+    expect(captureSelectionWithinContainer(sel, rowA)).toBeNull();
+  });
 
-        const selection = {
-            rangeCount: 1,
-            toString: () => "this",
-            getRangeAt: () => range,
-        } as unknown as Selection
+  it("falls back (null) when the selection spans across the container boundary", () => {
+    const row = el("div", "wk-msg-row");
+    const body = el("div", "wk-msg-row-body");
+    const inside = document.createTextNode("inside text");
+    body.appendChild(inside);
+    row.appendChild(body);
 
-        expect(cacheSelectedTextForBubble(selection, innerSpan)).toBe("this")
-    })
+    const outside = el("div", "some-sibling");
+    const outsideText = document.createTextNode("outside text");
+    outside.appendChild(outsideText);
 
-    it("returns null when selection is outside the bubble (cross-message fallback)", () => {
-        const outsideTextNode = outsideDiv.firstChild!
-        const range = document.createRange()
-        range.setStart(outsideTextNode, 0)
-        range.setEnd(outsideTextNode, 7)
+    document.body.appendChild(row);
+    document.body.appendChild(outside);
 
-        const selection = {
-            rangeCount: 1,
-            toString: () => "Outside",
-            getRangeAt: () => range,
-        } as unknown as Selection
+    // A range spanning both nodes has commonAncestorContainer == body element,
+    // which is not inside the row.
+    const range = document.createRange();
+    range.setStart(inside, 0);
+    range.setEnd(outsideText, 7);
+    expect(captureSelectionWithinContainer(selectionOver(range), row)).toBeNull();
+  });
 
-        expect(cacheSelectedTextForBubble(selection, innerSpan)).toBeNull()
-    })
+  it("returns null for an empty / collapsed selection (unselected right-click copies full message)", () => {
+    const row = el("div", "wk-msg-row");
+    const body = el("div", "wk-msg-row-body");
+    const text = document.createTextNode("Hello");
+    body.appendChild(text);
+    row.appendChild(body);
+    document.body.appendChild(row);
 
-    it("returns null when selection spans across the bubble boundary", () => {
-        // commonAncestorContainer would be document.body when spanning
-        const range = document.createRange()
-        range.setStart(innerSpan.firstChild!, 0)
-        range.setEnd(outsideDiv.firstChild!, 7)
+    expect(captureSelectionWithinContainer(selectionOver(null), row)).toBeNull();
+    expect(captureSelectionWithinContainer(null, row)).toBeNull();
+    // collapsed range → empty string → null
+    expect(
+      captureSelectionWithinContainer(selectionOver(rangeWithin(text, 2, 2)), row)
+    ).toBeNull();
+  });
 
-        const selection = {
-            rangeCount: 1,
-            toString: () => "Hello, this is a messageOutside",
-            getRangeAt: () => range,
-        } as unknown as Selection
+  it("anti-drift: a brand-new container class (no whitelist entry) still works by ownership", () => {
+    // This is the whole point of Direction ②. A future message container that
+    // no CSS-class whitelist knows about must capture selections correctly with
+    // zero code changes, purely because ownership is decided by `contains`.
+    const future = el("div", "wk-some-future-container-that-never-existed");
+    const inner = el("span", "totally-new-inner");
+    const text = document.createTextNode("future container selection");
+    inner.appendChild(text);
+    future.appendChild(inner);
+    document.body.appendChild(future);
 
-        expect(cacheSelectedTextForBubble(selection, innerSpan)).toBeNull()
-    })
+    const sel = selectionOver(rangeWithin(text, 0, 6)); // "future"
+    expect(captureSelectionWithinContainer(sel, future)).toBe("future");
+  });
+});
 
-    it("does not trim the selected text", () => {
-        const textNode = innerSpan.firstChild!
-        const range = document.createRange()
-        range.setStart(textNode, 6)
-        range.setEnd(textNode, 12)
-
-        const selection = {
-            rangeCount: 1,
-            toString: () => " this ",
-            getRangeAt: () => range,
-        } as unknown as Selection
-
-        const result = cacheSelectedTextForBubble(selection, innerSpan)
-        expect(result).toBe(" this ")
-    })
-})
-
-describe("resolveCopyText", () => {
-    const fullMessage = "Hello, this is the full message text"
-
-    it("returns full message text when cached selection is null", () => {
-        expect(resolveCopyText(null, fullMessage)).toBe(fullMessage)
-    })
-
-    it("returns cached selected text when available", () => {
-        expect(resolveCopyText("partial", fullMessage)).toBe("partial")
-    })
-
-    it("returns full message text when cached selection is empty string", () => {
-        // empty string is falsy, so it falls back
-        expect(resolveCopyText("", fullMessage)).toBe(fullMessage)
-    })
-
-    it("preserves whitespace in selected text (no trim)", () => {
-        expect(resolveCopyText("  spaced  ", fullMessage)).toBe("  spaced  ")
-    })
-})
+// ── tiny DOM helpers ──────────────────────────────────────────────────────
+function el(tag: string, className: string): HTMLElement {
+  const node = document.createElement(tag);
+  node.className = className;
+  return node;
+}
