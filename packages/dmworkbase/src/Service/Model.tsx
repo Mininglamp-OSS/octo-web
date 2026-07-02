@@ -721,7 +721,15 @@ export class MessageWrap {
 
     // 流式消息是否正在进行中
     public get isStreaming(): boolean {
-        return this.streamOn && this.message.streamFlag !== StreamFlag.END
+        // 仅当 streamFlag 处于「进行中」(START / ING) 时才算正在流式输出。
+        // streamFlag 是直播推流期间由 Conversation VM 从每个 stream 包临时写到
+        // message 上的字段（见 Components/Conversation/vm.ts），并不随历史消息持久化：
+        // 历史消息重新加载后 streamFlag 为 undefined。旧逻辑 `streamFlag !== END`
+        // 会把 undefined 也判成「流式中」，导致每条 Bot 历史回复气泡都残留一个
+        // 闪烁光标（占位气泡看起来像空白输入框，octo-web#300）。改成显式匹配
+        // START / ING 后，历史 / 已结束的流式消息不再被误判为流式中。
+        const flag = this.message.streamFlag
+        return this.streamOn && (flag === StreamFlag.START || flag === StreamFlag.ING)
     }
 
     // 获取流式消息的完整内容（初始内容 + 所有 stream items 的内容拼接）
