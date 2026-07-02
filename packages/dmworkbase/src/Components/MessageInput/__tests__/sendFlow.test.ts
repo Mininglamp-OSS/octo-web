@@ -246,3 +246,81 @@ describe("runSendWithCleanup — partial result (top attachments sent, editor fa
     expect(cleanup.removedIds).toEqual(["t1", "t2"]);
   });
 });
+
+describe("runSendWithCleanup — octo-web#458: surgical removal of sent content when editor changed mid-flight", () => {
+  function makeCleanupWithRemove(opts?: {
+    editorUnchanged?: boolean;
+  }): RecordingCleanup & {
+    removeSentContent: ReturnType<typeof vi.fn>;
+    snapshotContentSize: number;
+  } {
+    const base = makeCleanup(opts);
+    const removeSentContent = vi.fn();
+    return {
+      ...base,
+      snapshotContentSize: 42,
+      removeSentContent,
+    } as unknown as RecordingCleanup & {
+      removeSentContent: ReturnType<typeof vi.fn>;
+      snapshotContentSize: number;
+    };
+  }
+
+  it("calls removeSentContent with snapshotContentSize when editor changed mid-flight and removeSentContent is provided", async () => {
+    const cleanup = makeCleanupWithRemove({ editorUnchanged: false });
+    const send = vi.fn().mockResolvedValue(true);
+
+    const ok = await runSendWithCleanup(send, ["t1"], cleanup);
+
+    expect(ok).toBe(true);
+    expect(cleanup.removeSentContent).toHaveBeenCalledTimes(1);
+    expect(cleanup.removeSentContent).toHaveBeenCalledWith(42);
+    // clearEditor must NOT be called — that would wipe the new draft.
+    expect(cleanup.clearEditor).not.toHaveBeenCalled();
+  });
+
+  it("also cleans up attachment refs and preview URLs when removeSentContent runs", async () => {
+    const cleanup = makeCleanupWithRemove({ editorUnchanged: false });
+    const send = vi.fn().mockResolvedValue(true);
+
+    await runSendWithCleanup(send, ["t1"], cleanup);
+
+    // Old attachment refs/URLs were consumed by this send, so they should be
+    // cleaned up even though the editor was not fully cleared.
+    expect(cleanup.deleteEditorAttachmentRefs).toHaveBeenCalledTimes(1);
+    expect(cleanup.revokeEditorPreviewUrls).toHaveBeenCalledTimes(1);
+  });
+
+  it("still removes consumed top attachments by id when removeSentContent runs", async () => {
+    const cleanup = makeCleanupWithRemove({ editorUnchanged: false });
+    const send = vi.fn().mockResolvedValue(true);
+
+    await runSendWithCleanup(send, ["t1", "t2"], cleanup);
+
+    // Top attachments are id-scoped — safe regardless of editor changes.
+    expect(cleanup.removeTopAttachments).toHaveBeenCalledTimes(1);
+    expect(cleanup.removedIds).toEqual(["t1", "t2"]);
+  });
+
+  it("preserves legacy behaviour when removeSentContent is NOT provided (editor left untouched)", async () => {
+    // No removeSentContent on the cleanup object — legacy path.
+    const cleanup = makeCleanup({ editorUnchanged: false });
+    const send = vi.fn().mockResolvedValue(true);
+
+    const ok = await runSendWithCleanup(send, [], cleanup);
+
+    expect(ok).toBe(true);
+    expect(cleanup.clearEditor).not.toHaveBeenCalled();
+    expect(cleanup.deleteEditorAttachmentRefs).not.toHaveBeenCalled();
+    expect(cleanup.revokeEditorPreviewUrls).not.toHaveBeenCalled();
+  });
+
+  it("calls collapseExpanded when removeSentContent runs and collapseExpanded is provided", async () => {
+    const cleanup = makeCleanupWithRemove({ editorUnchanged: false });
+    const send = vi.fn().mockResolvedValue(true);
+
+    await runSendWithCleanup(send, [], cleanup);
+
+    expect(cleanup.collapseExpanded).toHaveBeenCalledTimes(1);
+  });
+});

@@ -24,11 +24,12 @@
  *    the user's newer draft is left untouched. Top attachments are removed by
  *    the specific ids that were consumed, never with a blanket reset, so items
  *    queued during the wait survive.
- *    Residual follow-up: when the editor changed mid-flight we leave the live
- *    doc untouched, so the already-sent snapshot blocks stay alongside the new
- *    draft and could be re-sent on the next send (duplicate). Accepted over the
- *    worse "draft wiped" failure; a precise per-range removal is deferred — see
- *    the `!isEditorUnchanged()` branch below.
+ *    Residual follow-up (octo-web#458, fixed): when the editor changed mid-flight,
+ *    the already-sent snapshot blocks previously stayed alongside the new draft
+ *    (duplicate on next send). Fixed by `removeSentContent` — surgically remove
+ *    positions [0, snapshotContentSize) from the live doc, preserving the new
+ *    draft. When the caller does not provide `removeSentContent`, the legacy
+ *    "leave untouched" behaviour is preserved for back-compat.
  *
  * `onSend` return-value contract (back-compatible):
  *   - `undefined` / `void` → success: editor consumed, all consumed top
@@ -77,6 +78,24 @@ export interface SendCleanup {
   removeTopAttachments: (ids: string[]) => void;
   /** Optional: collapse the expanded composer (only when the editor is cleared). */
   collapseExpanded?: () => void;
+
+  /**
+   * octo-web#458 — fix for the residual where the already-sent text remains in
+   * the input when the user started typing a new draft during the async send.
+   *
+   * When provided, `removeSentContent(snapshotContentSize)` is called in the
+   * `!isEditorUnchanged()` branch to surgically delete positions
+   * [0, snapshotContentSize) from the live editor — removing only the
+   * already-submitted snapshot content while preserving whatever the user typed
+   * after it. The caller captures `snapshotContentSize` (= editor state doc
+   * content.size) before the send and implements the removal via a ProseMirror
+   * tr.delete() or TipTap deleteRange command.
+   *
+   * When NOT provided, the legacy behaviour is preserved: the live doc is left
+   * untouched in the `!isEditorUnchanged()` branch (accepted residual).
+   */
+  snapshotContentSize?: number;
+  removeSentContent?: (snapshotContentSize: number) => void;
 }
 
 /** Normalize the loose `SendResult` union into an explicit decision. */
@@ -143,17 +162,22 @@ export async function runSendWithCleanup(
   if (!cleanup.isEditorUnchanged()) {
     // The user started a new draft while the older send was in flight. We must
     // NOT clear the editor — doing so would wipe the newly typed draft (the
-    // round-2 data-loss bug). We deliberately leave the live document as-is.
+    // round-2 data-loss bug).
     //
-    // Known residual edge case (octo-web#227, tracked as a follow-up): the live
-    // editor now holds [already-sent snapshot blocks] + [new draft]. The
-    // already-sent blocks are NOT auto-removed here, so if the user presses send
-    // again those blocks are re-sent → a duplicate of the previous message. The
-    // message was delivered and the leftover content is visible to the user, so
-    // per the team's severity call this is accepted for now over the worse
-    // "draft wiped" failure. A precise fix (remove only the submitted snapshot
-    // range from the live doc, mirroring the by-id removeTopAttachments path)
-    // is deferred to a dedicated PR with its own ProseMirror-position tests.
+    // octo-web#458: when the caller provided `removeSentContent`, surgically
+    // remove only the already-submitted snapshot range (positions
+    // [0, snapshotContentSize)) from the live doc while preserving whatever the
+    // user typed after it. Attachment refs and preview URLs for the consumed
+    // attachments are also cleaned up since they were sent.
+    //
+    // When `removeSentContent` is NOT provided, fall back to the legacy
+    // behaviour: leave the live doc untouched (accepted residual).
+    if (cleanup.removeSentContent && cleanup.snapshotContentSize != null) {
+      cleanup.removeSentContent(cleanup.snapshotContentSize);
+      cleanup.deleteEditorAttachmentRefs();
+      cleanup.revokeEditorPreviewUrls();
+      cleanup.collapseExpanded?.();
+    }
     return true;
   }
 

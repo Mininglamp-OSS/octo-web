@@ -987,6 +987,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     //     但编辑器混排失败」，让已发文件不被重试重复 (Jerry-Xin non-blocking)。
     // 编排逻辑在纯函数 runSendWithCleanup，便于单测覆盖各竞态场景。
     const editorSnapshot = JSON.stringify(editor.getJSON());
+    // octo-web#458: capture the ProseMirror doc size at send time so the
+    // !isEditorUnchanged() branch can surgically remove just the already-sent
+    // snapshot range from the live editor (preserving any new draft typed
+    // during the async send).
+    const snapshotContentSize = editor.state.doc.content.size;
     const consumedAttachmentAttrs = attachmentAttrs;
     const topItemsAtSend = topAttachments;
     const allTopIds = topItemsAtSend.map((item) => item.id);
@@ -1036,6 +1041,15 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               setExpanded(false);
               props.onExpandChange?.(false);
             }
+          },
+          // octo-web#458: surgically remove only the already-sent snapshot
+          // range from the live editor, preserving any content the user typed
+          // after the snapshot. Uses TipTap deleteRange on positions
+          // [0, snapshotContentSize) of the CURRENT doc — correct when the user
+          // appended new text (the common case for a chat input).
+          snapshotContentSize,
+          removeSentContent: (size: number) => {
+            editor.commands.deleteRange({ from: 0, to: size });
           },
         }
       );
