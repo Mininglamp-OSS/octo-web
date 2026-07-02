@@ -13,10 +13,32 @@ import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
+import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath } from "@octo/docs";
+import { findStoredSession } from "./recoverSession";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
     joinApproval?: { status: JoinApprovalStatus; inviteCode: string };
+}
+
+/**
+ * Recover an octo session for a clean deep-link that carries no `?sid=` in the URL.
+ *
+ * Both `/d/:docId` (standalone doc, #512) and `?invite=` links can be opened in a fresh tab where
+ * the URL has no `sid`, so the sid-keyed `WKApp.loginInfo.load()` reads nothing even when the user
+ * is signed in — their token lives under a `token{sid}` key in localStorage. Adopt the first such
+ * session (token + uid + name) so the deep-link's authenticated requests succeed instead of
+ * returning 401 for everyone. No-op when a token is already present or none is stored (a genuinely
+ * anonymous visitor). The scan itself lives in findStoredSession (pure + unit-tested).
+ */
+function recoverOctoSessionFromStorage(): void {
+    if (WKApp.loginInfo.token) return;
+    const session = findStoredSession(localStorage);
+    if (session) {
+        WKApp.loginInfo.token = session.token;
+        WKApp.loginInfo.uid = session.uid;
+        WKApp.loginInfo.name = session.name;
+    }
 }
 
 export default class AppLayout extends Component<{}, AppLayoutState> {
@@ -260,6 +282,35 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             }
         }
 
+        // Standalone document deep-link (`/d/:docId`, octo-web #512): a shareable full-window
+        // doc view that lives OUTSIDE the app shell (no MainPage / NavRail), mounted with the
+        // same early-return interception the `?invite=` landing uses below. We claim the whole
+        // `/d` namespace (not just well-formed ids) so a malformed/empty id renders the
+        // standalone not-found terminal instead of silently falling through to the shell (AC-9).
+        //
+        // Auth: this branch renders before the Provider, so ensure the octo session is loaded
+        // for the page's GET /docs/{docId} preflight + collab-token exchange. A clean cold-load
+        // in a fresh tab carries no `?sid=`, so load() (sid-keyed) misses even a signed-in user's
+        // token — recover it from localStorage the way the invite branch does (AC-3). When the
+        // visitor is genuinely anonymous, fall through to the login screen rendered IN PLACE: the
+        // pathname stays `/d/:docId`, so onLogin derives basePath from it and bounces the user
+        // straight back to the doc (now with `?sid=`) after sign-in — the deep-link resumes
+        // instead of dead-ending (AC-11). SPA deep-link serving depends on the nginx try_files
+        // fallback (deployment concern, out of scope for this frontend change).
+        if (isStandaloneDocPath(window.location.pathname)) {
+            if (!WKApp.loginInfo.token) {
+                WKApp.loginInfo.load();
+            }
+            if (!WKApp.loginInfo.token) {
+                recoverOctoSessionFromStorage();
+            }
+            if (WKApp.loginInfo.token) {
+                const standaloneDocId = parseStandaloneDocId(window.location.pathname);
+                return <StandaloneDocPage docId={standaloneDocId} />;
+            }
+            // Anonymous: fall through to the login screen (below) without navigating away.
+        }
+
         // 邀请链接检测
         const urlParams = new URLSearchParams(window.location.search);
         const inviteCode = urlParams.get("invite");
@@ -269,22 +320,10 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             if (!WKApp.loginInfo.token) {
                 WKApp.loginInfo.load();
             }
-            // 如果 URL 没有 ?sid= 或 sid 不匹配，尝试从 localStorage 找正确的 token
+            // 如果 URL 没有 ?sid= 或 sid 不匹配，从 localStorage 恢复已登录会话
+            // （与 /d/:docId 直达同一套 clean 冷加载恢复逻辑）
             if (!WKApp.loginInfo.token) {
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (key && key.startsWith("token") && key !== "token") {
-                        const val = localStorage.getItem(key);
-                        if (val) {
-                            // 直接设置 token 和相关信息，不重定向
-                            const sid = key.substring(5);
-                            WKApp.loginInfo.token = val;
-                            WKApp.loginInfo.uid = localStorage.getItem("uid" + sid) || "";
-                            WKApp.loginInfo.name = localStorage.getItem("name" + sid) || "";
-                            break;
-                        }
-                    }
-                }
+                recoverOctoSessionFromStorage();
             }
             return <InviteLanding inviteCode={inviteCode} />;
         }

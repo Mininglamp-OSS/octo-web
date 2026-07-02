@@ -132,3 +132,43 @@ describe('EditorShell — export filename uses the live title, not the stale pro
     expect(a.download).not.toBe('Stale Prop Title.md')
   })
 })
+
+// #512 AC-8 non-regression: the standalone deep-link page reuses EditorShell and injects a Back
+// control (onBack) + "Copy link" (headerRight). The IN-SHELL path passes neither,
+// and must be completely unaffected by the new props.
+describe('EditorShell — header injection props (#512 AC-8)', () => {
+  const baseProps = {
+    docId: 'd_1',
+    title: 'Doc',
+    space: 's_1',
+    folder: 'f_1',
+    doc: 'd_1',
+    uid: 'u_self',
+    user: { id: 'u_self', name: 'Self' },
+  }
+
+  it('in-shell (no onBack / no headerRight): renders no header back control, header unchanged', () => {
+    render(<EditorShell {...baseProps} />)
+    // No header back button when onBack is omitted.
+    expect(screen.queryByTitle('docs.list.back')).toBeNull()
+    // The built-in header controls still render (in-shell path intact).
+    expect(screen.getByTitle('docs.toolbar.exportMarkdown')).toBeTruthy()
+    expect(screen.getByTitle('docs.toolbar.history')).toBeTruthy()
+  })
+
+  it('standalone: renders the injected headerRight content alongside the built-in controls', () => {
+    render(
+      <EditorShell
+        {...baseProps}
+        onBack={() => {}}
+        headerRight={<button type="button">INJECTED_ACTIONS</button>}
+      />,
+    )
+    // The injected standalone chrome appears...
+    expect(screen.getByText('INJECTED_ACTIONS')).toBeTruthy()
+    // ...the back control shows when onBack is provided...
+    expect(screen.getByTitle('docs.list.back')).toBeTruthy()
+    // ...and the built-in controls are still present (parity preserved).
+    expect(screen.getByTitle('docs.toolbar.exportMarkdown')).toBeTruthy()
+  })
+})

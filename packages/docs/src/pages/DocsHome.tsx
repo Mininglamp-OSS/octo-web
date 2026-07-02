@@ -407,6 +407,15 @@ export function DocsHome() {
     [selectedDocId, backToList],
   )
 
+  // "Open in new page" (AC-1): open the current doc as a standalone full-window `/d/:docId` link
+  // in a new browser tab — the clean, shareable cold-load entry that lives outside the app shell.
+  // The id only ever contains documentName-safe chars, so the built path stays a valid /d/ route.
+  const onOpenInNewPage = useCallback((id: string) => {
+    if (typeof window !== 'undefined') {
+      window.open(`/d/${encodeURIComponent(id)}`, '_blank', 'noopener,noreferrer')
+    }
+  }, [])
+
   // Build the editor element. `onBack` (header "← back" control) is passed ONLY on the inline
   // standalone/test path; in the routeRight production path the left list is always resident, so
   // the header back button is redundant and omitted (#2). `onExit` (= backToList) is ALWAYS
@@ -427,9 +436,19 @@ export function DocsHome() {
         onExit={backToList}
         onTitleSaved={onTitleSaved}
         onDeleted={onDocDeleted}
+        headerRight={
+          <button
+            type="button"
+            className="octo-tb-btn octo-doc-open-new-page"
+            title={t('docs.standalone.openInNewPage')}
+            onClick={() => onOpenInNewPage(docId)}
+          >
+            ⧉ {t('docs.standalone.openInNewPage')}
+          </button>
+        }
       />
     ),
-    [uid, space, folder, names, onTitleSaved, backToList, onDocDeleted],
+    [uid, space, folder, names, onTitleSaved, backToList, onDocDeleted, onOpenInNewPage],
   )
 
   const openDoc = useCallback(

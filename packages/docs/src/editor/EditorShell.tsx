@@ -17,9 +17,10 @@ import { useMemberNames } from '../members/useMemberNames.ts'
 import { exportDocToMarkdown, type MdNode } from '../export/markdown.ts'
 import { emojiGlyph } from './emoji.ts'
 import { colorFromId } from '../awareness/presence.ts'
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
 import { t } from '../octoweb/index.ts'
 import { getDoc, updateDocTitle } from '../pages/docsApi.ts'
+import { DocTerminal } from './DocTerminal.tsx'
 import './styles.css'
 
 /** Which right-side drawer panel is open (mutually exclusive); null = drawer closed. */
@@ -43,6 +44,13 @@ export interface EditorShellProps extends CollabEditorOptions {
    * to its own return-to-list handler (onExit ?? onBack).
    */
   onDeleted?: (docId: string) => void
+  /**
+   * Extra controls injected into the header's right-hand cluster (e.g. the standalone deep-link
+   * page's "Copy link"). Optional: when omitted, the in-shell header renders
+   * exactly as before — no wrapper, no empty node — so the in-shell path is byte-for-byte
+   * unchanged (AC-8 non-regression). Rendered ahead of the built-in history/comments/… buttons.
+   */
+  headerRight?: ReactNode
 }
 
 /**
@@ -214,7 +222,7 @@ function DocTitle({
 
 /** Page shell (frontend-design §3.1): title / toolbar / content / presence + right-side drawer. */
 export function EditorShell(props: EditorShellProps) {
-  const { title, onBack, onExit, onTitleSaved, onDeleted, ...collabOpts } = props
+  const { title, onBack, onExit, onTitleSaved, onDeleted, headerRight, ...collabOpts } = props
   const docId = props.docId
   const { instance, ready, role, connState, terminal } = useCollabEditor(collabOpts)
   // The live document title, lifted out of DocTitle so the export filename uses the current
@@ -344,24 +352,7 @@ export function EditorShell(props: EditorShellProps) {
   const closePanel = useCallback(() => setActivePanel(null), [])
 
   if (terminal.kind !== 'none') {
-    const messages: Record<string, string> = {
-      forbidden: t('docs.error.permission.forbidden'),
-      'not-found': t('docs.error.permission.notFound'),
-      locked: t('docs.error.permission.locked'),
-      login: t('docs.error.permission.login'),
-      deleted: t('docs.error.permission.deleted'),
-    }
-    return (
-      <div className="octo-doc octo-terminal">
-        {onBack && (
-          <button type="button" className="octo-doc-back" onClick={onBack}>
-            ← {t('docs.list.back')}
-          </button>
-        )}
-        <h2>{title}</h2>
-        <p className="octo-terminal-msg">{messages[terminal.kind]}</p>
-      </div>
-    )
+    return <DocTerminal title={title} kind={terminal.kind} onBack={onBack} />
   }
 
   if (!instance) {
@@ -399,6 +390,7 @@ export function EditorShell(props: EditorShellProps) {
           onTitleLoaded={setCurrentTitle}
         />
         <div className="octo-doc-header-right">
+          {headerRight}
           <PresenceBar provider={instance.provider} connState={connState} synced={ready} />
           {/* History is reader+ (everyone with access), unlike admin-only Members. */}
           <button

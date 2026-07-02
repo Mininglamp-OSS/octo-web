@@ -279,6 +279,11 @@
     "invalidUrl": "Please enter a valid http/https URL.",
     "failed": "Could not fetch link details."
   },
+  "standalone": {
+    "copyLink": "Copy link",
+    "linkCopied": "Link copied",
+    "openInNewPage": "Open in new page"
+  },
   "error": {
     "permission": {
       "forbidden": "You no longer have access to this document.",
