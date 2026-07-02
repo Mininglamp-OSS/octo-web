@@ -529,7 +529,6 @@
   "channelWebhook.form.editTitle": "编辑 Webhook",
   "channelWebhook.form.name": "名称",
   "channelWebhook.form.namePlaceholder": "留空将自动命名",
-  "channelWebhook.form.memberPrefixHint": "普通成员创建的 Webhook 名称会自动加上 Webhook- 前缀",
   "channelWebhook.form.avatar": "头像 URL",
   "channelWebhook.form.avatarPlaceholder": "https://example.com/avatar.png",
   "channelWebhook.form.avatarHint": "可选，作为该 Webhook 消息的发送者头像",
