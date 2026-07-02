@@ -29,6 +29,8 @@ export default class ChatSummaryHistory extends Component<
     private abortController: AbortController | null = null;
     private pollTimer: ReturnType<typeof setInterval> | null = null;
     private isPolling = false;
+    private heartbeatCoveredTaskIds: Set<number> = new Set();
+    private lastHeartbeatTime = 0;
 
     constructor(props: ChatSummaryHistoryProps) {
         super(props);
@@ -39,6 +41,7 @@ export default class ChatSummaryHistory extends Component<
         void this.loadHistory();
         window.addEventListener('chat-summary-created', this.handleChange as EventListener);
         window.addEventListener('chat-summary-deleted', this.handleChange as EventListener);
+        window.addEventListener('summary-batch-heartbeat', this.handleBatchHeartbeat as EventListener);
     }
 
     componentWillUnmount() {
@@ -46,6 +49,7 @@ export default class ChatSummaryHistory extends Component<
         this.stopPoll();
         window.removeEventListener('chat-summary-created', this.handleChange as EventListener);
         window.removeEventListener('chat-summary-deleted', this.handleChange as EventListener);
+        window.removeEventListener('summary-batch-heartbeat', this.handleBatchHeartbeat as EventListener);
     }
 
     componentDidUpdate(prevProps: ChatSummaryHistoryProps) {
@@ -80,6 +84,15 @@ export default class ChatSummaryHistory extends Component<
                 this.stopPoll();
                 return;
             }
+            // Skip this poll cycle when another heartbeat-aware poller (e.g.
+            // SummaryListPage) recently covered all our active taskIds (issue #334).
+            if (
+                this.lastHeartbeatTime > 0 &&
+                Date.now() - this.lastHeartbeatTime < 10000 &&
+                ids.every(id => this.heartbeatCoveredTaskIds.has(id))
+            ) {
+                return;
+            }
             void this.doPoll(ids);
         }, 5000);
     }
@@ -96,6 +109,9 @@ export default class ChatSummaryHistory extends Component<
         this.isPolling = true;
         try {
             const updates = await summaryApi.batchStatus(taskIds);
+            // Broadcast heartbeat so SummaryDetailPage (and other heartbeat-aware
+            // pollers) can suppress their own redundant polling for these taskIds.
+            window.dispatchEvent(new CustomEvent('summary-batch-heartbeat', { detail: { taskIds } }));
             const updateMap = new Map(updates.map(u => [u.id, u]));
             let changed = false;
             const newItems = this.state.items.map(item => {
@@ -120,6 +136,19 @@ export default class ChatSummaryHistory extends Component<
         if (e.detail?.channelId === this.props.channel.channelID) {
             void this.loadHistory();
         }
+    };
+
+    /**
+     * Heartbeat coordination (issue #334): when another poller (e.g.
+     * SummaryListPage) broadcasts that it is covering certain taskIds, record
+     * them and the timestamp so our timer loop can skip redundant polls while
+     * the heartbeat remains fresh (< 10 s old).
+     */
+    private handleBatchHeartbeat = (event: Event) => {
+        const taskIds: number[] | undefined = (event as CustomEvent).detail?.taskIds;
+        if (!taskIds || taskIds.length === 0) return;
+        this.heartbeatCoveredTaskIds = new Set(taskIds);
+        this.lastHeartbeatTime = Date.now();
     };
 
     private async loadHistory() {

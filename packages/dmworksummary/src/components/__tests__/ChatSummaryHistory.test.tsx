@@ -250,6 +250,7 @@ describe('ChatSummaryHistory', () => {
     describe('polling', () => {
         beforeEach(() => {
             vi.useFakeTimers();
+            vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
         });
 
         afterEach(() => {
@@ -428,6 +429,154 @@ describe('ChatSummaryHistory', () => {
             });
 
             expect(mockBatchStatus).not.toHaveBeenCalled();
+        });
+
+        it('dispatches summary-batch-heartbeat after a successful poll', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 42, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 42, status: 2, progress: 50, updated_at: '' }]);
+
+            const dispatched: CustomEvent[] = [];
+            const listener = (e: Event) => dispatched.push(e as CustomEvent);
+            window.addEventListener('summary-batch-heartbeat', listener);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+
+            expect(mockBatchStatus).toHaveBeenCalledWith([42]);
+            const heartbeat = dispatched.find(e => e.detail?.taskIds?.includes(42));
+            expect(heartbeat).toBeDefined();
+            expect(heartbeat!.detail.taskIds).toEqual([42]);
+
+            window.removeEventListener('summary-batch-heartbeat', listener);
+        });
+
+        it('skips poll when heartbeat covers all active taskIds', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 10, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 10, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Let the first poll fire so we know batchStatus works
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledTimes(1);
+            mockBatchStatus.mockClear();
+
+            // Simulate SummaryListPage broadcasting a heartbeat covering taskId 10
+            act(() => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [10] } }),
+                );
+            });
+
+            // Advance within the heartbeat freshness window — sidebar should NOT call batchStatus
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(8000);
+            });
+
+            expect(mockBatchStatus).not.toHaveBeenCalled();
+        });
+
+        it('resumes poll when no new heartbeat arrives after a skipped cycle', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 10, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 10, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Send a heartbeat — next poll cycle should be skipped
+            act(() => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [10] } }),
+                );
+            });
+
+            mockBatchStatus.mockClear();
+
+            // First poll cycle after heartbeat: suppressed
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).not.toHaveBeenCalled();
+
+            // No new heartbeat sent — next cycle resumes polling
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalled();
+        });
+
+        it('does not skip poll when heartbeat only partially covers active taskIds', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [
+                    makeItem({ task_id: 10, status: 2 }),
+                    makeItem({ task_id: 20, status: 2 }),
+                ],
+            });
+            mockBatchStatus.mockResolvedValue([]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Heartbeat only covers taskId 10, not 20
+            act(() => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [10] } }),
+                );
+            });
+
+            mockBatchStatus.mockClear();
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+
+            // Should still poll because taskId 20 is not covered
+            expect(mockBatchStatus).toHaveBeenCalledWith([10, 20]);
         });
     });
 });
