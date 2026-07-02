@@ -314,6 +314,35 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     }
   }
 
+  renderReactions() {
+    const { message } = this.props;
+    const reactions = (message as any)?.reactions as
+      | Array<{ emoji: string; count: number; users?: Array<{ uid: string; name: string }> }>
+      | undefined;
+    if (!reactions || reactions.length === 0) {
+      return null;
+    }
+    return (
+      <div className="wk-message-reactions">
+        {reactions.map((r) => {
+          const names = (r.users || []).map((u) => u?.name).filter(Boolean).join("、");
+          return (
+            <span
+              key={r.emoji}
+              className="wk-message-reaction-chip"
+              title={names}
+            >
+              <span className="wk-message-reaction-emoji">{r.emoji}</span>
+              {r.count > 1 && (
+                <span className="wk-message-reaction-count">{r.count}</span>
+              )}
+            </span>
+          );
+        })}
+      </div>
+    );
+  }
+
   render() {
     const { message, context, hiddeBubble, bubbleStyle } = this.props;
     const hasContinue = this.isContinue();
@@ -606,6 +635,11 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
                   )}
                 </div>
               </div>
+
+              {/* 消息表情回应（reactions）。数据由 Convert.toMessage 从
+                  /message/channel/sync 聚合进 message.reactions（SDK 自身不填充）。
+                  CMDSyncMessageReaction 触发重新拉取后这里随之更新。 */}
+              {this.renderReactions()}
 
               {/* Thread 指示条 */}
               {this.props.threadInfo && (

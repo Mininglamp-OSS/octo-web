@@ -124,6 +124,7 @@ export function getMessageRow(
       isExternal: false,
       isRealnameVerified: false,
       onSelect: selection?.onSelect,
+      reactions: (message as any).reactions,
     }
   }
 
@@ -260,6 +261,7 @@ export function getMessageRow(
     onSelect: selection?.onSelect,
     onAvatarClick,
     onSenderNameClick,
+    reactions: (message as any).reactions,
   }
 }
 

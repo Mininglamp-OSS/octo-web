@@ -59,10 +59,16 @@ export interface MessageRowProps {
   
   /** 选择状态变化回调 */
   onSelect?: (selected: boolean) => void
-  
+
   /** 消息内容（子组件） */
   children: React.ReactNode
-  
+
+  /**
+   * 消息表情回应（reactions），已按 emoji 聚合。bridge 层从
+   * message.reactions（由 Convert.toMessage 解析填充）提取。为空 / undefined
+   * 时不渲染回应行。
+   */
+  reactions?: Array<{ emoji: string; count: number; users?: Array<{ uid: string; name: string }> }>
   /** 是否显示多选 Checkbox */
   showCheckbox?: boolean
 
@@ -120,6 +126,7 @@ export default function MessageRow({
   isRealnameVerified,
   onSelect,
   children,
+  reactions,
   showCheckbox = false,
   selectionMode = false,
   onContextMenu,
@@ -249,6 +256,24 @@ export default function MessageRow({
         <div className="wk-msg-row-body">
           {children}
         </div>
+
+        {/* 消息表情回应（reactions）。数据由 Convert.toMessage 聚合进
+            message.reactions，bridge useMessageRow 透传到这里。 */}
+        {reactions && reactions.length > 0 && (
+          <div className="wk-msg-row-reactions">
+            {reactions.map((r) => {
+              const names = (r.users || []).map((u) => u?.name).filter(Boolean).join('、')
+              return (
+                <span key={r.emoji} className="wk-msg-row-reaction-chip" title={names}>
+                  <span className="wk-msg-row-reaction-emoji">{r.emoji}</span>
+                  {r.count > 1 && (
+                    <span className="wk-msg-row-reaction-count">{r.count}</span>
+                  )}
+                </span>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -1,6 +1,6 @@
 import BigNumber from "bignumber.js";
 import { Setting } from "wukongimjssdk";
-import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra, Reply } from "wukongimjssdk";
+import { WKSDK, ChannelInfo, Channel, Conversation, Message, MessageStatus, ChannelTypePerson, ChannelTypeGroup,ConversationExtra,Reminder, MessageExtra, Reply, Reaction } from "wukongimjssdk";
 import { displayName as resolveDisplayName } from "../Utils/displayName";
 
 
@@ -280,7 +280,16 @@ export class Convert {
             const messageExtra = msgMap["message_extra"]
            message.remoteExtra = this.toMessageExtra(messageExtra)
         }
-        
+
+        // 消息表情回应（reactions）。服务端 /message/channel/sync 按「每个
+        // actor 一条」返回 {seq,uid,name,emoji,is_deleted}，而 SDK 的 Reaction
+        // 是「按 emoji 聚合」的 {seq,count,emoji,users[]}。这里做过滤 + 聚合：
+        // 跳过已撤回（is_deleted=1）的条目，按 emoji 分组，count = 人数，
+        // users 保留 uid/name 便于 hover 展示是谁回应的。wukongimjssdk 1.3.5
+        // 只声明了 Message.reactions 字段、并不在 sync 解析里填充它，所以由本
+        // 转换层补上，否则前端永远拿不到 reaction 数据（机器人/用户都一样）。
+        message.reactions = this.toReactions(msgMap["reactions"])
+
         message.clientSeq = msgMap["client_seq"]
         message.channel = new Channel(msgMap['channel_id'], msgMap['channel_type']);
         message.messageSeq = msgMap["message_seq"]
@@ -310,6 +319,41 @@ export class Convert {
         applyMsgLevelExternalFieldsWithFallback(message, msgMap)
 
         return message
+    }
+
+    static toReactions(rawList: any): Reaction[] {
+        if (!Array.isArray(rawList) || rawList.length === 0) {
+            return []
+        }
+        // 按 emoji 聚合：服务端是「每个 actor 一条」，SDK 要「每个 emoji 一组」。
+        // 跳过 is_deleted=1（已撤回）；同一 emoji 的 seq 取该组最大值（最近一次
+        // 变更），count = 人数，users 保留 {uid,name} 供 hover 显示是谁回应的。
+        const groups = new Map<string, Reaction>()
+        for (const item of rawList) {
+            if (!item || item["is_deleted"] === 1) {
+                continue
+            }
+            const emoji = item["emoji"]
+            if (!emoji) {
+                continue
+            }
+            const seq = Number(item["seq"]) || 0
+            let group = groups.get(emoji)
+            if (!group) {
+                group = new Reaction()
+                group.emoji = emoji
+                group.count = 0
+                group.users = []
+                group.seq = String(seq)
+                groups.set(emoji, group)
+            }
+            group.count += 1
+            group.users.push({ uid: item["uid"], name: item["name"] })
+            if (seq > Number(group.seq)) {
+                group.seq = String(seq)
+            }
+        }
+        return Array.from(groups.values())
     }
 
     static toMessageExtra(msgExtraMap: any) :MessageExtra {
