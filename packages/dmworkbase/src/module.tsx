@@ -102,6 +102,7 @@ import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
 import { notificationUtil } from "./Utils/NotificationUtil";
 import { resolveExternalForViewer } from "./Utils/externalViewer";
 import { isGroupDisbanded, isChannelDisbanded, isConversationDisbanded } from "./Utils/groupDisband";
+import { syncSubscribersAfterMembershipChange } from "./Utils/subscriberSync";
 import {
   copyImageToClipboard,
   copyRichTextToClipboard,
@@ -1521,6 +1522,8 @@ export default class BaseModule implements IModule {
                             return item.id;
                           })
                         );
+                        // 本地拉人只写服务端，主动同步以刷新 @mention 候选列表 (octo-web#514)
+                        await syncSubscribersAfterMembershipChange(channel);
                         context.pop();
                       }
                       addFinishButtonContext.loading(false);
@@ -1556,6 +1559,8 @@ export default class BaseModule implements IModule {
                         )
                         .then(() => {
                           removeFinishButtonContext.loading(false);
+                          // 本地移除成员只写服务端，主动同步以刷新 @mention 候选列表 (octo-web#514)
+                          void syncSubscribersAfterMembershipChange(channel);
                           context.pop();
                         })
                         .catch((err) => {
