@@ -111,8 +111,7 @@ function readGroupMemberOptions(channel: Channel): MentionMemberOption[] {
 /**
  * 新建 / 编辑 webhook 弹窗。
  *
- * - 名称可留空：服务端自动命名 `Webhook-<id 后缀>`；
- *   普通成员自定义名称时服务端会强制加 `Webhook-` 前缀，表单下方有提示。
+ * - 名称可留空：服务端自动命名 `Webhook-<id 后缀>`；成员/管理员均可自定义任意名称。
  * - 头像仅管理员可设（URL 形式）；空值不随请求发送。
  */
 export default function WebhookEditModal({
@@ -330,11 +329,6 @@ export default function WebhookEditModal({
                             }
                         }}
                     />
-                    {!isManager && (
-                        <div className="wk-webhook-form__hint">
-                            {t("base.channelWebhook.form.memberPrefixHint")}
-                        </div>
-                    )}
                 </div>
                 {isManager && (
                     <div className="wk-webhook-form__field">

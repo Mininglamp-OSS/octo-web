@@ -529,7 +529,6 @@
   "channelWebhook.form.editTitle": "Edit webhook",
   "channelWebhook.form.name": "Name",
   "channelWebhook.form.namePlaceholder": "Leave empty to auto-generate",
-  "channelWebhook.form.memberPrefixHint": "Webhooks created by regular members are automatically prefixed with Webhook-",
   "channelWebhook.form.avatar": "Avatar URL",
   "channelWebhook.form.avatarPlaceholder": "https://example.com/avatar.png",
   "channelWebhook.form.avatarHint": "Optional. Shown as the sender avatar of webhook messages",
