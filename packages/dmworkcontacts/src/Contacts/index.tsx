@@ -201,6 +201,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     private filterScrollTops: Record<ContactFilterMode, number> = { all: 0, bots: 0, humans: 0 }
     // 已预取过 channelInfo（含在线态）的 uid 集合，跨 filter/滚动去重，避免重复请求
     private prefetchedUids = new Set<string>()
+    private visibilityHandler!: () => void
 
     constructor(props: any) {
         super(props)
@@ -248,6 +249,18 @@ export default class ContactsList extends Component<any, ContactsState> {
         WKApp.mittBus.on('space-changed', this.spaceChangedHandler)
         WKSDK.shared().channelManager.addListener(this.channelInfoListener)
 
+        // 页面重新可见时对已追踪的 AI 在线态做一次自愈重拉：正常情况下在线态靠
+        // WKSDK 的 onlineStatus WS 回调实时重渲，但推送若因断连/节流被延迟或丢失，
+        // 用户切回本页时不必整页刷新，也能补回最新在线绿点。
+        this.visibilityHandler = () => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+                this.refreshTrackedOnlineStatus()
+            }
+        }
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', this.visibilityHandler)
+        }
+
         ContactsListManager.shared.setRefreshList = () => {
             this.setState({})
         }
@@ -272,8 +285,21 @@ export default class ContactsList extends Component<any, ContactsState> {
         ContactsListManager.shared.setRefreshList = undefined
         WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
         WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
+        if (typeof document !== 'undefined' && this.visibilityHandler) {
+            document.removeEventListener('visibilitychange', this.visibilityHandler)
+        }
         this.debouncedSearch.cancel()
         this.prefetchedUids.clear()
+    }
+
+    // 对当前已追踪（已预取过在线态、即可能展示绿点）的 AI uid 重新拉取 channelInfo，
+    // 回包后由 channelInfoListener 触发重渲。fetchChannelInfo 自带在途去重，重复调用安全；
+    // prefetchedUids 只含 AI uid，规模有界，不会对真人或全量联系人发请求。
+    private refreshTrackedOnlineStatus = () => {
+        for (const uid of this.prefetchedUids) {
+            if (!uid) continue
+            WKSDK.shared().channelManager.fetchChannelInfo(new Channel(uid, ChannelTypePerson))
+        }
     }
 
     private async loadAllData(spaceId: string) {
