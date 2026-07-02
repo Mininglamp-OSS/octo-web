@@ -13,6 +13,7 @@ import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
+import { StandaloneDocPage, parseStandaloneDocId } from "@octo/docs";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -258,6 +259,22 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             if (bindComponent) {
                 return bindComponent
             }
+        }
+
+        // Standalone document deep-link (`/d/:docId`, octo-web #512): a shareable full-window
+        // doc view that lives OUTSIDE the app shell (no MainPage / NavRail), mounted with the
+        // same early-return interception the `?invite=` landing uses below. Ensure the session
+        // token is loaded first (this branch renders before the Provider), so the page's
+        // GET /docs/{docId} preflight and the collab-token exchange are authenticated; when the
+        // user has no session the preflight returns 401 and StandaloneDocPage shows the sign-in
+        // terminal (and stashes the return target). SPA deep-link serving depends on the nginx
+        // try_files fallback (deployment concern, out of scope for this frontend change).
+        const standaloneDocId = parseStandaloneDocId(window.location.pathname);
+        if (standaloneDocId) {
+            if (!WKApp.loginInfo.token) {
+                WKApp.loginInfo.load();
+            }
+            return <StandaloneDocPage docId={standaloneDocId} />;
         }
 
         // 邀请链接检测

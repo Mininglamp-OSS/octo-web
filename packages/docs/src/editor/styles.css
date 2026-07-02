@@ -2296,3 +2296,65 @@
   font-size: 12px;
   color: var(--octo-text-secondary, #86909c);
 }
+
+/* ── Standalone document page (octo-web #512) ────────────────────────────────
+   The full-window view a shared `/d/:docId` link opens, outside the app shell / NavRail.
+   The wrapper owns the viewport; the inner EditorShell (.octo-doc--editor) fills it, so the
+   layout matches the in-shell full-width pane. */
+.octo-doc-standalone {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--octo-bg, #fff);
+  display: flex;
+  flex-direction: column;
+}
+.octo-doc-standalone > .octo-doc {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Standalone-injected header actions (Copy link + Open in App), sitting ahead of the built-in
+   history/comments/export cluster in .octo-doc-header-right. */
+.octo-doc-standalone-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* "Open in App" is the primary call to action (#1664ff), matching the prototype. */
+.octo-doc-open-in-app {
+  background: var(--octo-active-fg, #1664ff);
+  color: #fff;
+  border-color: var(--octo-active-fg, #1664ff);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.octo-doc-open-in-app:hover {
+  background: #0f52d9;
+  border-color: #0f52d9;
+  color: #fff;
+}
+.octo-doc-copy-link {
+  white-space: nowrap;
+}
+
+/* Responsive, 3 tiers (prototype v2):
+   ≥1024  — full labels everywhere (default).
+   768–1024 — the built-in secondary buttons collapse to their icons to reclaim width; the
+              standalone Copy link / Open in App keep their labels.
+   <1024  — the header may wrap and the toolbar scrolls horizontally rather than overflowing;
+            the prose column stays full-width and the title never collapses to zero width.
+   Back and Open in App are never hidden. */
+@media (max-width: 1024px) {
+  .octo-doc-standalone .octo-doc-header {
+    flex-wrap: wrap;
+  }
+  .octo-doc-standalone .octo-doc-title {
+    min-width: 8ch;
+  }
+  .octo-doc-standalone .octo-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+}
