@@ -46,7 +46,7 @@ export interface EditorShellProps extends CollabEditorOptions {
   onDeleted?: (docId: string) => void
   /**
    * Extra controls injected into the header's right-hand cluster (e.g. the standalone deep-link
-   * page's "Copy link" + "Open in App"). Optional: when omitted, the in-shell header renders
+   * page's "Copy link"). Optional: when omitted, the in-shell header renders
    * exactly as before — no wrapper, no empty node — so the in-shell path is byte-for-byte
    * unchanged (AC-8 non-regression). Rendered ahead of the built-in history/comments/… buttons.
    */

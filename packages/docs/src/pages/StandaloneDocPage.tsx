@@ -80,7 +80,9 @@ type Phase =
 /**
  * Standalone document page (octo-web #512) — the full-window view a shared `/d/:docId` link opens,
  * outside the app shell / NavRail. It reuses the in-shell EditorShell for collaboration parity
- * (AC-5/6) and only adds the standalone chrome: a Back control, "Copy link", and "Open in App".
+ * (AC-5/6) and only adds the standalone chrome: a Back control and "Copy link". Sharing a link is
+ * the whole point of a standalone view, so there is no "back into the app" action — users arrive
+ * here from an external chat link, not from inside the shell.
  *
  * A GET /api/v1/docs/{docId} preflight runs BEFORE the collaborative editor mounts. This is the
  * single deterministic gate for every boundary state, and it needs no WebSocket:
@@ -152,14 +154,6 @@ export function StandaloneDocPage({ docId }: { docId: string | null }): ReactEle
     }
   }, [])
 
-  // "Open in App": jump into the in-shell docs experience for this doc (list + NavRail), reusing
-  // the existing `/docs?doc=` deep-link the in-shell path already understands.
-  const onOpenInApp = useCallback(() => {
-    if (typeof window !== 'undefined' && docId) {
-      window.location.assign(withSid(`/docs?doc=${encodeURIComponent(docId)}`))
-    }
-  }, [docId])
-
   // Resolve display names for the doc's space so the presence caret shows a real name (parity
   // with the in-shell path). Space comes from the preflight documentName when available, else the
   // caller's current space. Derived from `phase` so it re-resolves once the doc meta lands.
@@ -208,13 +202,6 @@ export function StandaloneDocPage({ docId }: { docId: string | null }): ReactEle
         onClick={() => void onCopyLink()}
       >
         🔗 {copied ? t('docs.standalone.linkCopied') : t('docs.standalone.copyLink')}
-      </button>
-      <button
-        type="button"
-        className="octo-tb-btn octo-doc-open-in-app"
-        onClick={onOpenInApp}
-      >
-        {t('docs.standalone.openInApp')}
       </button>
     </div>
   )

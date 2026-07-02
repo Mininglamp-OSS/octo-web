@@ -134,7 +134,7 @@ describe('EditorShell — export filename uses the live title, not the stale pro
 })
 
 // #512 AC-8 non-regression: the standalone deep-link page reuses EditorShell and injects a Back
-// control (onBack) + "Copy link" / "Open in App" (headerRight). The IN-SHELL path passes neither,
+// control (onBack) + "Copy link" (headerRight). The IN-SHELL path passes neither,
 // and must be completely unaffected by the new props.
 describe('EditorShell — header injection props (#512 AC-8)', () => {
   const baseProps = {
