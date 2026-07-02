@@ -202,6 +202,8 @@ export default class ContactsList extends Component<any, ContactsState> {
     // 已预取过 channelInfo（含在线态）的 uid 集合，跨 filter/滚动去重，避免重复请求
     private prefetchedUids = new Set<string>()
     private visibilityHandler!: () => void
+    // 组件是否仍挂载：refreshTrackedOnlineStatus 是异步的，回包后 setState 前需确认未卸载
+    private mounted = false
 
     constructor(props: any) {
         super(props)
@@ -209,6 +211,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     componentDidMount() {
+        this.mounted = true
         this.channelInfoListener = (channelInfo: ChannelInfo) => {
             if (channelInfo.channel.channelType !== ChannelTypePerson) return
             const uid = channelInfo.channel.channelID
@@ -282,6 +285,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     componentWillUnmount() {
+        this.mounted = false
         ContactsListManager.shared.setRefreshList = undefined
         WKSDK.shared().channelManager.removeListener(this.channelInfoListener)
         WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
@@ -292,13 +296,25 @@ export default class ContactsList extends Component<any, ContactsState> {
         this.prefetchedUids.clear()
     }
 
-    // 对当前已追踪（已预取过在线态、即可能展示绿点）的 AI uid 重新拉取 channelInfo，
-    // 回包后由 channelInfoListener 触发重渲。fetchChannelInfo 自带在途去重，重复调用安全；
-    // prefetchedUids 只含 AI uid，规模有界，不会对真人或全量联系人发请求。
-    private refreshTrackedOnlineStatus = () => {
-        for (const uid of this.prefetchedUids) {
-            if (!uid) continue
-            WKSDK.shared().channelManager.fetchChannelInfo(new Channel(uid, ChannelTypePerson))
+    // 对当前已追踪（已预取过在线态、即可能展示绿点）的 AI uid 重新拉取 channelInfo。
+    // 关键：回包后必须自己强制重渲，不能只依赖 channelInfoListener。channelInfoCallback
+    // 会用服务端返回的 data.channel.channel_id 重建 channelInfo.channel，而在 Space 场景下
+    // 请求用的是带 s<spaceId>_ 前缀的 uid、服务端回的是去前缀 uid，两者不一致会让 listener 里
+    // 的 prefetchedUids.has(uid) 命中失败而不触发 setState（在线绿点因此不会自愈补出）。
+    // fetchChannelInfo 会把结果写回「请求 uid」对应的缓存 key，故 getChannelInfo 仍能取到最新
+    // 在线态，这里等所有重拉落库后统一 setState 一次即可让列表项按新在线态重渲。
+    private refreshTrackedOnlineStatus = async () => {
+        const uids = Array.from(this.prefetchedUids).filter(Boolean)
+        if (uids.length === 0) return
+        await Promise.all(
+            uids.map((uid) =>
+                WKSDK.shared().channelManager
+                    .fetchChannelInfo(new Channel(uid, ChannelTypePerson))
+                    .catch(() => undefined)
+            )
+        )
+        if (this.mounted) {
+            this.setState({})
         }
     }
 
