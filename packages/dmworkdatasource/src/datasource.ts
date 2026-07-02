@@ -530,13 +530,16 @@ export class CommonDataSource implements ICommonDataSource {
         // 空集合后端返回 {list:[]}（不再 404）。仍兜底为 {list:[]} 以防网络异常。
         return WKApp.apiClient.get(`sticker/user`).then((r) => ({ list: (r && r.list) || [] })).catch(() => ({ list: [] }))
     }
-    addSticker(req: { path: string; format: string; placeholder?: string }): Promise<StickerItem> {
+    addSticker(req: { path: string; format: string; placeholder?: string; handle?: string; sort?: number; shortcode?: string; keywords?: string[] }): Promise<StickerItem> {
         return WKApp.apiClient.post(`sticker/user`, req)
+    }
+    editSticker(stickerId: string, req: { placeholder?: string; sort?: number; shortcode?: string; keywords?: string[] }): Promise<StickerItem> {
+        return WKApp.apiClient.put(`sticker/user/${encodeURIComponent(stickerId)}`, req)
     }
     deleteSticker(stickerId: string): Promise<void> {
         return WKApp.apiClient.delete(`sticker/user/${encodeURIComponent(stickerId)}`)
     }
-    async uploadSticker(file: File): Promise<{ path: string; format: string }> {
+    async uploadSticker(file: File): Promise<{ path: string; format: string; handle?: string }> {
         // 两步上传：1) 申请上传地址（扩展名由文件名推导，服务端限定 gif/png/jpg/jpeg/webp）；
         // 2) 直传文件本体。沿用本仓库既有的 multipart 上传约定（axios + token，
         // 与头像/群头像/机器人头像上传一致）。
@@ -571,7 +574,11 @@ export class CommonDataSource implements ICommonDataSource {
             throw new Error("sticker upload returned no path")
         }
         const format = String(data.ext || "").replace(/^\./, "").toLowerCase()
-        return { path, format }
+        // sticker_handle 仅在服务端配置了 OCTO_MASTER_KEY（签名能力）时才下发（octo-server
+        // PR#510）；缺失是受支持的部署形态，不是错误，故不在此校验，交给 addSticker 按
+        // remoteConfig.stickerHandleRequired 决定是否必填。
+        const handle: string | undefined = typeof data.sticker_handle === "string" && data.sticker_handle ? data.sticker_handle : undefined
+        return { path, format, handle }
     }
     searchUser(keyword: string): Promise<any> {
         const spaceId = WKApp.shared.currentSpaceId

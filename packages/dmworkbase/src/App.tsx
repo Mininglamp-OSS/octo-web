@@ -217,6 +217,14 @@ export class WKRemoteConfig {
    */
   suppressLoginMigrationNotice: boolean = false;
   /**
+   * 新增自定义贴纸（POST /v1/sticker/user）时是否必须携带上传句柄 handle（即
+   * POST /v1/file/upload?type=sticker 返回的 sticker_handle）。来自后端 system_setting
+   * sticker.handle_required（octo-server PR#510），与服务端是否具备签名能力
+   * （OCTO_MASTER_KEY）解耦——为 true 时前端上传贴纸后必须把 sticker_handle 透传给
+   * addSticker，否则会被拒绝；为 false（默认/兼容期）时可以省略。
+   */
+  stickerHandleRequired: boolean = false;
+  /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
    * 顶层 oidc_account_url / oidc_reset_password_url 是后端兼容老前端用的,新前端只读这里。
@@ -315,6 +323,7 @@ export class WKRemoteConfig {
       const previousMessagesSearchOn = this.messagesSearchOn;
       const previousSuppressLoginMigrationNotice =
         this.suppressLoginMigrationNotice;
+      const previousStickerHandleRequired = this.stickerHandleRequired;
       this.requestSuccess = true;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
@@ -325,6 +334,9 @@ export class WKRemoteConfig {
       this.suppressLoginMigrationNotice = parseRemoteBool(
         result["suppress_login_migration_notice"]
       );
+      this.stickerHandleRequired = parseRemoteBool(
+        result["sticker_handle_required"]
+      );
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
@@ -332,7 +344,8 @@ export class WKRemoteConfig {
         previousDisableUserCreateSpace !== this.disableUserCreateSpace ||
         previousMessagesSearchOn !== this.messagesSearchOn ||
         previousSuppressLoginMigrationNotice !==
-          this.suppressLoginMigrationNotice
+          this.suppressLoginMigrationNotice ||
+        previousStickerHandleRequired !== this.stickerHandleRequired
       ) {
         this.notifyConfigChangeListeners();
       }

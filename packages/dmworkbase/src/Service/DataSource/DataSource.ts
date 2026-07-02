@@ -94,12 +94,20 @@ export class Contacts {
 
 // StickerItem 用户自定义贴纸（个人维度，扁平不分包）。category 恒为后端下发的
 // "user" 哨兵值，沿用 LottieSticker 消息体的 category 字段，发送链路无需改动。
+// sort/shortcode/keywords 是 octo-server PR#512 新增的元数据字段：sort 决定列表顺序
+// （服务端已按 sort ASC, id DESC 排序，前端无需二次排序）；shortcode/keywords 仅用于
+// 客户端展示/编辑，服务端暂未提供基于它们的搜索接口。三者标记可选：PR#512 之前创建的
+// 贴纸，其服务端响应可能不带这几个字段，消费方（EmojiToolbar onEditClick）已用
+// `|| ""` / `|| []` 兜底，这里的类型应如实反映"可能缺失"而非声称恒定存在。
 export interface StickerItem {
     sticker_id: string
     path: string
     category: string
     placeholder: string
     format: string
+    sort?: number
+    shortcode?: string
+    keywords?: string[]
 }
 
 export interface ICommonDataSource {
@@ -149,9 +157,17 @@ export interface ICommonDataSource {
     userStickers(): Promise<{ list: StickerItem[] }>
 
     /**
-     * 新增一张自定义贴纸（path 来自 uploadSticker）
+     * 新增一张自定义贴纸（path/handle 来自 uploadSticker）。handle 是否必填由
+     * WKApp.remoteConfig.stickerHandleRequired（GET /v1/common/appconfig 下发）决定，
+     * 未强制时可省略。
      */
-    addSticker(req: { path: string; format: string; placeholder?: string }): Promise<StickerItem>
+    addSticker(req: { path: string; format: string; placeholder?: string; handle?: string; sort?: number; shortcode?: string; keywords?: string[] }): Promise<StickerItem>
+
+    /**
+     * 编辑当前用户一张贴纸的元数据（部分更新，缺省字段维持原值）
+     * @param stickerId
+     */
+    editSticker(stickerId: string, req: { placeholder?: string; sort?: number; shortcode?: string; keywords?: string[] }): Promise<StickerItem>
 
     /**
      * 删除当前用户的一张自定义贴纸
@@ -160,10 +176,11 @@ export interface ICommonDataSource {
     deleteSticker(stickerId: string): Promise<void>
 
     /**
-     * 上传贴纸文件（type=sticker），返回存储 path 与格式
+     * 上传贴纸文件（type=sticker），返回存储 path 与格式；handle 仅在服务端具备签名
+     * 能力（OCTO_MASTER_KEY 已配置）时才会下发，注册时原样透传给 addSticker。
      * @param file
      */
-    uploadSticker(file: File): Promise<{ path: string; format: string }>
+    uploadSticker(file: File): Promise<{ path: string; format: string; handle?: string }>
 
 
     /**
