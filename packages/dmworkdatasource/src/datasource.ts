@@ -120,17 +120,37 @@ export class ChannelDataSource implements IChannelDataSource {
         }
         return channelInfos;
     }
-    removeSubscribers(channel: Channel, uids: string[]): Promise<void> {
-        return WKApp.apiClient.delete(`groups/${channel.channelID}/members`, {
+    async removeSubscribers(channel: Channel, uids: string[]): Promise<void> {
+        await WKApp.apiClient.delete(`groups/${channel.channelID}/members`, {
             data: {
                 members: uids,
             }
         })
+        // Refresh the local member cache so the operator sees the change without a reload.
+        // syncSubscribes fires notifySubscribeChangeListeners -> reloadSubscribers, keeping
+        // the @mention candidate list in sync. A failure here must not fail the remove
+        // itself (members are already removed on the server); worst case degrades back to
+        // needing a manual refresh.
+        try {
+            await WKSDK.shared().channelManager.syncSubscribes(channel)
+        } catch (e) {
+            console.warn("[removeSubscribers] syncSubscribes failed", e)
+        }
     }
-    addSubscribers(channel: Channel, uids: string[]): Promise<void> {
-        return WKApp.apiClient.post(`groups/${channel.channelID}/members`, {
+    async addSubscribers(channel: Channel, uids: string[]): Promise<void> {
+        await WKApp.apiClient.post(`groups/${channel.channelID}/members`, {
             members: uids,
         })
+        // Refresh the local member cache so the operator sees new members without a reload.
+        // syncSubscribes fires notifySubscribeChangeListeners -> reloadSubscribers, keeping
+        // the @mention candidate list in sync. A failure here must not fail the add itself
+        // (members are already added on the server); worst case degrades back to needing a
+        // manual refresh.
+        try {
+            await WKSDK.shared().channelManager.syncSubscribes(channel)
+        } catch (e) {
+            console.warn("[addSubscribers] syncSubscribes failed", e)
+        }
     }
 
     async subscribers(channel: Channel,req:{
