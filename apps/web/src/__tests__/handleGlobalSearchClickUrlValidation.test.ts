@@ -2,6 +2,9 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 import { isSafeUrl } from '../../../../packages/dmworkbase/src/Utils/security';
 
+import { handleGlobalSearchClick } from '../../../../packages/dmworkbase/src/Pages/Chat/vm';
+import { downloadFile } from '../../../../packages/dmworkbase/src/Utils/download';
+
 // Mock downloadFile
 vi.mock('../../../../packages/dmworkbase/src/Utils/download', () => ({
     downloadFile: vi.fn(),
@@ -63,9 +66,6 @@ vi.mock('../../../../packages/dmworkbase/src/Service/Const', () => ({
 vi.mock('../../../../packages/dmworkbase/src/EndpointCommon', () => ({
     ShowConversationOptions: class {},
 }));
-
-import { handleGlobalSearchClick } from '../../../../packages/dmworkbase/src/Pages/Chat/vm';
-import { downloadFile } from '../../../../packages/dmworkbase/src/Utils/download';
 
 describe('handleGlobalSearchClick file download URL validation', () => {
     beforeEach(() => {

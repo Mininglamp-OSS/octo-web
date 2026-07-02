@@ -2,6 +2,9 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, act } from "@testing-library/react";
 import React from "react";
 
+import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
+import { Toast } from "@douyinfe/semi-ui";
+
 const mockUseTextareaVoice = vi.fn();
 vi.mock("@octo/base/src/Components/VoiceInputButton/useTextareaVoice", () => ({
   default: (opts: unknown) => mockUseTextareaVoice(opts),
@@ -54,9 +57,6 @@ vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => 
   getSharedSpaceFeedbackState: () => mockSharedSpaceFeedbackState,
   getSharedVoiceConfig: () => mockVoiceConfig.current,
 }));
-
-import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
-import { Toast } from "@douyinfe/semi-ui";
 
 function createMockReturn(overrides = {}) {
   return {

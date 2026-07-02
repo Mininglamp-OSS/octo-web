@@ -1,6 +1,8 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { downloadFile, getPresignedDownloadUrl } from '../../../../packages/dmworkbase/src/Utils/download'
 
+import WKApp from '../../../../packages/dmworkbase/src/App'
+
 // Mock WKApp.apiClient
 vi.mock('../../../../packages/dmworkbase/src/App', () => ({
     default: {
@@ -9,8 +11,6 @@ vi.mock('../../../../packages/dmworkbase/src/App', () => ({
         },
     },
 }))
-
-import WKApp from '../../../../packages/dmworkbase/src/App'
 
 // Track anchors created by download functions
 let clickedAnchors: HTMLAnchorElement[] = []

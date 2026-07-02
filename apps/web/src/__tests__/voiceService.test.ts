@@ -1,5 +1,9 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest"
 
+import APIClient from "@octo/base/src/Service/APIClient"
+import VoiceService from "@octo/base/src/Service/VoiceService"
+import LocalModelService from "@octo/base/src/Service/LocalModelService"
+
 // Mock APIClient before importing VoiceService
 vi.mock("@octo/base/src/Service/APIClient", () => {
     const mockAPIClient = {
@@ -30,10 +34,6 @@ vi.mock("@octo/base/src/Service/LocalModelService", () => {
     }
     return { default: mockLocalModelService }
 })
-
-import APIClient from "@octo/base/src/Service/APIClient"
-import VoiceService from "@octo/base/src/Service/VoiceService"
-import LocalModelService from "@octo/base/src/Service/LocalModelService"
 
 describe("VoiceService", () => {
     beforeEach(() => {

@@ -47,7 +47,8 @@
     "tauri": "tauri",
     "storybook": "storybook dev -p 16006",
     "build-storybook": "storybook build",
-    "test:storybook": "vitest run --config vitest.storybook.config.ts"
+    "test:storybook": "vitest run --config vitest.storybook.config.ts",
+    "lint": "eslint src/ --ext .ts,.tsx --resolve-plugins-relative-to ../.."
   },
   "dependencies": {
     "@dmwork/appbot": "workspace:*",

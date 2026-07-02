@@ -13,6 +13,9 @@
 
 import { vi } from 'vitest';
 
+// 直接引用 resolver 源文件，避免 barrel 把浏览器依赖拉进 jsdom。
+import { resolveExternalForViewer } from '../../../../../packages/dmworkbase/src/Utils/externalViewer';
+
 // hoisted mock：避开 packages/dmworkbase/App 入口的浏览器副作用（lottie/Howler）。
 vi.mock('../../../../../packages/dmworkbase/src/App', () => ({
   default: {
@@ -21,9 +24,6 @@ vi.mock('../../../../../packages/dmworkbase/src/App', () => ({
     },
   },
 }));
-
-// 直接引用 resolver 源文件，避免 barrel 把浏览器依赖拉进 jsdom。
-import { resolveExternalForViewer } from '../../../../../packages/dmworkbase/src/Utils/externalViewer';
 
 // tab-contacts 适配镜像：friend 顶层 / orgData → resolver 入参。
 function computeContactSuffix(friend: any): string {

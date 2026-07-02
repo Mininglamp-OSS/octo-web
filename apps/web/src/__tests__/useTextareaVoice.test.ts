@@ -3,6 +3,8 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import React from "react";
 
+import useTextareaVoice from "@octo/base/src/Components/VoiceInputButton/useTextareaVoice";
+
 // Mock useVoiceInput hook
 const mockStartRecording = vi.fn();
 const mockStopRecordingAndTranscribe = vi.fn();
@@ -24,8 +26,6 @@ vi.mock("@octo/base/src/Components/MessageInput/useVoiceInput", () => ({
     };
   },
 }));
-
-import useTextareaVoice from "@octo/base/src/Components/VoiceInputButton/useTextareaVoice";
 
 describe("useTextareaVoice", () => {
   beforeEach(() => {

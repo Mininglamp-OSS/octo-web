@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/rules-of-hooks -- Storybook CSF3 render fns use hooks as inline components */
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import React, { useState } from 'react'
 import { Button, Input } from '@douyinfe/semi-ui'

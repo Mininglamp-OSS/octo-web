@@ -2,6 +2,8 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import { render } from "@testing-library/react";
 import React from "react";
 
+import NavVoiceFeedbackItem from "@octo/base/src/Components/NavRail/NavVoiceFeedbackItem";
+
 const mockUseSpaceFeedbackSetting = vi.fn();
 
 vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => ({
@@ -37,8 +39,6 @@ vi.mock("@douyinfe/semi-icons", () => ({
     return React.createElement("span", { "data-testid": "help-icon" });
   },
 }));
-
-import NavVoiceFeedbackItem from "@octo/base/src/Components/NavRail/NavVoiceFeedbackItem";
 
 describe("NavVoiceFeedbackItem", () => {
   beforeEach(() => {

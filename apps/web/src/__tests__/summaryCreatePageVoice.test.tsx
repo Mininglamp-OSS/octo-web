@@ -2,6 +2,8 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render } from "@testing-library/react";
 import React from "react";
 
+import SummaryCreatePage from "@dmwork/summary/src/pages/SummaryCreatePage";
+
 const mockUseTextareaVoice = vi.fn();
 vi.mock("@octo/base/src/Components/VoiceInputButton/useTextareaVoice", () => ({
   default: (opts: unknown) => mockUseTextareaVoice(opts),
@@ -65,8 +67,6 @@ vi.mock("@dmwork/summary/src/components/ScheduleConfigModal", () => ({
 vi.mock("@dmwork/summary/src/utils/summaryHelpers", () => ({
   scheduleToCron: vi.fn(),
 }));
-
-import SummaryCreatePage from "@dmwork/summary/src/pages/SummaryCreatePage";
 
 function createMockReturn(overrides = {}) {
   return {
