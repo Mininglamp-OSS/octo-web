@@ -282,7 +282,8 @@
   "standalone": {
     "copyLink": "复制链接",
     "linkCopied": "链接已复制",
-    "openInApp": "在应用中打开"
+    "openInApp": "在应用中打开",
+    "openInNewPage": "在新页面打开"
   },
   "error": {
     "permission": {

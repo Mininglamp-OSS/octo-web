@@ -21,6 +21,9 @@ export const STANDALONE_RETURN_KEY = 'octo.docs.standaloneReturn'
 /** `/d/:docId` — docId is a single documentName segment (A-Z a-z 0-9 _ -), optional trailing slash. */
 const STANDALONE_PATH = /^\/d\/([A-Za-z0-9_-]+)\/?$/
 
+/** The standalone-doc URL namespace: `/d`, `/d/`, or `/d/<anything>` (top-level only). */
+const STANDALONE_NAMESPACE = /^\/d(?:\/|$)/
+
 /**
  * Extract the docId from a standalone document path (`/d/:docId`), or null when the path is not
  * a standalone doc link. Exported so the host Layout can decide whether to short-circuit into the
@@ -30,6 +33,17 @@ export function parseStandaloneDocId(pathname: string): string | null {
   if (typeof pathname !== 'string') return null
   const m = STANDALONE_PATH.exec(pathname)
   return m ? m[1] : null
+}
+
+/**
+ * Whether `pathname` lives in the standalone-doc namespace (`/d`, `/d/`, `/d/<id>`), regardless of
+ * whether the id is valid. The host Layout intercepts the whole namespace — not just well-formed
+ * ids — so a malformed or empty id (`/d/`, `/d/a:b`) renders the standalone not-found terminal
+ * instead of silently falling through to the app shell (AC-9). Pair with parseStandaloneDocId,
+ * which returns the id (or null when malformed) once the namespace has been claimed.
+ */
+export function isStandaloneDocPath(pathname: string): boolean {
+  return typeof pathname === 'string' && STANDALONE_NAMESPACE.test(pathname)
 }
 
 /** Persist the current location so the post-login flow can bounce the user back to the doc link. */
@@ -74,8 +88,12 @@ type Phase =
  *   - 403 forbidden (AC-7), 404 not-found (AC-10), 401 login (AC-11), 409 locked/archived (AC-12)
  *     -> render the matching terminal screen (Back only). 409 is the archived signal the
  *     collab-token path never reports, which is exactly why the preflight exists.
+ *
+ * `docId` is nullable: the host Layout claims the whole `/d` namespace, so a malformed / empty id
+ * (`/d/`, `/d/a:b`) arrives here as null and short-circuits to the not-found terminal instead of
+ * falling through to the app shell (AC-9).
  */
-export function StandaloneDocPage({ docId }: { docId: string }): ReactElement {
+export function StandaloneDocPage({ docId }: { docId: string | null }): ReactElement {
   const wk = getWKApp()
   const uid = wk.loginInfo?.uid ?? ''
   const [phase, setPhase] = useState<Phase>({ status: 'loading' })
@@ -84,6 +102,13 @@ export function StandaloneDocPage({ docId }: { docId: string }): ReactElement {
 
   useEffect(() => {
     let cancelled = false
+    // AC-9: a `/d/` link with a missing or malformed id. The Layout still routes it here (the
+    // namespace is claimed) so we render the not-found terminal rather than the app shell. No
+    // preflight — there is nothing valid to fetch.
+    if (!docId) {
+      setPhase({ status: 'terminal', kind: 'not-found' })
+      return
+    }
     setPhase({ status: 'loading' })
     getDoc(docId)
       .then((meta) => {
@@ -130,7 +155,7 @@ export function StandaloneDocPage({ docId }: { docId: string }): ReactElement {
   // "Open in App": jump into the in-shell docs experience for this doc (list + NavRail), reusing
   // the existing `/docs?doc=` deep-link the in-shell path already understands.
   const onOpenInApp = useCallback(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && docId) {
       window.location.assign(withSid(`/docs?doc=${encodeURIComponent(docId)}`))
     }
   }, [docId])
@@ -150,7 +175,7 @@ export function StandaloneDocPage({ docId }: { docId: string }): ReactElement {
         // Malformed documentName from the backend: fall back to the caller's space + default folder.
       }
     }
-    return { space: fallbackSpace, folder: DEFAULT_DOC_FOLDER, doc: docId }
+    return { space: fallbackSpace, folder: DEFAULT_DOC_FOLDER, doc: docId ?? '' }
   }, [phase, wk.shared, docId])
 
   const names = useMemberNames(addressing.space)
@@ -172,6 +197,9 @@ export function StandaloneDocPage({ docId }: { docId: string }): ReactElement {
   }
 
   const meta = phase.meta
+  // In the ready phase the addressed id is guaranteed non-null (a null id short-circuits to the
+  // not-found terminal above); prefer the id echoed by the preflight, falling back to it.
+  const editorDocId = meta.docId || (docId as string)
   const headerRight = (
     <div className="octo-doc-standalone-actions">
       <button
@@ -194,8 +222,8 @@ export function StandaloneDocPage({ docId }: { docId: string }): ReactElement {
   return (
     <div className="octo-doc-standalone">
       <EditorShell
-        key={docId}
-        docId={docId}
+        key={editorDocId}
+        docId={editorDocId}
         title={meta.title || t('docs.state.untitled')}
         uid={uid}
         space={addressing.space}
