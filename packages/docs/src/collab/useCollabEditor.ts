@@ -22,8 +22,11 @@ const registry = new Map<string, RegistryEntry>()
  * Map a collab-token issuance failure (the awaited step in CollabEditor.create) to a terminal
  * state, so a failed editor bootstrap shows a clear reason instead of an infinite
  * "Loading document…" spinner. Unknown/networkless errors fall back to 'not-found'.
+ *
+ * Never returns 'none' (every branch is a concrete terminal reason), so the return type excludes
+ * it — callers such as the standalone page can feed the result straight into the terminal screen.
  */
-export function terminalForCreateError(err: unknown): TerminalState['kind'] {
+export function terminalForCreateError(err: unknown): Exclude<TerminalState['kind'], 'none'> {
   const status = (err as { response?: { status?: number } })?.response?.status
   switch (status) {
     case 403:
@@ -32,6 +35,12 @@ export function terminalForCreateError(err: unknown): TerminalState['kind'] {
       return 'not-found'
     case 401:
       return 'login'
+    // 423 Locked and 409 Conflict both mean the document is not editable right now: 423 is the
+    // WebSocket/collab-token lock signal, 409 is the archived signal surfaced by the per-doc GET
+    // preflight (backend returns 409 for an archived doc; the collab-token path never reports it).
+    // Both map to the same terminal 'locked' screen so the standalone page can flag an archived
+    // doc without a WS round-trip.
+    case 409:
     case 423:
       return 'locked'
     default:

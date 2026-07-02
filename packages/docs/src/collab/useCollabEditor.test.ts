@@ -18,6 +18,11 @@ describe('terminalForCreateError — collab-token failure -> terminal state', ()
   it('maps 423 to locked', () => {
     expect(terminalForCreateError({ response: { status: 423 } })).toBe('locked')
   })
+  it('maps 409 to locked (archived — the standalone GET preflight signal, #512 AC-12)', () => {
+    // The per-doc GET preflight returns 409 for an archived doc; the collab-token path never
+    // reports archived, so 409 must resolve to the same 'locked' terminal screen as 423.
+    expect(terminalForCreateError({ response: { status: 409 } })).toBe('locked')
+  })
   it('falls back to not-found for network/unknown errors', () => {
     expect(terminalForCreateError(new Error('Network Error'))).toBe('not-found')
     expect(terminalForCreateError(undefined)).toBe('not-found')

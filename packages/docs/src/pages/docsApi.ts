@@ -68,6 +68,14 @@ export interface DocMeta {
   ownerId?: string
   role?: Role
   updatedAt?: string
+  /**
+   * Canonical collab document key `octo:{space}:{folder}:{doc}` (see documentName/index.ts).
+   * Returned by the per-doc GET so a standalone deep-link (`/d/:docId`), which knows only the
+   * docId and not the owning space/folder, can address collaboration exactly instead of guessing.
+   * Optional / forward-compatible: when the backend omits it, callers fall back to the caller's
+   * current space + default folder (same addressing the in-shell list uses).
+   */
+  documentName?: string
 }
 
 /**

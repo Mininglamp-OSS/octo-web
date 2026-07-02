@@ -279,6 +279,11 @@
     "invalidUrl": "请输入有效的 http/https 链接。",
     "failed": "无法获取链接信息。"
   },
+  "standalone": {
+    "copyLink": "复制链接",
+    "linkCopied": "链接已复制",
+    "openInApp": "在应用中打开"
+  },
   "error": {
     "permission": {
       "forbidden": "你已无权访问该文档。",
