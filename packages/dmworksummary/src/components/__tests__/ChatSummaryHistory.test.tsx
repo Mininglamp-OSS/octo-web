@@ -89,6 +89,26 @@ function makeItem(overrides: Record<string, unknown> = {}) {
     };
 }
 
+// Reduce per-test boilerplate: most tests render with the same channel and
+// callbacks, then await one fake-timer tick for the initial loadHistory
+// effect. Tests that need custom mockListSummaries setup still call it before
+// invoking mountHistory.
+async function mountHistory(props: { paused?: boolean } = {}) {
+    let result: ReturnType<typeof render> | undefined;
+    await act(async () => {
+        result = render(
+            <ChatSummaryHistory
+                channel={{ channelID: 'ch1', channelType: 2 }}
+                onCreateNew={vi.fn()}
+                onViewDetail={vi.fn()}
+                paused={props.paused}
+            />,
+        );
+        await vi.advanceTimersByTimeAsync(0);
+    });
+    return result!;
+}
+
 describe('ChatSummaryHistory', () => {
     const channel = { channelID: 'ch1', channelType: 2 };
     const onCreateNew = vi.fn();
@@ -428,6 +448,308 @@ describe('ChatSummaryHistory', () => {
             });
 
             expect(mockBatchStatus).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('heartbeat coordination (#334)', () => {
+        beforeEach(() => {
+            vi.useFakeTimers();
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('skips the next 5s tick when a covering heartbeat arrives', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
+
+            await mountHistory();
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [1, 2, 3] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).not.toHaveBeenCalled();
+        });
+
+        it('polls again after the 15s freshness window expires', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
+
+            await mountHistory();
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [1] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).not.toHaveBeenCalled();
+
+            // Move past the 15s freshness window from the heartbeat moment.
+            // Heartbeat at T=0; ticks fire at T=5000,10000,15000,20000.
+            // T=15000 delta=15000 is still fresh (<=15000), so the next
+            // unsuppressed tick is at T=20000. Advance to T>=20000 total.
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(15500);
+            });
+            expect(mockBatchStatus).toHaveBeenCalled();
+        });
+
+        it('does not skip when the heartbeat is non-covering (partial overlap)', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [
+                    makeItem({ task_id: 1, status: 2 }),
+                    makeItem({ task_id: 2, status: 2, title: 'Second' }),
+                ],
+            });
+            mockBatchStatus.mockResolvedValue([
+                { id: 1, status: 2, progress: 50, updated_at: '' },
+                { id: 2, status: 2, progress: 50, updated_at: '' },
+            ]);
+
+            await mountHistory();
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [1] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledWith([1, 2]);
+        });
+
+        it('does not skip when the heartbeat payload is empty and I have active ids', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
+
+            await mountHistory();
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledWith([1]);
+        });
+
+        it('dispatches a covering heartbeat with our own active ids after a successful poll', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [
+                    makeItem({ task_id: 7, status: 2 }),
+                    makeItem({ task_id: 9, status: 0, title: 'Pending' }),
+                ],
+            });
+            mockBatchStatus.mockResolvedValue([
+                { id: 7, status: 2, progress: 30, updated_at: '' },
+                { id: 9, status: 0, progress: 0, updated_at: '' },
+            ]);
+            const onHeartbeat = vi.fn();
+            window.addEventListener('summary-batch-heartbeat', onHeartbeat as EventListener);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+
+            const calls = onHeartbeat.mock.calls.filter(([e]) => (e as CustomEvent).detail);
+            expect(calls.length).toBeGreaterThanOrEqual(1);
+            const lastDetail = (calls[calls.length - 1][0] as CustomEvent).detail as { taskIds: number[] };
+            expect(lastDetail.taskIds).toEqual(expect.arrayContaining([7, 9]));
+
+            window.removeEventListener('summary-batch-heartbeat', onHeartbeat as EventListener);
+        });
+
+        it('does not self-suppress: solo polling stays at 5s cadence (self-echo guard)', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // First tick: dispatches a heartbeat. Without the self-echo guard,
+            // peerActive would flip true here and starve the second tick.
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledTimes(1);
+
+            // Second tick: must still fire (no peer was ever broadcasting).
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledTimes(2);
+
+            // Third tick for good measure — still steady 5s cadence.
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledTimes(3);
+        });
+
+        it('refreshes history when summary-status-change intersects current items', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            mockListSummaries.mockClear();
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 3 })],
+            });
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            expect(mockListSummaries).toHaveBeenCalled();
+        });
+
+        it('ignores summary-status-change when taskIds do not intersect current items', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            mockListSummaries.mockClear();
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-status-change', { detail: { taskIds: [99] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            expect(mockListSummaries).not.toHaveBeenCalled();
+        });
+
+        it('clears suppression on summary-list-unmount so the next tick polls', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+            mockBatchStatus.mockResolvedValue([{ id: 1, status: 2, progress: 50, updated_at: '' }]);
+
+            await act(async () => {
+                render(
+                    <ChatSummaryHistory
+                        channel={channel}
+                        onCreateNew={onCreateNew}
+                        onViewDetail={onViewDetail}
+                    />,
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            // Establish suppression first.
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-batch-heartbeat', { detail: { taskIds: [1] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).not.toHaveBeenCalled();
+
+            // Peer goes away.
+            await act(async () => {
+                window.dispatchEvent(new CustomEvent('summary-list-unmount'));
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(5000);
+            });
+            expect(mockBatchStatus).toHaveBeenCalledWith([1]);
+        });
+
+        it('does not fetch on summary-status-change while paused', async () => {
+            mockListSummaries.mockResolvedValue({
+                items: [makeItem({ task_id: 1, status: 2 })],
+            });
+
+            await mountHistory({ paused: true });
+
+            mockListSummaries.mockClear();
+
+            await act(async () => {
+                window.dispatchEvent(
+                    new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+                );
+                await vi.advanceTimersByTimeAsync(0);
+            });
+
+            expect(mockListSummaries).not.toHaveBeenCalled();
         });
     });
 });
