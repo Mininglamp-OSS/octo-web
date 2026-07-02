@@ -307,7 +307,15 @@ export class ChannelSettingVM extends ProviderListener {
             }
             WKSDK.shared().channelManager.addSubscriberChangeListener(this.subscriberChangeListener)
 
-            // WKSDK.shared().channelManager.syncSubscribes(this.channel)
+            // 强制从服务端同步成员列表（走 HTTP membersync，读 DB 而非依赖 IM 频道）。
+            // 弱网下群创建「半成功」(群记录已入库但 IM 频道未创建/未同步，详见 octo-server#247)
+            // 时，本地 SDK 无 subscriber 缓存，不同步就永远拿不到成员 / subscriberOfMe。
+            // 同步完成会触发 subscriberChangeListener → reloadSubscribers 回填。(GH octo-web#244)
+            void WKSDK.shared().channelManager.syncSubscribes(this.channel)
+
+            // 即便全量 membersync 因增量 version 缓存等原因没回填「我」，也用单条 HTTP 查询
+            // (GET groups/:id/members/:uid) 兜底拉取本人的服务端权威 role，恢复创建者管理权限。
+            void this.ensureSubscriberOfMeFallback()
 
         }
         this.channelInfoListener = (channelInfo:ChannelInfo) => {
@@ -366,6 +374,39 @@ export class ChannelSettingVM extends ProviderListener {
             this.notifyListener()
         }
 
+    }
+
+    /**
+     * subscriberOfMe HTTP 兜底（GH octo-web#244）。
+     *
+     * reloadSubscribers 读的是本地 SDK 缓存；弱网下群创建「半成功」(群记录已入库但
+     * IM 频道未创建/未同步，详见 octo-server#247) 时缓存为空 → subscriberOfMe 为
+     * undefined → ChannelSettingRouteData.isManagerOrCreatorOfMe 返回 false →
+     * 群创建者被当成非管理员，改名/改头像/公告全部被拒且无任何提示。
+     *
+     * 缓存拿不到「我」时，直接走单条 HTTP 查询 (GET groups/:id/members/:uid，读 DB
+     * 而非依赖 IM 频道) 拿服务端权威 role 回填，恢复创建者的管理权限。
+     * subscriber() 对 404 / 不存在返回 undefined；异常一律静默，绝不 crash 设置页。
+     */
+    async ensureSubscriberOfMeFallback(): Promise<void> {
+        if (this.channel.channelType === ChannelTypePerson) return
+        if (this.subscriberOfMe) return // 缓存已就绪，无需兜底
+        const loginUID = WKApp.loginInfo?.uid
+        if (!loginUID) return
+        let me: Subscriber | undefined
+        try {
+            me = await WKApp.dataSource.channelDataSource.subscriber(this.channel, loginUID)
+        } catch (e) {
+            // 弱网 / 无权限 / 服务端错误：保持既有行为静默降级，不打断设置页渲染。
+            console.warn("[ChannelSetting] ensureSubscriberOfMeFallback failed:", e)
+            return
+        }
+        // 兜底期间可能已被 unmount，或全量同步已回填 subscriberOfMe，两种情况都不再覆盖。
+        if (this._disposed || !me || this.subscriberOfMe) return
+        me.channel = this.channel
+        this.subscriberOfMe = me
+        this.routeData.subscriberOfMe = me
+        this.notifyListener()
     }
 
     reloadChannelInfo() {
