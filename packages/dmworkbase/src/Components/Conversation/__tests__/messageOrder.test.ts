@@ -227,16 +227,49 @@ describe("ConversationVM message ordering", () => {
         expect(first.messageContainerId).not.toBe(second.messageContainerId)
     })
 
-    it("sorts no-seq messages with invalid order after sequenced messages", () => {
+    it("keeps in-flight (Wait/Fail) no-seq messages pinned below sequenced messages", () => {
         const vm = new ConversationVM(channel)
         const seq2 = wrap({ clientMsgNo: "seq2", messageSeq: 2, timestamp: 200 })
-        const stale = wrap({ clientMsgNo: "stale", order: Number.NaN, timestamp: 100 })
+        const sending = wrap({ clientMsgNo: "sending", order: Number.NaN, timestamp: 100, status: MessageStatus.Wait })
+        const failed = wrap({ clientMsgNo: "failed", order: Number.NaN, timestamp: 120, status: MessageStatus.Fail })
         const seq1 = wrap({ clientMsgNo: "seq1", messageSeq: 1, timestamp: 150 })
 
-        expect(vm.sortMessages([seq2, stale, seq1]).map((m: any) => m.clientMsgNo)).toEqual([
+        // 在途气泡（Wait/Fail）即便时间戳更早也固定沉底，用户在此查看进度/重试。
+        expect(vm.sortMessages([seq2, sending, seq1, failed]).map((m: any) => m.clientMsgNo)).toEqual([
             "seq1",
             "seq2",
-            "stale",
+            "sending",
+            "failed",
+        ])
+    })
+
+    it("reinserts a settled (Normal) no-seq message at its chronological slot instead of sinking it (#275)", () => {
+        const vm = new ConversationVM(channel)
+        // 复现叶佳/李金龙场景：一条已落定但缺 seq 的旧文件消息（ack 丢失 / sendQueue 残留），
+        // 时间戳早于后续消息，旧逻辑把它按 PendingMessageOrderBase 沉到最底部。
+        const seqEarly = wrap({ clientMsgNo: "seqEarly", messageSeq: 10, timestamp: 100 })
+        const staleFile = wrap({ clientMsgNo: "staleFile", timestamp: 150, status: MessageStatus.Normal })
+        const seqMid = wrap({ clientMsgNo: "seqMid", messageSeq: 11, timestamp: 200 })
+        const seqLate = wrap({ clientMsgNo: "seqLate", messageSeq: 12, timestamp: 300 })
+
+        expect(vm.sortMessages([seqLate, seqEarly, staleFile, seqMid]).map((m: any) => m.clientMsgNo)).toEqual([
+            "seqEarly",
+            "staleFile",
+            "seqMid",
+            "seqLate",
+        ])
+    })
+
+    it("keeps a settled no-seq message that is newer than everything above the sequenced tail (#275)", () => {
+        const vm = new ConversationVM(channel)
+        const seq1 = wrap({ clientMsgNo: "seq1", messageSeq: 1, timestamp: 100 })
+        const seq2 = wrap({ clientMsgNo: "seq2", messageSeq: 2, timestamp: 200 })
+        const lateSettled = wrap({ clientMsgNo: "lateSettled", timestamp: 500, status: MessageStatus.Normal })
+
+        expect(vm.sortMessages([lateSettled, seq2, seq1]).map((m: any) => m.clientMsgNo)).toEqual([
+            "seq1",
+            "seq2",
+            "lateSettled",
         ])
     })
 

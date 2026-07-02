@@ -1787,22 +1787,105 @@ export default class ConversationVM extends ProviderListener {
         return PendingMessageOrderBase + timestamp * 1000 + clientSeq
     }
 
+    // 无 seq 且状态为 Wait/Fail 的在途本地气泡（正在发送 / 发送失败）：
+    // 应固定沉在列表底部，用户在此查看进度或重试，不参与时间线回插。
+    private isInFlightLocalMessage(message: MessageWrap): boolean {
+        if (message.messageSeq && message.messageSeq > 0) {
+            return false
+        }
+        if (Number.isFinite(message.order) && message.order > 0) {
+            return false
+        }
+        return message.status === MessageStatus.Wait || message.status === MessageStatus.Fail
+    }
+
+    // 主键排序 + 稳定 tiebreak（timestamp → clientSeq → clientMsgNo）。
+    private compareByOrder = (a: MessageWrap, b: MessageWrap): number => {
+        const orderDiff = this.getMessageSortOrder(a) - this.getMessageSortOrder(b)
+        if (orderDiff !== 0) {
+            return orderDiff
+        }
+        const timestampDiff = (a.timestamp || 0) - (b.timestamp || 0)
+        if (timestampDiff !== 0) {
+            return timestampDiff
+        }
+        const clientSeqDiff = (a.clientSeq || 0) - (b.clientSeq || 0)
+        if (clientSeqDiff !== 0) {
+            return clientSeqDiff
+        }
+        return (a.clientMsgNo || "").localeCompare(b.clientMsgNo || "")
+    }
+
+    private compareByTimestamp = (a: MessageWrap, b: MessageWrap): number => {
+        const timestampDiff = (a.timestamp || 0) - (b.timestamp || 0)
+        if (timestampDiff !== 0) {
+            return timestampDiff
+        }
+        const clientSeqDiff = (a.clientSeq || 0) - (b.clientSeq || 0)
+        if (clientSeqDiff !== 0) {
+            return clientSeqDiff
+        }
+        return (a.clientMsgNo || "").localeCompare(b.clientMsgNo || "")
+    }
+
+    // #275：消息时间顺序错乱 —— 旧消息/文件沉底显示在新消息下方。
+    //
+    // MessageWrap.order 在无 seq 时默认为 0（见 Service/Model.tsx），getMessageSortOrder
+    // 因此把这类消息落到 PendingMessageOrderBase 分支，排到所有已定序消息「之后」——无论
+    // 它的时间戳多早。对真正在途（Wait/Fail）的本地气泡这是期望行为；但一条已落定
+    // (Normal) 却仍缺 seq 的消息（ack 丢失 / 重连补推 / sendQueue 残留副本，见 #242）会
+    // 被永久钉在列表底部，比它更晚的消息反而排在上面，还被算进更晚的日期分隔线，出现
+    // 「昨天的文件沉到今天消息下方且不归位」。
+    //
+    // 修复：把消息分三类以保证结果仍是一个确定的全序：
+    //  - backbone：有 seq（或已通过 fillOrder 拿到 seq 空间内 order）的消息，按 order 排，
+    //    是时间线骨架，排序规则完全不变（保持 #242 的服务器定序语义）；
+    //  - inFlight：无 seq 且 Wait/Fail 的在途气泡，保持沉底；
+    //  - floating：无 seq 但已落定(Normal)的消息，按时间戳插回骨架中的正确时间位置，
+    //    不再无脑沉底。
     sortMessages(messages: MessageWrap[]) {
-        return messages.sort((a, b) => {
-            const orderDiff = this.getMessageSortOrder(a) - this.getMessageSortOrder(b)
-            if (orderDiff !== 0) {
-                return orderDiff
+        const backbone: MessageWrap[] = []
+        const inFlight: MessageWrap[] = []
+        const floating: MessageWrap[] = []
+        for (const message of messages) {
+            if ((message.messageSeq && message.messageSeq > 0) || (Number.isFinite(message.order) && message.order > 0)) {
+                backbone.push(message)
+            } else if (this.isInFlightLocalMessage(message)) {
+                inFlight.push(message)
+            } else {
+                floating.push(message)
             }
-            const timestampDiff = (a.timestamp || 0) - (b.timestamp || 0)
-            if (timestampDiff !== 0) {
-                return timestampDiff
+        }
+
+        // 没有需要回插的落定无 seq 消息时，走原始快速路径（行为完全不变）。
+        if (floating.length === 0) {
+            return messages.sort(this.compareByOrder)
+        }
+
+        backbone.sort(this.compareByOrder)
+        inFlight.sort(this.compareByOrder)
+        floating.sort(this.compareByTimestamp)
+
+        // 按时间戳把 floating 归并进 backbone：插到最后一个 timestamp <= 它的 backbone 之后
+        // （比全部 backbone 都晚的落定消息，排在 backbone 末尾、in-flight 气泡之前）。
+        const merged: MessageWrap[] = []
+        let fi = 0
+        for (const bmsg of backbone) {
+            const bts = bmsg.timestamp || 0
+            while (fi < floating.length && (floating[fi].timestamp || 0) <= bts) {
+                merged.push(floating[fi])
+                fi++
             }
-            const clientSeqDiff = (a.clientSeq || 0) - (b.clientSeq || 0)
-            if (clientSeqDiff !== 0) {
-                return clientSeqDiff
-            }
-            return (a.clientMsgNo || "").localeCompare(b.clientMsgNo || "")
-        })
+            merged.push(bmsg)
+        }
+        while (fi < floating.length) {
+            merged.push(floating[fi])
+            fi++
+        }
+
+        // 原地写回，保持调用方持有的数组引用不变。
+        messages.splice(0, messages.length, ...merged, ...inFlight)
+        return messages
     }
 
     // 按 clientMsgNo 去重，保留最后一次出现（实时消息优先于历史拉取）
