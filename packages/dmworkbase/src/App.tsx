@@ -875,28 +875,32 @@ export default class WKApp extends ProviderListener {
     }
   }
 
-  startMain() {
+  async startMain() {
+    // 先解析真实 deviceId 再连接 IM：connectIM 会立刻打开 WuKongIM WebSocket，
+    // 若在 /user/devices 返回前发送消息，clientMsgNo 会用 SDK 默认值 0 拼成
+    // "<uuid>_0_3"，破坏下游按设备去重 (#256)。这里 await 消除该竞态窗口。
+    try {
+      const res = await WKApp.apiClient.get(
+        `/user/devices/${WKApp.shared.deviceId}`
+      );
+      if (res?.id) {
+        WKSDK.shared().config.clientMsgDeviceId = res.id;
+      }
+    } catch (err: any) {
+      // 设备记录不存在（status===400）或其它读取失败时，仅记录告警以消除
+      // unhandled promise rejection；不写 clientMsgDeviceId，保持原值降级运行。
+      // 服务端暂无设备注册端点，此处不做注册，仅兜底。降级仍需连接 IM (#255)，
+      // 因此不 return——设备读取失败不应阻断 IM 上线。
+      const notFound = err?.status === 400;
+      console.warn(
+        `[startMain] fetch device record failed${notFound ? " (device not found)" : ""}`,
+        { deviceId: WKApp.shared.deviceId, status: err?.status, code: err?.code }
+      );
+    }
+
     this.connectIM();
     WKApp.dataSource.contactsSync(); // 同步通讯录
     ProhibitwordsService.shared.sync(); // 同步敏感词
-
-    WKApp.apiClient
-      .get(`/user/devices/${WKApp.shared.deviceId}`)
-      .then((res) => {
-        if (res.id) {
-          WKSDK.shared().config.clientMsgDeviceId = res.id;
-        }
-      })
-      .catch((err) => {
-        // 设备记录不存在（status===400）或其它读取失败时，仅记录告警以消除
-        // unhandled promise rejection；不写 clientMsgDeviceId，保持原值降级运行。
-        // 服务端暂无设备注册端点，此处不做注册，仅兜底。
-        const notFound = err?.status === 400;
-        console.warn(
-          `[startMain] fetch device record failed${notFound ? " (device not found)" : ""}`,
-          { deviceId: WKApp.shared.deviceId, status: err?.status, code: err?.code }
-        );
-      });
   }
 
   connectIM() {

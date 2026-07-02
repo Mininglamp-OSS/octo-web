@@ -136,4 +136,60 @@ describe("[api] WKApp.startMain device record fetch", () => {
     expect(contactsSyncSpy).toHaveBeenCalledTimes(1);
     expect(prohibitSyncSpy).toHaveBeenCalledTimes(1);
   });
+
+  // ── #256 regression: eliminate the clientMsgDeviceId=0 race window ──
+  // Before the fix connectIM() fired synchronously, before the async
+  // /user/devices fetch resolved, so the WS opened while clientMsgDeviceId was
+  // still the SDK default (0). Outbound messages built in that gap got
+  // clientMsgNo = "<uuid>_0_3", corrupting per-device dedup. startMain must now
+  // resolve the real deviceId BEFORE connecting.
+  it("[repro] happy path: writes clientMsgDeviceId BEFORE connectIM (no deviceId=0 window)", async () => {
+    hoisted.wkConfig.clientMsgDeviceId = 0 as any; // SDK default before fetch
+    getSpy.mockReturnValue(Promise.resolve({ id: "srv-dev-1" }) as any);
+
+    let deviceIdAtConnect: unknown = "CONNECT_NOT_CALLED";
+    connectIMSpy.mockImplementation(() => {
+      deviceIdAtConnect = hoisted.wkConfig.clientMsgDeviceId;
+    });
+
+    await WKApp.shared.startMain();
+    await flush();
+
+    // Before fix: connectIM ran with the default 0. After fix: real id is set first.
+    expect(deviceIdAtConnect).toBe("srv-dev-1");
+    expect(connectIMSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("[repro] device fetch failure: still connects (degraded), and only after the fetch settles — never before", async () => {
+    hoisted.wkConfig.clientMsgDeviceId = 0 as any;
+    getSpy.mockReturnValue(
+      Promise.reject({ status: 400, code: "bad_request" }) as any
+    );
+
+    let getResolved = false;
+    getSpy.mockImplementation(
+      () =>
+        new Promise((_, reject) =>
+          setTimeout(() => {
+            getResolved = true;
+            reject({ status: 400, code: "bad_request" });
+          }, 0)
+        ) as any
+    );
+
+    let connectSeenAfterFetch = false;
+    connectIMSpy.mockImplementation(() => {
+      connectSeenAfterFetch = getResolved;
+    });
+
+    await WKApp.shared.startMain();
+    await flush();
+
+    // Graceful degradation (#255): still connect on failure...
+    expect(connectIMSpy).toHaveBeenCalledTimes(1);
+    // ...but only once the fetch has settled, so we never open the WS with a
+    // half-known deviceId.
+    expect(connectSeenAfterFetch).toBe(true);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
 });
