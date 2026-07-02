@@ -370,6 +370,7 @@
   "editor": {
     "saveSuccess": "保存成功",
     "contentUpdated": "内容已更新，请刷新",
+    "draftAlreadySubmitted": "该总结已提交，已为你刷新",
     "saveFailed": "保存失败，请重试",
     "placeholder": "编辑总结内容..."
   },

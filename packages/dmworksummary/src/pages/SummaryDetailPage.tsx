@@ -68,6 +68,8 @@ interface SummaryDetailPageState {
     editingPersonalReport: boolean;
     /** need4：行内编辑「团队总结」中（仅 creator）。 */
     editingTeamSummary: boolean;
+    /** OCT-21：提交前编辑「我自己的个人报告」草稿中（行内编辑器接管「我（未提交）」行）。 */
+    editingMyDraft: boolean;
     /** need7：成员选择器弹窗显隐。 */
     showAddMember: boolean;
     /** need7：添加成员提交中。 */
@@ -104,6 +106,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         isEditing: false,
         editingPersonalReport: false,
         editingTeamSummary: false,
+        editingMyDraft: false,
         showAddMember: false,
         addingMember: false,
         showMatterPicker: false,
@@ -186,6 +189,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             error: null,
             editingTeamSummary: false,
             editingPersonalReport: false,
+            editingMyDraft: false,
             isEditing: false,
             personalResult: null,
             members: [],
@@ -1073,10 +1077,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      */
     // 共享门控：是否应展示「我的提交」入口（顶部卡片 + 参与者报告区行 复用）。
     shouldShowMySubmit(): boolean {
-        const { personalResult, members, isEditing, editingPersonalReport, editingTeamSummary } = this.state;
+        const { personalResult, members, isEditing, editingPersonalReport, editingTeamSummary, editingMyDraft } = this.state;
         if (!this.isMultiCollab()) return false;
         // F2：任一编辑态下隐藏提交入口，避免与编辑器并存、提交触发团队聚合与编辑冲突。
-        if (isEditing || editingPersonalReport || editingTeamSummary) return false;
+        // OCT-21：草稿编辑态（editingMyDraft）也走同款互斥，整行（含「提交给全部」按钮）让位给草稿编辑器分支。
+        if (isEditing || editingPersonalReport || editingTeamSummary || editingMyDraft) return false;
         if (personalResult?.worker_status !== 2) return false;
         if (personalResult.submitted_at) return false;
         if (members.length <= 1) return false;
@@ -1316,7 +1321,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     renderParticipantReports() {
-        const { members, membersLoading, expandedReports, editingPersonalReport, detail } = this.state;
+        const { members, membersLoading, expandedReports, editingPersonalReport, detail, personalResult, editingMyDraft } = this.state;
         const { t } = this.context;
         // 如果只有 1 个人（creator 自己），不显示参与者报告区块
         if (membersLoading || members.length <= 1) return null;
@@ -1338,7 +1343,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 也不该以“等待提交”的被动 pending 行呈现。这里显式渲染“我（未提交）+ 提交按钮”的主入口行（renderMyPendingSubmitRow），
         // 并从 generic pending 里排掉我那条，避免重复。不展开我的总结正文 → 不违反 need1。
         const showMyPending = this.shouldShowMySubmit();
-        const pendingOthers = showMyPending ? pending.filter((m) => m.user_id !== myUid) : pending;
+        // OCT-21 / GLM-F3：草稿编辑态独立守卫（与 shouldShowMySubmit 的前置条件等价，
+        // 但不再依赖「无任何编辑态」——本身就是编辑态）。补 isMultiCollab() 纵深防御。
+        const showMyDraftEditing =
+            editingMyDraft &&
+            this.isMultiCollab() &&
+            personalResult?.worker_status === 2 &&
+            !personalResult?.submitted_at &&
+            members.length > 1;
+        // v2 F2：只要 renderMyPendingSubmitRow 会渲染「我」（无论草稿编辑态或常规态），
+        // 都必须从 pendingOthers 里排掉「我」，避免双份渲染。
+        const pendingOthers = (showMyPending || showMyDraftEditing)
+            ? pending.filter((m) => m.user_id !== myUid)
+            : pending;
         // need3：自己那条的「编辑」按钮 gate=can_edit_personal。
         const canEditPersonal = !!detail?.permissions?.can_edit_personal;
         return (
@@ -1433,6 +1450,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     );
                 })}
                 {showMyPending && this.renderMyPendingSubmitRow()}
+                {showMyDraftEditing && this.renderMyPendingSubmitRow()}
                 {pendingOthers.map((m) => (
                     <div key={m.user_id} className="summary-detail-participant-report-pending">
                         <IconClock style={{ fontSize: 14 }} />
@@ -1468,9 +1486,31 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      */
     renderMyPendingSubmitRow() {
         const { t } = this.context;
-        const { personalResult } = this.state;
+        const { personalResult, editingMyDraft, detail } = this.state;
         const myContent = personalResult?.content || "";
         const myCitations = personalResult?.citations || [];
+        // OCT-21：草稿编辑态——整行让位给 SummaryEditor (mode=personal_draft)，
+        // 「提交给全部」按钮在编辑态下不可见（与既有「team / personal 编辑」体验一致）。
+        if (editingMyDraft && detail) {
+            return (
+                <div
+                    key="__my_pending_submit_editing__"
+                    className="summary-detail-participant-report-item summary-detail-my-pending-row"
+                >
+                    <div className="summary-detail-participant-report-header">
+                        <span>{t("summary.detail.mySubmitRowName")}</span>
+                    </div>
+                    <SummaryEditor
+                        mode="personal_draft"
+                        taskId={detail.task_id}
+                        baseResultId={detail.result_id ?? 0}
+                        initialContent={myContent}
+                        onSave={this.handleEditMyDraftSave}
+                        onCancel={this.handleEditMyDraftCancel}
+                    />
+                </div>
+            );
+        }
         return (
             <div
                 key="__my_pending_submit__"
@@ -1478,10 +1518,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             >
                 <div className="summary-detail-participant-report-header">
                     <span>{t("summary.detail.mySubmitRowName")}</span>
+                    {/* OCT-21：提交前编辑入口。文案复用 summary.common.edit；按钮放在「提交给全部」左侧。 */}
+                    <Button
+                        size="small"
+                        theme="borderless"
+                        icon={<IconEdit />}
+                        style={{ marginLeft: "auto" }}
+                        onClick={this.handleStartEditMyDraft}
+                    >
+                        {t("summary.common.edit")}
+                    </Button>
                     <Button
                         size="small"
                         theme="solid"
-                        style={{ marginLeft: "auto" }}
+                        style={{ marginLeft: 8 }}
                         onClick={this.handleSubmitPersonal}
                     >
                         {t("summary.detail.submitToAll")}
@@ -1498,7 +1548,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     handleStartEdit = () => {
         // F1：进入单人个人总结编辑时互斥关闭另两个编辑态。
-        this.setState({ isEditing: true, editingTeamSummary: false, editingPersonalReport: false });
+        // OCT-21：同时关闭草稿编辑态（纵深防御）。
+        this.setState({ isEditing: true, editingTeamSummary: false, editingPersonalReport: false, editingMyDraft: false });
     };
 
     handleEditSave = () => {
@@ -1513,7 +1564,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // need3：进入/退出「自己的个人报告」行内编辑。保存走 personal-edit（后端自动重算团队）。
     handleStartEditPersonalReport = () => {
         // F1：互斥——只留 editingPersonalReport，关闭团队/单人编辑态。
-        this.setState({ editingPersonalReport: true, editingTeamSummary: false, isEditing: false });
+        // OCT-21：同时关闭草稿编辑态。
+        this.setState({ editingPersonalReport: true, editingTeamSummary: false, isEditing: false, editingMyDraft: false });
     };
     handleEditPersonalReportSave = () => {
         this.setState({ editingPersonalReport: false });
@@ -1527,7 +1579,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // need4：进入/退出「团队总结」行内编辑（仅 creator）。保存走既有 PUT /summaries/:id/edit。
     handleStartEditTeam = () => {
         // F1：互斥——只留 editingTeamSummary，关闭个人/单人编辑态。
-        this.setState({ editingTeamSummary: true, editingPersonalReport: false, isEditing: false });
+        // OCT-21：同时关闭草稿编辑态。
+        this.setState({ editingTeamSummary: true, editingPersonalReport: false, isEditing: false, editingMyDraft: false });
     };
     handleEditTeamSave = () => {
         this.setState({ editingTeamSummary: false });
@@ -1535,6 +1588,29 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
     handleEditTeamCancel = () => {
         this.setState({ editingTeamSummary: false });
+    };
+
+    // OCT-21：提交前编辑「我自己」的个人报告草稿。三件套与 handleStartEditPersonalReport 对齐。
+    handleStartEditMyDraft = () => {
+        // 互斥：只留 editingMyDraft，关闭其他三种编辑态。
+        this.setState({
+            editingMyDraft: true,
+            isEditing: false,
+            editingPersonalReport: false,
+            editingTeamSummary: false,
+        });
+    };
+    handleEditMyDraftSave = () => {
+        // v2 F3：保存后统一走 loadDetail()——不是 loadPersonalResult。
+        // 理由：草稿保存遇 409（已被并发 submit 抢先）会让 personalResult.submitted_at 变非空，
+        // 但 members 中的「我」仍是 pending，只刷 personalResult 会让分桶视图错乱。
+        // loadDetail 一把全刷（task/members/personal/schedule），保证分桶绝对一致；
+        // 草稿成功路径不重算团队，loadDetail 也不会触发新的 LLM 调用，开销可接受。
+        this.setState({ editingMyDraft: false });
+        this.loadDetail();
+    };
+    handleEditMyDraftCancel = () => {
+        this.setState({ editingMyDraft: false });
     };
 
     // need7：creator 添加新成员。选定后调 POST /members，成功 loadDetail 刷新（新成员 Pending）。
@@ -1565,9 +1641,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     renderScheduleButton() {
-        const { detail, scheduleItem, scheduleLoading, isEditing, editingTeamSummary, editingPersonalReport } = this.state;
+        const { detail, scheduleItem, scheduleLoading, isEditing, editingTeamSummary, editingPersonalReport, editingMyDraft } = this.state;
         const { t } = this.context;
-        if (!detail?.permissions?.can_schedule || isEditing || editingTeamSummary || editingPersonalReport) return null;
+        // OCT-21 / GPT-S1：草稿编辑态也隐藏 schedule 按钮，与其它编辑态保持一致约束。
+        if (!detail?.permissions?.can_schedule || isEditing || editingTeamSummary || editingPersonalReport || editingMyDraft) return null;
 
         // 任务3：hasSchedule 仅在存在且 is_active 时为 true。
         // 停用后文案回到「设置定时更新」。
