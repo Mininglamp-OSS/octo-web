@@ -82,7 +82,10 @@ function useDeprecatedFriendApplyReddotCleanup() {
   }, [isLogined, uid])
 }
 
+let _menusRegistered = false
 async function registerMenus() {
+  if (_menusRegistered) return
+  _menusRegistered = true
 
   WKSDK.shared().conversationManager.addConversationListener(() => {
     WKApp.menus.refresh()
