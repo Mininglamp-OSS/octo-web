@@ -1220,18 +1220,166 @@
   background: #d64545;
 }
 
-/* Editor delete entry (Problem 4): danger-tinted header button + a confirm card that
-   sits just under the header instead of floating in a list row. */
-.octo-doc-delete-btn {
-  color: #eb5757;
-}
-.octo-doc-delete-btn:hover {
-  background: rgba(235, 87, 87, 0.1);
-}
+/* Editor delete entry (Problem 4): the delete action now lives inside the header ≡ "more" menu
+   (danger row, see .octo-doc-more-item.is-danger below). The confirm card still sits just under
+   the header instead of floating in a list row. */
 .octo-doc-delete-confirm {
   margin: 8px 0 0;
   max-width: 420px;
 }
+
+/* Header "more" (≡) menu (#512 title-bar tidy-up). A relatively-positioned anchor holds the ≡
+   trigger and an absolutely-positioned dropdown so the panel opens flush under the icon at the
+   far right of the header. */
+.octo-doc-more {
+  position: relative;
+  flex: 0 0 auto;
+}
+/* 32×32 hit area, 20×20 glyph; hover tint + rounded corners per Jeff's spec. */
+.octo-doc-more-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #646a73;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.octo-doc-more-btn:hover {
+  background: #f2f3f5;
+}
+.octo-doc-more-btn.is-active {
+  background: #f2f3f5;
+  color: #1f2329;
+}
+.octo-doc-more-glyph {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Dropdown panel: 248px, 8px radius, soft shadow, white — anchored top-right under the trigger. */
+.octo-doc-more-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: 248px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 6px 0;
+  overflow: hidden;
+}
+/* Info head: light-grey band with the creator (avatar + name) and the created-on line. */
+.octo-doc-more-head {
+  background: #f7f8fa;
+  padding: 16px;
+  margin: -6px 0 6px;
+}
+.octo-doc-more-creator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.octo-doc-more-avatar {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e8eaf0;
+  color: #646a73;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase;
+}
+.octo-doc-more-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2329;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.octo-doc-more-created {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #8a919e;
+}
+.octo-doc-more-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+/* 40px rows: 20px icon + 12px gap + 14px label, hover tint. */
+.octo-doc-more-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  border: none;
+  background: transparent;
+  color: #1f2329;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.octo-doc-more-item:hover {
+  background: #f2f3f5;
+}
+.octo-doc-more-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.octo-doc-more-item:disabled:hover {
+  background: transparent;
+}
+.octo-doc-more-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: #646a73;
+}
+.octo-doc-more-rowicon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.octo-doc-more-label {
+  flex: 1;
+  min-width: 0;
+}
+/* Delete row: red icon + label, softer red hover; separated + set 4px lower to prevent mis-clicks. */
+.octo-doc-more-sep {
+  height: 1px;
+  background: #eff0f1;
+  margin: 4px 0;
+}
+.octo-doc-more-danger-group {
+  padding-top: 4px;
+}
+.octo-doc-more-item.is-danger {
+  color: #f5222d;
+}
+.octo-doc-more-item.is-danger .octo-doc-more-icon {
+  color: #f5222d;
+}
+.octo-doc-more-item.is-danger:hover {
+  background: #fef0f0;
+}
+
 
 /* Version history (feature #4 §1) */
 .octo-version-panel {

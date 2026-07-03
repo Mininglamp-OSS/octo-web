@@ -74,9 +74,10 @@
     "undo": "Undo",
     "redo": "Redo",
     "codeLanguageAuto": "auto",
-    "history": "History",
+    "history": "Version history",
     "comments": "Comments",
     "members": "Members",
+    "more": "More",
     "exportMarkdown": "Export as Markdown",
     "exportError": "Couldn't export this document. Please try again.",
     "exportSignedLinkNotice": "Note: images and attachments are signed links and may expire. Once expired, reopen the source document to fetch them again, or download them manually."
@@ -283,6 +284,10 @@
     "copyLink": "Copy link",
     "linkCopied": "Link copied",
     "openInNewPage": "Open in new page"
+  },
+  "moreMenu": {
+    "createdPrefix": "Created on",
+    "unknownCreator": "Unknown creator"
   },
   "error": {
     "permission": {

@@ -69,6 +69,12 @@ export interface DocMeta {
   role?: Role
   updatedAt?: string
   /**
+   * Creation timestamp (RFC3339), returned by the per-doc GET. Consumed by the header "more"
+   * menu to show a "Created on YYYY-MM-DD" line. Optional / forward-compatible: when the backend
+   * omits it the menu simply drops the created-on row rather than showing a broken date.
+   */
+  createdAt?: string
+  /**
    * Canonical collab document key `octo:{space}:{folder}:{doc}` (see documentName/index.ts).
    * Returned by the per-doc GET so a standalone deep-link (`/d/:docId`), which knows only the
    * docId and not the owning space/folder, can address collaboration exactly instead of guessing.
@@ -87,6 +93,20 @@ export interface DocMeta {
 export async function getDoc(docId: string): Promise<DocMeta> {
   const { data } = await apiClient().get<DocMeta>(`/docs/${docId}`)
   return data
+}
+
+/**
+ * GET /api/v1/users/{uid} — resolve a uid to a human display name. Used by the header "more" menu
+ * to render the document creator (the doc's ownerId) as a name instead of a raw uid. The host user
+ * payload carries `name` (nickname) and, when the user is verified, `real_name`; we prefer the
+ * verified real name and fall back to the nickname. Resilient by contract: it returns `undefined`
+ * (never throws for the caller's happy path only — callers still wrap it) when no usable name is
+ * present, so the menu can fall back to a short uid / placeholder without crashing.
+ */
+export async function getUserName(uid: string): Promise<string | undefined> {
+  const { data } = await apiClient().get<{ name?: string; real_name?: string }>(`/users/${uid}`)
+  const name = (data?.real_name || data?.name || '').trim()
+  return name || undefined
 }
 
 /**

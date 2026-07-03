@@ -9,10 +9,20 @@ import { resolveDocTarget, clearDocTarget, DocsHome } from './DocsHome.tsx'
 // render tests exercise target-resolution / navigation without mounting the real editor.
 // The marker surfaces the docId it was addressed with and the onBack affordance.
 vi.mock('../editor/EditorShell.tsx', () => ({
-  EditorShell: (props: { docId: string; onBack?: () => void; headerRight?: React.ReactNode }) => (
+  EditorShell: (props: {
+    docId: string
+    onBack?: () => void
+    headerRight?: React.ReactNode
+    onOpenInNewPage?: () => void
+  }) => (
     <div data-testid="editor-shell">
       <span data-testid="editor-doc">{props.docId}</span>
       <div data-testid="editor-header-right">{props.headerRight}</div>
+      {props.onOpenInNewPage && (
+        <button type="button" data-testid="editor-open-new-page" onClick={props.onOpenInNewPage}>
+          docs.standalone.openInNewPage
+        </button>
+      )}
       {props.onBack && (
         <button type="button" data-testid="editor-back" onClick={props.onBack}>
           back
@@ -245,10 +255,9 @@ describe('DocsHome navigation (split-pane)', () => {
     await waitFor(() => expect(screen.getByText('Doc A')).toBeTruthy())
     fireEvent.click(screen.getByText('Doc A'))
 
-    // The entry is injected into the editor header (headerRight), not the list row.
-    const right = screen.getByTestId('editor-header-right')
-    expect(right.textContent).toContain('docs.standalone.openInNewPage')
-    const entry = screen.getByText(/docs\.standalone\.openInNewPage/)
+    // The entry is wired into the editor via onOpenInNewPage (it now lives in the header ≡ menu,
+    // no longer a resident headerRight button).
+    const entry = screen.getByTestId('editor-open-new-page')
     fireEvent.click(entry)
 
     // It opens the clean standalone deep-link in a new tab — no in-app navigation.

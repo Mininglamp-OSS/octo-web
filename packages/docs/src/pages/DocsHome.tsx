@@ -436,16 +436,7 @@ export function DocsHome() {
         onExit={backToList}
         onTitleSaved={onTitleSaved}
         onDeleted={onDocDeleted}
-        headerRight={
-          <button
-            type="button"
-            className="octo-tb-btn octo-doc-open-new-page"
-            title={t('docs.standalone.openInNewPage')}
-            onClick={() => onOpenInNewPage(docId)}
-          >
-            ⧉ {t('docs.standalone.openInNewPage')}
-          </button>
-        }
+        onOpenInNewPage={() => onOpenInNewPage(docId)}
       />
     ),
     [uid, space, folder, names, onTitleSaved, backToList, onDocDeleted, onOpenInNewPage],
