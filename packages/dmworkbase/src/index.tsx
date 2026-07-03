@@ -14,7 +14,6 @@ export * from './Service/Provider'
 export * from './Service/Route'
 export * from './Service/DataSource/DataProvider'
 export { default as ChatPage } from "./Pages/Chat"
-export { default as RuntimesPage } from "./Pages/Runtimes"
 export * from './Components/ChannelSetting/context'
 export * from './Service/DataSource/DataSource'
 export * from './Service/IncomingWebhook'

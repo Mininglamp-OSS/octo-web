@@ -8,35 +8,13 @@ set -eu
 : "${SUMMARY_API_URL:=}"
 export SUMMARY_API_URL
 
-# Same pattern for MATTER_API_URL — the /matter/ location 503-falls-back
-# when blank. Set MATTER_API_URL=http://octo-matter:8080 in the compose
-# stack to enable the bot feed / matter direct path.
-: "${MATTER_API_URL:=}"
-export MATTER_API_URL
-
-# PR-A.2: fleet hosts /api/v1/runtimes/* and /api/v1/daemon/* (runtime
-# tree page + daemon onboarding). Blank yields a 503 in those locations
-# so a deployment without fleet still boots — but the runtime UI will
-# be dead until FLEET_API_URL=http://octo-fleet:8092 (or wherever fleet
-# is) is set in the compose stack.
-: "${FLEET_API_URL:=}"
-# Trailing-slash footgun: nginx `proxy_pass $var` with a URI built by a
-# `rewrite ... break` becomes `${var}${rewritten_uri}` literally; a
-# trailing slash in the env yields a malformed double-slash upstream.
-# Strip it here once for all three downstreams (mirror what /summary,
-# /matter, fleet locations all expect).
-SUMMARY_API_URL="${SUMMARY_API_URL%/}"
-MATTER_API_URL="${MATTER_API_URL%/}"
-FLEET_API_URL="${FLEET_API_URL%/}"
-export FLEET_API_URL
-
 # Extra CSP img-src source for the object-store (minio) presign host, e.g.
 # "http://192.168.214.189:9000". Empty by default (https-only). Must match the
 # backend presign host and frontend VITE_DOCS_ASSET_HOSTS.
 : "${DOCS_ASSET_CSP_ORIGIN:=}"
 export DOCS_ASSET_CSP_ORIGIN
 
-envsubst '${API_URL} ${SUMMARY_API_URL} ${MATTER_API_URL} ${FLEET_API_URL} ${DOCS_ASSET_CSP_ORIGIN}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${API_URL} ${SUMMARY_API_URL} ${DOCS_ASSET_CSP_ORIGIN}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 
 exec "$@"

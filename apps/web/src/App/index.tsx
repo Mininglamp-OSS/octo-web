@@ -1,4 +1,4 @@
-import { ChatPage, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, RuntimesPage, t } from '@octo/base';
+import { ChatPage, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, t } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
 import React, { useEffect } from 'react';
 // lucide icons replaced with filled SVGs per Figma
@@ -8,7 +8,6 @@ import { WKSDK, ChannelTypePerson } from 'wukongimjssdk';
 import { setFaviconBadge, clearFaviconBadge } from '../utils/faviconBadge';
 import { ChatIcon } from '../Components/Icons/ChatIcon';
 import { ContactsIcon } from '../Components/Icons/ContactsIcon';
-import { RuntimesIcon } from '../Components/Icons/RuntimesIcon';
 import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
@@ -83,10 +82,7 @@ function useDeprecatedFriendApplyReddotCleanup() {
   }, [isLogined, uid])
 }
 
-let _menusRegistered = false
 async function registerMenus() {
-  if (_menusRegistered) return
-  _menusRegistered = true
 
   WKSDK.shared().conversationManager.addConversationListener(() => {
     WKApp.menus.refresh()
@@ -147,14 +143,6 @@ async function registerMenus() {
     return m
   }, 4000)
 
-  // PR-2 (准备上线): 运行时菜单常驻显示, 不再 conditional. 之前的
-  // hasRuntimes / checkRuntimes / 15s polling / mittBus 订阅已删 — 用户
-  // 进 /runtimes 页面后通过顶部 + 创建 Runtime 拿命令自助启 daemon-cli;
-  // 不再依赖"先有 daemon 才看见菜单"那条 chicken-and-egg 链.
-  WKApp.menus.register("runtimes", () => {
-    return new Menus("runtimes", "/runtimes", t("app.nav.runtimes"), <RuntimesIcon />, <RuntimesIcon />)
-  }, 7000)
-
   WKApp.menus.register("summary", (_context) => {
     const m = new Menus("summary", "/summary", t("app.nav.summary"), <SummaryIcon />, <SummaryIcon />)
     if (_summaryBadgeCount > 0) {
@@ -168,7 +156,7 @@ async function registerMenus() {
       }
     }
     return m
-  }, 6000)
+  }, 5000)
 
   WKApp.route.register("/", () => {
     return <ChatPage></ChatPage>
@@ -176,10 +164,6 @@ async function registerMenus() {
 
   WKApp.route.register("/contacts", () => {
     return <ContactsList></ContactsList>
-  })
-
-  WKApp.route.register("/runtimes", () => {
-    return <RuntimesPage />
   })
 
 }
