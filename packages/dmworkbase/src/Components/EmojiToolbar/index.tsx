@@ -176,6 +176,10 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         // 表情清单（服务端内置表情，web#492）异步到达后刷新选择器，否则面板若在
         // load() 完成前挂载，要重开才显示新表情。
         WKApp.mittBus.on("emoji-manifest-updated", this._onEmojiManifestUpdated)
+        // 「添加到我的贴纸」右键菜单收藏成功后广播此事件；已加载过贴纸的面板才
+        // 重拉，未加载过的等下次点开时通过 ensureStickersLoaded 懒加载 —— 避免
+        // 全应用每个 EmojiPanel 都被无谓地打一次 sticker/user 请求。
+        WKApp.mittBus.on("stickers-updated", this._onStickersUpdated)
         this.removeConfigChangeListener = WKApp.remoteConfig.addConfigChangeListener(
             this._onRemoteConfigChange
         )
@@ -186,6 +190,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
     componentWillUnmount() {
         this.isUnmounted = true
         WKApp.mittBus.off("emoji-manifest-updated", this._onEmojiManifestUpdated)
+        WKApp.mittBus.off("stickers-updated", this._onStickersUpdated)
         this.removeConfigChangeListener?.()
         this.removeConfigChangeListener = undefined
     }
@@ -195,6 +200,15 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
             return
         }
         this.setState({ emojis: this.emojiService.getAllEmoji() })
+    }
+
+    private _onStickersUpdated = () => {
+        if (this.isUnmounted) {
+            return
+        }
+        if (this.stickersLoaded) {
+            this.requestStickers()
+        }
     }
 
     private _onRemoteConfigChange = () => {

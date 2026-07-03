@@ -862,9 +862,12 @@ export default class BaseModule implements IModule {
                 // placeholder 空串留给后端用默认值，避免把消息侧的空字符串顶掉服务端默认。
                 placeholder: content.placeholder || undefined,
               })
-              .then(() =>
-                Toast.success(t("base.sticker.collectSuccess"))
-              )
+              .then(() => {
+                Toast.success(t("base.sticker.collectSuccess"));
+                // 通知所有已挂载的 EmojiPanel 刷新「我的贴纸」列表 —— 面板内 stickersLoaded=true
+                // 后不会自动重拉，若不广播事件，新收藏的贴纸要等面板卸载重建才可见。
+                WKApp.mittBus.emit("stickers-updated");
+              })
               .catch((err: { code?: string; msg?: string }) => {
                 if (err?.code === "err.server.sticker.quota_exceeded") {
                   Toast.error(t("base.sticker.quotaExceeded"));
