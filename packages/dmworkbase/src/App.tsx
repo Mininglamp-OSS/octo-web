@@ -217,6 +217,14 @@ export class WKRemoteConfig {
    */
   suppressLoginMigrationNotice: boolean = false;
   /**
+   * 自定义贴纸管理入口开关。后端字段 sticker_custom_enabled 为 true 时，前端展示
+   * 「我的贴纸」tab 及上传/删除入口；false 或字段缺失时隐藏。
+   *
+   * 纯 UI 展示开关，不承担鉴权语义: /v1/sticker/user 相关接口的权限/限流/所有权
+   * 校验仍由后端负责，前端不能据此推断用户是否具备上传能力。
+   */
+  stickerCustomEnabled: boolean = false;
+  /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
    * 顶层 oidc_account_url / oidc_reset_password_url 是后端兼容老前端用的,新前端只读这里。
@@ -315,6 +323,7 @@ export class WKRemoteConfig {
       const previousMessagesSearchOn = this.messagesSearchOn;
       const previousSuppressLoginMigrationNotice =
         this.suppressLoginMigrationNotice;
+      const previousStickerCustomEnabled = this.stickerCustomEnabled;
       this.requestSuccess = true;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
@@ -325,6 +334,9 @@ export class WKRemoteConfig {
       this.suppressLoginMigrationNotice = parseRemoteBool(
         result["suppress_login_migration_notice"]
       );
+      this.stickerCustomEnabled = parseRemoteBool(
+        result["sticker_custom_enabled"]
+      );
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
@@ -332,7 +344,8 @@ export class WKRemoteConfig {
         previousDisableUserCreateSpace !== this.disableUserCreateSpace ||
         previousMessagesSearchOn !== this.messagesSearchOn ||
         previousSuppressLoginMigrationNotice !==
-          this.suppressLoginMigrationNotice
+          this.suppressLoginMigrationNotice ||
+        previousStickerCustomEnabled !== this.stickerCustomEnabled
       ) {
         this.notifyConfigChangeListeners();
       }

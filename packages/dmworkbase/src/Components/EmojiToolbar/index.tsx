@@ -155,6 +155,8 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
     // 故用 isUnmounted 守卫（PR#496 review，参照 ThreadPanel）。
     private isUnmounted = false
     private stickersLoaded = false
+    // 订阅 appconfig 字段变化，让 sticker_custom_enabled 灰度切换后无需刷新前台即可生效。
+    private removeConfigChangeListener?: () => void
 
     constructor(props: any) {
         super(props)
@@ -174,6 +176,9 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         // 表情清单（服务端内置表情，web#492）异步到达后刷新选择器，否则面板若在
         // load() 完成前挂载，要重开才显示新表情。
         WKApp.mittBus.on("emoji-manifest-updated", this._onEmojiManifestUpdated)
+        this.removeConfigChangeListener = WKApp.remoteConfig.addConfigChangeListener(
+            this._onRemoteConfigChange
+        )
         // 贴纸列表延迟到首次切到「我的贴纸」tab 时再拉（ensureStickersLoaded），
         // 避免每次打开表情面板都打一次 sticker/user 请求（PR#496 review P2-1）。
     }
@@ -181,6 +186,8 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
     componentWillUnmount() {
         this.isUnmounted = true
         WKApp.mittBus.off("emoji-manifest-updated", this._onEmojiManifestUpdated)
+        this.removeConfigChangeListener?.()
+        this.removeConfigChangeListener = undefined
     }
 
     private _onEmojiManifestUpdated = () => {
@@ -188,6 +195,15 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
             return
         }
         this.setState({ emojis: this.emojiService.getAllEmoji() })
+    }
+
+    private _onRemoteConfigChange = () => {
+        if (this.isUnmounted) {
+            return
+        }
+        // 开关值直接从 WKApp.remoteConfig 读取, 用 forceUpdate 触发 render 拾取最新值。
+        // 不需要拷贝到 state, 避免 state 与 remoteConfig 双源不一致。
+        this.forceUpdate()
     }
 
     requestStickers(): Promise<void> {
@@ -275,7 +291,11 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
     render(): React.ReactNode {
         const { emojis, category, stickers, uploading } = this.state
         const { onEmoji, onSticker } = this.props
-        const isSticker = category === STICKER_CATEGORY
+        // stickerCustomEnabled 关闭时: 隐藏贴纸 tab, 并把 isSticker 强制视为 false, 兜住
+        // 「面板已打开且当前在 sticker tab, 后端灰度关掉开关」的边界——避免 tab 消失但
+        // 内容区仍渲染上传/删除入口。纯 render-time 计算, 不触碰 state。
+        const stickerCustomEnabled = WKApp.remoteConfig.stickerCustomEnabled
+        const isSticker = stickerCustomEnabled && category === STICKER_CATEGORY
         return <div className="wk-emojipanel">
             <div className={classNames("wk-emojipanel-content", isSticker ? "wk-emojipanel-content-sticker" : undefined)}>
                 <ul>
@@ -336,18 +356,20 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                 }}>
                     <img alt="" src={require("./emoji_tab_icon.png")}></img>
                 </div>
-                <div className={classNames("wk-emojipanel-tab-item", isSticker ? "wk-emojipanel-tab-item-selected" : undefined)} onClick={(e) => {
-                    e.stopPropagation()
-                    this.setState({ category: STICKER_CATEGORY })
-                    this.ensureStickersLoaded()
-                }} title={t("base.sticker.tab")}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                        <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="1.8" />
-                        <circle cx="9" cy="10" r="1.2" fill="currentColor" />
-                        <circle cx="15" cy="10" r="1.2" fill="currentColor" />
-                        <path d="M8.5 14 a3.5 2.5 0 0 0 7 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                    </svg>
-                </div>
+                {stickerCustomEnabled ? (
+                    <div className={classNames("wk-emojipanel-tab-item", isSticker ? "wk-emojipanel-tab-item-selected" : undefined)} onClick={(e) => {
+                        e.stopPropagation()
+                        this.setState({ category: STICKER_CATEGORY })
+                        this.ensureStickersLoaded()
+                    }} title={t("base.sticker.tab")}>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                            <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="1.8" />
+                            <circle cx="9" cy="10" r="1.2" fill="currentColor" />
+                            <circle cx="15" cy="10" r="1.2" fill="currentColor" />
+                            <path d="M8.5 14 a3.5 2.5 0 0 0 7 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                        </svg>
+                    </div>
+                ) : undefined}
             </div>
             <input
                 ref={(ref) => { this.fileInput = ref }}
