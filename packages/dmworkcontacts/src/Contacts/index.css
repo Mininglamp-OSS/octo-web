@@ -308,6 +308,8 @@
 .wk-contacts-section-item-avatar {
     flex-shrink: 0;
     margin-right: var(--wk-sp-3);
+    /* 在线绿点定位锚点：OnlineStatusBadge 自身 absolute 于头像右下角 */
+    position: relative;
 }
 
 .wk-contacts-section-item-avatar .wk-avatar {
