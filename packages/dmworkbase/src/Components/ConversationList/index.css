@@ -361,27 +361,43 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   margin-right: var(--wk-sp-1);
 }
 
-/* ── 在线状态 badge（design v3.1：固定 9x9 绿点 + 白边，不显示 tip 文字） ── */
+/* ── 在线状态 badge：在线为绿点，离线 <1h 显示时间胶囊 ── */
 .wk-onlinestatusbadge {
   position: absolute;
+  right: -10px;
+  bottom: -5px;
+  padding: 1.5px;
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-base);
+  white-space: nowrap;
+}
+
+.wk-onlinestatusbadge-content {
+  padding: 0 var(--wk-sp-1);
+  border-radius: var(--wk-r-md);
+  background: color-mix(in srgb, var(--wk-color-success) 15%, transparent);
+}
+
+.wk-onlinestatusbadge-content-tip {
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-color-success);
+  white-space: nowrap;
+}
+
+.wk-onlinestatusbadge-empty {
   right: -1px;
   bottom: -1px;
   width: 9px;
   height: 9px;
+  padding: 0;
   border-radius: var(--wk-r-circle);
   background: var(--wk-color-success);
   border: 2px solid var(--wk-bg-base);
   box-sizing: border-box;
-  padding: 0;
 }
 
-.wk-onlinestatusbadge-content,
-.wk-onlinestatusbadge-content-tip {
+.wk-onlinestatusbadge-empty .wk-onlinestatusbadge-content {
   display: none;
-}
-
-.wk-onlinestatusbadge-empty {
-  /* 维持上面默认形态即可 */
 }
 
 /* Thread prefix */
@@ -525,7 +541,7 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 
 /* compact 列表头像更小（22x22 vs 最近列表 32x32），在线圆点等比缩小并贴右下角，
  * 与左上角未读红点错开、不撑乱紧凑排版。复用 .wk-onlinestatusbadge 同色同形。 */
-.wk-conv-compact-icon .wk-onlinestatusbadge {
+.wk-conv-compact-icon .wk-onlinestatusbadge-empty {
   width: 7px;
   height: 7px;
   right: -1px;
