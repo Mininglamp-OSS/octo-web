@@ -11,6 +11,8 @@ const hoisted = vi.hoisted(() => {
     const state = {
         stickerCustomEnabled: true,
         listener: null as (() => void) | null,
+        // 按事件名捕获 mittBus 订阅的回调，让 test 能像真实广播那样手动触发。
+        mittHandlers: {} as Record<string, () => void>,
     };
     return {
         state,
@@ -24,8 +26,12 @@ const hoisted = vi.hoisted(() => {
                 if (state.listener === cb) state.listener = null;
             };
         }),
-        mittOn: vi.fn(),
-        mittOff: vi.fn(),
+        mittOn: vi.fn((event: string, cb: () => void) => {
+            state.mittHandlers[event] = cb;
+        }),
+        mittOff: vi.fn((event: string, cb: () => void) => {
+            if (state.mittHandlers[event] === cb) delete state.mittHandlers[event];
+        }),
     };
 });
 
@@ -90,11 +96,14 @@ let container: HTMLDivElement;
 beforeEach(() => {
     hoisted.state.stickerCustomEnabled = true;
     hoisted.state.listener = null;
+    hoisted.state.mittHandlers = {};
     hoisted.addConfigChangeListener.mockClear();
     hoisted.getAllEmoji.mockClear();
     hoisted.uploadSticker.mockClear();
     hoisted.addSticker.mockClear();
     hoisted.userStickers.mockClear();
+    hoisted.mittOn.mockClear();
+    hoisted.mittOff.mockClear();
     container = document.createElement("div");
     document.body.appendChild(container);
 });
@@ -164,6 +173,52 @@ describe("EmojiPanel sticker gating", () => {
             ReactDOM.unmountComponentAtNode(container);
         });
         expect(hoisted.state.listener).toBeNull();
+    });
+
+    it("re-fetches when an already-loaded panel receives stickers-updated", async () => {
+        // P2-1: 收藏成功后广播 stickers-updated → 已加载过贴纸的面板重拉列表。
+        hoisted.state.stickerCustomEnabled = true;
+        render(<EmojiPanel />);
+
+        // 切到贴纸 tab 触发首次懒加载，stickersLoaded 置 true。
+        const stickerTab = tabs()[1];
+        await act(async () => {
+            stickerTab.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            await Promise.resolve();
+        });
+        expect(hoisted.userStickers).toHaveBeenCalledTimes(1);
+        hoisted.userStickers.mockClear();
+
+        // 广播事件：已加载面板应再拉一次。
+        await act(async () => {
+            hoisted.state.mittHandlers["stickers-updated"]?.();
+            await Promise.resolve();
+        });
+        expect(hoisted.userStickers).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not re-fetch when the panel has not loaded stickers yet", async () => {
+        // 懒加载语义：没点开过贴纸 tab（stickersLoaded=false）时，广播不触发多余请求。
+        hoisted.state.stickerCustomEnabled = true;
+        render(<EmojiPanel />);
+        expect(hoisted.userStickers).not.toHaveBeenCalled();
+
+        await act(async () => {
+            hoisted.state.mittHandlers["stickers-updated"]?.();
+            await Promise.resolve();
+        });
+        expect(hoisted.userStickers).not.toHaveBeenCalled();
+    });
+
+    it("subscribes to stickers-updated on mount and unsubscribes on unmount", () => {
+        hoisted.state.stickerCustomEnabled = true;
+        render(<EmojiPanel />);
+        expect(typeof hoisted.state.mittHandlers["stickers-updated"]).toBe("function");
+
+        act(() => {
+            ReactDOM.unmountComponentAtNode(container);
+        });
+        expect(hoisted.state.mittHandlers["stickers-updated"]).toBeUndefined();
     });
 
     it("does not upload when the flag flips false between opening the file picker and picking a file", async () => {

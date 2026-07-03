@@ -75,7 +75,7 @@ import { VoiceCell, VoiceContent } from "./Messages/Voice";
 import { VideoCell, VideoContent } from "./Messages/Video";
 import { TypingCell } from "./Messages/Typing";
 import { LottieSticker, LottieStickerCell } from "./Messages/LottieSticker";
-import { isStickerMessageCollectable } from "./Messages/LottieSticker/collect";
+import { buildAddStickerMenu } from "./Messages/LottieSticker/collectMenu";
 import { LocationCell, LocationContent } from "./Messages/Location";
 import { Toast, Tag } from "@douyinfe/semi-ui";
 import { ChannelSettingManager } from "./Service/ChannelSetting";
@@ -843,45 +843,16 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.addSticker",
       (message) => {
-        // stickerCustomEnabled 灰度关闭时，「我的贴纸」tab / 上传 / 删除入口都已从
-        // EmojiToolbar 隐藏；此处同样门控，避免用户收藏后却看不到、也管理不了。
-        if (!WKApp.remoteConfig.stickerCustomEnabled) {
-          return null;
-        }
         const content = message.content as LottieSticker;
-        if (
-          !isStickerMessageCollectable(
-            message.contentType,
-            content.format,
-            content.url
-          )
-        ) {
-          return null;
-        }
-        return {
-          title: t("base.module.contextMenus.addSticker"),
-          onClick: () => {
-            WKApp.dataSource.commonDataSource
-              .collectSticker({
-                path: content.url,
-                // placeholder 空串留给后端用默认值，避免把消息侧的空字符串顶掉服务端默认。
-                placeholder: content.placeholder || undefined,
-              })
-              .then(() => {
-                Toast.success(t("base.sticker.collectSuccess"));
-                // 通知所有已挂载的 EmojiPanel 刷新「我的贴纸」列表 —— 面板内 stickersLoaded=true
-                // 后不会自动重拉，若不广播事件，新收藏的贴纸要等面板卸载重建才可见。
-                WKApp.mittBus.emit("stickers-updated");
-              })
-              .catch((err: { code?: string; msg?: string }) => {
-                if (err?.code === "err.server.sticker.quota_exceeded") {
-                  Toast.error(t("base.sticker.quotaExceeded"));
-                } else {
-                  Toast.error(err?.msg || t("base.sticker.collectFailed"));
-                }
-              });
-          },
-        };
+        // 纯逻辑（flag 门控 + 可收藏判定 + 收藏/广播/错误分发）抽到 collectMenu 便于单测。
+        return buildAddStickerMenu(message.contentType, content, {
+          stickerCustomEnabled: WKApp.remoteConfig.stickerCustomEnabled,
+          collect: (req) =>
+            WKApp.dataSource.commonDataSource.collectSticker(req),
+          emitUpdated: () => WKApp.mittBus.emit("stickers-updated"),
+          t,
+          toast: Toast,
+        });
       },
       1150
     );
