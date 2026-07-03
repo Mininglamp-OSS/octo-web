@@ -843,6 +843,11 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.addSticker",
       (message) => {
+        // stickerCustomEnabled 灰度关闭时，「我的贴纸」tab / 上传 / 删除入口都已从
+        // EmojiToolbar 隐藏；此处同样门控，避免用户收藏后却看不到、也管理不了。
+        if (!WKApp.remoteConfig.stickerCustomEnabled) {
+          return null;
+        }
         const content = message.content as LottieSticker;
         if (
           !isStickerMessageCollectable(
