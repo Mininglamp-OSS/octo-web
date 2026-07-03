@@ -553,6 +553,11 @@ export class CommonDataSource implements ICommonDataSource {
     addSticker(req: { path: string; format: string; placeholder?: string }): Promise<StickerItem> {
         return WKApp.apiClient.post(`sticker/user`, req)
     }
+    collectSticker(req: { path: string; placeholder?: string; shortcode?: string; keywords?: string[] }): Promise<StickerItem> {
+        // 收藏他人贴纸：path 直接透传，后端从 path 推导 format，且按 path 幂等，
+        // 前端不需要（也不能）做重传或去重。错误分支由调用方按 error.code 处理。
+        return WKApp.apiClient.post(`sticker/user/collect`, req)
+    }
     deleteSticker(stickerId: string): Promise<void> {
         return WKApp.apiClient.delete(`sticker/user/${encodeURIComponent(stickerId)}`)
     }

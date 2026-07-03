@@ -75,6 +75,7 @@ import { VoiceCell, VoiceContent } from "./Messages/Voice";
 import { VideoCell, VideoContent } from "./Messages/Video";
 import { TypingCell } from "./Messages/Typing";
 import { LottieSticker, LottieStickerCell } from "./Messages/LottieSticker";
+import { isStickerMessageCollectable } from "./Messages/LottieSticker/collect";
 import { LocationCell, LocationContent } from "./Messages/Location";
 import { Toast, Tag } from "@douyinfe/semi-ui";
 import { ChannelSettingManager } from "./Service/ChannelSetting";
@@ -834,6 +835,47 @@ export default class BaseModule implements IModule {
         };
       },
       1100
+    );
+
+    // 「添加到我的贴纸」：仅位图贴纸消息显示（tgs/Lottie/空 url 一律隐藏）。
+    // 后端 sticker/user/collect 幂等：重复收藏返回已存在记录，不新增、不占配额；
+    // 因此点击即调，不需要前端查重。错误按 error.code 判断，不依赖 HTTP status。
+    WKApp.endpoints.registerMessageContextMenus(
+      "contextmenus.addSticker",
+      (message) => {
+        const content = message.content as LottieSticker;
+        if (
+          !isStickerMessageCollectable(
+            message.contentType,
+            content.format,
+            content.url
+          )
+        ) {
+          return null;
+        }
+        return {
+          title: t("base.module.contextMenus.addSticker"),
+          onClick: () => {
+            WKApp.dataSource.commonDataSource
+              .collectSticker({
+                path: content.url,
+                // placeholder 空串留给后端用默认值，避免把消息侧的空字符串顶掉服务端默认。
+                placeholder: content.placeholder || undefined,
+              })
+              .then(() =>
+                Toast.success(t("base.sticker.collectSuccess"))
+              )
+              .catch((err: { code?: string; msg?: string }) => {
+                if (err?.code === "err.server.sticker.quota_exceeded") {
+                  Toast.error(t("base.sticker.quotaExceeded"));
+                } else {
+                  Toast.error(err?.msg || t("base.sticker.collectFailed"));
+                }
+              });
+          },
+        };
+      },
+      1150
     );
 
     WKApp.endpoints.registerMessageContextMenus(

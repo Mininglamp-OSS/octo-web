@@ -154,6 +154,17 @@ export interface ICommonDataSource {
     addSticker(req: { path: string; format: string; placeholder?: string }): Promise<StickerItem>
 
     /**
+     * 收藏他人发送的贴纸到「我的贴纸」。path 直接取自贴纸消息，无需重新上传；
+     * 后端从 path 推导格式、不走上传 handle 校验，并按 path 幂等（重复收藏返回
+     * 已存在记录，不新增重复项、不占配额）。format/handle 不需要传。
+     *
+     * 错误码语义（按 error.code 判断，不看 HTTP status）：
+     *   - err.server.sticker.request_invalid：path 为空/非 sticker 路径/格式不支持
+     *   - err.server.sticker.quota_exceeded：我的贴纸已达上限
+     */
+    collectSticker(req: { path: string; placeholder?: string; shortcode?: string; keywords?: string[] }): Promise<StickerItem>
+
+    /**
      * 删除当前用户的一张自定义贴纸
      * @param stickerId
      */
