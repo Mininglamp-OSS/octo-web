@@ -16,6 +16,8 @@ const hoisted = vi.hoisted(() => {
         state,
         getAllEmoji: vi.fn().mockReturnValue([]),
         userStickers: vi.fn().mockResolvedValue({ list: [] }),
+        uploadSticker: vi.fn().mockResolvedValue({ path: "sticker-path", format: "png" }),
+        addSticker: vi.fn().mockResolvedValue({}),
         addConfigChangeListener: vi.fn((cb: () => void) => {
             state.listener = cb;
             return () => {
@@ -43,6 +45,8 @@ vi.mock("../../../App", () => ({
         dataSource: {
             commonDataSource: {
                 userStickers: hoisted.userStickers,
+                uploadSticker: hoisted.uploadSticker,
+                addSticker: hoisted.addSticker,
                 getFileURL: (p: string) => p,
             },
         },
@@ -88,6 +92,9 @@ beforeEach(() => {
     hoisted.state.listener = null;
     hoisted.addConfigChangeListener.mockClear();
     hoisted.getAllEmoji.mockClear();
+    hoisted.uploadSticker.mockClear();
+    hoisted.addSticker.mockClear();
+    hoisted.userStickers.mockClear();
     container = document.createElement("div");
     document.body.appendChild(container);
 });
@@ -157,5 +164,41 @@ describe("EmojiPanel sticker gating", () => {
             ReactDOM.unmountComponentAtNode(container);
         });
         expect(hoisted.state.listener).toBeNull();
+    });
+
+    it("does not upload when the flag flips false between opening the file picker and picking a file", async () => {
+        // 覆盖 review 里 Jerry-Xin 标出的 race window: 「+ 按钮点击 → 用户选文件」之间的异步窗口,
+        // 后端灰度翻掉 stickerCustomEnabled 后, onFileChange 不应再走 uploadSticker/addSticker。
+        hoisted.state.stickerCustomEnabled = true;
+        render(<EmojiPanel />);
+
+        // 切到 sticker tab, 让 file input 及关联 handler 挂上。
+        const stickerTab = tabs()[1];
+        act(() => {
+            stickerTab.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+        expect(fileInput).not.toBeNull();
+
+        // 模拟浏览器把用户选中的文件塞到 fileInput.files。
+        const file = new File(["hello"], "s.png", { type: "image/png" });
+        Object.defineProperty(fileInput, "files", { value: [file], configurable: true });
+
+        // 用户在 file picker 里犹豫的这段时间, 后端灰度关闭了 flag。
+        hoisted.state.stickerCustomEnabled = false;
+        act(() => {
+            hoisted.state.listener?.();
+        });
+
+        // 用户最终确认了选择, onFileChange 触发。
+        await act(async () => {
+            fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+            // 等 microtask 让 async onFileChange 走完 early guard。
+            await Promise.resolve();
+        });
+
+        expect(hoisted.uploadSticker).not.toHaveBeenCalled();
+        expect(hoisted.addSticker).not.toHaveBeenCalled();
     });
 });

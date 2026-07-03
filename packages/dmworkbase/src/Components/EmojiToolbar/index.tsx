@@ -238,6 +238,13 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         if (!file) {
             return
         }
+        // "+ 按钮点击 → 用户选文件" 之间的异步窗口内, 后端可能通过 appconfig 灰度把
+        // stickerCustomEnabled 翻 false, 此时贴纸 tab / 上传按钮已从 UI 消失。沿用旧回调
+        // 继续上传会与「入口已下线」的 UX 语义冲突, 也让请求白跑一趟。后端 /v1/sticker/user
+        // 仍是最终守卫, 这里只是配合 UI 门控。
+        if (!WKApp.remoteConfig.stickerCustomEnabled) {
+            return
+        }
         if (!ACCEPTED_STICKER_TYPES.includes(file.type)) {
             Toast.error(t("base.sticker.formatUnsupported"))
             return
