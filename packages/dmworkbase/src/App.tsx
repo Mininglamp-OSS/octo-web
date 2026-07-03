@@ -7,6 +7,8 @@ export type MittEvents = {
   "task-upload-failed": { channelKey: string };
   /** 内置表情清单(GET /v1/common/emojis)异步到达并发生变化:已渲染消息与表情选择器据此重渲染一次 */
   "emoji-manifest-updated": undefined;
+  /** 收藏他人贴纸成功后广播,已加载过「我的贴纸」的 EmojiPanel 据此重拉列表 */
+  "stickers-updated": undefined;
   "wk:pending-thread": {
     groupNo: string;
     thread: import("./Service/Thread").Thread | null;
