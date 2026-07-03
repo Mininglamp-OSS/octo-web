@@ -16,7 +16,7 @@ import AiBadge from "@octo/base/src/Components/AiBadge";
 import BotDetailModal from "@octo/base/src/Components/BotDetailModal";
 import UserInfo from "@octo/base/src/Components/UserInfo";
 import GroupCard from "@octo/base/src/Components/GroupCard";
-import { Space, SpaceMember, SpaceService } from "@octo/base/src/Service/SpaceService";
+import { Space, SpaceMember, SpaceService, hasSpacePrefix } from "@octo/base/src/Service/SpaceService";
 import { debounce } from "@octo/base/src/Utils/rateLimit";
 import { OnlineStatusBadge, needShowOnlineStatus, getOnlineTip } from "@octo/base/src/Components/ConversationList";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -43,6 +43,15 @@ function OverflowTooltip({ text, children }: { text: string; children: React.Rea
 
 const ITEM_HEIGHT = 44
 const LETTER_HEADER_HEIGHT = 24
+
+// 在线态 uid 归一化：Space 场景下列表持有的是带前缀 uid（s<spaceId>_<uid>），而
+// channelInfo 回包、onlineStatus WS 推送、channelInfoListener 回调用的都是去前缀 uid
+// （见 dmworkdatasource extractUID 与 dmworkbase 的 onlineStatus handler）。统一把在线态的
+// 预取、缓存读取、listener 命中都收口到「去前缀 uid」这唯一 key，使初次 prefetch、实时 WS
+// 推送、visibilitychange 三条路径命中同一缓存并触发重渲。与既有 hasSpacePrefix 约定一致。
+function normalizeOnlineUid(uid: string): string {
+    return hasSpacePrefix(uid) ? uid.substring(uid.indexOf('_') + 1) : uid
+}
 
 type ContactFilterMode = 'all' | 'bots' | 'humans'
 
@@ -228,8 +237,9 @@ export default class ContactsList extends Component<any, ContactsState> {
                 return
             }
             // WS 推送在线态变更：命中已预取的列表内 uid（如未在 spaceMembers 里的
-            // 已添加 AI / 企业 AI）时做一次轻量重渲，实时刷新在线绿点。
-            if (this.prefetchedUids.has(uid)) {
+            // 已添加 AI / 企业 AI）时做一次轻量重渲，实时刷新在线绿点。listener 回调的
+            // uid 已是去前缀形式，归一化后与 prefetchedUids（同为去前缀）一致命中。
+            if (this.prefetchedUids.has(normalizeOnlineUid(uid))) {
                 this.setState({})
             }
         }
@@ -297,12 +307,10 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     // 对当前已追踪（已预取过在线态、即可能展示绿点）的 AI uid 重新拉取 channelInfo。
-    // 关键：回包后必须自己强制重渲，不能只依赖 channelInfoListener。channelInfoCallback
-    // 会用服务端返回的 data.channel.channel_id 重建 channelInfo.channel，而在 Space 场景下
-    // 请求用的是带 s<spaceId>_ 前缀的 uid、服务端回的是去前缀 uid，两者不一致会让 listener 里
-    // 的 prefetchedUids.has(uid) 命中失败而不触发 setState（在线绿点因此不会自愈补出）。
-    // fetchChannelInfo 会把结果写回「请求 uid」对应的缓存 key，故 getChannelInfo 仍能取到最新
-    // 在线态，这里等所有重拉落库后统一 setState 一次即可让列表项按新在线态重渲。
+    // prefetchedUids 已归一化为去前缀 uid，重拉、缓存写回、listener 命中与渲染读取都用同一 key，
+    // 三条路径（初次 prefetch / 实时 WS 推送 / visibilitychange）因此一致。这里等所有重拉落库后
+    // 再统一强制 setState 一次：即便推送因断连/节流被延迟或丢失，切回本页也能补回最新在线绿点，
+    // 无需整页刷新（force re-render 亦作为 listener 未触发时的兜底）。
     private refreshTrackedOnlineStatus = async () => {
         const uids = Array.from(this.prefetchedUids).filter(Boolean)
         if (uids.length === 0) return
@@ -354,8 +362,11 @@ export default class ContactsList extends Component<any, ContactsState> {
     // 按需预取一批 person uid 的 channelInfo（含在线态），用 Set 去重。
     // 仅在成员/机器人已缓存时跳过网络请求；已请求过的 uid 不再重复请求。
     private prefetchOnlineStatus = (uids: string[]) => {
-        for (const uid of uids) {
-            if (!uid || this.prefetchedUids.has(uid)) continue
+        for (const rawUid of uids) {
+            if (!rawUid) continue
+            // 归一化到去前缀 uid，使预取缓存 key 与 WS 推送 / listener / 渲染读取一致
+            const uid = normalizeOnlineUid(rawUid)
+            if (this.prefetchedUids.has(uid)) continue
             this.prefetchedUids.add(uid)
             const ch = new Channel(uid, ChannelTypePerson)
             if (!WKSDK.shared().channelManager.getChannelInfo(ch)) {
@@ -375,7 +386,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     // 复用会话列表/群成员列表同一份在线态判定与文案，渲染在线绿点。
     private renderOnlineBadge(uid: string): React.ReactNode {
         const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
-            new Channel(uid, ChannelTypePerson)
+            new Channel(normalizeOnlineUid(uid), ChannelTypePerson)
         )
         if (!needShowOnlineStatus(channelInfo)) return null
         return <OnlineStatusBadge tip={getOnlineTip(channelInfo!)} />

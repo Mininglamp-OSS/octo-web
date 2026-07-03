@@ -3,16 +3,20 @@ import ReactDOM from "react-dom";
 import { act } from "react-dom/test-utils";
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
-// Reproduces the tester scenario for the AI online green dot on the Contacts page:
-// the server marks an AI online but sends NO onlineStatus CMD, the user switches
-// away and back to the tab, and the dot must self-heal (appear) on visibilitychange
-// without a full page reload.
+// Regression coverage for the two remaining AI online green-dot paths on the
+// Contacts page (the tab-focus path is covered in visibilityHeal.test.tsx):
+//   (a) the dot must appear after the initial prefetch of an AI's channelInfo resolves;
+//   (b) the dot must appear after a realtime onlineStatus WS push.
 //
-// Root cause the fix addresses: fetchChannelInfo rebuilds channelInfo.channel from the
-// server response's channel_id (the space prefix `s<spaceId>_` is stripped by the
-// backend), so the ChannelInfoListener fires with the stripped uid, which never matches
-// the prefixed uid stored in prefetchedUids — the re-render is therefore never triggered.
-// refreshTrackedOnlineStatus must force its own re-render after the refetch resolves.
+// Root cause both paths hit before the fix: the contacts list holds Space-prefixed
+// uids (`s<spaceId>_<uid>`), but the channelInfoCallback rebuilds channelInfo.channel
+// from the server's stripped channel_id, and the onlineStatus WS handler
+// (dmworkbase module.tsx) keys everything off the stripped `cmdContent.param.uid`.
+// So prefetch cached under the prefixed key while the listener fired — and the WS
+// handler updated — under the stripped key: the membership test never matched and
+// renderOnlineBadge read a stale prefixed-key entry, so neither path re-rendered the
+// dot until an unrelated render. The fix normalizes the online-status uid to the
+// stripped form for prefetch, cache reads and the listener match, unifying all paths.
 
 const SPACE_PREFIX = "s" + "a".repeat(32) + "_";
 const STRIPPED_UID = "bot1";
@@ -31,7 +35,8 @@ class MockChannel {
 }
 
 // Stateful SDK mock: real listener list + cache, and a fetchChannelInfo that reconstructs
-// the channel from the (stripped) server id, exactly like the production channelInfoCallback.
+// the channel from the (stripped) server id and caches under the REQUESTED key, exactly
+// like the production channelInfoCallback — this is what reproduces the key mismatch.
 const sdkState = {
   listeners: [] as ((ci: any) => void)[],
   cache: new Map<string, any>(),
@@ -62,9 +67,24 @@ const channelManager = {
       lastOffline: s.last_offline,
     };
     sdkState.cache.set(requestedKey, ci); // 写回「请求 uid」对应 key
-    channelManager.notifyListeners(ci); // 用去前缀 channel 通知（listener 命中会失败）
+    channelManager.notifyListeners(ci); // 用去前缀 channel 通知
   },
 };
+
+// Faithfully mirror the dmworkbase onlineStatus WS handler (module.tsx): it always
+// keys off the stripped person uid — getChannelInfo(stripped); if present, flip online
+// and notify; otherwise fetchChannelInfo(stripped). No prefixed uid is ever involved.
+async function dispatchOnlineStatusPush(strippedUid: string, online: boolean) {
+  sdkState.server.set(strippedUid, { online, last_offline: 0 });
+  const ch = new MockChannel(strippedUid, 1);
+  const ci = channelManager.getChannelInfo(ch);
+  if (ci) {
+    ci.online = online;
+    channelManager.notifyListeners(ci);
+  } else {
+    await channelManager.fetchChannelInfo(ch);
+  }
+}
 
 let ContactsList: typeof import("../index").default;
 let container: HTMLDivElement;
@@ -166,37 +186,59 @@ const flush = async () => {
   });
 };
 
-describe("Contacts online badge self-heal on tab focus", () => {
-  it("shows the AI green dot after visibilitychange when the server went online without a CMD", async () => {
+const badgeCount = () => container.querySelectorAll('[data-testid="online-badge"]').length;
+
+// Render the Contacts page with a single AI in "已添加 AI", holding a Space-prefixed uid.
+async function mountWithBot(ref: React.RefObject<any>) {
+  await act(async () => {
+    ReactDOM.render(<ContactsList ref={ref} />, container);
+  });
+  await act(async () => {
+    ref.current.setState({ myBots: [{ uid: PREFIXED_UID, name: "AI Bot" }], expandedSection: "myBots", loading: false });
+  });
+  await flush();
+}
+
+describe("Contacts online badge sync for Space-prefixed AI uids", () => {
+  it("shows the green dot after the initial prefetch resolves with the AI already online", async () => {
     const ref = React.createRef<any>();
+    // 预取发生时服务端已在线，但列表持有的是带前缀 uid
+    sdkState.server.set(STRIPPED_UID, { online: true, last_offline: 0 });
 
-    // 初始：AI 离线，服务端未置在线
-    sdkState.server.set(STRIPPED_UID, { online: false, last_offline: 0 });
+    await mountWithBot(ref);
+    // 预取前缓存为空，尚无绿点
+    expect(badgeCount()).toBe(0);
 
+    // 初次预取该 AI 的在线态（uid 带 Space 前缀）
     await act(async () => {
-      ReactDOM.render(<ContactsList ref={ref} />, container);
-    });
-
-    // 加载「已添加 AI」并预取其在线态（uid 带 space 前缀）
-    await act(async () => {
-      ref.current.setState({ myBots: [{ uid: PREFIXED_UID, name: "AI Bot" }], expandedSection: "myBots", loading: false });
       ref.current.prefetchOnlineStatus([PREFIXED_UID]);
     });
     await flush();
 
-    // 离线时不应有绿点
-    expect(container.querySelectorAll('[data-testid="online-badge"]').length).toBe(0);
+    // 预取回包后应触发重渲并补出绿点
+    expect(badgeCount()).toBe(1);
+  });
 
-    // 服务端把该 AI 置为在线，但不发 onlineStatus CMD
-    sdkState.server.set(STRIPPED_UID, { online: true, last_offline: 0 });
+  it("shows the green dot after a realtime onlineStatus WS push", async () => {
+    const ref = React.createRef<any>();
+    // 初始离线并完成一次预取（注册该带前缀 uid 为已追踪）
+    sdkState.server.set(STRIPPED_UID, { online: false, last_offline: 0 });
 
-    // 用户切走再切回标签页
+    await mountWithBot(ref);
     await act(async () => {
-      document.dispatchEvent(new Event("visibilitychange"));
+      ref.current.prefetchOnlineStatus([PREFIXED_UID]);
+    });
+    await flush();
+    // 离线时不应有绿点
+    expect(badgeCount()).toBe(0);
+
+    // 实时 onlineStatus WS 推送把该 AI 置为在线（handler 用去前缀 uid）
+    await act(async () => {
+      await dispatchOnlineStatusPush(STRIPPED_UID, true);
     });
     await flush();
 
-    // 绿点应自愈补出，无需整页刷新
-    expect(container.querySelectorAll('[data-testid="online-badge"]').length).toBe(1);
+    // 实时推送后应触发重渲并补出绿点
+    expect(badgeCount()).toBe(1);
   });
 });
