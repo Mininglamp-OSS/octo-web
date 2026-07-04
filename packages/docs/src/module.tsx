@@ -273,10 +273,29 @@ export class DocsModule implements IModule {
     // routePath. Registering the menu fixes both the missing entry AND deep-link
     // mounting. Pattern mirrors MatterModule / dmworksummary. sort=4002 places it
     // after contacts(4000)/matter(4001) and before summary(5000).
+    //
+    // Gated by the backend appconfig `docs_on` flag (WKApp.remoteConfig.docsOn): the factory
+    // returns the menu only when docsOn is true, otherwise `undefined` (MenusManager.invokes
+    // filters falsy → the entry is hidden). Default is false (fail-safe) — docs-backend is an
+    // independent service whose reverse-proxy route / collab WS(:1234) / storage deps must be
+    // deployed before the entry is usable; ops flips docs_on on once ready. This is a pure
+    // display gate: /api/v1/docs auth still lives in docs-backend.
     wk.menus.register(
       'docs',
-      () => new Menus('docs', '/docs', t('docs.menu.title'), <DocsIcon />, <DocsIcon active />),
+      () =>
+        wk.remoteConfig?.docsOn
+          ? new Menus('docs', '/docs', t('docs.menu.title'), <DocsIcon />, <DocsIcon active />)
+          : undefined,
       4002,
     )
+
+    // appconfig is fetched asynchronously, so at init() docsOn is almost always still the
+    // default false. Subscribe to the FIRST successful load (addListener) and to later CHANGES
+    // (addConfigChangeListener) and refresh the NavRail on each, so the Docs entry appears (or
+    // disappears) the moment docs_on resolves — no unsubscribe needed, the module lives for the
+    // app's lifetime, same as its route/menu registration.
+    const refreshMenus = (): void => wk.menus.refresh?.()
+    wk.remoteConfig?.addListener(refreshMenus)
+    wk.remoteConfig?.addConfigChangeListener(refreshMenus)
   }
 }

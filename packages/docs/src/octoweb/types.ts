@@ -75,6 +75,29 @@ export interface RouteManager {
  */
 export interface MenusManager {
   register(sid: string, f: (param?: any) => unknown, sort?: number): void
+  /**
+   * Re-render the NavRail. The docs module calls this when the `docs_on` gate flips (appconfig
+   * arrives / changes) so a menu factory that now returns a Menus (or undefined) is re-evaluated.
+   * Optional in the seam: the real host MenusManager implements it; the test mock may stub it.
+   */
+  refresh?(): void
+}
+
+/**
+ * Minimal remote-config surface the docs module reads to gate its NavRail entry.
+ *
+ * Backed by the host `WKApp.remoteConfig` (a WKRemoteConfig instance) in production, whose
+ * `docsOn` mirrors the backend `/v1/common/appconfig` `docs_on` field. The listener methods
+ * each return an unsubscribe fn (see WKRemoteConfig). Optional on WKAppShape because it is
+ * surfaced via the host static cast in prod and provided by the test mock.
+ */
+export interface RemoteConfigLite {
+  /** Docs module display switch (backend appconfig `docs_on`); false/absent → hidden. */
+  docsOn: boolean
+  /** Fires once on the FIRST successful appconfig load. Returns an unsubscribe fn. */
+  addListener(cb: () => void): () => void
+  /** Fires on subsequent appconfig CHANGES (after the first load). Returns an unsubscribe fn. */
+  addConfigChangeListener(cb: () => void): () => void
 }
 
 /** Current login session — packages/dmworkbase/src/Service/...; token is opaque (non-JWT). */
@@ -114,6 +137,12 @@ export interface WKAppShape {
   menus: MenusManager
   apiClient: APIClient
   loginInfo: LoginInfo
+  /**
+   * Host remote config (WKApp.remoteConfig). The docs module reads `docsOn` to gate its NavRail
+   * entry and subscribes to its listeners to refresh when `docs_on` arrives/changes. Optional in
+   * the shape: surfaced via the host static cast in prod; the test mock supplies a stub.
+   */
+  remoteConfig?: RemoteConfigLite
   /**
    * The host's RIGHT (main) route pane manager (App.routeRight, a ContextRouteManager).
    * Matter/Summary push their detail view here so it fills the main content area while the

@@ -227,6 +227,18 @@ export class WKRemoteConfig {
    */
   stickerCustomEnabled: boolean = false;
   /**
+   * Docs 协作文档模块展示开关。后端字段 docs_on 为 true 时，前端在侧边栏 NavRail
+   * 展示 Docs 入口；false 或字段缺失时隐藏。
+   *
+   * 默认 false(fail-safe): docs-backend 是独立服务，其反向代理路由、Hocuspocus
+   * WS(:1234) 暴露、MySQL/Redis/对象存储依赖未就绪前保持隐藏，避免用户点进去卡在
+   * "Loading document…" 或报错。运维在 docs-backend 部署就绪后再下发 docs_on=true。
+   *
+   * 纯 UI 展示开关，不承担鉴权语义: /api/v1/docs 相关接口的权限校验仍由 docs-backend
+   * 负责，前端不能据此推断用户是否具备文档访问能力。
+   */
+  docsOn: boolean = false;
+  /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
    * 顶层 oidc_account_url / oidc_reset_password_url 是后端兼容老前端用的,新前端只读这里。
@@ -326,6 +338,7 @@ export class WKRemoteConfig {
       const previousSuppressLoginMigrationNotice =
         this.suppressLoginMigrationNotice;
       const previousStickerCustomEnabled = this.stickerCustomEnabled;
+      const previousDocsOn = this.docsOn;
       this.requestSuccess = true;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
@@ -339,6 +352,7 @@ export class WKRemoteConfig {
       this.stickerCustomEnabled = parseRemoteBool(
         result["sticker_custom_enabled"]
       );
+      this.docsOn = parseRemoteBool(result["docs_on"]);
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
@@ -347,7 +361,8 @@ export class WKRemoteConfig {
         previousMessagesSearchOn !== this.messagesSearchOn ||
         previousSuppressLoginMigrationNotice !==
           this.suppressLoginMigrationNotice ||
-        previousStickerCustomEnabled !== this.stickerCustomEnabled
+        previousStickerCustomEnabled !== this.stickerCustomEnabled ||
+        previousDocsOn !== this.docsOn
       ) {
         this.notifyConfigChangeListeners();
       }
