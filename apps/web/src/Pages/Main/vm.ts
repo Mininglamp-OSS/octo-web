@@ -1,6 +1,6 @@
 import { WKApp, Menus, ProviderListener, startVersionCheck, t } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
-import { reconcileMenuState } from "./menuReconcile";
+import { reconcileMenuState, resolvePendingRouteActivation } from "./menuReconcile";
 
 export default class MainVM extends ProviderListener {
   private _currentMenus?: Menus;
@@ -59,12 +59,18 @@ export default class MainVM extends ProviderListener {
   // Unsubscribe for the remote-config listener that reconciles the active view when a
   // config-gated menu (e.g. docs_on) disappears from the NavRail. See reconcileActiveMenu.
   private _unsubscribeMenuReconcile?: () => void;
+  // A boot route (e.g. /docs) that had no matching menu at didMount because a config-gated menu
+  // (docs_on) had not resolved yet. Kept so it can be activated once the menu appears on the
+  // first appconfig load, then cleared. Any explicit user navigation also clears it (see the
+  // currentMenus setter) so a late toggle never yanks the user off a view they chose.
+  private _pendingRouteActivation?: string;
 
   didMount(): void {
     let found = false;
-    if (WKApp.route.currentPath) {
+    const bootPath = WKApp.route.currentPath;
+    if (bootPath) {
       for (const menus of this.menusList) {
-        if (menus.routePath === WKApp.route.currentPath) {
+        if (menus.routePath === bootPath) {
           this.currentMenus = menus;
           found = true;
           break;
@@ -75,17 +81,26 @@ export default class MainVM extends ProviderListener {
     if (!found && this.menusList.length > 0) {
       this.currentMenus = this.menusList[0];
     }
+    // Deep-link deferral (#536 reviewer follow-up): we fell back to chat because the URL's route
+    // matched no live menu. When that route belongs to a config-gated menu still resolving (e.g.
+    // /docs before docs_on arrives), remember it so activatePendingRouteMenu can select it once
+    // the menu appears — otherwise a hard load / refresh / bookmark of /docs stays stuck on chat
+    // in the enabled deployment. Set AFTER the fallback assignment above, whose setter clears it.
+    if (!found && !!bootPath && bootPath !== "/") {
+      this._pendingRouteActivation = bootPath;
+    }
 
-    // Reconcile the active view when a remote-config flag toggles a menu OFF while it is the
-    // active view (e.g. ops flips docs_on=false while a user is on /docs). Without this the
-    // NavRail entry disappears but `currentMenus` still points at the gone menu and
-    // MainContentLeft keeps rendering its route via `historyRoutePaths` — "hide immediately"
-    // would be incomplete (reviewer feedback on #536). `menusList` is read live inside
-    // reconcileActiveMenu, so it reflects the post-toggle set. Only the change listener matters
-    // here: a first-load turn-ON never removes the currently active menu. This benefits every
-    // config-gated menu, not just docs.
+    // React to remote-config changes (e.g. ops flips docs_on) in two directions:
+    //  - disappearance: a menu that was the active view is gated OFF → reconcileActiveMenu drops
+    //    its route + falls back (also tears down its shared-pane view, see reconcileActiveMenu);
+    //  - appearance: a gated menu we deep-linked to at boot turns ON → activatePendingRouteMenu
+    //    selects the route the URL originally asked for.
+    // `menusList` is read live inside both, so it reflects the post-change gated set. This
+    // benefits every config-gated menu, not just docs.
     this._unsubscribeMenuReconcile = WKApp.remoteConfig.addConfigChangeListener(() => {
-      if (this.reconcileActiveMenu()) {
+      const reconciled = this.reconcileActiveMenu();
+      const activated = this.activatePendingRouteMenu();
+      if (reconciled || activated) {
         this.notifyListener();
       }
     });
@@ -214,6 +229,41 @@ export default class MainVM extends ProviderListener {
     return true;
   }
 
+  /**
+   * Activate a route the user deep-linked to at boot but which had no live menu then because a
+   * config-gated menu (e.g. docs_on) was still resolving. Called on remote-config changes.
+   *
+   * If `_pendingRouteActivation` is set and a menu with that routePath is now present, select it
+   * (adding its route to `historyRoutePaths` so MainContentLeft renders it) and clear the pending
+   * path. If the menu is still absent, keep waiting; if it has appeared but is already active,
+   * just clear the pending path. Only ever activates the *exact* route the URL asked for — never
+   * a surprise jump — and the pending path is dropped the moment the user navigates themselves
+   * (see the currentMenus setter), so a late toggle can't move a user off a view they chose.
+   *
+   * @returns true if a menu was activated (caller should re-render), false otherwise.
+   */
+  activatePendingRouteMenu(): boolean {
+    const result = resolvePendingRouteActivation({
+      pendingRoutePath: this._pendingRouteActivation,
+      menusList: this.menusList,
+      currentMenu: this._currentMenus,
+      historyRoutePaths: this._historyRoutePaths,
+    });
+    this._pendingRouteActivation = result.pendingRoutePath;
+    if (!result.activated) {
+      return false;
+    }
+    this._currentMenus = result.currentMenu;
+    this._historyRoutePaths = result.historyRoutePaths;
+    WKApp.currentMenuId = result.currentMenu?.id;
+    // NB: unlike onMenuClick we deliberately do NOT WKApp.routeRight.popToRoot() here. The route
+    // being activated (e.g. /docs) mounts fresh and populates the right pane itself via
+    // replaceToRoot on mount; popping first would empty the shared queue and briefly flash the
+    // host's base chat placeholder (the exact race DocsHome is built to avoid). Atomic replace by
+    // the newly-mounted route is cleaner than empty-then-fill.
+    return true;
+  }
+
   // 标记当前新版本已读，清除红点
   markVersionRead() {
     if (this.lastVersionInfo?.appVersion) {
@@ -245,6 +295,11 @@ export default class MainVM extends ProviderListener {
         this._historyRoutePaths.push(menus.routePath);
       }
     }
+    // An explicit menu selection (user click via onMenuClick, or switchToMenuById) cancels any
+    // pending boot-route activation: the user has chosen a view, so a config-gated menu that
+    // resolves later must not yank them off it. didMount sets _pendingRouteActivation only AFTER
+    // its own fallback assignment runs through here, so this does not clobber that.
+    this._pendingRouteActivation = undefined;
     this.notifyListener();
   }
   get settingSelected() {

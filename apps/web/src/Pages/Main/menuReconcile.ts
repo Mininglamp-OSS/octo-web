@@ -93,3 +93,82 @@ export function reconcileMenuState<M extends MenuLike>(
     activeMenuVanished: true,
   };
 }
+
+// ── Appearance-side reactivation (#536 reviewer follow-up) ──────────────────────────────────
+//
+// The mirror of the disappearance case above. A config-gated menu (docs_on) also affects the
+// *appearance* side: because the menu factory returns `undefined` until appconfig resolves
+// docsOn=true, a hard load / refresh / bookmark / share-link to that menu's route (e.g. `/docs`)
+// finds no matching menu at MainVM.didMount and falls back to chat. When docs_on later resolves,
+// refreshing the NavRail makes the entry appear, but nothing re-selects the route the URL asked
+// for — so the user is stranded on chat until they click the entry manually (a regression the
+// gating introduced; pre-gate the menu was always registered and didMount matched it).
+//
+// Fix: MainVM records the boot route it could not satisfy (`pendingRoutePath`) and, on each
+// appconfig change, asks this helper whether that route's menu has since appeared. Deliberately
+// scoped so it only ever activates the *exact* route the user deep-linked to — never a surprise
+// jump — and MainVM drops the pending path the moment the user navigates anywhere themselves.
+
+export interface PendingActivationInput<M extends MenuLike> {
+  /** The boot route MainVM.didMount could not match to a live menu (else undefined). */
+  pendingRoutePath: string | undefined;
+  /** The live menu list (reflects the post-appconfig gated set). */
+  menusList: M[];
+  /** The currently active menu, if any. */
+  currentMenu: M | undefined;
+  /** Route paths currently kept mounted by the host (display-toggled tabs). */
+  historyRoutePaths: string[];
+}
+
+export interface PendingActivationResult<M extends MenuLike> {
+  /** True when the pending route's menu appeared and is now selected (caller should re-render). */
+  activated: boolean;
+  /** The reconciled active menu (the newly-appeared menu when activated, else unchanged). */
+  currentMenu: M | undefined;
+  /** History list with the newly-activated route ensured (unchanged when not activated). */
+  historyRoutePaths: string[];
+  /**
+   * The still-pending route. Cleared (→ undefined) once the target menu has appeared — whether we
+   * activated it or found it already active — so we do not keep re-checking. Stays set only while
+   * the target menu is still absent (appconfig may not have enabled it yet).
+   */
+  pendingRoutePath: string | undefined;
+}
+
+/**
+ * Resolve a pending deep-link activation against the live menu list. If the pending route's menu
+ * is now present and is not already the active view, select it and add its route to history so
+ * the host renders it. One-shot: the pending path is consumed as soon as the menu exists.
+ */
+export function resolvePendingRouteActivation<M extends MenuLike>(
+  input: PendingActivationInput<M>
+): PendingActivationResult<M> {
+  const { pendingRoutePath, menusList, currentMenu, historyRoutePaths } = input;
+
+  if (!pendingRoutePath) {
+    return { activated: false, currentMenu, historyRoutePaths, pendingRoutePath };
+  }
+
+  const target = menusList.find((m) => m.routePath === pendingRoutePath);
+  if (!target) {
+    // Target menu still not live (e.g. docs_on not yet true) — keep waiting.
+    return { activated: false, currentMenu, historyRoutePaths, pendingRoutePath };
+  }
+
+  // Target menu exists now → the pending deep-link is resolved either way; stop tracking it.
+  if (currentMenu && currentMenu.id === target.id) {
+    // Already the active view (nothing to do, just consume the pending path).
+    return { activated: false, currentMenu, historyRoutePaths, pendingRoutePath: undefined };
+  }
+
+  const nextHistory =
+    historyRoutePaths.indexOf(target.routePath) === -1
+      ? [...historyRoutePaths, target.routePath]
+      : historyRoutePaths;
+  return {
+    activated: true,
+    currentMenu: target,
+    historyRoutePaths: nextHistory,
+    pendingRoutePath: undefined,
+  };
+}

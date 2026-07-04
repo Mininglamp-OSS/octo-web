@@ -111,6 +111,41 @@ describe('DocsModule (octo-web same-origin integration)', () => {
       expect(wk.mockMenus.refreshCount).toBeGreaterThan(0)
       expect(wk.mockMenus.menus.get('docs')!()).toBeUndefined()
     })
+
+    it('refreshes immediately when appconfig already resolved before init (#536 P2)', () => {
+      // Registration-order independent: if the docs module initializes AFTER the first appconfig
+      // load resolved, addListener would return a noop (fires only for pre-load subscribers), so
+      // the entry would wait for an unrelated later change. init() must honor requestSuccess and
+      // reflect the current docs_on right away.
+      const rc = new MockRemoteConfig(true)
+      rc.emitLoad() // first appconfig load resolves → requestSuccess=true, before init()
+      expect(rc.requestSuccess).toBe(true)
+      const wk = createMockWKApp(undefined, rc)
+      setWKApp(wk)
+      new DocsModule().init()
+      // Entry reflects docs_on now, without waiting for a further emitLoad/emitChange.
+      expect(wk.mockMenus.refreshCount).toBeGreaterThan(0)
+      expect((wk.mockMenus.menus.get('docs')!() as { routePath: string }).routePath).toBe('/docs')
+    })
+
+    it('does not accumulate duplicate config listeners across repeat init() (#536 P2)', () => {
+      // HMR / re-registration calls init() again on the same instance. The listeners must be
+      // rebound idempotently (old ones dropped first), not stacked — else each appconfig change
+      // fires refreshMenus N times.
+      const rc = new MockRemoteConfig(false)
+      const wk = createMockWKApp(undefined, rc)
+      setWKApp(wk)
+      const mod = new DocsModule()
+      mod.init()
+      mod.init()
+      mod.init()
+      // Exactly one change listener remains regardless of how many times init() ran.
+      expect(rc.changeListenerCount()).toBe(1)
+      const before = wk.mockMenus.refreshCount
+      rc.docsOn = true
+      rc.emitChange()
+      expect(wk.mockMenus.refreshCount).toBe(before + 1) // one refresh, not three
+    })
   })
 
   it('returns a STABLE /docs route element across handler invocations', () => {

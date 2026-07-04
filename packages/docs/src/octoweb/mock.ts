@@ -87,12 +87,21 @@ export class MockMenusManager {
  */
 export class MockRemoteConfig implements RemoteConfigLite {
   docsOn: boolean
+  /** Mirrors the host contract: true once the first appconfig load has resolved. */
+  requestSuccess = false
   private loadListeners: Array<() => void> = []
   private changeListeners: Array<() => void> = []
   constructor(docsOn = true) {
     this.docsOn = docsOn
   }
   addListener(cb: () => void): () => void {
+    // Mirror the host: subscribing after the first load already resolved returns a noop, so a
+    // late subscriber never fires (it must check requestSuccess and self-handle instead).
+    if (this.requestSuccess) {
+      return () => {
+        /* noop */
+      }
+    }
     this.loadListeners.push(cb)
     return () => {
       this.loadListeners = this.loadListeners.filter((l) => l !== cb)
@@ -104,8 +113,13 @@ export class MockRemoteConfig implements RemoteConfigLite {
       this.changeListeners = this.changeListeners.filter((l) => l !== cb)
     }
   }
+  /** Number of change listeners currently registered (test hook for idempotent-rebind checks). */
+  changeListenerCount(): number {
+    return this.changeListeners.length
+  }
   /** Simulate the FIRST successful appconfig load firing its one-shot listeners. */
   emitLoad(): void {
+    this.requestSuccess = true
     for (const l of [...this.loadListeners]) l()
   }
   /** Simulate a subsequent appconfig change firing its change listeners. */

@@ -1,7 +1,11 @@
 import * as fs from "fs";
 import * as path from "path";
 import { describe, it, expect } from "vitest";
-import { reconcileMenuState, type MenuLike } from "../Pages/Main/menuReconcile";
+import {
+  reconcileMenuState,
+  resolvePendingRouteActivation,
+  type MenuLike,
+} from "../Pages/Main/menuReconcile";
 
 const repoRoot = path.resolve(__dirname, "../../../..");
 
@@ -175,5 +179,99 @@ describe("MainVM.reconcileActiveMenu — releases the shared right pane only whe
     const popIdx = source.indexOf("WKApp.routeRight.popToRoot()");
     expect(guardIdx).toBeGreaterThan(-1);
     expect(popIdx).toBeGreaterThan(guardIdx);
+  });
+});
+
+// #536 round-4 reviewer follow-up (yujiawei / OctoBoooot / Jerry-Xin): the gating regressed the
+// APPEARANCE side. Because the docs menu factory returns undefined until docs_on resolves, a hard
+// load / refresh / bookmark / share-link of /docs finds no matching menu at MainVM.didMount and
+// falls back to chat; when docs_on later resolves, the NavRail refresh makes the entry appear but
+// nothing re-selects the deep-linked route, stranding the user on chat. MainVM records the
+// unsatisfied boot route and, on each appconfig change, asks resolvePendingRouteActivation whether
+// that route's menu has since appeared. Tested as a pure helper (no @octo/base graph); MainVM is a
+// thin adapter that copies the result onto its private state and clears the pending path on any
+// explicit user navigation (verified by source assertion below).
+describe("resolvePendingRouteActivation — deep-link appears after appconfig resolves", () => {
+  it("activates the pending route once its menu appears, and clears the pending path", () => {
+    // Booted at /docs, fell back to chat; docs_on now true → docs menu appears.
+    const result = resolvePendingRouteActivation({
+      pendingRoutePath: "/docs",
+      menusList: [chat, docs], // docs now live
+      currentMenu: chat, // user still on the fallback
+      historyRoutePaths: ["/chat"],
+    });
+    expect(result.activated).toBe(true);
+    expect(result.currentMenu?.id).toBe("docs");
+    expect(result.historyRoutePaths).toEqual(["/chat", "/docs"]); // route added → host renders it
+    expect(result.pendingRoutePath).toBeUndefined(); // consumed
+  });
+
+  it("keeps waiting (no activation) while the pending route's menu is still absent", () => {
+    // docs_on hasn't resolved yet → docs still not in the list.
+    const result = resolvePendingRouteActivation({
+      pendingRoutePath: "/docs",
+      menusList: [chat], // docs still gated off
+      currentMenu: chat,
+      historyRoutePaths: ["/chat"],
+    });
+    expect(result.activated).toBe(false);
+    expect(result.currentMenu?.id).toBe("chat");
+    expect(result.historyRoutePaths).toEqual(["/chat"]);
+    expect(result.pendingRoutePath).toBe("/docs"); // still pending
+  });
+
+  it("is a no-op with no pending route", () => {
+    const result = resolvePendingRouteActivation({
+      pendingRoutePath: undefined,
+      menusList: [chat, docs],
+      currentMenu: chat,
+      historyRoutePaths: ["/chat"],
+    });
+    expect(result.activated).toBe(false);
+    expect(result.pendingRoutePath).toBeUndefined();
+  });
+
+  it("consumes the pending path without moving the user when the menu is already active", () => {
+    // Edge: the deep-linked menu somehow became active already → just drop the pending path.
+    const result = resolvePendingRouteActivation({
+      pendingRoutePath: "/docs",
+      menusList: [chat, docs],
+      currentMenu: docs,
+      historyRoutePaths: ["/chat", "/docs"],
+    });
+    expect(result.activated).toBe(false);
+    expect(result.currentMenu?.id).toBe("docs");
+    expect(result.pendingRoutePath).toBeUndefined(); // consumed, won't re-check
+  });
+
+  it("does not duplicate the route when it is already in history", () => {
+    const result = resolvePendingRouteActivation({
+      pendingRoutePath: "/docs",
+      menusList: [chat, docs],
+      currentMenu: chat,
+      historyRoutePaths: ["/chat", "/docs"], // already present (e.g. visited earlier)
+    });
+    expect(result.activated).toBe(true);
+    expect(result.currentMenu?.id).toBe("docs");
+    expect(result.historyRoutePaths).toEqual(["/chat", "/docs"]); // no duplicate
+  });
+});
+
+describe("MainVM — pending deep-link wiring", () => {
+  it("records the unsatisfied boot route and clears it on explicit navigation", () => {
+    const source = readRepoFile("apps/web/src/Pages/Main/vm.ts");
+    // didMount stashes the boot route when the fallback fired (no menu matched it)...
+    expect(source).toContain("this._pendingRouteActivation = bootPath");
+    // ...and the config-change listener tries to activate it as menus appear.
+    expect(source).toContain("this.activatePendingRouteMenu()");
+    // Any explicit menu selection (the currentMenus setter) must cancel the pending activation so
+    // a late docs_on toggle never yanks a user off a view they chose.
+    expect(source).toContain("this._pendingRouteActivation = undefined");
+    const setterClearIdx = source.indexOf(
+      "this._pendingRouteActivation = undefined"
+    );
+    const setterIdx = source.indexOf("set currentMenus(");
+    expect(setterIdx).toBeGreaterThan(-1);
+    expect(setterClearIdx).toBeGreaterThan(setterIdx);
   });
 });

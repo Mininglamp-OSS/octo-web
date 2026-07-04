@@ -94,6 +94,13 @@ export interface MenusManager {
 export interface RemoteConfigLite {
   /** Docs module display switch (backend appconfig `docs_on`); false/absent → hidden. */
   docsOn: boolean
+  /**
+   * True once the FIRST appconfig load has resolved. Per the host contract, a subscriber that
+   * registers via `addListener` after this is already true will NOT be called (addListener
+   * returns a noop), so callers must check this and handle the already-loaded state themselves.
+   * Optional in the seam: the real host WKRemoteConfig always provides it; older mocks may omit.
+   */
+  requestSuccess?: boolean
   /** Fires once on the FIRST successful appconfig load. Returns an unsubscribe fn. */
   addListener(cb: () => void): () => void
   /** Fires on subsequent appconfig CHANGES (after the first load). Returns an unsubscribe fn. */

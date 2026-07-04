@@ -40,11 +40,14 @@ describe("docs_on appconfig web integration", () => {
 
     // Menu factory returns the entry only when docsOn is true (else undefined → hidden).
     expect(source).toContain("wk.remoteConfig?.docsOn");
-    // Subscribe to first load AND later changes, refreshing the NavRail each time.
-    expect(source).toContain("wk.remoteConfig?.addListener(refreshMenus)");
-    expect(source).toContain(
-      "wk.remoteConfig?.addConfigChangeListener(refreshMenus)"
-    );
+    // Subscribe to first load AND later changes, refreshing the NavRail each time. (Behavioral
+    // coverage of the gate flip lives in packages/docs/module.test.tsx; these assert the wiring
+    // is present.)
+    expect(source).toContain("rc.addListener(refreshMenus)");
+    expect(source).toContain("rc.addConfigChangeListener(refreshMenus)");
     expect(source).toContain("wk.menus.refresh?.()");
+    // Honor the addListener contract: when appconfig already resolved before init, reflect the
+    // current docs_on immediately instead of waiting on a listener that would never fire (#536).
+    expect(source).toContain("rc.requestSuccess");
   });
 });
