@@ -1,5 +1,6 @@
 import { WKApp, Menus, ProviderListener, startVersionCheck, t } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
+import { reconcileMenuState } from "./menuReconcile";
 
 export default class MainVM extends ProviderListener {
   private _currentMenus?: Menus;
@@ -55,6 +56,9 @@ export default class MainVM extends ProviderListener {
 
   private ipcListeners: { event: string; handler: (...args: any[]) => void }[] = [];
   private stopVersionCheck?: () => void;
+  // Unsubscribe for the remote-config listener that reconciles the active view when a
+  // config-gated menu (e.g. docs_on) disappears from the NavRail. See reconcileActiveMenu.
+  private _unsubscribeMenuReconcile?: () => void;
 
   didMount(): void {
     let found = false;
@@ -71,6 +75,20 @@ export default class MainVM extends ProviderListener {
     if (!found && this.menusList.length > 0) {
       this.currentMenus = this.menusList[0];
     }
+
+    // Reconcile the active view when a remote-config flag toggles a menu OFF while it is the
+    // active view (e.g. ops flips docs_on=false while a user is on /docs). Without this the
+    // NavRail entry disappears but `currentMenus` still points at the gone menu and
+    // MainContentLeft keeps rendering its route via `historyRoutePaths` — "hide immediately"
+    // would be incomplete (reviewer feedback on #536). `menusList` is read live inside
+    // reconcileActiveMenu, so it reflects the post-toggle set. Only the change listener matters
+    // here: a first-load turn-ON never removes the currently active menu. This benefits every
+    // config-gated menu, not just docs.
+    this._unsubscribeMenuReconcile = WKApp.remoteConfig.addConfigChangeListener(() => {
+      if (this.reconcileActiveMenu()) {
+        this.notifyListener();
+      }
+    });
 
     if ((window as any).__POWERED_ELECTRON__) {
       this.appUpdateInit();
@@ -150,7 +168,37 @@ export default class MainVM extends ProviderListener {
     }
     this.ipcListeners = [];
     this.stopVersionCheck?.();
+    this._unsubscribeMenuReconcile?.();
   }
+
+  /**
+   * Reconcile the active menu against the live menu list. Called on remote-config changes.
+   *
+   * If the currently active menu is no longer present in `menusList` (a config-gated entry such
+   * as docs_on was turned off), drop its cached route from `historyRoutePaths` so the view
+   * actually unmounts (tearing down e.g. the docs collab WebSocket) and fall back to the first
+   * available menu. If the active menu is still present, this is a no-op.
+   *
+   * Deliberately one-directional: turning a menu ON never yanks the user off their current view,
+   * so we only handle disappearance, not appearance (no surprise auto-navigation).
+   *
+   * @returns true if the active menu changed (caller should re-render), false if unchanged.
+   */
+  reconcileActiveMenu(): boolean {
+    const result = reconcileMenuState({
+      menusList: this.menusList,
+      currentMenu: this._currentMenus,
+      historyRoutePaths: this._historyRoutePaths,
+    });
+    if (!result.changed) {
+      return false;
+    }
+    this._currentMenus = result.currentMenu;
+    this._historyRoutePaths = result.historyRoutePaths;
+    WKApp.currentMenuId = result.currentMenu?.id;
+    return true;
+  }
+
   // 标记当前新版本已读，清除红点
   markVersionRead() {
     if (this.lastVersionInfo?.appVersion) {
