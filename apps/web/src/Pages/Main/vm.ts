@@ -172,17 +172,29 @@ export default class MainVM extends ProviderListener {
   }
 
   /**
-   * Reconcile the active menu against the live menu list. Called on remote-config changes.
+   * Reconcile menu state against the live menu list. Called on remote-config changes.
    *
-   * If the currently active menu is no longer present in `menusList` (a config-gated entry such
-   * as docs_on was turned off), drop its cached route from `historyRoutePaths` so the view
-   * actually unmounts (tearing down e.g. the docs collab WebSocket) and fall back to the first
-   * available menu. If the active menu is still present, this is a no-op.
+   * Drops any `historyRoutePaths` entry whose menu is no longer present (a config-gated entry
+   * such as docs_on was turned off) — including background tabs the user isn't currently on, not
+   * just the active one — so the corresponding view unmounts. If the *active* menu itself
+   * vanished, additionally falls back to the first available menu.
+   *
+   * The *active* menu may have pushed content into the shared right-hand pane
+   * (`WKApp.routeRight`, e.g. the docs collab editor via `routeRight.replaceToRoot`), which is
+   * independent of `historyRoutePaths` and would otherwise keep its WebSocket connected after its
+   * NavRail entry disappears. When the active menu itself vanishes we clear that pane too,
+   * mirroring what a manual menu switch already does for a non-chat menu (see `onMenuClick` in
+   * `Pages/Main/index.tsx`). This must NOT fire just because some hidden/background tab was
+   * pruned — `routeRight` is shared with whatever menu is *currently* active (e.g. chat pushes
+   * its own content there too via EndpointCommon.tsx), so clearing it on every prune would wipe
+   * an unrelated active view (an open chat conversation) whenever some other gated-off
+   * background tab happens to be dropped from history at the same time.
    *
    * Deliberately one-directional: turning a menu ON never yanks the user off their current view,
    * so we only handle disappearance, not appearance (no surprise auto-navigation).
    *
-   * @returns true if the active menu changed (caller should re-render), false if unchanged.
+   * @returns true if the active menu or history changed (caller should re-render), false if
+   * unchanged.
    */
   reconcileActiveMenu(): boolean {
     const result = reconcileMenuState({
@@ -196,6 +208,9 @@ export default class MainVM extends ProviderListener {
     this._currentMenus = result.currentMenu;
     this._historyRoutePaths = result.historyRoutePaths;
     WKApp.currentMenuId = result.currentMenu?.id;
+    if (result.activeMenuVanished) {
+      WKApp.routeRight.popToRoot();
+    }
     return true;
   }
 
