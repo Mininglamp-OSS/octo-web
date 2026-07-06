@@ -265,6 +265,44 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(assignSpy).not.toHaveBeenCalled()
   })
 
+  it('AC-1 (XIN-420): a multi-session user opens the standalone link carrying the current session sid', async () => {
+    const openSpy = vi.fn()
+    Object.defineProperty(window, 'open', { configurable: true, writable: true, value: openSpy })
+    // Multi-session in-shell URL: the host's RouteManager re-push collapses the docs route to
+    // `/docs?sid=…`, so the active session's sid rides on window.location. Give the stub a real
+    // origin too — withReturnSid rebuilds the target against it.
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '?sid=s_active', assign: assignSpy },
+    })
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [{ docId: 'd_a', title: 'Doc A', ownerId: 'u_self', role: 'admin' }],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Doc A')).toBeTruthy())
+    fireEvent.click(screen.getByText('Doc A'))
+    fireEvent.click(screen.getByTestId('editor-open-new-page'))
+
+    // The new tab must carry the active sid so its sid-keyed load() hits the right bucket. Without
+    // it a multi-session user's new tab reads the empty-sid bucket, misses, and (since XIN-392's
+    // strict findUniqueStoredSession refuses to guess) bounces to login instead of the document.
+    expect(openSpy).toHaveBeenCalledWith('/d/d_a?sid=s_active', '_blank', 'noopener,noreferrer')
+    expect(assignSpy).not.toHaveBeenCalled()
+  })
+
   it('mounts the editor inline from a persisted target on first paint (deep-link / refresh)', async () => {
     window.sessionStorage.setItem(
       TARGET_KEY,

@@ -4,6 +4,7 @@ import { EditorShell } from '../editor/EditorShell.tsx'
 import '../editor/styles.css'
 import { DEFAULT_DOC_SPACE, DEFAULT_DOC_FOLDER, DEFAULT_DOC_ID } from '../config.ts'
 import { listDocs, createDoc, type DocListItem } from './docsApi.ts'
+import { withReturnSid } from './StandaloneDocPage.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { formatRelative, formatAbsolute } from '../versions/format.ts'
 
@@ -410,9 +411,20 @@ export function DocsHome() {
   // "Open in new page" (AC-1): open the current doc as a standalone full-window `/d/:docId` link
   // in a new browser tab — the clean, shareable cold-load entry that lives outside the app shell.
   // The id only ever contains documentName-safe chars, so the built path stays a valid /d/ route.
+  //
+  // Carry the current session's sid (XIN-420, same gap the XIN-398 post-login return path fixed):
+  // the host's RouteManager re-push collapses the in-shell docs route to `/docs?sid=…`, so a
+  // multi-session user's active sid rides on window.location. Route it through withReturnSid
+  // (query-only, percent-encoded, safe-path re-checked) so the new tab's sid-keyed load() hits the
+  // right bucket instead of missing the empty-sid bucket and — since XIN-392's strict
+  // findUniqueStoredSession refuses to guess an identity — bouncing to login. An empty sid (single
+  // / empty-sid session, no ambiguity) makes withReturnSid a no-op: the plain /d/:docId cold-load
+  // recovers on its own, so we never append a meaningless `?sid=`.
   const onOpenInNewPage = useCallback((id: string) => {
     if (typeof window !== 'undefined') {
-      window.open(`/d/${encodeURIComponent(id)}`, '_blank', 'noopener,noreferrer')
+      const sid = new URLSearchParams(window.location.search).get('sid')
+      const target = withReturnSid(`/d/${encodeURIComponent(id)}`, sid)
+      window.open(target, '_blank', 'noopener,noreferrer')
     }
   }, [])
 
