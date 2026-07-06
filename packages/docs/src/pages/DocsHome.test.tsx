@@ -419,6 +419,74 @@ describe('DocsHome — reloads the list when the current Space switches', () => 
   })
 })
 
+describe('DocsHome — a Space switch reconciles the open selection back to the list (P0)', () => {
+  // Regression (XIN-448): switching Space bumped `space` but left `selectedDocId`, the persisted
+  // `octo.docs.target`, and the URL pointing at the doc opened under the PREVIOUS Space. That
+  // rebuilt EditorShell with the OLD docId under the NEW space — a cross-Space collab session
+  // (octo:<newSpace>:<folder>:<oldDoc>), a data-isolation leak — and a refresh restored the old
+  // Space's doc from the persisted target. A switch must reconcile the selection back to the
+  // list of the new Space (same primitive as the explicit "back to list").
+  it('clears selectedDocId, the persisted target, and the URL doc addressing when the Space switches', async () => {
+    // A doc is open under the first Space (persisted target mounts it inline on first paint).
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'space-a', folder: 'f_default', doc: 'd_open' }),
+    )
+    const wk = createMockWKApp()
+    wk.shared.currentSpaceId = 'space-a'
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    // The editor for the doc opened under space-a is mounted.
+    expect(screen.getByTestId('editor-shell')).toBeTruthy()
+    expect(screen.getByTestId('editor-doc').textContent).toBe('d_open')
+
+    // Host switches Space: mutate currentSpaceId then broadcast.
+    wk.shared.currentSpaceId = 'space-b'
+    wk.mockMittBus.emitSpaceChanged({ space_id: 'space-b' })
+
+    // The old doc must NOT stay mounted under the new Space — selection is reset to the list.
+    await waitFor(() => expect(screen.queryByTestId('editor-shell')).toBeNull())
+    // The persisted target is cleared so a refresh does not restore the previous Space's doc.
+    expect(window.sessionStorage.getItem(TARGET_KEY)).toBeNull()
+    // The URL is mirrored back to the list (doc addressing dropped), never a full navigation.
+    expect(assignSpy).not.toHaveBeenCalled()
+    expect(String(replaceStateSpy.mock.calls.at(-1)![2])).not.toContain('doc=')
+  })
+
+  it('does not reconcile (nor refetch) on a redundant same-Space broadcast while a doc is open', async () => {
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'space-a', folder: 'f_default', doc: 'd_open' }),
+    )
+    const wk = createMockWKApp()
+    wk.shared.currentSpaceId = 'space-a'
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    expect(screen.getByTestId('editor-shell')).toBeTruthy()
+
+    // A redundant broadcast for the SAME Space must not yank the open doc back to the list.
+    wk.mockMittBus.emitSpaceChanged({ space_id: 'space-a' })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.getByTestId('editor-shell')).toBeTruthy()
+    expect(screen.getByTestId('editor-doc').textContent).toBe('d_open')
+    expect(window.sessionStorage.getItem(TARGET_KEY)).not.toBeNull()
+  })
+})
+
 describe('DocsHome — a stale (out-of-order) list response cannot overwrite the current Space (P0, XIN-417)', () => {
   // Regression (XIN-417): switching Space fires a fresh listDocs, but the previous Space's request
   // may still be in flight. Responses settle in network order, not call order, so an OLDER Space's

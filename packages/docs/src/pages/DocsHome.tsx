@@ -365,16 +365,10 @@ export function DocsHome() {
   const [space, setSpace] = useState<string>(() => wk.shared?.currentSpaceId || DEFAULT_DOC_SPACE)
   const folder = DEFAULT_DOC_FOLDER
 
-  // Subscribe to the host's Space-switch broadcast. On a switch the host mutates currentSpaceId
-  // then emits `space-changed`; we re-read the id into state. setSpace bails out when the value
-  // is unchanged, so a redundant broadcast for the same Space causes no extra render/fetch — one
-  // switch = one reload, no request storm. The effect runs once (empty deps): getWKApp() returns
-  // the stable singleton, and the handler always reads the latest currentSpaceId off it.
-  useEffect(() => {
-    return onSpaceChanged(() => {
-      setSpace(getWKApp().shared?.currentSpaceId || DEFAULT_DOC_SPACE)
-    })
-  }, [])
+  // The Space this component last reconciled to. The space-changed handler reads it to tell a
+  // real switch from a redundant same-Space broadcast; only a real switch reconciles/refetches.
+  // setSpace is only ever called from that handler, so this ref is the authoritative previous id.
+  const spaceRef = useRef(space)
 
   // Initial selection from URL deep-link / persisted target (so a shared `/docs?doc=` or a
   // refresh opens that doc in the right pane on first paint).
@@ -433,6 +427,32 @@ export function DocsHome() {
       }
     }
   }, [routeRight, buildEmptyState])
+
+  // Subscribe to the host's Space-switch broadcast. On a switch the host mutates currentSpaceId
+  // then emits `space-changed`; we re-read the id into state AND reconcile the open selection.
+  //
+  // Reconciliation (XIN-448): a switch must not carry the doc opened under the PREVIOUS Space
+  // into the new one. Left as-is, buildEditor(selectedDocId) would rebuild EditorShell with the
+  // OLD docId under the NEW space → a cross-Space collab session (octo:<newSpace>:<folder>:
+  // <oldDoc>), a data-isolation leak — and the persisted `octo.docs.target` would restore the
+  // old Space's doc on refresh. We reuse the existing "back to list" primitive so the switch
+  // lands on the new Space's list (clears selectedDocId + the persisted target + mirrors the URL).
+  //
+  // Only a REAL switch reconciles: spaceRef gates redundant same-Space broadcasts, so one switch =
+  // one reload and a duplicate broadcast is a no-op (no request storm, no doc yanked to the list).
+  // The effect runs once (empty deps): getWKApp() is the stable singleton and backToList is
+  // referentially stable (deps: the singleton routeRight + the []-stable buildEmptyState), so the
+  // subscription never captures a stale reconciler and the onSpaceChanged cleanup stays intact.
+  useEffect(() => {
+    return onSpaceChanged(() => {
+      const next = getWKApp().shared?.currentSpaceId || DEFAULT_DOC_SPACE
+      if (next === spaceRef.current) return
+      spaceRef.current = next
+      setSpace(next)
+      backToList()
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Called after a successful delete (now from the editor detail page, Problem 4). If the deleted
   // doc is the one open in the right pane, return to the empty/list state (which also resets the
