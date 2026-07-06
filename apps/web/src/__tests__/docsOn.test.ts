@@ -26,9 +26,11 @@ describe("docs_on appconfig web integration", () => {
   it("wires docsOn into WKRemoteConfig from appconfig, defaulting to false", () => {
     const source = readRepoFile("packages/dmworkbase/src/App.tsx");
 
-    // Fail-safe default: hidden until docs-backend is deployed and ops flips docs_on.
+    // Fail-safe default on the field; on appconfig, fall back to true when the backend
+    // omits docs_on (temp for test env until backend docs_on lands).
     expect(source).toContain("docsOn: boolean = false");
-    expect(source).toContain('this.docsOn = parseRemoteBool(result["docs_on"])');
+    expect(source).toContain('result["docs_on"] === undefined');
+    expect(source).toContain('parseRemoteBool(result["docs_on"])');
     // docsOn must participate in change detection so the NavRail refreshes on toggle.
     expect(source).toContain("previousDocsOn");
     expect(source).toContain("previousDocsOn !== this.docsOn");
