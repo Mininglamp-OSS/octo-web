@@ -89,6 +89,11 @@ describe('docs list/create API (bare-relative /docs)', () => {
   })
 
   it('carries an explicit X-Space-Id header when getDoc is given a spaceId (standalone by-space preflight)', async () => {
+    // Scope: this asserts the DOCS-SIDE contract — getDoc puts the explicit header into the request
+    // config. That the header then really reaches the wire (host APIClient forwards config.headers to
+    // axios, and the interceptor lets the explicit header win) is covered by the host unit test at
+    // packages/dmworkbase/src/Service/__tests__/APIClient.headers.test.ts. Both halves are needed:
+    // the mock seam here cannot prove the real host forwards headers (that was the XIN-424 fake-green).
     api.responder = () => ({ data: { docId: 'd_real', title: 'Real Title' }, status: 200 })
     await getDoc('d_real', { spaceId: 'space-abc' })
     const call = api.calls.at(-1)!

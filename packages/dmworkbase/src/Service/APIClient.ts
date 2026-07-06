@@ -89,7 +89,11 @@ export default class APIClient {
             // 统一注入 X-Space-Id header（GH Mininglamp-OSS/octo-web#1038）。
             // 仅当回调返回非空字符串时写入，避免把 "" 作为合法 space_id 传给后端。
             // 与 URL query 里的 space_id= 拼接共存，后端按优先级双读，前端渐进迁移。
-            if (self.config.spaceIdCallback) {
+            // 合并策略：per-request 显式头优先。若调用方已通过 config.headers 显式带上
+            // X-Space-Id（如 standalone /d/:docId 冷启动 preflight），拦截器不覆盖它；
+            // 仅在显式头缺省时用 currentSpaceId 兜底注入。这样显式头与拦截器头永远一致
+            // （显式为准/拦截器兜底），不会互相冲突。
+            if (self.config.spaceIdCallback && !config.headers!["X-Space-Id"]) {
                 const spaceId = self.config.spaceIdCallback()
                 if (spaceId && spaceId !== "") {
                     config.headers!["X-Space-Id"] = spaceId;
@@ -124,22 +128,27 @@ export default class APIClient {
 
      get<T>(path: string, config?: RequestConfig) {
        return this.wrapResult<T>(axios.get(path, {
-        params: config?.param
+        params: config?.param,
+        headers: config?.headers,
     }), config)
     }
     post(path: string, data?: any, config?: RequestConfig) {
-        return this.wrapResult(axios.post(path, data, {}), config)
+        return this.wrapResult(axios.post(path, data, {
+            headers: config?.headers,
+        }), config)
     }
 
     put(path: string, data?: any, config?: RequestConfig) {
         return this.wrapResult(axios.put(path, data, {
             params: config?.param,
+            headers: config?.headers,
         }), config)
     }
 
     patch(path: string, data?: any, config?: RequestConfig) {
         return this.wrapResult(axios.patch(path, data, {
             params: config?.param,
+            headers: config?.headers,
         }), config)
     }
 
@@ -147,6 +156,7 @@ export default class APIClient {
         return this.wrapResult(axios.delete(path, {
             params: config?.param,
             data: config?.data,
+            headers: config?.headers,
         }), config)
     }
 
@@ -185,6 +195,13 @@ export class RequestConfig {
     param?: any
     data?:any
     resp?: () => APIResp
+    /**
+     * 逐请求显式 HTTP 头，转发给 axios 并由其合并进最终请求头。用于让 per-request 头
+     * （如 standalone /d/:docId preflight 的 X-Space-Id）真正上 wire。合并策略见
+     * initAxios 的请求拦截器：显式头优先，拦截器仅在对应头缺省时兜底注入。不传则完全
+     * 保持既有无显式头行为。
+     */
+    headers?: Record<string, string>
 }
 
 export interface APIResp {

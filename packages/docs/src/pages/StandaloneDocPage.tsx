@@ -252,11 +252,19 @@ export function StandaloneDocPage({
   // fell to the not-found terminal even for the user's own last space).
   const preflightSpace = standaloneFallbackSpace(wk.shared?.currentSpaceId)
 
-  // Defense in depth (does NOT gate the primary fix above): the standalone page mounts via the
-  // Layout early-return, before the app shell restores currentSpaceId from localStorage, so any
-  // in-shell-shared logic the EditorShell touches would see an empty space. If — and only if — the
-  // live space is empty and a cached value exists, seed it from the same cached key. Never overwrite
-  // a real current space, so in-shell mounts (where it is already set) are unaffected.
+  // Genuine defense in depth (second, independent path — NOT the only working one): the standalone
+  // page mounts via the Layout early-return, before the app shell restores currentSpaceId from
+  // localStorage, so any in-shell-shared logic the EditorShell touches would see an empty space. If —
+  // and only if — the live space is empty and a cached value exists, seed it from the same cached key.
+  // Never overwrite a real current space, so in-shell mounts (where it is already set) are unaffected.
+  //
+  // Both paths now really carry the space to the backend: the preflight's EXPLICIT X-Space-Id header
+  // (primary — APIClient forwards config.headers since XIN-424, so it truly reaches the wire) AND this
+  // seeding, which repopulates currentSpaceId so the global request interceptor injects X-Space-Id on
+  // every OTHER request the shell fires. Before XIN-424 the explicit header was silently dropped by
+  // APIClient, so this seeding was in fact the ONLY thing that made same-space docs open; with the
+  // header fixed the two are now independent, mutually-reinforcing paths (explicit header wins per
+  // request; interceptor is the fallback), which is what real defense in depth means.
   useEffect(() => {
     const shared = wk.shared
     if (!shared || shared.currentSpaceId) return
@@ -330,7 +338,14 @@ export function StandaloneDocPage({
   const onCopyLink = useCallback(async () => {
     if (typeof window === 'undefined') return
     try {
-      await navigator.clipboard?.writeText(window.location.href)
+      // Copy the CANONICAL share link — origin + `/d/:docId` only — never the live URL. The current
+      // address may carry session-scoped query params (notably `?sid=`, added when opening a doc in a
+      // new page / returning post-login), and copying window.location.href would leak the sharer's own
+      // session id into the shared link. Strip the whole query (and any hash) so what is shared is the
+      // clean document link every recipient should get; the recipient's own session resolves normally.
+      const here = new URL(window.location.href)
+      const canonical = here.origin + here.pathname
+      await navigator.clipboard?.writeText(canonical)
       // Drive the menu-external "Link copied" toast (below). The menu closes on selection, so this
       // confirmation must live outside the (now-unmounted) menu panel — hence page-level state, not
       // a menu-row label. Auto-dismiss after a short interval.

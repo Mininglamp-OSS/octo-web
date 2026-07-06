@@ -261,7 +261,12 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     expect(lead.textContent).not.toContain('docs.standalone.openInApp')
   })
 
-  it('AC-3: clicking the Copy link menu row copies the current URL to the clipboard', async () => {
+  it('AC-3: clicking the Copy link menu row copies the CANONICAL /d/:docId link, stripping ?sid', async () => {
+    // Copy-link must NOT leak the sharer's session: the live URL can carry `?sid=` (added when the
+    // doc is opened in a new page / returned to post-login). The copied value is the clean canonical
+    // link (origin + pathname), with the whole query stripped, so a shared link never carries the
+    // sharer's sid.
+    window.history.pushState({}, '', '/d/d_ok?sid=sharer-secret')
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.assign(navigator, { clipboard: { writeText } })
 
@@ -278,7 +283,11 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     fireEvent.click(screen.getByTestId('lead-copy-link'))
 
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
-    expect(writeText).toHaveBeenCalledWith(window.location.href)
+    const copied = writeText.mock.calls[0][0] as string
+    expect(copied).toBe(`${window.location.origin}/d/d_ok`)
+    // The sharer's sid never rides along on the shared link.
+    expect(copied).not.toContain('sid')
+    expect(copied).not.toContain('?')
   })
 
   it('AC-6: after copying, a menu-external "Link copied" toast appears (visible even though the menu row closes)', async () => {
@@ -367,7 +376,10 @@ describe('StandaloneDocPage — cold-start preflight carries X-Space-Id from the
     // interceptor injects NO X-Space-Id. The backend's by-space middleware then rejects the bare
     // preflight (400 space_required / 404 space mismatch) and the page shows the not-found terminal.
     // The fix resolves the space from the SAME cached localStorage key the room addressing uses and
-    // passes it as an explicit header on the preflight. This assertion FAILS on the old bare getDoc.
+    // passes it as an explicit header on the preflight. This asserts the DOCS-SIDE contract (the page
+    // puts the resolved space into the preflight config header); the real wire-level forwarding — host
+    // APIClient forwarding config.headers to axios, which was the XIN-424 fake-green — is covered by
+    // packages/dmworkbase/src/Service/__tests__/APIClient.headers.test.ts.
     window.localStorage.setItem('currentSpaceId', 'space-abc')
     expect(wk.shared.currentSpaceId).toBeFalsy() // shell has not restored the live space yet
 
