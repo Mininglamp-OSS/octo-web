@@ -14,7 +14,7 @@ import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
 import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn, withReturnSid } from "@octo/docs";
-import { adoptStoredSession, findSidForToken } from "./recoverSession";
+import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -43,6 +43,31 @@ interface AppLayoutState {
 function recoverOctoSessionFromStorage(persist: boolean): void {
     if (WKApp.loginInfo.token) return;
     adoptStoredSession(WKApp.loginInfo, localStorage, { persist });
+}
+
+/**
+ * The standalone `/d/:docId` page reached a 401 while a token WAS loaded — the current session is
+ * expired (XIN-408). Clear that dead session and reload so the standalone branch below re-evaluates,
+ * finds no token, and falls through to the real login screen. The deep-link target was already
+ * stashed (persistStandaloneReturn) by the page, so the existing post-login bounce returns the user
+ * to the document after sign-in — no new return-path plumbing.
+ *
+ * Why clearing by token VALUE, not just `logout()`: `logout()` clears only the CURRENT `?sid=`
+ * bucket, but on a clean cold-load (no `?sid=`) the expired token was recovered from a `token{sid'}`
+ * bucket and mirrored into the empty-sid bucket, so it lives in two places. Clearing every bucket
+ * that holds this exact token (clearSessionsWithToken over both storages) tears down all copies, so
+ * the reload's recovery can't re-adopt it and loop. A DIFFERENT valid session has a different token
+ * and is left untouched (XIN-390/392: 只清当前过期 session，别误清有效 session).
+ */
+function clearExpiredStandaloneSessionAndReload(): void {
+    const expiredToken = WKApp.loginInfo.token || "";
+    // In-memory + current-sid bucket + cross-tab mirror (the sid-scoped part logout() handles).
+    WKApp.loginInfo.logout();
+    // Value-matched sweep for any remaining copies (the cold-load recover-then-persist case).
+    if (expiredToken && typeof window !== "undefined") {
+        clearSessionsWithToken(expiredToken, window.sessionStorage, window.localStorage);
+    }
+    if (typeof window !== "undefined") window.location.reload();
 }
 
 export default class AppLayout extends Component<{}, AppLayoutState> {
@@ -332,7 +357,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             }
             if (WKApp.loginInfo.token) {
                 const standaloneDocId = parseStandaloneDocId(window.location.pathname);
-                return <StandaloneDocPage docId={standaloneDocId} />;
+                return <StandaloneDocPage docId={standaloneDocId} onSessionExpired={clearExpiredStandaloneSessionAndReload} />;
             }
             // Anonymous: stash the exact /d/:docId target so the post-login flow (local OR SSO/OIDC)
             // can bounce the user back to the document instead of the app root, then fall through to

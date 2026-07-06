@@ -21,6 +21,30 @@ export interface RecoveredSession {
 /** The subset of the Web Storage API the scan needs. */
 export type StorageLike = Pick<Storage, 'length' | 'key' | 'getItem'>
 
+/** A Storage-like bag that also supports removal (for clearing an expired session). */
+export type WritableStorageLike = StorageLike & Pick<Storage, 'removeItem'>
+
+/**
+ * Session key prefixes a single login bucket occupies, keyed `<prefix><sid>`. This is the union of
+ * the cross-tab whitelist StorageService mirrors into localStorage and the extra keys
+ * `LoginInfo.logout()` clears, so removing all of them for a given sid tears down the whole bucket —
+ * exactly the set logout() would clear, but for a sid we name explicitly rather than the URL's.
+ */
+const SESSION_KEY_PREFIXES = [
+  'token',
+  'uid',
+  'short_no',
+  'app_id',
+  'name',
+  'role',
+  'is_work',
+  'sex',
+  'login_provider',
+  'realname_verified',
+  'real_name',
+  'realname_verified_at',
+] as const
+
 /**
  * Collect EVERY stored octo session in a Storage-like bag, in iteration order.
  *
@@ -168,4 +192,52 @@ export function adoptStoredSession(
     sink.save()
   }
   return true
+}
+
+/**
+ * The sids of every stored bucket whose `token{sid}` value equals `token`. The bare `token` bucket
+ * (empty sid) is reported as ''. Matching by VALUE, not by sid, is the whole point: it names ONLY
+ * the session that carries this exact token, so a caller clearing an expired session never touches a
+ * DIFFERENT, still-valid session (whose token differs). `tokenCallback` (a config key) is never
+ * treated as a session bucket, and an empty `token` argument matches nothing.
+ *
+ * Used by clearSessionsWithToken to tear down an expired standalone session across BOTH the empty-sid
+ * bucket and any sid-keyed bucket that holds the same dead token (the cold-load recover-then-persist
+ * case mirrors it into two places), so a post-clear reload's recovery can't resurrect it (XIN-408).
+ */
+export function sidsForToken(store: StorageLike, token: string): string[] {
+  const sids: string[] = []
+  if (!token) return sids
+  for (let i = 0; i < store.length; i++) {
+    const key = store.key(i)
+    if (key && key.startsWith('token') && key !== 'tokenCallback' && store.getItem(key) === token) {
+      sids.push(key === 'token' ? '' : key.substring(5)) // "token".length === 5
+    }
+  }
+  return sids
+}
+
+/**
+ * Remove every stored session whose token value equals `token` from the given store(s), clearing all
+ * of that bucket's sid-keyed sibling keys (uid/name/…). Pass BOTH sessionStorage and localStorage so
+ * the cross-tab mirror StorageService writes is fully torn down — otherwise a reload's
+ * StorageService-backed `load()` (sessionStorage first, then localStorage) or the localStorage
+ * recovery scan could still find the dead session and re-adopt it, looping the user back to the
+ * expired terminal (XIN-408).
+ *
+ * Because buckets are matched by the (expired) token's VALUE, a different valid session — different
+ * token — is never cleared. This is the "只清当前过期 session，别误清有效 session" guarantee. No-op for
+ * an empty token.
+ */
+export function clearSessionsWithToken(token: string, ...stores: WritableStorageLike[]): void {
+  if (!token) return
+  const sids = new Set<string>()
+  for (const store of stores) {
+    for (const sid of sidsForToken(store, token)) sids.add(sid)
+  }
+  for (const store of stores) {
+    for (const sid of sids) {
+      for (const prefix of SESSION_KEY_PREFIXES) store.removeItem(prefix + sid)
+    }
+  }
 }

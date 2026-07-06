@@ -55,4 +55,19 @@ describe('Layout — standalone /d/:docId clean cold-load path', () => {
     // original non-persistent semantics rather than pinning a session cross-tab like standalone.
     expect(layout).toMatch(/recoverOctoSessionFromStorage\(false\)/)
   })
+
+  it('hands an expired-session 401 back to a clear-and-reload handler, not the dead terminal (XIN-408)', () => {
+    // The page mounts only with a token present, so a preflight 401 means the loaded session is
+    // expired. Layout wires onSessionExpired so the page can delegate the dead-end fix (clear the
+    // stale session + reload → falls through to the login screen) instead of rendering a terminal
+    // with no way to re-authenticate.
+    expect(layout).toMatch(/<StandaloneDocPage[\s\S]*?onSessionExpired=\{clearExpiredStandaloneSessionAndReload\}/)
+    // The handler clears the CURRENT session (logout) AND sweeps every bucket holding the expired
+    // token by value (clearSessionsWithToken), so the cold-load recover-then-persist copy can't be
+    // re-recovered into a loop — while a different valid session (different token) is left intact.
+    expect(layout).toMatch(/function\s+clearExpiredStandaloneSessionAndReload/)
+    expect(layout).toMatch(/WKApp\.loginInfo\.logout\(\)/)
+    expect(layout).toMatch(/clearSessionsWithToken\(/)
+    expect(layout).toMatch(/window\.location\.reload\(\)/)
+  })
 })

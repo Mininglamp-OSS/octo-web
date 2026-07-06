@@ -179,6 +179,28 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
 
+  it('XIN-408: a GET 401 with an onSessionExpired handler hands off (clears session + reloads) instead of dead-ending on the terminal', async () => {
+    // The page only mounts when a token IS present (Layout gate). A 401 here therefore means the
+    // loaded session is EXPIRED — the old behavior rendered the "session expired" terminal with only
+    // a Back control and no way to re-authenticate, a dead end. When the host wires onSessionExpired,
+    // the page must stash the return target and delegate to it (the host clears the dead session and
+    // reloads into the real login screen) rather than rendering the terminal.
+    const onSessionExpired = vi.fn()
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_expired') throw apiError(401)
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_expired" onSessionExpired={onSessionExpired} />)
+
+    await waitFor(() => expect(onSessionExpired).toHaveBeenCalledTimes(1))
+    // The deep-link target is stashed so the post-login flow can bounce the user back to the doc.
+    expect(window.sessionStorage.getItem(STANDALONE_RETURN_KEY)).not.toBeNull()
+    // No dead-end terminal, no editor: the host is navigating to the login screen.
+    expect(screen.queryByText('docs.error.permission.login')).toBeNull()
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
   it('AC-9: a null docId (malformed /d/ link) renders not-found without any preflight', async () => {
     // The host Layout claims the whole /d namespace and passes null here for a malformed/empty id
     // (`/d/`, `/d/a:b`). The page must render the not-found terminal — NOT fall through to the app

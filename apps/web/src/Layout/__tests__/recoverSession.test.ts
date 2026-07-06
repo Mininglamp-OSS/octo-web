@@ -5,7 +5,10 @@ import {
   findUniqueStoredSession,
   findSidForToken,
   adoptStoredSession,
+  sidsForToken,
+  clearSessionsWithToken,
   type StorageLike,
+  type WritableStorageLike,
   type SessionSink,
 } from '../recoverSession'
 
@@ -112,6 +115,20 @@ function storageOver(store: Map<string, string>): StorageLike {
     },
     key: (i: number) => Array.from(store.keys())[i] ?? null,
     getItem: (k: string) => (store.has(k) ? (store.get(k) as string) : null),
+  }
+}
+
+/** A writable Storage-like view over a Map (adds removeItem) for the expired-session clear. */
+function writableStorageOver(store: Map<string, string>): WritableStorageLike {
+  return {
+    get length() {
+      return store.size
+    },
+    key: (i: number) => Array.from(store.keys())[i] ?? null,
+    getItem: (k: string) => (store.has(k) ? (store.get(k) as string) : null),
+    removeItem: (k: string) => {
+      store.delete(k)
+    },
   }
 }
 
@@ -381,5 +398,132 @@ describe('multi-session deep-link login round trip — the /d/:docId loop is bro
     reloaded.load()
     expect(reloaded.token).toBe('tok-current') // hit — authenticated, no recovery, no loop
     expect(reloaded.uid).toBe('u_cur')
+  })
+})
+
+describe('sidsForToken — buckets holding the current (expired) token, matched by value (XIN-408)', () => {
+  it('lists every sid whose token bucket holds the given token, empty-sid reported as ""', () => {
+    // The cold-load recover-then-persist case: the same expired token lives in the empty-sid bucket
+    // AND its original sid-keyed bucket. Both must be named so a clear tears down both copies.
+    const store = storageOver(
+      new Map([
+        ['token', 'expired-tok'],
+        ['uid', 'u_e'],
+        ['tokenabc', 'expired-tok'],
+        ['uidabc', 'u_e'],
+        ['tokenxyz', 'other-valid-tok'],
+        ['uidxyz', 'u_v'],
+      ]),
+    )
+    expect(sidsForToken(store, 'expired-tok').sort()).toEqual(['', 'abc'])
+    // A different, still-valid session (different token value) is never listed.
+    expect(sidsForToken(store, 'other-valid-tok')).toEqual(['xyz'])
+  })
+
+  it('matches nothing for an empty token and never treats tokenCallback as a bucket', () => {
+    const store = storageOver(new Map([['tokenCallback', 'expired-tok'], ['tokenA', 'expired-tok']]))
+    expect(sidsForToken(store, '')).toEqual([])
+    expect(sidsForToken(store, 'expired-tok')).toEqual(['A']) // tokenCallback excluded
+  })
+})
+
+describe('clearSessionsWithToken — clears only the expired session, never a valid one (XIN-408)', () => {
+  it('removes every bucket holding the expired token across both stores, leaving valid sessions intact', () => {
+    // Model the cross-tab mirror: cross-tab keys live in BOTH sessionStorage and localStorage.
+    const session = new Map<string, string>([
+      ['token', 'expired-tok'], // empty-sid mirror written by the recover-then-persist path
+      ['uid', 'u_e'],
+      ['name', 'Expired'],
+      ['tokenabc', 'expired-tok'], // the original sid-keyed bucket the token was recovered from
+      ['uidabc', 'u_e'],
+      ['nameabc', 'Expired'],
+      ['tokenGOOD', 'valid-tok'], // a DIFFERENT, still-valid session — must survive
+      ['uidGOOD', 'u_v'],
+      ['nameGOOD', 'Valid'],
+    ])
+    const local = new Map(session) // same key set mirrored across tabs
+
+    clearSessionsWithToken('expired-tok', writableStorageOver(session), writableStorageOver(local))
+
+    for (const store of [session, local]) {
+      // Every copy of the expired session is gone…
+      expect(store.get('token')).toBeUndefined()
+      expect(store.get('tokenabc')).toBeUndefined()
+      expect(store.get('uidabc')).toBeUndefined()
+      expect(store.get('nameabc')).toBeUndefined()
+      // …but the unrelated valid session is untouched.
+      expect(store.get('tokenGOOD')).toBe('valid-tok')
+      expect(store.get('uidGOOD')).toBe('u_v')
+    }
+  })
+
+  it('is a no-op for an empty token (nothing to match)', () => {
+    const store = new Map<string, string>([['tokenA', 'tok-a'], ['uidA', 'u_a']])
+    clearSessionsWithToken('', writableStorageOver(store))
+    expect(store.get('tokenA')).toBe('tok-a')
+  })
+})
+
+describe('expired-token deep-link login round trip — the /d/:docId dead-end is cleared (XIN-408)', () => {
+  // Byte-trace on head de0b8d82: a signed-in user whose session has EXPIRED opens a shared
+  // /d/:docId in a fresh tab (no ?sid=). Layout recovers the sole stored session from `token{sid'}`,
+  // persists it into the empty-sid bucket, and mounts the page with a non-empty-but-stale token. The
+  // preflight 401s → the OLD code rendered a terminal with no login entry, and clearing only the
+  // current (empty) sid left `token{sid'}` behind, so a reload just re-recovered the dead session:
+  // a dead-end / re-mount loop. Modeling the storage shows the fix (clear by token value) breaks it.
+  function coldLoadWithRecoveredExpiredSession() {
+    // Post-recover-then-persist state: the expired token sits in BOTH the empty-sid bucket and the
+    // original sid-keyed bucket it was recovered from.
+    return new Map<string, string>([
+      ['token', 'expired-tok'],
+      ['uid', 'u_e'],
+      ['name', 'Expired'],
+      ['tokenabc', 'expired-tok'],
+      ['uidabc', 'u_e'],
+      ['nameabc', 'Expired'],
+    ])
+  }
+
+  it('OLD behavior (clear only the current empty-sid bucket) loops: the sid-keyed copy is re-recovered', () => {
+    const store = coldLoadWithRecoveredExpiredSession()
+    // The pre-fix clear was sid-scoped to the URL (empty sid here): only the empty-sid bucket goes.
+    for (const prefix of ['token', 'uid', 'name']) store.delete(prefix + '')
+    // A no-sid reload's recovery scans localStorage — and still finds the unique sid-keyed bucket…
+    expect(findUniqueStoredSession(storageOver(store))).toEqual({
+      token: 'expired-tok',
+      uid: 'u_e',
+      name: 'Expired',
+    })
+    // …so it re-adopts the SAME expired session → the page re-mounts → 401 again → the dead-end loops.
+  })
+
+  it('FIX (clear by token value across stores) resolves: no bucket survives → falls through to login', () => {
+    const store = coldLoadWithRecoveredExpiredSession()
+    clearSessionsWithToken('expired-tok', writableStorageOver(store))
+    // Nothing recoverable remains, so the reloaded standalone branch sees `!token` and renders the
+    // real login screen. The stashed return target then bounces the user back to the doc post-login.
+    expect(findUniqueStoredSession(storageOver(store))).toBeNull()
+    expect(findStoredSession(storageOver(store))).toBeNull()
+    const reloaded = new FakeLoginInfo(store, '')
+    reloaded.load()
+    expect(reloaded.token).toBe('') // → login screen, not the dead terminal
+  })
+
+  it('a multi-session user keeps their OTHER valid session when the expired one is cleared', () => {
+    // Expired session in its own bucket + a second, still-valid session. Clearing the expired token
+    // must not disturb the valid one (XIN-392: never touch a valid session).
+    const store = new Map<string, string>([
+      ['tokenexp', 'expired-tok'],
+      ['uidexp', 'u_e'],
+      ['tokenok', 'valid-tok'],
+      ['uidok', 'u_v'],
+      ['nameok', 'Valid'],
+    ])
+    clearSessionsWithToken('expired-tok', writableStorageOver(store))
+    expect(findSidForToken(storageOver(store), 'valid-tok')).toBe('ok')
+    const stillThere = new FakeLoginInfo(store, 'ok')
+    stillThere.load()
+    expect(stillThere.token).toBe('valid-tok')
+    expect(stillThere.uid).toBe('u_v')
   })
 })

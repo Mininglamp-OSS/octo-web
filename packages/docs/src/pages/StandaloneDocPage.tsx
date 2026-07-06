@@ -221,7 +221,21 @@ type Phase =
  * (`/d/`, `/d/a:b`) arrives here as null and short-circuits to the not-found terminal instead of
  * falling through to the app shell (AC-9).
  */
-export function StandaloneDocPage({ docId }: { docId: string | null }): ReactElement {
+export function StandaloneDocPage({
+  docId,
+  onSessionExpired,
+}: {
+  docId: string | null
+  /**
+   * Called when the preflight returns 401 while a token WAS loaded — i.e. the current session is
+   * expired (XIN-408). The page mounts only when `WKApp.loginInfo.token` is truthy (host Layout
+   * gate), so a 401 here can only mean the loaded token is stale, not that the visitor is anonymous.
+   * The host clears the dead session and reloads so the standalone branch falls through to the real
+   * login screen — the stashed return target then bounces the user back to this doc after sign-in.
+   * When omitted (defensive / non-host callers), the page falls back to the login terminal.
+   */
+  onSessionExpired?: () => void
+}): ReactElement {
   const wk = getWKApp()
   const uid = wk.loginInfo?.uid ?? ''
   const [phase, setPhase] = useState<Phase>({ status: 'loading' })
@@ -245,14 +259,27 @@ export function StandaloneDocPage({ docId }: { docId: string | null }): ReactEle
       .catch((err: unknown) => {
         if (cancelled) return
         const kind = terminalForCreateError(err)
-        // Session expired / not signed in: stash the link so login can return here (AC-11).
-        if (kind === 'login') persistStandaloneReturn()
+        if (kind === 'login') {
+          // The page only mounts with a token present (Layout gate), so a 401 means the loaded
+          // session is EXPIRED, not that the visitor is anonymous. Stash the deep-link target, then
+          // hand off to the host to clear the dead session and reload into the real login screen —
+          // instead of rendering a terminal with no way to re-authenticate (XIN-408 dead-end).
+          persistStandaloneReturn()
+          if (onSessionExpired) {
+            onSessionExpired()
+            // Do not setPhase: the host is navigating away (reload) to the login screen.
+            return
+          }
+          // No handler wired (defensive): fall back to the login terminal below.
+          setPhase({ status: 'terminal', kind })
+          return
+        }
         setPhase({ status: 'terminal', kind })
       })
     return () => {
       cancelled = true
     }
-  }, [docId])
+  }, [docId, onSessionExpired])
 
   useEffect(
     () => () => {
