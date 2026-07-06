@@ -230,4 +230,40 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
     expect(writeText).toHaveBeenCalledWith(window.location.href)
   })
+
+  it('AC-6: after copying, a menu-external "Link copied" toast appears (visible even though the menu row closes)', async () => {
+    // Reviewer's blocker (XIN-386): the old in-row "Link copied" label was dead — selecting the row
+    // closes the ≡ menu, so the panel that hosted the label unmounts and the user never sees it.
+    // The fix moves the confirmation to a page-level, menu-external toast. This test locks that in:
+    // the toast is rendered OUTSIDE the (here-mocked) EditorShell/menu, and it never rode on the row.
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('lead-copy-link')).toBeTruthy())
+    // No toast before the action.
+    expect(screen.queryByText('docs.standalone.linkCopied')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('lead-copy-link'))
+
+    // The toast becomes visible after the copy resolves — proving the confirmation survives the
+    // menu closing (the menu row itself is mocked away here, yet the toast still shows).
+    const toast = await screen.findByText('docs.standalone.linkCopied')
+    expect(toast).toBeTruthy()
+    expect(toast.getAttribute('role')).toBe('status')
+    // The toast is document-external / menu-external: it is NOT inside the ≡ menu lead-row subtree.
+    expect(screen.getByTestId('editor-more-lead').contains(toast)).toBe(false)
+
+    // The dead in-row "copied" label is gone: the menu row label stays the action name, never flips.
+    expect(screen.getByTestId('lead-copy-link').textContent).toContain('docs.standalone.copyLink')
+    expect(screen.getByTestId('lead-copy-link').textContent).not.toContain('docs.standalone.linkCopied')
+  })
 })

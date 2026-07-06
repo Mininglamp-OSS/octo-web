@@ -2462,6 +2462,24 @@
   min-height: 0;
 }
 
+/* Menu-external "Link copied" toast (octo-web #512 return-fix). Fixed, document-external overlay so
+   it stays visible after the ≡ "more" menu closes on selection — mirrors the image upload
+   status/error toast style (fixed, centered near the bottom, accent fill, soft shadow). */
+.octo-doc-standalone-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--octo-accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  z-index: 1000;
+  pointer-events: none;
+}
+
 /* Responsive, 3 tiers (prototype v2):
    ≥1024  — full labels everywhere (default).
    768–1024 — the built-in secondary buttons collapse to their icons to reclaim width.

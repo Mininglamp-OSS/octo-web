@@ -87,7 +87,10 @@ type Phase =
  *
  * "Copy link" is collapsed into the header's ≡ "more" menu (as its top row) rather than sitting as a
  * resident title-bar button, keeping the standalone header as trim as the in-shell one. The clipboard
- * behaviour is unchanged — only its position moved.
+ * behaviour is unchanged — only its position moved. Because selecting a menu row closes the menu (the
+ * panel unmounts), the "Link copied" confirmation cannot live inside the row; it surfaces as a brief
+ * menu-external toast rendered by this page instead (reusing the docs package's document-external
+ * transient-toast convention, the same fixed overlay style as the image upload status/error toasts).
  *
  * A GET /api/v1/docs/{docId} preflight runs BEFORE the collaborative editor mounts. This is the
  * single deterministic gate for every boundary state, and it needs no WebSocket:
@@ -150,6 +153,9 @@ export function StandaloneDocPage({ docId }: { docId: string | null }): ReactEle
     if (typeof window === 'undefined') return
     try {
       await navigator.clipboard?.writeText(window.location.href)
+      // Drive the menu-external "Link copied" toast (below). The menu closes on selection, so this
+      // confirmation must live outside the (now-unmounted) menu panel — hence page-level state, not
+      // a menu-row label. Auto-dismiss after a short interval.
       setCopied(true)
       if (copiedTimer.current) clearTimeout(copiedTimer.current)
       copiedTimer.current = setTimeout(() => setCopied(false), 2000)
@@ -200,12 +206,13 @@ export function StandaloneDocPage({ docId }: { docId: string | null }): ReactEle
   // not-found terminal above); prefer the id echoed by the preflight, falling back to it.
   const editorDocId = meta.docId || (docId as string)
   // "Copy link" as the first row of the header ≡ "more" menu (it used to be a resident title-bar
-  // button). The label carries the same transient "Link copied" feedback the button had, driven by
-  // the unchanged onCopyLink clipboard logic below.
+  // button). Selecting the row closes the menu, so the "Link copied" confirmation can't ride on the
+  // row label (the panel unmounts); the label is always the action name and the success feedback is
+  // shown by the menu-external toast below, driven by the unchanged onCopyLink clipboard logic.
   const moreMenuLeadItems: DocMoreMenuItem[] = [
     {
       key: 'copy-link',
-      label: copied ? t('docs.standalone.linkCopied') : t('docs.standalone.copyLink'),
+      label: t('docs.standalone.copyLink'),
       icon: LinkIcon,
       onClick: () => void onCopyLink(),
     },
@@ -225,6 +232,15 @@ export function StandaloneDocPage({ docId }: { docId: string | null }): ReactEle
         onBack={onBack}
         moreMenuLeadItems={moreMenuLeadItems}
       />
+      {/* Menu-external "Link copied" toast. Lives outside EditorShell (and thus outside the ≡ menu
+          panel that unmounts on selection), so the confirmation stays visible after the menu closes.
+          Fixed overlay, auto-dismissed via the copied timer; matches the docs document-external toast
+          style. role="status" + aria-live announces it to assistive tech without stealing focus. */}
+      {copied && (
+        <div className="octo-doc-standalone-toast" role="status" aria-live="polite">
+          {t('docs.standalone.linkCopied')}
+        </div>
+      )}
     </div>
   )
 }
