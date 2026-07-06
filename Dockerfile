@@ -3,6 +3,16 @@ WORKDIR /app
 RUN npm install -g pnpm@10
 COPY . .
 RUN git config --global url."https://github.com/".insteadOf "git+ssh://git@github.com/" && git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+ARG VITE_COLLAB_WS_ENDPOINT
+ENV VITE_COLLAB_WS_ENDPOINT=${VITE_COLLAB_WS_ENDPOINT}
+ARG VITE_DOCS_DEFAULT_SPACE
+ENV VITE_DOCS_DEFAULT_SPACE=${VITE_DOCS_DEFAULT_SPACE}
+ARG VITE_DOCS_DEFAULT_FOLDER
+ENV VITE_DOCS_DEFAULT_FOLDER=${VITE_DOCS_DEFAULT_FOLDER}
+ARG VITE_DOCS_DEFAULT_DOC
+ENV VITE_DOCS_DEFAULT_DOC=${VITE_DOCS_DEFAULT_DOC}
+ARG VITE_DOCS_ASSET_HOSTS
+ENV VITE_DOCS_ASSET_HOSTS=${VITE_DOCS_ASSET_HOSTS}
 RUN pnpm install --frozen-lockfile && pnpm turbo run build --filter=@octo/web
 
 FROM nginx:alpine
