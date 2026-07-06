@@ -352,11 +352,7 @@ export class WKRemoteConfig {
       this.stickerCustomEnabled = parseRemoteBool(
         result["sticker_custom_enabled"]
       );
-      // temp: default docsOn=true for test env until backend docs_on lands
-      this.docsOn =
-        result["docs_on"] === undefined
-          ? true
-          : parseRemoteBool(result["docs_on"]);
+      this.docsOn = parseRemoteBool(result["docs_on"]);
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
