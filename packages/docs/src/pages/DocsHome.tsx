@@ -183,18 +183,39 @@ function DocsList({
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
 
+  // Stale-response guard (XIN-417). Switching Space bumps `space`, which recreates `reload` and
+  // fires a fresh listDocs — but the previous Space's request may still be in flight. listDocs
+  // resolves in network order, not call order, so an older-Space response can land AFTER the
+  // newer one and its unconditional setItems would render the wrong Space's documents into the
+  // current page (exactly the class of bug this PR fixes). We stamp each reload with a monotonic
+  // sequence and only let the LATEST reload's response touch state; superseded responses are
+  // dropped. A ref (not state) so it survives re-renders without itself triggering one.
+  const reloadSeq = useRef(0)
+
   const reload = useCallback(() => {
+    const seq = ++reloadSeq.current
     setLoading(true)
     setError(null)
     listDocs({ spaceId: space || undefined, folderId: folder || undefined, sort: 'updatedAt:desc' })
-      .then((res) => setItems(res?.items ?? []))
+      .then((res) => {
+        // A newer reload has superseded this one (e.g. the Space changed again while this
+        // request was in flight) — drop the stale response so it can't overwrite the current list.
+        if (seq !== reloadSeq.current) return
+        setItems(res?.items ?? [])
+      })
       .catch((err) => {
+        if (seq !== reloadSeq.current) return
         // Don't swallow the failure: surface it so a first-load error is diagnosable
         // (and offer a retry below) instead of a silently sticky error state.
         console.error('[docs] list failed', err)
         setError(t('docs.state.error'))
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        // Keep the spinner up until the latest reload settles; a stale request finishing first
+        // must not clear loading while the current one is still pending.
+        if (seq !== reloadSeq.current) return
+        setLoading(false)
+      })
   }, [space, folder])
 
   useEffect(reload, [reload])

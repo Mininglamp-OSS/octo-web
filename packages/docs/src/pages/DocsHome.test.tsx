@@ -419,6 +419,56 @@ describe('DocsHome — reloads the list when the current Space switches', () => 
   })
 })
 
+describe('DocsHome — a stale (out-of-order) list response cannot overwrite the current Space (P0, XIN-417)', () => {
+  // Regression (XIN-417): switching Space fires a fresh listDocs, but the previous Space's request
+  // may still be in flight. Responses settle in network order, not call order, so an OLDER Space's
+  // response can land AFTER the newer one; the unconditional setItems then rendered the old Space's
+  // documents into the new Space's page — the very class of bug this PR fixes. A monotonic
+  // request-sequence guard must drop any response that a newer reload has superseded.
+  it('drops the late old-Space response and keeps the new Space documents rendered', async () => {
+    const wk = createMockWKApp()
+    wk.shared.currentSpaceId = 'space-a'
+    setWKApp(wk)
+
+    // Deferred resolvers keyed by the Space each GET was scoped to, so the test drives the ORDER
+    // responses settle independently of the order the requests were issued (delayed / reordered).
+    const deferred: Record<string, (items: unknown[]) => void> = {}
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        const spaceId = new URLSearchParams(url.split('?')[1] ?? '').get('spaceId') ?? ''
+        return new Promise((resolve) => {
+          deferred[spaceId] = (items) =>
+            resolve({ data: { total: items.length, items }, status: 200 })
+        })
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    // Initial load for the first Space is in flight (its resolver is registered but not settled).
+    await waitFor(() => expect(deferred['space-a']).toBeTruthy())
+
+    // Host switches Space BEFORE the first request resolves → a second GET starts for space-b.
+    wk.shared.currentSpaceId = 'space-b'
+    wk.mockMittBus.emitSpaceChanged({ space_id: 'space-b' })
+    await waitFor(() => expect(deferred['space-b']).toBeTruthy())
+
+    // Settle the NEWER (space-b) request first so its documents render...
+    deferred['space-b']([{ docId: 'd_b', title: 'Space B Doc', ownerId: 'u_self', role: 'admin' }])
+    await waitFor(() => expect(screen.getByText('Space B Doc')).toBeTruthy())
+
+    // ...then let the OLDER (space-a) request resolve LAST (out of order). Without the guard this
+    // stale setItems would clobber the list with the old Space's doc.
+    deferred['space-a']([{ docId: 'd_a', title: 'Space A Doc', ownerId: 'u_self', role: 'admin' }])
+    // Give the stale promise a chance to (wrongly) apply before asserting.
+    await new Promise((r) => setTimeout(r, 20))
+
+    // The current Space's documents survive; the stale old-Space doc never appears.
+    expect(screen.getByText('Space B Doc')).toBeTruthy()
+    expect(screen.queryByText('Space A Doc')).toBeNull()
+  })
+})
+
 describe('DocsHome — production (routeRight) editor has no header back button (#2)', () => {
   it('pushes the editor without onBack but with onExit (return-on-delete)', async () => {
     window.sessionStorage.setItem(TARGET_KEY, JSON.stringify({ doc: 'd_persist' }))
