@@ -46,7 +46,13 @@ vi.mock('../comments/useDocComments.ts', () => ({
   useDocComments: () => ({ threads: [], createRoot: vi.fn() }),
 }))
 vi.mock('../comments/useCommentHighlights.ts', () => ({ useCommentHighlights: () => undefined }))
-vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: () => new Map<string, string>() }))
+// useMemberNames drives the creator-name resolution's PRIMARY source (the space-member map). Kept
+// as an overridable hoisted spy so a test can seed the map with the owner (XIN-392 P2-1) and assert
+// the standalone nickname-only path bypasses it. Defaults to an empty map, reset in beforeEach.
+const { useMemberNamesMock } = vi.hoisted(() => ({
+  useMemberNamesMock: vi.fn(() => new Map<string, string>()),
+}))
+vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: useMemberNamesMock }))
 vi.mock('./useDocDelete.ts', () => ({
   useDocDelete: () => ({
     confirming: false,
@@ -68,6 +74,8 @@ beforeEach(() => {
   wk = createMockWKApp()
   setWKApp(wk)
   exportSpy.mockClear()
+  useMemberNamesMock.mockReset()
+  useMemberNamesMock.mockReturnValue(new Map<string, string>())
   fakeEditor.storage.octoCommentHighlight = {}
   // jsdom has no object-URL impl; the export handler creates + revokes one.
   ;(URL as unknown as { createObjectURL: () => string }).createObjectURL = () => 'blob:mock'
@@ -244,5 +252,48 @@ describe('EditorShell — header "more" (≡) menu', () => {
     await waitFor(() => expect(screen.getByText('Alice')).toBeTruthy())
     // Created-on line uses the lexical YYYY-MM-DD slice (no timezone drift).
     expect(screen.getByText(/2026-07-02/)).toBeTruthy()
+  })
+
+  it('P2-1: standalone (creatorNicknameOnly) SKIPS the member map even when it holds a real name', async () => {
+    // Simulate the future backend that fills the space-member display name with a VERIFIED real
+    // name. On the externally shared standalone surface this must never reach a link holder — the
+    // creator name has to resolve through the nickname-only getUserName path, not the member map.
+    useMemberNamesMock.mockReturnValue(new Map([['u_owner', 'Real Legal Name']]))
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_1') {
+        return { data: { docId: 'd_1', title: 'Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      if (method === 'get' && url === '/users/u_owner') {
+        // Nickname-only fetch: real_name present but must be ignored (preferRealName:false).
+        return { data: { name: 'Nick', real_name: 'Real Legal Name' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<EditorShell {...baseProps} creatorNicknameOnly />)
+    // The nickname-only resolver is called despite the member map already holding a name.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/users/u_owner')).toBe(true))
+    fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    await waitFor(() => expect(screen.getByText('Nick')).toBeTruthy())
+    // The verified real name from the member map never surfaces on the shared surface.
+    expect(screen.queryByText('Real Legal Name')).toBeNull()
+  })
+
+  it('P2-1: in-shell (creatorNicknameOnly unset) still uses the member map first, no /users fetch', async () => {
+    // Unchanged in-shell behavior: the already-loaded member map is the free primary source, so the
+    // creator name comes straight from it and getUserName is never called.
+    useMemberNamesMock.mockReturnValue(new Map([['u_owner', 'Member Name']]))
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_1') {
+        return { data: { docId: 'd_1', title: 'Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<EditorShell {...baseProps} />)
+    // Wait for the doc meta (ownerId) to land so the creator effect has run.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d_1')).toBe(true))
+    fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    await waitFor(() => expect(screen.getByText('Member Name')).toBeTruthy())
+    // Member map hit → the /users/:uid fallback is never reached in-shell.
+    expect(wk.apiClient.calls.some((c) => c.url === '/users/u_owner')).toBe(false)
   })
 })

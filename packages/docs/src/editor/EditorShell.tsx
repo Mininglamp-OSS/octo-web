@@ -302,14 +302,26 @@ export function EditorShell(props: EditorShellProps) {
   const [creatorName, setCreatorName] = useState<string | undefined>(undefined)
   useEffect(() => {
     if (!ownerId) return
-    const fromMembers = names.get(ownerId)
-    if (fromMembers && fromMembers !== ownerId) {
-      setCreatorName(fromMembers)
-      return
+    // In-shell (creatorNicknameOnly unset): prefer the already-loaded space-member map — free, and
+    // the same source the presence caret + member panel use.
+    //
+    // On the standalone (externally shared) surface (creatorNicknameOnly), SKIP the member-map
+    // primary source entirely (XIN-392 P2-1). Gating only the getUserName fallback on
+    // creatorNicknameOnly (as before) left the member map as an ungated primary source that leaks a
+    // real name the moment the backend fills member display names with verified names — the
+    // no-leak-today guarantee rests on the implicit "member name is never a real name" contract.
+    // A link holder must never see the creator's verified name, so resolve nickname-only regardless
+    // of what the member map holds.
+    if (!creatorNicknameOnly) {
+      const fromMembers = names.get(ownerId)
+      if (fromMembers && fromMembers !== ownerId) {
+        setCreatorName(fromMembers)
+        return
+      }
     }
     let cancelled = false
-    // On the standalone (externally shared) surface, resolve the nickname only — never leak the
-    // creator's verified real name to a link holder. In-shell keeps the real-name preference.
+    // In-shell resolves the verified real name (falling back to nickname); the standalone surface
+    // forces nickname-only and never requests real_name.
     getUserName(ownerId, { preferRealName: !creatorNicknameOnly })
       .then((name) => {
         if (!cancelled && name) setCreatorName(name)

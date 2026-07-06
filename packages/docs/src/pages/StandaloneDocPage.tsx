@@ -62,22 +62,45 @@ export function persistStandaloneReturn(): void {
 }
 
 /**
- * Whether a stashed return target is a SAFE same-origin relative path.
+ * Whether a stashed return target is a SAFE same-origin link that lands on a standalone doc page.
  *
- * Open-redirect guard: only accept a path that begins with a single `/` and is not a
- * scheme-relative (`//host`) or backslash-smuggled (`/\host`, which some browsers normalize to
- * `//host`) URL. This rejects absolute URLs (`https://evil`), scheme-relative URLs, and
- * `javascript:`/`data:` payloads, so a tampered sessionStorage value can never bounce the user to
- * an attacker origin after login.
+ * Open-redirect guard (hardened, XIN-392). The value lives in sessionStorage, so it is
+ * attacker-influenceable, and it is later fed to `window.location.assign` — it must clear three
+ * gates, in order:
+ *
+ *   1. No control characters. The WHATWG URL parser SILENTLY STRIPS tab / newline / CR mid-string,
+ *      so a value like `/` + "\n" + `/evil.example.com` parses to the scheme-relative
+ *      `//evil.example.com` and the browser then normalizes it off-origin. The old byte-level check
+ *      (only path[0]/path[1]) never saw the smuggled `//host` because the control char sat between
+ *      them. Rejecting any C0 control char (and DEL) up front closes that whole class of bypass
+ *      before parsing can mask it.
+ *   2. Same origin. Resolve against the current origin and require `url.origin === origin`. This
+ *      rejects absolute (`https://evil`), scheme-relative (`//host`), and backslash-smuggled
+ *      (`/\host`) targets structurally, instead of hand-checking leading characters.
+ *   3. Standalone-doc target only (P2-2). Even a same-origin path must resolve to `/d/:docId`
+ *      (`parseStandaloneDocId(url.pathname) !== null`), so a tampered value can't bounce the user to
+ *      another same-origin page (`/settings`, `/oidc/bind`, …) after login — the post-login return
+ *      is scoped to the standalone document the user actually opened.
  */
 function isSafeReturnPath(path: string | null): path is string {
-  return (
-    typeof path === 'string' &&
-    path.length > 1 &&
-    path[0] === '/' &&
-    path[1] !== '/' &&
-    path[1] !== '\\'
-  )
+  if (typeof path !== 'string' || path.length === 0) return false
+  // A return target must be a rooted absolute path. Rejecting relative values (`d/relative`) up
+  // front stops them from resolving against whatever the current document URL happens to be when
+  // window.location.assign runs (e.g. `/login/` → `/login/d/relative`) instead of a clean `/d/:id`.
+  if (path[0] !== '/') return false
+  // Reject ANY control character before parsing — see gate 1 above.
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(path)) return false
+  if (typeof window === 'undefined') return false
+  const origin = window.location.origin
+  let url: URL
+  try {
+    url = new URL(path, origin)
+  } catch {
+    return false
+  }
+  if (url.origin !== origin) return false
+  return parseStandaloneDocId(url.pathname) !== null
 }
 
 /**

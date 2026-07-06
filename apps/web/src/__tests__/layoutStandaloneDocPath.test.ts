@@ -27,12 +27,13 @@ describe('Layout — standalone /d/:docId clean cold-load path', () => {
   })
 
   it('recovers a stored session before rendering so a clean cold-load authenticates (AC-3)', () => {
-    expect(layout).toMatch(/recoverOctoSessionFromStorage\(\)/)
+    // Standalone persists the recovered session (Back-keeps-login), so it passes persist:true.
+    expect(layout).toMatch(/recoverOctoSessionFromStorage\(true\)/)
     // Inside the namespace branch, recovery must run before the page renders. Search from the
     // branch start so the helper's top-of-file definition doesn't skew the ordering.
     const nsIdx = layout.search(/isStandaloneDocPath\(\s*window\.location\.pathname\s*\)/)
     expect(nsIdx).toBeGreaterThan(0)
-    const recoverIdx = layout.indexOf('recoverOctoSessionFromStorage()', nsIdx)
+    const recoverIdx = layout.indexOf('recoverOctoSessionFromStorage(true)', nsIdx)
     const renderIdx = layout.indexOf('<StandaloneDocPage', nsIdx)
     expect(recoverIdx).toBeGreaterThan(nsIdx)
     expect(renderIdx).toBeGreaterThan(recoverIdx)
@@ -49,6 +50,9 @@ describe('Layout — standalone /d/:docId clean cold-load path', () => {
     // Both deep-link branches now call the shared helper; the old inline localStorage loop in the
     // invite branch must be gone.
     expect(layout).not.toMatch(/for\s*\(\s*let\s+i\s*=\s*0;\s*i\s*<\s*localStorage\.length/)
-    expect(layout.match(/recoverOctoSessionFromStorage\(\)/g)?.length).toBeGreaterThanOrEqual(2)
+    expect(layout.match(/recoverOctoSessionFromStorage\(/g)?.length).toBeGreaterThanOrEqual(2)
+    // XIN-392 P1-2: the invite branch recovers in memory only (persist:false), so it keeps its
+    // original non-persistent semantics rather than pinning a session cross-tab like standalone.
+    expect(layout).toMatch(/recoverOctoSessionFromStorage\(false\)/)
   })
 })

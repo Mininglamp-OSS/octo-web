@@ -22,32 +22,62 @@ export interface RecoveredSession {
 export type StorageLike = Pick<Storage, 'length' | 'key' | 'getItem'>
 
 /**
- * Find the first stored octo session in a Storage-like bag, or null when none is present.
+ * Collect EVERY stored octo session in a Storage-like bag, in iteration order.
  *
- * Session buckets are keyed `token{sid}` (with sibling `uid{sid}` / `name{sid}`). The bare
- * `token` key is skipped — it is the empty-sid slot `loginInfo.load()` already read — as is the
- * unrelated `tokenCallback` config key. Returns the token plus its sibling uid/name so the caller
- * can populate `loginInfo` exactly as a normal load would.
+ * Session buckets are keyed `token{sid}` (with sibling `uid{sid}` / `name{sid}`). The bare `token`
+ * key is skipped — it is the empty-sid slot `loginInfo.load()` already read — as is the unrelated
+ * `tokenCallback` config key, and empty-valued token buckets. Used by both the "first wins" invite
+ * recovery (findStoredSession) and the "exactly one" standalone recovery (findUniqueStoredSession).
  */
-export function findStoredSession(store: StorageLike): RecoveredSession | null {
+export function findStoredSessions(store: StorageLike): RecoveredSession[] {
   // NB: the parameter is `store`, not `storage`. Under apps/extension's WXT build, a bare
   // `storage` identifier is auto-imported from `wxt/utils/storage`, which Rolldown then fails to
   // resolve in this shared web file (`pnpm build` exit 1). Keep the name off that registered token.
+  const sessions: RecoveredSession[] = []
   for (let i = 0; i < store.length; i++) {
     const key = store.key(i)
     if (key && key.startsWith('token') && key !== 'token' && key !== 'tokenCallback') {
       const val = store.getItem(key)
       if (val) {
         const sid = key.substring(5) // "token".length === 5
-        return {
+        sessions.push({
           token: val,
           uid: store.getItem('uid' + sid) || '',
           name: store.getItem('name' + sid) || '',
-        }
+        })
       }
     }
   }
-  return null
+  return sessions
+}
+
+/**
+ * Find the FIRST stored octo session in a Storage-like bag, or null when none is present.
+ *
+ * Returns the token plus its sibling uid/name so the caller can populate `loginInfo` exactly as a
+ * normal load would. "First wins" is the invite-landing branch's original recovery semantics — it
+ * adopts this in memory only (never persisted), so a stale storage-iteration order can at worst make
+ * the current tab authenticate as one of the user's own sessions, never pinned anywhere.
+ */
+export function findStoredSession(store: StorageLike): RecoveredSession | null {
+  return findStoredSessions(store)[0] ?? null
+}
+
+/**
+ * The single UNAMBIGUOUS stored session, or null when storage holds zero or MORE THAN ONE session
+ * bucket.
+ *
+ * This is the gate for the standalone branch, which PERSISTS what it adopts (see adoptStoredSession).
+ * "First wins" is fine for in-memory-only invite recovery, but persisting a first-of-several guess
+ * would pin one arbitrary identity into the cross-tab `token` slot (StorageService mirrors it into
+ * the cross-tab localStorage whitelist) — a multi-session user could be silently bound to, and stuck
+ * across tabs on, the wrong session. Requiring exactly one bucket means we only ever persist when
+ * there is no guess to make; with several, the caller falls through to the login screen instead
+ * (XIN-392 P1-2).
+ */
+export function findUniqueStoredSession(store: StorageLike): RecoveredSession | null {
+  const sessions = findStoredSessions(store)
+  return sessions.length === 1 ? sessions[0] : null
 }
 
 /**
@@ -62,30 +92,57 @@ export interface SessionSink {
   save: () => void
 }
 
+/** Options controlling how a recovered session is adopted. */
+export interface AdoptOptions {
+  /**
+   * Persist the adopted session back to the current (sid-keyed) bucket via `sink.save()`.
+   *
+   * When true (the standalone `/d/:docId` branch): a later no-sid navigation — the standalone page's
+   * Back → /docs full reload — reads the empty-sid slot; persisting into it there keeps an
+   * already-signed-in user logged in across that reload (XIN-390 Back-keeps-login). But `save()` also
+   * mirrors token/uid/name into the cross-tab localStorage whitelist (StorageService), so it is only
+   * safe when the stored session is UNAMBIGUOUS. Persisting therefore requires EXACTLY ONE stored
+   * session (findUniqueStoredSession); with zero or several this is a no-op (returns false) and the
+   * visitor falls through to login rather than having a guessed identity pinned across tabs (XIN-392).
+   *
+   * When false (the DEFAULT — the invite-landing branch): adopt the first stored session IN MEMORY
+   * ONLY and never call `save()`. This is the invite branch's original, pre-#512 recovery behavior;
+   * it must not start persisting just because it now shares this helper.
+   */
+  persist?: boolean
+}
+
 /**
- * Adopt a stored octo session into `sink` for a clean deep-link cold-load, then PERSIST it.
+ * Adopt a stored octo session into `sink` for a clean deep-link cold-load.
  *
- * Recovery alone (writing the in-memory `token`/`uid`/`name` fields) is not enough: the sid-keyed
- * bucket the session came from is `token{sid}`, but a clean deep-link (`/d/:docId` with no `?sid=`)
- * and the `/docs` list it Backs into both read the empty-sid bucket (`token`). So after the user
- * hits Back, the full-reload `loginInfo.load()` reads the empty-sid slot, finds nothing, and bounces
- * an already-signed-in user to the login wall. Calling `sink.save()` here writes the adopted session
- * into the *current* (empty-sid, since the URL has no `?sid=`) bucket, so the subsequent no-sid
- * navigation reloads an authenticated session instead. Without this save the Back-keeps-login AC
- * fails; with it, the session survives the reload.
+ * By default (invite branch) this writes only the in-memory `token`/`uid`/`name` fields, adopting the
+ * FIRST stored session and persisting nothing — the pre-#512 invite semantics. Pass `{ persist: true }`
+ * (standalone branch) to also `sink.save()` the adopted session so a subsequent no-sid reload stays
+ * authenticated (XIN-390) — but persistence only happens when EXACTLY ONE session is stored, so a
+ * multi-session user's identity is never guessed-and-pinned across tabs (XIN-392).
  *
- * No-op (returns false) when a token is already loaded or none is stored — a genuinely anonymous
- * visitor is left untouched to fall through to the login screen.
+ * No-op (returns false) when a token is already loaded, when none is stored, or when persistence is
+ * requested but the stored session is ambiguous — a genuinely anonymous (or ambiguous) visitor is
+ * left untouched to fall through to the login screen.
  */
-export function adoptStoredSession(sink: SessionSink, store: StorageLike): boolean {
+export function adoptStoredSession(
+  sink: SessionSink,
+  store: StorageLike,
+  options: AdoptOptions = {},
+): boolean {
   if (sink.token) return false
-  const session = findStoredSession(store)
+  const { persist = false } = options
+  // Persisting demands an unambiguous session (never pin a guess cross-tab); in-memory-only
+  // recovery keeps the original "first wins" behavior.
+  const session = persist ? findUniqueStoredSession(store) : findStoredSession(store)
   if (!session) return false
   sink.token = session.token
   sink.uid = session.uid
   sink.name = session.name
-  // Persist to the current sid bucket so a later same-tab navigation that also lacks `?sid=`
-  // (e.g. Back → /docs) reloads this session rather than an empty one.
-  sink.save()
+  if (persist) {
+    // Persist to the current sid bucket so a later same-tab navigation that also lacks `?sid=`
+    // (e.g. Back → /docs) reloads this session rather than an empty one.
+    sink.save()
+  }
   return true
 }

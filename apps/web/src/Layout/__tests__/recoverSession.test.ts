@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { findStoredSession, adoptStoredSession, type StorageLike, type SessionSink } from '../recoverSession'
+import {
+  findStoredSession,
+  findStoredSessions,
+  findUniqueStoredSession,
+  adoptStoredSession,
+  type StorageLike,
+  type SessionSink,
+} from '../recoverSession'
 
 /** Minimal in-memory Storage-like bag (insertion-ordered) for the scan. */
 function makeStorage(entries: Record<string, string>): StorageLike {
@@ -123,7 +130,7 @@ describe('adoptStoredSession — Back keeps an already-signed-in user logged in 
     onDeepLink.load()
     expect(onDeepLink.token).toBe('') // sid-keyed load misses the clean tab → would 401 without recovery
 
-    const adopted = adoptStoredSession(onDeepLink, storageOver(store))
+    const adopted = adoptStoredSession(onDeepLink, storageOver(store), { persist: true })
     expect(adopted).toBe(true)
     expect(onDeepLink.token).toBe('octo-session-xyz')
 
@@ -169,5 +176,124 @@ describe('adoptStoredSession — Back keeps an already-signed-in user logged in 
     const info = new FakeLoginInfo(store, '')
     expect(adoptStoredSession(info, storageOver(store))).toBe(false)
     expect(info.token).toBeUndefined()
+  })
+})
+
+describe('findStoredSessions / findUniqueStoredSession — ambiguity gate (XIN-392 P1-2)', () => {
+  it('collects every valid token bucket, skipping the bare/callback/empty keys', () => {
+    const storage = makeStorage({
+      token: 'bare', // empty-sid slot load() already read → skipped
+      tokenCallback: 'cfg', // unrelated config key → skipped
+      tokenA: 'tok-a',
+      uidA: 'u_a',
+      nameA: 'Alice',
+      tokenEmpty: '', // empty value → skipped
+      tokenB: 'tok-b',
+      uidB: 'u_b',
+      nameB: 'Bob',
+    })
+    expect(findStoredSessions(storage)).toEqual([
+      { token: 'tok-a', uid: 'u_a', name: 'Alice' },
+      { token: 'tok-b', uid: 'u_b', name: 'Bob' },
+    ])
+  })
+
+  it('returns the single session when storage holds exactly one', () => {
+    const storage = makeStorage({ tokenabc: 'only', uidabc: 'u_1', nameabc: 'Solo' })
+    expect(findUniqueStoredSession(storage)).toEqual({ token: 'only', uid: 'u_1', name: 'Solo' })
+  })
+
+  it('returns null when MORE THAN ONE session bucket is stored (no first-wins guess)', () => {
+    const storage = makeStorage({
+      tokenA: 'tok-a',
+      uidA: 'u_a',
+      tokenB: 'tok-b',
+      uidB: 'u_b',
+    })
+    // findStoredSession still returns the first (invite semantics), but the unique gate refuses.
+    expect(findStoredSession(storage)).toEqual({ token: 'tok-a', uid: 'u_a', name: '' })
+    expect(findUniqueStoredSession(storage)).toBeNull()
+  })
+
+  it('returns null when nothing is stored', () => {
+    expect(findUniqueStoredSession(makeStorage({ currentSpaceId: 's_1' }))).toBeNull()
+  })
+})
+
+describe('adoptStoredSession — persist gating never pins a guessed identity (XIN-392 P1-2)', () => {
+  it('with multiple sessions and persist:true, does NOT adopt or persist any identity', () => {
+    // Two signed-in sessions (two token{sid} buckets, different uids). A standalone deep-link with no
+    // ?sid= must not silently pick the first and pin it into the cross-tab empty-sid slot.
+    const store = new Map<string, string>([
+      ['tokenA', 'tok-a'],
+      ['uidA', 'u_a'],
+      ['nameA', 'Alice'],
+      ['tokenB', 'tok-b'],
+      ['uidB', 'u_b'],
+      ['nameB', 'Bob'],
+    ])
+    const onDeepLink = new FakeLoginInfo(store, '')
+    onDeepLink.load()
+
+    expect(adoptStoredSession(onDeepLink, storageOver(store), { persist: true })).toBe(false)
+    expect(onDeepLink.token).toBe('') // in-memory identity untouched → falls through to login
+    // Nothing pinned into the empty-sid slot, so a Back reload does NOT resurrect a guessed identity.
+    const afterBackReload = new FakeLoginInfo(store, '')
+    afterBackReload.load()
+    expect(afterBackReload.token).toBe('')
+    // The original per-sid buckets are left exactly as they were.
+    expect(store.get('tokenA')).toBe('tok-a')
+    expect(store.get('tokenB')).toBe('tok-b')
+  })
+
+  it('with a single session and persist:true, adopts AND persists (XIN-390 Back-keeps-login)', () => {
+    const store = new Map<string, string>([
+      ['tokenabc', 'octo-session-xyz'],
+      ['uidabc', 'u_42'],
+      ['nameabc', 'Ada'],
+    ])
+    const onDeepLink = new FakeLoginInfo(store, '')
+    onDeepLink.load()
+    expect(adoptStoredSession(onDeepLink, storageOver(store), { persist: true })).toBe(true)
+    const afterBackReload = new FakeLoginInfo(store, '')
+    afterBackReload.load()
+    expect(afterBackReload.token).toBe('octo-session-xyz')
+  })
+})
+
+describe('adoptStoredSession — invite branch keeps its original non-persistent semantics (XIN-392 P1-2)', () => {
+  it('persist:false (default) adopts the first session in memory only and never writes storage', () => {
+    // The invite-landing branch has always adopted the first stored session in memory WITHOUT
+    // persisting. Sharing adoptStoredSession must not change that — the empty-sid slot stays empty.
+    const store = new Map<string, string>([
+      ['tokenabc', 'octo-session-xyz'],
+      ['uidabc', 'u_42'],
+      ['nameabc', 'Ada'],
+    ])
+    const invite = new FakeLoginInfo(store, '')
+    invite.load()
+
+    expect(adoptStoredSession(invite, storageOver(store))).toBe(true)
+    expect(invite.token).toBe('octo-session-xyz') // in-memory recovery for the current tab
+
+    // No save(): the empty-sid slot is never written, so a later no-sid reload is NOT persisted.
+    const afterReload = new FakeLoginInfo(store, '')
+    afterReload.load()
+    expect(afterReload.token).toBe('') // invite never pins the recovered session
+  })
+
+  it('persist:false still recovers the FIRST of several sessions (unchanged multi-session behavior)', () => {
+    const store = new Map<string, string>([
+      ['tokenA', 'tok-a'],
+      ['uidA', 'u_a'],
+      ['tokenB', 'tok-b'],
+      ['uidB', 'u_b'],
+    ])
+    const invite = new FakeLoginInfo(store, '')
+    invite.load()
+    expect(adoptStoredSession(invite, storageOver(store))).toBe(true)
+    expect(invite.token).toBe('tok-a') // first-wins, in memory, exactly as before
+    // …and it is still not persisted.
+    expect(new Map(store).get('token')).toBeUndefined()
   })
 })

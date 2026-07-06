@@ -26,19 +26,23 @@ interface AppLayoutState {
  *
  * Both `/d/:docId` (standalone doc, #512) and `?invite=` links can be opened in a fresh tab where
  * the URL has no `sid`, so the sid-keyed `WKApp.loginInfo.load()` reads nothing even when the user
- * is signed in — their token lives under a `token{sid}` key in localStorage. Adopt the first such
+ * is signed in — their token lives under a `token{sid}` key in localStorage. Adopt the stored
  * session (token + uid + name) so the deep-link's authenticated requests succeed instead of
  * returning 401 for everyone. No-op when a token is already present or none is stored (a genuinely
- * anonymous visitor). The scan itself lives in findStoredSession (pure + unit-tested).
+ * anonymous visitor). The scan itself lives in recoverSession.ts (pure + unit-tested).
+ *
+ * `persist` distinguishes the two callers (XIN-392 P1-2):
+ *   - standalone (`persist: true`): also writes the session back to the current empty-sid bucket so
+ *     the page's Back → /docs full reload stays authenticated (XIN-390). Because that write mirrors
+ *     the identity into the cross-tab localStorage whitelist, adoptStoredSession only persists when
+ *     EXACTLY ONE session is stored — a multi-session user's identity is never guessed-and-pinned.
+ *   - invite (`persist: false`): adopts the first stored session IN MEMORY ONLY and never persists,
+ *     which is the invite branch's original pre-#512 behavior (it must not start persisting just
+ *     because both branches now share this helper).
  */
-function recoverOctoSessionFromStorage(): void {
+function recoverOctoSessionFromStorage(persist: boolean): void {
     if (WKApp.loginInfo.token) return;
-    // Adopt AND persist: adoptStoredSession writes the recovered session back to the current
-    // (empty-sid) bucket via loginInfo.save(), so a later no-sid navigation (e.g. the standalone
-    // page's Back → /docs) reloads an authenticated session instead of bouncing to login. The
-    // scan itself lives in findStoredSession (pure + unit-tested); adoptStoredSession is a no-op
-    // when a token is already present or none is stored (a genuinely anonymous visitor).
-    adoptStoredSession(WKApp.loginInfo, localStorage);
+    adoptStoredSession(WKApp.loginInfo, localStorage, { persist });
 }
 
 export default class AppLayout extends Component<{}, AppLayoutState> {
@@ -315,7 +319,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 WKApp.loginInfo.load();
             }
             if (!WKApp.loginInfo.token) {
-                recoverOctoSessionFromStorage();
+                recoverOctoSessionFromStorage(true);
             }
             if (WKApp.loginInfo.token) {
                 const standaloneDocId = parseStandaloneDocId(window.location.pathname);
@@ -340,9 +344,10 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 WKApp.loginInfo.load();
             }
             // 如果 URL 没有 ?sid= 或 sid 不匹配，从 localStorage 恢复已登录会话
-            // （与 /d/:docId 直达同一套 clean 冷加载恢复逻辑）
+            // （与 /d/:docId 直达同一套 clean 冷加载恢复逻辑，但只在内存恢复、不持久化——
+            //   invite 分支原本就不把恢复出来的 session 写回存储，共用 helper 后仍保持该语义，XIN-392 P1-2）
             if (!WKApp.loginInfo.token) {
-                recoverOctoSessionFromStorage();
+                recoverOctoSessionFromStorage(false);
             }
             return <InviteLanding inviteCode={inviteCode} />;
         }

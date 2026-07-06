@@ -343,12 +343,33 @@ describe('standalone return target — open-redirect-safe post-login bounce (blo
       'd/relative', // not rooted at /
       '', // empty
       '/', // bare root carries no doc target
+      // XIN-392 P1-1: control chars smuggled after the first `/`. The old byte-check saw only
+      // path[0]/path[1] and missed the `//host` the WHATWG URL parser normalizes these into.
+      '/\n/evil.example.com', // newline → normalizes to scheme-relative //evil
+      '/\t/evil.example.com', // tab → same
+      '/\r/evil.example.com', // CR → same
+      '/d/\td_abc', // control char even inside an otherwise /d/ path
+      // XIN-392 P2-2: same-origin but NOT a standalone doc page — must not be a post-login bounce
+      // target (a tampered value can't steer the user to another app page after sign-in).
+      '/settings',
+      '/oidc/bind',
+      '/docs?doc=x',
+      '/d', // namespace root, not a concrete /d/:docId
+      '/d/', // empty id
+      '/d/a:b', // malformed id (parseStandaloneDocId → null)
     ]
     for (const bad of hostile) {
       window.sessionStorage.setItem(STANDALONE_RETURN_KEY, bad)
       expect(consumeStandaloneReturn()).toBeNull()
       // Even a rejected value is cleared, so it can't leak into a subsequent login.
       expect(window.sessionStorage.getItem(STANDALONE_RETURN_KEY)).toBeNull()
+    }
+  })
+
+  it('accepts a safe same-origin /d/:docId target (with and without a query string)', () => {
+    for (const good of ['/d/d_abc', '/d/d_abc/', '/d/DOC-9_x?sid=xyz']) {
+      window.sessionStorage.setItem(STANDALONE_RETURN_KEY, good)
+      expect(consumeStandaloneReturn()).toBe(good)
     }
   })
 
