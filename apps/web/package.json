@@ -54,6 +54,7 @@
     "@octo/base": "workspace:*",
     "@octo/contacts": "workspace:*",
     "@octo/datasource": "workspace:*",
+    "@octo/docs": "workspace:*",
     "@octo/login": "workspace:*",
     "@dmwork/summary": "workspace:*",
     "@octo/todo": "workspace:*",
@@ -121,5 +122,6 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  }
+  },
+  "type": "module"
 }

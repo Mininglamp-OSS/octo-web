@@ -1,0 +1,2332 @@
+/* Theme tokens (frontend-design §3.6) — light/dark via CSS variables, .octo-prose namespace. */
+.octo-theme {
+  --octo-bg: #ffffff;
+  --octo-fg: #1f2329;
+  --octo-muted: #8a919e;
+  --octo-accent: #3370ff;
+  --octo-border: #e5e6eb;
+  --octo-hover: #f2f3f5;
+}
+
+@media (prefers-color-scheme: dark) {
+  .octo-theme {
+    --octo-bg: #1b1c1e;
+    --octo-fg: #e8e9eb;
+    --octo-muted: #8a919e;
+    --octo-accent: #5b86ff;
+    --octo-border: #2e2f33;
+    --octo-hover: #2a2b2e;
+  }
+}
+
+.octo-doc {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 24px 32px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Editor variant: when EditorShell is mounted in the full-width routeRight (contentRight)
+   pane, fill the whole pane instead of capping+centering at 820px (the standalone-page
+   width). The inner prose column keeps its own readable max-width via octo-prose. */
+.octo-doc--editor {
+  max-width: none;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+  /* P7/B1: the scroll container must have NO top padding, otherwise that padding strip sits
+     ABOVE the sticky toolbar (top:0) and document content scrolls up through it. The top
+     breathing space is moved onto the header instead; horizontal + bottom padding stay here. */
+  padding: 0 32px 24px;
+}
+
+.octo-doc-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  /* The top breathing room lives here now (the scroll container's top padding was removed so the
+     sticky toolbar can pin flush to the true top of the scroll viewport). */
+  padding-top: 24px;
+}
+.octo-doc-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.octo-doc-title {
+  font-size: 28px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+/* Editable title (BUG3): hint affordance on hover, inline input matches the heading. */
+.octo-doc-title-editable {
+  cursor: text;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin-left: -4px;
+  transition: background 0.12s ease;
+}
+.octo-doc-title-editable:hover {
+  background: var(--octo-hover-bg, #f2f3f5);
+}
+.octo-doc-title-input {
+  font-family: inherit;
+  border: 1px solid var(--octo-active-fg, #1664ff);
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin-left: -4px;
+  outline: none;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  width: 100%;
+  box-sizing: border-box;
+}
+.octo-doc-back {
+  align-self: center;
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--octo-muted, #8a919e);
+  cursor: pointer;
+  border-radius: 6px;
+}
+.octo-doc-back:hover {
+  color: var(--wk-brand-primary, #7c5cfc);
+  background: rgba(124, 92, 252, 0.08);
+}
+
+/* Sticky toolbar wrapper (P7/B1): the WRAPPER is the sticky element so the toolbar AND the find
+   bar stick together, pinned flush to the true top of the scroll container (.octo-doc--editor,
+   whose top padding was removed for exactly this reason). It is FULL-BLEED — negative horizontal
+   margins span the scroll container's 32px side padding, with matching inner padding — so its
+   opaque background covers the entire width and nothing can show through above or beside it while
+   scrolling down. z-index 6 sits above the prose + drag handle (4). */
+.octo-toolbar-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--octo-bg);
+  margin: 0 -32px;
+  padding: 0 32px 16px;
+  box-shadow: 0 6px 8px -6px rgba(0, 0, 0, 0.12);
+}
+.octo-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+  border-top: 1px solid var(--octo-border);
+  border-bottom: 1px solid var(--octo-border);
+  background: var(--octo-bg);
+}
+.octo-tb-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--octo-border);
+  margin: 0 4px;
+}
+.octo-tb-spacer {
+  flex: 1;
+}
+.octo-tb-btn {
+  border: none;
+  background: transparent;
+  color: var(--octo-fg);
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.octo-tb-btn:hover {
+  background: var(--octo-hover);
+}
+.octo-tb-btn.is-active {
+  background: var(--octo-accent);
+  color: #fff;
+}
+.octo-tb-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* (Legacy inline link-input styles removed in batch 7 — the link editor is now a floating panel,
+   see .octo-link-popover / .octo-link-field below near the colour-popover styles.) */
+
+/* Find & replace bar (toolbar item ⑪): sits directly under the toolbar, sticky with it. */
+.octo-find-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--octo-border);
+  background: var(--octo-bg);
+}
+.octo-find-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.octo-find-input {
+  border: 1px solid var(--octo-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  background: var(--octo-bg);
+  color: var(--octo-fg);
+  min-width: 160px;
+}
+.octo-find-input:focus {
+  outline: none;
+  border-color: var(--octo-accent);
+}
+.octo-find-count {
+  font-size: 12px;
+  color: var(--octo-muted);
+  min-width: 64px;
+  white-space: nowrap;
+}
+.octo-find-case {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--octo-muted);
+  cursor: pointer;
+}
+
+/* Find & replace match highlight (C6). The FindReplace plugin paints Decoration.inline with
+   these classes over every match (and the current one); without CSS the matches were invisible. */
+.octo-find-match {
+  background: rgba(255, 213, 0, 0.45);
+  border-radius: 2px;
+}
+.octo-find-match-current {
+  background: rgba(255, 145, 0, 0.85);
+  box-shadow: 0 0 0 1px rgba(214, 105, 0, 0.9);
+  color: #1f2329;
+}
+
+/* Bottom status bar (toolbar item ⑦): live word + character counts. */
+.octo-editor-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--octo-border);
+  font-size: 12px;
+  color: var(--octo-muted);
+}
+.octo-editor-status-sep {
+  opacity: 0.6;
+}
+/* Autosave indicator: right-aligned, light grey, unobtrusive. */
+.octo-editor-autosave {
+  margin-left: auto;
+  color: #aaaaaa;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Text highlight / colour controls (SCHEMA-SPEC §3) */
+.octo-color-control {
+  position: relative;
+  display: inline-flex;
+}
+.octo-color-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  background: var(--octo-bg);
+  border: 1px solid var(--octo-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 10;
+}
+.octo-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--octo-border);
+  cursor: pointer;
+  padding: 0;
+}
+.octo-swatch:hover {
+  outline: 2px solid var(--octo-accent);
+}
+.octo-code-lang {
+  border: 1px solid var(--octo-border);
+  border-radius: 6px;
+  background: var(--octo-bg);
+  color: var(--octo-fg);
+  font-size: 12px;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+/* List dropdown menu (toolbar item ⑧, batch 7): floats below the list icon button (reusing the
+   .octo-color-control relative wrapper + .octo-color-popover float), but lays the items out
+   vertically as a menu of icon+label rows instead of a horizontal swatch row. */
+.octo-list-menu {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px;
+  min-width: 160px;
+}
+.octo-list-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--octo-fg);
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+.octo-list-menu-item:hover {
+  background: var(--octo-hover);
+}
+.octo-list-menu-item.is-active {
+  background: var(--octo-accent);
+  color: #fff;
+}
+.octo-list-menu-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.octo-list-menu-label {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+/* Link popover (toolbar item ⑧, batch 7 — item 5): a floating panel anchored below the link icon
+   button (via the .octo-color-control relative wrapper + .octo-color-popover absolute float), so
+   editing a URL no longer widens the toolbar in-line. Stacks the text + URL fields vertically. */
+.octo-link-control {
+  display: inline-flex;
+}
+.octo-link-popover {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px;
+  min-width: 240px;
+}
+.octo-link-field {
+  border: 1px solid var(--octo-border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  background: var(--octo-bg);
+  color: var(--octo-fg);
+  width: 100%;
+  box-sizing: border-box;
+}
+.octo-link-field:focus {
+  outline: none;
+  border-color: var(--octo-accent);
+}
+.octo-link-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.octo-bubble-menu,
+.octo-floating-menu {
+  display: flex;
+  gap: 2px;
+  background: var(--octo-bg);
+  border: 1px solid var(--octo-border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.octo-editor-region {
+  position: relative;
+  margin-top: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+.octo-editor-main {
+  flex: 1;
+  min-width: 0;
+}
+.octo-prose {
+  position: relative;
+}
+/* Self-built block drag handle. Lives in the editor wrapper, not the document. */
+.octo-drag-handle {
+  position: absolute;
+  width: 18px;
+  height: 22px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--octo-muted, #8a919e);
+  cursor: grab;
+  border-radius: 4px;
+  user-select: none;
+  font-size: 14px;
+  line-height: 1;
+  z-index: 4;
+}
+.octo-drag-handle:hover {
+  background: var(--octo-hover);
+  color: var(--octo-fg);
+}
+.octo-drag-handle:active {
+  cursor: grabbing;
+}
+/* Gutter "+" insert button (replaces the old caret-following auto floating menu).
+   Shown only on block hover, in the gutter left of the drag dots; click opens the
+   slash insert menu. */
+.octo-insert-handle {
+  position: absolute;
+  width: 18px;
+  height: 22px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--octo-muted, #8a919e);
+  cursor: pointer;
+  border-radius: 4px;
+  user-select: none;
+  font-size: 16px;
+  line-height: 1;
+  z-index: 4;
+}
+.octo-insert-handle:hover {
+  background: var(--octo-hover);
+  color: var(--octo-fg);
+}
+/* Document outline / table of contents (LEFT rail, #3). Rendered before the editor main
+   column so it sits to its left; default collapsed to a slim title bar. */
+.octo-outline {
+  flex: 0 0 200px;
+  position: sticky;
+  top: 56px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  border-right: 1px solid var(--octo-border);
+  padding-right: 16px;
+  font-size: 13px;
+}
+/* Collapsed: shrink to just the title bar so it never squeezes the body text. */
+.octo-outline.is-collapsed {
+  flex: 0 0 auto;
+  border-right: none;
+  padding-right: 8px;
+  overflow: visible;
+}
+.octo-outline-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--octo-muted, #8a919e);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.octo-outline-caret {
+  font-size: 10px;
+  line-height: 1;
+}
+.octo-outline-hint {
+  color: var(--octo-muted, #8a919e);
+  font-size: 12px;
+  margin: 4px 0;
+}
+.octo-outline-list {
+  display: flex;
+  flex-direction: column;
+}
+.octo-outline-item {
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--octo-fg);
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.5;
+}
+.octo-outline-item:hover {
+  background: var(--octo-hover);
+}
+.octo-outline-l1 { padding-left: 6px; font-weight: 600; }
+.octo-outline-l2 { padding-left: 16px; }
+.octo-outline-l3 { padding-left: 26px; }
+.octo-outline-l4 { padding-left: 36px; }
+.octo-outline-l5 { padding-left: 46px; }
+.octo-outline-l6 { padding-left: 56px; }
+@media (max-width: 900px) {
+  .octo-outline {
+    display: none;
+  }
+}
+
+.octo-prose .ProseMirror {
+  outline: none;
+  min-height: 320px;
+  line-height: 1.6;
+  font-size: 15px;
+}
+.octo-prose .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--octo-muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.octo-prose blockquote {
+  border-left: 3px solid var(--octo-border);
+  margin-left: 0;
+  padding-left: 16px;
+  color: var(--octo-muted);
+}
+.octo-prose pre {
+  background: var(--octo-hover);
+  border-radius: 8px;
+  padding: 12px 16px;
+  overflow-x: auto;
+}
+/* Code-block syntax highlighting (lowlight / highlight.js token classes).
+   Compact, theme-variable-driven palette so it follows light/dark automatically. */
+.octo-prose pre code .hljs-comment,
+.octo-prose pre code .hljs-quote {
+  color: #8a919e;
+  font-style: italic;
+}
+.octo-prose pre code .hljs-keyword,
+.octo-prose pre code .hljs-selector-tag,
+.octo-prose pre code .hljs-literal,
+.octo-prose pre code .hljs-type {
+  color: #cf222e;
+}
+.octo-prose pre code .hljs-string,
+.octo-prose pre code .hljs-meta-string,
+.octo-prose pre code .hljs-regexp {
+  color: #0a7d2c;
+}
+.octo-prose pre code .hljs-number,
+.octo-prose pre code .hljs-built_in,
+.octo-prose pre code .hljs-literal {
+  color: #0550ae;
+}
+.octo-prose pre code .hljs-function .hljs-title,
+.octo-prose pre code .hljs-title,
+.octo-prose pre code .hljs-section {
+  color: #8250df;
+}
+.octo-prose pre code .hljs-attr,
+.octo-prose pre code .hljs-attribute,
+.octo-prose pre code .hljs-variable,
+.octo-prose pre code .hljs-template-variable {
+  color: #953800;
+}
+.octo-prose pre code .hljs-meta {
+  color: #6e7781;
+}
+@media (prefers-color-scheme: dark) {
+  .octo-prose pre code .hljs-keyword,
+  .octo-prose pre code .hljs-selector-tag,
+  .octo-prose pre code .hljs-literal,
+  .octo-prose pre code .hljs-type {
+    color: #ff7b72;
+  }
+  .octo-prose pre code .hljs-string,
+  .octo-prose pre code .hljs-meta-string,
+  .octo-prose pre code .hljs-regexp {
+    color: #7ee787;
+  }
+  .octo-prose pre code .hljs-number,
+  .octo-prose pre code .hljs-built_in {
+    color: #79c0ff;
+  }
+  .octo-prose pre code .hljs-function .hljs-title,
+  .octo-prose pre code .hljs-title,
+  .octo-prose pre code .hljs-section {
+    color: #d2a8ff;
+  }
+  .octo-prose pre code .hljs-attr,
+  .octo-prose pre code .hljs-attribute,
+  .octo-prose pre code .hljs-variable {
+    color: #ffa657;
+  }
+}
+.octo-prose ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 4px;
+}
+.octo-prose ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start; /* align checkbox to the first text line, not stretched/centered */
+  gap: 8px;
+}
+/* Checkbox column: fixed size, vertically centered on the first text line, never
+   shrinking when the item text wraps to multiple lines. */
+.octo-prose ul[data-type='taskList'] li > label {
+  flex: 0 0 auto;
+  margin: 0;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  height: 1.6em; /* matches the prose line-height so the box centers on line 1 */
+}
+.octo-prose ul[data-type='taskList'] li > label > input[type='checkbox'] {
+  margin: 0;
+  cursor: pointer;
+}
+/* Content side takes the remaining width; its paragraph has no extra top margin so
+   it lines up with the checkbox instead of dropping below it. */
+.octo-prose ul[data-type='taskList'] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.octo-prose ul[data-type='taskList'] li > div > p {
+  margin: 0;
+}
+/* Checked items read as done: muted + struck through. */
+.octo-prose ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--octo-fg-3, #86909c);
+  text-decoration: line-through;
+}
+
+/* Remote collaboration carets (collaboration-caret; v3 default render uses
+   the `collaboration-carets__*` class names, renamed from v2's
+   `collaboration-cursor__*`). */
+.octo-prose .collaboration-carets__caret {
+  border-left: 1px solid;
+  border-right: 1px solid;
+  margin-left: -1px;
+  margin-right: -1px;
+  position: relative;
+  word-break: normal;
+  pointer-events: none;
+}
+.octo-prose .collaboration-carets__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  padding: 1px 4px;
+  border-radius: 3px 3px 3px 0;
+  position: absolute;
+  top: -1.2em;
+  left: -1px;
+  white-space: nowrap;
+}
+
+/* Presence bar */
+.octo-presence-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.octo-presence-avatars {
+  display: flex;
+}
+.octo-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: -6px;
+  border: 2px solid var(--octo-bg);
+}
+.octo-avatar-more {
+  background: var(--octo-muted);
+}
+.octo-conn-status {
+  font-size: 12px;
+  color: var(--octo-muted);
+}
+.octo-conn-status.is-synced::before {
+  content: '● ';
+  color: #27ae60;
+}
+.octo-conn-status.is-offline::before {
+  content: '● ';
+  color: #f2994a;
+}
+
+/* Slash menu (rendered to body) */
+.octo-slash-menu {
+  background: #fff;
+  border: 1px solid #e5e6eb;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+  padding: 4px;
+  min-width: 180px;
+  z-index: 50;
+}
+.octo-slash-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.octo-slash-item.is-selected,
+.octo-slash-item:hover {
+  background: #f2f3f5;
+}
+
+/* Terminal / loading states */
+.octo-terminal-msg {
+  color: #eb5757;
+}
+.octo-loading {
+  color: var(--octo-muted, #8a919e);
+}
+
+/* Member panel + invites */
+.octo-member-panel {
+  margin-top: 24px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 10px;
+  padding: 16px;
+}
+.octo-member-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+.octo-member-row .octo-uid {
+  flex: 1;
+}
+.octo-member-error {
+  color: #eb5757;
+  font-size: 13px;
+}
+.octo-member-section {
+  padding: 8px 0;
+  border-top: 1px solid var(--octo-border, #e5e6eb);
+}
+.octo-member-section:first-of-type {
+  border-top: none;
+}
+.octo-member-subtitle {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--octo-muted, #8a919e);
+}
+
+/* ── Member picker (Problem 1): searchable roster with avatar + name + AI badge ── */
+.octo-member-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.octo-member-picker-search {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+}
+.octo-member-picker-search:focus {
+  outline: none;
+  border-color: var(--octo-accent, #3370ff);
+}
+.octo-member-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  padding: 4px;
+}
+.octo-member-picker-empty {
+  color: var(--octo-muted, #8a919e);
+  font-size: 13px;
+  padding: 8px;
+  margin: 0;
+}
+.octo-member-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--octo-fg, #1f2329);
+  font-size: 13px;
+}
+.octo-member-picker-item:hover:not(:disabled) {
+  background: var(--octo-hover, #f2f3f5);
+}
+.octo-member-picker-item.is-selected {
+  background: var(--octo-accent-weak, #e8f3ff);
+  outline: 1px solid var(--octo-accent, #3370ff);
+}
+.octo-member-picker-item.is-added {
+  cursor: default;
+  opacity: 0.6;
+}
+.octo-member-picker-avatar {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+}
+.octo-member-picker-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.octo-member-picker-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.octo-member-picker-badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #7c5cfc;
+  border: 1px solid #7c5cfc;
+}
+.octo-member-picker-added {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--octo-muted, #8a919e);
+}
+.octo-member-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.octo-member-picker-actions select {
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  font-size: 13px;
+}
+
+/* Multi-select checkbox indicator (#A2). */
+.octo-member-picker-check {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid var(--octo-border, #d0d3d9);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  color: #fff;
+}
+.octo-member-picker-check.is-checked {
+  background: var(--octo-accent, #3370ff);
+  border-color: var(--octo-accent, #3370ff);
+}
+
+/* Owner badge in the member list (#A1). */
+.octo-owner-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--octo-accent, #3370ff);
+  border: 1px solid var(--octo-accent, #3370ff);
+  vertical-align: middle;
+}
+
+/* ── Manage-members modal (#A4): a centered dialog overlay, replacing the inline drawer ── */
+.octo-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  overflow-y: auto;
+}
+.octo-modal {
+  width: 100%;
+  max-width: 560px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 12px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
+  padding: 20px 24px;
+  box-sizing: border-box;
+}
+/* The MemberPanel drops its own card chrome inside the modal so it fills the dialog. */
+.octo-modal .octo-member-panel {
+  margin-top: 0;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+/* ── Version preview/compare modal (batch 8 item 2): the preview moved out of the sidebar drawer
+   into a centered, scrollable dialog so long documents are fully viewable. ── */
+.docs-version-preview-modal {
+  max-width: 720px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.docs-version-preview-modal-body {
+  margin-top: 12px;
+  overflow: auto;
+  flex: 1 1 auto;
+}
+/* The modal body is the single scroll container, so the inner preview/diff drop their own
+   max-height + border + padding and flow naturally inside it. */
+.docs-version-preview-modal-body .octo-version-preview,
+.docs-version-preview-modal-body .octo-version-diff {
+  max-height: none;
+  border: none;
+  padding: 0;
+  overflow: visible;
+}
+
+/* ── Invite links (#A5 redesign + #A6 expiry) ─────────────────────────────── */
+.octo-invite-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.octo-invite-create {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.octo-invite-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.octo-invite-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--octo-muted, #8a919e);
+}
+.octo-invite-field select {
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  font-size: 13px;
+}
+.octo-invite-generate {
+  margin-left: auto;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #fff;
+  background: var(--octo-accent, #3370ff);
+}
+.octo-invite-generate:hover {
+  background: var(--octo-active-fg-hover, #0e4fd6);
+}
+.octo-invite-empty {
+  color: var(--octo-muted, #8a919e);
+  font-size: 13px;
+  margin: 4px 0;
+}
+.octo-invite-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.octo-invite-item {
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.octo-invite-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.octo-invite-item-spacer {
+  flex: 1 1 auto;
+}
+.octo-invite-role {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--octo-accent, #3370ff);
+  border: 1px solid var(--octo-accent, #3370ff);
+}
+.octo-invite-expiry {
+  font-size: 12px;
+  color: var(--octo-muted, #8a919e);
+}
+.octo-invite-revoke {
+  color: #eb5757;
+}
+.octo-invite-revoke:hover {
+  background: rgba(235, 87, 87, 0.1);
+}
+.octo-invite-url {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--octo-muted, #8a919e);
+  background: var(--octo-bg-2, #fafbfc);
+}
+
+/* Inline SVG toolbar icons (C2–C4): crisp underline / strikethrough / alignment glyphs. */
+.octo-tb-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: currentColor;
+}
+/* Stroke-style toolbar glyphs (undo/redo): line art, not filled. */
+.octo-tb-icon-stroke {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+}
+/* Undo/redo group: light-grey line icons with a comfortable gap (boss reference). The
+   icons inherit #AAAAAA via currentColor; disabled greying reuses .octo-tb-btn:disabled. */
+.octo-tb-undoredo {
+  display: flex;
+  gap: 20px;
+  color: #aaaaaa;
+}
+
+/* Block-type (heading / body) dropdown (C1) — shares the font-size control styling. */
+.octo-block-type {
+  height: 26px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+/* ── Right-side drawer (#4/#5): history / comments / members open here, one at a time ──
+   Anchored to the right of the editor pane, above content, scrollable, with a width
+   transition. The panels it hosts drop their own card chrome so they fill the drawer. */
+.octo-doc-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 360px;
+  max-width: 92vw;
+  background: var(--octo-bg, #fff);
+  border-left: 1px solid var(--octo-border, #e5e6eb);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.08);
+  overflow-y: auto;
+  /* Above the sticky toolbar wrapper (6) and prose/drag-handle (4); fully opaque so editor
+     content never shows through the panel (P3 "drawer content show-through"). */
+  z-index: 30;
+  isolation: isolate;
+  padding: 12px 16px;
+  box-sizing: border-box;
+  transition: width 0.15s ease;
+}
+/* The editor pane positions the drawer; .octo-doc--editor is the scroll container. */
+.octo-doc--editor {
+  position: relative;
+}
+/* Panels inside the drawer fill it instead of floating as standalone cards. */
+.octo-doc-drawer .octo-member-panel,
+.octo-doc-drawer .octo-version-panel,
+.octo-doc-drawer .octo-comment-panel {
+  margin-top: 0;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+/* ── Document list: per-row delete control (#1) ─────────────────────────────── */
+.octo-docs-list-row-wrap {
+  display: flex;
+  align-items: center;
+}
+.octo-docs-list-row-wrap .octo-docs-list-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.octo-docs-list-row-actions {
+  position: relative;
+  flex: 0 0 auto;
+}
+/* The "⋯" trigger stays hidden until the row is hovered/focused (avoids mis-clicks),
+   but remains visible while its menu/confirm is open. */
+.octo-docs-list-row-menu-btn {
+  border: none;
+  background: transparent;
+  color: var(--octo-fg-3, #86909c);
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+.octo-docs-list-item:hover .octo-docs-list-row-menu-btn,
+.octo-docs-list-row-menu-btn[aria-expanded='true'] {
+  opacity: 1;
+}
+.octo-docs-list-row-menu-btn:hover {
+  background: var(--octo-hover-bg, #f2f3f5);
+}
+.octo-docs-list-row-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 30;
+  min-width: 120px;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+  padding: 4px;
+}
+.octo-docs-list-row-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.octo-docs-list-row-menu-item:hover {
+  background: var(--octo-hover-bg, #f2f3f5);
+}
+.octo-error {
+  color: #eb5757;
+}
+.octo-docs-delete-confirm {
+  margin: 4px 10px 8px;
+  padding: 10px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  background: var(--octo-bg-2, #fafbfc);
+}
+.octo-docs-delete-confirm-text {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-docs-delete-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.octo-docs-delete-confirm-go {
+  color: #fff;
+  background: #eb5757;
+}
+.octo-docs-delete-confirm-go:hover:not(:disabled) {
+  background: #d64545;
+}
+
+/* Editor delete entry (Problem 4): danger-tinted header button + a confirm card that
+   sits just under the header instead of floating in a list row. */
+.octo-doc-delete-btn {
+  color: #eb5757;
+}
+.octo-doc-delete-btn:hover {
+  background: rgba(235, 87, 87, 0.1);
+}
+.octo-doc-delete-confirm {
+  margin: 8px 0 0;
+  max-width: 420px;
+}
+
+/* Version history (feature #4 §1) */
+.octo-version-panel {
+  margin-top: 24px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 10px;
+  padding: 16px;
+}
+.octo-version-save {
+  margin: 8px 0 12px;
+}
+/* Collapsible manual / auto stream groups (version history item 3). */
+.octo-version-group {
+  margin: 4px 0;
+}
+.octo-version-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--octo-text, #1d2129);
+  text-align: left;
+}
+.octo-version-group-header:hover {
+  background: var(--octo-accent-weak, #f2f3f5);
+  border-radius: 6px;
+}
+.octo-version-group-caret {
+  width: 12px;
+  color: var(--octo-muted, #86909c);
+}
+.octo-version-group-count {
+  color: var(--octo-muted, #86909c);
+  font-weight: 400;
+}
+.octo-version-notice {
+  color: var(--octo-muted, #86909c);
+  font-size: 13px;
+}
+.octo-version-empty {
+  color: var(--octo-muted, #86909c);
+  font-size: 13px;
+}
+.octo-version-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.octo-version-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 8px;
+  border-left: 3px solid transparent;
+}
+.octo-version-row + .octo-version-row {
+  border-top: 1px solid var(--octo-border, #e5e6eb);
+}
+.octo-version-row.is-selected {
+  background: var(--octo-accent-weak, #f2f3f5);
+}
+/* Distinguish version kinds with a left accent bar. */
+.octo-version-row-named {
+  border-left-color: #1d7afc;
+}
+.octo-version-row-restore-marker {
+  border-left-color: #d4691e;
+}
+/* line 1: badge + label + relative time (absolute timestamp on hover via title attr). */
+.octo-version-line1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.octo-version-label {
+  flex: 1 1 auto;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.octo-version-time {
+  flex: 0 0 auto;
+  color: var(--octo-muted, #86909c);
+  font-size: 12px;
+  white-space: nowrap;
+}
+/* line 2: author on the left, action buttons right-aligned (no longer cramped on one row). */
+.octo-version-line2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.octo-version-author {
+  font-size: 12px;
+  color: var(--octo-muted, #86909c);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.octo-version-badge {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  color: var(--octo-muted, #86909c);
+  white-space: nowrap;
+}
+.octo-version-badge-named {
+  color: #1d7afc;
+  border-color: #1d7afc;
+}
+.octo-version-badge-restore-marker {
+  color: #d4691e;
+  border-color: #d4691e;
+}
+.octo-version-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.octo-version-confirm {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  background: var(--octo-accent-weak, #f2f3f5);
+}
+.octo-version-confirm-detail {
+  color: var(--octo-muted, #86909c);
+  font-size: 13px;
+}
+.octo-version-detail {
+  margin-top: 16px;
+  border-top: 1px solid var(--octo-border, #e5e6eb);
+  padding-top: 12px;
+}
+.octo-version-preview {
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  padding: 12px;
+  max-height: 50vh;
+  overflow: auto;
+}
+.octo-version-diff {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  padding: 8px;
+  max-height: 50vh;
+  overflow: auto;
+}
+.octo-diff-line {
+  white-space: pre-wrap;
+  padding: 1px 4px;
+}
+.octo-diff-added {
+  background: #e6f4ea;
+  color: #18794e;
+}
+.octo-diff-removed {
+  background: #fbe9e7;
+  color: #b3261e;
+}
+.octo-diff-unchanged {
+  color: var(--octo-muted, #86909c);
+}
+
+/* Tables (SCHEMA-SPEC §4) */
+.octo-prose table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 12px 0;
+  overflow: hidden;
+}
+.octo-prose table td,
+.octo-prose table th {
+  border: 1px solid var(--octo-border);
+  padding: 6px 10px;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+  min-width: 1em;
+}
+.octo-prose table th {
+  background: var(--octo-hover);
+  font-weight: 600;
+  text-align: left;
+}
+.octo-prose table .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--octo-accent);
+  opacity: 0.12;
+  pointer-events: none;
+}
+.octo-prose table .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--octo-accent);
+  cursor: col-resize;
+  user-select: none;
+}
+.octo-prose .tableWrapper {
+  overflow-x: auto;
+}
+
+/* Image node (SCHEMA-SPEC §2). The NodeView renders a wrapper + <img>; alignment is
+   driven by data-align, and loading/error states are class-toggled view-only. */
+.octo-prose .octo-image {
+  margin: 12px 0;
+  max-width: 100%;
+  position: relative;
+  display: block;
+  /* Hug the (resized) image width so the absolutely-positioned resize handles + selection
+     outline anchor to the IMAGE box, not a full-width block. Without this the wrapper stays
+     editor-full-width (e.g. 1416px) while the img is 600px, leaving the corner handles floating
+     far to the right of the image (the "handles still fill the row / big empty gap" bug). */
+  width: fit-content;
+  margin-right: auto; /* default (left align): keep the hugged box at the left */
+}
+.octo-prose .octo-image img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+}
+/* Selected image: outline + reveal resize handles and the align toolbar. */
+.octo-prose .octo-image.is-selected img {
+  outline: 2px solid var(--octo-accent, #3370ff);
+  outline-offset: 1px;
+}
+.octo-image-toolbar {
+  display: none;
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  gap: 2px;
+  padding: 3px;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  z-index: 6;
+}
+.octo-prose .octo-image.is-selected .octo-image-toolbar {
+  display: inline-flex;
+}
+.octo-image-align-btn {
+  border: none;
+  background: transparent;
+  color: var(--octo-fg, #1f2329);
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.2;
+}
+.octo-image-align-btn:hover {
+  background: var(--octo-hover, #f2f3f5);
+}
+.octo-image-align-btn.is-active {
+  background: var(--octo-accent, #3370ff);
+  color: #fff;
+}
+.octo-image-handle {
+  display: none;
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--octo-accent, #3370ff);
+  border: 2px solid var(--octo-bg, #fff);
+  border-radius: 50%;
+  z-index: 6;
+}
+.octo-prose .octo-image.is-selected .octo-image-handle {
+  display: block;
+}
+.octo-image-handle-nw {
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize;
+}
+.octo-image-handle-ne {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
+}
+.octo-image-handle-sw {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
+}
+.octo-image-handle-se {
+  bottom: -6px;
+  right: -6px;
+  cursor: nwse-resize;
+}
+/* Centered / right-aligned images: align the (fit-content) wrapper box itself so the handles,
+   which anchor to the wrapper edges, stay glued to the image. */
+.octo-prose .octo-image[data-align='center'] {
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+}
+.octo-prose .octo-image[data-align='center'] img {
+  margin-left: auto;
+  margin-right: auto;
+}
+.octo-prose .octo-image[data-align='right'] {
+  margin-left: auto;
+  margin-right: 0;
+}
+.octo-prose .octo-image[data-align='right'] img {
+  margin-left: auto;
+}
+.octo-prose .octo-image.is-loading {
+  min-height: 80px;
+  min-width: 160px; /* fit-content wrapper would otherwise collapse before the img loads */
+  background: var(--octo-hover);
+  border: 1px dashed var(--octo-border);
+  border-radius: 4px;
+}
+.octo-prose .octo-image.is-error {
+  min-height: 40px;
+  min-width: 160px;
+  border: 1px solid #e03131;
+  border-radius: 4px;
+}
+.octo-prose .octo-image.is-error::after {
+  content: 'Image unavailable';
+  display: block;
+  padding: 8px 10px;
+  color: #e03131;
+  font-size: 13px;
+}
+
+/* Transient upload status / error toasts — document-external (live in <body>). */
+.octo-image-status,
+.octo-image-error {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+.octo-image-status {
+  background: var(--octo-accent);
+  color: #fff;
+}
+.octo-image-error {
+  background: #e03131;
+  color: #fff;
+}
+
+/* Inline comments (feature #3 §) */
+.octo-comment-highlight {
+  background: rgba(255, 196, 0, 0.28);
+  border-bottom: 2px solid rgba(214, 158, 0, 0.6);
+  cursor: pointer;
+}
+.octo-comment-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--octo-surface, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+.octo-comment-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.octo-comment-compose-actions {
+  display: flex;
+  gap: 6px;
+}
+.octo-comment-input {
+  min-width: 220px;
+  min-height: 56px;
+  resize: vertical;
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+}
+.octo-comment-panel {
+  margin-top: 24px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 10px;
+  padding: 16px;
+}
+.octo-comment-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--octo-muted, #86909c);
+}
+.octo-comment-empty {
+  color: var(--octo-muted, #86909c);
+  font-size: 13px;
+}
+.octo-comment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.octo-comment-thread {
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.octo-comment-thread.is-selected {
+  border-color: var(--octo-accent, #1d7afc);
+  background: var(--octo-accent-weak, #f2f3f5);
+}
+.octo-comment-anchor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0 0 6px;
+  cursor: pointer;
+}
+.octo-comment-quote {
+  color: var(--octo-muted, #86909c);
+  font-size: 12px;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.octo-comment-orphan {
+  color: #d4691e;
+  font-size: 12px;
+}
+.octo-comment-resolved-badge {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid #2f9e44;
+  color: #2f9e44;
+}
+.octo-comment-body {
+  padding: 4px 0;
+}
+.octo-comment-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.octo-comment-time {
+  color: var(--octo-muted, #86909c);
+  font-size: 12px;
+}
+.octo-comment-text {
+  margin: 4px 0;
+  white-space: pre-wrap;
+}
+.octo-comment-actions {
+  display: flex;
+  gap: 6px;
+}
+.octo-comment-replies {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 6px 0 0 12px;
+  border-left: 2px solid var(--octo-border, #e5e6eb);
+}
+
+/* ── Split-pane docs layout (left list resident + right editor) ──────────────
+   Mirrors the octo-smart-summary / matter list+detail layout: the document list
+   stays resident on the left; selecting an item opens the editor inline on the
+   right (state-driven, no full navigation), so the list never disappears. */
+.octo-docs-split {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.octo-docs-split-left {
+  flex: 0 0 280px;
+  width: 280px;
+  min-width: 220px;
+  max-width: 360px;
+  border-right: 1px solid var(--octo-border, #e5e6eb);
+  overflow-y: auto;
+  background: var(--octo-bg-2, #fafbfc);
+}
+.octo-docs-split-right {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+}
+/* The left pane hosts the list; reset the list's own centering/padding so it
+   fills the sidebar column instead of the old centered single-column page. */
+.octo-docs-split-left .octo-docs-list {
+  max-width: none;
+  margin: 0;
+  padding: 12px;
+}
+/* The right pane hosts the editor; the editor's inner .octo-doc keeps its own
+   reading width but is centered within the right pane. */
+.octo-docs-split-right .octo-doc {
+  max-width: 820px;
+  margin: 0 auto;
+}
+.octo-docs-split-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 240px;
+  color: var(--octo-fg-3, #86909c);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Production path: the docs route slot renders ONLY the resident list (the editor is pushed
+   to the host's main/right pane via WKApp.routeRight, like Matter/Summary). Let the list fill
+   the route slot. */
+.octo-docs-list-only {
+  max-width: none;
+  margin: 0;
+  padding: 12px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* ── Left document list: row-style redesign (UI polish 2026-06-22) ───────────
+   Replaces the old bordered-button look (every item rendered as an outlined
+   rounded button squeezed together) with clean list rows: no per-item border,
+   breathing room, hover tint, and a selected state using a light background bar
+   + a left accent bar instead of a harsh blue outline. */
+.octo-docs-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.octo-docs-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 12px;
+  border-bottom: 1px solid var(--octo-border, #e5e6eb);
+  margin-bottom: 8px;
+}
+.octo-docs-list-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--octo-fg, #1f2329);
+}
+/* "New document" reads as a clear primary action, visually distinct from rows. */
+.octo-docs-list-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #fff;
+  background: var(--octo-active-fg, #1664ff);
+  transition: background 0.15s ease;
+}
+.octo-docs-list-new:hover:not(:disabled) {
+  background: var(--octo-active-fg-hover, #0e4fd6);
+}
+.octo-docs-list-new:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.octo-docs-list-new-icon {
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 600;
+}
+.octo-docs-list-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+.octo-docs-list-item {
+  margin: 0;
+}
+/* Each row: full-width, borderless, left-aligned, with spacing + hover tint. */
+.octo-docs-list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--octo-fg, #1f2329);
+  border-left: 3px solid transparent;
+  transition: background 0.12s ease;
+}
+.octo-docs-list-row:hover {
+  background: var(--octo-hover-bg, #f2f3f5);
+}
+/* Selected: light background bar + left accent bar (no harsh outline). */
+.octo-docs-list-item-active > .octo-docs-list-row,
+.octo-docs-list-row[aria-current='true'] {
+  background: var(--octo-active-bg, #e8f3ff);
+  border-left-color: var(--octo-active-fg, #1664ff);
+}
+.octo-docs-list-row-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--octo-fg-3, #86909c);
+}
+.octo-docs-list-item-active > .octo-docs-list-row .octo-docs-list-row-icon,
+.octo-docs-list-row[aria-current='true'] .octo-docs-list-row-icon {
+  color: var(--octo-active-fg, #1664ff);
+}
+.octo-docs-list-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* allow ellipsis */
+  gap: 1px;
+}
+.octo-docs-list-row-title {
+  font-size: 14px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.octo-docs-list-item-active > .octo-docs-list-row .octo-docs-list-row-title,
+.octo-docs-list-row[aria-current='true'] .octo-docs-list-row-title {
+  font-weight: 600;
+  color: var(--octo-active-fg, #1664ff);
+}
+/* Untitled placeholder shows muted/grey so real titles stand out. */
+.octo-docs-list-row-title-untitled {
+  color: var(--octo-fg-3, #86909c);
+}
+.octo-docs-list-row-sub {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--octo-fg-3, #86909c);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.octo-docs-list-state {
+  padding: 12px 10px;
+  color: var(--octo-fg-3, #86909c);
+  font-size: 13px;
+}
+.octo-docs-list-empty {
+  text-align: center;
+  padding: 32px 12px;
+}
+.octo-docs-list-retry {
+  margin-left: 8px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  background: transparent;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  color: inherit;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Batch-3 schema toolbar items (SCHEMA_VERSION 5–13)
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Font-size dropdown (v7) + alignment buttons share the toolbar control styling. */
+.octo-font-size {
+  height: 26px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+/* Shared dependency-free suggestion popup (mention @ + emoji :). Mirrors the slash menu. */
+.octo-suggest-menu {
+  z-index: 1000;
+  min-width: 180px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+}
+.octo-suggest-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.octo-suggest-item.is-selected,
+.octo-suggest-item:hover {
+  background: var(--octo-hover, #f2f3f5);
+}
+.octo-suggest-empty {
+  padding: 6px 10px;
+  color: var(--octo-fg-3, #86909c);
+  font-size: 12px;
+}
+.octo-emoji-menu .octo-suggest-item {
+  font-size: 15px;
+}
+
+/* Mention node (v10): pill rendering; doc mentions read as links. */
+.octo-mention {
+  color: var(--octo-active-fg, #1664ff);
+  background: var(--octo-mention-bg, rgba(22, 100, 255, 0.08));
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.octo-mention[data-mention-type='doc'] {
+  cursor: pointer;
+}
+.octo-mention[data-mention-type='doc']:hover {
+  text-decoration: underline;
+}
+
+/* Emoji toolbar picker grid (v9). */
+.octo-emoji-popover {
+  position: absolute;
+  z-index: 1000;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  padding: 6px;
+}
+.octo-emoji-search {
+  flex: 0 0 auto;
+  height: 28px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  padding: 0 8px;
+  font-size: 13px;
+}
+.octo-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.octo-emoji-swatch {
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px;
+  cursor: pointer;
+}
+.octo-emoji-swatch:hover {
+  background: var(--octo-hover, #f2f3f5);
+}
+
+/* Callout block (v12): icon + tinted background per variant. */
+.octo-callout {
+  position: relative;
+  border-radius: 8px;
+  padding: 10px 12px 10px 38px;
+  margin: 8px 0;
+  border: 1px solid transparent;
+}
+.octo-callout::before {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+.octo-callout-info {
+  background: rgba(22, 100, 255, 0.08);
+  border-color: rgba(22, 100, 255, 0.2);
+}
+.octo-callout-info::before {
+  content: 'ℹ️';
+}
+.octo-callout-warn {
+  background: rgba(247, 144, 9, 0.1);
+  border-color: rgba(247, 144, 9, 0.25);
+}
+.octo-callout-warn::before {
+  content: '⚠️';
+}
+.octo-callout-tip {
+  background: rgba(0, 180, 42, 0.08);
+  border-color: rgba(0, 180, 42, 0.2);
+}
+.octo-callout-tip::before {
+  content: '💡';
+}
+.octo-callout-success {
+  background: rgba(0, 180, 42, 0.12);
+  border-color: rgba(0, 180, 42, 0.3);
+}
+.octo-callout-success::before {
+  content: '✅';
+}
+
+/* Collapsible details block (v11). */
+.octo-details {
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin: 8px 0;
+}
+.octo-details > summary,
+.octo-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+.octo-details > div[data-type='detailsContent'] {
+  margin-top: 6px;
+}
+
+/* Math nodes (v13). KaTeX styling comes from katex.min.css; these just give the block
+   formula breathing room and mark an empty/invalid formula. */
+.octo-docs-editor .Tiptap-mathematics-editor,
+.tiptap [data-type='inlineMath'],
+.tiptap [data-type='blockMath'] {
+  font-family: 'KaTeX_Main', serif;
+}
+[data-type='blockMath'] {
+  display: block;
+  text-align: center;
+  margin: 10px 0;
+}
+
+/* File-attachment card (v14). Block atom rendered as a download card. */
+.octo-file-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  background: var(--octo-surface, #fafafa);
+}
+.octo-file-card.is-selected {
+  border-color: var(--octo-accent, #1664ff);
+  box-shadow: 0 0 0 2px rgba(22, 100, 255, 0.18);
+}
+.octo-file-card.is-loading {
+  opacity: 0.7;
+}
+.octo-file-icon {
+  font-size: 22px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.octo-file-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.octo-file-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.octo-file-size {
+  font-size: 12px;
+  color: var(--octo-text-secondary, #86909c);
+}
+.octo-file-download {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+.octo-file-download:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.octo-file-status,
+.octo-file-error,
+.octo-bookmark-status,
+.octo-bookmark-error {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  color: #fff;
+}
+.octo-file-status,
+.octo-bookmark-status {
+  background: var(--octo-accent, #1664ff);
+}
+.octo-file-error,
+.octo-bookmark-error {
+  background: #e03131;
+}
+
+/* Bookmark / link-preview card (v15). Block atom rendered as a clickable card. */
+.octo-bookmark-card {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  margin: 8px 0;
+  min-height: 64px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  background: var(--octo-bg, #fff);
+}
+.octo-bookmark-card.is-inert {
+  cursor: default;
+  opacity: 0.7;
+}
+.octo-bookmark-card.is-selected {
+  border-color: var(--octo-accent, #1664ff);
+  box-shadow: 0 0 0 2px rgba(22, 100, 255, 0.18);
+}
+.octo-bookmark-thumb {
+  flex: 0 0 120px;
+  max-width: 120px;
+  overflow: hidden;
+  background: var(--octo-surface, #f2f3f5);
+}
+.octo-bookmark-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* D2: placeholder thumbnail when the link has no og:image — a globe glyph on a tinted panel so
+   the bookmark always reads as a CARD (never a bare link). */
+.octo-bookmark-thumb--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--octo-muted, #8a919e);
+  background: var(--octo-surface, #f2f3f5);
+}
+.octo-bookmark-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+  justify-content: center;
+}
+.octo-bookmark-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* When the card is reduced to just a URL (no title), keep it readable but clearly card-like. */
+.octo-bookmark-title.is-url {
+  font-weight: 500;
+  color: var(--octo-accent, #3370ff);
+}
+.octo-bookmark-desc {
+  font-size: 13px;
+  color: var(--octo-text-secondary, #4e5969);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.octo-bookmark-site {
+  font-size: 12px;
+  color: var(--octo-text-secondary, #86909c);
+}
+
+/* Export dropdown menu */
+.octo-export-menu {
+  position: relative;
+  display: inline-block;
+}
+.octo-export-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--wk-bg-popup, #fff);
+  border: 1px solid var(--wk-border, #e0e0e0);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  min-width: 140px;
+  white-space: nowrap;
+  padding: 4px 0;
+}
+.octo-export-item {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  color: inherit;
+}
+.octo-export-item:hover {
+  background: var(--wk-bg-hover, #f5f5f5);
+}
