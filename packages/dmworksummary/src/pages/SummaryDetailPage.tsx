@@ -24,6 +24,7 @@ import type {
     MemberStatus,
     ScheduleItem,
     ScheduleConfig,
+    WorkflowStage,
 } from "../types/summary";
 import { TaskStatus, SummaryMode, ParticipantStatus } from "../types/summary";
 import {
@@ -81,9 +82,22 @@ interface SummaryDetailPageState {
     regenerateSubmitting: boolean;
     /** V5：schedule 级一次性确认提交中 */
     confirmingSchedule: boolean;
+    workflowDisplayIndex: number;
+    workflowGateContent: boolean;
+    workflowRevealDone: boolean;
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
+const PERSONAL_RESULT_POLL_INTERVAL_MS = 500;
+const WORKFLOW_COMPLETE_REVEAL_DELAY_MS = 650;
+
+const SUMMARY_WORKFLOW_STAGES: Array<{ key: WorkflowStage; label: string }> = [
+    { key: "understand_question", label: "理解总结问题" },
+    { key: "find_relevant_chats", label: "查找相关聊天" },
+    { key: "filter_useful_content", label: "筛选有效内容" },
+    { key: "analyze_chat_content", label: "分析聊天内容" },
+    { key: "generate_summary", label: "生成总结" },
+];
 
 export default class SummaryDetailPage extends Component<SummaryDetailPageProps, SummaryDetailPageState> {
     static contextType = I18nContext;
@@ -115,11 +129,17 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         regenerateTopic: "",
         regenerateSubmitting: false,
         confirmingSchedule: false,
+        workflowDisplayIndex: -1,
+        workflowGateContent: false,
+        workflowRevealDone: false,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
     private fallbackPollTimer: ReturnType<typeof setInterval> | null = null;
     private fallbackStartTimeout: ReturnType<typeof setTimeout> | null = null;
+    private workflowAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
+    private workflowCompleteTimer: ReturnType<typeof setTimeout> | null = null;
+    private workflowTargetIndex = -1;
     private listPageActive = false;
     private lastEventTime = 0;
     private isPersonalPolling = false;
@@ -168,6 +188,100 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.personalPollTimer = null;
         }
         this.stopFallbackPoll();
+        if (this.workflowAdvanceTimer) {
+            clearTimeout(this.workflowAdvanceTimer);
+            this.workflowAdvanceTimer = null;
+        }
+        if (this.workflowCompleteTimer) {
+            clearTimeout(this.workflowCompleteTimer);
+            this.workflowCompleteTimer = null;
+        }
+        this.workflowTargetIndex = -1;
+    }
+
+    private workflowStageIndex(stage?: string): number {
+        if (!stage) return -1;
+        return SUMMARY_WORKFLOW_STAGES.findIndex((item) => item.key === stage);
+    }
+
+    private setWorkflowStageDirectly(index: number) {
+        if (index < 0) return;
+        if (this.workflowAdvanceTimer) {
+            clearTimeout(this.workflowAdvanceTimer);
+            this.workflowAdvanceTimer = null;
+        }
+        if (this.workflowCompleteTimer) {
+            clearTimeout(this.workflowCompleteTimer);
+            this.workflowCompleteTimer = null;
+        }
+        const nextIndex = Math.max(this.state.workflowDisplayIndex, index);
+        this.workflowTargetIndex = nextIndex;
+        this.setState({
+            workflowDisplayIndex: nextIndex,
+            workflowGateContent: true,
+            workflowRevealDone: false,
+        });
+    }
+
+    private finishWorkflowBriefly() {
+        if (this.workflowAdvanceTimer) {
+            clearTimeout(this.workflowAdvanceTimer);
+            this.workflowAdvanceTimer = null;
+        }
+        if (this.workflowCompleteTimer) {
+            clearTimeout(this.workflowCompleteTimer);
+            this.workflowCompleteTimer = null;
+        }
+        const lastIndex = SUMMARY_WORKFLOW_STAGES.length - 1;
+        this.workflowTargetIndex = lastIndex;
+        this.setState({
+            workflowDisplayIndex: lastIndex,
+            workflowGateContent: true,
+            workflowRevealDone: false,
+        }, () => {
+            this.workflowCompleteTimer = setTimeout(() => {
+                this.workflowCompleteTimer = null;
+                this.setState({ workflowRevealDone: true });
+            }, WORKFLOW_COMPLETE_REVEAL_DELAY_MS);
+        });
+    }
+
+    private shouldGateWorkflowForPersonalResult(result: PersonalResult): boolean {
+        const { detail } = this.state;
+        if (detail?.summary_mode !== SummaryMode.BY_PERSON) return false;
+
+        const personalRunning = result.worker_status === 0 || result.worker_status === 1;
+        const personalFailed = result.worker_status === 3;
+
+        // 已经进入过生成态的页面，收到 completed 后保留一次短收尾；
+        // 历史已完成总结首次打开时不 gate，避免闪现 workflow 卡片。
+        return personalRunning || personalFailed || this.state.workflowGateContent;
+    }
+
+    private syncWorkflowProgress(result: PersonalResult) {
+        const stageIndex = this.workflowStageIndex(result.workflow_stage);
+        if (result.worker_status === 3) {
+            if (this.workflowAdvanceTimer) {
+                clearTimeout(this.workflowAdvanceTimer);
+                this.workflowAdvanceTimer = null;
+            }
+            this.workflowTargetIndex = stageIndex >= 0
+                ? stageIndex
+                : Math.max(this.state.workflowDisplayIndex, 0);
+            this.setState({
+                workflowDisplayIndex: this.workflowTargetIndex,
+                workflowGateContent: true,
+                workflowRevealDone: false,
+            });
+            return;
+        }
+        if (result.worker_status === 2) {
+            this.finishWorkflowBriefly();
+            return;
+        }
+        if (result.worker_status === 0 || result.worker_status === 1) {
+            this.setWorkflowStageDirectly(stageIndex >= 0 ? stageIndex : 0);
+        }
     }
 
     get taskId(): number | null {
@@ -184,6 +298,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // editingTeamSummary）被带入新 task——否则切到非 creator 新 task 会绕过权限进编辑器。
         // FE-1（切任务竞态）：开始新 task 加载时同步清空上一 task 的 personalResult/members，
         // 避免旧任务成员报告 / 个人结果在新 detail 返回前残留显示（泄漏他人报告）。
+        if (this.workflowAdvanceTimer) {
+            clearTimeout(this.workflowAdvanceTimer);
+            this.workflowAdvanceTimer = null;
+        }
+        if (this.workflowCompleteTimer) {
+            clearTimeout(this.workflowCompleteTimer);
+            this.workflowCompleteTimer = null;
+        }
+        this.workflowTargetIndex = -1;
+
         this.setState({
             loading: true,
             error: null,
@@ -195,12 +319,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             members: [],
             personalLoading: false,
             membersLoading: false,
+            workflowDisplayIndex: -1,
+            workflowGateContent: false,
+            workflowRevealDone: false,
         });
         try {
             const detail = await api.getSummaryDetail(this.taskId);
             // detail 本身也可能是旧请求：期间切了 task / 又发了一轮 loadDetail 就丢弃。
             if (this.scheduleLoadSeq !== seq || this.taskId !== requestTaskId) return;
-            this.setState({ detail, loading: false, lastKnownStatus: detail.status });
+            this.setState({
+                detail,
+                loading: false,
+                lastKnownStatus: detail.status,
+                workflowGateContent: false,
+            });
 
             // Blocking 5（跨 task 串台）：scheduleItem 必须始终对应当前 detail。
             // 同步部分：从「有定时」总结导航到「无定时」总结时，若不显式清空，旧 scheduleItem
@@ -276,7 +408,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             const result = await api.getPersonalResult(this.taskId);
             // 迟到响应（期间切 task / 重新加载）：丢弃，不污染新 task。
             if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
-            this.setState({ personalResult: result, personalLoading: false });
+            const shouldGateWorkflow = this.shouldGateWorkflowForPersonalResult(result);
+            if (shouldGateWorkflow) {
+                this.setState({
+                    personalResult: result,
+                    personalLoading: false,
+                    workflowGateContent: true,
+                }, () => this.syncWorkflowProgress(result));
+            } else {
+                this.setState({
+                    personalResult: result,
+                    personalLoading: false,
+                    workflowGateContent: false,
+                    workflowRevealDone: true,
+                    workflowDisplayIndex: this.workflowStageIndex(result.workflow_stage),
+                });
+            }
             this.startPersonalPoll(result.worker_status);
         } catch {
             if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
@@ -319,7 +466,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     const result = await api.getPersonalResult(this.taskId);
                     // 切 task 后（clearInterval 停不住已在途请求）迟到响应：丢弃，不串台。
                     if (this.taskId !== requestTaskId) return;
-                    this.setState({ personalResult: result });
+                    this.setState({
+                        personalResult: result,
+                        workflowGateContent: true,
+                    }, () => this.syncWorkflowProgress(result));
                     if (result.worker_status !== 0 && result.worker_status !== 1) {
                         if (this.personalPollTimer) clearInterval(this.personalPollTimer);
                         // 终态一次性补拉 members：轮询已停，给它一个新 seq 即可。
@@ -330,7 +480,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 } finally {
                     this.isPersonalPolling = false;
                 }
-            }, 5000);
+            }, PERSONAL_RESULT_POLL_INTERVAL_MS);
         }
     }
 
@@ -921,11 +1071,63 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * so the global "generating" card and the personal summary are guaranteed to be mutually exclusive
      * regardless of worker_status value/type/timing.
      */
+    private canRevealPersonalContent(): boolean {
+        return !this.state.workflowGateContent || this.state.workflowRevealDone;
+    }
+
     private get personalReady(): boolean {
         const { detail, personalResult } = this.state;
         return (
             detail?.summary_mode === SummaryMode.BY_PERSON &&
-            !!personalResult?.content?.trim()
+            !!personalResult?.content?.trim() &&
+            this.canRevealPersonalContent()
+        );
+    }
+
+    private shouldShowWorkflowCard(): boolean {
+        const { detail, personalResult } = this.state;
+        if (detail?.summary_mode !== SummaryMode.BY_PERSON) return false;
+
+        const personalRunning = personalResult?.worker_status === 0 || personalResult?.worker_status === 1;
+        const personalFailed = personalResult?.worker_status === 3;
+        const replayingCompletedWorkflow = this.state.workflowGateContent && !this.state.workflowRevealDone;
+
+        return personalRunning || personalFailed || replayingCompletedWorkflow;
+    }
+
+    renderWorkflowProgress() {
+        const { detail, personalResult } = this.state;
+        if (detail?.summary_mode !== SummaryMode.BY_PERSON) return null;
+
+        const activeIndex = this.state.workflowDisplayIndex >= 0
+            ? this.state.workflowDisplayIndex
+            : (detail?.status === TaskStatus.PROCESSING ? 0 : -1);
+        const personalDone = personalResult?.worker_status === 2;
+        const personalFailed = personalResult?.worker_status === 3;
+        const allDone = (detail?.status === TaskStatus.COMPLETED || personalDone) && this.state.workflowRevealDone;
+
+        return (
+            <div className="summary-progress-stages">
+                {SUMMARY_WORKFLOW_STAGES.map((item, index) => {
+                    let className = "summary-progress-stage summary-progress-stage-pending";
+                    let mark: React.ReactNode = "○";
+                    if (allDone || (activeIndex >= 0 && index < activeIndex)) {
+                        className = "summary-progress-stage summary-progress-stage-done";
+                        mark = "✓";
+                    } else if (activeIndex === index) {
+                        className = personalFailed
+                            ? "summary-progress-stage summary-progress-stage-failed"
+                            : "summary-progress-stage summary-progress-stage-active";
+                        mark = personalFailed ? "×" : <span className="summary-progress-stage-spinner" />;
+                    }
+                    return (
+                        <div className={className} key={item.key}>
+                            <span style={{ width: 20, display: "inline-block" }}>{mark}</span>
+                            <span>{item.label}</span>
+                        </div>
+                    );
+                })}
+            </div>
         );
     }
 
@@ -933,13 +1135,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { t } = this.context;
         return (
             <div className="summary-detail-processing">
-                <Spin size="large" />
-                <h3 style={{ marginTop: 16 }}>
-                    {t("summary.detail.processingTitle")}
-                </h3>
-                <div style={{ fontSize: 14, color: "var(--semi-color-text-2)", marginTop: 8 }}>
-                    {t("summary.detail.processingDesc")}
+                <div className="summary-progress-copy">
+                    <div className="summary-progress-title">
+                        {t("summary.detail.processingTitle")}
+                    </div>
+                    <div className="summary-progress-desc">
+                        {t("summary.detail.processingDesc")}
+                    </div>
                 </div>
+                {this.renderWorkflowProgress()}
             </div>
         );
     }
@@ -1023,6 +1227,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             );
         }
         if (!personalResult) return null;
+        if (personalResult.content?.trim() && !this.canRevealPersonalContent()) return null;
         return (
             <div className="summary-detail-personal">
                 <div className="summary-detail-section-header">
@@ -1079,6 +1284,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     shouldShowMySubmit(): boolean {
         const { personalResult, members, isEditing, editingPersonalReport, editingTeamSummary, editingMyDraft } = this.state;
         if (!this.isMultiCollab()) return false;
+        if (!this.canRevealPersonalContent()) return false;
         // F2：任一编辑态下隐藏提交入口，避免与编辑器并存、提交触发团队聚合与编辑冲突。
         // OCT-21：草稿编辑态（editingMyDraft）也走同款互斥，整行（含「提交给全部」按钮）让位给草稿编辑器分支。
         if (isEditing || editingPersonalReport || editingTeamSummary || editingMyDraft) return false;
@@ -1537,7 +1743,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {t("summary.detail.submitToAll")}
                     </Button>
                 </div>
-                {myContent && (
+                {myContent && this.canRevealPersonalContent() && (
                     <div className="summary-detail-participant-report-content">
                         <CitationText content={myContent} citations={myCitations} />
                     </div>
@@ -1974,7 +2180,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     </>
                                 )}
 
-                                {(detail.status === TaskStatus.PENDING || detail.status === TaskStatus.PROCESSING) &&
+                                {this.shouldShowWorkflowCard() &&
                                     !this.personalReady &&
                                     this.renderProcessing()
                                 }

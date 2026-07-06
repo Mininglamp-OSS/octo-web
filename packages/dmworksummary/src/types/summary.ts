@@ -112,8 +112,16 @@ export interface SummaryResult {
 }
 
 /** 个人总结结果（BY_PERSON 模式） */
+export type WorkflowStage =
+    | "understand_question"
+    | "find_relevant_chats"
+    | "filter_useful_content"
+    | "analyze_chat_content"
+    | "generate_summary";
+
 export interface PersonalResult {
     worker_status: 0 | 1 | 2 | 3;
+    workflow_stage?: WorkflowStage | "";
     content: string;
     citations?: CitationItem[];
     submitted_at: string | null;
