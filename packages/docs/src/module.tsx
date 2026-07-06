@@ -243,12 +243,6 @@ const docsRouteElement = <DocsRouteElement />
  * BaseModule / LoginModule / ContactsModule.
  */
 export class DocsModule implements IModule {
-  // Unsubscribe fns for the remote-config listeners bound in init(). Stored (rather than
-  // discarded) so a repeat init() on this instance — HMR, re-registration — can drop the old
-  // ones before rebinding instead of accumulating refreshMenus closures on the shared
-  // WKApp.remoteConfig singleton. Mirrors MainVM's _unsubscribeMenuReconcile discipline.
-  private _configUnsubscribers: Array<() => void> = []
-
   id(): string {
     return 'docs'
   }
@@ -279,45 +273,10 @@ export class DocsModule implements IModule {
     // routePath. Registering the menu fixes both the missing entry AND deep-link
     // mounting. Pattern mirrors MatterModule / dmworksummary. sort=4002 places it
     // after contacts(4000)/matter(4001) and before summary(5000).
-    //
-    // Gated by the backend appconfig `docs_on` flag (WKApp.remoteConfig.docsOn): the factory
-    // returns the menu only when docsOn is true, otherwise `undefined` (MenusManager.invokes
-    // filters falsy → the entry is hidden). Default is false (fail-safe) — docs-backend is an
-    // independent service whose reverse-proxy route / collab WS(:1234) / storage deps must be
-    // deployed before the entry is usable; ops flips docs_on on once ready. This is a pure
-    // display gate: /api/v1/docs auth still lives in docs-backend.
     wk.menus.register(
       'docs',
-      () =>
-        wk.remoteConfig?.docsOn
-          ? new Menus('docs', '/docs', t('docs.menu.title'), <DocsIcon />, <DocsIcon active />)
-          : undefined,
+      () => new Menus('docs', '/docs', t('docs.menu.title'), <DocsIcon />, <DocsIcon active />),
       4002,
     )
-
-    // appconfig is fetched asynchronously, so at init() docsOn is usually still the default
-    // false. Refresh the NavRail whenever docs_on resolves/changes so the Docs entry appears (or
-    // disappears) the moment it does.
-    //
-    // Idempotent rebind: drop any listeners a previous init() on this instance bound before
-    // re-subscribing, so repeat registration / HMR doesn't stack duplicate refreshMenus closures
-    // on the shared remoteConfig singleton.
-    for (const unsub of this._configUnsubscribers) unsub()
-    this._configUnsubscribers = []
-
-    const refreshMenus = (): void => wk.menus.refresh?.()
-    const rc = wk.remoteConfig
-    if (rc) {
-      // Honor the addListener contract: if the first appconfig load has ALREADY resolved (module
-      // initialized late — registration-order independent), addListener would return a noop and
-      // the entry would wait for an unrelated later change. Reflect the current docs_on now.
-      if (rc.requestSuccess) {
-        refreshMenus()
-      } else {
-        this._configUnsubscribers.push(rc.addListener(refreshMenus))
-      }
-      // Later toggles (ops flips docs_on after boot) always go through the change listener.
-      this._configUnsubscribers.push(rc.addConfigChangeListener(refreshMenus))
-    }
   }
 }

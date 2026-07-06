@@ -78,8 +78,10 @@
     "comments": "评论",
     "members": "成员",
     "exportMarkdown": "导出为 Markdown",
+    "exportDocx": "导出为 Word",
+    "exportPdf": "导出为 PDF",
     "exportError": "导出文档失败，请重试。",
-    "exportSignedLinkNotice": "注意：图片/附件为签名链接，可能过期；过期后请回原文档重新获取或手动下载。"
+    "export": "导出"
   },
   "slash": {
     "groupBasic": "基础",

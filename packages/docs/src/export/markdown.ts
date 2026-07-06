@@ -7,8 +7,6 @@
 // the resolve endpoint (RES-1 cap: <=200 ids per call). Never base64, never a zip.
 
 import { resolveAttachments, type ResolvedAttachment } from '../attachments/api.ts'
-import { sanitizeLinkHref, sanitizeBookmarkUrl } from '../editor/sanitize.ts'
-import { t } from '../octoweb/index.ts'
 
 /** ProseMirror-JSON node (the bits the serializer reads). */
 export interface MdNode {
@@ -28,10 +26,9 @@ export interface ExportOptions {
   emojiGlyph?: (name: string | null | undefined) => string | undefined
 }
 
-/** Header note (localized via the `docs` i18n namespace) warning that asset links are signed and may expire. */
-function exportHeader(): string {
-  return `<!-- ${t('docs.toolbar.exportSignedLinkNotice')} -->`
-}
+/** Header note (Chinese, per spec) warning that asset links are signed and may expire. */
+const EXPORT_HEADER =
+  '<!-- 注意：图片/附件为签名链接，可能过期；过期后请回原文档重新获取或手动下载。 -->'
 
 interface Ctx {
   urls: Map<string, ResolvedAttachment>
@@ -59,60 +56,6 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out
 }
 
-// ── XSS-safe serialization helpers (yujiawei P1 #3) ───────────────────────────
-//
-// Markdown export is a SEPARATE output surface: the produced .md may be rendered by ANY
-// downstream Markdown→HTML pipeline, many of which pass raw inline HTML and `javascript:`
-// links straight through. So link/image destinations and any value dropped into an inline-HTML
-// attribute MUST be sanitized HERE too — defense in depth, independent of the editor's
-// parse/render guards. Previously hrefs and attributes were interpolated with ZERO escaping, so
-// a `javascript:` link or a `"`-bearing attribute value (color / align / variant / image title)
-// survived verbatim into the export and became a stored-XSS sink on render.
-
-/** Escape a value for safe use inside a double-quoted HTML attribute. */
-function escapeHtmlAttr(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-/**
- * Escape a URL for a Markdown `(...)` destination: percent-encode the characters that would let
- * it break out of the destination — ASCII whitespace, parentheses and backslash. The value has
- * already passed a scheme whitelist (see safeHref); this only prevents syntactic breakout.
- * (encodeURIComponent leaves `(`/`)` untouched, so they are mapped explicitly.)
- */
-const URL_BREAKOUT_ESCAPES: Record<string, string> = {
-  ' ': '%20',
-  '\t': '%09',
-  '\n': '%0A',
-  '\r': '%0D',
-  '(': '%28',
-  ')': '%29',
-  '\\': '%5C',
-}
-function escapeMarkdownUrl(url: string): string {
-  return url.replace(/[\s()\\]/g, (c) => URL_BREAKOUT_ESCAPES[c] ?? encodeURIComponent(c))
-}
-
-/** Escape the `[` / `]` delimiting Markdown link text so a label/alt/name can't inject a link. */
-function escapeMarkdownLinkText(text: string): string {
-  return text.replace(/[[\]]/g, '\\$&')
-}
-
-/**
- * Validate a link/attachment href against a scheme whitelist and return it escaped for a Markdown
- * destination, or '' when the scheme is not allowed (drops `javascript:` / `data:` / `vbscript:`).
- * Returns the ORIGINAL string (NOT the URL-normalized `u.href`, which would add a trailing slash
- * etc.) so legitimate links round-trip unchanged.
- */
-function safeHref(raw: unknown, gate: (s: string | null | undefined) => string | null): string {
-  if (typeof raw !== 'string' || !raw) return ''
-  return gate(raw) ? escapeMarkdownUrl(raw) : ''
-}
-
 /**
  * Serialize a PM-JSON document to a Markdown string. Resolves fresh signed URLs for all
  * referenced attachments first (chunked to <=batchSize), then walks the tree.
@@ -135,8 +78,7 @@ export async function exportDocToMarkdown(
 
   const ctx: Ctx = { urls, emojiGlyph: opts.emojiGlyph }
   const body = serializeBlocks(doc.content ?? [], ctx)
-  const header = exportHeader()
-  return body ? `${header}\n\n${body}\n` : `${header}\n`
+  return body ? `${EXPORT_HEADER}\n\n${body}\n` : `${EXPORT_HEADER}\n`
 }
 
 /** Join block-level nodes with a blank line between them. */
@@ -202,7 +144,7 @@ function wrapAlign(inner: string, node: MdNode): string {
   const align = node.attrs?.textAlign
   if (typeof align === 'string' && align && align !== 'left') {
     const tag = node.type === 'heading' ? 'div' : 'p'
-    return `<${tag} align="${escapeHtmlAttr(align)}">${inner}</${tag}>`
+    return `<${tag} align="${align}">${inner}</${tag}>`
   }
   return inner
 }
@@ -342,44 +284,35 @@ function serializeTableHtml(node: MdNode, ctx: Ctx): string {
 function serializeImage(node: MdNode, ctx: Ctx): string {
   const attachId = node.attrs?.attachId
   const resolved = typeof attachId === 'string' ? ctx.urls.get(attachId) : undefined
-  const rawUrl = resolved?.url ?? (typeof node.attrs?.src === 'string' ? node.attrs.src : '') ?? ''
-  // An image destination is not a navigable `<a href>` (a `javascript:` img src does not execute),
-  // so we don't scheme-gate it — but we DO escape it so it can't break out of the `(...)`.
-  const url = escapeMarkdownUrl(rawUrl)
-  const alt = escapeMarkdownLinkText(typeof node.attrs?.alt === 'string' ? node.attrs.alt : '')
-  const rawTitle = typeof node.attrs?.title === 'string' ? node.attrs.title : ''
-  // The title sits inside `"..."`; backslash-escape the quote/backslash so it can't terminate early.
-  const title = rawTitle ? ` "${rawTitle.replace(/(["\\])/g, '\\$1')}"` : ''
+  const url = resolved?.url ?? (typeof node.attrs?.src === 'string' ? node.attrs.src : '') ?? ''
+  const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt : ''
+  const title = typeof node.attrs?.title === 'string' && node.attrs.title ? ` "${node.attrs.title}"` : ''
   return `![${alt}](${url}${title})`
 }
 
 function serializeFileAttachment(node: MdNode, ctx: Ctx): string {
   const attachId = node.attrs?.attachId
   const resolved = typeof attachId === 'string' ? ctx.urls.get(attachId) : undefined
-  const name = escapeMarkdownLinkText(
+  const name =
     (typeof node.attrs?.fileName === 'string' && node.attrs.fileName) ||
-      resolved?.fileName ||
-      'attachment',
-  )
-  // Download link → real `<a href>`: scheme-gate the (trusted, signed) URL as defense in depth.
-  if (resolved?.url) return `[${name}](${safeHref(resolved.url, sanitizeLinkHref)})`
+    resolved?.fileName ||
+    'attachment'
+  if (resolved?.url) return `[${name}](${resolved.url})`
   // Not resolved (notFound / expired) — keep the name visible, don't crash or invent a link.
   return `[${name}]() <!-- attachment unavailable -->`
 }
 
 function serializeBookmark(node: MdNode): string {
-  // bookmark.url is an external user URL — scheme-gate (http/https only) so a `javascript:` URL
-  // can never be exported as a clickable link.
-  const rawUrl = typeof node.attrs?.url === 'string' ? node.attrs.url : ''
-  const url = safeHref(rawUrl, sanitizeBookmarkUrl)
-  const title = escapeMarkdownLinkText((typeof node.attrs?.title === 'string' && node.attrs.title) || rawUrl)
+  // bookmark.url is an external user URL — used as-is, never resolved.
+  const url = typeof node.attrs?.url === 'string' ? node.attrs.url : ''
+  const title = (typeof node.attrs?.title === 'string' && node.attrs.title) || url
   return `[${title}](${url})`
 }
 
 function serializeCallout(node: MdNode, ctx: Ctx): string {
   const variant = typeof node.attrs?.variant === 'string' ? node.attrs.variant : 'info'
   const inner = serializeBlocks(node.content ?? [], ctx)
-  return `<div data-callout data-variant="${escapeHtmlAttr(variant)}">\n\n${inner}\n\n</div>`
+  return `<div data-callout data-variant="${variant}">\n\n${inner}\n\n</div>`
 }
 
 function serializeDetails(node: MdNode, ctx: Ctx): string {
@@ -442,10 +375,8 @@ function applyMarks(text: string, marks: Array<{ type: string; attrs?: Record<st
         out = `~~${out}~~`
         break
       case 'link': {
-        // Scheme-gate the href (drop javascript:/data:/…) and escape it for the `(...)` target.
-        // An unsafe href degrades to plain text — the visible content is kept, the sink is removed.
-        const safe = safeHref(mark.attrs?.href, sanitizeLinkHref)
-        out = safe ? `[${out}](${safe})` : out
+        const href = typeof mark.attrs?.href === 'string' ? mark.attrs.href : ''
+        out = `[${out}](${href})`
         break
       }
       case 'underline':
@@ -456,9 +387,7 @@ function applyMarks(text: string, marks: Array<{ type: string; attrs?: Record<st
         break
       case 'textStyle': {
         const color = mark.attrs?.color
-        // Color lands inside a `style="..."` attribute — escape it so it can't break out of the
-        // attribute (and inject markup). `color: red"><img onerror=…>` becomes inert text.
-        if (typeof color === 'string' && color) out = `<span style="color:${escapeHtmlAttr(color)}">${out}</span>`
+        if (typeof color === 'string' && color) out = `<span style="color:${color}">${out}</span>`
         break
       }
       case 'subscript':

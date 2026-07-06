@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, cleanup } from '@testing-library/react'
 import { setWKApp } from './octoweb/index.ts'
-import { createMockWKApp, MockRemoteConfig } from './octoweb/mock.ts'
+import { createMockWKApp } from './octoweb/mock.ts'
 import { DocsModule } from './module.tsx'
 
 // Replace the heavy editor chunk (Tiptap + Yjs + Hocuspocus) with a marker component so the
@@ -58,94 +58,6 @@ describe('DocsModule (octo-web same-origin integration)', () => {
     expect(wk.mockMenus.menus.has('docs')).toBe(true)
     const menu = wk.mockMenus.menus.get('docs')!() as { routePath: string }
     expect(menu.routePath).toBe('/docs')
-  })
-
-  describe('docs_on appconfig gate', () => {
-    it('hides the NavRail entry (factory returns undefined) when docs_on is false', () => {
-      // Default fail-safe: docs-backend may not be deployed yet, so with docs_on=false the
-      // factory returns undefined and MenusManager.invokes() filters it out — no entry shown.
-      const wk = createMockWKApp(undefined, new MockRemoteConfig(false))
-      setWKApp(wk)
-      new DocsModule().init()
-      // The factory IS registered (so it re-evaluates on refresh), but yields nothing now.
-      expect(wk.mockMenus.menus.has('docs')).toBe(true)
-      expect(wk.mockMenus.menus.get('docs')!()).toBeUndefined()
-    })
-
-    it('shows the NavRail entry when docs_on is true', () => {
-      const wk = createMockWKApp(undefined, new MockRemoteConfig(true))
-      setWKApp(wk)
-      new DocsModule().init()
-      const menu = wk.mockMenus.menus.get('docs')!() as { routePath: string } | undefined
-      expect(menu?.routePath).toBe('/docs')
-    })
-
-    it('re-evaluates from hidden to shown when docs_on flips after appconfig arrives', () => {
-      // appconfig is async: at init() docs_on is still false, so the entry is hidden. When the
-      // backend later reports docs_on=true, the module refreshes the NavRail and the factory now
-      // yields the menu. This is the real boot ordering the listeners exist for.
-      const rc = new MockRemoteConfig(false)
-      const wk = createMockWKApp(undefined, rc)
-      setWKApp(wk)
-      new DocsModule().init()
-      expect(wk.mockMenus.menus.get('docs')!()).toBeUndefined()
-
-      // Backend enables docs after deployment is ready → first-load listener fires a refresh.
-      rc.docsOn = true
-      rc.emitLoad()
-      expect(wk.mockMenus.refreshCount).toBeGreaterThan(0)
-      const menu = wk.mockMenus.menus.get('docs')!() as { routePath: string } | undefined
-      expect(menu?.routePath).toBe('/docs')
-    })
-
-    it('refreshes the NavRail on a later appconfig change (docs_on toggled off)', () => {
-      const rc = new MockRemoteConfig(true)
-      const wk = createMockWKApp(undefined, rc)
-      setWKApp(wk)
-      new DocsModule().init()
-      expect((wk.mockMenus.menus.get('docs')!() as { routePath: string }).routePath).toBe('/docs')
-
-      // Ops turns docs off again → change listener refreshes, factory now hides the entry.
-      rc.docsOn = false
-      rc.emitChange()
-      expect(wk.mockMenus.refreshCount).toBeGreaterThan(0)
-      expect(wk.mockMenus.menus.get('docs')!()).toBeUndefined()
-    })
-
-    it('refreshes immediately when appconfig already resolved before init (#536 P2)', () => {
-      // Registration-order independent: if the docs module initializes AFTER the first appconfig
-      // load resolved, addListener would return a noop (fires only for pre-load subscribers), so
-      // the entry would wait for an unrelated later change. init() must honor requestSuccess and
-      // reflect the current docs_on right away.
-      const rc = new MockRemoteConfig(true)
-      rc.emitLoad() // first appconfig load resolves → requestSuccess=true, before init()
-      expect(rc.requestSuccess).toBe(true)
-      const wk = createMockWKApp(undefined, rc)
-      setWKApp(wk)
-      new DocsModule().init()
-      // Entry reflects docs_on now, without waiting for a further emitLoad/emitChange.
-      expect(wk.mockMenus.refreshCount).toBeGreaterThan(0)
-      expect((wk.mockMenus.menus.get('docs')!() as { routePath: string }).routePath).toBe('/docs')
-    })
-
-    it('does not accumulate duplicate config listeners across repeat init() (#536 P2)', () => {
-      // HMR / re-registration calls init() again on the same instance. The listeners must be
-      // rebound idempotently (old ones dropped first), not stacked — else each appconfig change
-      // fires refreshMenus N times.
-      const rc = new MockRemoteConfig(false)
-      const wk = createMockWKApp(undefined, rc)
-      setWKApp(wk)
-      const mod = new DocsModule()
-      mod.init()
-      mod.init()
-      mod.init()
-      // Exactly one change listener remains regardless of how many times init() ran.
-      expect(rc.changeListenerCount()).toBe(1)
-      const before = wk.mockMenus.refreshCount
-      rc.docsOn = true
-      rc.emitChange()
-      expect(wk.mockMenus.refreshCount).toBe(before + 1) // one refresh, not three
-    })
   })
 
   it('returns a STABLE /docs route element across handler invocations', () => {

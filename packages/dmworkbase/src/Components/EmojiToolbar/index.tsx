@@ -1,32 +1,14 @@
 import classNames from "classnames";
 import React from "react";
-import ReactDOM from "react-dom";
 import { Component, ReactNode } from "react";
-import { Toast } from "@douyinfe/semi-ui";
 import { EndpointID } from "../../Service/Const";
 import WKApp from "../../App";
 import { Emoji, EmojiService } from "../../Service/EmojiService";
-import { StickerItem } from "../../Service/DataSource/DataSource";
 import ConversationContext from "../Conversation/context";
-import { t } from "../../i18n";
 
 import "./index.css"
-import { LottieSticker, isBitmapStickerFormat } from "../../Messages/LottieSticker";
+import { LottieSticker } from "../../Messages/LottieSticker";
 import IconClick from "../IconClick";
-
-// 自定义贴纸 tab 的内部标识。贴纸是扁平的（不分包），所以只有这一个固定 tab。
-const STICKER_CATEGORY = "sticker"
-// 客户端侧的上传约束，与服务端保持一致（StickerMaxFileSize=1MB；格式白名单）。
-// 服务端是最终防线，这里只是即时反馈、少打一次必失败的请求。
-const MAX_STICKER_BYTES = 1 * 1024 * 1024
-const ACCEPTED_STICKER_TYPES = ["image/gif", "image/png", "image/jpeg", "image/webp"]
-
-// 面板尺寸（与 index.css 的 .wk-emojitoolbar-emojipanel 保持一致）与视口避让间距，
-// 用于把面板按按钮位置定位并夹进视口，避免溢出/被祖先裁剪。
-const EMOJI_PANEL_WIDTH = 460
-const EMOJI_PANEL_HEIGHT = 372
-const EMOJI_PANEL_GAP = 12
-const EMOJI_PANEL_MARGIN = 8
 
 interface EmojiToolbarProps {
     conversationContext: ConversationContext
@@ -36,101 +18,65 @@ interface EmojiToolbarProps {
 interface EmojiToolbarState {
     show: boolean
     animationStart: boolean
-    panelPos: { left: number; top: number } | null
 }
 
 export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiToolbarState>{
-    private triggerRef = React.createRef<HTMLDivElement>()
 
     constructor(props: any) {
         super(props)
         this.state = {
             show: false,
             animationStart: false,
-            panelPos: null,
-        }
-    }
-
-    // 按触发按钮的位置计算面板坐标，并夹进视口：默认向上弹、左对齐按钮；上方空间
-    // 不足则向下弹；左右超界则贴边。面板用 position:fixed + portal 到 body，因此
-    // 不受任何祖先 overflow:hidden / 容器宽度影响（修复之前"偏左"与"溢出右"）。
-    computePanelPos(): { left: number; top: number } {
-        const rect = this.triggerRef.current?.getBoundingClientRect()
-        const vw = typeof window !== "undefined" ? window.innerWidth : EMOJI_PANEL_WIDTH
-        const vh = typeof window !== "undefined" ? window.innerHeight : EMOJI_PANEL_HEIGHT
-        if (!rect) {
-            return { left: EMOJI_PANEL_MARGIN, top: EMOJI_PANEL_MARGIN }
-        }
-        const left = Math.max(EMOJI_PANEL_MARGIN, Math.min(rect.left, vw - EMOJI_PANEL_WIDTH - EMOJI_PANEL_MARGIN))
-        let top = rect.top - EMOJI_PANEL_HEIGHT - EMOJI_PANEL_GAP
-        if (top < EMOJI_PANEL_MARGIN) {
-            top = Math.max(EMOJI_PANEL_MARGIN, Math.min(rect.bottom + EMOJI_PANEL_GAP, vh - EMOJI_PANEL_HEIGHT - EMOJI_PANEL_MARGIN))
-        }
-        return { left, top }
-    }
-
-    togglePanel = () => {
-        if (this.state.show) {
-            this.close()
-        } else {
-            this.setState({ show: true, animationStart: true, panelPos: this.computePanelPos() })
-            window.addEventListener("resize", this.onResize)
-        }
-    }
-
-    close = () => {
-        window.removeEventListener("resize", this.onResize)
-        this.setState({ show: false, animationStart: true })
-    }
-
-    componentWillUnmount() {
-        window.removeEventListener("resize", this.onResize)
-    }
-
-    // 打开期间窗口尺寸变化（DevTools 切换 / 分栏 / 缩放）时重新夹取面板位置（P2-4）。
-    private onResize = () => {
-        if (this.state.show) {
-            this.setState({ panelPos: this.computePanelPos() })
         }
     }
 
     render(): ReactNode {
-        const { show, animationStart, panelPos } = this.state
+        const { show, animationStart } = this.state
         const { icon, conversationContext } = this.props
-        const overlay = <>
-            <div
-                onAnimationEnd={() => {
-                    if (!show) {
-                        this.setState({ animationStart: false })
-                    }
-                }}
-                style={panelPos ? { left: panelPos.left, top: panelPos.top } : undefined}
-                className={classNames("wk-emojitoolbar-emojipanel", animationStart ? (show ? "wk-emojitoolbar-emojipanel-show" : "wk-emojitoolbar-emojipanel-hide") : undefined)}
-            >
-                <EmojiPanel onSticker={(sticker) => {
-                    this.close()
-                    const lottieSticker = new LottieSticker()
-                    lottieSticker.category = sticker.category
-                    lottieSticker.url = sticker.path
-                    lottieSticker.placeholder = sticker.placeholder
-                    lottieSticker.format = sticker.format
-                    conversationContext.sendMessage(lottieSticker)
-                }} onEmoji={(emoji) => {
-                    this.close()
-                    conversationContext.messageInputContext().insertText(emoji.key)
-                }}></EmojiPanel>
-            </div>
-            {
-                show ? <div className="wk-emojitoolbar-mask" onClick={this.close}></div> : undefined
-            }
-        </>
-        return <div className="wk-emojitoolbar" ref={this.triggerRef}>
+        return <div className="wk-emojitoolbar" >
             <IconClick
                 size="sm"
                 icon={typeof icon === 'string' ? <img src={icon} alt="" /> : icon}
-                onClick={this.togglePanel}
+                onClick={() => {
+                    this.setState({ show: !show, animationStart: true })
+                }}
             />
-            {typeof document !== "undefined" ? ReactDOM.createPortal(overlay, document.body) : overlay}
+            <div onAnimationEnd={() => {
+                    // this.setState({
+                    //     animationStart: false
+                    // })
+                    if (!show) {
+                        this.setState({
+                            animationStart: false,
+                        })
+                    }
+                }} className={classNames("wk-emojitoolbar-emojipanel", animationStart ? (show ? "wk-emojitoolbar-emojipanel-show" : "wk-emojitoolbar-emojipanel-hide") : undefined)}>
+                    <EmojiPanel onSticker={(sticker) => {
+                        this.setState({
+                            show: false
+                        })
+                        const lottieSticker = new LottieSticker()
+                        lottieSticker.category = sticker.category
+                        lottieSticker.url = sticker.path
+                        lottieSticker.placeholder = sticker.placeholder
+                        lottieSticker.format = sticker.format
+                        conversationContext.sendMessage(lottieSticker)
+                    }} onEmoji={(emoji) => {
+                        this.setState({
+                            show: false
+                        })
+                        conversationContext.messageInputContext().insertText(emoji.key)
+                    }}></EmojiPanel>
+            </div>
+            {
+                show ? <div className="wk-emojitoolbar-mask" onClick={()=>{
+                    this.setState({
+                        show: false,
+                    })
+                }}>
+                </div> : undefined
+            }
+
         </div>
     }
 }
@@ -138,25 +84,17 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
 interface EmojiPanelState {
     emojis: Emoji[]
     category: string
-    stickers: StickerItem[]
-    uploading: boolean
+    stickers: any[]
+    stickerCategories: any[]
 }
 
 interface EmojiPanelProps {
     onEmoji?: (emoji: Emoji) => void
-    onSticker?: (sticker: StickerItem) => void
+    onSticker?: (sticker: any) => void
 }
 
 export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
     emojiService: EmojiService
-    private fileInput: HTMLInputElement | null = null
-    // EmojiPanel 被 portal 且常驻（每个会话输入栏一个），切换/关闭会话时卸载。下面三个
-    // fire-and-forget 异步流在卸载后 setState 会触发 React 警告并对已离开的会话弹 toast，
-    // 故用 isUnmounted 守卫（PR#496 review，参照 ThreadPanel）。
-    private isUnmounted = false
-    private stickersLoaded = false
-    // 订阅 appconfig 字段变化，让 sticker_custom_enabled 灰度切换后无需刷新前台即可生效。
-    private removeConfigChangeListener?: () => void
 
     constructor(props: any) {
         super(props)
@@ -165,7 +103,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
             emojis: [],
             category: "emoji",
             stickers: [],
-            uploading: false,
+            stickerCategories: []
         }
     }
 
@@ -173,232 +111,83 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         this.setState({
             emojis: this.emojiService.getAllEmoji()
         })
-        // 表情清单（服务端内置表情，web#492）异步到达后刷新选择器，否则面板若在
-        // load() 完成前挂载，要重开才显示新表情。
-        WKApp.mittBus.on("emoji-manifest-updated", this._onEmojiManifestUpdated)
-        // 「添加到我的贴纸」右键菜单收藏成功后广播此事件；已加载过贴纸的面板才
-        // 重拉，未加载过的等下次点开时通过 ensureStickersLoaded 懒加载 —— 避免
-        // 全应用每个 EmojiPanel 都被无谓地打一次 sticker/user 请求。
-        WKApp.mittBus.on("stickers-updated", this._onStickersUpdated)
-        this.removeConfigChangeListener = WKApp.remoteConfig.addConfigChangeListener(
-            this._onRemoteConfigChange
-        )
-        // 贴纸列表延迟到首次切到「我的贴纸」tab 时再拉（ensureStickersLoaded），
-        // 避免每次打开表情面板都打一次 sticker/user 请求（PR#496 review P2-1）。
+        // 贴纸分类依赖后端 /sticker/* 接口，服务端尚未实现（sticker/user/category 返回 404）。
+        // 暂不调用 requestStickerCategory()，避免每次挂载都触发必失败的请求；
+        // 后端实现该端点后，恢复调用即可让贴纸分类 Tab 重新出现。
     }
 
-    componentWillUnmount() {
-        this.isUnmounted = true
-        WKApp.mittBus.off("emoji-manifest-updated", this._onEmojiManifestUpdated)
-        WKApp.mittBus.off("stickers-updated", this._onStickersUpdated)
-        this.removeConfigChangeListener?.()
-        this.removeConfigChangeListener = undefined
-    }
-
-    private _onEmojiManifestUpdated = () => {
-        if (this.isUnmounted) {
-            return
-        }
-        this.setState({ emojis: this.emojiService.getAllEmoji() })
-    }
-
-    private _onStickersUpdated = () => {
-        if (this.isUnmounted) {
-            return
-        }
-        if (this.stickersLoaded) {
-            this.requestStickers()
+    requestStickerCategory() {
+        if (!this.state.stickerCategories || this.state.stickerCategories.length === 0) {
+            WKApp.dataSource.commonDataSource.userStickerCategory().then((result) => {
+                this.setState({ stickerCategories: result })
+            })
         }
     }
-
-    private _onRemoteConfigChange = () => {
-        if (this.isUnmounted) {
-            return
-        }
-        // 开关值直接从 WKApp.remoteConfig 读取, 用 forceUpdate 触发 render 拾取最新值。
-        // 不需要拷贝到 state, 避免 state 与 remoteConfig 双源不一致。
-        this.forceUpdate()
-    }
-
-    requestStickers(): Promise<void> {
-        return WKApp.dataSource.commonDataSource.userStickers().then((result) => {
-            this.stickersLoaded = true
-            if (!this.isUnmounted) {
-                this.setState({ stickers: result.list || [] })
-            }
-        }).catch(() => {
-            if (!this.isUnmounted) {
-                this.setState({ stickers: [] })
-            }
+    requestStickers(category: string) {
+        WKApp.dataSource.commonDataSource.getStickers(category).then((result) => {
+            this.setState({
+                stickers: result.list,
+            })
         })
-    }
-
-    // 首次需要时才拉取贴纸（切到「我的贴纸」tab 时调用），之后不再重复拉。
-    ensureStickersLoaded() {
-        if (!this.stickersLoaded) {
-            this.requestStickers()
-        }
-    }
-
-    onAddClick = () => {
-        this.fileInput?.click()
-    }
-
-    onFileChange = async () => {
-        const file = this.fileInput?.files?.[0]
-        if (this.fileInput) {
-            this.fileInput.value = ""
-        }
-        if (!file) {
-            return
-        }
-        // "+ 按钮点击 → 用户选文件" 之间的异步窗口内, 后端可能通过 appconfig 灰度把
-        // stickerCustomEnabled 翻 false, 此时贴纸 tab / 上传按钮已从 UI 消失。沿用旧回调
-        // 继续上传会与「入口已下线」的 UX 语义冲突, 也让请求白跑一趟。后端 /v1/sticker/user
-        // 仍是最终守卫, 这里只是配合 UI 门控。
-        if (!WKApp.remoteConfig.stickerCustomEnabled) {
-            return
-        }
-        if (!ACCEPTED_STICKER_TYPES.includes(file.type)) {
-            Toast.error(t("base.sticker.formatUnsupported"))
-            return
-        }
-        if (file.size > MAX_STICKER_BYTES) {
-            Toast.error(t("base.sticker.tooLarge", { values: { size: "1MB" } }))
-            return
-        }
-        this.setState({ uploading: true })
-        try {
-            const uploaded = await WKApp.dataSource.commonDataSource.uploadSticker(file)
-            await WKApp.dataSource.commonDataSource.addSticker({ path: uploaded.path, format: uploaded.format })
-            await this.requestStickers()
-            if (!this.isUnmounted) {
-                this.setState({ category: STICKER_CATEGORY })
-            }
-        } catch {
-            if (!this.isUnmounted) {
-                Toast.error(t("base.sticker.addFailed"))
-            }
-        } finally {
-            if (!this.isUnmounted) {
-                this.setState({ uploading: false })
-            }
-        }
-    }
-
-    onDelete = (e: React.MouseEvent, sticker: StickerItem) => {
-        e.stopPropagation()
-        WKApp.dataSource.commonDataSource.deleteSticker(sticker.sticker_id).then(() => {
-            this.requestStickers()
-        }).catch(() => {
-            if (!this.isUnmounted) {
-                Toast.error(t("base.sticker.deleteFailed"))
-            }
-        })
-    }
-
-    // 按 format 分流：已知位图格式用 <img>，其余(含空/未知/tgs)走 tgs-player，与
-    // 聊天气泡里的 LottieStickerCell 共用同一判定(isBitmapStickerFormat)，避免两处
-    // 分流口径漂移把历史 .tgs 贴纸喂进 <img>(PR#496 review)。尺寸由 CSS
-    // (.wk-sticker-item img/tgs-player) 统一控制。
-    renderStickerMedia(sticker: StickerItem): ReactNode {
-        const url = WKApp.dataSource.commonDataSource.getFileURL(sticker.path)
-        if (isBitmapStickerFormat(sticker.format)) {
-            return <img src={url} alt="" />
-        }
-        return <tgs-player autoplay mode="normal" src={url}></tgs-player>
     }
 
     render(): React.ReactNode {
-        const { emojis, category, stickers, uploading } = this.state
+        const { emojis, category, stickers, stickerCategories } = this.state
         const { onEmoji, onSticker } = this.props
-        // stickerCustomEnabled 关闭时: 隐藏贴纸 tab, 并把 isSticker 强制视为 false, 兜住
-        // 「面板已打开且当前在 sticker tab, 后端灰度关掉开关」的边界——避免 tab 消失但
-        // 内容区仍渲染上传/删除入口。纯 render-time 计算, 不触碰 state。
-        const stickerCustomEnabled = WKApp.remoteConfig.stickerCustomEnabled
-        const isSticker = stickerCustomEnabled && category === STICKER_CATEGORY
         return <div className="wk-emojipanel">
-            <div className={classNames("wk-emojipanel-content", isSticker ? "wk-emojipanel-content-sticker" : undefined)}>
+            <div className={classNames("wk-emojipanel-content", category !== "emoji" ? "wk-emojipanel-content-sticker" : undefined)}>
                 <ul>
                     {
-                        !isSticker ? emojis.map((emoji, i) => {
+                        category === "emoji" ? emojis.map((emoji, i) => {
                             return <li key={i} onClick={(e) => {
                                 e.stopPropagation()
                                 if (onEmoji) {
                                     onEmoji(emoji)
                                 }
                             }}>
+                                {/* <img src={require(`./emoji/${emoji.image}`)}> </img> */}
                                 <img src={emoji.image} style={{ width: 28, height: 28, objectFit: 'contain' }} />
                             </li>
                         }) : undefined
                     }
                     {
-                        isSticker ? (
-                            <li
-                                key="__add__"
-                                className="wk-sticker-add"
-                                onClick={(e) => { e.stopPropagation(); if (!uploading) { this.onAddClick() } }}
-                                title={t("base.sticker.add")}
-                            >
-                                {uploading
-                                    ? <svg className="wk-sticker-spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeDasharray="40 18" /></svg>
-                                    : <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>}
-                            </li>
-                        ) : undefined
-                    }
-                    {
-                        isSticker ? stickers.map((sticker) => {
-                            return <li key={sticker.sticker_id} className="wk-sticker-item" onClick={(e) => {
+                        stickers && stickers.length > 0 && category !== "emoji" ? stickers.map((sticker) => {
+                            return <li key={sticker.path} onClick={(e) => {
                                 e.stopPropagation()
                                 if (onSticker) {
                                     onSticker(sticker)
                                 }
                             }}>
-                                {this.renderStickerMedia(sticker)}
-                                <span
-                                    className="wk-sticker-del"
-                                    onClick={(e) => this.onDelete(e, sticker)}
-                                    title={t("base.sticker.delete")}
-                                >×</span>
+                                {/* <img src={require(`./emoji/${emoji.image}`)}> </img> */}
+                                <tgs-player style={{ width: "74px", height: "74px" }} autoplay mode="normal" src={WKApp.dataSource.commonDataSource.getFileURL(sticker.path)}></tgs-player>
                             </li>
                         }) : undefined
-                    }
-                    {
-                        isSticker && stickers.length === 0 && !uploading
-                            ? <li key="__empty__" className="wk-sticker-empty">{t("base.sticker.empty")}</li>
-                            : undefined
                     }
                 </ul>
             </div>
             <div className="wk-emojipanel-tab">
-                <div className={classNames("wk-emojipanel-tab-item", !isSticker ? "wk-emojipanel-tab-item-selected" : undefined)} onClick={(e) => {
+                <div className={classNames("wk-emojipanel-tab-item", category === "emoji" ? "wk-emojipanel-tab-item-selected" : undefined)} onClick={(e) => {
                     e.stopPropagation()
                     this.setState({ category: "emoji" })
                 }}>
                     <img alt="" src={require("./emoji_tab_icon.png")}></img>
                 </div>
-                {stickerCustomEnabled ? (
-                    <div className={classNames("wk-emojipanel-tab-item", isSticker ? "wk-emojipanel-tab-item-selected" : undefined)} onClick={(e) => {
-                        e.stopPropagation()
-                        this.setState({ category: STICKER_CATEGORY })
-                        this.ensureStickersLoaded()
-                    }} title={t("base.sticker.tab")}>
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                            <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="1.8" />
-                            <circle cx="9" cy="10" r="1.2" fill="currentColor" />
-                            <circle cx="15" cy="10" r="1.2" fill="currentColor" />
-                            <path d="M8.5 14 a3.5 2.5 0 0 0 7 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                        </svg>
-                    </div>
-                ) : undefined}
+                {
+                    stickerCategories.map((stickerCategory) => {
+                        return (
+                            <div key={stickerCategory.category} className={classNames("wk-emojipanel-tab-item", stickerCategory.category === category ? "wk-emojipanel-tab-item-selected" : undefined)} onClick={(e) => {
+                                e.stopPropagation()
+                                const category: string = stickerCategory.category || ""
+                                this.setState({ category: category })
+                                this.requestStickers(category)
+
+                            }}>
+                                <img alt="" src={WKApp.dataSource.commonDataSource.getFileURL(stickerCategory.cover)}></img>
+                            </div>
+                        )
+                    })
+                }
             </div>
-            <input
-                ref={(ref) => { this.fileInput = ref }}
-                onChange={this.onFileChange}
-                type="file"
-                accept={ACCEPTED_STICKER_TYPES.join(",")}
-                style={{ display: "none" }}
-            />
         </div>
     }
 }

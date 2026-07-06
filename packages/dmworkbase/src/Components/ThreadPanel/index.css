@@ -31,14 +31,6 @@ body[theme-mode="dark"] .wk-thread-panel {
   flex-direction: column;
 }
 
-/* 子区 Webhook 管理子视图内容区（#451）：填满头部以下空间并可滚动，
-   面板本体 .wk-webhook 自带内部布局。 */
-.wk-thread-panel-webhook-content {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
 /* 面板头部 */
 .wk-thread-panel-header {
   height: var(--wk-height-chat-conversation-header);
@@ -106,7 +98,7 @@ body[theme-mode="dark"] .wk-thread-panel {
 .wk-thread-panel-parent-avatar {
   width: 24px;
   height: 24px;
-  border-radius: var(--wk-avatar-radius, 50%);
+  border-radius: 50%;
 }
 
 .wk-thread-panel-parent-name {
@@ -142,7 +134,7 @@ body[theme-mode="dark"] .wk-thread-panel {
 .wk-thread-panel-reply-avatar {
   width: 32px;
   height: 32px;
-  border-radius: var(--wk-avatar-radius, 50%);
+  border-radius: 50%;
   flex-shrink: 0;
 }
 
@@ -431,16 +423,6 @@ body[theme-mode="dark"] .wk-thread-panel {
 .wk-thread-panel-create-btn:hover {
   background: var(--wk-brand-tint-06);
   border-color: var(--wk-border-glow);
-}
-
-/* 群已解散：新建子区按钮置灰禁用 */
-.wk-thread-panel-create-btn--disabled,
-.wk-thread-panel-create-btn--disabled:hover {
-  cursor: not-allowed;
-  opacity: 0.5;
-  color: var(--wk-text-tertiary, var(--wk-text-secondary));
-  border-color: var(--wk-border-color, rgba(28, 28, 35, 0.12));
-  background: transparent;
 }
 
 /* 分组 */

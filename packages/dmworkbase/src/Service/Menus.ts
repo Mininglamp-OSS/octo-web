@@ -7,9 +7,7 @@ export default class MenusManager {
   }
   setRefresh?:()=>void
   public static shared = new MenusManager()
-  // 工厂可返回 undefined 表示「当前不展示该菜单」——invokes() 用 `if (result)` 过滤 falsy，
-  // 配合 refresh() 可实现按 remoteConfig(如 docsOn)运行时显隐,无需 unregister。
-  register(sid: string, f: (param:any) => Menus | undefined,sort?:number) {
+  register(sid: string, f: (param:any) => Menus,sort?:number) {
     EndpointManager.shared.setMethod(
       `${EndpointID.menusPrefix}${sid}`, (param) => f(param),
       { category: EndpointCategory.menus,sort:sort });

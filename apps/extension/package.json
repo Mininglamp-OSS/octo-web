@@ -15,7 +15,6 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
-    "@dmwork/summary": "workspace:*",
     "@octo/base": "workspace:*",
     "@octo/contacts": "workspace:*",
     "@octo/datasource": "workspace:*",

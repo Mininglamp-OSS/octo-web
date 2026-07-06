@@ -15,11 +15,14 @@ import { useCommentHighlights } from '../comments/useCommentHighlights.ts'
 import { useDocDelete } from './useDocDelete.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { exportDocToMarkdown, type MdNode } from '../export/markdown.ts'
+import { exportDocToDocx } from '../export/docx/index.ts'
+import { exportDocPdf } from '../pages/docsApi.ts'
 import { emojiGlyph } from './emoji.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { t } from '../octoweb/index.ts'
 import { getDoc, updateDocTitle } from '../pages/docsApi.ts'
+import { ExportMenu } from './ExportMenu.tsx'
 import './styles.css'
 
 /** Which right-side drawer panel is open (mutually exclusive); null = drawer closed. */
@@ -330,7 +333,60 @@ export function EditorShell(props: EditorShellProps) {
       a.click()
       a.remove()
       URL.revokeObjectURL(url)
-    } catch {
+    } catch (err) {
+      console.error('[docs] Markdown export failed:', err)
+      setExportError(t('docs.toolbar.exportError'))
+    } finally {
+      setExporting(false)
+    }
+  }, [instance, docId, currentTitle, exporting])
+
+  const onExportDocx = useCallback(async () => {
+    const ed = instance?.editor
+    if (!ed || exporting) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      const blob = await exportDocToDocx(docId, ed.getJSON() as unknown as MdNode, { emojiGlyph })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${exportDownloadName(currentTitle)}.docx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('[docs] DOCX export failed:', err)
+      setExportError(t('docs.toolbar.exportError'))
+    } finally {
+      setExporting(false)
+    }
+  }, [instance, docId, currentTitle, exporting])
+
+  const onExportPdf = useCallback(async () => {
+    const ed = instance?.editor
+    if (!ed || exporting) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      // Server-side (Puppeteer headless Chrome) PDF render (小吴's decision to
+      // go backend). The backend renders its own persisted copy of the doc
+      // with server-side KaTeX, so the output has real CJK, rendered math,
+      // emoji, selectable text and smart pagination — one-click download with
+      // no print dialog. Returns the PDF bytes directly.
+      const bytes = await exportDocPdf(docId)
+      const blob = new Blob([bytes], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${exportDownloadName(currentTitle)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch (err) {
+      console.error('[docs] PDF export failed:', err)
       setExportError(t('docs.toolbar.exportError'))
     } finally {
       setExporting(false)
@@ -420,16 +476,13 @@ export function EditorShell(props: EditorShellProps) {
           >
             💬 {t('docs.toolbar.comments')}
           </button>
-          {/* Export the document as a Markdown file (reader+ — anyone who can view can export). */}
-          <button
-            type="button"
-            className="octo-tb-btn"
-            title={t('docs.toolbar.exportMarkdown')}
+          {/* Export dropdown — combines Markdown and Word export into one menu. */}
+          <ExportMenu
             disabled={exporting}
-            onClick={() => void onExportMarkdown()}
-          >
-            ⬇ {t('docs.toolbar.exportMarkdown')}
-          </button>
+            onExportMarkdown={() => void onExportMarkdown()}
+            onExportDocx={() => void onExportDocx()}
+            onExportPdf={() => void onExportPdf()}
+          />
           {manage && (
             <button
               type="button"

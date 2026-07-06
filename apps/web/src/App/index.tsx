@@ -10,7 +10,6 @@ import { ChatIcon } from '../Components/Icons/ChatIcon';
 import { ContactsIcon } from '../Components/Icons/ContactsIcon';
 import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
-import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
 
 let _summaryBadgeCount = 0;
 let _badgeListenerSetup = false;
@@ -46,46 +45,14 @@ function useRealnameVerifiedLandingHandler() {
 }
 
 function App() {
-  useRealnameVerifiedLandingHandler()
-  useDeprecatedFriendApplyReddotCleanup()
   registerMenus()
+  useRealnameVerifiedLandingHandler()
   return (
     <AppLayout />
   );
 }
 
-function useDeprecatedFriendApplyReddotCleanup() {
-  const isLogined = WKApp.loginInfo.isLogined()
-  const uid = WKApp.loginInfo.uid
-
-  useEffect(() => {
-    if (!isLogined || !uid) {
-      return
-    }
-    void clearDeprecatedFriendApplyReddotOnce({
-      isLoggedIn: () => WKApp.loginInfo.isLogined(),
-      getUid: () => WKApp.loginInfo.uid,
-      clearReddot: () => WKApp.apiClient.delete(`/user/reddot/friendApply`),
-      emitUnreadCount: (count) => {
-        WKApp.mittBus.emit('friend-applys-unread-count', count)
-      },
-      setUnreadCount: (currentUid, count) => {
-        WKApp.loginInfo.setStorageItem(`${currentUid}-friend-applys-unread-count`, count)
-      },
-      refreshMenus: () => {
-        WKApp.menus.refresh()
-      },
-      warn: (message, error) => {
-        console.warn(message, error)
-      },
-    })
-  }, [isLogined, uid])
-}
-
-let _menusRegistered = false
 async function registerMenus() {
-  if (_menusRegistered) return
-  _menusRegistered = true
 
   WKSDK.shared().conversationManager.addConversationListener(() => {
     WKApp.menus.refresh()
@@ -141,8 +108,19 @@ async function registerMenus() {
     return m
   }, 1000)
 
+  if (WKApp.loginInfo.isLogined()) {
+    WKApp.apiClient.get(`/user/reddot/friendApply`).then(res => {
+      WKApp.mittBus.emit('friend-applys-unread-count', res.count)
+      WKApp.loginInfo.setStorageItem(`${WKApp.loginInfo.uid}-friend-applys-unread-count`, res.count)
+      WKApp.menus.refresh();
+    }).catch(error => {
+      console.warn('Failed to fetch friend apply count:', error);
+    });
+  }
+
   WKApp.menus.register("contacts", (param) => {
     const m = new Menus("contacts", "/contacts", t("app.nav.contacts"), <ContactsIcon />, <ContactsIcon />)
+    m.badge = WKApp.shared.getFriendApplysUnreadCount();
     return m
   }, 4000)
 

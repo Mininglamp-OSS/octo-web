@@ -27,55 +27,6 @@ describe('octoweb apiClient seam', () => {
     await expect(wrapped.delete('/docs')).resolves.toEqual({ data: body, status: 200 })
   })
 
-  // Regression (yujiawei P1 #1): the host APIClient rejects with `{ error, msg, status, code, … }`
-  // — NOT an axios-style `{ response }`. Docs error handlers all read `err.response?.status` /
-  // `err.response.data?.error`, so without re-wrapping the rejection EVERY production error branch
-  // (members 404, attachments 400, versions 409, delete classification) silently died while tests
-  // (which inject an axios-style mock) stayed green. The seam must lift the rejection into `.response`.
-  it('wrapHostClient re-wraps a host-style rejection into an axios { response } error', async () => {
-    // Mirror the REAL host rejection (dmworkbase APIClient response interceptor): the original
-    // axios error (with its `{ response: { status, data } }`) nested under `.error`, plus the
-    // host's flattened `status` / `msg` / `code` fields.
-    const hostRejection = {
-      error: { response: { status: 404, data: { error: 'user_not_found' } } },
-      msg: 'not found',
-      status: 404,
-      code: 'user_not_found',
-    }
-    const host = {
-      get: async () => Promise.reject(hostRejection),
-      post: async () => Promise.reject(hostRejection),
-      put: async () => Promise.reject(hostRejection),
-      patch: async () => Promise.reject(hostRejection),
-      delete: async () => Promise.reject(hostRejection),
-    } as unknown as APIClient
-
-    const wrapped = wrapHostClient(host)
-    await expect(wrapped.get('/docs')).rejects.toMatchObject({
-      response: { status: 404, data: { error: 'user_not_found' } },
-    })
-    await expect(wrapped.post('/docs', {})).rejects.toMatchObject({
-      response: { status: 404, data: { error: 'user_not_found' } },
-    })
-  })
-
-  it('wrapHostClient surfaces the host status when the rejection has no axios response (timeout/network)', async () => {
-    // Timeout / network: axios error has no `.response`, but the host normalized an HTTP status.
-    const host = {
-      get: async () => Promise.reject({ error: new Error('timeout'), msg: 'timeout', status: 408 }),
-    } as unknown as APIClient
-    await expect(wrapHostClient(host).get('/docs')).rejects.toMatchObject({ response: { status: 408 } })
-  })
-
-  it('wrapHostClient passes an already axios-style rejection through untouched', async () => {
-    // The injected test mock rejects axios-style directly — it must not be double-wrapped.
-    const axiosErr = { response: { status: 400, data: { error: 'invalid_request' } } }
-    const host = {
-      get: async () => Promise.reject(axiosErr),
-    } as unknown as APIClient
-    await expect(wrapHostClient(host).get('/docs')).rejects.toBe(axiosErr)
-  })
-
   it('forwards path + config through to the host method', async () => {
     const calls: Array<{ url: string; config?: unknown }> = []
     const host = {

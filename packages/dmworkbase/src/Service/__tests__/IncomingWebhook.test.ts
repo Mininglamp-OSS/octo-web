@@ -1,19 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
     IncomingWebhookStatus,
-    MENTION_UIDS_MAX,
     buildIncomingWebhookUrl,
-    buildWebhookAdapterExamples,
     buildWebhookCurlExample,
     buildWebhookUpsertReq,
     buildWebhookUrlRows,
     canManageIncomingWebhook,
     canTestWebhook,
-    isFlagOn,
     isIncomingWebhookSender,
-    normalizeMentionUids,
-    toShortWebhookAlias,
-    validateMentionUids,
     webhookFromOfMessage,
 } from "../IncomingWebhook";
 
@@ -66,50 +60,6 @@ describe("buildIncomingWebhookUrl", () => {
         expect(buildIncomingWebhookUrl(`${rel}/wecom`, "/api/v1/", "https://h.e")).toBe(
             "https://h.e/api/v1/incoming-webhooks/iwh_abc/token123/wecom"
         );
-    });
-});
-
-describe("toShortWebhookAlias (#452)", () => {
-    it("canonical 相对路径 → 短别名，webhook_id/token 保留", () => {
-        expect(toShortWebhookAlias("/v1/incoming-webhooks/iwh_a/tok")).toBe(
-            "/v1/webhooks/iwh_a/tok"
-        );
-    });
-
-    it("适配器后缀完整保留", () => {
-        expect(toShortWebhookAlias("/v1/incoming-webhooks/iwh_a/tok/github")).toBe(
-            "/v1/webhooks/iwh_a/tok/github"
-        );
-    });
-
-    it("query 串完整保留", () => {
-        expect(toShortWebhookAlias("/v1/incoming-webhooks/iwh_a/tok?foo=bar")).toBe(
-            "/v1/webhooks/iwh_a/tok?foo=bar"
-        );
-    });
-
-    it("绝对地址里的 canonical 段也被改写（仅换一次）", () => {
-        expect(
-            toShortWebhookAlias("https://h.e/api/v1/incoming-webhooks/iwh_a/tok")
-        ).toBe("https://h.e/api/v1/webhooks/iwh_a/tok");
-    });
-
-    it("幂等：已是短别名 → 原样返回（前向兼容后端将来直接返回别名）", () => {
-        const short = "/v1/webhooks/iwh_a/tok";
-        expect(toShortWebhookAlias(short)).toBe(short);
-    });
-
-    it("不含 canonical 段 → 原样返回", () => {
-        expect(toShortWebhookAlias("/v1/message/send")).toBe("/v1/message/send");
-    });
-
-    it("不误伤管理面 /v1/groups/{group_no}/incoming-webhooks（前缀不同）", () => {
-        const mgmt = "/v1/groups/g_1/incoming-webhooks";
-        expect(toShortWebhookAlias(mgmt)).toBe(mgmt);
-    });
-
-    it("空串 → 空串", () => {
-        expect(toShortWebhookAlias("")).toBe("");
     });
 });
 
@@ -290,103 +240,6 @@ describe("buildWebhookUpsertReq", () => {
             ).toEqual({ avatar: "" });
         });
     });
-
-    describe("mention_uids (#465)", () => {
-        it("新建态：非空才发，并去重 + trim", () => {
-            expect(
-                buildWebhookUpsertReq({
-                    isEdit: false,
-                    isManager: false,
-                    name: "CI",
-                    avatar: "",
-                    mentionUids: [" uid_a ", "uid_b", "uid_a", "  "],
-                })
-            ).toEqual({ name: "CI", mention_uids: ["uid_a", "uid_b"] });
-        });
-
-        it("新建态：空选择不带 mention_uids 字段", () => {
-            expect(
-                buildWebhookUpsertReq({
-                    isEdit: false,
-                    isManager: false,
-                    name: "CI",
-                    avatar: "",
-                    mentionUids: [],
-                })
-            ).toEqual({ name: "CI" });
-        });
-
-        it("编辑态：集合无变化（仅顺序/重复不同）→ 不发", () => {
-            expect(
-                buildWebhookUpsertReq({
-                    isEdit: true,
-                    isManager: true,
-                    name: "OldName",
-                    avatar: "https://old/a.png",
-                    mentionUids: ["uid_b", "uid_a", "uid_a"],
-                    webhook: { ...existing, mention_uids: ["uid_a", "uid_b"] },
-                })
-            ).toBeNull();
-        });
-
-        it("编辑态：新增成员 → 发完整新集合", () => {
-            expect(
-                buildWebhookUpsertReq({
-                    isEdit: true,
-                    isManager: true,
-                    name: "OldName",
-                    avatar: "https://old/a.png",
-                    mentionUids: ["uid_a", "uid_b"],
-                    webhook: { ...existing, mention_uids: ["uid_a"] },
-                })
-            ).toEqual({ mention_uids: ["uid_a", "uid_b"] });
-        });
-
-        it("编辑态：清空（[]）是显式变化 → 发空数组", () => {
-            expect(
-                buildWebhookUpsertReq({
-                    isEdit: true,
-                    isManager: true,
-                    name: "OldName",
-                    avatar: "https://old/a.png",
-                    mentionUids: [],
-                    webhook: { ...existing, mention_uids: ["uid_a"] },
-                })
-            ).toEqual({ mention_uids: [] });
-        });
-    });
-});
-
-describe("normalizeMentionUids / validateMentionUids", () => {
-    it("normalize：trim、丢空、按首次出现去重", () => {
-        expect(normalizeMentionUids([" a ", "b", "a", "", "  ", "b"])).toEqual([
-            "a",
-            "b",
-        ]);
-    });
-
-    it("validate：合法集合返回去重后的 uids", () => {
-        const r = validateMentionUids(["a", "a", "b"]);
-        expect(r).toEqual({ ok: true, uids: ["a", "b"] });
-    });
-
-    it("validate：超过上限 → tooMany", () => {
-        const tooMany = Array.from({ length: MENTION_UIDS_MAX + 1 }, (_, i) => `u${i}`);
-        expect(validateMentionUids(tooMany)).toEqual({ ok: false, reason: "tooMany" });
-    });
-
-    it("validate：刚好上限 → ok", () => {
-        const exact = Array.from({ length: MENTION_UIDS_MAX }, (_, i) => `u${i}`);
-        const r = validateMentionUids(exact);
-        expect(r.ok).toBe(true);
-    });
-
-    it("validate：单 uid 超长（>40）→ tooLong", () => {
-        expect(validateMentionUids(["x".repeat(41)])).toEqual({
-            ok: false,
-            reason: "tooLong",
-        });
-    });
 });
 
 describe("buildWebhookUrlRows", () => {
@@ -394,9 +247,7 @@ describe("buildWebhookUrlRows", () => {
     const origin = "https://host.example";
     const full = (rel: string) => `https://host.example/api/v1${rel}`;
 
-    // 后端返回的仍是 canonical /v1/incoming-webhooks/...（#456 保持向后兼容），
-    // 展示层统一改写成更短的等价别名 /v1/webhooks/...（#452）。
-    it("三个适配器 URL 齐全 → 三行，标签 key 正确，展示为短别名（#452）", () => {
+    it("三个适配器 URL 齐全 → 三行，标签 key 正确", () => {
         const rows = buildWebhookUrlRows(
             {
                 url: "/v1/incoming-webhooks/iwh_a/t",
@@ -410,13 +261,13 @@ describe("buildWebhookUrlRows", () => {
             origin
         );
         expect(rows).toEqual([
-            { key: "native", labelKey: "channelWebhook.url.native", url: full("/webhooks/iwh_a/t") },
-            { key: "github", labelKey: "channelWebhook.url.github", url: full("/webhooks/iwh_a/t/github") },
-            { key: "wecom", labelKey: "channelWebhook.url.wecom", url: full("/webhooks/iwh_a/t/wecom") },
+            { key: "native", labelKey: "channelWebhook.url.native", url: full("/incoming-webhooks/iwh_a/t") },
+            { key: "github", labelKey: "channelWebhook.url.github", url: full("/incoming-webhooks/iwh_a/t/github") },
+            { key: "wecom", labelKey: "channelWebhook.url.wecom", url: full("/incoming-webhooks/iwh_a/t/wecom") },
         ]);
     });
 
-    it("旧契约只给顶层 url（无 urls）→ native 回退到 url 并改写为短别名，github/wecom 过滤掉", () => {
+    it("旧契约只给顶层 url（无 urls）→ native 回退到 url，github/wecom 过滤掉", () => {
         const rows = buildWebhookUrlRows(
             { url: "/v1/incoming-webhooks/iwh_a/t" },
             apiURL,
@@ -426,7 +277,7 @@ describe("buildWebhookUrlRows", () => {
         expect(rows[0]).toEqual({
             key: "native",
             labelKey: "channelWebhook.url.native",
-            url: full("/webhooks/iwh_a/t"),
+            url: full("/incoming-webhooks/iwh_a/t"),
         });
     });
 
@@ -444,136 +295,6 @@ describe("buildWebhookUrlRows", () => {
 
     it("既无 url 也无 urls（退化态）→ 空数组", () => {
         expect(buildWebhookUrlRows({ url: "" }, apiURL, origin)).toEqual([]);
-    });
-});
-
-describe("buildWebhookAdapterExamples (#475)", () => {
-    const apiURL = "/api/v1/";
-    const origin = "https://host.example";
-    const full = (rel: string) => `https://host.example/api/v1${rel}`;
-
-    const example = (over: Record<string, unknown> = {}) => ({
-        key: "github",
-        title: "GitHub 事件",
-        description: "把 Payload URL 登记到仓库 Webhook 设置。",
-        url: "/v1/incoming-webhooks/iwh_a/t/github",
-        content_type: "application/json",
-        auth: { type: "url_token" },
-        steps: ["进入仓库 → Settings → Webhooks", "填入 Payload URL", "保存"],
-        ...over,
-    });
-
-    it("缺失 adapter_examples（老后端）→ 空数组（调用方据此走兜底）", () => {
-        expect(buildWebhookAdapterExamples({}, apiURL, origin)).toEqual([]);
-        expect(buildWebhookAdapterExamples({ adapter_examples: [] }, apiURL, origin)).toEqual([]);
-    });
-
-    it("相对 url 经短别名改写 + base 拼接，文案/steps 原样透传", () => {
-        const rows = buildWebhookAdapterExamples(
-            { adapter_examples: [example()] as never },
-            apiURL,
-            origin
-        );
-        expect(rows).toHaveLength(1);
-        expect(rows[0]).toEqual({
-            key: "github",
-            title: "GitHub 事件",
-            description: "把 Payload URL 登记到仓库 Webhook 设置。",
-            url: full("/webhooks/iwh_a/t/github"),
-            contentType: "application/json",
-            auth: { type: "url_token" },
-            steps: ["进入仓库 → Settings → Webhooks", "填入 Payload URL", "保存"],
-        });
-    });
-
-    it("保留服务端给的 GitLab header 鉴权信息（前端不写死 header 名）", () => {
-        const rows = buildWebhookAdapterExamples(
-            {
-                adapter_examples: [
-                    example({
-                        key: "gitlab",
-                        url: "/v1/incoming-webhooks/iwh_a/t/gitlab",
-                        auth: {
-                            type: "url_token_and_header",
-                            header: "X-Gitlab-Token",
-                            value_source: "token",
-                        },
-                    }),
-                ] as never,
-            },
-            apiURL,
-            origin
-        );
-        expect(rows[0].auth).toEqual({
-            type: "url_token_and_header",
-            header: "X-Gitlab-Token",
-            value_source: "token",
-        });
-        expect(rows[0].url).toBe(full("/webhooks/iwh_a/t/gitlab"));
-    });
-
-    it("未知 key 不被过滤（后端新增适配器无需前端发版）", () => {
-        const rows = buildWebhookAdapterExamples(
-            {
-                adapter_examples: [
-                    example({ key: "slack", url: "/v1/incoming-webhooks/iwh_a/t/slack" }),
-                ] as never,
-            },
-            apiURL,
-            origin
-        );
-        expect(rows.map((r) => r.key)).toEqual(["slack"]);
-    });
-
-    it("丢弃无 key / 无 url 的脏条目，steps 丢空行，文案 trim", () => {
-        const rows = buildWebhookAdapterExamples(
-            {
-                adapter_examples: [
-                    example({ key: "" }),
-                    example({ url: "" }),
-                    example({
-                        title: "  GitHub  ",
-                        steps: ["  a  ", "", "  b  "],
-                    }),
-                ] as never,
-            },
-            apiURL,
-            origin
-        );
-        expect(rows).toHaveLength(1);
-        expect(rows[0].title).toBe("GitHub");
-        expect(rows[0].steps).toEqual(["a", "b"]);
-    });
-
-    it("非字符串字段（数字/对象）不抛错，按缺省降级而非崩溃", () => {
-        // 弹窗 render 时调用，脏数据若让 .trim() / toShortWebhookAlias 抛错，
-        // 一次性 token 弹窗会整体崩掉、token 取不回——这里钉死「降级不抛错」。
-        const run = () =>
-            buildWebhookAdapterExamples(
-                {
-                    adapter_examples: [
-                        // url 为数字：不得在 toShortWebhookAlias 上抛错；无可用 url → 被过滤。
-                        example({ key: "bad-url", url: 123 }),
-                        // title/description/steps 含非字符串：trim 不得抛错，非串项按空处理。
-                        example({
-                            key: "github",
-                            title: 42,
-                            description: { html: "x" },
-                            steps: ["  ok  ", 7, null, "  done  "],
-                            auth: "not-an-object",
-                        }),
-                    ] as never,
-                },
-                apiURL,
-                origin
-            );
-        expect(run).not.toThrow();
-        const rows = run();
-        expect(rows.map((r) => r.key)).toEqual(["github"]);
-        expect(rows[0].title).toBe("");
-        expect(rows[0].description).toBe("");
-        expect(rows[0].steps).toEqual(["ok", "done"]);
-        expect(rows[0].auth).toEqual({ type: "" });
     });
 });
 
@@ -627,21 +348,5 @@ describe("canTestWebhook", () => {
         expect(canTestWebhook({ status: IncomingWebhookStatus.enabled })).toBe(true);
         expect(canTestWebhook({ status: IncomingWebhookStatus.disabled })).toBe(false);
         expect(canTestWebhook({ status: IncomingWebhookStatus.deleted })).toBe(false);
-    });
-});
-
-describe("isFlagOn", () => {
-    it("归一化后端 0/1 能力位的各种序列化形态", () => {
-        // 真值形态（数字 / 布尔 / 字符串，覆盖后端序列化漂移）
-        expect(isFlagOn(1)).toBe(true);
-        expect(isFlagOn(true)).toBe(true);
-        expect(isFlagOn("1")).toBe(true);
-        expect(isFlagOn("true")).toBe(true);
-        // 假值 / 缺省
-        expect(isFlagOn(0)).toBe(false);
-        expect(isFlagOn(false)).toBe(false);
-        expect(isFlagOn("0")).toBe(false);
-        expect(isFlagOn(undefined)).toBe(false);
-        expect(isFlagOn(null)).toBe(false);
     });
 });

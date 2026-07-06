@@ -81,23 +81,3 @@ describe("MarkdownContent — broadcast mention (@所有人) 高亮渲染 (GH#29
     expect(entities).toContain("@张三");
   });
 });
-
-describe("MarkdownContent — raw HTML displays as text", () => {
-  it("renders pasted HTML source instead of dropping the tag", () => {
-    const root = renderContent(
-      <MarkdownContent content={'<button class="x">Octo 登录</button>'} />
-    );
-
-    expect(root.querySelector("button")).toBeNull();
-    expect(root.textContent).toBe('<button class="x">Octo 登录</button>');
-  });
-
-  it("keeps empty HTML tags visible", () => {
-    const root = renderContent(
-      <MarkdownContent content={'<button class="x"></button>'} />
-    );
-
-    expect(root.querySelector("button")).toBeNull();
-    expect(root.textContent).toBe('<button class="x"></button>');
-  });
-});

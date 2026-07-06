@@ -5,10 +5,6 @@ export type MittEvents = {
   "friend-applys-unread-count": number;
   "space-changed": unknown;
   "task-upload-failed": { channelKey: string };
-  /** 内置表情清单(GET /v1/common/emojis)异步到达并发生变化:已渲染消息与表情选择器据此重渲染一次 */
-  "emoji-manifest-updated": undefined;
-  /** 收藏他人贴纸成功后广播,已加载过「我的贴纸」的 EmojiPanel 据此重拉列表 */
-  "stickers-updated": undefined;
   "wk:pending-thread": {
     groupNo: string;
     thread: import("./Service/Thread").Thread | null;
@@ -125,19 +121,6 @@ import "animate.css";
 import "./App.css";
 import RouteContext from "./Service/Context";
 import { ConnectStatus } from "wukongimjssdk";
-import { GroupStatusDisband } from "./Utils/groupDisband";
-
-// 解散群的默认灰色头像（内联 SVG data-URI，避免新增二进制资源）。
-const DISBANDED_GROUP_AVATAR =
-  "data:image/svg+xml;charset=utf-8," +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">' +
-      '<rect width="80" height="80" fill="#E5E6EB"/>' +
-      '<g fill="#A9AEB8">' +
-      '<circle cx="40" cy="33" r="14"/>' +
-      '<path d="M16 66c0-13 11-21 24-21s24 8 24 21z"/>' +
-      "</g></svg>"
-  );
 import { WKBaseContext } from "./Components/WKBase";
 import StorageService from "./Service/StorageService";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
@@ -218,26 +201,6 @@ export class WKRemoteConfig {
    * Octo -> Aegis 迁移期的产品决策。
    */
   suppressLoginMigrationNotice: boolean = false;
-  /**
-   * 自定义贴纸管理入口开关。后端字段 sticker_custom_enabled 为 true 时，前端展示
-   * 「我的贴纸」tab 及上传/删除入口；false 或字段缺失时隐藏。
-   *
-   * 纯 UI 展示开关，不承担鉴权语义: /v1/sticker/user 相关接口的权限/限流/所有权
-   * 校验仍由后端负责，前端不能据此推断用户是否具备上传能力。
-   */
-  stickerCustomEnabled: boolean = false;
-  /**
-   * Docs 协作文档模块展示开关。后端字段 docs_on 为 true 时，前端在侧边栏 NavRail
-   * 展示 Docs 入口；false 或字段缺失时隐藏。
-   *
-   * 默认 false(fail-safe): docs-backend 是独立服务，其反向代理路由、Hocuspocus
-   * WS(:1234) 暴露、MySQL/Redis/对象存储依赖未就绪前保持隐藏，避免用户点进去卡在
-   * "Loading document…" 或报错。运维在 docs-backend 部署就绪后再下发 docs_on=true。
-   *
-   * 纯 UI 展示开关，不承担鉴权语义: /api/v1/docs 相关接口的权限校验仍由 docs-backend
-   * 负责，前端不能据此推断用户是否具备文档访问能力。
-   */
-  docsOn: boolean = false;
   /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
@@ -337,8 +300,6 @@ export class WKRemoteConfig {
       const previousMessagesSearchOn = this.messagesSearchOn;
       const previousSuppressLoginMigrationNotice =
         this.suppressLoginMigrationNotice;
-      const previousStickerCustomEnabled = this.stickerCustomEnabled;
-      const previousDocsOn = this.docsOn;
       this.requestSuccess = true;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
@@ -349,10 +310,6 @@ export class WKRemoteConfig {
       this.suppressLoginMigrationNotice = parseRemoteBool(
         result["suppress_login_migration_notice"]
       );
-      this.stickerCustomEnabled = parseRemoteBool(
-        result["sticker_custom_enabled"]
-      );
-      this.docsOn = parseRemoteBool(result["docs_on"]);
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
@@ -360,9 +317,7 @@ export class WKRemoteConfig {
         previousDisableUserCreateSpace !== this.disableUserCreateSpace ||
         previousMessagesSearchOn !== this.messagesSearchOn ||
         previousSuppressLoginMigrationNotice !==
-          this.suppressLoginMigrationNotice ||
-        previousStickerCustomEnabled !== this.stickerCustomEnabled ||
-        previousDocsOn !== this.docsOn
+          this.suppressLoginMigrationNotice
       ) {
         this.notifyConfigChangeListeners();
       }
@@ -916,16 +871,6 @@ export default class WKApp extends ProviderListener {
         if (res.id) {
           WKSDK.shared().config.clientMsgDeviceId = res.id;
         }
-      })
-      .catch((err) => {
-        // 设备记录不存在（status===400）或其它读取失败时，仅记录告警以消除
-        // unhandled promise rejection；不写 clientMsgDeviceId，保持原值降级运行。
-        // 服务端暂无设备注册端点，此处不做注册，仅兜底。
-        const notFound = err?.status === 400;
-        console.warn(
-          `[startMain] fetch device record failed${notFound ? " (device not found)" : ""}`,
-          { deviceId: WKApp.shared.deviceId, status: err?.status, code: err?.code }
-        );
       });
   }
 
@@ -996,14 +941,6 @@ export default class WKApp extends ProviderListener {
     }
     let avatarTag = this.getChannelAvatarTag(channel);
     const channelInfo = WKSDK.shared().channelManager.getChannelInfo(channel);
-    // 群已解散（企业微信式只读态）：用默认灰色头像替代群 logo，视觉上"群已遣散"。
-    // 放在 logo 判断之前，确保即便缓存里残留旧 logo 也会被覆盖（A 数据 + B 皮肤）。
-    if (
-      channel.channelType === ChannelTypeGroup &&
-      channelInfo?.orgData?.status === GroupStatusDisband
-    ) {
-      return DISBANDED_GROUP_AVATAR;
-    }
     if (channelInfo && channelInfo.logo && channelInfo.logo !== "") {
       let logo = channelInfo.logo;
       // Data URIs are self-contained — return as-is without query params or URL rewriting

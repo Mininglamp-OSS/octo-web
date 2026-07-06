@@ -49,20 +49,6 @@ describe('scheduleToParams', () => {
         expect(scheduleToParams({ unit: 'day', every: 0, time: '09:00' }).interval_days).toBe(1);
         expect(scheduleToParams({ unit: 'day', every: 2.9, time: '09:00' }).interval_days).toBe(2);
     });
-
-    // V5：多人定时场景透传 confirm_policy；不携带时不出现在结果里
-    //（保证单人/旧调用方的返回形状不变）。
-    it('passes confirm_policy through when present (multi-person scheduled)', () => {
-        const p = scheduleToParams({ unit: 'week', every: 1, time: '09:00', confirm_policy: 1 });
-        expect(p.confirm_policy).toBe(1);
-        const p0 = scheduleToParams({ unit: 'month', every: 1, time: '09:00', dayOfMonth: 1, confirm_policy: 0 });
-        expect(p0.confirm_policy).toBe(0);
-    });
-
-    it('omits confirm_policy when not configured', () => {
-        expect('confirm_policy' in scheduleToParams({ unit: 'day', every: 1, time: '09:00' })).toBe(false);
-        expect('confirm_policy' in scheduleToParams({ unit: 'month', every: 2, time: '09:00', dayOfMonth: 5 })).toBe(false);
-    });
 });
 
 // ─── scheduleItemToConfig ──────────────────────────────

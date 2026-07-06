@@ -91,14 +91,6 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
         if (!editingSchedule) return;
         this.setState({ formLoading: true });
         try {
-            // V5/§4.2/§6.1：编辑已有 schedule 时透传 confirm_policy，对齐后端。
-            // 判定「多人」的数据源：editingSchedule.participants（ScheduleItem 上
-            // 后端透出的参与人名单）。多人定时时：若该 schedule 已是多人定时
-            // （已有 confirm_policy）则保留/透传其原值；缺省按多人=1。单人不传，走后端兜底。
-            const isMultiPerson = (editingSchedule.participants?.length ?? 0) > 1;
-            const confirmPolicy = isMultiPerson
-                ? (editingSchedule.confirm_policy ?? 1)
-                : undefined;
             const updateParams: UpdateScheduleParams = {
                 title: params.title,
                 summary_mode: params.summary_mode,
@@ -110,7 +102,6 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                 run_time: params.run_time ?? "",
                 time_range_type: params.time_range_type,
                 sources: params.sources,
-                ...(confirmPolicy !== undefined ? { confirm_policy: confirmPolicy } : {}),
             };
             await api.updateSchedule(editingSchedule.schedule_id, updateParams);
             Toast.success(t("summary.schedule.updateSuccess"));

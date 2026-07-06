@@ -72,10 +72,6 @@ function makeItem(overrides: Record<string, unknown> = {}) {
         summary_mode: 1,
         status: 3,
         trigger_type: 1,
-        // FE-2 fail-safe 后 SummaryCard 仅 creator_id===当前 uid 才显示删除。
-        // dmworkBase mock 的 WKApp.loginInfo.uid === 'test-uid'，这里默认把当前用户
-        // 设为 creator，保留本文件删除用例的原意（需删除按钮可点）。
-        creator_id: 'test-uid',
         time_range_start: '2026-01-01T00:00:00Z',
         time_range_end: '2026-01-02T00:00:00Z',
         sources: [{ source_type: 1, source_id: 's1' }],

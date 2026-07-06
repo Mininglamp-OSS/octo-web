@@ -5,6 +5,7 @@
 // header; no auth code here.
 
 import { apiClient } from '../octoweb/index.ts'
+import axios from 'axios'
 import type { Role } from '../auth/roles.ts'
 
 export interface DocListItem {
@@ -98,6 +99,28 @@ export async function updateDocTitle(docId: string, title: string): Promise<DocM
  */
 export async function deleteDoc(docId: string): Promise<void> {
   await apiClient().delete(`/docs/${docId}`)
+}
+
+/**
+ * POST /api/v1/docs/{docId}/export/pdf — server-side (Puppeteer) PDF render.
+ * Returns the PDF bytes as an ArrayBuffer.
+ *
+ * IMPORTANT: this goes DIRECTLY through axios (not the shared WKApp APIClient
+ * wrapper). The wrapper's `post()` hard-codes an empty axios config (`{}`) and
+ * drops `responseType`, so a binary PDF response gets decoded as UTF-8 text —
+ * every non-ASCII byte becomes U+FFFD (0xEFBFBD), corrupting the file into a
+ * blank/broken PDF. axios already has the global request interceptor that
+ * injects the `token` + `X-Space-Id` headers and the `/api/v1/` baseURL, so a
+ * direct `axios.post` still authenticates correctly — we just get to set
+ * `responseType: 'arraybuffer'` and receive the raw bytes intact.
+ */
+export async function exportDocPdf(docId: string): Promise<ArrayBuffer> {
+  const res = await axios.post<ArrayBuffer>(
+    `/docs/${docId}/export/pdf`,
+    undefined,
+    { responseType: 'arraybuffer' },
+  )
+  return res.data
 }
 
 /**

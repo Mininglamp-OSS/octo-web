@@ -5,7 +5,6 @@ const mockState = vi.hoisted(() => ({
   subscribers: vi.fn(),
   getChannelInfo: vi.fn(),
   getImageURL: vi.fn((path: string) => `/api/v1/${path}`),
-  getFileURL: vi.fn((path: string) => `/files/${path}`),
   parseThreadChannelId: vi.fn(),
 }));
 
@@ -58,7 +57,6 @@ vi.mock("../../../App", () => ({
     dataSource: {
       commonDataSource: {
         getImageURL: mockState.getImageURL,
-        getFileURL: mockState.getFileURL,
       },
       channelDataSource: {
         subscribers: mockState.subscribers,
@@ -85,16 +83,12 @@ import type { ChannelSearchQuery } from "../types";
 const {
   mapFileHit,
   mapMediaHit,
-  mapCombinedHit,
   mapMessageHit,
   normalizeItems,
   searchEndpoint,
   secondsToDateOnly,
   sentAtToSeconds,
   toRequestBody,
-  countChannelSearchKeywordRunes,
-  shouldRunSearch,
-  truncateChannelSearchKeyword,
 } = channelSearchApiAdapterTestUtils;
 
 function baseQuery(tab: ChannelSearchQuery["tab"]): ChannelSearchQuery {
@@ -148,24 +142,6 @@ describe("channel search API adapter request construction", () => {
     ).not.toHaveProperty("keyword");
   });
 
-  it("limits keywords to 64 unicode code points before sending", () => {
-    const keyword = `${"中".repeat(64)}尾`;
-    const emojiKeyword = `${"😀".repeat(64)}tail`;
-
-    expect(countChannelSearchKeywordRunes(emojiKeyword)).toBe(68);
-    expect(
-      countChannelSearchKeywordRunes(truncateChannelSearchKeyword(emojiKeyword))
-    ).toBe(64);
-    expect(toRequestBody({ ...baseQuery("message"), keyword })).toMatchObject({
-      keyword: "中".repeat(64),
-    });
-    expect(
-      toRequestBody({ ...baseQuery("file"), keyword: emojiKeyword })
-    ).toMatchObject({
-      keyword: "😀".repeat(64),
-    });
-  });
-
   it("converts filters, pagination, and local day boundaries into request body", () => {
     const startAt = Math.floor(new Date(2026, 0, 5, 0, 0, 0).getTime() / 1000);
     const endAt = Math.floor(
@@ -197,65 +173,6 @@ describe("channel search API adapter request construction", () => {
       page_size: 30,
       cursor: "next-cursor",
     });
-  });
-});
-
-describe("channel search empty-state guard", () => {
-  const noFilters = { senderUids: [], sort: "time_desc" as const };
-
-  it("does not run all/message tabs with empty keyword and no filters", () => {
-    expect(
-      shouldRunSearch({ keyword: "   ", filters: noFilters, tab: "all" })
-    ).toBe(false);
-    expect(
-      shouldRunSearch({ keyword: "", filters: noFilters, tab: "message" })
-    ).toBe(false);
-  });
-
-  it("runs all/message tabs once a keyword is present", () => {
-    expect(
-      shouldRunSearch({ keyword: "  hello  ", filters: noFilters, tab: "all" })
-    ).toBe(true);
-    expect(
-      shouldRunSearch({ keyword: "hi", filters: noFilters, tab: "message" })
-    ).toBe(true);
-  });
-
-  it("runs all/message tabs with a filter-only query (no keyword)", () => {
-    expect(
-      shouldRunSearch({
-        keyword: "",
-        filters: { senderUids: ["u1"], sort: "time_desc" },
-        tab: "all",
-      })
-    ).toBe(true);
-    const startAt = Math.floor(new Date(2026, 0, 5).getTime() / 1000);
-    expect(
-      shouldRunSearch({
-        keyword: "",
-        filters: { senderUids: [], sort: "time_desc", startAt },
-        tab: "message",
-      })
-    ).toBe(true);
-  });
-
-  it("treats a sort-only change as not searchable (sort is not an effective filter)", () => {
-    expect(
-      shouldRunSearch({
-        keyword: "",
-        filters: { senderUids: [], sort: "time_asc" },
-        tab: "all",
-      })
-    ).toBe(false);
-  });
-
-  it("always runs media and file tabs even with empty keyword and no filters", () => {
-    expect(
-      shouldRunSearch({ keyword: "", filters: noFilters, tab: "media" })
-    ).toBe(true);
-    expect(
-      shouldRunSearch({ keyword: "", filters: noFilters, tab: "file" })
-    ).toBe(true);
   });
 });
 
@@ -342,44 +259,6 @@ describe("channel search API adapter response mapping", () => {
     });
   });
 
-  it("maps media preview urls and normalizes thumb paths", () => {
-    const item = mapMediaHit(
-      {
-        message_id: "video-1",
-        message_seq: 33,
-        media_kind: "video",
-        media_url: "videos/video-1.mp4",
-        download_url: "videos/video-1-download.mp4",
-        preview_url: "videos/video-1-preview.mp4",
-        thumb_url: "images/video-1-cover.jpg",
-        duration_ms: 62000,
-        sender_id: "u1",
-        sent_at: "2026-01-02T00:00:00Z",
-      },
-      baseQuery("media")
-    );
-
-    expect(mockState.getFileURL).toHaveBeenCalledWith(
-      "videos/video-1-preview.mp4"
-    );
-    expect(mockState.getFileURL).toHaveBeenCalledWith(
-      "videos/video-1-download.mp4"
-    );
-    expect(mockState.getImageURL).toHaveBeenCalledWith(
-      "images/video-1-cover.jpg"
-    );
-    expect(item).toMatchObject({
-      kind: "video",
-      media: {
-        url: "/files/videos/video-1-preview.mp4",
-        previewUrl: "/files/videos/video-1-preview.mp4",
-        downloadUrl: "/files/videos/video-1-download.mp4",
-        thumbUrl: "/api/v1/images/video-1-cover.jpg",
-        duration: 62,
-      },
-    });
-  });
-
   it("keeps forward matches as inner hit text and outer preview metadata", () => {
     const item = mapMessageHit(
       {
@@ -390,25 +269,8 @@ describe("channel search API adapter response mapping", () => {
         sender_id: "u1",
         sent_at: "2026-01-02T00:00:00Z",
         outer_preview: {
-          title: "Alice and Bob",
           child_count: 2,
         },
-        inner_messages: [
-          {
-            message_id: "m-inner-1",
-            type: 1,
-            search_text: "命中的<mark>聊天</mark>记录正文",
-            sender_id: "u2",
-            sender_name: "Alice",
-            sent_at: "2026-01-02T00:00:01Z",
-          },
-          {
-            message_id: "m-inner-2",
-            type: 8,
-            search_text: "",
-            sender_id: "u3",
-          },
-        ],
       },
       baseQuery("message")
     );
@@ -418,163 +280,9 @@ describe("channel search API adapter response mapping", () => {
       text: "命中的<mark>聊天</mark>记录正文",
       matchReason: "命中的<mark>聊天</mark>记录正文",
       forward: {
-        title: "Alice and Bob",
+        title: "",
         snippets: [],
-        innerMessages: [
-          {
-            messageId: "m-inner-1",
-            type: 1,
-            text: "命中的<mark>聊天</mark>记录正文",
-            senderUid: "u2",
-            senderName: "Alice",
-            timestamp: 1767312001,
-          },
-          {
-            messageId: "m-inner-2",
-            type: 8,
-            text: "",
-            senderUid: "u3",
-          },
-        ],
         childCount: 2,
-      },
-    });
-  });
-
-  it("maps message-kind image and video hits from search_all browse mode", () => {
-    const image = mapMessageHit(
-      {
-        message_id: "m-image",
-        message_seq: 41,
-        message_kind: "image",
-        snippet: "野餐合影",
-        thumb_url: "images/a.jpg",
-        width: 1080,
-        height: 720,
-        sender_id: "u1",
-        sent_at: "2026-01-02T00:00:00Z",
-      },
-      baseQuery("all")
-    );
-    const video = mapMessageHit(
-      {
-        message_id: "m-video",
-        message_seq: 42,
-        message_kind: "video",
-        thumb_url: "videos/a-cover.jpg",
-        width: 1280,
-        height: 720,
-        duration_ms: 42000,
-        sender_id: "u2",
-        sent_at: "2026-01-02T00:00:00Z",
-      },
-      baseQuery("all")
-    );
-
-    expect(image).toMatchObject({
-      kind: "image",
-      text: "野餐合影",
-      matchReason: "野餐合影",
-      media: {
-        url: "/api/v1/images/a.jpg",
-        previewUrl: "/api/v1/images/a.jpg",
-        thumbUrl: "/api/v1/images/a.jpg",
-        width: 1080,
-        height: 720,
-      },
-    });
-    expect(video).toMatchObject({
-      kind: "video",
-      media: {
-        thumbUrl: "/api/v1/videos/a-cover.jpg",
-        width: 1280,
-        height: 720,
-        duration: 42,
-      },
-    });
-    expect(video.media?.url).toBeUndefined();
-    expect(video.media?.previewUrl).toBeUndefined();
-  });
-
-  it("maps search_all message result media through the combined dispatcher", () => {
-    expect(
-      mapCombinedHit(
-        {
-          result_type: "message",
-          sorted_at: "2026-01-03T00:00:00Z",
-          message: {
-            message_id: "m-image",
-            message_seq: 41,
-            message_kind: "image",
-            thumb_url: "images/a.jpg",
-            sender_id: "u1",
-            sent_at: "2026-01-02T00:00:00Z",
-          },
-        },
-        baseQuery("all")
-      )
-    ).toMatchObject({
-      kind: "image",
-      timestamp: 1767398400,
-      media: {
-        thumbUrl: "/api/v1/images/a.jpg",
-      },
-    });
-  });
-
-  it("keeps rich_text detail on text hits for structured rendering", () => {
-    const item = mapMessageHit(
-      {
-        message_id: "m-richtext",
-        message_seq: 43,
-        message_kind: "text",
-        snippet: "命中的<mark>哈哈</mark>片段",
-        sender_id: "u1",
-        sent_at: "2026-01-02T00:00:00Z",
-        rich_text: {
-          plain: "命中的哈哈片段[图片][文件] 需求.md",
-          content: [
-            { type: "text", text: "命中的哈哈片段" },
-            {
-              type: "image",
-              url: "images/rich.png",
-              width: 800,
-              height: 600,
-            },
-            {
-              type: "file",
-              url: "files/spec.md",
-              name: "需求.md",
-              extension: "md",
-              size: 2048,
-            },
-          ],
-          mention: {
-            entities: [{ uid: "u1", offset: 0, length: 3 }],
-            all: 1,
-            humans: 1,
-          },
-        },
-      },
-      baseQuery("message")
-    );
-
-    expect(item).toMatchObject({
-      kind: "text",
-      text: "命中的<mark>哈哈</mark>片段",
-      matchReason: "命中的<mark>哈哈</mark>片段",
-      richText: {
-        plain: "命中的哈哈片段[图片][文件] 需求.md",
-        content: [
-          { type: "text", text: "命中的哈哈片段" },
-          { type: "image", url: "images/rich.png" },
-          { type: "file", name: "需求.md", extension: "md" },
-        ],
-        mention: {
-          entities: [{ uid: "u1", offset: 0, length: 3 }],
-          all: 1,
-          humans: 1,
-        },
       },
     });
   });

@@ -182,7 +182,7 @@ body[theme-mode="dark"] .wk-conversation-content {
   width: 24px;
   height: 24px;
   flex-shrink: 0;
-  border-radius: var(--wk-avatar-radius, 50%);
+  border-radius: 4px;
   overflow: hidden;
 }
 
@@ -482,29 +482,6 @@ body[theme-mode="dark"] .wk-conversation-content {
 body[theme-mode="dark"] .wk-conversation-input-notice-bubble {
   background: rgba(38, 38, 42, 0.94);
   border-color: rgba(255, 255, 255, 0.08);
-}
-
-/* 群已解散：替换发送框的只读提示条（企业微信式） */
-.wk-conversation-disband-bar {
-  width: 100%;
-  box-sizing: border-box;
-  min-height: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--wk-sp-4);
-  color: var(--wk-text-secondary);
-  background: var(--wk-fill-quaternary, rgba(28, 28, 35, 0.03));
-  border-top: 1px solid var(--wk-border-color, rgba(28, 28, 35, 0.08));
-  font-size: var(--wk-text-size-base);
-  line-height: 1.5;
-  text-align: center;
-  user-select: none;
-}
-
-body[theme-mode="dark"] .wk-conversation-disband-bar {
-  background: rgba(255, 255, 255, 0.04);
-  border-top-color: rgba(255, 255, 255, 0.08);
 }
 
 .wk-conversation-chattoolbars {

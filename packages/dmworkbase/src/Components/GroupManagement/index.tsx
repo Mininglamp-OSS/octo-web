@@ -7,7 +7,6 @@ import { SubscriberList } from "../Subscribers/list";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { GroupRole } from "../../Service/Const";
 import { ChannelSettingManager } from "../../Service/ChannelSetting";
-import { syncGroupDisbandState } from "../../Utils/groupDisband";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
 import {
@@ -301,42 +300,6 @@ export class GroupManagement extends Component<
     );
   };
 
-  // 解散群聊（企业微信式）：仅群主可见/可调。二次确认后调用后端
-  // DELETE /groups/:group_no/disband，成功后群进入只读态（保留历史）。
-  handleDisband = () => {
-    const { channel, context } = this.props;
-    wkConfirm({
-      title: t("base.groupManagement.disbandTitle"),
-      content: t("base.groupManagement.disbandContent"),
-      okText: t("base.groupManagement.disbandAction"),
-      cancelText: t("base.common.cancel"),
-      okType: "danger",
-      onOk: async () => {
-        try {
-          await WKApp.dataSource.channelDataSource.groupDisband(channel);
-        } catch (err: any) {
-          // 解散接口本身失败：提示并停留在面板，不改本地态、不关面板。
-          Toast.error(err?.msg || t("base.groupManagement.operationFailed"));
-          return;
-        }
-        // 解散接口已成功。后续两步都不应再让用户停在面板或看到失败 toast。
-        try {
-          Toast.success(t("base.groupManagement.disbandSuccess"));
-          // 本地权威写回解散态并触发刷新——不绕异步 fetchChannelInfo：后者对同
-          // channelKey 在途请求去重，解散前发起的旧请求（携 status=Normal）resolve
-          // 会把本地态覆盖回正常，UI 不置灰。syncGroupDisbandState 直接改缓存 +
-          // notifyListeners，对操作者本人即时置灰；服务端 channelUpdate CMD 回来再
-          // 刷一次也幂等无害。
-          syncGroupDisbandState(channel);
-        } finally {
-          // 与刷新解耦：即使上面同步抛错，也要关闭群管理面板回到会话，
-          // 不把用户卡在面板里（会话会随 channelInfo.status 翻转为只读态）。
-          context.pop();
-        }
-      },
-    });
-  };
-
   handleToggleAllowNoMention = async (next: boolean) => {
     const { channel } = this.props;
     const prev = this.state.allowNoMention;
@@ -498,23 +461,6 @@ export class GroupManagement extends Component<
             {t("base.groupManagement.allowNoMentionDesc")}
           </div>
         </div>
-
-        {/* 危险操作区：解散群聊。仅群主可见。企业微信式——解散后保留历史、全员只读。 */}
-        {isCreator && (
-          <div className="wk-group-mgmt-section wk-group-mgmt-danger-section">
-            <Button
-              theme="solid"
-              type="danger"
-              block
-              onClick={this.handleDisband}
-            >
-              {t("base.groupManagement.disbandAction")}
-            </Button>
-            <div className="wk-group-mgmt-switch-desc">
-              {t("base.groupManagement.disbandDesc")}
-            </div>
-          </div>
-        )}
       </div>
     );
   }

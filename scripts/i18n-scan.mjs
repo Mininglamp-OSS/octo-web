@@ -34,10 +34,6 @@ function normalizeText(value) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function escapeMarkdownCell(text) {
-  return text.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
-}
-
 function hasCjk(value) {
   return cjkPattern.test(value);
 }
@@ -611,7 +607,7 @@ function renderMarkdownReport(candidates, summary) {
     }, {});
 
   const sampleRows = candidates.slice(0, 200).map((candidate) => (
-    `| \`${candidate.file}:${candidate.line}\` | ${candidate.kind} | ${candidate.confidence} | \`${candidate.suggestedKey}\` | ${escapeMarkdownCell(candidate.text)} |`
+    `| \`${candidate.file}:${candidate.line}\` | ${candidate.kind} | ${candidate.confidence} | \`${candidate.suggestedKey}\` | ${candidate.text.replace(/\|/g, "\\|")} |`
   ));
 
   return `${[
@@ -667,7 +663,7 @@ function renderLocaleReport(report) {
       : issue.message || (issue.examples?.length
           ? issue.examples.map((example) => `${example.file}:${example.line}`).join(", ")
           : "");
-    return `| ${issue.type} | ${issue.locale || ""} | \`${key}\` | \`${location}\` | ${escapeMarkdownCell(details)} |`;
+    return `| ${issue.type} | ${issue.locale || ""} | \`${key}\` | \`${location}\` | ${details.replace(/\|/g, "\\|")} |`;
   });
 
   return `${[

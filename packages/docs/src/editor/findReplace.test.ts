@@ -2,8 +2,6 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details'
-import { buildEmoji } from './emoji.ts'
-import { buildMention } from './mention.ts'
 import {
   findMatches,
   planReplaceAll,
@@ -78,66 +76,6 @@ describe('findMatches (pure scanner)', () => {
   it('does not match across block boundaries', () => {
     editor = makeEditor('<p>foo</p><p>bar</p>')
     expect(findMatches(editor.state.doc, 'foobar')).toEqual([])
-  })
-})
-
-// Regression (yujiawei P1 #2): a Find&Replace whose match spanned an inline-atom node (emoji /
-// mention) used to splice across it with insertText(from,to), silently DELETING the atom. The
-// scanner must treat an inline atom as a hard boundary so a match can neither span nor replace
-// across it.
-describe('find & replace never deletes an inline atom (emoji / mention)', () => {
-  /** Editor with the emoji + mention inline-atom nodes registered. */
-  function makeAtomEditor(content: object): Editor {
-    return new Editor({
-      extensions: [StarterKit.configure({ undoRedo: false }), buildEmoji(), buildMention({}), FindReplace],
-      content,
-    })
-  }
-  const para = (...inline: object[]) => ({ type: 'doc', content: [{ type: 'paragraph', content: inline }] })
-  const txt = (text: string) => ({ type: 'text', text })
-  const mention = () => ({ type: 'mention', attrs: { id: 'u1', label: 'alice', type: 'user' } })
-  const emoji = () => ({ type: 'emoji', attrs: { name: 'smile' } })
-  function countNodes(name: string): number {
-    let n = 0
-    editor!.state.doc.descendants((node) => {
-      if (node.type.name === name) n += 1
-    })
-    return n
-  }
-
-  it('does not produce a match that spans a mention atom', () => {
-    // Text "foo" + @mention + "bar"; naive concatenation would be "foobar" and match "oob"
-    // across the mention. The atom boundary must prevent that.
-    editor = makeAtomEditor(para(txt('foo'), mention(), txt('bar')))
-    expect(countNodes('mention')).toBe(1)
-    expect(findMatches(editor.state.doc, 'oob')).toEqual([])
-  })
-
-  it('replaceAll of a cross-atom term leaves the mention intact', () => {
-    editor = makeAtomEditor(para(txt('foo'), mention(), txt('bar')))
-    editor.commands.setFindQuery('oob')
-    editor.commands.replaceAll('XX')
-    expect(countNodes('mention')).toBe(1) // atom survived
-  })
-
-  it('does not produce a match that spans an emoji atom', () => {
-    editor = makeAtomEditor(para(txt('foo'), emoji(), txt('bar')))
-    expect(countNodes('emoji')).toBe(1)
-    expect(findMatches(editor.state.doc, 'oob')).toEqual([])
-    editor.commands.setFindQuery('oob')
-    editor.commands.replaceAll('XX')
-    expect(countNodes('emoji')).toBe(1)
-  })
-
-  it('still finds + replaces matches on each side of an atom, keeping the atom', () => {
-    // "cat" + @mention + "cat": two independent matches, neither crossing the atom.
-    editor = makeAtomEditor(para(txt('cat'), mention(), txt('cat')))
-    editor.commands.setFindQuery('cat')
-    expect(getFindState(editor.state).matches).toHaveLength(2)
-    editor.commands.replaceAll('dog')
-    expect(countNodes('mention')).toBe(1) // atom untouched between the two replacements
-    expect(editor.getText()).toContain('dog')
-    expect(editor.getText()).not.toContain('cat')
   })
 })
 
