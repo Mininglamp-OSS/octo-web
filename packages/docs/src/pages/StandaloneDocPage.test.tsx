@@ -21,6 +21,13 @@ vi.mock('../editor/EditorShell.tsx', () => ({
       <span data-testid="editor-doc">{props.docId}</span>
       <span data-testid="editor-space">{props.space}</span>
       <span data-testid="editor-creator-nickname-only">{String(!!props.creatorNicknameOnly)}</span>
+      {/* The shared EditorShell renders its header "← back" control iff it receives onBack; expose
+          that here so a test can assert the standalone editor view no longer offers it (XIN-416). */}
+      {props.onBack && (
+        <button data-testid="editor-back" onClick={props.onBack}>
+          back
+        </button>
+      )}
       <ul data-testid="editor-more-lead">
         {(props.moreMenuLeadItems ?? []).map((it) => (
           <li key={it.key}>
@@ -231,6 +238,13 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
 
     await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
     expect(screen.getByTestId('editor-doc').textContent).toBe('d_ok')
+
+    // XIN-416 (boss real-device acceptance): the standalone editor view no longer shows a
+    // "← 全部文档" return link. A standalone `/d/:docId` share page is a pure, self-contained
+    // surface with no "back to all documents" entry, so the page passes NO onBack to the shared
+    // EditorShell and the header renders no back control. (In-shell EditorShell, which still gets
+    // onBack from DocsHome, is unaffected — verified separately in EditorShell.test.tsx.)
+    expect(screen.queryByTestId('editor-back')).toBeNull()
 
     // AC-2: Copy link is collapsed into the header ≡ "more" menu as its first (top) row — the
     // page injects it via EditorShell's moreMenuLeadItems, not a resident title-bar button.

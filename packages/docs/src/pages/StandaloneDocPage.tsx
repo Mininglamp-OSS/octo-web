@@ -199,9 +199,12 @@ type Phase =
 /**
  * Standalone document page (octo-web #512) — the full-window view a shared `/d/:docId` link opens,
  * outside the app shell / NavRail. It reuses the in-shell EditorShell for collaboration parity
- * (AC-5/6) and only adds the standalone chrome: a Back control and "Copy link". Sharing a link is
- * the whole point of a standalone view, so there is no "back into the app" action — users arrive
- * here from an external chat link, not from inside the shell.
+ * (AC-5/6) and only adds the standalone chrome: "Copy link". Sharing a link is the whole point of a
+ * standalone view, so the loaded editor offers no "back to all documents" return link (XIN-416, boss
+ * real-device acceptance) — users arrive here from an external chat link, not from inside the shell,
+ * and a pure share page needs no entry back into the doc list. The page therefore passes NO onBack to
+ * EditorShell; the preflight error terminals (below) keep their own Back affordance as an escape
+ * hatch out of a not-found / forbidden / locked dead end.
  *
  * "Copy link" is collapsed into the header's ≡ "more" menu (as its top row) rather than sitting as a
  * resident title-bar button, keeping the standalone header as trim as the in-shell one. The clipboard
@@ -314,8 +317,12 @@ export function StandaloneDocPage({
     [],
   )
 
-  // Back / return-to-list: from a full-window standalone view there is no resident list to fall
-  // back to, so route to the in-shell docs home (the natural "all documents" destination).
+  // Back / return-to-list handler for the preflight ERROR terminals only (not-found / forbidden /
+  // locked / login). The loaded editor view intentionally has no back link (XIN-416); this remains
+  // wired to DocTerminal so a user who lands on a dead-end error screen still has an escape hatch to
+  // the in-shell docs home. From a full-window standalone view there is no resident list to fall
+  // back to, so route to the in-shell docs home (the natural "all documents" destination), carrying
+  // the session sid when present.
   const onBack = useCallback(() => {
     if (typeof window !== 'undefined') window.location.assign(withSid('/docs'))
   }, [])
@@ -401,7 +408,6 @@ export function StandaloneDocPage({
         folder={addressing.folder}
         doc={addressing.doc}
         user={{ id: uid, name: names.get(uid) || uid }}
-        onBack={onBack}
         moreMenuLeadItems={moreMenuLeadItems}
         creatorNicknameOnly
       />
