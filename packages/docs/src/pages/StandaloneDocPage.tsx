@@ -122,6 +122,38 @@ export function consumeStandaloneReturn(): string | null {
   return isSafeReturnPath(raw) ? raw : null
 }
 
+/**
+ * Attach an octo session id to a consumed standalone return target when it carries none.
+ *
+ * Why (XIN-398): after the user signs in from a `/d/:docId` deep link, goMain reloads that exact
+ * path. With no `?sid=`, the reloaded page's sid-keyed `load()` reads the empty-sid bucket only, so
+ * a multi-session user (several stored `token{sid}` buckets) falls to `recoverOctoSessionFromStorage`
+ * — which since XIN-392 P1-2 refuses to guess an identity when the choice is ambiguous, bouncing the
+ * user straight back to login: a loop. Carrying the just-authenticated session's OWN sid on the
+ * reload lets its sid-keyed `load()` hit the right bucket directly, so the loop never forms. This is
+ * the known current identity's sid, not a guess among several — it does NOT reintroduce the pre-P1-2
+ * "persist a guessed session" behavior.
+ *
+ * Security (XIN-392 P1-1/P2-2 must survive): `target` has already cleared isSafeReturnPath in
+ * consumeStandaloneReturn (same-origin, control-char-free, resolves to `/d/:docId`). We only ADD a
+ * query param, which cannot change the pathname, and the sid is percent-encoded by URLSearchParams so
+ * it can never smuggle a second path/host/query. As defense in depth the rebuilt value is re-run
+ * through isSafeReturnPath; anything unexpected falls back to the untouched target. A target that
+ * already carries a sid is returned unchanged (the stored link may include one).
+ */
+export function withReturnSid(target: string, sid: string | null | undefined): string {
+  if (!sid || typeof window === 'undefined') return target
+  try {
+    const url = new URL(target, window.location.origin)
+    if (url.searchParams.has('sid')) return target
+    url.searchParams.set('sid', sid)
+    const rebuilt = url.pathname + url.search
+    return isSafeReturnPath(rebuilt) ? rebuilt : target
+  } catch {
+    return target
+  }
+}
+
 /** Preserve the octo session id (`?sid=`) across an in-app navigation when present. */
 function withSid(path: string): string {
   if (typeof window === 'undefined') return path

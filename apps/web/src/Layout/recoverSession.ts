@@ -64,6 +64,29 @@ export function findStoredSession(store: StorageLike): RecoveredSession | null {
 }
 
 /**
+ * The sid of the stored `token{sid}` bucket whose token equals `token`, or null when none matches.
+ *
+ * Used by the post-login standalone return path to hand the reloaded `/d/:docId` an explicit
+ * `?sid=` that its sid-keyed `load()` will hit directly — instead of leaning on the multi-session
+ * recovery, which now (XIN-392 P1-2) refuses to guess an identity when several sessions are stored
+ * and would otherwise bounce a multi-session user into a login loop. Unlike findUniqueStoredSession
+ * this makes NO guess: it matches the CURRENT authenticated identity by its own token and returns
+ * that session's own sid, so it is safe even with several sessions stored — we carry a known sid,
+ * we never pin an arbitrary one. Returns null when the current session lives only in the empty-sid
+ * (`token`) bucket, where a no-sid reload already reads it and no `?sid=` is needed.
+ */
+export function findSidForToken(store: StorageLike, token: string): string | null {
+  if (!token) return null
+  for (let i = 0; i < store.length; i++) {
+    const key = store.key(i)
+    if (key && key.startsWith('token') && key !== 'token' && key !== 'tokenCallback') {
+      if (store.getItem(key) === token) return key.substring(5) // "token".length === 5
+    }
+  }
+  return null
+}
+
+/**
  * The single UNAMBIGUOUS stored session, or null when storage holds zero or MORE THAN ONE session
  * bucket.
  *

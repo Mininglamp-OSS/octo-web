@@ -3,6 +3,7 @@ import {
   findStoredSession,
   findStoredSessions,
   findUniqueStoredSession,
+  findSidForToken,
   adoptStoredSession,
   type StorageLike,
   type SessionSink,
@@ -295,5 +296,90 @@ describe('adoptStoredSession — invite branch keeps its original non-persistent
     expect(invite.token).toBe('tok-a') // first-wins, in memory, exactly as before
     // …and it is still not persisted.
     expect(new Map(store).get('token')).toBeUndefined()
+  })
+})
+
+describe('findSidForToken — sid of the CURRENT session bucket, never a guess (XIN-398)', () => {
+  it('returns the sid whose token bucket holds the current token, among several sessions', () => {
+    // A multi-session device: findUniqueStoredSession would refuse to pick (ambiguous), but the
+    // current identity is KNOWN by its token — so we can name its own sid without guessing.
+    const store = storageOver(
+      new Map([
+        ['tokenA', 'tok-a'],
+        ['uidA', 'u_a'],
+        ['tokenB', 'tok-b'],
+        ['uidB', 'u_b'],
+        ['tokenfresh6', 'tok-current'],
+        ['uidfresh6', 'u_cur'],
+      ]),
+    )
+    expect(findSidForToken(store, 'tok-current')).toBe('fresh6')
+    expect(findSidForToken(store, 'tok-a')).toBe('A')
+  })
+
+  it('returns null when the current session lives only in the empty-sid (bare token) bucket', () => {
+    // A no-sid reload already reads the bare `token` bucket, so no `?sid=` needs to be carried and
+    // the bare key is intentionally not treated as a sid-keyed bucket.
+    const store = storageOver(new Map([['token', 'bare-tok'], ['uid', 'u_bare']]))
+    expect(findSidForToken(store, 'bare-tok')).toBeNull()
+  })
+
+  it('returns null for an empty token, an unmatched token, and never matches tokenCallback', () => {
+    const store = storageOver(
+      new Map([['tokenX', 'tok-x'], ['tokenCallback', 'tok-current']]),
+    )
+    expect(findSidForToken(store, '')).toBeNull()
+    expect(findSidForToken(store, 'no-such-token')).toBeNull()
+    // The config key `tokenCallback` must never be reported as a session bucket even if its value
+    // happens to equal the current token.
+    expect(findSidForToken(store, 'tok-current')).toBeNull()
+  })
+})
+
+describe('multi-session deep-link login round trip — the /d/:docId loop is broken by carrying sid (XIN-398)', () => {
+  // Byte-level regression the reviewers reproduced on head ce328eea: an anonymous multi-session
+  // user opens a shared /d/:docId, signs in (the fresh session lands in its own `token{sid}`
+  // bucket), and goMain reloads /d/:docId. Modeling the reload's sid-keyed load() + the strict
+  // XIN-392 P1-2 recovery shows the fix flips this from a login loop to a resolved session.
+  function deviceWithThreeSessions() {
+    // Two pre-existing sessions on the device + the just-authenticated one.
+    return new Map<string, string>([
+      ['tokenA', 'tok-a'],
+      ['uidA', 'u_a'],
+      ['tokenB', 'tok-b'],
+      ['uidB', 'u_b'],
+      ['tokenfresh6', 'tok-current'],
+      ['uidfresh6', 'u_cur'],
+    ])
+  }
+
+  it('OLD behavior (no sid carried) loops: reload misses + recovery refuses to guess → stuck', () => {
+    const store = deviceWithThreeSessions()
+    // goMain reloaded /d/:docId with NO sid: the reloaded page's sid-keyed load() reads the
+    // empty-sid bucket, which is empty.
+    const reloaded = new FakeLoginInfo(store, '')
+    reloaded.load()
+    expect(reloaded.token).toBe('') // load() misses — the fresh session lives under `tokenfresh6`
+
+    // The standalone branch then tries recovery with persist:true. With three sessions stored the
+    // ambiguity gate refuses to adopt one (never pins a guessed identity), so the visitor falls
+    // through to the login screen again → the loop.
+    const adopted = adoptStoredSession(reloaded, storageOver(store), { persist: true })
+    expect(adopted).toBe(false)
+    expect(reloaded.token).toBe('') // still unauthenticated → back to login
+  })
+
+  it('FIX (carry the current session sid) resolves: reload hits the right bucket directly', () => {
+    const store = deviceWithThreeSessions()
+    // goMain looks up the current (in-memory) token's own bucket sid and hands it to the reload.
+    const currentToken = 'tok-current'
+    const sid = findSidForToken(storageOver(store), currentToken)
+    expect(sid).toBe('fresh6')
+
+    // The reloaded /d/:docId?sid=fresh6 now runs a sid-keyed load() against that exact bucket…
+    const reloaded = new FakeLoginInfo(store, sid ?? '')
+    reloaded.load()
+    expect(reloaded.token).toBe('tok-current') // hit — authenticated, no recovery, no loop
+    expect(reloaded.uid).toBe('u_cur')
   })
 })

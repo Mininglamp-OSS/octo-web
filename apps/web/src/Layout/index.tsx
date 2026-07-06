@@ -13,8 +13,8 @@ import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
-import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn } from "@octo/docs";
-import { adoptStoredSession } from "./recoverSession";
+import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn, withReturnSid } from "@octo/docs";
+import { adoptStoredSession, findSidForToken } from "./recoverSession";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -93,13 +93,22 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 // IdP returnTo lands back on /login) has a stashed standalone target — bounce them
                 // back to that exact document instead of the app root. consumeStandaloneReturn
                 // clears the key and only returns SAFE same-origin relative paths (open-redirect
-                // guard), so a tampered value can never redirect off-origin. No sid is appended: the
-                // reloaded /d/:docId re-establishes the session via recoverOctoSessionFromStorage
-                // (which now persists into the no-sid bucket), and re-appending could double a sid
-                // already present in the stored target.
+                // guard), so a tampered value can never redirect off-origin.
+                //
+                // Carry the just-authenticated session's own sid on the reload (XIN-398): the
+                // stashed target has no `?sid=`, so the reloaded /d/:docId's sid-keyed load() would
+                // read only the empty-sid bucket and — for a multi-session user — fall through to a
+                // recovery that (XIN-392 P1-2) refuses to guess an identity, bouncing them back to
+                // login in a loop. withReturnSid appends the sid of the bucket that already holds the
+                // current token (findSidForToken — the known identity, never a guess), so the reload
+                // hits the right session directly instead of relying on the now-strict recovery. It
+                // no-ops when the target already carries a sid or the session lives in the empty-sid
+                // bucket (where a no-sid reload already resolves it), and the appended target still
+                // passes the isSafeReturnPath / parseStandaloneDocId gates.
                 const standaloneReturn = consumeStandaloneReturn();
                 if (standaloneReturn) {
-                    window.location.assign(standaloneReturn)
+                    const sessionSid = findSidForToken(localStorage, WKApp.loginInfo.token || "");
+                    window.location.assign(withReturnSid(standaloneReturn, sessionSid))
                     return
                 }
                 if ((window as any).__POWERED_EXTENSION__) {

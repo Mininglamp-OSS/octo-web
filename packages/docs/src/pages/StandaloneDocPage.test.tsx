@@ -47,6 +47,7 @@ import {
   standaloneFallbackSpace,
   persistStandaloneReturn,
   consumeStandaloneReturn,
+  withReturnSid,
   STANDALONE_RETURN_KEY,
 } from './StandaloneDocPage.tsx'
 
@@ -387,6 +388,50 @@ describe('standalone return target — open-redirect-safe post-login bounce (blo
     )
     // The stashed target is a safe relative path that the post-login flow can bounce back to.
     expect(consumeStandaloneReturn()).toBe('/d/d_locked_out')
+  })
+})
+
+describe('withReturnSid — carry the current session sid on the post-login /d/:docId reload (XIN-398)', () => {
+  it('appends the sid to a sid-less standalone target so the reload hits the sid-keyed bucket', () => {
+    // The stashed return target has no ?sid=; carrying the just-authenticated session's own sid
+    // lets the reloaded /d/:docId resolve the right session directly instead of relying on the
+    // now-strict multi-session recovery (which would loop back to login).
+    expect(withReturnSid('/d/d_abc', 'fresh6')).toBe('/d/d_abc?sid=fresh6')
+    expect(withReturnSid('/d/d_abc/', 'fresh6')).toBe('/d/d_abc/?sid=fresh6')
+  })
+
+  it('leaves a target that already carries a sid untouched (no doubling)', () => {
+    expect(withReturnSid('/d/d_abc?sid=already', 'fresh6')).toBe('/d/d_abc?sid=already')
+  })
+
+  it('is a no-op when there is no sid to carry (session in the empty-sid bucket)', () => {
+    expect(withReturnSid('/d/d_abc', null)).toBe('/d/d_abc')
+    expect(withReturnSid('/d/d_abc', undefined)).toBe('/d/d_abc')
+    expect(withReturnSid('/d/d_abc', '')).toBe('/d/d_abc')
+  })
+
+  it('percent-encodes the sid so it cannot smuggle a second query, path, or host (XIN-392 safety)', () => {
+    // A sid can only ever come from our own localStorage keys, but encode defensively regardless:
+    // the value must land as a single, inert query parameter, never a new path/host/query segment.
+    expect(withReturnSid('/d/d_abc', 'a&foo=bar')).toBe('/d/d_abc?sid=a%26foo%3Dbar')
+    expect(withReturnSid('/d/d_abc', 'x#frag')).toBe('/d/d_abc?sid=x%23frag')
+    expect(withReturnSid('/d/d_abc', '/evil')).toBe('/d/d_abc?sid=%2Fevil')
+    // The pathname is unchanged, so the result still resolves to the same /d/:docId and stays safe.
+    for (const sid of ['a&foo=bar', 'x#frag', '/evil']) {
+      const out = withReturnSid('/d/d_abc', sid)
+      expect(parseStandaloneDocId(new URL(out, window.location.origin).pathname)).toBe('d_abc')
+    }
+  })
+
+  it('preserves the XIN-392 gates end to end: consume → withReturnSid stays a safe /d/:docId link', () => {
+    window.sessionStorage.setItem(STANDALONE_RETURN_KEY, '/d/d_deep')
+    const consumed = consumeStandaloneReturn()
+    expect(consumed).toBe('/d/d_deep')
+    const target = withReturnSid(consumed!, 'sid42')
+    expect(target).toBe('/d/d_deep?sid=sid42')
+    // Re-stashing the sid-bearing target still passes every consume-side gate.
+    window.sessionStorage.setItem(STANDALONE_RETURN_KEY, target)
+    expect(consumeStandaloneReturn()).toBe('/d/d_deep?sid=sid42')
   })
 })
 
