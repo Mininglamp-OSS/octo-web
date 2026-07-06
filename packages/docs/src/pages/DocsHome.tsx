@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { getWKApp, getRouteRight, t } from '../octoweb/index.ts'
+import { getWKApp, getRouteRight, onSpaceChanged, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import '../editor/styles.css'
 import { DEFAULT_DOC_SPACE, DEFAULT_DOC_FOLDER, DEFAULT_DOC_ID } from '../config.ts'
@@ -336,8 +336,24 @@ export function DocsHome() {
   // error-boundary screen, so default to '' and let the editor/list resolve identity from
   // the collab-token round-trip instead of crashing first paint.
   const uid = wk.loginInfo?.uid ?? ''
-  const space = wk.shared?.currentSpaceId || DEFAULT_DOC_SPACE
+  // The active Space. `wk.shared.currentSpaceId` is a plain mutable field on the host WKApp, NOT
+  // React state — reassigning it when the user switches Space does not re-render this component,
+  // so deriving `space` inline left the list stuck on the old Space's docs until a manual reload
+  // (XIN-410). Mirror it into state and re-read it whenever the host broadcasts `space-changed`
+  // (see the effect below) so the switch flows through to reload/useMemberNames.
+  const [space, setSpace] = useState<string>(() => wk.shared?.currentSpaceId || DEFAULT_DOC_SPACE)
   const folder = DEFAULT_DOC_FOLDER
+
+  // Subscribe to the host's Space-switch broadcast. On a switch the host mutates currentSpaceId
+  // then emits `space-changed`; we re-read the id into state. setSpace bails out when the value
+  // is unchanged, so a redundant broadcast for the same Space causes no extra render/fetch — one
+  // switch = one reload, no request storm. The effect runs once (empty deps): getWKApp() returns
+  // the stable singleton, and the handler always reads the latest currentSpaceId off it.
+  useEffect(() => {
+    return onSpaceChanged(() => {
+      setSpace(getWKApp().shared?.currentSpaceId || DEFAULT_DOC_SPACE)
+    })
+  }, [])
 
   // Initial selection from URL deep-link / persisted target (so a shared `/docs?doc=` or a
   // refresh opens that doc in the right pane on first paint).

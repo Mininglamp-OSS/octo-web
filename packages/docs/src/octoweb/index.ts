@@ -7,7 +7,7 @@
 // whenever no override has been set — i.e. in production and dev.
 
 import { WKApp, i18n, t, useI18n, Menus, SpaceService } from '@octo/base'
-import type { APIClient, ApiRequestConfig, ApiResponse, SpaceMemberLite, WKAppShape } from './types.ts'
+import type { APIClient, ApiRequestConfig, ApiResponse, MittBusLite, SpaceMemberLite, WKAppShape } from './types.ts'
 
 // Test-only override. When unset (production / dev), getWKApp() returns the real
 // `@octo/base` WKApp singleton below.
@@ -41,6 +41,30 @@ export function getRouteRight(): import('./types.ts').RouteRight | null {
   if (override) return override.routeRight ?? null
   const rr = (WKApp as unknown as { routeRight?: import('./types.ts').RouteRight }).routeRight
   return rr ?? null
+}
+
+/**
+ * Subscribe to the host's global "space switched" broadcast.
+ *
+ * The host emits `WKApp.mittBus.emit('space-changed', space)` whenever the user picks a
+ * different Space (packages/dmworkbase/src/Pages/Chat/vm.ts `set selectedSpace`, apps/web
+ * Pages/Main). `WKApp.shared.currentSpaceId` is a plain mutable field — reassigning it does
+ * NOT re-render React — so a component that derives state from it (DocsHome's document list)
+ * keeps showing the old Space's docs until a manual reload. Like the summary / todo /
+ * contacts modules, docs must listen to this event and re-read `currentSpaceId` to react.
+ *
+ * Returns an unsubscribe function. No-op (returns a noop unsubscribe) when no bus is
+ * available — an older test mock without one, or a non-browser context.
+ */
+export function onSpaceChanged(cb: () => void): () => void {
+  const bus: MittBusLite | undefined = override
+    ? override.mittBus
+    : (WKApp as unknown as { mittBus?: MittBusLite }).mittBus
+  if (!bus) return () => {}
+  // Ignore the payload: docs reacts to the switch by re-reading currentSpaceId itself.
+  const handler = () => cb()
+  bus.on('space-changed', handler)
+  return () => bus.off('space-changed', handler)
 }
 
 /** Page size for space-member fetches — mirrors the host useMemberList pattern (default 50). */

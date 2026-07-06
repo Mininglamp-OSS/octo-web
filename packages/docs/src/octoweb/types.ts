@@ -175,10 +175,31 @@ export interface WKAppShape {
    * host. Absent → docs falls back to showing the raw uid.
    */
   getSpaceMembers?(spaceId: string, page: number, limit: number): Promise<SpaceMemberLite[]>
+  /**
+   * The host global event bus (WKApp.mittBus). Optional in the shape, declared like
+   * `routeRight`: surfaced via the host static cast in production; the test mock supplies a
+   * lightweight emitter. Docs subscribes to its `space-changed` event so the list reloads
+   * when the user switches Space (`currentSpaceId` is a plain mutable field, so a switch does
+   * NOT re-render React on its own — see onSpaceChanged in octoweb/index.ts).
+   */
+  mittBus?: MittBusLite
 }
 
 /** Minimal surface of the host's right-pane route manager (ContextRouteManager). */
 export interface RouteRight {
   replaceToRoot(view: unknown): void
   popToRoot(): void
+}
+
+/**
+ * Minimal view of the host global event bus (WKApp.mittBus, a `mitt` emitter — see
+ * packages/dmworkbase/src/App.tsx). The docs module only needs to (un)subscribe to the
+ * `space-changed` broadcast the host fires when the user switches Space
+ * (`WKApp.mittBus.emit('space-changed', space)` in Chat/vm.ts and apps/web Main), the same
+ * signal the summary / todo / contacts modules listen to. Payload is left `unknown` because
+ * docs reacts to the switch itself (re-reading `currentSpaceId`), not to the payload.
+ */
+export interface MittBusLite {
+  on(type: 'space-changed', handler: (payload?: unknown) => void): void
+  off(type: 'space-changed', handler: (payload?: unknown) => void): void
 }

@@ -68,6 +68,32 @@ export class MockRouteManager implements RouteManager {
   }
 }
 
+/**
+ * Test double for the host WKApp.mittBus (a `mitt` emitter). Only the `space-changed` channel
+ * the docs module subscribes to is modeled. Tests drive a Space switch by mutating
+ * `wk.shared.currentSpaceId` and calling `emitSpaceChanged()` — mirroring the host, which sets
+ * `currentSpaceId` then emits `space-changed` (packages/dmworkbase/src/Pages/Chat/vm.ts).
+ */
+export class MockMittBus {
+  private spaceChangedListeners: Array<(payload?: unknown) => void> = []
+  on(type: 'space-changed', handler: (payload?: unknown) => void): void {
+    if (type === 'space-changed') this.spaceChangedListeners.push(handler)
+  }
+  off(type: 'space-changed', handler: (payload?: unknown) => void): void {
+    if (type === 'space-changed') {
+      this.spaceChangedListeners = this.spaceChangedListeners.filter((l) => l !== handler)
+    }
+  }
+  /** Number of space-changed listeners currently registered (leak / idempotency checks). */
+  spaceChangedListenerCount(): number {
+    return this.spaceChangedListeners.length
+  }
+  /** Simulate the host broadcasting a Space switch. */
+  emitSpaceChanged(payload?: unknown): void {
+    for (const l of [...this.spaceChangedListeners]) l(payload)
+  }
+}
+
 export class MockMenusManager {
   menus = new Map<string, (param?: any) => unknown>()
   /** Number of times the docs module asked the NavRail to re-render (config gate flips). */
@@ -140,10 +166,13 @@ export function createMockWKApp(
   mockRemoteConfig: MockRemoteConfig
   /** Test hook: fake space members the seam's getSpaceMembers paginates over. */
   spaceMembers: SpaceMemberLite[]
+  /** Test hook: the host event-bus double (emitSpaceChanged to simulate a Space switch). */
+  mockMittBus: MockMittBus
 } {
   const apiClient = new MockApiClient()
   const route = new MockRouteManager()
   const menus = new MockMenusManager()
+  const mittBus = new MockMittBus()
   const registeredModules: IModule[] = []
   // Fake space membership tests can populate (wk.spaceMembers.push(...)) so docs can resolve
   // uid → display name through the seam without a live host.
@@ -158,6 +187,8 @@ export function createMockWKApp(
     loginInfo,
     registeredModules,
     spaceMembers,
+    mittBus,
+    mockMittBus: mittBus,
     // Mirror the real host's paged getMembers: return the requested page slice. Docs loops
     // pages until a short/empty page, so a slice-based mock terminates fetchAllSpaceMembers.
     getSpaceMembers(_spaceId: string, page: number, limit: number) {
@@ -165,6 +196,9 @@ export function createMockWKApp(
       return Promise.resolve(spaceMembers.slice(start, start + limit))
     },
     shared: {
+      // Selected Space id. '' by default (host default); tests set it before/after a
+      // mockMittBus.emitSpaceChanged() to simulate switching Space.
+      currentSpaceId: '',
       registerModule(module: IModule) {
         registeredModules.push(module)
         // Mirror real octo-web: registering a module initializes it (route registration etc.).

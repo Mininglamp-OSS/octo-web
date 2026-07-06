@@ -344,6 +344,81 @@ describe('DocsHome navigation (split-pane)', () => {
   })
 })
 
+describe('DocsHome — reloads the list when the current Space switches', () => {
+  // Regression (XIN-410): switching Space did NOT refresh the document list. `space` was derived
+  // directly from the mutable `WKApp.shared.currentSpaceId`, which is not React state — reassigning
+  // it on a switch never re-rendered DocsHome, so the list kept showing the old Space's docs until a
+  // manual reload. DocsHome now subscribes to the host `space-changed` bus and re-reads the id.
+  const listGets = (wk: ReturnType<typeof createMockWKApp>) =>
+    wk.apiClient.calls.filter((c) => c.method === 'get' && c.url.startsWith('/docs?'))
+
+  it('re-fetches the list for the new Space when space-changed fires', async () => {
+    const wk = createMockWKApp()
+    wk.shared.currentSpaceId = 'space-a'
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    // Initial load queries the first Space.
+    await waitFor(() => expect(listGets(wk).length).toBe(1))
+    expect(listGets(wk)[0].url).toContain('spaceId=space-a')
+
+    // The host switches Space: it mutates currentSpaceId then broadcasts space-changed.
+    wk.shared.currentSpaceId = 'space-b'
+    wk.mockMittBus.emitSpaceChanged({ space_id: 'space-b' })
+
+    // The list re-fetches — now scoped to the new Space.
+    await waitFor(() => expect(listGets(wk).length).toBe(2))
+    expect(listGets(wk).at(-1)!.url).toContain('spaceId=space-b')
+  })
+
+  it('re-fetches exactly once per switch (no duplicate-request storm)', async () => {
+    const wk = createMockWKApp()
+    wk.shared.currentSpaceId = 'space-a'
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(listGets(wk).length).toBe(1))
+
+    wk.shared.currentSpaceId = 'space-b'
+    wk.mockMittBus.emitSpaceChanged({ space_id: 'space-b' })
+    await waitFor(() => expect(listGets(wk).length).toBe(2))
+
+    // A redundant broadcast for the SAME space must not trigger another fetch.
+    wk.mockMittBus.emitSpaceChanged({ space_id: 'space-b' })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(listGets(wk).length).toBe(2)
+  })
+
+  it('unsubscribes from the bus on unmount (no leaked listener)', async () => {
+    const wk = createMockWKApp()
+    wk.shared.currentSpaceId = 'space-a'
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { unmount } = render(<DocsHome />)
+    await waitFor(() => expect(wk.mockMittBus.spaceChangedListenerCount()).toBe(1))
+    unmount()
+    expect(wk.mockMittBus.spaceChangedListenerCount()).toBe(0)
+  })
+})
+
 describe('DocsHome — production (routeRight) editor has no header back button (#2)', () => {
   it('pushes the editor without onBack but with onExit (return-on-delete)', async () => {
     window.sessionStorage.setItem(TARGET_KEY, JSON.stringify({ doc: 'd_persist' }))
