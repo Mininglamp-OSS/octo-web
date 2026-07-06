@@ -346,6 +346,74 @@ describe('StandaloneDocPage — cold-start addressing uses the cached space, not
   })
 })
 
+describe('StandaloneDocPage — cold-start preflight carries X-Space-Id from the cached space (by-space isolation)', () => {
+  it('sends GET /docs/:id with header X-Space-Id = cached currentSpaceId even though wk.shared.currentSpaceId is empty', async () => {
+    // Root cause: the standalone page mounts via the Layout early-return, BEFORE the app shell
+    // restores currentSpaceId, so wk.shared.currentSpaceId is empty and the global spaceIdCallback
+    // interceptor injects NO X-Space-Id. The backend's by-space middleware then rejects the bare
+    // preflight (400 space_required / 404 space mismatch) and the page shows the not-found terminal.
+    // The fix resolves the space from the SAME cached localStorage key the room addressing uses and
+    // passes it as an explicit header on the preflight. This assertion FAILS on the old bare getDoc.
+    window.localStorage.setItem('currentSpaceId', 'space-abc')
+    expect(wk.shared.currentSpaceId).toBeFalsy() // shell has not restored the live space yet
+
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
+    expect(preflight).toBeTruthy()
+    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-abc')
+    // Consistency: the room the editor joins uses the same resolved space as the preflight header.
+    expect(screen.getByTestId('editor-space').textContent).toBe('space-abc')
+  })
+
+  it('seeds the empty live currentSpaceId from the cached value at standalone mount (defense in depth)', async () => {
+    // The primary fix is the explicit header, but the page also restores wk.shared.currentSpaceId
+    // from the cached key when empty, so any in-shell-shared logic the EditorShell touches sees it.
+    window.localStorage.setItem('currentSpaceId', 'space-abc')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(wk.shared.currentSpaceId).toBe('space-abc')
+  })
+
+  it('never overwrites a real live currentSpaceId with the cached value', async () => {
+    // In-shell (or any mount where the live space is already set) must be unaffected: the guarded
+    // restore only fills an EMPTY space, so a real current space is preserved and the preflight
+    // header/room follow the live space, not the stale cached one.
+    window.localStorage.setItem('currentSpaceId', 'space-cached')
+    wk.shared.currentSpaceId = 'space-live'
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(wk.shared.currentSpaceId).toBe('space-live')
+    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
+    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-live')
+    expect(screen.getByTestId('editor-space').textContent).toBe('space-live')
+  })
+})
+
 describe('standalone return target — open-redirect-safe post-login bounce (blocker 4)', () => {
   it('round-trips a safe same-origin /d/:docId target through persist → consume', () => {
     window.history.pushState({}, '', '/d/d_abc?sid=xyz')

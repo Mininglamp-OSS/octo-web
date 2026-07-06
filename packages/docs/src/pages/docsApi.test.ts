@@ -79,6 +79,30 @@ describe('docs list/create API (bare-relative /docs)', () => {
     expect(call.url).toBe('/docs/d_real')
   })
 
+  it('sends NO explicit X-Space-Id header for the in-shell getDoc (no spaceId) — the global interceptor still handles it', async () => {
+    api.responder = () => ({ data: { docId: 'd_real', title: 'Real Title' }, status: 200 })
+    await getDoc('d_real')
+    const call = api.calls.at(-1)!
+    // Unchanged behavior: no per-request config header — the global spaceIdCallback interceptor
+    // injects X-Space-Id from the live currentSpaceId, exactly as before.
+    expect(call.config?.headers?.['X-Space-Id']).toBeUndefined()
+  })
+
+  it('carries an explicit X-Space-Id header when getDoc is given a spaceId (standalone by-space preflight)', async () => {
+    api.responder = () => ({ data: { docId: 'd_real', title: 'Real Title' }, status: 200 })
+    await getDoc('d_real', { spaceId: 'space-abc' })
+    const call = api.calls.at(-1)!
+    expect(call.url).toBe('/docs/d_real')
+    expect(call.config?.headers?.['X-Space-Id']).toBe('space-abc')
+  })
+
+  it('does not add a header for an empty spaceId (falls back to interceptor behavior)', async () => {
+    api.responder = () => ({ data: { docId: 'd_real', title: 'Real Title' }, status: 200 })
+    await getDoc('d_real', { spaceId: '' })
+    const call = api.calls.at(-1)!
+    expect(call.config?.headers?.['X-Space-Id']).toBeUndefined()
+  })
+
   it('renames a doc via PATCH /docs/{docId} with {title}', async () => {
     api.responder = () => ({
       data: { docId: 'd_real', title: 'New Name' },

@@ -89,9 +89,20 @@ export interface DocMeta {
  * Used to render the real title in the editor header instead of a hardcoded
  * placeholder. Resilient: callers fall back to a passed-in title if this throws
  * (e.g. the backend has no per-doc GET in a given environment).
+ *
+ * `opts.spaceId` (standalone by-space need): the backend gates `/docs/:docId` behind a by-space
+ * middleware — a request with no `X-Space-Id` header is rejected (400 space_required) and a header
+ * that does not match the doc's space returns 404. In-shell callers omit `opts` and rely on the
+ * global request interceptor (spaceIdCallback → WKApp.shared.currentSpaceId) to inject the header.
+ * The standalone `/d/:docId` page mounts before that space is restored, so the interceptor injects
+ * nothing; it passes the resolved space here to carry an explicit `X-Space-Id` on the preflight,
+ * which axios merges over (and thus wins against) the interceptor's absent header. A non-empty
+ * `opts.spaceId` is the only trigger — omitting it preserves the exact prior no-header behavior.
  */
-export async function getDoc(docId: string): Promise<DocMeta> {
-  const { data } = await apiClient().get<DocMeta>(`/docs/${docId}`)
+export async function getDoc(docId: string, opts?: { spaceId?: string }): Promise<DocMeta> {
+  const config =
+    opts?.spaceId ? { headers: { 'X-Space-Id': opts.spaceId } } : undefined
+  const { data } = await apiClient().get<DocMeta>(`/docs/${docId}`, config)
   return data
 }
 

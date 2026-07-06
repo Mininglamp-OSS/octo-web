@@ -242,6 +242,30 @@ export function StandaloneDocPage({
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Resolve the standalone space ONCE, from the SAME source the room-addressing fallback uses
+  // (standaloneFallbackSpace: live currentSpaceId → cached localStorage → deploy default). Both the
+  // preflight's explicit X-Space-Id header and the EditorShell room fallback read this one value, so
+  // preflight and room can never address different spaces (the bug: a bare preflight got 400/404 and
+  // fell to the not-found terminal even for the user's own last space).
+  const preflightSpace = standaloneFallbackSpace(wk.shared?.currentSpaceId)
+
+  // Defense in depth (does NOT gate the primary fix above): the standalone page mounts via the
+  // Layout early-return, before the app shell restores currentSpaceId from localStorage, so any
+  // in-shell-shared logic the EditorShell touches would see an empty space. If — and only if — the
+  // live space is empty and a cached value exists, seed it from the same cached key. Never overwrite
+  // a real current space, so in-shell mounts (where it is already set) are unaffected.
+  useEffect(() => {
+    const shared = wk.shared
+    if (!shared || shared.currentSpaceId) return
+    if (typeof window === 'undefined') return
+    try {
+      const cached = window.localStorage.getItem('currentSpaceId')
+      if (cached) shared.currentSpaceId = cached
+    } catch {
+      // localStorage unavailable: the explicit preflight header (primary fix) still carries the space.
+    }
+  }, [wk.shared])
+
   useEffect(() => {
     let cancelled = false
     // AC-9: a `/d/` link with a missing or malformed id. The Layout still routes it here (the
@@ -252,7 +276,9 @@ export function StandaloneDocPage({
       return
     }
     setPhase({ status: 'loading' })
-    getDoc(docId)
+    // Carry an explicit X-Space-Id on the preflight (docsApi getDoc): on a cold standalone deep link
+    // the global interceptor's space is empty, so this resolved space is the header's only source.
+    getDoc(docId, { spaceId: preflightSpace })
       .then((meta) => {
         if (!cancelled) setPhase({ status: 'ready', meta })
       })
@@ -279,7 +305,7 @@ export function StandaloneDocPage({
     return () => {
       cancelled = true
     }
-  }, [docId, onSessionExpired])
+  }, [docId, onSessionExpired, preflightSpace])
 
   useEffect(
     () => () => {
@@ -312,9 +338,10 @@ export function StandaloneDocPage({
 
   // Resolve display names for the doc's space so the presence caret shows a real name (parity
   // with the in-shell path). Space comes from the preflight documentName when available, else the
-  // caller's current space. Derived from `phase` so it re-resolves once the doc meta lands.
+  // SAME resolved `preflightSpace` the preflight header used — so the room the editor joins matches
+  // the space the preflight was authorized against. Derived from `phase` so it re-resolves once the
+  // doc meta lands.
   const addressing = useMemo(() => {
-    const fallbackSpace = standaloneFallbackSpace(wk.shared?.currentSpaceId)
     if (phase.status === 'ready' && phase.meta.documentName) {
       try {
         const parsed = parseDocumentName(phase.meta.documentName)
@@ -325,8 +352,8 @@ export function StandaloneDocPage({
         // Malformed documentName from the backend: fall back to the caller's space + default folder.
       }
     }
-    return { space: fallbackSpace, folder: DEFAULT_DOC_FOLDER, doc: docId ?? '' }
-  }, [phase, wk.shared, docId])
+    return { space: preflightSpace, folder: DEFAULT_DOC_FOLDER, doc: docId ?? '' }
+  }, [phase, preflightSpace, docId])
 
   const names = useMemberNames(addressing.space)
 
