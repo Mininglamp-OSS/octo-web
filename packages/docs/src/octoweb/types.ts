@@ -40,6 +40,16 @@ export interface ApiRequestConfig {
    * back instead of parsed JSON (feature #4 §7). Defaults to axios' `'json'`.
    */
   responseType?: 'json' | 'arraybuffer'
+  /**
+   * Per-request headers, merged over the global request interceptor's headers by axios
+   * (request-config headers win). The standalone `/d/:docId` preflight uses this to carry an
+   * explicit `X-Space-Id`: it mounts via the Layout early-return, before the app shell restores
+   * `currentSpaceId`, so the global `spaceIdCallback` interceptor reads an empty space and injects
+   * no `X-Space-Id` — the backend's by-space middleware then rejects the bare `getDoc` (400
+   * space_required / 404 space mismatch). Passing the space here makes the preflight the source of
+   * truth for its own space header. In-shell callers omit this and keep relying on the interceptor.
+   */
+  headers?: Record<string, string>
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   listDocs,
   createDoc,
   getDoc,
+  getUserName,
   updateDocTitle,
   deleteDoc,
   classifyDeleteStatus,
@@ -78,6 +79,35 @@ describe('docs list/create API (bare-relative /docs)', () => {
     expect(call.url).toBe('/docs/d_real')
   })
 
+  it('sends NO explicit X-Space-Id header for the in-shell getDoc (no spaceId) — the global interceptor still handles it', async () => {
+    api.responder = () => ({ data: { docId: 'd_real', title: 'Real Title' }, status: 200 })
+    await getDoc('d_real')
+    const call = api.calls.at(-1)!
+    // Unchanged behavior: no per-request config header — the global spaceIdCallback interceptor
+    // injects X-Space-Id from the live currentSpaceId, exactly as before.
+    expect(call.config?.headers?.['X-Space-Id']).toBeUndefined()
+  })
+
+  it('carries an explicit X-Space-Id header when getDoc is given a spaceId (standalone by-space preflight)', async () => {
+    // Scope: this asserts the DOCS-SIDE contract — getDoc puts the explicit header into the request
+    // config. That the header then really reaches the wire (host APIClient forwards config.headers to
+    // axios, and the interceptor lets the explicit header win) is covered by the host unit test at
+    // packages/dmworkbase/src/Service/__tests__/APIClient.headers.test.ts. Both halves are needed:
+    // the mock seam here cannot prove the real host forwards headers (that was the XIN-424 fake-green).
+    api.responder = () => ({ data: { docId: 'd_real', title: 'Real Title' }, status: 200 })
+    await getDoc('d_real', { spaceId: 'space-abc' })
+    const call = api.calls.at(-1)!
+    expect(call.url).toBe('/docs/d_real')
+    expect(call.config?.headers?.['X-Space-Id']).toBe('space-abc')
+  })
+
+  it('does not add a header for an empty spaceId (falls back to interceptor behavior)', async () => {
+    api.responder = () => ({ data: { docId: 'd_real', title: 'Real Title' }, status: 200 })
+    await getDoc('d_real', { spaceId: '' })
+    const call = api.calls.at(-1)!
+    expect(call.config?.headers?.['X-Space-Id']).toBeUndefined()
+  })
+
   it('renames a doc via PATCH /docs/{docId} with {title}', async () => {
     api.responder = () => ({
       data: { docId: 'd_real', title: 'New Name' },
@@ -122,5 +152,30 @@ describe('classifyDeleteStatus / deleteErrorKey', () => {
     expect(deleteErrorKey('forbidden')).toBe('docs.doc.deleteForbidden')
     expect(deleteErrorKey('archived')).toBe('docs.doc.deleteArchived')
     expect(deleteErrorKey('failed')).toBe('docs.doc.deleteFailed')
+  })
+})
+
+describe('getUserName — creator name resolution + standalone privacy (blocker 5)', () => {
+  it('prefers the verified real_name by default (in-shell editor, unchanged behavior)', async () => {
+    api.responder = () => ({ data: { name: 'ada_nick', real_name: 'Ada Lovelace' }, status: 200 })
+    expect(await getUserName('u_owner')).toBe('Ada Lovelace')
+  })
+
+  it('returns the nickname only when preferRealName is false (standalone shared surface)', async () => {
+    // Privacy: a /d/:docId link holder must never see the creator's verified legal name.
+    api.responder = () => ({ data: { name: 'ada_nick', real_name: 'Ada Lovelace' }, status: 200 })
+    expect(await getUserName('u_owner', { preferRealName: false })).toBe('ada_nick')
+  })
+
+  it('falls back to the nickname when no real_name exists, in both modes', async () => {
+    api.responder = () => ({ data: { name: 'ada_nick' }, status: 200 })
+    expect(await getUserName('u_owner')).toBe('ada_nick')
+    expect(await getUserName('u_owner', { preferRealName: false })).toBe('ada_nick')
+  })
+
+  it('returns undefined when no usable name is present (menu falls back to a short uid)', async () => {
+    api.responder = () => ({ data: {}, status: 200 })
+    expect(await getUserName('u_owner')).toBeUndefined()
+    expect(await getUserName('u_owner', { preferRealName: false })).toBeUndefined()
   })
 })

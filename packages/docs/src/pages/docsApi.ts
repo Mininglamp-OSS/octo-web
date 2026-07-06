@@ -68,6 +68,20 @@ export interface DocMeta {
   ownerId?: string
   role?: Role
   updatedAt?: string
+  /**
+   * Creation timestamp (RFC3339), returned by the per-doc GET. Consumed by the header "more"
+   * menu to show a "Created on YYYY-MM-DD" line. Optional / forward-compatible: when the backend
+   * omits it the menu simply drops the created-on row rather than showing a broken date.
+   */
+  createdAt?: string
+  /**
+   * Canonical collab document key `octo:{space}:{folder}:{doc}` (see documentName/index.ts).
+   * Returned by the per-doc GET so a standalone deep-link (`/d/:docId`), which knows only the
+   * docId and not the owning space/folder, can address collaboration exactly instead of guessing.
+   * Optional / forward-compatible: when the backend omits it, callers fall back to the caller's
+   * current space + default folder (same addressing the in-shell list uses).
+   */
+  documentName?: string
 }
 
 /**
@@ -75,10 +89,45 @@ export interface DocMeta {
  * Used to render the real title in the editor header instead of a hardcoded
  * placeholder. Resilient: callers fall back to a passed-in title if this throws
  * (e.g. the backend has no per-doc GET in a given environment).
+ *
+ * `opts.spaceId` (standalone by-space need): the backend gates `/docs/:docId` behind a by-space
+ * middleware — a request with no `X-Space-Id` header is rejected (400 space_required) and a header
+ * that does not match the doc's space returns 404. In-shell callers omit `opts` and rely on the
+ * global request interceptor (spaceIdCallback → WKApp.shared.currentSpaceId) to inject the header.
+ * The standalone `/d/:docId` page mounts before that space is restored, so the interceptor injects
+ * nothing; it passes the resolved space here to carry an explicit `X-Space-Id` on the preflight,
+ * which axios merges over (and thus wins against) the interceptor's absent header. A non-empty
+ * `opts.spaceId` is the only trigger — omitting it preserves the exact prior no-header behavior.
  */
-export async function getDoc(docId: string): Promise<DocMeta> {
-  const { data } = await apiClient().get<DocMeta>(`/docs/${docId}`)
+export async function getDoc(docId: string, opts?: { spaceId?: string }): Promise<DocMeta> {
+  const config =
+    opts?.spaceId ? { headers: { 'X-Space-Id': opts.spaceId } } : undefined
+  const { data } = await apiClient().get<DocMeta>(`/docs/${docId}`, config)
   return data
+}
+
+/**
+ * GET /api/v1/users/{uid} — resolve a uid to a human display name. Used by the header "more" menu
+ * to render the document creator (the doc's ownerId) as a name instead of a raw uid. The host user
+ * payload carries `name` (nickname) and, when the user is verified, `real_name`.
+ *
+ * By default (in-shell editor) we prefer the verified real name and fall back to the nickname.
+ * Pass `{ preferRealName: false }` to force the NICKNAME only and never expose `real_name` — the
+ * standalone `/d/:docId` page uses this because it is an externally shareable surface: anyone with
+ * the link would otherwise see the creator's verified legal name (privacy leak, boss decision).
+ *
+ * Resilient by contract: it returns `undefined` when no usable name is present, so the menu can
+ * fall back to a short uid / placeholder without crashing.
+ */
+export async function getUserName(
+  uid: string,
+  opts: { preferRealName?: boolean } = {},
+): Promise<string | undefined> {
+  const { preferRealName = true } = opts
+  const { data } = await apiClient().get<{ name?: string; real_name?: string }>(`/users/${uid}`)
+  const resolved = preferRealName ? data?.real_name || data?.name : data?.name
+  const name = (resolved || '').trim()
+  return name || undefined
 }
 
 /**

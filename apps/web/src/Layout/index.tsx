@@ -13,10 +13,61 @@ import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
+import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn, withReturnSid } from "@octo/docs";
+import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
     joinApproval?: { status: JoinApprovalStatus; inviteCode: string };
+}
+
+/**
+ * Recover an octo session for a clean deep-link that carries no `?sid=` in the URL.
+ *
+ * Both `/d/:docId` (standalone doc, #512) and `?invite=` links can be opened in a fresh tab where
+ * the URL has no `sid`, so the sid-keyed `WKApp.loginInfo.load()` reads nothing even when the user
+ * is signed in — their token lives under a `token{sid}` key in localStorage. Adopt the stored
+ * session (token + uid + name) so the deep-link's authenticated requests succeed instead of
+ * returning 401 for everyone. No-op when a token is already present or none is stored (a genuinely
+ * anonymous visitor). The scan itself lives in recoverSession.ts (pure + unit-tested).
+ *
+ * `persist` distinguishes the two callers (XIN-392 P1-2):
+ *   - standalone (`persist: true`): also writes the session back to the current empty-sid bucket so
+ *     the page's Back → /docs full reload stays authenticated (XIN-390). Because that write mirrors
+ *     the identity into the cross-tab localStorage whitelist, adoptStoredSession only persists when
+ *     EXACTLY ONE session is stored — a multi-session user's identity is never guessed-and-pinned.
+ *   - invite (`persist: false`): adopts the first stored session IN MEMORY ONLY and never persists,
+ *     which is the invite branch's original pre-#512 behavior (it must not start persisting just
+ *     because both branches now share this helper).
+ */
+function recoverOctoSessionFromStorage(persist: boolean): void {
+    if (WKApp.loginInfo.token) return;
+    adoptStoredSession(WKApp.loginInfo, localStorage, { persist });
+}
+
+/**
+ * The standalone `/d/:docId` page reached a 401 while a token WAS loaded — the current session is
+ * expired (XIN-408). Clear that dead session and reload so the standalone branch below re-evaluates,
+ * finds no token, and falls through to the real login screen. The deep-link target was already
+ * stashed (persistStandaloneReturn) by the page, so the existing post-login bounce returns the user
+ * to the document after sign-in — no new return-path plumbing.
+ *
+ * Why clearing by token VALUE, not just `logout()`: `logout()` clears only the CURRENT `?sid=`
+ * bucket, but on a clean cold-load (no `?sid=`) the expired token was recovered from a `token{sid'}`
+ * bucket and mirrored into the empty-sid bucket, so it lives in two places. Clearing every bucket
+ * that holds this exact token (clearSessionsWithToken over both storages) tears down all copies, so
+ * the reload's recovery can't re-adopt it and loop. A DIFFERENT valid session has a different token
+ * and is left untouched (XIN-390/392: 只清当前过期 session，别误清有效 session).
+ */
+function clearExpiredStandaloneSessionAndReload(): void {
+    const expiredToken = WKApp.loginInfo.token || "";
+    // In-memory + current-sid bucket + cross-tab mirror (the sid-scoped part logout() handles).
+    WKApp.loginInfo.logout();
+    // Value-matched sweep for any remaining copies (the cold-load recover-then-persist case).
+    if (expiredToken && typeof window !== "undefined") {
+        clearSessionsWithToken(expiredToken, window.sessionStorage, window.localStorage);
+    }
+    if (typeof window !== "undefined") window.location.reload();
 }
 
 export default class AppLayout extends Component<{}, AppLayoutState> {
@@ -63,6 +114,28 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             const sidParam = existingSid ? `?sid=${existingSid}` : ""
 
             const goMain = () => {
+                // A user who signed in from a shared /d/:docId link (local OR SSO/OIDC, where the
+                // IdP returnTo lands back on /login) has a stashed standalone target — bounce them
+                // back to that exact document instead of the app root. consumeStandaloneReturn
+                // clears the key and only returns SAFE same-origin relative paths (open-redirect
+                // guard), so a tampered value can never redirect off-origin.
+                //
+                // Carry the just-authenticated session's own sid on the reload (XIN-398): the
+                // stashed target has no `?sid=`, so the reloaded /d/:docId's sid-keyed load() would
+                // read only the empty-sid bucket and — for a multi-session user — fall through to a
+                // recovery that (XIN-392 P1-2) refuses to guess an identity, bouncing them back to
+                // login in a loop. withReturnSid appends the sid of the bucket that already holds the
+                // current token (findSidForToken — the known identity, never a guess), so the reload
+                // hits the right session directly instead of relying on the now-strict recovery. It
+                // no-ops when the target already carries a sid or the session lives in the empty-sid
+                // bucket (where a no-sid reload already resolves it), and the appended target still
+                // passes the isSafeReturnPath / parseStandaloneDocId gates.
+                const standaloneReturn = consumeStandaloneReturn();
+                if (standaloneReturn) {
+                    const sessionSid = findSidForToken(localStorage, WKApp.loginInfo.token || "");
+                    window.location.assign(withReturnSid(standaloneReturn, sessionSid))
+                    return
+                }
                 if ((window as any).__POWERED_EXTENSION__) {
                     window.location.reload()
                     return
@@ -260,6 +333,41 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             }
         }
 
+        // Standalone document deep-link (`/d/:docId`, octo-web #512): a shareable full-window
+        // doc view that lives OUTSIDE the app shell (no MainPage / NavRail), mounted with the
+        // same early-return interception the `?invite=` landing uses below. We claim the whole
+        // `/d` namespace (not just well-formed ids) so a malformed/empty id renders the
+        // standalone not-found terminal instead of silently falling through to the shell (AC-9).
+        //
+        // Auth: this branch renders before the Provider, so ensure the octo session is loaded
+        // for the page's GET /docs/{docId} preflight + collab-token exchange. A clean cold-load
+        // in a fresh tab carries no `?sid=`, so load() (sid-keyed) misses even a signed-in user's
+        // token — recover it from localStorage the way the invite branch does (AC-3). When the
+        // visitor is genuinely anonymous, fall through to the login screen rendered IN PLACE: the
+        // pathname stays `/d/:docId`, so onLogin derives basePath from it and bounces the user
+        // straight back to the doc (now with `?sid=`) after sign-in — the deep-link resumes
+        // instead of dead-ending (AC-11). SPA deep-link serving depends on the nginx try_files
+        // fallback (deployment concern, out of scope for this frontend change).
+        if (isStandaloneDocPath(window.location.pathname)) {
+            if (!WKApp.loginInfo.token) {
+                WKApp.loginInfo.load();
+            }
+            if (!WKApp.loginInfo.token) {
+                recoverOctoSessionFromStorage(true);
+            }
+            if (WKApp.loginInfo.token) {
+                const standaloneDocId = parseStandaloneDocId(window.location.pathname);
+                return <StandaloneDocPage docId={standaloneDocId} onSessionExpired={clearExpiredStandaloneSessionAndReload} />;
+            }
+            // Anonymous: stash the exact /d/:docId target so the post-login flow (local OR SSO/OIDC)
+            // can bounce the user back to the document instead of the app root, then fall through to
+            // the login screen (below) without navigating away. The standalone page itself only
+            // mounts once a token exists, so the anonymous path is the ONLY place this key gets
+            // written for a first-time visitor — onLogin consumes it via consumeStandaloneReturn.
+            persistStandaloneReturn();
+            // Anonymous: fall through to the login screen (below) without navigating away.
+        }
+
         // 邀请链接检测
         const urlParams = new URLSearchParams(window.location.search);
         const inviteCode = urlParams.get("invite");
@@ -269,22 +377,11 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             if (!WKApp.loginInfo.token) {
                 WKApp.loginInfo.load();
             }
-            // 如果 URL 没有 ?sid= 或 sid 不匹配，尝试从 localStorage 找正确的 token
+            // 如果 URL 没有 ?sid= 或 sid 不匹配，从 localStorage 恢复已登录会话
+            // （与 /d/:docId 直达同一套 clean 冷加载恢复逻辑，但只在内存恢复、不持久化——
+            //   invite 分支原本就不把恢复出来的 session 写回存储，共用 helper 后仍保持该语义，XIN-392 P1-2）
             if (!WKApp.loginInfo.token) {
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (key && key.startsWith("token") && key !== "token") {
-                        const val = localStorage.getItem(key);
-                        if (val) {
-                            // 直接设置 token 和相关信息，不重定向
-                            const sid = key.substring(5);
-                            WKApp.loginInfo.token = val;
-                            WKApp.loginInfo.uid = localStorage.getItem("uid" + sid) || "";
-                            WKApp.loginInfo.name = localStorage.getItem("name" + sid) || "";
-                            break;
-                        }
-                    }
-                }
+                recoverOctoSessionFromStorage(false);
             }
             return <InviteLanding inviteCode={inviteCode} />;
         }

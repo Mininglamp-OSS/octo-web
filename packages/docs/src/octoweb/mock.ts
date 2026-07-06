@@ -28,8 +28,8 @@ type Responder = (
 export class MockApiClient implements APIClient {
   /** Test hook: set a responder to control returned data / thrown errors. */
   responder: Responder | null = null
-  /** Recorded calls for assertions. */
-  calls: Array<{ method: string; url: string; body?: unknown }> = []
+  /** Recorded calls for assertions (includes per-request `config` so tests can assert headers). */
+  calls: Array<{ method: string; url: string; body?: unknown; config?: ApiRequestConfig }> = []
 
   private async dispatch(
     method: 'get' | 'post' | 'put' | 'patch' | 'delete',
@@ -37,7 +37,7 @@ export class MockApiClient implements APIClient {
     body: unknown,
     config?: ApiRequestConfig,
   ): Promise<ApiResponse> {
-    this.calls.push({ method, url, body })
+    this.calls.push({ method, url, body, config })
     if (!this.responder) {
       return { data: {}, status: 200 }
     }

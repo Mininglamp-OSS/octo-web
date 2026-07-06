@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 import { resolveDocTarget, clearDocTarget, DocsHome } from './DocsHome.tsx'
@@ -8,9 +9,20 @@ import { resolveDocTarget, clearDocTarget, DocsHome } from './DocsHome.tsx'
 // render tests exercise target-resolution / navigation without mounting the real editor.
 // The marker surfaces the docId it was addressed with and the onBack affordance.
 vi.mock('../editor/EditorShell.tsx', () => ({
-  EditorShell: (props: { docId: string; onBack?: () => void }) => (
+  EditorShell: (props: {
+    docId: string
+    onBack?: () => void
+    headerRight?: React.ReactNode
+    onOpenInNewPage?: () => void
+  }) => (
     <div data-testid="editor-shell">
       <span data-testid="editor-doc">{props.docId}</span>
+      <div data-testid="editor-header-right">{props.headerRight}</div>
+      {props.onOpenInNewPage && (
+        <button type="button" data-testid="editor-open-new-page" onClick={props.onOpenInNewPage}>
+          docs.standalone.openInNewPage
+        </button>
+      )}
       {props.onBack && (
         <button type="button" data-testid="editor-back" onClick={props.onBack}>
           back
@@ -219,6 +231,76 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_a' })
     expect(assignSpy).not.toHaveBeenCalled()
     expect(String(replaceStateSpy.mock.calls.at(-1)![2])).toContain('doc=d_a')
+  })
+
+  it('AC-1: the open doc exposes an "Open in new page" entry that opens the /d/:docId standalone link', async () => {
+    const openSpy = vi.fn()
+    Object.defineProperty(window, 'open', { configurable: true, writable: true, value: openSpy })
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [{ docId: 'd_a', title: 'Doc A', ownerId: 'u_self', role: 'admin' }],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Doc A')).toBeTruthy())
+    fireEvent.click(screen.getByText('Doc A'))
+
+    // The entry is wired into the editor via onOpenInNewPage (it now lives in the header ≡ menu,
+    // no longer a resident headerRight button).
+    const entry = screen.getByTestId('editor-open-new-page')
+    fireEvent.click(entry)
+
+    // It opens the clean standalone deep-link in a new tab — no in-app navigation.
+    expect(openSpy).toHaveBeenCalledWith('/d/d_a', '_blank', 'noopener,noreferrer')
+    expect(assignSpy).not.toHaveBeenCalled()
+  })
+
+  it('AC-1 (XIN-420): a multi-session user opens the standalone link carrying the current session sid', async () => {
+    const openSpy = vi.fn()
+    Object.defineProperty(window, 'open', { configurable: true, writable: true, value: openSpy })
+    // Multi-session in-shell URL: the host's RouteManager re-push collapses the docs route to
+    // `/docs?sid=…`, so the active session's sid rides on window.location. Give the stub a real
+    // origin too — withReturnSid rebuilds the target against it.
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '?sid=s_active', assign: assignSpy },
+    })
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [{ docId: 'd_a', title: 'Doc A', ownerId: 'u_self', role: 'admin' }],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Doc A')).toBeTruthy())
+    fireEvent.click(screen.getByText('Doc A'))
+    fireEvent.click(screen.getByTestId('editor-open-new-page'))
+
+    // The new tab must carry the active sid so its sid-keyed load() hits the right bucket. Without
+    // it a multi-session user's new tab reads the empty-sid bucket, misses, and (since XIN-392's
+    // strict findUniqueStoredSession refuses to guess) bounces to login instead of the document.
+    expect(openSpy).toHaveBeenCalledWith('/d/d_a?sid=s_active', '_blank', 'noopener,noreferrer')
+    expect(assignSpy).not.toHaveBeenCalled()
   })
 
   it('mounts the editor inline from a persisted target on first paint (deep-link / refresh)', async () => {

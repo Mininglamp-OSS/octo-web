@@ -17,9 +17,18 @@ import { useMemberNames } from '../members/useMemberNames.ts'
 import { exportDocToMarkdown, type MdNode } from '../export/markdown.ts'
 import { emojiGlyph } from './emoji.ts'
 import { colorFromId } from '../awareness/presence.ts'
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
 import { t } from '../octoweb/index.ts'
-import { getDoc, updateDocTitle } from '../pages/docsApi.ts'
+import { getDoc, getUserName, updateDocTitle } from '../pages/docsApi.ts'
+import { DocTerminal } from './DocTerminal.tsx'
+import {
+  DocMoreMenu,
+  OpenNewPageIcon,
+  HistoryIcon,
+  ExportIcon,
+  DeleteIcon,
+  type DocMoreMenuItem,
+} from './DocMoreMenu.tsx'
 import './styles.css'
 
 /** Which right-side drawer panel is open (mutually exclusive); null = drawer closed. */
@@ -43,6 +52,36 @@ export interface EditorShellProps extends CollabEditorOptions {
    * to its own return-to-list handler (onExit ?? onBack).
    */
   onDeleted?: (docId: string) => void
+  /**
+   * Extra controls injected into the header's right-hand cluster (e.g. the standalone deep-link
+   * page's "Copy link"). Optional: when omitted, the in-shell header renders
+   * exactly as before — no wrapper, no empty node — so the in-shell path is byte-for-byte
+   * unchanged (AC-8 non-regression). Rendered ahead of the built-in comments/members/… cluster.
+   */
+  headerRight?: ReactNode
+  /**
+   * "Open in new page" handler (in-shell only). When provided, the header's ≡ "more" menu shows an
+   * "Open in new page" row that opens the shareable standalone `/d/:docId` link — the same action
+   * the old resident purple button performed. Omitted on the standalone page itself (there is no
+   * "open in a new page" from a page that already IS the standalone view), so the row simply
+   * doesn't render there.
+   */
+  onOpenInNewPage?: () => void
+  /**
+   * Extra rows prepended to the TOP of the header's ≡ "more" menu (in the given order), before the
+   * built-in open-in-new-page / history / export rows. Opt-in: when omitted the menu renders exactly
+   * as before, so the in-shell path is unchanged (AC-4 non-regression). The standalone page uses this
+   * to pin its "Copy link" action as the first menu item, having dropped its resident header button.
+   */
+  moreMenuLeadItems?: DocMoreMenuItem[]
+  /**
+   * When true, resolve the creator display name from the NICKNAME only, never the verified
+   * `real_name`. Opt-in: defaults to false so the in-shell editor keeps preferring the real name
+   * (AC non-regression). The standalone `/d/:docId` page sets this because it is an externally
+   * shareable surface — showing the creator's legal name to any link holder is a privacy leak
+   * (boss decision).
+   */
+  creatorNicknameOnly?: boolean
 }
 
 /**
@@ -214,7 +253,8 @@ function DocTitle({
 
 /** Page shell (frontend-design §3.1): title / toolbar / content / presence + right-side drawer. */
 export function EditorShell(props: EditorShellProps) {
-  const { title, onBack, onExit, onTitleSaved, onDeleted, ...collabOpts } = props
+  const { title, onBack, onExit, onTitleSaved, onDeleted, headerRight, onOpenInNewPage, moreMenuLeadItems, creatorNicknameOnly, ...collabOpts } =
+    props
   const docId = props.docId
   const { instance, ready, role, connState, terminal } = useCollabEditor(collabOpts)
   // The live document title, lifted out of DocTitle so the export filename uses the current
@@ -230,14 +270,19 @@ export function EditorShell(props: EditorShellProps) {
   // this the panel falls back to a role heuristic that never matches a fresh doc, so the badge
   // never shows. Resilient: stays null if the meta lacks ownerId.
   const [ownerId, setOwnerId] = useState<string | undefined>(undefined)
+  // Creation timestamp (RFC3339) for the "more" menu head's "Created on" line. Fetched from the
+  // same per-doc GET as ownerId; stays undefined (row hidden) when the backend omits it.
+  const [createdAt, setCreatedAt] = useState<string | undefined>(undefined)
   useEffect(() => {
     let cancelled = false
     getDoc(docId)
       .then((meta) => {
-        if (!cancelled && typeof meta?.ownerId === 'string' && meta.ownerId) setOwnerId(meta.ownerId)
+        if (cancelled) return
+        if (typeof meta?.ownerId === 'string' && meta.ownerId) setOwnerId(meta.ownerId)
+        if (typeof meta?.createdAt === 'string' && meta.createdAt) setCreatedAt(meta.createdAt)
       })
       .catch(() => {
-        /* non-fatal: owner badge just won't show */
+        /* non-fatal: owner badge + created-on row just won't show */
       })
     return () => {
       cancelled = true
@@ -248,6 +293,46 @@ export function EditorShell(props: EditorShellProps) {
   // the presence avatar initial and the collaboration caret label show the name, not the uid.
   // The editor is created with the best-known name; this updates it when the member list lands.
   const names = useMemberNames(props.space)
+
+  // Creator display name for the "more" menu head. The doc's ownerId (boss-decided creator
+  // semantics) is resolved to a human name: first from the already-loaded space-member map (free,
+  // same source the presence caret + member panel use), then — for an owner who isn't in that map
+  // — via GET /users/:uid. Resilient: any failure leaves it undefined and the menu falls back to a
+  // short uid, so the header can never crash on a missing/failed name lookup.
+  const [creatorName, setCreatorName] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (!ownerId) return
+    // In-shell (creatorNicknameOnly unset): prefer the already-loaded space-member map — free, and
+    // the same source the presence caret + member panel use.
+    //
+    // On the standalone (externally shared) surface (creatorNicknameOnly), SKIP the member-map
+    // primary source entirely (XIN-392 P2-1). Gating only the getUserName fallback on
+    // creatorNicknameOnly (as before) left the member map as an ungated primary source that leaks a
+    // real name the moment the backend fills member display names with verified names — the
+    // no-leak-today guarantee rests on the implicit "member name is never a real name" contract.
+    // A link holder must never see the creator's verified name, so resolve nickname-only regardless
+    // of what the member map holds.
+    if (!creatorNicknameOnly) {
+      const fromMembers = names.get(ownerId)
+      if (fromMembers && fromMembers !== ownerId) {
+        setCreatorName(fromMembers)
+        return
+      }
+    }
+    let cancelled = false
+    // In-shell resolves the verified real name (falling back to nickname); the standalone surface
+    // forces nickname-only and never requests real_name.
+    getUserName(ownerId, { preferRealName: !creatorNicknameOnly })
+      .then((name) => {
+        if (!cancelled && name) setCreatorName(name)
+      })
+      .catch(() => {
+        /* keep the uid fallback */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ownerId, names, creatorNicknameOnly])
 
   // C4 (#5): reset the drawer whenever the document changes. The shell is keyed by docId in
   // DocsHome (so it already remounts), but this makes the reset explicit and robust if the key
@@ -344,24 +429,7 @@ export function EditorShell(props: EditorShellProps) {
   const closePanel = useCallback(() => setActivePanel(null), [])
 
   if (terminal.kind !== 'none') {
-    const messages: Record<string, string> = {
-      forbidden: t('docs.error.permission.forbidden'),
-      'not-found': t('docs.error.permission.notFound'),
-      locked: t('docs.error.permission.locked'),
-      login: t('docs.error.permission.login'),
-      deleted: t('docs.error.permission.deleted'),
-    }
-    return (
-      <div className="octo-doc octo-terminal">
-        {onBack && (
-          <button type="button" className="octo-doc-back" onClick={onBack}>
-            ← {t('docs.list.back')}
-          </button>
-        )}
-        <h2>{title}</h2>
-        <p className="octo-terminal-msg">{messages[terminal.kind]}</p>
-      </div>
-    )
+    return <DocTerminal title={title} kind={terminal.kind} onBack={onBack} />
   }
 
   if (!instance) {
@@ -374,6 +442,50 @@ export function EditorShell(props: EditorShellProps) {
 
   const editor = instance.editor
   const manage = role ? canManage(role) : false
+
+  // "More" (≡) menu contents. Order is fixed per spec: [caller-provided lead rows] → open-in-new-
+  // page → version history → export, with delete pinned last (below a separator) as the destructive
+  // row. Lead rows come from the host (e.g. the standalone page's "Copy link"); they sit at the very
+  // top so a standalone page — which never wires open-in-new-page — shows Copy link as the first row.
+  // The open-in-new-page row only appears when the host wired the handler (in-shell path), never on
+  // the standalone page itself.
+  const moreItems: DocMoreMenuItem[] = []
+  if (moreMenuLeadItems?.length) moreItems.push(...moreMenuLeadItems)
+  if (onOpenInNewPage) {
+    moreItems.push({
+      key: 'open-new-page',
+      label: t('docs.standalone.openInNewPage'),
+      icon: OpenNewPageIcon,
+      onClick: onOpenInNewPage,
+    })
+  }
+  moreItems.push(
+    {
+      key: 'history',
+      label: t('docs.toolbar.history'),
+      icon: HistoryIcon,
+      onClick: () => togglePanel('history'),
+    },
+    {
+      key: 'export',
+      label: t('docs.toolbar.exportMarkdown'),
+      icon: ExportIcon,
+      disabled: exporting,
+      onClick: () => void onExportMarkdown(),
+    },
+  )
+  const deleteItem: DocMoreMenuItem | undefined = manage
+    ? {
+        key: 'delete',
+        label: t('docs.doc.deleteEntry'),
+        icon: DeleteIcon,
+        danger: true,
+        onClick: del.requestDelete,
+      }
+    : undefined
+  // Creator name with fallback: resolved name → short uid → placeholder. Never blank, never crashes.
+  const creatorDisplay =
+    creatorName || (ownerId ? ownerId.slice(0, 8) : t('docs.moreMenu.unknownCreator'))
 
   return (
     <div className="octo-doc octo-doc--editor octo-theme">
@@ -399,17 +511,8 @@ export function EditorShell(props: EditorShellProps) {
           onTitleLoaded={setCurrentTitle}
         />
         <div className="octo-doc-header-right">
+          {headerRight}
           <PresenceBar provider={instance.provider} connState={connState} synced={ready} />
-          {/* History is reader+ (everyone with access), unlike admin-only Members. */}
-          <button
-            type="button"
-            className={activePanel === 'history' ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
-            title={t('docs.toolbar.history')}
-            aria-pressed={activePanel === 'history'}
-            onClick={() => togglePanel('history')}
-          >
-            🕐 {t('docs.toolbar.history')}
-          </button>
           {/* Comments are reader+ (everyone with access — "can see → can comment"). */}
           <button
             type="button"
@@ -419,16 +522,6 @@ export function EditorShell(props: EditorShellProps) {
             onClick={() => togglePanel('comments')}
           >
             💬 {t('docs.toolbar.comments')}
-          </button>
-          {/* Export the document as a Markdown file (reader+ — anyone who can view can export). */}
-          <button
-            type="button"
-            className="octo-tb-btn"
-            title={t('docs.toolbar.exportMarkdown')}
-            disabled={exporting}
-            onClick={() => void onExportMarkdown()}
-          >
-            ⬇ {t('docs.toolbar.exportMarkdown')}
           </button>
           {manage && (
             <button
@@ -440,17 +533,14 @@ export function EditorShell(props: EditorShellProps) {
               {t('docs.toolbar.members')}
             </button>
           )}
-          {/* Delete entry (Problem 4) — owner/admin only; moved here from the list row. */}
-          {manage && (
-            <button
-              type="button"
-              className="octo-tb-btn octo-doc-delete-btn"
-              title={t('docs.doc.deleteEntry')}
-              onClick={del.requestDelete}
-            >
-              🗑 {t('docs.doc.deleteEntry')}
-            </button>
-          )}
+          {/* Low-frequency actions (open in new page / version history / export / delete) collapse
+              into a single ≡ "more" menu pinned to the far right, with a creator + created-on head. */}
+          <DocMoreMenu
+            creatorName={creatorDisplay}
+            createdAt={createdAt}
+            items={moreItems}
+            dangerItem={deleteItem}
+          />
         </div>
       </header>
 

@@ -46,7 +46,13 @@ vi.mock('../comments/useDocComments.ts', () => ({
   useDocComments: () => ({ threads: [], createRoot: vi.fn() }),
 }))
 vi.mock('../comments/useCommentHighlights.ts', () => ({ useCommentHighlights: () => undefined }))
-vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: () => new Map<string, string>() }))
+// useMemberNames drives the creator-name resolution's PRIMARY source (the space-member map). Kept
+// as an overridable hoisted spy so a test can seed the map with the owner (XIN-392 P2-1) and assert
+// the standalone nickname-only path bypasses it. Defaults to an empty map, reset in beforeEach.
+const { useMemberNamesMock } = vi.hoisted(() => ({
+  useMemberNamesMock: vi.fn(() => new Map<string, string>()),
+}))
+vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: useMemberNamesMock }))
 vi.mock('./useDocDelete.ts', () => ({
   useDocDelete: () => ({
     confirming: false,
@@ -68,6 +74,8 @@ beforeEach(() => {
   wk = createMockWKApp()
   setWKApp(wk)
   exportSpy.mockClear()
+  useMemberNamesMock.mockReset()
+  useMemberNamesMock.mockReturnValue(new Map<string, string>())
   fakeEditor.storage.octoCommentHighlight = {}
   // jsdom has no object-URL impl; the export handler creates + revokes one.
   ;(URL as unknown as { createObjectURL: () => string }).createObjectURL = () => 'blob:mock'
@@ -123,12 +131,169 @@ describe('EditorShell — export filename uses the live title, not the stale pro
     // The header shows the fetched (live) title once the mount fetch resolves.
     await waitFor(() => expect(screen.getByText('Live Title')).toBeTruthy())
 
-    fireEvent.click(screen.getByTitle('docs.toolbar.exportMarkdown'))
+    // Export moved into the header ≡ "more" menu: open it, then trigger the export row.
+    fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    fireEvent.click(screen.getByText('docs.toolbar.exportMarkdown'))
 
     await waitFor(() => expect(exportSpy).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(createdAnchors.length).toBeGreaterThan(0))
     const a = createdAnchors[createdAnchors.length - 1]
     expect(a.download).toBe('Live Title.md')
     expect(a.download).not.toBe('Stale Prop Title.md')
+  })
+})
+
+// #512 AC-8 non-regression: the standalone deep-link page reuses EditorShell and injects a Back
+// control (onBack) + "Copy link" (headerRight). The IN-SHELL path passes neither,
+// and must be completely unaffected by the new props.
+describe('EditorShell — header injection props (#512 AC-8)', () => {
+  const baseProps = {
+    docId: 'd_1',
+    title: 'Doc',
+    space: 's_1',
+    folder: 'f_1',
+    doc: 'd_1',
+    uid: 'u_self',
+    user: { id: 'u_self', name: 'Self' },
+  }
+
+  it('in-shell (no onBack / no headerRight): renders no header back control, header unchanged', () => {
+    render(<EditorShell {...baseProps} />)
+    // No header back button when onBack is omitted.
+    expect(screen.queryByTitle('docs.list.back')).toBeNull()
+    // The low-frequency controls now live behind the ≡ "more" menu, not as resident buttons.
+    expect(screen.getByTitle('docs.toolbar.more')).toBeTruthy()
+    fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    expect(screen.getByText('docs.toolbar.exportMarkdown')).toBeTruthy()
+    expect(screen.getByText('docs.toolbar.history')).toBeTruthy()
+  })
+
+  it('standalone: renders the injected headerRight content alongside the built-in controls', () => {
+    render(
+      <EditorShell
+        {...baseProps}
+        onBack={() => {}}
+        headerRight={<button type="button">INJECTED_ACTIONS</button>}
+      />,
+    )
+    // The injected standalone chrome appears...
+    expect(screen.getByText('INJECTED_ACTIONS')).toBeTruthy()
+    // ...the back control shows when onBack is provided...
+    expect(screen.getByTitle('docs.list.back')).toBeTruthy()
+    // ...and the built-in controls are still reachable via the ≡ menu (parity preserved).
+    fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    expect(screen.getByText('docs.toolbar.exportMarkdown')).toBeTruthy()
+  })
+})
+
+// #512 title-bar tidy-up: the header ≡ "more" menu collapses the low-frequency actions behind one
+// affordance, with a creator + created-on head. role is 'admin' (see the useCollabEditor mock), so
+// the destructive delete row is present.
+describe('EditorShell — header "more" (≡) menu', () => {
+  const baseProps = {
+    docId: 'd_1',
+    title: 'Doc',
+    space: 's_1',
+    folder: 'f_1',
+    doc: 'd_1',
+    uid: 'u_self',
+    user: { id: 'u_self', name: 'Self' },
+  }
+
+  it('collapses history / export / delete behind ≡; delete is a danger row, pinned last', () => {
+    render(<EditorShell {...baseProps} />)
+    // Closed by default: no rows visible.
+    expect(screen.queryByText('docs.toolbar.exportMarkdown')).toBeNull()
+    fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+
+    const historyRow = screen.getByText('docs.toolbar.history').closest('button')!
+    const exportRow = screen.getByText('docs.toolbar.exportMarkdown').closest('button')!
+    const deleteRow = screen.getByText('docs.doc.deleteEntry').closest('button')!
+    expect(historyRow).toBeTruthy()
+    expect(exportRow).toBeTruthy()
+    // Delete is the danger row.
+    expect(deleteRow.className).toContain('is-danger')
+    // Order: history precedes export precedes delete in the DOM.
+    expect(historyRow.compareDocumentPosition(exportRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(exportRow.compareDocumentPosition(deleteRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('shows the "open in new page" row (first) only when onOpenInNewPage is wired', () => {
+    const onOpenInNewPage = vi.fn()
+    const { rerender } = render(<EditorShell {...baseProps} />)
+    fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    // In-shell handler absent → no open-in-new-page row.
+    expect(screen.queryByText('docs.standalone.openInNewPage')).toBeNull()
+
+    // Wire the handler; the menu stays open across the rerender and now shows the row first.
+    rerender(<EditorShell {...baseProps} onOpenInNewPage={onOpenInNewPage} />)
+    const openRow = screen.getByText('docs.standalone.openInNewPage')
+    fireEvent.click(openRow)
+    expect(onOpenInNewPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders the creator + created-on head from the doc meta', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_1') {
+        return {
+          data: { docId: 'd_1', title: 'Doc', ownerId: 'u_owner', createdAt: '2026-07-02T14:00:45Z' },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url === '/users/u_owner') {
+        return { data: { name: 'Alice' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<EditorShell {...baseProps} />)
+    // Wait for the owner-name resolution to land, then open the menu.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/users/u_owner')).toBe(true))
+    fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    await waitFor(() => expect(screen.getByText('Alice')).toBeTruthy())
+    // Created-on line uses the lexical YYYY-MM-DD slice (no timezone drift).
+    expect(screen.getByText(/2026-07-02/)).toBeTruthy()
+  })
+
+  it('P2-1: standalone (creatorNicknameOnly) SKIPS the member map even when it holds a real name', async () => {
+    // Simulate the future backend that fills the space-member display name with a VERIFIED real
+    // name. On the externally shared standalone surface this must never reach a link holder — the
+    // creator name has to resolve through the nickname-only getUserName path, not the member map.
+    useMemberNamesMock.mockReturnValue(new Map([['u_owner', 'Real Legal Name']]))
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_1') {
+        return { data: { docId: 'd_1', title: 'Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      if (method === 'get' && url === '/users/u_owner') {
+        // Nickname-only fetch: real_name present but must be ignored (preferRealName:false).
+        return { data: { name: 'Nick', real_name: 'Real Legal Name' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<EditorShell {...baseProps} creatorNicknameOnly />)
+    // The nickname-only resolver is called despite the member map already holding a name.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/users/u_owner')).toBe(true))
+    fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    await waitFor(() => expect(screen.getByText('Nick')).toBeTruthy())
+    // The verified real name from the member map never surfaces on the shared surface.
+    expect(screen.queryByText('Real Legal Name')).toBeNull()
+  })
+
+  it('P2-1: in-shell (creatorNicknameOnly unset) still uses the member map first, no /users fetch', async () => {
+    // Unchanged in-shell behavior: the already-loaded member map is the free primary source, so the
+    // creator name comes straight from it and getUserName is never called.
+    useMemberNamesMock.mockReturnValue(new Map([['u_owner', 'Member Name']]))
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_1') {
+        return { data: { docId: 'd_1', title: 'Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<EditorShell {...baseProps} />)
+    // Wait for the doc meta (ownerId) to land so the creator effect has run.
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d_1')).toBe(true))
+    fireEvent.click(screen.getByTitle('docs.toolbar.more'))
+    await waitFor(() => expect(screen.getByText('Member Name')).toBeTruthy())
+    // Member map hit → the /users/:uid fallback is never reached in-shell.
+    expect(wk.apiClient.calls.some((c) => c.url === '/users/u_owner')).toBe(false)
   })
 })
