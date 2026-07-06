@@ -2296,3 +2296,37 @@
   font-size: 12px;
   color: var(--octo-text-secondary, #86909c);
 }
+
+/* Export dropdown menu */
+.octo-export-menu {
+  position: relative;
+  display: inline-block;
+}
+.octo-export-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--wk-bg-popup, #fff);
+  border: 1px solid var(--wk-border, #e0e0e0);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  min-width: 140px;
+  white-space: nowrap;
+  padding: 4px 0;
+}
+.octo-export-item {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  color: inherit;
+}
+.octo-export-item:hover {
+  background: var(--wk-bg-hover, #f5f5f5);
+}

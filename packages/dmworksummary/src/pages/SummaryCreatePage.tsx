@@ -6,7 +6,7 @@ import {
     Tag,
     Avatar,
 } from "@douyinfe/semi-ui";
-import { IconPlus, IconClock, IconUserGroup } from "@douyinfe/semi-icons";
+import { IconPlus, IconClock } from "@douyinfe/semi-icons";
 import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -188,9 +188,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             // 不再需要第二步 update 绑定，也不会产生游离定时，所以去掉 B2 回滚。
             if (scheduleConfig !== null) {
                 const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time } = scheduleToParams(scheduleConfig);
-                // V5/§6.1：多人（participants 非空）+ 定时默认 confirm_policy=1（一次性确认）；
-                // 单人定时不传（走后端 AUTO 兜底）。
-                const isMultiPerson = !!params.participants && params.participants.length > 0;
                 try {
                     await api.createSchedule({
                         title: topic.trim(),
@@ -204,7 +201,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         time_range_type: 2,
                         sources: params.sources || [],
                         participants: params.participants,
-                        ...(isMultiPerson ? { confirm_policy: 1 } : {}),
                         scope: 'task',
                         task_id: result.task_id,
                     });
@@ -312,19 +308,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 {selectedChats.length > 0
                                     ? translate("summary.create.selectedChats", { values: { count: selectedChats.length } })
                                     : translate("summary.create.selectChat")}
-                            </Button>
-                            {/* 选择参与者：多人协作入口。打开 MemberSelectorModal 选 participants，
-                                与「选择聊天 / 定时」并列在创建页操作栏，确保多人入口在 UI 上可达。 */}
-                            <Button
-                                theme="borderless"
-                                icon={<IconUserGroup />}
-                                size="small"
-                                onClick={() => this.setState({ showMemberSelector: true })}
-                                style={{ color: selectedMembers.length > 0 ? "var(--semi-color-primary)" : undefined }}
-                            >
-                                {selectedMembers.length > 0
-                                    ? translate("summary.create.selectedMembers", { values: { count: selectedMembers.length } })
-                                    : translate("summary.create.selectMembers")}
                             </Button>
                             <Button
                                 theme="borderless"

@@ -117,9 +117,6 @@
     "everyNWeeks": "每 {{weeks}} 周{{at}}",
     "everyNMonths": "每 {{months}} 个月{{at}}"
   },
-  "menu": {
-    "title": "智能总结"
-  },
   "list": {
     "title": "智能总结",
     "allStatus": "全部状态",
@@ -129,9 +126,7 @@
     "networkError": "网络连接异常，请检查网络后重试",
     "emptyTitle": "暂无总结记录",
     "emptyDesc": "快速生成群聊或个人工作总结，让 AI 帮你梳理重要信息",
-    "createFirst": "创建第一份总结",
-    "leaveSuccess": "已退出",
-    "leaveFailed": "退出失败"
+    "createFirst": "创建第一份总结"
   },
   "create": {
     "title": "智能总结",
@@ -144,8 +139,6 @@
     "success": "总结任务已创建",
     "selectChat": "选择聊天",
     "selectedChats": "已选 {{count}} 个聊天",
-    "selectMembers": "选择参与者",
-    "selectedMembers": "已选 {{count}} 位参与者",
     "start": "开始总结",
     "scheduleDaily": "按天 {{time}}",
     "scheduleWeekly": "每{{day}} {{time}}",
@@ -307,21 +300,11 @@
     "lastEditedAt": "最后编辑 {{time}}",
     "mySummary": "👤 我的总结",
     "mySummaryPlain": "我的总结",
-    "submitToAll": "提交我的总结",
-    "mySubmitHint": "你的个人总结已生成，提交后才会汇入团队总结。",
-    "mySubmitRowName": "我（待提交）",
+    "submitToAll": "提交给所有人",
     "teamSummary": "👥 团队汇总",
-    "teamGenerating": "团队协作总结生成中…",
     "submittedPeople": "{{count}} 人提交",
     "memberStatus": "成员状态",
     "participantReports": "参与者报告",
-    "editMyReport": "编辑",
-    "editTeamSummary": "编辑",
-    "addMember": "添加成员",
-    "addMemberSuccess": "成员已添加",
-    "addMemberFailed": "添加成员失败",
-    "personalEditSuccess": "个人报告已保存",
-    "personalEditFailed": "个人报告保存失败",
     "collapse": "收起 ▲",
     "expandAll": "展开全部 ▼",
     "waitingSubmit": "{{name}} · 等待提交...",
@@ -345,32 +328,17 @@
     "scheduleDisabledHint": "定时已关闭",
     "scheduleActiveLabel": "已开启定时",
     "schedulePrefix": "定时：",
-    "scheduleNextRun": "下次 {{time}}",
-    "scheduleConfirmHint": "该定时总结需要你确认参与，确认一次后续每轮免确认。",
-    "scheduleConfirmButton": "确认参与",
-    "membersLoadingRetry": "成员信息加载中，请稍候重试",
-    "scheduleConfirmed": "已确认参与该定时总结",
-    "removeMember": "移除",
-    "removeMemberConfirm": "确定移除该成员吗？",
-    "removeMemberSuccess": "成员已移除",
-    "removeMemberFailed": "移除失败",
-    "leaveTask": "退出多人协作",
-    "leaveConfirm": "确定退出该多人协作吗？",
-    "leaveSuccess": "已退出",
-    "leaveFailed": "退出失败"
+    "scheduleNextRun": "下次 {{time}}"
   },
   "summaryCard": {
     "createdBy": "{{name}} 发起",
     "deleteTitle": "确认删除",
     "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。",
-    "deleteScheduledContent": "「{{title}}」是定时更新的总结。删除后将停止定时更新，并移除该总结的全部历史记录，确定删除吗？",
-    "leaveTitle": "退出多人协作",
-    "leaveContent": "退出后将不再参与该多人协作，确定退出「{{title}}」吗？"
+    "deleteScheduledContent": "「{{title}}」是定时更新的总结。删除后将停止定时更新，并移除该总结的全部历史记录，确定删除吗？"
   },
   "editor": {
     "saveSuccess": "保存成功",
     "contentUpdated": "内容已更新，请刷新",
-    "draftAlreadySubmitted": "该总结已提交，已为你刷新",
     "saveFailed": "保存失败，请重试",
     "placeholder": "编辑总结内容..."
   },
@@ -384,8 +352,7 @@
   },
   "citation": {
     "jumpToOriginal": "跳转到原文 →",
-    "source": "来源：{{source}}",
-    "member": "成员：{{name}}"
+    "source": "来源：{{source}}"
   },
   "matterPicker": {
     "loadFailed": "加载事项失败",

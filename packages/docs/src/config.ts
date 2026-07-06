@@ -19,27 +19,11 @@ function envOr(value: unknown, fallback: string): string {
   return s.length > 0 ? s : fallback
 }
 
-/**
- * Resolve the Hocuspocus WebSocket endpoint.
- *
- * The WS origin is delivered at runtime via the collab-token response (`collabWsUrl`, backend
- * XIN-211) and is now the ONLY source — the legacy build-time env fallback
- * (`VITE_COLLAB_WS_ENDPOINT`) has been removed. When the backend omits `collabWsUrl` (or sends a
- * blank/whitespace value) we throw so the caller fails loudly instead of silently connecting to a
- * placeholder origin. A missing WS URL is a backend misconfiguration and must be surfaced, not
- * masked.
- */
-export function resolveCollabWsUrl(collabWsUrl?: string): string {
-  const url = typeof collabWsUrl === 'string' ? collabWsUrl.trim() : ''
-  if (url.length === 0) {
-    throw new Error(
-      'collab-token response is missing `collabWsUrl`: the backend did not deliver a collab ' +
-        'WebSocket origin. There is no build-time fallback; the backend must emit an absolute ' +
-        'WS URL. Check the docs collab-token endpoint configuration.',
-    )
-  }
-  return url
-}
+/** Hocuspocus WebSocket endpoint (provided by backend, env-specific). */
+export const WS_ENDPOINT = envOr(
+  import.meta.env?.VITE_COLLAB_WS_ENDPOINT,
+  'wss://collab.octo.example.com',
+)
 
 /** Refresh collab token when it is within this window of expiry. */
 export const TOKEN_REFRESH_LEEWAY_MS = 30_000
@@ -70,13 +54,7 @@ export const DEFAULT_DOC_ID =
  * valid URL. Configure additional hosts at build time via `VITE_DOCS_ASSET_HOSTS`
  * (comma/space-separated host list, e.g. "localhost:9000,minio.internal"). The example
  * defaults below are kept only as harmless placeholders for non-configured builds.
- *
- * When the build-arg is NOT passed we fall back to DEFAULT_ASSET_HOSTS so a rebuild that
- * forgets the build-arg does not silently drop the production COS host and break image
- * rendering. An explicit VITE_DOCS_ASSET_HOSTS still wins (the passed value is used as-is),
- * so the override capability is preserved.
  */
-const DEFAULT_ASSET_HOSTS = 'cdn.deepminer.com.cn'
 function parseHostList(value: unknown): string[] {
   return typeof value === 'string'
     ? value
@@ -102,5 +80,5 @@ export const ASSET_HOST_WHITELIST = new Set<string>([
   ...sameOriginHost(),
   'assets.octo.example.com',
   'cdn.octo.example.com',
-  ...parseHostList(envOr(import.meta.env?.VITE_DOCS_ASSET_HOSTS, DEFAULT_ASSET_HOSTS)),
+  ...parseHostList(import.meta.env?.VITE_DOCS_ASSET_HOSTS),
 ])

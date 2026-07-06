@@ -26,13 +26,11 @@ import ThreadIcon from "../Icons/ThreadIcon";
 import classNames from "classnames";
 import { Conversation } from "../Conversation";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
-import { canManageThread, isParentGroupManager } from "../../Service/threadPermission";
-import ChannelWebhookPanel from "../ChannelWebhook";
+import { canManageThread } from "../../Service/threadPermission";
 import { ErrorBoundary } from "../ErrorBoundary";
 import WKApp from "../../App";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import { formatRelativeTime } from "../../Utils/time";
-import { isChannelDisbanded } from "../../Utils/groupDisband";
 import FollowService from "../../Service/FollowService";
 import SidebarService from "../../Service/SidebarService";
 import CategoryService from "../../Service/CategoryService";
@@ -47,7 +45,6 @@ import { FileListPanel } from "../FilePreviewPanel/FileListPanel";
 import { MarkdownRenderer } from "../FilePreviewPanel/renderers/MarkdownRenderer";
 import { HtmlRenderer } from "../FilePreviewPanel/renderers/HtmlRenderer";
 import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
-import { VideoRenderer } from "../FilePreviewPanel/renderers/VideoRenderer";
 import { isChannelSearchEnabled } from "../ChannelSearch/feature";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
@@ -124,8 +121,6 @@ interface ThreadPanelComponentState {
   threads: Thread[];
   threadsLoading: boolean;
   showMoreMenu: boolean;
-  /** 子区 Webhook 管理子视图是否展开（#451）。展开时替换子区详情的头部与内容。 */
-  showWebhookPanel: boolean;
   panelWidth: number;
   isDragging: boolean;
   /** 文件预览视图模式 */
@@ -199,7 +194,6 @@ export default class ThreadPanel extends Component<
       threads: [],
       threadsLoading: true,
       showMoreMenu: false,
-      showWebhookPanel: false,
       panelWidth: savedWidth,
       isDragging: false,
       fileViewMode: "preview",
@@ -343,12 +337,11 @@ export default class ThreadPanel extends Component<
       const prevThreadShortId = prevProps.thread?.short_id;
       const currentThreadShortId = this.props.thread?.short_id;
       if (currentThreadShortId !== prevThreadShortId) {
-        // 切换 / 清空子区时退出 Webhook 子视图，否则会停留在上一个子区的 Webhook 面板（#451 review）。
         if (this.props.thread) {
-          this.setState({ view: "detail", showWebhookPanel: false });
+          this.setState({ view: "detail" });
           this.initVM(this.props.thread.short_id);
         } else {
-          this.setState({ view: "list", showWebhookPanel: false });
+          this.setState({ view: "list" });
         }
       } else if (this.props.thread !== prevProps.thread && this.props.thread) {
         // 同一个子区的状态同步只合并数据，不能重新 initVM。
@@ -663,27 +656,8 @@ export default class ThreadPanel extends Component<
     this.props.onClose();
   };
 
-  // 子区 Webhook 管理：复用群面板 ChannelWebhookPanel，传【父群】channel + 子区 short_id，
-  // isManager 锚父群（子区无独立角色矩阵，#451）。展开为子视图（替换头部+内容），
-  // 返回箭头回到子区详情，X 关闭整个面板。
-  private handleOpenThreadWebhook = () => {
-    this.setState({ showMoreMenu: false, showWebhookPanel: true });
-  };
-
-  private handleCloseThreadWebhook = () => {
-    this.setState({ showWebhookPanel: false });
-  };
-
   private canEditThread(thread: Thread): boolean {
     if (!this.props.groupNo) return false;
-    // 父群解散后只读：更多菜单里的编辑名称 / 归档 / 取消归档全部隐藏（与创建子区
-    // 按钮的 isChannelDisbanded guard 对齐）。这三项都经 canEditThread 门控
-    // （渲染处 index.tsx ~1238、归档按钮 shouldShowArchiveButton ~1623），故在此
-    // 单点拦截即可覆盖全部写入口。注：改名能力本身在后端解散后仍解禁、右侧面板
-    // 「子区名称」行仍可改（企业微信式低风险写）；这里只是收敛 ThreadPanel 菜单入口。
-    if (isChannelDisbanded(new Channel(this.props.groupNo, ChannelTypeGroup))) {
-      return false;
-    }
     return canManageThread(thread, this.props.groupNo);
   }
 
@@ -1211,37 +1185,6 @@ export default class ThreadPanel extends Component<
       );
     }
 
-    // 子区 Webhook 管理子视图的 header（#451）：← 回子区详情，× 关闭面板。
-    // 与 filePreview 同样在 renderHeader 内分支（filePreview 已先 return，故此处必非预览态）。
-    if (this.state.showWebhookPanel) {
-      return (
-        <div className="wk-thread-panel-header">
-          <div
-            className="wk-thread-panel-header-btn"
-            onClick={this.handleCloseThreadWebhook}
-            title={t("base.threadPanel.backToThread")}
-          >
-            <ArrowLeft size={16} />
-          </div>
-          <div className="wk-thread-panel-header-title">
-            <ThreadIcon className="wk-thread-panel-header-icon" size={18} />
-            <span>
-              {t("base.threadPanel.webhookTitle", {
-                values: {
-                  name: thread?.name || t("base.module.thread.fallbackName"),
-                },
-              })}
-            </span>
-          </div>
-          <div className="wk-thread-panel-header-actions">
-            <div className="wk-thread-panel-header-btn" onClick={onClose}>
-              <X size={18} />
-            </div>
-          </div>
-        </div>
-      );
-    }
-
     // 子区模式的 header
     return (
       <div className="wk-thread-panel-header">
@@ -1325,32 +1268,12 @@ export default class ThreadPanel extends Component<
                       {t("base.threadPanel.searchMessages")}
                     </div>
                   )}
-                  {/* 子区 Webhook 管理入口（#451）：对全员可见（list 全员只读、成员可建自己的），
-                      仅活跃子区可见 —— 归档子区创建会被后端拒，避免无效 CTA。
-                      父群解散后也隐藏 —— webhook 写操作（create/update/regenerate/delete）
-                      与 read-only 合约冲突，与 delete 同模式。 */}
-                  {vmState.thread &&
-                    vmState.thread.status === ThreadStatus.Active &&
-                    !isChannelDisbanded(
-                      new Channel(this.props.groupNo, ChannelTypeGroup)
-                    ) && (
-                      <div
-                        className="wk-thread-more-menu-item"
-                        onClick={this.handleOpenThreadWebhook}
-                      >
-                        {t("base.threadPanel.webhook")}
-                      </div>
-                    )}
-                  {!isChannelDisbanded(
-                    new Channel(this.props.groupNo, ChannelTypeGroup)
-                  ) && (
-                    <div
-                      className="wk-thread-more-menu-item wk-thread-more-menu-item-danger"
-                      onClick={this.handleDeleteThread}
-                    >
-                      {t("base.threadPanel.delete")}
-                    </div>
-                  )}
+                  <div
+                    className="wk-thread-more-menu-item wk-thread-more-menu-item-danger"
+                    onClick={this.handleDeleteThread}
+                  >
+                    {t("base.threadPanel.delete")}
+                  </div>
                 </div>
               }
             >
@@ -1381,38 +1304,16 @@ export default class ThreadPanel extends Component<
       (t) => t.status === ThreadStatus.Archived
     );
 
-    // 父群已解散：禁止新建子区（与后端 CreateThread 解散守卫对齐）。
-    const disbanded = this.props.groupNo
-      ? isChannelDisbanded(
-          new Channel(this.props.groupNo, ChannelTypeGroup)
-        )
-      : false;
-
-    const createBtn = (
-      <div
-        className={classNames("wk-thread-panel-create-btn", {
-          "wk-thread-panel-create-btn--disabled": disbanded,
-        })}
-        onClick={disbanded ? undefined : this.handleCreateThread}
-      >
-        <Plus size={16} />
-        <span>{t("base.threadPanel.newThread")}</span>
-      </div>
-    );
-
     return (
       <div className="wk-thread-panel-list-view">
         {/* 新建子区按钮 */}
-        {disbanded ? (
-          <Popover
-            content={t("base.conversation.disband.threadCreateDisabled")}
-            position="bottom"
-          >
-            {createBtn}
-          </Popover>
-        ) : (
-          createBtn
-        )}
+        <div
+          className="wk-thread-panel-create-btn"
+          onClick={this.handleCreateThread}
+        >
+          <Plus size={16} />
+          <span>{t("base.threadPanel.newThread")}</span>
+        </div>
 
         {threadsLoading ? (
           <div className="wk-thread-panel-loading">
@@ -1894,7 +1795,6 @@ export default class ThreadPanel extends Component<
 
     const ext = getExtension(filePreview.extension, filePreview.name);
     const isImage = filePreview.category === "image";
-    const isVideo = filePreview.category === "video";
     const isMarkdown = ["md", "markdown"].includes(ext);
     const isHtml = ["html", "htm"].includes(ext);
 
@@ -1907,14 +1807,6 @@ export default class ThreadPanel extends Component<
       return (
         <div className="wk-thread-panel-file-preview">
           <ImageRenderer file={filePreview} onError={handleError} />
-        </div>
-      );
-    }
-
-    if (isVideo) {
-      return (
-        <div className="wk-thread-panel-file-preview">
-          <VideoRenderer file={filePreview} onError={handleError} />
         </div>
       );
     }
@@ -1960,37 +1852,6 @@ export default class ThreadPanel extends Component<
     );
   }
 
-  // 父群 channel 按 groupNo 记忆化：renderWebhookContent 每次 render 都会被调用，若每次都
-  // new Channel，传给 ChannelWebhookPanel 的 channel prop 引用就会变 → 其 load useCallback
-  // （deps 含 channel）每次 render 重建 → useEffect 每次 render 重新拉取列表（#451 review）。
-  private parentGroupChannel?: Channel;
-  private parentGroupChannelKey?: string;
-  private getParentGroupChannel(groupNo: string): Channel {
-    if (this.parentGroupChannelKey !== groupNo || !this.parentGroupChannel) {
-      this.parentGroupChannelKey = groupNo;
-      this.parentGroupChannel = new Channel(groupNo, ChannelTypeGroup);
-    }
-    return this.parentGroupChannel;
-  }
-
-  // 子区 Webhook 管理子视图的内容区（#451）：仅渲染面板本体，头部由 renderHeader 的
-  // showWebhookPanel 分支负责。channel 传【父群】（datasource 据此拼
-  // groups/{group}/threads/{short}/...），isManager 锚父群角色。
-  private renderWebhookContent() {
-    const { groupNo } = this.props;
-    const thread = this.state.vmState.thread;
-    if (!groupNo || !thread) return null;
-    return (
-      <div className="wk-thread-panel-webhook-content">
-        <ChannelWebhookPanel
-          channel={this.getParentGroupChannel(groupNo)}
-          isManager={isParentGroupManager(groupNo)}
-          threadShortId={thread.short_id}
-        />
-      </div>
-    );
-  }
-
   render() {
     const { filePreview } = this.props;
     const {
@@ -2000,7 +1861,6 @@ export default class ThreadPanel extends Component<
       isFilePanelOpen,
       conversationFiles,
       vmState,
-      showWebhookPanel,
     } = this.state;
     const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH;
 
@@ -2052,8 +1912,6 @@ export default class ThreadPanel extends Component<
               {/* 文件预览内容 */}
               {this.renderFilePreviewContent()}
             </div>
-          ) : showWebhookPanel ? (
-            this.renderWebhookContent()
           ) : view === "list" ? (
             this.renderListView()
           ) : (

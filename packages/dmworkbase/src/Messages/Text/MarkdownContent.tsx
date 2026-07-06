@@ -148,35 +148,10 @@ const mathRehypePlugins: any[] = [
 ];
 
 /** 基础 remark 插件（不含 math） */
-const baseRemarkPlugins: any[] = [
-  rawHtmlAsTextPlugin,
-  remarkGfm,
-  remarkBreaks,
-];
+const baseRemarkPlugins: any[] = [remarkGfm, remarkBreaks];
 
 /** 含 math 的 remark 插件 */
-const mathRemarkPlugins: any[] = [
-  rawHtmlAsTextPlugin,
-  remarkGfm,
-  remarkBreaks,
-  remarkMath,
-];
-
-function rawHtmlAsTextPlugin() {
-  return (tree: any) => {
-    const visit = (node: any) => {
-      if (!node || !Array.isArray(node.children)) return;
-      node.children = node.children.map((child: any) => {
-        if (child?.type === "html") {
-          return { type: "text", value: child.value || "" };
-        }
-        visit(child);
-        return child;
-      });
-    };
-    visit(tree);
-  };
-}
+const mathRemarkPlugins: any[] = [remarkGfm, remarkBreaks, remarkMath];
 
 /**
  * 纯文本模式（enableMarkdown=false）插件：

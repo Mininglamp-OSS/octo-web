@@ -1,6 +1,6 @@
 import React from "react";
 import { Button, Popconfirm } from "@douyinfe/semi-ui";
-import { IconDelete, IconExit } from "@douyinfe/semi-icons";
+import { IconDelete } from "@douyinfe/semi-icons";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryListItem } from "../types/summary";
@@ -13,23 +13,14 @@ interface SummaryCardProps {
     onClick: (taskId: number) => void;
     onDelete: (taskId: number) => void;
     onRespond?: (taskId: number, action: "accept" | "reject") => void;
-    onLeave?: (taskId: number) => void;
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRespond, onLeave }) => {
+const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRespond }) => {
     const { t } = useI18n();
     const currentUid = WKApp.loginInfo.uid;
     const myParticipant = task.participants?.find((p) => p.user_id === currentUid);
     const isMultiParticipant = (task.participants?.length ?? 0) > 1;
     const isPendingInvite = isMultiParticipant && myParticipant != null && myParticipant.status === ParticipantStatus.PENDING;
-
-    // 是否创建者：以 creator_id 为准。非创建者且是参与者 -> 退出；
-    // 创建者 -> 删除。
-    // FE-2（fail-safe）：creator_id 缺失（旧后端 / 数据异常）时【不】当 creator——
-    // 否则会对任何人露出「删除整个任务」破坏性入口（fail-open 泄漏）。与详情页
-    // isCreator 口径一致（creator_id != null && === uid，fail-closed），缺失只显示退出。
-    const isCreator = task.creator_id != null && task.creator_id === currentUid;
-    const isParticipant = myParticipant != null;
 
     // 是否定时任务：以 schedule_id 为准，trigger_type===SCHEDULED 作兜底，
     // 以覆盖「绑定了定时但尚未执行过」的任务。
@@ -70,47 +61,27 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
                     {t("summary.summaryCard.createdBy", { values: { name: task.creator_name || t("summary.common.unknown") } })}
                 </span>
                 <span className="summary-card-date">{task.created_at?.substring(0, 10) || ''}</span>
-                {isCreator ? (
-                    <Popconfirm
-                        title={t("summary.summaryCard.deleteTitle")}
-                        content={
-                            isScheduledTask
-                                ? t("summary.summaryCard.deleteScheduledContent", { values: { title: task.title || task.task_no } })
-                                : t("summary.summaryCard.deleteContent", { values: { title: task.title || task.task_no } })
-                        }
-                        onConfirm={(e) => {
-                            e?.stopPropagation();
-                            onDelete(task.task_id);
-                        }}
-                        onCancel={(e) => e?.stopPropagation()}
-                    >
-                        <Button
-                            theme="borderless"
-                            type="danger"
-                            size="small"
-                            icon={<IconDelete />}
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                    </Popconfirm>
-                ) : isParticipant && onLeave ? (
-                    <Popconfirm
-                        title={t("summary.summaryCard.leaveTitle")}
-                        content={t("summary.summaryCard.leaveContent", { values: { title: task.title || task.task_no } })}
-                        onConfirm={(e) => {
-                            e?.stopPropagation();
-                            onLeave(task.task_id);
-                        }}
-                        onCancel={(e) => e?.stopPropagation()}
-                    >
-                        <Button
-                            theme="borderless"
-                            type="danger"
-                            size="small"
-                            icon={<IconExit />}
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                    </Popconfirm>
-                ) : null}
+                <Popconfirm
+                    title={t("summary.summaryCard.deleteTitle")}
+                    content={
+                        isScheduledTask
+                            ? t("summary.summaryCard.deleteScheduledContent", { values: { title: task.title || task.task_no } })
+                            : t("summary.summaryCard.deleteContent", { values: { title: task.title || task.task_no } })
+                    }
+                    onConfirm={(e) => {
+                        e?.stopPropagation();
+                        onDelete(task.task_id);
+                    }}
+                    onCancel={(e) => e?.stopPropagation()}
+                >
+                    <Button
+                        theme="borderless"
+                        type="danger"
+                        size="small"
+                        icon={<IconDelete />}
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                </Popconfirm>
             </div>
         </div>
     );

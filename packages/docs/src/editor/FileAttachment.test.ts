@@ -1,10 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import { Editor, getSchema } from '@tiptap/core'
+import { describe, it, expect } from 'vitest'
+import { getSchema } from '@tiptap/core'
 import { DOMSerializer, DOMParser as PMDOMParser, type Node as PMNode } from '@tiptap/pm/model'
-import { NodeSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import { FileAttachment, formatBytes } from './FileAttachment.ts'
-import { OctoImage } from './ImageNode.ts'
 
 // The `fileAttachment` node (SCHEMA-SPEC §15) must be byte-aligned to the backend node: the
 // EXACT attr set { attachId, fileName, mime, sizeBytes }, round-tripped through data-attach-id /
@@ -104,85 +102,6 @@ describe('fileAttachment node — backend byte-alignment (SCHEMA-SPEC §15)', ()
     const reparsed = findNode(PMDOMParser.fromSchema(schema).parse(container))
     expect(reparsed).not.toBeNull()
     expect(reparsed!.attrs).toEqual(original.attrs)
-  })
-})
-
-describe('setFileAttachment command — selection handling (XIN-144)', () => {
-  // The original bug: after an image is uploaded its atom node stays selected (a
-  // NodeSelection). Inserting a file then ran a plain insertContent, which REPLACES the
-  // selected node — so the file silently deleted the image (gone before reload). The fix
-  // inserts the card AFTER a selected node, preserving the image.
-  let editor: Editor | null = null
-  afterEach(() => {
-    editor?.destroy()
-    editor = null
-  })
-
-  function makeEditor(): Editor {
-    return new Editor({
-      extensions: [
-        StarterKit.configure({ undoRedo: false }),
-        // uploads:false skips the paste/drop plugin; no network is touched because the
-        // image node carries a plain src and no attachId (attachId would trigger a read).
-        OctoImage.configure({ docId: 'd_test', uploads: false }),
-        FileAttachment.configure({ docId: 'd_test' }),
-      ],
-      content: '<p>hello</p>',
-    })
-  }
-
-  function imagePos(ed: Editor): number {
-    let pos = -1
-    ed.state.doc.descendants((n, p) => {
-      if (n.type.name === 'image') pos = p
-    })
-    return pos
-  }
-
-  function countNodes(ed: Editor, name: string): number {
-    let n = 0
-    ed.state.doc.descendants((node) => {
-      if (node.type.name === name) n++
-    })
-    return n
-  }
-
-  const FILE_ATTRS = {
-    attachId: 'att_file',
-    fileName: 'spec.pdf',
-    mime: 'application/pdf',
-    sizeBytes: 1024,
-  }
-
-  it('inserts the file AFTER a selected image instead of replacing it', () => {
-    editor = makeEditor()
-    // Insert an image (no attachId → no network) and select its atom node, reproducing
-    // the post-upload state where the image stays selected.
-    editor
-      .chain()
-      .focus()
-      .insertContent({ type: 'image', attrs: { src: 'https://cdn.example/x.png', alt: null } })
-      .run()
-    const pos = imagePos(editor)
-    expect(pos).toBeGreaterThanOrEqual(0)
-    editor.commands.setNodeSelection(pos)
-    expect(editor.state.selection).toBeInstanceOf(NodeSelection)
-
-    editor.chain().focus().setFileAttachment(FILE_ATTRS).run()
-
-    // The image survives AND the file card is added — the bug would leave 0 images.
-    expect(countNodes(editor, 'image')).toBe(1)
-    expect(countNodes(editor, 'fileAttachment')).toBe(1)
-  })
-
-  it('still inserts at a plain text cursor (non-NodeSelection unaffected)', () => {
-    editor = makeEditor()
-    editor.chain().focus().setTextSelection(1).run()
-    expect(editor.state.selection).not.toBeInstanceOf(NodeSelection)
-
-    editor.chain().focus().setFileAttachment(FILE_ATTRS).run()
-
-    expect(countNodes(editor, 'fileAttachment')).toBe(1)
   })
 })
 

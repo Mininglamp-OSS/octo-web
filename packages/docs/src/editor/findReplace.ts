@@ -23,23 +23,12 @@ export interface FindOptions {
 }
 
 /**
- * A character that can never appear in a user query, pushed into the scan string in place of each
- * inline-atom node (emoji / mention / inline image / hard-break …). It breaks string contiguity at
- * the atom's position so `indexOf` can never produce a match that SPANS the atom — which would make
- * replaceCurrent/replaceAll's `insertText(from, to)` splice across (and silently delete) the atom
- * node (yujiawei P1 #2). It still occupies one slot in the position map so text positions on the
- * far side of an atom stay correctly mapped.
- */
-const ATOM_BREAK = '\u0000'
-
-/**
  * Find every occurrence of `query` in the document, returning ProseMirror {from,to} ranges.
  *
  * Scans per text-block: the block's inline text is concatenated with a char→position map so a
  * match that spans adjacent text nodes (split by marks, e.g. bold inside a word) is still found
- * and mapped back to correct positions. Inline atoms (emoji / mention / image …) are represented
- * by a non-matchable sentinel so a search can never match — nor replace — ACROSS an atom (which
- * would delete it). Case-insensitive unless `caseSensitive` is set. An empty query yields no matches.
+ * and mapped back to correct positions. Case-insensitive unless `caseSensitive` is set. An empty
+ * query yields no matches.
  */
 export function findMatches(doc: PMNode, query: string, opts: FindOptions = {}): FindMatch[] {
   const matches: FindMatch[] = []
@@ -59,25 +48,15 @@ export function findMatches(doc: PMNode, query: string, opts: FindOptions = {}):
           text += child.text[i]
           map.push(start + i)
         }
-      } else {
-        // Inline atom (emoji / mention / inline image / hard-break …): no searchable text, but it
-        // occupies a document position. Emit a non-matchable sentinel so a match can't bridge the
-        // gap and have insertText(from,to) splice across — and delete — the atom (yujiawei P1 #2).
-        text += ATOM_BREAK
-        map.push(pos + 1 + offset)
       }
+      // Inline atoms (e.g. images) contribute no searchable text; skipped in the map.
     })
     const haystack = caseSensitive ? text : text.toLowerCase()
     let idx = haystack.indexOf(needle)
     while (idx !== -1) {
       const from = map[idx]
-      const lastPos = map[idx + needle.length - 1]
-      const to = lastPos + 1
-      // Guard (belt-and-braces alongside the ATOM_BREAK sentinel): only accept a match whose
-      // mapped positions are contiguous. A gap (last - first !== len - 1) means an inline atom
-      // sits inside the range; replacing it would splice across and delete the atom (P1 #2).
-      const contiguous = lastPos - from === needle.length - 1
-      if (from != null && lastPos != null && contiguous) matches.push({ from, to })
+      const to = map[idx + needle.length - 1] + 1
+      if (from != null && to != null) matches.push({ from, to })
       idx = haystack.indexOf(needle, idx + needle.length)
     }
     return false // text block fully handled; don't descend into its inline children

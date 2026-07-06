@@ -135,46 +135,12 @@ export async function fetchAllSpaceMembers(spaceId: string): Promise<SpaceMember
  * instead of touching each one: the host method resolves to the body, we re-wrap it into
  * `{ data: <body>, status }`. Config (incl. the host's `config.param` → axios params) is
  * forwarded untouched, so the host signature keeps working.
- *
- * The ERROR path needs the same adaptation. The host rejects with `APIClientRejectedError`
- * (`{ error, msg, status, code, … }` — see dmworkbase/Service/APIClient.ts), NOT an axios-style
- * `{ response }`. But every docs error handler reads `err.response?.status` / `err.response.data?.error`
- * (members 404 → user_not_found, attachments 400, versions 409, delete status classification …).
- * Against the un-adapted host rejection `err.response` is `undefined`, so EVERY production error
- * branch silently falls through to its default while all tests (which inject the axios-style mock)
- * stay green. We re-wrap the rejection too, lifting the original axios error's `{ status, data }`
- * up to `.response`, so the same `{ response }` contract holds on both the success and error paths.
  */
-function toApiErrorEnvelope(err: unknown): unknown {
-  if (!err || typeof err !== 'object') return err
-  // Already axios-style (the injected test mock rejects this way, or an upstream re-wrap) — pass through.
-  if ('response' in err) return err
-  // Host APIClientRejectedError: `{ error: <original axios error>, status, msg, code, … }`.
-  // The original axios error carries the faithful `{ response: { status, data } }`; lift it up so
-  // docs' `err.response?.status` / `err.response.data?.error` branches see it unchanged.
-  const rejected = err as { error?: unknown; status?: number }
-  const inner = rejected.error
-  if (inner && typeof inner === 'object' && 'response' in inner) {
-    const innerResp = (inner as { response?: unknown }).response
-    if (innerResp) return Object.assign(err, { response: innerResp })
-  }
-  // No axios response on the inner error (e.g. timeout / network) but the host normalized an HTTP
-  // status — surface it so status-based branches still classify; the body is genuinely unavailable.
-  if (typeof rejected.status === 'number') {
-    return Object.assign(err, { response: { status: rejected.status } })
-  }
-  return err
-}
-
 export function wrapHostClient(host: APIClient): APIClient {
   // The host RESOLVES TO THE BODY at runtime; it's typed `ApiResponse<T>` only because the
-  // seam declares the post-adapter contract. Read each result as the raw body and re-wrap;
-  // re-wrap a rejection into the axios-style `{ response }` shape docs error handlers expect.
+  // seam declares the post-adapter contract. Read each result as the raw body and re-wrap.
   const toEnvelope = <T>(p: Promise<unknown>): Promise<ApiResponse<T>> =>
-    p.then(
-      (body) => ({ data: body as T, status: 200 }),
-      (err) => Promise.reject(toApiErrorEnvelope(err)),
-    )
+    p.then((body) => ({ data: body as T, status: 200 }))
   return {
     get: <T>(url: string, config?: ApiRequestConfig) => toEnvelope<T>(host.get<T>(url, config)),
     post: <T>(url: string, body?: unknown, config?: ApiRequestConfig) =>

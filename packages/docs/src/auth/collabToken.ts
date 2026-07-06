@@ -22,13 +22,6 @@ export interface TokenEntry {
   role: Role
   permission_epoch: number
   uid: string
-  /**
-   * Absolute Hocuspocus WebSocket URL handed down by the backend (XIN-211 contract):
-   * `wss://` in production / `ws://` in dev, always an independent origin (never relative).
-   * Omitted by the backend when unconfigured — undefined here means "fall back to the legacy
-   * build-time env" (see resolveCollabWsUrl in config.ts).
-   */
-  collabWsUrl?: string
 }
 
 /** Raw backend response shape for POST /docs/collab-token (backend §4.4). */
@@ -37,8 +30,6 @@ interface CollabTokenResponse {
   expiresAt: string | number
   role: string
   permission_epoch: number
-  /** Absolute WS URL; the key is absent (not empty) when the backend has no WS configured. */
-  collabWsUrl?: string
 }
 
 const tokenCache = new Map<string, TokenEntry>()
@@ -79,9 +70,6 @@ async function issueCollabToken(
     role: data.role,
     permission_epoch: data.permission_epoch ?? 0,
     uid,
-    // Present only when the backend configured an absolute WS origin; left undefined otherwise
-    // so the consumer falls back to the legacy build-time env (compat window).
-    collabWsUrl: data.collabWsUrl,
   }
 }
 

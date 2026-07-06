@@ -41,42 +41,6 @@ import { wkConfirm } from "../WKModal";
 import { collapsedThreadUnread } from "./unread";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
-// ── 在线态判定/渲染 helper ──────────────────────────────────────────────
-// 最近列表（非 compact）与关注/收藏列表（compact 的 CompactGroupItem）共用同一份
-// 判定与 tip 文案，保证两处在线圆点的数据源、阈值、文案完全一致，避免逻辑复制漂移。
-
-// 是否需要显示在线状态：在线，或离线时间在 1 小时内
-export function needShowOnlineStatus(channelInfo?: ChannelInfo): boolean {
-  if (!channelInfo) {
-    return false;
-  }
-  if (channelInfo.online) {
-    return true;
-  }
-  const nowTime = new Date().getTime() / 1000;
-  const btwTime = nowTime - channelInfo.lastOffline;
-  if (btwTime > 0 && btwTime < 60 * 60) {
-    // 小于1小时才显示
-    return true;
-  }
-  return false;
-}
-
-// 离线 tip 文案（在线时返回 undefined，badge 退化为纯绿点）
-export function getOnlineTip(channelInfo: ChannelInfo): string | undefined {
-  if (channelInfo.online) {
-    return undefined;
-  }
-  const nowTime = new Date().getTime() / 1000;
-  const btwTime = nowTime - channelInfo.lastOffline;
-  if (btwTime < 60) {
-    return t("base.conversationList.justNow");
-  }
-  return t("base.conversationList.minutesAgoShort", {
-    values: { count: (btwTime / 60).toFixed(0) },
-  });
-}
-
 // ── CompactGroupItem：群聊 Tab 紧凑 item，支持拖拽 ──────────────────────
 interface CompactGroupItemProps {
   conversationWrap: ConversationWrap;
@@ -214,9 +178,6 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
             channel={conversationWrap.channel}
           />
         )}
-        {!isThread && channelInfo && needShowOnlineStatus(channelInfo) ? (
-          <OnlineStatusBadge tip={getOnlineTip(channelInfo)}></OnlineStatusBadge>
-        ) : undefined}
       </span>
       <span className="wk-conv-compact-name">
         {channelInfo?.orgData.displayName ? (
@@ -614,12 +575,32 @@ export default class ConversationList extends Component<
   }
 
   getOnlineTip(channelInfo: ChannelInfo) {
-    return getOnlineTip(channelInfo);
+    if (channelInfo.online) {
+      return undefined;
+    }
+    const nowTime = new Date().getTime() / 1000;
+    const btwTime = nowTime - channelInfo.lastOffline;
+    if (btwTime < 60) {
+      return t("base.conversationList.justNow");
+    }
+    return t("base.conversationList.minutesAgoShort", { values: { count: (btwTime / 60).toFixed(0) } });
   }
 
   // 是否需要显示在线状态
   needShowOnlineStatus(channelInfo?: ChannelInfo) {
-    return needShowOnlineStatus(channelInfo);
+    if (!channelInfo) {
+      return false;
+    }
+    if (channelInfo.online) {
+      return true;
+    }
+    const nowTime = new Date().getTime() / 1000;
+    const btwTime = nowTime - channelInfo.lastOffline;
+    if (btwTime > 0 && btwTime < 60 * 60) {
+      // 小于1小时才显示
+      return true;
+    }
+    return false;
   }
 
   conversationItem(

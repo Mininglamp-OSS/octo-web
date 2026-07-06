@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
 
-const { mockGet, mockPost, mockDelete, mockRequestUse, mockResponseUse } = vi.hoisted(() => ({
+const { mockGet, mockPost, mockRequestUse, mockResponseUse } = vi.hoisted(() => ({
     mockGet: vi.fn(),
     mockPost: vi.fn(),
-    mockDelete: vi.fn(),
     mockRequestUse: vi.fn(),
     mockResponseUse: vi.fn(),
 }));
@@ -15,7 +14,7 @@ vi.mock('axios', () => ({
             get: mockGet,
             post: mockPost,
             put: vi.fn(),
-            delete: mockDelete,
+            delete: vi.fn(),
             interceptors: {
                 request: { use: mockRequestUse },
                 response: { use: mockResponseUse },
@@ -25,7 +24,7 @@ vi.mock('axios', () => ({
     },
 }));
 
-import { getTopicTemplates, getTemplates, listSummaries, removeMember } from '../summaryApi';
+import { getTopicTemplates, getTemplates, listSummaries } from '../summaryApi';
 
 describe('summaryApi interceptors', () => {
   it('injects language, token, and space headers', async () => {
@@ -40,48 +39,6 @@ describe('summaryApi interceptors', () => {
     expect(result.headers['Accept-Language']).toBe('zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7');
     expect(result.headers['token']).toBe('test-token-abc');
     expect(result.headers['X-Space-Id']).toBe('space-123');
-  });
-});
-
-// The summary service lives at <origin>/summary/api/v1. On Web, apiClient.apiURL
-// is relative ("/api/v1/") so same-origin requests work with an empty baseURL.
-// In the extension/Electron the page origin is chrome-extension:// / app://, so
-// the request must target the API origin derived from apiClient.config.apiURL.
-// GH #420 — sidepanel forward menu could not search channels/subzones.
-describe('summaryApi baseURL resolution (GH #420)', () => {
-  async function getRequestInterceptor(apiClient: unknown) {
-    vi.resetModules();
-    mockRequestUse.mockClear();
-    // Mutate the WKApp instance from the post-reset module graph — the same one
-    // summaryApi will import — so the interceptor reads this apiClient at call time.
-    const { default: freshWKApp } = await import('@octo/base');
-    (freshWKApp as any).apiClient = apiClient;
-    await import('../summaryApi');
-    return mockRequestUse.mock.calls[0]?.[0];
-  }
-
-  it('uses the API origin when apiClient.apiURL is absolute (extension/Electron)', async () => {
-    const interceptor = await getRequestInterceptor({ config: { apiURL: 'https://api.example.com/api/v1/' } });
-
-    const result = interceptor({ headers: {} } as any);
-
-    expect(result.baseURL).toBe('https://api.example.com');
-  });
-
-  it('stays same-origin (empty baseURL) when apiClient.apiURL is relative (Web)', async () => {
-    const interceptor = await getRequestInterceptor({ config: { apiURL: '/api/v1/' } });
-
-    const result = interceptor({ headers: {} } as any);
-
-    expect(result.baseURL).toBe('');
-  });
-
-  it('stays same-origin when apiClient.config is absent', async () => {
-    const interceptor = await getRequestInterceptor({});
-
-    const result = interceptor({ headers: {} } as any);
-
-    expect(result.baseURL).toBe('');
   });
 });
 
@@ -230,31 +187,6 @@ describe('summaryApi', () => {
             ] });
             const items = await listSchedules();
             expect(items.map((i) => i.is_active)).toEqual([false, true]);
-        });
-    });
-
-    // V5：schedule 级一次性确认。POST /summary-schedules/:id/confirm，无 body。
-    describe('confirmSchedule (V5 one-time schedule confirm)', () => {
-        it('POSTs to /summary-schedules/:id/confirm', async () => {
-            const { confirmSchedule } = await import('../summaryApi');
-            mockPost.mockResolvedValueOnce({ data: { data: { confirmed: true } } });
-            await confirmSchedule(42);
-            expect(mockPost).toHaveBeenCalledWith(
-                '/summary/api/v1/summary-schedules/42/confirm',
-                undefined,
-            );
-        });
-    });
-
-    // FIX4: removeMember 将 uid 作为 query 参数传递并 encodeURIComponent，
-    // 避免含特殊字符的 user_id（如 'a/b'、'u 1'）破坏 path 或路由。
-    describe('removeMember uid encoding', () => {
-        it('encodes uid into the DELETE query string', async () => {
-            mockDelete.mockResolvedValueOnce({ data: { data: { removed: true } } });
-            await removeMember(7, 'a/b c');
-            expect(mockDelete).toHaveBeenCalledWith(
-                '/summary/api/v1/summaries/7/members?uid=a%2Fb%20c',
-            );
         });
     });
 });

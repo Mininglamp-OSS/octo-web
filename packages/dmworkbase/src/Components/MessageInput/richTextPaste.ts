@@ -7,45 +7,7 @@ import type {
   OctoRichTextClipboardMention,
   OctoRichTextClipboardPayload,
 } from "../../Utils/richTextClipboard";
-import { isBroadcastSentinelUid } from "../../Utils/mentionRender";
 import { isSafeUrl } from "../../Utils/security";
-
-// Clipboard payloads are a forgeable, untrusted source (plain HTML the user can
-// hand-author). A broadcast/all-routing sentinel UID lets a single paste fan a
-// message out to every human / AI in the channel, so we never reconstruct a
-// mention node for one — it degrades to plain "@label" text. The sentinel set
-// (legacy `@所有人` `-1`, three-state `-2`/`-3`, render-side `"all"`) lives in
-// `isBroadcastSentinelUid` (Utils/mentionRender) so the paste guard, the
-// send-side re-parse, and the render path share one definition (octo-web#330,
-// helper grafted from #361).
-
-// Minimal structural shape of a channel member used to validate pasted
-// mentions. `MemberInfo` from mentionResolve (uid/name/label) is assignable.
-export interface PasteMentionMember {
-  uid: string;
-  name: string;
-  label?: string;
-}
-
-function mentionAllowKey(uid: string, label: string): string {
-  return `${uid}\u0000${label}`;
-}
-
-// Build the set of (uid + visible label) pairs we will accept from a clipboard
-// paste. A pasted mention is only honored when its uid belongs to a current
-// channel member AND its label matches one of that member's known names
-// (canonical label or any alias candidate). Anything else degrades to text.
-function buildAllowedMentionKeys(
-  members?: ReadonlyArray<PasteMentionMember>
-): ReadonlySet<string> {
-  const allowed = new Set<string>();
-  for (const member of members || []) {
-    if (!member || typeof member.uid !== "string") continue;
-    if (member.name) allowed.add(mentionAllowKey(member.uid, member.name));
-    if (member.label) allowed.add(mentionAllowKey(member.uid, member.label));
-  }
-  return allowed;
-}
 
 type EditorLike = {
   chain: () => {
@@ -72,9 +34,6 @@ export interface RestoreOctoRichTextPasteDeps {
   imageBlockToFile?: (
     block: Extract<OctoRichTextClipboardBlock, { type: "image" }>
   ) => Promise<File | null>;
-  // Current channel members, used to validate pasted mention UIDs. When
-  // omitted, all pasted mentions degrade to plain text (fail closed).
-  members?: ReadonlyArray<PasteMentionMember>;
 }
 
 function appendPlainText(nodes: any[], text: string) {
@@ -92,11 +51,9 @@ function appendPlainText(nodes: any[], text: string) {
 
 export function buildInlineContentForRichTextPaste(
   text: string,
-  mentions?: OctoRichTextClipboardMention[],
-  members?: ReadonlyArray<PasteMentionMember>
+  mentions?: OctoRichTextClipboardMention[]
 ): any[] {
   const nodes: any[] = [];
-  const allowedKeys = buildAllowedMentionKeys(members);
   const sortedMentions = (mentions || [])
     .filter(
       (mention) =>
@@ -111,22 +68,12 @@ export function buildInlineContentForRichTextPaste(
     if (mention.offset < cursor) continue;
     appendPlainText(nodes, text.slice(cursor, mention.offset));
     const name = text.slice(mention.offset, mention.offset + mention.length);
-    const label = name.startsWith("@") ? name.slice(1) : "";
-    // Fail closed: a clipboard mention is only reconstructed as a real mention
-    // node when it is NOT a broadcast sentinel AND it resolves to a current
-    // channel member whose name matches the pasted label. Everything else
-    // (forged uids, broadcast sentinels, stale/cross-channel members, or a
-    // missing members list) renders as plain "@label" text.
-    if (
-      label &&
-      !isBroadcastSentinelUid(mention.uid) &&
-      allowedKeys.has(mentionAllowKey(mention.uid, label))
-    ) {
+    if (name.startsWith("@")) {
       nodes.push({
         type: "mention",
         attrs: {
           id: mention.uid,
-          label,
+          label: name.slice(1),
         },
       });
     } else {
@@ -249,11 +196,7 @@ export async function restoreOctoRichTextClipboardToEditor(
     if (block.type === "text") {
       insertInlineContent(
         editor,
-        buildInlineContentForRichTextPaste(
-          block.text,
-          block.mentions,
-          deps.members
-        )
+        buildInlineContentForRichTextPaste(block.text, block.mentions)
       );
       continue;
     }

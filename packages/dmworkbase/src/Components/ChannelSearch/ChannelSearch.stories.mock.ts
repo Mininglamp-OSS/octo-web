@@ -20,6 +20,9 @@ const figmaMediaThumbs = [
   new URL("./assets/figma-media-08.png", import.meta.url).href,
 ];
 
+const figmaPdfIcon = new URL("./assets/figma-file-pdf.png", import.meta.url)
+  .href;
+const figmaMdIcon = new URL("./assets/figma-file-md.png", import.meta.url).href;
 const figmaInlineImage = new URL(
   "./assets/figma-inline-image-01.png",
   import.meta.url
@@ -66,46 +69,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     senderUid: "liubo",
     timestamp: toSeconds("2026-06-03T15:06:00+08:00"),
     kind: "text",
-    text: "哈哈哈哈[有品位]有趣有趣",
-  },
-  {
-    id: "msg-richtext-1",
-    messageId: "m-61020",
-    messageSeq: 61020,
-    senderUid: "liubo",
-    timestamp: toSeconds("2026-06-03T15:05:30+08:00"),
-    kind: "text",
-    text: "哈哈，图文混排里有两张图和一个文件",
-    matchReason: "<mark>哈哈</mark>，图文混排里有两张图和一个文件",
-    richText: {
-      plain: "哈哈，图文混排里有两张图和一个文件[图片]继续补充[图片][文件] 需求.md",
-      content: [
-        { type: "text", text: "哈哈，图文混排里有两张图和一个文件" },
-        {
-          type: "image",
-          url: figmaMediaThumbs[2],
-          width: 1200,
-          height: 800,
-          name: "design-a.png",
-        },
-        { type: "text", text: "继续补充" },
-        {
-          type: "image",
-          url: figmaMediaThumbs[3],
-          width: 960,
-          height: 1280,
-          name: "design-b.png",
-        },
-        {
-          type: "file",
-          url: "files/richtext/spec.md",
-          name: "需求.md",
-          extension: "md",
-          size: 14230,
-          caption: "富文本里的文件",
-        },
-      ],
-    },
+    text: "哈哈哈哈哈哈有趣有趣",
   },
   {
     id: "msg-2",
@@ -115,8 +79,6 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-06-03T15:05:00+08:00"),
     kind: "image",
     media: {
-      url: figmaMediaThumbs[0],
-      previewUrl: figmaMediaThumbs[0],
       thumbUrl: figmaMediaThumbs[0],
       inlineThumbUrl: figmaInlineImage,
       tone: "cool",
@@ -130,8 +92,6 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-06-01T15:04:30+08:00"),
     kind: "image",
     media: {
-      url: figmaMediaThumbs[5],
-      previewUrl: figmaMediaThumbs[5],
       thumbUrl: figmaMediaThumbs[5],
       tone: "warm",
     },
@@ -168,6 +128,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     file: {
       name: "一个名叫哈哈帮的文件.pdf",
       size: 2411724,
+      iconUrl: figmaPdfIcon,
       url: "",
     },
   },
@@ -195,32 +156,11 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     matchReason: "转发聊天记录含“哈哈”",
     forward: {
       title: "牛爷爷和噜噜的聊天记录",
-      snippets: [],
-      innerMessages: [
-        {
-          messageId: "m-61006-1",
-          type: 1,
-          text: "👌好的，需求 1 和 3 我觉得优先级高。",
-          senderName: "牛爷爷",
-        },
-        {
-          messageId: "m-61006-2",
-          type: 2,
-          text: "[图片]",
-          senderName: "噜噜",
-        },
-        {
-          messageId: "m-61006-3",
-          type: 1,
-          text: "先帮忙分析一下 Thread 功能的技术可行性🙏🙏？",
-          senderName: "噜噜",
-        },
-        {
-          messageId: "m-61006-4",
-          type: 5,
-          text: "[视频]",
-          senderName: "牛爷爷",
-        },
+      snippets: [
+        "牛爷爷：👌好的，需求 1 和 3 我觉得优先级高。",
+        "噜噜：[图片]",
+        "噜噜：先帮忙分析一下 Thread 功能的技术可行性🙏🙏？",
+        "牛爷爷：[视频]",
       ],
     },
   },
@@ -232,8 +172,6 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-06-01T10:24:00+08:00"),
     kind: "image",
     media: {
-      url: figmaMediaThumbs[2],
-      previewUrl: figmaMediaThumbs[2],
       thumbUrl: figmaMediaThumbs[2],
       tone: "green",
     },
@@ -261,6 +199,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     file: {
       name: "文件名称文件名称文件名称.md",
       size: 2411724,
+      iconUrl: figmaMdIcon,
       url: "",
     },
   },
@@ -272,8 +211,6 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-05-01T11:18:00+08:00"),
     kind: "image",
     media: {
-      url: figmaMediaThumbs[7],
-      previewUrl: figmaMediaThumbs[7],
       thumbUrl: figmaMediaThumbs[7],
       tone: "cool",
     },
@@ -299,8 +236,6 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-05-12T13:10:00+08:00"),
     kind: "image",
     media: {
-      url: figmaMediaThumbs[2],
-      previewUrl: figmaMediaThumbs[2],
       thumbUrl: figmaMediaThumbs[2],
       tone: "green",
     },
@@ -313,8 +248,6 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-05-06T19:12:00+08:00"),
     kind: "image",
     media: {
-      url: figmaMediaThumbs[3],
-      previewUrl: figmaMediaThumbs[3],
       thumbUrl: figmaMediaThumbs[3],
       tone: "purple",
     },
@@ -327,8 +260,6 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
     timestamp: toSeconds("2026-04-18T12:00:00+08:00"),
     kind: "image",
     media: {
-      url: figmaMediaThumbs[4],
-      previewUrl: figmaMediaThumbs[4],
       thumbUrl: figmaMediaThumbs[4],
       tone: "warm",
     },
@@ -336,7 +267,7 @@ export const mockChannelSearchItems: ChannelSearchItem[] = [
 ];
 
 const tabKinds: Record<ChannelSearchTab, ChannelSearchItem["kind"][]> = {
-  all: ["text", "file", "merge_forward", "image", "video"],
+  all: ["text", "file", "merge_forward"],
   message: ["text", "merge_forward"],
   media: ["image", "video"],
   file: ["file"],
@@ -349,17 +280,13 @@ const containsKeyword = (value: string | undefined, keyword: string) => {
 
 const itemMatchesKeyword = (item: ChannelSearchItem, keyword: string) => {
   if (!keyword.trim()) return true;
-  if (item.kind === "image" || item.kind === "video") return false;
+  if (item.kind === "image" || item.kind === "video") return true;
   return [
     item.text,
     item.matchReason,
-    item.richText?.plain,
     item.file?.name,
     item.forward?.title,
     ...(item.forward?.snippets || []),
-    ...(item.forward?.innerMessages || []).map((message) =>
-      [message.senderName, message.text].filter(Boolean).join("：")
-    ),
   ].some((value) => containsKeyword(value, keyword));
 };
 

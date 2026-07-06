@@ -26,22 +26,12 @@
 }
 
 .wk-emojitoolbar-emojipanel {
-    /* fixed width so the panel size is identical across Emoji / 我的贴纸 tabs
-       (previously max-width only, so it shrank to content on the sticker tab). */
-    width: 460px;
-    /* CSS safety net for viewports narrower than the 460px fixed width: the JS
-       clamp in computePanelPos pins left to the margin, but width stays 460 and
-       would bleed off-screen on tiny windows; cap it to the viewport. */
-    max-width: calc(100vw - 16px);
+    max-width: 460px;
     height: 372px;
     background-color: var(--wk-color-item);
-    /* viewport-aware popover: portaled to <body> and positioned with fixed +
-       JS-computed left/top (EmojiToolbar.computePanelPos), so it is never
-       clipped by an ancestor's overflow and never overflows a narrow column.
-       left/top below are inert placeholders for the hidden/initial state. */
-    position: fixed;
-    left: 0;
-    top: 0;
+    position: absolute;
+    left: 20px;
+    top: calc(-372px - 15px);
     box-shadow: 0 0.25rem 0.5rem 0.125rem rgba(114,114,114,0.25098);
     border-radius: 0.75rem;
    
@@ -162,128 +152,4 @@ body[theme-mode=dark] .wk-emojipanel-tab-item-selected {
     left: 0px;
     z-index: 998;
     cursor: default;
-}
-
-/* ===== 我的贴纸（用户自定义贴纸）===== */
-.wk-emojipanel-content-sticker ul {
-    align-content: flex-start;
-}
-
-.wk-sticker-item,
-.wk-sticker-add {
-    box-sizing: border-box;
-    width: 74px;
-    height: 74px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.wk-sticker-item {
-    position: relative;
-    background: var(--wk-color-secondary);
-    overflow: hidden;
-    transition: transform .15s ease, box-shadow .15s ease;
-}
-.wk-sticker-item:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, .12);
-}
-
-/* sticker thumbnails are 60px — override the 28px emoji-img rule via higher specificity */
-.wk-emojipanel-content ul li.wk-sticker-item img,
-.wk-emojipanel-content ul li.wk-sticker-item tgs-player {
-    width: 60px;
-    height: 60px;
-    object-fit: contain;
-    margin: 0;
-}
-
-/* delete affordance: hover-revealed, not a permanent badge */
-.wk-sticker-del {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 18px;
-    height: 18px;
-    line-height: 18px;
-    text-align: center;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, .45);
-    color: #fff;
-    font-size: 12px;
-    cursor: pointer;
-    opacity: 0;
-    transform: scale(.8);
-    transition: opacity .12s ease, transform .12s ease;
-}
-.wk-sticker-item:hover .wk-sticker-del {
-    opacity: 1;
-    transform: scale(1);
-}
-.wk-sticker-del:hover {
-    background: #f5222d;
-}
-
-.wk-sticker-add {
-    color: #b0b3b8;
-    border: 1.5px dashed #d9d9d9;
-    cursor: pointer;
-    transition: color .15s ease, border-color .15s ease, background .15s ease;
-}
-.wk-sticker-add:hover {
-    color: var(--wk-brand-primary);
-    border-color: var(--wk-brand-primary);
-    background: rgba(51, 112, 255, .06);
-}
-.wk-sticker-add svg {
-    width: 24px;
-    height: 24px;
-}
-
-.wk-sticker-empty {
-    width: 100%;
-    padding: 22px 0 8px !important;
-    text-align: center;
-    color: #9aa3af;
-    font-size: 13px;
-    cursor: default !important;
-}
-
-.wk-sticker-spin {
-    animation: wkStickerSpin .8s linear infinite;
-}
-@keyframes wkStickerSpin {
-    to { transform: rotate(360deg); }
-}
-
-/* the Emoji tab uses an <img>; it previously inherited its size from
-   `.wk-emojitoolbar img`, but the panel is now portaled to <body> (no longer a
-   descendant of .wk-emojitoolbar), so constrain it explicitly here. Without
-   this the icon renders at its natural size and overflows the tab cell. */
-.wk-emojipanel-tab-item img {
-    width: 22px;
-    height: 22px;
-    object-fit: contain;
-}
-
-/* tab icons pick up state via currentColor */
-.wk-emojipanel-tab-item svg {
-    color: #8a8f99;
-}
-.wk-emojipanel-tab-item-selected svg {
-    color: var(--wk-brand-primary);
-}
-
-/* dark mode */
-body[theme-mode=dark] .wk-sticker-item {
-    background: var(--wk-color-secondary-2);
-}
-body[theme-mode=dark] .wk-sticker-add {
-    border-color: #3a3a3a;
-    color: #777;
-}
-body[theme-mode=dark] .wk-sticker-add:hover {
-    background: rgba(51, 112, 255, .14);
 }

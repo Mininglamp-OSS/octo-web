@@ -9,7 +9,6 @@ import type {
   ApiResponse,
   IModule,
   LoginInfo,
-  RemoteConfigLite,
   RouteManager,
   SpaceMemberLite,
   WKAppShape,
@@ -70,74 +69,16 @@ export class MockRouteManager implements RouteManager {
 
 export class MockMenusManager {
   menus = new Map<string, (param?: any) => unknown>()
-  /** Number of times the docs module asked the NavRail to re-render (config gate flips). */
-  refreshCount = 0
   register(sid: string, f: (param?: any) => unknown): void {
     this.menus.set(sid, f)
   }
-  refresh(): void {
-    this.refreshCount++
-  }
 }
 
-/**
- * Test double for the host WKApp.remoteConfig gate. `docsOn` defaults to true so the existing
- * "menu registers" assertions keep exercising the enabled case; tests that cover the gate set
- * it explicitly and call `emitLoad()` / `emitChange()` to simulate appconfig arriving/changing.
- */
-export class MockRemoteConfig implements RemoteConfigLite {
-  docsOn: boolean
-  /** Mirrors the host contract: true once the first appconfig load has resolved. */
-  requestSuccess = false
-  private loadListeners: Array<() => void> = []
-  private changeListeners: Array<() => void> = []
-  constructor(docsOn = true) {
-    this.docsOn = docsOn
-  }
-  addListener(cb: () => void): () => void {
-    // Mirror the host: subscribing after the first load already resolved returns a noop, so a
-    // late subscriber never fires (it must check requestSuccess and self-handle instead).
-    if (this.requestSuccess) {
-      return () => {
-        /* noop */
-      }
-    }
-    this.loadListeners.push(cb)
-    return () => {
-      this.loadListeners = this.loadListeners.filter((l) => l !== cb)
-    }
-  }
-  addConfigChangeListener(cb: () => void): () => void {
-    this.changeListeners.push(cb)
-    return () => {
-      this.changeListeners = this.changeListeners.filter((l) => l !== cb)
-    }
-  }
-  /** Number of change listeners currently registered (test hook for idempotent-rebind checks). */
-  changeListenerCount(): number {
-    return this.changeListeners.length
-  }
-  /** Simulate the FIRST successful appconfig load firing its one-shot listeners. */
-  emitLoad(): void {
-    this.requestSuccess = true
-    for (const l of [...this.loadListeners]) l()
-  }
-  /** Simulate a subsequent appconfig change firing its change listeners. */
-  emitChange(): void {
-    for (const l of [...this.changeListeners]) l()
-  }
-}
-
-export function createMockWKApp(
-  loginInfo: LoginInfo = { uid: 'u_self', token: 'octo-session-token' },
-  remoteConfig: MockRemoteConfig = new MockRemoteConfig(),
-): WKAppShape & {
+export function createMockWKApp(loginInfo: LoginInfo = { uid: 'u_self', token: 'octo-session-token' }): WKAppShape & {
   apiClient: MockApiClient
   route: MockRouteManager
   mockMenus: MockMenusManager
   registeredModules: IModule[]
-  /** Test hook: the docs gate double (set docsOn, emitLoad/emitChange). */
-  mockRemoteConfig: MockRemoteConfig
   /** Test hook: fake space members the seam's getSpaceMembers paginates over. */
   spaceMembers: SpaceMemberLite[]
 } {
@@ -153,8 +94,6 @@ export function createMockWKApp(
     route,
     menus: menus as unknown as WKAppShape['menus'],
     mockMenus: menus,
-    remoteConfig,
-    mockRemoteConfig: remoteConfig,
     loginInfo,
     registeredModules,
     spaceMembers,

@@ -21,9 +21,6 @@ wk.apiClient.responder = (_method, url) => {
         expiresAt: Date.now() + 5 * 60_000,
         role: 'admin',
         permission_epoch: 1,
-        // Dev collab WS runs on its own origin (:1234) — mirror the backend contract so the
-        // runtime WS-URL path is exercised in local dev instead of the build-time env fallback.
-        collabWsUrl: 'ws://localhost:1234',
       },
       status: 200,
     }

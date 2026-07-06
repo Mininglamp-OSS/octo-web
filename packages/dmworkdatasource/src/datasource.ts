@@ -1,5 +1,4 @@
-import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId, IncomingWebhook, IncomingWebhookCreateResp, IncomingWebhookUpsertReq, StickerItem } from "@octo/base";
-import axios from "axios";
+import { ChannelQrcodeResp, Contacts, IChannelDataSource, ICommonDataSource, WKApp, RequestConfig, GroupRole, hasSpacePrefix, Thread, ThreadListStatus, ChannelTypeCommunityTopic, buildThreadChannelId, ChannelFilesResp, parseThreadChannelId, IncomingWebhook, IncomingWebhookCreateResp, IncomingWebhookUpsertReq } from "@octo/base";
 import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, MessageContentType,ConversationExtra,Subscriber } from "wukongimjssdk";
 
 const MAX_GROUP_LIST_LIMIT = 100000;
@@ -46,14 +45,6 @@ export class ChannelDataSource implements IChannelDataSource {
         return WKApp.apiClient.post(`groups/${channel.channelID}/exit`)
     }
 
-    async groupDisband(channel: Channel): Promise<void> {
-        if (channel.channelType === ChannelTypePerson) {
-            return
-        }
-        // 后端：DELETE /groups/:group_no/disband，仅群主有权，幂等。group_no === channelID。
-        return WKApp.apiClient.delete(`groups/${channel.channelID}/disband`)
-    }
-
     async channelTransferOwner(channel: Channel, toUID: string): Promise<void> {
         if (channel.channelType === ChannelTypePerson) {
             return
@@ -67,7 +58,7 @@ export class ChannelDataSource implements IChannelDataSource {
         }
         return WKApp.apiClient.put(`groups/${channel.channelID}/members/${subscriberUID}`, attr)
     }
-    createChannel(uids: string[], options?: { categoryId?: string; name?: string; avatarText?: string; avatarColor?: number }): Promise<any> {
+    createChannel(uids: string[], options?: { categoryId?: string }): Promise<any> {
         const body: any = { members: uids }
         const spaceId = WKApp.shared.currentSpaceId
         if (spaceId) {
@@ -75,16 +66,6 @@ export class ChannelDataSource implements IChannelDataSource {
         }
         if (options?.categoryId) {
             body.category_id = options.categoryId
-        }
-        if (options?.name) {
-            body.name = options.name
-        }
-        // 自定义群头像：仅在用户显式设置时下发；缺省由服务端渲染默认双人图标。
-        if (options?.avatarText) {
-            body.avatar_text = options.avatarText
-        }
-        if (typeof options?.avatarColor === "number" && options.avatarColor >= 0) {
-            body.avatar_color = options.avatarColor
         }
         return WKApp.apiClient.post(`group/create`, body);
     }
@@ -120,37 +101,17 @@ export class ChannelDataSource implements IChannelDataSource {
         }
         return channelInfos;
     }
-    async removeSubscribers(channel: Channel, uids: string[]): Promise<void> {
-        await WKApp.apiClient.delete(`groups/${channel.channelID}/members`, {
+    removeSubscribers(channel: Channel, uids: string[]): Promise<void> {
+        return WKApp.apiClient.delete(`groups/${channel.channelID}/members`, {
             data: {
                 members: uids,
             }
         })
-        // Refresh the local member cache so the operator sees the change without a reload.
-        // syncSubscribes fires notifySubscribeChangeListeners -> reloadSubscribers, keeping
-        // the @mention candidate list in sync. A failure here must not fail the remove
-        // itself (members are already removed on the server); worst case degrades back to
-        // needing a manual refresh.
-        try {
-            await WKSDK.shared().channelManager.syncSubscribes(channel)
-        } catch (e) {
-            console.warn("[removeSubscribers] syncSubscribes failed", e)
-        }
     }
-    async addSubscribers(channel: Channel, uids: string[]): Promise<void> {
-        await WKApp.apiClient.post(`groups/${channel.channelID}/members`, {
+    addSubscribers(channel: Channel, uids: string[]): Promise<void> {
+        return WKApp.apiClient.post(`groups/${channel.channelID}/members`, {
             members: uids,
         })
-        // Refresh the local member cache so the operator sees new members without a reload.
-        // syncSubscribes fires notifySubscribeChangeListeners -> reloadSubscribers, keeping
-        // the @mention candidate list in sync. A failure here must not fail the add itself
-        // (members are already added on the server); worst case degrades back to needing a
-        // manual refresh.
-        try {
-            await WKSDK.shared().channelManager.syncSubscribes(channel)
-        } catch (e) {
-            console.warn("[addSubscribers] syncSubscribes failed", e)
-        }
     }
 
     async subscribers(channel: Channel,req:{
@@ -241,40 +202,30 @@ export class ChannelDataSource implements IChannelDataSource {
 
     // ---------- 群入站 Webhook ----------
 
-    // 群面：groups/{group}/incoming-webhooks；子区面：groups/{group}/threads/{short}/incoming-webhooks。
-    // threadShortId 留空即群面（与历史一致）；传入即切到子区作用域 —— 后端据此隔离 list/管理，
-    // 并把 webhook 投递目标绑定到子区（#451 / octo-server #454）。channelID 必须是【父群 group_no】
-    // （子区面板传父群 channel），推送 URL 不变，仍按 webhook_id/token。
-    private incomingWebhookBase(channelID: string, threadShortId?: string): string {
-        return threadShortId
-            ? `groups/${channelID}/threads/${threadShortId}/incoming-webhooks`
-            : `groups/${channelID}/incoming-webhooks`
-    }
-
-    incomingWebhooks(channel: Channel, threadShortId?: string): Promise<IncomingWebhook[]> {
+    incomingWebhooks(channel: Channel): Promise<IncomingWebhook[]> {
         return WKApp.apiClient
-            .get(this.incomingWebhookBase(channel.channelID, threadShortId))
+            .get(`groups/${channel.channelID}/incoming-webhooks`)
             .then((resp?: { list?: IncomingWebhook[] }) => resp?.list || [])
     }
 
-    createIncomingWebhook(channel: Channel, req: IncomingWebhookUpsertReq, threadShortId?: string): Promise<IncomingWebhookCreateResp> {
-        return WKApp.apiClient.post(this.incomingWebhookBase(channel.channelID, threadShortId), req)
+    createIncomingWebhook(channel: Channel, req: IncomingWebhookUpsertReq): Promise<IncomingWebhookCreateResp> {
+        return WKApp.apiClient.post(`groups/${channel.channelID}/incoming-webhooks`, req)
     }
 
-    updateIncomingWebhook(channel: Channel, webhookId: string, req: IncomingWebhookUpsertReq, threadShortId?: string): Promise<IncomingWebhook> {
-        return WKApp.apiClient.put(`${this.incomingWebhookBase(channel.channelID, threadShortId)}/${webhookId}`, req)
+    updateIncomingWebhook(channel: Channel, webhookId: string, req: IncomingWebhookUpsertReq): Promise<IncomingWebhook> {
+        return WKApp.apiClient.put(`groups/${channel.channelID}/incoming-webhooks/${webhookId}`, req)
     }
 
-    deleteIncomingWebhook(channel: Channel, webhookId: string, threadShortId?: string): Promise<void> {
-        return WKApp.apiClient.delete(`${this.incomingWebhookBase(channel.channelID, threadShortId)}/${webhookId}`)
+    deleteIncomingWebhook(channel: Channel, webhookId: string): Promise<void> {
+        return WKApp.apiClient.delete(`groups/${channel.channelID}/incoming-webhooks/${webhookId}`)
     }
 
-    regenerateIncomingWebhook(channel: Channel, webhookId: string, threadShortId?: string): Promise<IncomingWebhookCreateResp> {
-        return WKApp.apiClient.post(`${this.incomingWebhookBase(channel.channelID, threadShortId)}/${webhookId}/regenerate`)
+    regenerateIncomingWebhook(channel: Channel, webhookId: string): Promise<IncomingWebhookCreateResp> {
+        return WKApp.apiClient.post(`groups/${channel.channelID}/incoming-webhooks/${webhookId}/regenerate`)
     }
 
-    testIncomingWebhook(channel: Channel, webhookId: string, threadShortId?: string): Promise<void> {
-        return WKApp.apiClient.post(`${this.incomingWebhookBase(channel.channelID, threadShortId)}/${webhookId}/test`)
+    testIncomingWebhook(channel: Channel, webhookId: string): Promise<void> {
+        return WKApp.apiClient.post(`groups/${channel.channelID}/incoming-webhooks/${webhookId}/test`)
     }
 
     getThreadMd(groupNo: string, shortId: string): Promise<{ content: string; version: number }> {
@@ -469,46 +420,6 @@ export class ChannelDataSource implements IChannelDataSource {
     }
 }
 
-// shouldAttachUploadToken decides whether the session token may ride along on a
-// sticker upload POST. The token is attached when the (server-returned) upload
-// URL is same-origin with EITHER trusted origin: the API the apiClient
-// authenticates against, OR the document (app) origin. It is withheld only when
-// the upload host matches neither — i.e. a genuinely foreign destination.
-//
-// `meta.url` is built server-side from APIBaseURL and points at the API's own
-// auth-gated `/v1/file/upload`, so in any real deployment it equals one of those
-// two origins (the API host in a cross-origin/CORS setup, the app host behind a
-// same-origin proxy) → the token attaches exactly as before and the upload
-// works. The guard is defense in depth: a backend that returned/redirected to a
-// foreign host gets no credential. Matching against BOTH trusted origins (rather
-// than the API origin alone) is deliberate — pinning to apiURL only would strip
-// the *required* token whenever the upload host equals the app origin but apiURL
-// is a different absolute origin, breaking a working upload (a regression the
-// narrower check would introduce). On any URL-parse failure we conservatively
-// withhold the token. (PR#496 review: Jerry-Xin / OctoBoooot; consistent with
-// the same-origin invariant yujiawei verified server-side.)
-export function shouldAttachUploadToken(uploadURL: string, apiBaseURL: string, locationHref: string): boolean {
-    try {
-        const docOrigin = new URL(locationHref).origin
-        // apiBaseURL may be relative (e.g. "/api/v1/") or absolute; resolve it
-        // against the document so its origin is comparable.
-        const apiOrigin = new URL(apiBaseURL || locationHref, locationHref).origin
-        const target = new URL(uploadURL, locationHref).origin
-        return target === apiOrigin || target === docOrigin
-    } catch {
-        return false
-    }
-}
-
-// Isolated axios instance carrying NONE of the project request interceptors. The
-// shared global axios has a request interceptor (APIClient) that injects the
-// session token into EVERY call with no origin scoping; an upload to a
-// non-same-origin URL must not carry that credential, so it goes through this
-// bare instance instead (see uploadSticker). Selecting headers at the call site
-// is not enough on its own — the global interceptor re-adds the token regardless.
-// A finite timeout avoids hanging on an unreachable foreign host.
-const noInterceptorAxios = axios.create({ timeout: 60_000 })
-
 export class CommonDataSource implements ICommonDataSource {
     blacklistAdd(uid: string): Promise<void> {
         return WKApp.apiClient.post(`user/blacklist/${uid}`)
@@ -546,57 +457,11 @@ export class CommonDataSource implements ICommonDataSource {
     favoritiesDelete(id: string): Promise<void> {
         return WKApp.apiClient.delete(`favorites/${id}`)
     }
-    userStickers(): Promise<{ list: StickerItem[] }> {
-        // 空集合后端返回 {list:[]}（不再 404）。仍兜底为 {list:[]} 以防网络异常。
-        return WKApp.apiClient.get(`sticker/user`).then((r) => ({ list: (r && r.list) || [] })).catch(() => ({ list: [] }))
+    userStickerCategory(): Promise<any> {
+        return WKApp.apiClient.get(`sticker/user/category`).catch(() => [])
     }
-    addSticker(req: { path: string; format: string; placeholder?: string }): Promise<StickerItem> {
-        return WKApp.apiClient.post(`sticker/user`, req)
-    }
-    collectSticker(req: { path: string; placeholder?: string; shortcode?: string; keywords?: string[] }): Promise<StickerItem> {
-        // 收藏他人贴纸：path 直接透传，后端从 path 推导 format，且按 path 幂等，
-        // 前端不需要（也不能）做重传或去重。错误分支由调用方按 error.code 处理。
-        return WKApp.apiClient.post(`sticker/user/collect`, req)
-    }
-    deleteSticker(stickerId: string): Promise<void> {
-        return WKApp.apiClient.delete(`sticker/user/${encodeURIComponent(stickerId)}`)
-    }
-    async uploadSticker(file: File): Promise<{ path: string; format: string }> {
-        // 两步上传：1) 申请上传地址（扩展名由文件名推导，服务端限定 gif/png/jpg/jpeg/webp）；
-        // 2) 直传文件本体。沿用本仓库既有的 multipart 上传约定（axios + token，
-        // 与头像/群头像/机器人头像上传一致）。
-        const meta: any = await WKApp.apiClient.get(`file/upload?type=sticker&filename=${encodeURIComponent(file.name)}`)
-        const uploadURL: string = meta && meta.url
-        if (!uploadURL) {
-            // internal error — surfaced to the user via the caller's localized Toast
-            throw new Error("failed to obtain sticker upload url")
-        }
-        const form = new FormData()
-        form.append("file", file)
-        const locationHref = typeof window !== "undefined" ? window.location.href : ""
-        const sameOrigin = !!locationHref && shouldAttachUploadToken(uploadURL, WKApp.apiClient.config.apiURL, locationHref)
-        // Same-origin (the real deployment): use the shared axios so the project
-        // request interceptor (APIClient) attaches the session token exactly as the
-        // avatar uploads do — the auth-gated endpoint needs it; behaviour unchanged.
-        // Foreign host (a URL the backend should never return): use the isolated
-        // instance with NONE of the project interceptors, so the global
-        // `axios.interceptors.request.use` token injection cannot re-add the
-        // credential and leak it cross-origin. Withholding the token at the call
-        // site alone was not enough — the interceptor re-added it regardless
-        // (PR#496 review: Jerry-Xin / OctoBoooot).
-        const client = sameOrigin ? axios : noInterceptorAxios
-        const resp = await client.post(uploadURL, form, {
-            headers: { "Content-Type": "multipart/form-data" },
-        })
-        const data: any = resp.data || {}
-        const path: string = data.path || ""
-        if (!path) {
-            // 200 但响应缺 path：视作上传失败，避免拿空 path 去 addSticker 产出坏贴纸
-            // （getFileURL("") → 裂图）。由调用方的本地化 Toast 兜底提示。
-            throw new Error("sticker upload returned no path")
-        }
-        const format = String(data.ext || "").replace(/^\./, "").toLowerCase()
-        return { path, format }
+    getStickers(category: string): Promise<any> {
+        return WKApp.apiClient.get(`sticker/user/sticker?category=${encodeURIComponent(category)}`).catch(() => [])
     }
     searchUser(keyword: string): Promise<any> {
         const spaceId = WKApp.shared.currentSpaceId

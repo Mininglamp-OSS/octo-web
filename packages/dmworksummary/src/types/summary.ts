@@ -81,24 +81,6 @@ export interface CitationItem {
     context_after?: CitationContextMessage[];
 }
 
-/**
- * 团队引用项（[Pn]）。语义上不同于普通引用 [n]：[Pn] 指向「人」（参与者），
- * 只有 user_name / user_id，没有消息内容 / 跳转上下文。和 CitationItem 是
- * 两个独立命名空间，不要混用编号。
- */
-export interface TeamCitationItem {
-    index: number;
-    user_id: string;
-    user_name: string;
-    /**
-     * V5/§6.2：作者单人报告便利字段。`[Pn]` 点击时优先用它直取作者的 personal
-     * result；缺省时回退到用 user_id 在已拉取的 members 列表里匹配。omitempty。
-     */
-    personal_result_id?: number;
-    /** V5/§6.2：作者单人报告所属的本轮 task。便利字段，omitempty。 */
-    task_id?: number;
-}
-
 /** 总结结果 */
 export interface SummaryResult {
     content: string;
@@ -108,7 +90,6 @@ export interface SummaryResult {
     version: number;
     generated_at: string | null;
     citations?: CitationItem[];
-    team_citations?: TeamCitationItem[];
 }
 
 /** 个人总结结果（BY_PERSON 模式） */
@@ -141,8 +122,6 @@ export interface SummaryListItem {
     trigger_type: number;
     /** 绑定的定时配置 id。存在即表示该总结是定时任务（无论是否已执行过）。 */
     schedule_id?: number | null;
-    /** 任务创建者 user_id。用于列表卡片区分「删除」(creator) vs「退出」(参与者)。 */
-    creator_id?: string;
     time_range_start: string;
     time_range_end: string;
     sources: SourceItem[];
@@ -170,8 +149,6 @@ export interface SummaryDetail {
     result: SummaryResult | null;
     error_message: string | null;
     schedule_id?: number | null;
-    /** 任务创建者 user_id。详情页区分 creator/participant 视角的移除/退出按钮。 */
-    creator_id?: string;
     origin_channel_id: string;
     origin_channel_type: number;
     created_at: string;
@@ -180,20 +157,7 @@ export interface SummaryDetail {
     result_edited_at?: string | null;
     result_is_edited?: boolean;
     permissions?: {
-        /** 旧字段，语义已迁移到 can_edit_team；前端勿用。 */
         can_edit: boolean;
-        /** 定时**设置**按钮（仅 creator）。 */
-        can_schedule?: boolean;
-        /** need4：团队总结编辑按钮（仅 creator，多人也放开）。 */
-        can_edit_team?: boolean;
-        /** need3：本人可编辑自己的个人报告（本人是 participant）。 */
-        can_edit_personal?: boolean;
-        /** need2：定时**信息**只读展示（任意 participant 可见）。 */
-        can_view_schedule?: boolean;
-        /** need7：添加成员入口（仅 creator）。 */
-        can_add_member?: boolean;
-        /** 移除成员入口（仅 creator）。 */
-        can_remove_member?: boolean;
     };
 }
 
@@ -231,21 +195,6 @@ export interface ListSummariesResponse {
     total: number;
 }
 
-/** 定时配置参与者（participant_config 内嵌，含 V5 一次性确认态） */
-export interface ScheduleParticipantConfigItem {
-    user_id: string;
-    /** V5：该成员是否已对本 schedule 完成一次性确认 */
-    confirmed?: boolean;
-    confirmed_at?: string | null;
-}
-
-/** 定时配置的 participant_config（GET /summary-schedules/:id 透出） */
-export interface ScheduleParticipantConfig {
-    participants?: ScheduleParticipantConfigItem[];
-    /** V5：首次确认门槛是否达成（全员确认） */
-    confirm_gate_passed?: boolean;
-}
-
 /** 定时配置 */
 export interface ScheduleItem {
     schedule_id: number;
@@ -266,18 +215,6 @@ export interface ScheduleItem {
     next_run_at: string | null;
     created_at: string;
     updated_at: string;
-    /**
-     * V5：确认策略。0=AUTO（无需确认）、1=CONFIRM（一次性确认）。
-     * 多人定时默认 1；后端 GET /summary-schedules/:id 响应携带。
-     * （confirm_lead_minutes 已废弃，不传不显示。）
-     */
-    confirm_policy?: number;
-    /**
-     * V5：内嵌确认名单（每个成员的 confirmed 态 + confirm_gate_passed）。
-     * GET /summary-schedules/:id 透出，前端据此判断当前用户是否仍需确认。
-     * 兼容旧纯数组（["u_a"]）：归一化由消费方处理。
-     */
-    participant_config?: ScheduleParticipantConfig | string[];
 }
 
 export interface CreateScheduleParams {
@@ -293,7 +230,7 @@ export interface CreateScheduleParams {
     run_time?: string;
     time_range_type: 1 | 2 | 3 | 4;
     sources: SourceItem[];
-    participants?: { user_id: string; user_name?: string }[];
+    participants?: { user_id: string }[];
     /**
      * scope='task' 让后端在一个事务里原子完成「建定时 + 绑定到 task_id」：
      * 校验 task 归属 → 建定时 → Update summary_task.schedule_id 绑定（一对一约束）。
@@ -302,11 +239,6 @@ export interface CreateScheduleParams {
     scope?: 'task';
     /** scope==='task' 时必填：把新建定时原子绑定到该 task。 */
     task_id?: number;
-    /**
-     * V5：确认策略。0=AUTO / 1=CONFIRM。多人定时场景传 1（一次性确认）；
-     * 后端 resolveCreateConfirmPolicy 有兜底。confirm_lead_minutes 已废弃，不传。
-     */
-    confirm_policy?: number;
 }
 
 export interface UpdateScheduleParams {
@@ -322,7 +254,7 @@ export interface UpdateScheduleParams {
     run_time?: string;
     time_range_type?: 1 | 2 | 3 | 4;
     sources?: SourceItem[];
-    participants?: { user_id: string; user_name?: string }[];
+    participants?: { user_id: string }[];
     /**
      * Plan A1: scope distinguishes the caller. "task" means a summary detail
      * page is editing the period of ONE summary — if the schedule is shared by
@@ -333,11 +265,6 @@ export interface UpdateScheduleParams {
     scope?: 'task';
     /** Required when scope === 'task': the task whose schedule_id is rebound. */
     task_id?: number;
-    /**
-     * V5：确认策略。0=AUTO / 1=CONFIRM。手动转定时/启用时多人场景传 1。
-     * confirm_lead_minutes 已废弃，不传。
-     */
-    confirm_policy?: number;
 }
 
 /** API 统一响应 */
@@ -412,11 +339,6 @@ export interface ScheduleConfig {
      * 转成「每 1 天」。用户改动周期字段后该标记清空。
      */
     legacyCron?: string;
-    /**
-     * V5：确认策略。0=AUTO / 1=CONFIRM（一次性确认）。多人定时设 1。
-     * scheduleToParams 仅在本字段存在时透传，不影响单人/旧调用方。
-     */
-    confirm_policy?: number;
 }
 
 /** 主题模板占位符 */

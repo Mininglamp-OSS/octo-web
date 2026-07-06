@@ -1,9 +1,8 @@
-import { Channel, ChannelTypeGroup, ChannelTypePerson, ConversationAction, WKSDK, Message, MessageContent, MessageStatus, Subscriber, Conversation, MessageExtra, CMDContent, PullMode, MessageContentType, MessageText, ChannelInfo, ChannelInfoListener, ConversationListener, ConnectStatus, ConnectStatusListener } from "wukongimjssdk";
+import { Channel, ChannelTypeGroup, ChannelTypePerson, ConversationAction, WKSDK, Message, MessageContent, MessageStatus, Subscriber, Conversation, MessageExtra, CMDContent, PullMode, MessageContentType, ChannelInfo, ChannelInfoListener, ConversationListener, ConnectStatus, ConnectStatusListener } from "wukongimjssdk";
 import WKApp from "../../App";
 import { SyncMessageOptions } from "../../Service/DataSource/DataProvider";
 import { MessageWrap } from "../../Service/Model";
 import { ProviderListener } from "../../Service/Provider";
-import { isConversationDisbanded } from "../../Utils/groupDisband";
 import { animateScroll, scroller } from 'react-scroll';
 import { EndpointID, MessageContentTypeConst, OrderFactor, ChannelTypeCommunityTopic } from "../../Service/Const";
 import moment from 'moment'
@@ -1047,25 +1046,12 @@ export default class ConversationVM extends ProviderListener {
         // 订阅 task 上传失败事件（module.tsx 全局触发，这里仅处理当前 channel）
         WKApp.mittBus.on("task-upload-failed", this._taskUploadFailedHandler)
 
-        // 订阅内置表情清单更新：清单异步到达后，已解析缓存的消息按新表(token→图/正则)
-        // 重新解析并重渲染一次，修复首屏竞态下新增服务端表情显示为裸 [xxx] 的问题。
-        WKApp.mittBus.on("emoji-manifest-updated", this._emojiManifestUpdatedHandler)
-
     }
     // task 上传失败通知处理器（module.tsx 的全局订阅 emit，这里接收并刷新 UI）
     private _taskUploadFailedHandler = (data: { channelKey: string }) => {
         if (data.channelKey === this.channel.getChannelKey()) {
             this.notifyListener()
         }
-    }
-
-    // 表情清单更新处理器：清空已渲染消息的解析缓存使其按新清单重解析，再重建渲染项并刷新。
-    private _emojiManifestUpdatedHandler = () => {
-        for (const m of this.messages) {
-            m.resetParts()
-        }
-        this.rebuildRenderItems()
-        this.notifyListener()
     }
 
     didUnMount(): void {
@@ -1087,7 +1073,6 @@ export default class ConversationVM extends ProviderListener {
         this.pendingMessages = [] // 清理缓冲区
 
         WKApp.mittBus.off("task-upload-failed", this._taskUploadFailedHandler)
-        WKApp.mittBus.off("emoji-manifest-updated", this._emojiManifestUpdatedHandler)
     }
 
     // 加载频道信息完成
@@ -1333,8 +1318,7 @@ export default class ConversationVM extends ProviderListener {
         }
         for (let i = this.messages.length - 1; i >= 0; i--) {
             const message = this.messages[i]
-            // 防御畸形消息：content 可能整体缺失（#465 保留了此类消息），用可选链避免读取 undefined.reply 崩溃。
-            if (message.content?.reply === undefined) {
+            if (message.content.reply === undefined) {
                 continue
             }
             if (message.content.reply.messageID && message.content.reply.messageID === extra.messageID) {
@@ -1880,16 +1864,6 @@ export default class ConversationVM extends ProviderListener {
 
     // 刷新消息列表
     refreshMessages(messages: MessageWrap[], callback?: () => void, options?: { allowFoldAnimation?: boolean }) {
-        // 单点归一（#465）：content 整体缺失的畸形消息（如 payload.type=text 但
-        // 解码失败）会让 SDK 的 Message.contentType getter 以及 MessageWrap 的
-        // flame / parts 解引用 undefined 而崩页，且这一步发生在下面排序 / 去重 /
-        // 渲染读取 contentType 之前。这里在任何 contentType 读取之前补一个空文本
-        // content，让畸形消息渲染成空气泡而非拖垮整个消息列表。
-        for (const m of messages) {
-            if (m.message.content == null) {
-                m.message.content = new MessageText("")
-            }
-        }
         let newMessages = messages
         // 渲染前先按 order（seq）排序，防止延迟推送/重连补推导致消息位置错乱
         newMessages = this.sortMessages(newMessages)
@@ -1900,11 +1874,7 @@ export default class ConversationVM extends ProviderListener {
         for (let i = 0; i < newMessages.length; i++) {
             const message = newMessages[i]
             if (message.contentType === MessageContentType.text) {
-                // 防御畸形文本消息：content 整体缺失时跳过，避免读取 undefined.text 崩溃（#465）。
-                const content = message.content
-                if (content) {
-                    content.text = ProhibitwordsService.shared.filter(content.text)
-                }
+                message.content.text = ProhibitwordsService.shared.filter(message.content.text)
             }
         }
         this.messages = this.genMessageLinkedData(newMessages)
@@ -2223,14 +2193,6 @@ export default class ConversationVM extends ProviderListener {
 
     // 发送消息
     async sendMessage(content: MessageContent, channel: Channel): Promise<Message> {
-        // 解散守卫（中央检查·最底层）：所有发送入口最终都汇到这里再调
-        // chatManager.send，因此守卫下沉到此处即可覆盖输入框发送、单条/逐条转发、
-        // 合并转发(sendMergeforward 直接调本方法，绕过组件层)、重发等全部路径。
-        // 群/子区解散后只读，直接 reject——合并转发的 per-target .catch 会把该目标
-        // 计入 failed、不影响其余目标；组件层 sendMessage/resendMessage 另有 toast。
-        if (isConversationDisbanded(channel)) {
-            return Promise.reject(new Error("group disbanded"))
-        }
         // 发送前注入两类业务字段（详细原因见 sendContentProxy.ts header）：
         //   1. space_id —— 仅 DM (ChannelTypePerson)，让 BotFather 等 Bot
         //      知道用户当前 Space (#784)。

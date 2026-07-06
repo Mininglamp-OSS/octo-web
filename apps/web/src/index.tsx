@@ -11,7 +11,6 @@ import {ContactsModule} from '@octo/contacts';
 import { MatterModule } from '@octo/todo';
 import { SummaryModule } from '@dmwork/summary';
 import { AppBotModule } from '@dmwork/appbot';
-import { DocsModule } from '@octo/docs';
 import { version as pkgVersion } from '../package.json';
 import appEnUS from './i18n/en-US.json';
 import appZhCN from './i18n/zh-CN.json';
@@ -72,7 +71,6 @@ WKApp.shared.registerModule(new ContactsModule()); // 联系模块
 WKApp.shared.registerModule(new MatterModule()); // Matter module
 WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块
 WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块
-WKApp.shared.registerModule(new DocsModule()); // Docs module
 
 WKApp.shared.startup() // app启动
 

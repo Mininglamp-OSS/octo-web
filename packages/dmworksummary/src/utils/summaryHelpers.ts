@@ -192,13 +192,8 @@ export function scheduleToParams(config: ScheduleConfig): {
     day_of_week: number;
     day_of_month: number;
     run_time: string;
-    confirm_policy?: number;
 } {
     const every = Math.max(1, Math.floor(config.every || 1));
-    // V5：仅在 ScheduleConfig 携带 confirm_policy 时透传（多人定时场景），
-    // 避免改变现有单人/旧调用方的返回形状。
-    const confirmPolicy =
-        config.confirm_policy !== undefined ? { confirm_policy: config.confirm_policy } : {};
     if (config.unit === "month") {
         return {
             cron_expr: "",
@@ -207,7 +202,6 @@ export function scheduleToParams(config: ScheduleConfig): {
             day_of_week: 0,
             day_of_month: config.dayOfMonth || 0,
             run_time: config.time,
-            ...confirmPolicy,
         };
     }
     const days = config.unit === "week" ? every * DAYS_PER_WEEK : every;
@@ -218,7 +212,6 @@ export function scheduleToParams(config: ScheduleConfig): {
         day_of_week: config.unit === "week" ? (config.dayOfWeek || 0) : 0,
         day_of_month: 0,
         run_time: config.time,
-        ...confirmPolicy,
     };
 }
 

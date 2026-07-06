@@ -92,16 +92,6 @@ export class Contacts {
     avatar!: string
 }
 
-// StickerItem 用户自定义贴纸（个人维度，扁平不分包）。category 恒为后端下发的
-// "user" 哨兵值，沿用 LottieSticker 消息体的 category 字段，发送链路无需改动。
-export interface StickerItem {
-    sticker_id: string
-    path: string
-    category: string
-    placeholder: string
-    format: string
-}
-
 export interface ICommonDataSource {
     imConnectAddr(): Promise<string> // im的连接地址
     imConnectAddrs(): Promise<string[]> // im的连接地址
@@ -144,37 +134,15 @@ export interface ICommonDataSource {
     searchUser(keyword: string): Promise<any>
 
     /**
-     * 当前用户的自定义贴纸列表（扁平，不分包）
+     * 用户贴图类别
      */
-    userStickers(): Promise<{ list: StickerItem[] }>
+    userStickerCategory(): Promise<any>
 
     /**
-     * 新增一张自定义贴纸（path 来自 uploadSticker）
+     * 通过类别获取表情 
+     * @param category 
      */
-    addSticker(req: { path: string; format: string; placeholder?: string }): Promise<StickerItem>
-
-    /**
-     * 收藏他人发送的贴纸到「我的贴纸」。path 直接取自贴纸消息，无需重新上传；
-     * 后端从 path 推导格式、不走上传 handle 校验，并按 path 幂等（重复收藏返回
-     * 已存在记录，不新增重复项、不占配额）。format/handle 不需要传。
-     *
-     * 错误码语义（按 error.code 判断，不看 HTTP status）：
-     *   - err.server.sticker.request_invalid：path 为空/非 sticker 路径/格式不支持
-     *   - err.server.sticker.quota_exceeded：我的贴纸已达上限
-     */
-    collectSticker(req: { path: string; placeholder?: string; shortcode?: string; keywords?: string[] }): Promise<StickerItem>
-
-    /**
-     * 删除当前用户的一张自定义贴纸
-     * @param stickerId
-     */
-    deleteSticker(stickerId: string): Promise<void>
-
-    /**
-     * 上传贴纸文件（type=sticker），返回存储 path 与格式
-     * @param file
-     */
-    uploadSticker(file: File): Promise<{ path: string; format: string }>
+    getStickers(category: string): Promise<any>
 
 
     /**
@@ -295,10 +263,9 @@ export interface IChannelDataSource {
 
     /**
      *  创建频道
-     * @param uids 成员 UID（创建者由服务端默认加入）
-     * @param options 可选：分组、群名、自定义头像文字/色板下标
+     * @param uids 
      */
-    createChannel(uids: string[], options?: { categoryId?: string; name?: string; avatarText?: string; avatarColor?: number }): Promise<any>
+    createChannel(uids: string[], options?: { categoryId?: string }): Promise<any>
 
     /**
      * 更新订阅者的属性
@@ -309,17 +276,9 @@ export interface IChannelDataSource {
 
     /**
      * 退出频道
-     * @param channel
+     * @param channel 
      */
     exitChannel(channel: Channel): Promise<void>
-
-    /**
-     * 解散群聊（仅群主可调用）。
-     * 企业微信式语义：后端保留频道/成员/历史，仅置 status=Disband 触发全员只读；
-     * 前端据此隐藏成员栏、置灰发送框/建子区。后端幂等（已解散再调返回 OK）。
-     * @param channel 群频道
-     */
-    groupDisband(channel: Channel): Promise<void>
 
     /**
      * 频道拥有者转移
@@ -366,21 +325,19 @@ export interface IChannelDataSource {
     updateGroupMd(channel: Channel, content: string): Promise<{ version: number }>
     deleteGroupMd(channel: Channel): Promise<void>
 
-    // 群入站 Webhook（octo-server incoming-webhooks #250/#254/#297/#340/#454）
+    // 群入站 Webhook（octo-server incoming-webhooks #250/#254/#297/#340）
     // 列表对任意群成员只读可见；其余操作的权限矩阵由服务端裁决（403/409）。
-    // 每个方法的可选尾参 threadShortId：留空＝群面（历史语义不变）；传入＝子区面
-    // （投递目标绑定到子区，作用域由服务端按 group_no+short_id 隔离，#451）。channel 始终传父群。
-    incomingWebhooks(channel: Channel, threadShortId?: string): Promise<IncomingWebhook[]>
+    incomingWebhooks(channel: Channel): Promise<IncomingWebhook[]>
     /** 创建。返回体里的 token / 推送 URL 仅此一次出现。 */
-    createIncomingWebhook(channel: Channel, req: IncomingWebhookUpsertReq, threadShortId?: string): Promise<IncomingWebhookCreateResp>
+    createIncomingWebhook(channel: Channel, req: IncomingWebhookUpsertReq): Promise<IncomingWebhookCreateResp>
     /** 部分更新（改名 / 启停；avatar 仅管理员），未传字段不变。 */
-    updateIncomingWebhook(channel: Channel, webhookId: string, req: IncomingWebhookUpsertReq, threadShortId?: string): Promise<IncomingWebhook>
+    updateIncomingWebhook(channel: Channel, webhookId: string, req: IncomingWebhookUpsertReq): Promise<IncomingWebhook>
     /** 软删除，token 立即失效。 */
-    deleteIncomingWebhook(channel: Channel, webhookId: string, threadShortId?: string): Promise<void>
+    deleteIncomingWebhook(channel: Channel, webhookId: string): Promise<void>
     /** 重置 token，旧 token 立即失效。新 token / URL 仅此一次返回。 */
-    regenerateIncomingWebhook(channel: Channel, webhookId: string, threadShortId?: string): Promise<IncomingWebhookCreateResp>
+    regenerateIncomingWebhook(channel: Channel, webhookId: string): Promise<IncomingWebhookCreateResp>
     /** 发送一条样例消息验证配置（不计入 call_count）。 */
-    testIncomingWebhook(channel: Channel, webhookId: string, threadShortId?: string): Promise<void>
+    testIncomingWebhook(channel: Channel, webhookId: string): Promise<void>
 
     // 子区 GROUP.md
     getThreadMd(groupNo: string, shortId: string): Promise<{ content: string; version: number }>

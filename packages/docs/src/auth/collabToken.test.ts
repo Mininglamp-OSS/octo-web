@@ -92,27 +92,6 @@ describe('collab-token cache', () => {
     await expect(getCollabTokenEntry('octo:s:f:d6')).rejects.toThrow(/invalid role/)
   })
 
-  it('passes through collabWsUrl when the backend provides it', async () => {
-    api.responder = () => ({
-      data: {
-        token: 'jwt-ws',
-        expiresAt: Date.now() + 60_000,
-        role: 'writer',
-        permission_epoch: 1,
-        collabWsUrl: 'wss://collab.prod.example.com',
-      },
-      status: 200,
-    })
-    const entry = await getCollabTokenEntry('octo:s:f:dws')
-    expect(entry.collabWsUrl).toBe('wss://collab.prod.example.com')
-  })
-
-  it('leaves collabWsUrl undefined when the backend omits the key', async () => {
-    api.responder = () => tokenResponse()
-    const entry = await getCollabTokenEntry('octo:s:f:dnows')
-    expect(entry.collabWsUrl).toBeUndefined()
-  })
-
   it('aborts the in-flight request on disposeToken', async () => {
     const abortSpy = vi.fn()
     api.responder = (_m, _u, _b, config) => {

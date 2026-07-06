@@ -3,13 +3,9 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import { I18nProvider } from "../../i18n";
-import FilePreviewPanel, {
-  FilePreviewInfo,
-  getExtension,
-} from "../FilePreviewPanel";
 import ChannelSearchPanel from "./index";
 import { mockChannelSearchDataSource } from "./ChannelSearch.stories.mock";
-import type { ChannelSearchFilters, ChannelSearchItem } from "./types";
+import type { ChannelSearchFilters } from "./types";
 
 const toSeconds = (value: string) =>
   Math.floor(new Date(value).getTime() / 1000);
@@ -139,75 +135,6 @@ const ChatSearchEntryPreview: React.FC<
   );
 };
 
-const extensionFromUrl = (url: string) => {
-  const path = url.split(/[?#]/)[0] || "";
-  const fileName = path.substring(path.lastIndexOf("/") + 1);
-  return getExtension("", fileName);
-};
-
-const MediaPreviewShell: React.FC<
-  React.ComponentProps<typeof ChannelSearchPanel>
-> = (args) => {
-  const [previewFile, setPreviewFile] = React.useState<FilePreviewInfo | null>(
-    null
-  );
-
-  const handlePreviewMedia = React.useCallback((item: ChannelSearchItem) => {
-    const media = item.media;
-    if (!media) return;
-    const url =
-      media.previewUrl ||
-      media.url ||
-      media.downloadUrl ||
-      (item.kind === "image" ? media.thumbUrl : "");
-    if (!url) return;
-    const extension =
-      extensionFromUrl(url) || (item.kind === "video" ? "mp4" : "jpg");
-    setPreviewFile({
-      url,
-      name: media.name || `${item.kind}-${item.messageSeq}.${extension}`,
-      extension,
-      category: item.kind,
-      posterUrl: media.thumbUrl || media.inlineThumbUrl,
-      width: media.width,
-      height: media.height,
-      duration: media.duration,
-      messageId: item.messageId,
-      messageSeq: item.messageSeq,
-      fromUID: item.senderUid,
-    });
-  }, []);
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        height: "100vh",
-        background: "var(--wk-bg-base)",
-      }}
-    >
-      <aside
-        style={{
-          width: 480,
-          height: "100vh",
-          borderRight: "1px solid var(--wk-border-subtle)",
-          background: "var(--wk-bg-surface)",
-        }}
-      >
-        <ChannelSearchPanel {...args} onPreviewMedia={handlePreviewMedia} />
-      </aside>
-      <section style={{ flex: 1, minWidth: 0, height: "100vh" }}>
-        {previewFile && (
-          <FilePreviewPanel
-            file={previewFile}
-            onClose={() => setPreviewFile(null)}
-          />
-        )}
-      </section>
-    </div>
-  );
-};
-
 async function waitForElement<T extends Element>(
   root: HTMLElement,
   selector: string
@@ -252,15 +179,13 @@ export const Default: Story = {
 };
 
 export const OpenEmpty: Story = {
-  name: "Open empty (no request)",
+  name: "Open default results",
   play: async ({ canvasElement }) => {
-    // Empty keyword + no filter on the default "all" tab must NOT fire a request
-    // until the backend explicitly supports all/message browse mode.
-    await waitForElement(canvasElement, ".wk-channel-search-empty");
-    if (canvasElement.querySelector(".wk-channel-search-result")) {
-      throw new Error(
-        "Expected empty keyword to render the empty state, not results"
-      );
+    await waitForElement(canvasElement, ".wk-channel-search-result-list");
+    if (
+      canvasElement.querySelectorAll(".wk-channel-search-result").length === 0
+    ) {
+      throw new Error("Expected empty keyword to browse default results");
     }
   },
 };
@@ -372,7 +297,7 @@ export const FilterApplied: Story = {
     if (
       canvasElement
         .querySelector(".wk-channel-search-filter-trigger")
-        ?.textContent?.trim() !== "筛选8"
+        ?.textContent?.trim() !== "筛选3"
     ) {
       throw new Error(
         "Expected filter trigger to show selected condition count"
@@ -502,29 +427,6 @@ export const MediaFilterOnly: Story = {
     ) {
       throw new Error("Expected media thumbnails to avoid name tooltips");
     }
-  },
-};
-
-export const MediaPreview: Story = {
-  name: "Media preview",
-  parameters: {
-    channelSearchShell: true,
-  },
-  args: {
-    initialState: {
-      activeTab: "media",
-      filters: mediaPreviewFilter,
-    },
-  },
-  render: (args) => <MediaPreviewShell {...args} />,
-  play: async ({ canvasElement }) => {
-    await waitForElement(canvasElement, ".wk-channel-search-media-grid");
-    const previewButton = await waitForElement<HTMLButtonElement>(
-      canvasElement,
-      ".wk-channel-search-media-preview-trigger"
-    );
-    await userEvent.click(previewButton);
-    await waitForElement(canvasElement, ".wk-file-preview-panel");
   },
 };
 
