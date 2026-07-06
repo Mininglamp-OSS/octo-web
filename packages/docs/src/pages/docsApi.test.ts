@@ -5,6 +5,7 @@ import {
   listDocs,
   createDoc,
   getDoc,
+  getUserName,
   updateDocTitle,
   deleteDoc,
   classifyDeleteStatus,
@@ -122,5 +123,30 @@ describe('classifyDeleteStatus / deleteErrorKey', () => {
     expect(deleteErrorKey('forbidden')).toBe('docs.doc.deleteForbidden')
     expect(deleteErrorKey('archived')).toBe('docs.doc.deleteArchived')
     expect(deleteErrorKey('failed')).toBe('docs.doc.deleteFailed')
+  })
+})
+
+describe('getUserName — creator name resolution + standalone privacy (blocker 5)', () => {
+  it('prefers the verified real_name by default (in-shell editor, unchanged behavior)', async () => {
+    api.responder = () => ({ data: { name: 'ada_nick', real_name: 'Ada Lovelace' }, status: 200 })
+    expect(await getUserName('u_owner')).toBe('Ada Lovelace')
+  })
+
+  it('returns the nickname only when preferRealName is false (standalone shared surface)', async () => {
+    // Privacy: a /d/:docId link holder must never see the creator's verified legal name.
+    api.responder = () => ({ data: { name: 'ada_nick', real_name: 'Ada Lovelace' }, status: 200 })
+    expect(await getUserName('u_owner', { preferRealName: false })).toBe('ada_nick')
+  })
+
+  it('falls back to the nickname when no real_name exists, in both modes', async () => {
+    api.responder = () => ({ data: { name: 'ada_nick' }, status: 200 })
+    expect(await getUserName('u_owner')).toBe('ada_nick')
+    expect(await getUserName('u_owner', { preferRealName: false })).toBe('ada_nick')
+  })
+
+  it('returns undefined when no usable name is present (menu falls back to a short uid)', async () => {
+    api.responder = () => ({ data: {}, status: 200 })
+    expect(await getUserName('u_owner')).toBeUndefined()
+    expect(await getUserName('u_owner', { preferRealName: false })).toBeUndefined()
   })
 })

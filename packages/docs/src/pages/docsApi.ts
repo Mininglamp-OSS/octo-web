@@ -98,14 +98,24 @@ export async function getDoc(docId: string): Promise<DocMeta> {
 /**
  * GET /api/v1/users/{uid} — resolve a uid to a human display name. Used by the header "more" menu
  * to render the document creator (the doc's ownerId) as a name instead of a raw uid. The host user
- * payload carries `name` (nickname) and, when the user is verified, `real_name`; we prefer the
- * verified real name and fall back to the nickname. Resilient by contract: it returns `undefined`
- * (never throws for the caller's happy path only — callers still wrap it) when no usable name is
- * present, so the menu can fall back to a short uid / placeholder without crashing.
+ * payload carries `name` (nickname) and, when the user is verified, `real_name`.
+ *
+ * By default (in-shell editor) we prefer the verified real name and fall back to the nickname.
+ * Pass `{ preferRealName: false }` to force the NICKNAME only and never expose `real_name` — the
+ * standalone `/d/:docId` page uses this because it is an externally shareable surface: anyone with
+ * the link would otherwise see the creator's verified legal name (privacy leak, boss decision).
+ *
+ * Resilient by contract: it returns `undefined` when no usable name is present, so the menu can
+ * fall back to a short uid / placeholder without crashing.
  */
-export async function getUserName(uid: string): Promise<string | undefined> {
+export async function getUserName(
+  uid: string,
+  opts: { preferRealName?: boolean } = {},
+): Promise<string | undefined> {
+  const { preferRealName = true } = opts
   const { data } = await apiClient().get<{ name?: string; real_name?: string }>(`/users/${uid}`)
-  const name = (data?.real_name || data?.name || '').trim()
+  const resolved = preferRealName ? data?.real_name || data?.name : data?.name
+  const name = (resolved || '').trim()
   return name || undefined
 }
 

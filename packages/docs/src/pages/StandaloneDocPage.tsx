@@ -48,7 +48,7 @@ export function isStandaloneDocPath(pathname: string): boolean {
 }
 
 /** Persist the current location so the post-login flow can bounce the user back to the doc link. */
-function persistStandaloneReturn(): void {
+export function persistStandaloneReturn(): void {
   if (typeof window === 'undefined') return
   try {
     window.sessionStorage.setItem(
@@ -61,6 +61,44 @@ function persistStandaloneReturn(): void {
   }
 }
 
+/**
+ * Whether a stashed return target is a SAFE same-origin relative path.
+ *
+ * Open-redirect guard: only accept a path that begins with a single `/` and is not a
+ * scheme-relative (`//host`) or backslash-smuggled (`/\host`, which some browsers normalize to
+ * `//host`) URL. This rejects absolute URLs (`https://evil`), scheme-relative URLs, and
+ * `javascript:`/`data:` payloads, so a tampered sessionStorage value can never bounce the user to
+ * an attacker origin after login.
+ */
+function isSafeReturnPath(path: string | null): path is string {
+  return (
+    typeof path === 'string' &&
+    path.length > 1 &&
+    path[0] === '/' &&
+    path[1] !== '/' &&
+    path[1] !== '\\'
+  )
+}
+
+/**
+ * Read and CLEAR the stashed standalone return target, returning it only when it is a safe
+ * same-origin relative path (see isSafeReturnPath). The post-login flow calls this to bounce a
+ * user who signed in from a `/d/:docId` link back to that exact document instead of the app root
+ * (AC-11). Always clears the key (even on an unsafe/absent value) so a stale target can't leak into
+ * a later, unrelated login. Returns null when nothing safe is stashed.
+ */
+export function consumeStandaloneReturn(): string | null {
+  if (typeof window === 'undefined') return null
+  let raw: string | null = null
+  try {
+    raw = window.sessionStorage.getItem(STANDALONE_RETURN_KEY)
+    window.sessionStorage.removeItem(STANDALONE_RETURN_KEY)
+  } catch {
+    return null
+  }
+  return isSafeReturnPath(raw) ? raw : null
+}
+
 /** Preserve the octo session id (`?sid=`) across an in-app navigation when present. */
 function withSid(path: string): string {
   if (typeof window === 'undefined') return path
@@ -71,6 +109,31 @@ function withSid(path: string): string {
   } catch {
     return path
   }
+}
+
+/**
+ * Resolve the fallback space for the standalone editor when the preflight carries no
+ * documentName to address from.
+ *
+ * The standalone page mounts via the host Layout's EARLY RETURN — before the app-shell logic that
+ * restores `currentSpaceId` from localStorage runs (Layout's Provider branch / Main's space
+ * bootstrap are both skipped). So on a cold-start cross-space deep link, `wk.shared.currentSpaceId`
+ * is still empty and falling straight to DEFAULT_DOC_SPACE would mount the EditorShell against the
+ * wrong room (`octo:<DEFAULT_DOC_SPACE>:f_default:docId`) → not-found / wrong document. Read the
+ * cached `currentSpaceId` localStorage key (the same key the shell persists) as the middle
+ * fallback so the shared link addresses the user's real last space, not the deploy default.
+ */
+export function standaloneFallbackSpace(currentSpaceId: string | undefined): string {
+  if (currentSpaceId) return currentSpaceId
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = window.localStorage.getItem('currentSpaceId')
+      if (cached) return cached
+    } catch {
+      // localStorage unavailable (private mode / disabled): fall back to the deploy default below.
+    }
+  }
+  return DEFAULT_DOC_SPACE
 }
 
 type Phase =
@@ -169,7 +232,7 @@ export function StandaloneDocPage({ docId }: { docId: string | null }): ReactEle
   // with the in-shell path). Space comes from the preflight documentName when available, else the
   // caller's current space. Derived from `phase` so it re-resolves once the doc meta lands.
   const addressing = useMemo(() => {
-    const fallbackSpace = wk.shared?.currentSpaceId || DEFAULT_DOC_SPACE
+    const fallbackSpace = standaloneFallbackSpace(wk.shared?.currentSpaceId)
     if (phase.status === 'ready' && phase.meta.documentName) {
       try {
         const parsed = parseDocumentName(phase.meta.documentName)
@@ -231,6 +294,7 @@ export function StandaloneDocPage({ docId }: { docId: string | null }): ReactEle
         user={{ id: uid, name: names.get(uid) || uid }}
         onBack={onBack}
         moreMenuLeadItems={moreMenuLeadItems}
+        creatorNicknameOnly
       />
       {/* Menu-external "Link copied" toast. Lives outside EditorShell (and thus outside the ≡ menu
           panel that unmounts on selection), so the confirmation stays visible after the menu closes.

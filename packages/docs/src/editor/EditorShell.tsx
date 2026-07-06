@@ -74,6 +74,14 @@ export interface EditorShellProps extends CollabEditorOptions {
    * to pin its "Copy link" action as the first menu item, having dropped its resident header button.
    */
   moreMenuLeadItems?: DocMoreMenuItem[]
+  /**
+   * When true, resolve the creator display name from the NICKNAME only, never the verified
+   * `real_name`. Opt-in: defaults to false so the in-shell editor keeps preferring the real name
+   * (AC non-regression). The standalone `/d/:docId` page sets this because it is an externally
+   * shareable surface — showing the creator's legal name to any link holder is a privacy leak
+   * (boss decision).
+   */
+  creatorNicknameOnly?: boolean
 }
 
 /**
@@ -245,7 +253,7 @@ function DocTitle({
 
 /** Page shell (frontend-design §3.1): title / toolbar / content / presence + right-side drawer. */
 export function EditorShell(props: EditorShellProps) {
-  const { title, onBack, onExit, onTitleSaved, onDeleted, headerRight, onOpenInNewPage, moreMenuLeadItems, ...collabOpts } =
+  const { title, onBack, onExit, onTitleSaved, onDeleted, headerRight, onOpenInNewPage, moreMenuLeadItems, creatorNicknameOnly, ...collabOpts } =
     props
   const docId = props.docId
   const { instance, ready, role, connState, terminal } = useCollabEditor(collabOpts)
@@ -300,7 +308,9 @@ export function EditorShell(props: EditorShellProps) {
       return
     }
     let cancelled = false
-    getUserName(ownerId)
+    // On the standalone (externally shared) surface, resolve the nickname only — never leak the
+    // creator's verified real name to a link holder. In-shell keeps the real-name preference.
+    getUserName(ownerId, { preferRealName: !creatorNicknameOnly })
       .then((name) => {
         if (!cancelled && name) setCreatorName(name)
       })
@@ -310,7 +320,7 @@ export function EditorShell(props: EditorShellProps) {
     return () => {
       cancelled = true
     }
-  }, [ownerId, names])
+  }, [ownerId, names, creatorNicknameOnly])
 
   // C4 (#5): reset the drawer whenever the document changes. The shell is keyed by docId in
   // DocsHome (so it already remounts), but this makes the reset explicit and robust if the key

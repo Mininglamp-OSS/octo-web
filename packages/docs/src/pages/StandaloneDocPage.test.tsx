@@ -10,9 +10,17 @@ import type { DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 // Hocuspocus — i.e. with NO WebSocket dependency. The marker echoes the docId it was addressed
 // with and renders the ≡ "more" menu lead rows (Copy link) the page injected as clickable buttons.
 vi.mock('../editor/EditorShell.tsx', () => ({
-  EditorShell: (props: { docId: string; onBack?: () => void; moreMenuLeadItems?: DocMoreMenuItem[] }) => (
+  EditorShell: (props: {
+    docId: string
+    space?: string
+    onBack?: () => void
+    moreMenuLeadItems?: DocMoreMenuItem[]
+    creatorNicknameOnly?: boolean
+  }) => (
     <div data-testid="editor-shell">
       <span data-testid="editor-doc">{props.docId}</span>
+      <span data-testid="editor-space">{props.space}</span>
+      <span data-testid="editor-creator-nickname-only">{String(!!props.creatorNicknameOnly)}</span>
       <ul data-testid="editor-more-lead">
         {(props.moreMenuLeadItems ?? []).map((it) => (
           <li key={it.key}>
@@ -36,6 +44,9 @@ import {
   StandaloneDocPage,
   parseStandaloneDocId,
   isStandaloneDocPath,
+  standaloneFallbackSpace,
+  persistStandaloneReturn,
+  consumeStandaloneReturn,
   STANDALONE_RETURN_KEY,
 } from './StandaloneDocPage.tsx'
 
@@ -48,6 +59,7 @@ let wk: ReturnType<typeof createMockWKApp>
 
 beforeEach(() => {
   window.sessionStorage.clear()
+  window.localStorage.clear()
   wk = createMockWKApp()
   setWKApp(wk)
 })
@@ -56,6 +68,7 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   window.sessionStorage.clear()
+  window.localStorage.clear()
 })
 
 describe('parseStandaloneDocId', () => {
@@ -265,5 +278,111 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     // The dead in-row "copied" label is gone: the menu row label stays the action name, never flips.
     expect(screen.getByTestId('lead-copy-link').textContent).toContain('docs.standalone.copyLink')
     expect(screen.getByTestId('lead-copy-link').textContent).not.toContain('docs.standalone.linkCopied')
+  })
+})
+
+describe('standaloneFallbackSpace — cold-start cross-space addressing (blocker 3)', () => {
+  it('prefers the live currentSpaceId when the shell has one', () => {
+    window.localStorage.setItem('currentSpaceId', 's_cached')
+    expect(standaloneFallbackSpace('s_live')).toBe('s_live')
+  })
+
+  it('falls back to the cached localStorage currentSpaceId when the shell has none', () => {
+    // The standalone page mounts via the Layout early-return, BEFORE the shell restores
+    // currentSpaceId — so wk.shared.currentSpaceId is empty on a cold cross-space deep link. The
+    // cached key is the user's real last space; using it avoids addressing the wrong room.
+    window.localStorage.setItem('currentSpaceId', 's_cached')
+    expect(standaloneFallbackSpace('')).toBe('s_cached')
+    expect(standaloneFallbackSpace(undefined)).toBe('s_cached')
+  })
+
+  it('falls back to the deploy default only when neither is available', () => {
+    expect(standaloneFallbackSpace('')).toBe('demo') // DEFAULT_DOC_SPACE
+  })
+})
+
+describe('StandaloneDocPage — cold-start addressing uses the cached space, not the deploy default (blocker 3)', () => {
+  it('addresses the EditorShell to the cached currentSpaceId when the preflight carries no documentName', async () => {
+    // Repro: 200 preflight WITHOUT documentName + a cached currentSpaceId in localStorage. Before
+    // the fix the page addressed DEFAULT_DOC_SPACE ("demo"), mounting the editor against the wrong
+    // room. It must instead use the cached space so the shared doc opens in the right space.
+    window.localStorage.setItem('currentSpaceId', 's_real')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        // No documentName in the payload → the addressing memo hits the fallback branch.
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(screen.getByTestId('editor-space').textContent).toBe('s_real')
+    expect(screen.getByTestId('editor-space').textContent).not.toBe('demo')
+  })
+})
+
+describe('standalone return target — open-redirect-safe post-login bounce (blocker 4)', () => {
+  it('round-trips a safe same-origin /d/:docId target through persist → consume', () => {
+    window.history.pushState({}, '', '/d/d_abc?sid=xyz')
+    persistStandaloneReturn()
+    expect(window.sessionStorage.getItem(STANDALONE_RETURN_KEY)).toBe('/d/d_abc?sid=xyz')
+    expect(consumeStandaloneReturn()).toBe('/d/d_abc?sid=xyz')
+    // Consumed once — the key is cleared so a later unrelated login can't inherit a stale target.
+    expect(window.sessionStorage.getItem(STANDALONE_RETURN_KEY)).toBeNull()
+    expect(consumeStandaloneReturn()).toBeNull()
+  })
+
+  it('rejects open-redirect payloads and still clears the key', () => {
+    const hostile = [
+      '//evil.example.com', // scheme-relative → off-origin
+      '/\\evil.example.com', // backslash-smuggled → some browsers normalize to //evil
+      'https://evil.example.com/d/x', // absolute URL
+      'javascript:alert(1)', // script payload
+      'd/relative', // not rooted at /
+      '', // empty
+      '/', // bare root carries no doc target
+    ]
+    for (const bad of hostile) {
+      window.sessionStorage.setItem(STANDALONE_RETURN_KEY, bad)
+      expect(consumeStandaloneReturn()).toBeNull()
+      // Even a rejected value is cleared, so it can't leak into a subsequent login.
+      expect(window.sessionStorage.getItem(STANDALONE_RETURN_KEY)).toBeNull()
+    }
+  })
+
+  it('AC-11 anonymous entry: the sign-in terminal stashes a safe, consumable return target', async () => {
+    window.history.pushState({}, '', '/d/d_locked_out')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_locked_out') throw { response: { status: 401 } }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_locked_out" />)
+
+    await waitFor(() =>
+      expect(screen.getByText('docs.error.permission.login')).toBeTruthy(),
+    )
+    // The stashed target is a safe relative path that the post-login flow can bounce back to.
+    expect(consumeStandaloneReturn()).toBe('/d/d_locked_out')
+  })
+})
+
+describe('StandaloneDocPage — creator name is nickname-only on the shared surface (blocker 5)', () => {
+  it('tells the EditorShell to resolve the creator from the nickname, never the verified real name', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    // The standalone page is an externally shareable surface: it must NOT expose the creator's
+    // verified real_name to a link holder. It flags the shell to use the nickname only.
+    expect(screen.getByTestId('editor-creator-nickname-only').textContent).toBe('true')
   })
 })

@@ -13,8 +13,8 @@ import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
-import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath } from "@octo/docs";
-import { findStoredSession } from "./recoverSession";
+import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn } from "@octo/docs";
+import { adoptStoredSession } from "./recoverSession";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -33,12 +33,12 @@ interface AppLayoutState {
  */
 function recoverOctoSessionFromStorage(): void {
     if (WKApp.loginInfo.token) return;
-    const session = findStoredSession(localStorage);
-    if (session) {
-        WKApp.loginInfo.token = session.token;
-        WKApp.loginInfo.uid = session.uid;
-        WKApp.loginInfo.name = session.name;
-    }
+    // Adopt AND persist: adoptStoredSession writes the recovered session back to the current
+    // (empty-sid) bucket via loginInfo.save(), so a later no-sid navigation (e.g. the standalone
+    // page's Back → /docs) reloads an authenticated session instead of bouncing to login. The
+    // scan itself lives in findStoredSession (pure + unit-tested); adoptStoredSession is a no-op
+    // when a token is already present or none is stored (a genuinely anonymous visitor).
+    adoptStoredSession(WKApp.loginInfo, localStorage);
 }
 
 export default class AppLayout extends Component<{}, AppLayoutState> {
@@ -85,6 +85,19 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             const sidParam = existingSid ? `?sid=${existingSid}` : ""
 
             const goMain = () => {
+                // A user who signed in from a shared /d/:docId link (local OR SSO/OIDC, where the
+                // IdP returnTo lands back on /login) has a stashed standalone target — bounce them
+                // back to that exact document instead of the app root. consumeStandaloneReturn
+                // clears the key and only returns SAFE same-origin relative paths (open-redirect
+                // guard), so a tampered value can never redirect off-origin. No sid is appended: the
+                // reloaded /d/:docId re-establishes the session via recoverOctoSessionFromStorage
+                // (which now persists into the no-sid bucket), and re-appending could double a sid
+                // already present in the stored target.
+                const standaloneReturn = consumeStandaloneReturn();
+                if (standaloneReturn) {
+                    window.location.assign(standaloneReturn)
+                    return
+                }
                 if ((window as any).__POWERED_EXTENSION__) {
                     window.location.reload()
                     return
@@ -308,6 +321,12 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 const standaloneDocId = parseStandaloneDocId(window.location.pathname);
                 return <StandaloneDocPage docId={standaloneDocId} />;
             }
+            // Anonymous: stash the exact /d/:docId target so the post-login flow (local OR SSO/OIDC)
+            // can bounce the user back to the document instead of the app root, then fall through to
+            // the login screen (below) without navigating away. The standalone page itself only
+            // mounts once a token exists, so the anonymous path is the ONLY place this key gets
+            // written for a first-time visitor — onLogin consumes it via consumeStandaloneReturn.
+            persistStandaloneReturn();
             // Anonymous: fall through to the login screen (below) without navigating away.
         }
 
