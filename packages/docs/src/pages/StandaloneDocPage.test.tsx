@@ -1,19 +1,27 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor, cleanup } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
+import type { DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 
 // Replace the heavy collaborative editor with a lightweight marker. This is the crux of the
 // AC-12 acceptance: the standalone page's boundary states are driven entirely by the GET
 // /api/v1/docs/{docId} PREFLIGHT, so they must render WITHOUT ever mounting Tiptap/Yjs/
 // Hocuspocus — i.e. with NO WebSocket dependency. The marker echoes the docId it was addressed
-// with and renders whatever headerRight (Copy link) the page injected.
+// with and renders the ≡ "more" menu lead rows (Copy link) the page injected as clickable buttons.
 vi.mock('../editor/EditorShell.tsx', () => ({
-  EditorShell: (props: { docId: string; onBack?: () => void; headerRight?: ReactNode }) => (
+  EditorShell: (props: { docId: string; onBack?: () => void; moreMenuLeadItems?: DocMoreMenuItem[] }) => (
     <div data-testid="editor-shell">
       <span data-testid="editor-doc">{props.docId}</span>
-      <div data-testid="editor-header-right">{props.headerRight}</div>
+      <ul data-testid="editor-more-lead">
+        {(props.moreMenuLeadItems ?? []).map((it) => (
+          <li key={it.key}>
+            <button data-testid={`lead-${it.key}`} onClick={it.onClick}>
+              {it.label}
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   ),
 }))
@@ -175,7 +183,7 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     expect(wk.apiClient.calls.some((c) => c.url.startsWith('/docs/'))).toBe(false)
   })
 
-  it('mounts the editor with Copy link injected (no "Open in App") when the preflight succeeds', async () => {
+  it('mounts the editor with Copy link pinned as the first ≡ menu row (no resident button, no "Open in App")', async () => {
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url === '/docs/d_ok') {
         return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
@@ -187,11 +195,39 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
 
     await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
     expect(screen.getByTestId('editor-doc').textContent).toBe('d_ok')
-    // The standalone chrome is injected via EditorShell's headerRight prop.
-    const right = screen.getByTestId('editor-header-right')
-    expect(right.textContent).toContain('docs.standalone.copyLink')
+
+    // AC-2: Copy link is collapsed into the header ≡ "more" menu as its first (top) row — the
+    // page injects it via EditorShell's moreMenuLeadItems, not a resident title-bar button.
+    const lead = screen.getByTestId('editor-more-lead')
+    const rows = lead.querySelectorAll('button')
+    expect(rows.length).toBe(1)
+    expect(rows[0].getAttribute('data-testid')).toBe('lead-copy-link')
+    expect(rows[0].textContent).toContain('docs.standalone.copyLink')
+
+    // AC-1: no resident "Copy link" button remains in the standalone chrome.
+    expect(screen.queryByText('docs.standalone.copyLink', { selector: '.octo-doc-copy-link' })).toBeNull()
     // The reverse "Open in App" exit was removed (boss change): standalone links are opened from
     // an external chat, not from inside the shell, so there is nothing to return to.
-    expect(right.textContent).not.toContain('docs.standalone.openInApp')
+    expect(lead.textContent).not.toContain('docs.standalone.openInApp')
+  })
+
+  it('AC-3: clicking the Copy link menu row copies the current URL to the clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('lead-copy-link')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('lead-copy-link'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+    expect(writeText).toHaveBeenCalledWith(window.location.href)
   })
 })

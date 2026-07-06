@@ -78,6 +78,14 @@ export const OpenNewPageIcon = (
   </RowIcon>
 )
 
+/** 🔗 copy link (chain). */
+export const LinkIcon = (
+  <RowIcon>
+    <path d="M8.5 11.5a3 3 0 0 0 4.24 0l2-2a3 3 0 0 0-4.24-4.24l-1 1" />
+    <path d="M11.5 8.5a3 3 0 0 0-4.24 0l-2 2a3 3 0 0 0 4.24 4.24l1-1" />
+  </RowIcon>
+)
+
 /** 🕐 version history (clock). */
 export const HistoryIcon = (
   <RowIcon>

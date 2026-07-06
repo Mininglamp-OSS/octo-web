@@ -51,6 +51,25 @@ describe('DocMoreMenu', () => {
     expect(screen.queryByText('Delete document')).toBeNull()
   })
 
+  it('renders neutral rows top-to-bottom in the given order (first item is the first row)', () => {
+    // Locks the ordering the standalone page relies on: a lead row (e.g. Copy link) prepended by
+    // the host lands as the FIRST menu row (AC-2).
+    render(
+      <DocMoreMenu
+        creatorName="Alice"
+        items={[
+          { key: 'copy-link', label: 'Copy link', icon: null, onClick: vi.fn() },
+          ...items,
+        ]}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'docs.toolbar.more' }))
+    const labels = Array.from(document.querySelectorAll('.octo-doc-more-label')).map(
+      (n) => n.textContent,
+    )
+    expect(labels).toEqual(['Copy link', 'Open in new page', 'Version history'])
+  })
+
   it('closes on an outside pointer-down', () => {
     render(
       <div>

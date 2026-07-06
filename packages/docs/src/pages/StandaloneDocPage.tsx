@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { getWKApp, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
+import { LinkIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { terminalForCreateError } from '../collab/useCollabEditor.ts'
 import { getDoc, type DocMeta } from './docsApi.ts'
 import { parseDocumentName } from '../documentName/index.ts'
@@ -83,6 +84,10 @@ type Phase =
  * (AC-5/6) and only adds the standalone chrome: a Back control and "Copy link". Sharing a link is
  * the whole point of a standalone view, so there is no "back into the app" action — users arrive
  * here from an external chat link, not from inside the shell.
+ *
+ * "Copy link" is collapsed into the header's ≡ "more" menu (as its top row) rather than sitting as a
+ * resident title-bar button, keeping the standalone header as trim as the in-shell one. The clipboard
+ * behaviour is unchanged — only its position moved.
  *
  * A GET /api/v1/docs/{docId} preflight runs BEFORE the collaborative editor mounts. This is the
  * single deterministic gate for every boundary state, and it needs no WebSocket:
@@ -194,17 +199,17 @@ export function StandaloneDocPage({ docId }: { docId: string | null }): ReactEle
   // In the ready phase the addressed id is guaranteed non-null (a null id short-circuits to the
   // not-found terminal above); prefer the id echoed by the preflight, falling back to it.
   const editorDocId = meta.docId || (docId as string)
-  const headerRight = (
-    <div className="octo-doc-standalone-actions">
-      <button
-        type="button"
-        className="octo-tb-btn octo-doc-copy-link"
-        onClick={() => void onCopyLink()}
-      >
-        🔗 {copied ? t('docs.standalone.linkCopied') : t('docs.standalone.copyLink')}
-      </button>
-    </div>
-  )
+  // "Copy link" as the first row of the header ≡ "more" menu (it used to be a resident title-bar
+  // button). The label carries the same transient "Link copied" feedback the button had, driven by
+  // the unchanged onCopyLink clipboard logic below.
+  const moreMenuLeadItems: DocMoreMenuItem[] = [
+    {
+      key: 'copy-link',
+      label: copied ? t('docs.standalone.linkCopied') : t('docs.standalone.copyLink'),
+      icon: LinkIcon,
+      onClick: () => void onCopyLink(),
+    },
+  ]
 
   return (
     <div className="octo-doc-standalone">
@@ -218,7 +223,7 @@ export function StandaloneDocPage({ docId }: { docId: string | null }): ReactEle
         doc={addressing.doc}
         user={{ id: uid, name: names.get(uid) || uid }}
         onBack={onBack}
-        headerRight={headerRight}
+        moreMenuLeadItems={moreMenuLeadItems}
       />
     </div>
   )

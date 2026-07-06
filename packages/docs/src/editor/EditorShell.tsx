@@ -67,6 +67,13 @@ export interface EditorShellProps extends CollabEditorOptions {
    * doesn't render there.
    */
   onOpenInNewPage?: () => void
+  /**
+   * Extra rows prepended to the TOP of the header's ≡ "more" menu (in the given order), before the
+   * built-in open-in-new-page / history / export rows. Opt-in: when omitted the menu renders exactly
+   * as before, so the in-shell path is unchanged (AC-4 non-regression). The standalone page uses this
+   * to pin its "Copy link" action as the first menu item, having dropped its resident header button.
+   */
+  moreMenuLeadItems?: DocMoreMenuItem[]
 }
 
 /**
@@ -238,7 +245,7 @@ function DocTitle({
 
 /** Page shell (frontend-design §3.1): title / toolbar / content / presence + right-side drawer. */
 export function EditorShell(props: EditorShellProps) {
-  const { title, onBack, onExit, onTitleSaved, onDeleted, headerRight, onOpenInNewPage, ...collabOpts } =
+  const { title, onBack, onExit, onTitleSaved, onDeleted, headerRight, onOpenInNewPage, moreMenuLeadItems, ...collabOpts } =
     props
   const docId = props.docId
   const { instance, ready, role, connState, terminal } = useCollabEditor(collabOpts)
@@ -414,11 +421,14 @@ export function EditorShell(props: EditorShellProps) {
   const editor = instance.editor
   const manage = role ? canManage(role) : false
 
-  // "More" (≡) menu contents. Order is fixed per spec: open-in-new-page → version history →
-  // export, with delete pinned last (below a separator) as the destructive row. The open-in-new-
-  // page row only appears when the host wired the handler (in-shell path), never on the standalone
-  // page itself.
+  // "More" (≡) menu contents. Order is fixed per spec: [caller-provided lead rows] → open-in-new-
+  // page → version history → export, with delete pinned last (below a separator) as the destructive
+  // row. Lead rows come from the host (e.g. the standalone page's "Copy link"); they sit at the very
+  // top so a standalone page — which never wires open-in-new-page — shows Copy link as the first row.
+  // The open-in-new-page row only appears when the host wired the handler (in-shell path), never on
+  // the standalone page itself.
   const moreItems: DocMoreMenuItem[] = []
+  if (moreMenuLeadItems?.length) moreItems.push(...moreMenuLeadItems)
   if (onOpenInNewPage) {
     moreItems.push({
       key: 'open-new-page',
