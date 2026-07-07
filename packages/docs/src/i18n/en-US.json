@@ -302,6 +302,7 @@
     "entry": "Forward to chat",
     "modalTitle": "Forward to chat",
     "grantDisabledReason": "Only the document admin can grant access when forwarding.",
+    "forbiddenTitle": "You don't have access to this document",
     "accessHint": "You can request access from the document admin.",
     "requestAccess": "Request access",
     "requesting": "Requesting…",

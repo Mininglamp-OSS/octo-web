@@ -302,6 +302,7 @@
     "entry": "转发到聊天",
     "modalTitle": "转发到聊天",
     "grantDisabledReason": "仅文档管理员可在转发时授权。",
+    "forbiddenTitle": "无法访问此文档",
     "accessHint": "可向文档管理员申请访问权限。",
     "requestAccess": "申请访问",
     "requesting": "申请中…",

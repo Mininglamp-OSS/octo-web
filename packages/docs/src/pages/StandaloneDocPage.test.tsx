@@ -142,8 +142,11 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     )
     // The editor (and its WS transport) is never mounted on the archived path.
     expect(screen.queryByTestId('editor-shell')).toBeNull()
-    // Only a Back affordance is offered (no Share / Request access).
-    expect(screen.getByText(/docs\.list\.back/)).toBeTruthy()
+    // No "back to all documents" link: a standalone /d/:docId share page is a self-contained
+    // surface with no resident list to return to, so every terminal drops Back (XIN-505). No
+    // Request access either — that is scoped to the forbidden landing.
+    expect(screen.queryByText(/docs\.list\.back/)).toBeNull()
+    expect(screen.queryByText('docs.forward.requestAccess')).toBeNull()
   })
 
   it('AC-7: a GET 403 renders the access-denied terminal, editor not mounted', async () => {
@@ -177,6 +180,12 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     )
     // The reused RequestAccessButton (its hint + action) is present on the forbidden landing.
     expect(screen.getByText('docs.forward.requestAccess')).toBeTruthy()
+    // XIN-505 redesign: the landing shows a non-misleading heading instead of a fake "Untitled
+    // document" title, and offers no "back to all documents" link (a share page has no list to
+    // return to). The reason line is still shown.
+    expect(screen.getByText('docs.forward.forbiddenTitle')).toBeTruthy()
+    expect(screen.queryByText('docs.state.untitled')).toBeNull()
+    expect(screen.queryByText(/docs\.list\.back/)).toBeNull()
     // Clicking POSTs the access request for THIS doc (idempotency enforced server-side).
     fireEvent.click(screen.getByText('docs.forward.requestAccess'))
     await waitFor(() =>

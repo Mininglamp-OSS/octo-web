@@ -155,16 +155,28 @@ export function withReturnSid(target: string, sid: string | null | undefined): s
   }
 }
 
-/** Preserve the octo session id (`?sid=`) across an in-app navigation when present. */
-function withSid(path: string): string {
-  if (typeof window === 'undefined') return path
-  try {
-    const sid = new URLSearchParams(window.location.search).get('sid')
-    if (!sid) return path
-    return path + (path.includes('?') ? '&' : '?') + `sid=${encodeURIComponent(sid)}`
-  } catch {
-    return path
-  }
+/**
+ * Lock glyph for the forbidden landing (XIN-505). 24×24 line icon, stroke inherits `currentColor`
+ * so the surrounding icon chip drives its colour — mirrors the line-icon style used elsewhere in
+ * the docs package (DocMoreMenu).
+ */
+function LockIcon(): ReactElement {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="28"
+      height="28"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+      <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+    </svg>
+  )
 }
 
 /**
@@ -239,8 +251,8 @@ type Phase =
  * standalone view, so the loaded editor offers no "back to all documents" return link (XIN-416, boss
  * real-device acceptance) — users arrive here from an external chat link, not from inside the shell,
  * and a pure share page needs no entry back into the doc list. The page therefore passes NO onBack to
- * EditorShell; the preflight error terminals (below) keep their own Back affordance as an escape
- * hatch out of a not-found / forbidden / locked dead end.
+ * EditorShell; for the same reason the preflight error terminals (below) also render without a Back
+ * link (XIN-505) — a share surface has no resident list to return to.
  *
  * "Copy link" is collapsed into the header's ≡ "more" menu (as its top row) rather than sitting as a
  * resident title-bar button, keeping the standalone header as trim as the in-shell one. The clipboard
@@ -253,8 +265,9 @@ type Phase =
  * single deterministic gate for every boundary state, and it needs no WebSocket:
  *   - 200          -> mount the editor.
  *   - 403 forbidden (AC-7), 404 not-found (AC-10), 401 login (AC-11), 409 locked/archived (AC-12)
- *     -> render the matching terminal screen (Back only). 409 is the archived signal the
- *     collab-token path never reports, which is exactly why the preflight exists.
+ *     -> render the matching terminal screen (a centered card; the forbidden landing adds Request
+ *     access, XIN-505). 409 is the archived signal the collab-token path never reports, which is
+ *     exactly why the preflight exists.
  *
  * `docId` is nullable: the host Layout claims the whole `/d` namespace, so a malformed / empty id
  * (`/d/`, `/d/a:b`) arrives here as null and short-circuits to the not-found terminal instead of
@@ -375,16 +388,6 @@ export function StandaloneDocPage({
     [],
   )
 
-  // Back / return-to-list handler for the preflight ERROR terminals only (not-found / forbidden /
-  // locked / login). The loaded editor view intentionally has no back link (XIN-416); this remains
-  // wired to DocTerminal so a user who lands on a dead-end error screen still has an escape hatch to
-  // the in-shell docs home. From a full-window standalone view there is no resident list to fall
-  // back to, so route to the in-shell docs home (the natural "all documents" destination), carrying
-  // the session sid when present.
-  const onBack = useCallback(() => {
-    if (typeof window !== 'undefined') window.location.assign(withSid('/docs'))
-  }, [])
-
   const onCopyLink = useCallback(async () => {
     if (typeof window === 'undefined') return
     try {
@@ -438,17 +441,38 @@ export function StandaloneDocPage({
   }
 
   if (phase.status === 'terminal') {
+    // Standalone share-page terminals render as a centered card in the product's design language
+    // (XIN-505 boss real-device requirements). A `/d/:docId` link is a self-contained share surface
+    // for external recipients, not an in-app list view, so NO terminal offers a "back to all
+    // documents" link (the loaded editor already omits Back per XIN-416; the terminals now match).
+    // The in-shell EditorShell renders its OWN inline terminal markup and is untouched by this
+    // branch, so this redesign cannot affect the in-shell scenario.
+    if (phase.kind === 'forbidden' && docId) {
+      // Forbidden landing (feature #511 screen 4c): a lock glyph, a non-misleading heading — NOT a
+      // fake "Untitled document" title, since a recipient without permission cannot know the real
+      // title — the reason line, and the reused RequestAccessButton whose action is the centered
+      // primary CTA. docId is guaranteed non-null here: a null id short-circuits to the not-found
+      // terminal before any preflight runs, so it can never reach a forbidden terminal.
+      return (
+        <div className="octo-doc-standalone octo-doc-standalone--terminal">
+          <div className="octo-standalone-card octo-standalone-forbidden" role="alert">
+            <span className="octo-standalone-forbidden-icon" aria-hidden="true">
+              <LockIcon />
+            </span>
+            <h1 className="octo-standalone-card-title">{t('docs.forward.forbiddenTitle')}</h1>
+            <p className="octo-standalone-card-msg">{t('docs.error.permission.forbidden')}</p>
+            <RequestAccessButton docId={docId} />
+          </div>
+        </div>
+      )
+    }
+    // not-found / locked / login: the shared DocTerminal, centered in the same card, with no Back
+    // link (onBack omitted). RequestAccess is scoped to the forbidden landing only.
     return (
-      <div className="octo-doc-standalone">
-        <DocTerminal title={t('docs.state.untitled')} kind={phase.kind} onBack={onBack} />
-        {/* Screen 4c (feature #511): a forbidden landing must offer "Request access" so a link
-            recipient without permission can ask for it in place — that is the whole point of the
-            forward + access-request flow. The in-shell EditorShell forbidden branch already renders
-            this button; the standalone /d/:docId deep link (the surface most forward recipients
-            actually arrive through) previously fell to a bare DocTerminal with only a Back button, a
-            dead end. docId is guaranteed non-null here: a null id short-circuits to the not-found
-            terminal before any preflight runs, so it can never reach a forbidden terminal. */}
-        {phase.kind === 'forbidden' && docId && <RequestAccessButton docId={docId} />}
+      <div className="octo-doc-standalone octo-doc-standalone--terminal">
+        <div className="octo-standalone-card">
+          <DocTerminal title={t('docs.state.untitled')} kind={phase.kind} />
+        </div>
       </div>
     )
   }

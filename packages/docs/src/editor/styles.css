@@ -2540,3 +2540,87 @@
   font-size: 13px;
   text-align: center;
 }
+
+/* ── Standalone share-page terminal landings (XIN-505) ──────────────────────────
+   The /d/:docId share page renders its dead-end states (forbidden / not-found / locked / login)
+   as a centered card in the product's design language. ONLY the standalone page uses these classes
+   — the in-shell EditorShell keeps its own inline terminal markup — so this cannot affect the
+   in-shell scenario. */
+.octo-doc-standalone--terminal {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.octo-standalone-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 420px;
+  padding: 40px 32px;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+/* Center the shared DocTerminal's own markup (not-found / locked / login) inside the card. */
+.octo-standalone-card > .octo-doc {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+}
+.octo-standalone-card > .octo-doc h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+/* Round icon chip carrying the forbidden lock glyph. */
+.octo-standalone-forbidden-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--octo-hover, #f2f3f5);
+  color: var(--octo-muted, #8a919e);
+}
+.octo-standalone-card-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-standalone-card-msg {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--octo-muted, #8a919e);
+}
+
+/* Prominent primary CTA for the forbidden landing's "Request access" (shared with the in-shell
+   EditorShell forbidden branch, so both surfaces get the same accent action button). Placed after
+   the .octo-tb-btn base rules so it overrides them at equal specificity. */
+.octo-access-request-btn {
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--octo-accent, #3370ff);
+  border: none;
+  border-radius: 8px;
+}
+.octo-access-request-btn:hover {
+  background: var(--octo-active-fg-hover, #0e4fd6);
+}
+.octo-access-request-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  background: var(--octo-accent, #3370ff);
+}
+
