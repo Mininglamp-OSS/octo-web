@@ -268,6 +268,30 @@ export function openDocForward(opts: OpenDocForwardOptions): void {
   })
 }
 
+/**
+ * Whether the "forward document to chat" surface is actually reachable in the current host.
+ *
+ * openDocForward() lands the forward payload on `WKApp.shared.baseContext.showConversationSelect`
+ * and SILENTLY returns when that method is absent. The standalone `/d/:docId` page mounts via the
+ * host Layout's early return — BEFORE WKBase (which owns `showConversationSelect`) is initialized —
+ * so on that surface the method is undefined and a forward click would be an inert no-op (no modal,
+ * no toast, no error). Callers gate the forward entry on this so they never render a dead control;
+ * the in-shell editor (WKBase always mounted) keeps showing it exactly as before.
+ *
+ * Test path: a mock injected via setWKApp() with an `openDocForward` override IS the surface
+ * openDocForward() delegates to, so it counts as available; otherwise mirror the production check
+ * against the mock's own baseContext.
+ */
+export function canForwardToChat(): boolean {
+  if (override) {
+    return (
+      typeof override.openDocForward === 'function' ||
+      typeof override.shared?.baseContext?.showConversationSelect === 'function'
+    )
+  }
+  return typeof getWKApp().shared?.baseContext?.showConversationSelect === 'function'
+}
+
 /** Re-export the real i18n so docs code can register namespaces without importing @octo/base directly. */
 export { i18n }
 

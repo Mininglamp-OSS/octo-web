@@ -156,6 +156,34 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
 
+  it('XIN-490 gap2: the 403 forbidden landing offers "Request access" in place', async () => {
+    // The whole point of the forward + access-request flow is that a link recipient WITHOUT
+    // permission can ask for it. The standalone /d/:docId deep link is the surface most recipients
+    // arrive through, yet it used to dead-end on a bare terminal (Back only). It must now render the
+    // in-shell RequestAccessButton so the receiver can request access without leaving the page.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_forbidden') throw apiError(403)
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_forbidden" />)
+
+    await waitFor(() =>
+      expect(screen.getByText('docs.error.permission.forbidden')).toBeTruthy(),
+    )
+    // The reused RequestAccessButton (its hint + action) is present on the forbidden landing.
+    expect(screen.getByText('docs.forward.requestAccess')).toBeTruthy()
+    // Clicking POSTs the access request for THIS doc (idempotency enforced server-side).
+    fireEvent.click(screen.getByText('docs.forward.requestAccess'))
+    await waitFor(() =>
+      expect(
+        wk.apiClient.calls.some(
+          (c) => c.method === 'post' && c.url === '/docs/d_forbidden/access-requests',
+        ),
+      ).toBe(true),
+    )
+  })
+
   it('AC-10: a GET 404 renders the not-found terminal, editor not mounted', async () => {
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url === '/docs/d_missing') throw apiError(404)
@@ -167,6 +195,9 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     await waitFor(() =>
       expect(screen.getByText('docs.error.permission.notFound')).toBeTruthy(),
     )
+    // Request access is scoped to the forbidden landing only — a not-found terminal has no such
+    // affordance (there is no document to request access to).
+    expect(screen.queryByText('docs.forward.requestAccess')).toBeNull()
     expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
 

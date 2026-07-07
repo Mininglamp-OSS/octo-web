@@ -297,3 +297,39 @@ describe('EditorShell — header "more" (≡) menu', () => {
     expect(wk.apiClient.calls.some((c) => c.url === '/users/u_owner')).toBe(false)
   })
 })
+
+// XIN-490 gap1: the "Forward to chat" entry lands its payload on the host's
+// baseContext.showConversationSelect (openDocForward). On the standalone /d/:docId page WKBase is
+// not mounted, so that surface is absent and a click would be a SILENT no-op. The button must gate
+// its render on the surface's availability (canForwardToChat) — shown in-shell, hidden where the
+// host can't actually forward — so it never renders as a dead control.
+describe('EditorShell — forward-to-chat entry gating (XIN-490 gap1)', () => {
+  const baseProps = {
+    docId: 'd_1',
+    title: 'Doc',
+    space: 's_1',
+    folder: 'f_1',
+    doc: 'd_1',
+    uid: 'u_self',
+    user: { id: 'u_self', name: 'Self' },
+  }
+
+  it('renders the forward entry when the host exposes the conversation-select surface', () => {
+    // The default mock provides an openDocForward override — the surface openDocForward() delegates
+    // to — so forwarding is reachable and the entry shows (in-shell parity, non-regression).
+    render(<EditorShell {...baseProps} />)
+    expect(screen.getByTitle('docs.forward.entry')).toBeTruthy()
+  })
+
+  it('hides the forward entry when the host lacks the forward surface (standalone /d/:docId)', () => {
+    // Simulate the standalone mount: no openDocForward override AND no baseContext — exactly the
+    // WKBase-less surface where a forward click would silently no-op. The entry must not render.
+    const noForward = createMockWKApp()
+    delete (noForward as { openDocForward?: unknown }).openDocForward
+    setWKApp(noForward)
+    render(<EditorShell {...baseProps} />)
+    expect(screen.queryByTitle('docs.forward.entry')).toBeNull()
+    // The other reader+ controls (comments) still render — only the forward entry is gated.
+    expect(screen.getByTitle('docs.toolbar.comments')).toBeTruthy()
+  })
+})

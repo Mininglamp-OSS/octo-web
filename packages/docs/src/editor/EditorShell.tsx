@@ -19,7 +19,7 @@ import { emojiGlyph } from './emoji.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
 import { t } from '../octoweb/index.ts'
-import { getCurrentUid } from '../octoweb/index.ts'
+import { getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
 import { getDoc, getUserName, updateDocTitle } from '../pages/docsApi.ts'
 import { startDocForward } from '../forward/startDocForward.ts'
 import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
@@ -481,6 +481,12 @@ export function EditorShell(props: EditorShellProps) {
 
   const editor = instance.editor
   const manage = role ? canManage(role) : false
+  // "Forward to chat" is only offered when the host actually exposes the conversation-select
+  // surface openDocForward() lands on. On the standalone /d/:docId page WKBase isn't mounted (the
+  // Layout early-return skips it), so showConversationSelect is undefined and a click would be a
+  // silent no-op — hide the entry there rather than render a dead button. In-shell WKBase is always
+  // present, so the button shows exactly as before (non-regression).
+  const canForward = canForwardToChat()
 
   // "More" (≡) menu contents. Order is fixed per spec: [caller-provided lead rows] → open-in-new-
   // page → version history → export, with delete pinned last (below a separator) as the destructive
@@ -563,8 +569,10 @@ export function EditorShell(props: EditorShellProps) {
             💬 {t('docs.toolbar.comments')}
           </button>
           {/* Forward to chat (feature #511) — reader+ (anyone with access can forward the link;
-              only admin/owner sees the enabled 授权区, gated inside the modal by canGrant). */}
-          {role && (
+              only admin/owner sees the enabled 授权区, gated inside the modal by canGrant). Gated
+              on canForward so it never renders as a silent no-op where the host lacks the
+              conversation-select surface (the standalone /d/:docId page). */}
+          {role && canForward && (
             <button
               type="button"
               className="octo-tb-btn octo-doc-forward-btn"

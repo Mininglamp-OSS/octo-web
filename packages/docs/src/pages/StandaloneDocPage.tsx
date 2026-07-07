@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { getWKApp, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
+import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
 import { LinkIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { terminalForCreateError } from '../collab/useCollabEditor.ts'
 import { getDoc, type DocMeta } from './docsApi.ts'
@@ -391,6 +392,14 @@ export function StandaloneDocPage({
     return (
       <div className="octo-doc-standalone">
         <DocTerminal title={t('docs.state.untitled')} kind={phase.kind} onBack={onBack} />
+        {/* Screen 4c (feature #511): a forbidden landing must offer "Request access" so a link
+            recipient without permission can ask for it in place — that is the whole point of the
+            forward + access-request flow. The in-shell EditorShell forbidden branch already renders
+            this button; the standalone /d/:docId deep link (the surface most forward recipients
+            actually arrive through) previously fell to a bare DocTerminal with only a Back button, a
+            dead end. docId is guaranteed non-null here: a null id short-circuits to the not-found
+            terminal before any preflight runs, so it can never reach a forbidden terminal. */}
+        {phase.kind === 'forbidden' && docId && <RequestAccessButton docId={docId} />}
       </div>
     )
   }
