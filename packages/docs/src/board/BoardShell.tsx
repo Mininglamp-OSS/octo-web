@@ -328,6 +328,15 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       }
     }
     setRoleResolved(false)
+    // Offline / non-auth standalone path (P2, yujiawei round-3): a prime failure here settles
+    // role-resolution without an authoritative role, so the board stays editable against its OWN
+    // uid-scoped local cache. This is intentional offline-first behavior — NOT a hole in the
+    // fail-closed guarantee. The fail-closed contract (P1-3) is about EDITABILITY and CROSS-USER
+    // ISOLATION on the collab path: never grant write / never hydrate someone else's data before an
+    // authoritative role arrives. It is NOT about suppressing your own offline cache: the mirror is
+    // keyed by this user's uid (persistBoardScene(docId, scene, uid)), never another user's and
+    // never an auth-denied doc, and it self-heals the moment the server answers (a 403 downgrades
+    // to reader). So do not mistake this branch for the P1-3 gap it deliberately is not.
     getDoc(docId)
       .then((meta) => {
         if (cancelled) return

@@ -773,6 +773,12 @@ export function DocsHome() {
   // setSpace is only ever called from that handler, so this ref is the authoritative previous id.
   const spaceRef = useRef(space)
 
+  // Tracks the most recently requested open so an in-flight kind lookup that resolves after a
+  // newer click — OR after a Space switch (see backToList) — is discarded; the latest selection
+  // always wins (no stale shell from a race, no cross-Space carry from a late resolve). Declared
+  // here, above backToList, so the Space-switch reconciler can invalidate a pending open token.
+  const latestOpenRef = useRef<string | null>(null)
+
   // Initial selection from URL deep-link / persisted target (so a shared `/docs?doc=` or a
   // refresh opens that doc in the right pane on first paint).
   const initialTarget = useRef(
@@ -842,6 +848,12 @@ export function DocsHome() {
   const backToList = useCallback(() => {
     setSelectedDocId(null)
     setSelectedDocType(undefined)
+    // Invalidate any in-flight unknown-kind open (openDoc → getDoc still pending). Without this,
+    // a Space switch (this is also the onSpaceChanged reconciler) leaves latestOpenRef pointing at
+    // the previous Space's docId, so a late getDoc resolve would pass the `latestOpenRef === docId`
+    // staleness guard and commitOpen the OLD doc into the NEW Space — the async twin of the
+    // synchronous cross-Space carry reconciled here (XIN-448 / XIN-528).
+    latestOpenRef.current = null
     clearDocTarget()
     mirrorListToUrl()
     if (routeRight) {
@@ -1023,10 +1035,6 @@ export function DocsHome() {
     [space, folder, routeRight, buildRightPane],
   )
 
-  // Tracks the most recently requested open so an in-flight kind lookup that resolves after a
-  // newer click is discarded — the latest selection always wins (no stale shell from a race).
-  const latestOpenRef = useRef<string | null>(null)
-
   const openDoc = useCallback(
     (docId: string, docType?: string) => {
       latestOpenRef.current = docId
@@ -1044,9 +1052,17 @@ export function DocsHome() {
       // (GET /docs/{id}) before choosing a shell, so a board opens as a board for every member.
       // Default to the rich-text editor only when the lookup can't confirm a board (legacy docs /
       // a backend that doesn't persist docType).
+      //
+      // Capture the Space this open was requested under. A Space switch mid-flight advances
+      // spaceRef.current (synchronously, before backToList runs), so the resolve below is
+      // discarded if it lands in a different Space — belt-and-suspenders with backToList nulling
+      // latestOpenRef, and it also covers a same-docId re-open across a switch (XIN-528).
+      const requestedSpace = spaceRef.current
+      const superseded = () =>
+        latestOpenRef.current !== docId || spaceRef.current !== requestedSpace
       getDoc(docId)
         .then((meta) => {
-          if (latestOpenRef.current !== docId) return // superseded by a newer open
+          if (superseded()) return // superseded by a newer open or a Space switch
           // Preserve the resolved kind verbatim: a real 'sheet' must reach SheetView, a 'board'
           // the whiteboard shell; everything else falls back to the rich-text editor.
           commitOpen(
@@ -1055,7 +1071,7 @@ export function DocsHome() {
           )
         })
         .catch(() => {
-          if (latestOpenRef.current !== docId) return
+          if (superseded()) return
           commitOpen(docId, 'doc')
         })
     },

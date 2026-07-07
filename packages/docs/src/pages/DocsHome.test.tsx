@@ -996,3 +996,80 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     })
   })
 })
+
+// Regression (XIN-528): an in-flight unknown-kind open must NOT reopen the previous Space's doc.
+// openDoc's unknown-kind branch fires getDoc(docId) and commits in the .then(); the only staleness
+// guard used to be `latestOpenRef.current === docId`. A Space switch runs backToList (the
+// onSpaceChanged reconciler) which cleared the pane but did NOT reset latestOpenRef, so a getDoc
+// that resolved AFTER the switch still passed the guard and commitOpen ran for the old-Space doc —
+// setting selectedDoc + persistDocTarget({space: oldSpace}) + pushing the old doc into the right
+// pane while the list had already moved to the new Space. This is the async twin of the synchronous
+// cross-Space carry the PR fixes elsewhere. The fix: backToList resets latestOpenRef.current=null
+// AND openDoc's guard is Space-scoped, so a resolve after a switch is discarded.
+describe('DocsHome — in-flight unknown-kind open is discarded after a Space switch (XIN-528)', () => {
+  it('does not commit the old-Space doc when getDoc resolves after backToList', async () => {
+    const wk = createMockWKApp()
+    wk.shared.currentSpaceId = 'space-a'
+    const replaceToRoot = vi.fn()
+    // Production (resident-list) path so we can observe what the reconciler pushes into the pane.
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    setWKApp(wk)
+
+    // Hold the unknown-kind per-doc GET in flight so the test can switch Space BEFORE it resolves.
+    let resolveMeta: (() => void) | undefined
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_a') {
+        return new Promise((resolve) => {
+          resolveMeta = () =>
+            resolve({
+              data: { docId: 'd_a', title: 'Space A Doc', role: 'admin', docType: 'board' },
+              status: 200,
+            })
+        })
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        const spaceId = new URLSearchParams(url.split('?')[1] ?? '').get('spaceId') ?? ''
+        // Only the initial Space lists the unknown-kind row; the new Space is empty.
+        if (spaceId === 'space-a') {
+          return {
+            data: {
+              total: 1,
+              items: [{ docId: 'd_a', title: 'Space A Doc', ownerId: 'u_owner', role: 'admin' }],
+            },
+            status: 200,
+          }
+        }
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Space A Doc')).toBeTruthy())
+
+    // Open the unknown-kind row → openDoc fires getDoc('/docs/d_a'), held in flight below.
+    fireEvent.click(screen.getByText('Space A Doc'))
+    await waitFor(() => expect(resolveMeta).toBeTruthy())
+
+    // Host switches Space WHILE the getDoc is still pending: mutate currentSpaceId then broadcast.
+    // backToList runs, clearing the pane and (with the fix) invalidating the pending open token.
+    wk.shared.currentSpaceId = 'space-b'
+    wk.mockMittBus.emitSpaceChanged({ space_id: 'space-b' })
+
+    // Now let the stale getDoc resolve LAST. Without the fix, commitOpen would run for d_a.
+    resolveMeta!()
+    // Give the resolved promise a chance to (wrongly) commit before asserting.
+    await new Promise((r) => setTimeout(r, 20))
+
+    // The old-Space doc must NOT open: no board shell for d_a, no selection, and the persisted
+    // target must not have been (re)written to the old Space's doc (backToList cleared it).
+    expect(screen.queryByTestId('board-shell')).toBeNull()
+    expect(screen.queryByTestId('board-doc')).toBeNull()
+    expect(window.sessionStorage.getItem(TARGET_KEY)).toBeNull()
+    // The last thing pushed into the right pane is the empty state (backToList), never the d_a doc.
+    const lastPush = replaceToRoot.mock.calls.at(-1)?.[0] as
+      | { props?: { docId?: string } }
+      | undefined
+    expect(lastPush?.props?.docId).toBeUndefined()
+  })
+})
