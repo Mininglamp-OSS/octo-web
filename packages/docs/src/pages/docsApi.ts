@@ -12,6 +12,7 @@ export interface DocListItem {
   title: string
   ownerId: string
   role: Role
+  docType?: string
   updatedAt?: string
 }
 
@@ -67,6 +68,7 @@ export interface DocMeta {
   title: string
   ownerId?: string
   role?: Role
+  docType?: string
   updatedAt?: string
   /**
    * Creation timestamp (RFC3339), returned by the per-doc GET. Consumed by the header "more"
