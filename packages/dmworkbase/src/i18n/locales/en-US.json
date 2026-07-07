@@ -795,7 +795,6 @@
   "forwardModal.grant.roleReader": "Can view",
   "forwardModal.grant.roleWriter": "Can edit",
   "forwardModal.grant.targetMembers": "Will grant access to the group's current {{count}} member(s)",
-  "forwardModal.grant.disabledInfo": "Access off: send the message only, no members added. Recipients open with their existing permission.",
   "forwardModal.grant.disabledReason": "Only the document admin can grant access when forwarding.",
   "forwardModal.grant.grantFailed": "Failed to grant access; the message was still sent.",
   "forwardModal.grant.sendFailed": "Failed to forward.",

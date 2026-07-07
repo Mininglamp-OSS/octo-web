@@ -312,11 +312,6 @@
   color: var(--wk-text-color-secondary, #86909c);
 }
 
-.wk-fm-grant-info {
-  font-size: var(--wk-text-size-tiny, 12px);
-  color: var(--semi-color-info, #4a6cf7);
-}
-
 .wk-fm-grant--disabled {
   flex-direction: row;
   align-items: center;

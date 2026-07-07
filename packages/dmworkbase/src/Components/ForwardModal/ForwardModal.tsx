@@ -80,9 +80,6 @@ function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
           {t("base.forwardModal.grant.targetMembers", { values: { count: grant.targetMemberCount } })}
         </div>
       )}
-      {!grant.enabled && (
-        <div className="wk-fm-grant-info">{t("base.forwardModal.grant.disabledInfo")}</div>
-      )}
     </div>
   )
 }

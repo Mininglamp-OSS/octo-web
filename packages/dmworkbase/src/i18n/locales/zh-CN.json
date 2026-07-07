@@ -795,7 +795,6 @@
   "forwardModal.grant.roleReader": "可查看",
   "forwardModal.grant.roleWriter": "可编辑",
   "forwardModal.grant.targetMembers": "将授权给群当前 {{count}} 名成员",
-  "forwardModal.grant.disabledInfo": "关闭授权：只发消息、不加成员，接收方按既有权限打开。",
   "forwardModal.grant.disabledReason": "仅文档管理员可在转发时授权。",
   "forwardModal.grant.grantFailed": "授权失败，消息仍已发送。",
   "forwardModal.grant.sendFailed": "转发失败。",
