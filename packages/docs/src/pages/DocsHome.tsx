@@ -12,7 +12,6 @@ import {
   DOC_TARGET_STORAGE_KEY,
 } from '../config.ts'
 import { listDocs, createDoc, getDoc, type DocListItem } from './docsApi.ts'
-import { withReturnSid } from './StandaloneDocPage.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { createInvite, buildInviteUrl } from '../invite/api.ts'
 import { canManage, type Role } from '../auth/roles.ts'
@@ -787,19 +786,15 @@ export function DocsHome() {
   // in a new browser tab — the clean, shareable cold-load entry that lives outside the app shell.
   // The id only ever contains documentName-safe chars, so the built path stays a valid /d/ route.
   //
-  // Carry the current session's sid (XIN-420, same gap the XIN-398 post-login return path fixed):
-  // the host's RouteManager re-push collapses the in-shell docs route to `/docs?sid=…`, so a
-  // multi-session user's active sid rides on window.location. Route it through withReturnSid
-  // (query-only, percent-encoded, safe-path re-checked) so the new tab's sid-keyed load() hits the
-  // right bucket instead of missing the empty-sid bucket and — since XIN-392's strict
-  // findUniqueStoredSession refuses to guess an identity — bouncing to login. An empty sid (single
-  // / empty-sid session, no ambiguity) makes withReturnSid a no-op: the plain /d/:docId cold-load
-  // recovers on its own, so we never append a meaningless `?sid=`.
+  // The link carries NO `?sid=` (XIN-513): an already-logged-in user's session is recovered from
+  // storage independently of the URL — apps/web Layout runs recoverOctoSessionFromStorage on the
+  // `/d` path, which scans the `token<sid>` buckets and adopts a valid stored session — so the new
+  // tab opens the document directly without a login detour. The multi-session / multi-space case
+  // where storage recovery may adopt the wrong space session is tracked separately (octo-web #551)
+  // and is out of scope here; the `token<sid>` / recoverSession logic is untouched.
   const onOpenInNewPage = useCallback((id: string) => {
     if (typeof window !== 'undefined') {
-      const sid = new URLSearchParams(window.location.search).get('sid')
-      const target = withReturnSid(`/d/${encodeURIComponent(id)}`, sid)
-      window.open(target, '_blank', 'noopener,noreferrer')
+      window.open(`/d/${encodeURIComponent(id)}`, '_blank', 'noopener,noreferrer')
     }
   }, [])
 

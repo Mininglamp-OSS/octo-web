@@ -334,6 +334,33 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     expect(copied).not.toContain('?')
   })
 
+  it('XIN-513: Copy link keeps the doc space `?sp` but strips the session `?sid`', async () => {
+    // The standalone page was opened from a share link carrying `?sp=` (the doc's real space, XIN-501)
+    // and the live URL may also carry the sharer's own `?sid=`. The copied canonical link must
+    // preserve `?sp` — the next recipient's preflight needs it to address the doc's space — while
+    // dropping the session-scoped `?sid`.
+    window.history.pushState({}, '', '/d/d_ok?sid=sharer-secret&sp=105d4a60d0fc4d55a5cfc3c2d0501361')
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('lead-copy-link')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('lead-copy-link'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+    const copied = writeText.mock.calls[0][0] as string
+    expect(copied).toBe(`${window.location.origin}/d/d_ok?sp=105d4a60d0fc4d55a5cfc3c2d0501361`)
+    expect(copied).not.toContain('sid')
+  })
+
   it('AC-6: after copying, a menu-external "Link copied" toast appears (visible even though the menu row closes)', async () => {
     // Reviewer's blocker (XIN-386): the old in-row "Link copied" label was dead — selecting the row
     // closes the ≡ menu, so the panel that hosted the label unmounts and the user never sees it.

@@ -296,12 +296,13 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(assignSpy).not.toHaveBeenCalled()
   })
 
-  it('AC-1 (XIN-420): a multi-session user opens the standalone link carrying the current session sid', async () => {
+  it('XIN-513: the standalone link opens without a `?sid`, even when the in-shell URL carries one', async () => {
     const openSpy = vi.fn()
     Object.defineProperty(window, 'open', { configurable: true, writable: true, value: openSpy })
-    // Multi-session in-shell URL: the host's RouteManager re-push collapses the docs route to
-    // `/docs?sid=…`, so the active session's sid rides on window.location. Give the stub a real
-    // origin too — withReturnSid rebuilds the target against it.
+    // In-shell URL carries the active session's sid (the host's RouteManager re-push collapses the
+    // docs route to `/docs?sid=…`). The opened standalone link must NOT copy that sid forward: an
+    // already-logged-in user's session is recovered from storage independently of the URL (XIN-513),
+    // so a sid-less `/d/:docId` opens the document directly.
     Object.defineProperty(window, 'location', {
       configurable: true,
       writable: true,
@@ -327,10 +328,9 @@ describe('DocsHome navigation (split-pane)', () => {
     fireEvent.click(screen.getByText('Doc A'))
     fireEvent.click(screen.getByTestId('editor-open-new-page'))
 
-    // The new tab must carry the active sid so its sid-keyed load() hits the right bucket. Without
-    // it a multi-session user's new tab reads the empty-sid bucket, misses, and (since XIN-392's
-    // strict findUniqueStoredSession refuses to guess) bounces to login instead of the document.
-    expect(openSpy).toHaveBeenCalledWith('/d/d_a?sid=s_active', '_blank', 'noopener,noreferrer')
+    // No sid rides on the standalone link; the recipient/opener's session is recovered from storage.
+    // (The multi-session wrong-space-session recovery edge is tracked separately as octo-web #551.)
+    expect(openSpy).toHaveBeenCalledWith('/d/d_a', '_blank', 'noopener,noreferrer')
     expect(assignSpy).not.toHaveBeenCalled()
   })
 
