@@ -189,6 +189,44 @@ describe('DocsModule (octo-web same-origin integration)', () => {
     }
   })
 
+  it('captures a /docs?doc=<id> deep-link into sessionStorage on init() so it survives the host query-wipe (XIN-328)', () => {
+    // A forwarded-doc link is `${origin}/docs?...&doc=<docId>`, but the host RouteManager's
+    // pageshow/popstate handler re-pushes pathname-only and re-stamps the URL to `/docs?sid=…`,
+    // wiping `?doc=` before the code-split DocsHome mounts. init() must stash the target BEFORE
+    // that re-push (same window as normalizeInviteDeepLink) so resolveDocTarget's persisted-target
+    // fallback opens the document instead of the empty list.
+    window.history.replaceState(null, '', '/docs?space=s_1&folder=f_1&doc=d_forwarded')
+    try {
+      const wk = createMockWKApp()
+      setWKApp(wk)
+      new DocsModule().init()
+      const raw = window.sessionStorage.getItem('octo.docs.target')
+      expect(raw).toBeTruthy()
+      expect(JSON.parse(raw!)).toEqual({ space: 's_1', folder: 'f_1', doc: 'd_forwarded' })
+    } finally {
+      window.history.replaceState(null, '', '/docs')
+      try {
+        window.sessionStorage.removeItem('octo.docs.target')
+      } catch {
+        // ignore
+      }
+    }
+  })
+
+  it('does NOT stash a doc target when /docs is opened without a doc query (XIN-328)', () => {
+    // A plain `/docs` visit must not seed the mirror, or it would wrongly reopen a stale doc.
+    window.history.replaceState(null, '', '/docs')
+    try {
+      window.sessionStorage.removeItem('octo.docs.target')
+      const wk = createMockWKApp()
+      setWKApp(wk)
+      new DocsModule().init()
+      expect(window.sessionStorage.getItem('octo.docs.target')).toBeNull()
+    } finally {
+      window.history.replaceState(null, '', '/docs')
+    }
+  })
+
   it('shows the loading fallback, then commits DocsHome once the editor chunk resolves', async () => {
     // Regression (runtime test 2026-06-18, second pass): with React.lazy + Suspense the
     // editor chunk downloaded but the boundary never committed under the host's MobX-driven

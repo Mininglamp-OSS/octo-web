@@ -297,5 +297,20 @@
       "login": "Your session expired. Please sign in again.",
       "deleted": "Document deleted."
     }
+  },
+  "forward": {
+    "entry": "Forward to chat",
+    "modalTitle": "Forward to chat",
+    "grantDisabledReason": "Only the document admin can grant access when forwarding.",
+    "accessHint": "You can request access from the document admin.",
+    "requestAccess": "Request access",
+    "requesting": "Requesting…",
+    "accessRequested": "Request submitted, waiting for the document admin.",
+    "requestFailed": "Failed to submit the request. Please try again.",
+    "pendingTitle": "Pending requests",
+    "pendingEmpty": "No pending requests.",
+    "pendingError": "Failed to load pending requests.",
+    "approve": "Approve",
+    "deny": "Deny"
   }
 }

@@ -127,6 +127,71 @@ export interface ModuleManager {
   registerModule(module: IModule): void
   /** Currently selected octo Space id (App.shared.currentSpaceId); '' when none. */
   currentSpaceId?: string
+  /**
+   * The host's base UI context (WKApp.shared.baseContext, a WKBase instance). Optional in the
+   * seam because the test mock supplies a stub; in production this is the real WKBase, which owns
+   * the conversation-select modal + message send (only `@octo/base` imports wukongimjssdk). The
+   * docs "forward to chat" bridge (openDocForward) lands its forward payload here (§9.5 / M3).
+   */
+  baseContext?: WKBaseContextLike
+}
+
+/**
+ * Per-run aggregate returned by the docs-injected grant executor. The host reads `failed` /
+ * `failures` to compose the partial-failure Toast (contract 2).
+ */
+export interface DocForwardGrantResult {
+  granted: number
+  failed: number
+  failures?: string[]
+}
+
+/**
+ * Forward payload the docs bridge hands to the host (structurally matches
+ * `@octo/base` DocForwardOpen). The host expands each selected channel → uid snapshot, awaits
+ * `grantAccess` (先授权后发), then sends `**messageTitle**\n[messageTitle](link)` via WKSDK.
+ */
+export interface HostDocForward {
+  messageTitle: string
+  link: string
+  canGrant: boolean
+  disabledReason?: string
+  defaultRole?: 'reader' | 'writer'
+  grantAccess?(uids: string[], role: 'reader' | 'writer'): Promise<DocForwardGrantResult>
+  onResult?(result: { sent: number; failed: number; grantFailures?: string[] }): void
+}
+
+/** Minimal surface of the host's WKBase context the docs bridge touches. */
+export interface WKBaseContextLike {
+  showConversationSelect(
+    onFinished?: (channels: unknown[]) => void,
+    title?: string,
+    forward?: HostDocForward,
+  ): void
+}
+
+/**
+ * Options the docs "forward to chat" entry passes to the {@link openDocForward} bridge. `docId`
+ * is precomputed into `link`; `canGrant` is precomputed by docs (canManage(role) || owner);
+ * `grantAccess` is the docs-side executor (loops uids → POST /docs/{docId}/forward-grant).
+ */
+export interface OpenDocForwardOptions {
+  docId: string
+  /** Snapshot title used as both the bold line and the link text of the sent message. */
+  title: string
+  /** Clickable link with the docId embedded. */
+  link: string
+  /** Precomputed: canManage(role) || currentUid === ownerId. */
+  canGrant: boolean
+  /** Grey-out hint for non-grantors. */
+  disabledReason?: string
+  /** Default grant role when the switch is on (defaults to 'reader'). */
+  defaultRole?: 'reader' | 'writer'
+  /** Modal title shown at the top of the conversation-select dialog. */
+  modalTitle?: string
+  /** docs-injected grant executor; host awaits it before sending. */
+  grantAccess?(uids: string[], role: 'reader' | 'writer'): Promise<DocForwardGrantResult>
+  onResult?(result: { sent: number; failed: number; grantFailures?: string[] }): void
 }
 
 /**
@@ -183,6 +248,14 @@ export interface WKAppShape {
    * NOT re-render React on its own — see onSpaceChanged in octoweb/index.ts).
    */
   mittBus?: MittBusLite
+  /**
+   * Open the "forward document to chat" flow (feature #511, §9.5 / M3). Optional in the shape,
+   * declared like `routeRight` / `getSpaceMembers`: in production octoweb/index.ts implements it
+   * by landing the forward payload on the host's `baseContext.showConversationSelect`; the test
+   * mock records the call so docs-side unit tests need no live host. Absent → the bridge falls
+   * back to the real host path.
+   */
+  openDocForward?(opts: OpenDocForwardOptions): void
 }
 
 /** Minimal surface of the host's right-pane route manager (ContextRouteManager). */

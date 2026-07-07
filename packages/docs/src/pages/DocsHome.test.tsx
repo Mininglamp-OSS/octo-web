@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 import { resolveDocTarget, clearDocTarget, DocsHome } from './DocsHome.tsx'
+import { captureDocTargetDeepLink } from '../config.ts'
 
 // Replace the heavy editor shell (Tiptap + Yjs + Hocuspocus) with a marker so the DocsHome
 // render tests exercise target-resolution / navigation without mounting the real editor.
@@ -126,6 +127,36 @@ describe('resolveDocTarget', () => {
     // Query wiped -> still resolves the persisted target.
     const afterWipe = resolveDocTarget('?sid=yjru4i')
     expect(afterWipe).toEqual({ space: 'sp1', folder: 'fd1', doc: 'd_keep', docId: 'd_keep' })
+  })
+
+  it('captures a forwarded /docs?doc= link at boot so a first-time recipient opens the doc, not the empty list (XIN-328)', () => {
+    // End-to-end regression for the forward defect: unlike the "second blocker" test above,
+    // the RECIPIENT has never opened this doc, so nothing is pre-persisted. The code-split
+    // DocsHome only mounts AFTER the host's pageshow re-push has already collapsed the URL to
+    // `/docs?sid=…`, so resolveDocTarget at mount time sees no `?doc=` and — without the boot
+    // capture — would return null → empty document list (the reported symptom).
+    //
+    // captureDocTargetDeepLink() runs at DocsModule.init() (app boot, BEFORE the re-push) and
+    // reads the live `?doc=` off the forwarded link, stashing it. resolveDocTarget then resolves
+    // the doc from that mirror even though the query is already wiped.
+    window.location.search = '?space=sp9&folder=fd9&doc=d_forwarded'
+    captureDocTargetDeepLink()
+    // Host RouteManager re-pushes pathname-only → URL collapses to /docs?sid=… (no doc).
+    window.location.search = '?sid=abc123'
+    const opened = resolveDocTarget(window.location.search)
+    expect(opened).toEqual({
+      space: 'sp9',
+      folder: 'fd9',
+      doc: 'd_forwarded',
+      docId: 'd_forwarded',
+    })
+  })
+
+  it('capture is a no-op for a plain /docs open (no doc query) so no stale doc is reopened (XIN-328)', () => {
+    window.location.search = '?sid=abc123'
+    captureDocTargetDeepLink()
+    expect(window.sessionStorage.getItem(TARGET_KEY)).toBeNull()
+    expect(resolveDocTarget(window.location.search)).toBeNull()
   })
 
   it('falls back to a persisted target when the query carries no doc', () => {

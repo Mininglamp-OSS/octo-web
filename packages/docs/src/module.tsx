@@ -15,6 +15,7 @@ import {
 import { getWKApp, i18n, t, Menus } from './octoweb/index.ts'
 import type { IModule } from './octoweb/index.ts'
 import { InviteAcceptPage } from './invite/InviteAcceptPage.tsx'
+import { captureDocTargetDeepLink } from './config.ts'
 import zhCN from './i18n/zh-CN.json'
 import enUS from './i18n/en-US.json'
 
@@ -263,6 +264,14 @@ export class DocsModule implements IModule {
     // Capture an invite deep-link token and normalize the URL to `/docs` BEFORE the host reads
     // the route, so the existing `/docs` menu activates instead of falling back to chat.
     normalizeInviteDeepLink()
+
+    // Secondary/redundant `/docs?doc=<id>` capture. The PRIMARY, real-device-verified capture is
+    // the inline <script> at the top of apps/web/index.html, which runs during HTML parse — before
+    // this module chunk loads and before the host's pageshow re-push wipes the query to
+    // `/docs?sid=…`. XIN-332 proved this init() runs AFTER that re-push on device, so we no longer
+    // rely on it; it stays as an idempotent same-origin fallback (and covers the standalone dev
+    // bootstrap in main.tsx). See captureDocTargetDeepLink in config.ts.
+    captureDocTargetDeepLink()
 
     const wk = getWKApp()
     // Self-built RouteManager (NOT react-router).

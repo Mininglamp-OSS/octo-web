@@ -297,5 +297,20 @@
       "login": "登录已过期，请重新登录。",
       "deleted": "文档已删除。"
     }
+  },
+  "forward": {
+    "entry": "转发到聊天",
+    "modalTitle": "转发到聊天",
+    "grantDisabledReason": "仅文档管理员可在转发时授权。",
+    "accessHint": "可向文档管理员申请访问权限。",
+    "requestAccess": "申请访问",
+    "requesting": "申请中…",
+    "accessRequested": "已提交申请，等待文档管理员审批。",
+    "requestFailed": "申请提交失败，请重试。",
+    "pendingTitle": "待审批申请",
+    "pendingEmpty": "暂无待审批申请。",
+    "pendingError": "加载待审批申请失败。",
+    "approve": "同意",
+    "deny": "拒绝"
   }
 }

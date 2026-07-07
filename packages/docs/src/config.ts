@@ -61,6 +61,68 @@ export const DEFAULT_DOC_ID =
   (import.meta.env?.VITE_DOCS_DEFAULT_DOC as string | undefined)?.trim() || ''
 
 /**
+ * sessionStorage key mirroring the doc `/docs` is currently addressing, so a `?doc=` deep-link
+ * survives the host's query-wiping. Defined here (not in DocsHome) because it is read from two
+ * places that must agree: DocsHome (persist/read/clear the mirror) and the module boot path
+ * (captureDocTargetDeepLink), and the boot path must NOT pull the code-split editor chunk.
+ */
+export const DOC_TARGET_STORAGE_KEY = 'octo.docs.target'
+
+/**
+ * Capture a `/docs?doc=<id>` deep-link into sessionStorage (feature #511, XIN-328).
+ *
+ * A forwarded-doc link is `${origin}/docs?...&doc=<docId>`, but the octo host's self-built
+ * RouteManager (dmworkbase Service/Route.tsx) handles `pageshow`/`popstate` by re-pushing
+ * `window.location.pathname` ONLY — it drops the query and re-stamps the URL to `/docs?sid=…`,
+ * wiping `?doc=` before the docs module mounts. The recipient's mirror is empty (they never
+ * opened the doc), so resolveDocTarget fell through to the empty document list — the XIN-328
+ * symptom (link opens the list, not the document).
+ *
+ * PRIMARY capture now lives in the inline `<script>` at the top of `apps/web/index.html`, which
+ * runs during HTML parse — before this module bundle is even fetched and long before the host's
+ * pageshow re-push. XIN-332 real-device tracing proved DocsModule.init() runs AFTER the re-push
+ * on device (the query was already wiped by the time init ran), so we no longer depend on it.
+ *
+ * This function stays as a same-origin/redundant capture (still invoked from DocsModule.init and
+ * from the standalone dev bootstrap in main.tsx). It writes the identical key + JSON shape as the
+ * inline script, so running both is idempotent, and it emits the same observability signal
+ * (`window.__OCTO_DOCS_DEEPLINK__` + console log) so a real-device trace can tell which path ran.
+ * No-op when the URL carries no doc (a plain `/docs` visit).
+ */
+export function captureDocTargetDeepLink(): void {
+  if (typeof window === 'undefined') return
+  let doc = ''
+  let space = DEFAULT_DOC_SPACE
+  let folder = DEFAULT_DOC_FOLDER
+  try {
+    const q = new URLSearchParams(window.location.search)
+    doc = q.get('doc') || q.get('docId') || ''
+    space = q.get('space') || space
+    folder = q.get('folder') || folder
+  } catch {
+    // Malformed / non-browser search: nothing to capture.
+    return
+  }
+  if (!doc) return
+  try {
+    window.sessionStorage.setItem(DOC_TARGET_STORAGE_KEY, JSON.stringify({ space, folder, doc }))
+    // Real-device observability point (XIN-332 hard gate). Mirrors the index.html marker shape so
+    // Grace can see, from the console, that a capture ran and the mirror holds the target — even
+    // when this secondary path (not the inline script) is the one that fired.
+    ;(window as unknown as { __OCTO_DOCS_DEEPLINK__?: unknown }).__OCTO_DOCS_DEEPLINK__ = {
+      captured: true,
+      doc,
+      source: 'module.init',
+    }
+    console.log('[octo.docs.deeplink] module.init capture', { captured: true, doc, space, folder })
+  } catch {
+    // sessionStorage unavailable (private mode / disabled): the deep-link still opens on first
+    // paint if the query happens to survive; we just can't guarantee it against the host's
+    // later pathname-only re-push.
+  }
+}
+
+/**
  * Octo object-storage host whitelist for image/attachment URLs (frontend-design §3.7).
  * Any host not in this set is rejected to prevent arbitrary external hotlinking.
  *

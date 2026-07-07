@@ -2,7 +2,12 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { getWKApp, getRouteRight, onSpaceChanged, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import '../editor/styles.css'
-import { DEFAULT_DOC_SPACE, DEFAULT_DOC_FOLDER, DEFAULT_DOC_ID } from '../config.ts'
+import {
+  DEFAULT_DOC_SPACE,
+  DEFAULT_DOC_FOLDER,
+  DEFAULT_DOC_ID,
+  DOC_TARGET_STORAGE_KEY,
+} from '../config.ts'
 import { listDocs, createDoc, type DocListItem } from './docsApi.ts'
 import { withReturnSid } from './StandaloneDocPage.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
@@ -28,7 +33,7 @@ export interface DocTarget {
  * only when the user explicitly returns to the list, so the editor stays mounted across the
  * host's pathname-only re-renders instead of flipping back to the list.
  */
-const TARGET_STORAGE_KEY = 'octo.docs.target'
+const TARGET_STORAGE_KEY = DOC_TARGET_STORAGE_KEY
 
 /** Mirror the active doc target to sessionStorage so it survives the host's query-wiping. */
 function persistDocTarget(target: { space: string; folder: string; doc: string }): void {

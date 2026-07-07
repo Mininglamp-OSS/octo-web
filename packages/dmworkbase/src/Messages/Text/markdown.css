@@ -256,3 +256,15 @@
 .wk-markdown.wk-markdown-send .wk-stream-cursor {
   background-color: rgba(255, 255, 255, 0.9);
 }
+
+/* AC-13b (feature #511): forwarded-doc title clamp. Applied ONLY to the leading bold title of a
+ * forward card (strong + link structure), never to arbitrary bold text — see renderParagraph /
+ * isForwardDocCard. The full title stays in the `title` attribute for PC hover / mobile tap. */
+.wk-markdown .wk-markdown-forward-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  word-break: break-word;
+}

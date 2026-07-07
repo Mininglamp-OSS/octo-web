@@ -9,6 +9,7 @@ import WKApp from "../../App"
 import { ForwardItem } from "./ForwardModal"
 import { candidateToForwardItem } from "./candidateToForwardItem"
 import { chatTypeToChannelType } from "./chatTypeToChannelType"
+import type { ForwardFinished, ForwardGrantRole } from "./grant"
 
 function channelInfoToForwardItem(channelInfo: ChannelInfo): ForwardItem {
   return {
@@ -74,10 +75,26 @@ export interface UseForwardModalResult {
   reset: () => void
   /** 懒加载：项进入视口时调用，按需拉取 channelInfo；去重 */
   requestChannelInfoIfNeeded: (item: ForwardItem) => void
+  /** 授权区 UI 状态（仅在调用方传入 grantOptions 时有意义）。 */
+  grantEnabled: boolean
+  grantRole: ForwardGrantRole
+  setGrantEnabled: (v: boolean) => void
+  setGrantRole: (r: ForwardGrantRole) => void
+}
+
+/**
+ * Opt-in grant options. When present the hook manages the授权区 UI state (enabled/role) and
+ * emits a `grant` second argument on confirm; when absent, confirm keeps the legacy
+ * single-argument `onFinished(channels)` behaviour (既有转发路径零回归).
+ */
+export interface UseForwardModalGrantOptions {
+  canGrant: boolean
+  defaultRole?: ForwardGrantRole
 }
 
 export function useForwardModal(
-  onFinished?: (channels: Channel[]) => void
+  onFinished?: ForwardFinished,
+  grantOptions?: UseForwardModalGrantOptions
 ): UseForwardModalResult {
   const [conversationItems, setConversationItems] = useState<ForwardItem[]>([])
   const [friendItems, setFriendItems] = useState<ForwardItem[]>([])
@@ -86,6 +103,15 @@ export function useForwardModal(
   const [inputValue, setInputValueState] = useState("")
   const [keyword, setKeyword] = useState("")
   const [loading, setLoading] = useState(true)
+  // 授权区状态：默认开关跟随 canGrant，角色默认 reader。仅在传入 grantOptions 时生效。
+  const grantActive = !!grantOptions
+  const [grantEnabled, setGrantEnabledState] = useState<boolean>(!!grantOptions?.canGrant)
+  const [grantRole, setGrantRole] = useState<ForwardGrantRole>(grantOptions?.defaultRole ?? "reader")
+  // 重开授权开关时复位为 reader（不记忆上次更高级别）→ AC-4 / AC-15。
+  const setGrantEnabled = useCallback((v: boolean) => {
+    setGrantEnabledState(v)
+    if (v) setGrantRole(grantOptions?.defaultRole ?? "reader")
+  }, [grantOptions?.defaultRole])
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchRequestRef = useRef(0)
   // load() 可能并发(mount 自动触发 + conversation-list-refreshed 又触发一次)。
@@ -402,6 +428,15 @@ export function useForwardModal(
   const selectedIDsRef = useRef<string[]>(selectedIDs)
   selectedIDsRef.current = selectedIDs
 
+  // Keep the grant selection reachable from the stable confirm() callback without
+  // re-creating it on every toggle.
+  const grantRef = useRef<{ active: boolean; enabled: boolean; role: ForwardGrantRole }>({
+    active: grantActive,
+    enabled: grantEnabled,
+    role: grantRole,
+  })
+  grantRef.current = { active: grantActive, enabled: grantEnabled, role: grantRole }
+
   const selectedChannels = selectedIDs
     .map((id: string) => channelMapRef.current.get(id))
     .filter(Boolean) as Channel[]
@@ -411,7 +446,8 @@ export function useForwardModal(
       .map((id: string) => channelMapRef.current.get(id))
       .filter(Boolean) as Channel[]
     if (onFinished && channels.length > 0) {
-      onFinished(channels)
+      const { active, enabled, role } = grantRef.current
+      onFinished(channels, active && enabled ? { role } : undefined)
     }
   }, [onFinished])
 
@@ -434,5 +470,9 @@ export function useForwardModal(
     confirm,
     reset,
     requestChannelInfoIfNeeded,
+    grantEnabled,
+    grantRole,
+    setGrantEnabled,
+    setGrantRole,
   }
 }

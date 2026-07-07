@@ -14,6 +14,8 @@ import { useMemberNames } from './useMemberNames.ts'
 import { MemberPicker } from './MemberPicker.tsx'
 import { sortMembersForDisplay, withSyntheticOwner } from './sort.ts'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
+import { useAccessRequests, type UseAccessRequestsResult } from '../access-request/useAccessRequests.ts'
+import { PendingRequests } from '../access-request/PendingRequests.tsx'
 
 const ROLES: Role[] = ['reader', 'writer', 'admin']
 
@@ -23,18 +25,26 @@ const ROLES: Role[] = ['reader', 'writer', 'admin']
  * Layout (#5): the "Add member" row and the "Invite" links live at the TOP; the resolved member
  * list (with display NAMES from the space-member seam, #7) follows. `space` is the octo space id
  * used to resolve uid → name; absent/unknown uids fall back to the raw uid.
+ *
+ * `accessRequests` is the SHARED useAccessRequests instance owned by EditorShell (the same one that
+ * drives the Members-button red dot). The panel reads + mutates through it so approve/deny updates
+ * both the panel list and the toolbar badge count — a second, independent hook here would leave the
+ * badge stale after an approve/deny (badge-desync fix). When omitted (standalone / tests), the panel
+ * falls back to its own hook so it still works in isolation.
  */
 export function MemberPanel({
   docId,
   role,
   space,
   ownerId,
+  accessRequests: sharedAccessRequests,
   onClose,
 }: {
   docId: string
   role: Role
   space?: string
   ownerId?: string
+  accessRequests?: UseAccessRequestsResult
   onClose?: () => void
 }) {
   const [members, setMembers] = useState<Member[]>([])
@@ -42,6 +52,13 @@ export function MemberPanel({
   const [loading, setLoading] = useState(false)
   const [adding, setAdding] = useState(false)
   const names = useMemberNames(space ?? '')
+  // Screen 4c admin side: prefer the shared instance from EditorShell so the toolbar badge and this
+  // panel read/mutate the SAME pending-request state; only fall back to a local hook when rendered
+  // standalone (no shared instance passed). The fallback is kept INERT (enabled=false) whenever a
+  // shared instance is supplied — hooks must run unconditionally, but this avoids a duplicate fetch
+  // and guarantees a single source of truth in the real app (badge-desync fix).
+  const localAccessRequests = useAccessRequests(docId, sharedAccessRequests ? false : canManage(role))
+  const accessRequests = sharedAccessRequests ?? localAccessRequests
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -129,6 +146,16 @@ export function MemberPanel({
         <h4 className="octo-member-subtitle">{t('docs.member.inviteTitle')}</h4>
         <InvitePanel docId={docId} role={role} />
       </div>
+
+      {/* Screen 4c (feature #511): pending access requests to approve/deny (admin only). */}
+      <PendingRequests
+        requests={accessRequests.requests}
+        loading={accessRequests.loading}
+        error={accessRequests.error}
+        approve={accessRequests.approve}
+        deny={accessRequests.deny}
+        displayName={displayName}
+      />
 
       <div className="octo-member-section">
         <h4 className="octo-member-subtitle">{t('docs.member.currentMembers')}</h4>

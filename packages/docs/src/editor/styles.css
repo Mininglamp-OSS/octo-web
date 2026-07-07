@@ -2498,3 +2498,45 @@
     overflow-x: auto;
   }
 }
+
+/* ── Forward to chat / access requests (feature #511) ───────────────────────── */
+.octo-doc-forward-btn {
+  font-weight: 600;
+}
+
+/* Pending access-request count badge (Members button + panel section title). */
+.octo-access-badge {
+  display: inline-block;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: 6px;
+  border-radius: 8px;
+  background: var(--octo-danger, #e5484d);
+  color: #fff;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* Forbidden landing "request access" block. */
+.octo-access-request {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.octo-access-request-hint {
+  color: var(--octo-muted, #86909c);
+  font-size: 13px;
+}
+
+.octo-access-request-submitted {
+  margin-top: 12px;
+  color: var(--octo-muted, #86909c);
+  font-size: 13px;
+  text-align: center;
+}

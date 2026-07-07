@@ -8,6 +8,7 @@ import AiBadge from "../AiBadge"
 import WKAvatar from "../WKAvatar"
 import VisibilityTrigger from "../VisibilityTrigger"
 import { useI18n } from "../../i18n"
+import type { ForwardGrantConfig } from "./grant"
 import "./ForwardModal.css"
 
 export interface ForwardItem {
@@ -36,6 +37,54 @@ export interface ForwardModalProps {
   onCancel?: () => void
   /** 懒加载：列表项进入视口时调用。未传则不触发懒加载（用于不需要拉 channelInfo 的场景） */
   onItemVisible?: (item: ForwardItem) => void
+  /**
+   * 授权区配置（feature #511 opt-in 扩展）。仅当调用方显式传入时才渲染授权区；
+   * 既有转发路径（Conversation / Chat / Summary）不传 → 授权区不渲染，零回归。
+   */
+  grant?: ForwardGrantConfig
+}
+
+// ─── 授权区（opt-in，仅 grant 存在时渲染）─────────────────────────────
+
+function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
+  const { t } = useI18n()
+  if (!grant.canGrant) {
+    return (
+      <div className="wk-fm-grant wk-fm-grant--disabled">
+        <span className="wk-fm-grant-lock">🔒</span>
+        <span className="wk-fm-grant-hint">
+          {grant.disabledReason ?? t("base.forwardModal.grant.disabledReason")}
+        </span>
+      </div>
+    )
+  }
+  return (
+    <div className="wk-fm-grant">
+      <div className="wk-fm-grant-row">
+        <label className="wk-fm-grant-switch">
+          <Checkbox checked={grant.enabled} onCheck={() => grant.onEnabledChange(!grant.enabled)} />
+          <span className="wk-fm-grant-label">{t("base.forwardModal.grant.enableLabel")}</span>
+        </label>
+        <select
+          className="wk-fm-grant-role"
+          value={grant.role}
+          disabled={!grant.enabled}
+          onChange={(e) => grant.onRoleChange(e.target.value as ForwardGrantConfig["role"])}
+        >
+          <option value="reader">{t("base.forwardModal.grant.roleReader")}</option>
+          <option value="writer">{t("base.forwardModal.grant.roleWriter")}</option>
+        </select>
+      </div>
+      {grant.enabled && typeof grant.targetMemberCount === "number" && grant.targetMemberCount > 0 && (
+        <div className="wk-fm-grant-members">
+          {t("base.forwardModal.grant.targetMembers", { values: { count: grant.targetMemberCount } })}
+        </div>
+      )}
+      {!grant.enabled && (
+        <div className="wk-fm-grant-info">{t("base.forwardModal.grant.disabledInfo")}</div>
+      )}
+    </div>
+  )
 }
 
 // ─── 左列：可选列表项 ───────────────────────────────────────────
@@ -122,6 +171,7 @@ export function ForwardModal({
   onConfirm,
   onCancel,
   onItemVisible,
+  grant,
 }: ForwardModalProps) {
   const { t } = useI18n()
   const selectedSet = new Set(selectedIDs)
@@ -216,6 +266,9 @@ export function ForwardModal({
           )}
         </div>
       </div>
+
+      {/* 授权区（opt-in）：仅当调用方传入 grant 时渲染，插在内容区与 Footer 之间。 */}
+      {grant && <GrantArea grant={grant} />}
 
       {/* Footer */}
       <div className="wk-fm-footer">

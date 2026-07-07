@@ -9,6 +9,7 @@ import type {
   ApiResponse,
   IModule,
   LoginInfo,
+  OpenDocForwardOptions,
   RemoteConfigLite,
   RouteManager,
   SpaceMemberLite,
@@ -168,6 +169,8 @@ export function createMockWKApp(
   spaceMembers: SpaceMemberLite[]
   /** Test hook: the host event-bus double (emitSpaceChanged to simulate a Space switch). */
   mockMittBus: MockMittBus
+  /** Test hook: records every openDocForward() call so forward tests can assert the payload. */
+  openDocForwardCalls: OpenDocForwardOptions[]
 } {
   const apiClient = new MockApiClient()
   const route = new MockRouteManager()
@@ -177,6 +180,8 @@ export function createMockWKApp(
   // Fake space membership tests can populate (wk.spaceMembers.push(...)) so docs can resolve
   // uid → display name through the seam without a live host.
   const spaceMembers: SpaceMemberLite[] = []
+  // feature #511: recorded openDocForward payloads for docs-side forward unit tests.
+  const openDocForwardCalls: OpenDocForwardOptions[] = []
   return {
     apiClient,
     route,
@@ -189,6 +194,10 @@ export function createMockWKApp(
     spaceMembers,
     mittBus,
     mockMittBus: mittBus,
+    openDocForwardCalls,
+    openDocForward(opts: OpenDocForwardOptions) {
+      openDocForwardCalls.push(opts)
+    },
     // Mirror the real host's paged getMembers: return the requested page slice. Docs loops
     // pages until a short/empty page, so a slice-based mock terminates fetchAllSpaceMembers.
     getSpaceMembers(_spaceId: string, page: number, limit: number) {

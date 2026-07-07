@@ -263,3 +263,70 @@
   font-size: var(--wk-text-size-tiny, 10px);
   flex-shrink: 0;
 }
+
+/* ── 授权区（feature #511 opt-in 扩展）──
+ * 仅当调用方（docs「转发到聊天」）传入 grant 配置时渲染，插在内容区与 Footer 之间。
+ * 既有转发路径不传 grant → 不渲染，零回归。
+ */
+.wk-fm-grant {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1, 4px);
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
+  border-top: 1px solid var(--wk-border-color, #ebedf0);
+}
+
+.wk-fm-grant-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2, 8px);
+}
+
+.wk-fm-grant-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1, 4px);
+  cursor: pointer;
+}
+
+.wk-fm-grant-label {
+  font-size: var(--wk-text-size-small, 13px);
+}
+
+.wk-fm-grant-role {
+  height: 28px;
+  padding: 0 var(--wk-sp-2, 8px);
+  border: 1px solid var(--wk-border-color, #ebedf0);
+  border-radius: var(--wk-radius-small, 4px);
+  background: var(--wk-bg-color, #fff);
+}
+
+.wk-fm-grant-role:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wk-fm-grant-members {
+  font-size: var(--wk-text-size-tiny, 12px);
+  color: var(--wk-text-color-secondary, #86909c);
+}
+
+.wk-fm-grant-info {
+  font-size: var(--wk-text-size-tiny, 12px);
+  color: var(--semi-color-info, #4a6cf7);
+}
+
+.wk-fm-grant--disabled {
+  flex-direction: row;
+  align-items: center;
+}
+
+.wk-fm-grant-lock {
+  margin-right: var(--wk-sp-1, 4px);
+}
+
+.wk-fm-grant-hint {
+  font-size: var(--wk-text-size-tiny, 12px);
+  color: var(--wk-text-color-secondary, #86909c);
+}

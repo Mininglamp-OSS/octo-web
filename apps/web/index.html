@@ -2,6 +2,61 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <script>
+      /*
+       * Forward/deep-link capture (feature #511, XIN-328 / XIN-332 / XIN-333).
+       *
+       * A forwarded-doc card link opens a NEW TAB at `${origin}/docs?...&doc=<docId>`. The octo
+       * host's self-built RouteManager (packages/dmworkbase Service/Route.tsx) handles
+       * `pageshow`/`popstate` by re-pushing `window.location.pathname` ONLY — it drops the query
+       * and re-stamps the URL to `/docs?sid=…`, wiping `?doc=` before the code-split docs module
+       * mounts. XIN-332 real-device tracing proved the module's own init() runs AFTER that
+       * re-push, so the mirror stayed empty and the link opened the empty document list instead
+       * of the target document.
+       *
+       * This inline script is the EARLIEST synchronous entry: it runs during HTML parse, before
+       * the module bundle (/src/index.tsx) is fetched, before RouteManager is constructed, and
+       * long before the pageshow re-push — so `?doc=` is captured while it is still on the URL.
+       * It writes the SAME sessionStorage mirror the docs module reads: key 'octo.docs.target'
+       * (config.ts DOC_TARGET_STORAGE_KEY) with shape { doc, space?, folder? } (readDocTarget in
+       * packages/docs/src/pages/DocsHome.tsx fills missing space/folder from defaults). Keep the
+       * key and JSON shape in sync with config.ts.
+       */
+      (function () {
+        try {
+          var path = window.location.pathname || '';
+          if (path !== '/docs' && path.indexOf('/docs/') !== 0) return;
+          var q = new URLSearchParams(window.location.search);
+          var doc = q.get('doc') || q.get('docId') || '';
+          var marker = { captured: false, doc: '', source: 'index.html' };
+          if (doc) {
+            var target = { doc: doc };
+            var space = q.get('space');
+            var folder = q.get('folder');
+            if (space) target.space = space;
+            if (folder) target.folder = folder;
+            window.sessionStorage.setItem('octo.docs.target', JSON.stringify(target));
+            marker.captured = true;
+            marker.doc = doc;
+          }
+          window.__OCTO_DOCS_DEEPLINK__ = marker;
+          // Real-device observability point (XIN-332 hard gate): Grace can confirm from the tab's
+          // console that the stash ran and sessionStorage holds the target BEFORE the host wipes
+          // the query, without relying on the lazy docs chunk having loaded.
+          console.log(
+            '[octo.docs.deeplink] index.html capture',
+            marker,
+            'search=' + window.location.search,
+          );
+        } catch (e) {
+          try {
+            console.warn('[octo.docs.deeplink] index.html capture failed', e);
+          } catch (_) {
+            /* console unavailable */
+          }
+        }
+      })();
+    </script>
     <link rel="icon" href="/favicon.ico?v=2" />
     <meta
       name="viewport"

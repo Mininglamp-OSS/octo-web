@@ -111,7 +111,23 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 .replace(/\/+$/, '')
             // 保留原始 sid（如果有），不随机生成新的
             const existingSid = getQueryParam("sid") || ""
-            const sidParam = existingSid ? `?sid=${existingSid}` : ""
+            // #511 problem 2 (附带必修): a forwarded-doc link is `/docs?...&doc=<id>&sid=<space>`.
+            // A first-time recipient logs in, then the post-login redirect used to keep only ?sid=
+            // and drop ?doc=, landing them on the empty document list instead of the document they
+            // clicked. Carry the doc deep-link (doc + space/folder) through the redirect so login
+            // returns them to the target document.
+            const forwardDoc = getQueryParam("doc") || ""
+            const forwardSpace = getQueryParam("space") || ""
+            const forwardFolder = getQueryParam("folder") || ""
+            const redirectQuery = new URLSearchParams()
+            if (existingSid) redirectQuery.set("sid", existingSid)
+            if (forwardDoc) {
+                redirectQuery.set("doc", forwardDoc)
+                if (forwardSpace) redirectQuery.set("space", forwardSpace)
+                if (forwardFolder) redirectQuery.set("folder", forwardFolder)
+            }
+            const redirectQs = redirectQuery.toString()
+            const sidParam = redirectQs ? `?${redirectQs}` : ""
 
             const goMain = () => {
                 // A user who signed in from a shared /d/:docId link (local OR SSO/OIDC, where the

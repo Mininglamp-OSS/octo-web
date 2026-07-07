@@ -18,6 +18,12 @@ import { linkifySafeUrls } from "../../Utils/linkify";
 import { downloadFile } from "../../Utils/download";
 import { t } from "../../i18n";
 import { getMentionRenderState } from "./mentionRenderState";
+import {
+  isForwardDocCard,
+  middleEllipsizeUrl,
+  shouldEllipsizeLinkText,
+  type ParagraphChildKind,
+} from "./forwardClamp";
 
 export interface MentionInfo {
   name: string; // "@张三"（含@符号）
@@ -298,11 +304,30 @@ function segmentText(
 }
 
 const baseComponents: any = {
-  a: ({ href, children, ...props }: any) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
-      {children}
-    </a>
-  ),
+  a: ({ href, children, ...props }: any) => {
+    // AC-13b (feature #511): middle-ellipsize the DISPLAY text only when it is itself a long bare
+    // URL (visible text === href). A normal `[title](link)` keeps its title untouched; the href is
+    // never modified. `title` tooltip carries the full URL so hover/copy still gets the whole link.
+    const text =
+      typeof children === "string"
+        ? children
+        : Array.isArray(children) && children.length === 1 && typeof children[0] === "string"
+          ? (children[0] as string)
+          : null;
+    if (text != null && shouldEllipsizeLinkText(text, href)) {
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer" title={text} {...props}>
+          {middleEllipsizeUrl(text)}
+        </a>
+      );
+    }
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+        {children}
+      </a>
+    );
+  },
+  p: ({ node: _node, children, ...props }: any) => renderParagraph(children, props),
   pre: ({ children, ...props }: any) => (
     <div className="wk-markdown-pre-wrapper">
       <pre {...props}>{children}</pre>
@@ -310,6 +335,70 @@ const baseComponents: any = {
   ),
   img: ({ src, alt }: any) => <MarkdownImage src={src} alt={alt} />,
 };
+
+/**
+ * Flatten a React child into its plain text (strings + nested string arrays only). Used to read the
+ * visible label of a bold/link run for the forward-card structure check; non-string nodes (nested
+ * elements) contribute nothing, which is fine — a real forward title/anchor is a plain string.
+ */
+function plainText(children: React.ReactNode): string {
+  if (typeof children === "string") return children;
+  if (Array.isArray(children)) return children.map(plainText).join("");
+  return "";
+}
+
+/**
+ * Paragraph renderer with the AC-13b forward-card title clamp (contract 5 structure heuristic).
+ *
+ * Safe passthrough for EVERY other message: it only adds the 2-line-clamp class + `title` tooltip
+ * when the paragraph is exactly the forwarded-doc shape (leading bold title + a link — detected via
+ * {@link isForwardDocCard}). Anything else renders as a plain `<p>` unchanged, so no existing
+ * message's bold text is affected. The full title lives in the `title` attribute so PC hover /
+ * mobile tap still reveals it in full while the visible text is clamped to 2 lines.
+ */
+function renderParagraph(children: React.ReactNode, props: any): React.ReactElement {
+  const arr = React.Children.toArray(children);
+  const kinds: ParagraphChildKind[] = arr.map((c) => {
+    if (typeof c === "string") return { text: c };
+    if (React.isValidElement(c)) {
+      const type = (c as React.ReactElement).type as any;
+      const cprops = (c.props ?? {}) as any;
+      // Carry the visible text of bold/link runs so the detector can require the link label to
+      // equal the bold title (the forward card duplicates the title as its anchor text).
+      if (type === "strong" || type === "b") return { isStrong: true, content: plainText(cprops.children) };
+      if (type === "br") return { isBreak: true };
+      if (cprops.href != null || type === baseComponents.a) return { isLink: true, content: plainText(cprops.children) };
+    }
+    return {};
+  });
+  if (!isForwardDocCard(kinds)) {
+    return <p {...props}>{children}</p>;
+  }
+  // Clone the leading <strong> to carry the full-title tooltip + clamp class.
+  const clamped = arr.map((c, i) => {
+    if (React.isValidElement(c) && ((c.type as any) === "strong" || (c.type as any) === "b")) {
+      const cprops = c.props as any;
+      // Read the title text array-safely: react-markdown 8.x always hands `strong` an ARRAY of
+      // children (e.g. ["Quarterly plan"]), never a bare string, so the old
+      // `typeof children === "string"` guard left `full` undefined → no `title` attribute → the
+      // hover tooltip silently vanished (XIN-450 P1). plainText() flattens the string/array/nested
+      // shapes the same way the forward-card detector above does; `|| undefined` keeps the attribute
+      // absent (rather than an empty `title=""`) when there is no text.
+      const full = plainText(cprops?.children) || undefined;
+      return React.cloneElement(c as React.ReactElement<any>, {
+        key: i,
+        className: `${cprops?.className ?? ""} wk-markdown-forward-title`.trim(),
+        title: full,
+      });
+    }
+    return c;
+  });
+  return (
+    <p {...props} className={`${props?.className ?? ""} wk-markdown-forward-card`.trim()}>
+      {clamped}
+    </p>
+  );
+}
 
 /**
  * Markdown / RichText 正文内联图片：
