@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { getWKApp, getRouteRight, onSpaceChanged, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
+import { SheetView } from '../sheet/SheetView.tsx'
+import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
 import '../editor/styles.css'
 import {
   DEFAULT_DOC_SPACE,
@@ -8,9 +11,11 @@ import {
   DEFAULT_DOC_ID,
   DOC_TARGET_STORAGE_KEY,
 } from '../config.ts'
-import { listDocs, createDoc, type DocListItem } from './docsApi.ts'
+import { listDocs, createDoc, getDoc, type DocListItem } from './docsApi.ts'
 import { withReturnSid } from './StandaloneDocPage.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
+import { createInvite, buildInviteUrl } from '../invite/api.ts'
+import { canManage, type Role } from '../auth/roles.ts'
 import { formatRelative, formatAbsolute } from '../versions/format.ts'
 
 export interface DocTarget {
@@ -18,6 +23,47 @@ export interface DocTarget {
   folder: string
   doc: string
   docId: string
+}
+
+/**
+ * A dropdown menu rendered in a body portal at fixed coords, so it is never clipped by an
+ * ancestor's `overflow` (the docs list panel scrolls, which was cutting off inline menus).
+ * A full-screen transparent backdrop closes it on outside click.
+ */
+function PortalMenu({
+  at,
+  onClose,
+  children,
+}: {
+  at: { left: number; top: number }
+  onClose: () => void
+  children: React.ReactNode
+}) {
+  return createPortal(
+    <>
+      <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000 }} />
+      <div
+        role="menu"
+        style={{
+          position: 'fixed',
+          left: at.left,
+          top: at.top,
+          zIndex: 1001,
+          background: '#fff',
+          color: '#333',
+          border: '1px solid #dadce0',
+          borderRadius: 8,
+          boxShadow: '0 6px 18px rgba(0,0,0,0.16)',
+          padding: 6,
+          minWidth: 160,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {children}
+      </div>
+    </>,
+    document.body,
+  )
 }
 
 /**
@@ -180,13 +226,59 @@ function DocsList({
   space: string
   folder: string
   selectedDocId: string | null
-  onSelect: (docId: string) => void
+  onSelect: (docId: string, docType?: string) => void
   reloadToken?: number
 }): React.ReactElement {
   const [items, setItems] = useState<DocListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [newMenuAt, setNewMenuAt] = useState<{ left: number; top: number } | null>(null)
+  const [importMenuAt, setImportMenuAt] = useState<{ left: number; top: number } | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
+  // Client-side pin (置顶) — persisted in localStorage; pinned docs sort to the top.
+  const [pinned, setPinned] = useState<Set<string>>(() => {
+    try {
+      return new Set<string>(JSON.parse(window.localStorage.getItem('octo.docs.pinned') || '[]'))
+    } catch {
+      return new Set<string>()
+    }
+  })
+  // Right-click context menu anchor (like 企业微信's list menu): { docId, role, x, y } | null.
+  const [menu, setMenu] = useState<{ docId: string; role: Role; x: number; y: number } | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const togglePin = (id: string) => {
+    setPinned((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      try {
+        window.localStorage.setItem('octo.docs.pinned', JSON.stringify([...next]))
+      } catch {
+        // ignore storage failures — pinning is a client-side convenience
+      }
+      return next
+    })
+  }
+
+  // Share link = an invite link that GRANTS access (a bare /docs?doc= URL only works
+  // for existing members). Create one and copy it to the clipboard. The link grants
+  // READER access — a "copy link" must never silently hand out write access; elevating
+  // a share to writer is a deliberate action, not the default. (Backend also requires
+  // admin to create invites; the menu entry is gated on canManage below to match.)
+  const copyShareLink = async (id: string) => {
+    try {
+      const inv = await createInvite(id, { role: 'reader' })
+      const url = buildInviteUrl(inv.inviteToken)
+      await navigator.clipboard?.writeText(url)
+      setNotice(t('docs.sheet.linkCopied'))
+      window.setTimeout(() => setNotice(null), 2000)
+    } catch {
+      setNotice(t('docs.sheet.linkFailed'))
+      window.setTimeout(() => setNotice(null), 2000)
+    }
+  }
 
   // Stale-response guard (XIN-417). Switching Space bumps `space`, which recreates `reload` and
   // fires a fresh listDocs — but the previous Space's request may still be in flight. listDocs
@@ -236,17 +328,18 @@ function DocsList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadToken])
 
-  const onCreate = async () => {
+  const onCreate = async (docType?: string) => {
     if (creating) return
     setCreating(true)
     try {
       const created = await createDoc({
-        title: t('docs.state.untitled'),
+        title: docType === 'sheet' ? t('docs.sheet.untitled') : t('docs.state.untitled'),
         spaceId: space || undefined,
         folderId: folder || undefined,
+        docType,
       })
       // New docs land in the list; select it inline (right pane opens, list stays).
-      onSelect(created.docId)
+      onSelect(created.docId, docType)
       reload()
       setCreating(false)
     } catch {
@@ -255,19 +348,161 @@ function DocsList({
     }
   }
 
+  // "从 Excel 导入" → create a NEW sheet from the uploaded file (title = filename), then
+  // stash the parsed cells for the opening SheetView to drain (see xlsxImport.ts). Import
+  // never overwrites the current sheet — it always lands in its own new file.
+  const onImportSheet = async (file: File) => {
+    if (creating) return
+    // File-size gate BEFORE reading bytes: a huge/crafted .xlsx can inflate its declared
+    // extent and OOM the tab even before parse. Reject oversized files up front so we never
+    // pull them into memory. 20MB comfortably covers real spreadsheets.
+    const MAX_IMPORT_BYTES = 20 * 1024 * 1024
+    if (file.size > MAX_IMPORT_BYTES) {
+      setError(t('docs.sheet.importTooLarge'))
+      return
+    }
+    setCreating(true)
+    try {
+      const result = await parseXlsxToMatrix(await file.arrayBuffer())
+      if (!result.ok) {
+        setError(result.reason === 'empty' ? t('docs.sheet.importEmpty') : t('docs.sheet.importError'))
+        setCreating(false)
+        return
+      }
+      const parsed = result.data
+      const title = file.name.replace(/\.(xlsx|xls)$/i, '').trim() || t('docs.sheet.untitled')
+      const created = await createDoc({
+        title,
+        spaceId: space || undefined,
+        folderId: folder || undefined,
+        docType: 'sheet',
+      })
+      pendingSheetImports.set(created.docId, parsed)
+      onSelect(created.docId, 'sheet')
+      reload()
+      // Surface caveats AFTER a successful import so multi-sheet / truncation is never silent.
+      if (parsed.droppedSheetCount && parsed.droppedSheetCount > 0) {
+        setError(t('docs.sheet.importMultiSheet'))
+      } else if (parsed.truncated) {
+        setError(t('docs.sheet.importTruncated'))
+      }
+    } catch {
+      setError(t('docs.state.error'))
+    } finally {
+      setCreating(false)
+    }
+  }
+
   return (
     <div className="octo-docs-list">
       <div className="octo-docs-list-header">
         <h2 className="octo-docs-list-title">{t('docs.menu.title')}</h2>
+        <span
+          className="octo-docs-list-new"
+          style={{ display: 'inline-flex', alignItems: 'stretch', padding: 0, overflow: 'hidden' }}
+        >
+          <button
+            type="button"
+            onClick={() => onCreate()}
+            disabled={creating}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              background: 'transparent',
+              border: 'none',
+              color: 'inherit',
+              font: 'inherit',
+              padding: '6px 8px 6px 12px',
+              cursor: creating ? 'default' : 'pointer',
+            }}
+          >
+            <span className="octo-docs-list-new-icon" aria-hidden="true">+</span>
+            {t('docs.list.new')}
+          </button>
+          <button
+            type="button"
+            aria-label={t('docs.sheet.moreNew')}
+            title={t('docs.sheet.moreNew')}
+            disabled={creating}
+            onClick={(e) => {
+              const box = (e.currentTarget.closest('.octo-docs-list-new') as HTMLElement) ?? e.currentTarget
+              const r = box.getBoundingClientRect()
+              setNewMenuAt(newMenuAt ? null : { left: r.left, top: r.bottom + 6 })
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              background: 'transparent',
+              border: 'none',
+              borderLeft: '1px solid rgba(255,255,255,0.45)',
+              color: 'inherit',
+              padding: '0 12px',
+              fontSize: 11,
+              cursor: creating ? 'default' : 'pointer',
+            }}
+          >
+            ▾
+          </button>
+        </span>
+        {newMenuAt && (
+          <PortalMenu at={newMenuAt} onClose={() => setNewMenuAt(null)}>
+            <button
+              type="button"
+              className="octo-tb-btn"
+              disabled={creating}
+              style={{ display: 'block', width: '100%', textAlign: 'left' }}
+              onClick={() => {
+                setNewMenuAt(null)
+                void onCreate('sheet')
+              }}
+            >
+              ▦ {t('docs.sheet.new')}
+            </button>
+          </PortalMenu>
+        )}
         <button
           type="button"
           className="octo-docs-list-new"
-          onClick={onCreate}
           disabled={creating}
+          title={t('docs.sheet.import')}
+          aria-haspopup="menu"
+          aria-expanded={importMenuAt != null}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect()
+            setImportMenuAt(importMenuAt ? null : { left: r.left, top: r.bottom + 6 })
+          }}
         >
-          <span className="octo-docs-list-new-icon" aria-hidden="true">+</span>
-          {t('docs.list.new')}
+          {t('docs.sheet.import')}
+          <span style={{ marginLeft: 6, fontSize: 9, opacity: 0.9 }}>▾</span>
         </button>
+        {importMenuAt && (
+          <PortalMenu at={importMenuAt} onClose={() => setImportMenuAt(null)}>
+            <button
+              type="button"
+              className="octo-tb-btn"
+              disabled={creating}
+              style={{ display: 'block', width: '100%', textAlign: 'left' }}
+              onClick={() => {
+                setImportMenuAt(null)
+                importInputRef.current?.click()
+              }}
+            >
+              📄 {t('docs.sheet.importExcel')}
+            </button>
+          </PortalMenu>
+        )}
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) void onImportSheet(f)
+            e.currentTarget.value = ''
+          }}
+        />
       </div>
       {loading && <p className="octo-docs-list-state">{t('docs.state.loading')}</p>}
       {error && !loading && (
@@ -283,7 +518,9 @@ function DocsList({
       )}
       {!loading && !error && items.length > 0 && (
         <ul className="octo-docs-list-items">
-          {items.map((d) => {
+          {[...items]
+            .sort((a, b) => (pinned.has(b.docId) ? 1 : 0) - (pinned.has(a.docId) ? 1 : 0))
+            .map((d) => {
             const active = d.docId === selectedDocId
             const hasTitle = !!d.title && d.title.trim().length > 0
             const label = hasTitle ? d.title : t('docs.state.untitled')
@@ -297,7 +534,11 @@ function DocsList({
                 <button
                   type="button"
                   className="octo-docs-list-row"
-                  onClick={() => onSelect(d.docId)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setMenu({ docId: d.docId, role: d.role, x: e.clientX, y: e.clientY })
+                  }}
+                  onClick={() => onSelect(d.docId, d.docType)}
                   aria-current={active ? 'true' : undefined}
                 >
                   <span className="octo-docs-list-row-icon" aria-hidden="true">
@@ -335,6 +576,75 @@ function DocsList({
             )
           })}
         </ul>
+      )}
+      {menu && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 50 }}
+            onClick={() => setMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              setMenu(null)
+            }}
+          />
+          <div
+            className="octo-docs-ctx-menu"
+            style={{
+              position: 'fixed',
+              left: menu.x,
+              top: menu.y,
+              zIndex: 51,
+              background: '#fff',
+              border: '1px solid #e5e7eb',
+              borderRadius: 8,
+              boxShadow: '0 4px 16px rgba(0,0,0,.12)',
+              padding: 4,
+              minWidth: 120,
+              fontSize: 13,
+            }}
+          >
+            <div
+              role="menuitem"
+              style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 6 }}
+              onClick={() => {
+                togglePin(menu.docId)
+                setMenu(null)
+              }}
+            >
+              {pinned.has(menu.docId) ? t('docs.sheet.unpin') : t('docs.sheet.pin')}
+            </div>
+            {canManage(menu.role) && (
+              <div
+                role="menuitem"
+                style={{ padding: '8px 12px', cursor: 'pointer', borderRadius: 6 }}
+                onClick={() => {
+                  void copyShareLink(menu.docId)
+                  setMenu(null)
+                }}
+              >
+                {t('docs.sheet.copyLink')}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+      {notice && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 60,
+            background: '#111827',
+            color: '#fff',
+            padding: '8px 16px',
+            borderRadius: 8,
+            fontSize: 13,
+          }}
+        >
+          {notice}
+        </div>
       )}
     </div>
   )
@@ -383,6 +693,9 @@ export function DocsHome() {
     )
     return initial?.docId ?? null
   })
+  // Doc type of the open doc ('sheet' -> SheetView, else the Tiptap EditorShell).
+  // Unknown on a deep-link/refresh until resolved via getDoc (see the mount effect).
+  const [selectedDocType, setSelectedDocType] = useState<string | undefined>(undefined)
 
   // The host's right (main) route pane. When present (production), the editor is pushed there
   // so it fills the main content area while the list stays in the left route slot — the same
@@ -516,24 +829,53 @@ export function DocsHome() {
     [uid, space, folder, names, onTitleSaved, backToList, onDocDeleted, onOpenInNewPage],
   )
 
+  // Choose the right-pane renderer by doc type: a spreadsheet ('sheet') mounts the
+  // collaborative Univer SheetView; everything else uses the Tiptap EditorShell.
+  const buildRightPane = useCallback(
+    (docId: string, docType: string | undefined, onBack?: () => void) => {
+      if (docType === 'sheet') {
+        return (
+          <SheetView
+            key={docId}
+            uid={uid}
+            space={space}
+            folder={folder}
+            doc={docId}
+            docId={docId}
+            user={{ id: uid, name: names.get(uid) || uid }}
+            onTitleSaved={onTitleSaved}
+            onDeleted={onDocDeleted}
+          />
+        )
+      }
+      return buildEditor(docId, onBack)
+    },
+    [uid, space, folder, names, buildEditor],
+  )
+
   const openDoc = useCallback(
-    (docId: string) => {
+    (docId: string, docType?: string) => {
       setSelectedDocId(docId)
       // Durable mirror (survives the host's query-wiping re-push) + shareable URL (replaceState,
       // no host re-push) — together neutralizing the `?doc=` strip should-fix.
       persistDocTarget({ space, folder, doc: docId })
       mirrorDocToUrl(docId, space, folder)
-      // Full-width path: push the editor into the host's main (right) pane, list stays left.
-      // No header back button here (#2) — the resident list is the way back.
-      if (routeRight) {
-        try {
-          routeRight.replaceToRoot(buildEditor(docId) as unknown)
-        } catch {
-          // ignore — fall back to inline render below if the host pane rejects.
+      const push = (dt: string | undefined) => {
+        setSelectedDocType(dt)
+        if (routeRight) {
+          try {
+            routeRight.replaceToRoot(buildRightPane(docId, dt) as unknown)
+          } catch {
+            // ignore — fall back to inline render below if the host pane rejects.
+          }
         }
       }
+      // Type known from the list row → render immediately; otherwise resolve it
+      // (deep-link / created doc) so we pick SheetView vs EditorShell correctly.
+      if (docType !== undefined) push(docType)
+      else void getDoc(docId).then((m) => push(m.docType)).catch(() => push(undefined))
     },
-    [space, folder, routeRight, buildEditor],
+    [space, folder, routeRight, buildRightPane],
   )
 
   // On mount, ALWAYS occupy the right pane so the host chat placeholder never shows through
@@ -543,14 +885,30 @@ export function DocsHome() {
   // intermittent chat-placeholder regression.
   useEffect(() => {
     if (!routeRight) return
-    try {
-      if (selectedDocId) {
-        routeRight.replaceToRoot(buildEditor(selectedDocId) as unknown)
-      } else {
+    if (selectedDocId) {
+      // Resolve the doc type first so a deep-link / refresh opens the right renderer.
+      void getDoc(selectedDocId)
+        .then((m) => {
+          setSelectedDocType(m.docType)
+          try {
+            routeRight.replaceToRoot(buildRightPane(selectedDocId, m.docType) as unknown)
+          } catch {
+            // ignore
+          }
+        })
+        .catch(() => {
+          try {
+            routeRight.replaceToRoot(buildEditor(selectedDocId) as unknown)
+          } catch {
+            // ignore
+          }
+        })
+    } else {
+      try {
         routeRight.replaceToRoot(buildEmptyState() as unknown)
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
     // Only on mount: subsequent selections are pushed by openDoc / backToList.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -586,7 +944,7 @@ export function DocsHome() {
       </aside>
       <section className="octo-docs-split-right">
         {selectedDocId ? (
-          buildEditor(selectedDocId, backToList)
+          buildRightPane(selectedDocId, selectedDocType, backToList)
         ) : (
           <div className="octo-docs-split-empty">
             <p>{t('docs.state.empty')}</p>

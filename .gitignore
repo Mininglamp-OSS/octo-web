@@ -74,3 +74,4 @@ docs/superpowers/plans/
 /cc-*.json
 grp_out.txt
 .cctmp/
+.codegraph/

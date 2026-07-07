@@ -141,6 +141,24 @@ export default defineConfig(({ mode }) => {
             ? (path: string) => path.replace(/^\/matter/, "")
             : undefined,
         },
+        // fleet 经 /fleet/api 段挂载 (fleet api.go A.1: `fleet/api` segment 由
+        // nginx 添加并 strip 转 fleet /v1)。一条规则覆盖所有 fleet 端点,
+        // 无需逐个路径列举。必须在 /api/ catch-all 之前 (vite first-match)。
+        // Note: bot feed (/bots/:uid/feed) 由 matter 直供 (上面 /matter/api/v1);
+        // daemon 客户端直连 OCTO_FLEET_URL + /v1/...，不经此代理。
+        "/fleet/api/": {
+          target: env.VITE_FLEET_API_URL || "http://127.0.0.1:8092",
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path: string) => path.replace(/^\/fleet\/api/, ''),
+        },
+        // Docs/Sheet collaborative backend — MUST be before the general /api/ rule.
+        // The docs-backend mounts its routes at /api/v1/docs, so no rewrite needed.
+        "/api/v1/docs": {
+          target: env.VITE_DOCS_API_URL || "http://127.0.0.1:3000",
+          changeOrigin: true,
+          secure: false,
+        },
         "/api/": {
           target: apiOrigin,
           changeOrigin: true,

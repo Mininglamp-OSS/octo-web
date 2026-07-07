@@ -2444,7 +2444,6 @@
   font-size: 12px;
   color: var(--octo-text-secondary, #86909c);
 }
-
 /* ── Standalone document page (octo-web #512) ────────────────────────────────
    The full-window view a shared `/d/:docId` link opens, outside the app shell / NavRail.
    The wrapper owns the viewport; the inner EditorShell (.octo-doc--editor) fills it, so the
@@ -2624,3 +2623,10 @@
   background: var(--octo-accent, #3370ff);
 }
 
+/* Sheet toolbar: left-align the Univer ribbon tabs (开始 / 公式 …) instead of
+   centering them. Univer centers the ribbon via `justify-center` on the
+   overflow-x-auto flex row; we scope the override to our own sheet container so
+   nothing outside the spreadsheet is affected. */
+.octo-sheet-container .univer-justify-center.univer-overflow-x-auto {
+  justify-content: flex-start !important;
+}
