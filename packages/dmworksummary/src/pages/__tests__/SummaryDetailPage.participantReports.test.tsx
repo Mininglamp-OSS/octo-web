@@ -26,6 +26,13 @@ const I18N = {
     'summary.detail.collapse': 'Collapse',
     'summary.detail.expandAll': 'Expand all',
     'summary.detail.editMyReport': 'Edit',
+    'summary.detail.processingTitle': 'Generating summary...',
+    'summary.detail.processingDesc': 'Please wait',
+    'summary.detail.workflowUnderstandQuestion': 'Understand request',
+    'summary.detail.workflowFindRelevantChats': 'Find chats',
+    'summary.detail.workflowFilterUsefulContent': 'Filter content',
+    'summary.detail.workflowAnalyzeChatContent': 'Analyze content',
+    'summary.detail.workflowGenerateSummary': 'Generate summary',
 };
 const t = (key, opts) => {
     let s = I18N[key] ?? key;
@@ -97,6 +104,7 @@ vi.mock('../../components/SummaryEditor', () => ({
 }));
 
 import SummaryDetailPage from '../SummaryDetailPage';
+import { SummaryMode, TaskStatus } from '../../types/summary';
 
 function makeMember(over) {
     return {
@@ -249,5 +257,54 @@ describe('SummaryDetailPage.renderParticipantReports - OCT-16 / #495 declined/pe
         expect(container.querySelectorAll('[data-testid="icon-close"]').length).toBe(2);
         expect((text.match(/Participation declined/g) || []).length).toBe(2);
         expect(text).not.toContain('waiting to submit');
+    });
+});
+
+describe('SummaryDetailPage workflow processing card', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('keeps the generic processing card for non-personal modes', () => {
+        const page = new SummaryDetailPage({ taskId: 1 });
+        page.context = { t };
+        page.state = {
+            ...page.state,
+            detail: {
+                task_id: 1,
+                summary_mode: SummaryMode.BY_GROUP,
+                status: TaskStatus.PROCESSING,
+            },
+            personalResult: null,
+        };
+
+        expect((page as any).shouldShowProcessingCard()).toBe(true);
+        const { container } = rtlRender(page.renderProcessing());
+        const text = container.textContent || '';
+        expect(text).toContain('Generating summary...');
+        expect(text).toContain('Please wait');
+        expect(text).not.toContain('Understand request');
+    });
+
+    it('renders localized workflow stage labels for personal mode', () => {
+        const page = new SummaryDetailPage({ taskId: 1 });
+        page.context = { t };
+        page.state = {
+            ...page.state,
+            detail: {
+                task_id: 1,
+                summary_mode: SummaryMode.BY_PERSON,
+                status: TaskStatus.PROCESSING,
+            },
+            personalResult: { worker_status: 1, workflow_stage: 'understand_question' },
+            workflowDisplayIndex: 0,
+            workflowRevealDone: false,
+        };
+
+        const { container } = rtlRender(page.renderProcessing());
+        const text = container.textContent || '';
+        expect(text).toContain('Understand request');
+        expect(text).toContain('Find chats');
+        expect(text).toContain('Filter content');
+        expect(text).toContain('Analyze content');
+        expect(text).toContain('Generate summary');
     });
 });

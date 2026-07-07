@@ -88,15 +88,15 @@ interface SummaryDetailPageState {
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
-const PERSONAL_RESULT_POLL_INTERVAL_MS = 500;
+const PERSONAL_RESULT_POLL_INTERVAL_MS = 1500;
 const WORKFLOW_COMPLETE_REVEAL_DELAY_MS = 650;
 
-const SUMMARY_WORKFLOW_STAGES: Array<{ key: WorkflowStage; label: string }> = [
-    { key: "understand_question", label: "理解总结问题" },
-    { key: "find_relevant_chats", label: "查找相关聊天" },
-    { key: "filter_useful_content", label: "筛选有效内容" },
-    { key: "analyze_chat_content", label: "分析聊天内容" },
-    { key: "generate_summary", label: "生成总结" },
+const SUMMARY_WORKFLOW_STAGES: Array<{ key: WorkflowStage; labelKey: string }> = [
+    { key: "understand_question", labelKey: "summary.detail.workflowUnderstandQuestion" },
+    { key: "find_relevant_chats", labelKey: "summary.detail.workflowFindRelevantChats" },
+    { key: "filter_useful_content", labelKey: "summary.detail.workflowFilterUsefulContent" },
+    { key: "analyze_chat_content", labelKey: "summary.detail.workflowAnalyzeChatContent" },
+    { key: "generate_summary", labelKey: "summary.detail.workflowGenerateSummary" },
 ];
 
 export default class SummaryDetailPage extends Component<SummaryDetailPageProps, SummaryDetailPageState> {
@@ -1095,8 +1095,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return personalRunning || personalFailed || replayingCompletedWorkflow;
     }
 
+    private shouldShowProcessingCard(): boolean {
+        const { detail } = this.state;
+        if (!detail) return false;
+
+        const genericProcessing =
+            detail.summary_mode !== SummaryMode.BY_PERSON &&
+            (detail.status === TaskStatus.PENDING || detail.status === TaskStatus.PROCESSING);
+
+        return this.shouldShowWorkflowCard() || genericProcessing;
+    }
+
     renderWorkflowProgress() {
         const { detail, personalResult } = this.state;
+        const { t } = this.context;
         if (detail?.summary_mode !== SummaryMode.BY_PERSON) return null;
 
         const activeIndex = this.state.workflowDisplayIndex >= 0
@@ -1123,7 +1135,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     return (
                         <div className={className} key={item.key}>
                             <span style={{ width: 20, display: "inline-block" }}>{mark}</span>
-                            <span>{item.label}</span>
+                            <span>{t(item.labelKey)}</span>
                         </div>
                     );
                 })}
@@ -2180,7 +2192,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     </>
                                 )}
 
-                                {this.shouldShowWorkflowCard() &&
+                                {this.shouldShowProcessingCard() &&
                                     !this.personalReady &&
                                     this.renderProcessing()
                                 }
