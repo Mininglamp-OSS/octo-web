@@ -7,9 +7,10 @@
 // HocuspocusProvider was ever constructed and no WebSocket to the collab backend was opened — the
 // board silently ran the M1 local-only path. This is the missing connect step (XIN-55).
 
-import type { ReactElement } from 'react'
+import { useMemo, type ReactElement } from 'react'
 import { BoardShell } from './BoardShell.tsx'
 import { useWhiteboardSession } from './collab/useWhiteboardSession.ts'
+import type { BoardPresenceUser } from './collab/presence.ts'
 
 export interface BoardSessionProps {
   docId: string
@@ -29,6 +30,13 @@ export function BoardSession(props: BoardSessionProps): ReactElement {
   const { docId, title, uid, space, folder, userName, onBack, onExit, onTitleSaved, onDeleted } = props
   // The board id is the whiteboard key's {board} segment: octo:{space}:{folder}:wb:{board}.
   const session = useWhiteboardSession({ uid, space, folder, board: docId })
+  // Stabilise the presence user object (P2 #7). An inline `{ id, name }` is a fresh reference every
+  // render, so the presence effect keyed on `user` in BoardShell would re-run (re-publish awareness)
+  // on every unrelated re-render. Memoise on the primitive uid/name so it only changes when they do.
+  const user = useMemo<BoardPresenceUser>(
+    () => ({ id: uid, name: userName || uid }),
+    [uid, userName],
+  )
   return (
     <BoardShell
       docId={docId}
@@ -39,7 +47,8 @@ export function BoardSession(props: BoardSessionProps): ReactElement {
       onTitleSaved={onTitleSaved}
       onDeleted={onDeleted}
       collabSession={session}
-      user={{ id: uid, name: userName || uid }}
+      collab
+      user={user}
     />
   )
 }

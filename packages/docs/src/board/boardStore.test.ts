@@ -55,6 +55,32 @@ describe('boardStore — scene persistence', () => {
     clearBoardScene('b1')
     expect(loadBoardScene('b1')).toBeNull()
   })
+
+  // P1-1: the mirror is uid-scoped so a shared browser never exposes one user's board to the next.
+  it('isolates scenes by uid — one user never reads another user\'s board', () => {
+    persistBoardScene('b1', { elements: [{ id: 'alice' }] }, 'u_alice')
+    persistBoardScene('b1', { elements: [{ id: 'bob' }] }, 'u_bob')
+    // Same docId, different uid → independent stores.
+    expect(loadBoardScene('b1', 'u_alice')?.elements).toEqual([{ id: 'alice' }])
+    expect(loadBoardScene('b1', 'u_bob')?.elements).toEqual([{ id: 'bob' }])
+    // A different (or absent) uid must NOT see Alice's board.
+    expect(loadBoardScene('b1', 'u_carol')).toBeNull()
+    expect(loadBoardScene('b1')).toBeNull()
+  })
+
+  it('clearBoardScene for one uid does not drop another uid\'s scene', () => {
+    persistBoardScene('b1', { elements: [{ id: 'alice' }] }, 'u_alice')
+    persistBoardScene('b1', { elements: [{ id: 'bob' }] }, 'u_bob')
+    clearBoardScene('b1', 'u_alice')
+    expect(loadBoardScene('b1', 'u_alice')).toBeNull()
+    expect(loadBoardScene('b1', 'u_bob')?.elements).toEqual([{ id: 'bob' }])
+  })
+
+  it('the anonymous (no-uid) namespace is distinct from a real uid', () => {
+    persistBoardScene('b1', { elements: [{ id: 'anon' }] })
+    expect(loadBoardScene('b1')?.elements).toEqual([{ id: 'anon' }])
+    expect(loadBoardScene('b1', 'u_alice')).toBeNull()
+  })
 })
 
 describe('boardStore — board-kind registry', () => {

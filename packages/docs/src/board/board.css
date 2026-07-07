@@ -34,6 +34,17 @@
   padding: 2px 10px;
 }
 
+/* Standalone save-failure indicator (P2 #6): the local mirror is the only store on that path, so a
+   failed write is silent data loss unless surfaced. */
+.octo-board-save-error {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--octo-danger, #f53f3f);
+  border: 1px solid var(--octo-danger, #f53f3f);
+  border-radius: 12px;
+  padding: 2px 10px;
+}
+
 /* The canvas host: takes all remaining vertical space; Excalidraw renders 100% inside it. */
 .octo-board-canvas {
   position: relative;

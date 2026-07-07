@@ -27,6 +27,26 @@ const SCENE_PREFIX = 'octo.board.scene.'
 const REGISTRY_KEY = 'octo.board.ids'
 
 /**
+ * Sentinel namespace for the local scene mirror when no authenticated uid is supplied (the M1
+ * standalone / anonymous path). Real sessions pass the authenticated uid so a shared browser never
+ * exposes one user's board to the next.
+ */
+const ANON_SCOPE = 'anon'
+
+/**
+ * Build the uid-scoped localStorage key for a board's scene mirror
+ * (`octo.board.scene.{uid}.{docId}`). The mirror is scoped by the authenticated uid — mirroring the
+ * doc editor's user-scoped IndexedDB cacheKey (`offline/cache.ts` `octo-doc:{uid}:…`) — so a
+ * previous user's cached scene is never rendered to the next user on a shared browser (P1-1). A
+ * missing uid falls back to a stable anonymous sentinel so the standalone local-only path still
+ * persists.
+ */
+function sceneKey(docId: string, uid?: string): string {
+  const scope = uid && uid.length > 0 ? uid : ANON_SCOPE
+  return `${SCENE_PREFIX}${scope}.${docId}`
+}
+
+/**
  * appState fields worth persisting. The live Excalidraw appState carries transient/non-JSON
  * data (a `collaborators` Map, selection, pointers, the open dialog…) that must NOT be fed back
  * via initialData. We keep only stable, JSON-safe view preferences so a reopened board looks the
@@ -60,11 +80,11 @@ function pickAppState(appState: Record<string, unknown> | undefined): Record<str
 }
 
 /** Read the persisted scene for a board, or null when absent/unreadable/malformed. */
-export function loadBoardScene(docId: string): BoardScene | null {
+export function loadBoardScene(docId: string, uid?: string): BoardScene | null {
   const store = storage()
   if (!store || !docId) return null
   try {
-    const raw = store.getItem(SCENE_PREFIX + docId)
+    const raw = store.getItem(sceneKey(docId, uid))
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<BoardScene> | null
     if (!parsed || !Array.isArray(parsed.elements)) return null
@@ -84,7 +104,7 @@ export function loadBoardScene(docId: string): BoardScene | null {
  * save goes here too — local stays as the offline-first fallback. Returns true on a successful
  * local write so a caller can reflect a save indicator if it wants.
  */
-export function persistBoardScene(docId: string, scene: BoardScene): boolean {
+export function persistBoardScene(docId: string, scene: BoardScene, uid?: string): boolean {
   const store = storage()
   if (!store || !docId) return false
   try {
@@ -93,7 +113,7 @@ export function persistBoardScene(docId: string, scene: BoardScene): boolean {
       appState: pickAppState(scene.appState),
       files: scene.files,
     }
-    store.setItem(SCENE_PREFIX + docId, JSON.stringify(payload))
+    store.setItem(sceneKey(docId, uid), JSON.stringify(payload))
     return true
   } catch {
     // Quota exceeded / storage disabled: the board still works in-memory this session; we just
@@ -103,11 +123,11 @@ export function persistBoardScene(docId: string, scene: BoardScene): boolean {
 }
 
 /** Drop a board's persisted scene (e.g. after the doc is deleted). Best-effort. */
-export function clearBoardScene(docId: string): void {
+export function clearBoardScene(docId: string, uid?: string): void {
   const store = storage()
   if (!store || !docId) return
   try {
-    store.removeItem(SCENE_PREFIX + docId)
+    store.removeItem(sceneKey(docId, uid))
   } catch {
     // ignore
   }

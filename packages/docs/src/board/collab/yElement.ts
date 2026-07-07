@@ -1,10 +1,19 @@
-// Element ⇆ per-element Y.Map conversion (XIN-16 §1: field-level CRDT).
+// Element ⇆ per-element Y.Map conversion (XIN-16 §1: per-field element storage).
 //
 // Each element is stored as its OWN `Y.Map<field, value>` inside the top-level `Y.Map('elements')`
 // (key = element id). Storing fields individually — rather than the whole element as one opaque
-// value — is the necessary and sufficient layout for "two peers edit different fields of the same
-// element" to merge losslessly (XIN-16 §1.2), and it lets the server repair rewrite a single
-// field with a diff-empty check.
+// value — lets the server repair rewrite a single field with a diff-empty check, and lets Yjs
+// merge concurrent edits that touch DIFFERENT elements, or different fields of an element that is
+// not simultaneously CAS-arbitrated, without clobbering each other.
+//
+// ⚠️ Merge behaviour is last-writer-wins PER ELEMENT, not lossless field-level merge. The binding
+// gates every local element write behind a whole-element CAS on (version, versionNonce) — see
+// `binding.ts` `shouldOverwrite` — and `writeElementFields` then rewrites that whole element's
+// changed fields. So in the concurrent-edit window two peers editing the SAME element do not each
+// keep their own field: the element that wins the version/nonce tie overwrites the loser's fields,
+// and the loser's edit is dropped until the next reconcile. Concurrent edits to the same field, or
+// to different fields of an element both peers bumped in the same window, therefore resolve LWW.
+// The per-field layout is a storage/repair convenience, not a lossless CRDT guarantee.
 //
 // Unknown-field passthrough (XIN-16 §6 / M-12): we copy *every* own field of the element into the
 // Y.Map and read *every* key back out. We never enumerate a known-field allowlist, so a field a
@@ -13,7 +22,7 @@
 import * as Y from 'yjs'
 import type { ExcalidrawElement, Json } from './types.ts'
 
-/** Deep structural equality for JSON-ish element field values (used by the field-level diff). */
+/** Deep structural equality for JSON-ish element field values (used by the per-field diff). */
 export function jsonEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (typeof a !== typeof b) return false

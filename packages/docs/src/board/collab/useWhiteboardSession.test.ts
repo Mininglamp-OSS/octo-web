@@ -59,7 +59,8 @@ describe('useWhiteboardSession — board collab wiring (XIN-55)', () => {
     act(() => a.unmount())
     expect(created[0]!.destroy).not.toHaveBeenCalled() // b still holds it
     act(() => b.unmount())
-    expect(created[0]!.destroy).toHaveBeenCalledTimes(1) // last release destroys
+    // Release destroys through the create promise (identity-first async build), so wait for it.
+    await waitFor(() => expect(created[0]!.destroy).toHaveBeenCalledTimes(1)) // last release destroys
   })
 
   it('builds a distinct session per board id', async () => {
@@ -89,5 +90,49 @@ describe('useWhiteboardSession — board collab wiring (XIN-55)', () => {
     expect(token).toBe('wb-jwt')
     expect(seen).not.toBeNull()
     expect(seen!.body).toEqual({ documentName: 'octo:demo:f_default:wb:d_board1' })
+  })
+
+  it('sources the WS origin + initial role/epoch from the primed collab-token (P1-3 / P1-4)', async () => {
+    const useWhiteboardSession = await importHook()
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'post' && url === '/docs/collab-token') {
+        return {
+          data: {
+            token: 'wb-jwt',
+            expiresAt: Date.now() + 60_000,
+            role: 'writer',
+            permission_epoch: 3,
+            collabWsUrl: 'wss://collab.prod.example.com',
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    const { result } = renderHook(() =>
+      useWhiteboardSession({ uid: 'u_self', space: 'demo', folder: 'f_default', board: 'd_board1' }),
+    )
+    await waitFor(() => expect(result.current).not.toBeNull())
+    // The board honours the backend-issued collabWsUrl instead of the origin-derived default.
+    expect(created[0]!.opts.url).toBe('wss://collab.prod.example.com')
+    expect(created[0]!.opts.initialRole).toBe('writer')
+    expect(created[0]!.opts.initialEpoch).toBe(3)
+  })
+
+  it('falls back to WS_ENDPOINT with no pre-connect role when the token prime fails', async () => {
+    const useWhiteboardSession = await importHook()
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'post' && url === '/docs/collab-token') {
+        // Invalid role → getCollabTokenEntry throws → prime fails → origin-derived fallback.
+        return { data: { token: 't', expiresAt: Date.now() + 60_000, role: 'nope', permission_epoch: 0 }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    const { result } = renderHook(() =>
+      useWhiteboardSession({ uid: 'u_self', space: 'demo', folder: 'f_default', board: 'd_board1' }),
+    )
+    await waitFor(() => expect(result.current).not.toBeNull())
+    expect(created[0]!.opts.url).toBe(WS_ENDPOINT)
+    expect(created[0]!.opts.initialRole).toBeUndefined()
   })
 })

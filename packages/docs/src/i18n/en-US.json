@@ -16,6 +16,7 @@
   },
   "board": {
     "readOnly": "Read-only",
+    "saveFailed": "Not saved — local storage is full or unavailable",
     "untitled": "Untitled board"
   },
   "doc": {

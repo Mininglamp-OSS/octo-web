@@ -3,9 +3,11 @@
 // The binding is a *fork* of the community y-excalidraw: that library merges each element as one
 // opaque LWW blob, which the XIN-24 PoC showed cannot repair dangling bindings / orphan
 // bound-text / one-sided boundElements (M-2 / M-5 / M-8). Our fork instead stores each element as
-// a field-level `Y.Map` (see the XIN-16 contract §1) so concurrent edits to different fields of
-// the same element merge losslessly, and a server-authoritative repair pass can rewrite a single
-// field.
+// a per-field `Y.Map` (see the XIN-16 contract §1), which lets a server-authoritative repair pass
+// rewrite a single field and lets Yjs merge edits that touch different elements. NOTE: concurrent
+// edits to the SAME element still resolve last-writer-wins — the binding CAS-gates each local write
+// on the whole element's (version, versionNonce) — so this is NOT a lossless field-level merge; the
+// per-field layout is a storage/repair convenience. See yElement.ts / binding.ts for the exact rule.
 //
 // We model only the slice of Excalidraw's public shape the binding touches and never import
 // `@excalidraw/excalidraw` here: the library is loaded with a client-only dynamic import in

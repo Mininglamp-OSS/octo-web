@@ -259,6 +259,13 @@ export class ExcalidrawYjsBinding {
       for (const el of changed) {
         // CAS vs the current authoritative value: a concurrent remote write may already have
         // advanced this element past the local version — then the local edit is stale, drop it.
+        //
+        // ⚠️ This gate is WHOLE-ELEMENT (version, versionNonce), so merge is last-writer-wins per
+        // element, NOT lossless field-level merge: when a concurrent peer edit wins the tie, the
+        // whole local element is dropped here (and, symmetrically, a winning local write rewrites
+        // every changed field, overwriting a peer's concurrent field edit on the same element). The
+        // per-field Y.Map layout only helps edits to different elements / non-concurrent fields. See
+        // the module note in yElement.ts (P1-5 / XIN-517).
         const current = this.elements.get(el.id)
         const stamp = current ? readElement(current) : null
         if (!shouldOverwrite(stamp, el)) {

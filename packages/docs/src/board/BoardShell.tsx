@@ -11,13 +11,13 @@ import {
   type ReactNode,
 } from 'react'
 import { DocTitle } from '../editor/EditorShell.tsx'
-import { canManage } from '../auth/roles.ts'
+import { canManage, canEdit } from '../auth/roles.ts'
 import { useDocDelete } from '../editor/useDocDelete.ts'
 import { getDoc } from '../pages/docsApi.ts'
 import type { Role } from '../auth/roles.ts'
 import { i18n, t } from '../octoweb/index.ts'
 import { loadBoardScene, persistBoardScene, clearBoardScene, type BoardScene } from './boardStore.ts'
-import type { WhiteboardSession } from './collab/index.ts'
+import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
 import type { ExcalidrawElement, BinaryFileData } from './collab/index.ts'
 import {
   setLocalPresenceUser,
@@ -106,6 +106,14 @@ export interface BoardShellProps {
    */
   collabSession?: WhiteboardSession | null
   /**
+   * The host expects a collab session for this board (it is a permissioned, shared board), even
+   * during the async window before `collabSession` is ready. When true the board fails CLOSED —
+   * read-only, no cached-content hydration — until the session attaches and reports an authoritative
+   * role, so the brief session-loading window can never fall open to an editable canvas (P1-2).
+   * Omitted (false) only on the M1 standalone / dev path, which has no server permission model.
+   */
+  collab?: boolean
+  /**
    * Local peer identity for presence (XIN-111). Published into `collabSession.provider.awareness`
    * so remote peers can label and colour this user's cursor / online avatar. Omitted on the M1
    * standalone path (no session), where presence is inert.
@@ -164,12 +172,25 @@ class BoardErrorBoundary extends Component<{ children: ReactNode }, { error: Err
  * save will hook into in M2.
  */
 export function BoardShell(props: BoardShellProps): ReactElement {
-  const { docId, title, onBack, onExit, onTitleSaved, onDeleted, collabSession, user } = props
+  const { docId, title, onBack, onExit, onTitleSaved, onDeleted, collabSession, collab, user } = props
 
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
   const [failed, setFailed] = useState(false)
   const [role, setRole] = useState<Role | undefined>(undefined)
+  // Whether the role lookup / collab-token has resolved (success OR failure). Distinguishes
+  // "still resolving" from "resolved but unknown" so the canvas can fail CLOSED (P1-2): an
+  // unresolved or unknown role is treated as read-only, never editable.
+  const [roleResolved, setRoleResolved] = useState(false)
+  // Runtime terminal transition from the collab socket (4403 revoke / delete / lock — P1-3).
+  const [terminal, setTerminal] = useState<BoardTerminal>({ kind: 'none' })
+  // P2 #6: the standalone path has no other store, so a failed local save is silent data loss.
+  // Flip this when persistBoardScene reports a failed write so the header can surface it.
+  const [saveFailed, setSaveFailed] = useState(false)
   const [dark, setDark] = useState(prefersDark)
+
+  // Authenticated identity for cache scoping (P1-1). The local mirror + IndexedDB cache are keyed
+  // by this uid so a shared browser never exposes one user's board to the next.
+  const uid = user?.id
   // Remote peers' presence (XIN-111): cursors + online list, rebuilt from provider.awareness on
   // every awareness `change`. Empty on the M1 standalone path (no session).
   const [collaborators, setCollaborators] = useState<Map<string, BoardCollaborator>>(() => new Map())
@@ -195,10 +216,34 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const restoreElementsRef = useRef<RestoreElementsFn | null>(null)
   const reconcileElementsRef = useRef<ReconcileElementsFn | null>(null)
 
-  // Initial scene is read ONCE, synchronously, from the local mirror so a reopened / refreshed
-  // board paints its content on first render (no flash of empty canvas).
+  // Fail-closed editability (P1-2). On the collab (permissioned) path the canvas is read-only until
+  // an authoritative editable role (writer/admin) is confirmed — an unresolved role, an unknown
+  // role, a reader, or a runtime downgrade / terminal all keep it read-only, so a reader or a
+  // meta-lookup failure can never fall open to editable. `collabMode` also covers the async window
+  // BEFORE the session attaches (a collab board whose session is still loading), so that window
+  // stays read-only rather than briefly editable. The standalone path (no collab expected) has no
+  // server permission model, so it stays editable unless the meta explicitly says reader.
+  const collabMode = collab ?? !!collabSession
+  const terminalActive = terminal.kind !== 'none'
+  const readOnly = collabMode
+    ? terminalActive || !(role !== undefined && canEdit(role))
+    : role === 'reader'
+
+  // Access is "confirmed" for hydrating the local mirror only once the collab path has an
+  // authoritative role and no terminal transition. The standalone path (own-browser localStorage,
+  // no cross-user concern beyond the uid scoping) is always confirmed. Gating hydration this way
+  // means protected cached content is never painted before access is confirmed (P1-1).
+  const accessConfirmed = collabMode ? roleResolved && role !== undefined && !terminalActive : true
+
+  // Initial scene is read from the uid-scoped local mirror the first time access is confirmed, so a
+  // reopened / refreshed board paints its own content — but never a previous user's, and never
+  // before access is confirmed.
   const initialSceneRef = useRef<BoardScene | null>(null)
-  if (initialSceneRef.current === null) initialSceneRef.current = loadBoardScene(docId)
+  const initialSceneLoadedRef = useRef(false)
+  if (accessConfirmed && !initialSceneLoadedRef.current) {
+    initialSceneLoadedRef.current = true
+    initialSceneRef.current = loadBoardScene(docId, uid)
+  }
 
   const langCode = toExcalidrawLang(i18n.getLocale ? i18n.getLocale() : 'en-US')
 
@@ -245,35 +290,83 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     }
   }, [])
 
-  // Resolve the caller's role for THIS board so a reader gets a read-only canvas. Resilient:
-  // leaves role undefined (→ editable) if the meta lacks it; the backend remains the real gate.
+  // Resolve the caller's role for THIS board so a reader gets a read-only canvas.
+  //
+  // Collab path: the collab-token role (surfaced by the session, single source of truth as in the
+  // doc editor) is authoritative, and runtime downgrades / terminal transitions arrive on the same
+  // socket (P1-3). Subscribe to both. FAIL CLOSED — role stays undefined (→ read-only) until the
+  // session reports an authoritative role. While a collab board's session is still loading
+  // (`collabMode` but no session yet), do NOT fall back to the per-doc GET: stay unresolved (→
+  // read-only) and let this effect re-run when the session attaches.
+  //
+  // Standalone path (no collab expected): fall back to the per-doc GET. On lookup failure we mark
+  // the lookup resolved but leave role undefined; the standalone path has no server gate, so it
+  // stays editable (the local-only board).
   useEffect(() => {
     let cancelled = false
+    if (collabSession) {
+      setRole(collabSession.getRole())
+      setRoleResolved(true)
+      setTerminal({ kind: 'none' })
+      const offRole = collabSession.subscribeRole((r) => {
+        if (!cancelled) setRole(r)
+      })
+      const offTerminal = collabSession.subscribeTerminal((tState) => {
+        if (!cancelled) setTerminal(tState)
+      })
+      return () => {
+        cancelled = true
+        offRole()
+        offTerminal()
+      }
+    }
+    if (collabMode) {
+      // Session expected but not ready yet — fail closed until it attaches (this effect re-runs).
+      setRoleResolved(false)
+      return () => {
+        cancelled = true
+      }
+    }
+    setRoleResolved(false)
     getDoc(docId)
       .then((meta) => {
-        if (!cancelled && meta?.role) setRole(meta.role)
+        if (cancelled) return
+        if (meta?.role) setRole(meta.role)
+        setRoleResolved(true)
       })
       .catch(() => {
-        /* non-fatal: fall back to editable; server still enforces permissions */
+        // non-fatal: fall back to editable on the standalone path; server still enforces perms
+        if (!cancelled) setRoleResolved(true)
       })
     return () => {
       cancelled = true
     }
-  }, [docId])
+  }, [docId, collabSession, collabMode])
 
   // Debounced local persistence of scene edits. The timer is cleared on unmount and a final flush
   // is forced so a quick draw-then-close still saves (the close/reopen acceptance path).
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latestScene = useRef<BoardScene | null>(null)
-  const readOnly = role === 'reader'
+
+  // Write the uid-scoped local mirror and surface a failure (P2 #6). On the standalone path the
+  // local mirror is the ONLY store, so a failed write (quota exceeded / storage disabled) is silent
+  // data loss unless we flag it. On the collab path the Y.Doc/provider is the authoritative store,
+  // so a local-mirror miss is just a degraded offline cache — not reported as a save failure.
+  const persistLocal = useCallback(
+    (scene: BoardScene) => {
+      const ok = persistBoardScene(docId, scene, uid)
+      if (!collabMode) setSaveFailed(!ok)
+    },
+    [docId, uid, collabMode],
+  )
 
   const flush = useCallback(() => {
     if (saveTimer.current) {
       clearTimeout(saveTimer.current)
       saveTimer.current = null
     }
-    if (latestScene.current) persistBoardScene(docId, latestScene.current)
-  }, [docId])
+    if (latestScene.current) persistLocal(latestScene.current)
+  }, [persistLocal])
 
   const onChange = useCallback<ExcalidrawChange>(
     (elements, appState, files) => {
@@ -291,10 +384,10 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = setTimeout(() => {
         saveTimer.current = null
-        if (latestScene.current) persistBoardScene(docId, latestScene.current)
+        if (latestScene.current) persistLocal(latestScene.current)
       }, SAVE_DEBOUNCE_MS)
     },
-    [docId, readOnly, collabSession],
+    [readOnly, collabSession, persistLocal],
   )
 
   // M2: hand the imperative Excalidraw API to the binding so remote/agent writes can render via
@@ -382,13 +475,23 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const returnToList = onExit ?? onBack
   const handleDeleted = useCallback(
     (id: string) => {
-      clearBoardScene(id)
+      clearBoardScene(id, uid)
       if (onDeleted) onDeleted(id)
       else returnToList?.()
     },
-    [onDeleted, returnToList],
+    [onDeleted, returnToList, uid],
   )
   const del = useDocDelete(docId, handleDeleted)
+
+  // P1-3: a runtime access-loss on the collab socket (4403 → 'deleted', or 'not-found') means the
+  // board this user was editing is gone. Mirror the doc editor's terminal handling and return them
+  // to the list. 'locked' / 'login' keep the board mounted read-only (the readOnly gate already
+  // covers editing) so the user sees why it froze rather than being bounced.
+  useEffect(() => {
+    if (terminal.kind === 'deleted' || terminal.kind === 'not-found') {
+      returnToList?.()
+    }
+  }, [terminal, returnToList])
 
   const manage = role ? canManage(role) : false
 
@@ -397,6 +500,8 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // `initialData` unrestored is why a reopened board replayed empty. Gated on `Excalidraw` so the
   // restore helper (captured in the same import) is present; falls back to raw if unavailable.
   const initialElements = useMemo<unknown[]>(() => {
+    // Fail closed (P1-1): do not hydrate any cached / synced content before access is confirmed.
+    if (!accessConfirmed) return []
     let raw = initialSceneRef.current?.elements ?? []
     // Cold reopen (XIN-96): a NEW client's local mirror is empty, but the collab provider has
     // usually synced the existing board into the Y.Doc by the time this heavy Excalidraw chunk
@@ -411,7 +516,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     const restore = restoreElementsRef.current
     return restore ? restore(raw, null) : [...raw]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [Excalidraw, collabSession])
+  }, [Excalidraw, collabSession, accessConfirmed])
 
   return (
     <div className="octo-doc octo-doc--editor octo-theme octo-board">
@@ -424,6 +529,11 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         <DocTitle docId={docId} initialTitle={title} canEdit={manage} onSaved={onTitleSaved} />
         <div className="octo-doc-header-right">
           {readOnly && <span className="octo-board-readonly">{t('docs.board.readOnly')}</span>}
+          {saveFailed && (
+            <span className="octo-board-save-error" role="alert" title={t('docs.board.saveFailed')}>
+              ⚠ {t('docs.board.saveFailed')}
+            </span>
+          )}
           {manage && (
             <button
               type="button"

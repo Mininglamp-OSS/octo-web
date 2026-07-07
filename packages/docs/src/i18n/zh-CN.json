@@ -16,6 +16,7 @@
   },
   "board": {
     "readOnly": "只读",
+    "saveFailed": "未保存 — 本地存储已满或不可用",
     "untitled": "未命名画板"
   },
   "doc": {

@@ -118,13 +118,17 @@ describe('ExcalidrawYjsBinding', () => {
     expect(binding.__telemetry.remoteApplies).toBe(1)
   })
 
-  it('T4 / T5: concurrent edits to DIFFERENT fields of one element merge losslessly', () => {
+  it('T4 / T5: per-field Yjs merge keeps a peer field write when it is not CAS-gated (not whole-blob LWW)', () => {
     // shared starting point on both peers
     binding.handleLocalChange([makeEl('a', { x: 1, y: 1, version: 1 })])
     const peer = new Y.Doc()
     syncDocs(doc, peer, 'remote')
 
-    // peer edits y (field-level), local edits x — offline, then exchange
+    // Peer edits `y` as a direct Y.Map field write (NOT through the binding's whole-element CAS),
+    // local edits `x` through the binding — offline, then exchange. Because the peer's write is a
+    // per-field Yjs op, it is not subject to the whole-element CAS and both fields survive the
+    // merge. (This is the per-field-storage benefit; it is NOT a general lossless guarantee — two
+    // concurrent CAS-gated local writes on the same element still resolve last-writer-wins, P1-5.)
     const pe = elsOf(peer)
     peer.transact(() => pe.get('a')!.set('y', 99), 'peerEdit')
     binding.handleLocalChange([makeEl('a', { x: 50, y: 1, version: 2 })])

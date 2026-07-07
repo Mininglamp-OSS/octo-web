@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { resolveCollabWsUrl } from './config.ts'
+import { resolveCollabWsUrl, resolveBoardWsUrl, WS_ENDPOINT } from './config.ts'
 
 // The doc-editor collab WS origin is delivered solely at runtime via the collab-token response
 // (`collabWsUrl`). The legacy build-time env fallback (VITE_COLLAB_WS_ENDPOINT) has been removed
@@ -19,6 +19,22 @@ describe('resolveCollabWsUrl', () => {
   it('throws when collabWsUrl is empty or whitespace-only', () => {
     expect(() => resolveCollabWsUrl('')).toThrow(/collabWsUrl/)
     expect(() => resolveCollabWsUrl('   ')).toThrow(/collabWsUrl/)
+  })
+})
+
+// The BOARD collab WS origin (P1-4) also prefers the backend-issued collabWsUrl, but — unlike the
+// doc editor — falls back to the origin-derived WS_ENDPOINT instead of throwing, so a board still
+// opens on a backend that predates the collabWsUrl contract.
+describe('resolveBoardWsUrl (P1-4)', () => {
+  it('returns the backend-issued collabWsUrl (trimmed) when present', () => {
+    expect(resolveBoardWsUrl('wss://collab.prod.example.com')).toBe('wss://collab.prod.example.com')
+    expect(resolveBoardWsUrl('  wss://collab.prod.example.com  ')).toBe('wss://collab.prod.example.com')
+  })
+
+  it('falls back to the origin-derived WS_ENDPOINT when collabWsUrl is absent/blank', () => {
+    expect(resolveBoardWsUrl(undefined)).toBe(WS_ENDPOINT)
+    expect(resolveBoardWsUrl('')).toBe(WS_ENDPOINT)
+    expect(resolveBoardWsUrl('   ')).toBe(WS_ENDPOINT)
   })
 })
 

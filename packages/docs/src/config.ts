@@ -80,6 +80,26 @@ function originDerivedWsEndpoint(): string {
 
 export const WS_ENDPOINT = envOr(import.meta.env?.VITE_COLLAB_WS_ENDPOINT, originDerivedWsEndpoint())
 
+/**
+ * Resolve the Hocuspocus WebSocket origin for a board session from the collab-token response.
+ *
+ * The backend-issued `collabWsUrl` is the authoritative origin (the same field the doc editor
+ * treats as its single source of truth, XIN-211). The board primes the collab token before
+ * building its provider (see `useWhiteboardSession.ts`) so it can honour that origin instead of
+ * guessing `origin:1234` from the page host — otherwise any deployment whose authoritative collab
+ * endpoint differs from `origin:1234` connects to the wrong endpoint (P1-4).
+ *
+ * Unlike the doc editor's `resolveCollabWsUrl` — which THROWS when the backend omits `collabWsUrl`
+ * — the board falls back to the origin-derived `WS_ENDPOINT`. The board is built synchronously and
+ * must still open a session on a backend that predates the `collabWsUrl` contract (compat window);
+ * the origin-derived default keeps it working there. Once the backend always emits `collabWsUrl`
+ * this fallback becomes dead and the board can be tightened to throw like the doc editor.
+ */
+export function resolveBoardWsUrl(collabWsUrl?: string): string {
+  const url = typeof collabWsUrl === 'string' ? collabWsUrl.trim() : ''
+  return url.length > 0 ? url : WS_ENDPOINT
+}
+
 /** Refresh collab token when it is within this window of expiry. */
 export const TOKEN_REFRESH_LEEWAY_MS = 30_000
 
