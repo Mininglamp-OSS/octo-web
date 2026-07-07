@@ -31,7 +31,7 @@ export interface ForwardGrantConfig {
   canGrant: boolean
   /** Grey-out hint shown when canGrant is false (e.g. "仅文档管理员可在转发时授权"). */
   disabledReason?: string
-  /** Whether the grant switch is on. Default on when canGrant. */
+  /** Whether the grant switch is on. Default off — the user must opt in to grant on forward. */
   enabled: boolean
   /** Selected grant role (default 'reader'). */
   role: ForwardGrantRole

@@ -103,9 +103,10 @@ export function useForwardModal(
   const [inputValue, setInputValueState] = useState("")
   const [keyword, setKeyword] = useState("")
   const [loading, setLoading] = useState(true)
-  // 授权区状态：默认开关跟随 canGrant，角色默认 reader。仅在传入 grantOptions 时生效。
+  // 授权区状态：开关默认关闭（不勾选，需用户主动打开才走授权），角色默认 reader。
+  // 仅在传入 grantOptions 时生效。
   const grantActive = !!grantOptions
-  const [grantEnabled, setGrantEnabledState] = useState<boolean>(!!grantOptions?.canGrant)
+  const [grantEnabled, setGrantEnabledState] = useState<boolean>(false)
   const [grantRole, setGrantRole] = useState<ForwardGrantRole>(grantOptions?.defaultRole ?? "reader")
   // 重开授权开关时复位为 reader（不记忆上次更高级别）→ AC-4 / AC-15。
   const setGrantEnabled = useCallback((v: boolean) => {

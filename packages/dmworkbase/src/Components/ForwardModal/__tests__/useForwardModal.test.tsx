@@ -217,6 +217,35 @@ async function renderForward() {
     }
 }
 
+// 变体渲染：透传 onFinished + grantOptions，供授权区默认值/确认路径用例使用。
+async function renderForwardWithGrant(
+    onFinished?: Parameters<typeof useForwardModal>[0],
+    grantOptions?: Parameters<typeof useForwardModal>[1],
+) {
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    let latest: ReturnType<typeof useForwardModal> | undefined
+    function GrantProbe() {
+        latest = useForwardModal(onFinished, grantOptions)
+        return null
+    }
+    await act(async () => {
+        ReactDOM.render(<GrantProbe />, container)
+        await flushMicrotasks()
+    })
+    return {
+        get current() {
+            return latest!
+        },
+        unmount() {
+            act(() => {
+                ReactDOM.unmountComponentAtNode(container)
+            })
+            container.remove()
+        },
+    }
+}
+
 describe("useForwardModal — archived threads excluded from forward targets", () => {
     beforeEach(() => {
         resetHoisted()
@@ -673,6 +702,85 @@ describe("useForwardModal — registered searchChatCandidates surfaces channels 
 
         expect(ids).not.toContain("g-eng")
         expect(ids).not.toContain("t-standup")
+
+        view.unmount()
+    })
+})
+
+/**
+ * 转发到聊天弹窗「转发时授权」复选框默认值（老板令 XIN-496）。
+ *
+ * 需求：授权开关默认从「选中」改为「不选中」。默认不勾时确认走「不授权」路径
+ * （onFinished 第二参 undefined）；用户主动勾选后仍能正常授权（onFinished 第二参
+ * 带 { role }）。仅改默认初值，不动授权逻辑本身，也不动权限级别下拉默认值。
+ */
+describe("useForwardModal — grant switch defaults OFF (转发时授权 默认不选中)", () => {
+    beforeEach(() => {
+        resetHoisted()
+    })
+
+    afterEach(() => {
+        hoisted.conversations = []
+    })
+
+    it("defaults grantEnabled to false even when canGrant is true", async () => {
+        const view = await renderForwardWithGrant(vi.fn(), { canGrant: true })
+
+        expect(view.current.grantEnabled).toBe(false)
+        // 权限级别下拉默认值不变：仍为 reader。
+        expect(view.current.grantRole).toBe("reader")
+
+        view.unmount()
+    })
+
+    it("forwards WITHOUT a grant when the switch is left at its default (unchecked → 不授权路径)", async () => {
+        const finished = vi.fn()
+        hoisted.conversations = [makeConv("g1", CT_GROUP, "Group 1", { timestamp: 100 })]
+        const view = await renderForwardWithGrant(finished, { canGrant: true })
+
+        const target = view.current.allItems.find((i) => i.channelID === "g1")!
+        act(() => view.current.toggleSelect(target))
+        act(() => view.current.confirm())
+
+        expect(finished).toHaveBeenCalledTimes(1)
+        const [channels, grant] = finished.mock.calls[0]
+        expect(channels).toHaveLength(1)
+        expect(grant).toBeUndefined()
+
+        view.unmount()
+    })
+
+    it("still forwards WITH a grant once the user opts in (checked → 授权路径, role preserved)", async () => {
+        const finished = vi.fn()
+        hoisted.conversations = [makeConv("g1", CT_GROUP, "Group 1", { timestamp: 100 })]
+        const view = await renderForwardWithGrant(finished, { canGrant: true })
+
+        const target = view.current.allItems.find((i) => i.channelID === "g1")!
+        act(() => view.current.toggleSelect(target))
+        act(() => view.current.setGrantEnabled(true))
+        expect(view.current.grantEnabled).toBe(true)
+        act(() => view.current.confirm())
+
+        expect(finished).toHaveBeenCalledTimes(1)
+        const [channels, grant] = finished.mock.calls[0]
+        expect(channels).toHaveLength(1)
+        expect(grant).toEqual({ role: "reader" })
+
+        view.unmount()
+    })
+
+    it("honours the caller's defaultRole when the switch is turned on", async () => {
+        const finished = vi.fn()
+        hoisted.conversations = [makeConv("g1", CT_GROUP, "Group 1", { timestamp: 100 })]
+        const view = await renderForwardWithGrant(finished, { canGrant: true, defaultRole: "writer" })
+
+        const target = view.current.allItems.find((i) => i.channelID === "g1")!
+        act(() => view.current.toggleSelect(target))
+        act(() => view.current.setGrantEnabled(true))
+        act(() => view.current.confirm())
+
+        const [, grant] = finished.mock.calls[0]
+        expect(grant).toEqual({ role: "writer" })
 
         view.unmount()
     })
