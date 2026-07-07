@@ -1,0 +1,137 @@
+{
+  "menu": { "title": "Loop" },
+  "nav": {
+    "issue": "Issue",
+    "skill": "技能",
+    "project": "项目",
+    "agent": "智能体",
+    "squad": "小队"
+  },
+  "view": { "board": "看板", "list": "列表" },
+  "search": {
+    "issue": "搜索 Issue / 编号",
+    "skill": "搜索技能",
+    "project": "搜索项目",
+    "agent": "搜索智能体",
+    "squad": "搜索小队"
+  },
+  "action": {
+    "newIssue": "新建 Issue",
+    "newSkill": "新建技能",
+    "newProject": "新建项目",
+    "newAgent": "新建智能体",
+    "newSquad": "新建小队",
+    "create": "创建",
+    "cancel": "取消",
+    "save": "保存"
+  },
+  "empty": {
+    "issue": "暂无 Issue",
+    "skill": "暂无技能",
+    "project": "暂无项目",
+    "agent": "暂无智能体",
+    "squad": "暂无小队"
+  },
+  "field": {
+    "title": "标题",
+    "titlePlaceholder": "输入标题…",
+    "name": "名称",
+    "description": "描述",
+    "descriptionPlaceholder": "补充描述…",
+    "status": "状态",
+    "priority": "优先级",
+    "assignee": "负责人",
+    "project": "项目",
+    "creator": "创建者"
+  },
+  "status": {
+    "backlog": "待规划",
+    "todo": "待办",
+    "in_progress": "进行中",
+    "in_review": "审核中",
+    "done": "已完成",
+    "blocked": "受阻",
+    "cancelled": "已取消"
+  },
+  "priority": {
+    "urgent": "紧急",
+    "high": "高",
+    "medium": "中",
+    "low": "低",
+    "none": "无"
+  },
+  "projectStatus": {
+    "planned": "规划中",
+    "in_progress": "进行中",
+    "paused": "已暂停",
+    "completed": "已完成",
+    "cancelled": "已取消"
+  },
+  "agentStatus": {
+    "idle": "空闲",
+    "working": "工作中",
+    "offline": "离线",
+    "error": "异常"
+  },
+  "assignee": {
+    "member": "成员",
+    "agent": "智能体",
+    "squad": "小队",
+    "unassigned": "未指派"
+  },
+  "detail": {
+    "issueTitle": "Issue 详情",
+    "skillTitle": "技能详情",
+    "projectTitle": "项目详情",
+    "agentTitle": "智能体详情",
+    "squadTitle": "小队详情",
+    "notFound": "未找到该条目",
+    "properties": "属性",
+    "comments": "评论"
+  },
+  "comment": {
+    "reply": "回复",
+    "deleteConfirm": "确定删除这条评论？",
+    "replyPlaceholder": "回复…",
+    "replyingHint": "正在回复上方评论，请在对应输入框输入",
+    "empty": "暂无评论",
+    "placeholder": "写下评论…",
+    "send": "发送"
+  },
+  "toast": {
+    "created": "已创建",
+    "saved": "已保存",
+    "deleted": "已删除",
+    "commentAdded": "评论已添加",
+    "commentDeleted": "评论已删除"
+  },
+  "validate": {
+    "nameRequired": "请填写名称",
+    "titleRequired": "请填写标题"
+  },
+  "confirm": { "delete": "确定删除？" },
+  "skill": {
+    "source": "来源",
+    "sourceType": { "github": "GitHub", "local": "本地", "workspace": "工作区" },
+    "usedBy": "被引用",
+    "content": "内容"
+  },
+  "project": { "progress": "进度", "lead": "负责人" },
+  "agent": {
+    "runtime": "运行环境",
+    "model": "模型",
+    "runs30d": "近 30 天任务",
+    "instructions": "指令",
+    "visibility": "可见性",
+    "visWorkspace": "工作区",
+    "visPrivate": "私有"
+  },
+  "squad": {
+    "leader": "队长",
+    "members": "成员",
+    "roleLeader": "队长",
+    "addMember": "选择成员加入",
+    "add": "添加",
+    "instructions": "指令"
+  }
+}

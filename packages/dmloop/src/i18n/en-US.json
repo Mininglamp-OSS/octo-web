@@ -1,0 +1,137 @@
+{
+  "menu": { "title": "Loop" },
+  "nav": {
+    "issue": "Issue",
+    "skill": "Skill",
+    "project": "Project",
+    "agent": "Agent",
+    "squad": "Squad"
+  },
+  "view": { "board": "Board", "list": "List" },
+  "search": {
+    "issue": "Search issue / id",
+    "skill": "Search skill",
+    "project": "Search project",
+    "agent": "Search agent",
+    "squad": "Search squad"
+  },
+  "action": {
+    "newIssue": "New Issue",
+    "newSkill": "New Skill",
+    "newProject": "New Project",
+    "newAgent": "New Agent",
+    "newSquad": "New Squad",
+    "create": "Create",
+    "cancel": "Cancel",
+    "save": "Save"
+  },
+  "empty": {
+    "issue": "No issues",
+    "skill": "No skills",
+    "project": "No projects",
+    "agent": "No agents",
+    "squad": "No squads"
+  },
+  "field": {
+    "title": "Title",
+    "titlePlaceholder": "Enter a title…",
+    "name": "Name",
+    "description": "Description",
+    "descriptionPlaceholder": "Add a description…",
+    "status": "Status",
+    "priority": "Priority",
+    "assignee": "Assignee",
+    "project": "Project",
+    "creator": "Creator"
+  },
+  "status": {
+    "backlog": "Backlog",
+    "todo": "Todo",
+    "in_progress": "In progress",
+    "in_review": "In review",
+    "done": "Done",
+    "blocked": "Blocked",
+    "cancelled": "Cancelled"
+  },
+  "priority": {
+    "urgent": "Urgent",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "none": "None"
+  },
+  "projectStatus": {
+    "planned": "Planned",
+    "in_progress": "In progress",
+    "paused": "Paused",
+    "completed": "Completed",
+    "cancelled": "Cancelled"
+  },
+  "agentStatus": {
+    "idle": "Idle",
+    "working": "Working",
+    "offline": "Offline",
+    "error": "Error"
+  },
+  "assignee": {
+    "member": "Member",
+    "agent": "Agent",
+    "squad": "Squad",
+    "unassigned": "Unassigned"
+  },
+  "detail": {
+    "issueTitle": "Issue detail",
+    "skillTitle": "Skill detail",
+    "projectTitle": "Project detail",
+    "agentTitle": "Agent detail",
+    "squadTitle": "Squad detail",
+    "notFound": "Item not found",
+    "properties": "Properties",
+    "comments": "Comments"
+  },
+  "comment": {
+    "reply": "Reply",
+    "deleteConfirm": "Delete this comment?",
+    "replyPlaceholder": "Reply…",
+    "replyingHint": "Replying to a comment above — use its reply box",
+    "empty": "No comments yet",
+    "placeholder": "Write a comment…",
+    "send": "Send"
+  },
+  "toast": {
+    "created": "Created",
+    "saved": "Saved",
+    "deleted": "Deleted",
+    "commentAdded": "Comment added",
+    "commentDeleted": "Comment deleted"
+  },
+  "validate": {
+    "nameRequired": "Name is required",
+    "titleRequired": "Title is required"
+  },
+  "confirm": { "delete": "Delete?" },
+  "skill": {
+    "source": "Source",
+    "sourceType": { "github": "GitHub", "local": "Local", "workspace": "Workspace" },
+    "usedBy": "Used by",
+    "content": "Content"
+  },
+  "project": { "progress": "Progress", "lead": "Lead" },
+  "agent": {
+    "runtime": "Runtime",
+    "model": "Model",
+    "runs30d": "Runs (30d)",
+    "instructions": "Instructions",
+    "visibility": "Visibility",
+    "visWorkspace": "Workspace",
+    "visPrivate": "Private"
+  },
+  "squad": {
+    "leader": "Leader",
+    "members": "Members",
+    "roleLeader": "Leader",
+    "addMember": "Pick a member to add",
+    "add": "Add",
+    "instructions": "Instructions"
+  }
+}

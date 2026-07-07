@@ -1,0 +1,124 @@
+import React, { useEffect, useState } from "react";
+import { Dropdown, Avatar, Tag } from "@douyinfe/semi-ui";
+import { ChevronDown, User, Bot, Users, CircleSlash } from "lucide-react";
+import { useI18n } from "@octo/base";
+import type { AssigneeCandidate, AssigneeType } from "../api/types";
+import { listAssigneeCandidates } from "../api/issueApi";
+import { ASSIGNEE_TYPE_COLOR } from "./meta";
+
+function typeIcon(type: AssigneeType) {
+  if (type === "agent") return <Bot size={13} />;
+  if (type === "squad") return <Users size={13} />;
+  return <User size={13} />;
+}
+
+export interface AssigneePickerProps {
+  value: string | null;
+  valueName: string | null;
+  onChange: (id: string | null) => void;
+  size?: "small" | "default";
+}
+
+/** 三态指派选择器：member / agent / squad，支持清空。 */
+export default function AssigneePicker({
+  value,
+  valueName,
+  onChange,
+  size = "default",
+}: AssigneePickerProps) {
+  const { t } = useI18n();
+  const [cands, setCands] = useState<AssigneeCandidate[]>([]);
+
+  useEffect(() => {
+    listAssigneeCandidates().then(setCands);
+  }, []);
+
+  const current = cands.find((c) => c.id === value);
+  const groups: { type: AssigneeType; label: string }[] = [
+    { type: "member", label: t("loop.assignee.member") },
+    { type: "agent", label: t("loop.assignee.agent") },
+    { type: "squad", label: t("loop.assignee.squad") },
+  ];
+
+  const menu = (
+    <Dropdown.Menu>
+      <Dropdown.Item
+        onClick={() => onChange(null)}
+        icon={<CircleSlash size={13} />}
+      >
+        {t("loop.assignee.unassigned")}
+      </Dropdown.Item>
+      {groups.map((g) => {
+        const items = cands.filter((c) => c.type === g.type);
+        if (items.length === 0) return null;
+        return (
+          <React.Fragment key={g.type}>
+            <Dropdown.Divider />
+            <Dropdown.Title>{g.label}</Dropdown.Title>
+            {items.map((c) => (
+              <Dropdown.Item
+                key={c.id}
+                icon={typeIcon(c.type)}
+                active={c.id === value}
+                onClick={() => onChange(c.id)}
+              >
+                {c.name}
+              </Dropdown.Item>
+            ))}
+          </React.Fragment>
+        );
+      })}
+    </Dropdown.Menu>
+  );
+
+  return (
+    <Dropdown render={menu} trigger="click" position="bottomLeft">
+      <span
+        className="loop-assignee-trigger"
+        style={{ fontSize: size === "small" ? 12 : 13 }}
+      >
+        {current || valueName ? (
+          <>
+            <Avatar
+              size="extra-extra-small"
+              color={
+                (current?.avatar_color as never) ??
+                (ASSIGNEE_TYPE_COLOR[current?.type ?? "member"] as never)
+              }
+            >
+              {(current?.name ?? valueName ?? "?").slice(0, 1)}
+            </Avatar>
+            <span className="loop-assignee-name">
+              {current?.name ?? valueName}
+            </span>
+          </>
+        ) : (
+          <span className="loop-assignee-empty">
+            <CircleSlash size={13} />
+            {t("loop.assignee.unassigned")}
+          </span>
+        )}
+        <ChevronDown size={13} style={{ opacity: 0.5 }} />
+      </span>
+    </Dropdown>
+  );
+}
+
+/** 只读小徽标：展示 assignee 类型 + 名称。 */
+export function AssigneeBadge({
+  type,
+  name,
+}: {
+  type: AssigneeType | null;
+  name: string | null;
+}) {
+  if (!type || !name) return <span className="loop-assignee-empty">—</span>;
+  return (
+    <Tag color={ASSIGNEE_TYPE_COLOR[type]} size="small" shape="circle">
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+        {typeIcon(type)}
+        {name}
+      </span>
+    </Tag>
+  );
+}

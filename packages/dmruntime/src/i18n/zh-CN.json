@@ -1,0 +1,25 @@
+{
+  "menu": { "title": "设备" },
+  "search": "搜索设备 / 提供方",
+  "empty": "暂无设备",
+  "filter": { "all": "全部", "online": "在线", "offline": "离线" },
+  "group": { "local": "本地", "cloud": "云端" },
+  "mode": { "local": "本地", "cloud": "云端" },
+  "visibility": { "private": "私有", "public": "公开" },
+  "field": {
+    "provider": "提供方",
+    "mode": "类型",
+    "status": "状态",
+    "device": "设备信息",
+    "owner": "拥有者",
+    "visibility": "可见性",
+    "lastSeen": "最近在线",
+    "runs30d": "近 30 天任务数"
+  },
+  "detail": {
+    "pick": "从左侧选择一个设备查看详情",
+    "basic": "基本信息",
+    "usage": "用量",
+    "usageHint": "用量统计将在后续版本接入真实数据。"
+  }
+}

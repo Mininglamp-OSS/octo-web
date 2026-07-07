@@ -1,0 +1,335 @@
+/* ===== Loop shell ===== */
+.loop-shell {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  height: 100%;
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
+}
+
+.loop-shell__nav {
+  border-right: 1px solid var(--semi-color-border, #e8e9eb);
+  display: flex;
+  flex-direction: column;
+  background: var(--semi-color-bg-1, #fbfbfc);
+}
+
+.loop-shell__brand {
+  padding: 16px 16px 10px;
+}
+
+.loop-shell__menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+}
+
+.loop-shell__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--semi-color-text-1, #4e5969);
+  text-align: left;
+}
+
+.loop-shell__item:hover {
+  background: var(--semi-color-fill-0, #f0f1f3);
+}
+
+.loop-shell__item.is-active {
+  background: var(--semi-color-primary-light-default, #eef2ff);
+  color: var(--semi-color-primary, #6a5cff);
+  font-weight: 600;
+}
+
+.loop-shell__content {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== 通用列表页 ===== */
+.loop-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.loop-page__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px 12px;
+}
+
+.loop-page__head h4 {
+  margin: 0;
+}
+
+.loop-page__spacer {
+  flex: 1;
+}
+
+.loop-page__body {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  padding: 0 20px 20px;
+}
+
+.loop-page__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60%;
+}
+
+/* ===== 视图切换按钮 ===== */
+.loop-viewtoggle {
+  display: inline-flex;
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.loop-viewtoggle button {
+  border: none;
+  background: transparent;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--semi-color-text-1, #4e5969);
+}
+
+.loop-viewtoggle button.is-active {
+  background: var(--semi-color-primary-light-default, #eef2ff);
+  color: var(--semi-color-primary, #6a5cff);
+}
+
+/* ===== 看板 ===== */
+.loop-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
+  gap: 12px;
+  height: 100%;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.loop-board__col {
+  display: flex;
+  flex-direction: column;
+  background: var(--semi-color-fill-0, #f6f7f9);
+  border-radius: 10px;
+  min-height: 120px;
+}
+
+.loop-board__col.is-drop {
+  outline: 2px dashed var(--semi-color-primary, #6a5cff);
+  outline-offset: -2px;
+}
+
+.loop-board__col-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.loop-board__col-head em {
+  margin-left: auto;
+  font-style: normal;
+  color: var(--semi-color-text-2, #8590a6);
+}
+
+.loop-board__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 10px 12px;
+  overflow: auto;
+  flex: 1;
+}
+
+.loop-card {
+  background: var(--semi-color-bg-0, #fff);
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: grab;
+  text-align: left;
+  width: 100%;
+  display: block;
+}
+
+.loop-card:hover {
+  border-color: var(--semi-color-primary, #6a5cff);
+}
+
+.loop-card.is-dragging {
+  opacity: 0.4;
+}
+
+.loop-card__key {
+  font-size: 11px;
+  color: var(--semi-color-text-2, #8590a6);
+}
+
+.loop-card__title {
+  font-size: 13px;
+  font-weight: 500;
+  margin: 3px 0 8px;
+  line-height: 1.4;
+}
+
+.loop-card__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ===== 通用表格辅助 ===== */
+.loop-cell-title {
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.loop-cell-title:hover {
+  color: var(--semi-color-primary, #6a5cff);
+}
+
+.loop-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loop-progress__bar {
+  width: 90px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--semi-color-fill-1, #eaebee);
+  overflow: hidden;
+}
+
+.loop-progress__fill {
+  height: 100%;
+  background: var(--semi-color-success, #23a55a);
+}
+
+/* ===== assignee picker ===== */
+.loop-assignee-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.loop-assignee-trigger:hover {
+  background: var(--semi-color-fill-0, #f0f1f3);
+}
+
+.loop-assignee-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-assignee-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--semi-color-text-2, #8590a6);
+}
+
+/* ===== 详情抽屉 ===== */
+.loop-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.loop-detail__section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.loop-detail__fields {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 12px 16px;
+  align-items: center;
+}
+
+.loop-detail__fields dt {
+  font-size: 12px;
+  color: var(--semi-color-text-2, #8590a6);
+}
+
+.loop-detail__fields dd {
+  margin: 0;
+}
+
+/* ===== 评论 ===== */
+.loop-comments {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.loop-comment {
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.loop-comment.is-reply {
+  margin-left: 28px;
+  background: var(--semi-color-fill-0, #f7f8fa);
+}
+
+.loop-comment__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.loop-comment__head time {
+  font-size: 11px;
+  color: var(--semi-color-text-2, #8590a6);
+}
+
+.loop-comment__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.loop-comment__body {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

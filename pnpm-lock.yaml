@@ -185,6 +185,12 @@ importers:
       '@octo/login':
         specifier: workspace:*
         version: link:../../packages/dmworklogin
+      '@octo/loop':
+        specifier: workspace:*
+        version: link:../../packages/dmloop
+      '@octo/runtime':
+        specifier: workspace:*
+        version: link:../../packages/dmruntime
       '@octo/todo':
         specifier: workspace:*
         version: link:../../packages/dmworktodo
@@ -330,6 +336,56 @@ importers:
       vite-tsconfig-paths:
         specifier: ^6.1.1
         version: 6.1.1(typescript@5.9.3)(vite@8.0.7(@types/node@20.19.39)(esbuild@0.27.7)(jiti@2.6.1))
+
+  packages/dmloop:
+    dependencies:
+      '@douyinfe/semi-icons':
+        specifier: ^2.93.0
+        version: 2.93.0(react@17.0.2)
+      '@douyinfe/semi-ui':
+        specifier: ^2.93.0
+        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@octo/base':
+        specifier: workspace:*
+        version: link:../dmworkbase
+      lucide-react:
+        specifier: ^0.577.0
+        version: 0.577.0(react@17.0.2)
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.28
+        version: 18.3.28
+      react:
+        specifier: ^17.0.2
+        version: 17.0.2
+      react-dom:
+        specifier: ^17.0.2
+        version: 17.0.2(react@17.0.2)
+
+  packages/dmruntime:
+    dependencies:
+      '@douyinfe/semi-icons':
+        specifier: ^2.93.0
+        version: 2.93.0(react@17.0.2)
+      '@douyinfe/semi-ui':
+        specifier: ^2.93.0
+        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@octo/base':
+        specifier: workspace:*
+        version: link:../dmworkbase
+      lucide-react:
+        specifier: ^0.577.0
+        version: 0.577.0(react@17.0.2)
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.28
+        version: 18.3.28
+      react:
+        specifier: ^17.0.2
+        version: 17.0.2
+      react-dom:
+        specifier: ^17.0.2
+        version: 17.0.2(react@17.0.2)
 
   packages/dmworkappbot:
     dependencies:
