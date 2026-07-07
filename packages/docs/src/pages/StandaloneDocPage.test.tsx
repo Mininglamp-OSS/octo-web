@@ -69,8 +69,8 @@ let wk: ReturnType<typeof createMockWKApp>
 beforeEach(() => {
   window.sessionStorage.clear()
   window.localStorage.clear()
-  // Reset the URL between tests so a `?sid=` pushed by one test (Copy-link / return-target cases)
-  // cannot leak into the space-resolution tests, which now read the link's `?sid=` (standaloneLinkSpace).
+  // Reset the URL between tests so a `?sid=`/`?sp=` pushed by one test (Copy-link / return-target /
+  // space-resolution cases) cannot leak into the next, which reads the link's `?sp=` (standaloneLinkSpace).
   window.history.pushState({}, '', '/')
   wk = createMockWKApp()
   setWKApp(wk)
@@ -475,31 +475,59 @@ describe('StandaloneDocPage — cold-start preflight carries X-Space-Id from the
   })
 })
 
-describe('XIN-497 — preflight addresses the doc space from the link ?sid (role vs cross-space)', () => {
-  it('standaloneLinkSpace reads the ?sid the share link carries, else empty', () => {
-    window.history.pushState({}, '', '/d/d_x?sid=space-doc')
-    expect(standaloneLinkSpace()).toBe('space-doc')
+describe('XIN-501 — preflight addresses the doc space from the link ?sp, never the token-bucket ?sid', () => {
+  it('standaloneLinkSpace reads the dedicated ?sp param (the doc space), NOT ?sid (the token bucket)', () => {
+    // ?sp carries the doc's real space_id; ?sid is only the token-bucket key. They are distinct, and
+    // the preflight space must come from ?sp — feeding ?sid was the XIN-497 regression.
+    window.history.pushState({}, '', '/d/d_x?sid=2b60d3&sp=105d4a60d0fc4d55a5cfc3c2d0501361')
+    expect(standaloneLinkSpace()).toBe('105d4a60d0fc4d55a5cfc3c2d0501361')
     // Trimmed.
-    window.history.pushState({}, '', '/d/d_x?sid=%20space-doc%20')
+    window.history.pushState({}, '', '/d/d_x?sp=%20space-doc%20')
     expect(standaloneLinkSpace()).toBe('space-doc')
-    // No sid → empty, so callers fall back to currentSpaceId/cached/default.
+    // A link with only the token-bucket ?sid (no ?sp) must NOT be treated as a space → empty, so
+    // callers fall back to currentSpaceId/cached/default.
+    window.history.pushState({}, '', '/d/d_x?sid=2b60d3')
+    expect(standaloneLinkSpace()).toBe('')
+    // No query at all → empty.
     window.history.pushState({}, '', '/d/d_x')
     expect(standaloneLinkSpace()).toBe('')
   })
 
-  it('a no-permission recipient whose OWN space differs from the doc: preflight uses the link ?sid so the backend returns 403 (forbidden + request-access), not a cross-space 404', async () => {
-    // Scenario A (boss repro): logged in, no permission on THIS doc. The forward link carries the
-    // doc's space as ?sid; the recipient's own last space (cached currentSpaceId) is a DIFFERENT
-    // space. Before the fix the preflight sent the recipient's own space, tripping requireDocRole's
-    // cross-space 404 gate BEFORE the role check → not-found dead-end (no request-access), not the
-    // forbidden landing. The preflight must address the doc's space from ?sid so the backend can
-    // evaluate the caller's role and return 403.
-    window.history.pushState({}, '', '/d/d_shared?sid=space-doc')
+  it('own doc (boss regression): preflight addresses the doc space from ?sp → 200, editor mounts', async () => {
+    // Scenario B (severest boss repro): the owner opens their OWN doc via a `/d/:docId` link. The
+    // link carries the doc's real space as ?sp and the short token key as ?sid. The preflight MUST
+    // send X-Space-Id = the ?sp value; sending the ?sid (as XIN-497 did) trips requireDocRole's
+    // cross-space 404 gate and 404s the owner's own doc.
+    window.history.pushState({}, '', '/d/d_own?sid=2b60d3&sp=105d4a60d0fc4d55a5cfc3c2d0501361')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_own') {
+        return {
+          data: { docId: 'd_own', title: 'My Doc', ownerId: 'u_self', role: 'admin' },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_own" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_own')
+    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('105d4a60d0fc4d55a5cfc3c2d0501361')
+    // Never the token-bucket sid.
+    expect(preflight!.config?.headers?.['X-Space-Id']).not.toBe('2b60d3')
+  })
+
+  it('a no-permission recipient whose OWN space differs from the doc: preflight uses ?sp so the backend returns 403 (forbidden + request-access), not a cross-space 404', async () => {
+    // Scenario A: logged in, no permission on THIS doc, recipient's own last space (cached
+    // currentSpaceId) is a DIFFERENT space. The preflight must address the doc's space from ?sp so
+    // the backend evaluates the caller's role in the doc's space and returns 403 — reaching the
+    // request-access entry — instead of the cross-space 404 dead-end.
+    window.history.pushState({}, '', '/d/d_shared?sid=2b60d3&sp=space-doc')
     window.localStorage.setItem('currentSpaceId', 'space-mine') // recipient's own last space, NOT the doc's
 
     wk.apiClient.responder = (method, url) => {
-      // Model the real backend: the role check runs only when the space header matches the doc's
-      // space. Same-space + no role → 403 forbidden; a mismatched space would be 404 (cross-space).
+      // Real backend: same-space + no role → 403 forbidden; a mismatched space would be 404.
       if (method === 'get' && url === '/docs/d_shared') throw apiError(403)
       return { data: {}, status: 200 }
     }
@@ -509,19 +537,57 @@ describe('XIN-497 — preflight addresses the doc space from the link ?sid (role
     await waitFor(() =>
       expect(screen.getByText('docs.error.permission.forbidden')).toBeTruthy(),
     )
-    // The preflight addressed the doc's space (from ?sid), NOT the recipient's own cached space.
+    // The preflight addressed the doc's space (from ?sp), NOT the recipient's own cached space.
     const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_shared')
     expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
+    expect(preflight!.config?.headers?.['X-Space-Id']).not.toBe('space-mine')
     // gap2 request-access entry is reached (the whole point of the fix).
     expect(screen.getByText('docs.forward.requestAccess')).toBeTruthy()
     expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
 
+  it('a genuinely deleted doc still lands on not-found even with a valid ?sp', async () => {
+    // With the correct space, a 404 now means the doc is truly gone (status 0), not a cross-space
+    // artifact — so not-found is the correct terminal.
+    window.history.pushState({}, '', '/d/d_gone?sid=2b60d3&sp=space-doc')
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_gone') throw apiError(404)
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_gone" />)
+
+    await waitFor(() => expect(screen.getByText('docs.error.permission.notFound')).toBeTruthy())
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
+  it('an older link with only ?sid (no ?sp) falls back to the cached currentSpaceId, so the owner opening their own doc still works', async () => {
+    // Backward compatibility: links minted before XIN-501 carry only the token-bucket ?sid. The
+    // preflight must NOT send that sid as the space; it falls back to the cached currentSpaceId,
+    // which is the doc's space whenever the opener is already in it (owner / same-space recipient).
+    window.history.pushState({}, '', '/d/d_legacy?sid=2b60d3')
+    window.localStorage.setItem('currentSpaceId', 'space-doc') // opener is in the doc's space
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_legacy') {
+        return { data: { docId: 'd_legacy', title: 'Legacy', ownerId: 'u_self' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_legacy" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_legacy')
+    // The cached space is used — never the token-bucket sid.
+    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
+    expect(preflight!.config?.headers?.['X-Space-Id']).not.toBe('2b60d3')
+  })
+
   it('a real expired/invalid token still 401s → login handoff, unaffected by the space (AC-4)', async () => {
     // The space only steers requireDocRole's cross-space (404) vs role (403) branches; the auth
     // middleware returns 401 for a bad token regardless of X-Space-Id. So a genuine stale token still
-    // hands off to onSessionExpired (login re-auth) — the no-permission fix does not swallow real 401s.
-    window.history.pushState({}, '', '/d/d_expired?sid=space-doc')
+    // hands off to onSessionExpired (login re-auth) — the space fix does not swallow real 401s.
+    window.history.pushState({}, '', '/d/d_expired?sid=2b60d3&sp=space-doc')
     const onSessionExpired = vi.fn()
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url === '/docs/d_expired') throw apiError(401)
@@ -535,9 +601,9 @@ describe('XIN-497 — preflight addresses the doc space from the link ?sid (role
     expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
 
-  it('seeds the empty live currentSpaceId from the link ?sid so follow-up requests match the preflight', async () => {
-    window.history.pushState({}, '', '/d/d_ok?sid=space-doc')
-    window.localStorage.setItem('currentSpaceId', 'space-mine') // recipient's own; must NOT win over ?sid
+  it('seeds the empty live currentSpaceId from the link ?sp so follow-up requests match the preflight', async () => {
+    window.history.pushState({}, '', '/d/d_ok?sid=2b60d3&sp=space-doc')
+    window.localStorage.setItem('currentSpaceId', 'space-mine') // recipient's own; must NOT win over ?sp
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url === '/docs/d_ok') {
         return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }

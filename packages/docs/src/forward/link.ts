@@ -26,10 +26,13 @@
 export interface DocLinkTarget {
   docId: string
   /**
-   * Kept for call-site compatibility (the forward entry still passes the live space/folder), but no
-   * longer embedded in the link: the standalone page resolves the space from the recipient's own
-   * session (live currentSpaceId → cached localStorage → deploy default) and the folder from the
-   * preflight's documentName, so the addressing does not ride on the shared URL anymore.
+   * The document's REAL space id (doc_meta.space_id — a 32-hex docs-backend space, e.g.
+   * `105d4a60…`), known to the sharer at forward time (the in-shell EditorShell space prop, which
+   * is the live currentSpaceId). Embedded on the link as `?sp=` (XIN-501) so the recipient's
+   * standalone preflight can address `GET /docs/:docId` at the doc's own space. This is NOT the same
+   * value as `?sid` (see below): `?sid` is the short octo token-bucket key, whereas `?sp` is the
+   * docs space the backend matches against in requireDocRole's cross-space guard. Optional: a link
+   * built without it degrades to the recipient resolving the space from their own session.
    */
   space?: string
   folder?: string
@@ -62,16 +65,28 @@ function currentSid(): string {
 }
 
 /**
- * Build `${origin}/d/<docId>` (carrying the current `sid` when available) — the standalone doc-page
- * share form. The receiver opens it → Layout intercepts the `/d` namespace → sid-scoped token loads
- * → GET /docs/{docId} preflight → StandaloneDocPage mounts the editor (reader / writer / forbidden-
- * with-request / not-found / archived), all outside the app shell and immune to the host's
- * query-wiping re-push (the docId lives in the path, not the query). docId only ever contains
- * documentName-safe chars, so the built path stays a valid `/d/:docId` route.
+ * Build `${origin}/d/<docId>` — the standalone doc-page share form — carrying, when available:
+ *   - `?sid=<space sid>`  the octo token-bucket key so the receiver loads their sid-scoped token
+ *                         (`token<sid>`, #511 problem 2 / login-return);
+ *   - `?sp=<space id>`    the doc's REAL space (doc_meta.space_id) so the receiver's preflight
+ *                         (`GET /docs/:docId`) addresses the doc's own space (XIN-501).
+ *
+ * The two are DISTINCT identifiers and both are needed: `?sid` keys the token store, `?sp` is the
+ * space the docs backend matches in requireDocRole's cross-space guard. XIN-497 reused `?sid` as the
+ * preflight space, but a token-bucket sid never equals the doc's space_id, so the preflight 404'd
+ * for every recipient (including the owner's own doc). Carrying the real space on its own `?sp` param
+ * fixes that without touching the `token<sid>` logic. The receiver opens it → Layout intercepts the
+ * `/d` namespace → sid-scoped token loads → preflight against `?sp` → StandaloneDocPage mounts the
+ * editor (reader / writer / forbidden-with-request / not-found / archived), all outside the app shell
+ * and immune to the host's query-wiping re-push (the docId lives in the path, not the query).
  */
-export function buildDocLink({ docId }: DocLinkTarget): string {
+export function buildDocLink({ docId, space }: DocLinkTarget): string {
   const sid = currentSid()
   const path = `/d/${encodeURIComponent(docId)}`
-  const query = sid ? `?sid=${encodeURIComponent(sid)}` : ''
+  const parts: string[] = []
+  if (sid) parts.push(`sid=${encodeURIComponent(sid)}`)
+  const docSpace = (space || '').trim()
+  if (docSpace) parts.push(`sp=${encodeURIComponent(docSpace)}`)
+  const query = parts.length > 0 ? `?${parts.join('&')}` : ''
   return `${origin()}${path}${query}`
 }

@@ -193,29 +193,35 @@ export function standaloneFallbackSpace(currentSpaceId: string | undefined): str
 }
 
 /**
- * The doc's OWN space, as carried by the standalone share link's `?sid=` query.
+ * The doc's OWN space, as carried by the standalone share link's dedicated `?sp=` query param.
  *
- * buildDocLink (forward/link.ts) embeds the SHARER's current space id as `?sid=` — which is the
- * space the shared document actually lives in — and the host Layout already uses that same sid to
- * key the recipient's token bucket (`token<sid>`). It is therefore the AUTHORITATIVE space for the
- * standalone preflight, ahead of the recipient's own live/cached `currentSpaceId`.
+ * buildDocLink (forward/link.ts) embeds the shared document's REAL space id as `?sp=` — the space
+ * the doc actually lives in (doc_meta.space_id, a 32-hex docs-backend id), known to the sharer at
+ * forward time (the in-shell EditorShell space prop = the live currentSpaceId). It is the
+ * AUTHORITATIVE space for the standalone preflight, ahead of the recipient's own live/cached
+ * currentSpaceId (which, for a cross-space share, is a DIFFERENT space).
  *
- * Why this matters (XIN-497): the backend gates GET /docs/:docId behind `requireDocRole`, which
- * checks the CROSS-SPACE guard (`meta.space_id !== req.spaceId` → 404 not_found) BEFORE the role
- * guard (role `none` → 403 forbidden). A logged-in recipient without permission whose own last
- * space differs from the doc's space would send `X-Space-Id = <their space>` and trip the 404 gate
- * — dead-ending on the not-found terminal (no request-access entry) instead of the intended 403
- * forbidden landing. Addressing the preflight against the link's `?sid=` lets the backend evaluate
- * the caller's role in the doc's real space and return 403, so the gap2 request-access entry shows.
+ * Why a DEDICATED `?sp` and NOT the link's `?sid` (XIN-501, boss real-device evidence): `?sid` is
+ * the token-bucket key (`token<sid>`, #511 problem 2) — a short octo session/space id (e.g.
+ * `2b60d3`), which is NOT the docs backend space_id (e.g. `105d4a60d0fc4d55a5cfc3c2d0501361`).
+ * XIN-497 fed `?sid` in as X-Space-Id; the backend gates GET /docs/:docId behind requireDocRole,
+ * which checks the CROSS-SPACE guard (`meta.space_id !== req.spaceId` → 404 not_found) BEFORE the
+ * role guard (role `none` → 403 forbidden). Because the sid never equals the doc's space_id, that
+ * preflight returned 404 for EVERY recipient — including the owner opening their OWN doc (the boss
+ * regression) — and never reached the intended 403 forbidden + request-access landing. Addressing
+ * the preflight from the doc's real space (`?sp`) lets the backend evaluate the caller's role in the
+ * doc's space: 200 for a member/owner, 403 for a no-permission caller (→ request-access), 404 only
+ * when the doc is genuinely gone. The `token<sid>` logic is untouched — `?sid` still keys the token.
  *
- * Returns '' when the link carries no `?sid=` (or under SSR); callers then fall back to
- * standaloneFallbackSpace (live currentSpaceId → cached → deploy default), so a bare `/d/:docId`
- * link keeps its prior behavior.
+ * Returns '' when the link carries no `?sp=` (older links minted before XIN-501, or under SSR);
+ * callers then fall back to standaloneFallbackSpace (live currentSpaceId → cached → deploy default),
+ * which still addresses the doc correctly whenever the opener is already in the doc's space (the
+ * owner opening their own doc, or a same-space recipient).
  */
 export function standaloneLinkSpace(): string {
   if (typeof window === 'undefined') return ''
   try {
-    return (new URLSearchParams(window.location.search).get('sid') || '').trim()
+    return (new URLSearchParams(window.location.search).get('sp') || '').trim()
   } catch {
     return ''
   }
@@ -277,12 +283,14 @@ export function StandaloneDocPage({
 
   // Resolve the standalone space ONCE, and address BOTH the preflight's explicit X-Space-Id header
   // and the EditorShell room fallback from it, so preflight and room can never target different
-  // spaces. Priority (XIN-497): the doc's own space carried by the share link's `?sid=`
-  // (standaloneLinkSpace — authoritative for a `/d/:docId` deep link) → live currentSpaceId → cached
-  // localStorage → deploy default. Preferring the recipient's own currentSpaceId first was the bug:
-  // for a cross-space share it differs from the doc's space, so the backend's requireDocRole hit its
-  // cross-space 404 gate BEFORE the role check and a no-permission recipient dead-ended on not-found
-  // instead of the 403 forbidden + request-access landing.
+  // spaces. Priority (XIN-501): the doc's real space carried by the share link's dedicated `?sp=`
+  // (standaloneLinkSpace — the doc_meta.space_id embedded by buildDocLink, authoritative for a
+  // `/d/:docId` deep link) → live currentSpaceId → cached localStorage → deploy default. Do NOT use
+  // the link's `?sid` here: `?sid` is the token-bucket key, a short octo session/space id, not the
+  // doc's space_id, so feeding it as X-Space-Id trips requireDocRole's cross-space 404 gate BEFORE
+  // the role check — 404'ing every recipient, including the owner opening their own doc (XIN-497
+  // regression). Older links minted without `?sp` fall through to currentSpaceId, which still
+  // addresses the doc correctly when the opener is already in the doc's space (owner / same-space).
   const preflightSpace = standaloneLinkSpace() || standaloneFallbackSpace(wk.shared?.currentSpaceId)
 
   // Genuine defense in depth (second, independent path — NOT the only working one): the standalone
@@ -301,10 +309,10 @@ export function StandaloneDocPage({
   useEffect(() => {
     const shared = wk.shared
     if (!shared || shared.currentSpaceId) return
-    // Prefer the doc's space carried by the share link (`?sid=`, standaloneLinkSpace) so the global
-    // interceptor injects the SAME space on the editor's follow-up requests as the preflight header
-    // used (XIN-497); fall back to the cached last space when the link carries no sid. Never
-    // overwrite a real live space, so in-shell mounts (where it is already set) are unaffected.
+    // Prefer the doc's real space carried by the share link (`?sp=`, standaloneLinkSpace) so the
+    // global interceptor injects the SAME space on the editor's follow-up requests as the preflight
+    // header used (XIN-501); fall back to the cached last space when the link carries no `?sp`.
+    // Never overwrite a real live space, so in-shell mounts (where it is already set) are unaffected.
     const linkSpace = standaloneLinkSpace()
     if (linkSpace) {
       shared.currentSpaceId = linkSpace
