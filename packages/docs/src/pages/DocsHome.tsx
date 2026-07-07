@@ -476,8 +476,8 @@ function DocsList({
           </button>
           <button
             type="button"
-            aria-label={t('docs.sheet.moreNew')}
-            title={t('docs.sheet.moreNew')}
+            aria-label={t('docs.list.newMenu')}
+            title={t('docs.list.newMenu')}
             disabled={creating}
             onClick={(e) => {
               const box = (e.currentTarget.closest('.octo-docs-list-new') as HTMLElement) ?? e.currentTarget
@@ -511,7 +511,8 @@ function DocsList({
                 void onCreate('board')
               }}
             >
-              ▤ {t('docs.list.newBoard')}
+              <span className="octo-docs-new-menu-icon" aria-hidden="true"><BoardRowIcon /></span>
+              {t('docs.list.newBoard')}
             </button>
             <button
               type="button"

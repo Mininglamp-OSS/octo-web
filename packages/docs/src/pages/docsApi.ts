@@ -12,7 +12,6 @@ export interface DocListItem {
   title: string
   ownerId: string
   role: Role
-  docType?: string
   updatedAt?: string
   /**
    * Document kind: `'doc'` (Tiptap rich text, the default) or `'board'` (Excalidraw whiteboard).
@@ -77,7 +76,6 @@ export interface DocMeta {
   title: string
   ownerId?: string
   role?: Role
-  docType?: string
   updatedAt?: string
   /**
    * Creation timestamp (RFC3339), returned by the per-doc GET. Consumed by the header "more"
