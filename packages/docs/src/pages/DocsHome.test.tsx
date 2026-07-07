@@ -291,24 +291,31 @@ describe('DocsHome navigation (split-pane)', () => {
     const entry = screen.getByTestId('editor-open-new-page')
     fireEvent.click(entry)
 
-    // It opens the clean standalone deep-link in a new tab — no in-app navigation.
-    expect(openSpy).toHaveBeenCalledWith('/d/d_a', '_blank', 'noopener,noreferrer')
+    // It opens the clean standalone deep-link in a new tab — no in-app navigation. The link carries
+    // the doc's real space as `?sp` (XIN-519 blocker 1); with no active space the shell falls back to
+    // the default doc space ('demo'). No `?sid` — the opener's session is recovered from storage.
+    expect(openSpy).toHaveBeenCalledWith('/d/d_a?sp=demo', '_blank', 'noopener,noreferrer')
     expect(assignSpy).not.toHaveBeenCalled()
   })
 
-  it('XIN-513: the standalone link opens without a `?sid`, even when the in-shell URL carries one', async () => {
+  it('XIN-513/519: the standalone link opens with `?sp` (doc space) but no `?sid`, even when the in-shell URL carries a sid', async () => {
     const openSpy = vi.fn()
     Object.defineProperty(window, 'open', { configurable: true, writable: true, value: openSpy })
     // In-shell URL carries the active session's sid (the host's RouteManager re-push collapses the
     // docs route to `/docs?sid=…`). The opened standalone link must NOT copy that sid forward: an
     // already-logged-in user's session is recovered from storage independently of the URL (XIN-513),
-    // so a sid-less `/d/:docId` opens the document directly.
+    // so a sid-less `/d/:docId` opens the document directly. It MUST, however, carry `?sp` (the doc's
+    // real space) so the recipient's standalone preflight can address the doc's own space — dropping
+    // it (XIN-519 blocker 1) sent the login-return path into the cross-space not_found terminal.
     Object.defineProperty(window, 'location', {
       configurable: true,
       writable: true,
       value: { origin: 'https://app.example.com', search: '?sid=s_active', assign: assignSpy },
     })
     const wk = createMockWKApp()
+    // Give the shell an active space so DocsHome's space (spaceRef) resolves to a real doc space id,
+    // which the opened standalone link must carry as `?sp`.
+    wk.shared.currentSpaceId = '105d4a60d0fc4d55a5cfc3c2d0501361'
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url.startsWith('/docs')) {
@@ -328,9 +335,14 @@ describe('DocsHome navigation (split-pane)', () => {
     fireEvent.click(screen.getByText('Doc A'))
     fireEvent.click(screen.getByTestId('editor-open-new-page'))
 
-    // No sid rides on the standalone link; the recipient/opener's session is recovered from storage.
+    // The standalone link carries `?sp` (the doc's real space) so the recipient's preflight addresses
+    // the doc's own space — but NO `?sid`; the opener's session is recovered from storage (XIN-513).
     // (The multi-session wrong-space-session recovery edge is tracked separately as octo-web #551.)
-    expect(openSpy).toHaveBeenCalledWith('/d/d_a', '_blank', 'noopener,noreferrer')
+    expect(openSpy).toHaveBeenCalledWith(
+      '/d/d_a?sp=105d4a60d0fc4d55a5cfc3c2d0501361',
+      '_blank',
+      'noopener,noreferrer',
+    )
     expect(assignSpy).not.toHaveBeenCalled()
   })
 

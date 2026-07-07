@@ -789,12 +789,20 @@ export function DocsHome() {
   // The link carries NO `?sid=` (XIN-513): an already-logged-in user's session is recovered from
   // storage independently of the URL — apps/web Layout runs recoverOctoSessionFromStorage on the
   // `/d` path, which scans the `token<sid>` buckets and adopts a valid stored session — so the new
-  // tab opens the document directly without a login detour. The multi-session / multi-space case
-  // where storage recovery may adopt the wrong space session is tracked separately (octo-web #551)
-  // and is out of scope here; the `token<sid>` / recoverSession logic is untouched.
+  // tab opens the document directly without a login detour.
+  //
+  // It DOES carry `?sp=` (XIN-519 blocker 1): the doc's real space — the active DocsHome space, which
+  // the resident list is scoped to, so the open document lives in it — exactly as the other two minted
+  // `/d/:docId` links do (buildDocLink forward link, StandaloneDocPage Copy-link). Without `?sp` the
+  // recipient's standalone preflight (`GET /docs/:docId`) has no space to address and hits the
+  // cross-space guard's not_found ("该文档不存在或已被删除"), notably on the unauthenticated
+  // login-return path. We read spaceRef (the authoritative current space id, kept in sync by
+  // onSpaceChanged) so the callback stays deps-free. We drop only `?sid`, never `?sp`.
   const onOpenInNewPage = useCallback((id: string) => {
     if (typeof window !== 'undefined') {
-      window.open(`/d/${encodeURIComponent(id)}`, '_blank', 'noopener,noreferrer')
+      const sp = (spaceRef.current || '').trim()
+      const query = sp ? `?sp=${encodeURIComponent(sp)}` : ''
+      window.open(`/d/${encodeURIComponent(id)}${query}`, '_blank', 'noopener,noreferrer')
     }
   }, [])
 

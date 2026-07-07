@@ -128,6 +128,31 @@ export function findUniqueStoredSession(store: StorageLike): RecoveredSession | 
 }
 
 /**
+ * The FIRST stored session when storage holds SEVERAL buckets that all belong to the SAME identity
+ * (same non-empty uid), or null otherwise (zero buckets, one bucket, or buckets spanning >1 uid).
+ *
+ * The multi-session / multi-space real-device case (XIN-519 blocker 2, boss decision B): one person
+ * signed in more than once — e.g. across two spaces — leaves several `token{sid}` buckets, all with
+ * the SAME uid. findUniqueStoredSession refuses these (length > 1), so a sid-less `/d/:docId` cold
+ * load recovered nothing and bounced the user to login even though every bucket is the same person.
+ * When every bucket shares one uid there is no IDENTITY to guess between, so returning the first is
+ * safe. Buckets spanning different uids stay genuinely ambiguous and return null — the caller falls
+ * through to login rather than picking a person (the XIN-392 P1-2 guarantee is untouched).
+ *
+ * Deliberately NOT a by-`sp` selection: token buckets store no space (see SESSION_KEY_PREFIXES) and
+ * same-identity buckets are interchangeable anyway, so `sp` cannot and need not pick among them — it
+ * stays the StandaloneDocPage preflight's space-addressing param only. The caller adopts this result
+ * IN MEMORY ONLY (never persists it) so a multi-bucket pick is never mirrored into the cross-tab slot.
+ */
+export function findSameIdentityStoredSession(store: StorageLike): RecoveredSession | null {
+  const sessions = findStoredSessions(store)
+  if (sessions.length <= 1) return null
+  const uid = sessions[0].uid
+  if (!uid) return null
+  return sessions.every((s) => s.uid === uid) ? sessions[0] : null
+}
+
+/**
  * The subset of `WKApp.loginInfo` the adoption path writes. Kept structural (not the concrete
  * `LoginInfo` class from `@octo/base`) so this stays a pure, host-free unit.
  */
@@ -148,9 +173,11 @@ export interface AdoptOptions {
    * Back → /docs full reload — reads the empty-sid slot; persisting into it there keeps an
    * already-signed-in user logged in across that reload (XIN-390 Back-keeps-login). But `save()` also
    * mirrors token/uid/name into the cross-tab localStorage whitelist (StorageService), so it is only
-   * safe when the stored session is UNAMBIGUOUS. Persisting therefore requires EXACTLY ONE stored
-   * session (findUniqueStoredSession); with zero or several this is a no-op (returns false) and the
-   * visitor falls through to login rather than having a guessed identity pinned across tabs (XIN-392).
+   * safe when the stored session is UNAMBIGUOUS. Persistence therefore happens ONLY when EXACTLY ONE
+   * session is stored (findUniqueStoredSession). With several buckets that all share one identity, the
+   * session is adopted IN MEMORY ONLY (never persisted) — see the standalone branch below; with
+   * buckets spanning different identities, this is a no-op (returns false) and the visitor falls
+   * through to login rather than having a guessed identity pinned across tabs (XIN-392).
    *
    * When false (the DEFAULT — the invite-landing branch): adopt the first stored session IN MEMORY
    * ONLY and never call `save()`. This is the invite branch's original, pre-#512 recovery behavior;
@@ -159,18 +186,34 @@ export interface AdoptOptions {
   persist?: boolean
 }
 
+/** Copy a recovered session's fields into `sink` (in-memory adoption; no persistence). */
+function applyRecoveredSession(sink: SessionSink, session: RecoveredSession): void {
+  sink.token = session.token
+  sink.uid = session.uid
+  sink.name = session.name
+}
+
 /**
  * Adopt a stored octo session into `sink` for a clean deep-link cold-load.
  *
  * By default (invite branch) this writes only the in-memory `token`/`uid`/`name` fields, adopting the
- * FIRST stored session and persisting nothing — the pre-#512 invite semantics. Pass `{ persist: true }`
- * (standalone branch) to also `sink.save()` the adopted session so a subsequent no-sid reload stays
- * authenticated (XIN-390) — but persistence only happens when EXACTLY ONE session is stored, so a
- * multi-session user's identity is never guessed-and-pinned across tabs (XIN-392).
+ * FIRST stored session and persisting nothing — the pre-#512 invite semantics.
+ *
+ * Pass `{ persist: true }` (standalone `/d/:docId` branch) to recover a signed-in user's session on a
+ * sid-less cold load. Bucket selection there is tiered so a multi-session user is neither bounced to
+ * login nor pinned to a guessed identity (XIN-392 P1-2 / XIN-519 blocker 2, boss decision B):
+ *   - exactly one stored bucket → adopt AND `sink.save()` it, so a later no-sid Back → /docs reload
+ *     stays authenticated (XIN-390 Back-keeps-login);
+ *   - several buckets, all the SAME identity (same non-empty uid — one person signed in across e.g.
+ *     two spaces) → adopt the first IN MEMORY ONLY (no `save()`), so the sid-less link opens the doc
+ *     instead of bouncing to login, without mirroring a multi-bucket pick into the cross-tab slot;
+ *   - several buckets spanning DIFFERENT identities → no-op (login), never guessing a person.
+ *
+ * `sp` is intentionally not consulted here: token buckets carry no space, and same-identity buckets
+ * are interchangeable, so `sp` cannot pick among them — it stays the preflight's addressing param.
  *
  * No-op (returns false) when a token is already loaded, when none is stored, or when persistence is
- * requested but the stored session is ambiguous — a genuinely anonymous (or ambiguous) visitor is
- * left untouched to fall through to the login screen.
+ * requested but the stored buckets span more than one identity — the visitor falls through to login.
  */
 export function adoptStoredSession(
   sink: SessionSink,
@@ -179,19 +222,32 @@ export function adoptStoredSession(
 ): boolean {
   if (sink.token) return false
   const { persist = false } = options
-  // Persisting demands an unambiguous session (never pin a guess cross-tab); in-memory-only
-  // recovery keeps the original "first wins" behavior.
-  const session = persist ? findUniqueStoredSession(store) : findStoredSession(store)
-  if (!session) return false
-  sink.token = session.token
-  sink.uid = session.uid
-  sink.name = session.name
-  if (persist) {
+  if (!persist) {
+    // Invite branch: first-wins, in-memory only (pre-#512 semantics).
+    const session = findStoredSession(store)
+    if (!session) return false
+    applyRecoveredSession(sink, session)
+    return true
+  }
+  // Standalone branch. Persisting mirrors the identity into the cross-tab whitelist, so we persist
+  // ONLY the unambiguous single-bucket case; a same-identity multi-bucket set is recovered in memory.
+  const unique = findUniqueStoredSession(store)
+  if (unique) {
+    applyRecoveredSession(sink, unique)
     // Persist to the current sid bucket so a later same-tab navigation that also lacks `?sid=`
     // (e.g. Back → /docs) reloads this session rather than an empty one.
     sink.save()
+    return true
   }
-  return true
+  const sameIdentity = findSameIdentityStoredSession(store)
+  if (sameIdentity) {
+    // Several buckets, one person: adopt the first IN MEMORY ONLY. No sink.save() — never pin a
+    // multi-bucket pick into the cross-tab empty-sid slot (XIN-392). A Back → /docs reload re-runs
+    // this same same-identity recovery, so the user stays authenticated across it without a pin.
+    applyRecoveredSession(sink, sameIdentity)
+    return true
+  }
+  return false
 }
 
 /**
