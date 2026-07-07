@@ -77,7 +77,7 @@
   padding: var(--wk-sp-3);
   border: 1px solid var(--wk-border-default);
   border-radius: var(--wk-r-md);
-  background: var(--wk-bg-primary, #fff);
+  background: var(--wk-bg-surface);
 }
 
 .wk-webhook-card__head {
@@ -113,7 +113,7 @@
 
 .wk-webhook-card__chip--off {
   color: var(--wk-text-tertiary);
-  background: var(--wk-bg-tertiary, rgba(28, 28, 35, 0.06));
+  background: var(--wk-bg-elevated);
 }
 
 .wk-webhook-card__meta {
@@ -146,7 +146,7 @@
 }
 
 .wk-webhook-card__icon-btn:hover {
-  background: var(--wk-bg-tertiary, rgba(28, 28, 35, 0.06));
+  background: var(--wk-bg-elevated);
 }
 
 .wk-webhook-card__icon-btn:disabled {
@@ -155,7 +155,7 @@
 }
 
 .wk-webhook-card__icon-btn--danger:hover {
-  color: var(--wk-danger, #e54545);
+  color: var(--wk-color-danger);
 }
 
 /* 表单（创建 / 编辑弹窗） */
@@ -193,7 +193,7 @@
   border-radius: var(--wk-r-sm);
   font-size: var(--wk-text-size-sm);
   color: var(--wk-text-primary);
-  background: var(--wk-bg-primary, #fff);
+  background: var(--wk-bg-surface);
   outline: none;
 }
 
@@ -299,14 +299,12 @@
   color: var(--wk-amber-light);
 }
 
-/* webhook 弹窗（编辑表单 / 一次性 URL）内容可能很长 —— URL 弹窗展开「更多适配器」
-   后会有 6 段示例。这里把弹窗壳限高到视口内、body 区内部滚动，标题与底部按钮固定，
-   避免 Semi centered 模式下整体溢出视口、标题与按钮被挤出屏幕。仅作用于本模块弹窗，
-   不改共享的 WKModal（短内容时 max-height 不触发，视觉零变化）。 */
+/* webhook 弹窗（编辑表单 / 一次性 URL）内容可能很长。这里把弹窗壳限高到视口内、
+   body 区内部滚动，标题与底部按钮固定，避免 Semi centered 模式下整体溢出视口。 */
 .wk-webhook-modal .wk-modal-shell {
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - var(--wk-sp-8) * 2);
+  max-height: 66vh;
 }
 
 .wk-webhook-modal .wk-modal-title,
@@ -328,74 +326,7 @@
 .wk-webhook-url {
   display: flex;
   flex-direction: column;
-  gap: var(--wk-sp-4);
-}
-
-/* 「更多适配器」折叠区：新增适配器（gitlab/feishu/multica）默认收起，压低默认高度 */
-.wk-webhook-url__more {
-  display: flex;
-  flex-direction: column;
-  gap: var(--wk-sp-4);
-}
-
-.wk-webhook-url__more-toggle {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--wk-sp-1);
-  padding: var(--wk-sp-1) 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: var(--wk-text-size-sm);
-  font-weight: var(--wk-font-medium);
-  color: var(--wk-brand-primary);
-}
-
-.wk-webhook-url__more-icon {
-  transition: transform 0.15s ease;
-}
-
-.wk-webhook-url__more-icon--open {
-  transform: rotate(180deg);
-}
-
-/* 「更多适配器」区每个适配器做成独立卡片：边框 + 留白把彼此分开，避免糊成一片文字墙。
-   核心区（native/wecom）的 curl 用 <pre> 已自带底框，故卡片样式只作用于折叠区。 */
-.wk-webhook-url__more .wk-webhook-url__example-group {
-  gap: var(--wk-sp-2);
-  padding: var(--wk-sp-3);
-  border: 1px solid var(--wk-border-default, rgba(28, 28, 35, 0.12));
-  border-radius: var(--wk-r-md, 8px);
-  background: var(--wk-bg-secondary, rgba(28, 28, 35, 0.02));
-}
-
-/* 卡片内「接入步骤」二级折叠：默认收起，按需展开，压低默认高度。 */
-.wk-webhook-url__steps-block {
-  display: flex;
-  flex-direction: column;
-  gap: var(--wk-sp-2);
-}
-
-.wk-webhook-url__steps-toggle {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--wk-sp-1);
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: var(--wk-text-size-xs);
-  color: var(--wk-text-secondary);
-}
-
-.wk-webhook-url__steps-icon {
-  transition: transform 0.15s ease;
-}
-
-.wk-webhook-url__steps-icon--open {
-  transform: rotate(180deg);
+  gap: var(--wk-sp-5);
 }
 
 .wk-webhook-url__warning {
@@ -404,8 +335,9 @@
   gap: var(--wk-sp-2);
   padding: var(--wk-sp-3);
   border-radius: var(--wk-r-sm);
-  background: var(--wk-warning-bg, rgba(250, 173, 20, 0.1));
-  color: var(--wk-warning, #b88217);
+  border: 1px solid var(--wk-color-warning-bg);
+  background: var(--wk-color-warning-bg);
+  color: var(--wk-color-warning);
   font-size: var(--wk-text-size-sm);
   line-height: var(--wk-leading-normal);
 }
@@ -433,12 +365,40 @@
   gap: var(--wk-sp-2);
 }
 
+.wk-webhook-url__secret-row {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-1);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-bubble);
+}
+
+.wk-webhook-url__secret-row:hover,
+.wk-webhook-url__secret-row:focus-within {
+  border-color: var(--wk-border-glow);
+  box-shadow: 0 0 0 var(--wk-sp-0-5) var(--wk-border-glow);
+}
+
+.wk-webhook-url__secret-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
 .wk-webhook-url__value {
   flex: 1;
   min-width: 0;
   padding: var(--wk-sp-2) var(--wk-sp-3);
   border-radius: var(--wk-r-sm);
-  background: var(--wk-bg-tertiary, rgba(28, 28, 35, 0.06));
+  background: var(--wk-bg-elevated);
   font-size: var(--wk-text-size-xs);
   color: var(--wk-text-secondary);
   overflow: hidden;
@@ -446,25 +406,92 @@
   white-space: nowrap;
 }
 
-/* 调用示例：URL 框只有通用一个，三种用法（含 github/wecom 实际地址）都在这里 */
+.wk-webhook-url__secret-copy .wk-webhook-url__value {
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+  background: none;
+  color: var(--wk-text-primary);
+}
+
 .wk-webhook-url__examples-title {
-  margin-top: var(--wk-sp-2);
   font-size: var(--wk-text-size-sm);
   font-weight: var(--wk-font-medium);
   color: var(--wk-text-primary);
 }
 
+.wk-webhook-url__adapter-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-3);
+}
+
+.wk-webhook-url__tablist {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-1);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-bubble);
+  overflow-x: auto;
+}
+
+.wk-webhook-url__tab {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 var(--wk-sp-4);
+  border: 1px solid transparent;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  cursor: pointer;
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  color: var(--wk-text-secondary);
+}
+
+.wk-webhook-url__tab:hover {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+}
+
+.wk-webhook-url__tab:focus-visible {
+  outline: none;
+  border-color: var(--wk-border-glow);
+  box-shadow: 0 0 0 var(--wk-sp-0-5) var(--wk-border-glow);
+}
+
+.wk-webhook-url__tab--active {
+  color: var(--wk-text-accent);
+  background: var(--wk-bg-surface);
+  border-color: var(--wk-border-subtle);
+  box-shadow: var(--wk-shadow-sm);
+}
+
+/* 单一内容区：Tab 切换只替换这里，避免多个适配器展开导致弹窗高度跳动。 */
 .wk-webhook-url__example-group {
   display: flex;
   flex-direction: column;
-  gap: var(--wk-sp-1);
+  gap: var(--wk-sp-3);
+  padding: 0 var(--wk-sp-1);
 }
 
 .wk-webhook-url__example {
   display: flex;
   flex-direction: column;
-  gap: var(--wk-sp-2);
-  margin-top: var(--wk-sp-1);
+  gap: var(--wk-sp-3);
+}
+
+.wk-webhook-url__value-block {
+  display: flex;
+  min-width: 0;
+}
+
+.wk-webhook-url__value-block .wk-webhook-url__value {
+  display: block;
+  width: 100%;
+  padding: var(--wk-sp-3);
+  line-height: var(--wk-leading-normal);
+  white-space: normal;
+  word-break: break-all;
 }
 
 .wk-webhook-url__example-code {
@@ -472,7 +499,7 @@
   margin: 0;
   padding: var(--wk-sp-3);
   border-radius: var(--wk-r-sm);
-  background: var(--wk-bg-tertiary, rgba(28, 28, 35, 0.06));
+  background: var(--wk-bg-elevated);
   font-family: var(--wk-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: var(--wk-text-size-xs);
   line-height: var(--wk-leading-normal);
@@ -487,7 +514,7 @@
   align-items: center;
   gap: var(--wk-sp-1);
   padding: var(--wk-sp-1) var(--wk-sp-2);
-  border: 1px solid var(--wk-border-default, rgba(28, 28, 35, 0.12));
+  border: 1px solid var(--wk-border-default);
   border-radius: var(--wk-r-sm);
   background: none;
   cursor: pointer;
@@ -495,18 +522,85 @@
   color: var(--wk-text-secondary);
 }
 
+.wk-webhook-url__steps-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+}
+
+.wk-webhook-url__steps-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  width: fit-content;
+  min-height: 30px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+  font-size: var(--wk-text-size-xs);
+  font-weight: var(--wk-font-medium);
+  color: var(--wk-text-accent);
+  list-style: none;
+}
+
+.wk-webhook-url__steps-summary::marker {
+  content: "";
+}
+
+.wk-webhook-url__steps-summary::-webkit-details-marker {
+  display: none;
+}
+
+.wk-webhook-url__steps-summary::after {
+  content: "▾";
+  font-size: var(--wk-text-size-tiny);
+  line-height: 1;
+  transition: transform var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-webhook-url__steps-details[open] .wk-webhook-url__steps-summary::after {
+  transform: rotate(180deg);
+}
+
+.wk-webhook-url__steps-summary:hover,
+.wk-webhook-url__steps-summary:focus-visible {
+  background: var(--wk-bg-elevated);
+  outline: none;
+}
+
 .wk-webhook-url__example-copy:hover {
-  background: var(--wk-bg-tertiary, rgba(28, 28, 35, 0.06));
+  background: var(--wk-bg-elevated);
+}
+
+.wk-webhook-url__copy-action {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  min-height: 34px;
+  padding: 0 var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-surface);
+  cursor: pointer;
+  font-size: var(--wk-text-size-xs);
+  font-weight: var(--wk-font-medium);
+  color: var(--wk-text-secondary);
+}
+
+.wk-webhook-url__copy-action:hover {
+  background: var(--wk-bg-elevated);
 }
 
 /* 复制成功的即时反馈：图标短暂变绿 ✓ */
 .wk-webhook-url__copied-icon {
-  color: var(--wk-color-success, #2eb872);
+  color: var(--wk-color-success);
 }
 
 .wk-webhook-url__example-note {
-  font-size: var(--wk-text-size-xs);
-  color: var(--wk-text-tertiary, var(--wk-text-secondary));
+  font-size: var(--wk-text-size-sm);
+  line-height: var(--wk-leading-normal);
+  color: var(--wk-text-secondary);
 }
 
 .wk-webhook-url__steps {

@@ -27,8 +27,9 @@ vi.mock('@douyinfe/semi-ui', () => ({
 vi.mock('@douyinfe/semi-icons', () => ({
   IconAlertTriangle: () => React.createElement('span', { 'data-testid': 'icon-alert' }),
   IconCopy: () => React.createElement('span', { 'data-testid': 'icon-copy' }),
+  IconEyeClosed: () => React.createElement('span', { 'data-testid': 'icon-eye-closed' }),
+  IconEyeOpened: () => React.createElement('span', { 'data-testid': 'icon-eye-opened' }),
   IconTickCircle: () => React.createElement('span', { 'data-testid': 'icon-tick' }),
-  IconChevronDown: () => React.createElement('span', { 'data-testid': 'icon-chevron' }),
 }));
 
 vi.mock('../../WKModal', () => ({
@@ -102,45 +103,117 @@ const groupContaining = (selector: string): HTMLElement => {
   return hit;
 };
 
+const clickAdapterTab = async (name: string): Promise<void> => {
+  const tabs = Array.from(
+    container.querySelectorAll<HTMLButtonElement>('.wk-webhook-url__tab')
+  );
+  const tab = tabs.find((el) => el.textContent?.includes(name));
+  if (!tab) throw new Error(`no adapter tab contains ${name}`);
+  act(() => { tab.click(); });
+  await flush();
+};
+
 describe('WebhookUrlModal renderExample branch mapping', () => {
   it('renders the short /v1/webhooks alias (not canonical /incoming-webhooks) for the push address (#452)', async () => {
     await render();
     const addr = container.querySelector(
       '.wk-webhook-url__row .wk-webhook-url__value'
     );
-    // 后端返回 canonical /v1/incoming-webhooks/...，展示层应改写成更短的等价别名。
-    expect(addr?.textContent).toContain('/api/v1/webhooks/iwh_test/tok');
-    expect(container.textContent).not.toContain('/incoming-webhooks/');
-  });
-
-  it('shows only native/wecom by default; github is folded behind the toggle', async () => {
-    await render();
-    // 默认展开的只有 native / wecom 两组；github 收进「更多适配器」折叠区。
-    expect(
-      container.querySelectorAll('.wk-webhook-url__example-group')
-    ).toHaveLength(2);
-    const toggle = container.querySelector<HTMLButtonElement>(
-      '.wk-webhook-url__more-toggle'
-    );
-    expect(toggle).not.toBeNull();
-    // 折叠按钮展示适配器短名（此处只折叠了 github → "GitHub"）。
-    expect(toggle!.textContent).toContain('GitHub');
-    // 折叠态下 github 地址不在文档里。
-    expect(container.textContent).not.toContain('/tok/github');
-  });
-
-  it('github row (after expand) renders setup steps + Payload URL, NOT a curl block', async () => {
-    await render();
+    // 默认掩码降低肩窥风险；点击眼睛后展示短别名，而不是 canonical /incoming-webhooks。
+    expect(addr?.textContent).toContain('••••••••');
     act(() => {
-      container
-        .querySelector<HTMLButtonElement>('.wk-webhook-url__more-toggle')!
-        .click();
+      container.querySelector<HTMLButtonElement>('[aria-label="显示明文"]')!.click();
     });
     await flush();
+    expect(addr?.textContent).toContain('/api/v1/webhooks/iwh_test/tok');
+    expect(addr?.textContent).not.toContain('/incoming-webhooks/');
+  });
+
+  it('copies the full URL from either the masked text row or copy icon', async () => {
+    await render();
+    const secretRow = container.querySelector<HTMLElement>('.wk-webhook-url__secret-row')!;
+    const copyTargets = secretRow.querySelectorAll<HTMLButtonElement>(
+      '[aria-label="复制"]'
+    );
+    expect(copyTargets).toHaveLength(2);
+
+    act(() => { copyTargets[0].click(); });
+    await flush();
+    act(() => { copyTargets[1].click(); });
+    await flush();
+
+    expect(hoisted.copyToClipboard).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:3000/api/v1/webhooks/iwh_test/tok'
+    );
+    expect(hoisted.copyToClipboard).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:3000/api/v1/webhooks/iwh_test/tok'
+    );
+  });
+
+  it('shows adapter tabs by default while rendering only the native content panel', async () => {
+    await render();
+    // Tab 全量可见，但内容区只有一个，默认展示 native。
+    const tabs = Array.from(container.querySelectorAll('.wk-webhook-url__tab'));
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      '通用',
+      'GitHub',
+      '企业微信',
+    ]);
+    expect(
+      container.querySelectorAll('.wk-webhook-url__example-group')
+    ).toHaveLength(1);
+    expect(container.querySelector('[aria-selected="true"]')?.textContent).toContain(
+      '通用'
+    );
+    expect(container.textContent).not.toContain('/tok/github');
+    expect(container.textContent).not.toContain('/tok/wecom');
+  });
+
+  it('supports keyboard navigation across adapter tabs', async () => {
+    await render();
+    const tabs = () =>
+      Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-webhook-url__tab'));
+    act(() => {
+      tabs()[0].dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'ArrowRight',
+          bubbles: true,
+        })
+      );
+    });
+    await flush();
+    expect(container.querySelector('[aria-selected="true"]')?.textContent).toContain(
+      'GitHub'
+    );
+
+    act(() => {
+      tabs()[1].dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'End',
+          bubbles: true,
+        })
+      );
+    });
+    await flush();
+    expect(container.querySelector('[aria-selected="true"]')?.textContent).toContain(
+      '企业微信'
+    );
+  });
+
+  it('github row renders setup steps + Payload URL only after switching to its tab', async () => {
+    await render();
+    expect(container.textContent).not.toContain('/tok/github');
+
+    await clickAdapterTab('GitHub');
     const githubGroup = groupContaining('.wk-webhook-url__steps');
     // github 用法是「贴 Payload URL + 步骤」，不应渲染 curl <pre>。
     expect(githubGroup.querySelector('pre.wk-webhook-url__example-code')).toBeNull();
     expect(githubGroup.querySelectorAll('.wk-webhook-url__steps > li')).toHaveLength(3);
+    expect(
+      githubGroup.querySelector<HTMLDetailsElement>('.wk-webhook-url__steps-details')!.open
+    ).toBe(false);
     const code = githubGroup.querySelector('code.wk-webhook-url__value');
     expect(code?.textContent).toContain('/github');
   });
@@ -157,8 +230,9 @@ describe('WebhookUrlModal renderExample branch mapping', () => {
     expect(nativePre!.textContent).not.toContain('msgtype');
   });
 
-  it('wecom row renders a curl with WeCom msgtype/text body', async () => {
+  it('wecom row renders a curl with WeCom msgtype/text body after clicking its adapter card', async () => {
     await render();
+    await clickAdapterTab('企业微信');
     const pres = Array.from(
       container.querySelectorAll<HTMLPreElement>('pre.wk-webhook-url__example-code')
     );
@@ -190,7 +264,7 @@ describe('WebhookUrlModal copy feedback', () => {
   });
 });
 
-// resp 额外带上新增适配器（gitlab/feishu/multica），用于折叠区行为验证。
+// resp 额外带上新增适配器（gitlab/feishu/multica），用于 Tab 切换行为验证。
 const respWithExtra: any = {
   url: '/v1/incoming-webhooks/iwh_test/tok',
   urls: {
@@ -203,54 +277,48 @@ const respWithExtra: any = {
   },
 };
 
-describe('WebhookUrlModal extra adapters collapse', () => {
-  it('collapses github/gitlab/feishu/multica behind a toggle by default (only 2 core groups shown)', async () => {
+describe('WebhookUrlModal adapter tabs', () => {
+  it('renders github/gitlab/feishu/multica/wecom as sibling tabs while only native content is shown by default', async () => {
     await render(respWithExtra);
-    // 默认仅展示 native/wecom 两组；其余适配器收起、不在 DOM。
+    const tabs = Array.from(
+      container.querySelectorAll<HTMLElement>('.wk-webhook-url__tab')
+    ).map((tab) => tab.textContent);
+    expect(tabs).toEqual([
+      '通用',
+      'GitHub',
+      'GitLab',
+      '飞书',
+      'Multica',
+      '企业微信',
+    ]);
     expect(
       container.querySelectorAll('.wk-webhook-url__example-group')
-    ).toHaveLength(2);
-    const toggle = container.querySelector<HTMLButtonElement>(
-      '.wk-webhook-url__more-toggle'
+    ).toHaveLength(1);
+    expect(container.querySelector('[aria-selected="true"]')?.textContent).toContain(
+      '通用'
     );
-    expect(toggle).not.toBeNull();
-    // 折叠按钮展示适配器短名；4 个未超上限 4 → 全列出、不加「等」。
-    expect(toggle!.textContent).toContain('GitHub');
-    expect(toggle!.textContent).toContain('Multica');
-    expect(toggle!.textContent).not.toContain('等');
-    // 折叠态下这些地址都不应出现在文档里。
     expect(container.textContent).not.toContain('/tok/github');
+    expect(container.textContent).not.toContain('/tok/wecom');
     expect(container.textContent).not.toContain('/tok/gitlab');
   });
 
-  it('reveals the 4 folded adapters after expanding', async () => {
+  it('keeps a single content panel when switching among adapter tabs', async () => {
     await render(respWithExtra);
-    const toggle = container.querySelector<HTMLButtonElement>(
-      '.wk-webhook-url__more-toggle'
-    )!;
-    act(() => { toggle.click(); });
-    await flush();
-
-    // 展开后 2 核心 + 4 折叠 = 6 组。
+    expect(container.querySelectorAll('.wk-webhook-url__adapter-card')).toHaveLength(0);
+    await clickAdapterTab('飞书');
     expect(
       container.querySelectorAll('.wk-webhook-url__example-group')
-    ).toHaveLength(6);
-
-    // 四个折叠适配器的地址均已出现在文档中。
-    expect(container.textContent).toContain('/tok/github');
-    expect(container.textContent).toContain('/tok/gitlab');
+    ).toHaveLength(1);
     expect(container.textContent).toContain('/tok/feishu');
-    expect(container.textContent).toContain('/tok/multica');
+    expect(container.textContent).not.toContain('/tok/github');
+    expect(container.textContent).not.toContain('/tok/wecom');
+    expect(container.textContent).not.toContain('/tok/gitlab');
+    expect(container.textContent).not.toContain('/tok/multica');
   });
 
-  it('does NOT render a curl block nor setup steps for gitlab/feishu/multica', async () => {
+  it('reveals only the selected adapter detail and keeps gitlab without curl or setup steps', async () => {
     await render(respWithExtra);
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>('.wk-webhook-url__more-toggle')!
-        .click();
-    });
-    await flush();
+    await clickAdapterTab('GitLab');
 
     // 找到包含 /tok/gitlab 的示例组，断言它既无 curl <pre> 也无 github 式步骤。
     const groups = Array.from(
@@ -266,10 +334,13 @@ describe('WebhookUrlModal extra adapters collapse', () => {
     expect(gitlabGroup!.querySelector('.wk-webhook-url__steps')).toBeNull();
     // 应展示该适配器的说明文案。
     expect(gitlabGroup!.querySelector('.wk-webhook-url__example-note')).not.toBeNull();
+    // 只展开被点击的平台。
+    expect(container.textContent).not.toContain('/tok/github');
+    expect(container.textContent).not.toContain('/tok/feishu');
   });
 });
 
-// resp 带服务端下发的 adapter_examples（octo-server #475）：「更多适配器」改由它驱动，
+// resp 带服务端下发的 adapter_examples（octo-server #475）：适配器 Tab 由它驱动，
 // 文案/steps/header 名均来自响应，不再走写死 i18n。
 const respWithExamples: any = {
   url: '/v1/incoming-webhooks/iwh_test/tok',
@@ -297,7 +368,7 @@ const respWithExamples: any = {
       auth: { type: 'url_token_and_header', header: 'X-Gitlab-Token', value_source: 'token' },
       steps: ['gl-s1', 'gl-s2'],
     },
-    // wecom 被后端纳入示例，但前端按 Option A 仍作核心 curl 卡片，应从「更多适配器」过滤掉。
+    // wecom 被后端纳入示例，但前端按 Option A 仍走专用 curl 渲染。
     {
       key: 'wecom',
       title: 'WeCom SRV',
@@ -311,59 +382,48 @@ const respWithExamples: any = {
 };
 
 describe('WebhookUrlModal server-driven adapter examples (#475)', () => {
-  it('drives the more-adapters region from adapter_examples; wecom stays a core curl (Option A)', async () => {
+  it('drives adapter tabs from adapter_examples; wecom still uses the frontend curl renderer', async () => {
     await render(respWithExamples);
-    // 核心区仍是 native + wecom 两组（wecom 不进「更多适配器」）。
+    // 默认只渲染 native 内容，服务端示例和 wecom 都作为 Tab 可见。
     expect(
       container.querySelectorAll('.wk-webhook-url__example-group')
-    ).toHaveLength(2);
-    const toggle = container.querySelector<HTMLButtonElement>(
-      '.wk-webhook-url__more-toggle'
-    );
-    // 折叠按钮列出适配器短名（服务端示例去掉 wecom → GitHub、GitLab，2 个未超上限不加「等」）。
-    expect(toggle!.textContent).toContain('GitHub');
-    expect(toggle!.textContent).toContain('GitLab');
-    expect(toggle!.textContent).not.toContain('等');
-    // 折叠态下服务端示例文案不在 DOM。
+    ).toHaveLength(1);
+    const tabs = Array.from(
+      container.querySelectorAll<HTMLElement>('.wk-webhook-url__tab')
+    ).map((tab) => tab.textContent);
+    expect(tabs).toEqual(['通用', 'GitHub', 'GitLab', '企业微信']);
     expect(container.textContent).not.toContain('desc-github-srv');
   });
 
-  it('renders server title/description/steps + GitLab header+token hint after expand', async () => {
+  it('renders server title/description/steps + GitLab header+token hint after switching tabs', async () => {
     await render(respWithExamples);
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>('.wk-webhook-url__more-toggle')!
-        .click();
-    });
-    await flush();
-
-    // 2 核心 + 2 服务端 = 4 组。
-    expect(
-      container.querySelectorAll('.wk-webhook-url__example-group')
-    ).toHaveLength(4);
+    expect(container.textContent).not.toContain('desc-github-srv');
 
     // 文案来自服务端，且 steps 按数组渲染（github 3 步）。
-    expect(container.textContent).toContain('GitHub 事件 SRV');
+    await clickAdapterTab('GitHub');
+    expect(
+      container.querySelector<HTMLElement>('[role="tabpanel"]')?.getAttribute('aria-label')
+    ).toBe('GitHub 事件 SRV');
     expect(container.textContent).toContain('desc-github-srv');
-    const groups = Array.from(
+    let groups = Array.from(
       container.querySelectorAll<HTMLElement>('.wk-webhook-url__example-group')
     );
     const githubGroup = groups.find((g) =>
       (g.querySelector('code.wk-webhook-url__value')?.textContent || '').includes('/tok/github')
     )!;
     expect(githubGroup.querySelector('pre.wk-webhook-url__example-code')).toBeNull();
-    // 步骤默认收起：先只看到「接入步骤」折叠按钮，<ol> 不在 DOM。
-    expect(githubGroup.querySelector('.wk-webhook-url__steps')).toBeNull();
-    const stepsToggle = githubGroup.querySelector<HTMLButtonElement>(
-      '.wk-webhook-url__steps-toggle'
+    // 步骤使用原生 details，默认收起，但内容保留在 details 内。
+    const details = githubGroup.querySelector<HTMLDetailsElement>(
+      '.wk-webhook-url__steps-details'
     )!;
-    expect(stepsToggle).not.toBeNull();
-    // 展开该卡片步骤后，按服务端数组渲染（github 3 步）。
-    act(() => { stepsToggle.click(); });
-    await flush();
+    expect(details.open).toBe(false);
     expect(githubGroup.querySelectorAll('.wk-webhook-url__steps > li')).toHaveLength(3);
 
     // GitLab：渲染服务端给的 header 名 + 可复制的 token（前端不写死 X-Gitlab-Token）。
+    await clickAdapterTab('GitLab');
+    groups = Array.from(
+      container.querySelectorAll<HTMLElement>('.wk-webhook-url__example-group')
+    );
     const gitlabGroup = groups.find((g) =>
       (g.querySelector('code.wk-webhook-url__value')?.textContent || '').includes('/tok/gitlab')
     )!;
@@ -381,11 +441,16 @@ describe('WebhookUrlModal server-driven adapter examples (#475)', () => {
       container.querySelectorAll<HTMLPreElement>('pre.wk-webhook-url__example-code')
     );
     expect(pres.find((p) => /"content"/.test(p.textContent || ''))).toBeTruthy();
-    expect(pres.find((p) => /msgtype/.test(p.textContent || ''))).toBeTruthy();
+    expect(pres.find((p) => /msgtype/.test(p.textContent || ''))).toBeFalsy();
+
+    await clickAdapterTab('企业微信');
+    const expandedPres = Array.from(
+      container.querySelectorAll<HTMLPreElement>('pre.wk-webhook-url__example-code')
+    );
+    expect(expandedPres.find((p) => /msgtype/.test(p.textContent || ''))).toBeTruthy();
   });
 
-  it('truncates the teaser with 等 only when foldable adapters exceed the cap (>4)', async () => {
-    // 5 个可折叠适配器（含 1 个未知 key）→ 列前 4 个短名 + 「等」。
+  it('keeps unknown server adapters as additional tabs after known adapters', async () => {
     const mk = (key: string) => ({
       key,
       title: `${key} 事件 SRV`,
@@ -402,12 +467,16 @@ describe('WebhookUrlModal server-driven adapter examples (#475)', () => {
       adapter_examples: ['github', 'gitlab', 'feishu', 'multica', 'slack'].map(mk),
     };
     await render(resp5);
-    const toggle = container.querySelector<HTMLButtonElement>(
-      '.wk-webhook-url__more-toggle'
-    )!;
-    // 已知 key 用短名（飞书），未知 key（slack）被「等」收口、不出现在 teaser。
-    expect(toggle.textContent).toContain('飞书');
-    expect(toggle.textContent).toContain('等');
-    expect(toggle.textContent).not.toContain('slack');
+    const tabs = Array.from(
+      container.querySelectorAll<HTMLElement>('.wk-webhook-url__tab')
+    ).map((tab) => tab.textContent);
+    expect(tabs).toEqual([
+      '通用',
+      'GitHub',
+      'GitLab',
+      '飞书',
+      'Multica',
+      'slack 事件 SRV',
+    ]);
   });
 });

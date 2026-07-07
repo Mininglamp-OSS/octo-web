@@ -1,6 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
-import { IconAlertTriangle, IconChevronDown, IconCopy, IconTickCircle } from "@douyinfe/semi-icons";
+import {
+    IconAlertTriangle,
+    IconCopy,
+    IconEyeClosed,
+    IconEyeOpened,
+    IconTickCircle,
+} from "@douyinfe/semi-icons";
 import WKModal from "../WKModal";
 import WKButton from "../WKButton";
 import WKApp from "../../App";
@@ -39,7 +45,7 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
 
     // 行构造（native 回退 url、按适配器过滤空地址）抽到纯函数 buildWebhookUrlRows，已单测。
     // 三种适配器其实共享同一个 webhook，仅推送路径后缀 / 调用方式不同：URL 框只展示
-    // 通用（native）一个，github / wecom 的实际地址与差异都落在各自的「调用示例」里。
+    // 通用地址展示一个，github / wecom 的实际地址与差异都落在各自的「调用示例」里。
     const rows = buildWebhookUrlRows(
         resp,
         WKApp.apiClient.config.apiURL || "/",
@@ -47,64 +53,96 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
     );
     const nativeRow = rows.find((r) => r.key === "native");
 
-    // 适配器分两层展示：native（通用）/ wecom（企微兼容）为最常用，默认展开为核心 curl；
-    // 其余适配器收进「更多适配器」折叠区（优先服务端 adapter_examples 驱动，见下）。
-    const CORE_ADAPTER_KEYS: ReadonlyArray<WebhookUrlRow["key"]> = [
-        "native",
-        "wecom",
-    ];
-    const coreRows = rows.filter((r) => CORE_ADAPTER_KEYS.includes(r.key));
-    const extraRows = rows.filter((r) => !CORE_ADAPTER_KEYS.includes(r.key));
-    const [showMore, setShowMore] = useState(false);
-    // 每张适配器卡片的「接入步骤」是否展开（key→bool）。默认全收起：卡片只留
-    // 名称 + 描述 + URL（80% 场景就是复制地址），冗长的分步骤按需展开，压低默认高度。
-    const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({});
-    const toggleSteps = (key: string) =>
-        setOpenSteps((prev) => ({ ...prev, [key]: !prev[key] }));
+    // 调用示例改成分段 Tab：native 作为首个通用示例，其余适配器同级切换。
+    // 页面始终只保留一个详情内容区，避免展开平台卡片导致弹窗高度跳动。
+    const CORE_ADAPTER_KEYS: ReadonlyArray<WebhookUrlRow["key"]> = ["native"];
+    const [activeAdapterKey, setActiveAdapterKey] = useState<string>("native");
+    const [showWebhookUrl, setShowWebhookUrl] = useState(false);
 
-    // 展开「更多适配器」后把折叠区滑入视野——否则新卡片出现在折叠按钮下方、可能在可视区外。
-    // 可选调用兜底 jsdom（测试环境无 scrollIntoView，否则会 TypeError）。仅展开时滑、收起不动。
-    const moreRef = useRef<HTMLDivElement | null>(null);
-    useEffect(() => {
-        if (showMore) {
-            moreRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
-        }
-    }, [showMore]);
-
-    // 「更多适配器」优先用服务端下发的本地化示例（octo-server #475）渲染，不再写死文案/平台列表。
-    // native/wecom 仍作为顶部 + 核心 curl 卡片（请求体结构，非平台接入文案），故从服务端示例里
-    // 过滤掉它们，避免与核心区重复。未知 key 不过滤——后端新增适配器时前端无需发版即可渲染。
-    const serverExtraExamples = buildWebhookAdapterExamples(
+    // 适配器 Tab 优先用服务端下发的本地化示例（octo-server #475）渲染，不再写死文案/平台列表。
+    // native 仍作为顶部核心 curl；wecom 作为平台入口，但详情继续用前端企微 curl
+    // （请求体结构不同，不能被服务端通用步骤替代）。未知 key 不过滤——后端新增适配器时
+    // 前端无需发版即可渲染。
+    const adapterExamples = buildWebhookAdapterExamples(
         resp,
         WKApp.apiClient.config.apiURL || "/",
         window.location.origin
-    ).filter((ex) => !CORE_ADAPTER_KEYS.includes(ex.key as WebhookUrlRow["key"]));
-    // 兜底：老后端（#475 之前）不下发 adapter_examples，退回基于 urls 的写死渲染（现有行为）。
-    const useServerExamples = serverExtraExamples.length > 0;
-    const hasMore = useServerExamples || extraRows.length > 0;
-
-    // 折叠按钮展示「更多适配器（短名…）」而非裸数量，让用户预判里面有哪些平台。
-    // 短名走独立 i18n（飞书/企业微信需本地化）；未知 key（后端将来新增）回退到服务端 title。
-    // 现实可折叠适配器就 4 个（github/gitlab/feishu/multica），故上限设 4：全列出、不加「等」，
-    // 避免「等」透支预期；只有后端将来返回 ≥5 个时才截断收口。
-    const MORE_TEASER_CAP = 4;
+    );
+    // 兜底：老后端（#475 之前）不下发 adapter_examples 时，继续基于 urls 渲染写死示例。
+    // wecom 即使后端下发示例也保持前端 curl：企微兼容体结构不同，不能被通用步骤替代。
+    const serverExampleByKey = new Map(
+        adapterExamples
+            .filter(
+                (ex) =>
+                    !CORE_ADAPTER_KEYS.includes(ex.key as WebhookUrlRow["key"]) &&
+                    ex.key !== "wecom"
+            )
+            .map((ex) => [ex.key, ex])
+    );
     const KNOWN_BRAND_KEYS = ["github", "gitlab", "feishu", "multica", "wecom"];
     const brandName = (key: string, fallback: string): string =>
         KNOWN_BRAND_KEYS.includes(key)
             ? t(`base.channelWebhook.url.brand.${key}`)
             : fallback;
-    const moreNames = useServerExamples
-        ? serverExtraExamples.map((ex) => brandName(ex.key, ex.title))
-        : extraRows.map((r) => brandName(r.key, t(`base.${r.labelKey}`)));
-    const moreNamesShown = moreNames
-        .slice(0, MORE_TEASER_CAP)
-        .join(t("base.channelWebhook.url.example.moreSep"));
-    const moreTeaser =
-        moreNames.length > MORE_TEASER_CAP
-            ? t("base.channelWebhook.url.example.moreEtc", {
-                  values: { names: moreNamesShown },
-              })
-            : moreNamesShown;
+    const adapterOrder = ["native", "github", "gitlab", "feishu", "multica", "wecom"];
+    const rowByKey = new Map(rows.map((row) => [row.key, row]));
+    const tabKeys = [
+        ...adapterOrder.filter(
+            (key) => rowByKey.has(key as WebhookUrlRow["key"]) || serverExampleByKey.has(key)
+        ),
+        ...[
+            ...Array.from(rowByKey.keys()),
+            ...Array.from(serverExampleByKey.keys()),
+        ].filter((key) => !adapterOrder.includes(key)),
+    ].filter((key, index, arr) => arr.indexOf(key) === index);
+    const adapterTabs = tabKeys.map((key) => {
+        const row = rowByKey.get(key as WebhookUrlRow["key"]);
+        const serverExample = serverExampleByKey.get(key);
+        const fallbackTitle = row ? t(`base.${row.labelKey}`) : serverExample?.title || key;
+        return {
+            key,
+            brand:
+                key === "native"
+                    ? t("base.channelWebhook.url.native")
+                    : brandName(key, fallbackTitle),
+            title: serverExample?.title || fallbackTitle,
+            row,
+            serverExample,
+        };
+    });
+    const activeTab =
+        adapterTabs.find((tab) => tab.key === activeAdapterKey) || adapterTabs[0];
+    const focusAdapterTab = (index: number) => {
+        requestAnimationFrame(() => {
+            const tabs = document.querySelectorAll<HTMLButtonElement>(
+                ".wk-webhook-url__tab"
+            );
+            tabs[index]?.focus();
+        });
+    };
+    const handleTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+        const currentIndex = adapterTabs.findIndex((tab) => tab.key === activeTab?.key);
+        if (currentIndex < 0) return;
+        let nextIndex = currentIndex;
+        if (event.key === "ArrowRight") {
+            nextIndex = (currentIndex + 1) % adapterTabs.length;
+        } else if (event.key === "ArrowLeft") {
+            nextIndex = (currentIndex - 1 + adapterTabs.length) % adapterTabs.length;
+        } else if (event.key === "Home") {
+            nextIndex = 0;
+        } else if (event.key === "End") {
+            nextIndex = adapterTabs.length - 1;
+        } else {
+            return;
+        }
+        event.preventDefault();
+        setActiveAdapterKey(adapterTabs[nextIndex].key);
+        focusAdapterTab(nextIndex);
+    };
+    const maskValue = (value: string): string => {
+        if (value.length <= 18) return "••••••••";
+        return `${value.slice(0, 12)}••••••••${value.slice(-6)}`;
+    };
 
     // 复制成功的即时反馈：记录最近一次复制的目标 key，按钮图标短暂变 ✓。
     // 一次性弹窗里「复制是否真成功」是核心焦虑点，按钮本身给反馈比一闪而过的 toast 更可靠。
@@ -147,29 +185,35 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                     <span className="wk-webhook-url__example-note">
                         {t("base.channelWebhook.url.example.github.intro")}
                     </span>
-                    <div className="wk-webhook-url__value-wrap">
+                    <div className="wk-webhook-url__value-block">
                         <code className="wk-webhook-url__value" title={row.url}>
                             {row.url}
                         </code>
-                        <button
-                            type="button"
-                            className="wk-webhook-card__icon-btn"
-                            onClick={() => void handleCopy(row.url, feedbackKey)}
-                            title={t("base.channelWebhook.url.copy")}
-                            aria-label={t("base.channelWebhook.url.copy")}
-                        >
-                            {copied ? (
-                                <IconTickCircle className="wk-webhook-url__copied-icon" />
-                            ) : (
-                                <IconCopy />
-                            )}
-                        </button>
                     </div>
-                    <ol className="wk-webhook-url__steps">
-                        <li>{t("base.channelWebhook.url.example.github.step1")}</li>
-                        <li>{t("base.channelWebhook.url.example.github.step2")}</li>
-                        <li>{t("base.channelWebhook.url.example.github.step3")}</li>
-                    </ol>
+                    <button
+                        type="button"
+                        className="wk-webhook-url__copy-action"
+                        onClick={() => void handleCopy(row.url, feedbackKey)}
+                    >
+                        {copied ? (
+                            <IconTickCircle className="wk-webhook-url__copied-icon" />
+                        ) : (
+                            <IconCopy />
+                        )}
+                        {copied
+                            ? t("base.channelWebhook.toast.copied")
+                            : t("base.channelWebhook.url.copy")}
+                    </button>
+                    <details className="wk-webhook-url__steps-details">
+                        <summary className="wk-webhook-url__steps-summary">
+                            {t("base.channelWebhook.url.example.stepsTitle")}
+                        </summary>
+                        <ol className="wk-webhook-url__steps">
+                            <li>{t("base.channelWebhook.url.example.github.step1")}</li>
+                            <li>{t("base.channelWebhook.url.example.github.step2")}</li>
+                            <li>{t("base.channelWebhook.url.example.github.step3")}</li>
+                        </ol>
+                    </details>
                 </div>
             );
         }
@@ -213,32 +257,33 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
         // （或替换现有兼容机器人 URL），不是 curl —— 展示可复制地址 + 各自说明即可。
         return (
             <div className="wk-webhook-url__example">
-                <div className="wk-webhook-url__value-wrap">
+                <div className="wk-webhook-url__value-block">
                     <code className="wk-webhook-url__value" title={row.url}>
                         {row.url}
                     </code>
-                    <button
-                        type="button"
-                        className="wk-webhook-card__icon-btn"
-                        onClick={() => void handleCopy(row.url, feedbackKey)}
-                        title={t("base.channelWebhook.url.copy")}
-                        aria-label={t("base.channelWebhook.url.copy")}
-                    >
-                        {copied ? (
-                            <IconTickCircle className="wk-webhook-url__copied-icon" />
-                        ) : (
-                            <IconCopy />
-                        )}
-                    </button>
                 </div>
                 <span className="wk-webhook-url__example-note">
                     {t(`base.channelWebhook.url.example.${row.key}.note`)}
                 </span>
+                <button
+                    type="button"
+                    className="wk-webhook-url__copy-action"
+                    onClick={() => void handleCopy(row.url, feedbackKey)}
+                >
+                    {copied ? (
+                        <IconTickCircle className="wk-webhook-url__copied-icon" />
+                    ) : (
+                        <IconCopy />
+                    )}
+                    {copied
+                        ? t("base.channelWebhook.toast.copied")
+                        : t("base.channelWebhook.url.copy")}
+                </button>
             </div>
         );
     };
 
-    // 服务端驱动的「更多适配器」卡片（octo-server #475）：title/description/steps 均来自响应，
+    // 服务端驱动的适配器详情（octo-server #475）：title/description/steps 均来自响应，
     // 不写死。用法是把地址登记到对应平台的 Webhook 设置（非 curl），故展示「可复制地址 +
     // 说明 + 分步骤 + 鉴权提示」。未知 key 也走这套通用渲染。
     const renderServerExample = (ex: WebhookAdapterExampleRow) => {
@@ -252,47 +297,36 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                 {ex.description && (
                     <span className="wk-webhook-url__example-note">{ex.description}</span>
                 )}
-                <div className="wk-webhook-url__value-wrap">
+                <div className="wk-webhook-url__value-block">
                     <code className="wk-webhook-url__value" title={ex.url}>
                         {ex.url}
                     </code>
-                    <button
-                        type="button"
-                        className="wk-webhook-card__icon-btn"
-                        onClick={() => void handleCopy(ex.url, feedbackKey)}
-                        title={t("base.channelWebhook.url.copy")}
-                        aria-label={t("base.channelWebhook.url.copy")}
-                    >
-                        {copiedKey === feedbackKey ? (
-                            <IconTickCircle className="wk-webhook-url__copied-icon" />
-                        ) : (
-                            <IconCopy />
-                        )}
-                    </button>
                 </div>
+                <button
+                    type="button"
+                    className="wk-webhook-url__copy-action"
+                    onClick={() => void handleCopy(ex.url, feedbackKey)}
+                >
+                    {copiedKey === feedbackKey ? (
+                        <IconTickCircle className="wk-webhook-url__copied-icon" />
+                    ) : (
+                        <IconCopy />
+                    )}
+                    {copiedKey === feedbackKey
+                        ? t("base.channelWebhook.toast.copied")
+                        : t("base.channelWebhook.url.copy")}
+                </button>
                 {ex.steps.length > 0 && (
-                    <div className="wk-webhook-url__steps-block">
-                        <button
-                            type="button"
-                            className="wk-webhook-url__steps-toggle"
-                            onClick={() => toggleSteps(ex.key)}
-                            aria-expanded={!!openSteps[ex.key]}
-                        >
-                            <IconChevronDown
-                                className={`wk-webhook-url__steps-icon${
-                                    openSteps[ex.key] ? " wk-webhook-url__steps-icon--open" : ""
-                                }`}
-                            />
+                    <details className="wk-webhook-url__steps-details">
+                        <summary className="wk-webhook-url__steps-summary">
                             {t("base.channelWebhook.url.example.stepsTitle")}
-                        </button>
-                        {openSteps[ex.key] && (
-                            <ol className="wk-webhook-url__steps">
-                                {ex.steps.map((step, i) => (
-                                    <li key={i}>{step}</li>
-                                ))}
-                            </ol>
-                        )}
-                    </div>
+                        </summary>
+                        <ol className="wk-webhook-url__steps">
+                            {ex.steps.map((step, i) => (
+                                <li key={i}>{step}</li>
+                            ))}
+                        </ol>
+                    </details>
                 )}
                 {needsHeaderToken && (
                     <div className="wk-webhook-url__auth-hint">
@@ -304,10 +338,7 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                         {/* value_source=token：header 值就是本次响应的明文 token，单独给一行可复制。 */}
                         {ex.auth.value_source === "token" && resp.token && (
                             <div className="wk-webhook-url__value-wrap">
-                                <code
-                                    className="wk-webhook-url__value"
-                                    title={resp.token}
-                                >
+                                <code className="wk-webhook-url__value" title={resp.token}>
                                     {resp.token}
                                 </code>
                                 <button
@@ -363,15 +394,42 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                         </div>
 
                         {/* 唯一的 URL 框：这个 webhook 的推送地址（即 native 地址）。
-                            标签用中性的「Webhook 地址」，避免与下方示例里的「通用（native）」重复。 */}
+                            标签用中性的「Webhook 地址」，避免与下方通用示例重复。 */}
                         <div className="wk-webhook-url__row">
                             <div className="wk-webhook-url__label">
                                 {t("base.channelWebhook.url.address")}
                             </div>
-                            <div className="wk-webhook-url__value-wrap">
-                                <code className="wk-webhook-url__value" title={nativeRow.url}>
-                                    {nativeRow.url}
-                                </code>
+                            <div className="wk-webhook-url__secret-row">
+                                <button
+                                    type="button"
+                                    className="wk-webhook-url__secret-copy"
+                                    onClick={() => void handleCopy(nativeRow.url, "url:native")}
+                                    title={nativeRow.url}
+                                    aria-label={t("base.channelWebhook.url.copy")}
+                                >
+                                    <code className="wk-webhook-url__value">
+                                        {showWebhookUrl
+                                            ? nativeRow.url
+                                            : maskValue(nativeRow.url)}
+                                    </code>
+                                </button>
+                                <button
+                                    type="button"
+                                    className="wk-webhook-card__icon-btn"
+                                    onClick={() => setShowWebhookUrl((v) => !v)}
+                                    title={
+                                        showWebhookUrl
+                                            ? t("base.channelWebhook.url.hide")
+                                            : t("base.channelWebhook.url.show")
+                                    }
+                                    aria-label={
+                                        showWebhookUrl
+                                            ? t("base.channelWebhook.url.hide")
+                                            : t("base.channelWebhook.url.show")
+                                    }
+                                >
+                                    {showWebhookUrl ? <IconEyeClosed /> : <IconEyeOpened />}
+                                </button>
                                 <button
                                     type="button"
                                     className="wk-webhook-card__icon-btn"
@@ -392,60 +450,44 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                         <div className="wk-webhook-url__examples-title">
                             {t("base.channelWebhook.url.example.title")}
                         </div>
-                        {coreRows.map((row) => (
-                            <div key={row.key} className="wk-webhook-url__example-group">
-                                <div className="wk-webhook-url__label">
-                                    {t(`base.${row.labelKey}`)}
-                                </div>
-                                {renderExample(row)}
-                            </div>
-                        ))}
-
-                        {/* 新增适配器折叠区：默认收起，按需展开。优先服务端示例（#475），
-                            老后端无 adapter_examples 时退回基于 urls 的写死渲染。 */}
-                        {hasMore && (
-                            <div className="wk-webhook-url__more" ref={moreRef}>
-                                <button
-                                    type="button"
-                                    className="wk-webhook-url__more-toggle"
-                                    onClick={() => setShowMore((v) => !v)}
-                                    aria-expanded={showMore}
+                        {adapterTabs.length > 0 && activeTab && (
+                            <div className="wk-webhook-url__adapter-tabs">
+                                <div
+                                    className="wk-webhook-url__tablist"
+                                    role="tablist"
+                                    aria-label={t("base.channelWebhook.url.example.title")}
+                                    onKeyDown={handleTabKeyDown}
                                 >
-                                    <IconChevronDown
-                                        className={`wk-webhook-url__more-icon${
-                                            showMore ? " wk-webhook-url__more-icon--open" : ""
-                                        }`}
-                                    />
-                                    {showMore
-                                        ? t("base.channelWebhook.url.example.less")
-                                        : t("base.channelWebhook.url.example.more", {
-                                              values: { names: moreTeaser },
-                                          })}
-                                </button>
-                                {showMore &&
-                                    (useServerExamples
-                                        ? serverExtraExamples.map((ex) => (
-                                              <div
-                                                  key={ex.key}
-                                                  className="wk-webhook-url__example-group"
-                                              >
-                                                  <div className="wk-webhook-url__label">
-                                                      {ex.title}
-                                                  </div>
-                                                  {renderServerExample(ex)}
-                                              </div>
-                                          ))
-                                        : extraRows.map((row) => (
-                                              <div
-                                                  key={row.key}
-                                                  className="wk-webhook-url__example-group"
-                                              >
-                                                  <div className="wk-webhook-url__label">
-                                                      {t(`base.${row.labelKey}`)}
-                                                  </div>
-                                                  {renderExample(row)}
-                                              </div>
-                                          )))}
+                                    {adapterTabs.map((tab) => {
+                                        const selected = tab.key === activeTab.key;
+                                        return (
+                                            <button
+                                                key={tab.key}
+                                                type="button"
+                                                role="tab"
+                                                aria-selected={selected}
+                                                tabIndex={selected ? 0 : -1}
+                                                className={`wk-webhook-url__tab${
+                                                    selected ? " wk-webhook-url__tab--active" : ""
+                                                }`}
+                                                onClick={() => setActiveAdapterKey(tab.key)}
+                                            >
+                                                {tab.brand}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <div
+                                    className="wk-webhook-url__example-group"
+                                    role="tabpanel"
+                                    aria-label={activeTab.title}
+                                >
+                                    {activeTab.serverExample
+                                        ? renderServerExample(activeTab.serverExample)
+                                        : activeTab.row
+                                          ? renderExample(activeTab.row)
+                                          : null}
+                                </div>
                             </div>
                         )}
                     </>
