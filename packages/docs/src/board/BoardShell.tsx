@@ -487,11 +487,18 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // board this user was editing is gone. Mirror the doc editor's terminal handling and return them
   // to the list. 'locked' / 'login' keep the board mounted read-only (the readOnly gate already
   // covers editing) so the user sees why it froze rather than being bounced.
+  //
+  // P1-1: also drop the uid-scoped localStorage scene mirror on the revoke transition. The collab
+  // session's close-code machine tears down the IndexedDB cache (connect.ts `clearDocCache`), but
+  // the scene mirror (`octo.board.scene.{uid}.{docId}`) is separate and would otherwise survive —
+  // replayable on a later direct open before auth re-stabilizes. Clearing both closes the
+  // data-at-rest gap for a revoked/deleted board.
   useEffect(() => {
     if (terminal.kind === 'deleted' || terminal.kind === 'not-found') {
+      clearBoardScene(docId, uid)
       returnToList?.()
     }
-  }, [terminal, returnToList])
+  }, [terminal, returnToList, docId, uid])
 
   const manage = role ? canManage(role) : false
 

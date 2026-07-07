@@ -24,7 +24,7 @@ export interface BoardScene {
 }
 
 const SCENE_PREFIX = 'octo.board.scene.'
-const REGISTRY_KEY = 'octo.board.ids'
+const REGISTRY_PREFIX = 'octo.board.ids.'
 
 /**
  * Sentinel namespace for the local scene mirror when no authenticated uid is supplied (the M1
@@ -44,6 +44,17 @@ const ANON_SCOPE = 'anon'
 function sceneKey(docId: string, uid?: string): string {
   const scope = uid && uid.length > 0 ? uid : ANON_SCOPE
   return `${SCENE_PREFIX}${scope}.${docId}`
+}
+
+/**
+ * Build the uid-scoped localStorage key for the board-kind registry (`octo.board.ids.{uid}`).
+ * Scoped by the authenticated uid — like the scene mirror above — so a shared browser never leaks
+ * which docIds are boards from one user to the next (P2). A missing uid falls back to the same
+ * anonymous sentinel so the standalone local-only path still records boards.
+ */
+function registryKey(uid?: string): string {
+  const scope = uid && uid.length > 0 ? uid : ANON_SCOPE
+  return `${REGISTRY_PREFIX}${scope}`
 }
 
 /**
@@ -133,9 +144,9 @@ export function clearBoardScene(docId: string, uid?: string): void {
   }
 }
 
-function readRegistry(store: Storage): Set<string> {
+function readRegistry(store: Storage, uid?: string): Set<string> {
   try {
-    const raw = store.getItem(REGISTRY_KEY)
+    const raw = store.getItem(registryKey(uid))
     if (!raw) return new Set()
     const parsed = JSON.parse(raw) as unknown
     return Array.isArray(parsed) ? new Set(parsed.filter((x): x is string => typeof x === 'string')) : new Set()
@@ -149,47 +160,48 @@ function readRegistry(store: Storage): Set<string> {
  * deep-link / refresh on `?doc=<id>` opens the whiteboard editor even if the backend's list
  * response doesn't carry `docType`. `docType` from the API still takes precedence (see
  * isBoardDoc); this registry is the resilient client-side fallback for the M1 standalone path.
+ * uid-scoped (P2) — pass the authenticated uid so the record is not visible to other users.
  */
-export function rememberBoard(docId: string): void {
+export function rememberBoard(docId: string, uid?: string): void {
   const store = storage()
   if (!store || !docId) return
   try {
-    const ids = readRegistry(store)
+    const ids = readRegistry(store, uid)
     if (ids.has(docId)) return
     ids.add(docId)
-    store.setItem(REGISTRY_KEY, JSON.stringify([...ids]))
+    store.setItem(registryKey(uid), JSON.stringify([...ids]))
   } catch {
     // ignore — falls back to docType-from-API only
   }
 }
 
 /** Forget a board id (e.g. on delete) so the registry doesn't grow unbounded. Best-effort. */
-export function forgetBoard(docId: string): void {
+export function forgetBoard(docId: string, uid?: string): void {
   const store = storage()
   if (!store || !docId) return
   try {
-    const ids = readRegistry(store)
+    const ids = readRegistry(store, uid)
     if (!ids.delete(docId)) return
-    store.setItem(REGISTRY_KEY, JSON.stringify([...ids]))
+    store.setItem(registryKey(uid), JSON.stringify([...ids]))
   } catch {
     // ignore
   }
 }
 
-/** Whether `docId` is recorded locally as a board. */
-export function isBoardIdLocally(docId: string): boolean {
+/** Whether `docId` is recorded locally as a board (for this uid's registry). */
+export function isBoardIdLocally(docId: string, uid?: string): boolean {
   const store = storage()
   if (!store || !docId) return false
-  return readRegistry(store).has(docId)
+  return readRegistry(store, uid).has(docId)
 }
 
 /**
  * Resolve whether a doc is a board, authoritative-first: trust an explicit `docType` from the
- * backend (`'board'`/`'doc'`) when present, otherwise fall back to the local registry. This is
- * the single helper every call site uses so the precedence rule lives in one place.
+ * backend (`'board'`/`'doc'`) when present, otherwise fall back to the (uid-scoped) local registry.
+ * This is the single helper every call site uses so the precedence rule lives in one place.
  */
-export function isBoardDoc(input: { docId: string; docType?: string }): boolean {
+export function isBoardDoc(input: { docId: string; docType?: string }, uid?: string): boolean {
   if (input.docType === 'board') return true
   if (input.docType === 'doc') return false
-  return isBoardIdLocally(input.docId)
+  return isBoardIdLocally(input.docId, uid)
 }

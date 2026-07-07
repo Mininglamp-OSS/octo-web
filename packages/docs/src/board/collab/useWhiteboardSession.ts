@@ -18,7 +18,7 @@
 // the same endpoint issues a token for a board. No board-specific endpoint is introduced here.
 
 import { useEffect, useState } from 'react'
-import { createWhiteboardSession, type WhiteboardSession } from './connect.ts'
+import { createWhiteboardSession, type WhiteboardSession, type BoardTerminal } from './connect.ts'
 import { buildWhiteboardName } from './schema.ts'
 import { resolveBoardWsUrl, WS_ENDPOINT } from '../../config.ts'
 import { getCollabToken, getCollabTokenEntry, disposeToken } from '../../auth/collabToken.ts'
@@ -42,9 +42,36 @@ interface RegistryEntry {
 const registry = new Map<string, RegistryEntry>()
 
 /**
+ * Map a collab-token prime failure to a terminal state when — and only when — it is an
+ * AUTHORIZATION/AUTHENTICATION denial (the backend answered 401/403/404), as opposed to a transport
+ * or pre-contract failure (offline, network error, an old backend, an invalid-role payload). An
+ * auth denial must NOT fall through to a cache-hydrating session (P1-3): a resolved reader satisfies
+ * BoardShell's `accessConfirmed` gate and would paint the uid-scoped cached scene for a user the
+ * backend just denied. Returns null for a non-auth failure so the caller keeps the offline fallback.
+ */
+function authTerminalFor(status: number | undefined): BoardTerminal | null {
+  switch (status) {
+    // 401 = not authenticated → send to login; keeps the board mounted read-only, no hydration.
+    case 401:
+      return { kind: 'login' }
+    // 403 = access revoked / forbidden. The board has no distinct 'forbidden' kind; it uses
+    // 'deleted' for an in-flight loss of access (the same mapping the 4403 close code uses).
+    case 403:
+      return { kind: 'deleted' }
+    case 404:
+      return { kind: 'not-found' }
+    default:
+      return null
+  }
+}
+
+/**
  * Prime the collab token, then build the session with the authoritative WS origin + initial role.
- * Resilient: a failed prime falls back to the origin-derived endpoint and no pre-connect role
- * (fail-closed to reader in the session) rather than blocking the board from opening.
+ * Resilient: a TRANSPORT/COMPAT failure (offline, network, pre-contract, invalid payload) falls back
+ * to the origin-derived endpoint and no pre-connect role (fail-closed to reader). An AUTHORIZATION
+ * failure (401/403/404) is different: the backend explicitly denied this user, so we build a session
+ * that is terminal from birth and hydrates NO cache, rather than a reader that would paint the
+ * cached scene for a denied user (P1-3).
  */
 async function buildSession(
   opts: UseWhiteboardSessionOptions,
@@ -58,9 +85,26 @@ async function buildSession(
     url = resolveBoardWsUrl(entry.collabWsUrl)
     initialRole = entry.role
     initialEpoch = entry.permission_epoch
-  } catch {
-    // Prime failed (offline / no backend / pre-contract): keep the origin-derived fallback and
-    // start with no authoritative role. The board fails closed until a role is known.
+  } catch (err) {
+    const status = (err as { response?: { status?: number } })?.response?.status
+    const terminal = authTerminalFor(status)
+    if (terminal) {
+      // Authorization failure: fail terminal, no cache hydration (P1-1 teardown runs in connect).
+      return createWhiteboardSession({
+        uid: opts.uid,
+        space: opts.space,
+        folder: opts.folder,
+        board: opts.board,
+        url,
+        token: () => getCollabToken(documentName),
+        initialTerminal: terminal,
+        disableOfflineCache: true,
+        disposeToken,
+      })
+    }
+    // Prime failed for a NON-auth reason (offline / no backend / pre-contract): keep the origin-
+    // derived fallback and start with no authoritative role. The board fails closed until a role
+    // is known.
   }
   return createWhiteboardSession({
     uid: opts.uid,

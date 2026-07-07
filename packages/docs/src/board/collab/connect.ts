@@ -26,6 +26,7 @@ import { ExcalidrawYjsBinding } from './binding.ts'
 import { RoleController } from '../../collab/statelessRole.ts'
 import { CloseCodeMachine, type CloseEvent } from '../../collab/closeCode.ts'
 import { canEdit, type Role } from '../../auth/roles.ts'
+import { deleteDatabaseAwait } from '../../offline/cache.ts'
 
 /**
  * Terminal board states surfaced to the host so it can leave the editable canvas and return the
@@ -59,6 +60,14 @@ export interface WhiteboardSessionOptions {
   initialEpoch?: number
   /** Disable the local IndexedDB cache for high-confidentiality boards. */
   disableOfflineCache?: boolean
+  /**
+   * Pre-set terminal state for a session the caller already knows is DENIED (a 403/404 at collab-
+   * token prime — access revoked / board deleted). Such a session builds NO local cache, tears down
+   * any on-disk cache left from a prior authorized session, and does NOT open the socket — it exists
+   * only to surface the terminal state so the host returns to the list WITHOUT hydrating a cached
+   * scene for a user the backend just denied (P1-3, combined with the P1-1 teardown).
+   */
+  initialTerminal?: BoardTerminal
   /** Injectable token disposer (defaults to the real collab-token disposer via RoleController). */
   disposeToken?: (documentName: string) => void
 }
@@ -97,9 +106,16 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
   const documentName = buildWhiteboardName(opts.space, opts.folder, opts.board)
   const ydoc = new Y.Doc()
 
-  const persistence = opts.disableOfflineCache
-    ? null
-    : new IndexeddbPersistence(boardCacheName(opts.uid, documentName), ydoc)
+  // A session the caller already knows is denied (403/404) is terminal from birth: it must NOT
+  // build a cache to hydrate, and it tears down any on-disk cache from a prior authorized session.
+  const authDenied = !!opts.initialTerminal && opts.initialTerminal.kind !== 'none'
+
+  // The board's canonical uid-scoped cache name is known regardless of whether a live persistence
+  // handle is built — the revoke teardown must be able to DELETE a store even when this session
+  // itself never opened one (high-confidentiality board, or an auth-denied session).
+  const dbName = boardCacheName(opts.uid, documentName)
+  const cacheEnabled = !opts.disableOfflineCache && !authDenied
+  const persistence = cacheEnabled ? new IndexeddbPersistence(dbName, ydoc) : null
 
   const tokenOpt = opts.token
   // connect:false so the stateless / close listeners are registered before the socket opens and no
@@ -117,6 +133,10 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
   // ── runtime permission enforcement (P1-3) ────────────────────────────────────────────────────
   const roleListeners = new Set<(role: Role) => void>()
   const terminalListeners = new Set<(t: BoardTerminal) => void>()
+  // Latest terminal transition. Tracked (not just fanned out) so a subscriber that attaches AFTER
+  // the transition — BoardShell always subscribes post-construction — still learns a session that
+  // was born terminal (auth-denied) or went terminal before it subscribed (P1-3).
+  let terminalState: BoardTerminal = opts.initialTerminal ?? { kind: 'none' }
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let destroyed = false
 
@@ -124,7 +144,23 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
     for (const cb of roleListeners) cb(role)
   }
   const notifyTerminal = (t: BoardTerminal): void => {
+    terminalState = t
     for (const cb of terminalListeners) cb(t)
+  }
+
+  /**
+   * Ordered local cache teardown on a revoke (P1-1), mirroring the doc editor (offline/cache.ts
+   * §6.3): CLOSE the y-indexeddb handle first, then DELETE the on-disk DB. In y-indexeddb@9 `destroy`
+   * only closes the connection — the store survives until `deleteDatabase`, so a revoked user's
+   * cached board scene would otherwise linger and replay on a later direct open. Closing before the
+   * delete also prevents `deleteDatabase` from blocking on the open handle.
+   */
+  const clearLocalCache = async (): Promise<void> => {
+    try {
+      await persistence?.destroy()
+    } finally {
+      await deleteDatabaseAwait(dbName)
+    }
   }
 
   // Fail closed: an unknown initial role (token not primed) starts as reader, so the board is
@@ -147,9 +183,11 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
     showForbidden: () => notifyTerminal({ kind: 'deleted' }),
     exitDocument: () => notifyTerminal({ kind: 'not-found' }),
     showLockedOrArchived: () => notifyTerminal({ kind: 'locked' }),
-    // Best-effort local cache teardown so a revoked board's cached scene does not linger.
+    // Best-effort local cache teardown so a revoked board's cached scene does not linger. Ordered
+    // (close handle → deleteDatabase) so the on-disk IndexedDB store is actually removed, not just
+    // the handle closed (P1-1).
     clearDocCache: () => {
-      void persistence?.destroy()
+      void clearLocalCache()
     },
     // Stop accepting further local edits while access is being torn down (downgrade to read-only).
     rollbackPending: () => notifyRole('reader'),
@@ -178,7 +216,14 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
     closeMachine.handleClose(e.event)
   })
 
-  provider.connect()
+  if (authDenied) {
+    // Access is already denied by the backend: do NOT open the socket (it would only 4403). Tear
+    // down any on-disk cache left from a previous authorized session so the denied user's scene
+    // cannot replay, and leave `terminalState` at the pre-set terminal for subscribers to read.
+    void clearLocalCache()
+  } else {
+    provider.connect()
+  }
 
   return {
     documentName,
@@ -194,6 +239,9 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
     },
     subscribeTerminal(cb: (t: BoardTerminal) => void): () => void {
       terminalListeners.add(cb)
+      // Replay a terminal that already happened (or a session born terminal) so a late subscriber
+      // — BoardShell subscribes after construction — is not stuck thinking access is live (P1-3).
+      if (terminalState.kind !== 'none') cb(terminalState)
       return () => terminalListeners.delete(cb)
     },
     destroy(): void {

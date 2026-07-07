@@ -77,11 +77,25 @@ export function readElement(yEl: Y.Map<unknown>): ExcalidrawElement {
 }
 
 /** Read every element out of the top-level elements map (insertion order is irrelevant — z-order
- *  comes from the `index` field, XIN-16 §1.1). */
+ *  comes from the `index` field, XIN-16 §1.1).
+ *
+ *  A remote Yjs update is NOT runtime-typed: a malicious or buggy peer can store a scalar, or a
+ *  different shared type (Y.Array/Y.Text), under an element key. `readElement` assumes a Y.Map
+ *  (`.forEach`), so before the guard below ONE such entry threw and aborted the entire read — and
+ *  since the caller (`binding.applyRemote`) rebuilds the whole scene from this, that single bad
+ *  entry blanked every valid peer element (denial-of-render, P1-2). Skip any value that is not a
+ *  Y.Map, and defensively catch a per-element read failure, so a malformed entry is dropped rather
+ *  than fatal to the batch. */
 export function readAllElements(elements: Y.Map<Y.Map<unknown>>): ExcalidrawElement[] {
   const out: ExcalidrawElement[] = []
   elements.forEach((yEl) => {
-    out.push(readElement(yEl))
+    // Untrusted-input guard: only per-element Y.Maps are valid element containers.
+    if (!(yEl instanceof Y.Map)) return
+    try {
+      out.push(readElement(yEl))
+    } catch {
+      // A single malformed element must not abort the batch — drop it and keep the rest.
+    }
   })
   return out
 }

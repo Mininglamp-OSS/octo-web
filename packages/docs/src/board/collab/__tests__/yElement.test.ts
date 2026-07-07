@@ -1,7 +1,13 @@
 // Field-level element ⇆ Y.Map conversion (T2 field-level granularity, M-12 unknown passthrough).
 import { describe, it, expect } from 'vitest'
 import * as Y from 'yjs'
-import { readElement, upsertElement, writeElementFields, jsonEqual } from '../yElement.ts'
+import {
+  readAllElements,
+  readElement,
+  upsertElement,
+  writeElementFields,
+  jsonEqual,
+} from '../yElement.ts'
 import { makeEl } from './helpers.ts'
 
 function elementsMap(doc: Y.Doc): Y.Map<Y.Map<unknown>> {
@@ -64,5 +70,42 @@ describe('per-element Y.Map conversion', () => {
     expect(jsonEqual({ a: [1, { b: 2 }] }, { a: [1, { b: 2 }] })).toBe(true)
     expect(jsonEqual({ a: 1 }, { a: 2 })).toBe(false)
     expect(jsonEqual([1, 2], [1, 2, 3])).toBe(false)
+  })
+})
+
+describe('readAllElements — untrusted peer container guard (P1-2)', () => {
+  it('reads back every well-formed element as a plain object', () => {
+    const doc = new Y.Doc()
+    const els = elementsMap(doc)
+    doc.transact(() => {
+      upsertElement(els, makeEl('a', { x: 1 }))
+      upsertElement(els, makeEl('b', { x: 2 }))
+    })
+    const all = readAllElements(els)
+    expect(all.map((e) => e.id).sort()).toEqual(['a', 'b'])
+  })
+
+  it('drops a non-Y.Map value under an element key instead of throwing (denial-of-render)', () => {
+    const doc = new Y.Doc()
+    const els = elementsMap(doc)
+    doc.transact(() => {
+      upsertElement(els, makeEl('good', { x: 1 }))
+    })
+    // A malicious/buggy peer can store a NON-Y.Map value under an element key — a Yjs update is not
+    // runtime-typed. readElement assumes a Y.Map (.forEach); before the guard this threw and aborted
+    // the whole read, so ONE bad entry blanked every valid peer element.
+    doc.transact(() => {
+      // Scalar under an element key.
+      ;(els as unknown as Y.Map<unknown>).set('scalar', 42)
+      // A different shared type (Y.Array) under an element key.
+      ;(els as unknown as Y.Map<unknown>).set('array', new Y.Array())
+    })
+
+    let all: ReturnType<typeof readAllElements> = []
+    expect(() => {
+      all = readAllElements(els)
+    }).not.toThrow()
+    // The one valid element still renders; the malformed entries are dropped.
+    expect(all.map((e) => e.id)).toEqual(['good'])
   })
 })

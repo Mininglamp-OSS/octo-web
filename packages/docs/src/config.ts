@@ -75,7 +75,14 @@ function originDerivedWsEndpoint(): string {
   }
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const port = envOr(import.meta.env?.VITE_COLLAB_WS_PORT, DEFAULT_COLLAB_WS_PORT)
-  return `${proto}//${window.location.hostname}:${port}`
+  // `window.location.hostname` returns an IPv6 literal WITHOUT brackets (e.g. `::1`). Concatenating
+  // it unbracketed produces `ws://::1:1234`, an invalid authority (the browser cannot tell the
+  // address colons from the port colon). RFC 3986 §3.2.2 requires an IPv6 literal to be wrapped in
+  // brackets inside a URI authority; a bare IPv4/DNS host is left as-is (P2).
+  const host = window.location.hostname.includes(':')
+    ? `[${window.location.hostname}]`
+    : window.location.hostname
+  return `${proto}//${host}:${port}`
 }
 
 export const WS_ENDPOINT = envOr(import.meta.env?.VITE_COLLAB_WS_ENDPOINT, originDerivedWsEndpoint())

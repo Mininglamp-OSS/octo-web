@@ -108,4 +108,22 @@ describe('boardStore — board-kind registry', () => {
     expect(isBoardDoc({ docId: 'x' })).toBe(true)
     expect(isBoardDoc({ docId: 'y' })).toBe(false)
   })
+
+  // P2: the registry is uid-scoped so a shared browser never leaks which docIds are boards across
+  // users (mirrors the uid-scoped scene mirror). Alice remembering a board must not surface it for
+  // Bob or for the anonymous namespace.
+  it('isolates the board-kind registry by uid', () => {
+    rememberBoard('b1', 'alice')
+    expect(isBoardIdLocally('b1', 'alice')).toBe(true)
+    // A different user — and the anonymous namespace — must NOT see Alice's board.
+    expect(isBoardIdLocally('b1', 'bob')).toBe(false)
+    expect(isBoardIdLocally('b1')).toBe(false)
+    expect(isBoardDoc({ docId: 'b1' }, 'bob')).toBe(false)
+    expect(isBoardDoc({ docId: 'b1' }, 'alice')).toBe(true)
+    // Forgetting under one uid does not touch another uid's registry.
+    rememberBoard('b1', 'bob')
+    forgetBoard('b1', 'alice')
+    expect(isBoardIdLocally('b1', 'alice')).toBe(false)
+    expect(isBoardIdLocally('b1', 'bob')).toBe(true)
+  })
 })

@@ -80,4 +80,27 @@ describe('WS_ENDPOINT resolution (XIN-124)', () => {
     vi.stubGlobal('window', { location: { protocol: 'http:', hostname: 'localhost' } })
     expect(await loadWsEndpoint()).not.toContain('example.com')
   })
+
+  it('P2: brackets an IPv6 literal host so the ws:// authority is valid', async () => {
+    // window.location.hostname returns an IPv6 literal WITHOUT brackets (e.g. `::1`). Concatenating
+    // it unbracketed yields `ws://::1:1234`, an invalid authority the browser cannot parse. RFC 3986
+    // requires an IPv6 literal to be bracketed in a URI authority.
+    vi.stubEnv('VITE_COLLAB_WS_ENDPOINT', '')
+    vi.stubGlobal('window', { location: { protocol: 'http:', hostname: '::1' } })
+    expect(await loadWsEndpoint()).toBe('ws://[::1]:1234')
+  })
+
+  it('P2: brackets a full IPv6 literal over https', async () => {
+    vi.stubEnv('VITE_COLLAB_WS_ENDPOINT', '')
+    vi.stubGlobal('window', {
+      location: { protocol: 'https:', hostname: '2001:db8::1' },
+    })
+    expect(await loadWsEndpoint()).toBe('wss://[2001:db8::1]:1234')
+  })
+
+  it('P2: leaves an IPv4 / DNS host unbracketed', async () => {
+    vi.stubEnv('VITE_COLLAB_WS_ENDPOINT', '')
+    vi.stubGlobal('window', { location: { protocol: 'http:', hostname: '10.0.0.5' } })
+    expect(await loadWsEndpoint()).toBe('ws://10.0.0.5:1234')
+  })
 })

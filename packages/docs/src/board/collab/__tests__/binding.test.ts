@@ -222,6 +222,55 @@ describe('ExcalidrawYjsBinding', () => {
     expect(readElement(elsOf(doc).get('a')!).x).toBe(5)
   })
 
+  it('P1-2: a scalar stored under an element key is dropped, not fatal to the whole apply (denial-of-render)', () => {
+    // A malicious/buggy peer stores a NON-Y.Map value under an element key alongside a valid one, in
+    // the SAME remote transaction that first renders the valid element. A Yjs update is not
+    // runtime-typed, so readAllElements → readElement previously threw on the scalar and aborted the
+    // entire applyRemote → the valid 'good' element never reached the canvas (blank board). The
+    // guard drops the bad entry so 'good' still renders.
+    doc.transact(() => {
+      const m = new Y.Map<unknown>()
+      const el = makeEl('good', { x: 7 })
+      for (const [k, v] of Object.entries(el)) m.set(k, v as unknown)
+      elsOf(doc).set('good', m)
+      // Scalar under an element key — the untrusted-input case.
+      ;(elsOf(doc) as unknown as Y.Map<unknown>).set('bad', 123)
+    }, 'remote')
+
+    expect(api.scene.find((e) => e.id === 'good')?.x).toBe(7) // valid peer element still rendered
+    expect(api.scene.find((e) => e.id === 'bad')).toBeUndefined() // malformed entry dropped
+    expect(binding.__telemetry.remoteApplyErrors).toBe(0) // guard drops the entry; no batch abort
+  })
+
+  it('P2: a CAS-rejected local edit resyncs its snapshot baseline to the authoritative doc value', () => {
+    // doc advanced to v5 by a remote write; the binding applied it and snapshotted v5.
+    const peer = new Y.Doc()
+    peer.transact(() => {
+      const m = new Y.Map<unknown>()
+      const el = makeEl('a', { version: 5, x: 5 })
+      for (const [k, v] of Object.entries(el)) m.set(k, v as unknown)
+      elsOf(peer).set('a', m)
+    })
+    syncDocs(peer, doc, 'remote')
+
+    // A stale local edit (v3) loses the CAS. Before the fix, lastKnown was replaced with THIS losing
+    // local element — so re-emitting the same stale edit diffed EMPTY (it matched the stale baseline)
+    // and never reached CAS again, leaving a window where the baseline disagreed with the doc. The
+    // fix resyncs the rejected id's baseline back to the authoritative doc value.
+    binding.handleLocalChange([makeEl('a', { version: 3, x: 999 })])
+    const rejectedOnce = binding.__telemetry.casRejected
+    expect(rejectedOnce).toBeGreaterThanOrEqual(1)
+    expect(binding.__telemetry.casResynced).toBeGreaterThanOrEqual(1)
+
+    // Re-emit the identical stale edit. Because the baseline was resynced to the doc's v5 (not left
+    // at the losing v3), this is a genuine diff again and hits CAS again — proving the baseline no
+    // longer holds the losing local state. Pre-fix this diffed empty and casRejected stayed flat.
+    binding.handleLocalChange([makeEl('a', { version: 3, x: 999 })])
+    expect(binding.__telemetry.casRejected).toBeGreaterThan(rejectedOnce)
+    // The authoritative doc value is untouched throughout.
+    expect(readElement(elsOf(doc).get('a')!).x).toBe(5)
+  })
+
   it('T8 (guard 3): an onChange triggered DURING a remote apply is short-circuited', () => {
     // make updateScene reentrant: it feeds the applied elements straight back into onChange
     api.onUpdate = (elements) => binding.handleLocalChange(elements)

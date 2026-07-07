@@ -255,6 +255,7 @@ export class ExcalidrawYjsBinding {
     }
 
     let wrote = 0
+    const rejectedIds: string[] = []
     this.ydoc.transact(() => {
       for (const el of changed) {
         // CAS vs the current authoritative value: a concurrent remote write may already have
@@ -270,6 +271,7 @@ export class ExcalidrawYjsBinding {
         const stamp = current ? readElement(current) : null
         if (!shouldOverwrite(stamp, el)) {
           this.telemetry.casRejected++
+          rejectedIds.push(el.id)
           continue
         }
         if (upsertElement(this.elements, el)) {
@@ -295,6 +297,19 @@ export class ExcalidrawYjsBinding {
     if (wrote === 0 && changed.length > 0 && fileEntries.length === 0) {
       // Everything was CAS-rejected: no element actually written.
       this.telemetry.skippedEmptyDiff++
+    }
+    // CAS-reject baseline resync (P2): a rejected local edit LOST the version race, so the
+    // authoritative doc still holds the winning value — but nextSnapshot currently carries the
+    // LOSING local element for that id (it was snapshotted by value before the CAS gate). Replace
+    // each rejected id's baseline with the authoritative doc value so the next onChange diffs
+    // against truth: without this the baseline disagreed with the doc until the next remote apply
+    // re-snapshotted it (self-heals, but this closes the window and stops a re-emitted stale edit
+    // from silently diffing empty against its own losing baseline).
+    for (const id of rejectedIds) {
+      const current = this.elements.get(id)
+      if (current) nextSnapshot.set(id, readElement(current))
+      else nextSnapshot.delete(id)
+      this.telemetry.casResynced++
     }
     this.lastKnown = nextSnapshot
     // Render half (XIN-98): a reinit onChange may both carry genuine local edits AND drop preserved
@@ -349,19 +364,32 @@ export class ExcalidrawYjsBinding {
     // Merge-time repair pass (selection B): normalize the rebuilt scene for local render only —
     // dangling boundElements / frameId pruned, unrenderable + dangling-image elements dropped.
     // The result is NEVER written back to the Y.Doc (server repair is authoritative, §4).
-    const repaired = repairForRender(readAllElements(this.elements), fileIds)
+    //
+    // The whole rebuild — raw read, repair, restore, reconcile — is wrapped so a malformed peer
+    // entry that survives readAllElements' guard (or a repair/restore throw) cannot abort the apply
+    // and blank the canvas: on error we keep the last good scene instead (P1-2). readAllElements
+    // already drops non-Y.Map containers; this is the batch-level backstop for anything downstream.
+    let elements: ExcalidrawElement[]
+    try {
+      const repaired = repairForRender(readAllElements(this.elements), fileIds)
 
-    // XIN-87 root-cause fix: when the host has wired the restore/reconcile contract, run it before
-    // updateScene. `restore` rehydrates the raw Y.Doc elements into renderable Excalidraw shapes
-    // (the missing step that made them paint as points/handles); `reconcile` merges them with the
-    // live local scene by version so a concurrent local edit is not clobbered. Without an adapter
-    // (the node unit-test path, where Excalidraw cannot be imported) we keep the raw elements.
-    let elements = repaired
-    const adapter = this.renderAdapter
-    if (adapter) {
-      const restored = adapter.restore(repaired)
-      const local = this.api?.getSceneElementsIncludingDeleted?.() ?? []
-      elements = adapter.reconcile(local, restored)
+      // XIN-87 root-cause fix: when the host has wired the restore/reconcile contract, run it before
+      // updateScene. `restore` rehydrates the raw Y.Doc elements into renderable Excalidraw shapes
+      // (the missing step that made them paint as points/handles); `reconcile` merges them with the
+      // live local scene by version so a concurrent local edit is not clobbered. Without an adapter
+      // (the node unit-test path, where Excalidraw cannot be imported) we keep the raw elements.
+      elements = repaired
+      const adapter = this.renderAdapter
+      if (adapter) {
+        const restored = adapter.restore(repaired)
+        const local = this.api?.getSceneElementsIncludingDeleted?.() ?? []
+        elements = adapter.reconcile(local, restored)
+      }
+    } catch {
+      // A single malformed remote entry must not blank the canvas for everyone: skip this apply and
+      // keep the last good scene. The next well-formed remote update repaints.
+      this.telemetry.remoteApplyErrors++
+      return
     }
 
     this.applyingRemote = true

@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-
 // createWhiteboardSession builds a real HocuspocusProvider (opens a WebSocket) and an
 // IndexeddbPersistence (opens IDB). Stub both so the session's runtime-permission wiring (P1-3) and
 // the uid-scoped cache name (P1-1) are unit-testable without a live backend / browser.
@@ -142,5 +141,55 @@ describe('createWhiteboardSession — runtime permission wiring (P1-1 / P1-3)', 
     const p = FakeProvider.last!
     s.destroy()
     expect(p.destroy).toHaveBeenCalled()
+  })
+})
+
+describe('createWhiteboardSession — ordered cache teardown on revoke (P1-1)', () => {
+  it('closes the y-indexeddb handle THEN deletes the DB on a 4403 revoke', async () => {
+    const order: string[] = []
+    const delSpy = vi
+      .spyOn(indexedDB, 'deleteDatabase')
+      .mockImplementation(((name: string) => {
+        order.push(`delete:${name}`)
+        const req: Record<string, unknown> = {}
+        // resolve deleteDatabaseAwait cleanly on the next microtask
+        queueMicrotask(() => (req.onsuccess as (() => void) | undefined)?.())
+        return req as unknown as IDBOpenDBRequest
+      }) as typeof indexedDB.deleteDatabase)
+
+    const s = createWhiteboardSession({ ...BASE, initialRole: 'writer', initialEpoch: 1 })
+    const persistence = s.persistence as unknown as { destroy: ReturnType<typeof vi.fn> }
+    persistence.destroy.mockImplementation(() => {
+      order.push('destroy')
+      return Promise.resolve()
+    })
+
+    // 4403 = access revoked / board deleted under us.
+    FakeProvider.last!.emit('close', { event: { code: 4403 } })
+    // Teardown is async (await destroy → deleteDatabase); let the microtasks run.
+    await new Promise((r) => setTimeout(r, 0))
+
+    // y-indexeddb destroy() only CLOSES the handle; the on-disk DB must be explicitly deleted, and
+    // the handle must close first or deleteDatabase blocks.
+    expect(persistence.destroy).toHaveBeenCalled()
+    expect(delSpy).toHaveBeenCalledWith(`octo-wb:u_self:${DOC_NAME}`)
+    expect(order).toEqual(['destroy', `delete:octo-wb:u_self:${DOC_NAME}`])
+    delSpy.mockRestore()
+  })
+})
+
+describe('createWhiteboardSession — auth-denied session is terminal, no cache (P1-3)', () => {
+  it('builds no local cache and replays the initial terminal without connecting', () => {
+    FakeIndexeddbPersistence.lastName = null
+    const s = createWhiteboardSession({ ...BASE, initialTerminal: { kind: 'deleted' } })
+    // A backend-denied user must have NO cache to hydrate.
+    expect(s.persistence).toBeNull()
+    expect(FakeIndexeddbPersistence.lastName).toBeNull()
+    // The terminal replays to a late subscriber (BoardShell subscribes after construction).
+    const seen: string[] = []
+    s.subscribeTerminal((t) => seen.push(t.kind))
+    expect(seen).toEqual(['deleted'])
+    // A denied session must not open the socket.
+    expect(FakeProvider.last!.connect).not.toHaveBeenCalled()
   })
 })

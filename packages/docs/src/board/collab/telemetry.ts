@@ -45,6 +45,18 @@ export interface BindingTelemetry {
    * (XIN-98 — the render half of the XIN-96 preserve). Each repaint also advances `remoteApplies`.
    */
   reinitRepaints: number
+  /**
+   * Remote applies aborted because rebuilding the scene from the Y.Doc threw — a malformed peer
+   * entry (non-Y.Map container) or a repair/restore failure. The last good scene is kept instead of
+   * blanking the canvas (P1-2). Growth here means a peer is writing invalid element containers.
+   */
+  remoteApplyErrors: number
+  /**
+   * Local elements whose CAS-rejected snapshot entry was resynced to the authoritative doc value
+   * after losing the version race, so the next local diff compares against truth and does not
+   * re-attempt the stale write (P2 — CAS-reject baseline resync).
+   */
+  casResynced: number
 }
 
 export function emptyTelemetry(): BindingTelemetry {
@@ -60,6 +72,8 @@ export function emptyTelemetry(): BindingTelemetry {
     skippedEmptyApply: 0,
     skippedReinitDrop: 0,
     reinitRepaints: 0,
+    remoteApplyErrors: 0,
+    casResynced: 0,
   }
 }
 

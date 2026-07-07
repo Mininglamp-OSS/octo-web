@@ -134,5 +134,42 @@ describe('useWhiteboardSession — board collab wiring (XIN-55)', () => {
     await waitFor(() => expect(result.current).not.toBeNull())
     expect(created[0]!.opts.url).toBe(WS_ENDPOINT)
     expect(created[0]!.opts.initialRole).toBeUndefined()
+    // A transport/compat failure is NOT an auth denial: the session still hydrates (no terminal).
+    expect(created[0]!.opts.initialTerminal).toBeUndefined()
+    expect(created[0]!.opts.disableOfflineCache).toBeUndefined()
+  })
+
+  it('P1-3: a 403 prime builds a terminal, cache-disabled session — no hydration for a denied user', async () => {
+    const useWhiteboardSession = await importHook()
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'post' && url === '/docs/collab-token') {
+        // Backend DENIES (revoked / forbidden). getCollabTokenEntry rejects with an HTTP 403.
+        throw Object.assign(new Error('forbidden'), { response: { status: 403 } })
+      }
+      return { data: {}, status: 200 }
+    }
+    const { result } = renderHook(() =>
+      useWhiteboardSession({ uid: 'u_self', space: 'demo', folder: 'f_default', board: 'd_board1' }),
+    )
+    await waitFor(() => expect(result.current).not.toBeNull())
+    // Terminal from birth (403 = access revoked → 'deleted'), and NO cache built to hydrate.
+    expect(created[0]!.opts.initialTerminal).toEqual({ kind: 'deleted' })
+    expect(created[0]!.opts.disableOfflineCache).toBe(true)
+  })
+
+  it('P1-3: a 404 prime builds a terminal not-found session', async () => {
+    const useWhiteboardSession = await importHook()
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'post' && url === '/docs/collab-token') {
+        throw Object.assign(new Error('not found'), { response: { status: 404 } })
+      }
+      return { data: {}, status: 200 }
+    }
+    const { result } = renderHook(() =>
+      useWhiteboardSession({ uid: 'u_self', space: 'demo', folder: 'f_default', board: 'd_board1' }),
+    )
+    await waitFor(() => expect(result.current).not.toBeNull())
+    expect(created[0]!.opts.initialTerminal).toEqual({ kind: 'not-found' })
+    expect(created[0]!.opts.disableOfflineCache).toBe(true)
   })
 })
