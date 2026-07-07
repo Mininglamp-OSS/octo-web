@@ -192,6 +192,35 @@ export function standaloneFallbackSpace(currentSpaceId: string | undefined): str
   return DEFAULT_DOC_SPACE
 }
 
+/**
+ * The doc's OWN space, as carried by the standalone share link's `?sid=` query.
+ *
+ * buildDocLink (forward/link.ts) embeds the SHARER's current space id as `?sid=` — which is the
+ * space the shared document actually lives in — and the host Layout already uses that same sid to
+ * key the recipient's token bucket (`token<sid>`). It is therefore the AUTHORITATIVE space for the
+ * standalone preflight, ahead of the recipient's own live/cached `currentSpaceId`.
+ *
+ * Why this matters (XIN-497): the backend gates GET /docs/:docId behind `requireDocRole`, which
+ * checks the CROSS-SPACE guard (`meta.space_id !== req.spaceId` → 404 not_found) BEFORE the role
+ * guard (role `none` → 403 forbidden). A logged-in recipient without permission whose own last
+ * space differs from the doc's space would send `X-Space-Id = <their space>` and trip the 404 gate
+ * — dead-ending on the not-found terminal (no request-access entry) instead of the intended 403
+ * forbidden landing. Addressing the preflight against the link's `?sid=` lets the backend evaluate
+ * the caller's role in the doc's real space and return 403, so the gap2 request-access entry shows.
+ *
+ * Returns '' when the link carries no `?sid=` (or under SSR); callers then fall back to
+ * standaloneFallbackSpace (live currentSpaceId → cached → deploy default), so a bare `/d/:docId`
+ * link keeps its prior behavior.
+ */
+export function standaloneLinkSpace(): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    return (new URLSearchParams(window.location.search).get('sid') || '').trim()
+  } catch {
+    return ''
+  }
+}
+
 type Phase =
   | { status: 'loading' }
   | { status: 'ready'; meta: DocMeta }
@@ -246,12 +275,15 @@ export function StandaloneDocPage({
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Resolve the standalone space ONCE, from the SAME source the room-addressing fallback uses
-  // (standaloneFallbackSpace: live currentSpaceId → cached localStorage → deploy default). Both the
-  // preflight's explicit X-Space-Id header and the EditorShell room fallback read this one value, so
-  // preflight and room can never address different spaces (the bug: a bare preflight got 400/404 and
-  // fell to the not-found terminal even for the user's own last space).
-  const preflightSpace = standaloneFallbackSpace(wk.shared?.currentSpaceId)
+  // Resolve the standalone space ONCE, and address BOTH the preflight's explicit X-Space-Id header
+  // and the EditorShell room fallback from it, so preflight and room can never target different
+  // spaces. Priority (XIN-497): the doc's own space carried by the share link's `?sid=`
+  // (standaloneLinkSpace — authoritative for a `/d/:docId` deep link) → live currentSpaceId → cached
+  // localStorage → deploy default. Preferring the recipient's own currentSpaceId first was the bug:
+  // for a cross-space share it differs from the doc's space, so the backend's requireDocRole hit its
+  // cross-space 404 gate BEFORE the role check and a no-permission recipient dead-ended on not-found
+  // instead of the 403 forbidden + request-access landing.
+  const preflightSpace = standaloneLinkSpace() || standaloneFallbackSpace(wk.shared?.currentSpaceId)
 
   // Genuine defense in depth (second, independent path — NOT the only working one): the standalone
   // page mounts via the Layout early-return, before the app shell restores currentSpaceId from
@@ -269,6 +301,15 @@ export function StandaloneDocPage({
   useEffect(() => {
     const shared = wk.shared
     if (!shared || shared.currentSpaceId) return
+    // Prefer the doc's space carried by the share link (`?sid=`, standaloneLinkSpace) so the global
+    // interceptor injects the SAME space on the editor's follow-up requests as the preflight header
+    // used (XIN-497); fall back to the cached last space when the link carries no sid. Never
+    // overwrite a real live space, so in-shell mounts (where it is already set) are unaffected.
+    const linkSpace = standaloneLinkSpace()
+    if (linkSpace) {
+      shared.currentSpaceId = linkSpace
+      return
+    }
     if (typeof window === 'undefined') return
     try {
       const cached = window.localStorage.getItem('currentSpaceId')
