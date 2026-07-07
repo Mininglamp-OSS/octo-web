@@ -598,15 +598,18 @@ function DocsList({
             const label = hasTitle ? d.title : t('docs.state.untitled')
             const board = isBoardDoc(d)
             // Kind we can assert without a round-trip: a known board (API `docType==='board'` or
-            // the creator's local registry, both via isBoardDoc) or an explicit `'doc'`. When the
+            // the creator's local registry, both via isBoardDoc), an explicit `'doc'`, or an
+            // explicit `'sheet'` so a known spreadsheet row opens straight into SheetView. When the
             // list API omitted docType AND we have no local board record — a NON-creator viewing a
             // shared board — pass `undefined` so openDoc resolves the authoritative kind via getDoc
             // instead of defaulting that member to the rich-text editor (the M2 routing bug).
-            const knownKind: 'board' | 'doc' | undefined = board
+            const knownKind: 'board' | 'doc' | 'sheet' | undefined = board
               ? 'board'
-              : d.docType === 'doc'
-                ? 'doc'
-                : undefined
+              : d.docType === 'sheet'
+                ? 'sheet'
+                : d.docType === 'doc'
+                  ? 'doc'
+                  : undefined
             return (
               <li
                 key={d.docId}
@@ -989,7 +992,7 @@ export function DocsHome() {
   // (durable sessionStorage + shareable `?doc=` URL), and push the matching shell into the host's
   // right pane. Split out from openDoc so the kind can be resolved asynchronously first.
   const commitOpen = useCallback(
-    (docId: string, docType: 'board' | 'doc') => {
+    (docId: string, docType: 'board' | 'doc' | 'sheet') => {
       setSelectedDocId(docId)
       setSelectedDocType(docType)
       // Durable mirror (survives the host's query-wiping re-push) + shareable URL (replaceState,
@@ -1022,8 +1025,9 @@ export function DocsHome() {
     (docId: string, docType?: string) => {
       latestOpenRef.current = docId
       // Known kind — the creator's own board (API `docType` or the local registry, both surfaced
-      // by isBoardDoc at the call site) or an explicit `'doc'`: open the right shell immediately.
-      if (docType === 'board' || docType === 'doc') {
+      // by isBoardDoc at the call site), an explicit `'doc'`, or a `'sheet'` (created / imported /
+      // known list row): open the right shell immediately without a round-trip.
+      if (docType === 'board' || docType === 'doc' || docType === 'sheet') {
         commitOpen(docId, docType)
         return
       }
@@ -1037,7 +1041,12 @@ export function DocsHome() {
       getDoc(docId)
         .then((meta) => {
           if (latestOpenRef.current !== docId) return // superseded by a newer open
-          commitOpen(docId, meta?.docType === 'board' ? 'board' : 'doc')
+          // Preserve the resolved kind verbatim: a real 'sheet' must reach SheetView, a 'board'
+          // the whiteboard shell; everything else falls back to the rich-text editor.
+          commitOpen(
+            docId,
+            meta?.docType === 'board' ? 'board' : meta?.docType === 'sheet' ? 'sheet' : 'doc',
+          )
         })
         .catch(() => {
           if (latestOpenRef.current !== docId) return

@@ -43,6 +43,17 @@ vi.mock('../board/BoardShell.tsx', () => ({
   ),
 }))
 
+// Replace the collaborative spreadsheet shell (Univer + Yjs) with a marker so the sheet-open
+// flows are testable in jsdom without mounting the heavy Univer runtime. The marker surfaces the
+// docId it was addressed with, exactly like the editor / board markers above.
+vi.mock('../sheet/SheetView.tsx', () => ({
+  SheetView: (props: { docId: string }) => (
+    <div data-testid="sheet-view">
+      <span data-testid="sheet-doc">{props.docId}</span>
+    </div>
+  ),
+}))
+
 const TARGET_KEY = 'octo.docs.target'
 
 let assignSpy: ReturnType<typeof vi.fn>
@@ -855,5 +866,133 @@ describe('DocsHome — list-open shell selection by docType (XIN-58)', () => {
     expect(screen.getByTestId('editor-doc').textContent).toBe('d_x')
     expect(screen.queryByTestId('board-shell')).toBeNull()
     expect(calls.some((c) => c.method === 'get' && c.url === '/docs/d_x')).toBe(true)
+  })
+})
+
+// Regression: the XIN-517 re-rebase against upstream #537 (Univer sheet-collab) collapsed the
+// spreadsheet OPEN path — openDoc squashed a resolved `'sheet'` down to `'doc'` before
+// buildRightPane dispatched, so every entry point to a sheet (create / Excel import / existing
+// list row / deep-link) mounted the Tiptap editor instead of Univer SheetView. openDoc now
+// preserves `'sheet'` all the way through, mirroring base #537's behavior. These lock the sheet
+// path per-entry-point without regressing the board / doc paths above.
+describe('DocsHome — sheet open path restored (XIN-520)', () => {
+  it('creates a sheet via the New dropdown and opens it in the Univer sheet view (not the editor)', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = (method, url, body) => {
+      calls.push({ method, url, body })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      if (method === 'post' && url === '/docs') {
+        return {
+          data: {
+            docId: 's_new',
+            documentName: 'doc:s_new',
+            title: '',
+            spaceId: 'demo',
+            folderId: 'f_default',
+            ownerId: 'u_self',
+            role: 'admin',
+            docType: 'sheet',
+          },
+          status: 201,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+
+    // Open the split "New" dropdown and choose "New sheet".
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.sheet.new', { exact: false }))
+
+    // The Univer sheet view (not the rich-text editor) opens inline.
+    await waitFor(() => expect(screen.getByTestId('sheet-view')).toBeTruthy())
+    expect(screen.getByTestId('sheet-doc').textContent).toBe('s_new')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+
+    // createDoc was sent with the sheet kind through the docType seam.
+    const create = calls.find((c) => c.method === 'post' && c.url === '/docs')
+    expect((create?.body as { docType?: string })?.docType).toBe('sheet')
+
+    // Selection persisted with its kind so a refresh re-opens the sheet view.
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 's_new',
+      docType: 'sheet',
+    })
+  })
+
+  it('opens an existing sheet row directly in the sheet view (no per-doc lookup)', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              { docId: 's_row', title: 'Budget', ownerId: 'u_owner', role: 'admin', docType: 'sheet' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Budget')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Budget'))
+
+    await waitFor(() => expect(screen.getByTestId('sheet-view')).toBeTruthy())
+    expect(screen.getByTestId('sheet-doc').textContent).toBe('s_row')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // The list row already carried docType='sheet' — no authoritative round-trip needed.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/s_row')).toBe(false)
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 's_row',
+      docType: 'sheet',
+    })
+  })
+
+  it('opens a sheet from a `?doc=<sheetId>` deep-link whose kind only the backend knows', async () => {
+    // Unknown-kind deep-link (registry empty, no stored docType): the per-doc GET resolves
+    // docType='sheet', so the Univer sheet view must open — NOT the rich-text editor.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 's_direct' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url === '/docs/s_direct') {
+        return { data: { docId: 's_direct', title: 'Shared sheet', role: 'admin', docType: 'sheet' }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByTestId('sheet-view')).toBeTruthy())
+    expect(screen.getByTestId('sheet-doc').textContent).toBe('s_direct')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // The kind was fetched because neither the registry nor a stored docType could assert it.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/s_direct')).toBe(true)
+    // The resolved kind is mirrored so the host's query-wiping re-render re-opens the sheet.
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 's_direct',
+      docType: 'sheet',
+    })
   })
 })
