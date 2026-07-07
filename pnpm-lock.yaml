@@ -7,6 +7,8 @@ settings:
 overrides:
   '@tiptap/core': 3.22.2
   '@tiptap/suggestion': 3.22.2
+  lodash-es: ^4.18.1
+  nanoid: ^3.3.11
   react-error-overlay: 6.0.9
 
 importers:
@@ -7569,9 +7571,6 @@ packages:
   localforage@1.10.0:
     resolution: {integrity: sha512-14/H1aX7hzBBmmh7sGPd+AOMkkIrHM3Z1PAyGgZigA1H1p5O5ANnMyWzvpAETtG68/dC4pC0ncy3+PPGzXZHPg==}
 
-  lodash-es@4.17.21:
-    resolution: {integrity: sha512-mKnC+QJ9pWVzv+C4/U3rRsHapFfHvQFoFB92e52xeyGMcX6/OlIl78je1u8vePzYZSkkogMPJ2yjxxsb89cxyw==}
-
   lodash-es@4.18.1:
     resolution: {integrity: sha512-J8xewKD/Gk22OZbhpOVSwcs60zhd95ESDwezOFuA3/099925PdHJ7OFHNTGtajL3AlZkykD32HykiMo+BIBI8A==}
 
@@ -8242,21 +8241,6 @@ packages:
   nanoid@3.3.11:
     resolution: {integrity: sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
-    hasBin: true
-
-  nanoid@3.3.3:
-    resolution: {integrity: sha512-p1sjXuopFs0xg+fPASzQ28agW1oHD7xDsd9Xkf3T15H3c/cifrFHVwrh74PdoklAPi+i7MdRsE47vm2r6JoB+w==}
-    engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
-    hasBin: true
-
-  nanoid@4.0.2:
-    resolution: {integrity: sha512-7ZtY5KTCNheRGfEFxnedV5zFiORN1+Y1N6zvPTnHQd8ENUvfaDBeuJDZb2bN/oXwXxu3qkTXDzy57W5vAmDTBw==}
-    engines: {node: ^14 || ^16 || >=18}
-    hasBin: true
-
-  nanoid@5.1.11:
-    resolution: {integrity: sha512-v+KEsUv2ps74PaSKv0gHTxTCgMXOIfBEbaqa6w6ISIGC7ZsvHN4N9oJ8d4cmf0n5oTzQz2SLmThbQWhjd/8eKg==}
-    engines: {node: ^18 || >=20}
     hasBin: true
 
   nanospinner@1.2.2:
@@ -11730,12 +11714,12 @@ snapshots:
     dependencies:
       '@chevrotain/gast': 11.0.3
       '@chevrotain/types': 11.0.3
-      lodash-es: 4.17.21
+      lodash-es: 4.18.1
 
   '@chevrotain/gast@11.0.3':
     dependencies:
       '@chevrotain/types': 11.0.3
-      lodash-es: 4.17.21
+      lodash-es: 4.18.1
 
   '@chevrotain/regexp-to-ast@11.0.3': {}
 
@@ -12402,7 +12386,7 @@ snapshots:
       jotai-scope: 0.7.2(jotai@2.11.0(@types/react@18.3.28)(react@18.3.1))(react@18.3.1)
       lodash.debounce: 4.0.8
       lodash.throttle: 4.1.1
-      nanoid: 3.3.3
+      nanoid: 3.3.11
       open-color: 1.9.1
       pako: 2.0.3
       perfect-freehand: 1.2.0
@@ -12431,7 +12415,7 @@ snapshots:
       '@excalidraw/markdown-to-text': 0.1.2
       '@mermaid-js/parser': 0.6.3
       mermaid: 11.16.0
-      nanoid: 4.0.2
+      nanoid: 3.3.11
 
   '@excalidraw/random-username@1.1.0': {}
 
@@ -14940,7 +14924,7 @@ snapshots:
       fast-diff: 1.3.0
       kdbush: 4.1.0
       lodash-es: 4.18.1
-      nanoid: 5.1.11
+      nanoid: 3.3.11
       numfmt: 3.2.6
       ot-json1: 1.0.2
       rbush: 4.0.1
@@ -16212,7 +16196,7 @@ snapshots:
       '@chevrotain/regexp-to-ast': 11.0.3
       '@chevrotain/types': 11.0.3
       '@chevrotain/utils': 11.0.3
-      lodash-es: 4.17.21
+      lodash-es: 4.18.1
 
   chokidar@3.6.0:
     dependencies:
@@ -16893,7 +16877,7 @@ snapshots:
       '@types/node': 25.9.5
       hash.js: 1.1.7
       jszip: 3.10.1
-      nanoid: 5.1.11
+      nanoid: 3.3.11
       xml: 1.0.1
       xml-js: 1.6.11
 
@@ -18975,8 +18959,6 @@ snapshots:
     dependencies:
       lie: 3.1.1
 
-  lodash-es@4.17.21: {}
-
   lodash-es@4.18.1: {}
 
   lodash.camelcase@4.3.0: {}
@@ -20098,12 +20080,6 @@ snapshots:
   nano-spawn@2.1.0: {}
 
   nanoid@3.3.11: {}
-
-  nanoid@3.3.3: {}
-
-  nanoid@4.0.2: {}
-
-  nanoid@5.1.11: {}
 
   nanospinner@1.2.2:
     dependencies:

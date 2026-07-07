@@ -67,6 +67,8 @@
     "overrides": {
       "@tiptap/core": "3.22.2",
       "@tiptap/suggestion": "3.22.2",
+      "lodash-es": "^4.18.1",
+      "nanoid": "^3.3.11",
       "react-error-overlay": "6.0.9"
     }
   }
