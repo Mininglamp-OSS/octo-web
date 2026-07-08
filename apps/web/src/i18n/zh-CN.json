@@ -148,5 +148,6 @@
   "spaceGate.logout": "退出登录",
   "spaceGate.subtitle": "加入团队或创建新的工作空间",
   "spaceGate.welcome": "欢迎使用 {{appName}}！",
-  "toast.realnameVerified": "实名认证已完成"
+  "toast.realnameVerified": "实名认证已完成",
+  "nav.documents": "文档"
 }
