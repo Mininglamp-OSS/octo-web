@@ -142,6 +142,30 @@ function prefersDark(): boolean {
 }
 
 /**
+ * How often the live board rechecks its access while the tab is visible (P1 hot-path teardown).
+ * Short enough that a deleted / revoked board an idle viewer is looking at tears down promptly, long
+ * enough that an open board is not a meaningful load on GET /docs/:docId. A tab-focus / visibility
+ * recheck (below) covers the common cross-tab flow immediately, so this interval is only the
+ * same-tab backstop.
+ */
+export const BOARD_ACCESS_RECHECK_MS = 10_000
+
+/**
+ * Map a live access-recheck GET failure to the board terminal it represents — or null when the
+ * failure is transient and must NOT tear the board down. Only the two DEFINITIVE access-lost
+ * signals act: 403 (role revoked → mirror the 4403 close code's 'deleted' mapping) and 404 (board
+ * deleted). Everything else — 401 token expiry, 409/423 lock, 5xx, or an offline network error — is
+ * either transient or already owned by the WS / collab-token path, so a blip never falsely unmounts
+ * a live canvas.
+ */
+function boardTerminalForAccessLoss(err: unknown): BoardTerminal | null {
+  const status = (err as { response?: { status?: number } })?.response?.status
+  if (status === 403) return { kind: 'deleted' }
+  if (status === 404) return { kind: 'not-found' }
+  return null
+}
+
+/**
  * Error boundary around the Excalidraw subtree (mirrors DocsErrorBoundary): a render throw in the
  * board canvas surfaces a recoverable message instead of tearing down the host tree.
  */
@@ -177,7 +201,7 @@ class BoardErrorBoundary extends Component<{ children: ReactNode }, { error: Err
  * save will hook into in M2.
  */
 export function BoardShell(props: BoardShellProps): ReactElement {
-  const { docId, title, onBack, onExit, onTitleSaved, onDeleted, collabSession, collab, user } = props
+  const { docId, title, space, onBack, onExit, onTitleSaved, onDeleted, collabSession, collab, user } = props
 
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
   // Excalidraw's `MainMenu` compound component, captured off the same dynamic import. Rendered as a
@@ -549,6 +573,47 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       returnToList?.()
     }
   }, [terminal, returnToList, docId, uid])
+
+  // P1 hot-path teardown (live standalone revoke / delete). The collab socket delivers NO terminal
+  // signal to an IDLE viewer when the board is deleted or access is revoked ELSEWHERE: the backend
+  // only reacts to a stale WRITE (beforeHandleMessage flips the connection read-only + rejects the
+  // frame), so a viewer who is not editing is never kicked, and the 4403 → 'deleted' close-code
+  // chain the cold path relies on simply never fires for a passive live viewer. The last-synced
+  // scene therefore keeps painting on the open standalone page even though the board is gone.
+  //
+  // Actively recheck access on the collab path so an open board tears itself down on a runtime 403
+  // (revoked) / 404 (deleted) WITHOUT any socket traffic — mirroring the cold-path GET /docs/:docId
+  // preflight, but on the LIVE session. It rechecks the moment the tab regains focus / visibility
+  // (the real flow: the board is deleted in another tab, then this one is looked at again) and on a
+  // steady backstop interval while visible. Only the two definitive signals act (see
+  // boardTerminalForAccessLoss); transient failures never unmount a live canvas. Standalone boards
+  // have no resident list (returnToList is undefined), so the terminal render branch below is what
+  // actually removes the revoked content there — this effect is only what makes it fire.
+  useEffect(() => {
+    if (!collabMode || terminalActive) return
+    let cancelled = false
+    const recheck = (): void => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      getDoc(docId, space ? { spaceId: space } : undefined)
+        .then(() => {
+          // 200 — access intact; keep the board mounted.
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return
+          const next = boardTerminalForAccessLoss(err)
+          if (next) setTerminal(next)
+        })
+    }
+    const timer = setInterval(recheck, BOARD_ACCESS_RECHECK_MS)
+    if (typeof window !== 'undefined') window.addEventListener('focus', recheck)
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', recheck)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+      if (typeof window !== 'undefined') window.removeEventListener('focus', recheck)
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', recheck)
+    }
+  }, [collabMode, terminalActive, docId, space])
 
   const manage = role ? canManage(role) : false
 
