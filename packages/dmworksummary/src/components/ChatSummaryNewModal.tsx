@@ -419,35 +419,39 @@ export default class ChatSummaryNewModal extends Component<
                     </div>
 
                     <div className="chat-summary-modal-chat-section">
-                        <Button
-                            theme="borderless"
-                            icon={<IconPlus />}
-                            size="small"
-                            onClick={() => this.setState({ showChatSelector: true })}
-                            style={{
-                                color: selectedChats.length > 0
-                                    ? 'var(--wk-color-primary, #3370FF)'
-                                    : undefined,
-                            }}
-                        >
-                            {selectedChats.length > 0
-                                ? t('summary.create.selectedChats', { values: { count: selectedChats.length } })
-                                : t('summary.create.selectChat')}
-                        </Button>
-                        <Button
-                            theme="borderless"
-                            icon={<IconClock />}
-                            size="small"
-                            onClick={() => this.setState({ showScheduleConfig: true })}
-                            style={{
-                                marginLeft: 8,
-                                color: scheduleConfig ? 'var(--wk-color-primary, #3370FF)' : undefined,
-                            }}
-                        >
-                            {scheduleConfig
-                                ? this.getScheduleLabel(scheduleConfig)
-                                : t('summary.schedule.config.title')}
-                        </Button>
+                        {!isAgent && (
+                            <>
+                            <Button
+                                theme="borderless"
+                                icon={<IconPlus />}
+                                size="small"
+                                onClick={() => this.setState({ showChatSelector: true })}
+                                style={{
+                                    color: selectedChats.length > 0
+                                        ? 'var(--wk-color-primary, #3370FF)'
+                                        : undefined,
+                                }}
+                            >
+                                {selectedChats.length > 0
+                                    ? t('summary.create.selectedChats', { values: { count: selectedChats.length } })
+                                    : t('summary.create.selectChat')}
+                            </Button>
+                            <Button
+                                theme="borderless"
+                                icon={<IconClock />}
+                                size="small"
+                                onClick={() => this.setState({ showScheduleConfig: true })}
+                                style={{
+                                    marginLeft: 8,
+                                    color: scheduleConfig ? 'var(--wk-color-primary, #3370FF)' : undefined,
+                                }}
+                            >
+                                {scheduleConfig
+                                    ? this.getScheduleLabel(scheduleConfig)
+                                    : t('summary.schedule.config.title')}
+                            </Button>
+                            </>
+                        )}
                         <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
                             {t('summary.create.archivedNotice')}
                         </span>

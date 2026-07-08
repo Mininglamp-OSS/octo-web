@@ -394,42 +394,46 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     {/* Action bar */}
                     <div className="summary-workbench-actions">
                         <div className="summary-workbench-actions-left">
-                            {/* 选择聊天 */}
-                            <Button
-                                theme="borderless"
-                                icon={<IconPlus />}
-                                size="small"
-                                onClick={() => this.setState({ showChatSelector: true })}
-                                style={{ color: selectedChats.length > 0 ? "var(--semi-color-primary)" : undefined }}
-                            >
-                                {selectedChats.length > 0
-                                    ? translate("summary.create.selectedChats", { values: { count: selectedChats.length } })
-                                    : translate("summary.create.selectChat")}
-                            </Button>
-                            {/* 选择参与者：多人协作入口。打开 MemberSelectorModal 选 participants，
-                                与「选择聊天 / 定时」并列在创建页操作栏，确保多人入口在 UI 上可达。 */}
-                            <Button
-                                theme="borderless"
-                                icon={<IconUserGroup />}
-                                size="small"
-                                onClick={() => this.setState({ showMemberSelector: true })}
-                                style={{ color: selectedMembers.length > 0 ? "var(--semi-color-primary)" : undefined }}
-                            >
-                                {selectedMembers.length > 0
-                                    ? translate("summary.create.selectedMembers", { values: { count: selectedMembers.length } })
-                                    : translate("summary.create.selectMembers")}
-                            </Button>
-                            <Button
-                                theme="borderless"
-                                icon={<IconClock />}
-                                size="small"
-                                onClick={() => this.setState({ showScheduleConfig: true })}
-                                style={{ color: scheduleConfig ? "var(--semi-color-primary)" : undefined }}
-                            >
-                                {scheduleConfig
-                                    ? this.getScheduleLabel(scheduleConfig)
-                                    : translate("summary.schedule.config.title")}
-                            </Button>
+                            {mode !== 'agent' && (
+                                <>
+                                {/* 选择聊天 */}
+                                <Button
+                                    theme="borderless"
+                                    icon={<IconPlus />}
+                                    size="small"
+                                    onClick={() => this.setState({ showChatSelector: true })}
+                                    style={{ color: selectedChats.length > 0 ? "var(--semi-color-primary)" : undefined }}
+                                >
+                                    {selectedChats.length > 0
+                                        ? translate("summary.create.selectedChats", { values: { count: selectedChats.length } })
+                                        : translate("summary.create.selectChat")}
+                                </Button>
+                                {/* 选择参与者：多人协作入口。打开 MemberSelectorModal 选 participants，
+                                    与「选择聊天 / 定时」并列在创建页操作栏，确保多人入口在 UI 上可达。 */}
+                                <Button
+                                    theme="borderless"
+                                    icon={<IconUserGroup />}
+                                    size="small"
+                                    onClick={() => this.setState({ showMemberSelector: true })}
+                                    style={{ color: selectedMembers.length > 0 ? "var(--semi-color-primary)" : undefined }}
+                                >
+                                    {selectedMembers.length > 0
+                                        ? translate("summary.create.selectedMembers", { values: { count: selectedMembers.length } })
+                                        : translate("summary.create.selectMembers")}
+                                </Button>
+                                <Button
+                                    theme="borderless"
+                                    icon={<IconClock />}
+                                    size="small"
+                                    onClick={() => this.setState({ showScheduleConfig: true })}
+                                    style={{ color: scheduleConfig ? "var(--semi-color-primary)" : undefined }}
+                                >
+                                    {scheduleConfig
+                                        ? this.getScheduleLabel(scheduleConfig)
+                                        : translate("summary.schedule.config.title")}
+                                </Button>
+                                </>
+                            )}
                             <span style={{ marginLeft: 8, fontSize: 12, color: "var(--semi-color-text-2)" }}>
                                 {translate("summary.create.archivedNotice")}
                             </span>
