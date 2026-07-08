@@ -54,15 +54,18 @@ export default function LoopPage() {
   const findWs = (list: Workspace[], id: string) => list.find((w) => w.id === id) ?? null;
 
   const renderTab = (key: TabKey, ws: Workspace | null): JSX.Element => {
+    // 以「当前 workspace」为 key 驱动整颗子页面：切换 workspace → key 变化 → React 强制
+    // 重挂子页面 → useEffect 重新以新的 x-workspace-slug 拉取数据，避免残留旧 workspace 数据。
+    const k = `${key}:${ws?.id ?? "none"}`;
     switch (key) {
-      case "issue": return <IssuePage />;
-      case "skill": return <SkillPage />;
-      case "project": return <ProjectPage />;
-      case "agent": return <AgentPage />;
-      case "squad": return <SquadPage />;
-      case "runtime": return <RuntimePage />;
-      case "settings": return <SettingsPage workspace={ws} onUpdated={() => reloadWorkspaces()} />;
-      default: return <IssuePage />;
+      case "issue": return <IssuePage key={k} />;
+      case "skill": return <SkillPage key={k} />;
+      case "project": return <ProjectPage key={k} />;
+      case "agent": return <AgentPage key={k} />;
+      case "squad": return <SquadPage key={k} />;
+      case "runtime": return <RuntimePage key={k} />;
+      case "settings": return <SettingsPage key={k} workspace={ws} onUpdated={() => reloadWorkspaces()} />;
+      default: return <IssuePage key={k} />;
     }
   };
 
