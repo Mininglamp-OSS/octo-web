@@ -1,18 +1,19 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Typography, Input, Button, Table, Tag, Spin, Modal, Toast, Popconfirm, TextArea } from "@douyinfe/semi-ui";
+import { Typography, Input, Button, Table, Tag, Spin, Modal, Toast, Popconfirm, TextArea, Banner } from "@douyinfe/semi-ui";
 import { Search, Plus, Trash2, Sparkles } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
-import type { Skill, SkillSource } from "../api/types";
-import { listSkills, createSkill, deleteSkill } from "../api/skillApi";
+import type { Skill } from "../api/types";
+import { listSkills, createSkill, deleteSkill, skillSource } from "../api/skillApi";
 import SkillDetailPage from "../panel/SkillDetailPage";
 
 const { Title, Text } = Typography;
-const SRC: Record<SkillSource, "green" | "blue" | "grey"> = { github: "green", local: "blue", workspace: "grey" };
+const SRC: Record<string, "green" | "blue" | "grey"> = { github: "green", local: "blue", workspace: "grey" };
 
 export default function SkillPage() {
   const { t } = useI18n();
   const [rows, setRows] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [keyword, setKeyword] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [nName, setNName] = useState("");
@@ -21,7 +22,8 @@ export default function SkillPage() {
 
   const reload = useCallback(() => {
     setLoading(true);
-    listSkills({ keyword }).then(setRows).finally(() => setLoading(false));
+    setError(null);
+    listSkills({ keyword }).then(setRows).catch((e) => setError(e?.message ?? "load failed")).finally(() => setLoading(false));
   }, [keyword]);
   useEffect(reload, [reload]);
 
@@ -29,17 +31,21 @@ export default function SkillPage() {
 
   const doCreate = async () => {
     if (!nName.trim()) { Toast.warning(t("loop.validate.nameRequired")); return; }
-    await createSkill({ name: nName.trim(), description: nDesc, content: nContent });
-    setCreateOpen(false); setNName(""); setNDesc(""); setNContent("");
-    Toast.success(t("loop.toast.created")); reload();
+    try {
+      await createSkill({ name: nName.trim(), description: nDesc, content: nContent });
+      setCreateOpen(false); setNName(""); setNDesc(""); setNContent("");
+      Toast.success(t("loop.toast.created")); reload();
+    } catch (e) { Toast.error((e as Error)?.message ?? "create failed"); }
   };
-  const remove = async (id: string) => { await deleteSkill(id); Toast.success(t("loop.toast.deleted")); reload(); };
+  const remove = async (id: string) => {
+    try { await deleteSkill(id); Toast.success(t("loop.toast.deleted")); reload(); }
+    catch (e) { Toast.error((e as Error)?.message ?? "delete failed"); }
+  };
 
   const columns = [
     { title: t("loop.field.name"), dataIndex: "name", render: (v: string, r: Skill) => <span className="loop-cell-title" onClick={() => openDetail(r.id)}>{v}</span> },
     { title: t("loop.field.description"), dataIndex: "description", render: (v: string) => <Text type="tertiary">{v || "—"}</Text> },
-    { title: t("loop.skill.source"), dataIndex: "source", width: 120, render: (v: SkillSource) => <Tag color={SRC[v]} size="small">{t(`loop.skill.sourceType.${v}`)}</Tag> },
-    { title: t("loop.skill.usedBy"), dataIndex: "used_by", width: 100 },
+    { title: t("loop.skill.source"), dataIndex: "id", width: 120, render: (_v: string, r: Skill) => { const s = skillSource(r); return <Tag color={SRC[s]} size="small">{t(`loop.skill.sourceType.${s}`)}</Tag>; } },
     { title: "", dataIndex: "id", width: 60, render: (v: string) => <Popconfirm title={t("loop.confirm.delete")} onConfirm={() => remove(v)}><Button theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />} /></Popconfirm> },
   ];
 
@@ -52,7 +58,8 @@ export default function SkillPage() {
         <Button theme="solid" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>{t("loop.action.newSkill")}</Button>
       </div>
       <div className="loop-page__body">
-        {loading ? <div className="loop-page__center"><Spin /></div>
+        {error ? <Banner type="danger" description={error} />
+          : loading ? <div className="loop-page__center"><Spin /></div>
           : rows.length === 0 ? (
             <div className="loop-empty">
               <Sparkles size={40} className="loop-empty__icon" />

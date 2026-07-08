@@ -63,7 +63,6 @@
     "@octo/docs": "workspace:*",
     "@octo/login": "workspace:*",
     "@octo/loop": "workspace:*",
-    "@octo/runtime": "workspace:*",
     "@octo/todo": "workspace:*",
     "@react-pdf-viewer/core": "^3.12.0",
     "@react-pdf-viewer/page-navigation": "^3.12.0",

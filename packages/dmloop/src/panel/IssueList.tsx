@@ -104,8 +104,8 @@ export default function IssueList({
         <AssigneePicker
           size="small"
           value={r.assignee_id}
-          valueName={r.assignee_name}
-          onChange={(id) => patch(r.id, { assignee_id: id })}
+          valueName={r.assignee_name ?? null}
+          onChange={(id, type) => patch(r.id, { assignee_id: id, assignee_type: type })}
         />
       ),
     },

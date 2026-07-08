@@ -1,41 +1,95 @@
-// @octo/loop — HTTP 客户端
-// 所有 Loop 数据访问都经过真实网络请求（DevTools Network 可见），路径与 multica REST 契约对齐。
-// 本版本这些请求被 MSW 拦截并返回 Mock 数据；后续摘掉 MSW 即可直连 multica-server，页面与网络层零改动。
+// @octo/loop — HTTP 客户端（真实 fleet 联调）
+// 所有请求走 /fleet/api/v1（Vite dev proxy → http://127.0.0.1:8091），路径与 fleet 契约一致。
+// workspace 相关接口统一携带 header `x-workspace-slug`（值取自顶部 workspace 下拉当前 slug）。
 import axios from "axios";
 
-/**
- * Loop API base。默认 `/fleet/api/v1`。
- * Loop 是独立 server 服务，前置 reverse proxy 按前缀分割（类比 summary 的 /summary/api/v1）。
- * 路径尾段与 multica REST 契约一致，仅前缀为 /fleet/api/v1。
- * 通过 VITE_LOOP_API_BASE 可指向真实 Loop server。
- */
 export const LOOP_API_BASE =
   (import.meta as { env?: Record<string, string> }).env?.VITE_LOOP_API_BASE ||
   "/fleet/api/v1";
 
-const client = axios.create({ baseURL: LOOP_API_BASE });
+const client = axios.create({ baseURL: LOOP_API_BASE, withCredentials: true });
 
-// 统一在请求上携带 workspace_id（header + 默认 query），为后续真实链路留口子。
-client.interceptors.request.use((config) => {
-  const ws = currentWorkspaceId();
-  config.headers = config.headers ?? {};
-  if (ws) config.headers["X-Workspace-Id"] = ws;
-  return config;
-});
+/* ---------- CSRF（fleet 采用 double-submit：cookie multica_csrf === header X-CSRF-Token） ---------- */
+const CSRF_COOKIE = "multica_csrf";
 
-/* ---------- workspace 上下文（space_id → workspace_id 口子） ---------- */
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.split("; ").find((c) => c.startsWith(name + "="));
+  return m ? decodeURIComponent(m.split("=").slice(1).join("=")) : null;
+}
 
-let _workspaceId = "ws-loop-demo";
+function randomToken(): string {
+  try {
+    const a = new Uint8Array(16);
+    crypto.getRandomValues(a);
+    return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+}
 
+/**
+ * 保证存在 multica_csrf cookie 并返回其值；double-submit 只校验 cookie===header，
+ * 服务端登录时也会下发该 cookie，这里在缺失时前端补一个，二者一致即通过。
+ */
+function ensureCsrfToken(): string {
+  let tok = readCookie(CSRF_COOKIE);
+  if (!tok && typeof document !== "undefined") {
+    tok = randomToken();
+    document.cookie = `${CSRF_COOKIE}=${tok}; path=/; SameSite=Lax`;
+  }
+  return tok ?? "";
+}
+
+/* ---------- workspace 上下文 ---------- */
+// 顶部下拉选中的 workspace：slug 用于 header，id 用于路径参数（如 members）。
+let _workspaceSlug = "";
+let _workspaceId = "";
+
+export function currentWorkspaceSlug(): string {
+  return _workspaceSlug;
+}
 export function currentWorkspaceId(): string {
   return _workspaceId;
 }
-
-export function setWorkspaceId(id: string): void {
-  if (id && id.trim()) _workspaceId = id;
+export function setWorkspaceContext(slug: string, id: string): void {
+  _workspaceSlug = slug || "";
+  _workspaceId = id || "";
 }
 
-/* ---------- HTTP helpers ---------- */
+// 统一注入 x-workspace-slug + CSRF token。
+client.interceptors.request.use((config) => {
+  config.headers = config.headers ?? {};
+  if (_workspaceSlug) config.headers["x-workspace-slug"] = _workspaceSlug;
+  const method = (config.method ?? "get").toLowerCase();
+  if (method !== "get" && method !== "head") {
+    config.headers["X-CSRF-Token"] = ensureCsrfToken();
+  }
+  return config;
+});
+
+/* ---------- 结构化错误（供页面展示异常态） ---------- */
+export class LoopApiError extends Error {
+  status?: number;
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "LoopApiError";
+    this.status = status;
+  }
+}
+
+function toApiError(err: unknown): LoopApiError {
+  const e = err as {
+    response?: { status?: number; data?: { error?: string; message?: string } };
+    message?: string;
+  };
+  const msg =
+    e?.response?.data?.error ||
+    e?.response?.data?.message ||
+    e?.message ||
+    "Request failed";
+  return new LoopApiError(String(msg), e?.response?.status);
+}
 
 function clean(params?: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -50,26 +104,46 @@ export async function httpGet<T>(
   path: string,
   params?: Record<string, unknown>,
 ): Promise<T> {
-  const resp = await client.get<T>(path, { params: clean(params) });
-  return resp.data;
+  try {
+    const resp = await client.get<T>(path, { params: clean(params) });
+    return resp.data;
+  } catch (err) {
+    throw toApiError(err);
+  }
 }
 
 export async function httpPost<T>(path: string, body?: unknown): Promise<T> {
-  const resp = await client.post<T>(path, body);
-  return resp.data;
+  try {
+    const resp = await client.post<T>(path, body);
+    return resp.data;
+  } catch (err) {
+    throw toApiError(err);
+  }
 }
 
 export async function httpPut<T>(path: string, body?: unknown): Promise<T> {
-  const resp = await client.put<T>(path, body);
-  return resp.data;
+  try {
+    const resp = await client.put<T>(path, body);
+    return resp.data;
+  } catch (err) {
+    throw toApiError(err);
+  }
 }
 
 export async function httpPatch<T>(path: string, body?: unknown): Promise<T> {
-  const resp = await client.patch<T>(path, body);
-  return resp.data;
+  try {
+    const resp = await client.patch<T>(path, body);
+    return resp.data;
+  } catch (err) {
+    throw toApiError(err);
+  }
 }
 
 export async function httpDelete<T>(path: string, body?: unknown): Promise<T> {
-  const resp = await client.delete<T>(path, body ? { data: body } : undefined);
-  return resp.data;
+  try {
+    const resp = await client.delete<T>(path, body ? { data: body } : undefined);
+    return resp.data;
+  } catch (err) {
+    throw toApiError(err);
+  }
 }

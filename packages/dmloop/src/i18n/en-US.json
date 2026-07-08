@@ -5,7 +5,21 @@
     "skill": "Skill",
     "project": "Project",
     "agent": "Agent",
-    "squad": "Squad"
+    "squad": "Squad",
+    "runtime": "Devices"
+  },
+  "runtime": {
+    "provider": "Provider",
+    "mode": "Mode",
+    "modeVal": { "local": "Local", "cloud": "Cloud" },
+    "online": "Online",
+    "offline": "Offline",
+    "device": "Device info",
+    "launchHeader": "Launch header",
+    "visibility": "Visibility",
+    "lastSeen": "Last seen",
+    "search": "Search device / provider",
+    "empty": "No devices"
   },
   "view": { "board": "Board", "list": "List" },
   "search": {
@@ -29,6 +43,7 @@
   "workspace": { "title": "Workspaces" },
   "taskStatus": {
     "queued": "Queued",
+    "dispatched": "Dispatched",
     "running": "Running",
     "completed": "Completed",
     "failed": "Failed",
@@ -125,6 +140,7 @@
   "toast": {
     "created": "Created",
     "saved": "Saved",
+    "archived": "Archived",
     "deleted": "Deleted",
     "commentAdded": "Comment added",
     "commentDeleted": "Comment deleted"
@@ -153,6 +169,7 @@
     "thinking": "Thinking",
     "thinkingLevel": { "none": "Off", "light": "Light", "medium": "Medium", "deep": "Deep" },
     "concurrency": "Concurrency",
+    "runtimeRequired": "Please select a runtime",
     "customArgs": "Custom args",
     "env": "Environment",
     "revealEnv": "Reveal & edit",
@@ -162,6 +179,7 @@
   },
   "squad": {
     "leader": "Leader",
+    "leaderRequired": "Please select a leader",
     "members": "Members",
     "roleLeader": "Leader",
     "addMember": "Pick a member to add",

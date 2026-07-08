@@ -5,7 +5,21 @@
     "skill": "技能",
     "project": "项目",
     "agent": "智能体",
-    "squad": "小队"
+    "squad": "小队",
+    "runtime": "设备"
+  },
+  "runtime": {
+    "provider": "提供方",
+    "mode": "类型",
+    "modeVal": { "local": "本地", "cloud": "云端" },
+    "online": "在线",
+    "offline": "离线",
+    "device": "设备信息",
+    "launchHeader": "启动标识",
+    "visibility": "可见性",
+    "lastSeen": "最近在线",
+    "search": "搜索设备 / 提供方",
+    "empty": "暂无设备"
   },
   "view": { "board": "看板", "list": "列表" },
   "search": {
@@ -29,6 +43,7 @@
   "workspace": { "title": "工作空间" },
   "taskStatus": {
     "queued": "排队中",
+    "dispatched": "已派发",
     "running": "运行中",
     "completed": "已完成",
     "failed": "失败",
@@ -125,6 +140,7 @@
   "toast": {
     "created": "已创建",
     "saved": "已保存",
+    "archived": "已归档",
     "deleted": "已删除",
     "commentAdded": "评论已添加",
     "commentDeleted": "评论已删除"
@@ -132,8 +148,7 @@
   "validate": {
     "nameRequired": "请填写名称",
     "titleRequired": "请填写标题"
-  },
-  "confirm": { "delete": "确定删除？" },
+  },  "confirm": { "delete": "确定删除？" },
   "skill": {
     "source": "来源",
     "sourceType": { "github": "GitHub", "local": "本地", "workspace": "工作区" },
@@ -153,6 +168,7 @@
     "thinking": "思考等级",
     "thinkingLevel": { "none": "关闭", "light": "轻度", "medium": "中度", "deep": "深度" },
     "concurrency": "并发数",
+    "runtimeRequired": "请选择运行环境",
     "customArgs": "自定义参数",
     "env": "环境变量",
     "revealEnv": "显示并编辑",
@@ -162,6 +178,7 @@
   },
   "squad": {
     "leader": "队长",
+    "leaderRequired": "请选择队长",
     "members": "成员",
     "roleLeader": "队长",
     "addMember": "选择成员加入",

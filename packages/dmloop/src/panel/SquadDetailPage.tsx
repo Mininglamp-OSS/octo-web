@@ -39,13 +39,22 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
     setRow(next); setDirty(false); Toast.success(t("loop.toast.saved")); onChanged?.();
   };
   const remove = async () => { await deleteSquad(squadId); Toast.success(t("loop.toast.deleted")); onChanged?.(); back(); };
-  const addM = async () => { if (!addPick) return; const n = await addSquadMember(squadId, addPick); setRow(n); setAddPick(undefined); onChanged?.(); };
-  const dropM = async (mid: string) => { const n = await removeSquadMember(squadId, mid); setRow(n); onChanged?.(); };
+  const addM = async () => {
+    if (!addPick) return;
+    const cand = cands.find((c) => c.id === addPick);
+    if (!cand) return;
+    try { const n = await addSquadMember(squadId, cand.type, cand.id); setRow(n); setAddPick(undefined); onChanged?.(); }
+    catch (e) { Toast.error((e as Error)?.message ?? "add failed"); }
+  };
+  const dropM = async (memberType: "member" | "agent" | "squad", mid: string) => {
+    try { const n = await removeSquadMember(squadId, memberType, mid); setRow(n); onChanged?.(); }
+    catch (e) { Toast.error((e as Error)?.message ?? "remove failed"); }
+  };
 
   if (loading) return <div className="loop-sd"><div className="loop-sd__center"><Spin /></div></div>;
   if (!row) return <div className="loop-sd"><div className="loop-sd__topbar"><Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={back}>{t("loop.detail.back")}</Button></div><div className="loop-sd__center"><Text type="tertiary">{t("loop.detail.notFound")}</Text></div></div>;
 
-  const avail = cands.filter((c) => !row.members.some((m) => m.member_id === c.id));
+  const avail = cands.filter((c) => !(row.members ?? []).some((m) => m.member_id === c.id));
 
   return (
     <div className="loop-sd">
@@ -71,17 +80,17 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
           <Text>{row.leader_name}</Text>
         </aside>
         <section className="loop-sd__main">
-          <div className="loop-detail__section-title">{t("loop.squad.members")} ({row.members.length})</div>
+          <div className="loop-detail__section-title">{t("loop.squad.members")} ({(row.members ?? []).length})</div>
           <div className="loop-comments">
-            {row.members.map((m) => (
+            {(row.members ?? []).map((m) => (
               <div key={m.member_id} className="loop-comment" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Avatar size="extra-extra-small" color="light-blue">{m.member_name.slice(0, 1)}</Avatar>
+                <Avatar size="extra-extra-small" color="light-blue">{(m.member_name ?? "?").slice(0, 1)}</Avatar>
                 <Text>{m.member_name}</Text>
                 <Tag color={ASSIGNEE_TYPE_COLOR[m.member_type]} size="small">{t(`loop.assignee.${m.member_type}`)}</Tag>
                 {m.role === "leader" ? (
                   <Tag color="amber" size="small">{t("loop.squad.roleLeader")}</Tag>
                 ) : (
-                  <Button theme="borderless" type="danger" size="small" style={{ marginLeft: "auto" }} icon={<Trash2 size={13} />} onClick={() => dropM(m.member_id)} />
+                  <Button theme="borderless" type="danger" size="small" style={{ marginLeft: "auto" }} icon={<Trash2 size={13} />} onClick={() => dropM(m.member_type, m.member_id)} />
                 )}
               </div>
             ))}

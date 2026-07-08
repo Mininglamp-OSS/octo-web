@@ -29,6 +29,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated }: Create
   const [status, setStatus] = useState<IssueStatus>("todo");
   const [priority, setPriority] = useState<IssuePriority>("none");
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
+  const [assigneeType, setAssigneeType] = useState<import("../api/types").AssigneeType | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -36,7 +37,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated }: Create
   useEffect(() => {
     if (visible) {
       setTitle(""); setDesc(""); setStatus("todo"); setPriority("none");
-      setAssigneeId(null); setProjectId(null);
+      setAssigneeId(null); setAssigneeType(null); setProjectId(null);
       listProjects().then(setProjects).catch(() => setProjects([]));
     }
   }, [visible]);
@@ -51,6 +52,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated }: Create
         status,
         priority,
         assignee_id: assigneeId,
+        assignee_type: assigneeType,
         project_id: projectId,
       });
       onClose();
@@ -115,7 +117,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated }: Create
           <div className="loop-createissue__field">
             <label>{t("loop.field.assignee")}</label>
             <div className="loop-createissue__assignee">
-              <AssigneePicker value={assigneeId} valueName={null} onChange={setAssigneeId} />
+              <AssigneePicker value={assigneeId} valueName={null} onChange={(id, type) => { setAssigneeId(id); setAssigneeType(type); }} />
             </div>
           </div>
           <div className="loop-createissue__field">

@@ -1,19 +1,20 @@
 import React, { useEffect, useState } from "react";
-import { Typography, Input, Button, Spin, Tag, Toast, TextArea } from "@douyinfe/semi-ui";
+import { Typography, Input, Button, Spin, Tag, Toast, TextArea, Banner } from "@douyinfe/semi-ui";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
-import type { Skill, SkillSource } from "../api/types";
-import { getSkill, updateSkill, deleteSkill } from "../api/skillApi";
+import type { Skill } from "../api/types";
+import { getSkill, updateSkill, deleteSkill, skillSource } from "../api/skillApi";
 import "./sideDetail.css";
 
-const { Title, Text } = Typography;
-const SRC: Record<SkillSource, "green" | "blue" | "grey"> = { github: "green", local: "blue", workspace: "grey" };
+const { Text } = Typography;
+const SRC: Record<string, "green" | "blue" | "grey"> = { github: "green", local: "blue", workspace: "grey" };
 
 /** Skill 独立详情页：左侧元信息 + 右侧内容编辑。 */
 export default function SkillDetailPage({ skillId, onChanged }: { skillId: string; onChanged?: () => void }) {
   const { t } = useI18n();
   const [row, setRow] = useState<Skill | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [content, setContent] = useState("");
@@ -21,24 +22,28 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     getSkill(skillId)
-      .then((s) => { setRow(s); setName(s.name); setDesc(s.description); setContent(s.content); setDirty(false); })
-      .catch(() => Toast.error(t("loop.detail.notFound")))
+      .then((s) => { setRow(s); setName(s.name); setDesc(s.description); setContent(s.content ?? ""); setDirty(false); })
+      .catch((e) => setError(e?.message ?? "load failed"))
       .finally(() => setLoading(false));
   }, [skillId]);
 
   const back = () => WKApp.routeRight.pop();
   const save = async () => {
     if (!name.trim()) { Toast.warning(t("loop.validate.nameRequired")); return; }
-    await updateSkill(skillId, { name: name.trim(), description: desc, content });
-    setDirty(false);
-    Toast.success(t("loop.toast.saved"));
-    onChanged?.();
+    try { await updateSkill(skillId, { name: name.trim(), description: desc, content }); setDirty(false); Toast.success(t("loop.toast.saved")); onChanged?.(); }
+    catch (e) { Toast.error((e as Error)?.message ?? "save failed"); }
   };
-  const remove = async () => { await deleteSkill(skillId); Toast.success(t("loop.toast.deleted")); onChanged?.(); back(); };
+  const remove = async () => {
+    try { await deleteSkill(skillId); Toast.success(t("loop.toast.deleted")); onChanged?.(); back(); }
+    catch (e) { Toast.error((e as Error)?.message ?? "delete failed"); }
+  };
 
   if (loading) return <div className="loop-sd"><div className="loop-sd__center"><Spin /></div></div>;
-  if (!row) return <div className="loop-sd"><div className="loop-sd__topbar"><Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={back}>{t("loop.detail.back")}</Button></div><div className="loop-sd__center"><Text type="tertiary">{t("loop.detail.notFound")}</Text></div></div>;
+  if (error || !row) return <div className="loop-sd"><div className="loop-sd__topbar"><Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={back}>{t("loop.detail.back")}</Button></div><div className="loop-sd__center">{error ? <Banner type="danger" description={error} /> : <Text type="tertiary">{t("loop.detail.notFound")}</Text>}</div></div>;
+
+  const src = skillSource(row);
 
   return (
     <div className="loop-sd">
@@ -56,9 +61,7 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
           <div className="loop-detail__section-title" style={{ marginTop: 14 }}>{t("loop.field.description")}</div>
           <TextArea value={desc} onChange={(v) => { setDesc(v); setDirty(true); }} autosize={{ minRows: 2, maxRows: 5 }} />
           <div className="loop-detail__section-title" style={{ marginTop: 14 }}>{t("loop.skill.source")}</div>
-          <Tag color={SRC[row.source]} size="small">{t(`loop.skill.sourceType.${row.source}`)}</Tag>
-          <div className="loop-detail__section-title" style={{ marginTop: 14 }}>{t("loop.skill.usedBy")}</div>
-          <Text>{row.used_by}</Text>
+          <Tag color={SRC[src]} size="small">{t(`loop.skill.sourceType.${src}`)}</Tag>
         </aside>
         <section className="loop-sd__main">
           <div className="loop-detail__section-title">{t("loop.skill.content")}</div>

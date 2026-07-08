@@ -15,22 +15,17 @@ function typeIcon(type: AssigneeType) {
 export interface AssigneePickerProps {
   value: string | null;
   valueName: string | null;
-  onChange: (id: string | null) => void;
+  onChange: (id: string | null, type: AssigneeType | null) => void;
   size?: "small" | "default";
 }
 
-/** 三态指派选择器：member / agent / squad，支持清空。 */
-export default function AssigneePicker({
-  value,
-  valueName,
-  onChange,
-  size = "default",
-}: AssigneePickerProps) {
+/** 三态指派选择器：member / agent / squad，支持清空。onChange 同时回传 type。 */
+export default function AssigneePicker({ value, valueName, onChange, size = "default" }: AssigneePickerProps) {
   const { t } = useI18n();
   const [cands, setCands] = useState<AssigneeCandidate[]>([]);
 
   useEffect(() => {
-    listAssigneeCandidates().then(setCands);
+    listAssigneeCandidates().then(setCands).catch(() => setCands([]));
   }, []);
 
   const current = cands.find((c) => c.id === value);
@@ -42,10 +37,7 @@ export default function AssigneePicker({
 
   const menu = (
     <Dropdown.Menu>
-      <Dropdown.Item
-        onClick={() => onChange(null)}
-        icon={<CircleSlash size={13} />}
-      >
+      <Dropdown.Item onClick={() => onChange(null, null)} icon={<CircleSlash size={13} />}>
         {t("loop.assignee.unassigned")}
       </Dropdown.Item>
       {groups.map((g) => {
@@ -56,12 +48,7 @@ export default function AssigneePicker({
             <Dropdown.Divider />
             <Dropdown.Title>{g.label}</Dropdown.Title>
             {items.map((c) => (
-              <Dropdown.Item
-                key={c.id}
-                icon={typeIcon(c.type)}
-                active={c.id === value}
-                onClick={() => onChange(c.id)}
-              >
+              <Dropdown.Item key={c.id} icon={typeIcon(c.type)} active={c.id === value} onClick={() => onChange(c.id, c.type)}>
                 {c.name}
               </Dropdown.Item>
             ))}
@@ -73,24 +60,13 @@ export default function AssigneePicker({
 
   return (
     <Dropdown render={menu} trigger="click" position="bottomLeft">
-      <span
-        className="loop-assignee-trigger"
-        style={{ fontSize: size === "small" ? 12 : 13 }}
-      >
+      <span className="loop-assignee-trigger" style={{ fontSize: size === "small" ? 12 : 13 }}>
         {current || valueName ? (
           <>
-            <Avatar
-              size="extra-extra-small"
-              color={
-                (current?.avatar_color as never) ??
-                (ASSIGNEE_TYPE_COLOR[current?.type ?? "member"] as never)
-              }
-            >
+            <Avatar size="extra-extra-small" color={ASSIGNEE_TYPE_COLOR[current?.type ?? "member"] as never}>
               {(current?.name ?? valueName ?? "?").slice(0, 1)}
             </Avatar>
-            <span className="loop-assignee-name">
-              {current?.name ?? valueName}
-            </span>
+            <span className="loop-assignee-name">{current?.name ?? valueName}</span>
           </>
         ) : (
           <span className="loop-assignee-empty">
@@ -105,13 +81,7 @@ export default function AssigneePicker({
 }
 
 /** 只读小徽标：展示 assignee 类型 + 名称。 */
-export function AssigneeBadge({
-  type,
-  name,
-}: {
-  type: AssigneeType | null;
-  name: string | null;
-}) {
+export function AssigneeBadge({ type, name }: { type: AssigneeType | null; name: string | null }) {
   if (!type || !name) return <span className="loop-assignee-empty">—</span>;
   return (
     <Tag color={ASSIGNEE_TYPE_COLOR[type]} size="small" shape="circle">

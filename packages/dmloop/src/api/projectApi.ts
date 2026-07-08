@@ -1,17 +1,28 @@
-// @octo/loop — Project API（真实 HTTP，对齐 multica REST 契约）
+// @octo/loop — Project API（真实 fleet 联调）
 import type { Project, UpsertProjectReq, ListParams } from "./types";
-import { httpGet, httpPost, httpPut, httpDelete, currentWorkspaceId } from "./http";
+import { httpGet, httpPost, httpPut, httpDelete } from "./http";
+import { ensureDirectory, actorName } from "./directory";
 
 export async function listProjects(params?: ListParams): Promise<Project[]> {
-  const data = await httpGet<{ projects: Project[]; total: number }>("/projects", {
-    workspace_id: params?.workspace_id ?? currentWorkspaceId(),
-    keyword: params?.keyword,
-  });
-  return data.projects;
+  const [data, dir] = await Promise.all([
+    httpGet<{ projects: Project[]; total?: number }>("/projects"),
+    ensureDirectory(),
+  ]);
+  let rows = (data.projects ?? []).map((p) => ({
+    ...p,
+    lead_name: actorName(dir, p.lead_type, p.lead_id),
+  }));
+  const kw = params?.keyword?.trim().toLowerCase();
+  if (kw) rows = rows.filter((p) => p.title.toLowerCase().includes(kw));
+  return rows;
 }
 
-export function getProject(id: string): Promise<Project> {
-  return httpGet<Project>(`/projects/${id}`);
+export async function getProject(id: string): Promise<Project> {
+  const [p, dir] = await Promise.all([
+    httpGet<Project>(`/projects/${id}`),
+    ensureDirectory(),
+  ]);
+  return { ...p, lead_name: actorName(dir, p.lead_type, p.lead_id) };
 }
 
 export function createProject(req: UpsertProjectReq): Promise<Project> {

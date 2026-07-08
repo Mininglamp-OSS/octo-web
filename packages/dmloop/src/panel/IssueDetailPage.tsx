@@ -168,7 +168,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         trigger="hover"
         render={
           <Dropdown.Menu>
-            <Dropdown.Item icon={<CircleSlash size={13} />} onClick={() => patch({ assignee_id: null })}>
+            <Dropdown.Item icon={<CircleSlash size={13} />} onClick={() => patch({ assignee_id: null, assignee_type: null })}>
               {t("loop.assignee.unassigned")}
             </Dropdown.Item>
             {(["member", "agent", "squad"] as const).map((type) => {
@@ -179,7 +179,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                   <Dropdown.Divider />
                   <Dropdown.Title>{t(`loop.assignee.${type}`)}</Dropdown.Title>
                   {items.map((c) => (
-                    <Dropdown.Item key={c.id} active={issue?.assignee_id === c.id} onClick={() => patch({ assignee_id: c.id })}>
+                    <Dropdown.Item key={c.id} active={issue?.assignee_id === c.id} onClick={() => patch({ assignee_id: c.id, assignee_type: c.type })}>
                       {c.name}
                     </Dropdown.Item>
                   ))}
@@ -374,8 +374,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               <dd>
                 <AssigneePicker
                   value={issue.assignee_id}
-                  valueName={issue.assignee_name}
-                  onChange={(id) => patch({ assignee_id: id })}
+                  valueName={issue.assignee_name ?? null}
+                  onChange={(id, type) => patch({ assignee_id: id, assignee_type: type })}
                 />
               </dd>
               <dt>{t("loop.field.project")}</dt>

@@ -222,13 +222,13 @@ export default function AgentDetailPage({
               </div>
             </TabPane>
 
-            <TabPane tab={`${t("loop.agent.skills")} (${agent.skills.length})`} itemKey="skills">
+            <TabPane tab={`${t("loop.agent.skills")} (${(agent.skills ?? []).length})`} itemKey="skills">
               <div className="loop-adp__tabpane">
-                {agent.skills.length === 0 ? (
+                {(agent.skills ?? []).length === 0 ? (
                   <Text type="tertiary">{t("loop.agent.noSkills")}</Text>
                 ) : (
                   <div className="loop-adp__chips">
-                    {agent.skills.map((s) => <Tag key={s} size="large" color="cyan">{s}</Tag>)}
+                    {(agent.skills ?? []).map((s) => <Tag key={s.id} size="large" color="cyan">{s.name}</Tag>)}
                   </div>
                 )}
               </div>

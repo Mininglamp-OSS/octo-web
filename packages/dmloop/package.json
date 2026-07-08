@@ -8,8 +8,7 @@
     "@douyinfe/semi-icons": "^2.93.0",
     "@douyinfe/semi-ui": "^2.93.0",
     "axios": "^0.25.0",
-    "lucide-react": "^0.577.0",
-    "msw": "^2.7.0"
+    "lucide-react": "^0.577.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.28",
