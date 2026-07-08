@@ -29,7 +29,8 @@ export const DEFAULT_STICKER_UPLOAD_LIMITS: StickerUploadLimits = {
 
 function parsePositiveInt(value: unknown, fallback: number): number {
   const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+  const floored = Math.floor(n);
+  return Number.isFinite(floored) && floored > 0 ? floored : fallback;
 }
 
 function parseAllowedFormats(value: unknown, fallback: string[]): string[] {

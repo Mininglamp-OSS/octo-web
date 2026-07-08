@@ -42,6 +42,18 @@ describe("parseStickerUploadLimits", () => {
         }
     )
 
+    // PR #555 review: a fraction in (0,1) used to pass the pre-floor `n > 0` check and then
+    // floor to 0 — falling through as a "valid" 0 instead of the fallback, which would brick
+    // every upload (file.size > 0 is always true). Guard against that regressing.
+    it.each([0.5, 0.9, 0.999, "0.5"])(
+        "does not let a fractional max_size_kb %s floor to 0 and slip past the fallback",
+        (value) => {
+            expect(parseStickerUploadLimits({ max_size_kb: value }).maxSizeKB).toBe(
+                DEFAULT_STICKER_UPLOAD_LIMITS.maxSizeKB
+            )
+        }
+    )
+
     it("accepts a numeric string for max_dimension (defensive against string-typed JSON)", () => {
         expect(parseStickerUploadLimits({ max_dimension: "900" }).maxDimension).toBe(900)
     })
