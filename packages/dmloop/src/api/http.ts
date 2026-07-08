@@ -2,6 +2,7 @@
 // 所有请求走 /fleet/api/v1（Vite dev proxy → http://127.0.0.1:8091），路径与 fleet 契约一致。
 // workspace 相关接口统一携带 header `x-workspace-slug`（值取自顶部 workspace 下拉当前 slug）。
 import axios from "axios";
+import { WKApp } from "@octo/base";
 
 export const LOOP_API_BASE =
   (import.meta as { env?: Record<string, string> }).env?.VITE_LOOP_API_BASE ||
@@ -57,10 +58,17 @@ export function setWorkspaceContext(slug: string, id: string): void {
   _workspaceId = id || "";
 }
 
-// 统一注入 x-workspace-slug + CSRF token。
+// 统一注入 x-workspace-slug + 鉴权 header + CSRF token。
 client.interceptors.request.use((config) => {
   config.headers = config.headers ?? {};
   if (_workspaceSlug) config.headers["x-workspace-slug"] = _workspaceSlug;
+  // fleet 后端对 loop 全域接口校验以下两个鉴权 header，复用 octo-web 其他模块
+  // （dmworkbase APIClient）的取值来源：token 取自 WKApp.loginInfo.token，
+  // space_id 取自 WKApp.shared.currentSpaceId。仅在非空时注入。
+  const token = WKApp.loginInfo.token;
+  if (token) config.headers["token"] = token;
+  const spaceId = WKApp.shared.currentSpaceId;
+  if (spaceId) config.headers["X-Space-Id"] = spaceId;
   const method = (config.method ?? "get").toLowerCase();
   if (method !== "get" && method !== "head") {
     config.headers["X-CSRF-Token"] = ensureCsrfToken();
