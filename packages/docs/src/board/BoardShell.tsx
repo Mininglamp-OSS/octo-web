@@ -17,6 +17,8 @@ import { getDoc } from '../pages/docsApi.ts'
 import type { Role } from '../auth/roles.ts'
 import { i18n, t } from '../octoweb/index.ts'
 import { loadBoardScene, persistBoardScene, clearBoardScene, type BoardScene } from './boardStore.ts'
+import { BoardMainMenu, type ExcalidrawMainMenu } from './BoardMainMenu.tsx'
+import { installExcalidrawDebrand } from './excalidrawDebrand.ts'
 import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
 import type { ExcalidrawElement, BinaryFileData } from './collab/index.ts'
 import {
@@ -59,6 +61,8 @@ interface ExcalidrawProps {
   theme?: 'light' | 'dark'
   langCode?: string
   UIOptions?: Record<string, unknown>
+  /** Custom menu / dialog composition rendered inside the canvas (we supply a de-branded MainMenu). */
+  children?: ReactNode
 }
 type ExcalidrawComponent = ComponentType<ExcalidrawProps>
 
@@ -175,6 +179,10 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const { docId, title, onBack, onExit, onTitleSaved, onDeleted, collabSession, collab, user } = props
 
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
+  // Excalidraw's `MainMenu` compound component, captured off the same dynamic import. Rendered as a
+  // child of the canvas so our de-branded menu (no "Excalidraw links" group) replaces the built-in
+  // fallback menu (XIN-531 item 1).
+  const [MainMenu, setMainMenu] = useState<ExcalidrawMainMenu | null>(null)
   const [failed, setFailed] = useState(false)
   const [role, setRole] = useState<Role | undefined>(undefined)
   // Whether the role lookup / collab-token has resolved (success OR failure). Distinguishes
@@ -266,6 +274,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         }
         restoreElementsRef.current = m.restoreElements ?? null
         reconcileElementsRef.current = m.reconcileElements ?? null
+        setMainMenu(() => mod.MainMenu as unknown as ExcalidrawMainMenu)
         setExcalidraw(() => mod.Excalidraw as unknown as ExcalidrawComponent)
       })
       .catch((err) => {
@@ -289,6 +298,15 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       return undefined
     }
   }, [])
+
+  // De-brand the two mermaid surfaces Excalidraw 0.18.1 exposes no i18n/composition seam for — the
+  // "更多工具 → Mermaid 至 Excalidraw" menu item and the Mermaid dialog title/description (XIN-531
+  // items 3 & 4). Starts once the canvas is loaded; the observer covers both the in-canvas menu and
+  // the body-portal dialog. Disposed on unmount / re-import.
+  useEffect(() => {
+    if (!Excalidraw || typeof document === 'undefined') return
+    return installExcalidrawDebrand(document)
+  }, [Excalidraw])
 
   // Resolve the caller's role for THIS board so a reader gets a read-only canvas.
   //
@@ -605,7 +623,11 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               viewModeEnabled={readOnly}
               theme={dark ? 'dark' : 'light'}
               langCode={langCode}
-            />
+            >
+              {/* De-branded hamburger menu: Excalidraw's default items minus the "Excalidraw
+                  links" (Socials) group (XIN-531 item 1). */}
+              {MainMenu && <BoardMainMenu MainMenu={MainMenu} />}
+            </Excalidraw>
           </BoardErrorBoundary>
         )}
       </div>
