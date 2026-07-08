@@ -6,6 +6,7 @@ import type { Project, ProjectStatus, IssuePriority } from "../api/types";
 import { listProjects, createProject, deleteProject } from "../api/projectApi";
 import ProjectDetailPage from "../panel/ProjectDetailPage";
 import { PROJECT_STATUS_ORDER, PROJECT_STATUS_COLOR, PRIORITY_ORDER, PRIORITY_COLOR } from "../ui/meta";
+import { confirmDelete } from "../ui/confirmDelete";
 
 const { Title, Text } = Typography;
 
@@ -52,7 +53,7 @@ export default function ProjectPage() {
     { title: t("loop.field.priority"), dataIndex: "priority", width: 100, render: (v: IssuePriority) => <Tag color={PRIORITY_COLOR[v]} size="small">{t(`loop.priority.${v}`)}</Tag> },
     { title: t("loop.project.progress"), dataIndex: "issue_count", width: 170, render: (_v: number, r: Project) => <Progress done={r.done_count} total={r.issue_count} /> },
     { title: t("loop.project.lead"), dataIndex: "lead_name", width: 120, render: (v: string | null) => <Text>{v ?? "—"}</Text> },
-    { title: "", dataIndex: "id", width: 60, render: (v: string) => <Popconfirm title={t("loop.confirm.delete")} onConfirm={() => remove(v)}><Button theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />} /></Popconfirm> },
+    { title: "", dataIndex: "id", width: 60, render: (v: string) => <Button theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />} onClick={() => confirmDelete({ title: t("loop.confirm.delete"), okText: t("loop.action.delete"), cancelText: t("loop.action.cancel"), onOk: () => remove(v) })} /> },
   ];
 
   return (

@@ -6,6 +6,7 @@ import type { Squad, AssigneeCandidate } from "../api/types";
 import { listSquads, createSquad, deleteSquad } from "../api/squadApi";
 import { listAssigneeCandidates } from "../api/issueApi";
 import SquadDetailPage from "../panel/SquadDetailPage";
+import { confirmDelete } from "../ui/confirmDelete";
 
 const { Title, Text } = Typography;
 
@@ -61,7 +62,7 @@ export default function SquadPage() {
       </span>) },
     { title: t("loop.squad.leader"), dataIndex: "leader_name", width: 160, render: (v: string | null) => <Text>{v ?? "—"}</Text> },
     { title: t("loop.squad.members"), dataIndex: "member_count", width: 110, render: (v: number | undefined, r: Squad) => <Text>{v ?? (r.members ?? []).length}</Text> },
-    { title: "", dataIndex: "id", width: 60, render: (v: string) => <Popconfirm title={t("loop.confirm.delete")} onConfirm={() => remove(v)}><Button theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />} /></Popconfirm> },
+    { title: "", dataIndex: "id", width: 60, render: (v: string) => <Button theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />} onClick={() => confirmDelete({ title: t("loop.confirm.delete"), okText: t("loop.action.delete"), cancelText: t("loop.action.cancel"), onOk: () => remove(v) })} /> },
   ];
 
   return (

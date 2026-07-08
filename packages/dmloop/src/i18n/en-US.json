@@ -11,7 +11,8 @@
     "project": "Project",
     "agent": "Agent",
     "squad": "Squad",
-    "runtime": "Devices"
+    "runtime": "Devices",
+    "settings": "Settings"
   },
   "runtime": {
     "provider": "Provider",
@@ -53,7 +54,14 @@
     "edit": "Edit"
   },
   "workspace": {
-    "title": "Workspaces"
+    "title": "Workspaces",
+    "create": "Create workspace",
+    "created": "Workspace created",
+    "none": "No workspace",
+    "nameRequired": "Workspace name is required",
+    "slugRequired": "Slug is required",
+    "emptyTitle": "No workspace yet",
+    "emptyDesc": "Create a workspace to start using Loop."
   },
   "taskStatus": {
     "queued": "Queued",
@@ -244,5 +252,23 @@
     "pickRuntime": "Select a runtime to view detail",
     "agentsUsing": "Agents using",
     "noAgents": "No agents use this runtime"
+  },
+  "settings": {
+    "general": "General",
+    "members": "Members",
+    "noWorkspace": "Select or create a workspace first",
+    "wsName": "Workspace name",
+    "wsSlug": "Workspace slug",
+    "slugHint": "Slug cannot be changed after creation",
+    "issuePrefix": "Issue prefix",
+    "role": "Role",
+    "removeMember": "Remove member",
+    "revokeInvite": "Revoke invitation",
+    "emailRequired": "Email is required",
+    "invited": "Invitation sent",
+    "inviteEmail": "Invite a member by email",
+    "invite": "Invite",
+    "pendingInvites": "Pending invitations",
+    "revoke": "Revoke"
   }
 }

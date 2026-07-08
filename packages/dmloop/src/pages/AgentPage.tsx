@@ -6,6 +6,7 @@ import type { Agent, AgentStatus, AgentVisibility, RuntimeDevice } from "../api/
 import { listAgents, createAgent, archiveAgent, listRuntimesForAgent } from "../api/agentApi";
 import AgentDetailPage from "../panel/AgentDetailPage";
 import { AGENT_STATUS_COLOR } from "../ui/meta";
+import { confirmDelete } from "../ui/confirmDelete";
 
 const { Title, Text } = Typography;
 
@@ -61,7 +62,7 @@ export default function AgentPage() {
     { title: t("loop.field.status"), dataIndex: "status", width: 110, render: (v: AgentStatus) => <Tag color={AGENT_STATUS_COLOR[v as keyof typeof AGENT_STATUS_COLOR] ?? "grey"} size="small">{t(`loop.agentStatus.${v}`)}</Tag> },
     { title: t("loop.agent.runtime"), dataIndex: "runtime_name", width: 160, render: (v: string | null) => <Text>{v ?? "—"}</Text> },
     { title: t("loop.agent.model"), dataIndex: "model", width: 160 },
-    { title: "", dataIndex: "id", width: 60, render: (v: string) => <Popconfirm title={t("loop.confirm.delete")} onConfirm={() => remove(v)}><Button theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />} /></Popconfirm> },
+    { title: "", dataIndex: "id", width: 60, render: (v: string) => <Button theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />} onClick={() => confirmDelete({ title: t("loop.confirm.delete"), okText: t("loop.action.delete"), cancelText: t("loop.action.cancel"), onOk: () => remove(v) })} /> },
   ];
 
   return (

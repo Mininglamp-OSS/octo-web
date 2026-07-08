@@ -11,7 +11,8 @@
     "project": "项目",
     "agent": "智能体",
     "squad": "小队",
-    "runtime": "设备"
+    "runtime": "设备",
+    "settings": "设置"
   },
   "runtime": {
     "provider": "提供方",
@@ -53,7 +54,14 @@
     "edit": "编辑"
   },
   "workspace": {
-    "title": "工作空间"
+    "title": "工作空间",
+    "create": "创建工作区",
+    "created": "工作区已创建",
+    "none": "无工作区",
+    "nameRequired": "请填写工作区名称",
+    "slugRequired": "请填写 slug",
+    "emptyTitle": "还没有工作区",
+    "emptyDesc": "创建一个工作区开始使用 Loop。"
   },
   "taskStatus": {
     "queued": "排队中",
@@ -244,5 +252,23 @@
     "pickRuntime": "选择一个 Runtime 查看详情",
     "agentsUsing": "使用中的智能体",
     "noAgents": "暂无智能体使用该 Runtime"
+  },
+  "settings": {
+    "general": "通用",
+    "members": "成员管理",
+    "noWorkspace": "请先选择或创建工作区",
+    "wsName": "工作区名称",
+    "wsSlug": "工作区 slug",
+    "slugHint": "slug 创建后不可修改",
+    "issuePrefix": "Issue 前缀",
+    "role": "角色",
+    "removeMember": "移除成员",
+    "revokeInvite": "撤销邀请",
+    "emailRequired": "请填写邮箱",
+    "invited": "邀请已发送",
+    "inviteEmail": "输入邮箱邀请成员",
+    "invite": "邀请",
+    "pendingInvites": "待处理邀请",
+    "revoke": "撤销"
   }
 }

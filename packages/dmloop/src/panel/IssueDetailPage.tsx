@@ -42,6 +42,7 @@ import {
 import { listRuns } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
 import LoopMarkdown from "../ui/LoopMarkdown";
+import { confirmDelete } from "../ui/confirmDelete";
 import RunDetailModal from "./RunDetailModal";
 import {
   ISSUE_STATUS_ORDER,
@@ -248,12 +249,13 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               {t("loop.comment.reply")}
             </Button>
           )}
-          <Popconfirm
-            title={t("loop.comment.deleteConfirm")}
-            onConfirm={() => removeComment(c.id)}
-          >
-            <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />} />
-          </Popconfirm>
+          <Button
+            size="small"
+            theme="borderless"
+            type="danger"
+            icon={<Trash2 size={13} />}
+            onClick={() => confirmDelete({ title: t("loop.comment.deleteConfirm"), okText: t("loop.action.delete"), cancelText: t("loop.action.cancel"), onOk: () => removeComment(c.id) })}
+          />
         </div>
       </div>
       <div className="loop-comment__body"><LoopMarkdown content={c.content} /></div>

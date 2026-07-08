@@ -1,6 +1,6 @@
-// @octo/loop — Workspace API（真实 fleet 联调）
-import type { Workspace, WorkspaceMember } from "./types";
-import { httpGet, httpPost } from "./http";
+// @octo/loop — Workspace / Members / Invitations API（真实 fleet 联调）
+import type { Workspace, WorkspaceMember, Invitation } from "./types";
+import { httpGet, httpPost, httpPatch, httpDelete } from "./http";
 
 export function listWorkspaces(): Promise<Workspace[]> {
   return httpGet<Workspace[]>("/workspaces");
@@ -17,3 +17,44 @@ export function createWorkspace(req: {
 }): Promise<Workspace> {
   return httpPost<Workspace>("/workspaces", req);
 }
+
+/** 通用设置：更新 workspace（PATCH）。 */
+export function updateWorkspace(
+  id: string,
+  req: { name?: string; description?: string; context?: string; issue_prefix?: string },
+): Promise<Workspace> {
+  return httpPatch<Workspace>(`/workspaces/${id}`, req);
+}
+
+/** 成员管理：邀请成员（按邮箱，返回 Invitation）。 */
+export function inviteMember(
+  workspaceId: string,
+  req: { email: string; role?: string },
+): Promise<Invitation> {
+  return httpPost<Invitation>(`/workspaces/${workspaceId}/members`, req);
+}
+
+/** 修改成员角色。 */
+export function updateMemberRole(
+  workspaceId: string,
+  memberId: string,
+  role: string,
+): Promise<WorkspaceMember> {
+  return httpPatch<WorkspaceMember>(`/workspaces/${workspaceId}/members/${memberId}`, { role });
+}
+
+/** 移除成员。 */
+export function removeMember(workspaceId: string, memberId: string): Promise<void> {
+  return httpDelete<void>(`/workspaces/${workspaceId}/members/${memberId}`);
+}
+
+/** 待处理邀请列表。 */
+export function listWorkspaceInvitations(workspaceId: string): Promise<Invitation[]> {
+  return httpGet<Invitation[]>(`/workspaces/${workspaceId}/invitations`);
+}
+
+/** 撤销邀请。 */
+export function revokeInvitation(workspaceId: string, invitationId: string): Promise<void> {
+  return httpDelete<void>(`/workspaces/${workspaceId}/invitations/${invitationId}`);
+}
+

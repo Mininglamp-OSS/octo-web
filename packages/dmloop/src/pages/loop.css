@@ -440,3 +440,6 @@
 .loop-skill-rtitem__main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .loop-skill-rtitem__main strong { font-size: 13px; }
 .loop-skill-rtitem__main small { font-size: 12px; color: var(--semi-color-text-2,#8590a6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 设置页-成员邀请行 */
+.loop-settings-invite { display: flex; gap: 8px; align-items: center; }

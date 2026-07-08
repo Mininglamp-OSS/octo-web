@@ -12,6 +12,7 @@ import {
 } from "../api/skillApi";
 import { listRuntimes } from "../api/runtimeApi";
 import SkillDetailPage from "../panel/SkillDetailPage";
+import { confirmDelete } from "../ui/confirmDelete";
 
 const { Title, Text } = Typography;
 const SRC: Record<string, "green" | "blue" | "grey"> = { github: "green", local: "blue", workspace: "grey" };
@@ -102,7 +103,7 @@ export default function SkillPage() {
     { title: t("loop.field.name"), dataIndex: "name", render: (v: string, r: Skill) => <span className="loop-cell-title" onClick={() => openDetail(r.id)}>{v}</span> },
     { title: t("loop.field.description"), dataIndex: "description", render: (v: string) => <Text type="tertiary">{v || "—"}</Text> },
     { title: t("loop.skill.source"), dataIndex: "id", width: 120, render: (_v: string, r: Skill) => { const s = skillSource(r); return <Tag color={SRC[s]} size="small">{t(`loop.skill.sourceType.${s}`)}</Tag>; } },
-    { title: "", dataIndex: "id", width: 60, render: (v: string) => <Popconfirm title={t("loop.confirm.delete")} onConfirm={() => remove(v)}><Button theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />} /></Popconfirm> },
+    { title: "", dataIndex: "id", width: 60, render: (v: string) => <Button theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />} onClick={() => confirmDelete({ title: t("loop.confirm.delete"), okText: t("loop.action.delete"), cancelText: t("loop.action.cancel"), onOk: () => remove(v) })} /> },
   ];
 
   return (

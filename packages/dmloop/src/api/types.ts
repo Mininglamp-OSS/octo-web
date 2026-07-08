@@ -33,6 +33,16 @@ export interface WorkspaceMember {
   avatar_url?: string | null;
 }
 
+export interface Invitation {
+  id: string;
+  workspace_id: string;
+  inviter_id?: string;
+  invitee_email: string;
+  invitee_user_id?: string | null;
+  role: string;
+  created_at?: string;
+}
+
 export interface ListParams {
   workspace_id?: string;
   keyword?: string;
