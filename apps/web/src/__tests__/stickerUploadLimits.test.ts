@@ -62,7 +62,9 @@ describe("sticker_upload_limits appconfig web integration", () => {
     expect(source).toContain("file.size > limits.maxSizeKB * 1024");
     // Dimension check is new: no hardcoded MAX_STICKER_BYTES/ACCEPTED_STICKER_TYPES remain.
     expect(source).toContain("readStickerImageDimensions(file)");
-    expect(source).toContain("limits.maxDimension");
+    // Re-read live after the decode await rather than reusing the pre-await snapshot
+    // (the one check in this file that spans an await, so it needs its own fresh read).
+    expect(source).toContain("freshLimits.maxDimension");
     expect(source).not.toContain("MAX_STICKER_BYTES");
     expect(source).not.toContain("ACCEPTED_STICKER_TYPES");
     // A local decode failure must fail OPEN (proceed to upload), not block a legitimate file.

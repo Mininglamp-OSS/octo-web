@@ -314,18 +314,30 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
             Toast.error(t("base.sticker.tooLarge", { values: { size: formatStickerSizeLimit(limits.maxSizeKB) } }))
             return
         }
-        const dimensions = await readStickerImageDimensions(file)
-        if (this.isUnmounted) {
-            return
-        }
-        // 解码失败（文件损坏等）fail-open：本地探测不出宽高不代表文件不合法，交给服务端
-        // modules/file 侧做最终判断，不能因为这一步本地探测失败就拦掉本该合法的上传。
-        if (dimensions && (dimensions.width > limits.maxDimension || dimensions.height > limits.maxDimension)) {
-            Toast.error(t("base.sticker.dimensionTooLarge", { values: { dimension: String(limits.maxDimension) } }))
-            return
-        }
+        // 在发起 dimension 探测(唯一的异步校验步骤)之前就置位 uploading, 让「+」按钮的
+        // !uploading 门控立刻生效——否则解码期间按钮仍可点击, 用户能在同一张贴纸还没
+        // 校验完时再选一张, 触发两个并发的 onFileChange/uploadSticker。finally 统一收尾
+        // 保证无论哪条分支返回, uploading 都会被重置。
         this.setState({ uploading: true })
         try {
+            const dimensions = await readStickerImageDimensions(file)
+            if (this.isUnmounted) {
+                return
+            }
+            // dimension 探测这段 await 期间, stickerCustomEnabled / 上传上限都可能被运维
+            // 改掉, 沿用 await 之前捕获的旧值校验就失去了「实时」的意义。这里重新读一次
+            // 最新快照, 和顶部 stickerCustomEnabled 守卫是同一套 TOCTOU 顾虑, 覆盖到新增
+            // 的这段异步窗口。
+            if (!WKApp.remoteConfig.stickerCustomEnabled) {
+                return
+            }
+            const freshLimits = WKApp.remoteConfig.stickerUploadLimits
+            // 解码失败（文件损坏等）fail-open：本地探测不出宽高不代表文件不合法，交给服务端
+            // modules/file 侧做最终判断，不能因为这一步本地探测失败就拦掉本该合法的上传。
+            if (dimensions && (dimensions.width > freshLimits.maxDimension || dimensions.height > freshLimits.maxDimension)) {
+                Toast.error(t("base.sticker.dimensionTooLarge", { values: { dimension: String(freshLimits.maxDimension) } }))
+                return
+            }
             const uploaded = await WKApp.dataSource.commonDataSource.uploadSticker(file)
             await WKApp.dataSource.commonDataSource.addSticker({ path: uploaded.path, format: uploaded.format })
             await this.requestStickers()

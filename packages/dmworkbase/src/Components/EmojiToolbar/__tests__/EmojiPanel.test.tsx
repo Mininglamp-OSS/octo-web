@@ -438,3 +438,67 @@ describe("EmojiPanel sticker upload validation (WKApp.remoteConfig.stickerUpload
         expect(fileInputEl().accept).toBe(".png,.webp");
     });
 });
+
+describe("EmojiPanel sticker upload — async race fixes", () => {
+    const bytes = (size: number) => new Uint8Array(size);
+
+    it("sets uploading synchronously before the dimension-decode await resolves, closing the re-entrancy window", () => {
+        // 修复前 uploading 只在 dimension 探测 resolve 之后才置位, 探测期间「+」按钮的
+        // !uploading 门控形同虚设, 用户能在同一次选择还没校验完时再选一张触发并发上传。
+        render(<EmojiPanel />);
+        // spinner 图标只在 isSticker(切到「我的贴纸」tab)时才会挂载, 先切过去。
+        act(() => {
+            tabs()[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        act(() => {
+            selectFile(new File([bytes(100)], "s.png", { type: "image/png" }));
+        });
+        // 此刻 dimension 探测的 queueMicrotask 还没跑(没有 flush), 但同步校验通过后
+        // uploading 应该已经是 true——spinner 图标是 uploading 状态在 DOM 上的唯一体现。
+        expect(container.querySelector(".wk-sticker-spin")).not.toBeNull();
+    });
+
+    it("resets uploading back to false after the post-await dimension check rejects the file", async () => {
+        hoisted.state.nextImageResult = { width: 1024, height: 300 };
+        render(<EmojiPanel />);
+        act(() => {
+            tabs()[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        selectFile(new File([bytes(100)], "s.png", { type: "image/png" }));
+        await flush();
+
+        expect(container.querySelector(".wk-sticker-spin")).toBeNull();
+        expect(hoisted.uploadSticker).not.toHaveBeenCalled();
+    });
+
+    it("re-reads live stickerUploadLimits after the dimension-decode await instead of the pre-await snapshot", async () => {
+        // 300x10 在初始 maxDimension=512 下本应通过; 探测这段 await 期间运维把上限收窄到
+        // 200——校验必须用收窄后的新值判断, 而不是发起探测那一刻捕获的旧 limits。
+        hoisted.state.nextImageResult = { width: 300, height: 10 };
+        queueMicrotask(() => {
+            hoisted.state.stickerUploadLimits = {
+                ...hoisted.state.stickerUploadLimits,
+                maxDimension: 200,
+            };
+        });
+        render(<EmojiPanel />);
+        selectFile(new File([bytes(100)], "s.png", { type: "image/png" }));
+        await flush();
+
+        expect(hoisted.toastError).toHaveBeenCalledWith(
+            expect.stringContaining('"dimension":"200"')
+        );
+        expect(hoisted.uploadSticker).not.toHaveBeenCalled();
+    });
+
+    it("re-checks stickerCustomEnabled after the dimension-decode await and blocks a mid-flight disable", async () => {
+        queueMicrotask(() => {
+            hoisted.state.stickerCustomEnabled = false;
+        });
+        render(<EmojiPanel />);
+        selectFile(new File([bytes(100)], "s.png", { type: "image/png" }));
+        await flush();
+
+        expect(hoisted.uploadSticker).not.toHaveBeenCalled();
+    });
+});
