@@ -51,8 +51,12 @@ export default class GlobalSearch extends Component<GlobalSearchProps> {
             WKApp.endpoints.showConversation(channel, {
                 initLocateMessageSeq: item.messageSeq,
             });
-        } catch (_) {
-            // no-op: showConversation is expected to be present in the runtime.
+        } catch (err) {
+            // showConversation is expected to be present in the runtime;
+            // log so we notice when the endpoint contract regresses instead
+            // of silently landing the user on the same screen.
+            // eslint-disable-next-line no-console
+            console.warn("[GlobalSearch] showConversation failed", err);
         }
     }
 
