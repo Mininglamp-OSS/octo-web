@@ -12,6 +12,12 @@ export interface DocMoreMenuItem {
   onClick: () => void
   danger?: boolean
   disabled?: boolean
+  /**
+   * Optional nested rows. When present the row acts as an expandable submenu: clicking it toggles
+   * the children instead of firing `onClick`. Used by the export row to fan out into
+   * Markdown / Word / PDF without leaving the ≡ menu.
+   */
+  children?: DocMoreMenuItem[]
 }
 
 export interface DocMoreMenuProps {
@@ -110,7 +116,46 @@ export const DeleteIcon = (
   </RowIcon>
 )
 
+/** ▸ caret shown on submenu rows; rotates to ▾ when expanded (CSS `.is-open`). */
+function CaretIcon() {
+  return (
+    <svg className="octo-doc-more-caret" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+      <path d="M8 6l4 4-4 4" />
+    </svg>
+  )
+}
+
 function MenuRow({ item, onSelect }: { item: DocMoreMenuItem; onSelect: () => void }) {
+  const [expanded, setExpanded] = useState(false)
+  const hasChildren = !!item.children && item.children.length > 0
+
+  if (hasChildren) {
+    return (
+      <li role="none">
+        <button
+          type="button"
+          role="menuitem"
+          aria-haspopup="true"
+          aria-expanded={expanded}
+          className={expanded ? 'octo-doc-more-item is-parent is-open' : 'octo-doc-more-item is-parent'}
+          disabled={item.disabled}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <span className="octo-doc-more-icon">{item.icon}</span>
+          <span className="octo-doc-more-label">{item.label}</span>
+          <CaretIcon />
+        </button>
+        {expanded && (
+          <ul className="octo-doc-more-list octo-doc-more-sublist" role="menu">
+            {item.children!.map((child) => (
+              <MenuRow key={child.key} item={child} onSelect={onSelect} />
+            ))}
+          </ul>
+        )}
+      </li>
+    )
+  }
+
   return (
     <li role="none">
       <button

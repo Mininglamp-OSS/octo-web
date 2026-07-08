@@ -35,7 +35,6 @@ import {
   DeleteIcon,
   type DocMoreMenuItem,
 } from './DocMoreMenu.tsx'
-import { ExportMenu } from './ExportMenu.tsx'
 import './styles.css'
 
 /** Which right-side drawer panel is open (mutually exclusive); null = drawer closed. */
@@ -573,10 +572,33 @@ export function EditorShell(props: EditorShellProps) {
     },
     {
       key: 'export',
-      label: t('docs.toolbar.exportMarkdown'),
+      label: t('docs.toolbar.export'),
       icon: ExportIcon,
       disabled: exporting,
-      onClick: () => void onExportMarkdown(),
+      onClick: () => {},
+      children: [
+        {
+          key: 'export-markdown',
+          label: t('docs.toolbar.exportMarkdown'),
+          icon: ExportIcon,
+          disabled: exporting,
+          onClick: () => void onExportMarkdown(),
+        },
+        {
+          key: 'export-docx',
+          label: t('docs.toolbar.exportDocx'),
+          icon: ExportIcon,
+          disabled: exporting,
+          onClick: () => void onExportDocx(),
+        },
+        {
+          key: 'export-pdf',
+          label: t('docs.toolbar.exportPdf'),
+          icon: ExportIcon,
+          disabled: exporting,
+          onClick: () => void onExportPdf(),
+        },
+      ],
     },
   )
   const deleteItem: DocMoreMenuItem | undefined = manage
@@ -642,13 +664,8 @@ export function EditorShell(props: EditorShellProps) {
               ⤴ {t('docs.forward.entry')}
             </button>
           )}
-          {/* Export dropdown — combines Markdown and Word export into one menu. */}
-          <ExportMenu
-            disabled={exporting}
-            onExportMarkdown={() => void onExportMarkdown()}
-            onExportDocx={() => void onExportDocx()}
-            onExportPdf={() => void onExportPdf()}
-          />
+          {/* Export moved into the header ≡ (more) menu as an expandable submenu
+              (Markdown / Word / PDF); the standalone dropdown was removed to avoid duplication. */}
           {manage && (
             <button
               type="button"
