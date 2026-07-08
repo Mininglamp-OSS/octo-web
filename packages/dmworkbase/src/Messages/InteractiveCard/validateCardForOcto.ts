@@ -10,8 +10,8 @@ import { RenderBudget } from "./guards";
  *   - `ok:false` ⇒ Cell 不喂 SDK，直接渲 plain（实现整卡降级）；
  *   - `ok:true`  ⇒ 交给 SDK 渲染。
  *
- * 规则**严格镜像**自研 `ACRenderer` 的抛错条件（见其注释），确保「校验面 ≥ 渲染面」，
- * 与服务端 `pkg/cardmsg` walker 对齐。
+ * 规则实现 octo 契约的整卡降级条件（元素/动作白名单、结构、URL、预算、D1），确保
+ * 「校验面 ≥ 渲染面」，与服务端 `pkg/cardmsg` walker 对齐。
  *
  * 注意分工（与整卡降级区分）：
  *   - Action.OpenUrl / selectAction 的 url 非法（javascript: 等）→ **整卡降级**（本函数 ok:false）；
@@ -28,7 +28,7 @@ export interface ValidateResult {
   ok: boolean;
 }
 
-/** 内部整卡降级信号（等价 ACRenderer 的 CardRenderError，仅用于提前中断校验）。 */
+/** 内部整卡降级信号（仅用于提前中断校验，catch 后转为 ok:false）。 */
 class OctoInvalidCard extends Error {}
 
 function asObject(v: unknown): Record<string, unknown> | null {
@@ -150,8 +150,14 @@ function validateElement(el: unknown, ctx: Ctx): void {
         throw new OctoInvalidCard("unsupported element (interactive)");
       }
       registerId(ctx, obj.id);
-      // ChoiceSet.choices present-but-非数组 → 结构损坏；choices 不逐项计入预算（见评估 C2）。
-      if (obj.type === "Input.ChoiceSet") requireArray(obj.choices);
+      if (obj.type === "Input.ChoiceSet") {
+        // 每个 choice 计入节点预算（与 FactSet.facts / actions / columns 一致，对齐服务端 walker）。
+        const choices = requireArray(obj.choices);
+        for (let i = 0; i < choices.length; i++) {
+          if (!ctx.budget.consume())
+            throw new OctoInvalidCard("node count exceeded");
+        }
+      }
       return;
     }
     default:

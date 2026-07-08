@@ -95,4 +95,28 @@ describe("renderOctoCard", () => {
     expect(imgs.some((i) => (i.getAttribute("src") || "").startsWith("https://"))).toBe(true);
     target.remove();
   });
+
+  it("requires+fallback 子树不被渲染（fallback/requires 已剥，防未校验子树逃逸）", () => {
+    const target = mountTarget();
+    renderOctoCard({
+      card: {
+        type: "AdaptiveCard",
+        version: "1.5",
+        body: [
+          {
+            type: "TextBlock",
+            text: "主内容",
+            // 未满足的 requires → SDK 本会渲染 fallback 的 <input>；剥除后不应出现。
+            requires: { cap: "1" },
+            fallback: { type: "Input.Text", id: "sneaky" },
+          },
+        ],
+      },
+      target,
+      onAction: () => {},
+    });
+    expect(target.textContent).toContain("主内容");
+    expect(target.querySelector("input")).toBeNull(); // fallback 未逃逸
+    target.remove();
+  });
 });

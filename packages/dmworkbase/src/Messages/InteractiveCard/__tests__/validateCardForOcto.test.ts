@@ -1,4 +1,4 @@
-// validateCardForOcto：octo 预校验（整卡降级判定）。逐条镜像 ACRenderer 的 fallback 契约，
+// validateCardForOcto：octo 预校验（整卡降级判定）。覆盖白名单/结构/URL/预算/D1 的降级契约，
 // 外加 octo/v2 交互元素与真实预算上限（MAX_NODES=200 / MAX_DEPTH=16）。
 
 import { describe, expect, it } from "vitest";
@@ -120,5 +120,17 @@ describe("validateCardForOcto — 真实预算上限（MAX_NODES=200 / MAX_DEPTH
     let node: Record<string, unknown> = { type: "TextBlock", text: "deep" };
     for (let i = 0; i < 17; i++) node = { type: "Container", items: [node] };
     expect(validateCardForOcto(AC([node])).ok).toBe(false);
+  });
+
+  it("Input.ChoiceSet.choices 逐项计入预算 → 超量降级", () => {
+    const choices = Array.from({ length: 201 }, (_, i) => ({
+      title: `c${i}`,
+      value: `${i}`,
+    }));
+    expect(
+      validateCardForOcto(AC([{ type: "Input.ChoiceSet", id: "c", choices }]), {
+        allowInteractive: true,
+      }).ok
+    ).toBe(false);
   });
 });

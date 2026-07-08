@@ -18,7 +18,8 @@ export const CARD_VERSION_1_5 = "1.5";
 
 /**
  * 客户端支持的 profile 集合（协商用）。
- * octo/v2 与 v1 共享 card_version 上限（<=1.5）；差异在元素/动作白名单（见 ACRenderer allowInteractive）。
+ * octo/v2 与 v1 共享 card_version 上限（<=1.5）；差异在元素/动作白名单
+ * （见 validateCardForOcto 的 allowInteractive 分支）。
  */
 export const SUPPORTED_PROFILES: ReadonlySet<string> = new Set([
   CARD_PROFILE_OCTO_V1,
@@ -34,7 +35,7 @@ export const MAX_NODES = 200;
 
 /**
  * 消息信封。`card` 保持 `Record<string, unknown>`（未解析的 AC 树），
- * 渲染时由 ACRenderer 逐节点守卫收窄；不在解码层强解，避免早失败。
+ * 由 validateCardForOcto 逐节点守卫、再交官方 SDK 渲染；不在解码层强解，避免早失败。
  */
 export interface InteractiveCardPayload {
   type: 17;
@@ -47,24 +48,3 @@ export interface InteractiveCardPayload {
   /** P2 tolerant-only，波 1 不实现任何行为。 */
   transient?: boolean;
 }
-
-/** octo/v1 支持的元素 type 字符串。 */
-export const AC_ELEMENT_TYPES = {
-  textBlock: "TextBlock",
-  image: "Image",
-  container: "Container",
-  columnSet: "ColumnSet",
-  column: "Column",
-  factSet: "FactSet",
-  /** octo/v2 交互输入元素（id 必填且帧内唯一，仅 allowInteractive 时渲染）。 */
-  inputText: "Input.Text",
-  inputToggle: "Input.Toggle",
-  inputChoiceSet: "Input.ChoiceSet",
-} as const;
-
-/** octo 支持的动作 type 字符串。 */
-export const AC_ACTION_TYPES = {
-  openUrl: "Action.OpenUrl",
-  /** octo/v2 提交动作（仅 allowInteractive 时接受）。Action.Execute 永不支持。 */
-  submit: "Action.Submit",
-} as const;

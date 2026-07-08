@@ -1,12 +1,18 @@
 import { isHttpsUrl } from "../../../Utils/security";
 
 /**
- * 喂官方 SDK 前的图片类 URL 消毒（落地计划「坑 B」）。
+ * 喂官方 SDK 前的卡树消毒（落地计划「坑 B」+ fallback/requires 收敛）。
  *
- * 契约：图片面 **https-only（混合内容防护）**——`Image.url`、容器 `backgroundImage`
+ * (1) 图片面 **https-only（混合内容防护）**——`Image.url`、容器 `backgroundImage`
  * （字符串或 `{url}` 对象形）、动作 `iconUrl`。官方 SDK 对这些字段一律原样写进 `img.src` /
  * CSS `background-image`，自身不做 scheme 检查；自研渲染器曾用 `isHttpsUrl` 守卫（占位），
  * 迁移后须在此补回。非 https 值一律**剥除**（对齐契约的 per-element 处理，不整卡降级）。
+ *
+ * (2) 剥除 **`fallback` 与 `requires`**——SDK 会在 `requires` 能力门不满足时渲染元素的
+ * `fallback` 子树；octo 的 HostConfig 未声明任何 host capability，故任意 `requires` 都不满足，
+ * SDK 会渲出 `validateCardForOcto` **从未校验过**的 fallback 子树，绕过整卡降级 / 节点预算 /
+ * D1 唯一 id / 交互门（契约禁止 per-element fallback）。剥掉这两个键即恢复「主元素照渲、
+ * 无 fallback」的旧渲染器行为——主元素已由 validateCardForOcto 白名单校验，安全照渲。
  *
  * **不动 `Action.OpenUrl.url`**：那是导航面，契约允许 http/https，且已由 validateCardForOcto
  * + 点击期 openUrl 双重 isSafeUrl 守卫。
@@ -44,6 +50,10 @@ function sanitizeNode(node: unknown): unknown {
   const obj = node as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
+    // fallback / requires：SDK 会据此渲染未经 validate 的子树 → 一律剥除（无 per-element fallback）。
+    if (key === "fallback" || key === "requires") {
+      continue;
+    }
     // Image.url：图片面 https-only（不误伤 Action.OpenUrl.url 等其它 url）。
     if (key === "url" && obj.type === "Image") {
       const safe = keepHttpsUrl(value);

@@ -95,3 +95,53 @@ describe("sanitizeCardTree — 图片面 https-only", () => {
     expect(JSON.stringify(input)).toBe(snapshot); // 原对象未被修改
   });
 });
+
+describe("sanitizeCardTree — 剥除 fallback / requires（SDK 渲染面收敛）", () => {
+  it("元素的 fallback 与 requires 被剥除（防未校验子树被 SDK 渲染）", () => {
+    const out = sanitizeCardTree({
+      type: "AdaptiveCard",
+      body: [
+        {
+          type: "TextBlock",
+          text: "x",
+          requires: { cap: "1" },
+          fallback: { type: "Input.Text", id: "sneaky" },
+        },
+      ],
+    }) as any;
+    expect(out.body[0].requires).toBeUndefined();
+    expect(out.body[0].fallback).toBeUndefined();
+    expect(out.body[0].text).toBe("x"); // 主元素其余字段保留
+  });
+
+  it("嵌套 fallback（Container 内元素）也被剥除", () => {
+    const out = sanitizeCardTree({
+      type: "AdaptiveCard",
+      body: [
+        {
+          type: "Container",
+          items: [
+            {
+              type: "TextBlock",
+              text: "y",
+              fallback: {
+                type: "Container",
+                items: [{ type: "TextBlock", text: "bomb" }],
+              },
+            },
+          ],
+        },
+      ],
+    }) as any;
+    expect(out.body[0].items[0].fallback).toBeUndefined();
+  });
+
+  it("fallback:\"drop\" 字符串形也被剥除", () => {
+    const out = sanitizeCardTree({
+      type: "AdaptiveCard",
+      body: [{ type: "Image", url: "https://cdn/a.png", fallback: "drop" }],
+    }) as any;
+    expect(out.body[0].fallback).toBeUndefined();
+    expect(out.body[0].url).toBe("https://cdn/a.png");
+  });
+});

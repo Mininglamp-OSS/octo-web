@@ -19,6 +19,40 @@ describe("createOctoSerializationContext — 动作层防御纵深", () => {
   });
 });
 
+describe("createOctoSerializationContext — 元素层防御纵深", () => {
+  it("保留 octo 白名单元素，移除非白名单元素", () => {
+    const ctx = createOctoSerializationContext();
+    const reg = ctx.elementRegistry;
+    // octo 允许的元素仍注册（Column 由 ColumnSet 内部解析，非独立注册项，不单列）。
+    for (const t of [
+      "TextBlock",
+      "Image",
+      "Container",
+      "ColumnSet",
+      "FactSet",
+      "Input.Text",
+      "Input.Toggle",
+      "Input.ChoiceSet",
+    ]) {
+      expect(reg.findByName(t)).toBeDefined();
+    }
+    // 非白名单元素被移除。
+    for (const t of [
+      "Table",
+      "Carousel",
+      "Media",
+      "RichTextBlock",
+      "ImageSet",
+      "ActionSet",
+      "Input.Number",
+      "Input.Date",
+      "Input.Time",
+    ]) {
+      expect(reg.findByName(t)).toBeUndefined();
+    }
+  });
+});
+
 describe("buildOctoHostConfig — --wk-* 颜色映射", () => {
   it("用注入解析器解析语义色，产出 HostConfig 实例", () => {
     const resolve = vi.fn((expr: string) => {
