@@ -142,6 +142,15 @@ describe('createWhiteboardSession — runtime permission wiring (P1-1 / P1-3)', 
     s.destroy()
     expect(p.destroy).toHaveBeenCalled()
   })
+
+  it('destroy() disposes the collab token on a normal session end (editor parity)', () => {
+    const disposeToken = vi.fn()
+    const s = createWhiteboardSession({ ...BASE, initialRole: 'writer', initialEpoch: 1, disposeToken })
+    s.destroy()
+    // Mirrors createCollabEditor.destroyAll: a normal teardown drops the cached token so it is not
+    // left to expire (hygiene/parity — the 4403 revoke path already disposes on its own).
+    expect(disposeToken).toHaveBeenCalledWith(DOC_NAME)
+  })
 })
 
 describe('createWhiteboardSession — ordered cache teardown on revoke (P1-1)', () => {

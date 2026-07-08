@@ -569,6 +569,17 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // data-at-rest gap for a revoked/deleted board.
   useEffect(() => {
     if (terminal.kind === 'deleted' || terminal.kind === 'not-found') {
+      // Cancel the pending debounced save and drop the in-flight scene snapshot BEFORE clearing the
+      // mirror. An edit made just before the revoke leaves a saveTimer armed (SAVE_DEBOUNCE_MS) with
+      // `latestScene` populated; without this cancel that timer fires ~600ms after the clear and
+      // re-persists the wiped scene to `octo.board.scene.{uid}.{docId}`, reopening the P1-1
+      // data-at-rest gap this teardown closes. onChange already early-returns once `terminalActive`,
+      // so no new timer can be scheduled past this point — cancelling the armed one is sufficient.
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+        saveTimer.current = null
+      }
+      latestScene.current = null
       clearBoardScene(docId, uid)
       returnToList?.()
     }

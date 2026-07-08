@@ -253,6 +253,12 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
       provider.destroy()
       persistence?.destroy()
       ydoc.destroy()
+      // Parity with the doc editor's destroyAll (createCollabEditor.ts:241): dispose the cached
+      // collab token on a NORMAL session end too, so the editor's token cache stays consistent and
+      // the JWT is dropped promptly instead of lingering until it expires. Hygiene only, not a
+      // security fix — a true revoke already disposes via the 4403 close-code path and the
+      // role-downgrade frame, and the backend flips the connection read-only to reject stale writes.
+      opts.disposeToken?.(documentName)
     },
   }
 }
