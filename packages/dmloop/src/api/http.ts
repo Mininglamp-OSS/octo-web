@@ -4,12 +4,14 @@
 import axios from "axios";
 
 /**
- * Loop API base。默认 `/api`（与 multica REST 契约一致）。
- * 通过 VITE_LOOP_API_BASE 可指向真实 multica-server。
+ * Loop API base。默认 `/fleet/api/v1`。
+ * Loop 是独立 server 服务，前置 reverse proxy 按前缀分割（类比 summary 的 /summary/api/v1）。
+ * 路径尾段与 multica REST 契约一致，仅前缀为 /fleet/api/v1。
+ * 通过 VITE_LOOP_API_BASE 可指向真实 Loop server。
  */
 export const LOOP_API_BASE =
   (import.meta as { env?: Record<string, string> }).env?.VITE_LOOP_API_BASE ||
-  "/api";
+  "/fleet/api/v1";
 
 const client = axios.create({ baseURL: LOOP_API_BASE });
 

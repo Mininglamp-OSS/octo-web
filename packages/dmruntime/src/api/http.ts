@@ -3,7 +3,7 @@ import axios from "axios";
 
 export const LOOP_API_BASE =
   (import.meta as { env?: Record<string, string> }).env?.VITE_LOOP_API_BASE ||
-  "/api";
+  "/fleet/api/v1";
 
 const client = axios.create({ baseURL: LOOP_API_BASE });
 

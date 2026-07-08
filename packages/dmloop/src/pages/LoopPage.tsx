@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Typography, Dropdown, Avatar, Button, Modal, Input, Toast } from "@douyinfe/semi-ui";
+import { Typography, Dropdown, Avatar } from "@douyinfe/semi-ui";
 import {
   ClipboardList,
   Sparkles,
@@ -15,7 +15,7 @@ import { useI18n, WKApp } from "@octo/base";
 import type { Workspace } from "../api/types";
 import { listWorkspaces } from "../api/workspaceApi";
 import { setWorkspaceId, currentWorkspaceId } from "../api/http";
-import { createIssue } from "../api/issueApi";
+import CreateIssueModal from "../ui/CreateIssueModal";
 import IssuePage from "./IssuePage";
 import SkillPage from "./SkillPage";
 import ProjectPage from "./ProjectPage";
@@ -45,7 +45,6 @@ export default function LoopPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [wsId, setWsId] = useState<string>(currentWorkspaceId());
   const [newOpen, setNewOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
 
   const openTab = (key: TabKey) => {
     setTab(key);
@@ -71,16 +70,6 @@ export default function LoopPage() {
     // 切换 workspace 后重载当前子模块（数据按 workspace_id 过滤）。
     const target = TABS.find((it) => it.key === tab);
     if (target) WKApp.routeRight.replaceToRoot(target.render());
-  };
-
-  const doQuickNew = async () => {
-    const title = newTitle.trim();
-    if (!title) return;
-    await createIssue({ title, status: "todo" });
-    setNewTitle("");
-    setNewOpen(false);
-    Toast.success(t("loop.toast.created"));
-    openTab("issue");
   };
 
   const current = workspaces.find((w) => w.id === wsId);
@@ -136,9 +125,11 @@ export default function LoopPage() {
         ))}
       </nav>
 
-      <Modal title={t("loop.action.newIssue")} visible={newOpen} onOk={doQuickNew} onCancel={() => setNewOpen(false)} okText={t("loop.action.create")} cancelText={t("loop.action.cancel")}>
-        <Input autoFocus value={newTitle} onChange={setNewTitle} placeholder={t("loop.field.titlePlaceholder")} onEnterPress={doQuickNew} />
-      </Modal>
+      <CreateIssueModal
+        visible={newOpen}
+        onClose={() => setNewOpen(false)}
+        onCreated={() => openTab("issue")}
+      />
     </div>
   );
 }

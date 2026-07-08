@@ -4,17 +4,16 @@ import {
   Input,
   Button,
   Spin,
-  Empty,
-  Modal,
   Toast,
 } from "@douyinfe/semi-ui";
 import { Search, Plus, LayoutGrid, List as ListIcon, ClipboardList } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Issue } from "../api/types";
-import { listIssues, createIssue } from "../api/issueApi";
+import { listIssues } from "../api/issueApi";
 import IssueBoard from "../panel/IssueBoard";
 import IssueList from "../panel/IssueList";
 import IssueDetailPage from "../panel/IssueDetailPage";
+import CreateIssueModal from "../ui/CreateIssueModal";
 
 const { Title } = Typography;
 
@@ -27,7 +26,6 @@ export default function IssuePage() {
   const [view, setView] = useState<ViewMode>("board");
   const [keyword, setKeyword] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -41,16 +39,6 @@ export default function IssuePage() {
   // 点击 Issue → 跳转独立详情页（push 到右主栏，返回可 pop）。
   const openDetail = (id: string) => {
     WKApp.routeRight.push(<IssueDetailPage issueId={id} onChanged={reload} />);
-  };
-
-  const doCreate = async () => {
-    const title = newTitle.trim();
-    if (!title) return;
-    await createIssue({ title, status: "todo" });
-    setNewTitle("");
-    setCreateOpen(false);
-    Toast.success(t("loop.toast.created"));
-    reload();
   };
 
   return (
@@ -102,22 +90,11 @@ export default function IssuePage() {
         )}
       </div>
 
-      <Modal
-        title={t("loop.action.newIssue")}
+      <CreateIssueModal
         visible={createOpen}
-        onOk={doCreate}
-        onCancel={() => setCreateOpen(false)}
-        okText={t("loop.action.create")}
-        cancelText={t("loop.action.cancel")}
-      >
-        <Input
-          autoFocus
-          value={newTitle}
-          onChange={setNewTitle}
-          placeholder={t("loop.field.titlePlaceholder")}
-          onEnterPress={doCreate}
-        />
-      </Modal>
+        onClose={() => setCreateOpen(false)}
+        onCreated={() => { Toast.success(t("loop.toast.created")); reload(); }}
+      />
     </div>
   );
 }

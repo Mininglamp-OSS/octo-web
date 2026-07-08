@@ -10,6 +10,7 @@ import {
   Toast,
   Popconfirm,
   TextArea,
+  Dropdown,
 } from "@douyinfe/semi-ui";
 import {
   ArrowLeft,
@@ -20,6 +21,8 @@ import {
   CheckCircle2,
   XCircle,
   Loader,
+  MoreHorizontal,
+  CircleSlash,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
@@ -29,6 +32,7 @@ import type {
   IssueStatus,
   IssuePriority,
   TaskStatus,
+  AssigneeCandidate,
 } from "../api/types";
 import {
   getIssue,
@@ -37,6 +41,7 @@ import {
   addComment,
   deleteComment,
   listTasks,
+  listAssigneeCandidates,
 } from "../api/issueApi";
 import AssigneePicker from "../ui/AssigneePicker";
 import {
@@ -76,6 +81,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [issue, setIssue] = useState<Issue | null>(null);
   const [comments, setComments] = useState<IssueComment[]>([]);
   const [tasks, setTasks] = useState<AgentTask[]>([]);
+  const [cands, setCands] = useState<AssigneeCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [titleDraft, setTitleDraft] = useState("");
   const [descDraft, setDescDraft] = useState("");
@@ -97,6 +103,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   };
 
   useEffect(reload, [issueId]);
+  useEffect(() => { listAssigneeCandidates().then(setCands); }, []);
 
   const patch = async (p: Parameters<typeof updateIssue>[1]) => {
     if (!issue) return;
@@ -122,6 +129,70 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   };
 
   const back = () => WKApp.routeRight.pop();
+
+  // 右上角 ··· 菜单：快速改 status / priority / assignee（1:1 复刻 multica）。
+  const renderMoreMenu = () => (
+    <Dropdown.Menu>
+      <Dropdown
+        position="leftTop"
+        trigger="hover"
+        render={
+          <Dropdown.Menu>
+            {ISSUE_STATUS_ORDER.map((s) => (
+              <Dropdown.Item key={s} active={issue?.status === s} onClick={() => patch({ status: s })}>
+                <Tag color={ISSUE_STATUS_COLOR[s]} size="small">{t(`loop.status.${s}`)}</Tag>
+              </Dropdown.Item>
+            ))}
+          </Dropdown.Menu>
+        }
+      >
+        <Dropdown.Item>{t("loop.menu.changeStatus")}</Dropdown.Item>
+      </Dropdown>
+      <Dropdown
+        position="leftTop"
+        trigger="hover"
+        render={
+          <Dropdown.Menu>
+            {PRIORITY_ORDER.map((p) => (
+              <Dropdown.Item key={p} active={issue?.priority === p} onClick={() => patch({ priority: p })}>
+                <Tag color={PRIORITY_COLOR[p]} size="small">{t(`loop.priority.${p}`)}</Tag>
+              </Dropdown.Item>
+            ))}
+          </Dropdown.Menu>
+        }
+      >
+        <Dropdown.Item>{t("loop.menu.changePriority")}</Dropdown.Item>
+      </Dropdown>
+      <Dropdown
+        position="leftTop"
+        trigger="hover"
+        render={
+          <Dropdown.Menu>
+            <Dropdown.Item icon={<CircleSlash size={13} />} onClick={() => patch({ assignee_id: null })}>
+              {t("loop.assignee.unassigned")}
+            </Dropdown.Item>
+            {(["member", "agent", "squad"] as const).map((type) => {
+              const items = cands.filter((c) => c.type === type);
+              if (!items.length) return null;
+              return (
+                <React.Fragment key={type}>
+                  <Dropdown.Divider />
+                  <Dropdown.Title>{t(`loop.assignee.${type}`)}</Dropdown.Title>
+                  {items.map((c) => (
+                    <Dropdown.Item key={c.id} active={issue?.assignee_id === c.id} onClick={() => patch({ assignee_id: c.id })}>
+                      {c.name}
+                    </Dropdown.Item>
+                  ))}
+                </React.Fragment>
+              );
+            })}
+          </Dropdown.Menu>
+        }
+      >
+        <Dropdown.Item>{t("loop.menu.changeAssignee")}</Dropdown.Item>
+      </Dropdown>
+    </Dropdown.Menu>
+  );
 
   if (loading && !issue) {
     return (
@@ -205,6 +276,10 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           {issue.project_name ? `${issue.project_name} · ` : ""}
           {issue.identifier}
         </Text>
+        <div style={{ flex: 1 }} />
+        <Dropdown trigger="click" position="bottomRight" render={renderMoreMenu()}>
+          <Button icon={<MoreHorizontal size={18} />} theme="borderless" aria-label="more" />
+        </Dropdown>
       </div>
 
       <div className="loop-idp__body">

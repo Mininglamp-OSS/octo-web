@@ -1,5 +1,5 @@
 {
-  "menu": { "title": "Loop" },
+  "menu": { "title": "Loop", "changeStatus": "Change status", "changePriority": "Change priority", "changeAssignee": "Change assignee" },
   "nav": {
     "issue": "Issue",
     "skill": "Skill",
@@ -61,6 +61,7 @@
     "priority": "Priority",
     "assignee": "Assignee",
     "project": "Project",
+    "noProject": "No project",
     "creator": "Creator"
   },
   "status": {
