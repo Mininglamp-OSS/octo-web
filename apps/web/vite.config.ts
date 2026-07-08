@@ -122,6 +122,12 @@ export default defineConfig(({ mode }) => {
       port: env.VITE_PORT ? Number(env.VITE_PORT) : 3000,
       host: env.VITE_HOST ?? true,
       proxy: {
+        // Docs service API — must be before the general /api/ rule
+        "/api/v1/docs": {
+          target: env.VITE_DOCS_API_URL || "http://localhost:4000",
+          changeOrigin: true,
+          secure: false,
+        },
         // Summary service API — must be before the general /api/ rule
         "/summary/api/v1": {
           target:
@@ -151,13 +157,6 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
           rewrite: (path: string) => path.replace(/^\/fleet\/api/, ''),
-        },
-        // Docs/Sheet collaborative backend — MUST be before the general /api/ rule.
-        // The docs-backend mounts its routes at /api/v1/docs, so no rewrite needed.
-        "/api/v1/docs": {
-          target: env.VITE_DOCS_API_URL || "http://127.0.0.1:3000",
-          changeOrigin: true,
-          secure: false,
         },
         "/api/": {
           target: apiOrigin,

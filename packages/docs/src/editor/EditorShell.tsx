@@ -15,6 +15,7 @@ import { useCommentHighlights } from '../comments/useCommentHighlights.ts'
 import { useDocDelete } from './useDocDelete.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { exportDocToMarkdown, type MdNode } from '../export/markdown.ts'
+import { exportDocPdf } from '../pages/docsApi.ts'
 import { emojiGlyph } from './emoji.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
@@ -423,8 +424,68 @@ export function EditorShell(props: EditorShellProps) {
       document.body.appendChild(a)
       a.click()
       a.remove()
-      URL.revokeObjectURL(url)
-    } catch {
+      // Defer revoke so Safari/iOS can start the download for larger blobs
+      // (matches the PDF branch).
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch (err) {
+      console.error('[docs] Markdown export failed:', err)
+      setExportError(t('docs.toolbar.exportError'))
+    } finally {
+      setExporting(false)
+    }
+  }, [instance, docId, currentTitle, exporting])
+
+  const onExportDocx = useCallback(async () => {
+    const ed = instance?.editor
+    if (!ed || exporting) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      // Lazy-load the DOCX exporter so `docx` + `mathjax-full` (multi-MB, DOCX-only)
+      // stay out of the eager editor bundle that loads on every document open.
+      const { exportDocToDocx } = await import('../export/docx/index.ts')
+      const blob = await exportDocToDocx(docId, ed.getJSON() as unknown as MdNode, { emojiGlyph })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${exportDownloadName(currentTitle)}.docx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      // Defer revoke so Safari/iOS can start the download for larger blobs
+      // (matches the PDF branch).
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch (err) {
+      console.error('[docs] DOCX export failed:', err)
+      setExportError(t('docs.toolbar.exportError'))
+    } finally {
+      setExporting(false)
+    }
+  }, [instance, docId, currentTitle, exporting])
+
+  const onExportPdf = useCallback(async () => {
+    const ed = instance?.editor
+    if (!ed || exporting) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      // Server-side PDF render via Typst (小吴's decision to go backend). The
+      // backend renders its own persisted copy of the doc with Typst, so the
+      // output has real CJK, rendered math, emoji, selectable text and smart
+      // pagination — one-click download with no print dialog. Returns the PDF
+      // bytes directly.
+      const bytes = await exportDocPdf(docId)
+      const blob = new Blob([bytes], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${exportDownloadName(currentTitle)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch (err) {
+      console.error('[docs] PDF export failed:', err)
       setExportError(t('docs.toolbar.exportError'))
     } finally {
       setExporting(false)
@@ -514,10 +575,33 @@ export function EditorShell(props: EditorShellProps) {
     },
     {
       key: 'export',
-      label: t('docs.toolbar.exportMarkdown'),
+      label: t('docs.toolbar.export'),
       icon: ExportIcon,
       disabled: exporting,
-      onClick: () => void onExportMarkdown(),
+      onClick: () => {},
+      children: [
+        {
+          key: 'export-markdown',
+          label: t('docs.toolbar.exportMarkdown'),
+          icon: ExportIcon,
+          disabled: exporting,
+          onClick: () => void onExportMarkdown(),
+        },
+        {
+          key: 'export-docx',
+          label: t('docs.toolbar.exportDocx'),
+          icon: ExportIcon,
+          disabled: exporting,
+          onClick: () => void onExportDocx(),
+        },
+        {
+          key: 'export-pdf',
+          label: t('docs.toolbar.exportPdf'),
+          icon: ExportIcon,
+          disabled: exporting,
+          onClick: () => void onExportPdf(),
+        },
+      ],
     },
   )
   const deleteItem: DocMoreMenuItem | undefined = manage
@@ -583,6 +667,8 @@ export function EditorShell(props: EditorShellProps) {
               ⤴ {t('docs.forward.entry')}
             </button>
           )}
+          {/* Export moved into the header ≡ (more) menu as an expandable submenu
+              (Markdown / Word / PDF); the standalone dropdown was removed to avoid duplication. */}
           {manage && (
             <button
               type="button"

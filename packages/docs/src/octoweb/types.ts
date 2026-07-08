@@ -41,6 +41,11 @@ export interface ApiRequestConfig {
    */
   responseType?: 'json' | 'arraybuffer'
   /**
+   * Per-request timeout in ms, overriding the host client's shared default.
+   * Long server-side renders (large document PDF export) need a higher ceiling.
+   */
+  timeout?: number
+  /**
    * Per-request headers, merged over the global request interceptor's headers by axios
    * (request-config headers win). The standalone `/d/:docId` preflight uses this to carry an
    * explicit `X-Space-Id`: it mounts via the Layout early-return, before the app shell restores

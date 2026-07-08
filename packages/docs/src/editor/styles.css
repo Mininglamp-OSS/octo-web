@@ -1418,6 +1418,28 @@
 .octo-doc-more-item:disabled:hover {
   background: transparent;
 }
+/* Submenu parent (export): caret at the far right, rotates when open. Children indent under it. */
+.octo-doc-more-caret {
+  flex: 0 0 auto;
+  margin-left: auto;
+  fill: none;
+  stroke: #646a73;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.15s ease;
+}
+.octo-doc-more-item.is-open .octo-doc-more-caret {
+  transform: rotate(90deg);
+}
+.octo-doc-more-sublist {
+  background: #fafbfc;
+}
+.octo-doc-more-sublist .octo-doc-more-item {
+  padding-left: 44px;
+  height: 38px;
+  font-size: 13px;
+}
 .octo-doc-more-icon {
   flex: 0 0 auto;
   display: inline-flex;
@@ -2703,3 +2725,4 @@
 .octo-sheet-container .univer-justify-center.univer-overflow-x-auto {
   justify-content: flex-start !important;
 }
+

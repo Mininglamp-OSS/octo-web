@@ -152,6 +152,27 @@ export async function deleteDoc(docId: string): Promise<void> {
 }
 
 /**
+ * POST /api/v1/docs/{docId}/export/pdf — server-side (Typst) PDF render.
+ * Returns the PDF bytes as an ArrayBuffer.
+ *
+ * Goes through the shared host apiClient with `responseType: 'arraybuffer'` so
+ * the binary PDF body is not decoded as UTF-8 text (which would turn every
+ * non-ASCII byte into U+FFFD and corrupt the file). Using the host client keeps
+ * this on the same axios instance as the rest of the app, so the global request
+ * interceptor (token + X-Space-Id) and `/api/v1/` baseURL apply — docs does not
+ * depend on axios directly. A longer per-request timeout covers big documents
+ * that the shared 20s default would otherwise cut off mid-success.
+ */
+export async function exportDocPdf(docId: string): Promise<ArrayBuffer> {
+  const { data } = await apiClient().post<ArrayBuffer>(
+    `/docs/${docId}/export/pdf`,
+    undefined,
+    { responseType: 'arraybuffer', timeout: 120_000 },
+  )
+  return data
+}
+
+/**
  * Delete outcome classification (contract C3 final), kept as a pure function so the 200/404/403/409
  * handling is unit-testable and shared wherever the delete entry lives:
  *   200 → 'deleted'; 404 → 'gone' (already removed — treat as success); 403 → 'forbidden';

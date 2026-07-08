@@ -53,7 +53,10 @@
     "y-indexeddb": "9.0.12",
     "y-prosemirror": "1.2.15",
     "y-protocols": "1.0.6",
-    "yjs": "13.6.21"
+    "yjs": "13.6.21",
+    "docx": "^9.7.1",
+    "mathjax-full": "^3.2.2",
+    "xml-js": "^1.6.11"
   },
   "peerDependencies": {
     "react": "^18.3.1",
