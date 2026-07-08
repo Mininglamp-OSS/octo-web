@@ -1,0 +1,191 @@
+/*
+ * InteractiveCard(=17) 互动卡片样式。
+ * 前缀 wk-interactive-card-*，与 type=7 名片(wk-message-card-*) 完全独立。
+ * 一律用项目设计 token（带 fallback），自动适配亮/暗主题；不硬编码颜色/间距，不覆盖 Semi class。
+ */
+
+.wk-interactive-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1, 4px);
+  max-width: 420px;
+  min-width: 0;
+}
+
+/* 兜底纯文本（不可信发送者 / fallback / 协商失败） */
+.wk-interactive-card-plain {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  color: var(--wk-text-primary, inherit);
+}
+
+.wk-interactive-card-hint {
+  margin-top: var(--wk-sp-1, 4px);
+  font-size: 12px;
+  color: var(--wk-text-secondary);
+}
+
+/* ── 结构卡容器 ── */
+.wk-interactive-card-root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2, 8px);
+  padding: var(--wk-sp-3, 12px);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md, 8px);
+  background: var(--wk-bg-surface, transparent);
+  overflow: hidden;
+}
+
+.wk-interactive-card-container,
+.wk-interactive-card-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1-5, 6px);
+  min-width: 0;
+  border-radius: var(--wk-r-sm, 4px);
+}
+
+/* ── TextBlock ── */
+.wk-interactive-card-textblock {
+  color: var(--wk-text-primary, inherit);
+  line-height: 1.5;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.wk-interactive-card-tb--bold {
+  font-weight: var(--wk-font-bold, 600);
+}
+
+/* 受限 markdown 容器：紧凑列表/段落间距 */
+.wk-interactive-card-md p {
+  margin: 0;
+}
+
+.wk-interactive-card-md ul,
+.wk-interactive-card-md ol {
+  margin: var(--wk-sp-0-5, 2px) 0;
+  padding-left: var(--wk-sp-5, 20px);
+}
+
+.wk-interactive-card-md a {
+  color: var(--wk-text-accent, var(--wk-brand-primary));
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.wk-interactive-card-md a:hover {
+  text-decoration: underline;
+}
+
+/* ── Image ── */
+.wk-interactive-card-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--wk-r-sm, 4px);
+  object-fit: cover;
+}
+
+/* http 混合内容 / 非法 url 占位：固定尺寸避免消息流跳动。
+   虚线边框 + 透明底，语义上明确「图片缺失」，区别于有内容的实心块。 */
+.wk-interactive-card-img-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  padding: var(--wk-sp-2, 8px);
+  font-size: 12px;
+  color: var(--wk-text-secondary);
+  background: transparent;
+  border: 1px dashed var(--wk-border-strong);
+  border-radius: var(--wk-r-sm, 4px);
+  text-align: center;
+}
+
+/* ── ColumnSet ── */
+.wk-interactive-card-columnset {
+  display: flex;
+  flex-direction: row;
+  gap: var(--wk-sp-2, 8px);
+  flex-wrap: wrap;
+}
+
+.wk-interactive-card-columnset > .wk-interactive-card-column,
+.wk-interactive-card-columnset > .wk-interactive-card-clickable {
+  flex: 1 1 120px;
+  min-width: 120px;
+}
+
+/* ── FactSet ── */
+.wk-interactive-card-factset {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--wk-sp-1, 4px) var(--wk-sp-3, 12px);
+}
+
+.wk-interactive-card-fact {
+  display: contents;
+}
+
+.wk-interactive-card-fact-title {
+  color: var(--wk-text-secondary);
+  font-weight: var(--wk-font-medium, 500);
+  word-break: break-word;
+}
+
+.wk-interactive-card-fact-value {
+  color: var(--wk-text-primary, inherit);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* ── Actions ── */
+.wk-interactive-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wk-sp-2, 8px);
+  margin-top: var(--wk-sp-1, 4px);
+}
+
+.wk-interactive-card-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-1, 4px);
+  min-height: 28px;
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-3, 12px);
+  font-size: 13px;
+  color: var(--wk-text-accent, var(--wk-brand-primary));
+  background: transparent;
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm, 4px);
+  cursor: pointer;
+}
+
+.wk-interactive-card-action:hover {
+  background: var(--wk-bg-elevated);
+}
+
+.wk-interactive-card-action-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+/* ── 可点区域（selectAction 携带 OpenUrl） ── */
+.wk-interactive-card-clickable {
+  cursor: pointer;
+  border-radius: var(--wk-r-sm, 4px);
+}
+
+.wk-interactive-card-clickable:hover {
+  background: var(--wk-bg-elevated);
+}
+
+.wk-interactive-card-clickable:focus-visible {
+  outline: 2px solid var(--wk-brand-primary);
+  outline-offset: 2px;
+}

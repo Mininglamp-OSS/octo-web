@@ -51,6 +51,10 @@ import {
 import { SystemCell } from "./Messages/System";
 import { TextCell } from "./Messages/Text";
 import { RichTextCell, RichTextContent } from "./Messages/RichText";
+import {
+  InteractiveCardCell,
+  InteractiveCardContent,
+} from "./Messages/InteractiveCard";
 import { TimeCell } from "./Messages/Time";
 import { UnknownCell } from "./Messages/Unknown";
 import { UnsupportCell, UnsupportContent } from "./Messages/Unsupport";
@@ -260,6 +264,8 @@ export default class BaseModule implements IModule {
             return TextCell;
           case MessageContentTypeConst.richText: // 富文本（图文混排）
             return RichTextCell;
+          case MessageContentTypeConst.interactiveCard: // 互动卡片（Adaptive Cards octo/v1）
+            return InteractiveCardCell;
           case MessageContentType.image: // 图片消息
             return ImageCell;
           case MessageContentTypeConst.card: // 名片
@@ -313,6 +319,10 @@ export default class BaseModule implements IModule {
     ); // 文件
 
     WKSDK.shared().register(MessageContentTypeConst.card, () => new Card()); // 名片
+    WKSDK.shared().register(
+      MessageContentTypeConst.interactiveCard,
+      () => new InteractiveCardContent()
+    ); // 互动卡片（Adaptive Cards octo/v1）
     WKSDK.shared().register(
       MessageContentTypeConst.gif,
       () => new GifContent()
