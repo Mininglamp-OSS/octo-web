@@ -1,6 +1,15 @@
 // @octo/loop — Skill API（真实 fleet 联调）
-import type { Skill, UpsertSkillReq, ListParams } from "./types";
+import type {
+  Skill,
+  UpsertSkillReq,
+  ListParams,
+  RuntimeLocalSkillListRequest,
+  RuntimeLocalSkillImportRequest,
+  RuntimeLocalSkillSummary,
+} from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function matchKeyword(rows: Skill[], keyword?: string): Skill[] {
   const kw = keyword?.trim().toLowerCase();
@@ -41,4 +50,38 @@ export function skillSource(s: Skill): string {
   if (!o) return "workspace";
   if (o.type === "skills_sh" || o.source_url) return "github";
   return "workspace";
+}
+
+/* ---------- 从运行时拷贝技能（async 两段式） ---------- */
+
+/** 发起 + 轮询 runtime 本地技能列表，直到终态。 */
+export async function fetchRuntimeSkills(
+  runtimeId: string,
+): Promise<{ supported: boolean; skills: RuntimeLocalSkillSummary[]; error?: string }> {
+  const init = await httpPost<RuntimeLocalSkillListRequest>(`/runtimes/${runtimeId}/local-skills`, {});
+  let cur = init;
+  for (let i = 0; i < 12 && cur.status !== "completed" && cur.status !== "failed"; i++) {
+    await sleep(900);
+    cur = await httpGet<RuntimeLocalSkillListRequest>(`/runtimes/${runtimeId}/local-skills/${init.id}`);
+  }
+  if (cur.status === "failed") return { supported: cur.supported, skills: [], error: cur.error || "failed" };
+  return { supported: cur.supported, skills: cur.skills ?? [] };
+}
+
+/** 发起 + 轮询导入某个 runtime 技能，返回创建/更新后的 Skill。 */
+export async function importRuntimeSkill(
+  runtimeId: string,
+  skillKey: string,
+  name?: string,
+): Promise<RuntimeLocalSkillImportRequest> {
+  const init = await httpPost<RuntimeLocalSkillImportRequest>(`/runtimes/${runtimeId}/local-skills/import`, {
+    skill_key: skillKey,
+    name,
+  });
+  let cur = init;
+  for (let i = 0; i < 12 && cur.status !== "completed" && cur.status !== "failed"; i++) {
+    await sleep(900);
+    cur = await httpGet<RuntimeLocalSkillImportRequest>(`/runtimes/${runtimeId}/local-skills/import/${init.id}`);
+  }
+  return cur;
 }

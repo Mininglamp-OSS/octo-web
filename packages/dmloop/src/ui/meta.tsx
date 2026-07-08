@@ -85,3 +85,12 @@ export const ASSIGNEE_TYPE_COLOR: Record<AssigneeType, TagColor> = {
   agent: "violet",
   squad: "purple",
 };
+
+export const RUN_STATUS_COLOR: Record<string, TagColor> = {
+  queued: "grey",
+  dispatched: "blue",
+  running: "amber",
+  completed: "green",
+  failed: "red",
+  cancelled: "grey",
+};

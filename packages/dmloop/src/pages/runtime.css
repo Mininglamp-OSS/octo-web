@@ -1,0 +1,57 @@
+/* 设备页四栏：设备列表 | Runtime 列表 | Runtime 详情 */
+.loop-dev {
+  display: grid;
+  grid-template-columns: 220px 240px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.loop-dev__col {
+  overflow: auto;
+  min-height: 0;
+  padding: 10px 8px;
+}
+
+.loop-dev__devices,
+.loop-dev__runtimes {
+  border-right: 1px solid var(--semi-color-border, #e8e9eb);
+}
+
+.loop-dev__col-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semi-color-text-2, #8590a6);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 8px 8px;
+}
+
+.loop-dev__grp { margin-bottom: 8px; }
+.loop-dev__grp-title {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px 3px; font-size: 12px; color: var(--semi-color-text-2, #8590a6);
+}
+.loop-dev__grp-title em { margin-left: auto; font-style: normal; opacity: 0.7; }
+
+.loop-dev__row {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border: none; background: transparent; border-radius: 8px;
+  cursor: pointer; text-align: left;
+}
+.loop-dev__row:hover { background: var(--semi-color-fill-0, #f5f6f8); }
+.loop-dev__row.is-active { background: var(--semi-color-primary-light-default, #eef2ff); }
+.loop-dev__row-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.loop-dev__row-main strong { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loop-dev__row-main small { font-size: 12px; color: var(--semi-color-text-2, #8590a6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loop-dev__row time { font-size: 11px; color: var(--semi-color-text-2, #8590a6); }
+
+.loop-dev__hint { padding: 24px 12px; color: var(--semi-color-text-2, #8590a6); font-size: 13px; text-align: center; }
+
+.loop-dev__detail { padding: 18px 20px; }
+.loop-dev__detail-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.loop-dev__fields { display: grid; grid-template-columns: 96px 1fr; gap: 10px; margin: 0 0 18px; }
+.loop-dev__fields dt { font-size: 12px; color: var(--semi-color-text-2, #8590a6); }
+.loop-dev__fields dd { margin: 0; font-size: 13px; word-break: break-word; }
+.loop-dev__section-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.loop-dev__agents { display: flex; flex-direction: column; gap: 8px; }
+.loop-dev__agent { display: flex; align-items: center; gap: 8px; }

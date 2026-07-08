@@ -432,3 +432,11 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* 从运行时拷贝技能列表 */
+.loop-skill-rtlist { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow: auto; border: 1px solid var(--semi-color-border,#e8e9eb); border-radius: 8px; padding: 8px; }
+.loop-skill-rtitem { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.loop-skill-rtitem:hover { background: var(--semi-color-fill-0,#f5f6f8); }
+.loop-skill-rtitem__main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.loop-skill-rtitem__main strong { font-size: 13px; }
+.loop-skill-rtitem__main small { font-size: 12px; color: var(--semi-color-text-2,#8590a6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

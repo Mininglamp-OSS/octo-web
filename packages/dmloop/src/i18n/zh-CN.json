@@ -1,5 +1,10 @@
 {
-  "menu": { "title": "Loop", "changeStatus": "修改状态", "changePriority": "修改优先级", "changeAssignee": "修改负责人" },
+  "menu": {
+    "title": "Loop",
+    "changeStatus": "修改状态",
+    "changePriority": "修改优先级",
+    "changeAssignee": "修改负责人"
+  },
   "nav": {
     "issue": "Issue",
     "skill": "技能",
@@ -11,7 +16,10 @@
   "runtime": {
     "provider": "提供方",
     "mode": "类型",
-    "modeVal": { "local": "本地", "cloud": "云端" },
+    "modeVal": {
+      "local": "本地",
+      "cloud": "云端"
+    },
     "online": "在线",
     "offline": "离线",
     "device": "设备信息",
@@ -21,7 +29,10 @@
     "search": "搜索设备 / 提供方",
     "empty": "暂无设备"
   },
-  "view": { "board": "看板", "list": "列表" },
+  "view": {
+    "board": "看板",
+    "list": "列表"
+  },
   "search": {
     "issue": "搜索 Issue / 编号",
     "skill": "搜索技能",
@@ -38,9 +49,12 @@
     "create": "创建",
     "cancel": "取消",
     "save": "保存",
-    "delete": "删除"
+    "delete": "删除",
+    "edit": "编辑"
   },
-  "workspace": { "title": "工作空间" },
+  "workspace": {
+    "title": "工作空间"
+  },
   "taskStatus": {
     "queued": "排队中",
     "dispatched": "已派发",
@@ -148,14 +162,34 @@
   "validate": {
     "nameRequired": "请填写名称",
     "titleRequired": "请填写标题"
-  },  "confirm": { "delete": "确定删除？" },
+  },
+  "confirm": {
+    "delete": "确定删除？"
+  },
   "skill": {
     "source": "来源",
-    "sourceType": { "github": "GitHub", "local": "本地", "workspace": "工作区" },
+    "sourceType": {
+      "github": "GitHub",
+      "local": "本地",
+      "workspace": "工作区"
+    },
     "usedBy": "被引用",
-    "content": "内容"
+    "content": "内容",
+    "local": "本地",
+    "fromWeb": "从 Web 拷贝",
+    "fromWebHint": "粘贴技能 URL（如 skills.sh），从 Web 导入。",
+    "fromRuntime": "从运行时拷贝",
+    "fetch": "拉取技能",
+    "import": "导入",
+    "importSelected": "导入所选",
+    "imported": "已导入",
+    "urlRequired": "请填写 URL",
+    "rtUnsupported": "该运行时不支持技能发现"
   },
-  "project": { "progress": "进度", "lead": "负责人" },
+  "project": {
+    "progress": "进度",
+    "lead": "负责人"
+  },
   "agent": {
     "runtime": "运行环境",
     "model": "模型",
@@ -166,7 +200,12 @@
     "visWorkspace": "工作区",
     "visPrivate": "私有",
     "thinking": "思考等级",
-    "thinkingLevel": { "none": "关闭", "light": "轻度", "medium": "中度", "deep": "深度" },
+    "thinkingLevel": {
+      "none": "关闭",
+      "light": "轻度",
+      "medium": "中度",
+      "deep": "深度"
+    },
     "concurrency": "并发数",
     "runtimeRequired": "请选择运行环境",
     "customArgs": "自定义参数",
@@ -184,5 +223,26 @@
     "addMember": "选择成员加入",
     "add": "添加",
     "instructions": "指令"
+  },
+  "run": {
+    "title": "执行记录",
+    "empty": "暂无执行记录",
+    "detailTitle": "执行详情",
+    "dispatched": "派发时间",
+    "started": "开始时间",
+    "completed": "完成时间",
+    "result": "结果",
+    "messages": "消息流",
+    "noMessages": "暂无消息"
+  },
+  "device": {
+    "devices": "设备",
+    "runtimes": "运行时",
+    "local": "本地",
+    "remote": "远程",
+    "pickDevice": "选择左侧设备",
+    "pickRuntime": "选择一个 Runtime 查看详情",
+    "agentsUsing": "使用中的智能体",
+    "noAgents": "暂无智能体使用该 Runtime"
   }
 }

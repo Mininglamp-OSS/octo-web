@@ -115,6 +115,38 @@ export interface AgentTask {
   agent_name?: string | null;
 }
 
+/** 执行记录（run）：GET /issues/:id/task-runs。 */
+export interface TaskRun {
+  id: string;
+  issue_id: string;
+  agent_id?: string | null;
+  runtime_id?: string | null;
+  status: TaskStatus;
+  priority?: number;
+  trigger_summary?: string;
+  dispatched_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at?: string;
+  result?: { output?: string } & Record<string, unknown>;
+  failure_reason?: string;
+  // 回填
+  agent_name?: string | null;
+}
+
+/** 执行消息（run-messages）：GET /tasks/:id/messages。 */
+export interface RunMessage {
+  task_id: string;
+  issue_id?: string;
+  seq: number;
+  type: string;
+  tool?: string;
+  input?: unknown;
+  text?: string;
+  content?: unknown;
+  created_at: string;
+}
+
 /* ---------- Skill ---------- */
 export interface SkillOrigin {
   type?: string;
@@ -138,6 +170,32 @@ export interface UpsertSkillReq {
   name: string;
   description?: string;
   content?: string;
+}
+
+/** 从运行时拷贝技能：runtime 上发现的本地技能条目。 */
+export interface RuntimeLocalSkillSummary {
+  key: string;
+  name: string;
+  description?: string;
+  source_path?: string;
+  provider?: string;
+  file_count?: number;
+}
+export interface RuntimeLocalSkillListRequest {
+  id: string;
+  runtime_id: string;
+  status: string; // pending | completed | failed | ...
+  skills?: RuntimeLocalSkillSummary[];
+  supported: boolean;
+  error?: string;
+}
+export interface RuntimeLocalSkillImportRequest {
+  id: string;
+  runtime_id: string;
+  skill_key: string;
+  status: string;
+  skill?: Skill;
+  error?: string;
 }
 
 /* ---------- Project ---------- */

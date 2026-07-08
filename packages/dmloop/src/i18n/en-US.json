@@ -1,5 +1,10 @@
 {
-  "menu": { "title": "Loop", "changeStatus": "Change status", "changePriority": "Change priority", "changeAssignee": "Change assignee" },
+  "menu": {
+    "title": "Loop",
+    "changeStatus": "Change status",
+    "changePriority": "Change priority",
+    "changeAssignee": "Change assignee"
+  },
   "nav": {
     "issue": "Issue",
     "skill": "Skill",
@@ -11,7 +16,10 @@
   "runtime": {
     "provider": "Provider",
     "mode": "Mode",
-    "modeVal": { "local": "Local", "cloud": "Cloud" },
+    "modeVal": {
+      "local": "Local",
+      "cloud": "Cloud"
+    },
     "online": "Online",
     "offline": "Offline",
     "device": "Device info",
@@ -21,7 +29,10 @@
     "search": "Search device / provider",
     "empty": "No devices"
   },
-  "view": { "board": "Board", "list": "List" },
+  "view": {
+    "board": "Board",
+    "list": "List"
+  },
   "search": {
     "issue": "Search issue / id",
     "skill": "Search skill",
@@ -38,9 +49,12 @@
     "create": "Create",
     "cancel": "Cancel",
     "save": "Save",
-    "delete": "Delete"
+    "delete": "Delete",
+    "edit": "Edit"
   },
-  "workspace": { "title": "Workspaces" },
+  "workspace": {
+    "title": "Workspaces"
+  },
   "taskStatus": {
     "queued": "Queued",
     "dispatched": "Dispatched",
@@ -149,14 +163,33 @@
     "nameRequired": "Name is required",
     "titleRequired": "Title is required"
   },
-  "confirm": { "delete": "Delete?" },
+  "confirm": {
+    "delete": "Delete?"
+  },
   "skill": {
     "source": "Source",
-    "sourceType": { "github": "GitHub", "local": "Local", "workspace": "Workspace" },
+    "sourceType": {
+      "github": "GitHub",
+      "local": "Local",
+      "workspace": "Workspace"
+    },
     "usedBy": "Used by",
-    "content": "Content"
+    "content": "Content",
+    "local": "Local",
+    "fromWeb": "Copy from web",
+    "fromWebHint": "Paste a skill URL (e.g. skills.sh) to import from web.",
+    "fromRuntime": "Copy from runtime",
+    "fetch": "Fetch skills",
+    "import": "Import",
+    "importSelected": "Import selected",
+    "imported": "Imported",
+    "urlRequired": "URL is required",
+    "rtUnsupported": "This runtime does not support skill discovery"
   },
-  "project": { "progress": "Progress", "lead": "Lead" },
+  "project": {
+    "progress": "Progress",
+    "lead": "Lead"
+  },
   "agent": {
     "runtime": "Runtime",
     "model": "Model",
@@ -167,7 +200,12 @@
     "visWorkspace": "Workspace",
     "visPrivate": "Private",
     "thinking": "Thinking",
-    "thinkingLevel": { "none": "Off", "light": "Light", "medium": "Medium", "deep": "Deep" },
+    "thinkingLevel": {
+      "none": "Off",
+      "light": "Light",
+      "medium": "Medium",
+      "deep": "Deep"
+    },
     "concurrency": "Concurrency",
     "runtimeRequired": "Please select a runtime",
     "customArgs": "Custom args",
@@ -185,5 +223,26 @@
     "addMember": "Pick a member to add",
     "add": "Add",
     "instructions": "Instructions"
+  },
+  "run": {
+    "title": "Runs",
+    "empty": "No runs yet",
+    "detailTitle": "Run detail",
+    "dispatched": "Dispatched",
+    "started": "Started",
+    "completed": "Completed",
+    "result": "Result",
+    "messages": "Messages",
+    "noMessages": "No messages"
+  },
+  "device": {
+    "devices": "Devices",
+    "runtimes": "Runtimes",
+    "local": "Local",
+    "remote": "Remote",
+    "pickDevice": "Pick a device",
+    "pickRuntime": "Select a runtime to view detail",
+    "agentsUsing": "Agents using",
+    "noAgents": "No agents use this runtime"
   }
 }

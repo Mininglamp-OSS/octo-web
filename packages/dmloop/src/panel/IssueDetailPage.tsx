@@ -17,21 +17,18 @@ import {
   Trash2,
   CornerDownRight,
   Send,
-  Circle,
-  CheckCircle2,
-  XCircle,
-  Loader,
   MoreHorizontal,
   CircleSlash,
+  Pencil,
+  Check,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
   Issue,
   IssueComment,
-  AgentTask,
+  TaskRun,
   IssueStatus,
   IssuePriority,
-  TaskStatus,
   AssigneeCandidate,
 } from "../api/types";
 import {
@@ -40,32 +37,28 @@ import {
   listComments,
   addComment,
   deleteComment,
-  listTasks,
   listAssigneeCandidates,
 } from "../api/issueApi";
+import { listRuns } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
+import LoopMarkdown from "../ui/LoopMarkdown";
+import RunDetailModal from "./RunDetailModal";
 import {
   ISSUE_STATUS_ORDER,
   ISSUE_STATUS_COLOR,
   PRIORITY_ORDER,
   PRIORITY_COLOR,
+  RUN_STATUS_COLOR,
 } from "../ui/meta";
 import "./issueDetail.css";
 
 const { Title, Text } = Typography;
 
-function fmt(iso: string): string {
+function fmt(iso?: string | null): string {
+  if (!iso) return "-";
   const d = new Date(iso);
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
-
-const TASK_ICON: Record<TaskStatus, React.ReactNode> = {
-  queued: <Circle size={13} color="#8590a6" />,
-  running: <Loader size={13} color="#3b82f6" />,
-  completed: <CheckCircle2 size={13} color="#23a55a" />,
-  failed: <XCircle size={13} color="#e5484d" />,
-  cancelled: <Circle size={13} color="#8590a6" />,
-};
 
 export interface IssueDetailPageProps {
   issueId: string;
@@ -80,7 +73,10 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const { t } = useI18n();
   const [issue, setIssue] = useState<Issue | null>(null);
   const [comments, setComments] = useState<IssueComment[]>([]);
-  const [tasks, setTasks] = useState<AgentTask[]>([]);
+  const [runs, setRuns] = useState<TaskRun[]>([]);
+  const [activeRun, setActiveRun] = useState<TaskRun | null>(null);
+  const [runOpen, setRunOpen] = useState(false);
+  const [editingDesc, setEditingDesc] = useState(false);
   const [cands, setCands] = useState<AssigneeCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [titleDraft, setTitleDraft] = useState("");
@@ -90,11 +86,11 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
   const reload = () => {
     setLoading(true);
-    Promise.all([getIssue(issueId), listComments(issueId), listTasks(issueId)])
-      .then(([i, c, tk]) => {
+    Promise.all([getIssue(issueId), listComments(issueId), listRuns(issueId)])
+      .then(([i, c, r]) => {
         setIssue(i);
         setComments(c);
-        setTasks(tk);
+        setRuns(r);
         setTitleDraft(i?.title ?? "");
         setDescDraft(i?.description ?? "");
       })
@@ -129,6 +125,16 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   };
 
   const back = () => WKApp.routeRight.pop();
+
+  const openRun = (run: TaskRun) => {
+    setActiveRun(run);
+    setRunOpen(true);
+  };
+
+  const saveDesc = async () => {
+    if (descDraft !== (issue?.description ?? "")) await patch({ description: descDraft });
+    setEditingDesc(false);
+  };
 
   // 右上角 ··· 菜单：快速改 status / priority / assignee（1:1 复刻 multica）。
   const renderMoreMenu = () => (
@@ -250,7 +256,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           </Popconfirm>
         </div>
       </div>
-      <div className="loop-comment__body">{c.content}</div>
+      <div className="loop-comment__body"><LoopMarkdown content={c.content} /></div>
       {!reply && repliesOf(c.id).map((r) => renderComment(r, true))}
       {!reply && replyTo === c.id && (
         <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
@@ -294,14 +300,31 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           />
 
           <div className="loop-idp__section">
-            <div className="loop-detail__section-title">{t("loop.field.description")}</div>
-            <TextArea
-              value={descDraft}
-              onChange={setDescDraft}
-              onBlur={() => descDraft !== (issue.description ?? "") && patch({ description: descDraft })}
-              autosize={{ minRows: 3, maxRows: 12 }}
-              placeholder={t("loop.field.descriptionPlaceholder")}
-            />
+            <div className="loop-detail__section-title loop-idp__desc-title">
+              <span>{t("loop.field.description")}</span>
+              {editingDesc ? (
+                <Button size="small" theme="borderless" icon={<Check size={13} />} onClick={saveDesc}>
+                  {t("loop.action.save")}
+                </Button>
+              ) : (
+                <Button size="small" theme="borderless" icon={<Pencil size={13} />} onClick={() => setEditingDesc(true)}>
+                  {t("loop.action.edit")}
+                </Button>
+              )}
+            </div>
+            {editingDesc ? (
+              <TextArea
+                value={descDraft}
+                onChange={setDescDraft}
+                onBlur={saveDesc}
+                autosize={{ minRows: 4, maxRows: 20 }}
+                placeholder={t("loop.field.descriptionPlaceholder")}
+              />
+            ) : issue.description ? (
+              <LoopMarkdown content={issue.description} />
+            ) : (
+              <Text type="tertiary" style={{ fontSize: 13 }}>{t("loop.field.descriptionPlaceholder")}</Text>
+            )}
           </div>
 
           <div className="loop-idp__section">
@@ -395,31 +418,32 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
           <div className="loop-idp__aside-card">
             <div className="loop-detail__section-title">
-              {t("loop.detail.execLog")} ({tasks.length})
+              {t("loop.run.title")} ({runs.length})
             </div>
-            {tasks.length === 0 ? (
+            {runs.length === 0 ? (
               <Text type="tertiary" style={{ fontSize: 12 }}>
-                {t("loop.detail.execEmpty")}
+                {t("loop.run.empty")}
               </Text>
             ) : (
               <div className="loop-idp__tasks">
-                {tasks.map((tk) => (
-                  <div key={tk.id} className="loop-idp__task">
-                    {TASK_ICON[tk.status]}
+                {runs.map((r) => (
+                  <button key={r.id} className="loop-idp__run" onClick={() => openRun(r)}>
                     <span className="loop-idp__task-main">
-                      <strong>{tk.agent_name ?? "—"}</strong>
-                      <small>{tk.trigger_summary}</small>
+                      <strong>{r.agent_name ?? r.agent_id ?? "—"}</strong>
+                      <small>{r.trigger_summary || fmt(r.dispatched_at ?? r.created_at)}</small>
                     </span>
-                    <Tag size="small" color={tk.status === "failed" ? "red" : tk.status === "running" ? "blue" : tk.status === "completed" ? "green" : "grey"}>
-                      {t(`loop.taskStatus.${tk.status}`)}
+                    <Tag size="small" color={RUN_STATUS_COLOR[r.status] ?? "grey"}>
+                      {t(`loop.taskStatus.${r.status}`)}
                     </Tag>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
           </div>
         </aside>
       </div>
+
+      <RunDetailModal run={activeRun} visible={runOpen} onClose={() => setRunOpen(false)} />
     </div>
   );
 }

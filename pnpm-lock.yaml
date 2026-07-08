@@ -346,6 +346,12 @@ importers:
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@17.0.2)
+      react-markdown:
+        specifier: '8'
+        version: 8.0.7(@types/react@18.3.28)(react@17.0.2)
+      remark-gfm:
+        specifier: '3'
+        version: 3.0.1
     devDependencies:
       '@types/react':
         specifier: ^18.3.28
@@ -19332,6 +19338,28 @@ snapshots:
   react-is@17.0.2: {}
 
   react-is@18.3.1: {}
+
+  react-markdown@8.0.7(@types/react@18.3.28)(react@17.0.2):
+    dependencies:
+      '@types/hast': 2.3.10
+      '@types/prop-types': 15.7.15
+      '@types/react': 18.3.28
+      '@types/unist': 2.0.11
+      comma-separated-tokens: 2.0.3
+      hast-util-whitespace: 2.0.1
+      prop-types: 15.8.1
+      property-information: 6.5.0
+      react: 17.0.2
+      react-is: 18.3.1
+      remark-parse: 10.0.2
+      remark-rehype: 10.1.0
+      space-separated-tokens: 2.0.2
+      style-to-object: 0.4.4
+      unified: 10.1.2
+      unist-util-visit: 4.1.2
+      vfile: 5.3.7
+    transitivePeerDependencies:
+      - supports-color
 
   react-markdown@8.0.7(@types/react@19.2.14)(react@17.0.2):
     dependencies:
