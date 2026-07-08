@@ -153,7 +153,7 @@ export async function deleteDoc(docId: string): Promise<void> {
 }
 
 /**
- * POST /api/v1/docs/{docId}/export/pdf — server-side (Puppeteer) PDF render.
+ * POST /api/v1/docs/{docId}/export/pdf — server-side (Typst) PDF render.
  * Returns the PDF bytes as an ArrayBuffer.
  *
  * IMPORTANT: this goes DIRECTLY through axios (not the shared WKApp APIClient
