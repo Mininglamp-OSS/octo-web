@@ -5,7 +5,8 @@
  *   - the four upstream brand link buttons at the top of the Help dialog — Documentation / Blog /
  *     GitHub issues / YouTube (XIN-531 item 2), and
  *   - the "更多工具 → Mermaid 至 Excalidraw" dropdown item (`toolBar.mermaidToExcalidraw`), and
- *   - the Mermaid dialog title + description (`mermaid.title` / `mermaid.description`) (items 3 & 4).
+ *   - the Mermaid dialog title + description (`mermaid.title` / `mermaid.description`) (items 3 & 4), and
+ *   - the "浏览素材库 / Browse libraries" online entry in the library panel (XIN-557).
  *
  * Why not i18n override: 0.18.1 exposes no way to override individual translations. `t()` reads a
  * module-private `currentLangData`, and there is no `langData` prop or setter on the public API.
@@ -13,8 +14,8 @@
  * is a built-in modal, so neither is reachable via props/children the way the main menu (item 1,
  * custom `<MainMenu>`) is. Patching the vendored source is explicitly out of scope. So for these
  * surfaces we act on the rendered DOM in place: a subtree MutationObserver watches for the specific
- * nodes and rewrites the upstream brand token to the product word "画布" (mermaid) or hides the
- * brand-button header (help dialog) as they appear.
+ * nodes and rewrites the upstream brand token to the product word "画布" (mermaid), hides the
+ * brand-button header (help dialog), or removes the node (online browse anchor) as they appear.
  *
  * Why the help-dialog header moved here from scoped CSS: item 2 was first hidden with
  * `.excalidraw .HelpDialog__header { display: none }` in board.css. That FAILED on the real machine
@@ -27,13 +28,21 @@
  * cascade is not), so the observer is the reliable mechanism; board.css keeps a higher-specificity
  * rule only as a no-flash first paint layer.
  *
+ * The library browse entry is the same story: `LibraryMenuControlButtons` unconditionally renders
+ * `LibraryMenuBrowseButton` — an `<a class="library-menu-browse-button">` whose `href` points at
+ * `VITE_APP_LIBRARY_URL` (excalidraw.com's hosted library) and opens `target="_excalidraw_libraries"`.
+ * There is no prop to suppress it, so we strip the anchor at runtime with the same observer. The
+ * LOCAL library controls are untouched: the "..." dropdown (load/import `.excalidrawlib`,
+ * save-to-file/export, reset) and the add-selection-to-library button are siblings/children of that
+ * anchor, and the saved-item grid (click/drag-out reuse) lives elsewhere in the panel.
+ *
  * The mermaid rewrite is text-only and idempotent: only bare "Excalidraw" tokens inside the three
  * mermaid-specific containers are swapped, element structure (e.g. the description's flowchart /
  * sequence / class highlight links) is preserved, and a node with no remaining token is left
  * untouched — so re-processing the same node, or observing the mutations this makes, never
  * compounds. Hiding the help header is likewise idempotent (inline `display: none` re-applied only
  * when unset) and node-preserving — we never remove the node, so Excalidraw's React tree can still
- * unmount the dialog cleanly.
+ * unmount the dialog cleanly. The anchor removal is a no-op once the anchor is gone.
  */
 
 /** Product word that replaces the upstream "Excalidraw" brand in the localized whiteboard UI. */
@@ -50,7 +59,7 @@ export function debrandMermaidText(text: string): string {
 }
 
 // Mermaid-specific selectors. Scoped narrowly on purpose: other "Excalidraw" mentions (export
-// dialog "Excalidraw+", the "Excalidraw 素材库" library, the welcome screen) are NOT in scope and
+// dialog "Excalidraw+", the "Excalidraw 素材库" library, the welcome screen) are NOT rewritten and
 // must stay branded, so we never touch text outside these containers.
 const MENU_ITEM_SELECTOR = '.dropdown-menu-item__text'
 const DIALOG_TARGET_SELECTOR = '.dialog-mermaid-title, .ttd-dialog-desc'
@@ -60,6 +69,11 @@ const DIALOG_TARGET_SELECTOR = '.dialog-mermaid-title, .ttd-dialog-desc'
 // sibling `.HelpDialog__islands-container`, so hiding only the header removes exactly those four
 // buttons and never touches the shortcut reference the product keeps.
 const HELP_DIALOG_HEADER_SELECTOR = '.HelpDialog__header'
+
+// The online "浏览素材库 / Browse libraries" anchor rendered by `LibraryMenuBrowseButton`. This is
+// the ONLY online-library entry; the local dropdown, add-to-library button, and saved-item grid do
+// not carry this class, so removing it leaves every local capability intact.
+const LIBRARY_BROWSE_BUTTON_SELECTOR = '.library-menu-browse-button'
 
 /**
  * Hide the help-dialog brand header via an inline `display: none`. Inline style beats any stylesheet
@@ -93,7 +107,17 @@ function isMermaidMenuLabel(el: Element): boolean {
   return (el.textContent ?? '').includes('Mermaid')
 }
 
-/** Apply the Excalidraw de-brand to every target surface inside (or equal to) `el`. Idempotent. */
+/**
+ * Remove the online "browse libraries" anchor(s) inside (or equal to) `el` (XIN-557). Only the
+ * `library-menu-browse-button` anchor is removed; sibling local controls are left in place. A no-op
+ * once the anchor is gone, so re-running or observing the removal never compounds.
+ */
+function removeOnlineLibraryEntry(el: Element): void {
+  el.querySelectorAll(LIBRARY_BROWSE_BUTTON_SELECTOR).forEach((anchor) => anchor.remove())
+  if (el.matches(LIBRARY_BROWSE_BUTTON_SELECTOR)) el.remove()
+}
+
+/** Apply every de-brand operation to the target surfaces inside (or equal to) `el`. Idempotent. */
 function debrandWithin(el: Element): void {
   // Item 2: hide the four upstream brand link buttons at the top of the Help dialog.
   el.querySelectorAll(HELP_DIALOG_HEADER_SELECTOR).forEach(hideHelpDialogHeader)
@@ -109,13 +133,16 @@ function debrandWithin(el: Element): void {
   // Item 4: mermaid dialog title + description.
   el.querySelectorAll(DIALOG_TARGET_SELECTOR).forEach(debrandTextNodes)
   if (el.matches(DIALOG_TARGET_SELECTOR)) debrandTextNodes(el)
+
+  // XIN-557: strip the online "浏览素材库 / Browse libraries" entry, keeping local library controls.
+  removeOnlineLibraryEntry(el)
 }
 
 /**
  * Start de-branding the Excalidraw surfaces under `root` and return a disposer. Excalidraw renders
- * the toolbar menu inside the canvas and its dialogs (help, mermaid) into `document.body` portals,
- * so a subtree observer on the document body catches all of them whenever they open. Runs once
- * immediately for anything already mounted, then on every subtree insertion.
+ * the toolbar menu and library panel inside the canvas and its dialogs (help, mermaid) into
+ * `document.body` portals, so a subtree observer on the document body catches all of them whenever
+ * they open. Runs once immediately for anything already mounted, then on every subtree insertion.
  */
 export function installExcalidrawDebrand(root: Document | HTMLElement = document): () => void {
   const host = root instanceof Document ? root.body : root

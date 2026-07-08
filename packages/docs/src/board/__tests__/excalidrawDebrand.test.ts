@@ -93,6 +93,37 @@ function helpDialog(): HTMLElement {
   return dialog
 }
 
+// The library panel's control buttons. In 0.18.1 `LibraryMenuControlButtons` unconditionally
+// renders `LibraryMenuBrowseButton` — an <a class="library-menu-browse-button"> pointing at the
+// hosted online library — followed by its `children` (the local "..." dropdown). This mirrors that
+// exact markup so removing the online entry while keeping local controls is a real 0.18.1 tripwire.
+function libraryControlButtons(): HTMLElement {
+  const container = document.createElement('div')
+  container.className = 'library-menu-control-buttons'
+
+  // The online "浏览素材库 / Browse libraries" anchor (must be removed).
+  const browse = document.createElement('a')
+  browse.className = 'library-menu-browse-button'
+  browse.setAttribute(
+    'href',
+    'https://libraries.excalidraw.com?target=_blank&referrer=http%3A%2F%2Flocalhost&useHash=true&token=id&theme=light&version=1',
+  )
+  browse.setAttribute('target', '_excalidraw_libraries')
+  browse.textContent = '浏览素材库'
+  container.appendChild(browse)
+
+  // The local library dropdown (load/import .excalidrawlib, save/export, reset) — must be preserved.
+  const dropdown = document.createElement('div')
+  dropdown.className = 'library-menu-dropdown-container'
+  const trigger = document.createElement('button')
+  trigger.className = 'dropdown-menu-button'
+  trigger.setAttribute('data-testid', 'lib-dropdown--trigger')
+  dropdown.appendChild(trigger)
+  container.appendChild(dropdown)
+
+  return container
+}
+
 afterEach(() => {
   document.body.innerHTML = ''
 })
@@ -211,5 +242,58 @@ describe('installExcalidrawDebrand', () => {
     await new Promise((r) => setTimeout(r, 0))
 
     expect(document.querySelector('.dialog-mermaid-title')?.textContent).toBe('Mermaid 至 Excalidraw')
+  })
+
+  it('removes the online browse-library entry present when installed, keeping local controls', () => {
+    const controls = libraryControlButtons()
+    document.body.append(controls)
+
+    const dispose = installExcalidrawDebrand(document)
+
+    // Online entry gone…
+    expect(document.querySelector('.library-menu-browse-button')).toBeNull()
+    // …local controls untouched.
+    expect(controls.querySelector('.library-menu-dropdown-container')).not.toBeNull()
+    expect(controls.querySelector('[data-testid="lib-dropdown--trigger"]')).not.toBeNull()
+    dispose()
+  })
+
+  it('removes the online browse-library entry mounted AFTER install (panel opened later)', async () => {
+    const dispose = installExcalidrawDebrand(document)
+
+    document.body.append(libraryControlButtons())
+    // MutationObserver callbacks are microtask-async; let them flush.
+    await Promise.resolve()
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(document.querySelector('.library-menu-browse-button')).toBeNull()
+    expect(document.querySelector('.library-menu-dropdown-container')).not.toBeNull()
+    dispose()
+  })
+
+  it('removes a bare browse anchor that is itself the inserted node (empty-state variant)', async () => {
+    const dispose = installExcalidrawDebrand(document)
+
+    // The empty-library "--at-bottom" variant can surface the anchor as a top-level insertion.
+    const browse = document.createElement('a')
+    browse.className = 'library-menu-browse-button'
+    browse.setAttribute('target', '_excalidraw_libraries')
+    browse.textContent = 'Browse libraries'
+    document.body.append(browse)
+    await Promise.resolve()
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(document.querySelector('.library-menu-browse-button')).toBeNull()
+    dispose()
+  })
+
+  it('stops removing the browse entry after dispose', async () => {
+    const dispose = installExcalidrawDebrand(document)
+    dispose()
+
+    document.body.append(libraryControlButtons())
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(document.querySelector('.library-menu-browse-button')).not.toBeNull()
   })
 })

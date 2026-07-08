@@ -27,6 +27,10 @@
     {
       "path": "packages/dmworkbase/src/Components/ChannelSearch/ChannelSearch.stories.mock.ts",
       "reason": "Channel search Storybook fixture data with sample sender names, message bodies, filenames, and match reasons; not UI copy."
+    },
+    {
+      "path": "packages/docs/src/board/excalidrawDebrand.ts",
+      "reason": "Whiteboard de-brand helper. Its only CJK literal is BOARD_BRAND ('画布'), the fixed product word that replaces the upstream Excalidraw brand token at runtime; it is intentionally locale-invariant (a brand replacement, not translatable UI copy) and the docs package has no i18n namespace to key it against."
     }
   ]
 }
