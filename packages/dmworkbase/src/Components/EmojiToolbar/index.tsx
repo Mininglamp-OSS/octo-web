@@ -16,10 +16,55 @@ import IconClick from "../IconClick";
 
 // 自定义贴纸 tab 的内部标识。贴纸是扁平的（不分包），所以只有这一个固定 tab。
 const STICKER_CATEGORY = "sticker"
-// 客户端侧的上传约束，与服务端保持一致（StickerMaxFileSize=1MB；格式白名单）。
-// 服务端是最终防线，这里只是即时反馈、少打一次必失败的请求。
-const MAX_STICKER_BYTES = 1 * 1024 * 1024
-const ACCEPTED_STICKER_TYPES = ["image/gif", "image/png", "image/jpeg", "image/webp"]
+
+// 客户端侧的上传预校验（size / format / dimension）读 WKApp.remoteConfig.stickerUploadLimits
+// （后端 appconfig 的 sticker_upload_limits，见 App.tsx），不再本地硬编码——运维在管理台
+// 调整上限后，appconfig 灰度刷新即可让预校验口径跟上，不用发版。服务端 modules/file 侧
+// 仍是最终防线，这里只是即时反馈、少打一次必失败的请求。
+
+// 从文件名取扩展名（小写、带前导点），口径与服务端 SystemSettings.StickerUploadAllowedFormats
+// 一致（.gif/.png/... 全小写带点），故可以直接与 stickerUploadLimits.allowedFormats 比较。
+// 取不到扩展名（无 "." 或以 "." 结尾）返回空字符串，必然不在允许列表里。
+function getStickerFileExtension(name: string): string {
+    const dot = name.lastIndexOf(".")
+    if (dot < 0 || dot === name.length - 1) {
+        return ""
+    }
+    return name.slice(dot).toLowerCase()
+}
+
+// 把 KB 数值格式化成 sticker.tooLarge 提示文案里 {{size}} 的可读展示：1024 的整数倍
+// 显示 MB（历史默认 1024 -> "1MB"，与改动前的提示文案字节对齐），否则显示 KB。
+function formatStickerSizeLimit(maxSizeKB: number): string {
+    return maxSizeKB % 1024 === 0 ? `${maxSizeKB / 1024}MB` : `${maxSizeKB}KB`
+}
+
+// 把 allowedFormats（[".gif", ".png", ...]）格式化成 sticker.formatUnsupported 提示文案
+// 里 {{formats}} 的可读展示：去掉前导点、逗号分隔，例如 "gif, png, jpg, jpeg, webp"，
+// 与改动前硬编码提示文案的措辞风格一致，不把协议层的点号暴露给用户。
+function formatAllowedFormatsList(allowedFormats: string[]): string {
+    return allowedFormats.map((f) => f.replace(/^\./, "")).join(", ")
+}
+
+// 读取图片文件的像素宽高，用于选完文件后的本地 dimension 预校验。解码失败（文件损坏等）
+// resolve null——不能因为本地探测失败就拦掉本该合法的上传，服务端 modules/file 侧仍是
+// 最终防线。做法与 Utils/clipboard.ts 的 loadImageAndConvertToPng 一致：new Image() +
+// object URL 读 naturalWidth/naturalHeight，读完立即 revokeObjectURL 避免内存泄漏。
+function readStickerImageDimensions(file: File): Promise<{ width: number; height: number } | null> {
+    return new Promise((resolve) => {
+        const url = URL.createObjectURL(file)
+        const img = new Image()
+        img.onload = () => {
+            URL.revokeObjectURL(url)
+            resolve({ width: img.naturalWidth, height: img.naturalHeight })
+        }
+        img.onerror = () => {
+            URL.revokeObjectURL(url)
+            resolve(null)
+        }
+        img.src = url
+    })
+}
 
 // 面板尺寸（与 index.css 的 .wk-emojitoolbar-emojipanel 保持一致）与视口避让间距，
 // 用于把面板按按钮位置定位并夹进视口，避免溢出/被祖先裁剪。
@@ -259,12 +304,24 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         if (!WKApp.remoteConfig.stickerCustomEnabled) {
             return
         }
-        if (!ACCEPTED_STICKER_TYPES.includes(file.type)) {
-            Toast.error(t("base.sticker.formatUnsupported"))
+        // 同一个异步窗口内运维也可能调整了上传上限，实时读取而非沿用组件挂载时的旧值。
+        const limits = WKApp.remoteConfig.stickerUploadLimits
+        if (!limits.allowedFormats.includes(getStickerFileExtension(file.name))) {
+            Toast.error(t("base.sticker.formatUnsupported", { values: { formats: formatAllowedFormatsList(limits.allowedFormats) } }))
             return
         }
-        if (file.size > MAX_STICKER_BYTES) {
-            Toast.error(t("base.sticker.tooLarge", { values: { size: "1MB" } }))
+        if (file.size > limits.maxSizeKB * 1024) {
+            Toast.error(t("base.sticker.tooLarge", { values: { size: formatStickerSizeLimit(limits.maxSizeKB) } }))
+            return
+        }
+        const dimensions = await readStickerImageDimensions(file)
+        if (this.isUnmounted) {
+            return
+        }
+        // 解码失败（文件损坏等）fail-open：本地探测不出宽高不代表文件不合法，交给服务端
+        // modules/file 侧做最终判断，不能因为这一步本地探测失败就拦掉本该合法的上传。
+        if (dimensions && (dimensions.width > limits.maxDimension || dimensions.height > limits.maxDimension)) {
+            Toast.error(t("base.sticker.dimensionTooLarge", { values: { dimension: String(limits.maxDimension) } }))
             return
         }
         this.setState({ uploading: true })
@@ -316,6 +373,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         // 「面板已打开且当前在 sticker tab, 后端灰度关掉开关」的边界——避免 tab 消失但
         // 内容区仍渲染上传/删除入口。纯 render-time 计算, 不触碰 state。
         const stickerCustomEnabled = WKApp.remoteConfig.stickerCustomEnabled
+        const stickerUploadLimits = WKApp.remoteConfig.stickerUploadLimits
         const isSticker = stickerCustomEnabled && category === STICKER_CATEGORY
         return <div className="wk-emojipanel">
             <div className={classNames("wk-emojipanel-content", isSticker ? "wk-emojipanel-content-sticker" : undefined)}>
@@ -396,7 +454,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                 ref={(ref) => { this.fileInput = ref }}
                 onChange={this.onFileChange}
                 type="file"
-                accept={ACCEPTED_STICKER_TYPES.join(",")}
+                accept={stickerUploadLimits.allowedFormats.join(",")}
                 style={{ display: "none" }}
             />
         </div>
