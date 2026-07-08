@@ -37,10 +37,11 @@ const cardSanitizeSchema = {
 const cardRehypePlugins: any[] = [[rehypeSanitize, cardSanitizeSchema]];
 
 const cardComponents: any = {
-  a: ({ href, children, ...props }: any) => {
+  // 丢弃 react-markdown 注入的 `node` 等非 DOM prop，避免透传到 span/a 触发 React 警告。
+  a: ({ href, children, node: _node, ...props }: any) => {
     // 组件层二次校验：非 http/https 链接（javascript:/data:/octo:// 等）降级为纯文本。
     if (typeof href !== "string" || !isSafeUrl(href)) {
-      return <span {...props}>{children}</span>;
+      return <span>{children}</span>;
     }
     return (
       <a href={href} target="_blank" rel="noopener noreferrer" {...props}>

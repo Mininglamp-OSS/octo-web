@@ -410,3 +410,108 @@ describe("ACRenderer — Action.OpenUrl.iconUrl 混合内容（https-only）", (
     ).toContain("看");
   });
 });
+
+describe("ACRenderer — 结构损坏字段整卡 fallback（present-but-非数组）", () => {
+  const budget = () => new RenderBudget();
+
+  it("body 非数组 → 抛错（不 fail-open 成空卡）", () => {
+    expect(() =>
+      renderCard({ type: "AdaptiveCard", body: "bad" }, budget())
+    ).toThrow(CardRenderError);
+  });
+
+  it("Container.items 非数组 → 抛错", () => {
+    expect(() =>
+      renderCard(AC([{ type: "Container", items: "bad" }]), budget())
+    ).toThrow(CardRenderError);
+  });
+
+  it("ColumnSet.columns 非数组 → 抛错", () => {
+    expect(() =>
+      renderCard(AC([{ type: "ColumnSet", columns: "bad" }]), budget())
+    ).toThrow(CardRenderError);
+  });
+
+  it("actions 非数组（对象）→ 抛错", () => {
+    expect(() =>
+      renderCard(
+        AC([{ type: "TextBlock", text: "x" }], { actions: { foo: 1 } }),
+        budget()
+      )
+    ).toThrow(CardRenderError);
+  });
+
+  it("FactSet.facts 非数组 → 抛错", () => {
+    expect(() =>
+      renderCard(AC([{ type: "FactSet", facts: "bad" }]), budget())
+    ).toThrow(CardRenderError);
+  });
+
+  it("缺省（undefined）字段仍合法 → 空卡正常渲染，不抛错", () => {
+    expect(() =>
+      renderCard({ type: "AdaptiveCard" }, budget())
+    ).not.toThrow();
+  });
+});
+
+describe("ACRenderer — Image.selectAction（对齐服务端允许）", () => {
+  it("Image 携带 OpenUrl selectAction → 图片可点（包裹 clickable）", () => {
+    const root = render(
+      AC([
+        {
+          type: "Image",
+          url: "https://cdn.example.com/a.png",
+          selectAction: {
+            type: "Action.OpenUrl",
+            title: "",
+            url: "https://example.com",
+          },
+        },
+      ])
+    );
+    expect(root.querySelector(".wk-interactive-card-clickable")).not.toBeNull();
+    expect(root.querySelector("img.wk-interactive-card-img")).not.toBeNull();
+  });
+
+  it("Image.selectAction 计入节点预算 → 顶破上限时抛错", () => {
+    const imgWith = (withSelect: boolean) =>
+      AC([
+        {
+          type: "Image",
+          url: "https://cdn.example.com/a.png",
+          ...(withSelect
+            ? {
+                selectAction: {
+                  type: "Action.OpenUrl",
+                  title: "",
+                  url: "https://example.com",
+                },
+              }
+            : {}),
+        },
+      ]);
+    // 无 selectAction：Image 元素 1 个节点，budget 1 恰好不越界
+    expect(() =>
+      renderCard(imgWith(false), new RenderBudget(1, 16))
+    ).not.toThrow();
+    // 有 selectAction：多 1 个 action 节点 → 越界抛错
+    expect(() =>
+      renderCard(imgWith(true), new RenderBudget(1, 16))
+    ).toThrow(CardRenderError);
+  });
+
+  it("Image.selectAction 为非 OpenUrl（Submit）→ 整卡 fallback（抛错）", () => {
+    expect(() =>
+      renderCard(
+        AC([
+          {
+            type: "Image",
+            url: "https://cdn.example.com/a.png",
+            selectAction: { type: "Action.Submit" },
+          },
+        ]),
+        new RenderBudget()
+      )
+    ).toThrow(CardRenderError);
+  });
+});

@@ -27,8 +27,18 @@ function asObject(v: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function asArray(v: unknown): unknown[] {
-  return Array.isArray(v) ? v : [];
+/**
+ * 结构化数组字段（body / items / columns / actions / facts）取值。
+ * 缺省（undefined/null）视为空数组（合法）；但「存在且非数组」是结构损坏
+ * （对齐服务端 ErrCardBadShape）→ 抛 CardRenderError 触发整卡 plain fallback，
+ * 不 fail-open 成空/部分卡（本模块威胁模型假设畸形 payload 可绕过服务端到达客户端）。
+ */
+function requireArray(v: unknown): unknown[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v)) {
+    throw new CardRenderError("structural field must be an array");
+  }
+  return v;
 }
 
 /** 解析 backgroundImage（string 或 {url}），仅 https 生效（混合内容防护）。 */
@@ -41,7 +51,8 @@ function backgroundStyle(bg: unknown): React.CSSProperties | undefined {
   }
   if (!url || !isHttpsUrl(url)) return undefined;
   return {
-    backgroundImage: `url("${url}")`,
+    // encodeURI 加固：即便 URL 含引号也不会破坏 url("...") 字面量（isHttpsUrl 已挡危险 scheme）。
+    backgroundImage: `url("${encodeURI(url)}")`,
     backgroundSize: "cover",
     backgroundPosition: "center",
   };
@@ -107,23 +118,23 @@ function renderTextBlock(
 
 function renderImage(
   el: Record<string, unknown>,
-  key: string
+  key: string,
+  budget: RenderBudget
 ): React.ReactElement {
   const url = typeof el.url === "string" ? el.url : "";
   const altText = typeof el.altText === "string" ? el.altText : "";
+  // Image 也可携带 selectAction（服务端 validate 允许并计数），与其他元素一致处理。
+  const select = resolveSelectAction(el.selectAction, budget);
   // 图片面仅渲 https；http（混合内容）或非法 → 占位（不自动升级，不整卡 fallback）。
-  if (!isHttpsUrl(url)) {
-    return (
-      <div
-        key={key}
-        className="wk-interactive-card-img-placeholder"
-        aria-label={altText}
-      >
-        {altText}
-      </div>
-    );
-  }
-  return (
+  const node = !isHttpsUrl(url) ? (
+    <div
+      key={key}
+      className="wk-interactive-card-img-placeholder"
+      aria-label={altText}
+    >
+      {altText}
+    </div>
+  ) : (
     <img
       key={key}
       className="wk-interactive-card-img"
@@ -132,6 +143,7 @@ function renderImage(
       loading="lazy"
     />
   );
+  return withSelectAction(node, select);
 }
 
 function renderFactSet(
@@ -139,7 +151,7 @@ function renderFactSet(
   key: string,
   budget: RenderBudget
 ): React.ReactElement {
-  const facts = asArray(el.facts);
+  const facts = requireArray(el.facts);
   return (
     <div key={key} className="wk-interactive-card-factset">
       {facts.map((f, i) => {
@@ -168,7 +180,7 @@ function renderContainer(
   key: string,
   budget: RenderBudget
 ): React.ReactElement {
-  const items = renderItems(asArray(el.items), `${key}-i`, budget);
+  const items = renderItems(requireArray(el.items), `${key}-i`, budget);
   const select = resolveSelectAction(el.selectAction, budget);
   const node = (
     <div
@@ -187,7 +199,7 @@ function renderColumnSet(
   key: string,
   budget: RenderBudget
 ): React.ReactElement {
-  const columns = asArray(el.columns);
+  const columns = requireArray(el.columns);
   const select = resolveSelectAction(el.selectAction, budget);
   const cols = columns.map((c, i) => {
     const co = asObject(c);
@@ -209,7 +221,7 @@ function renderColumnSet(
         className="wk-interactive-card-column"
         style={backgroundStyle(co.backgroundImage)}
       >
-        {renderItems(asArray(co.items), `${key}-c${i}-i`, budget)}
+        {renderItems(requireArray(co.items), `${key}-c${i}-i`, budget)}
       </div>
     );
     budget.leave();
@@ -242,7 +254,7 @@ function renderElement(
     case "TextBlock":
       return renderTextBlock(obj, key);
     case "Image":
-      return renderImage(obj, key);
+      return renderImage(obj, key, budget);
     case "FactSet":
       return renderFactSet(obj, key, budget);
     case "Container": {
@@ -320,8 +332,8 @@ export function renderCard(
     throw new CardRenderError(`not an AdaptiveCard: ${card?.type}`);
   }
   const select = resolveSelectAction(card.selectAction, budget);
-  const body = renderItems(asArray(card.body), "b", budget);
-  const actions = renderActions(asArray(card.actions), budget);
+  const body = renderItems(requireArray(card.body), "b", budget);
+  const actions = renderActions(requireArray(card.actions), budget);
   if (budget.exceeded) throw new CardRenderError("budget exceeded");
 
   const node = (

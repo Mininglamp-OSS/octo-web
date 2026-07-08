@@ -50,13 +50,15 @@ export class InteractiveCardContent extends MessageContent {
   }
 
   encodeJSON(): any {
-    // 波 1 web 不构造发送，仅为对称与本地回显保留。
+    // 波 1 web 不构造发送，仅为对称与本地回显保留；容忍字段一并带出，避免丢字段（与解码对称）。
     const out: Partial<InteractiveCardPayload> = {
       card: this.card,
       plain: this.plain,
       card_version: this.cardVersion,
       profile: this.profile,
     };
+    if (this.cardSeq !== undefined) out.card_seq = this.cardSeq;
+    if (this.transient !== undefined) out.transient = this.transient;
     return out;
   }
 
