@@ -267,7 +267,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }));
 
         try {
-            const res = await api.agentChat({ message: trimmed, session_id: sessionId });
+            const res = await api.agentChat({ message: trimmed, session_id: sessionId, profile: 'summary' });
             this.setState((prev) => ({
                 messages: [...prev.messages, { role: 'assistant', content: res.reply }],
                 // 后端回传 session_id 非空则回填（与后端持久化的会话保持一致）。

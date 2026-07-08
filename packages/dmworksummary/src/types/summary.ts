@@ -241,6 +241,8 @@ export interface ChatMessage {
 export interface AgentChatParams {
     message: string;
     session_id: string;
+    /** 指定后端 agent profile；总结场景传 'summary' 以挂载频道/消息等真实工具。 */
+    profile?: string;
 }
 
 /** Agent 对话响应（post() 已解包 data） */

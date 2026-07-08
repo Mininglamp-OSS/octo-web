@@ -246,7 +246,7 @@ export default class ChatSummaryNewModal extends Component<
         }));
 
         try {
-            const res = await summaryApi.agentChat({ message: trimmed, session_id: sessionId });
+            const res = await summaryApi.agentChat({ message: trimmed, session_id: sessionId, profile: 'summary' });
             this.setState((prev) => ({
                 messages: [...prev.messages, { role: 'assistant', content: res.reply }],
                 // 后端回传 session_id 非空则回填（与后端持久化的会话保持一致）。
