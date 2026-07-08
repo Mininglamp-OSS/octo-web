@@ -205,6 +205,21 @@ export {
 } from "./Service/OidcConfig";
 export type { OidcProviderConfig } from "./Service/OidcConfig";
 
+// StickerUploadLimits 解析同理抽到 ./Service/StickerUploadConfig：独立 leaf 文件,
+// 不拖 App.tsx 的重依赖链路, EmojiToolbar 的 vitest 可以直接测 parse 的边界情况。
+import {
+  DEFAULT_STICKER_UPLOAD_LIMITS,
+  parseStickerUploadLimits,
+  stickerUploadLimitsEqual,
+  type StickerUploadLimits,
+} from "./Service/StickerUploadConfig";
+export {
+  DEFAULT_STICKER_UPLOAD_LIMITS,
+  parseStickerUploadLimits,
+  stickerUploadLimitsEqual,
+} from "./Service/StickerUploadConfig";
+export type { StickerUploadLimits } from "./Service/StickerUploadConfig";
+
 export class WKRemoteConfig {
   revokeSecond: number = 2 * 60; // 撤回时间
   threadOn: boolean = false; // 子区功能开关，默认关闭
@@ -226,6 +241,20 @@ export class WKRemoteConfig {
    * 校验仍由后端负责，前端不能据此推断用户是否具备上传能力。
    */
   stickerCustomEnabled: boolean = false;
+  /**
+   * 自定义贴纸上传的操作端可调上限（最大体积 KB / 最长边 px / 允许的扩展名），后端
+   * 字段 sticker_upload_limits，与 SystemSettings.StickerUpload{MaxSizeKB,
+   * MaxDimension,AllowedFormats} 同源（octo-server #544/#547）。
+   *
+   * 纯客户端预校验用：EmojiPanel 在用户选完文件后据此本地立即校验，避免大图/非法
+   * 格式先跑完一次 HTTP 上传才被服务端拒绝。服务端 modules/file 侧仍对每次 sticker
+   * upload 请求做同一份 stickerLimits 快照兜底，这份缓存过期或被绕过都不影响安全
+   * 边界，前端不能据此推断上传一定会成功。
+   *
+   * 默认值 = 字段缺失/appconfig 请求失败时的回退值，与 PR #544 之前的历史硬编码
+   * （1024 KB / 512 px / gif,png,jpg,jpeg,webp）严格等价，行为无回归。
+   */
+  stickerUploadLimits: StickerUploadLimits = { ...DEFAULT_STICKER_UPLOAD_LIMITS };
   /**
    * Docs 协作文档模块展示开关。后端字段 docs_on 为 true 时，前端在侧边栏 NavRail
    * 展示 Docs 入口；false 或字段缺失时隐藏。
@@ -338,6 +367,7 @@ export class WKRemoteConfig {
       const previousSuppressLoginMigrationNotice =
         this.suppressLoginMigrationNotice;
       const previousStickerCustomEnabled = this.stickerCustomEnabled;
+      const previousStickerUploadLimits = this.stickerUploadLimits;
       const previousDocsOn = this.docsOn;
       this.requestSuccess = true;
       this.revokeSecond = result["revoke_second"];
@@ -352,6 +382,9 @@ export class WKRemoteConfig {
       this.stickerCustomEnabled = parseRemoteBool(
         result["sticker_custom_enabled"]
       );
+      this.stickerUploadLimits = parseStickerUploadLimits(
+        result["sticker_upload_limits"]
+      );
       this.docsOn = parseRemoteBool(result["docs_on"]);
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
@@ -362,6 +395,10 @@ export class WKRemoteConfig {
         previousSuppressLoginMigrationNotice !==
           this.suppressLoginMigrationNotice ||
         previousStickerCustomEnabled !== this.stickerCustomEnabled ||
+        !stickerUploadLimitsEqual(
+          previousStickerUploadLimits,
+          this.stickerUploadLimits
+        ) ||
         previousDocsOn !== this.docsOn
       ) {
         this.notifyConfigChangeListeners();

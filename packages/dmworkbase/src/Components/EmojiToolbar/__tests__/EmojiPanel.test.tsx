@@ -10,9 +10,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const hoisted = vi.hoisted(() => {
     const state = {
         stickerCustomEnabled: true,
+        // 默认值 = 历史硬编码值 (改动前 MAX_STICKER_BYTES=1MB / 512px / 5 种格式),
+        // 各 case 按需覆盖来模拟运维在管理台调整上限。
+        stickerUploadLimits: {
+            maxSizeKB: 1024,
+            maxDimension: 512,
+            allowedFormats: [".gif", ".png", ".jpg", ".jpeg", ".webp"],
+        },
         listener: null as (() => void) | null,
         // 按事件名捕获 mittBus 订阅的回调，让 test 能像真实广播那样手动触发。
         mittHandlers: {} as Record<string, () => void>,
+        // 控制 mocked Image 的 decode 结果: {width,height} 模拟解码成功, "error" 模拟
+        // 解码失败(fail-open 分支)。默认给一张远小于 512px 的合法图片。
+        nextImageResult: { width: 100, height: 100 } as { width: number; height: number } | "error",
     };
     return {
         state,
@@ -20,6 +30,7 @@ const hoisted = vi.hoisted(() => {
         userStickers: vi.fn().mockResolvedValue({ list: [] }),
         uploadSticker: vi.fn().mockResolvedValue({ path: "sticker-path", format: "png" }),
         addSticker: vi.fn().mockResolvedValue({}),
+        toastError: vi.fn(),
         addConfigChangeListener: vi.fn((cb: () => void) => {
             state.listener = cb;
             return () => {
@@ -35,6 +46,28 @@ const hoisted = vi.hoisted(() => {
     };
 });
 
+// EmojiToolbar/index.tsx 的 readStickerImageDimensions 用 new Image() + object URL 读
+// naturalWidth/naturalHeight; jsdom 不会真的解码图片 (onload 不会自然触发), 所以用这个
+// 假 Image 类接管, 按 hoisted.state.nextImageResult 同步调度 onload/onerror。
+class MockImage {
+    naturalWidth = 0;
+    naturalHeight = 0;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    set src(_value: string) {
+        queueMicrotask(() => {
+            const result = hoisted.state.nextImageResult;
+            if (result === "error") {
+                this.onerror?.();
+                return;
+            }
+            this.naturalWidth = result.width;
+            this.naturalHeight = result.height;
+            this.onload?.();
+        });
+    }
+}
+
 vi.mock("../../../App", () => ({
     default: {
         endpointManager: {
@@ -45,6 +78,9 @@ vi.mock("../../../App", () => ({
             // getter: EmojiPanel.render 每次都读最新值, 与真实 WKRemoteConfig 单例语义一致。
             get stickerCustomEnabled() {
                 return hoisted.state.stickerCustomEnabled;
+            },
+            get stickerUploadLimits() {
+                return hoisted.state.stickerUploadLimits;
             },
             addConfigChangeListener: hoisted.addConfigChangeListener,
         },
@@ -61,13 +97,16 @@ vi.mock("../../../App", () => ({
 }));
 
 vi.mock("../../../i18n", () => ({
-    t: (key: string) => key,
+    // 把 interpolation values 编码进返回值, 让 test 既能断言具体是哪条校验文案触发,
+    // 也能断言传给它的动态上限值 (例如 dimensionTooLarge 的 {{dimension}})。
+    t: (key: string, options?: { values?: Record<string, unknown> }) =>
+        options?.values ? `${key}:${JSON.stringify(options.values)}` : key,
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({
     Toast: {
         success: vi.fn(),
-        error: vi.fn(),
+        error: (...a: unknown[]) => hoisted.toastError(...a),
         warning: vi.fn(),
         info: vi.fn(),
     },
@@ -92,9 +131,18 @@ vi.mock("../emoji_tab_icon.png", () => ({ default: "stub.png" }));
 import { EmojiPanel } from "../index";
 
 let container: HTMLDivElement;
+let originalImage: typeof Image;
+let originalCreateObjectURL: typeof URL.createObjectURL;
+let originalRevokeObjectURL: typeof URL.revokeObjectURL;
 
 beforeEach(() => {
     hoisted.state.stickerCustomEnabled = true;
+    hoisted.state.stickerUploadLimits = {
+        maxSizeKB: 1024,
+        maxDimension: 512,
+        allowedFormats: [".gif", ".png", ".jpg", ".jpeg", ".webp"],
+    };
+    hoisted.state.nextImageResult = { width: 100, height: 100 };
     hoisted.state.listener = null;
     hoisted.state.mittHandlers = {};
     hoisted.addConfigChangeListener.mockClear();
@@ -104,6 +152,15 @@ beforeEach(() => {
     hoisted.userStickers.mockClear();
     hoisted.mittOn.mockClear();
     hoisted.mittOff.mockClear();
+    hoisted.toastError.mockClear();
+
+    originalImage = global.Image;
+    originalCreateObjectURL = URL.createObjectURL;
+    originalRevokeObjectURL = URL.revokeObjectURL;
+    (global as unknown as { Image: typeof Image }).Image = MockImage as unknown as typeof Image;
+    URL.createObjectURL = vi.fn(() => "blob:mock-sticker-url");
+    URL.revokeObjectURL = vi.fn();
+
     container = document.createElement("div");
     document.body.appendChild(container);
 });
@@ -113,6 +170,9 @@ afterEach(() => {
         ReactDOM.unmountComponentAtNode(container);
     });
     container.remove();
+    global.Image = originalImage;
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
 });
 
 function render(el: React.ReactElement) {
@@ -123,6 +183,22 @@ function render(el: React.ReactElement) {
 
 function tabs(): Element[] {
     return Array.from(container.querySelectorAll(".wk-emojipanel-tab-item"));
+}
+
+function fileInputEl(): HTMLInputElement {
+    return container.querySelector('input[type="file"]') as HTMLInputElement;
+}
+
+function selectFile(file: File) {
+    const input = fileInputEl();
+    Object.defineProperty(input, "files", { value: [file], configurable: true });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+// onFileChange 现在有多段 await (dimension 探测走 queueMicrotask, 再串 uploadSticker /
+// addSticker / requestStickers)。一个 macrotask 足以让所有排队的 microtask 先跑完。
+function flush(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe("EmojiPanel sticker gating", () => {
@@ -255,5 +331,174 @@ describe("EmojiPanel sticker gating", () => {
 
         expect(hoisted.uploadSticker).not.toHaveBeenCalled();
         expect(hoisted.addSticker).not.toHaveBeenCalled();
+    });
+});
+
+describe("EmojiPanel sticker upload validation (WKApp.remoteConfig.stickerUploadLimits)", () => {
+    const bytes = (size: number) => new Uint8Array(size);
+
+    it("uploads when size, extension and dimensions are all within the configured limits", async () => {
+        render(<EmojiPanel />);
+        selectFile(new File([bytes(100)], "s.png", { type: "image/png" }));
+        await flush();
+
+        expect(hoisted.uploadSticker).toHaveBeenCalledTimes(1);
+        expect(hoisted.addSticker).toHaveBeenCalledTimes(1);
+        expect(hoisted.toastError).not.toHaveBeenCalled();
+    });
+
+    it("rejects an extension outside allowedFormats and does not upload", async () => {
+        render(<EmojiPanel />);
+        selectFile(new File([bytes(100)], "s.bmp", { type: "image/bmp" }));
+        await flush();
+
+        expect(hoisted.toastError).toHaveBeenCalledWith(
+            expect.stringContaining("base.sticker.formatUnsupported")
+        );
+        expect(hoisted.uploadSticker).not.toHaveBeenCalled();
+    });
+
+    it("rejects an extension that ops narrowed out of allowedFormats", async () => {
+        // 运维在管理台把 allowedFormats 收窄到只剩 png——历史上被接受的 gif 现在应被拒。
+        hoisted.state.stickerUploadLimits = {
+            ...hoisted.state.stickerUploadLimits,
+            allowedFormats: [".png"],
+        };
+        render(<EmojiPanel />);
+        selectFile(new File([bytes(100)], "s.gif", { type: "image/gif" }));
+        await flush();
+
+        expect(hoisted.toastError).toHaveBeenCalledWith(
+            expect.stringContaining("base.sticker.formatUnsupported")
+        );
+        expect(hoisted.uploadSticker).not.toHaveBeenCalled();
+    });
+
+    it("rejects a file exceeding the configured maxSizeKB and does not upload", async () => {
+        hoisted.state.stickerUploadLimits = { ...hoisted.state.stickerUploadLimits, maxSizeKB: 1 };
+        render(<EmojiPanel />);
+        selectFile(new File([bytes(2048)], "s.png", { type: "image/png" })); // 2KB > 1KB limit
+        await flush();
+
+        expect(hoisted.toastError).toHaveBeenCalledWith(
+            expect.stringContaining("base.sticker.tooLarge")
+        );
+        expect(hoisted.uploadSticker).not.toHaveBeenCalled();
+    });
+
+    it("accepts a file the historical 1MB default would have rejected once ops widens maxSizeKB", async () => {
+        hoisted.state.stickerUploadLimits = { ...hoisted.state.stickerUploadLimits, maxSizeKB: 5120 };
+        render(<EmojiPanel />);
+        selectFile(new File([bytes(2 * 1024 * 1024)], "s.png", { type: "image/png" })); // 2MB
+        await flush();
+
+        expect(hoisted.uploadSticker).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects an image exceeding the configured maxDimension and does not upload", async () => {
+        hoisted.state.nextImageResult = { width: 1024, height: 300 };
+        render(<EmojiPanel />);
+        selectFile(new File([bytes(100)], "s.png", { type: "image/png" }));
+        await flush();
+
+        expect(hoisted.toastError).toHaveBeenCalledWith(
+            expect.stringContaining("base.sticker.dimensionTooLarge")
+        );
+        expect(hoisted.uploadSticker).not.toHaveBeenCalled();
+    });
+
+    it("interpolates the configured maxDimension into the dimension-exceeded message", async () => {
+        hoisted.state.stickerUploadLimits = { ...hoisted.state.stickerUploadLimits, maxDimension: 900 };
+        hoisted.state.nextImageResult = { width: 901, height: 10 };
+        render(<EmojiPanel />);
+        selectFile(new File([bytes(100)], "s.png", { type: "image/png" }));
+        await flush();
+
+        expect(hoisted.toastError).toHaveBeenCalledWith(
+            expect.stringContaining('"dimension":"900"')
+        );
+    });
+
+    it("fails open and proceeds to upload when local dimension decoding errors out", async () => {
+        // 本地探测失败(文件损坏等)不该拦掉合法上传——交给服务端 modules/file 侧兜底。
+        hoisted.state.nextImageResult = "error";
+        render(<EmojiPanel />);
+        selectFile(new File([bytes(100)], "s.png", { type: "image/png" }));
+        await flush();
+
+        expect(hoisted.uploadSticker).toHaveBeenCalledTimes(1);
+    });
+
+    it("binds the file input's accept attribute to the configured allowedFormats", () => {
+        hoisted.state.stickerUploadLimits = {
+            ...hoisted.state.stickerUploadLimits,
+            allowedFormats: [".png", ".webp"],
+        };
+        render(<EmojiPanel />);
+        expect(fileInputEl().accept).toBe(".png,.webp");
+    });
+});
+
+describe("EmojiPanel sticker upload — async race fixes", () => {
+    const bytes = (size: number) => new Uint8Array(size);
+
+    it("sets uploading synchronously before the dimension-decode await resolves, closing the re-entrancy window", () => {
+        // 修复前 uploading 只在 dimension 探测 resolve 之后才置位, 探测期间「+」按钮的
+        // !uploading 门控形同虚设, 用户能在同一次选择还没校验完时再选一张触发并发上传。
+        render(<EmojiPanel />);
+        // spinner 图标只在 isSticker(切到「我的贴纸」tab)时才会挂载, 先切过去。
+        act(() => {
+            tabs()[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        act(() => {
+            selectFile(new File([bytes(100)], "s.png", { type: "image/png" }));
+        });
+        // 此刻 dimension 探测的 queueMicrotask 还没跑(没有 flush), 但同步校验通过后
+        // uploading 应该已经是 true——spinner 图标是 uploading 状态在 DOM 上的唯一体现。
+        expect(container.querySelector(".wk-sticker-spin")).not.toBeNull();
+    });
+
+    it("resets uploading back to false after the post-await dimension check rejects the file", async () => {
+        hoisted.state.nextImageResult = { width: 1024, height: 300 };
+        render(<EmojiPanel />);
+        act(() => {
+            tabs()[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        selectFile(new File([bytes(100)], "s.png", { type: "image/png" }));
+        await flush();
+
+        expect(container.querySelector(".wk-sticker-spin")).toBeNull();
+        expect(hoisted.uploadSticker).not.toHaveBeenCalled();
+    });
+
+    it("re-reads live stickerUploadLimits after the dimension-decode await instead of the pre-await snapshot", async () => {
+        // 300x10 在初始 maxDimension=512 下本应通过; 探测这段 await 期间运维把上限收窄到
+        // 200——校验必须用收窄后的新值判断, 而不是发起探测那一刻捕获的旧 limits。
+        hoisted.state.nextImageResult = { width: 300, height: 10 };
+        queueMicrotask(() => {
+            hoisted.state.stickerUploadLimits = {
+                ...hoisted.state.stickerUploadLimits,
+                maxDimension: 200,
+            };
+        });
+        render(<EmojiPanel />);
+        selectFile(new File([bytes(100)], "s.png", { type: "image/png" }));
+        await flush();
+
+        expect(hoisted.toastError).toHaveBeenCalledWith(
+            expect.stringContaining('"dimension":"200"')
+        );
+        expect(hoisted.uploadSticker).not.toHaveBeenCalled();
+    });
+
+    it("re-checks stickerCustomEnabled after the dimension-decode await and blocks a mid-flight disable", async () => {
+        queueMicrotask(() => {
+            hoisted.state.stickerCustomEnabled = false;
+        });
+        render(<EmojiPanel />);
+        selectFile(new File([bytes(100)], "s.png", { type: "image/png" }));
+        await flush();
+
+        expect(hoisted.uploadSticker).not.toHaveBeenCalled();
     });
 });
