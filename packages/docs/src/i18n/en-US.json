@@ -17,7 +17,10 @@
   "board": {
     "readOnly": "Read-only",
     "saveFailed": "Not saved — local storage is full or unavailable",
-    "untitled": "Untitled board"
+    "untitled": "Untitled board",
+    "deleteEntry": "Delete board",
+    "importLibrary": "Import from local",
+    "importLibraryError": "Couldn't import that library — please make sure it's a valid .excalidrawlib"
   },
   "doc": {
     "deleteEntry": "Delete document",

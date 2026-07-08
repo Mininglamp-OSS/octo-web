@@ -42,6 +42,7 @@ export function BoardSession(props: BoardSessionProps): ReactElement {
       docId={docId}
       title={title}
       space={space}
+      folder={folder}
       onBack={onBack}
       onExit={onExit}
       onTitleSaved={onTitleSaved}

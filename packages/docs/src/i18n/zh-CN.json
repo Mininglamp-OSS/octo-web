@@ -17,7 +17,10 @@
   "board": {
     "readOnly": "只读",
     "saveFailed": "未保存 — 本地存储已满或不可用",
-    "untitled": "未命名画板"
+    "untitled": "未命名画板",
+    "deleteEntry": "删除画板",
+    "importLibrary": "从本地导入",
+    "importLibraryError": "无法导入该素材库文件，请确认是有效的 .excalidrawlib"
   },
   "doc": {
     "deleteEntry": "删除文档",

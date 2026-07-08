@@ -12,14 +12,22 @@ import {
 } from 'react'
 import { DocTitle } from '../editor/EditorShell.tsx'
 import { DocTerminal } from '../editor/DocTerminal.tsx'
+import { PresenceBar } from '../editor/PresenceBar.tsx'
+import { DocMoreMenu, DeleteIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
+import { MemberPanel } from '../members/MemberPanel.tsx'
+import { useMemberNames } from '../members/useMemberNames.ts'
+import { useAccessRequests } from '../access-request/useAccessRequests.ts'
+import { startDocForward } from '../forward/startDocForward.ts'
 import { canManage, canEdit } from '../auth/roles.ts'
 import { useDocDelete } from '../editor/useDocDelete.ts'
-import { getDoc } from '../pages/docsApi.ts'
+import { getDoc, getUserName } from '../pages/docsApi.ts'
 import type { Role } from '../auth/roles.ts'
-import { i18n, t } from '../octoweb/index.ts'
+import type { ConnState } from '../collab/createCollabEditor.ts'
+import { i18n, t, getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
 import { loadBoardScene, persistBoardScene, clearBoardScene, type BoardScene } from './boardStore.ts'
 import { BoardMainMenu, type ExcalidrawMainMenu } from './BoardMainMenu.tsx'
 import { installExcalidrawDebrand } from './excalidrawDebrand.ts'
+import { installLibraryImportButton } from './libraryImportButton.ts'
 import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
 import type { ExcalidrawElement, BinaryFileData } from './collab/index.ts'
 import {
@@ -87,6 +95,23 @@ type ReconcileElementsFn = (
   localAppState: unknown,
 ) => ExcalidrawElement[]
 
+/**
+ * Excalidraw's `loadLibraryFromBlob(blob)` helper — parses a local `.excalidrawlib` file into
+ * library items. Captured off the same client-only dynamic import as the component (like the
+ * restore/reconcile helpers) so the header's local-import button (XIN-601) never depends on the
+ * heavy chunk being statically imported.
+ */
+type LoadLibraryFromBlobFn = (blob: Blob) => Promise<unknown[]>
+
+/** The slice of the imperative Excalidraw API the local-import button drives (`updateLibrary`). */
+interface ExcalidrawLibraryApi {
+  updateLibrary: (opts: {
+    libraryItems: unknown
+    merge?: boolean
+    openLibraryMenu?: boolean
+  }) => Promise<unknown>
+}
+
 /** Debounce window for persisting scene edits (M1 local persistence). */
 const SAVE_DEBOUNCE_MS = 600
 
@@ -95,6 +120,12 @@ export interface BoardShellProps {
   /** Fallback title until the real one is fetched (mirrors EditorShell). */
   title: string
   space: string
+  /**
+   * Folder segment of the whiteboard key (`octo:{space}:{folder}:wb:{board}`). Threaded through so
+   * the header's "forward to chat" builds the same shareable link the doc editor does. Optional: the
+   * standalone / M1 path may not know it, in which case forward falls back to space-only.
+   */
+  folder?: string
   /** Optional "back to the document list" control (inline/standalone path only). */
   onBack?: () => void
   /** Programmatic return-to-list (used after a delete). */
@@ -201,7 +232,7 @@ class BoardErrorBoundary extends Component<{ children: ReactNode }, { error: Err
  * save will hook into in M2.
  */
 export function BoardShell(props: BoardShellProps): ReactElement {
-  const { docId, title, space, onBack, onExit, onTitleSaved, onDeleted, collabSession, collab, user } = props
+  const { docId, title, space, folder, onBack, onExit, onTitleSaved, onDeleted, collabSession, collab, user } = props
 
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
   // Excalidraw's `MainMenu` compound component, captured off the same dynamic import. Rendered as a
@@ -220,6 +251,22 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // Flip this when persistBoardScene reports a failed write so the header can surface it.
   const [saveFailed, setSaveFailed] = useState(false)
   const [dark, setDark] = useState(prefersDark)
+
+  // --- Header parity with the doc editor (XIN-601 item 2) ---
+  // The board header now mirrors the doc editor's right-hand cluster (presence → forward → members
+  // → ≡ more menu), so these back the same surfaces the doc shell drives.
+  // Connection / sync status for the presence bar (derived from the collab provider, since the
+  // board owns its session directly rather than through useCollabEditor).
+  const [connState, setConnState] = useState<ConnState | null>(null)
+  const [synced, setSynced] = useState(false)
+  // Members modal toggle (manage role only), matching the doc editor's #A4 modal.
+  const [membersOpen, setMembersOpen] = useState(false)
+  // Creator + creation date for the ≡ "more" menu head, fetched from the per-doc GET like EditorShell.
+  const [ownerId, setOwnerId] = useState<string | undefined>(undefined)
+  const [createdAt, setCreatedAt] = useState<string | undefined>(undefined)
+  const [creatorName, setCreatorName] = useState<string | undefined>(undefined)
+  // Transient banner when a picked `.excalidrawlib` can't be parsed (mirrors the doc export-error banner).
+  const [libraryImportError, setLibraryImportError] = useState<string | null>(null)
 
   // Authenticated identity for cache scoping (P1-1). The local mirror + IndexedDB cache are keyed
   // by this uid so a shared browser never exposes one user's board to the next.
@@ -248,6 +295,9 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // by `handleApi` (to wire the binding's render adapter) and by the initialData memo below.
   const restoreElementsRef = useRef<RestoreElementsFn | null>(null)
   const reconcileElementsRef = useRef<ReconcileElementsFn | null>(null)
+  // Excalidraw's `loadLibraryFromBlob` parser, captured off the same import. Read by the header's
+  // local-import button (XIN-601) to turn a picked `.excalidrawlib` file into library items.
+  const loadLibraryFromBlobRef = useRef<LoadLibraryFromBlobFn | null>(null)
   // Raw imperative Excalidraw API handle, stashed by `handleApi` on canvas mount. Held in a ref (not
   // read during render) so the access-gated effect below can wire it into the binding once — and
   // only once — access is confirmed (P1a).
@@ -284,6 +334,18 @@ export function BoardShell(props: BoardShellProps): ReactElement {
 
   const langCode = toExcalidrawLang(i18n.getLocale ? i18n.getLocale() : 'en-US')
 
+  // Manage capability drives the members entry, the delete row, and the pending-access badge.
+  const manage = role ? canManage(role) : false
+  // uid -> display name for this space: resolves the creator name for the ≡ menu head, and is the
+  // same seam the member panel + presence caret use.
+  const names = useMemberNames(space)
+  // Pending access-request count for the Members-button badge (admin only). Called unconditionally
+  // (hooks rules); the hook stays inert when not manage.
+  const pendingAccess = useAccessRequests(docId, manage)
+  // "Forward to chat" only when the host exposes the conversation-select surface the flow lands on
+  // (absent on the standalone page), so the entry never renders as a silent no-op — same gate as the doc.
+  const canForward = canForwardToChat()
+
   // Client-only dynamic import of Excalidraw + its stylesheet. Runs once; the chunk is fetched on
   // demand so it never inflates the host's first paint and never executes under SSR.
   useEffect(() => {
@@ -300,9 +362,11 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         const m = mod as unknown as {
           restoreElements?: RestoreElementsFn
           reconcileElements?: ReconcileElementsFn
+          loadLibraryFromBlob?: LoadLibraryFromBlobFn
         }
         restoreElementsRef.current = m.restoreElements ?? null
         reconcileElementsRef.current = m.reconcileElements ?? null
+        loadLibraryFromBlobRef.current = m.loadLibraryFromBlob ?? null
         setMainMenu(() => mod.MainMenu as unknown as ExcalidrawMainMenu)
         setExcalidraw(() => mod.Excalidraw as unknown as ExcalidrawComponent)
       })
@@ -338,6 +402,125 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     if (!Excalidraw || typeof document === 'undefined') return
     return installExcalidrawDebrand(document)
   }, [Excalidraw])
+
+  // XIN-601 item 1: read a picked `.excalidrawlib` and load it through the imperative library API.
+  // This is exactly what the library panel's "..." → "Open" item did; the injected button just
+  // surfaces it explicitly. Reads the live api/parser off refs so the button — bound once when the
+  // panel DOM mounts — always drives the current canvas.
+  const importLibraryFromFile = useCallback(() => {
+    const api = boardApiRef.current as ExcalidrawLibraryApi | null
+    const parse = loadLibraryFromBlobRef.current
+    if (!api?.updateLibrary || !parse || typeof document === 'undefined') return
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.excalidrawlib,application/json'
+    input.addEventListener('change', () => {
+      const file = input.files?.[0]
+      if (!file) return
+      setLibraryImportError(null)
+      parse(file)
+        .then((libraryItems) => api.updateLibrary({ libraryItems, merge: true, openLibraryMenu: true }))
+        .catch((err) => {
+          console.error('[board] library import failed', err)
+          setLibraryImportError(t('docs.board.importLibraryError'))
+        })
+    })
+    input.click()
+  }, [])
+
+  // XIN-601 item 1: inject an explicit "import from local" button into the library panel so the only
+  // local-import entry is no longer buried in the panel's "..." dropdown. Runs alongside the de-brand
+  // observer once the canvas is loaded. The label is resolved here so the injector stays i18n-free.
+  useEffect(() => {
+    if (!Excalidraw || typeof document === 'undefined') return
+    return installLibraryImportButton(document, {
+      label: t('docs.board.importLibrary'),
+      onImport: importLibraryFromFile,
+    })
+  }, [Excalidraw, importLibraryFromFile])
+
+  // Presence status for the header bar (XIN-601 item 2). The board owns its collab session directly
+  // (not via useCollabEditor), so mirror that hook's wiring: seed from the provider's current state
+  // and subscribe to its status/synced events. Inert on the M1 standalone path (no provider). Guarded
+  // so a provider double that omits the event emitter (e.g. the presence dev harness) can't throw.
+  useEffect(() => {
+    const provider = collabSession?.provider as
+      | {
+          isSynced?: boolean
+          synced?: boolean
+          status?: ConnState
+          on?: (ev: string, cb: (e: { status: ConnState }) => void) => void
+          off?: (ev: string, cb: (e: { status: ConnState }) => void) => void
+        }
+      | undefined
+    if (!provider) return
+    setSynced(provider.isSynced ?? provider.synced ?? false)
+    if (provider.status) setConnState(provider.status)
+    if (typeof provider.on !== 'function' || typeof provider.off !== 'function') return
+    const onStatus = (e: { status: ConnState }) => setConnState(e.status)
+    const onSynced = () => setSynced(true)
+    provider.on('status', onStatus)
+    provider.on('synced', onSynced)
+    return () => {
+      provider.off!('status', onStatus)
+      provider.off!('synced', onSynced)
+    }
+  }, [collabSession])
+
+  // Creator + creation date for the ≡ "more" menu head (mirrors EditorShell). Non-fatal: the head
+  // just won't show the created-on row / falls back to a short uid on failure.
+  useEffect(() => {
+    let cancelled = false
+    getDoc(docId)
+      .then((meta) => {
+        if (cancelled) return
+        if (typeof meta?.ownerId === 'string' && meta.ownerId) setOwnerId(meta.ownerId)
+        if (typeof meta?.createdAt === 'string' && meta.createdAt) setCreatedAt(meta.createdAt)
+      })
+      .catch(() => {
+        /* non-fatal: creator head just won't fully populate */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [docId])
+
+  // Resolve the creator's display name: from the already-loaded space-member map first (free), else
+  // via GET /users/:uid. Any failure leaves it undefined and the menu falls back to a short uid.
+  useEffect(() => {
+    if (!ownerId) return
+    const fromMembers = names.get(ownerId)
+    if (fromMembers && fromMembers !== ownerId) {
+      setCreatorName(fromMembers)
+      return
+    }
+    let cancelled = false
+    getUserName(ownerId, { preferRealName: true })
+      .then((name) => {
+        if (!cancelled && name) setCreatorName(name)
+      })
+      .catch(() => {
+        /* keep the uid fallback */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ownerId, names])
+
+  // "Forward to chat" (reader+): recompute grant capability from the LIVE role at click time, same
+  // as the doc editor. The bridge opens the host conversation-select.
+  const onForwardToChat = useCallback(() => {
+    if (!role) return
+    startDocForward({
+      docId,
+      title,
+      role,
+      currentUid: getCurrentUid(),
+      ownerId,
+      space,
+      folder,
+    })
+  }, [docId, title, role, ownerId, space, folder])
 
   // Resolve the caller's role for THIS board so a reader gets a read-only canvas.
   //
@@ -626,8 +809,6 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     }
   }, [collabMode, terminalActive, docId, space])
 
-  const manage = role ? canManage(role) : false
-
   // Restore the initially-loaded scene before feeding it to Excalidraw (XIN-87). The local mirror
   // (and, on a cold reopen, the Y.Doc state that seeded it) can hold raw elements; handing those to
   // `initialData` unrestored is why a reopened board replayed empty. Gated on `Excalidraw` so the
@@ -666,6 +847,22 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     return <DocTerminal title={title} kind={terminal.kind} onBack={onBack} />
   }
 
+  // ≡ "more" menu (XIN-601 item 2): delete is collapsed into the destructive slot, matching the doc
+  // editor. Boards have no version-history / markdown-export / open-in-new-page rows, so the neutral
+  // item list is empty — only the creator/created head and the delete row show. Creator name falls
+  // back to a short uid → placeholder, so the head never blanks or crashes on a missing lookup.
+  const deleteItem: DocMoreMenuItem | undefined = manage
+    ? {
+        key: 'delete',
+        label: t('docs.board.deleteEntry'),
+        icon: DeleteIcon,
+        danger: true,
+        onClick: del.requestDelete,
+      }
+    : undefined
+  const creatorDisplay =
+    creatorName || (ownerId ? ownerId.slice(0, 8) : t('docs.moreMenu.unknownCreator'))
+
   return (
     <div className="octo-doc octo-doc--editor octo-theme octo-board">
       <header className="octo-doc-header">
@@ -676,24 +873,57 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         )}
         <DocTitle docId={docId} initialTitle={title} canEdit={manage} onSaved={onTitleSaved} />
         <div className="octo-doc-header-right">
+          {/* Board-specific status badges (no doc counterpart) lead the cluster. */}
           {readOnly && <span className="octo-board-readonly">{t('docs.board.readOnly')}</span>}
           {saveFailed && (
             <span className="octo-board-save-error" role="alert" title={t('docs.board.saveFailed')}>
               ⚠ {t('docs.board.saveFailed')}
             </span>
           )}
+          {/* From here the cluster mirrors the doc header: presence → forward → members → ≡ more.
+              Comments are dropped (doc-specific: they anchor to text ranges the board has none of). */}
+          {collabSession?.provider && (
+            <PresenceBar provider={collabSession.provider} connState={connState} synced={synced} />
+          )}
+          {role && canForward && (
+            <button
+              type="button"
+              className="octo-tb-btn octo-doc-forward-btn"
+              title={t('docs.forward.entry')}
+              onClick={onForwardToChat}
+            >
+              ⤴ {t('docs.forward.entry')}
+            </button>
+          )}
           {manage && (
             <button
               type="button"
-              className="octo-tb-btn octo-doc-delete-btn"
-              title={t('docs.doc.deleteEntry')}
-              onClick={del.requestDelete}
+              className={membersOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
+              aria-pressed={membersOpen}
+              onClick={() => setMembersOpen((v) => !v)}
             >
-              🗑 {t('docs.doc.deleteEntry')}
+              {t('docs.toolbar.members')}
+              {pendingAccess.count > 0 && (
+                <span className="octo-access-badge" aria-label={t('docs.forward.pendingTitle')}>
+                  {pendingAccess.count}
+                </span>
+              )}
             </button>
           )}
+          <DocMoreMenu
+            creatorName={creatorDisplay}
+            createdAt={createdAt}
+            items={[]}
+            dangerItem={deleteItem}
+          />
         </div>
       </header>
+
+      {libraryImportError && (
+        <p className="octo-member-error" role="alert">
+          {libraryImportError}
+        </p>
+      )}
 
       {del.confirming && (
         <div className="octo-docs-delete-confirm octo-doc-delete-confirm" role="alertdialog" aria-label={t('docs.doc.deleteConfirmTitle')}>
@@ -745,6 +975,28 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           </BoardErrorBoundary>
         )}
       </div>
+
+      {/* Manage members opens a dedicated modal (mirrors the doc editor's #A4 modal, not a drawer). */}
+      {membersOpen && manage && role && (
+        <div className="octo-modal-overlay" role="presentation" onMouseDown={() => setMembersOpen(false)}>
+          <div
+            className="octo-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('docs.member.manage')}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <MemberPanel
+              docId={docId}
+              role={role}
+              space={space}
+              ownerId={ownerId}
+              accessRequests={pendingAccess}
+              onClose={() => setMembersOpen(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

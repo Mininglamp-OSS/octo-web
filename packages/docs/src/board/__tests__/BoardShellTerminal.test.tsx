@@ -30,6 +30,7 @@ vi.mock('@excalidraw/excalidraw', () => {
     MainMenu,
     restoreElements: (els: readonly unknown[] | null | undefined) => (els ? [...els] : []),
     reconcileElements: (local: readonly unknown[]) => [...local],
+    loadLibraryFromBlob: async () => [],
   }
 })
 // Side-effect stylesheet import — no-op in jsdom.

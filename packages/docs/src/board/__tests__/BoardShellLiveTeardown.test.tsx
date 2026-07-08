@@ -24,14 +24,19 @@ vi.mock('@excalidraw/excalidraw', () => {
     MainMenu,
     restoreElements: (els: readonly unknown[] | null | undefined) => (els ? [...els] : []),
     reconcileElements: (local: readonly unknown[]) => [...local],
+    loadLibraryFromBlob: async () => [],
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
 
 // The live access recheck (P1 hot path) calls getDoc on the collab path. Drive its outcome so the
-// test can reproduce a runtime board deletion / revoke while the page is open.
+// test can reproduce a runtime board deletion / revoke while the page is open. getUserName is a
+// benign stub (the header's ≡ menu resolves the creator name through it).
 const getDoc = vi.fn()
-vi.mock('../../pages/docsApi.ts', () => ({ getDoc: (...args: unknown[]) => getDoc(...args) }))
+vi.mock('../../pages/docsApi.ts', () => ({
+  getDoc: (...args: unknown[]) => getDoc(...args),
+  getUserName: async () => '',
+}))
 
 import { BoardShell, BOARD_ACCESS_RECHECK_MS } from '../BoardShell.tsx'
 

@@ -64,6 +64,31 @@
   font-size: 13px;
 }
 
+/* Explicit "import from local" button injected into the Excalidraw library panel (XIN-601 item 1).
+   Runtime-injected by installLibraryImportButton() into `.library-menu-control-buttons`, so it sits
+   in the same row as the "..." dropdown and needs its own styling (Excalidraw won't style our node).
+   A quiet bordered pill that reads as a first-class action, matching the panel's compact controls. */
+.library-menu-control-buttons .octo-lib-import-btn {
+  flex: 1 1 auto;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--octo-fg-1, #1d2129);
+  background: var(--octo-bg-1, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.library-menu-control-buttons .octo-lib-import-btn:hover {
+  background: var(--octo-fill-1, #f2f3f5);
+  border-color: var(--octo-fg-3, #86909c);
+}
+.library-menu-control-buttons .octo-lib-import-btn:active {
+  background: var(--octo-fill-2, #e5e6eb);
+}
+
 /* De-brand the Help dialog: hide the four upstream Excalidraw link buttons at the top
    (Documentation / Blog / GitHub issues / YouTube) while keeping the shortcut lists below
    (XIN-531 item 2). Excalidraw 0.18.1 exposes no prop to hide these. The buttons live in

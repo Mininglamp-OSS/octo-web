@@ -33,6 +33,10 @@ vi.mock('@excalidraw/excalidraw', () => {
     MainMenu,
     restoreElements: (els: readonly unknown[] | null | undefined) => (els ? [...els] : []),
     reconcileElements: (local: readonly unknown[]) => [...local],
+    // The shell captures this off the same dynamic import to power the library import button; vitest
+    // module mocks throw on access to an undeclared export, so it must be present even though this
+    // suite never exercises the import path.
+    loadLibraryFromBlob: async () => [],
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
