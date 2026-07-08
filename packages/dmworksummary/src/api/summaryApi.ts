@@ -149,7 +149,9 @@ export async function createAgentSummary(
 // 校验 envelope，非0 code 或空 reply 时抛错，交给 UI 层 catch。
 export async function agentChat(params: AgentChatParams): Promise<AgentChatResult> {
     try {
-        const resp = await summaryAxios.post(`${BASE}/agent/chat`, params);
+        // agent 是多步回环（LLM→工具→LLM…），单次问答可能耗时数十秒，
+        // 远超默认 20s 超时。给这个请求单独放宽到 120s，避免链路没跑完就被前端掐断。
+        const resp = await summaryAxios.post(`${BASE}/agent/chat`, params, { timeout: 120000 });
         if (resp.data?.code !== 0) {
             throw new Error(resp.data?.message || 'agent chat failed');
         }
