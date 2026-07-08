@@ -12,8 +12,8 @@ import { MatterModule } from '@octo/todo';
 import { SummaryModule } from '@dmwork/summary';
 import { AppBotModule } from '@dmwork/appbot';
 import { DocsModule } from '@octo/docs';
-import { RuntimeModule } from '@octo/runtime';
-import { LoopModule } from '@octo/loop';
+import { RuntimeModule, runtimeHandlers } from '@octo/runtime';
+import { LoopModule, startLoopMock } from '@octo/loop';
 import { version as pkgVersion } from '../package.json';
 import appEnUS from './i18n/en-US.json';
 import appZhCN from './i18n/zh-CN.json';
@@ -84,11 +84,27 @@ WKApp.shared.startup() // app启动
 
 const container = document.getElementById('root')!
 const root = createRoot(container)
-root.render(
-  <React.StrictMode>
-    <I18nProvider>
-      <App />
-    </I18nProvider>
-  </React.StrictMode>
-);
+
+// Loop V1: 以 MSW 提供「真实网络请求命中 Mock 响应」的数据层（DevTools Network 可见）。
+// 通过 VITE_LOOP_MOCK==='false' 可关闭（后续直连 multica-server 时）。
+const loopMockEnabled =
+  (import.meta as { env?: Record<string, string> }).env?.VITE_LOOP_MOCK !== 'false'
+
+function renderApp() {
+  root.render(
+    <React.StrictMode>
+      <I18nProvider>
+        <App />
+      </I18nProvider>
+    </React.StrictMode>
+  );
+}
+
+if (loopMockEnabled) {
+  startLoopMock(runtimeHandlers)
+    .catch((e) => console.warn('[loop-mock] MSW start failed, continuing without mock', e))
+    .finally(renderApp)
+} else {
+  renderApp()
+}
 reportWebVitals();

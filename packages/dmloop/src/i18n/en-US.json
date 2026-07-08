@@ -23,14 +23,33 @@
     "newSquad": "New Squad",
     "create": "Create",
     "cancel": "Cancel",
-    "save": "Save"
+    "save": "Save",
+    "delete": "Delete"
+  },
+  "workspace": { "title": "Workspaces" },
+  "taskStatus": {
+    "queued": "Queued",
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled"
   },
   "empty": {
     "issue": "No issues",
     "skill": "No skills",
     "project": "No projects",
     "agent": "No agents",
-    "squad": "No squads"
+    "squad": "No squads",
+    "issueTitle": "No issues yet",
+    "issueDesc": "Create your first issue to start tracking work.",
+    "skillTitle": "No skills yet",
+    "skillDesc": "Create or import a skill for your agents to reuse.",
+    "projectTitle": "No projects yet",
+    "projectDesc": "Create a project to organize related issues.",
+    "agentTitle": "No agents yet",
+    "agentDesc": "Create an agent to automate your tasks.",
+    "squadTitle": "No squads yet",
+    "squadDesc": "Form a squad so members and agents collaborate."
   },
   "field": {
     "title": "Title",
@@ -87,7 +106,11 @@
     "squadTitle": "Squad detail",
     "notFound": "Item not found",
     "properties": "Properties",
-    "comments": "Comments"
+    "comments": "Comments",
+    "back": "Back",
+    "created": "Created",
+    "execLog": "Execution log",
+    "execEmpty": "No runs yet"
   },
   "comment": {
     "reply": "Reply",
@@ -122,9 +145,19 @@
     "model": "Model",
     "runs30d": "Runs (30d)",
     "instructions": "Instructions",
+    "instructionsPlaceholder": "System prompt / agent behavior…",
     "visibility": "Visibility",
     "visWorkspace": "Workspace",
-    "visPrivate": "Private"
+    "visPrivate": "Private",
+    "thinking": "Thinking",
+    "thinkingLevel": { "none": "Off", "light": "Light", "medium": "Medium", "deep": "Deep" },
+    "concurrency": "Concurrency",
+    "customArgs": "Custom args",
+    "env": "Environment",
+    "revealEnv": "Reveal & edit",
+    "unsaved": "Unsaved changes",
+    "noSkills": "No skills",
+    "skills": "Skills"
   },
   "squad": {
     "leader": "Leader",

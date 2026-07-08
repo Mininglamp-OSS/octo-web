@@ -12,6 +12,13 @@ export interface AssigneeCandidate {
   avatar_color?: string;
 }
 
+export interface Workspace {
+  id: string;
+  name: string;
+  slug: string;
+  avatar_color?: string;
+}
+
 export interface ListParams {
   workspace_id?: string;
   keyword?: string;
@@ -39,6 +46,25 @@ export interface IssueComment {
   author_name: string;
   content: string;
   created_at: string;
+}
+
+/** 执行日志（Agent 任务运行记录）。 */
+export type TaskStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface AgentTask {
+  id: string;
+  issue_id: string;
+  agent_id: string | null;
+  agent_name: string | null;
+  status: TaskStatus;
+  trigger_summary: string;
+  created_at: string;
+  completed_at: string | null;
 }
 
 export interface Issue {
@@ -160,8 +186,10 @@ export interface Agent {
   runtime_id: string;
   runtime_name: string;
   model: string;
+  thinking_level: string;
   visibility: AgentVisibility;
   max_concurrent_tasks: number;
+  custom_args: string[];
   owner_name: string;
   skills: string[];
   runs_30d: number;
@@ -176,8 +204,10 @@ export interface UpsertAgentReq {
   status?: AgentStatus;
   runtime_id?: string;
   model?: string;
+  thinking_level?: string;
   visibility?: AgentVisibility;
   max_concurrent_tasks?: number;
+  custom_args?: string[];
 }
 
 /* ---------- Squad 域 ---------- */

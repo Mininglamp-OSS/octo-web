@@ -23,14 +23,33 @@
     "newSquad": "新建小队",
     "create": "创建",
     "cancel": "取消",
-    "save": "保存"
+    "save": "保存",
+    "delete": "删除"
+  },
+  "workspace": { "title": "工作空间" },
+  "taskStatus": {
+    "queued": "排队中",
+    "running": "运行中",
+    "completed": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消"
   },
   "empty": {
     "issue": "暂无 Issue",
     "skill": "暂无技能",
     "project": "暂无项目",
     "agent": "暂无智能体",
-    "squad": "暂无小队"
+    "squad": "暂无小队",
+    "issueTitle": "还没有 Issue",
+    "issueDesc": "创建第一个 Issue，开始跟踪你的工作。",
+    "skillTitle": "还没有技能",
+    "skillDesc": "创建或导入技能，供智能体复用。",
+    "projectTitle": "还没有项目",
+    "projectDesc": "创建项目来组织相关的 Issue。",
+    "agentTitle": "还没有智能体",
+    "agentDesc": "创建智能体来自动处理你的任务。",
+    "squadTitle": "还没有小队",
+    "squadDesc": "组建小队，让成员与智能体协作。"
   },
   "field": {
     "title": "标题",
@@ -87,7 +106,11 @@
     "squadTitle": "小队详情",
     "notFound": "未找到该条目",
     "properties": "属性",
-    "comments": "评论"
+    "comments": "评论",
+    "back": "返回",
+    "created": "创建于",
+    "execLog": "执行日志",
+    "execEmpty": "暂无执行记录"
   },
   "comment": {
     "reply": "回复",
@@ -122,9 +145,19 @@
     "model": "模型",
     "runs30d": "近 30 天任务",
     "instructions": "指令",
+    "instructionsPlaceholder": "系统提示词 / 智能体行为定义…",
     "visibility": "可见性",
     "visWorkspace": "工作区",
-    "visPrivate": "私有"
+    "visPrivate": "私有",
+    "thinking": "思考等级",
+    "thinkingLevel": { "none": "关闭", "light": "轻度", "medium": "中度", "deep": "深度" },
+    "concurrency": "并发数",
+    "customArgs": "自定义参数",
+    "env": "环境变量",
+    "revealEnv": "显示并编辑",
+    "unsaved": "有未保存的更改",
+    "noSkills": "暂无技能",
+    "skills": "技能"
   },
   "squad": {
     "leader": "队长",

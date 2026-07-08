@@ -1,0 +1,59 @@
+/* ===== Skill / Project / Squad 独立详情页共用布局 ===== */
+.loop-sd {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
+}
+
+.loop-sd__topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--semi-color-border, #e8e9eb);
+  flex: 0 0 auto;
+}
+
+.loop-sd__body {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.loop-sd__aside {
+  border-right: 1px solid var(--semi-color-border, #e8e9eb);
+  overflow: auto;
+  padding: 18px 16px;
+  background: var(--semi-color-bg-1, #fbfbfc);
+}
+
+.loop-sd__identity {
+  margin-bottom: 14px;
+}
+
+.loop-sd__main {
+  overflow: auto;
+  padding: 18px 20px;
+  min-width: 0;
+}
+
+.loop-sd__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .loop-sd__body {
+    grid-template-columns: 1fr;
+  }
+  .loop-sd__aside {
+    border-right: none;
+    border-bottom: 1px solid var(--semi-color-border, #e8e9eb);
+  }
+}

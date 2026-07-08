@@ -1,36 +1,18 @@
-// @octo/runtime — Runtime API (Mock)
-// 本版本全部返回 Mock 数据；结构对齐 loop runtime 域契约，便于后续替换为真实 axios 请求。
+// @octo/runtime — Runtime API（真实 HTTP，对齐 multica REST 契约；本版命中 MSW mock）
 import type { RuntimeDevice, RuntimeListParams } from "./types";
 import { resolveWorkspaceId } from "./types";
-import { MOCK_RUNTIMES } from "./mock/runtimes";
+import { httpGet } from "./http";
 
-function sleep(ms = 180): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-/** 列表：按 workspace_id 过滤 + 可选 status/keyword。 */
-export async function listRuntimes(
+export function listRuntimes(
   params?: RuntimeListParams,
 ): Promise<RuntimeDevice[]> {
-  await sleep();
-  const workspaceId = resolveWorkspaceId(params?.workspace_id);
-  let rows = MOCK_RUNTIMES.filter((r) => r.workspace_id === workspaceId);
-  if (params?.status) {
-    rows = rows.filter((r) => r.status === params.status);
-  }
-  if (params?.keyword) {
-    const kw = params.keyword.toLowerCase();
-    rows = rows.filter(
-      (r) =>
-        r.name.toLowerCase().includes(kw) ||
-        r.provider.toLowerCase().includes(kw),
-    );
-  }
-  return rows;
+  return httpGet<RuntimeDevice[]>("/runtimes", {
+    workspace_id: resolveWorkspaceId(params?.workspace_id),
+    status: params?.status,
+    keyword: params?.keyword,
+  });
 }
 
-/** 详情。 */
-export async function getRuntime(id: string): Promise<RuntimeDevice | null> {
-  await sleep(120);
-  return MOCK_RUNTIMES.find((r) => r.id === id) ?? null;
+export function getRuntime(id: string): Promise<RuntimeDevice> {
+  return httpGet<RuntimeDevice>(`/runtimes/${id}`);
 }

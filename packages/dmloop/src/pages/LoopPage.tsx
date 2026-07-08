@@ -1,13 +1,21 @@
 import React, { useEffect, useState } from "react";
-import { Typography } from "@douyinfe/semi-ui";
+import { Typography, Dropdown, Avatar, Button, Modal, Input, Toast } from "@douyinfe/semi-ui";
 import {
   ClipboardList,
   Sparkles,
   Briefcase,
   Bot,
   Users,
+  ChevronDown,
+  Check,
+  Plus,
+  SquarePen,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
+import type { Workspace } from "../api/types";
+import { listWorkspaces } from "../api/workspaceApi";
+import { setWorkspaceId, currentWorkspaceId } from "../api/http";
+import { createIssue } from "../api/issueApi";
 import IssuePage from "./IssuePage";
 import SkillPage from "./SkillPage";
 import ProjectPage from "./ProjectPage";
@@ -15,7 +23,7 @@ import AgentPage from "./AgentPage";
 import SquadPage from "./SquadPage";
 import "./loop.css";
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 type TabKey = "issue" | "skill" | "project" | "agent" | "squad";
 
@@ -28,13 +36,16 @@ const TABS: { key: TabKey; icon: React.ReactNode; render: () => JSX.Element }[] 
 ];
 
 /**
- * LoopPage — Loop 一级面板的**左栏**（二级菜单）。
- * 选中的子模块页面通过 WKApp.routeRight 推入右侧主栏，形成三栏结构：
- * NavRail(应用导航) + 二级菜单(左) + 子模块主内容(右主栏)。
+ * LoopPage — Loop 一级面板左栏：workspace 选择器 + 新建入口 + 二级菜单。
+ * 子模块主内容通过 WKApp.routeRight 推入右主栏（三栏结构）。
  */
 export default function LoopPage() {
   const { t } = useI18n();
   const [tab, setTab] = useState<TabKey>("issue");
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [wsId, setWsId] = useState<string>(currentWorkspaceId());
+  const [newOpen, setNewOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
 
   const openTab = (key: TabKey) => {
     setTab(key);
@@ -42,33 +53,92 @@ export default function LoopPage() {
     if (target) WKApp.routeRight.replaceToRoot(target.render());
   };
 
-  // 进入 Loop 默认打开 Issue 主面板到右栏（延迟一帧确保右栏 route context 已挂载）。
   useEffect(() => {
-    const timer = setTimeout(() => {
-      WKApp.routeRight.replaceToRoot(<IssuePage />);
-    }, 0);
+    listWorkspaces().then((ws) => {
+      setWorkspaces(ws);
+      if (!ws.some((w) => w.id === currentWorkspaceId()) && ws[0]) {
+        setWorkspaceId(ws[0].id);
+        setWsId(ws[0].id);
+      }
+    });
+    const timer = setTimeout(() => WKApp.routeRight.replaceToRoot(<IssuePage />), 0);
     return () => clearTimeout(timer);
   }, []);
 
+  const switchWorkspace = (id: string) => {
+    setWorkspaceId(id);
+    setWsId(id);
+    // 切换 workspace 后重载当前子模块（数据按 workspace_id 过滤）。
+    const target = TABS.find((it) => it.key === tab);
+    if (target) WKApp.routeRight.replaceToRoot(target.render());
+  };
+
+  const doQuickNew = async () => {
+    const title = newTitle.trim();
+    if (!title) return;
+    await createIssue({ title, status: "todo" });
+    setNewTitle("");
+    setNewOpen(false);
+    Toast.success(t("loop.toast.created"));
+    openTab("issue");
+  };
+
+  const current = workspaces.find((w) => w.id === wsId);
+
+  const wsMenu = (
+    <Dropdown.Menu>
+      <Dropdown.Title>{t("loop.workspace.title")}</Dropdown.Title>
+      {workspaces.map((w) => (
+        <Dropdown.Item
+          key={w.id}
+          onClick={() => switchWorkspace(w.id)}
+          icon={
+            <Avatar size="extra-extra-small" color={(w.avatar_color as never) ?? "blue"} shape="square">
+              {w.name.slice(0, 1)}
+            </Avatar>
+          }
+        >
+          <span style={{ flex: 1 }}>{w.name}</span>
+          {w.id === wsId && <Check size={14} />}
+        </Dropdown.Item>
+      ))}
+    </Dropdown.Menu>
+  );
+
   return (
     <div className="loop-sidebar">
-      <div className="loop-sidebar__brand">
-        <Title heading={5} style={{ margin: 0 }}>
-          {t("loop.menu.title")}
-        </Title>
+      <div className="loop-sidebar__ws">
+        <Dropdown render={wsMenu} trigger="click" position="bottomLeft">
+          <button className="loop-sidebar__ws-btn">
+            <Avatar size="extra-extra-small" color={(current?.avatar_color as never) ?? "blue"} shape="square">
+              {(current?.name ?? "L").slice(0, 1)}
+            </Avatar>
+            <span className="loop-sidebar__ws-name">{current?.name ?? t("loop.menu.title")}</span>
+            <ChevronDown size={14} style={{ opacity: 0.5 }} />
+          </button>
+        </Dropdown>
       </div>
+
+      <div className="loop-sidebar__new">
+        <button className="loop-sidebar__new-btn" onClick={() => setNewOpen(true)}>
+          <SquarePen size={15} />
+          <span>{t("loop.action.newIssue")}</span>
+          <Plus size={14} style={{ marginLeft: "auto", opacity: 0.5 }} />
+        </button>
+      </div>
+
       <nav className="loop-sidebar__menu">
         {TABS.map((it) => (
-          <button
-            key={it.key}
-            className={`loop-sidebar__item ${tab === it.key ? "is-active" : ""}`}
-            onClick={() => openTab(it.key)}
-          >
+          <button key={it.key} className={`loop-sidebar__item ${tab === it.key ? "is-active" : ""}`} onClick={() => openTab(it.key)}>
             {it.icon}
             <span>{t(`loop.nav.${it.key}`)}</span>
           </button>
         ))}
       </nav>
+
+      <Modal title={t("loop.action.newIssue")} visible={newOpen} onOk={doQuickNew} onCancel={() => setNewOpen(false)} okText={t("loop.action.create")} cancelText={t("loop.action.cancel")}>
+        <Input autoFocus value={newTitle} onChange={setNewTitle} placeholder={t("loop.field.titlePlaceholder")} onEnterPress={doQuickNew} />
+      </Modal>
     </div>
   );
 }

@@ -1,10 +1,12 @@
 import type {
   Issue,
   IssueComment,
+  AgentTask,
   Skill,
   Project,
   Agent,
   Squad,
+  Workspace,
   AssigneeCandidate,
 } from "../types";
 
@@ -256,6 +258,8 @@ export function seedAgents(): Agent[] {
       runtime_id: "rt-001",
       runtime_name: "kaka-mbp",
       model: "claude-opus-4",
+      thinking_level: "medium",
+      custom_args: ["--verbose"],
       visibility: "workspace",
       max_concurrent_tasks: 2,
       owner_name: "lvsijia",
@@ -274,6 +278,8 @@ export function seedAgents(): Agent[] {
       runtime_id: "rt-002",
       runtime_name: "build-runner-01",
       model: "codex-latest",
+      thinking_level: "none",
+      custom_args: [],
       visibility: "workspace",
       max_concurrent_tasks: 3,
       owner_name: "octo-bot",
@@ -292,6 +298,8 @@ export function seedAgents(): Agent[] {
       runtime_id: "rt-003",
       runtime_name: "gpu-node-a",
       model: "claude-sonnet-4",
+      thinking_level: "light",
+      custom_args: [],
       visibility: "private",
       max_concurrent_tasks: 1,
       owner_name: "chenhao",
@@ -340,3 +348,55 @@ export function seedSquads(): Squad[] {
     },
   ];
 }
+
+export function seedWorkspaces(): Workspace[] {
+  return [
+    { id: "ws-loop-demo", name: "Loop Demo", slug: "loop-demo", avatar_color: "blue" },
+    { id: "ws-octo", name: "Octo 团队", slug: "octo", avatar_color: "violet" },
+    { id: "ws-lab", name: "实验空间", slug: "lab", avatar_color: "green" },
+  ];
+}
+
+export function seedTasks(): AgentTask[] {
+  return [
+    {
+      id: "t-1",
+      issue_id: "i-1",
+      agent_id: "a-1",
+      agent_name: "Analyser-CC",
+      status: "running",
+      trigger_summary: "Initial run",
+      created_at: iso(30 * 60 * 1000),
+      completed_at: null,
+    },
+    {
+      id: "t-2",
+      issue_id: "i-1",
+      agent_id: "a-1",
+      agent_name: "Analyser-CC",
+      status: "completed",
+      trigger_summary: "Comment: 先出 PLAN",
+      created_at: iso(5 * H),
+      completed_at: iso(4 * H),
+    },
+    {
+      id: "t-3",
+      issue_id: "i-7",
+      agent_id: "a-2",
+      agent_name: "CodeBuilder",
+      status: "failed",
+      trigger_summary: "Retry #1",
+      created_at: iso(2 * H),
+      completed_at: iso(1 * H),
+    },
+  ];
+}
+
+/** agent_id → custom_env（密钥仅本地 mock，展示 key + 掩码值）。 */
+export function seedAgentEnv(): Record<string, Record<string, string>> {
+  return {
+    "a-1": { OPENAI_API_KEY: "sk-****", LOG_LEVEL: "info" },
+    "a-2": { GITHUB_TOKEN: "ghp-****" },
+  };
+}
+

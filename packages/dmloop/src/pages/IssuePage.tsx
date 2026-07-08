@@ -5,17 +5,16 @@ import {
   Button,
   Spin,
   Empty,
-  SideSheet,
   Modal,
   Toast,
 } from "@douyinfe/semi-ui";
-import { Search, Plus, LayoutGrid, List as ListIcon } from "lucide-react";
-import { useI18n } from "@octo/base";
+import { Search, Plus, LayoutGrid, List as ListIcon, ClipboardList } from "lucide-react";
+import { useI18n, WKApp } from "@octo/base";
 import type { Issue } from "../api/types";
 import { listIssues, createIssue } from "../api/issueApi";
 import IssueBoard from "../panel/IssueBoard";
 import IssueList from "../panel/IssueList";
-import IssueDetail from "../panel/IssueDetail";
+import IssueDetailPage from "../panel/IssueDetailPage";
 
 const { Title } = Typography;
 
@@ -27,7 +26,6 @@ export default function IssuePage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewMode>("board");
   const [keyword, setKeyword] = useState("");
-  const [activeId, setActiveId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
 
@@ -39,6 +37,11 @@ export default function IssuePage() {
   }, [keyword]);
 
   useEffect(reload, [reload]);
+
+  // 点击 Issue → 跳转独立详情页（push 到右主栏，返回可 pop）。
+  const openDetail = (id: string) => {
+    WKApp.routeRight.push(<IssueDetailPage issueId={id} onChanged={reload} />);
+  };
 
   const doCreate = async () => {
     const title = newTitle.trim();
@@ -55,17 +58,11 @@ export default function IssuePage() {
       <div className="loop-page__head">
         <Title heading={4}>{t("loop.nav.issue")}</Title>
         <div className="loop-viewtoggle">
-          <button
-            className={view === "board" ? "is-active" : ""}
-            onClick={() => setView("board")}
-          >
+          <button className={view === "board" ? "is-active" : ""} onClick={() => setView("board")}>
             <LayoutGrid size={14} />
             {t("loop.view.board")}
           </button>
-          <button
-            className={view === "list" ? "is-active" : ""}
-            onClick={() => setView("list")}
-          >
+          <button className={view === "list" ? "is-active" : ""} onClick={() => setView("list")}>
             <ListIcon size={14} />
             {t("loop.view.list")}
           </button>
@@ -79,11 +76,7 @@ export default function IssuePage() {
           showClear
           style={{ width: 220 }}
         />
-        <Button
-          theme="solid"
-          icon={<Plus size={14} />}
-          onClick={() => setCreateOpen(true)}
-        >
+        <Button theme="solid" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>
           {t("loop.action.newIssue")}
         </Button>
       </div>
@@ -94,24 +87,20 @@ export default function IssuePage() {
             <Spin />
           </div>
         ) : issues.length === 0 ? (
-          <div className="loop-page__center">
-            <Empty description={t("loop.empty.issue")} />
+          <div className="loop-empty">
+            <ClipboardList size={40} className="loop-empty__icon" />
+            <div className="loop-empty__title">{t("loop.empty.issueTitle")}</div>
+            <div className="loop-empty__desc">{t("loop.empty.issueDesc")}</div>
+            <Button theme="solid" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)} style={{ marginTop: 12 }}>
+              {t("loop.action.newIssue")}
+            </Button>
           </div>
         ) : view === "board" ? (
-          <IssueBoard issues={issues} onOpen={setActiveId} onChanged={reload} />
+          <IssueBoard issues={issues} onOpen={openDetail} onChanged={reload} />
         ) : (
-          <IssueList issues={issues} onOpen={setActiveId} onChanged={reload} />
+          <IssueList issues={issues} onOpen={openDetail} onChanged={reload} />
         )}
       </div>
-
-      <SideSheet
-        title={t("loop.detail.issueTitle")}
-        visible={!!activeId}
-        onCancel={() => setActiveId(null)}
-        width={520}
-      >
-        {activeId && <IssueDetail issueId={activeId} onChanged={reload} />}
-      </SideSheet>
 
       <Modal
         title={t("loop.action.newIssue")}

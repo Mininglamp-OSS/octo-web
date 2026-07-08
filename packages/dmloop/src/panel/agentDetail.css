@@ -1,0 +1,109 @@
+/* ===== Agent 独立详情/编辑页 ===== */
+.loop-adp {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
+}
+
+.loop-adp__topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--semi-color-border, #e8e9eb);
+  flex: 0 0 auto;
+}
+
+.loop-adp__body {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.loop-adp__inspector {
+  border-right: 1px solid var(--semi-color-border, #e8e9eb);
+  overflow: auto;
+  padding: 18px 16px;
+  background: var(--semi-color-bg-1, #fbfbfc);
+}
+
+.loop-adp__identity {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 18px;
+}
+
+.loop-adp__props {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin: 8px 0 0;
+}
+
+.loop-adp__props dt {
+  font-size: 12px;
+  color: var(--semi-color-text-2, #8590a6);
+}
+
+.loop-adp__props dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.loop-adp__tabs {
+  overflow: auto;
+  min-width: 0;
+  padding: 8px 20px 20px;
+}
+
+.loop-adp__tabpane {
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.loop-adp__tabfoot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.loop-adp__envrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loop-adp__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.loop-adp__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.loop-mono input {
+  font-family: var(--semi-font-family-mono, monospace);
+}
+
+@media (max-width: 900px) {
+  .loop-adp__body {
+    grid-template-columns: 1fr;
+  }
+  .loop-adp__inspector {
+    border-right: none;
+    border-bottom: 1px solid var(--semi-color-border, #e8e9eb);
+  }
+}

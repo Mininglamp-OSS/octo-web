@@ -1,0 +1,119 @@
+/* ===== Issue 独立详情页 ===== */
+.loop-idp {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
+}
+
+.loop-idp__topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--semi-color-border, #e8e9eb);
+  flex: 0 0 auto;
+}
+
+.loop-idp__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  flex: 1;
+  min-height: 0;
+}
+
+.loop-idp__main {
+  overflow: auto;
+  padding: 24px 28px;
+  min-width: 0;
+}
+
+.loop-idp__section {
+  margin-top: 22px;
+}
+
+.loop-idp__aside {
+  border-left: 1px solid var(--semi-color-border, #e8e9eb);
+  overflow: auto;
+  padding: 16px;
+  background: var(--semi-color-bg-1, #fbfbfc);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.loop-idp__aside-card {
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--semi-color-bg-0, #fff);
+}
+
+.loop-idp__props {
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  gap: 10px 10px;
+  align-items: center;
+  margin: 0;
+}
+
+.loop-idp__props dt {
+  font-size: 12px;
+  color: var(--semi-color-text-2, #8590a6);
+}
+
+.loop-idp__props dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.loop-idp__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.loop-idp__tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.loop-idp__task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loop-idp__task-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.loop-idp__task-main strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.loop-idp__task-main small {
+  font-size: 11px;
+  color: var(--semi-color-text-2, #8590a6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .loop-idp__body {
+    grid-template-columns: 1fr;
+  }
+  .loop-idp__aside {
+    border-left: none;
+    border-top: 1px solid var(--semi-color-border, #e8e9eb);
+  }
+}
