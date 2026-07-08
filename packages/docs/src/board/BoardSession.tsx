@@ -24,10 +24,16 @@ export interface BoardSessionProps {
   onExit?: () => void
   onTitleSaved?: (docId: string, title: string) => void
   onDeleted?: (docId: string) => void
+  /**
+   * Forwarded to BoardShell: when true the creator display name resolves nickname-only, never the
+   * verified `real_name`. The standalone `/d/:docId` share surface sets this (privacy — mirrors the
+   * doc editor's EditorShell gate, XIN-392 P2-1).
+   */
+  creatorNicknameOnly?: boolean
 }
 
 export function BoardSession(props: BoardSessionProps): ReactElement {
-  const { docId, title, uid, space, folder, userName, onBack, onExit, onTitleSaved, onDeleted } = props
+  const { docId, title, uid, space, folder, userName, onBack, onExit, onTitleSaved, onDeleted, creatorNicknameOnly } = props
   // The board id is the whiteboard key's {board} segment: octo:{space}:{folder}:wb:{board}.
   const session = useWhiteboardSession({ uid, space, folder, board: docId })
   // Stabilise the presence user object (P2 #7). An inline `{ id, name }` is a fresh reference every
@@ -50,6 +56,7 @@ export function BoardSession(props: BoardSessionProps): ReactElement {
       collabSession={session}
       collab
       user={user}
+      creatorNicknameOnly={creatorNicknameOnly}
     />
   )
 }

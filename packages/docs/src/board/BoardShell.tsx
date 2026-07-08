@@ -155,6 +155,14 @@ export interface BoardShellProps {
    * standalone path (no session), where presence is inert.
    */
   user?: BoardPresenceUser
+  /**
+   * When true, resolve the creator display name from the NICKNAME only, never the verified
+   * `real_name`. Opt-in: defaults to false so the in-app board keeps preferring the real name
+   * (AC non-regression). The standalone `/d/:docId` board surface sets this because it is an
+   * externally shareable surface — showing the creator's legal name to any link holder is a
+   * privacy leak (boss decision). Mirrors EditorShell's `creatorNicknameOnly` gate (XIN-392 P2-1).
+   */
+  creatorNicknameOnly?: boolean
 }
 
 /** Map the app locale (`zh-CN` / `en-US`) to an Excalidraw langCode (`zh-CN` / `en`). */
@@ -232,7 +240,7 @@ class BoardErrorBoundary extends Component<{ children: ReactNode }, { error: Err
  * save will hook into in M2.
  */
 export function BoardShell(props: BoardShellProps): ReactElement {
-  const { docId, title, space, folder, onBack, onExit, onTitleSaved, onDeleted, collabSession, collab, user } = props
+  const { docId, title, space, folder, onBack, onExit, onTitleSaved, onDeleted, collabSession, collab, user, creatorNicknameOnly } = props
 
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
   // Excalidraw's `MainMenu` compound component, captured off the same dynamic import. Rendered as a
@@ -489,13 +497,27 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // via GET /users/:uid. Any failure leaves it undefined and the menu falls back to a short uid.
   useEffect(() => {
     if (!ownerId) return
-    const fromMembers = names.get(ownerId)
-    if (fromMembers && fromMembers !== ownerId) {
-      setCreatorName(fromMembers)
-      return
+    // In-app (creatorNicknameOnly unset): prefer the already-loaded space-member map — free, and
+    // the same source the presence caret + member panel use.
+    //
+    // On the standalone (externally shared) board surface (creatorNicknameOnly), SKIP the member-map
+    // primary source entirely (XIN-392 P2-1). Gating only the getUserName fallback on
+    // creatorNicknameOnly would leave the member map as an ungated primary source that leaks a real
+    // name the moment the backend fills member display names with verified names — the
+    // no-leak-today guarantee rests on the implicit "member name is never a real name" contract.
+    // A link holder must never see the creator's verified name, so resolve nickname-only regardless
+    // of what the member map holds. Mirrors EditorShell.
+    if (!creatorNicknameOnly) {
+      const fromMembers = names.get(ownerId)
+      if (fromMembers && fromMembers !== ownerId) {
+        setCreatorName(fromMembers)
+        return
+      }
     }
     let cancelled = false
-    getUserName(ownerId, { preferRealName: true })
+    // In-app resolves the verified real name (falling back to nickname); the standalone surface
+    // forces nickname-only and never requests real_name.
+    getUserName(ownerId, { preferRealName: !creatorNicknameOnly })
       .then((name) => {
         if (!cancelled && name) setCreatorName(name)
       })
@@ -505,7 +527,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     return () => {
       cancelled = true
     }
-  }, [ownerId, names])
+  }, [ownerId, names, creatorNicknameOnly])
 
   // "Forward to chat" (reader+): recompute grant capability from the LIVE role at click time, same
   // as the doc editor. The bridge opens the host conversation-select.
