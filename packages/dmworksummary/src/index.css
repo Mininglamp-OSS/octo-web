@@ -1328,6 +1328,13 @@
     box-shadow: none;
 }
 
+/* Agent 模式：给 AgentChatPanel 一个确定的有界高度，panel 自身 height:100%
+   + 内部列表 overflow-y:auto 依赖此高度；min-height 单独不给百分比基准，列表会被撑开。 */
+.summary-workbench-agent-chat {
+    height: 60vh;
+    min-height: 320px;
+}
+
 .summary-workbench-input-area > div:first-child {
     position: relative;
 }

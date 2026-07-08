@@ -236,7 +236,8 @@ export interface ChatMessage {
     content: string;
 }
 
-/** Agent 对话请求：一问一答，session_id 由前端生成透传（后端一期不存记忆） */
+/** Agent 对话请求：单条消息 + session_id。后端按 session_id 持久化多轮记忆，
+ *  同一会话复用同一 session_id 即可续上下文（无需前端本地拼历史）。 */
 export interface AgentChatParams {
     message: string;
     session_id: string;

@@ -2,6 +2,7 @@ import React from 'react';
 import { render as rtlRender, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SummaryCreatePage from '../SummaryCreatePage';
+import * as api from '../../api/summaryApi';
 
 vi.mock('@douyinfe/semi-ui', () => ({
     Button: ({ children, onClick, disabled, loading, theme, icon, ...rest }: any) => (
@@ -46,6 +47,7 @@ vi.mock('../../api/summaryApi', () => ({
     createAgentSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
     createSchedule: vi.fn().mockResolvedValue({}),
     getTopicTemplates: vi.fn().mockResolvedValue([]),
+    agentChat: vi.fn(),
 }));
 
 vi.mock('../SummaryDetailPage', () => ({ default: () => null }));
@@ -124,5 +126,78 @@ describe('SummaryCreatePage templates', () => {
         // The auto-focus clears the selected placeholder, leaving the pattern frame.
         expect(textarea.value).toContain('的项目进展');
         expect(textarea.value.startsWith('总结')).toBe(true);
+    });
+});
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+describe('SummaryCreatePage agent multi-turn session_id + single-flight', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('reuses the same (uuid-shaped, non-empty) session_id across two turns', async () => {
+        (api.agentChat as any).mockImplementation(
+            ({ message, session_id }: { message: string; session_id: string }) =>
+                Promise.resolve({ reply: `echo: ${message}`, session_id }),
+        );
+
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+
+        // Turn 1
+        await act(async () => {
+            await (ref.current as any).handleAgentSend('first question');
+            await flushPromises();
+        });
+        // Turn 2
+        await act(async () => {
+            await (ref.current as any).handleAgentSend('second question');
+            await flushPromises();
+        });
+
+        const calls = (api.agentChat as any).mock.calls;
+        expect(calls.length).toBe(2);
+        const sid1 = calls[0][0].session_id;
+        const sid2 = calls[1][0].session_id;
+        expect(sid1).toBeTruthy();
+        expect(sid1).toMatch(UUID_RE);
+        expect(sid2).toBe(sid1);
+    });
+
+    it('does not fire a second concurrent request while a send is in-flight', async () => {
+        const deferred: Array<(v: any) => void> = [];
+        (api.agentChat as any).mockImplementation(
+            ({ session_id }: { session_id: string }) =>
+                new Promise((resolve) => {
+                    deferred.push(() => resolve({ reply: 'ok', session_id }));
+                }),
+        );
+
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+
+        // Fire two sends back-to-back without awaiting; the sync in-flight lock
+        // must block the second before it can issue a request.
+        (ref.current as any).handleAgentSend('a');
+        (ref.current as any).handleAgentSend('b');
+        expect((api.agentChat as any).mock.calls.length).toBe(1);
+
+        // Resolve the in-flight request; a subsequent send then works again.
+        await act(async () => {
+            deferred.forEach((r) => r(undefined));
+            await flushPromises();
+        });
+        await act(async () => {
+            (ref.current as any).handleAgentSend('c');
+            await flushPromises();
+        });
+        expect((api.agentChat as any).mock.calls.length).toBe(2);
     });
 });

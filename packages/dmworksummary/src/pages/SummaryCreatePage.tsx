@@ -54,7 +54,7 @@ interface SummaryCreatePageState {
     showScheduleConfig: boolean;
     submitting: boolean;
     agentSubmitting: boolean;
-    // Agent 交互式问答：多轮气泡 + session_id 透传（本次不落库）
+    // Agent 多轮问答：气泡 UI + session_id。后端按 session_id 持久化记忆，同一会话复用即可续上下文。
     messages: ChatMessage[];
     sessionId: string;
     error: string | null;
@@ -243,10 +243,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     /**
-     * Agent 交互式问答（本次不落库）。
+     * Agent 多轮交互问答。
      *
      * 与 handleSubmit 的区别：不建 task / 不跳详情页 / 不调 createAgentSummary，
-     * 只做「多轮气泡 UI + session_id 透传」。后端一期无记忆，追问不保证上下文。
+     * 只做「多轮气泡 UI + session_id」。同一会话复用同一 session_id，
+     * 后端据此按会话持久化多轮记忆（滑窗保留最近若干轮），追问可续上下文。
      */
     handleAgentSend = async (text: string) => {
         const trimmed = text.trim();
@@ -269,7 +270,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             const res = await api.agentChat({ message: trimmed, session_id: sessionId });
             this.setState((prev) => ({
                 messages: [...prev.messages, { role: 'assistant', content: res.reply }],
-                // 后端回传 session_id 非空则回填（一期只透传，不强依赖）
+                // 后端回传 session_id 非空则回填（与后端持久化的会话保持一致）。
                 sessionId: res.session_id || prev.sessionId,
             }));
         } catch (err: any) {

@@ -52,8 +52,10 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         this.setState({ input: '' });
     };
 
-    // 回车发送，Shift+Enter 换行。
+    // 回车发送，Shift+Enter 换行。输入法组字中的 Enter 是确认候选词，不发送。
     private handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        // isComposing 覆盖 React 合成事件下的 IME 组字态；keyCode 229 兜底老浏览器。
+        if (e.nativeEvent.isComposing || (e as any).keyCode === 229) return;
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             this.handleSend();
