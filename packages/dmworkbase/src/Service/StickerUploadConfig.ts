@@ -35,9 +35,12 @@ function parsePositiveInt(value: unknown, fallback: number): number {
 
 function parseAllowedFormats(value: unknown, fallback: string[]): string[] {
   if (!Array.isArray(value)) return fallback;
-  const out = value.filter(
-    (v): v is string => typeof v === "string" && v.length > 0
-  );
+  const out = value
+    .filter((v): v is string => typeof v === "string" && v.length > 0)
+    .map((v) => {
+      const lower = v.toLowerCase();
+      return lower.startsWith(".") ? lower : `.${lower}`;
+    });
   return out.length > 0 ? out : fallback;
 }
 

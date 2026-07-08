@@ -79,6 +79,17 @@ describe("parseStickerUploadLimits", () => {
             parseStickerUploadLimits({ allowed_formats: [".gif", 123, "", null, ".png"] }).allowedFormats
         ).toEqual([".gif", ".png"])
     })
+
+    // PR #555 review: getStickerFileExtension always returns a lowercase, dot-prefixed
+    // extension, but allowed_formats was passed through verbatim — a dotless or uppercase
+    // server payload would fail-closed and reject every legitimate upload. Normalize on
+    // the way in so the two sides of the comparison stay in the same canonical form
+    // regardless of exactly how the server formats each entry.
+    it("normalizes allowed_formats entries to lowercase-with-leading-dot", () => {
+        expect(
+            parseStickerUploadLimits({ allowed_formats: ["PNG", "gif", ".JPG"] }).allowedFormats
+        ).toEqual([".png", ".gif", ".jpg"])
+    })
 })
 
 describe("stickerUploadLimitsEqual", () => {
