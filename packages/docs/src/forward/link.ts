@@ -16,12 +16,17 @@
 // We build against window.location.origin the same way invite links are built
 // (invite/api.ts buildInviteUrl), so the link is absolute and clickable in chat.
 //
-// #511 problem 2 (sid): the app stores the auth token per space, keyed by the URL's `?sid=` param
-// (LoginInfo.getStorageItemForSID reads `token<sid>`, where sid = getSID() = the `?sid=` query).
-// A link with no `?sid=` makes the receiver read the bare `token` key (empty) → isLogined() ===
-// false → the Layout guard bounces even an already-logged-in user to /login. So we carry the
-// current space's sid on the link; the receiver (a member of the same space) then loads their
-// `token<sid>` and opens the document without a login detour.
+// No `?sid=` on the link (XIN-513, boss decision + real-device evidence 2026-07-07): the app stores
+// the auth token per space, keyed by `token<sid>`, but the link no longer needs to carry that key.
+// An already-logged-in recipient's session is recovered from storage independently of the URL —
+// apps/web Layout runs recoverOctoSessionFromStorage on the `/d` path, which (via recoverSession.ts
+// findStoredSessions) scans every `token<sid>` bucket in localStorage and adopts a valid stored
+// session, so a sid-less link opens the document directly without a login detour. The earlier note
+// that a sid-less link bounced a signed-in user to /login described the pre-recovery state and no
+// longer holds. Two edge cases stay tracked separately and are out of scope here: a multi-session /
+// multi-space user's sid-less recovery may adopt the wrong space session (octo-web #551), and the
+// unauthenticated login-return to `/d/:docId` (octo-web #552). The `token<sid>` bucket / recoverSession
+// logic itself is untouched — only the minted link stops carrying `?sid`.
 
 export interface DocLinkTarget {
   docId: string
@@ -30,9 +35,10 @@ export interface DocLinkTarget {
    * `105d4a60…`), known to the sharer at forward time (the in-shell EditorShell space prop, which
    * is the live currentSpaceId). Embedded on the link as `?sp=` (XIN-501) so the recipient's
    * standalone preflight can address `GET /docs/:docId` at the doc's own space. This is NOT the same
-   * value as `?sid` (see below): `?sid` is the short octo token-bucket key, whereas `?sp` is the
-   * docs space the backend matches against in requireDocRole's cross-space guard. Optional: a link
-   * built without it degrades to the recipient resolving the space from their own session.
+   * value as the octo `?sid` token-bucket key: `?sp` is the docs space the backend matches against in
+   * requireDocRole's cross-space guard, whereas `?sid` (no longer minted on this link, XIN-513) only
+   * scoped the token store. Optional: a link built without it degrades to the recipient resolving the
+   * space from their own session.
    */
   space?: string
   folder?: string
@@ -44,49 +50,25 @@ function origin(): string {
 }
 
 /**
- * The current octo space id used to scope the auth token. The docs SPA runs at `/docs?sid=<space>`,
- * so the live `?sid=` is the authoritative value; we fall back to the persisted `currentSpaceId`
- * (localStorage) when the query is unavailable. Empty under SSR/tests or when neither is present —
- * the link then degrades to the sid-less form.
- */
-function currentSid(): string {
-  if (typeof window === 'undefined') return ''
-  try {
-    const fromUrl = new URLSearchParams(window.location.search).get('sid')
-    if (fromUrl) return fromUrl
-  } catch {
-    // Malformed / non-browser search: fall through to the persisted space id.
-  }
-  try {
-    return window.localStorage?.getItem('currentSpaceId') || ''
-  } catch {
-    return ''
-  }
-}
-
-/**
  * Build `${origin}/d/<docId>` — the standalone doc-page share form — carrying, when available:
- *   - `?sid=<space sid>`  the octo token-bucket key so the receiver loads their sid-scoped token
- *                         (`token<sid>`, #511 problem 2 / login-return);
  *   - `?sp=<space id>`    the doc's REAL space (doc_meta.space_id) so the receiver's preflight
  *                         (`GET /docs/:docId`) addresses the doc's own space (XIN-501).
  *
- * The two are DISTINCT identifiers and both are needed: `?sid` keys the token store, `?sp` is the
- * space the docs backend matches in requireDocRole's cross-space guard. XIN-497 reused `?sid` as the
+ * The link deliberately carries NO `?sid=` (XIN-513): an already-logged-in recipient's session is
+ * recovered from storage independently of the URL (apps/web Layout → recoverSession.ts
+ * findStoredSessions scans the `token<sid>` buckets and adopts a valid session), so the token-bucket
+ * sid does not need to ride on the shared link. `?sp` is still needed and DISTINCT: it is the space
+ * the docs backend matches in requireDocRole's cross-space guard. XIN-497 reused `?sid` as the
  * preflight space, but a token-bucket sid never equals the doc's space_id, so the preflight 404'd
  * for every recipient (including the owner's own doc). Carrying the real space on its own `?sp` param
  * fixes that without touching the `token<sid>` logic. The receiver opens it → Layout intercepts the
- * `/d` namespace → sid-scoped token loads → preflight against `?sp` → StandaloneDocPage mounts the
- * editor (reader / writer / forbidden-with-request / not-found / archived), all outside the app shell
- * and immune to the host's query-wiping re-push (the docId lives in the path, not the query).
+ * `/d` namespace → the stored session is recovered → preflight against `?sp` → StandaloneDocPage
+ * mounts the editor (reader / writer / forbidden-with-request / not-found / archived), all outside the
+ * app shell and immune to the host's query-wiping re-push (the docId lives in the path, not the query).
  */
 export function buildDocLink({ docId, space }: DocLinkTarget): string {
-  const sid = currentSid()
   const path = `/d/${encodeURIComponent(docId)}`
-  const parts: string[] = []
-  if (sid) parts.push(`sid=${encodeURIComponent(sid)}`)
   const docSpace = (space || '').trim()
-  if (docSpace) parts.push(`sp=${encodeURIComponent(docSpace)}`)
-  const query = parts.length > 0 ? `?${parts.join('&')}` : ''
+  const query = docSpace ? `?sp=${encodeURIComponent(docSpace)}` : ''
   return `${origin()}${path}${query}`
 }

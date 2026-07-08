@@ -391,13 +391,16 @@ export function StandaloneDocPage({
   const onCopyLink = useCallback(async () => {
     if (typeof window === 'undefined') return
     try {
-      // Copy the CANONICAL share link — origin + `/d/:docId` only — never the live URL. The current
-      // address may carry session-scoped query params (notably `?sid=`, added when opening a doc in a
-      // new page / returning post-login), and copying window.location.href would leak the sharer's own
-      // session id into the shared link. Strip the whole query (and any hash) so what is shared is the
-      // clean document link every recipient should get; the recipient's own session resolves normally.
+      // Copy the CANONICAL share link — origin + `/d/:docId` — carrying only the doc's real space
+      // `?sp=` and NEVER the session-scoped `?sid=`. The live URL can carry `?sid=` (the sharer's
+      // own token-bucket key, added when opening a doc in a new page / returning post-login); copying
+      // window.location.href verbatim would leak the sharer's session id into the shared link. So we
+      // rebuild from the path and re-attach ONLY `?sp` (the doc's own space, XIN-501 preflight
+      // addressing), which every recipient needs and which is safe to share. The recipient's own
+      // session is recovered from storage independently of the link (XIN-513), so no `?sid` is needed.
       const here = new URL(window.location.href)
-      const canonical = here.origin + here.pathname
+      const sp = standaloneLinkSpace()
+      const canonical = here.origin + here.pathname + (sp ? `?sp=${encodeURIComponent(sp)}` : '')
       await navigator.clipboard?.writeText(canonical)
       // Drive the menu-external "Link copied" toast (below). The menu closes on selection, so this
       // confirmation must live outside the (now-unmounted) menu panel — hence page-level state, not
