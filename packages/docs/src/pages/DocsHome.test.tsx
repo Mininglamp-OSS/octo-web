@@ -367,8 +367,9 @@ describe('DocsHome navigation (split-pane)', () => {
     fireEvent.click(screen.getByText('Doc A'))
 
     // The entry is wired into the editor via onOpenInNewPage (it now lives in the header ≡ menu,
-    // no longer a resident headerRight button).
-    const entry = screen.getByTestId('editor-open-new-page')
+    // no longer a resident headerRight button). The list item carries no docType, so the editor
+    // mounts only after the async open resolves — wait for it before reaching for the entry.
+    const entry = await waitFor(() => screen.getByTestId('editor-open-new-page'))
     fireEvent.click(entry)
 
     // It opens the clean standalone deep-link in a new tab — no in-app navigation. The link carries
@@ -413,7 +414,8 @@ describe('DocsHome navigation (split-pane)', () => {
     render(<DocsHome />)
     await waitFor(() => expect(screen.getByText('Doc A')).toBeTruthy())
     fireEvent.click(screen.getByText('Doc A'))
-    fireEvent.click(screen.getByTestId('editor-open-new-page'))
+    // The list item carries no docType, so the editor mounts only after the async open resolves.
+    fireEvent.click(await waitFor(() => screen.getByTestId('editor-open-new-page')))
 
     // The standalone link carries `?sp` (the doc's real space) so the recipient's preflight addresses
     // the doc's own space — but NO `?sid`; the opener's session is recovered from storage (XIN-513).
@@ -637,8 +639,8 @@ describe('DocsHome — a Space switch reconciles the open selection back to the 
     }
 
     render(<DocsHome />)
-    // The editor for the doc opened under space-a is mounted.
-    expect(screen.getByTestId('editor-shell')).toBeTruthy()
+    // The editor for the doc opened under space-a is mounted (the async open resolves post-render).
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
     expect(screen.getByTestId('editor-doc').textContent).toBe('d_open')
 
     // Host switches Space: mutate currentSpaceId then broadcast.
@@ -670,7 +672,8 @@ describe('DocsHome — a Space switch reconciles the open selection back to the 
     }
 
     render(<DocsHome />)
-    expect(screen.getByTestId('editor-shell')).toBeTruthy()
+    // Wait for the async open to mount the editor before broadcasting the redundant event.
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
 
     // A redundant broadcast for the SAME Space must not yank the open doc back to the list.
     wk.mockMittBus.emitSpaceChanged({ space_id: 'space-a' })
