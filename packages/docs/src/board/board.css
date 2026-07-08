@@ -66,12 +66,19 @@
 
 /* De-brand the Help dialog: hide the four upstream Excalidraw link buttons at the top
    (Documentation / Blog / GitHub issues / YouTube) while keeping the shortcut lists below
-   (XIN-531 item 2). Excalidraw 0.18.1 exposes no prop to hide these, so this is the chosen
-   CSS-hide fallback — it does not patch the vendored library. The buttons live in
+   (XIN-531 item 2). Excalidraw 0.18.1 exposes no prop to hide these. The buttons live in
    `.HelpDialog__header`; the shortcut islands are a separate `.HelpDialog__islands-container`,
-   so hiding the header removes exactly the four buttons and nothing else. Scoped under
-   `.excalidraw` (the class Excalidraw puts on its body-portal dialog container) so it only
-   affects the whiteboard's own help dialog. */
-.excalidraw .HelpDialog__header {
+   so hiding the header removes exactly the four buttons and nothing else.
+
+   This is only the no-flash first-paint layer, NOT the guarantee — the actual hide is done at
+   runtime by installExcalidrawDebrand() (excalidrawDebrand.ts), which sets an inline `display:
+   none` on the header. A CSS-only attempt (`.excalidraw .HelpDialog__header { display: none }`)
+   FAILED on the real machine (XIN-556): Excalidraw's own `.excalidraw .HelpDialog__header
+   { display: flex }` has the same specificity, and its index.css is loaded via a dynamic import
+   that lands in <head> AFTER this file, so on a tie the vendor rule won. We qualify the selector
+   with `.excalidraw-modal-container` (the second class Excalidraw puts on the dialog's body
+   portal, alongside `.excalidraw`) so this rule outweighs the vendor's on specificity and wins
+   regardless of load order. The inline-style observer stays the source of truth. */
+.excalidraw.excalidraw-modal-container .HelpDialog__header {
   display: none;
 }

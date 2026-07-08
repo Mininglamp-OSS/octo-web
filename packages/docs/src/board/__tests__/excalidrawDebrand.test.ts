@@ -48,6 +48,51 @@ function mermaidDialog(): HTMLElement {
   return dialog
 }
 
+/**
+ * The Help dialog (item 2) as @excalidraw/excalidraw@0.18.1 renders it: a body-portal container
+ * carrying both `excalidraw` and `excalidraw-modal-container`, a `.HelpDialog__header` holding the
+ * four brand `.HelpDialog__btn` link anchors, and a sibling `.HelpDialog__islands-container` with
+ * the tool/editor shortcut islands. If the vendored DOM shape changes on an upgrade, the header
+ * test below is the tripwire.
+ */
+function helpDialog(): HTMLElement {
+  const dialog = document.createElement('div')
+  dialog.className = 'excalidraw excalidraw-modal-container'
+
+  const header = document.createElement('div')
+  header.className = 'HelpDialog__header'
+  for (const [href, label] of [
+    ['https://docs.excalidraw.com', 'Documentation'],
+    ['https://plus.excalidraw.com/blog', 'Blog'],
+    ['https://github.com/excalidraw/excalidraw/issues', 'GitHub'],
+    ['https://youtube.com/@excalidraw', 'YouTube'],
+  ]) {
+    const btn = document.createElement('a')
+    btn.className = 'HelpDialog__btn'
+    btn.href = href
+    const icon = document.createElement('div')
+    icon.className = 'HelpDialog__link-icon'
+    btn.append(icon, label)
+    header.appendChild(btn)
+  }
+  dialog.appendChild(header)
+
+  const islands = document.createElement('div')
+  islands.className = 'HelpDialog__islands-container'
+  for (const caption of ['工具', '编辑器']) {
+    const island = document.createElement('div')
+    island.className = 'HelpDialog__island HelpDialog__island--tools'
+    const h4 = document.createElement('h4')
+    h4.className = 'HelpDialog__island-title'
+    h4.textContent = caption
+    island.appendChild(h4)
+    islands.appendChild(island)
+  }
+  dialog.appendChild(islands)
+
+  return dialog
+}
+
 afterEach(() => {
   document.body.innerHTML = ''
 })
@@ -109,6 +154,39 @@ describe('installExcalidrawDebrand', () => {
 
     expect(document.querySelector('.dialog-mermaid-title')?.textContent).toBe(`Mermaid 至 ${BOARD_BRAND}`)
     expect(document.querySelector('.ttd-dialog-desc')?.textContent).not.toContain('Excalidraw')
+    dispose()
+  })
+
+  it('hides the four help-dialog brand buttons but keeps the shortcut lists (item 2)', () => {
+    const dialog = helpDialog()
+    document.body.append(dialog)
+
+    const dispose = installExcalidrawDebrand(document)
+
+    const header = dialog.querySelector<HTMLElement>('.HelpDialog__header')
+    expect(header).not.toBeNull()
+    // The four brand buttons are hidden via inline style (beats the vendor stylesheet regardless
+    // of load order), and the node is preserved so Excalidraw can still unmount the dialog.
+    expect(header!.style.display).toBe('none')
+    expect(dialog.querySelectorAll('.HelpDialog__btn')).toHaveLength(4)
+    // The shortcut reference below the header must NOT be touched.
+    const islands = dialog.querySelector<HTMLElement>('.HelpDialog__islands-container')
+    expect(islands).not.toBeNull()
+    expect(islands!.style.display).toBe('')
+    expect(dialog.querySelectorAll('.HelpDialog__island')).toHaveLength(2)
+    dispose()
+  })
+
+  it('hides the help-dialog header when the dialog opens AFTER install', async () => {
+    const dispose = installExcalidrawDebrand(document)
+
+    document.body.append(helpDialog())
+    // MutationObserver callbacks are microtask-async; let them flush.
+    await Promise.resolve()
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(document.querySelector<HTMLElement>('.HelpDialog__header')?.style.display).toBe('none')
+    expect(document.querySelector<HTMLElement>('.HelpDialog__islands-container')?.style.display).toBe('')
     dispose()
   })
 
