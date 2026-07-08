@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react'
 import { DocTitle } from '../editor/EditorShell.tsx'
+import { DocTerminal } from '../editor/DocTerminal.tsx'
 import { canManage, canEdit } from '../auth/roles.ts'
 import { useDocDelete } from '../editor/useDocDelete.ts'
 import { getDoc } from '../pages/docsApi.ts'
@@ -573,6 +574,21 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     return restore ? restore(raw, null) : [...raw]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Excalidraw, collabSession, accessConfirmed])
+
+  // P1 (revoke teardown, standalone share page): a runtime terminal transition — 4403 access
+  // revoked / board deleted (→ 'deleted'), 'not-found', 'locked', or session-lost 'login' — must
+  // TEAR DOWN the canvas, not merely flip it read-only. The `readOnly` gate above only disables
+  // editing; it leaves <Excalidraw viewModeEnabled> mounted, so the last-synced scene keeps
+  // painting. On the standalone /d/:docId share page there is also no resident list to return to,
+  // so `onExit`/`onBack` are undefined and the terminal effect below (returnToList) is a no-op —
+  // meaning without this branch a revoked user would keep seeing the whole board. Mirror
+  // EditorShell (:454-471): replace the ENTIRE subtree with the shared <DocTerminal>, which
+  // unmounts <Excalidraw> and removes its canvas from the DOM. `onBack` is forwarded when present,
+  // so the in-app path (DocsHome supplies onBack/onExit) keeps its Back control and gains parity
+  // for locked/login, while the standalone path renders a bare terminal card with no Back link.
+  if (terminal.kind !== 'none') {
+    return <DocTerminal title={title} kind={terminal.kind} onBack={onBack} />
+  }
 
   return (
     <div className="octo-doc octo-doc--editor octo-theme octo-board">
