@@ -179,6 +179,11 @@ export function SheetVersionPanel({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // Inline "save current version" compose row (mirror of the docs VersionPanel): a collapsed
+  // "保存当前版本" button expands to a name input + 保存/取消, instead of a native window.prompt.
+  const [snapshotOpen, setSnapshotOpen] = useState(false)
+  const [snapshotLabel, setSnapshotLabel] = useState('')
+
   const [preview, setPreview] = useState<{ seq: number; cells: CellMap } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [compare, setCompare] = useState(false)
@@ -201,13 +206,14 @@ export function SheetVersionPanel({
     void refresh()
   }, [refresh])
 
-  const onSaveSnapshot = async () => {
+  const onCreateSnapshot = async () => {
     if (busy) return
-    const label = window.prompt(t('docs.sheet.version.namePrompt'), '')
-    if (label === null) return
     setBusy(true)
+    setError(null)
     try {
-      await createNamedVersion(docId, label || undefined)
+      await createNamedVersion(docId, snapshotLabel.trim() || undefined)
+      setSnapshotOpen(false)
+      setSnapshotLabel('')
       await refresh()
     } catch {
       setError(t('docs.sheet.version.saveFailed'))
@@ -283,17 +289,48 @@ export function SheetVersionPanel({
     <section className="octo-comment-panel">
       <div className="octo-member-row">
         <h3 style={{ flex: 1, margin: 0 }}>{t('docs.sheet.version.title')}</h3>
-        {canEdit(role) && (
-          <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => void onSaveSnapshot()}>
-            {t('docs.sheet.version.save')}
-          </button>
-        )}
         {onClose && (
           <button type="button" className="octo-tb-btn" onClick={onClose}>
             {t('docs.comment.close')}
           </button>
         )}
       </div>
+
+      {/* Save current version — inline compose row (mirror of the docs VersionPanel), replacing the
+          old native window.prompt: a collapsed button expands to a name input + 保存/取消. */}
+      {canEdit(role) && (
+        <div className="octo-version-save">
+          {snapshotOpen ? (
+            <div className="octo-member-row">
+              <input
+                className="octo-uid"
+                placeholder={t('docs.version.labelPlaceholder')}
+                value={snapshotLabel}
+                onChange={(e) => setSnapshotLabel(e.target.value)}
+                autoFocus
+              />
+              <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => void onCreateSnapshot()}>
+                {t('docs.version.save')}
+              </button>
+              <button
+                type="button"
+                className="octo-tb-btn"
+                disabled={busy}
+                onClick={() => {
+                  setSnapshotOpen(false)
+                  setSnapshotLabel('')
+                }}
+              >
+                {t('docs.version.cancel')}
+              </button>
+            </div>
+          ) : (
+            <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => setSnapshotOpen(true)}>
+              {t('docs.sheet.version.save')}
+            </button>
+          )}
+        </div>
+      )}
 
       {error && <p className="octo-member-error">{error}</p>}
 

@@ -379,10 +379,9 @@ function DocsList({
       pendingSheetImports.set(created.docId, parsed)
       onSelect(created.docId, 'sheet')
       reload()
-      // Surface caveats AFTER a successful import so multi-sheet / truncation is never silent.
-      if (parsed.droppedSheetCount && parsed.droppedSheetCount > 0) {
-        setError(t('docs.sheet.importMultiSheet'))
-      } else if (parsed.truncated) {
+      // Every visible worksheet is imported now (multi-sheet), so the only remaining caveat
+      // is per-sheet truncation of an oversized grid.
+      if (parsed.truncated) {
         setError(t('docs.sheet.importTruncated'))
       }
     } catch {
@@ -848,6 +847,7 @@ export function DocsHome() {
             user={{ id: uid, name: names.get(uid) || uid }}
             onTitleSaved={onTitleSaved}
             onDeleted={onDocDeleted}
+            onOpenInNewPage={() => onOpenInNewPage(docId)}
           />
         )
       }

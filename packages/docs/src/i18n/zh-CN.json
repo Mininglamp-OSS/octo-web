@@ -302,6 +302,7 @@
     "untitled": "未命名表格",
     "exportExcel": "导出为 Excel",
     "deleteFile": "删除文件",
+    "deleteConfirmTitle": "删除表格",
     "deleteConfirm": "确定删除该表格？删除后所有成员的列表都不再显示。",
     "collaborator": "协作者",
     "pin": "置顶",

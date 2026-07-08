@@ -302,6 +302,7 @@
     "untitled": "Untitled sheet",
     "exportExcel": "Export as Excel",
     "deleteFile": "Delete file",
+    "deleteConfirmTitle": "Delete sheet",
     "deleteConfirm": "Delete this sheet? Once deleted it disappears from every member's list.",
     "collaborator": "Collaborator",
     "pin": "Pin",

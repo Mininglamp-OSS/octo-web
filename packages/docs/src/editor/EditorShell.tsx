@@ -33,6 +33,7 @@ import {
   DeleteIcon,
   type DocMoreMenuItem,
 } from './DocMoreMenu.tsx'
+import { ConfirmModal } from './ConfirmModal.tsx'
 import './styles.css'
 
 /** Which right-side drawer panel is open (mutually exclusive); null = drawer closed. */
@@ -608,34 +609,18 @@ export function EditorShell(props: EditorShellProps) {
         </div>
       </header>
 
-      {/* Delete confirm + error banner (reuses the list's confirm/error pattern). */}
-      {del.confirming && (
-        <div
-          className="octo-docs-delete-confirm octo-doc-delete-confirm"
-          role="alertdialog"
-          aria-label={t('docs.doc.deleteConfirmTitle')}
-        >
-          <p className="octo-docs-delete-confirm-text">{t('docs.doc.deleteConfirm')}</p>
-          <div className="octo-docs-delete-confirm-actions">
-            <button
-              type="button"
-              className="octo-tb-btn"
-              disabled={del.deleting}
-              onClick={del.cancel}
-            >
-              {t('docs.doc.deleteCancel')}
-            </button>
-            <button
-              type="button"
-              className="octo-tb-btn octo-docs-delete-confirm-go"
-              disabled={del.deleting}
-              onClick={() => void del.confirm()}
-            >
-              {t('docs.doc.delete')}
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Delete confirm — a centered modal (shared ConfirmModal), matching the sheet's delete. */}
+      <ConfirmModal
+        open={del.confirming}
+        title={t('docs.doc.deleteConfirmTitle')}
+        message={t('docs.doc.deleteConfirm')}
+        confirmLabel={t('docs.doc.delete')}
+        cancelLabel={t('docs.doc.deleteCancel')}
+        danger
+        busy={del.deleting}
+        onConfirm={() => void del.confirm()}
+        onCancel={del.cancel}
+      />
       {del.error && (
         <p className="octo-member-error" role="alert">
           {del.error}
@@ -647,38 +632,48 @@ export function EditorShell(props: EditorShellProps) {
         </p>
       )}
 
-      <Toolbar editor={editor} />
+      {/* Body: the header above stays fixed; the toolbar + prose + status bar scroll inside
+          .octo-doc-scroll, and the right-side drawer is pinned to THIS region — so it starts
+          below the header (never covering the header buttons) and never scrolls away. Mirrors
+          the sheet's header-then-fixed-region layout. */}
+      <div className="octo-doc-body">
+        <div className="octo-doc-scroll">
+          <Toolbar editor={editor} />
 
-      <div className="octo-editor-region">
-        <EditorBubbleMenu editor={editor} />
-        <CommentBubble editor={editor} onCreate={comments.createRoot} />
-        <Outline editor={editor} />
-        <div className="octo-editor-main">
-          <EditorContent editor={editor} className="octo-prose" />
+          <div className="octo-editor-region">
+            <EditorBubbleMenu editor={editor} />
+            <CommentBubble editor={editor} onCreate={comments.createRoot} />
+            <Outline editor={editor} />
+            <div className="octo-editor-main">
+              <EditorContent editor={editor} className="octo-prose" />
+            </div>
+          </div>
+
+          <StatusBar editor={editor} provider={instance.provider} />
         </div>
+
+        {/* History + Comments live in the right-side drawer; Members opens a dedicated modal (#A4).
+            The drawer is pinned to .octo-doc-body (below the header) so it neither covers the
+            header buttons nor scrolls with the document. */}
+        {(activePanel === 'history' || activePanel === 'comments') && (
+          <aside className="octo-doc-drawer" role="complementary">
+            {activePanel === 'history' && role && (
+              <VersionPanel docId={docId} role={role} editor={editor} names={names} onClose={closePanel} />
+            )}
+            {activePanel === 'comments' && role && (
+              <CommentPanel
+                role={role}
+                editor={editor}
+                comments={comments}
+                activeCommentId={activeCommentId}
+                onSelectComment={setActiveCommentId}
+                names={names}
+                onClose={closePanel}
+              />
+            )}
+          </aside>
+        )}
       </div>
-
-      <StatusBar editor={editor} provider={instance.provider} />
-
-      {/* History + Comments live in the right-side drawer; Members opens a dedicated modal (#A4). */}
-      {(activePanel === 'history' || activePanel === 'comments') && (
-        <aside className="octo-doc-drawer" role="complementary">
-          {activePanel === 'history' && role && (
-            <VersionPanel docId={docId} role={role} editor={editor} names={names} onClose={closePanel} />
-          )}
-          {activePanel === 'comments' && role && (
-            <CommentPanel
-              role={role}
-              editor={editor}
-              comments={comments}
-              activeCommentId={activeCommentId}
-              onSelectComment={setActiveCommentId}
-              names={names}
-              onClose={closePanel}
-            />
-          )}
-        </aside>
-      )}
 
       {/* #A4: "Manage members" opens a dedicated modal dialog (overlay), not an inline drawer. */}
       {activePanel === 'members' && manage && (

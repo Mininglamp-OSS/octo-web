@@ -91,12 +91,13 @@ export class CollabSheet {
   private readonly binding: UniverYjsBinding
   private cursors: SheetCursorOverlay | null = null
   private commentMarkers: SheetCommentMarkers | null = null
-  private commentMarkerClick: ((row: number, col: number) => void) | null = null
+  private commentMarkerClick: ((row: number, col: number, sheetId: string) => void) | null = null
   private commentMenuClick: (() => void) | null = null
   private readonly cacheKeyStr: string
   private readonly roleController: RoleController
   private readonly closeMachine: CloseCodeMachine
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private sealTimer: ReturnType<typeof setTimeout> | null = null
 
   private currentRole: Role
   private destroyed = false
@@ -180,7 +181,56 @@ export class CollabSheet {
     // Pass a live write-gate: readers / downgraded users must NOT write to the shared Y.Doc
     // (the server rejects their writes anyway, but an ungated binding would still persist the
     // edit to local IndexedDB and replay it on a later privilege upgrade — B3).
-    this.binding = new UniverYjsBinding(univerAPI, this.ydoc, () => canEdit(this.currentRole))
+    // Defer the binding's initial seed/registry decision until local (IndexedDB) state has
+    // replayed. Constructing eagerly would let a writer reopening an EXISTING sheet on a cold
+    // cache see an empty-looking Y.Doc, fall into the "brand-new" branch, and author
+    // `sheetList.default = {name:'Sheet1'}` — which LWW then merges against the about-to-load
+    // persisted registry and can revert a renamed first sheet back to "Sheet1" (P1-B). Observers
+    // attach eagerly inside the binding, so anything that syncs in during the wait is captured;
+    // initialSync() is idempotent and only runs the seed decision once, against the settled doc.
+    this.binding = new UniverYjsBinding(univerAPI, this.ydoc, () => canEdit(this.currentRole), {
+      deferInitialSync: true,
+    })
+    // Drive it after the local cache has replayed (whenSynced), or immediately if offline cache
+    // is disabled (no persistence layer to wait on). A one-shot guard + the binding's own
+    // idempotency make a later provider 'synced' or the timeout fallback harmless.
+    if (this.persistence) {
+      let sealed = false
+      const seal = (networkSynced: boolean) => {
+        // The registry-authoring decision (brand-new-author branch) may only run when the NETWORK
+        // is synced. A local-only signal (whenSynced on a cold/empty cache) passes networkSynced
+        // =false, so binding.initialSync defers authoring and does NOT mark itself done; a later
+        // provider 'synced' seal (networkSynced=true) then authors against the settled doc. Non-
+        // authoring paths (join existing / legacy V1 / reader) complete on the first signal
+        // regardless, and `sealed` flips only once initialSync actually commits (initialSynced).
+        if (this.destroyed) return
+        if (sealed && this.binding.hasInitialSynced()) return
+        this.binding.initialSync(networkSynced)
+        if (this.binding.hasInitialSynced()) sealed = true
+      }
+      // Local replay signal — network is authoritative only if the provider ALSO happens to be
+      // synced already; otherwise this is a local-only wake and must not author.
+      void this.persistence.whenSynced.then(() => seal(this.provider.synced))
+      if (this.provider.synced) seal(true)
+      else this.provider.on('synced', () => seal(true))
+      // Fallback: never leave the sheet blank if neither signal resolves. Author only if the
+      // network is actually synced by then; otherwise this is a no-op and a later 'synced' seals.
+      this.sealTimer = setTimeout(() => seal(this.provider.synced), 3000)
+    } else {
+      // No offline cache: the provider is the only source of truth. Seal on its sync so we never
+      // author a registry over a doc whose persisted state hasn't arrived yet.
+      if (this.provider.synced) this.binding.initialSync(true)
+      else {
+        let sealed = false
+        const seal = () => {
+          if (sealed || this.destroyed) return
+          sealed = true
+          this.binding.initialSync(true)
+        }
+        this.provider.on('synced', seal)
+        this.sealTimer = setTimeout(seal, 3000)
+      }
+    }
     // UI read-only lock so a reader can't even type (mirrors the editor's editable gate).
     this.setUniverEditable(canEdit(initialRole))
 
@@ -200,20 +250,26 @@ export class CollabSheet {
     } catch {
       // Univer menu API unavailable/changed — skip the context-menu entry (panel still works).
     }
-    // Remote-cursor overlay: shows other users' active cells (color + name tag).
+    // Remote-cursor overlay: shows other users' active cells (color + name tag). It reads the
+    // active LOGICAL sheet id (via the resolver) both to tag the local user's broadcast cursor
+    // and to filter remote cursors to the current sheet, so a peer's Sheet2 cursor never paints
+    // over your Sheet1.
     if (this.provider.awareness) {
       this.cursors = new SheetCursorOverlay(
         univerAPI as unknown as ConstructorParameters<typeof SheetCursorOverlay>[0],
         this.provider.awareness as unknown as ConstructorParameters<typeof SheetCursorOverlay>[1],
         opts.container,
+        () => this.binding.activeLogicalId(),
       )
     }
     // Comment-marker overlay: a corner badge on each commented cell (fed by the panel).
     // Clicking a badge routes through a handler the view registers (open panel + focus).
+    // The resolver lets the overlay draw only badges whose logical sheet is active.
     this.commentMarkers = new SheetCommentMarkers(
       univerAPI as unknown as ConstructorParameters<typeof SheetCommentMarkers>[0],
       opts.container,
-      (row, col) => this.commentMarkerClick?.(row, col),
+      (row, col, sheetId) => this.commentMarkerClick?.(row, col, sheetId),
+      () => this.binding.activeLogicalId(),
     )
     // Role controller: runtime stateless role changes (monotonic epoch).
     this.roleController = new RoleController({
@@ -318,9 +374,11 @@ export class CollabSheet {
 
   /**
    * The currently-selected cell as a stable anchor. `key` matches the Y.Map cell key
-   * (`${sheetId}!${row}:${col}`) used for comment anchoring; `a1` is the human A1 label.
+   * (`${logicalSheetId}!${row}:${col}`) used for comment anchoring; `a1` is the human A1 label.
+   * The sheet segment is the STABLE logical id (not Univer's per-client sheet id) so a comment
+   * authored on Sheet2 anchors to Sheet2 for every client — see binding.ts multi-sheet identity.
    */
-  getActiveCellRef(): { key: string; a1: string } | null {
+  getActiveCellRef(): { key: string; a1: string; sheetId: string } | null {
     const wb = this.univerAPI.getActiveWorkbook()
     if (!wb) return null
     const sheet = wb.getActiveSheet()
@@ -330,8 +388,8 @@ export class CollabSheet {
     const r = range.getRange()
     const row = r.startRow ?? 0
     const col = r.startColumn ?? 0
-    const sheetId = sheet.getSheetId()
-    return { key: `${sheetId}!${row}:${col}`, a1: `${colToA1(col)}${row + 1}` }
+    const logicalId = this.binding.activeLogicalId()
+    return { key: `${logicalId}!${row}:${col}`, a1: `${colToA1(col)}${row + 1}`, sheetId: logicalId }
   }
 
   /**
@@ -353,8 +411,14 @@ export class CollabSheet {
     return { row, col, a1: ref.a1, key: ref.key, ...rect }
   }
 
-  /** Select + scroll to a cell (used to jump from a comment thread to its cell). */
-  focusCell(row: number, col: number): void {
+  /**
+   * Select + scroll to a cell (used to jump from a comment thread to its cell). When the
+   * comment lives on a DIFFERENT logical sheet than the active one, switch to that sheet
+   * first — otherwise the jump would activate a cell on the wrong sheet. `sheetId` is the
+   * logical id from the comment anchor; omit it (legacy calls) to stay on the active sheet.
+   */
+  focusCell(row: number, col: number, sheetId?: string): void {
+    if (sheetId) this.binding.activateLogical(sheetId)
     const sheet = this.univerAPI.getActiveWorkbook()?.getActiveSheet()
     if (!sheet) return
     try {
@@ -365,11 +429,11 @@ export class CollabSheet {
   }
 
   /**
-   * Notify when the active cell changes (selection op). Fires with the same {key, a1}
+   * Notify when the active cell changes (selection op). Fires with the same {key, a1, sheetId}
    * shape as getActiveCellRef. Used by the comment panel to highlight the thread anchored
    * to the just-selected cell. Returns a disposer.
    */
-  onActiveCell(cb: (ref: { key: string; a1: string } | null) => void): () => void {
+  onActiveCell(cb: (ref: { key: string; a1: string; sheetId: string } | null) => void): () => void {
     const d = this.univerAPI.onCommandExecuted((cmd: { id: string }) => {
       if (cmd.id === 'sheet.operation.set-selections') cb(this.getActiveCellRef())
     })
@@ -382,7 +446,11 @@ export class CollabSheet {
     }
   }
 
-  /** Feed the set of commented cells to the marker overlay (called by the comment panel). */
+  /**
+   * Feed the set of commented cells to the marker overlay (called by the comment panel). Cells
+   * carry their logical `sheetId`; the overlay draws only those on the active sheet so a badge
+   * for a comment on Sheet2 never appears over Sheet1.
+   */
   setCommentedCells(cells: MarkedCell[]): void {
     this.commentMarkers?.setCells(cells)
   }
@@ -393,14 +461,60 @@ export class CollabSheet {
    * other clients like any edit. Clamped to the declared sheet size. Returns false if nothing
    * could be written.
    */
+  /**
+   * Import one or more parsed worksheets. The first reuses the workbook's active (default)
+   * sheet; each subsequent one is created via insertSheet. Every setValues / insertSheet /
+   * merge fires a command the binding observes, so the whole multi-sheet import replicates
+   * + persists through Yjs. Returns true if any sheet applied.
+   */
   importCells(
-    matrix: Array<Array<{ v?: unknown; f?: string; s?: Record<string, unknown> } | null>>,
-    merges: Array<{ startRow: number; startColumn: number; endRow: number; endColumn: number }> = [],
+    sheets: Array<{
+      name?: string
+      matrix: Array<Array<{ v?: unknown; f?: string; s?: Record<string, unknown> } | null>>
+      merges?: Array<{ startRow: number; startColumn: number; endRow: number; endColumn: number }>
+    }>,
   ): boolean {
-    const sheet = this.univerAPI.getActiveWorkbook()?.getActiveSheet()
-    if (!sheet || matrix.length === 0) return false
-    const maxRows = (sheet as unknown as { getMaxRows?: () => number }).getMaxRows?.() ?? matrix.length
-    const maxCols = (sheet as unknown as { getMaxColumns?: () => number }).getMaxColumns?.() ?? 0
+    const wb = this.univerAPI.getActiveWorkbook() as unknown as {
+      getActiveSheet: () => unknown
+      insertSheet?: (name?: string) => unknown
+    } | null
+    if (!wb) return false
+    const parsed = sheets.filter((s) => s.matrix.length > 0)
+    if (parsed.length === 0) return false
+    let anyApplied = false
+    parsed.forEach((ps, i) => {
+      let ws: unknown
+      if (i === 0) {
+        ws = wb.getActiveSheet()
+        if (ws && ps.name) {
+          try {
+            ;(ws as { setName?: (n: string) => void }).setName?.(ps.name)
+          } catch {
+            // ignore rename failure — content still imports
+          }
+        }
+      } else {
+        ws = wb.insertSheet?.(ps.name) ?? null
+      }
+      if (ws && this.populateSheet(ws, ps.matrix, ps.merges ?? [])) anyApplied = true
+    })
+    return anyApplied
+  }
+
+  /** Write one parsed matrix (+ merges) into a single Univer worksheet. */
+  private populateSheet(
+    sheetUnknown: unknown,
+    matrix: Array<Array<{ v?: unknown; f?: string; s?: Record<string, unknown> } | null>>,
+    merges: Array<{ startRow: number; startColumn: number; endRow: number; endColumn: number }>,
+  ): boolean {
+    const sheet = sheetUnknown as {
+      getMaxRows?: () => number
+      getMaxColumns?: () => number
+      getRange: (r: number, c: number, rows?: number, cols?: number) => unknown
+    }
+    if (matrix.length === 0) return false
+    const maxRows = sheet.getMaxRows?.() ?? matrix.length
+    const maxCols = sheet.getMaxColumns?.() ?? 0
     const rows = Math.min(matrix.length, maxRows)
     let cols = 0
     for (const r of matrix) if (r.length > cols) cols = r.length
@@ -411,20 +525,16 @@ export class CollabSheet {
       while (row.length < cols) row.push(null)
       return row
     })
-    ;(sheet.getRange(0, 0, rows, cols) as unknown as { setValues: (m: unknown) => void }).setValues(grid)
-    // Apply merged ranges (fires add-worksheet-merge, which the binding syncs to the Y.Doc
-    // so merges persist + replicate). Clamped to the written area.
+    ;(sheet.getRange(0, 0, rows, cols) as { setValues: (m: unknown) => void }).setValues(grid)
     for (const m of merges) {
       if (m.startRow >= rows || m.startColumn >= cols) continue
       const er = Math.min(m.endRow, rows - 1)
       const ec = Math.min(m.endColumn, cols - 1)
       if (er <= m.startRow && ec <= m.startColumn) continue
       try {
-        ;(
-          sheet.getRange(m.startRow, m.startColumn, er - m.startRow + 1, ec - m.startColumn + 1) as unknown as {
-            merge?: () => void
-          }
-        ).merge?.()
+        ;(sheet.getRange(m.startRow, m.startColumn, er - m.startRow + 1, ec - m.startColumn + 1) as {
+          merge?: () => void
+        }).merge?.()
       } catch {
         // ignore a merge that conflicts with an existing one
       }
@@ -433,7 +543,7 @@ export class CollabSheet {
   }
 
   /** Register the handler invoked when a comment marker (corner badge) is clicked. */
-  setCommentMarkerClickHandler(cb: ((row: number, col: number) => void) | null): void {
+  setCommentMarkerClickHandler(cb: ((row: number, col: number, sheetId: string) => void) | null): void {
     this.commentMarkerClick = cb
   }
 
@@ -466,6 +576,7 @@ export class CollabSheet {
     if (this.destroyed) return
     this.destroyed = true
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    if (this.sealTimer) clearTimeout(this.sealTimer)
     this.cursors?.dispose()
     this.commentMarkers?.dispose()
     this.binding.dispose()

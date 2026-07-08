@@ -20,20 +20,49 @@ import type { UseDocComments } from '../comments/useDocComments.ts'
 import type { Comment, CommentThread } from '../comments/api.ts'
 import type { CollabSheet } from './CollabSheet.ts'
 
-/** Decode a sheet comment anchor (base64 of `${sheetId}!${row}:${col}`) back to row/col. */
-function parseCell(anchorStart?: string | null): { row: number; col: number } | null {
+/**
+ * Legacy V1 single-sheet docs anchored comments to the raw Univer sheet id (`octo-sheet-1`,
+ * from `getSheetId()`) — see the #537 CollabSheet.getActiveCellRef. V2 anchors to the STABLE
+ * logical id, whose single-sheet value is 'default'. Normalize the legacy id to 'default' on
+ * decode so old comments still resolve to their cell (P1-2): without this every pre-V2 comment
+ * loses its badge, cell highlight, and click-to-focus because 'octo-sheet-1' !== 'default' in
+ * cellMatches / marker filtering. V2 never anchors to 'octo-sheet-1' (the default sheet's local
+ * id maps to logical 'default'; extra sheets use their own univer ids), so this rewrite is safe.
+ */
+const LEGACY_V1_SHEET_ID = 'octo-sheet-1'
+const DEFAULT_LOGICAL_SHEET_ID = 'default'
+
+/** Decode a sheet comment anchor (base64 of `${sheetId}!${row}:${col}`) back to row/col + logical sheet id.
+ * Exported for unit tests that lock the legacy-anchor normalization contract (P1-2). */
+export function parseCell(anchorStart?: string | null): { row: number; col: number; sheetId: string } | null {
   if (!anchorStart) return null
   try {
-    const rc = atob(anchorStart).split('!')[1]
+    const parts = atob(anchorStart).split('!')
+    const rc = parts[1]
     if (!rc) return null
+    const rawSheetId = parts[0]
+    const sheetId = rawSheetId === LEGACY_V1_SHEET_ID ? DEFAULT_LOGICAL_SHEET_ID : rawSheetId
     const [rs, cs] = rc.split(':')
     const row = Number(rs)
     const col = Number(cs)
-    if (Number.isInteger(row) && Number.isInteger(col)) return { row, col }
+    if (Number.isInteger(row) && Number.isInteger(col)) return { row, col, sheetId }
   } catch {
     // not a cell anchor (e.g. a legacy/doc anchor) — treat as unanchored
   }
   return null
+}
+
+/** A cell coordinate carrying its logical sheet id. */
+export type SheetCell = { row: number; col: number; sheetId: string }
+
+/**
+ * Sheet-scoped cell equality for active-thread highlighting. Row/col alone is NOT enough:
+ * a thread anchored to (5,3) on Sheet B must not be selected when you pick (5,3) on Sheet A.
+ * All match sites now carry the logical sheet id, so compare it too. Exported for unit tests
+ * that lock the cross-sheet selection contract.
+ */
+export function cellMatches(cell: SheetCell, target: SheetCell): boolean {
+  return cell.row === target.row && cell.col === target.col && cell.sheetId === target.sheetId
 }
 
 /** A single comment body with author-only inline edit + author/admin delete. */
@@ -259,7 +288,7 @@ export function SheetCommentPanel({
   names?: Map<string, string>
   comments: UseDocComments
   /** When set (e.g. from a marker click), select the thread anchored to this cell. */
-  focusCell?: { row: number; col: number } | null
+  focusCell?: { row: number; col: number; sheetId: string } | null
   onClose?: () => void
 }) {
   const currentUid = getCurrentUid()
@@ -273,7 +302,7 @@ export function SheetCommentPanel({
 
   // Map every thread to its cell (for selection matching), keyed by thread id.
   const cellByThread = useMemo(() => {
-    const m = new Map<number, { row: number; col: number }>()
+    const m = new Map<number, { row: number; col: number; sheetId: string }>()
     for (const th of threads) {
       const cell = parseCell(th.anchorStart)
       if (cell) m.set(th.id, cell)
@@ -290,7 +319,9 @@ export function SheetCommentPanel({
       const rc = parseCell(btoa(r.key))
       if (!rc) return
       for (const [id, cell] of cellByThread) {
-        if (cell.row === rc.row && cell.col === rc.col) {
+        // Match the logical sheet id too — a thread anchored to (5,3) on Sheet B must not
+        // highlight when you select (5,3) on Sheet A. Both sides carry sheetId (key = `${sheetId}!row:col`).
+        if (cellMatches(cell, rc)) {
           setActiveId(id)
           return
         }
@@ -302,7 +333,8 @@ export function SheetCommentPanel({
   useEffect(() => {
     if (!focusCell) return
     for (const [id, cell] of cellByThread) {
-      if (cell.row === focusCell.row && cell.col === focusCell.col) {
+      // Sheet-scoped match: a marker click on Sheet A must not select Sheet B's thread at the same row/col.
+      if (cellMatches(cell, focusCell)) {
         setActiveId(id)
         return
       }
@@ -387,7 +419,7 @@ export function SheetCommentPanel({
             onSelect={() => setActiveId(th.id)}
             onJump={() => {
               const cell = cellByThread.get(th.id)
-              if (cell) sheet?.focusCell(cell.row, cell.col)
+              if (cell) sheet?.focusCell(cell.row, cell.col, cell.sheetId)
             }}
           />
         ))}

@@ -800,7 +800,7 @@
   "forwardModal.grant.sendFailed": "转发失败。",
   "forwardModal.grant.partialSendFailed": "有 {{failed}}/{{total}} 个目标转发失败。",
   "forwardModal.grant.partialGrantFailed": "已发送，但有 {{failed}} 名成员授权失败。",
-  "forwardModal.grant.forwarded": "已转发。",
+  "forwardModal.grant.forwarded": "已转发",
   "joinSpace.confirm": "确认加入",
   "joinSpace.description": "输入 Space 邀请码或邀请链接，加入一个已有的工作空间。",
   "joinSpace.error.fullCannotJoin": "空间已满，无法加入",

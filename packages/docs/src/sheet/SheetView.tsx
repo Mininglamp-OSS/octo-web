@@ -15,14 +15,26 @@ import type { ConnState, TerminalState } from '../collab/createCollabEditor.ts'
 import { type Role, canManage } from '../auth/roles.ts'
 import { MemberPanel } from '../members/MemberPanel.tsx'
 import { SheetVersionPanel } from './SheetVersionPanel.tsx'
-import { SheetCommentPanel } from './SheetCommentPanel.tsx'
+import { SheetCommentPanel, parseCell as parseCommentAnchor } from './SheetCommentPanel.tsx'
 import { useDocComments } from '../comments/useDocComments.ts'
 import { pendingSheetImports } from './xlsxImport.ts'
+import { buildSheetDims, buildSheetMerges, excelSheetName } from './sheetExport.ts'
 import { PresenceBar } from '../editor/PresenceBar.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import * as XLSX from 'xlsx-js-style'
-import { getDoc, updateDocTitle, deleteDoc } from '../pages/docsApi.ts'
-import { t } from '../octoweb/index.ts'
+import { getDoc, getUserName, updateDocTitle } from '../pages/docsApi.ts'
+import { startDocForward } from '../forward/startDocForward.ts'
+import {
+  DocMoreMenu,
+  OpenNewPageIcon,
+  HistoryIcon,
+  ExportIcon,
+  DeleteIcon,
+  type DocMoreMenuItem,
+} from '../editor/DocMoreMenu.tsx'
+import { ConfirmModal } from '../editor/ConfirmModal.tsx'
+import { useDocDelete } from '../editor/useDocDelete.ts'
+import { t, getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
 import '../editor/styles.css'
 
 export type SheetViewProps = Omit<CollabSheetOptions, 'container' | 'onRole' | 'onConnState' | 'onTerminal'> & {
@@ -30,25 +42,31 @@ export type SheetViewProps = Omit<CollabSheetOptions, 'container' | 'onRole' | '
   onTitleSaved?: (docId: string, title: string) => void
   /** Called after the sheet is deleted so the shell returns to the list + refreshes it. */
   onDeleted?: (docId: string) => void
+  /**
+   * "Open in new page" handler (in-shell only). When provided, the header's ≡ "more" menu shows an
+   * "Open in new page" row that opens the shareable standalone `/d/:docId` link — mirror of
+   * EditorShell. Omitted on the standalone page itself, so the row simply doesn't render there.
+   */
+  onOpenInNewPage?: () => void
+  /**
+   * Extra rows prepended to the TOP of the ≡ "more" menu (mirror of EditorShell). The standalone
+   * page uses this to pin its "Copy link" action as the first menu item.
+   */
+  moreMenuLeadItems?: DocMoreMenuItem[]
+  /**
+   * Resolve the creator name from the NICKNAME only, never the verified real_name (mirror of
+   * EditorShell). Set on the externally shareable standalone surface to avoid leaking a legal name.
+   */
+  creatorNicknameOnly?: boolean
 }
 
 type Panel = 'history' | 'comments' | 'members' | null
 
-/** Decode a sheet comment anchor (base64 of `${sheetId}!${row}:${col}`) to row/col. */
-function cellFromAnchor(anchorStart?: string | null): { row: number; col: number } | null {
-  if (!anchorStart) return null
-  try {
-    const rc = atob(anchorStart).split('!')[1]
-    if (!rc) return null
-    const [rs, cs] = rc.split(':')
-    const row = Number(rs)
-    const col = Number(cs)
-    if (Number.isInteger(row) && Number.isInteger(col)) return { row, col }
-  } catch {
-    // not a cell anchor — ignore
-  }
-  return null
-}
+// Sheet comment anchors are decoded by SheetCommentPanel.parseCell (single source of truth),
+// which also normalizes the legacy V1 anchor sheet id (`octo-sheet-1`) to logical `default`
+// (P1-2). SheetView reuses it so comment BADGES/markers resolve legacy anchors identically to
+// the panel highlight/focus path — previously a duplicated local decoder here skipped that
+// normalization and made every V1 comment badge vanish under V2.
 
 /** Active cell + its on-screen rect (relative to the sheet container). */
 type CellAnchor = {
@@ -139,12 +157,17 @@ export function SheetView(props: SheetViewProps) {
   const [terminal, setTerminal] = useState<TerminalState>({ kind: 'none' })
   const [panel, setPanel] = useState<Panel>(null)
   const [title, setTitle] = useState('')
+  // Creator + creation timestamp for the ≡ "more" menu head (mirror of EditorShell), so the
+  // sheet's collapsed menu shows the same creator/created-on line a document does.
+  const [ownerId, setOwnerId] = useState<string | undefined>(undefined)
+  const [createdAt, setCreatedAt] = useState<string | undefined>(undefined)
+  const [creatorName, setCreatorName] = useState<string | undefined>(undefined)
   // Track the APP theme (body[theme-mode], set by dmworkbase across web/desktop) with a
   // fallback to the OS preference. The shared .octo-theme CSS only follows prefers-color-scheme,
   // so we theme the sheet chrome ourselves from the app signal to stay consistent.
   const [dark, setDark] = useState(false)
 
-  const { uid, space, folder, doc, docId, disableOfflineCache, onTitleSaved, onDeleted } = props
+  const { uid, space, folder, doc, docId, disableOfflineCache, onTitleSaved, onDeleted, onOpenInNewPage, moreMenuLeadItems, creatorNicknameOnly } = props
   const userId = props.user.id
   const names = useMemberNames(space)
   const manage = canManage(role)
@@ -152,7 +175,7 @@ export function SheetView(props: SheetViewProps) {
   // Comments are owned here (not inside the panel) so the cell markers stay visible
   // even when the panel is closed, and refresh as comments are added/removed.
   const comments = useDocComments(docId)
-  const [commentFocus, setCommentFocus] = useState<{ row: number; col: number } | null>(null)
+  const [commentFocus, setCommentFocus] = useState<{ row: number; col: number; sheetId: string } | null>(null)
   const [composer, setComposer] = useState<CellAnchor | null>(null)
 
   // Always paint a corner badge on every commented cell (independent of the panel).
@@ -162,20 +185,20 @@ export function SheetView(props: SheetViewProps) {
     if (!sheet) return
     const cells = comments.threads
       .map((th) => {
-        const c = cellFromAnchor(th.anchorStart)
+        const c = parseCommentAnchor(th.anchorStart)
         return c ? { ...c, resolved: th.resolved } : null
       })
-      .filter((c): c is { row: number; col: number; resolved: boolean } => c != null)
+      .filter((c): c is { row: number; col: number; sheetId: string; resolved: boolean } => c != null)
     sheet.setCommentedCells(cells)
   }, [sheet, comments.threads])
 
   // Clicking a cell's comment badge opens the panel focused on that cell's thread.
   useEffect(() => {
     if (!sheet) return
-    sheet.setCommentMarkerClickHandler((row, col) => {
+    sheet.setCommentMarkerClickHandler((row, col, sheetId) => {
       setPanel('comments')
-      setCommentFocus({ row, col })
-      sheet.focusCell(row, col)
+      setCommentFocus({ row, col, sheetId })
+      sheet.focusCell(row, col, sheetId)
     })
     return () => sheet.setCommentMarkerClickHandler(null)
   }, [sheet])
@@ -191,7 +214,7 @@ export function SheetView(props: SheetViewProps) {
     if (!imp) return
     let applied = false
     try {
-      applied = sheet.importCells(imp.matrix, imp.merges)
+      applied = sheet.importCells(imp.sheets)
     } catch (err) {
       console.error('[docs] sheet import threw — keeping pending import for a retry on reopen', err)
     }
@@ -211,12 +234,43 @@ export function SheetView(props: SheetViewProps) {
   }, [sheet])
 
   // Load the real title so it's editable (docs have an inline DocTitle; the sheet
-  // reuses the same rename REST endpoint).
+  // reuses the same rename REST endpoint). Also lift ownerId + createdAt for the ≡ menu head.
   useEffect(() => {
     getDoc(docId)
-      .then((m) => setTitle(m.title || ''))
+      .then((m) => {
+        setTitle(m.title || '')
+        if (typeof m.ownerId === 'string' && m.ownerId) setOwnerId(m.ownerId)
+        if (typeof m.createdAt === 'string' && m.createdAt) setCreatedAt(m.createdAt)
+      })
       .catch(() => {})
   }, [docId])
+
+  // Resolve the creator's display name for the ≡ menu head: first from the already-loaded
+  // space-member map (free), then GET /users/:uid. Resilient — any failure leaves it undefined
+  // and the menu falls back to a short uid, matching EditorShell's in-shell behavior. On the
+  // externally shared standalone surface (creatorNicknameOnly) skip the member-map primary source
+  // and force nickname-only, so a link holder never sees the creator's verified legal name.
+  useEffect(() => {
+    if (!ownerId) return
+    if (!creatorNicknameOnly) {
+      const fromMembers = names.get(ownerId)
+      if (fromMembers && fromMembers !== ownerId) {
+        setCreatorName(fromMembers)
+        return
+      }
+    }
+    let cancelled = false
+    getUserName(ownerId, { preferRealName: !creatorNicknameOnly })
+      .then((name) => {
+        if (!cancelled && name) setCreatorName(name)
+      })
+      .catch(() => {
+        /* keep the uid fallback */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ownerId, names, creatorNicknameOnly])
 
   // Push the resolved display name into presence once the member-name lookup returns
   // (the sheet is created before names resolve, so avatar/cursor start with the uid).
@@ -251,18 +305,10 @@ export function SheetView(props: SheetViewProps) {
       .catch(() => {})
   }
 
-  // Delete the sheet (soft delete, owner/admin) — same logic as the docs "删除文档"
-  // entry, so the right-click 移除 and this header button behave identically.
-  const removeSheet = async () => {
-    if (!manage) return
-    if (!window.confirm(t('docs.sheet.deleteConfirm'))) return
-    try {
-      await deleteDoc(docId)
-      onDeleted?.(docId)
-    } catch {
-      // ignore — surfaced elsewhere; keep the sheet open on failure
-    }
-  }
+  // Delete the sheet (soft delete, owner/admin) — reuses the docs delete hook + shared centered
+  // ConfirmModal, so a sheet delete and a document delete pop the SAME dialog in the middle of the
+  // screen (replacing the old native window.confirm). deleteDoc works for a sheet doc unchanged.
+  const del = useDocDelete(docId, onDeleted)
 
   useEffect(() => {
     const el = containerRef.current
@@ -316,24 +362,17 @@ export function SheetView(props: SheetViewProps) {
   const toggle = (p: Exclude<Panel, null>) => setPanel((cur) => (cur === p ? null : p))
   const closePanel = () => setPanel(null)
 
-  // Export the sheet to .xlsx via the SheetJS (xlsx) library, built from the shared Y.Map.
+  // Export the workbook to .xlsx via SheetJS, built from the shared Y.Maps. MULTI-SHEET:
+  // one output worksheet per logical sheet in the 'sheetList' registry (ordered), each with
+  // its OWN cells / merges / dims — all keyed by that sheet's logical id. A pre-multi-sheet
+  // doc (empty registry) falls back to a single 'default' sheet (its keys are `default!…`).
   const exportXlsx = () => {
     if (!sheet) return
-    const ymap = sheet.ydoc.getMap<{ v?: unknown; f?: string; s?: Record<string, unknown> }>('sheet')
-    let maxR = 0
-    let maxC = 0
-    const cells = new Map<string, { v?: unknown; f?: string; s?: Record<string, unknown> }>()
-    for (const [key, cell] of ymap.entries()) {
-      const rc = key.split('!')[1]
-      if (!rc) continue
-      const [rs, cs] = rc.split(':')
-      const r = Number(rs)
-      const c = Number(cs)
-      if (!Number.isInteger(r) || !Number.isInteger(c)) continue
-      cells.set(`${r}:${c}`, cell)
-      if (r > maxR) maxR = r
-      if (c > maxC) maxC = c
-    }
+    const cellMap = sheet.ydoc.getMap<{ v?: unknown; f?: string; s?: Record<string, unknown> }>('sheet')
+    const mergeMap = sheet.ydoc.getMap<boolean>('sheetMerges')
+    const dimMap = sheet.ydoc.getMap<number>('sheetDims')
+    const listMap = sheet.ydoc.getMap<{ name: string; order: number }>('sheetList')
+
     // Normalize a Univer color (#rrggbb / rrggbb / rgb(r,g,b)) to the 6-hex SheetJS wants.
     const toHex = (rgb?: string): string | undefined => {
       if (!rgb) return undefined
@@ -343,93 +382,198 @@ export function SheetView(props: SheetViewProps) {
       const hex = s.replace('#', '')
       return /^[0-9a-fA-F]{6}$/.test(hex) ? hex.toUpperCase() : /^[0-9a-fA-F]{8}$/.test(hex) ? hex.slice(2).toUpperCase() : undefined
     }
-    // Build the worksheet SPARSELY from populated cells only. The previous approach filled a
-    // dense 0..maxR × 0..maxC grid (plus two more dense loops for style/formula), so a single
-    // far cell — e.g. a remote XFD1048576 — allocated billions of slots and OOM'd every
-    // collaborator's tab (DoS). A .xlsx is sparse by nature: write only the cells that exist
-    // and declare the used range via '!ref'. Cost is now O(populated cells), not O(maxR×maxC).
-    const ws: XLSX.WorkSheet = {}
-    for (const [rc, cell] of cells) {
-      const [rs, cs] = rc.split(':')
-      const out: { t: 'n' | 'b' | 's'; v?: unknown; f?: string; s?: Record<string, unknown> } = { t: 's', v: '' }
-      const v = cell.v
-      if (typeof v === 'number') {
-        out.t = 'n'
-        out.v = v
-      } else if (typeof v === 'boolean') {
-        out.t = 'b'
-        out.v = v
-      } else if (v != null) {
-        out.t = 's'
-        out.v = v
+
+    // Univer BorderStyleTypes (numeric) → xlsx-js-style border style name. Inverse of
+    // xlsxImport's BORDER_STYLE map, so a border imported from .xlsx survives re-export.
+    const XLSX_BORDER_STYLE: Record<number, string> = {
+      1: 'thin', 2: 'hair', 3: 'dotted', 4: 'dashed', 5: 'dashDot', 6: 'dashDotDot',
+      7: 'double', 8: 'medium', 9: 'mediumDashed', 10: 'mediumDashDot', 11: 'mediumDashDotDot',
+      12: 'slantDashDot', 13: 'thick',
+    }
+    /** Univer `bd` { t/b/l/r:{ s, cl:{rgb} } } → xlsx-js-style `border` { top/bottom/left/right }. */
+    const univerBdToXlsx = (
+      bd: Record<string, { s?: number; cl?: { rgb?: string } } | undefined> | undefined,
+      hex: (rgb?: string) => string | undefined,
+    ): Record<string, { style: string; color: { rgb: string } }> | undefined => {
+      if (!bd) return undefined
+      const edges: Array<[string, string]> = [['t', 'top'], ['b', 'bottom'], ['l', 'left'], ['r', 'right']]
+      const out: Record<string, { style: string; color: { rgb: string } }> = {}
+      for (const [k, name] of edges) {
+        const e = bd[k]
+        if (!e || e.s == null) continue
+        const style = XLSX_BORDER_STYLE[e.s] ?? 'thin'
+        out[name] = { style, color: { rgb: hex(e.cl?.rgb) ?? '000000' } }
       }
-      // Preserve formula (Univer stores it WITH a leading '='; SheetJS wants it WITHOUT). Its
-      // `v` stays the last cached result so non-recalc viewers still show a number.
-      if (cell.f) out.f = cell.f.startsWith('=') ? cell.f.slice(1) : cell.f
-      // Map the synced Univer style (font / color / size / bg / align / number-format).
-      if (cell.s) {
-        const s = cell.s as {
-          bl?: number; it?: number; ul?: { s?: number }; st?: { s?: number }
-          fs?: number; ff?: string; cl?: { rgb?: string }; bg?: { rgb?: string }; ht?: number; vt?: number
-          n?: { pattern?: string }
-        }
-        const fontColor = toHex(s.cl?.rgb)
-        const bgColor = toHex(s.bg?.rgb)
-        out.s = {
-          font: {
-            bold: !!s.bl,
-            italic: !!s.it,
-            underline: !!s.ul?.s,
-            strike: !!s.st?.s,
-            ...(s.fs ? { sz: s.fs } : {}),
-            ...(s.ff ? { name: s.ff } : {}),
-            ...(fontColor ? { color: { rgb: fontColor } } : {}),
-          },
-          ...(bgColor ? { fill: { patternType: 'solid', fgColor: { rgb: bgColor } } } : {}),
-          alignment: {
-            horizontal: s.ht === 2 ? 'center' : s.ht === 3 ? 'right' : s.ht === 1 ? 'left' : undefined,
-            vertical: s.vt === 1 ? 'top' : s.vt === 3 ? 'bottom' : undefined,
-          },
-        }
-        // Carry the number-format pattern (e.g. dates stored as `s.n.pattern = 'yyyy/m/d'`)
-        // into SheetJS `z`, otherwise a date serial exports as a bare integer and the
-        // reopened file shows `45292` instead of `2024/1/1`. See xlsxImport.ts (import side).
-        if (s.n?.pattern) (out.s as { z?: string }).z = s.n.pattern
+      return Object.keys(out).length > 0 ? out : undefined
+    }
+
+    // Build one SheetJS worksheet from all Y.Map data prefixed by this sheet's logical id.
+    const buildWs = (logicalId: string): XLSX.WorkSheet => {
+      let maxR = 0
+      let maxC = 0
+      const cells = new Map<string, { v?: unknown; f?: string; s?: Record<string, unknown> }>()
+      const cellPrefix = `${logicalId}!`
+      for (const [key, cell] of cellMap.entries()) {
+        if (!key.startsWith(cellPrefix)) continue
+        const rc = key.slice(cellPrefix.length)
+        const [rs, cs] = rc.split(':')
+        const r = Number(rs)
+        const c = Number(cs)
+        if (!Number.isInteger(r) || !Number.isInteger(c)) continue
+        cells.set(`${r}:${c}`, cell)
+        if (r > maxR) maxR = r
+        if (c > maxC) maxC = c
       }
-      ws[XLSX.utils.encode_cell({ r: Number(rs), c: Number(cs) })] = out as unknown as XLSX.CellObject
+      const ws: XLSX.WorkSheet = {}
+      for (const [rc, cell] of cells) {
+        const [rs, cs] = rc.split(':')
+        const out: { t: 'n' | 'b' | 's'; v?: unknown; f?: string; s?: Record<string, unknown> } = { t: 's', v: '' }
+        const v = cell.v
+        if (typeof v === 'number') {
+          out.t = 'n'
+          out.v = v
+        } else if (typeof v === 'boolean') {
+          out.t = 'b'
+          out.v = v
+        } else if (v != null) {
+          out.t = 's'
+          out.v = v
+        }
+        if (cell.f) out.f = cell.f.startsWith('=') ? cell.f.slice(1) : cell.f
+        if (cell.s) {
+          const s = cell.s as {
+            bl?: number; it?: number; ul?: { s?: number }; st?: { s?: number }
+            fs?: number; ff?: string; cl?: { rgb?: string }; bg?: { rgb?: string }; ht?: number; vt?: number
+            n?: { pattern?: string }
+            bd?: Record<string, { s?: number; cl?: { rgb?: string } } | undefined>
+          }
+          const fontColor = toHex(s.cl?.rgb)
+          const bgColor = toHex(s.bg?.rgb)
+          out.s = {
+            font: {
+              bold: !!s.bl,
+              italic: !!s.it,
+              underline: !!s.ul?.s,
+              strike: !!s.st?.s,
+              ...(s.fs ? { sz: s.fs } : {}),
+              ...(s.ff ? { name: s.ff } : {}),
+              ...(fontColor ? { color: { rgb: fontColor } } : {}),
+            },
+            ...(bgColor ? { fill: { patternType: 'solid', fgColor: { rgb: bgColor } } } : {}),
+            alignment: {
+              horizontal: s.ht === 2 ? 'center' : s.ht === 3 ? 'right' : s.ht === 1 ? 'left' : undefined,
+              vertical: s.vt === 1 ? 'top' : s.vt === 3 ? 'bottom' : undefined,
+            },
+          }
+          if (s.n?.pattern) (out.s as { z?: string }).z = s.n.pattern
+          // Borders: reverse of xlsxImport's `bd` mapping. Univer stores per-edge
+          // { s: BorderStyleType, cl: { rgb } }; xlsx-js-style wants { style, color: { rgb } }.
+          // Emitting this closes the import→export round-trip that previously dropped all borders.
+          const border = univerBdToXlsx(s.bd, toHex)
+          if (border) (out.s as { border?: unknown }).border = border
+        }
+        ws[XLSX.utils.encode_cell({ r: Number(rs), c: Number(cs) })] = out as unknown as XLSX.CellObject
+      }
+      ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } })
+      // Merges: delegated to buildSheetMerges (sheetExport.ts). V2 keys are `${logicalId}:sr:sc:er:ec`;
+      // for the legacy 'default' sheet, bare V1 keys (`sr:sc:er:ec`, no prefix) are added unless a
+      // prefixed twin already covers the range (P1-1). Legacy docs wrote dim/merge keys UNPREFIXED
+      // and never migrated them; the binding reads them as 'default' on open, so export mirrors that.
+      const merges = buildSheetMerges(logicalId, mergeMap.entries() as Iterable<[string, boolean]>)
+      if (merges.length) ws['!merges'] = merges
+      // Column widths / row heights + merges: delegated to buildSheetDims/buildSheetMerges
+      // (sheetExport.ts) so the legacy bare-key handling (P1-1) is unit-testable. Prefixed (V2)
+      // values take priority; for the legacy 'default' sheet, bare V1 keys fill gaps / add uncovered
+      // merges. Mirrors the binding's open-time read so a legacy doc round-trips its dims/merges.
+      const { cols, rows } = buildSheetDims(logicalId, dimMap.entries() as Iterable<[string, number]>)
+      if (cols.length) ws['!cols'] = cols
+      if (rows.length) ws['!rows'] = rows
+      return ws
     }
-    // Declare the used range. A large range STRING is harmless (unlike a dense array).
-    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } })
-    // Merged cells: read the shared merge map (keys `sr:sc:er:ec`) → SheetJS `!merges`.
-    // Import captures merges, so without this the round-trip flattens merged title bars.
-    const mergeMap = sheet.ydoc.getMap<boolean>('sheetMerges')
-    const merges: XLSX.Range[] = []
-    for (const [key, on] of mergeMap.entries()) {
-      if (!on) continue
-      const parts = key.split(':').map((n) => Number(n))
-      if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n))) continue
-      const [sr, sc, er, ec] = parts
-      merges.push({ s: { r: sr, c: sc }, e: { r: er, c: ec } })
-    }
-    if (merges.length) ws['!merges'] = merges
-    // Column widths / row heights: read the shared dims map (keys `c<idx>`/`r<idx>`) →
-    // SheetJS `!cols` (wpx) / `!rows` (hpx). Import applies these, so exporting without
-    // them loses every custom width/height on the round-trip.
-    const dimMap = sheet.ydoc.getMap<number>('sheetDims')
-    const cols: XLSX.ColInfo[] = []
-    const rows: XLSX.RowInfo[] = []
-    for (const [key, size] of dimMap.entries()) {
-      const idx = Number(key.slice(1))
-      if (!Number.isInteger(idx) || typeof size !== 'number' || size <= 0) continue
-      if (key.startsWith('c')) cols[idx] = { wpx: size }
-      else if (key.startsWith('r')) rows[idx] = { hpx: size }
-    }
-    if (cols.length) ws['!cols'] = cols
-    if (rows.length) ws['!rows'] = rows
+
+    // Sheet order from the registry; fall back to one 'default' sheet for legacy docs.
+    let metas = [...listMap.entries()]
+      .map(([id, m]) => ({ id, name: m.name, order: m.order }))
+      .sort((a, b) => a.order - b.order)
+    if (metas.length === 0) metas = [{ id: 'default', name: 'Sheet1', order: 0 }]
+
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
+    const used = new Set<string>()
+    let appended = 0
+    for (const meta of metas) {
+      // Excel-legal, unique name for this sheet (rules + `(n)` collision suffix, ≤31 chars).
+      // Extracted to sheetExport.excelSheetName so the P2 slice-overflow fix is unit-testable.
+      const n = excelSheetName(meta.name, used)
+      // Guard each sheet: a name Univer allowed but XLSX rejects must not abort the ENTIRE export
+      // (P2 — exportXlsx had no try/catch, so one bad sheet lost every sheet). Skip the offender.
+      try {
+        XLSX.utils.book_append_sheet(wb, buildWs(meta.id), n)
+        appended++
+      } catch {
+        // Malformed sheet name/content — drop this one sheet, keep exporting the rest.
+      }
+    }
+    if (appended === 0) return
     XLSX.writeFile(wb, `${title || docId}.xlsx`)
   }
+
+  // "Forward to chat" (mirror of EditorShell, feature #511): reader+ entry. Gated on canForward so
+  // it never renders as a silent no-op where the host lacks the conversation-select surface (the
+  // standalone /d/:docId page). The forwarded link points at /d/:docId, which now renders the sheet.
+  const canForward = canForwardToChat()
+  const onForwardToChat = () => {
+    if (!role) return
+    startDocForward({
+      docId,
+      title,
+      role,
+      currentUid: getCurrentUid(),
+      ownerId,
+      space,
+      folder,
+    })
+  }
+
+  // ≡ "more" menu (mirror of EditorShell): low-frequency actions collapse behind the hamburger, with
+  // delete pinned last as the destructive row (manage only). Order: [caller lead rows] → open-in-new-
+  // page → history → export. Keeps 评论 / 转发到聊天 / 成员 inline so the chrome matches a document.
+  const moreItems: DocMoreMenuItem[] = []
+  if (moreMenuLeadItems?.length) moreItems.push(...moreMenuLeadItems)
+  if (onOpenInNewPage) {
+    moreItems.push({
+      key: 'open-new-page',
+      label: t('docs.standalone.openInNewPage'),
+      icon: OpenNewPageIcon,
+      onClick: onOpenInNewPage,
+    })
+  }
+  moreItems.push(
+    {
+      key: 'history',
+      label: t('docs.toolbar.history'),
+      icon: HistoryIcon,
+      onClick: () => toggle('history'),
+    },
+    {
+      key: 'export',
+      label: t('docs.sheet.exportExcel'),
+      icon: ExportIcon,
+      disabled: !sheet,
+      onClick: exportXlsx,
+    },
+  )
+  const deleteItem: DocMoreMenuItem | undefined = manage
+    ? {
+        key: 'delete',
+        label: t('docs.sheet.deleteFile'),
+        icon: DeleteIcon,
+        danger: true,
+        onClick: del.requestDelete,
+      }
+    : undefined
+  // Creator name with fallback: resolved name → short uid → placeholder. Never blank, never crashes.
+  const creatorDisplay =
+    creatorName || (ownerId ? ownerId.slice(0, 8) : t('docs.moreMenu.unknownCreator'))
 
   return (
     <div className="octo-doc octo-doc--editor octo-theme" style={{ display: 'flex', flexDirection: 'column', height: '100%', background: dark ? '#1f1f1f' : undefined, color: dark ? '#e8eaed' : undefined }}>
@@ -448,25 +592,34 @@ export function SheetView(props: SheetViewProps) {
         />
         <div className="octo-doc-header-right">
           {sheet && <PresenceBar provider={sheet.provider} connState={conn} synced={conn === 'connected'} />}
-          <button type="button" className={tb('history')} aria-pressed={panel === 'history'} onClick={() => toggle('history')}>
-            🕐 {t('docs.toolbar.history')}
-          </button>
           <button type="button" className={tb('comments')} aria-pressed={panel === 'comments'} onClick={() => toggle('comments')}>
             💬 {t('docs.toolbar.comments')}
           </button>
-          <button type="button" className="octo-tb-btn" title={t('docs.sheet.exportExcel')} disabled={!sheet} onClick={exportXlsx}>
-            ⬇ {t('docs.sheet.exportExcel')}
-          </button>
+          {/* Forward to chat (mirror of EditorShell) — reader+; gated on canForward so it never
+              renders as a silent no-op on the standalone page where the host surface is absent. */}
+          {role && canForward && (
+            <button
+              type="button"
+              className="octo-tb-btn octo-doc-forward-btn"
+              title={t('docs.forward.entry')}
+              onClick={onForwardToChat}
+            >
+              ⤴ {t('docs.forward.entry')}
+            </button>
+          )}
           {manage && (
             <button type="button" className={tb('members')} aria-pressed={panel === 'members'} onClick={() => toggle('members')}>
               {t('docs.toolbar.members')}
             </button>
           )}
-          {manage && (
-            <button type="button" className="octo-tb-btn octo-doc-delete-btn" onClick={() => void removeSheet()}>
-              🗑 {t('docs.sheet.deleteFile')}
-            </button>
-          )}
+          {/* Low-frequency actions (version history / export / delete) collapse into a single ≡
+              "more" menu pinned to the far right, with a creator + created-on head — matching a doc. */}
+          <DocMoreMenu
+            creatorName={creatorDisplay}
+            createdAt={createdAt}
+            items={moreItems}
+            dangerItem={deleteItem}
+          />
         </div>
       </header>
 
@@ -484,13 +637,10 @@ export function SheetView(props: SheetViewProps) {
             }}
           />
         )}
-        {panel && (
+        {(panel === 'history' || panel === 'comments') && (
           <aside className="octo-doc-drawer" role="complementary">
             {panel === 'history' && (
               <SheetVersionPanel docId={docId} role={role} sheet={sheet} names={names} onClose={closePanel} />
-            )}
-            {panel === 'members' && manage && (
-              <MemberPanel docId={docId} role={role} space={space} ownerId={uid} onClose={closePanel} />
             )}
             {panel === 'comments' && (
               <SheetCommentPanel
@@ -506,6 +656,36 @@ export function SheetView(props: SheetViewProps) {
           </aside>
         )}
       </div>
+
+      {/* Manage members opens a CENTERED modal (same as the document editor), not a right-side
+          drawer — history + comments stay in the drawer above. */}
+      {panel === 'members' && manage && (
+        <div className="octo-modal-overlay" role="presentation" onMouseDown={closePanel}>
+          <div
+            className="octo-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('docs.member.manage')}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <MemberPanel docId={docId} role={role} space={space} ownerId={uid} onClose={closePanel} />
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirm — the shared centered modal, identical to the document's delete dialog. */}
+      <ConfirmModal
+        open={del.confirming}
+        title={t('docs.sheet.deleteConfirmTitle')}
+        message={t('docs.sheet.deleteConfirm')}
+        confirmLabel={t('docs.doc.delete')}
+        cancelLabel={t('docs.doc.deleteCancel')}
+        danger
+        busy={del.deleting}
+        error={del.error}
+        onConfirm={() => void del.confirm()}
+        onCancel={del.cancel}
+      />
     </div>
   )
 }

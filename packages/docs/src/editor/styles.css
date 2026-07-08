@@ -37,10 +37,32 @@
   width: 100%;
   height: 100%;
   box-sizing: border-box;
+  /* Header-then-fixed-region column (mirrors the sheet): the header stays put at the top, and the
+     scroll + drawer live in .octo-doc-body below it. This keeps the .octo-doc-drawer (an absolute
+     child of .octo-doc-body) BELOW the header — so it never covers the header buttons — and pinned
+     to the pane instead of scrolling away with the document. */
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Region below the fixed header: establishes the positioning context + bounded height for both
+   the inner scroll container and the pinned drawer. */
+.octo-doc-body {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 0;
+}
+
+/* Inner scroll container (P7/B1): the scroll viewport for the sticky toolbar + prose + status bar
+   (the header is a fixed sibling ABOVE this, no longer scrolls). NO top padding, so the sticky
+   toolbar (top:0) pins flush to the top of the scroll viewport; horizontal + bottom padding live
+   here. The drawer is a SIBLING of this element inside .octo-doc-body, so it is unaffected. */
+.octo-doc-scroll {
+  height: 100%;
   overflow-y: auto;
-  /* P7/B1: the scroll container must have NO top padding, otherwise that padding strip sits
-     ABOVE the sticky toolbar (top:0) and document content scrolls up through it. The top
-     breathing space is moved onto the header instead; horizontal + bottom padding stay here. */
+  box-sizing: border-box;
   padding: 0 32px 24px;
 }
 
@@ -49,9 +71,10 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  /* The top breathing room lives here now (the scroll container's top padding was removed so the
-     sticky toolbar can pin flush to the true top of the scroll viewport). */
-  padding-top: 24px;
+  /* Fixed at the top of the editor column (no longer inside the scroll container), so it needs its
+     own horizontal padding — the scroll container's padding used to cover it. */
+  flex: 0 0 auto;
+  padding: 24px 32px 0;
 }
 .octo-doc-header-right {
   display: flex;
@@ -1226,6 +1249,56 @@
 .octo-doc-delete-confirm {
   margin: 8px 0 0;
   max-width: 420px;
+}
+
+/* ── Centered confirm dialog (ConfirmModal): shared by document + sheet delete so both pop the
+   SAME card in the MIDDLE of the screen — replacing the sheet's native window.confirm and the
+   document's inline top banner. align-items:center centers it vertically (the members modal uses
+   flex-start because it's a tall panel; a confirm is short, so it sits dead-center). ── */
+.octo-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.4);
+}
+.octo-confirm-modal {
+  width: 100%;
+  max-width: 400px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 12px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
+  padding: 20px 24px;
+  box-sizing: border-box;
+}
+.octo-confirm-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-confirm-message {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.octo-confirm-go-danger {
+  color: #fff;
+  background: #eb5757;
+}
+.octo-confirm-go-danger:hover:not(:disabled) {
+  background: #d64545;
 }
 
 /* Header "more" (≡) menu (#512 title-bar tidy-up). A relatively-positioned anchor holds the ≡

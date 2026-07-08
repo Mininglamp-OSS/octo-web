@@ -29,14 +29,18 @@ export interface MergeRange {
   endColumn: number
 }
 
-/** The full parsed payload for a new imported sheet: the cell grid + merged ranges. */
-export interface SheetImport {
+/** One parsed worksheet: its name + cell grid + merged ranges. */
+export interface ParsedSheet {
+  name: string
   matrix: ImportCell[][]
   merges: MergeRange[]
-  /** True when the source exceeded MAX_IMPORT_ROWS/COLS and the grid was clamped. */
+}
+
+/** The full parsed payload for an imported workbook: every VISIBLE worksheet. */
+export interface SheetImport {
+  sheets: ParsedSheet[]
+  /** True when any sheet exceeded MAX_IMPORT_ROWS/COLS and was clamped. */
   truncated?: boolean
-  /** Number of extra worksheets that were NOT imported (only the first sheet is read). */
-  droppedSheetCount?: number
 }
 
 /** Distinguishes "couldn't parse the file at all" from "parsed OK, with caveats". */
@@ -250,6 +254,8 @@ export async function parseXlsxToMatrix(data: ArrayBuffer): Promise<ParseXlsxRes
     const wb = new (WorkbookCtor as new () => {
       xlsx: { load: (b: ArrayBuffer) => Promise<unknown> }
       worksheets: Array<{
+        name?: string
+        state?: string
         rowCount: number
         columnCount: number
         getCell: (r: number, c: number) => XlsxCell
@@ -257,32 +263,31 @@ export async function parseXlsxToMatrix(data: ArrayBuffer): Promise<ParseXlsxRes
       }>
     })()
     await wb.xlsx.load(data)
-    // Only the first non-empty worksheet is imported today; count the rest so the caller
-    // can surface a "only sheet 1 was imported" warning rather than dropping them silently.
-    const droppedSheetCount = Math.max(0, wb.worksheets.length - 1)
-    const ws = wb.worksheets[0]
-    if (!ws) return { ok: false, reason: 'empty' }
-    // ExcelJS reports the LARGEST used row/col, which a single far-flung cell can inflate
-    // to ~1M×16k. Clamp to the collaborative grid bounds so a malicious/accidental sparse
-    // file can't build a giant dense matrix and OOM the tab.
-    const rawRows = ws.rowCount
-    const rawCols = ws.columnCount
-    if (rawRows <= 0 || rawCols <= 0) return { ok: false, reason: 'empty' }
-    const rows = Math.min(rawRows, MAX_IMPORT_ROWS)
-    const cols = Math.min(rawCols, MAX_IMPORT_COLS)
-    const truncated = rawRows > MAX_IMPORT_ROWS || rawCols > MAX_IMPORT_COLS
-    const matrix: ImportCell[][] = []
-    for (let r = 1; r <= rows; r++) {
-      const row: ImportCell[] = []
-      for (let c = 1; c <= cols; c++) row.push(exceljsCellToUniver(ws.getCell(r, c)))
-      matrix.push(row)
-    }
-    const merges: MergeRange[] = []
-    for (const rng of ws.model?.merges ?? []) {
-      const m = parseA1Range(rng)
-      if (m && (m.endRow > m.startRow || m.endColumn > m.startColumn)) {
-        // Drop/clamp merges that fall outside the clamped grid so they don't dangle.
-        if (m.startRow < rows && m.startColumn < cols) {
+    // Import EVERY visible worksheet (each becomes a sheet tab in the workbook). Hidden /
+    // very-hidden sheets are skipped — not user content, and previously the source of the
+    // bogus "multiple worksheets" notice on single-sheet files. ExcelJS reports the LARGEST
+    // used row/col, which a single far-flung cell can inflate to ~1M×16k, so clamp each
+    // sheet to the collaborative grid bounds (never build a giant dense matrix / OOM).
+    const sheets: ParsedSheet[] = []
+    let truncated = false
+    wb.worksheets.forEach((ws, i) => {
+      if (ws.state && ws.state !== 'visible') return
+      const rawRows = ws.rowCount
+      const rawCols = ws.columnCount
+      if (rawRows <= 0 || rawCols <= 0) return
+      const rows = Math.min(rawRows, MAX_IMPORT_ROWS)
+      const cols = Math.min(rawCols, MAX_IMPORT_COLS)
+      if (rawRows > MAX_IMPORT_ROWS || rawCols > MAX_IMPORT_COLS) truncated = true
+      const matrix: ImportCell[][] = []
+      for (let r = 1; r <= rows; r++) {
+        const row: ImportCell[] = []
+        for (let c = 1; c <= cols; c++) row.push(exceljsCellToUniver(ws.getCell(r, c)))
+        matrix.push(row)
+      }
+      const merges: MergeRange[] = []
+      for (const rng of ws.model?.merges ?? []) {
+        const m = parseA1Range(rng)
+        if (m && (m.endRow > m.startRow || m.endColumn > m.startColumn) && m.startRow < rows && m.startColumn < cols) {
           merges.push({
             startRow: m.startRow,
             startColumn: m.startColumn,
@@ -291,8 +296,10 @@ export async function parseXlsxToMatrix(data: ArrayBuffer): Promise<ParseXlsxRes
           })
         }
       }
-    }
-    return { ok: true, data: { matrix, merges, truncated, droppedSheetCount } }
+      sheets.push({ name: ws.name ?? `Sheet${i + 1}`, matrix, merges })
+    })
+    if (sheets.length === 0) return { ok: false, reason: 'empty' }
+    return { ok: true, data: { sheets, truncated } }
   } catch (err) {
     // Surface the real cause instead of collapsing every failure into a bare null — a
     // corrupt file and an ExcelJS bug are otherwise indistinguishable to the caller.
