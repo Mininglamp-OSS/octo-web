@@ -157,19 +157,31 @@ describe('useWhiteboardSession — board collab wiring (XIN-55)', () => {
     expect(created[0]!.opts.disableOfflineCache).toBe(true)
   })
 
-  it('P1-3: a 404 prime builds a terminal not-found session', async () => {
+  it('P1b: a re-acquire that lands after the synchronous release still destroys the OLD session (no leaked provider/IndexedDB handle)', async () => {
     const useWhiteboardSession = await importHook()
-    wk.apiClient.responder = (method, url) => {
-      if (method === 'post' && url === '/docs/collab-token') {
-        throw Object.assign(new Error('not found'), { response: { status: 404 } })
-      }
-      return { data: {}, status: 200 }
-    }
-    const { result } = renderHook(() =>
-      useWhiteboardSession({ uid: 'u_self', space: 'demo', folder: 'f_default', board: 'd_board1' }),
-    )
-    await waitFor(() => expect(result.current).not.toBeNull())
-    expect(created[0]!.opts.initialTerminal).toEqual({ kind: 'not-found' })
-    expect(created[0]!.opts.disableOfflineCache).toBe(true)
+    const opts = { uid: 'u_self', space: 'demo', folder: 'f_default', board: 'd_board1' }
+
+    // First mount builds session #0 and resolves it into the registry.
+    const a = renderHook(() => useWhiteboardSession(opts))
+    await waitFor(() => expect(a.result.current).not.toBeNull())
+    expect(created).toHaveLength(1)
+
+    // Rapid unmount + re-mount under the SAME key (StrictMode double-invoke / fast remount). The
+    // unmount's release synchronously deletes the registry key and schedules session #0's destroy
+    // through its already-resolved promise; the re-mount re-acquires and installs a FRESH entry.
+    // Pre-fix, session #0's destroy check saw `registry.has(key)` true (the new entry) and SKIPPED
+    // destroy — leaking #0's HocuspocusProvider socket + IndexeddbPersistence handle on the same
+    // dbName, which later blocks the revoke-time deleteDatabase. The identity guard destroys #0.
+    act(() => a.unmount())
+    const b = renderHook(() => useWhiteboardSession(opts))
+    await waitFor(() => expect(b.result.current).not.toBeNull())
+
+    // Session #0 (the released one) must be torn down; the newly-acquired session must stay live.
+    await waitFor(() => expect(created[0]!.destroy).toHaveBeenCalledTimes(1))
+    const live = created[created.length - 1]!
+    expect(live.destroy).not.toHaveBeenCalled()
+
+    act(() => b.unmount())
+    await waitFor(() => expect(live.destroy).toHaveBeenCalledTimes(1))
   })
 })

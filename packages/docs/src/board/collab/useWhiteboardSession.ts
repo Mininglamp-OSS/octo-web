@@ -143,8 +143,17 @@ function release(key: string): void {
   if (entry.refCount <= 0) {
     registry.delete(key)
     entry.promise.then((session) => {
-      // Only destroy if no one re-acquired under the same key meanwhile.
-      if (!registry.has(key)) session.destroy()
+      // Instance-identity guard (P1b): a re-acquire under the same key — React18 StrictMode's
+      // double-invoked effect, a fast unmount/remount, or a uid/board value that flips back to a
+      // prior one — installs a FRESH entry AFTER the synchronous `registry.delete` above. Guarding
+      // only on `registry.has(key)` would then read `true` for that new entry and SKIP destroy,
+      // leaking THIS session: its HocuspocusProvider stays connected and its IndexeddbPersistence
+      // handle stays open on the same dbName, so a later account-switch / revoke `deleteDatabase`
+      // blocks (onblocked) and the revoked-user cache teardown fails. Destroy unless the key still
+      // maps to the very entry we released (i.e. nobody re-acquired) — comparing entry identity, not
+      // mere presence, so a distinct re-acquired session is never mistaken for this one. The reverse
+      // ordering (release racing an in-flight create) is covered by acquire's own resolve guard.
+      if (registry.get(key) !== entry) session.destroy()
     })
   }
 }

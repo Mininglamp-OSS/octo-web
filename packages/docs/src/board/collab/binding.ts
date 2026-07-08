@@ -114,6 +114,19 @@ export class ExcalidrawYjsBinding {
    * because the user deleted it — real deletes arrive as present `isDeleted: true` elements.
    */
   private readonly locallyAuthored = new Set<string>()
+  /**
+   * Ids that have ever arrived from the authoritative Y.Doc through `applyRemote` — i.e. elements
+   * that exist (or existed) on a peer, not born from a local create on this canvas. Kept alongside
+   * `locallyAuthored` to close the XIN-96 hole: `locallyAuthored` grows the instant the user so much
+   * as nudges a REMOTE element (move / recolour), which used to make that element permanently
+   * tombstone-eligible. A later same-instance reinit onChange (reconnect / remount / reconnect-reset)
+   * then reports it absent with `applyingRemote` false and — because it was in `locallyAuthored` —
+   * synthesised a tombstone that deleted a live element for every collaborator. A remote-origin id is
+   * therefore NEVER tombstoned by mere absence: its disappearance is a reinit, and a genuine delete
+   * of it still arrives as a present `isDeleted: true` element (handled by the diff loop). Only a
+   * purely-local element — authored here and never seen from the doc — may be tombstoned by absence.
+   */
+  private readonly remoteOrigin = new Set<string>()
   /** Guard 3 flag: a remote apply is in flight. */
   private applyingRemote = false
   private destroyed = false
@@ -132,8 +145,13 @@ export class ExcalidrawYjsBinding {
         ? null
         : new Y.UndoManager(this.elements, { trackedOrigins: new Set([LOCAL_ORIGIN]) })
 
-    // Seed the snapshot from whatever the doc already holds (reconnect / offline restore).
-    for (const el of readAllElements(this.elements)) this.lastKnown.set(el.id, el)
+    // Seed the snapshot from whatever the doc already holds (reconnect / offline restore). Anything
+    // already in the doc at construction pre-existed this canvas instance — it is remote-origin, so
+    // record it as such and it can never be tombstoned by a later reinit-absence (P0 / XIN-96).
+    for (const el of readAllElements(this.elements)) {
+      this.lastKnown.set(el.id, el)
+      this.remoteOrigin.add(el.id)
+    }
 
     this.onElements = (_events, txn) => this.onRemote(txn)
     this.elements.observeDeep(this.onElements)
@@ -224,7 +242,12 @@ export class ExcalidrawYjsBinding {
     let reinitDropped = 0
     for (const [id, prev] of this.lastKnown) {
       if (!nextSnapshot.has(id) && !prev.isDeleted) {
-        if (this.locallyAuthored.has(id)) {
+        // Only a PURELY-LOCAL element (authored on this canvas and never seen from the doc) may be
+        // tombstoned by absence. A remote-origin id — even one the user later nudged, which put it in
+        // `locallyAuthored` — is preserved: its absence is a scene reinit, and a real delete of it
+        // would arrive as a present `isDeleted: true` element (handled above), never as bare absence.
+        // This is the XIN-96 hole closed: touching a remote element must not make it delete-on-reinit.
+        if (this.locallyAuthored.has(id) && !this.remoteOrigin.has(id)) {
           const tomb: ExcalidrawElement = {
             ...prev,
             isDeleted: true,
@@ -408,7 +431,13 @@ export class ExcalidrawYjsBinding {
     // in place on a later local edit; holding the live reference would blind the next diff to that
     // edit exactly as it does on the local-create path.
     const snap = new Map<string, ExcalidrawElement>()
-    for (const el of elements) snap.set(el.id, cloneElement(el))
+    for (const el of elements) {
+      snap.set(el.id, cloneElement(el))
+      // Remember every id that reached the canvas from the authoritative doc: it is remote-origin
+      // and must never be tombstoned by a later reinit-absence, even after the user edits it (P0 /
+      // XIN-96). Cheap and monotonic — the set only guards against deletion, never causes one.
+      this.remoteOrigin.add(el.id)
+    }
     this.lastKnown = snap
     this.telemetry.remoteApplies++
     this.telemetry.remoteElements += elements.length

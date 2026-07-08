@@ -223,6 +223,10 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // by `handleApi` (to wire the binding's render adapter) and by the initialData memo below.
   const restoreElementsRef = useRef<RestoreElementsFn | null>(null)
   const reconcileElementsRef = useRef<ReconcileElementsFn | null>(null)
+  // Raw imperative Excalidraw API handle, stashed by `handleApi` on canvas mount. Held in a ref (not
+  // read during render) so the access-gated effect below can wire it into the binding once — and
+  // only once — access is confirmed (P1a).
+  const boardApiRef = useRef<unknown>(null)
 
   // Fail-closed editability (P1-2). On the collab (permissioned) path the canvas is read-only until
   // an authoritative editable role (writer/admin) is confirmed — an unresolved role, an unknown
@@ -417,33 +421,49 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     [readOnly, collabSession, persistLocal],
   )
 
-  // M2: hand the imperative Excalidraw API to the binding so remote/agent writes can render via
-  // updateScene, and wire the restore/reconcile contract (XIN-87) so those writes render as real
-  // shapes — not raw points/handles. The adapter captures this api for `getAppState()`, which
-  // reconcileElements needs. No-op in the M1 standalone path (no session).
-  const handleApi = useCallback(
-    (api: unknown) => {
-      // Capture the imperative API for presence (XIN-115): collaborators must be pushed through
-      // updateScene because the `collaborators` prop is inert. A dedicated effect (keyed on this api
-      // + the collaborators map) does the push post-commit; see below.
-      setExcalidrawApi(api as { updateScene: (scene: { collaborators: Map<string, BoardCollaborator> }) => void })
+  // M2: capture the imperative Excalidraw API on canvas mount. It feeds two consumers: presence
+  // (XIN-115, via `excalidrawApi` state) and the collab binding. The binding is deliberately NOT
+  // wired here — `binding.setApi` triggers `applyRemote`, which would paint the IndexedDB-hydrated /
+  // provider-synced Y.Doc scene, so it must wait until access is confirmed (P1a). The gated effect
+  // below does that wiring; here we only stash the raw handle and flag the canvas as mounted.
+  const handleApi = useCallback((api: unknown) => {
+    boardApiRef.current = api
+    setExcalidrawApi(api as { updateScene: (scene: { collaborators: Map<string, BoardCollaborator> }) => void })
+  }, [])
 
-      const binding = collabSession?.binding
-      if (!binding) return
-      binding.setApi(api as Parameters<WhiteboardSession['binding']['setApi']>[0])
+  // P1a: gate the imperative binding replay (setApi → applyRemote → updateScene) and the
+  // restore/reconcile adapter (XIN-87) on `accessConfirmed`. The declarative gates already withhold
+  // cached content — `initialElements` returns [] and the local mirror is not loaded before access
+  // is confirmed — but the Y.Doc's IndexedDB path is NOT declarative: `IndexeddbPersistence`
+  // hydrates the cached scene into the Y.Doc unconditionally and `observeDeep` is live from binding
+  // construction. Wiring `setApi` before access was confirmed let that hydrated/synced scene paint
+  // through `applyRemote`, so a cache-enabled board could draw its canvas ahead of an authoritative
+  // role — the exact bypass this closes. Keeping the binding's api null until `accessConfirmed` also
+  // neutralises the live observe→applyRemote path (applyRemote no-ops on a null api), so the gate is
+  // a real floor, not a declarative-only one. Re-runs when access flips or the canvas (re)mounts;
+  // the cleanup detaches on access loss (terminal / downgrade) so a revoke cannot repaint.
+  useEffect(() => {
+    const binding = collabSession?.binding
+    const api = boardApiRef.current
+    if (!binding || !excalidrawApi || !api || !accessConfirmed) return
+    binding.setApi(api as Parameters<WhiteboardSession['binding']['setApi']>[0])
 
-      const restore = restoreElementsRef.current
-      const reconcile = reconcileElementsRef.current
-      if (!restore || !reconcile) return
+    const restore = restoreElementsRef.current
+    const reconcile = reconcileElementsRef.current
+    if (restore && reconcile) {
       const imperative = api as { getAppState?: () => unknown }
       binding.setRenderAdapter({
         restore: (remote) => restore(remote, null),
-        reconcile: (local, restoredRemote) =>
-          reconcile(local, restoredRemote, imperative.getAppState?.()),
+        reconcile: (local, restoredRemote) => reconcile(local, restoredRemote, imperative.getAppState?.()),
       })
-    },
-    [collabSession],
-  )
+    }
+    return () => {
+      // Access lost or the session/canvas swapped: detach the api so no further applyRemote can
+      // paint, and drop the adapter. setApi(null) only clears the handle — it never pushes a scene.
+      binding.setApi(null)
+      binding.setRenderAdapter(null)
+    }
+  }, [collabSession, accessConfirmed, excalidrawApi])
 
   // Presence (XIN-111 / case8 presence_delta=0). The board opened a real HocuspocusProvider for
   // content sync (XIN-55) but never wired presence onto it — the binding's __awareness was a

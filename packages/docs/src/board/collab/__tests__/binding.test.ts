@@ -170,6 +170,35 @@ describe('ExcalidrawYjsBinding', () => {
     expect(binding.__telemetry.skippedReinitDrop).toBeGreaterThanOrEqual(1)
   })
 
+  it('XIN-96 (touched-remote): editing a remote element then losing it to a reinit onChange does NOT tombstone it', () => {
+    // The gap the round-4 P0 flags. XIN-96 (above) only covers a remote element the local user NEVER
+    // touched. But a genuine onChange that moves / recolours a remote element adds its id to
+    // `locallyAuthored` — and pre-fix that made the element permanently tombstone-eligible. A single
+    // same-instance reinit onChange (reconnect / remount / reconnect-reset — the triggers the binding
+    // comments itself list) then reported it absent with applyingRemote=false and synthesised a
+    // tombstone, deleting a LIVE element for every collaborator. The remote-origin guard fixes it:
+    // an id that ever arrived from the doc is never tombstoned by bare absence, even after a local edit.
+    const peer = new Y.Doc()
+    const remote = new ExcalidrawYjsBinding(peer, { api: new FakeExcalidrawApi() })
+    remote.handleLocalChange([makeEl('r', { x: 7, version: 1 })])
+    syncDocs(peer, doc, 'remote') // → applyRemote on `binding`; 'r' rendered onto the canvas
+    expect(readElement(elsOf(doc).get('r')!).isDeleted).toBeFalsy()
+
+    // The local user nudges the remote element once (a move) — a real, present onChange. This is the
+    // step that put 'r' into `locallyAuthored` and armed the pre-fix mis-delete.
+    binding.handleLocalChange([makeEl('r', { x: 42, version: 2 })])
+    expect(readElement(elsOf(doc).get('r')!).x).toBe(42) // the local edit landed
+    expect(readElement(elsOf(doc).get('r')!).isDeleted).toBeFalsy()
+
+    // A same-instance reinit (reconnect / remount) fires an onChange with 'r' absent. Because 'r' is
+    // remote-origin it must be PRESERVED, not tombstoned — this is exactly the vanished-canvas class
+    // XIN-96 exists to prevent, now closed for the touched-remote case too.
+    binding.handleLocalChange([])
+
+    expect(readElement(elsOf(doc).get('r')!).isDeleted).toBeFalsy() // survived the reinit — not deleted
+    expect(binding.__telemetry.skippedReinitDrop).toBeGreaterThanOrEqual(1)
+  })
+
   it('XIN-98: a reinit onChange that drops a preserved remote element repaints it back onto the canvas', () => {
     // The render half of XIN-96. A remote element syncs in and renders; XIN-96 keeps it in the doc
     // when a reinit onChange reports it absent — but the data surviving is not enough: on a real
