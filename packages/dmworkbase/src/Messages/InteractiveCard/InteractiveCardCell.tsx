@@ -1,4 +1,5 @@
 import React from "react";
+import { type Action, type AdaptiveCard } from "adaptivecards";
 import WKApp from "../../App";
 import { getMessageRow } from "../../bridge/message/useMessageRow";
 import { isMessageSelectable } from "../../Service/messageSelection";
@@ -7,13 +8,23 @@ import MessageRow from "../../ui/message/MessageRow";
 import ReplyBlock from "../../ui/message/ReplyBlock";
 import { MessageCell } from "../MessageCell";
 import { t } from "../../i18n";
+import {
+  isRetryableCardActionError,
+  submitCardAction,
+} from "./cardAction";
 import { InteractiveCardContent } from "./InteractiveCardContent";
-import { decideCardBody } from "./renderDecision";
+import { decideCardBody, type CardDecision } from "./renderDecision";
 import { resolveEffectiveCardContent } from "./resolveContent";
+import { openUrl } from "./renderer/actions";
+import { collectCardInputs, validateCardInputs } from "./sdk/cardInputs";
+import { renderOctoCard } from "./sdk/renderOctoCard";
 import { classifyCardSender, fetchSenderChannelInfo } from "./senderTrust";
 import "./index.css";
 
 export { InteractiveCardContent } from "./InteractiveCardContent";
+
+/** 提交动作后的 loading 超时（契约：10s 无响应恢复可点）。 */
+const SUBMIT_TIMEOUT_MS = 10000;
 
 /**
  * 根据当前查看 Space 解析被引用消息发送者的「外部来源 Space 名」。
@@ -49,26 +60,53 @@ function renderPlainText(text: string, keyPrefix: string): React.ReactNode {
 /**
  * InteractiveCard(=17) 互动卡片消息 Cell。
  *
- * 波 1（展示型）职责：
- *   - sender trust gate（T2）：仅可信 bot / iwh_ webhook 才渲结构卡，否则 plain。
- *   - profile/version 协商 + 整卡 fallback plain（T3）。
- *   - AC 静态渲染器（T4）。
+ * 渲染形态：**官方 AdaptiveCards SDK + octo 策略层**。
+ *   - sender trust gate / profile 协商 / octo 预校验（decideCardBody）先行；
+ *   - 通过后用 SDK 命令式挂载到 ref 节点（render 走 React，卡片 DOM 走 SDK）；
+ *   - 未知/损坏/越界 / 非可信 → plain（整卡降级，契约要求，非 per-element）。
  *
- * extends MessageCell（非 MessageBaseCell）以复用基类 channelInfo 到达自动重渲，
- * 支撑 trust gate 的 late-arrival 自愈：pending 时先渲 plain，channelInfo 拉到后
- * 基类 listener setState 触发重渲，重新分类为 bot/human。
+ * 交互闭环（仅 bot 卡）：Action.Submit → 收集 Input 值（客户端预校验）→ POST message/card/action
+ *   （no-data，D11）→ loading + 10s 超时；bot 重写卡后新帧经 extra-sync 到达重挂载、重置交互态。
+ *   webhook 卡展示-only（输入置灰、不提交）。Action.OpenUrl 始终可用（isSafeUrl 守卫）。
  */
 export class InteractiveCardCell extends MessageCell {
   /** 避免对同一 pending 发送者重复 fetch。 */
   private _fetchedSenderInfo = false;
+  /** SDK 卡片挂载点。 */
+  private cardMountRef = React.createRef<HTMLDivElement>();
+  /** 已挂载卡片的内容指纹；内容不变则不重挂载（保护后续输入交互态）。 */
+  private renderedKey: string | null = null;
+  /** 组件是否仍挂载（异步回调卸载守卫）。 */
+  private mounted = false;
+  /**
+   * 提交代次。每次提交/新帧重置/卸载递增；异步回调只在自己的代次仍是当前代次时才生效，
+   * 从而忽略「已被新提交、新帧或卸载取代」的过期响应/超时，避免竞态覆盖 UI 态。
+   */
+  private submitGen = 0;
+  /** 提交进行中（loading）。 */
+  private submitting = false;
+  /** 提交错误提示（i18n 文案）。 */
+  private submitError: string | null = null;
+  /** 10s 超时句柄。 */
+  private submitTimer: ReturnType<typeof setTimeout> | null = null;
 
   componentDidMount() {
     super.componentDidMount?.();
+    this.mounted = true;
     this.ensureSenderTrustResolvable();
+    this.syncSdkCard();
   }
 
   componentDidUpdate() {
     this.ensureSenderTrustResolvable();
+    this.syncSdkCard();
+  }
+
+  componentWillUnmount() {
+    (super.componentWillUnmount as (() => void) | undefined)?.call(this);
+    this.mounted = false;
+    this.submitGen++; // 使在飞提交的响应/超时作废，不再 forceUpdate 已卸载实例。
+    this.clearSubmitTimer();
   }
 
   /**
@@ -84,9 +122,163 @@ export class InteractiveCardCell extends MessageCell {
     }
   }
 
+  /**
+   * 计算当前有效帧的 plain 文案与渲染决策（render 与 syncSdkCard 共用，保持一致）。
+   *
+   * 编辑更新：bot 改卡后新帧存于 remoteExtra.contentEdit（SDK 已按 type=17 解码），
+   * 择优渲染编辑帧；CMD 增量重渲链路由 ConversationVM 提供，本 Cell 只读最新帧。
+   */
+  private computeState(): { plain: string; decision: CardDecision } {
+    const { message } = this.props;
+    const content = message.content as InteractiveCardContent;
+    const effective = resolveEffectiveCardContent(content, message.remoteExtra);
+    const plain = effective.plain?.trim()
+      ? effective.plain
+      : effective.conversationDigest;
+    const decision = decideCardBody({
+      fromUID: message.fromUID,
+      profile: effective.profile,
+      cardVersion: effective.cardVersion,
+      card: effective.card,
+    });
+    return { plain, decision };
+  }
+
+  /**
+   * 决策为 card 时用 SDK 挂载到 ref。按内容指纹去重：内容不变不重挂载，避免重置用户输入态；
+   * 新帧（编辑收敛）指纹变化则重挂载并**重置交互态**（契约：新帧重置 loading/错误）。
+   * SDK 渲染异常 → fail-safe 退 plain。
+   */
+  private syncSdkCard() {
+    const target = this.cardMountRef.current;
+    if (!target) {
+      this.renderedKey = null;
+      return;
+    }
+    const { plain, decision } = this.computeState();
+    if (decision.kind !== "card") {
+      this.renderedKey = null;
+      return;
+    }
+    const key = `${decision.allowInteractive ? "v2" : "v1"}:${JSON.stringify(
+      decision.card
+    )}`;
+    if (key === this.renderedKey) return;
+    this.renderedKey = key;
+    // 新帧到达：作废在飞提交（响应/超时不再生效）并重置交互态（loading/错误/超时）。
+    const wasBusy = this.submitting || this.submitError !== null;
+    this.submitGen++;
+    this.clearSubmitTimer();
+    this.submitting = false;
+    this.submitError = null;
+    try {
+      renderOctoCard({
+        card: decision.card,
+        target,
+        onAction: (action, card) => this.handleCardAction(action, card),
+      });
+    } catch {
+      // 已过 octo 预校验仍渲染失败属极端边角 → fail-safe 渲纯文本（不走 markdown/HTML）。
+      target.textContent = plain;
+    }
+    if (wasBusy) this.forceUpdate(); // 清除 loading/错误的外层态（不会重挂载：key 已一致）。
+  }
+
+  /**
+   * SDK 动作回调。
+   *   - Action.OpenUrl：新标签打开（openUrl 内部 isSafeUrl 二次校验）；始终可用；
+   *   - Action.Submit：仅 bot 卡（decision.interactive）提交，走 no-data 闭环。
+   */
+  private handleCardAction(action: Action, card: AdaptiveCard) {
+    const type = action.getJsonTypeName();
+    if (type === "Action.OpenUrl") {
+      const url = (action as unknown as { url?: unknown }).url;
+      if (typeof url === "string") openUrl(url);
+      return;
+    }
+    if (type === "Action.Submit") {
+      this.handleSubmit(action, card);
+    }
+  }
+
+  private handleSubmit(action: Action, card: AdaptiveCard) {
+    const { decision } = this.computeState();
+    // P3：仅 bot 卡可交互；webhook 展示-only（UI 已置灰，此处双保险）。
+    if (decision.kind !== "card" || !decision.interactive) return;
+    if (this.submitting) return; // 防重复点击（幂等仍由服务端保证）。
+
+    const actionId = (action as unknown as { id?: unknown }).id;
+    if (typeof actionId !== "string" || actionId.trim() === "") return;
+
+    const inputs = collectCardInputs(card);
+    const invalid = validateCardInputs(inputs);
+    if (invalid) {
+      this.submitError = t(
+        invalid === "field-too-long"
+          ? "base.message.interactiveCard.inputTooLong"
+          : "base.message.interactiveCard.inputTooLarge"
+      );
+      this.forceUpdate();
+      return;
+    }
+
+    // 先取 channel（缺失则无法提交，早退，避免卡在 loading）。
+    const { message } = this.props;
+    const channel = message.channel;
+    if (!channel) return;
+
+    // 本次提交代次：使此前提交/超时/新帧作废，且异步回调据此判活。
+    const gen = ++this.submitGen;
+    this.submitError = null;
+    this.submitting = true;
+    this.forceUpdate();
+    this.armSubmitTimer(gen);
+
+    submitCardAction({
+      messageId: message.messageID,
+      channelId: channel.channelID,
+      channelType: channel.channelType,
+      actionId,
+      inputs,
+    })
+      .then(() => {
+        // 受理成功（含 replay）：保持 loading 等 bot 重写的新帧到达（syncSdkCard 重置）；
+        // 若 bot 迟迟不重写，10s 超时兜底恢复可点。无需在此变更状态。
+      })
+      .catch((err) => {
+        // 已卸载 / 被新提交或新帧取代 → 忽略过期响应，不覆盖当前 UI 态。
+        if (!this.mounted || gen !== this.submitGen) return;
+        this.clearSubmitTimer();
+        this.submitting = false;
+        this.submitError = t(
+          isRetryableCardActionError(err)
+            ? "base.message.interactiveCard.submitRetry"
+            : "base.message.interactiveCard.submitFailed"
+        );
+        this.forceUpdate();
+      });
+  }
+
+  private armSubmitTimer(gen: number) {
+    this.clearSubmitTimer();
+    this.submitTimer = setTimeout(() => {
+      this.submitTimer = null;
+      // 仅当仍是本次提交、且组件在挂载时恢复可点。
+      if (!this.mounted || gen !== this.submitGen) return;
+      this.submitting = false;
+      this.forceUpdate(); // 10s 超时恢复可点。
+    }, SUBMIT_TIMEOUT_MS);
+  }
+
+  private clearSubmitTimer() {
+    if (this.submitTimer) {
+      clearTimeout(this.submitTimer);
+      this.submitTimer = null;
+    }
+  }
+
   render() {
     const { message, context } = this.props;
-    const content = message.content as InteractiveCardContent;
 
     const selectionMode = context.editOn();
     const selectable = isMessageSelectable(message);
@@ -106,7 +298,8 @@ export class InteractiveCardCell extends MessageCell {
       }
     );
 
-    const reply = (content as any).reply;
+    const reply = (message.content as any).reply;
+    const { plain, decision } = this.computeState();
 
     return (
       <MessageRow
@@ -125,47 +318,43 @@ export class InteractiveCardCell extends MessageCell {
               onClick={() => context.locateMessage(reply.messageSeq)}
             />
           )}
-          {this.renderBody(content)}
+          {this.renderBody(decision, plain, message.clientMsgNo)}
         </div>
       </MessageRow>
     );
   }
 
   /**
-   * 卡片主体渲染：策略决策委托给纯函数 decideCardBody（trust → 协商 → 渲染/兜底），
-   * 本方法只负责把决策映射成 JSX。集中兜底，对齐服务端「无 per-element fallback」契约。
-   *
-   * 编辑更新：bot 改卡后新帧存于 remoteExtra.contentEdit（SDK 已按 type=17 解码），
-   * 择优渲染编辑帧；CMDSyncMessageExtra → 拉增量 → 回写 remoteExtra → notifyListener
-   * 的重渲链路由 ConversationVM 提供，本 Cell 只需读最新帧。
+   * 把决策映射成 JSX。card → SDK 挂载点（DOM 由 syncSdkCard 注入）+ loading/只读/错误覆盖；
+   * hint/plain → 纯文本。集中兜底，对齐服务端「无 per-element fallback」契约。
    */
-  private renderBody(content: InteractiveCardContent): React.ReactNode {
-    const { message } = this.props;
-    const effective = resolveEffectiveCardContent(content, message.remoteExtra);
-    const plain = effective.plain?.trim()
-      ? effective.plain
-      : effective.conversationDigest;
-    const plainNode = (
-      <div className="wk-interactive-card-plain">
-        {renderPlainText(plain, message.clientMsgNo)}
-      </div>
-    );
-
-    const decision = decideCardBody({
-      fromUID: message.fromUID,
-      profile: effective.profile,
-      cardVersion: effective.cardVersion,
-      card: effective.card,
-    });
-
+  private renderBody(
+    decision: CardDecision,
+    plain: string,
+    keyPrefix: string
+  ): React.ReactNode {
     switch (decision.kind) {
-      case "card":
-        return decision.node;
+      case "card": {
+        const cls =
+          "wk-interactive-card-sdk" +
+          (this.submitting ? " wk-interactive-card-sdk--submitting" : "") +
+          // webhook 卡展示-only：输入置灰不可交互（提交侧另有 handleSubmit 双保险）。
+          (decision.interactive ? "" : " wk-interactive-card-sdk--readonly");
+        return (
+          <>
+            <div className={cls} ref={this.cardMountRef} />
+            {this.submitError && (
+              <div className="wk-interactive-card-error" role="alert">
+                {this.submitError}
+              </div>
+            )}
+          </>
+        );
+      }
       case "hint":
-        // 协商失败（不支持 profile/version）：plain + 「需更新客户端」提示。
         return (
           <div className="wk-interactive-card-plain">
-            {renderPlainText(plain, message.clientMsgNo)}
+            {renderPlainText(plain, keyPrefix)}
             <div className="wk-interactive-card-hint">
               {t("base.message.interactiveCard.needUpdate")}
             </div>
@@ -173,8 +362,11 @@ export class InteractiveCardCell extends MessageCell {
         );
       case "plain":
       default:
-        // 非可信 sender / 渲染器 fallback → 纯文本（绝不走 markdown/HTML）。
-        return plainNode;
+        return (
+          <div className="wk-interactive-card-plain">
+            {renderPlainText(plain, keyPrefix)}
+          </div>
+        );
     }
   }
 }

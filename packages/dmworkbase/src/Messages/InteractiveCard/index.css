@@ -1,7 +1,12 @@
 /*
  * InteractiveCard(=17) 互动卡片样式。
  * 前缀 wk-interactive-card-*，与 type=7 名片(wk-message-card-*) 完全独立。
- * 一律用项目设计 token（带 fallback），自动适配亮/暗主题；不硬编码颜色/间距，不覆盖 Semi class。
+ *
+ * 渲染分两块：
+ *   - 外层容器 / plain / hint / SDK 挂载点 / 交互态 —— 本文件的 wk-interactive-card-* 类；
+ *   - 卡片本体由官方 AdaptiveCards SDK 渲染（ac-* 类）。SDK 默认样式表未引入，
+ *     故按钮/输入需自备基线样式（见文末 ac-* 段），颜色/间距/字体由 HostConfig 走 --wk-* token。
+ * 一律用设计 token，自动适配亮/暗主题；不硬编码颜色。
  */
 
 .wk-interactive-card {
@@ -26,40 +31,7 @@
   color: var(--wk-text-secondary);
 }
 
-/* ── 结构卡容器 ── */
-.wk-interactive-card-root {
-  display: flex;
-  flex-direction: column;
-  gap: var(--wk-sp-2, 8px);
-  padding: var(--wk-sp-3, 12px);
-  border: 1px solid var(--wk-border-default);
-  border-radius: var(--wk-r-md, 8px);
-  background: var(--wk-bg-surface, transparent);
-  overflow: hidden;
-}
-
-.wk-interactive-card-container,
-.wk-interactive-card-column {
-  display: flex;
-  flex-direction: column;
-  gap: var(--wk-sp-1-5, 6px);
-  min-width: 0;
-  border-radius: var(--wk-r-sm, 4px);
-}
-
-/* ── TextBlock ── */
-.wk-interactive-card-textblock {
-  color: var(--wk-text-primary, inherit);
-  line-height: 1.5;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-
-.wk-interactive-card-tb--bold {
-  font-weight: var(--wk-font-bold, 600);
-}
-
-/* 受限 markdown 容器：紧凑列表/段落间距 */
+/* 受限 markdown 容器（cardMarkdown 输出，SDK onProcessMarkdown 复用）：紧凑列表/段落间距 */
 .wk-interactive-card-md p {
   margin: 0;
 }
@@ -80,82 +52,38 @@
   text-decoration: underline;
 }
 
-/* ── Image ── */
-.wk-interactive-card-img {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  border-radius: var(--wk-r-sm, 4px);
-  object-fit: cover;
+/* ── SDK 挂载容器 + 交互态（octo/v2） ── */
+.wk-interactive-card-sdk {
+  position: relative;
+  min-width: 0;
 }
 
-/* http 混合内容 / 非法 url 占位：固定尺寸避免消息流跳动。
-   虚线边框 + 透明底，语义上明确「图片缺失」，区别于有内容的实心块。 */
-.wk-interactive-card-img-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 72px;
-  padding: var(--wk-sp-2, 8px);
-  font-size: 12px;
-  color: var(--wk-text-secondary);
-  background: transparent;
-  border: 1px dashed var(--wk-border-strong);
-  border-radius: var(--wk-r-sm, 4px);
-  text-align: center;
+/* 提交中：整卡置灰、禁点，等新帧或 10s 超时恢复 */
+.wk-interactive-card-sdk--submitting {
+  pointer-events: none;
+  opacity: 0.6;
+  cursor: progress;
 }
 
-/* ── ColumnSet ── */
-.wk-interactive-card-columnset {
-  display: flex;
-  flex-direction: row;
-  gap: var(--wk-sp-2, 8px);
-  flex-wrap: wrap;
+/* webhook 卡展示-only：输入控件置灰不可交互（OpenUrl 链接仍可用） */
+.wk-interactive-card-sdk--readonly input,
+.wk-interactive-card-sdk--readonly select,
+.wk-interactive-card-sdk--readonly textarea {
+  pointer-events: none;
+  opacity: 0.6;
 }
 
-.wk-interactive-card-columnset > .wk-interactive-card-column,
-.wk-interactive-card-columnset > .wk-interactive-card-clickable {
-  flex: 1 1 120px;
-  min-width: 120px;
-}
-
-/* ── FactSet ── */
-.wk-interactive-card-factset {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: var(--wk-sp-1, 4px) var(--wk-sp-3, 12px);
-}
-
-.wk-interactive-card-fact {
-  display: contents;
-}
-
-.wk-interactive-card-fact-title {
-  color: var(--wk-text-secondary);
-  font-weight: var(--wk-font-medium, 500);
-  word-break: break-word;
-}
-
-.wk-interactive-card-fact-value {
-  color: var(--wk-text-primary, inherit);
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-
-/* ── Actions ── */
-.wk-interactive-card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--wk-sp-2, 8px);
+.wk-interactive-card-error {
   margin-top: var(--wk-sp-1, 4px);
+  font-size: 12px;
+  color: var(--wk-color-danger, var(--wk-text-secondary));
 }
 
-.wk-interactive-card-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--wk-sp-1, 4px);
-  min-height: 28px;
+/* ── SDK(AdaptiveCards) 输出基线样式 ──
+ * SDK 未引入默认样式表，按钮/输入本无样式；此处用 --wk-* token 补基线，待真机微调。
+ * 颜色/间距/字体等由 HostConfig 就地注入（inline），此处只补 SDK 未覆盖的控件外观。 */
+.wk-interactive-card-sdk .ac-pushButton {
+  min-height: 30px;
   padding: var(--wk-sp-1, 4px) var(--wk-sp-3, 12px);
   font-size: 13px;
   color: var(--wk-text-accent, var(--wk-brand-primary));
@@ -165,27 +93,24 @@
   cursor: pointer;
 }
 
-.wk-interactive-card-action:hover {
+.wk-interactive-card-sdk .ac-pushButton:hover {
   background: var(--wk-bg-elevated);
 }
 
-.wk-interactive-card-action-icon {
-  width: 16px;
-  height: 16px;
-  object-fit: contain;
-}
-
-/* ── 可点区域（selectAction 携带 OpenUrl） ── */
-.wk-interactive-card-clickable {
-  cursor: pointer;
+.wk-interactive-card-sdk .ac-textInput,
+.wk-interactive-card-sdk .ac-choiceSetInput-compact {
+  min-height: 30px;
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
+  font-size: 13px;
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface, transparent);
+  border: 1px solid var(--wk-border-default);
   border-radius: var(--wk-r-sm, 4px);
+  box-sizing: border-box;
 }
 
-.wk-interactive-card-clickable:hover {
-  background: var(--wk-bg-elevated);
-}
-
-.wk-interactive-card-clickable:focus-visible {
-  outline: 2px solid var(--wk-brand-primary);
-  outline-offset: 2px;
+.wk-interactive-card-sdk .ac-textInput:focus-visible,
+.wk-interactive-card-sdk .ac-choiceSetInput-compact:focus-visible {
+  outline: none;
+  border-color: var(--wk-brand-primary);
 }

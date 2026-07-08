@@ -8,9 +8,10 @@ import {
 } from "../guards";
 
 describe("isSupportedProfile", () => {
-  it("octo/v1 支持；其他不支持", () => {
+  it("octo/v1、octo/v2 支持；更高/未知 profile 不支持", () => {
     expect(isSupportedProfile("octo/v1")).toBe(true);
-    expect(isSupportedProfile("octo/v2")).toBe(false);
+    expect(isSupportedProfile("octo/v2")).toBe(true);
+    expect(isSupportedProfile("octo/v3")).toBe(false);
     expect(isSupportedProfile("")).toBe(false);
     expect(isSupportedProfile("adaptivecard")).toBe(false);
   });
@@ -49,10 +50,11 @@ describe("negotiate", () => {
   it("profile + version 均支持 → ok", () => {
     expect(negotiate("octo/v1", "1.5")).toEqual({ ok: true });
     expect(negotiate("octo/v1", "1.4")).toEqual({ ok: true });
+    expect(negotiate("octo/v2", "1.5")).toEqual({ ok: true });
   });
 
   it("不支持 profile → unsupported-profile（优先于 version 判定）", () => {
-    expect(negotiate("octo/v2", "1.5")).toEqual({
+    expect(negotiate("octo/v3", "1.5")).toEqual({
       ok: false,
       reason: "unsupported-profile",
     });

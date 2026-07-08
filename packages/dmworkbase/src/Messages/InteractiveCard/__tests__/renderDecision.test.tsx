@@ -106,10 +106,46 @@ describe("decideCardBody — sender trust gate（第一道闸）", () => {
   });
 });
 
+describe("decideCardBody — 交互授权分层（interactive：仅 bot 卡可提交）", () => {
+  it("bot 卡 → interactive=true", () => {
+    channelInfoStore.set("u_bot", { orgData: { robot: 1 } });
+    const d = decideCardBody({
+      fromUID: "u_bot",
+      profile: "octo/v2",
+      cardVersion: "1.5",
+      card: validCard,
+    });
+    expect(d.kind).toBe("card");
+    if (d.kind === "card") expect(d.interactive).toBe(true);
+  });
+
+  it("webhook 卡 → interactive=false（展示-only）", () => {
+    const d = decideCardBody({
+      fromUID: "iwh_x",
+      profile: "octo/v2",
+      cardVersion: "1.5",
+      card: validCard,
+    });
+    expect(d.kind).toBe("card");
+    if (d.kind === "card") expect(d.interactive).toBe(false);
+  });
+});
+
 describe("decideCardBody — 协商（第二道闸，可信 sender 前提）", () => {
   const trusted = { fromUID: "iwh_x" };
 
-  it("不支持 profile → hint（plain + 更新提示）", () => {
+  it("更高/未知 profile（octo/v3）→ hint（plain + 更新提示）", () => {
+    expect(
+      decideCardBody({
+        ...trusted,
+        profile: "octo/v3",
+        cardVersion: "1.5",
+        card: validCard,
+      }).kind
+    ).toBe("hint");
+  });
+
+  it("octo/v2 现已支持 → 进入渲染（card）", () => {
     expect(
       decideCardBody({
         ...trusted,
@@ -117,7 +153,7 @@ describe("decideCardBody — 协商（第二道闸，可信 sender 前提）", (
         cardVersion: "1.5",
         card: validCard,
       }).kind
-    ).toBe("hint");
+    ).toBe("card");
   });
 
   it("card_version 过高 → hint", () => {
@@ -132,13 +168,64 @@ describe("decideCardBody — 协商（第二道闸，可信 sender 前提）", (
   });
 });
 
+describe("decideCardBody — octo/v2 交互元素（allowInteractive）", () => {
+  const trustedV2 = { fromUID: "iwh_x", profile: "octo/v2", cardVersion: "1.5" };
+
+  it("v2 卡含 Input.* + Action.Submit → card（展示态渲染，不 fallback）", () => {
+    const d = decideCardBody({
+      ...trustedV2,
+      card: AC([{ type: "Input.Text", id: "name" }], {
+        actions: [{ type: "Action.Submit", id: "ok", title: "提交" }],
+      }),
+    });
+    expect(d.kind).toBe("card");
+  });
+
+  it("同一元素在 v1 profile 下 → plain（v1 不含 Input.*/Submit 白名单）", () => {
+    expect(
+      decideCardBody({
+        fromUID: "iwh_x",
+        profile: "octo/v1",
+        cardVersion: "1.5",
+        card: AC([{ type: "Input.Text", id: "name" }]),
+      }).kind
+    ).toBe("plain");
+  });
+
+  it("v2 卡含 Action.Execute → plain（永不支持，整卡 fallback）", () => {
+    expect(
+      decideCardBody({
+        ...trustedV2,
+        card: AC([{ type: "TextBlock", text: "x" }], {
+          actions: [{ type: "Action.Execute", id: "e", title: "run" }],
+        }),
+      }).kind
+    ).toBe("plain");
+  });
+
+  it("v2 卡帧内重复 id → plain（D1 整卡 fallback）", () => {
+    expect(
+      decideCardBody({
+        ...trustedV2,
+        card: AC([
+          { type: "Input.Text", id: "dup" },
+          { type: "Input.Toggle", id: "dup" },
+        ]),
+      }).kind
+    ).toBe("plain");
+  });
+});
+
 describe("decideCardBody — 渲染/整卡 fallback（第三道闸）", () => {
   const trusted = { fromUID: "iwh_x", profile: "octo/v1", cardVersion: "1.5" };
 
-  it("合法卡片 → card，且携带渲染节点", () => {
+  it("合法卡片 → card，且携带已校验的 card + allowInteractive", () => {
     const d = decideCardBody({ ...trusted, card: validCard });
     expect(d.kind).toBe("card");
-    if (d.kind === "card") expect(d.node).toBeTruthy();
+    if (d.kind === "card") {
+      expect(d.card).toBeTruthy();
+      expect(d.allowInteractive).toBe(false); // octo/v1
+    }
   });
 
   it("未知元素 → plain（整卡 fallback，非 per-element）", () => {

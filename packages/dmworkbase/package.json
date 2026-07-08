@@ -32,6 +32,7 @@
     "@types/react-scroll": "^1.8.3",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/xlsx": "^0.0.36",
+    "adaptivecards": "3.0.6",
     "animate.css": "^4.1.1",
     "axios": "^0.25.0",
     "benz-amr-recorder": "^1.1.3",
