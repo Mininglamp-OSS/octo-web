@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { getWKApp, t } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
+import { BoardSession } from '../board/BoardSession.tsx'
 import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
 import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
 import { LinkIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
@@ -485,6 +486,30 @@ export function StandaloneDocPage({
   // In the ready phase the addressed id is guaranteed non-null (a null id short-circuits to the
   // not-found terminal above); prefer the id echoed by the preflight, falling back to it.
   const editorDocId = meta.docId || (docId as string)
+
+  // Board-kind is resolved from the AUTHORITATIVE backend docType the preflight already carried —
+  // NOT a node-local registry (XIN-530, boss real-device). A `/d/:docId` share link opens on any
+  // node/session, so a board created on node A must render as a board on node B even though node
+  // B's board-kind localStorage registry has never seen this docId. The standalone page has no
+  // registry to lean on, which makes the backend docType the single source of truth here; anything
+  // that isn't an explicit `'board'` falls through to the rich-text editor (the safe default for
+  // plain docs and legacy backends that omit docType). This mirrors DocsHome's buildRightPane
+  // dispatch so both open paths agree on the shell for every member.
+  if (meta.docType === 'board') {
+    return (
+      <div className="octo-doc-standalone">
+        <BoardSession
+          key={editorDocId}
+          docId={editorDocId}
+          title={meta.title || t('docs.state.untitled')}
+          uid={uid}
+          space={addressing.space}
+          folder={addressing.folder}
+          userName={names.get(uid) || uid}
+        />
+      </div>
+    )
+  }
   // "Copy link" as the first row of the header ≡ "more" menu (it used to be a resident title-bar
   // button). Selecting the row closes the menu, so the "Link copied" confirmation can't ride on the
   // row label (the panel unmounts); the label is always the action name and the success feedback is

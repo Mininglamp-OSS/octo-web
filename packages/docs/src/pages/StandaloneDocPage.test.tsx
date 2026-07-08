@@ -41,6 +41,18 @@ vi.mock('../editor/EditorShell.tsx', () => ({
   ),
 }))
 
+// Replace the whiteboard session host (Excalidraw + Yjs + Hocuspocus) with a marker so the
+// board-open path is testable in jsdom without mounting the heavy canvas / opening a WebSocket —
+// exactly like the editor marker above. The marker echoes the docId + space it was addressed with.
+vi.mock('../board/BoardSession.tsx', () => ({
+  BoardSession: (props: { docId: string; space?: string }) => (
+    <div data-testid="board-session">
+      <span data-testid="board-doc">{props.docId}</span>
+      <span data-testid="board-space">{props.space}</span>
+    </div>
+  ),
+}))
+
 // useMemberNames pages the space-member seam; stub it to a stable empty map so these tests stay
 // focused on the preflight gate and chrome.
 vi.mock('../members/useMemberNames.ts', () => ({
@@ -395,6 +407,54 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     // The dead in-row "copied" label is gone: the menu row label stays the action name, never flips.
     expect(screen.getByTestId('lead-copy-link').textContent).toContain('docs.standalone.copyLink')
     expect(screen.getByTestId('lead-copy-link').textContent).not.toContain('docs.standalone.linkCopied')
+  })
+})
+
+// Cross-node board-kind (XIN-530, boss real-device): a board created on node A and opened via a
+// shared `/d/:docId` link on node B (a FRESH session — the board-kind localStorage registry is
+// empty there) must render as a BOARD, not a rich-text document. The standalone page has no local
+// registry to lean on, so kind can only come from the AUTHORITATIVE backend `docType` the preflight
+// (GET /api/v1/docs/{id}) already carries. Before the fix the page ignored that field and always
+// mounted EditorShell, so every cross-node board opened as a document.
+describe('StandaloneDocPage — board-kind resolved from authoritative docType (XIN-530)', () => {
+  it('opens the whiteboard when the preflight docType is board (empty local registry, cross-node)', async () => {
+    // Fresh session: no board-kind registry record for this docId (node B never saw it). The only
+    // signal is the backend docType from the preflight — it must drive the shell choice.
+    expect(window.localStorage.getItem('octo.board.ids.')).toBeNull()
+
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/b_shared') {
+        return {
+          data: { docId: 'b_shared', title: 'Shared Board', ownerId: 'u_owner', docType: 'board' },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="b_shared" />)
+
+    // The whiteboard session mounts — NOT the rich-text editor.
+    await waitFor(() => expect(screen.getByTestId('board-session')).toBeTruthy())
+    expect(screen.getByTestId('board-doc').textContent).toBe('b_shared')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
+  it('still opens the rich-text editor when the preflight docType is doc (or absent)', async () => {
+    // Regression guard: a plain document (or a legacy backend that omits docType) must keep opening
+    // in the Tiptap editor — the board branch must not swallow the default doc path.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_plain') {
+        return { data: { docId: 'd_plain', title: 'Plain Doc', ownerId: 'u_owner', docType: 'doc' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_plain" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(screen.getByTestId('editor-doc').textContent).toBe('d_plain')
+    expect(screen.queryByTestId('board-session')).toBeNull()
   })
 })
 
