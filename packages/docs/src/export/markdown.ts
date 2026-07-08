@@ -244,8 +244,12 @@ function escapeLeadingBlockMarkers(text: string): string {
 
 function serializeList(node: MdNode, ordered: boolean, ctx: Ctx, depth: number): string {
   const items = node.content ?? []
+  // Ordered lists may start at a value other than 1 (ProseMirror `start` attr); honour it so the
+  // rendered markers match the editor instead of always counting from 1.
+  const rawStart = node.attrs?.start
+  const start = ordered && typeof rawStart === 'number' && rawStart >= 0 ? Math.floor(rawStart) : 1
   return items
-    .map((item, idx) => serializeListItem(item, ordered, idx, ctx, depth))
+    .map((item, idx) => serializeListItem(item, ordered, start + idx, ctx, depth))
     // Drop empty items so an item with no content never emits a bare dangling marker (`- `).
     .filter((s) => s !== '')
     .join('\n')
@@ -254,14 +258,14 @@ function serializeList(node: MdNode, ordered: boolean, ctx: Ctx, depth: number):
 function serializeListItem(
   item: MdNode,
   ordered: boolean,
-  idx: number,
+  num: number,
   ctx: Ctx,
   depth: number,
 ): string {
   const indent = '  '.repeat(depth)
   let marker: string
   if (item.type === 'taskItem') marker = item.attrs?.checked ? '- [x] ' : '- [ ] '
-  else marker = ordered ? `${idx + 1}. ` : '- '
+  else marker = ordered ? `${num}. ` : '- '
 
   const blocks = item.content ?? []
   let line = indent + marker

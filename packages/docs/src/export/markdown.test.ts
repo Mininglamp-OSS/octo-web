@@ -81,6 +81,18 @@ describe('exportDocToMarkdown — lists', () => {
     expect(out).toContain('2. two')
   })
 
+  it('ordered list honours the start attr', async () => {
+    const li = (t: string): MdNode => ({ type: 'listItem', content: [p(text(t))] })
+    const out = await md(
+      doc(
+        { type: 'orderedList', attrs: { start: 3 }, content: [li('three'), li('four')] },
+      ),
+    )
+    expect(out).toContain('3. three')
+    expect(out).toContain('4. four')
+    expect(out).not.toContain('1. three')
+  })
+
   it('task list checked / unchecked', async () => {
     const out = await md(
       doc({
