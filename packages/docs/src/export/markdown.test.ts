@@ -323,6 +323,39 @@ describe('exportDocToMarkdown — inline marks and atoms', () => {
     expect(out).toContain('<sub>sub</sub>')
   })
 
+  it('highlight with a colour keeps its background-color in the <mark> style', async () => {
+    const out = await md(
+      doc(
+        p(
+          text('hl', [{ type: 'highlight', attrs: { color: '#ffeb3b' } }]),
+        ),
+      ),
+    )
+    expect(out).toContain('<mark style="background-color:#ffeb3b">hl</mark>')
+  })
+
+  it('colourless highlight degrades to a bare <mark>', async () => {
+    const out = await md(doc(p(text('h', [{ type: 'highlight' }]))))
+    expect(out).toContain('<mark>h</mark>')
+    expect(out).not.toContain('style=')
+  })
+
+  it('malicious highlight colour is escaped inside the style attribute (no breakout)', async () => {
+    const out = await md(
+      doc(
+        p(
+          text('x', [
+            { type: 'highlight', attrs: { color: '"><img src=x onerror=alert(1)>' } },
+          ]),
+        ),
+      ),
+    )
+    // The `"` and `<`/`>` are entity-escaped so the value stays trapped inside style="...".
+    expect(out).not.toContain('<img src=x onerror=alert(1)>')
+    expect(out).toContain('&quot;')
+    expect(out).toContain('<mark style="background-color:')
+  })
+
   it('mention renders as plain @displayName (no dead uid link)', async () => {
     const out = await md(
       doc(p({ type: 'mention', attrs: { id: 'u_42', label: 'Alice', type: 'user' } })),

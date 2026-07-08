@@ -455,9 +455,18 @@ function applyMarks(text: string, marks: Array<{ type: string; attrs?: Record<st
       case 'underline':
         out = `<u>${out}</u>`
         break
-      case 'highlight':
-        out = `<mark>${out}</mark>`
+      case 'highlight': {
+        // Highlight carries its background colour in the `color` attr (extension-highlight,
+        // multicolor). Emit it as an inline style so the highlight colour survives the export;
+        // escape it inside the `style="..."` attribute so a crafted value can't break out. A
+        // colourless highlight degrades to a bare <mark> (default yellow in most renderers).
+        const hl = mark.attrs?.color
+        out =
+          typeof hl === 'string' && hl
+            ? `<mark style="background-color:${escapeHtmlAttr(hl)}">${out}</mark>`
+            : `<mark>${out}</mark>`
         break
+      }
       case 'textStyle': {
         const color = mark.attrs?.color
         // Color lands inside a `style="..."` attribute — escape it so it can't break out of the
