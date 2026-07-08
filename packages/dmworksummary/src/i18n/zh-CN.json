@@ -212,6 +212,8 @@
     "deleteContent": "确定要删除此定时配置吗？",
     "createModalTitle": "新建定时配置",
     "editModalTitle": "编辑定时配置",
+    "editSourcesTitle": "编辑信息来源",
+    "editSourcesButton": "编辑",
     "createSuccess": "定时配置已创建",
     "updateSuccess": "定时配置已更新",
     "deleted": "已删除",
