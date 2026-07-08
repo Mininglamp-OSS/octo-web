@@ -1,31 +1,25 @@
-/* ===== Loop shell ===== */
-.loop-shell {
-  display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+/* ===== Loop 左栏（二级菜单，route content → wk-layout-content-left） ===== */
+.loop-sidebar {
+  display: flex;
+  flex-direction: column;
   height: 100%;
-  background: var(--semi-color-bg-0, #fff);
+  min-height: 0;
+  background: var(--semi-color-bg-1, #fbfbfc);
   color: var(--semi-color-text-0, #1c1f23);
 }
 
-.loop-shell__nav {
-  border-right: 1px solid var(--semi-color-border, #e8e9eb);
-  display: flex;
-  flex-direction: column;
-  background: var(--semi-color-bg-1, #fbfbfc);
-}
-
-.loop-shell__brand {
+.loop-sidebar__brand {
   padding: 16px 16px 10px;
 }
 
-.loop-shell__menu {
+.loop-sidebar__menu {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 4px 8px;
 }
 
-.loop-shell__item {
+.loop-sidebar__item {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -39,30 +33,24 @@
   text-align: left;
 }
 
-.loop-shell__item:hover {
+.loop-sidebar__item:hover {
   background: var(--semi-color-fill-0, #f0f1f3);
 }
 
-.loop-shell__item.is-active {
+.loop-sidebar__item.is-active {
   background: var(--semi-color-primary-light-default, #eef2ff);
   color: var(--semi-color-primary, #6a5cff);
   font-weight: 600;
 }
 
-.loop-shell__content {
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-/* ===== 通用列表页 ===== */
+/* ===== 子模块主内容（routeRight → wk-layout-content-right） ===== */
 .loop-page {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
 }
 
 .loop-page__head {

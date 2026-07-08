@@ -1,16 +1,11 @@
-.loop-rt {
-  display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  height: 100%;
-  background: var(--semi-color-bg-0, #fff);
-  color: var(--semi-color-text-0, #1c1f23);
-}
-
-.loop-rt__list {
+/* 左栏（route content → wk-layout-content-left）：占满该列宽高 */
+.loop-rt-sidebar {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--semi-color-border, #e8e9eb);
+  height: 100%;
   min-height: 0;
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
 }
 
 .loop-rt__head {
@@ -144,9 +139,13 @@
   background: var(--semi-color-text-3, #c9cdd4);
 }
 
+/* 右栏（routeRight → wk-layout-content-right）：设备详情 */
 .loop-rt__detail {
+  height: 100%;
   overflow: auto;
   min-height: 0;
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
 }
 
 .loop-rt__detail-inner {

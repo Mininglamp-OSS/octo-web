@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Typography, Input, Spin, Empty, Tag, Avatar } from "@douyinfe/semi-ui";
 import { Search, Cpu, Cloud, Monitor, Circle } from "lucide-react";
-import { useI18n } from "@octo/base";
+import { useI18n, WKApp } from "@octo/base";
 import type { RuntimeDevice, RuntimeStatus } from "../api/types";
 import { listRuntimes } from "../api/runtimeApi";
 import "./RuntimePage.css";
@@ -31,6 +31,11 @@ function StatusDot({ status }: { status: RuntimeStatus }) {
   );
 }
 
+/**
+ * RuntimePage — 设备/Runtime 一级面板的**左栏**（列表）。
+ * 主内容（详情）通过 WKApp.routeRight 推入右侧主栏，形成三栏结构：
+ * NavRail(应用导航) + 设备列表(左) + 设备详情(右主栏)。
+ */
 export default function RuntimePage() {
   const { t } = useI18n();
   const [loading, setLoading] = useState(true);
@@ -39,6 +44,11 @@ export default function RuntimePage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [activeId, setActiveId] = useState<string | null>(null);
 
+  const openDetail = (row: RuntimeDevice) => {
+    setActiveId(row.id);
+    WKApp.routeRight.replaceToRoot(<RuntimeDetail row={row} />);
+  };
+
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -46,7 +56,14 @@ export default function RuntimePage() {
       .then((data) => {
         if (!alive) return;
         setRows(data);
-        setActiveId((prev) => prev ?? data[0]?.id ?? null);
+        const first = data[0];
+        if (first) {
+          setActiveId(first.id);
+          // 延迟到下一帧，确保右栏 route context 已挂载。
+          setTimeout(() => {
+            if (alive) WKApp.routeRight.replaceToRoot(<RuntimeDetail row={first} />);
+          }, 0);
+        }
       })
       .finally(() => alive && setLoading(false));
     return () => {
@@ -75,93 +92,75 @@ export default function RuntimePage() {
     ].filter((g) => g.rows.length > 0);
   }, [filtered, t]);
 
-  const active = filtered.find((r) => r.id === activeId) ?? null;
-
   return (
-    <div className="loop-rt">
-      <aside className="loop-rt__list">
-        <div className="loop-rt__head">
-          <Title heading={5} style={{ margin: 0 }}>
-            {t("runtime.menu.title")}
-          </Title>
+    <div className="loop-rt-sidebar">
+      <div className="loop-rt__head">
+        <Title heading={5} style={{ margin: 0 }}>
+          {t("runtime.menu.title")}
+        </Title>
+      </div>
+      <div className="loop-rt__toolbar">
+        <Input
+          prefix={<Search size={14} />}
+          placeholder={t("runtime.search")}
+          value={keyword}
+          onChange={setKeyword}
+          showClear
+        />
+        <div className="loop-rt__filters">
+          {(["all", "online", "offline"] as StatusFilter[]).map((s) => (
+            <button
+              key={s}
+              className={`loop-rt__chip ${statusFilter === s ? "is-active" : ""}`}
+              onClick={() => setStatusFilter(s)}
+            >
+              {t(`runtime.filter.${s}`)}
+            </button>
+          ))}
         </div>
-        <div className="loop-rt__toolbar">
-          <Input
-            prefix={<Search size={14} />}
-            placeholder={t("runtime.search")}
-            value={keyword}
-            onChange={setKeyword}
-            showClear
-          />
-          <div className="loop-rt__filters">
-            {(["all", "online", "offline"] as StatusFilter[]).map((s) => (
-              <button
-                key={s}
-                className={`loop-rt__chip ${statusFilter === s ? "is-active" : ""}`}
-                onClick={() => setStatusFilter(s)}
-              >
-                {t(`runtime.filter.${s}`)}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="loop-rt__scroll">
-          {loading ? (
-            <div className="loop-rt__center">
-              <Spin />
-            </div>
-          ) : groups.length === 0 ? (
-            <div className="loop-rt__center">
-              <Empty description={t("runtime.empty")} />
-            </div>
-          ) : (
-            groups.map((g) => (
-              <div key={g.key} className="loop-rt__grp">
-                <div className="loop-rt__grp-title">
-                  {g.icon}
-                  <span>{g.label}</span>
-                  <em>{g.rows.length}</em>
-                </div>
-                {g.rows.map((r) => (
-                  <button
-                    key={r.id}
-                    className={`loop-rt__row ${r.id === activeId ? "is-active" : ""}`}
-                    onClick={() => setActiveId(r.id)}
-                  >
-                    <StatusDot status={r.status} />
-                    <span className="loop-rt__row-main">
-                      <strong>{r.name}</strong>
-                      <small>{r.provider}</small>
-                    </span>
-                    <time>{relTime(r.last_seen_at)}</time>
-                  </button>
-                ))}
-              </div>
-            ))
-          )}
-        </div>
-      </aside>
-
-      <section className="loop-rt__detail">
-        {!active ? (
+      </div>
+      <div className="loop-rt__scroll">
+        {loading ? (
           <div className="loop-rt__center">
-            <Empty description={t("runtime.detail.pick")} />
+            <Spin />
+          </div>
+        ) : groups.length === 0 ? (
+          <div className="loop-rt__center">
+            <Empty description={t("runtime.empty")} />
           </div>
         ) : (
-          <RuntimeDetail row={active} t={t} />
+          groups.map((g) => (
+            <div key={g.key} className="loop-rt__grp">
+              <div className="loop-rt__grp-title">
+                {g.icon}
+                <span>{g.label}</span>
+                <em>{g.rows.length}</em>
+              </div>
+              {g.rows.map((r) => (
+                <button
+                  key={r.id}
+                  className={`loop-rt__row ${r.id === activeId ? "is-active" : ""}`}
+                  onClick={() => openDetail(r)}
+                >
+                  <StatusDot status={r.status} />
+                  <span className="loop-rt__row-main">
+                    <strong>{r.name}</strong>
+                    <small>{r.provider}</small>
+                  </span>
+                  <time>{relTime(r.last_seen_at)}</time>
+                </button>
+              ))}
+            </div>
+          ))
         )}
-      </section>
+      </div>
     </div>
   );
 }
 
-function RuntimeDetail({
-  row,
-  t,
-}: {
-  row: RuntimeDevice;
-  t: (k: string) => string;
-}) {
+/** 设备详情：渲染在右侧主栏（routeRight）。 */
+function RuntimeDetail({ row }: { row: RuntimeDevice }) {
+  const { t } = useI18n();
   const fields: { label: string; value: React.ReactNode }[] = [
     { label: t("runtime.field.provider"), value: row.provider },
     {
@@ -194,41 +193,43 @@ function RuntimeDetail({
   ];
 
   return (
-    <div className="loop-rt__detail-inner">
-      <header className="loop-rt__detail-head">
-        <Avatar size="default" color="light-blue" shape="square">
-          <Cpu size={18} />
-        </Avatar>
-        <div>
-          <Title heading={4} style={{ margin: 0 }}>
-            {row.name}
-          </Title>
-          <Text type="tertiary">{row.id}</Text>
+    <div className="loop-rt__detail">
+      <div className="loop-rt__detail-inner">
+        <header className="loop-rt__detail-head">
+          <Avatar size="default" color="light-blue" shape="square">
+            <Cpu size={18} />
+          </Avatar>
+          <div>
+            <Title heading={4} style={{ margin: 0 }}>
+              {row.name}
+            </Title>
+            <Text type="tertiary">{row.id}</Text>
+          </div>
+          <Tag
+            color={row.status === "online" ? "green" : "grey"}
+            style={{ marginLeft: "auto" }}
+          >
+            <Circle size={8} style={{ marginRight: 4 }} />
+            {t(`runtime.filter.${row.status}`)}
+          </Tag>
+        </header>
+
+        <div className="loop-rt__card">
+          <div className="loop-rt__card-title">{t("runtime.detail.basic")}</div>
+          <dl className="loop-rt__fields">
+            {fields.map((f) => (
+              <div key={f.label} className="loop-rt__field">
+                <dt>{f.label}</dt>
+                <dd>{f.value}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
-        <Tag
-          color={row.status === "online" ? "green" : "grey"}
-          style={{ marginLeft: "auto" }}
-        >
-          <Circle size={8} style={{ marginRight: 4 }} />
-          {t(`runtime.filter.${row.status}`)}
-        </Tag>
-      </header>
 
-      <div className="loop-rt__card">
-        <div className="loop-rt__card-title">{t("runtime.detail.basic")}</div>
-        <dl className="loop-rt__fields">
-          {fields.map((f) => (
-            <div key={f.label} className="loop-rt__field">
-              <dt>{f.label}</dt>
-              <dd>{f.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-
-      <div className="loop-rt__card loop-rt__card--muted">
-        <div className="loop-rt__card-title">{t("runtime.detail.usage")}</div>
-        <Text type="tertiary">{t("runtime.detail.usageHint")}</Text>
+        <div className="loop-rt__card loop-rt__card--muted">
+          <div className="loop-rt__card-title">{t("runtime.detail.usage")}</div>
+          <Text type="tertiary">{t("runtime.detail.usageHint")}</Text>
+        </div>
       </div>
     </div>
   );
