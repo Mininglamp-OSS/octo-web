@@ -230,6 +230,7 @@ export class MainPage extends Component<{}, MainPageState> {
                 return (
                     <>
                         <div
+                            className="wk-main-onboarding-background"
                             aria-hidden={showOnboardingGate ? true : undefined}
                             {...(showOnboardingGate ? { inert: "" } : {})}
                         >
