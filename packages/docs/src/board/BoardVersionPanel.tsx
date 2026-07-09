@@ -10,7 +10,7 @@
 //
 // It touches no doc/sheet file, so it won't conflict with ongoing docs work.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
 import { canEdit, canManage } from '../auth/roles.ts'
 import { t } from '../octoweb/index.ts'
@@ -72,18 +72,34 @@ export function BoardVersionPanel({
 
   const nameOf = (uid: string) => names?.get(uid) || uid
 
+  // Late-response guards. Both the list refresh and the preview can be fired repeatedly (rapid
+  // filter switches, previewing A then B) and the responses may land out of order over the network.
+  // Each fire bumps a monotonic generation and aborts the prior in-flight request; a response whose
+  // generation is no longer current is discarded, so a slow earlier call can never overwrite the
+  // selection made by a newer one.
+  const refreshGen = useRef(0)
+  const refreshAbort = useRef<AbortController | null>(null)
+  const previewGen = useRef(0)
+  const previewAbort = useRef<AbortController | null>(null)
+
   const refresh = useCallback(async () => {
+    refreshAbort.current?.abort()
+    const controller = new AbortController()
+    refreshAbort.current = controller
+    const gen = ++refreshGen.current
     setLoading(true)
     setError(null)
     try {
-      const res = await listVersions(docId, { kind, limit: PAGE })
+      const res = await listVersions(docId, { kind, limit: PAGE, signal: controller.signal })
+      if (gen !== refreshGen.current) return
       setItems(res.items)
       setNextCursor(res.nextCursor)
       setCounts(res.counts ?? null)
     } catch {
+      if (gen !== refreshGen.current) return
       setError(t('docs.board.version.errLoad'))
     } finally {
-      setLoading(false)
+      if (gen === refreshGen.current) setLoading(false)
     }
   }, [docId, kind])
   useEffect(() => {
@@ -123,15 +139,21 @@ export function BoardVersionPanel({
   }
 
   const onPreview = async (seq: number) => {
+    previewAbort.current?.abort()
+    const controller = new AbortController()
+    previewAbort.current = controller
+    const gen = ++previewGen.current
     setPreviewLoading(true)
     setError(null)
     try {
-      const state = await getBoardVersionState(docId, seq)
+      const state = await getBoardVersionState(docId, seq, controller.signal)
+      if (gen !== previewGen.current) return
       setPreview({ seq, scene: state.scene })
     } catch (e) {
+      if (gen !== previewGen.current) return
       setError(t(versionErrorKey(e, 'docs.board.version.errPreview')))
     } finally {
-      setPreviewLoading(false)
+      if (gen === previewGen.current) setPreviewLoading(false)
     }
   }
 
@@ -289,7 +311,11 @@ export function BoardVersionPanel({
               {t('docs.board.version.closePreview')}
             </button>
           </div>
-          <BoardScenePreview scene={preview.scene} dark={dark} />
+          {/* key={preview.seq} remounts the preview per version: Excalidraw seeds from initialData
+              only once at mount (it does not reactively consume props — see the XIN-115 note in
+              BoardShell), so without a keyed remount switching versions would keep showing the
+              previously previewed scene while the header advanced. */}
+          <BoardScenePreview key={preview.seq} scene={preview.scene} dark={dark} />
         </div>
       )}
 
@@ -370,7 +396,7 @@ export function BoardVersionPanel({
 
       {nextCursor != null && (
         <div className="octo-member-row" style={{ justifyContent: 'center' }}>
-          <button type="button" className="octo-tb-btn" disabled={loadingMore} onClick={() => void onLoadMore()}>
+          <button type="button" className="octo-tb-btn" disabled={loading || loadingMore} onClick={() => void onLoadMore()}>
             {t('docs.board.version.loadMore')}
           </button>
         </div>

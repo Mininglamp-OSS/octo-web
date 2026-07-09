@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
 // The board version panel reuses the shared version REST layer (versions/api.ts) for list / create /
@@ -95,7 +95,7 @@ async function renderPanel(role: 'reader' | 'writer' | 'admin' = 'admin') {
 describe('BoardVersionPanel', () => {
   it('lists versions with counts', async () => {
     await renderPanel()
-    expect(listVersions).toHaveBeenCalledWith('bd_1', { kind: 'all', limit: 30 })
+    expect(listVersions).toHaveBeenCalledWith('bd_1', { kind: 'all', limit: 30, signal: expect.any(AbortSignal) })
     expect(screen.getByText('Milestone')).toBeTruthy()
     // counts: manual(2)+restore(1)=3 and auto=5
     const counts = document.querySelector('.octo-board-version-counts')
@@ -106,7 +106,7 @@ describe('BoardVersionPanel', () => {
   it('re-queries with the selected kind filter', async () => {
     await renderPanel()
     fireEvent.click(screen.getByText('docs.board.version.filterAuto'))
-    await waitFor(() => expect(listVersions).toHaveBeenLastCalledWith('bd_1', { kind: 'auto', limit: 30 }))
+    await waitFor(() => expect(listVersions).toHaveBeenLastCalledWith('bd_1', { kind: 'auto', limit: 30, signal: expect.any(AbortSignal) }))
   })
 
   it('paginates via load more using nextCursor', async () => {
@@ -163,7 +163,7 @@ describe('BoardVersionPanel', () => {
   it('renders a read-only scene preview for the selected version', async () => {
     await renderPanel('admin')
     fireEvent.click(screen.getByText('docs.board.version.preview'))
-    await waitFor(() => expect(getVersionState).toHaveBeenCalledWith('bd_1', 7, undefined))
+    await waitFor(() => expect(getVersionState).toHaveBeenCalledWith('bd_1', 7, expect.any(AbortSignal)))
     await waitFor(() => expect(screen.getByTestId('excalidraw-canvas')).toBeTruthy())
   })
 
@@ -206,5 +206,43 @@ describe('BoardVersionPanel', () => {
     expect(screen.queryByText('docs.board.version.rename')).toBeNull()
     // reader may still preview
     expect(screen.getByText('docs.board.version.preview')).toBeTruthy()
+  })
+
+  it('discards an out-of-order list response so a slow earlier refresh cannot overwrite a newer one', async () => {
+    // A refresh fires whenever docId/kind changes (rapid filter switching is the finding's repro;
+    // switching docId drives the same `refresh` and lets us overlap two requests deterministically,
+    // since — unlike a filter click — it is not gated by the loading-disabled buttons).
+    const resolveByDoc = new Map<string, () => void>()
+    const deferredList = (docId: string, label: string): Promise<{ items: typeof NAMED[]; nextCursor: null; counts: typeof COUNTS }> =>
+      new Promise((resolve) => {
+        resolveByDoc.set(docId, () =>
+          resolve({ items: [{ ...NAMED, docVersionSeq: 7, label }], nextCursor: null, counts: COUNTS }),
+        )
+      })
+    listVersions.mockImplementation((docId: string) =>
+      docId === 'bd_fast' ? deferredList('bd_fast', 'FastWins') : deferredList('bd_slow', 'SlowLoser'),
+    )
+
+    const { rerender } = render(<BoardVersionPanel docId="bd_slow" role="admin" />)
+    // Fire the newer refresh before the first (slow) one has resolved.
+    rerender(<BoardVersionPanel docId="bd_fast" role="admin" />)
+    await waitFor(() => expect(resolveByDoc.has('bd_slow') && resolveByDoc.has('bd_fast')).toBe(true))
+
+    // The newer refresh (bd_fast) resolves first and renders.
+    await act(async () => {
+      resolveByDoc.get('bd_fast')!()
+      await Promise.resolve()
+    })
+    await screen.findByText('FastWins')
+
+    // The older, slower refresh (bd_slow) lands late. Flush it fully: without the guard this stale
+    // response would setItems(SlowLoser) and render it; the guard must discard it instead.
+    await act(async () => {
+      resolveByDoc.get('bd_slow')!()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.getByText('FastWins')).toBeTruthy()
+    expect(screen.queryByText('SlowLoser')).toBeNull()
   })
 })
