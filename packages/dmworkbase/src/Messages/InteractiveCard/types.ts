@@ -15,10 +15,11 @@
 export const CARD_PROFILE_OCTO_V1 = "octo/v1";
 export const CARD_PROFILE_OCTO_V2 = "octo/v2";
 export const CARD_VERSION_1_5 = "1.5";
+export const CARD_VERSION_1_6 = "1.6";
 
 /**
  * 客户端支持的 profile 集合（协商用）。
- * octo/v2 与 v1 共享 card_version 上限（<=1.5）；差异在元素/动作白名单
+ * octo/v2 与 v1 共享 card_version 上限；差异在元素/动作白名单
  * （见 validateCardForOcto 的 allowInteractive 分支）。
  */
 export const SUPPORTED_PROFILES: ReadonlySet<string> = new Set([
@@ -26,8 +27,13 @@ export const SUPPORTED_PROFILES: ReadonlySet<string> = new Set([
   CARD_PROFILE_OCTO_V2,
 ]);
 
-/** 客户端支持的最高 card_version。 */
-export const MAX_CARD_VERSION = CARD_VERSION_1_5;
+/**
+ * 客户端支持的最高 card_version —— 对齐官方 AdaptiveCards SDK 上限（1.6）。
+ * 抬到 1.6 只放宽**版本协商**（将来服务端升 1.6 信封无需前端发版）；
+ * **不放宽元素白名单**——具体元素仍由 validateCardForOcto fail-closed 门禁，
+ * 1.6-only 元素不在白名单内仍整卡降级。服务端目前仍 pin 1.5。
+ */
+export const MAX_CARD_VERSION = CARD_VERSION_1_6;
 
 /** 客户端防御上限（与服务端 enforced 上限对齐，信任服务端仍二次防御）。 */
 export const MAX_DEPTH = 16;

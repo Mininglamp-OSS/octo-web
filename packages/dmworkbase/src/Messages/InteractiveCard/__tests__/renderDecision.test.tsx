@@ -168,6 +168,26 @@ describe("decideCardBody — 协商（第二道闸，可信 sender 前提）", (
   });
 });
 
+describe("decideCardBody — card_version 1.6（对齐 SDK 上限，版本放宽但元素门禁不放松）", () => {
+  const trusted = { fromUID: "iwh_x", profile: "octo/v1" as const };
+
+  it("1.6 + octo 白名单元素 → card（版本协商放行，将来服务端升 1.6 无需发版）", () => {
+    expect(
+      decideCardBody({ ...trusted, cardVersion: "1.6", card: validCard }).kind
+    ).toBe("card");
+  });
+
+  it("1.6 + 非白名单元素 → plain（元素门禁仍 fail-closed，1.6-only 元素不放行）", () => {
+    expect(
+      decideCardBody({
+        ...trusted,
+        cardVersion: "1.6",
+        card: AC([{ type: "Carousel" }]),
+      }).kind
+    ).toBe("plain");
+  });
+});
+
 describe("decideCardBody — octo/v2 交互元素（allowInteractive）", () => {
   const trustedV2 = { fromUID: "iwh_x", profile: "octo/v2", cardVersion: "1.5" };
 
