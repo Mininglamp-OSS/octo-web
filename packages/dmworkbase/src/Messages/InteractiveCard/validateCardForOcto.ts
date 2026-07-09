@@ -93,6 +93,24 @@ function validateItems(items: unknown[], ctx: Ctx): void {
   for (const el of items) validateElement(el, ctx);
 }
 
+function validateRichTextInline(inline: unknown, ctx: Ctx): void {
+  if (!ctx.budget.consume()) throw new OctoInvalidCard("node count exceeded");
+  const obj = asObject(inline);
+  if (!obj || obj.type !== "TextRun") {
+    throw new OctoInvalidCard("unsupported rich text inline");
+  }
+  validateSelectAction(obj.selectAction, ctx);
+}
+
+function validateImageSetImage(image: unknown, ctx: Ctx): void {
+  if (!ctx.budget.consume()) throw new OctoInvalidCard("node count exceeded");
+  const obj = asObject(image);
+  if (!obj || obj.type !== "Image") {
+    throw new OctoInvalidCard("malformed image set image");
+  }
+  validateSelectAction(obj.selectAction, ctx);
+}
+
 function validateElement(el: unknown, ctx: Ctx): void {
   if (!ctx.budget.consume()) throw new OctoInvalidCard("node count exceeded");
   const obj = asObject(el);
@@ -102,10 +120,20 @@ function validateElement(el: unknown, ctx: Ctx): void {
   switch (obj.type) {
     case "TextBlock":
       return;
+    case "RichTextBlock": {
+      const inlines = requireArray(obj.inlines);
+      for (const inline of inlines) validateRichTextInline(inline, ctx);
+      return;
+    }
     case "Image":
       // Image.url 混合内容属 per-element（喂 SDK 前消毒），结构层合法。
       validateSelectAction(obj.selectAction, ctx);
       return;
+    case "ImageSet": {
+      const images = requireArray(obj.images);
+      for (const image of images) validateImageSetImage(image, ctx);
+      return;
+    }
     case "FactSet": {
       const facts = requireArray(obj.facts);
       for (const _f of facts) {
@@ -114,10 +142,48 @@ function validateElement(el: unknown, ctx: Ctx): void {
       }
       return;
     }
+    case "ActionSet": {
+      const actions = requireArray(obj.actions);
+      for (const action of actions) {
+        if (!ctx.budget.consume())
+          throw new OctoInvalidCard("node count exceeded");
+        validateAction(action, ctx);
+      }
+      return;
+    }
     case "Container": {
       if (!ctx.budget.enter()) throw new OctoInvalidCard("depth exceeded");
       validateItems(requireArray(obj.items), ctx);
       validateSelectAction(obj.selectAction, ctx);
+      ctx.budget.leave();
+      return;
+    }
+    case "Table": {
+      if (!ctx.budget.enter()) throw new OctoInvalidCard("depth exceeded");
+      const columns = requireArray(obj.columns);
+      for (const column of columns) {
+        if (!asObject(column)) throw new OctoInvalidCard("malformed table column");
+        if (!ctx.budget.consume())
+          throw new OctoInvalidCard("node count exceeded");
+      }
+      const rows = requireArray(obj.rows);
+      for (const row of rows) {
+        const rowObj = asObject(row);
+        if (!rowObj) throw new OctoInvalidCard("malformed table row");
+        if (!ctx.budget.consume())
+          throw new OctoInvalidCard("node count exceeded");
+        const cells = requireArray(rowObj.cells);
+        for (const cell of cells) {
+          const cellObj = asObject(cell);
+          if (!cellObj) throw new OctoInvalidCard("malformed table cell");
+          if (!ctx.budget.consume())
+            throw new OctoInvalidCard("node count exceeded");
+          if (!ctx.budget.enter()) throw new OctoInvalidCard("depth exceeded");
+          validateSelectAction(cellObj.selectAction, ctx);
+          validateItems(requireArray(cellObj.items), ctx);
+          ctx.budget.leave();
+        }
+      }
       ctx.budget.leave();
       return;
     }

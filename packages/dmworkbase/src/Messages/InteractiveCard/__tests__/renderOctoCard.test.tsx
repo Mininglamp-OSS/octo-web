@@ -48,6 +48,39 @@ describe("renderOctoCard", () => {
     target.remove();
   });
 
+  it("渲染 RichTextBlock/TextRun（服务端 manifest 展示元素）", () => {
+    const target = mountTarget();
+    renderOctoCard({
+      card: {
+        type: "AdaptiveCard",
+        version: "1.5",
+        body: [
+          {
+            type: "RichTextBlock",
+            inlines: [
+              { type: "TextRun", text: "📖 " },
+              { type: "TextRun", text: "读取文件", weight: "Bolder" },
+              { type: "TextRun", text: "：/work/README.md" },
+              { type: "TextRun", text: " · 180ms", color: "good" },
+            ],
+          },
+        ],
+      },
+      target,
+      onAction: () => {},
+    });
+    const runs = Array.from(target.querySelectorAll(".ac-textRun"));
+    const renderedText = runs
+      .map((run) => (run as HTMLElement).innerText || run.textContent || "")
+      .join("");
+    expect(renderedText).toContain("读取文件");
+    expect(renderedText).toContain("/work/README.md");
+    expect(
+      runs.some((run) => (run as HTMLElement).style.fontWeight === "600")
+    ).toBe(true);
+    target.remove();
+  });
+
   it("按钮点击 → onAction 收到对应动作（OpenUrl / Submit 均经回调）", () => {
     const target = mountTarget();
     const types: string[] = [];

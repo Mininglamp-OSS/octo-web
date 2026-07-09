@@ -4,7 +4,8 @@
  * 权威来源：octo-server `pkg/cardmsg/*` + 其 `*_test.go`（`docs/card-protocol.md` 为镜像）。
  * 与 type=7 名片（Card）无任何关系。
  *
- * octo/v1（展示型）：5 类元素 + Action.OpenUrl + selectAction(仅含 OpenUrl)。
+ * octo/v1（展示型）：TextBlock/RichTextBlock/Image/ImageSet/Container/ColumnSet/
+ *   FactSet/Table/ActionSet + Action.OpenUrl + selectAction(仅含 OpenUrl)。
  * octo/v2（交互型，波 2）：追加 Input.Text/Toggle/ChoiceSet + Action.Submit（含 selectAction 携带），
  *   Input.* / Action.Submit 的 id 必填且帧内唯一。
  * 未知元素/动作、未知 profile/version、损坏 payload 一律整卡降级为 plain。

@@ -248,6 +248,20 @@ describe("decideCardBody — 渲染/整卡 fallback（第三道闸）", () => {
     }
   });
 
+  it("服务端 manifest 展示元素 RichTextBlock → card", () => {
+    expect(
+      decideCardBody({
+        ...trusted,
+        card: AC([
+          {
+            type: "RichTextBlock",
+            inlines: [{ type: "TextRun", text: "读取文件" }],
+          },
+        ]),
+      }).kind
+    ).toBe("card");
+  });
+
   it("未知元素 → plain（整卡 fallback，非 per-element）", () => {
     expect(
       decideCardBody({ ...trusted, card: AC([{ type: "Media" }]) }).kind

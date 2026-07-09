@@ -23,13 +23,17 @@ describe("createOctoSerializationContext — 元素层防御纵深", () => {
   it("保留 octo 白名单元素，移除非白名单元素", () => {
     const ctx = createOctoSerializationContext();
     const reg = ctx.elementRegistry;
-    // octo 允许的元素仍注册（Column 由 ColumnSet 内部解析，非独立注册项，不单列）。
+    // octo manifest 允许的展示元素仍注册（Column / TextRun 为父元素内部节点，不单列）。
     for (const t of [
       "TextBlock",
+      "RichTextBlock",
       "Image",
+      "ImageSet",
       "Container",
       "ColumnSet",
       "FactSet",
+      "Table",
+      "ActionSet",
       "Input.Text",
       "Input.Toggle",
       "Input.ChoiceSet",
@@ -40,14 +44,7 @@ describe("createOctoSerializationContext — 元素层防御纵深", () => {
       expect(reg.findByName(t)).toBeDefined();
     }
     // 非白名单元素被移除。
-    for (const t of [
-      "Table",
-      "Carousel",
-      "Media",
-      "RichTextBlock",
-      "ImageSet",
-      "ActionSet",
-    ]) {
+    for (const t of ["Carousel", "Media"]) {
       expect(reg.findByName(t)).toBeUndefined();
     }
   });

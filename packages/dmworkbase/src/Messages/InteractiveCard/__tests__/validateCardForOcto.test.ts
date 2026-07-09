@@ -32,6 +32,58 @@ describe("validateCardForOcto — 合法（ok:true）", () => {
       ).ok
     ).toBe(true);
   });
+  it("RichTextBlock/TextRun（服务端 manifest 展示元素）", () => {
+    expect(
+      validateCardForOcto(
+        AC([
+          {
+            type: "RichTextBlock",
+            inlines: [
+              { type: "TextRun", text: "读取文件", weight: "Bolder" },
+              { type: "TextRun", text: " · 180ms", color: "good" },
+            ],
+          },
+        ])
+      ).ok
+    ).toBe(true);
+  });
+  it("ImageSet / ActionSet / Table（服务端 manifest 展示元素）", () => {
+    expect(
+      validateCardForOcto(
+        AC([
+          {
+            type: "ImageSet",
+            images: [{ type: "Image", url: "https://cdn/a.png" }],
+          },
+          {
+            type: "ActionSet",
+            actions: [
+              {
+                type: "Action.OpenUrl",
+                title: "打开",
+                url: "https://example.com",
+              },
+            ],
+          },
+          {
+            type: "Table",
+            columns: [{ width: 1 }],
+            rows: [
+              {
+                type: "TableRow",
+                cells: [
+                  {
+                    type: "TableCell",
+                    items: [{ type: "TextBlock", text: "cell" }],
+                  },
+                ],
+              },
+            ],
+          },
+        ])
+      ).ok
+    ).toBe(true);
+  });
   it("Image http url → ok（混合内容属 per-element，不整卡降级）", () => {
     expect(
       validateCardForOcto(AC([{ type: "Image", url: "http://x/a.png" }])).ok
@@ -106,6 +158,36 @@ describe("validateCardForOcto — 整卡降级（ok:false）", () => {
 
   it("非 AdaptiveCard 根", () => bad({ type: "Nope" }));
   it("未知元素", () => bad(AC([{ type: "Media" }])));
+  it("RichTextBlock 只允许 TextRun inline", () =>
+    bad(
+      AC([
+        { type: "RichTextBlock", inlines: [{ type: "TextBlock", text: "x" }] },
+      ])
+    ));
+  it("TextRun.selectAction 也必须满足动作白名单与 URL 安全", () =>
+    bad(
+      AC([
+        {
+          type: "RichTextBlock",
+          inlines: [
+            {
+              type: "TextRun",
+              text: "bad",
+              selectAction: {
+                type: "Action.OpenUrl",
+                url: "javascript:alert(1)",
+              },
+            },
+          ],
+        },
+      ])
+    ));
+  it("TextRun 不能作为 body 元素单独出现", () =>
+    bad(AC([{ type: "TextRun", text: "x" }])));
+  it("ImageSet.images 只能包含 Image 元素", () =>
+    bad(AC([{ type: "ImageSet", images: [{ type: "TextBlock", text: "x" }] }])));
+  it("TableCell.items 非数组", () =>
+    bad(AC([{ type: "Table", rows: [{ cells: [{ items: "bad" }] }] }])));
   it("元素无 type", () => bad(AC([{ text: "no type" }])));
   it("Input.* 在 v1（禁交互）", () => bad(AC([{ type: "Input.Text", id: "t" }])));
   it("Input.Number 在 v1（禁交互）", () =>
