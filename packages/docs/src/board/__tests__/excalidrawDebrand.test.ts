@@ -187,16 +187,19 @@ describe('installExcalidrawDebrand', () => {
     dispose()
   })
 
-  it('preserves the description highlight links (structure untouched)', () => {
+  it('flattens the description highlight links to plain text, keeping the words (XIN-698)', () => {
     const dialog = mermaidDialog()
     document.body.append(dialog)
 
     const dispose = installExcalidrawDebrand(document)
 
+    // The three external anchors are gone…
     const links = dialog.querySelectorAll('.ttd-dialog-desc a')
-    expect(links).toHaveLength(3)
-    expect(Array.from(links).map((a) => a.textContent)).toEqual(['流程图', '序列图', '类图'])
-    expect(dialog.querySelector('.ttd-dialog-desc')?.textContent).not.toContain('Excalidraw')
+    expect(links).toHaveLength(0)
+    // …but the words survive as plain text and the sentence stays intact.
+    const desc = dialog.querySelector('.ttd-dialog-desc')
+    expect(desc?.textContent).toBe(`目前仅支持流程图、序列图和类图。其他类型在 ${BOARD_BRAND} 中将以图像呈现。`)
+    expect(desc?.textContent).not.toContain('Excalidraw')
     dispose()
   })
 

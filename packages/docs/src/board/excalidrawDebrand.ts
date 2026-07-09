@@ -41,12 +41,16 @@
  * left intact.
  *
  * The mermaid rewrite is text-only and idempotent: only bare "Excalidraw" tokens inside the three
- * mermaid-specific containers are swapped, element structure (e.g. the description's flowchart /
- * sequence / class highlight links) is preserved, and a node with no remaining token is left
- * untouched — so re-processing the same node, or observing the mutations this makes, never
- * compounds. Hiding the help header is likewise idempotent (inline `display: none` re-applied only
- * when unset) and node-preserving — we never remove the node, so Excalidraw's React tree can still
- * unmount the dialog cleanly. The anchor removal is a no-op once the anchor is gone.
+ * mermaid-specific containers are swapped, and a node with no remaining token is left untouched — so
+ * re-processing the same node, or observing the mutations this makes, never compounds. The
+ * description additionally has its flowchart / sequence / class highlight anchors flattened to plain
+ * text (XIN-698): upstream renders those three words as external `<a>` links to the mermaid docs, and
+ * the product wants them as plain, non-clickable words, so each anchor is replaced by a text node
+ * carrying its text — the wording and sentence stay intact, only the link is dropped. This too is
+ * idempotent: once the anchors are gone the query matches nothing. Hiding the help header is
+ * likewise idempotent (inline `display: none` re-applied only when unset) and node-preserving — we
+ * never remove the node, so Excalidraw's React tree can still unmount the dialog cleanly. The anchor
+ * removal is a no-op once the anchor is gone.
  */
 
 /** Product word that replaces the upstream "Excalidraw" brand in the localized whiteboard UI. */
@@ -67,6 +71,11 @@ export function debrandMermaidText(text: string): string {
 // must stay branded, so we never touch text outside these containers.
 const MENU_ITEM_SELECTOR = '.dropdown-menu-item__text'
 const DIALOG_TARGET_SELECTOR = '.dialog-mermaid-title, .ttd-dialog-desc'
+
+// The mermaid description container alone (a subset of DIALOG_TARGET_SELECTOR). Its flowchart /
+// sequence / class highlight anchors are flattened to plain text (XIN-698); the title carries no
+// such links, so anchor flattening is scoped to the description only.
+const DIALOG_DESC_SELECTOR = '.ttd-dialog-desc'
 
 // Help-dialog brand header (item 2): the container holding the four `.HelpDialog__btn` link buttons
 // (Documentation / Blog / GitHub issues / YouTube). The shortcut lists rendered below it live in a
@@ -100,9 +109,10 @@ function hideElementInline(el: Element): void {
 }
 
 /**
- * Rewrite the brand token in the DIRECT text nodes of `el`, leaving child elements untouched. The
- * mermaid description renders its highlight links as child `<a>` elements around the "flowchart /
- * sequence / class" words, so touching only `el`'s own text nodes keeps those links intact.
+ * Rewrite the brand token in the DIRECT text nodes of `el`, leaving child elements untouched. Used
+ * for the menu label and the mermaid title/description; touching only `el`'s own text nodes keeps
+ * any child elements (e.g. the mermaid menu icon) intact. The description's highlight anchors are
+ * handled separately by flattenDescriptionLinks.
  */
 function debrandTextNodes(el: Element): void {
   el.childNodes.forEach((node) => {
@@ -111,6 +121,20 @@ function debrandTextNodes(el: Element): void {
       const next = debrandMermaidText(original)
       if (next !== original) node.nodeValue = next
     }
+  })
+}
+
+/**
+ * Flatten the highlight anchors inside the mermaid description to plain text (XIN-698). Upstream
+ * renders the 流程图 / 序列图 / 类图 (flowchart / sequence / class diagram) words as external `<a>`
+ * links to the mermaid docs; the product wants them as plain, non-clickable words. Each anchor is
+ * replaced by a text node carrying its text, so the wording and sentence stay intact and only the
+ * link is dropped. Idempotent: once the anchors are gone the query matches nothing.
+ */
+function flattenDescriptionLinks(el: Element): void {
+  el.querySelectorAll('a').forEach((anchor) => {
+    const doc = anchor.ownerDocument ?? document
+    anchor.replaceWith(doc.createTextNode(anchor.textContent ?? ''))
   })
 }
 
@@ -150,6 +174,10 @@ function debrandWithin(el: Element): void {
   // Item 4: mermaid dialog title + description.
   el.querySelectorAll(DIALOG_TARGET_SELECTOR).forEach(debrandTextNodes)
   if (el.matches(DIALOG_TARGET_SELECTOR)) debrandTextNodes(el)
+
+  // XIN-698: flatten the description's flowchart / sequence / class highlight anchors to plain text.
+  el.querySelectorAll(DIALOG_DESC_SELECTOR).forEach(flattenDescriptionLinks)
+  if (el.matches(DIALOG_DESC_SELECTOR)) flattenDescriptionLinks(el)
 
   // XIN-557: strip the online "浏览素材库 / Browse libraries" entry, keeping local library controls.
   removeOnlineLibraryEntry(el)
