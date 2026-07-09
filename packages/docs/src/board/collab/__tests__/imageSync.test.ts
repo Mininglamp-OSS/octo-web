@@ -133,23 +133,59 @@ describe('whiteboard image sync (XIN-702)', () => {
         mimeType: 'image/png',
         dataURL: 'data:image/png;base64,CCCC',
       }
-      const fetcher = vi.fn(async (_ref: { id: string; attachId: string; mimeType?: string }) => fetched)
+      // Batch fetcher: receives every fetchable ref at once, returns the resolved binaries.
+      const fetcher = vi.fn(async (_refs: readonly { id: string; attachId: string; mimeType?: string }[]) => [
+        fetched,
+      ])
       bindingB.setFileSync({ fetcher })
 
       syncDocs(peer, docB, REPAIR_ORIGIN) // remote origin → triggers applyRemote on B
       await flushMicrotasks()
 
       expect(fetcher).toHaveBeenCalledTimes(1)
-      expect(fetcher.mock.calls[0][0]).toMatchObject({ id: 'fA', attachId: 'att-shared' })
+      expect(fetcher.mock.calls[0][0]).toEqual([
+        expect.objectContaining({ id: 'fA', attachId: 'att-shared' }),
+      ])
       expect(apiB.addFilesCalls).toBeGreaterThanOrEqual(1)
       expect(apiB.addedFiles.some((f) => f.id === 'fA')).toBe(true)
+    })
+
+    it('batches multiple fetchable refs into a single fetcher call (resolve batch path)', async () => {
+      // Two remote images arriving in one apply must be fetched with ONE batch call, not two.
+      const peer = new Y.Doc()
+      const peerBinding = new ExcalidrawYjsBinding(peer, { api: new FakeExcalidrawApi(), enableUndo: false })
+      let n = 0
+      peerBinding.setFileSync({ uploader: async () => `att-${++n}` })
+      peerBinding.handleLocalChange(
+        [makeEl('imgX', { type: 'image', fileId: 'fX' }), makeEl('imgY', { type: 'image', fileId: 'fY' })],
+        {
+          fX: { id: 'fX', mimeType: 'image/png', dataURL: 'data:image/png;base64,XXXX' },
+          fY: { id: 'fY', mimeType: 'image/png', dataURL: 'data:image/png;base64,YYYY' },
+        },
+      )
+      await flushMicrotasks()
+
+      const docB = new Y.Doc()
+      const apiB = new FakeExcalidrawApi()
+      const bindingB = new ExcalidrawYjsBinding(docB, { api: apiB })
+      const fetcher = vi.fn(async (refs: readonly { id: string; attachId: string }[]) =>
+        refs.map((r) => ({ id: r.id, mimeType: 'image/png', dataURL: 'data:image/png;base64,ZZZZ' })),
+      )
+      bindingB.setFileSync({ fetcher })
+
+      syncDocs(peer, docB, REPAIR_ORIGIN)
+      await flushMicrotasks()
+
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      expect(fetcher.mock.calls[0][0].map((r) => r.id).sort()).toEqual(['fX', 'fY'])
+      expect(apiB.addedFiles.map((f) => f.id).sort()).toEqual(['fX', 'fY'])
     })
 
     it('does not fetch a file the local client already holds the binary for', async () => {
       const doc = new Y.Doc()
       const api = new FakeExcalidrawApi()
       const binding = new ExcalidrawYjsBinding(doc, { api })
-      const fetcher = vi.fn(async () => null)
+      const fetcher = vi.fn(async () => [])
       binding.setFileSync({ uploader: async () => 'att-local', fetcher })
 
       // Local insert: this client holds the binary already, so a later applyRemote must not re-fetch.

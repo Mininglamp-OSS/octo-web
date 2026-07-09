@@ -103,10 +103,14 @@ export interface FileFetchRef {
 export type FileUploader = (file: BinaryFileData) => Promise<string | null>
 
 /**
- * Fetch an image binary by its `attachId` and return a `BinaryFileData` (with a `dataURL`) ready to
- * `addFiles()` into the canvas — or null if it could not be fetched. Injected by the host.
+ * Fetch one or more image binaries by their `attachId` and return the `BinaryFileData` entries (each
+ * with a `dataURL`) ready to `addFiles()` into the canvas. Injected by the host. BATCH by design:
+ * the binding hands every file ref that became fetchable in a single apply at once, so the host can
+ * use the backend `POST /attachments/resolve` batch endpoint (one signed-URL round trip for N images)
+ * instead of N single GETs. Refs that cannot be resolved are simply omitted from the result; the next
+ * apply retries them. The returned order does not matter — each entry carries its own `id`.
  */
-export type FileFetcher = (ref: FileFetchRef) => Promise<BinaryFileData | null>
+export type FileFetcher = (refs: readonly FileFetchRef[]) => Promise<readonly BinaryFileData[]>
 
 /**
  * Host-injected object-storage bridge (XIN-702). `uploader` runs on local insert and writes the
@@ -506,16 +510,19 @@ export class ExcalidrawYjsBinding {
   }
 
   /**
-   * Rehydrate remote-authored image binaries (XIN-702). For every file ref in the Y.Doc that is a
-   * USABLE ref (a non-empty attachId, per the shared `normalizeFileRef`/`isUsableFileRef` rule), is
-   * NOT one this client inserted, and has not already been fetched, pull the binary by attachId and
-   * `addFiles()` it into the canvas so the image renders instead of a grey placeholder. Each attachId
-   * is fetched at most once (dedup sets); errors leave the placeholder and the next apply retries.
-   * Fire-and-forget — never blocks the updateScene path.
+   * Rehydrate remote-authored image binaries (XIN-702). Collect every file ref in the Y.Doc that is
+   * a USABLE ref (a non-empty attachId, per the shared `normalizeFileRef`/`isUsableFileRef` rule), is
+   * NOT one this client inserted, and has not already been fetched, then fetch them in ONE batch and
+   * `addFiles()` the result into the canvas so the images render instead of grey placeholders. The
+   * batch lets the host use the backend `POST /attachments/resolve` endpoint (one signed-URL round
+   * trip for N images) rather than N single GETs. Each id is fetched at most once (dedup sets); an id
+   * the batch fails to return stays a placeholder and the next apply retries it. Fire-and-forget —
+   * never blocks the updateScene path.
    */
   private rehydrateFiles(): void {
     const fetcher = this.fileSync?.fetcher
     if (!fetcher || !this.api?.addFiles || this.destroyed) return
+    const pending: FileFetchRef[] = []
     for (const [id, yFile] of this.files) {
       if (this.localFileIds.has(id) || this.fetchedFileIds.has(id) || this.fetchingFileIds.has(id)) {
         continue
@@ -524,21 +531,25 @@ export class ExcalidrawYjsBinding {
       // resolve to a binary, so skip it (it is the grey-placeholder failure mode in data form).
       const ref = normalizeFileRef(readFileEntry(yFile))
       if (!ref) continue
-      const { attachId, mimeType } = ref
-      this.fetchingFileIds.add(id)
-      Promise.resolve(fetcher({ id, attachId, mimeType }))
-        .then((file) => {
-          this.fetchingFileIds.delete(id)
-          if (this.destroyed || !file) return
-          this.fetchedFileIds.add(id)
-          this.api?.addFiles?.([file])
-          this.telemetry.fileRehydrates++
-        })
-        .catch(() => {
-          this.fetchingFileIds.delete(id)
-          this.telemetry.fileFetchErrors++
-        })
+      pending.push({ id, attachId: ref.attachId, mimeType: ref.mimeType })
     }
+    if (pending.length === 0) return
+    for (const ref of pending) this.fetchingFileIds.add(ref.id)
+    Promise.resolve(fetcher(pending))
+      .then((files) => {
+        for (const ref of pending) this.fetchingFileIds.delete(ref.id)
+        if (this.destroyed) return
+        const usable = (files ?? []).filter((f): f is BinaryFileData => Boolean(f?.id))
+        for (const f of usable) this.fetchedFileIds.add(f.id)
+        if (usable.length > 0) {
+          this.api?.addFiles?.(usable)
+          this.telemetry.fileRehydrates += usable.length
+        }
+      })
+      .catch(() => {
+        for (const ref of pending) this.fetchingFileIds.delete(ref.id)
+        this.telemetry.fileFetchErrors++
+      })
   }
 
   // ── Y.Doc → canvas ─────────────────────────────────────────────────────────────────────────

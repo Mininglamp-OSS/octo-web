@@ -31,7 +31,7 @@ import { installLibraryControlButtons } from './libraryControlButtons.ts'
 import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
 import type { ExcalidrawElement, BinaryFileData, FileFetchRef } from './collab/index.ts'
 import { makeGenerateIdForFile, dataURLToBlob, blobToDataURL } from './collab/index.ts'
-import { presignUpload, uploadBinary, getReadUrl } from '../attachments/api.ts'
+import { presignUpload, uploadBinary, resolveAttachments } from '../attachments/api.ts'
 import {
   setLocalPresenceUser,
   publishLocalPointer,
@@ -815,14 +815,33 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     },
     [docId],
   )
-  const fetchBoardFile = useCallback(
-    async (ref: FileFetchRef): Promise<BinaryFileData | null> => {
-      const read = await getReadUrl(docId, ref.attachId)
-      const res = await fetch(read.url)
-      if (!res.ok) return null
-      const blob = await res.blob()
-      const dataURL = await blobToDataURL(blob)
-      return { id: ref.id, dataURL, mimeType: read.mime ?? ref.mimeType, created: Date.now() }
+  const fetchBoardFiles = useCallback(
+    async (refs: readonly FileFetchRef[]): Promise<BinaryFileData[]> => {
+      if (refs.length === 0) return []
+      // Batch-resolve fresh signed GET urls in ONE round trip (contract: POST /attachments/resolve),
+      // then download each binary. Re-resolving each time honours the read-URL TTL. An attachId the
+      // backend can't resolve (deleted / unknown) is simply skipped — the next apply retries.
+      const refByAttach = new Map(refs.map((r) => [r.attachId, r]))
+      const { items } = await resolveAttachments(
+        docId,
+        refs.map((r) => r.attachId),
+      )
+      const out: BinaryFileData[] = []
+      await Promise.all(
+        items.map(async (item) => {
+          const ref = refByAttach.get(item.attachId)
+          if (!ref) return
+          try {
+            const res = await fetch(item.url)
+            if (!res.ok) return
+            const dataURL = await blobToDataURL(await res.blob())
+            out.push({ id: ref.id, dataURL, mimeType: item.mime ?? ref.mimeType, created: Date.now() })
+          } catch {
+            // Leave this one a placeholder; the next applyRemote re-collects and retries it.
+          }
+        }),
+      )
+      return out
     },
     [docId],
   )
@@ -855,7 +874,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     }
     // XIN-702: wire the image object-store bridge so inserts upload (attachId → Y.Doc ref) and remote
     // images rehydrate (fetch by attachId → addFiles). Gated on the same accessConfirmed floor.
-    binding.setFileSync({ uploader: uploadBoardFile, fetcher: fetchBoardFile })
+    binding.setFileSync({ uploader: uploadBoardFile, fetcher: fetchBoardFiles })
     return () => {
       // Access lost or the session/canvas swapped: detach the api so no further applyRemote can
       // paint, and drop the adapter. setApi(null) only clears the handle — it never pushes a scene.
@@ -863,7 +882,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       binding.setRenderAdapter(null)
       binding.setFileSync(null)
     }
-  }, [collabSession, accessConfirmed, excalidrawApi, uploadBoardFile, fetchBoardFile])
+  }, [collabSession, accessConfirmed, excalidrawApi, uploadBoardFile, fetchBoardFiles])
 
   // Presence (XIN-111 / case8 presence_delta=0). The board opened a real HocuspocusProvider for
   // content sync (XIN-55) but never wired presence onto it — the binding's __awareness was a
