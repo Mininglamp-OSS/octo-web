@@ -519,6 +519,13 @@ function DocsList({
         setError(t('docs.toolbar.importCorrupt'))
       } else if (err instanceof Error && /取消|cancel/i.test(err.message)) {
         // silent: user closed the file picker
+      } else if (
+        typeof (err as { response?: { status?: number } })?.response?.status === 'number' &&
+        (err as { response: { status: number } }).response.status === 413
+      ) {
+        // The server rejected the upload as too large / too complex (zip-bomb
+        // guard, size / entry-count / compression-ratio bound).
+        setError(t('docs.import.wordTooLarge'))
       } else {
         setError(t('docs.import.wordError'))
       }

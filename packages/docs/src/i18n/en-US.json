@@ -150,6 +150,7 @@
   "import": {
     "word": "Import from Word",
     "wordError": "Couldn't parse this Word document. Please make sure it's a valid .docx.",
+    "wordTooLarge": "This Word document is too large or too complex to import.",
     "markdown": "Import from Markdown"
   },
   "slash": {
