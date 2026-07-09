@@ -21,7 +21,7 @@ import VideoRenderer from "./renderers/VideoRenderer";
  * 策略模式核心：根据文件扩展名选择对应的渲染器
  *
  * 注意：以下文件类型明确不支持预览，走 FallbackRenderer：
- * - .docx / .xlsx / .xls / .pptx / .ppt（Office 文档）
+ * - .docx / .pptx / .ppt（Word / PowerPoint）
  * - 音频（对话流内已渲染，不进入面板）
  */
 class FileRendererRegistry {
