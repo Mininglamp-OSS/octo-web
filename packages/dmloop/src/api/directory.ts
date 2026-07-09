@@ -1,7 +1,10 @@
 // @octo/loop — Directory：解析展示用名字 + 提供 assignee 候选。
 // fleet 列表接口不返回 assignee_name/project_name 等，这里统一加载并缓存后回填。
+// member 身份按 octo_uid 解析成 octo IM 名字（octo web 面统一以 octo 身份展示，
+// 而非 multica 原生名）；无 octo_uid 的原生成员回退其 multica 名。
 import type { AssigneeCandidate, AssigneeType } from "./types";
 import { httpGet, currentWorkspaceId, currentWorkspaceSlug } from "./http";
+import { WKApp, SpaceService } from "@octo/base";
 
 interface Directory {
   slug: string;
@@ -19,16 +22,26 @@ async function build(): Promise<Directory> {
   const slug = currentWorkspaceSlug();
   const wsId = currentWorkspaceId();
   const [members, agents, squads, projectsResp] = await Promise.all([
-    wsId ? httpGet<Array<{ user_id: string; name: string }>>(`/workspaces/${wsId}/members`).catch(() => []) : Promise.resolve([]),
+    wsId ? httpGet<Array<{ user_id: string; name: string; octo_uid?: string | null }>>(`/workspaces/${wsId}/members`).catch(() => []) : Promise.resolve([]),
     httpGet<Array<{ id: string; name: string }>>("/agents").catch(() => []),
     httpGet<Array<{ id: string; name: string }>>("/squads").catch(() => []),
     httpGet<{ projects: Array<{ id: string; title: string }> }>("/projects").catch(() => ({ projects: [] })),
   ]);
+  // Resolve member identity to octo names — but only pull the (potentially large)
+  // space roster when at least one member is octo-bridged; a pure-multica
+  // workspace skips the roster fetch entirely.
+  const octoName = new Map<string, string>();
+  if (members.some((m) => m.octo_uid)) {
+    const roster = await SpaceService.shared.getAllMembers(WKApp.shared.currentSpaceId).catch(() => []);
+    for (const s of roster) octoName.set(s.uid, s.name);
+  }
   const memberName = new Map<string, string>();
   const candidates: AssigneeCandidate[] = [];
   for (const m of members) {
-    memberName.set(m.user_id, m.name);
-    candidates.push({ id: m.user_id, type: "member", name: m.name });
+    // octo 身份优先：octo_uid 命中 space 名册取 octo 名字，否则回退 multica 名。
+    const name = (m.octo_uid && octoName.get(m.octo_uid)) || m.name;
+    memberName.set(m.user_id, name);
+    candidates.push({ id: m.user_id, type: "member", name });
   }
   const agentName = new Map<string, string>();
   for (const a of agents) {

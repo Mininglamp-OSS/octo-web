@@ -268,6 +268,10 @@
     "invited": "Invitation sent",
     "inviteEmail": "Invite a member by email",
     "invite": "Invite",
+    "addMember": "Add member",
+    "selectMember": "Search and select a space member",
+    "noCandidates": "No members available to add in this space",
+    "added": "Member added",
     "pendingInvites": "Pending invitations",
     "revoke": "Revoke"
   }

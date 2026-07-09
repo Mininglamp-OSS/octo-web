@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Typography, Input, Button, Tabs, TabPane, Table, Tag, Select, Spin, Toast, Banner, Modal, Avatar,
 } from "@douyinfe/semi-ui";
 import { Save, UserPlus, Trash2, User } from "lucide-react";
-import { useI18n } from "@octo/base";
+import { useI18n, WKApp, SpaceService } from "@octo/base";
+import type { SpaceMember } from "@octo/base";
 import type { Workspace, WorkspaceMember, Invitation } from "../api/types";
 import {
-  updateWorkspace, listWorkspaceMembers, inviteMember, updateMemberRole, removeMember,
+  updateWorkspace, listWorkspaceMembers, addOctoMember, updateMemberRole, removeMember,
   listWorkspaceInvitations, revokeInvitation,
 } from "../api/workspaceApi";
 
@@ -107,32 +108,57 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
   const [invites, setInvites] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
+  // octo space 成员（仅人，robot===0）+ uid→身份 映射，供选择器候选与列表渲染复用。
+  const [spaceHumans, setSpaceHumans] = useState<SpaceMember[]>([]);
+  const [selectedUid, setSelectedUid] = useState<string>("");
   const [role, setRole] = useState("member");
-  const [inviting, setInviting] = useState(false);
+  const [adding, setAdding] = useState(false);
+
+  const rosterByUid = useMemo(() => {
+    const m: Record<string, SpaceMember> = {};
+    for (const s of spaceHumans) m[s.uid] = s;
+    return m;
+  }, [spaceHumans]);
+
+  // 当前 space 全量成员，只保留人（候选来源）。
+  const loadSpaceMembers = useCallback(async (): Promise<SpaceMember[]> => {
+    const members = await SpaceService.shared.getAllMembers(WKApp.shared.currentSpaceId);
+    return members.filter((s) => s.robot === 0);
+  }, []);
 
   const reload = useCallback(() => {
     setLoading(true); setError(null);
     Promise.all([
       listWorkspaceMembers(workspaceId),
       listWorkspaceInvitations(workspaceId).catch(() => [] as Invitation[]),
+      loadSpaceMembers().catch(() => [] as SpaceMember[]),
     ])
-      .then(([m, inv]) => { setMembers(m); setInvites(inv); })
+      .then(([m, inv, humans]) => { setMembers(m); setInvites(inv); setSpaceHumans(humans); })
       .catch((e) => setError(e?.message ?? "load failed"))
       .finally(() => setLoading(false));
-  }, [workspaceId]);
+  }, [workspaceId, loadSpaceMembers]);
   useEffect(reload, [reload]);
 
-  const invite = async () => {
-    if (!email.trim()) { Toast.warning(t("loop.settings.emailRequired")); return; }
-    setInviting(true);
+  // 候选 = space 里的人，排除已是本工作区成员的（按 octo_uid）。
+  const existingOctoUids = useMemo(
+    () => new Set(members.map((m) => m.octo_uid).filter(Boolean) as string[]),
+    [members],
+  );
+  const candidates = useMemo(
+    () => spaceHumans.filter((s) => !existingOctoUids.has(s.uid)),
+    [spaceHumans, existingOctoUids],
+  );
+
+  const add = async () => {
+    if (!selectedUid) return;
+    setAdding(true);
     try {
-      await inviteMember(workspaceId, { email: email.trim(), role });
-      setEmail("");
-      Toast.success(t("loop.settings.invited"));
+      await addOctoMember(workspaceId, { octo_uid: selectedUid, role });
+      setSelectedUid("");
+      Toast.success(t("loop.settings.added"));
       reload();
-    } catch (e) { Toast.error((e as Error)?.message ?? "invite failed"); }
-    finally { setInviting(false); }
+    } catch (e) { Toast.error((e as Error)?.message ?? "add failed"); }
+    finally { setAdding(false); }
   };
 
   const changeRole = async (m: WorkspaceMember, r: string) => {
@@ -142,7 +168,7 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
   const remove = (m: WorkspaceMember) => {
     Modal.confirm({
       title: t("loop.settings.removeMember"),
-      content: m.name || m.email,
+      content: displayName(m),
       okText: t("loop.action.delete"),
       cancelText: t("loop.action.cancel"),
       onOk: async () => {
@@ -164,15 +190,25 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
     });
   };
 
+  // octo 身份优先：按 octo_uid 命中 space 名册取名字，否则回退 multica 侧 name/email。
+  const displayName = (m: WorkspaceMember): string =>
+    (m.octo_uid && rosterByUid[m.octo_uid]?.name) || m.name || m.email || m.octo_uid || m.user_id;
+  const avatarSrc = (m: WorkspaceMember): string | undefined =>
+    m.octo_uid ? WKApp.shared.avatarUser(m.octo_uid) : undefined;
+
   if (loading) return <div style={{ textAlign: "center", padding: 40 }}><Spin /></div>;
   if (error) return <Banner type="danger" description={error} />;
 
   const memberCols = [
-    { title: t("loop.field.name"), dataIndex: "name", render: (v: string, r: WorkspaceMember) => (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-        <Avatar size="extra-small" color="light-blue"><User size={13} /></Avatar>
-        <span><div>{v}</div><Text type="tertiary" style={{ fontSize: 12 }}>{r.email}</Text></span>
-      </span>) },
+    { title: t("loop.field.name"), dataIndex: "name", render: (_v: string, r: WorkspaceMember) => {
+      const src = avatarSrc(r);
+      return (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Avatar size="extra-small" color="light-blue" src={src}>{src ? undefined : <User size={13} />}</Avatar>
+          <span>{displayName(r)}</span>
+        </span>
+      );
+    } },
     { title: t("loop.settings.role"), dataIndex: "role", width: 160, render: (v: string, r: WorkspaceMember) => (
       v === "owner"
         ? <Tag color="amber" size="small">owner</Tag>
@@ -188,11 +224,28 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
   return (
     <div style={{ paddingTop: 12, display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
       <div className="loop-settings-invite">
-        <Input value={email} onChange={setEmail} placeholder={t("loop.settings.inviteEmail")} style={{ flex: 1 }} />
+        <Select
+          filter
+          value={selectedUid || undefined}
+          onChange={(v) => setSelectedUid(v as string)}
+          placeholder={candidates.length ? t("loop.settings.selectMember") : t("loop.settings.noCandidates")}
+          disabled={!candidates.length}
+          style={{ flex: 1 }}
+          emptyContent={t("loop.settings.noCandidates")}
+        >
+          {candidates.map((c) => (
+            <Select.Option key={c.uid} value={c.uid} showTick={false}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <Avatar size="extra-small" color="light-blue" src={WKApp.shared.avatarUser(c.uid)}>{c.name?.slice(0, 1)}</Avatar>
+                <span>{c.name}</span>
+              </span>
+            </Select.Option>
+          ))}
+        </Select>
         <Select value={role} onChange={(v) => setRole(v as string)} style={{ width: 120 }}>
           {ROLES.map((x) => <Select.Option key={x} value={x}>{x}</Select.Option>)}
         </Select>
-        <Button theme="solid" icon={<UserPlus size={14} />} loading={inviting} onClick={invite}>{t("loop.settings.invite")}</Button>
+        <Button theme="solid" icon={<UserPlus size={14} />} loading={adding} disabled={!selectedUid} onClick={add}>{t("loop.settings.addMember")}</Button>
       </div>
 
       <div>
