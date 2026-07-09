@@ -192,7 +192,8 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ file, onError }) => {
   const [activeSheet, setActiveSheet] = useState(0);
   const [parsing, setParsing] = useState(false);
 
-  // 使用共享 Hook 加载文件内容
+  // 使用共享 Hook 加载文件内容（大文件跳过 fetch，避免下载+解析开销）
+  const tooLarge = !!(file.size && isFileTooLarge(file.size));
   const {
     content: buffer,
     loading: fetching,
@@ -201,6 +202,7 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ file, onError }) => {
   } = useFileContent({
     url: file.url,
     responseType: "arraybuffer",
+    enabled: !tooLarge,
   });
 
   // 解析 Excel 内容
@@ -233,19 +235,19 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ file, onError }) => {
     [onError]
   );
 
-  // 当内容加载完成后解析
+  // 当内容加载完成后解析（大文件跳过）
   useEffect(() => {
-    if (buffer) {
+    if (buffer && !tooLarge) {
       parseContent(buffer);
     }
-  }, [buffer, parseContent]);
+  }, [buffer, parseContent, tooLarge]);
 
   // 合并加载和解析状态
   const loading = fetching || parsing;
   const error = fetchError || parseError;
 
   // 文件大小检查（hooks 之后 return，避免 Rules-of-Hooks 违规）
-  if (file.size && isFileTooLarge(file.size)) {
+  if (tooLarge) {
     return (
       <FileTooLarge
         fileName={file.name}
