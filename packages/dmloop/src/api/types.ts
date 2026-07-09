@@ -31,6 +31,9 @@ export interface WorkspaceMember {
   name: string;
   email?: string;
   avatar_url?: string | null;
+  // octo IM uid this multica user is bridged to, or null for native members.
+  // The UI renders member identity (name/avatar) from octo by this uid.
+  octo_uid?: string | null;
 }
 
 export interface Invitation {
