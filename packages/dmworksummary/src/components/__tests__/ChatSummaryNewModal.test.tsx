@@ -52,7 +52,7 @@ vi.mock('../../utils/channelType', () => ({
 }));
 
 vi.mock('../../api/summaryApi', () => ({
-    getTopicTemplates: vi.fn().mockResolvedValue([]),
+    getTopicTemplatesConfig: vi.fn().mockResolvedValue({ templates: [], custom_template_limit: 30 }),
     createSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
 }));
 
@@ -210,7 +210,7 @@ describe('ChatSummaryNewModal', () => {
         expect(inputArea!.querySelector('.chat-summary-modal-templates')).not.toBeInTheDocument();
     });
 
-    it('parameterized template click sets value with placeholder, then focus removes placeholder text', async () => {
+    it('parameterized template click fills the unified topic/context frame', async () => {
         await act(async () => {
             render(<ChatSummaryNewModal {...defaultProps} />);
             await flushPromises();
@@ -220,13 +220,13 @@ describe('ChatSummaryNewModal', () => {
         fireEvent.click(templateCard);
 
         const input = screen.getByPlaceholderText('输入聊天内你想总结的主题') as HTMLTextAreaElement;
-        expect(input.value).toBe('总结 输入项目名称 的项目进展');
+        expect(input.value).toBe('总结主题: 汇总项目进展\n内容重点: 总结进展');
 
         await act(async () => {
             await flushPromises();
         });
 
-        expect(input.value).toBe('总结  的项目进展');
+        expect(input.value).toBe('总结主题: 汇总项目进展\n内容重点: 总结进展');
     });
 
     it('fixed template click does not set placeholder range', async () => {
@@ -242,14 +242,14 @@ describe('ChatSummaryNewModal', () => {
         });
 
         const input = screen.getByPlaceholderText('输入聊天内你想总结的主题') as HTMLTextAreaElement;
-        expect(input.value).toBe('总结每周的工作周报');
+        expect(input.value).toBe('总结主题: 总结团队周报\n内容重点: 总结工作');
 
         await act(async () => {
             fireEvent.focus(input);
             await flushPromises();
         });
 
-        expect(input.value).toBe('总结每周的工作周报');
+        expect(input.value).toBe('总结主题: 总结团队周报\n内容重点: 总结工作');
     });
 
     it('onChange clears placeholder range so subsequent focus does not remove text', async () => {

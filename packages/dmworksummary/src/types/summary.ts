@@ -443,6 +443,20 @@ export interface TopicTemplate {
     type: 'fixed' | 'parameterized';
     pattern: string;
     placeholders?: TopicTemplatePlaceholder[];
+    is_custom?: boolean;
+    is_overridden?: boolean;
+    sort_order?: number;
+}
+
+export interface CustomTopicTemplatePayload {
+    label: string;
+    description: string;
+    pattern?: string;
+}
+
+export interface TopicTemplatesResponse {
+    templates: TopicTemplate[];
+    custom_template_limit: number;
 }
 
 /** 前端兜底主题模板占位符（存 i18n key，渲染期解析为明文） */
