@@ -22,6 +22,10 @@ export {
   REPAIR_ORIGIN,
   REPAIR_CLIENT_ID,
   normalizeElement,
+  buildFileRef,
+  normalizeFileRef,
+  isUsableFileRef,
+  FILE_REF_STATUS,
   elementSupersedes,
   deterministicNonce,
   isValidIndex,
@@ -33,6 +37,7 @@ export {
 export type {
   WhiteboardElement,
   FileRef,
+  FileRefStatus,
   NormalizeContext,
   ParsedWhiteboardName,
 } from '@octo/whiteboard-schema'

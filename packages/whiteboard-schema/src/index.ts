@@ -14,5 +14,6 @@
 export * from './constants.ts'
 export * from './types.ts'
 export * from './normalize.ts'
+export * from './fileRef.ts'
 export * from './name.ts'
 

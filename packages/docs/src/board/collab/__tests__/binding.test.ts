@@ -333,14 +333,22 @@ describe('ExcalidrawYjsBinding', () => {
     expect(binding.__telemetry.skippedEmptyDiff).toBeGreaterThanOrEqual(1)
   })
 
-  it('T9: image files store reference metadata only — never binary in the Y.Doc', () => {
+  it('T9: image files store the canonical ref (attachId/mimeType/status), never binary', async () => {
+    // With the object-store bridge wired, an insert uploads the binary and stores ONLY the canonical
+    // FileRef the shared schema defines ({attachId, mimeType, status, createdAt}) — never the dataURL.
+    binding.setFileSync({ uploader: async () => 'att-9' })
     const img = makeEl('img1', { type: 'image', fileId: 'f1' })
     binding.handleLocalChange([img], {
       f1: { id: 'f1', mimeType: 'image/png', dataURL: 'data:image/png;base64,AAAA', created: 123 },
     })
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
     const yFile = doc.getMap<Y.Map<unknown>>('files').get('f1')!
+    expect(yFile.get('attachId')).toBe('att-9')
     expect(yFile.get('mimeType')).toBe('image/png')
-    expect(yFile.get('created')).toBe(123)
+    expect(yFile.get('status')).toBe('saved')
+    expect(yFile.get('createdAt')).toBe(123)
     expect(yFile.has('dataURL')).toBe(false) // binary stays out of the Y.Doc (XIN-16 §2.2)
   })
 

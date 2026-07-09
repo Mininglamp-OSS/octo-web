@@ -22,7 +22,15 @@
 // dataURL stripped) is mirrored into Y.Map('files') (XIN-16 §2.2). appState is not bound at all.
 
 import * as Y from 'yjs'
-import { ELEMENTS_FIELD, FILES_FIELD, REPAIR_ORIGIN } from './schema.ts'
+import {
+  ELEMENTS_FIELD,
+  FILES_FIELD,
+  REPAIR_ORIGIN,
+  buildFileRef,
+  normalizeFileRef,
+  FILE_REF_STATUS,
+  type FileRef,
+} from './schema.ts'
 import { shouldOverwrite } from './reconcile.ts'
 import { cloneElement, jsonEqual, readAllElements, readElement, upsertElement } from './yElement.ts'
 import { repairForRender } from './repair.ts'
@@ -79,7 +87,7 @@ export interface RenderAdapter {
 }
 
 /** Minimal file-ref shape handed to the fetcher: enough to fetch the binary by its object handle. */
-export interface FileRef {
+export interface FileFetchRef {
   /** Excalidraw file id (the key under `Y.Map('files')` and the element's `fileId`). */
   id: string
   /** Object-store handle returned by the upload endpoint. */
@@ -98,7 +106,7 @@ export type FileUploader = (file: BinaryFileData) => Promise<string | null>
  * Fetch an image binary by its `attachId` and return a `BinaryFileData` (with a `dataURL`) ready to
  * `addFiles()` into the canvas — or null if it could not be fetched. Injected by the host.
  */
-export type FileFetcher = (ref: FileRef) => Promise<BinaryFileData | null>
+export type FileFetcher = (ref: FileFetchRef) => Promise<BinaryFileData | null>
 
 /**
  * Host-injected object-storage bridge (XIN-702). `uploader` runs on local insert and writes the
@@ -111,20 +119,30 @@ export interface FileSync {
   fetcher?: FileFetcher | null
 }
 
-/** Strip a BinaryFileData down to Y.Doc-safe reference metadata (no dataURL/base64). */
-function toFileRef(file: BinaryFileData): Record<string, Json> {
-  const ref: Record<string, Json> = { id: file.id }
-  if (typeof file.mimeType === 'string') ref.mimeType = file.mimeType
-  if (typeof file.created === 'number') ref.created = file.created
-  // attachId is the object-store handle once the upload link is wired; mirror it when present.
-  if (typeof (file as Record<string, unknown>).attachId === 'string') {
-    ref.attachId = (file as Record<string, unknown>).attachId as string
-  }
-  if (typeof (file as Record<string, unknown>).status === 'string') {
-    ref.status = (file as Record<string, unknown>).status as string
-  }
-  // dataURL / blob / base64 are deliberately NOT copied — binary stays in object storage.
-  return ref
+/**
+ * Build the canonical `files[fileId]` reference the Y.Doc stores for an image (XIN-702). The binary
+ * NEVER enters the Y.Doc — only the object-store `attachId` plus `mimeType` / `status` / `createdAt`
+ * (the FILE_REF_FIELDS the backend and frontend share via `@octo/whiteboard-schema`). Excalidraw's
+ * `BinaryFileData.created` maps to the ref's `createdAt`; `dataURL` / `blob` are deliberately never
+ * copied. Returns null when the file has no usable `attachId` yet — a ref with no attachId is the
+ * grey-placeholder bug in data form, so nothing is written until the upload confirms one.
+ */
+function toSavedFileRef(file: BinaryFileData): FileRef | null {
+  const attachId = typeof file.attachId === 'string' ? file.attachId : ''
+  if (attachId.length === 0) return null
+  return buildFileRef({
+    attachId,
+    mimeType: typeof file.mimeType === 'string' ? file.mimeType : undefined,
+    status: FILE_REF_STATUS.saved,
+    createdAt: typeof file.created === 'number' ? file.created : undefined,
+  })
+}
+
+/** Read a per-file `Y.Map` into a plain object so the shared `normalizeFileRef` rule can vet it. */
+function readFileEntry(yFile: Y.Map<unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of yFile.entries()) out[k] = v
+  return out
 }
 
 export class ExcalidrawYjsBinding {
@@ -371,20 +389,16 @@ export class ExcalidrawYjsBinding {
           wrote++
         }
       }
-      // Files: mirror reference metadata only; binary never enters the Y.Doc.
+      // Files: mirror the canonical reference only; the binary never enters the Y.Doc. A freshly
+      // inserted image has no attachId yet — startUpload (below) writes the saved ref once the
+      // object store confirms one. A file that already carries an attachId (re-emit / round-trip) is
+      // mirrored here immediately.
       for (const file of fileEntries) {
         if (!file?.id) continue
         // This client holds the binary for anything it just inserted — never fetch it back later.
         if (typeof file.dataURL === 'string' && file.dataURL.length > 0) this.localFileIds.add(file.id)
-        let yFile = this.files.get(file.id)
-        if (!yFile) {
-          yFile = new Y.Map<unknown>()
-          this.files.set(file.id, yFile)
-        }
-        const ref = toFileRef(file)
-        for (const [k, v] of Object.entries(ref)) {
-          if (!yFile.has(k) || !jsonEqual(yFile.get(k), v)) yFile.set(k, v)
-        }
+        const ref = toSavedFileRef(file)
+        if (ref) this.writeFileRef(file.id, ref)
       }
     }, LOCAL_ORIGIN)
 
@@ -436,11 +450,11 @@ export class ExcalidrawYjsBinding {
   }
 
   /**
-   * Upload a freshly inserted image binary to object storage and mirror the returned attachId into
-   * the Y.Doc file ref (XIN-702). Idempotent: skips files with no binary, files that already carry
-   * an attachId, and files already uploading / uploaded. The attachId write is a separate
-   * LOCAL_ORIGIN transaction — guard 1 ignores it here, and peers see it as a remote ref update and
-   * fetch the binary. The binary itself is NEVER written to the Y.Doc (XIN-16 §2.2).
+   * Upload a freshly inserted image binary to object storage and write the canonical saved file ref
+   * into the Y.Doc (XIN-702). Idempotent: skips files with no binary, files that already carry an
+   * attachId, and files already uploading / uploaded. The ref write is a separate LOCAL_ORIGIN
+   * transaction — guard 1 ignores it here, and peers see it as a remote ref update and fetch the
+   * binary. The binary itself is NEVER written to the Y.Doc (XIN-16 §2.2).
    */
   private startUpload(file: BinaryFileData): void {
     const uploader = this.fileSync?.uploader
@@ -455,18 +469,17 @@ export class ExcalidrawYjsBinding {
     Promise.resolve(uploader(file))
       .then((attachId) => {
         this.uploadingFileIds.delete(id)
-        if (this.destroyed || !attachId) return
+        if (this.destroyed || typeof attachId !== 'string' || attachId.length === 0) return
         this.uploadedFileIds.add(id)
-        // Mirror the durable handle so peers can fetch the binary. Create the ref if a concurrent
-        // prune removed it; only write when the value actually changes (idempotent re-run safe).
-        this.ydoc.transact(() => {
-          let yFile = this.files.get(id)
-          if (!yFile) {
-            yFile = new Y.Map<unknown>()
-            this.files.set(id, yFile)
-          }
-          if (yFile.get('attachId') !== attachId) yFile.set('attachId', attachId)
-        }, LOCAL_ORIGIN)
+        // Write the canonical saved ref ({attachId, mimeType, status:'saved', createdAt}) via the
+        // shared `buildFileRef`, so peers see the same shape the backend authoritative repair reads.
+        const ref = buildFileRef({
+          attachId,
+          mimeType: typeof file.mimeType === 'string' ? file.mimeType : undefined,
+          status: FILE_REF_STATUS.saved,
+          createdAt: typeof file.created === 'number' ? file.created : undefined,
+        })
+        this.ydoc.transact(() => this.writeFileRef(id, ref), LOCAL_ORIGIN)
         this.telemetry.fileUploads++
       })
       .catch(() => {
@@ -476,11 +489,29 @@ export class ExcalidrawYjsBinding {
   }
 
   /**
-   * Rehydrate remote-authored image binaries (XIN-702). For every file ref in the Y.Doc that carries
-   * an attachId, is NOT one this client inserted, and has not already been fetched, pull the binary
-   * by attachId and `addFiles()` it into the canvas so the image renders instead of a grey
-   * placeholder. Each attachId is fetched at most once (dedup sets); errors leave the placeholder and
-   * the next apply retries. Fire-and-forget — never blocks the updateScene path.
+   * Upsert a canonical file ref into the per-file `Y.Map` under `files[fileId]`, creating the map if
+   * absent and writing only fields whose value actually changed (idempotent). Must be called inside a
+   * LOCAL_ORIGIN transaction by the caller so the write is attributed as our own.
+   */
+  private writeFileRef(fileId: string, ref: FileRef): void {
+    let yFile = this.files.get(fileId)
+    if (!yFile) {
+      yFile = new Y.Map<unknown>()
+      this.files.set(fileId, yFile)
+    }
+    for (const [k, v] of Object.entries(ref)) {
+      if (v === undefined) continue
+      if (!yFile.has(k) || !jsonEqual(yFile.get(k), v as Json)) yFile.set(k, v)
+    }
+  }
+
+  /**
+   * Rehydrate remote-authored image binaries (XIN-702). For every file ref in the Y.Doc that is a
+   * USABLE ref (a non-empty attachId, per the shared `normalizeFileRef`/`isUsableFileRef` rule), is
+   * NOT one this client inserted, and has not already been fetched, pull the binary by attachId and
+   * `addFiles()` it into the canvas so the image renders instead of a grey placeholder. Each attachId
+   * is fetched at most once (dedup sets); errors leave the placeholder and the next apply retries.
+   * Fire-and-forget — never blocks the updateScene path.
    */
   private rehydrateFiles(): void {
     const fetcher = this.fileSync?.fetcher
@@ -489,10 +520,11 @@ export class ExcalidrawYjsBinding {
       if (this.localFileIds.has(id) || this.fetchedFileIds.has(id) || this.fetchingFileIds.has(id)) {
         continue
       }
-      const attachId = yFile.get('attachId')
-      if (typeof attachId !== 'string' || attachId.length === 0) continue
-      const rawMime = yFile.get('mimeType')
-      const mimeType = typeof rawMime === 'string' ? rawMime : undefined
+      // One authoritative usability rule, shared FE/BE: a ref with no usable attachId can never
+      // resolve to a binary, so skip it (it is the grey-placeholder failure mode in data form).
+      const ref = normalizeFileRef(readFileEntry(yFile))
+      if (!ref) continue
+      const { attachId, mimeType } = ref
       this.fetchingFileIds.add(id)
       Promise.resolve(fetcher({ id, attachId, mimeType }))
         .then((file) => {

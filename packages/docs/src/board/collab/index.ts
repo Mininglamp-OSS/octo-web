@@ -15,7 +15,7 @@ export type {
   FileSync,
   FileUploader,
   FileFetcher,
-  FileRef,
+  FileFetchRef,
 } from './binding.ts'
 export {
   hashBytesToId,
@@ -35,11 +35,15 @@ export {
   WB_SCHEMA_VERSION,
   WB_ELEMENT_TYPES,
   normalizeElement,
+  buildFileRef,
+  normalizeFileRef,
+  isUsableFileRef,
+  FILE_REF_STATUS,
   buildWhiteboardName,
   parseWhiteboardName,
   SCHEMA_PACKAGE_WIRED,
 } from './schema.ts'
-export type { WhiteboardElement, NormalizeContext } from './schema.ts'
+export type { WhiteboardElement, FileRef, FileRefStatus, NormalizeContext } from './schema.ts'
 export {
   readAllElements,
   readElement,

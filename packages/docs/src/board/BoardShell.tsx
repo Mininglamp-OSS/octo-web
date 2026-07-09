@@ -29,7 +29,7 @@ import { BoardMainMenu, type ExcalidrawMainMenu } from './BoardMainMenu.tsx'
 import { installExcalidrawDebrand } from './excalidrawDebrand.ts'
 import { installLibraryControlButtons } from './libraryControlButtons.ts'
 import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
-import type { ExcalidrawElement, BinaryFileData, FileRef } from './collab/index.ts'
+import type { ExcalidrawElement, BinaryFileData, FileFetchRef } from './collab/index.ts'
 import { makeGenerateIdForFile, dataURLToBlob, blobToDataURL } from './collab/index.ts'
 import { presignUpload, uploadBinary, getReadUrl } from '../attachments/api.ts'
 import {
@@ -202,6 +202,15 @@ function toExcalidrawLang(locale: string): string {
  * a plain-http LAN neither throws nor logs the digest error the built-in generator does.
  */
 const boardGenerateIdForFile = makeGenerateIdForFile()
+
+/**
+ * Board image upload limits mirroring the backend attachments contract (XIN-701): the image tier is
+ * 10 MB and `image/svg+xml` is denied (SVG can carry script → stored-XSS). The backend is the final
+ * authority (it 400s on violation); these client-side guards just avoid a doomed round-trip and keep
+ * an oversize/SVG paste from ever leaving the browser.
+ */
+const MAX_BOARD_IMAGE_BYTES = 10 * 1024 * 1024
+const DENIED_IMAGE_MIME = new Set(['image/svg+xml'])
 
 /** Best-effort theme: follow the OS preference, matching the docs `.octo-theme` media query. */
 function prefersDark(): boolean {
@@ -784,9 +793,21 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       if (!file.dataURL) return null
       const blob = dataURLToBlob(file.dataURL)
       if (!blob) return null // already a remote URL, or not decodable — nothing to upload
+      const mime = file.mimeType ?? blob.type ?? 'application/octet-stream'
+      // Contract limits (XIN-701): SVG is denied (XSS), image tier caps at 10 MB. Skip the upload
+      // rather than fire a request the backend will 400; the image still renders locally for the
+      // author, it just does not sync — surfaced in the console for diagnosis.
+      if (DENIED_IMAGE_MIME.has(mime)) {
+        console.warn('[board] image type not allowed for upload:', mime)
+        return null
+      }
+      if (blob.size > MAX_BOARD_IMAGE_BYTES) {
+        console.warn('[board] image exceeds the 10MB limit, not uploaded:', blob.size)
+        return null
+      }
       const presign = await presignUpload(docId, {
         fileName: file.id,
-        mime: file.mimeType ?? blob.type ?? 'application/octet-stream',
+        mime,
         sizeBytes: blob.size,
       })
       await uploadBinary(presign, blob)
@@ -795,7 +816,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     [docId],
   )
   const fetchBoardFile = useCallback(
-    async (ref: FileRef): Promise<BinaryFileData | null> => {
+    async (ref: FileFetchRef): Promise<BinaryFileData | null> => {
       const read = await getReadUrl(docId, ref.attachId)
       const res = await fetch(read.url)
       if (!res.ok) return null

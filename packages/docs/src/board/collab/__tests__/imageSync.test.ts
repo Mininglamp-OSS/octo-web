@@ -85,8 +85,12 @@ describe('whiteboard image sync (XIN-702)', () => {
       await flushMicrotasks()
 
       const yFile = filesOf(doc).get('f1')!
+      // Canonical FileRef shape from the shared schema (buildFileRef): attachId + mimeType +
+      // status:'saved' + createdAt. Binary itself never enters the Y.Doc (XIN-16 §2.2).
       expect(yFile.get('attachId')).toBe('att-remote-1')
-      // binary itself still never enters the Y.Doc (XIN-16 §2.2).
+      expect(yFile.get('mimeType')).toBe('image/png')
+      expect(yFile.get('status')).toBe('saved')
+      expect(yFile.get('createdAt')).toBe(1)
       expect(yFile.has('dataURL')).toBe(false)
     })
 
