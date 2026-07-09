@@ -84,6 +84,36 @@ OIDC 按钮和本地账号密码登录共存于同一页面，用户自由选择
 - 友好的时间格式（今天 HH:mm / 昨天 HH:mm / MM-dd HH:mm / yyyy-MM-dd HH:mm）
 - 空状态遮罩提示
 
+### 流式回复渲染
+
+AI Agent 的回复以流式方式实时呈现：
+
+- WebSocket 接收 `stream_start` / `stream_chunk` / `stream_end` 三阶段事件
+- 流式过程中显示"🦞 Lobster 正在思考…"指示器和 spinner
+- 消息内容增量追加，流式中显示"● 输入中…"标记
+- 流式完成后标记转为正常消息
+
+### 文件 / 图片上传
+
+- 聊天输入区提供 📎（文件）和 🖼️（图片）两个附件按钮
+- 通过 `FilePicker` 选择文件，`multipart/form-data` 上传到服务端
+- 消息列表中图片直接预览（最大高度 200px），文件显示为卡片（文件名 + 大小）
+- 文件大小自动格式化（B / KB / MB / GB）
+
+### 系统托盘集成
+
+- `ITrayService` 抽象接口，跨平台兼容（非 Windows 平台为 no-op）
+- Windows 平台通过 `WindowsTrayService` 实现（Win32 NotifyIcon scaffold）
+- 窗口关闭时可最小化到托盘而非退出
+- 托盘右键菜单：显示窗口 / 退出
+
+### 自动更新
+
+- 启动时非阻塞检查 `GET /v1/common/version` 获取最新版本
+- Semver 比较（`major.minor.patch`），发现新版本时弹窗提示
+- 用户可选择"确定"打开下载页面，或"稍后"跳过
+- 版本检查失败静默忽略，不影响正常使用
+
 ### 窗口管理（Windows）
 
 - 默认窗口 1180×760，最小 880×560
@@ -114,12 +144,14 @@ apps/octo-maui/
     │   ├── ServerInfo           #   服务端能力（OIDC 提供商等）
     │   └── ServerHistoryEntry   #   历史记录条目
     ├── Services/                # 服务层
-    │   ├── ApiService           #   REST 客户端（可运行时切换 BaseUrl）
+    │   ├── ApiService           #   REST 客户端（含文件上传 UploadFileAsync）
     │   ├── AuthService          #   会话管理（token 持久化 + OIDC 登录）
     │   ├── ServerConfigService  #   服务端地址管理 + ProbeAsync 探测
     │   ├── ServerHistoryService #   历史记录（JSON 存储，最多 5 条）
-    │   ├── WebSocketService     #   实时消息
-    │   └── ThemeService         #   主题切换
+    │   ├── WebSocketService     #   实时消息（含流式 stream_start/chunk/end）
+    │   ├── ThemeService         #   主题切换
+    │   ├── TrayService          #   系统托盘（跨平台抽象 + Windows 实现）
+    │   └── UpdateService        #   自动更新（版本检查 + semver 比较）
     ├── Resources/               # 样式、颜色、图标、启动屏
     │   ├── Colors.xaml          #   浅色色板 + 转换器
     │   ├── Colors.Dark.xaml     #   深色色板
@@ -161,7 +193,9 @@ apps/octo-maui/
 | `/channel/list` | GET | 获取频道列表 |
 | `/channel/{id}/messages` | GET | 获取频道消息历史 |
 | `/channel/{id}/message/send` | POST | 发送消息 |
+| `/channel/{id}/message/upload` | POST | 上传文件 / 图片（multipart/form-data） |
 | `/v1/common/appconfig` | GET | 获取服务端配置（含 OIDC 提供商） |
+| `/v1/common/version` | GET | 获取最新客户端版本（用于自动更新检查） |
 | `/v1/user/thirdlogin/authcode` | GET | 获取 OIDC 一次性授权码 |
 | `/v1/user/thirdlogin/authstatus` | GET | 轮询 OIDC 登录状态 |
 
@@ -174,12 +208,15 @@ apps/octo-maui/
 - ✅ 聊天界面（消息列表 + 频道侧边栏 + WebSocket）
 - ✅ 主题系统（浅色 / 深色 / 跟随系统）
 - ✅ 窗口管理（位置持久化 + 最小尺寸限制）
+- ✅ 流式回复渲染（stream_start / stream_chunk / stream_end + 打字指示器）
+- ✅ 文件 / 图片上传（multipart/form-data + FilePicker + 图片预览 + 文件卡片）
+- ✅ 系统托盘集成（ITrayService 接口 + Windows 平台 scaffold）
+- ✅ 自动更新（GET /v1/common/version + semver 比较 + 启动时弹窗提示）
 
-待实现：
-- ⬜ 流式回复渲染
-- ⬜ 文件 / 图片上传
-- ⬜ 系统托盘集成
-- ⬜ 自动更新
+待优化：
+- ⬜ Windows 托盘 Win32 NotifyIcon 完整实现（当前为 scaffold）
+- ⬜ 流式回复的 Markdown / 代码块渲染
+- ⬜ 拖拽上传支持
 
 ## 许可
 

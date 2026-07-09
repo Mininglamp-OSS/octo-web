@@ -29,6 +29,39 @@ public sealed class Message
     [JsonPropertyName("timestamp")]
     public long TimestampMs { get; set; }
 
+    // --- attachment fields (for image / file messages) ---
+
+    /// <summary>Remote URL for image/file attachments.</summary>
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
+
+    /// <summary>Original file name for attachments.</summary>
+    [JsonPropertyName("file_name")]
+    public string? FileName { get; set; }
+
+    /// <summary>File size in bytes (for display).</summary>
+    [JsonPropertyName("file_size")]
+    public long FileSize { get; set; }
+
+    /// <summary>True if this message has an image attachment.</summary>
+    [JsonIgnore]
+    public bool HasImage => Type == MessageType.Image && !string.IsNullOrWhiteSpace(Url);
+
+    /// <summary>True if this message has a file attachment.</summary>
+    [JsonIgnore]
+    public bool HasFile => Type == MessageType.File && !string.IsNullOrWhiteSpace(FileName);
+
+    /// <summary>Human-readable file size (e.g. "1.2 MB").</summary>
+    [JsonIgnore]
+    public string FileSizeText => FileSize switch
+    {
+        0 => "",
+        < 1024 => $"{FileSize} B",
+        < 1024 * 1024 => $"{FileSize / 1024.0:F1} KB",
+        < 1024 * 1024 * 1024 => $"{FileSize / (1024.0 * 1024):F1} MB",
+        _ => $"{FileSize / (1024.0 * 1024 * 1024):F2} GB",
+    };
+
     [JsonIgnore]
     public DateTimeOffset CreatedAt =>
         DateTimeOffset.FromUnixTimeMilliseconds(TimestampMs);

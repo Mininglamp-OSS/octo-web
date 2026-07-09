@@ -90,7 +90,7 @@
 
         <!-- ===== Chat area ===== -->
         <Grid Grid.Column="1"
-              RowDefinitions="Auto,*,Auto"
+              RowDefinitions="Auto,*,Auto,Auto"
               BackgroundColor="{DynamicResource PageBackground}">
 
             <!-- Chat header -->
@@ -117,22 +117,59 @@
                             Margin="0">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="models:Message">
-                        <Grid Padding="16,6" ColumnDefinitions="Auto,*">
+                        <Grid Padding="16,6" ColumnDefinitions="100,*">
                             <Label Grid.Column="0"
                                    Text="{Binding SenderName}"
                                    FontAttributes="Bold"
                                    FontSize="13"
                                    TextColor="{DynamicResource Primary}"
-                                   WidthRequest="100"
                                    LineBreakMode="TailTruncation"
                                    VerticalOptions="Start" />
                             <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <!-- Text content -->
                                 <Label Text="{Binding Content}"
                                        FontSize="14"
-                                       TextColor="{DynamicResource PrimaryText}" />
-                                <Label Text="{Binding CreatedAtFormatted}"
-                                       FontSize="10"
-                                       TextColor="{DynamicResource SecondaryText}" />
+                                       TextColor="{DynamicResource PrimaryText}"
+                                       IsVisible="{Binding HasImage, Converter={StaticResource InverseBoolConverter}}" />
+
+                                <!-- Image attachment -->
+                                <Image Source="{Binding Url}"
+                                       MaximumHeightRequest="200"
+                                       Aspect="AspectFill"
+                                       IsVisible="{Binding HasImage}" />
+
+                                <!-- File attachment -->
+                                <Border IsVisible="{Binding HasFile}"
+                                        BackgroundColor="{DynamicResource CardBackground}"
+                                        Stroke="{DynamicResource Border}"
+                                        StrokeThickness="1"
+                                        Padding="10,8"
+                                        StrokeShape="RoundRectangle 8">
+                                    <HorizontalStackLayout Spacing="8">
+                                        <Label Text="📄" FontSize="20" VerticalOptions="Center" />
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="{Binding FileName}"
+                                                   FontSize="13"
+                                                   TextColor="{DynamicResource PrimaryText}"
+                                                   LineBreakMode="TailTruncation"
+                                                   MaxLines="1" />
+                                            <Label Text="{Binding FileSizeText}"
+                                                   FontSize="11"
+                                                   TextColor="{DynamicResource SecondaryText}" />
+                                        </VerticalStackLayout>
+                                    </HorizontalStackLayout>
+                                </Border>
+
+                                <!-- Timestamp + streaming indicator -->
+                                <HorizontalStackLayout Spacing="4">
+                                    <Label Text="{Binding CreatedAtFormatted}"
+                                           FontSize="10"
+                                           TextColor="{DynamicResource SecondaryText}" />
+                                    <Label Text="● 输入中…"
+                                           FontSize="10"
+                                           TextColor="{DynamicResource Accent}"
+                                           IsVisible="{Binding IsStreaming}" />
+                                </HorizontalStackLayout>
                             </VerticalStackLayout>
                         </Grid>
                     </DataTemplate>
@@ -161,20 +198,58 @@
                 </VerticalStackLayout>
             </Grid>
 
-            <!-- Composer -->
+            <!-- Typing indicator -->
             <Border Grid.Row="2"
                     BackgroundColor="{DynamicResource HeaderBackground}"
                     StrokeThickness="0"
+                    Padding="16,6"
+                    IsVisible="{Binding IsAgentTyping}">
+                <HorizontalStackLayout Spacing="6">
+                    <Label Text="🦞"
+                           FontSize="14"
+                           VerticalOptions="Center" />
+                    <Label Text="Lobster 正在思考…"
+                           FontSize="12"
+                           TextColor="{DynamicResource SecondaryText}"
+                           VerticalOptions="Center" />
+                    <ActivityIndicator Color="{DynamicResource Primary}"
+                                       IsRunning="True"
+                                       WidthRequest="14"
+                                       HeightRequest="14"
+                                       VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </Border>
+
+            <!-- Composer -->
+            <Border Grid.Row="3"
+                    BackgroundColor="{DynamicResource HeaderBackground}"
+                    StrokeThickness="0"
                     Padding="12,8">
-                <Grid ColumnDefinitions="*,Auto">
-                    <Entry Grid.Column="0"
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                    <Button Grid.Column="0"
+                            Text="📎"
+                            Command="{Binding AttachFileCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="{DynamicResource SecondaryText}"
+                            FontSize="18"
+                            Padding="8,2"
+                            Margin="0,0,4,0" />
+                    <Button Grid.Column="1"
+                            Text="🖼️"
+                            Command="{Binding AttachImageCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="{DynamicResource SecondaryText}"
+                            FontSize="18"
+                            Padding="8,2"
+                            Margin="0,0,4,0" />
+                    <Entry Grid.Column="2"
                            Text="{Binding Draft}"
                            Placeholder="输入消息，按 Enter 发送…"
                            ReturnType="Send"
                            ReturnCommand="{Binding SendCommand}"
                            FontSize="14"
                            HeightRequest="38" />
-                    <Button Grid.Column="1"
+                    <Button Grid.Column="3"
                             Text="发送"
                             Command="{Binding SendCommand}"
                             BackgroundColor="{DynamicResource Primary}"

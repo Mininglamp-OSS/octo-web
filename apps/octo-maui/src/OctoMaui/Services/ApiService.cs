@@ -92,6 +92,19 @@ public sealed class ApiService : IApiService
         return await SendAsync<Message>(req, ct);
     }
 
+    /// <inheritdoc />
+    public async Task<Message> UploadFileAsync(string token, string channelId, Stream fileStream, string fileName, string contentType, CancellationToken ct = default)
+    {
+        using var req = Authed(token, HttpMethod.Post, $"/channel/{channelId}/message/upload");
+        using var multipart = new MultipartFormDataContent();
+        var fileContent = new StreamContent(fileStream);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        multipart.Add(fileContent, "file", fileName);
+        multipart.Add(new StringContent(channelId), "channel_id");
+        req.Content = multipart;
+        return await SendAsync<Message>(req, ct);
+    }
+
     // --- OIDC / enterprise passport (SSO) ---
     // These endpoints use the /v1/* path prefix (matching the web client's
     // oidc/http.ts) and do not require a token — they're pre-authentication.

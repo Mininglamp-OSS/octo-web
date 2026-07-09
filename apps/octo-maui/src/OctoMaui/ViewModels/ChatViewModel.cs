@@ -7,7 +7,8 @@ namespace OctoMaui.ViewModels;
 
 /// <summary>
 /// Drives the main chat surface: channel list on the left, message stream on
-/// the right, plus a send box. Subscribes to live WebSocket pushes.
+/// the right, plus a send box. Subscribes to live WebSocket pushes including
+/// streaming AI agent replies and supports file/image attachments.
 /// </summary>
 public sealed class ChatViewModel : ViewModelBase
 {
@@ -15,6 +16,9 @@ public sealed class ChatViewModel : ViewModelBase
     private readonly IApiService _api;
     private readonly IWebSocketService _ws;
     private readonly IThemeService _theme;
+
+    /// <summary>Tracks the streaming message being built (messageId -> Message).</summary>
+    private readonly Dictionary<string, Message> _streamingMessages = new();
 
     public ChatViewModel(IAuthService auth, IApiService api, IWebSocketService ws, IThemeService theme)
     {
@@ -27,8 +31,13 @@ public sealed class ChatViewModel : ViewModelBase
         LogoutCommand = CreateCommand(async () => await LogoutAsync());
         ToggleThemeCommand = CreateCommand(async () => await ToggleThemeAsync());
         SwitchServerCommand = CreateCommand(async () => await SwitchServerAsync());
+        AttachFileCommand = CreateCommand(async () => await AttachFileAsync(), () => SelectedChannel is not null);
+        AttachImageCommand = CreateCommand(async () => await AttachImageAsync(), () => SelectedChannel is not null);
 
         _ws.MessageReceived += OnMessageReceived;
+        _ws.StreamStarted += OnStreamStarted;
+        _ws.StreamChunkReceived += OnStreamChunkReceived;
+        _ws.StreamEnded += OnStreamEnded;
         _ws.ConnectionClosed += OnConnectionClosed;
         _theme.ThemeChanged += (_, _) => MainThread.BeginInvokeOnMainThread(RefreshThemeLabel);
         Messages.CollectionChanged += (_, _) => IsEmpty = Messages.Count == 0;
@@ -59,6 +68,13 @@ public sealed class ChatViewModel : ViewModelBase
     public bool IsLoading { get => Get<bool>(); set => Set(value); }
     public string StatusText { get => Get<string>(); set => Set(value); } = string.Empty;
 
+    /// <summary>True when an AI agent is actively streaming a reply (typing indicator).</summary>
+    public bool IsAgentTyping
+    {
+        get => Get<bool>();
+        set => Set(value);
+    }
+
     /// <summary>Localized label for the theme toggle button.</summary>
     public string ThemeLabel { get => Get<string>(); set => Set(value); } = "主题";
 
@@ -66,6 +82,8 @@ public sealed class ChatViewModel : ViewModelBase
     public ICommand LogoutCommand { get; }
     public ICommand ToggleThemeCommand { get; }
     public ICommand SwitchServerCommand { get; }
+    public ICommand AttachFileCommand { get; }
+    public ICommand AttachImageCommand { get; }
 
     // --- lifecycle ---
 
@@ -148,7 +166,121 @@ public sealed class ChatViewModel : ViewModelBase
     private void OnMessageReceived(Message msg)
     {
         if (msg.ChannelId != SelectedChannel?.Id) return;
+        // If this is the final version of a streamed message, remove the
+        // streaming placeholder before adding the complete one.
+        if (_streamingMessages.TryGetValue(msg.Id, out var placeholder))
+        {
+            Messages.Remove(placeholder);
+            _streamingMessages.Remove(msg.Id);
+        }
         Messages.Add(msg);
+    }
+
+    // --- streaming reply handling ---
+
+    private void OnStreamStarted(string messageId)
+    {
+        IsAgentTyping = true;
+        // Create a placeholder streaming message.
+        var msg = new Message
+        {
+            Id = messageId,
+            ChannelId = SelectedChannel?.Id ?? "",
+            FromUid = "agent",
+            SenderName = "🦞 Lobster",
+            Content = "",
+            IsStreaming = true,
+            TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+        };
+        _streamingMessages[messageId] = msg;
+        Messages.Add(msg);
+    }
+
+    private void OnStreamChunkReceived(string messageId, string chunk)
+    {
+        if (_streamingMessages.TryGetValue(messageId, out var msg))
+        {
+            // Append chunk to the message content.
+            msg.Content += chunk;
+            // Force the CollectionView to refresh this item by replacing it.
+            var idx = Messages.IndexOf(msg);
+            if (idx >= 0)
+            {
+                Messages[idx] = msg;
+            }
+        }
+    }
+
+    private void OnStreamEnded(string messageId)
+    {
+        IsAgentTyping = false;
+        if (_streamingMessages.TryGetValue(messageId, out var msg))
+        {
+            msg.IsStreaming = false;
+            _streamingMessages.Remove(messageId);
+            // Final refresh.
+            var idx = Messages.IndexOf(msg);
+            if (idx >= 0)
+            {
+                Messages[idx] = msg;
+            }
+        }
+    }
+
+    // --- file / image upload ---
+
+    private async Task AttachFileAsync()
+    {
+        if (SelectedChannel is null) return;
+        try
+        {
+            var result = await FilePicker.PickAsync(new PickOptions
+            {
+                PickerTitle = "选择文件",
+                FileTypes = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
+                {
+                    { DevicePlatform.WinUI, new[] { "*" } },
+                    { DevicePlatform.macOS, new[] { "*" } },
+                    { DevicePlatform.Android, new[] { "*" } },
+                    { DevicePlatform.iOS, new[] { "*" } },
+                }),
+            });
+            if (result is null) return;
+
+            using var stream = await result.OpenReadAsync();
+            var contentType = result.ContentType ?? "application/octet-stream";
+            StatusText = "正在上传文件…";
+            await _api.UploadFileAsync(_auth.Token!, SelectedChannel.Id, stream, result.FileName, contentType);
+            StatusText = "已上传";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"上传失败: {ex.Message}";
+        }
+    }
+
+    private async Task AttachImageAsync()
+    {
+        if (SelectedChannel is null) return;
+        try
+        {
+            var result = await FilePicker.PickAsync(new PickOptions
+            {
+                PickerTitle = "选择图片",
+                FileTypes = FilePickerFileType.Images,
+            });
+            if (result is null) return;
+
+            using var stream = await result.OpenReadAsync();
+            var contentType = result.ContentType ?? "image/png";
+            StatusText = "正在上传图片…";
+            await _api.UploadFileAsync(_auth.Token!, SelectedChannel.Id, stream, result.FileName, contentType);
+            StatusText = "已上传";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"上传失败: {ex.Message}";
+        }
     }
 
     private void OnConnectionClosed(Exception ex)

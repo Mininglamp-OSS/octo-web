@@ -35,6 +35,9 @@ public interface IApiService
     /// <summary>Send a text message to a channel.</summary>
     Task<Message> SendMessageAsync(string token, string channelId, string content, CancellationToken ct = default);
 
+    /// <summary>Upload a file/image to a channel via multipart/form-data.</summary>
+    Task<Message> UploadFileAsync(string token, string channelId, Stream fileStream, string fileName, string contentType, CancellationToken ct = default);
+
     // --- OIDC / enterprise passport (SSO) ---
 
     /// <summary>

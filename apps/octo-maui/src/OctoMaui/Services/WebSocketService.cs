@@ -21,6 +21,9 @@ public sealed class WebSocketService : IWebSocketService, IAsyncDisposable
     public bool IsConnected => _socket?.State == WebSocketState.Open;
 
     public event Action<Message>? MessageReceived;
+    public event Action<string, string>? StreamChunkReceived;  // (messageId, chunk)
+    public event Action<string>? StreamStarted;  // messageId
+    public event Action<string>? StreamEnded;    // messageId
     public event Action? ChannelUpdated;
     public event Action<Exception>? ConnectionClosed;
 
@@ -111,6 +114,28 @@ public sealed class WebSocketService : IWebSocketService, IAsyncDisposable
                     var msg = JsonSerializer.Deserialize<Message>(raw, JsonCaseInsensitive);
                     if (msg is not null)
                         MainThread.BeginInvokeOnMainThread(() => MessageReceived?.Invoke(msg));
+                    break;
+
+                case "stream_start":
+                    {
+                        var msgId = doc.RootElement.TryGetProperty("message_id", out var mid) ? mid.GetString() ?? "" : "";
+                        MainThread.BeginInvokeOnMainThread(() => StreamStarted?.Invoke(msgId));
+                    }
+                    break;
+
+                case "stream_chunk":
+                    {
+                        var msgId = doc.RootElement.TryGetProperty("message_id", out var mid) ? mid.GetString() ?? "" : "";
+                        var chunk = doc.RootElement.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "";
+                        MainThread.BeginInvokeOnMainThread(() => StreamChunkReceived?.Invoke(msgId, chunk));
+                    }
+                    break;
+
+                case "stream_end":
+                    {
+                        var msgId = doc.RootElement.TryGetProperty("message_id", out var mid) ? mid.GetString() ?? "" : "";
+                        MainThread.BeginInvokeOnMainThread(() => StreamEnded?.Invoke(msgId));
+                    }
                     break;
 
                 case "channel_update":

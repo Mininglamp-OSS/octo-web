@@ -17,8 +17,11 @@ public partial class App : Application
     private const string PrefY = "win.y";
     private const string PrefW = "win.w";
     private const string PrefH = "win.h";
+    private const string PrefMinimizeToTray = "win.minimize_to_tray";
 
     private readonly IAuthService? _auth;
+    private readonly ITrayService? _tray;
+    private readonly IUpdateService? _update;
 
     public App()
     {
@@ -27,17 +30,15 @@ public partial class App : Application
         // App is created very early, so we resolve lazily on first use.
     }
 
-    private IAuthService? ResolveAuth()
+    private T? Resolve<T>() where T : class
     {
-        try
-        {
-            return Handler?.MauiContext?.Services?.GetService<IAuthService>();
-        }
-        catch
-        {
-            return null;
-        }
+        try { return Handler?.MauiContext?.Services?.GetService<T>(); }
+        catch { return null; }
     }
+
+    private IAuthService? ResolveAuth() => Resolve<IAuthService>();
+    private ITrayService? ResolveTray() => Resolve<ITrayService>();
+    private IUpdateService? ResolveUpdate() => Resolve<IUpdateService>();
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
@@ -72,7 +73,45 @@ public partial class App : Application
         window.SizeChanged += (_, _) => SaveBounds(window);
         window.PageAppearing += OnPageAppearing;
 
+        // Initialize system tray + update check once DI is ready.
+        _ = InitializeTrayAndUpdatesAsync(window);
+
         return window;
+    }
+
+    private async Task InitializeTrayAndUpdatesAsync(Window window)
+    {
+        await Task.Delay(500); // Let DI container finish building.
+
+        // --- System tray ---
+        var tray = _tray ?? ResolveTray();
+        if (tray is { IsSupported: true })
+        {
+            await tray.InitializeAsync();
+            // Minimize to tray instead of taskbar when the window is hidden.
+            window.Destroying += (_, _) => tray.Remove();
+        }
+
+        // --- Auto-update check (non-blocking) ---
+        var update = _update ?? ResolveUpdate();
+        if (update is not null)
+        {
+            update.UpdateFound += () =>
+                MainThread.BeginInvokeOnMainThread(async () =>
+                {
+                    if (window.Page is { } page)
+                    {
+                        var ok = await page.DisplayAlert(
+                            "发现新版本",
+                            $"当前版本 {update.CurrentVersion}，最新版本 {update.LatestVersion}。\n" +
+                            $"点击确定打开下载页面。",
+                            "确定", "稍后");
+                        if (ok && update.DownloadUrl is { } url)
+                            await Browser.OpenAsync(url);
+                    }
+                });
+            _ = update.CheckForUpdatesAsync();
+        }
     }
 
     private void OnPageAppearing(object? sender, EventArgs e)
