@@ -16,6 +16,8 @@ import {
   clearLocalPointer,
   readBoardCollaborators,
   presenceDelta,
+  resolveCollaboratorNames,
+  type BoardCollaborator,
 } from '../presence.ts'
 
 /** Mirror the provider's awareness fan-out: push `from`'s full state into `to`. */
@@ -96,5 +98,42 @@ describe('board presence cross-peer sync (XIN-111 / case8)', () => {
     const seen = readBoardCollaborators(b).get(String(a.clientID))
     expect(seen?.pointer).toBeUndefined() // cursor gone
     expect(seen?.username).toBe('Alice') // still online
+  })
+})
+
+describe('collaborator label resolves uid → display name (XIN-680)', () => {
+  const UID = '5904fca8ebe44ee6a8d8d7bd92228e0e' // the raw 32-hex id from the boss screenshot
+
+  it('overwrites a peer-published raw uid with the viewer directory name, keyed by id', () => {
+    const docA = new Y.Doc()
+    const docB = new Y.Doc()
+    const a = new Awareness(docA)
+    const b = new Awareness(docB)
+
+    // A's own member list had not resolved, so it broadcasts its uid as the name (userName || uid).
+    setLocalPresenceUser(a, { id: UID, name: UID })
+    publishLocalPointer(a, { x: 10, y: 10 }, 'up')
+    const update = encodeAwarenessUpdate(a, Array.from(a.getStates().keys()))
+    applyAwarenessUpdate(b, update, 'remote')
+
+    const raw = readBoardCollaborators(b).get(String(a.clientID))
+    expect(raw?.username).toBe(UID) // pre-fix: the id leaks into the label
+
+    // B's space-member directory knows the name → the label resolves to it.
+    const names = new Map([[UID, 'Ada Lovelace']])
+    const resolved = resolveCollaboratorNames(readBoardCollaborators(b), names).get(String(a.clientID))
+    expect(resolved?.username).toBe('Ada Lovelace')
+  })
+
+  it('keeps the peer-published username when the uid is unknown to the viewer', () => {
+    const map = new Map<string, BoardCollaborator>([['c1', { id: 'unknown-uid', username: 'Bob' }]])
+    resolveCollaboratorNames(map, new Map())
+    expect(map.get('c1')?.username).toBe('Bob')
+  })
+
+  it('resolves a peer that published no name at all once the directory is known', () => {
+    const map = new Map<string, BoardCollaborator>([['c1', { id: UID }]])
+    resolveCollaboratorNames(map, new Map([[UID, 'Ada Lovelace']]))
+    expect(map.get('c1')?.username).toBe('Ada Lovelace')
   })
 })

@@ -120,3 +120,19 @@
 .excalidraw.excalidraw-modal-container .HelpDialog__header {
   display: none;
 }
+
+/* Remove Excalidraw's built-in collaborator avatar stack (the `.UserList` block in the canvas
+   top-right, near the 素材库 library controls). The board already shows the canonical presence
+   display in its own header (PresenceBar, top-right next to 成员), so Excalidraw's UserList is a
+   redundant second collaborator display (XIN-680, boss add-on). This hides only the DOM avatar
+   list — remote cursors are drawn on the canvas from appState.collaborators and are untouched, so
+   presence itself is preserved.
+
+   As with the Help-dialog header above, this is only the no-flash first-paint layer; the runtime
+   guarantee is the inline `display: none` set by installExcalidrawDebrand(). Excalidraw's own
+   `.excalidraw .UserList__wrapper { display: flex }` (two classes) loads from a dynamic import
+   after this file, so we scope under `.octo-board-canvas` for a higher specificity that wins on a
+   tie regardless of load order. */
+.octo-board-canvas .excalidraw .UserList__wrapper {
+  display: none;
+}

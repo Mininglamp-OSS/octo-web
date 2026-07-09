@@ -2,7 +2,8 @@
 // Usage: node dev/run-smoke.mjs   (expects the standalone dev server on :4178)
 import { chromium } from '@playwright/test'
 
-const URL = 'http://localhost:4179/smoke.html'
+const PORT = process.env.HARNESS_PORT || '4178'
+const URL = `http://localhost:${PORT}/smoke.html`
 const OUT = 'dev/smoke-out'
 const fail = (msg) => {
   console.error('SMOKE FAIL:', msg)

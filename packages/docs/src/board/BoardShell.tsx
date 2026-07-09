@@ -35,6 +35,7 @@ import {
   publishLocalPointer,
   clearLocalPointer,
   readBoardCollaborators,
+  resolveCollaboratorNames,
   type BoardCollaborator,
   type BoardPresenceUser,
 } from './collab/presence.ts'
@@ -795,7 +796,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     if (!awareness) return
     if (user) setLocalPresenceUser(awareness, user)
     const update = () => {
-      const map = readBoardCollaborators(awareness)
+      // Resolve each remote peer's cursor/online label from THIS client's space-member directory
+      // (`names`), keyed by the peer's uid — the same seam MemberPanel and the doc caret use. A peer
+      // whose own member list had not resolved broadcasts its raw uid, which surfaced verbatim in
+      // the label (XIN-680); the viewer's directory is authoritative, so it wins when known. Re-runs
+      // when `names` resolves (dep below), so a late-loading directory relabels peers in place.
+      const map = resolveCollaboratorNames(readBoardCollaborators(awareness), names)
       collaboratorsRef.current = map
       excalidrawApi?.updateScene({ collaborators: map })
     }
@@ -806,7 +812,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       // Drop our cursor so peers stop drawing a stale one once we leave this board.
       clearLocalPointer(awareness)
     }
-  }, [collabSession, user, excalidrawApi])
+  }, [collabSession, user, excalidrawApi, names])
 
   // Excalidraw's live pointer (scene coords) → provider.awareness, so remote peers render this
   // cursor. No Y.Doc write; inert when there is no session.
@@ -998,7 +1004,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           {/* From here the cluster mirrors the doc header: presence → forward → members → ≡ more.
               Comments are dropped (doc-specific: they anchor to text ranges the board has none of). */}
           {collabSession?.provider && (
-            <PresenceBar provider={collabSession.provider} connState={connState} synced={synced} />
+            <PresenceBar provider={collabSession.provider} connState={connState} synced={synced} names={names} />
           )}
           {role && canForward && (
             <button

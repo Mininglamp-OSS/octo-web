@@ -6,7 +6,9 @@
  *     GitHub issues / YouTube (XIN-531 item 2), and
  *   - the "更多工具 → Mermaid 至 Excalidraw" dropdown item (`toolBar.mermaidToExcalidraw`), and
  *   - the Mermaid dialog title + description (`mermaid.title` / `mermaid.description`) (items 3 & 4), and
- *   - the "浏览素材库 / Browse libraries" online entry in the library panel (XIN-557).
+ *   - the "浏览素材库 / Browse libraries" online entry in the library panel (XIN-557), and
+ *   - Excalidraw's built-in collaborator avatar stack (`.UserList__wrapper`), a redundant second
+ *     presence display next to the board's own header PresenceBar (XIN-680).
  *
  * Why not i18n override: 0.18.1 exposes no way to override individual translations. `t()` reads a
  * module-private `currentLangData`, and there is no `langData` prop or setter on the public API.
@@ -77,13 +79,21 @@ const HELP_DIALOG_HEADER_SELECTOR = '.HelpDialog__header'
 // not carry this class, so removing it leaves every local capability intact.
 const LIBRARY_BROWSE_BUTTON_SELECTOR = '.library-menu-browse-button'
 
+// Excalidraw's built-in collaborator avatar stack (XIN-680). It renders in the canvas top-right
+// zone (`.layer-ui__wrapper__top-right`), by the 素材库 library controls, from appState.collaborators
+// — the same data that draws the remote cursors. The board already shows the canonical presence
+// display in its own header (PresenceBar), so this is a redundant second collaborator display. We
+// hide the wrapper (leaving the node so Excalidraw's React tree still reconciles it, and cursors —
+// canvas-drawn, not part of this DOM — stay); the count badge on the collab button goes with it.
+const COLLABORATOR_USERLIST_SELECTOR = '.UserList__wrapper'
+
 /**
- * Hide the help-dialog brand header via an inline `display: none`. Inline style beats any stylesheet
- * rule regardless of load order (the tie that let the CSS-only attempt fail — see the module doc),
- * and leaving the node in place keeps Excalidraw's React tree able to unmount the dialog. Idempotent:
- * only writes when the node is not already hidden.
+ * Hide an element via an inline `display: none`. Inline style beats any stylesheet rule regardless
+ * of load order (the tie that let the CSS-only attempt fail — see the module doc), and leaving the
+ * node in place keeps Excalidraw's React tree able to reconcile/unmount it. Idempotent: only writes
+ * when the node is not already hidden.
  */
-function hideHelpDialogHeader(el: Element): void {
+function hideElementInline(el: Element): void {
   if (el instanceof HTMLElement && el.style.display !== 'none') {
     el.style.display = 'none'
   }
@@ -122,8 +132,13 @@ function removeOnlineLibraryEntry(el: Element): void {
 /** Apply every de-brand operation to the target surfaces inside (or equal to) `el`. Idempotent. */
 function debrandWithin(el: Element): void {
   // Item 2: hide the four upstream brand link buttons at the top of the Help dialog.
-  el.querySelectorAll(HELP_DIALOG_HEADER_SELECTOR).forEach(hideHelpDialogHeader)
-  if (el.matches(HELP_DIALOG_HEADER_SELECTOR)) hideHelpDialogHeader(el)
+  el.querySelectorAll(HELP_DIALOG_HEADER_SELECTOR).forEach(hideElementInline)
+  if (el.matches(HELP_DIALOG_HEADER_SELECTOR)) hideElementInline(el)
+
+  // XIN-680: hide Excalidraw's redundant built-in collaborator avatar stack (canvas top-right, by
+  // 素材库). The board's own header PresenceBar is the canonical display; cursors are unaffected.
+  el.querySelectorAll(COLLABORATOR_USERLIST_SELECTOR).forEach(hideElementInline)
+  if (el.matches(COLLABORATOR_USERLIST_SELECTOR)) hideElementInline(el)
 
   // Item 3: the "更多工具 → Mermaid 至 Excalidraw" dropdown item. Matched by its "Mermaid" text
   // rather than the data-testid, which Excalidraw shares with the web-embed tool item.

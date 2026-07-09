@@ -644,7 +644,7 @@ export function EditorShell(props: EditorShellProps) {
         />
         <div className="octo-doc-header-right">
           {headerRight}
-          <PresenceBar provider={instance.provider} connState={connState} synced={ready} />
+          <PresenceBar provider={instance.provider} connState={connState} synced={ready} names={names} />
           {/* Comments are reader+ (everyone with access — "can see → can comment"). */}
           <button
             type="button"

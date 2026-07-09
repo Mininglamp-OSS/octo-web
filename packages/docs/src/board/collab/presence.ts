@@ -126,3 +126,23 @@ export function readBoardCollaborators(awareness: Awareness): Map<string, BoardC
 export function presenceDelta(awareness: Awareness): number {
   return readBoardCollaborators(awareness).size
 }
+
+/**
+ * Relabel each collaborator with the viewer's authoritative uid → display-name directory (the
+ * space-member map, same `names.get(uid) || uid` seam MemberPanel and the doc caret use), keyed by
+ * the peer's uid. A peer publishes `name: userName || uid` for ITSELF, so a peer whose own member
+ * list had not resolved yet (useMemberNames is empty until the fetch lands) broadcasts its raw
+ * 32-hex uid, which then surfaced verbatim in the collaborator/cursor label (XIN-680). The viewer's
+ * directory is authoritative for names in this space, so prefer it and keep the peer-published
+ * username only when the uid is unknown here. Mutates and returns the same map.
+ */
+export function resolveCollaboratorNames(
+  map: Map<string, BoardCollaborator>,
+  names: ReadonlyMap<string, string>,
+): Map<string, BoardCollaborator> {
+  for (const collaborator of map.values()) {
+    const resolved = collaborator.id ? names.get(collaborator.id) : undefined
+    if (resolved) collaborator.username = resolved
+  }
+  return map
+}

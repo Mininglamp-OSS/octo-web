@@ -658,7 +658,7 @@ export function SheetView(props: SheetViewProps) {
           style={{ border: 'none', background: 'transparent', outline: 'none', color: 'inherit', flex: '0 1 auto', minWidth: 0, maxWidth: '55%' }}
         />
         <div className="octo-doc-header-right">
-          {sheet && <PresenceBar provider={sheet.provider} connState={conn} synced={conn === 'connected'} />}
+          {sheet && <PresenceBar provider={sheet.provider} connState={conn} synced={conn === 'connected'} names={names} />}
           <button type="button" className={tb('comments')} aria-pressed={panel === 'comments'} onClick={() => toggle('comments')}>
             💬 {t('docs.toolbar.comments')}
           </button>

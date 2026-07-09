@@ -128,6 +128,31 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+// Excalidraw 0.18.1 renders the collaborator avatar stack in the canvas top-right zone as a
+// `.UserList__wrapper` > `.UserList` holding one `.UserList__collaborator` avatar per remote peer.
+// This mirrors that markup so the XIN-680 hide (avatar stack redundant with the header PresenceBar)
+// is a real 0.18.1 tripwire. The wrapper lives inside `.layer-ui__wrapper__top-right`, next to the
+// 素材库 library controls.
+function collaboratorUserList(): HTMLElement {
+  const topRight = document.createElement('div')
+  topRight.className = 'layer-ui__wrapper__top-right'
+
+  const wrapper = document.createElement('div')
+  wrapper.className = 'UserList__wrapper'
+  const list = document.createElement('div')
+  list.className = 'UserList'
+  for (const name of ['Ada Lovelace', 'Grace Hopper']) {
+    const avatar = document.createElement('div')
+    avatar.className = 'UserList__collaborator UserList__collaborator--avatar-only'
+    avatar.title = name
+    list.appendChild(avatar)
+  }
+  wrapper.appendChild(list)
+  topRight.appendChild(wrapper)
+
+  return topRight
+}
+
 describe('debrandMermaidText', () => {
   it('swaps the localized brand token', () => {
     expect(debrandMermaidText('Mermaid 至 Excalidraw')).toBe(`Mermaid 至 ${BOARD_BRAND}`)
@@ -295,5 +320,33 @@ describe('installExcalidrawDebrand', () => {
     await new Promise((r) => setTimeout(r, 0))
 
     expect(document.querySelector('.library-menu-browse-button')).not.toBeNull()
+  })
+
+  it('hides the built-in collaborator avatar stack present when installed (XIN-680)', () => {
+    const topRight = collaboratorUserList()
+    document.body.append(topRight)
+
+    const dispose = installExcalidrawDebrand(document)
+
+    // The avatar wrapper is hidden via inline style (beats the vendor stylesheet regardless of load
+    // order), and the node is preserved so Excalidraw's React tree can still reconcile it.
+    const wrapper = topRight.querySelector<HTMLElement>('.UserList__wrapper')
+    expect(wrapper).not.toBeNull()
+    expect(wrapper!.style.display).toBe('none')
+    // The avatars themselves are left in the (hidden) tree, not torn out.
+    expect(topRight.querySelectorAll('.UserList__collaborator')).toHaveLength(2)
+    dispose()
+  })
+
+  it('hides the collaborator avatar stack mounted AFTER install (peer joins later)', async () => {
+    const dispose = installExcalidrawDebrand(document)
+
+    document.body.append(collaboratorUserList())
+    // MutationObserver callbacks are microtask-async; let them flush.
+    await Promise.resolve()
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(document.querySelector<HTMLElement>('.UserList__wrapper')?.style.display).toBe('none')
+    dispose()
   })
 })
