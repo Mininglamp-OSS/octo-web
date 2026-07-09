@@ -1,6 +1,7 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { WKApp, buildAcceptLanguage } from '@octo/base';
 import type {
+    AgentChatHistory,
     AgentChatParams,
     AgentChatResult,
     ApiResponse,
@@ -162,6 +163,17 @@ export async function agentChat(params: AgentChatParams): Promise<AgentChatResul
         if (err instanceof Error) throw err;
         throw new Error(extractErrorMessage(err));
     }
+}
+
+// Agent 对话历史回显（只读）。GET /summary/api/v1/agent/chat/history?session_id=xxx。
+// 复用公共 get()（envelope 解包 .data + 错误处理），后端按 session_id 返回该会话
+// 已持久化的全部消息。data 缺省时兜底为空历史，便于「无历史 → 空白新开场」分支。
+export async function getAgentChatHistory(sessionId: string): Promise<AgentChatHistory> {
+    const data = await get<AgentChatHistory | null>('/agent/chat/history', { session_id: sessionId });
+    return {
+        session_id: data?.session_id || sessionId,
+        messages: Array.isArray(data?.messages) ? data!.messages : [],
+    };
 }
 
 export async function listSummaries(

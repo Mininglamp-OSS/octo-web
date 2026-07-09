@@ -257,6 +257,16 @@ export interface AgentChatResult {
     session_id: string;
 }
 
+/**
+ * Agent 对话历史响应（get() 已解包 data）。
+ * 对应只读接口 GET /agent/chat/history?session_id=xxx，
+ * 后端按 session_id 返回该会话已持久化的全部消息，用于「退出不丢」回显。
+ */
+export interface AgentChatHistory {
+    session_id: string;
+    messages: ChatMessage[];
+}
+
 /** 列表查询参数 */
 export interface ListSummariesParams {
     page?: number;

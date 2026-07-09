@@ -14,6 +14,12 @@ interface AgentChatPanelProps {
     onSaveAsSummary?: (title: string) => Promise<boolean>;
     /** 保存中状态 */
     savingSummary?: boolean;
+    /**
+     * 可选「新会话」动作。提供时面板顶部渲染一个轻量「新会话」按钮，
+     * 点击后由父组件清掉当前 session_id + 清空消息，开一条独立新会话。
+     * 不提供则不渲染头部（保持旧行为）。
+     */
+    onNewSession?: () => void;
 }
 
 interface AgentChatPanelState {
@@ -106,13 +112,25 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
     };
 
     render() {
-        const { messages, sending, welcome, savingSummary } = this.props;
+        const { messages, sending, welcome, savingSummary, onNewSession } = this.props;
         const { input, showSaveDialog, summaryTitle } = this.state;
         const { t } = this.context;
         const canSave = this.hasAssistantOutput() && this.props.onSaveAsSummary;
 
         return (
             <div className="agent-chat-panel">
+                {onNewSession && (
+                    <div className="agent-chat-panel-header">
+                        <Button
+                            theme="borderless"
+                            size="small"
+                            disabled={sending}
+                            onClick={onNewSession}
+                        >
+                            {t('summary.create.newSession')}
+                        </Button>
+                    </div>
+                )}
                 <div className="agent-chat-panel-list" ref={this.listRef}>
                     {welcome && (
                         <div className="agent-chat-msg agent-chat-msg--assistant">

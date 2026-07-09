@@ -48,6 +48,7 @@ vi.mock('../../api/summaryApi', () => ({
     createSchedule: vi.fn().mockResolvedValue({}),
     getTopicTemplates: vi.fn().mockResolvedValue([]),
     agentChat: vi.fn(),
+    getAgentChatHistory: vi.fn().mockResolvedValue({ session_id: '', messages: [] }),
 }));
 
 vi.mock('../SummaryDetailPage', () => ({ default: () => null }));
@@ -199,5 +200,129 @@ describe('SummaryCreatePage agent multi-turn session_id + single-flight', () => 
             await flushPromises();
         });
         expect((api.agentChat as any).mock.calls.length).toBe(2);
+    });
+});
+
+// 完整创建页无频道上下文，session_id 落到统一兜底 key。
+const WORKBENCH_KEY = 'agent-chat-session:__workbench__';
+
+describe('SummaryCreatePage agent session_id persistence + history rehydrate + new session', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+        (api.getAgentChatHistory as any).mockResolvedValue({ session_id: '', messages: [] });
+    });
+
+    it('persists the session_id to localStorage on the first send', async () => {
+        (api.agentChat as any).mockImplementation(
+            ({ message, session_id }: { message: string; session_id: string }) =>
+                Promise.resolve({ reply: `echo: ${message}`, session_id }),
+        );
+
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+
+        expect(localStorage.getItem(WORKBENCH_KEY)).toBeNull();
+
+        await act(async () => {
+            await (ref.current as any).handleAgentSend('hi');
+            await flushPromises();
+        });
+
+        const stored = localStorage.getItem(WORKBENCH_KEY);
+        expect(stored).toBeTruthy();
+        expect(stored).toMatch(UUID_RE);
+        // Persisted session_id matches the one sent to the backend.
+        expect((api.agentChat as any).mock.calls[0][0].session_id).toBe(stored);
+    });
+
+    it('restores session_id + history when switching into agent mode', async () => {
+        localStorage.setItem(WORKBENCH_KEY, 'restored-sid');
+        (api.getAgentChatHistory as any).mockResolvedValue({
+            session_id: 'restored-sid',
+            messages: [
+                { role: 'user', content: '之前问的问题' },
+                { role: 'assistant', content: '之前的回答' },
+            ],
+        });
+
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            (ref.current as any).handleSelectMode('agent');
+            await flushPromises();
+        });
+
+        expect((api.getAgentChatHistory as any).mock.calls[0][0]).toBe('restored-sid');
+        expect((ref.current as any).state.sessionId).toBe('restored-sid');
+        expect((ref.current as any).state.messages).toEqual([
+            { role: 'user', content: '之前问的问题' },
+            { role: 'assistant', content: '之前的回答' },
+        ]);
+    });
+
+    it('silently degrades to a blank opener when history load fails', async () => {
+        localStorage.setItem(WORKBENCH_KEY, 'restored-sid');
+        (api.getAgentChatHistory as any).mockRejectedValue(new Error('backend down'));
+
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            (ref.current as any).handleSelectMode('agent');
+            await flushPromises();
+        });
+
+        // session_id still restored (next send continues that session), messages blank.
+        expect((ref.current as any).state.sessionId).toBe('restored-sid');
+        expect((ref.current as any).state.messages).toEqual([]);
+    });
+
+    it('new session clears localStorage, messages and session_id', async () => {
+        (api.agentChat as any).mockImplementation(
+            ({ message, session_id }: { message: string; session_id: string }) =>
+                Promise.resolve({ reply: `echo: ${message}`, session_id }),
+        );
+
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            await (ref.current as any).handleAgentSend('hi');
+            await flushPromises();
+        });
+        expect(localStorage.getItem(WORKBENCH_KEY)).toBeTruthy();
+        expect((ref.current as any).state.messages.length).toBe(2);
+
+        await act(async () => {
+            (ref.current as any).handleNewSession();
+            await flushPromises();
+        });
+
+        expect(localStorage.getItem(WORKBENCH_KEY)).toBeNull();
+        expect((ref.current as any).state.messages).toEqual([]);
+        expect((ref.current as any).state.sessionId).toBe('');
+
+        // Next send generates a brand-new session_id (different from the old one).
+        await act(async () => {
+            await (ref.current as any).handleAgentSend('again');
+            await flushPromises();
+        });
+        const newSid = localStorage.getItem(WORKBENCH_KEY);
+        expect(newSid).toBeTruthy();
+        expect(newSid).toMatch(UUID_RE);
     });
 });

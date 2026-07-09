@@ -10,6 +10,14 @@
     overflow: hidden;
 }
 
+/* 顶部操作条：承载「新会话」按钮，仅在提供 onNewSession 时渲染。 */
+.agent-chat-panel-header {
+    display: flex;
+    justify-content: flex-end;
+    padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
+    border-bottom: 1px solid var(--semi-color-border);
+}
+
 .agent-chat-panel-list {
     flex: 1;
     min-height: 0;

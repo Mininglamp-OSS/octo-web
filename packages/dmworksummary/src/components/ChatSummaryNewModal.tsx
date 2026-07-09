@@ -7,7 +7,7 @@ import { SourceType, SummaryMode } from '../types/summary';
 import { getSourceType, getOriginChannelType } from '../utils/channelType';
 import { channelToChatCandidate } from '../utils/channelConvert';
 import { resolveTemplate, computeTemplateSelection, type ResolvableTemplate } from '../utils/templateResolver';
-import { describeSchedule, scheduleToParams, genSessionId } from '../utils/summaryHelpers';
+import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession } from '../utils/summaryHelpers';
 import * as summaryApi from '../api/summaryApi';
 import { getTopicTemplates } from '../api/summaryApi';
 import { TOPIC_TEMPLATES } from '../constants/templates';
@@ -53,6 +53,14 @@ export default class ChatSummaryNewModal extends Component<
 
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
     private agentSendInFlight = false;
+
+    // localStorage key 按频道隔离，不同群各自的对话不串（见 summaryHelpers）。
+    private agentChannelId(): string | undefined {
+        return this.props.channel?.channelID;
+    }
+
+    // 拉历史的竞态守卫：每次新的 hydrate 自增，异步返回时比对，丢弃过期请求。
+    private historyLoadToken = 0;
 
     constructor(props: ChatSummaryNewModalProps) {
         super(props);
@@ -242,6 +250,8 @@ export default class ChatSummaryNewModal extends Component<
 
         // 惰性生成 session_id，整会话复用。
         const sessionId = this.state.sessionId || genSessionId();
+        // 持久化到 localStorage：关闭弹窗/刷新后再进来可按 session_id 拉回历史（「退出不丢」）。
+        writeAgentChatSession(this.agentChannelId(), sessionId);
 
         this.setState((prev) => ({
             messages: [...prev.messages, { role: 'user', content: trimmed }],
@@ -251,10 +261,12 @@ export default class ChatSummaryNewModal extends Component<
 
         try {
             const res = await summaryApi.agentChat({ message: trimmed, session_id: sessionId, profile: 'summary' });
+            // 后端回传 session_id 非空则回填并持久化（与后端持久化的会话保持一致）。
+            const nextSessionId = res.session_id || sessionId;
+            writeAgentChatSession(this.agentChannelId(), nextSessionId);
             this.setState((prev) => ({
                 messages: [...prev.messages, { role: 'assistant', content: res.reply }],
-                // 后端回传 session_id 非空则回填（与后端持久化的会话保持一致）。
-                sessionId: res.session_id || prev.sessionId,
+                sessionId: nextSessionId,
             }));
         } catch (err: unknown) {
             // 失败：Toast + 追一条 assistant 错误气泡（让失败在对话流里可见）。
@@ -278,12 +290,54 @@ export default class ChatSummaryNewModal extends Component<
         }
     };
 
-    /** 下拉菜单选择模式：只切换 mode。首次进入 agent 时惰性生成 session_id。 */
+    /** 下拉菜单选择模式：切到 agent 时从 localStorage 恢复 session_id 并回显历史。 */
     private handleSelectMode = (mode: 'normal' | 'agent') => {
+        // 已在目标模式则短路，避免重复进入 agent 触发多余的历史拉取/状态重置。
+        if (mode === this.state.mode) return;
+        if (mode === 'agent') {
+            this.enterAgentMode();
+        } else {
+            this.setState({ mode });
+        }
+    };
+
+    /**
+     * 进入 agent 模式：读 localStorage 拿 session_id → 拉历史回显。
+     * 无历史（新会话）则照旧空白开场；session_id 仍惰性生成于首次发送。
+     */
+    private enterAgentMode() {
+        const stored = readAgentChatSession(this.agentChannelId());
         this.setState((prev) => ({
-            mode,
-            sessionId: mode === 'agent' && !prev.sessionId ? genSessionId() : prev.sessionId,
+            mode: 'agent',
+            sessionId: stored || prev.sessionId,
         }));
+        if (stored) void this.loadAgentHistory(stored);
+    }
+
+    /**
+     * 按 session_id 拉回历史消息回显。失败/无历史静默降级为「空白新开场」，不打挂面板。
+     * 竞态守卫：仅当 token 未过期、当前仍是该会话、且本地尚无消息时才灌入，避免覆盖用户新发的消息。
+     */
+    private async loadAgentHistory(sessionId: string) {
+        const token = ++this.historyLoadToken;
+        try {
+            const data = await summaryApi.getAgentChatHistory(sessionId);
+            if (token !== this.historyLoadToken) return;
+            if (this.state.sessionId !== sessionId || this.state.mode !== 'agent') return;
+            if (this.state.messages.length > 0) return;
+            if (data.messages.length === 0) return;
+            this.setState({ messages: data.messages });
+        } catch {
+            // 静默降级：保留已恢复的 session_id，空白开场，下次发送续接该会话。
+        }
+    }
+
+    /** 「新会话」：清 localStorage 的 session_id、清空消息，下次发送重新生成新 session_id。 */
+    private handleNewSession = () => {
+        clearAgentChatSession(this.agentChannelId());
+        // 作废在途历史拉取，避免旧会话历史回灌到新会话。
+        this.historyLoadToken++;
+        this.setState({ messages: [], sessionId: '' });
     };
 
     /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。返回成功/失败。
@@ -460,6 +514,7 @@ export default class ChatSummaryNewModal extends Component<
                                     welcome={t('summary.create.agentChatWelcome')}
                                     onSaveAsSummary={this.handleSaveAsSummary}
                                     savingSummary={this.state.savingSummary}
+                                    onNewSession={this.handleNewSession}
                                 />
                             </div>
                         ) : (

@@ -269,6 +269,8 @@ describe('summaryApi', () => {
             expect(mockPost).toHaveBeenCalledWith(
                 '/summary/api/v1/agent/chat',
                 { message: '总结今天', session_id: 's-1' },
+                // agent 单次问答放宽到 120s（见 summaryApi.agentChat）。
+                { timeout: 120000 },
             );
             expect(res).toEqual({ reply: '总结如下…', session_id: 's-1' });
         });
