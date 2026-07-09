@@ -518,6 +518,12 @@ describe("EmojiPanel sticker hover preview（原位放大预览）", () => {
             a.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: b }));
         });
         expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
+
+        // 仅证明"没被隐藏"还不够——真实鼠标移动会在 a 的 mouseout 之外，紧接着在 b 上触发
+        // mouseover。补上这一步，断言预览的媒体确实换成了 b（而不只是继续显示着 a 的旧图）。
+        hover(b);
+        const img = document.body.querySelector(".wk-sticker-preview img") as HTMLImageElement | null;
+        expect(img?.src).toContain("sticker-2.png");
     });
 
     it("clears a visible preview when a background refresh removes the previewed sticker (no ghost)", async () => {
