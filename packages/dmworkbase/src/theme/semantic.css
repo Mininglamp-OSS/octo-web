@@ -25,6 +25,29 @@
   --wk-color-accent: var(--wk-purple-500); /* Figma: Thread 链接、AI 标签 */
   --wk-color-accent-hover: var(--wk-purple-600);
 
+  /* ── Onboarding intro fixed palette（对齐 onboarding-clean，固定深色视觉） ── */
+  --wk-onboarding-overlay-bg: rgba(235, 239, 247, 0.34);
+  --wk-onboarding-overlay-leaving-bg: rgba(235, 239, 247, 0.36);
+  --wk-onboarding-intro-bg: #020205;
+  --wk-onboarding-intro-bg-top: #050507;
+  --wk-onboarding-intro-bg-bottom: #07070b;
+  --wk-onboarding-intro-before-glow: rgba(218, 211, 255, 0.045);
+  --wk-onboarding-intro-before-purple: rgba(124, 58, 237, 0.04);
+  --wk-onboarding-intro-before-blue: rgba(94, 101, 255, 0.018);
+  --wk-onboarding-silk-canvas-bg: #030208;
+  --wk-onboarding-selection-bg: #21113a;
+  --wk-onboarding-selection-text: #d8b4fe;
+  --wk-onboarding-narrative-line-mid: #c4b5fd;
+  --wk-onboarding-narrative-line-end: #7c3aed;
+  --wk-onboarding-visual-dark-start: #090a14;
+  --wk-onboarding-visual-dark-mid: #17122a;
+  --wk-onboarding-visual-dark-end: #0b1020;
+  --wk-onboarding-online: #10b981;
+  --wk-onboarding-button-bg: #ffffff;
+  --wk-onboarding-button-fg: #0a0d14;
+  --wk-onboarding-button-fill: #7c3aed;
+  --wk-onboarding-button-active-fg: #ffffff;
+
   /* ── Status & Fixed（Figma 色值） ── */
   --wk-color-online: var(--wk-green-dark); /* Figma: #52C41A 在线状态绿 */
   --wk-color-white: #ffffff; /* 固定白色（不跟主题走） */

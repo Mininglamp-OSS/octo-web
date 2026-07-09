@@ -77,9 +77,11 @@ export const OnboardingCustomCursor: React.FC<OnboardingCustomCursorProps> = ({ 
         };
 
         const hideCursor = () => {
+            stopAnimation();
             cursor.classList.remove("is-visible", "is-interactive", "is-native");
             root.classList.remove("has-native-cursor");
             interactive = false;
+            initialized = false;
             lastTarget = null;
         };
 
@@ -100,7 +102,6 @@ export const OnboardingCustomCursor: React.FC<OnboardingCustomCursorProps> = ({ 
 
         const updateAvailability = () => {
             if (canAnimate()) {
-                startAnimation();
                 return;
             }
 
