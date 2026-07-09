@@ -20,6 +20,7 @@ import type { ChannelSearchItem } from "../ChannelSearch/types";
 import { canLocateChannelSearchItem } from "../ChannelSearch/locate";
 import WKApp from "../../App";
 import { t as translate } from "../../i18n";
+import "./index.css";
 
 interface GlobalSearchProps {
     channel?: Channel; // 查询指定频道的聊天记录
@@ -89,7 +90,7 @@ export default class GlobalSearch extends Component<GlobalSearchProps> {
             currentKey === key ? {} : { display: "none" }
 
         const disabledCopy = (
-            <div style={{ padding: "24px 16px", textAlign: "center", color: "#999", fontSize: "13px" }}>
+            <div className="wk-global-search-disabled-copy">
                 {translate("base.globalSearch.searchDisabled") ||
                     translate("base.globalSearch.searchFailedRetry")}
             </div>
