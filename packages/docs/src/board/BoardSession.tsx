@@ -30,10 +30,15 @@ export interface BoardSessionProps {
    * doc editor's EditorShell gate, XIN-392 P2-1).
    */
   creatorNicknameOnly?: boolean
+  /**
+   * Forwarded to BoardShell: opens the current board as a standalone `/d/:docId` page. Wired on the
+   * in-app path so the ≡ menu shows "Open in new page" (XIN-621 ②); omitted on the standalone page.
+   */
+  onOpenInNewPage?: () => void
 }
 
 export function BoardSession(props: BoardSessionProps): ReactElement {
-  const { docId, title, uid, space, folder, userName, onBack, onExit, onTitleSaved, onDeleted, creatorNicknameOnly } = props
+  const { docId, title, uid, space, folder, userName, onBack, onExit, onTitleSaved, onDeleted, creatorNicknameOnly, onOpenInNewPage } = props
   // The board id is the whiteboard key's {board} segment: octo:{space}:{folder}:wb:{board}.
   const session = useWhiteboardSession({ uid, space, folder, board: docId })
   // Stabilise the presence user object (P2 #7). An inline `{ id, name }` is a fresh reference every
@@ -57,6 +62,7 @@ export function BoardSession(props: BoardSessionProps): ReactElement {
       collab
       user={user}
       creatorNicknameOnly={creatorNicknameOnly}
+      onOpenInNewPage={onOpenInNewPage}
     />
   )
 }

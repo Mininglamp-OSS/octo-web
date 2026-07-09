@@ -64,11 +64,14 @@
   font-size: 13px;
 }
 
-/* Explicit "import from local" button injected into the Excalidraw library panel (XIN-601 item 1).
-   Runtime-injected by installLibraryImportButton() into `.library-menu-control-buttons`, so it sits
-   in the same row as the "..." dropdown and needs its own styling (Excalidraw won't style our node).
-   A quiet bordered pill that reads as a first-class action, matching the panel's compact controls. */
-.library-menu-control-buttons .octo-lib-import-btn {
+/* Explicit library control buttons injected into the Excalidraw library panel (XIN-621 item ①).
+   Runtime-injected by installLibraryControlButtons() into `.library-menu-control-buttons`, replacing
+   the "..." overflow with visible import / save-to-file / reset actions. Excalidraw won't style our
+   nodes, so they carry their own look: quiet bordered pills that read as first-class actions and
+   match the panel's compact controls. The reset action is tinted as a mild danger cue. */
+.library-menu-control-buttons .octo-lib-import-btn,
+.library-menu-control-buttons .octo-lib-save-btn,
+.library-menu-control-buttons .octo-lib-reset-btn {
   flex: 1 1 auto;
   min-height: 32px;
   padding: 0 12px;
@@ -81,12 +84,22 @@
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
-.library-menu-control-buttons .octo-lib-import-btn:hover {
+.library-menu-control-buttons .octo-lib-import-btn:hover,
+.library-menu-control-buttons .octo-lib-save-btn:hover,
+.library-menu-control-buttons .octo-lib-reset-btn:hover {
   background: var(--octo-fill-1, #f2f3f5);
   border-color: var(--octo-fg-3, #86909c);
 }
-.library-menu-control-buttons .octo-lib-import-btn:active {
+.library-menu-control-buttons .octo-lib-import-btn:active,
+.library-menu-control-buttons .octo-lib-save-btn:active,
+.library-menu-control-buttons .octo-lib-reset-btn:active {
   background: var(--octo-fill-2, #e5e6eb);
+}
+.library-menu-control-buttons .octo-lib-reset-btn {
+  color: var(--octo-danger, #f53f3f);
+}
+.library-menu-control-buttons .octo-lib-reset-btn:hover {
+  border-color: var(--octo-danger, #f53f3f);
 }
 
 /* De-brand the Help dialog: hide the four upstream Excalidraw link buttons at the top

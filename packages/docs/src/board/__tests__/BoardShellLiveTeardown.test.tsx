@@ -25,6 +25,7 @@ vi.mock('@excalidraw/excalidraw', () => {
     restoreElements: (els: readonly unknown[] | null | undefined) => (els ? [...els] : []),
     reconcileElements: (local: readonly unknown[]) => [...local],
     loadLibraryFromBlob: async () => [],
+    serializeLibraryAsJSON: () => '[]',
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))

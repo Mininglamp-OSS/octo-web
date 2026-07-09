@@ -32,9 +32,11 @@
  * `LibraryMenuBrowseButton` — an `<a class="library-menu-browse-button">` whose `href` points at
  * `VITE_APP_LIBRARY_URL` (excalidraw.com's hosted library) and opens `target="_excalidraw_libraries"`.
  * There is no prop to suppress it, so we strip the anchor at runtime with the same observer. The
- * LOCAL library controls are untouched: the "..." dropdown (load/import `.excalidrawlib`,
- * save-to-file/export, reset) and the add-selection-to-library button are siblings/children of that
- * anchor, and the saved-item grid (click/drag-out reuse) lives elsewhere in the panel.
+ * local library controls are handled separately: installLibraryControlButtons (libraryControlButtons.ts)
+ * replaces the "..." overflow (load/import, save-to-file, reset) with explicit buttons in the same
+ * row (XIN-621 ①); this de-brand pass only removes the online browse anchor. The add-selection-to-
+ * library button and the saved-item grid (click/drag-out reuse) live elsewhere in the panel and are
+ * left intact.
  *
  * The mermaid rewrite is text-only and idempotent: only bare "Excalidraw" tokens inside the three
  * mermaid-specific containers are swapped, element structure (e.g. the description's flowchart /

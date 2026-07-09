@@ -37,6 +37,7 @@ vi.mock('@excalidraw/excalidraw', () => {
     // module mocks throw on access to an undeclared export, so it must be present even though this
     // suite never exercises the import path.
     loadLibraryFromBlob: async () => [],
+    serializeLibraryAsJSON: () => '[]',
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))

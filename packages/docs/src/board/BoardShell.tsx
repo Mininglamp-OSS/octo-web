@@ -13,7 +13,7 @@ import {
 import { DocTitle } from '../editor/EditorShell.tsx'
 import { DocTerminal } from '../editor/DocTerminal.tsx'
 import { PresenceBar } from '../editor/PresenceBar.tsx'
-import { DocMoreMenu, DeleteIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
+import { DocMoreMenu, DeleteIcon, OpenNewPageIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { MemberPanel } from '../members/MemberPanel.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { useAccessRequests } from '../access-request/useAccessRequests.ts'
@@ -27,7 +27,7 @@ import { i18n, t, getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
 import { loadBoardScene, persistBoardScene, clearBoardScene, type BoardScene } from './boardStore.ts'
 import { BoardMainMenu, type ExcalidrawMainMenu } from './BoardMainMenu.tsx'
 import { installExcalidrawDebrand } from './excalidrawDebrand.ts'
-import { installLibraryImportButton } from './libraryImportButton.ts'
+import { installLibraryControlButtons } from './libraryControlButtons.ts'
 import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
 import type { ExcalidrawElement, BinaryFileData } from './collab/index.ts'
 import {
@@ -103,13 +103,21 @@ type ReconcileElementsFn = (
  */
 type LoadLibraryFromBlobFn = (blob: Blob) => Promise<unknown[]>
 
-/** The slice of the imperative Excalidraw API the local-import button drives (`updateLibrary`). */
+/**
+ * Excalidraw's `serializeLibraryAsJSON(items)` helper — turns library items into the `.excalidrawlib`
+ * JSON string the built-in "save to file" wrote. Captured off the same client-only dynamic import as
+ * the component so the explicit save-to-file button (XIN-621 ①) never depends on the heavy chunk
+ * being statically imported.
+ */
+type SerializeLibraryFn = (items: unknown[]) => string
+
+/** The slice of the imperative Excalidraw API the library control buttons drive. */
 interface ExcalidrawLibraryApi {
   updateLibrary: (opts: {
     libraryItems: unknown
     merge?: boolean
     openLibraryMenu?: boolean
-  }) => Promise<unknown>
+  }) => Promise<unknown[]>
 }
 
 /** Debounce window for persisting scene edits (M1 local persistence). */
@@ -163,6 +171,13 @@ export interface BoardShellProps {
    * privacy leak (boss decision). Mirrors EditorShell's `creatorNicknameOnly` gate (XIN-392 P2-1).
    */
   creatorNicknameOnly?: boolean
+  /**
+   * "Open in new page" handler (in-app only). When provided, the header's ≡ "more" menu shows an
+   * "Open in new page" row that opens the shareable standalone `/d/:docId` link — mirroring the doc
+   * editor's EditorShell row (XIN-621 ②). Omitted on the standalone page itself (there is no
+   * "open in a new page" from a page that already IS the standalone view), so the row won't render.
+   */
+  onOpenInNewPage?: () => void
 }
 
 /** Map the app locale (`zh-CN` / `en-US`) to an Excalidraw langCode (`zh-CN` / `en`). */
@@ -240,7 +255,7 @@ class BoardErrorBoundary extends Component<{ children: ReactNode }, { error: Err
  * save will hook into in M2.
  */
 export function BoardShell(props: BoardShellProps): ReactElement {
-  const { docId, title, space, folder, onBack, onExit, onTitleSaved, onDeleted, collabSession, collab, user, creatorNicknameOnly } = props
+  const { docId, title, space, folder, onBack, onExit, onTitleSaved, onDeleted, collabSession, collab, user, creatorNicknameOnly, onOpenInNewPage } = props
 
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
   // Excalidraw's `MainMenu` compound component, captured off the same dynamic import. Rendered as a
@@ -303,9 +318,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // by `handleApi` (to wire the binding's render adapter) and by the initialData memo below.
   const restoreElementsRef = useRef<RestoreElementsFn | null>(null)
   const reconcileElementsRef = useRef<ReconcileElementsFn | null>(null)
-  // Excalidraw's `loadLibraryFromBlob` parser, captured off the same import. Read by the header's
-  // local-import button (XIN-601) to turn a picked `.excalidrawlib` file into library items.
+  // Excalidraw's `loadLibraryFromBlob` parser, captured off the same import. Read by the library
+  // panel's import button (XIN-621 ①) to turn a picked `.excalidrawlib` file into library items.
   const loadLibraryFromBlobRef = useRef<LoadLibraryFromBlobFn | null>(null)
+  // Excalidraw's `serializeLibraryAsJSON`, captured off the same import. Read by the save-to-file
+  // button (XIN-621 ①) to serialize the current library for download.
+  const serializeLibraryRef = useRef<SerializeLibraryFn | null>(null)
   // Raw imperative Excalidraw API handle, stashed by `handleApi` on canvas mount. Held in a ref (not
   // read during render) so the access-gated effect below can wire it into the binding once — and
   // only once — access is confirmed (P1a).
@@ -371,10 +389,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           restoreElements?: RestoreElementsFn
           reconcileElements?: ReconcileElementsFn
           loadLibraryFromBlob?: LoadLibraryFromBlobFn
+          serializeLibraryAsJSON?: SerializeLibraryFn
         }
         restoreElementsRef.current = m.restoreElements ?? null
         reconcileElementsRef.current = m.reconcileElements ?? null
         loadLibraryFromBlobRef.current = m.loadLibraryFromBlob ?? null
+        serializeLibraryRef.current = m.serializeLibraryAsJSON ?? null
         setMainMenu(() => mod.MainMenu as unknown as ExcalidrawMainMenu)
         setExcalidraw(() => mod.Excalidraw as unknown as ExcalidrawComponent)
       })
@@ -411,10 +431,10 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     return installExcalidrawDebrand(document)
   }, [Excalidraw])
 
-  // XIN-601 item 1: read a picked `.excalidrawlib` and load it through the imperative library API.
-  // This is exactly what the library panel's "..." → "Open" item did; the injected button just
-  // surfaces it explicitly. Reads the live api/parser off refs so the button — bound once when the
-  // panel DOM mounts — always drives the current canvas.
+  // XIN-621 ① (was XIN-601): read a picked `.excalidrawlib` and load it through the imperative
+  // library API. This is exactly what the library panel's "..." → "Load" item did; the injected
+  // button just surfaces it explicitly. Reads the live api/parser off refs so the button — bound
+  // once when the panel DOM mounts — always drives the current canvas.
   const importLibraryFromFile = useCallback(() => {
     const api = boardApiRef.current as ExcalidrawLibraryApi | null
     const parse = loadLibraryFromBlobRef.current
@@ -436,16 +456,65 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     input.click()
   }, [])
 
-  // XIN-601 item 1: inject an explicit "import from local" button into the library panel so the only
-  // local-import entry is no longer buried in the panel's "..." dropdown. Runs alongside the de-brand
-  // observer once the canvas is loaded. The label is resolved here so the injector stays i18n-free.
+  // XIN-621 ①: save the current library to a local `.excalidrawlib` file — the explicit counterpart
+  // of the "..." → "Save to file" item. The imperative API exposes no `getLibraryItems`, so read the
+  // live items through `updateLibrary`'s function form (it receives the current items and we return
+  // them unchanged), then serialize + download. Skips silently when the library is empty so the
+  // button never produces a meaningless empty file.
+  const saveLibraryToFile = useCallback(() => {
+    const api = boardApiRef.current as ExcalidrawLibraryApi | null
+    const serialize = serializeLibraryRef.current
+    if (!api?.updateLibrary || !serialize || typeof document === 'undefined') return
+    api
+      .updateLibrary({
+        libraryItems: (current: unknown[]) => {
+          if (Array.isArray(current) && current.length > 0) {
+            const json = serialize(current)
+            const blob = new Blob([json], { type: 'application/vnd.excalidrawlib+json' })
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = 'library.excalidrawlib'
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+            URL.revokeObjectURL(url)
+          }
+          // Return the items unchanged — this is a read, not a mutation.
+          return current
+        },
+        merge: false,
+      })
+      .catch((err) => {
+        console.error('[board] library save failed', err)
+      })
+  }, [])
+
+  // XIN-621 ①: clear the whole library — the explicit counterpart of the "..." → "Reset library"
+  // item, which showed a confirm dialog before wiping. We keep that guard (a native confirm) so the
+  // explicit button can't destroy a saved library on a stray click, then reset via `updateLibrary`
+  // with an empty, non-merging set.
+  const resetLibrary = useCallback(() => {
+    const api = boardApiRef.current as ExcalidrawLibraryApi | null
+    if (!api?.updateLibrary || typeof window === 'undefined') return
+    if (!window.confirm(t('docs.board.resetLibraryConfirm'))) return
+    api.updateLibrary({ libraryItems: [], merge: false }).catch((err) => {
+      console.error('[board] library reset failed', err)
+    })
+  }, [])
+
+  // XIN-621 ①: replace the library panel's "..." overflow with explicit import / save-to-file / reset
+  // buttons in the control row, then remove the "..." entirely (boss ruling). Runs alongside the
+  // de-brand observer once the canvas is loaded. Labels are resolved here so the injector stays
+  // i18n-free.
   useEffect(() => {
     if (!Excalidraw || typeof document === 'undefined') return
-    return installLibraryImportButton(document, {
-      label: t('docs.board.importLibrary'),
-      onImport: importLibraryFromFile,
+    return installLibraryControlButtons(document, {
+      import: { label: t('docs.board.importLibrary'), onClick: importLibraryFromFile },
+      save: { label: t('docs.board.saveLibrary'), onClick: saveLibraryToFile },
+      reset: { label: t('docs.board.resetLibrary'), onClick: resetLibrary },
     })
-  }, [Excalidraw, importLibraryFromFile])
+  }, [Excalidraw, importLibraryFromFile, saveLibraryToFile, resetLibrary])
 
   // Presence status for the header bar (XIN-601 item 2). The board owns its collab session directly
   // (not via useCollabEditor), so mirror that hook's wiring: seed from the provider's current state
@@ -869,10 +938,20 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     return <DocTerminal title={title} kind={terminal.kind} onBack={onBack} />
   }
 
-  // ≡ "more" menu (XIN-601 item 2): delete is collapsed into the destructive slot, matching the doc
-  // editor. Boards have no version-history / markdown-export / open-in-new-page rows, so the neutral
-  // item list is empty — only the creator/created head and the delete row show. Creator name falls
-  // back to a short uid → placeholder, so the head never blanks or crashes on a missing lookup.
+  // ≡ "more" menu (XIN-601 item 2 / XIN-621 ②): delete is collapsed into the destructive slot,
+  // matching the doc editor. The neutral item list holds "Open in new page" when the host wired the
+  // handler (in-app path) — mirroring EditorShell — and is otherwise empty (boards have no version-
+  // history / markdown-export rows, and the standalone page never wires open-in-new-page). Creator
+  // name falls back to a short uid → placeholder, so the head never blanks or crashes on a miss.
+  const moreItems: DocMoreMenuItem[] = []
+  if (onOpenInNewPage) {
+    moreItems.push({
+      key: 'open-new-page',
+      label: t('docs.standalone.openInNewPage'),
+      icon: OpenNewPageIcon,
+      onClick: onOpenInNewPage,
+    })
+  }
   const deleteItem: DocMoreMenuItem | undefined = manage
     ? {
         key: 'delete',
@@ -935,7 +1014,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
           <DocMoreMenu
             creatorName={creatorDisplay}
             createdAt={createdAt}
-            items={[]}
+            items={moreItems}
             dangerItem={deleteItem}
           />
         </div>

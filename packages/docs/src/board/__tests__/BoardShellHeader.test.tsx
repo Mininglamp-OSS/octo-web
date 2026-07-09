@@ -32,6 +32,7 @@ vi.mock('@excalidraw/excalidraw', async () => {
     restoreElements: (els: readonly unknown[] | null | undefined) => (els ? [...els] : []),
     reconcileElements: (local: readonly unknown[]) => [...local],
     loadLibraryFromBlob: async () => [],
+    serializeLibraryAsJSON: () => '[]',
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
@@ -123,5 +124,47 @@ describe('BoardShell header alignment with the doc header (XIN-601 item 2)', () 
     // Menu opens, but a reader sees no destructive delete row.
     await waitFor(() => expect(document.querySelector('.octo-doc-more-panel')).not.toBeNull())
     expect(document.querySelector('.octo-doc-more-item.is-danger')).toBeNull()
+  })
+
+  it('shows an "Open in new page" row in the ≡ menu when onOpenInNewPage is wired (XIN-621 ②)', async () => {
+    const onOpenInNewPage = vi.fn()
+    render(
+      <BoardShell
+        docId="doc-1"
+        title="Shared board"
+        space="s1"
+        collabSession={makeSession('reader')}
+        collab
+        onOpenInNewPage={onOpenInNewPage}
+      />,
+    )
+    await screen.findByTestId('excalidraw-canvas')
+
+    const moreBtn = document.querySelector<HTMLButtonElement>('.octo-doc-more-btn')!
+    act(() => moreBtn.click())
+
+    await waitFor(() => expect(document.querySelector('.octo-doc-more-panel')).not.toBeNull())
+    const row = [...document.querySelectorAll<HTMLElement>('.octo-doc-more-item')].find((el) =>
+      (el.textContent ?? '').includes('docs.standalone.openInNewPage'),
+    )
+    expect(row).toBeTruthy()
+    act(() => row!.click())
+    expect(onOpenInNewPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders no "Open in new page" row when the handler is omitted (standalone path)', async () => {
+    render(
+      <BoardShell docId="doc-1" title="Shared board" space="s1" collabSession={makeSession('admin')} collab />,
+    )
+    await screen.findByTestId('excalidraw-canvas')
+
+    const moreBtn = document.querySelector<HTMLButtonElement>('.octo-doc-more-btn')!
+    act(() => moreBtn.click())
+
+    await waitFor(() => expect(document.querySelector('.octo-doc-more-panel')).not.toBeNull())
+    const hasOpenRow = [...document.querySelectorAll<HTMLElement>('.octo-doc-more-item')].some((el) =>
+      (el.textContent ?? '').includes('docs.standalone.openInNewPage'),
+    )
+    expect(hasOpenRow).toBe(false)
   })
 })

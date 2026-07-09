@@ -972,9 +972,10 @@ export function DocsHome() {
         onExit={backToList}
         onTitleSaved={onTitleSaved}
         onDeleted={onDocDeleted}
+        onOpenInNewPage={() => onOpenInNewPage(docId)}
       />
     ),
-    [uid, space, folder, names, onTitleSaved, backToList, onDocDeleted],
+    [uid, space, folder, names, onTitleSaved, backToList, onDocDeleted, onOpenInNewPage],
   )
 
   // Choose the right-pane renderer by doc type: a spreadsheet ('sheet') mounts the collaborative

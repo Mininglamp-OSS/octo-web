@@ -20,7 +20,10 @@
     "untitled": "Untitled board",
     "deleteEntry": "Delete board",
     "importLibrary": "Import from local",
-    "importLibraryError": "Couldn't import that library — please make sure it's a valid .excalidrawlib"
+    "importLibraryError": "Couldn't import that library — please make sure it's a valid .excalidrawlib",
+    "saveLibrary": "Save to file",
+    "resetLibrary": "Reset library",
+    "resetLibraryConfirm": "Reset the library? This will clear all saved items and can't be undone."
   },
   "doc": {
     "deleteEntry": "Delete document",

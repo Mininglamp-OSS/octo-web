@@ -20,7 +20,10 @@
     "untitled": "未命名画板",
     "deleteEntry": "删除画板",
     "importLibrary": "从本地导入",
-    "importLibraryError": "无法导入该素材库文件，请确认是有效的 .excalidrawlib"
+    "importLibraryError": "无法导入该素材库文件，请确认是有效的 .excalidrawlib",
+    "saveLibrary": "导出到文件",
+    "resetLibrary": "清空素材库",
+    "resetLibraryConfirm": "确认清空素材库？此操作不可恢复。"
   },
   "doc": {
     "deleteEntry": "删除文档",
