@@ -32,7 +32,7 @@
   gap: var(--wk-sp-3);
   color: var(--wk-text-tertiary);
   font-size: var(--wk-text-size-md);
-  background: var(--wk-bg-subtle);
+  background: var(--wk-bg-elevated);
   border-radius: var(--wk-r-md);
 }
 

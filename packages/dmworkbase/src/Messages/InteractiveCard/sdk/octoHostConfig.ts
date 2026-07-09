@@ -38,6 +38,18 @@ const COLOR_TOKENS = {
   textSubtle: "var(--wk-text-secondary)",
   accent: "var(--wk-text-accent)",
   background: "var(--wk-bg-surface)",
+  // 容器填色（Container.style 背景）。AC 3.x 内置 containerStyles 只带前景色、
+  // backgroundColor 为 undefined，故 emphasis/accent/good/warning/attention 的背景
+  // 必须由 HostConfig 显式提供，否则一律退化为透明/父白底（见排查结论）。
+  emphasisBackground: "var(--wk-bg-elevated)",
+  emphasisBorder: "var(--wk-border-default)",
+  accentBackground: "var(--wk-accent-tint-10)",
+  good: "var(--wk-color-success)",
+  goodBackground: "var(--wk-color-success-bg)",
+  warning: "var(--wk-color-warning)",
+  warningBackground: "var(--wk-color-warning-bg)",
+  attention: "var(--wk-color-danger)",
+  attentionBackground: "var(--wk-color-danger-bg)",
 } as const;
 
 export function buildOctoHostConfig(resolve: CssColorResolver): HostConfig {
@@ -45,14 +57,25 @@ export function buildOctoHostConfig(resolve: CssColorResolver): HostConfig {
   const subtle = resolve(COLOR_TOKENS.textSubtle);
   const accent = resolve(COLOR_TOKENS.accent);
   const background = resolve(COLOR_TOKENS.background);
+  const emphasisBackground = resolve(COLOR_TOKENS.emphasisBackground);
+  const emphasisBorder = resolve(COLOR_TOKENS.emphasisBorder);
+  const accentBackground = resolve(COLOR_TOKENS.accentBackground);
+  const good = resolve(COLOR_TOKENS.good);
+  const goodBackground = resolve(COLOR_TOKENS.goodBackground);
+  const warning = resolve(COLOR_TOKENS.warning);
+  const warningBackground = resolve(COLOR_TOKENS.warningBackground);
+  const attention = resolve(COLOR_TOKENS.attention);
+  const attentionBackground = resolve(COLOR_TOKENS.attentionBackground);
 
+  // 前景色集：good/warning/attention 映射到语义色，使 TextBlock color=Good/... 也正确着色。
+  // 所有 containerStyle 共用同一前景集，仅背景/边框不同——文本默认取 default（深色），
+  // 叠在浅色填色底上依旧可读。
   const fg = {
     default: { default: text, subtle },
     accent: { default: accent, subtle: accent },
-    // good/warning/attention 复用语义色（octo 卡不强依赖，给合理缺省）。
-    good: { default: text, subtle },
-    warning: { default: text, subtle },
-    attention: { default: text, subtle },
+    good: { default: good, subtle: good },
+    warning: { default: warning, subtle: warning },
+    attention: { default: attention, subtle: attention },
   };
 
   return new HostConfig({
@@ -76,13 +99,31 @@ export function buildOctoHostConfig(resolve: CssColorResolver): HostConfig {
       actionsOrientation: "horizontal",
       actionAlignment: "left",
     },
+    // 六种 containerStyle 全部显式提供背景填色（缺任一都会退化成裸白底）。
     containerStyles: {
       default: {
         backgroundColor: background,
         foregroundColors: fg,
       },
       emphasis: {
-        backgroundColor: background,
+        backgroundColor: emphasisBackground,
+        borderColor: emphasisBorder,
+        foregroundColors: fg,
+      },
+      accent: {
+        backgroundColor: accentBackground,
+        foregroundColors: fg,
+      },
+      good: {
+        backgroundColor: goodBackground,
+        foregroundColors: fg,
+      },
+      warning: {
+        backgroundColor: warningBackground,
+        foregroundColors: fg,
+      },
+      attention: {
+        backgroundColor: attentionBackground,
         foregroundColors: fg,
       },
     },
