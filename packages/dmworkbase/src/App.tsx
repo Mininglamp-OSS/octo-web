@@ -9,6 +9,9 @@ export type MittEvents = {
   "emoji-manifest-updated": undefined;
   /** 收藏他人贴纸成功后广播,已加载过「我的贴纸」的 EmojiPanel 据此重拉列表 */
   "stickers-updated": undefined;
+  /** App 回前台(visibilitychange/focus):打开中的会话据此重同步成员列表,
+   * 修复合盖/息屏久后 WS 断连期间成员变更 CMD 丢失导致 @ 搜不到新成员(octo-web#567) */
+  "wk:app-foreground": undefined;
   "wk:pending-thread": {
     groupNo: string;
     thread: import("./Service/Thread").Thread | null;
@@ -847,6 +850,10 @@ export default class WKApp extends ProviderListener {
 
     const refresh = () => {
       this.refreshRemoteConfigOnForeground();
+      // 回前台时通知当前会话重同步成员列表。合盖/息屏久后 WS 可能已断、
+      // 断连期间的成员变更 CMD 已丢失，仅靠 remoteConfig 刷新不会补成员，
+      // 导致 @ 提及弹窗搜不到新龙虾/成员（octo-web#567）。
+      WKApp.mittBus.emit("wk:app-foreground");
     };
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {

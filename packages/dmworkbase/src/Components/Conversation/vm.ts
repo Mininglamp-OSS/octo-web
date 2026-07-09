@@ -1009,8 +1009,17 @@ export default class ConversationVM extends ProviderListener {
             }
             this.lastReconnectRefreshAt = now
             this.requestMessagesOfFirstPage(0)
+            // 断连期间的成员变更 CMD（加/减成员，含龙虾）随 WS 丢失，SDK 重连
+            // 只 reSubscribe 不补拉，subscriberChangeListener 因此不会被触发，
+            // 导致 subscribers 停在断连前旧快照 → @ 提及弹窗搜不到新成员。
+            // 这里在补拉首屏消息的同时补拉当前会话成员，修复 octo-web#567。
+            this.resyncSubscribers()
         }
         WKSDK.shared().connectManager.addConnectStatusListener(this.connectStatusListener)
+
+        // 回前台补刷：合盖/息屏久后回到页面，WS 可能已断且成员变更事件已丢失。
+        // App.tsx 的 visibilitychange/focus 只刷 remoteConfig，不碰成员，这里补上。
+        WKApp.mittBus.on("wk:app-foreground", this._foregroundResyncHandler)
 
         const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
         if (conversation) {
@@ -1088,6 +1097,7 @@ export default class ConversationVM extends ProviderListener {
 
         WKApp.mittBus.off("task-upload-failed", this._taskUploadFailedHandler)
         WKApp.mittBus.off("emoji-manifest-updated", this._emojiManifestUpdatedHandler)
+        WKApp.mittBus.off("wk:app-foreground", this._foregroundResyncHandler)
     }
 
     // 加载频道信息完成
@@ -1266,6 +1276,55 @@ export default class ConversationVM extends ProviderListener {
             this._resolveSubscribersReady()
         }
         this.notifyListener()
+    }
+
+    // 回前台重刷处理器：App.tsx 回前台时全局 emit，这里节流后重同步当前会话成员。
+    private _foregroundResyncHandler = () => {
+        const now = Date.now()
+        if (now - this.lastReconnectRefreshAt < 5000) {
+            return
+        }
+        this.lastReconnectRefreshAt = now
+        this.resyncSubscribers()
+    }
+
+    // 主动重同步当前会话成员列表（重连 / 回前台调用）。
+    // 断连期间的成员变更 CMD 随 WS 丢失、SDK 重连不补拉，subscriberChangeListener
+    // 因此不会触发，subscribers 停在旧快照 → @ 弹窗搜不到新成员（octo-web#567）。
+    // 这里复用进频道时的加载分支：超级群拉第一页，普通群走服务端全量同步。
+    async resyncSubscribers() {
+        try {
+            if (this.channel.channelType === ChannelTypeCommunityTopic) {
+                // 子区用父群成员，父群 syncSubscribes 后其 subscriberChangeListener
+                // 会回调刷新，这里不重复处理。
+                const parentGroupNo = this.channelInfo?.orgData?.parentGroupNo
+                if (parentGroupNo) {
+                    const parentChannel = new Channel(parentGroupNo, ChannelTypeGroup)
+                    await WKSDK.shared().channelManager.syncSubscribes(parentChannel)
+                    this.subscribers = WKSDK.shared().channelManager.getSubscribes(parentChannel) || []
+                    this._resolveSubscribersReady()
+                    this.notifyListener()
+                }
+                return
+            }
+            if (this.channel.channelType !== ChannelTypeGroup) {
+                return
+            }
+            if (this.channelInfo?.orgData?.group_type == SuperGroup) {
+                // 超级群只拉第一页（与进频道时一致）
+                this.subscribers = await this.getFirstPageMembers()
+                this._resolveSubscribersReady()
+                WKSDK.shared().channelManager.subscribeCacheMap.set(this.channel.getChannelKey(), this.subscribers)
+                WKSDK.shared().channelManager.notifySubscribeChangeListeners(this.channel)
+                this.notifyListener()
+            } else {
+                // 普通群走服务端全量同步，完成后 subscriberChangeListener 回调刷新
+                await WKSDK.shared().channelManager.syncSubscribes(this.channel)
+                this.reloadSubscribers()
+            }
+        } catch (e) {
+            console.warn("[ConversationVM] resyncSubscribers failed", e)
+        }
     }
 
     // 通过uid获取订阅者对象
