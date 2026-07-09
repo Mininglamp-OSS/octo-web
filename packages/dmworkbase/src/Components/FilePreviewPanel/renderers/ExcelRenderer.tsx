@@ -187,8 +187,8 @@ function SheetTable({ sheetData }: { sheetData: SheetData }) {
  * 使用虚拟滚动高效渲染大数据量
  */
 const ExcelRenderer: React.FC<ExcelRendererProps> = ({ file, onError }) => {
-  // 文件大小检查（超过 20MB 不渲染）
-  if (file.size && isFileTooLarge(file.size)) {
+  // 文件大小检查（超过 20MB 不渲染；size 未知时保守拒绝，避免 ReDoS/锁死）
+  if (!file.size || isFileTooLarge(file.size)) {
     return (
       <FileTooLarge
         fileName={file.name}
