@@ -62,7 +62,6 @@ describe("buildOctoHostConfig — --wk-* 颜色映射", () => {
         "var(--wk-text-accent)": "rgb(30, 100, 255)",
         "var(--wk-bg-surface)": "rgb(255, 255, 255)",
         "var(--wk-bg-elevated)": "rgb(245, 245, 245)",
-        "var(--wk-border-default)": "rgb(220, 220, 220)",
         "var(--wk-accent-tint-10)": "rgb(230, 240, 255)",
         "var(--wk-color-success)": "rgb(0, 150, 0)",
         "var(--wk-color-success-bg)": "rgb(230, 250, 230)",
@@ -91,13 +90,12 @@ describe("buildOctoHostConfig — --wk-* 颜色映射", () => {
     expect(hc.supportsInteractivity).toBe(true);
   });
 
-  it("emphasis 有区别于 default 的背景填色 + 边框（灰底可见）", () => {
+  it("emphasis 有区别于 default 的背景填色（灰底可见）", () => {
     const hc = buildOctoHostConfig(buildStubResolver());
     const emphasis = hc.containerStyles.getStyleByName("emphasis");
     const def = hc.containerStyles.getStyleByName("default");
     expect(emphasis.backgroundColor).toBe("rgb(245, 245, 245)");
     expect(emphasis.backgroundColor).not.toBe(def.backgroundColor);
-    expect(emphasis.borderColor).toBe("rgb(220, 220, 220)");
   });
 
   it("accent 容器有蓝色 badge 底（不再裸露成白底）", () => {

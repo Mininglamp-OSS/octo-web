@@ -42,7 +42,6 @@ const COLOR_TOKENS = {
   // backgroundColor 为 undefined，故 emphasis/accent/good/warning/attention 的背景
   // 必须由 HostConfig 显式提供，否则一律退化为透明/父白底（见排查结论）。
   emphasisBackground: "var(--wk-bg-elevated)",
-  emphasisBorder: "var(--wk-border-default)",
   accentBackground: "var(--wk-accent-tint-10)",
   good: "var(--wk-color-success)",
   goodBackground: "var(--wk-color-success-bg)",
@@ -58,7 +57,6 @@ export function buildOctoHostConfig(resolve: CssColorResolver): HostConfig {
   const accent = resolve(COLOR_TOKENS.accent);
   const background = resolve(COLOR_TOKENS.background);
   const emphasisBackground = resolve(COLOR_TOKENS.emphasisBackground);
-  const emphasisBorder = resolve(COLOR_TOKENS.emphasisBorder);
   const accentBackground = resolve(COLOR_TOKENS.accentBackground);
   const good = resolve(COLOR_TOKENS.good);
   const goodBackground = resolve(COLOR_TOKENS.goodBackground);
@@ -107,7 +105,6 @@ export function buildOctoHostConfig(resolve: CssColorResolver): HostConfig {
       },
       emphasis: {
         backgroundColor: emphasisBackground,
-        borderColor: emphasisBorder,
         foregroundColors: fg,
       },
       accent: {
