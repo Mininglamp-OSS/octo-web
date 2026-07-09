@@ -9,7 +9,21 @@
 // passes the imperative API in via `setApi`. See ./connect.ts.
 
 export { ExcalidrawYjsBinding, LOCAL_ORIGIN, REPAIR_ORIGIN } from './binding.ts'
-export type { WhiteboardBindingOptions, RenderAdapter } from './binding.ts'
+export type {
+  WhiteboardBindingOptions,
+  RenderAdapter,
+  FileSync,
+  FileUploader,
+  FileFetcher,
+  FileRef,
+} from './binding.ts'
+export {
+  hashBytesToId,
+  makeGenerateIdForFile,
+  dataURLToBlob,
+  blobToDataURL,
+} from './fileSync.ts'
+export type { FileLike } from './fileSync.ts'
 export { createWhiteboardSession } from './connect.ts'
 export type { WhiteboardSession, WhiteboardSessionOptions, BoardTerminal } from './connect.ts'
 export { shouldOverwrite, reconcileElement, elementSupersedes } from './reconcile.ts'

@@ -52,6 +52,7 @@ function makeSession(initialRole: 'writer' | 'reader' = 'writer'): {
   const binding = {
     setApi: () => {},
     setRenderAdapter: () => {},
+    setFileSync: () => {},
     handleLocalChange: () => {},
     snapshotElements: () => [] as unknown[],
   }

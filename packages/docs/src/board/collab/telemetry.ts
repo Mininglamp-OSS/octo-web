@@ -57,6 +57,16 @@ export interface BindingTelemetry {
    * re-attempt the stale write (P2 — CAS-reject baseline resync).
    */
   casResynced: number
+  /** Image binaries uploaded to object storage on local insert, with the attachId mirrored to the
+   * Y.Doc so peers can fetch them (XIN-702). */
+  fileUploads: number
+  /** Upload attempts that failed (network / presign rejection). The insert still renders locally. */
+  fileUploadErrors: number
+  /** Image binaries fetched by attachId from object storage and addFiles()'d into the canvas so a
+   * remote-authored image renders instead of a grey placeholder (XIN-702). */
+  fileRehydrates: number
+  /** Rehydrate fetches that failed; the image stays a placeholder until the next apply retries. */
+  fileFetchErrors: number
 }
 
 export function emptyTelemetry(): BindingTelemetry {
@@ -74,6 +84,10 @@ export function emptyTelemetry(): BindingTelemetry {
     reinitRepaints: 0,
     remoteApplyErrors: 0,
     casResynced: 0,
+    fileUploads: 0,
+    fileUploadErrors: 0,
+    fileRehydrates: 0,
+    fileFetchErrors: 0,
   }
 }
 

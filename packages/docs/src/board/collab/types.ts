@@ -60,6 +60,9 @@ export interface BinaryFileData {
   dataURL?: string
   mimeType?: string
   created?: number
+  /** Object-store handle returned by the upload endpoint; the ONE file field mirrored into the
+   * Y.Doc so a peer can fetch the binary by it (XIN-702). */
+  attachId?: string
   [k: string]: Json | undefined
 }
 
@@ -75,4 +78,10 @@ export interface ExcalidrawBindingAPI {
     captureUpdate?: unknown
   }): void
   getSceneElementsIncludingDeleted?(): readonly ExcalidrawElement[]
+  /**
+   * Push fetched image binaries into the canvas so image elements referencing them render (XIN-702).
+   * Matches `ExcalidrawImperativeAPI.addFiles`; optional so the node-test fakes and the pre-mount
+   * (null-api) path stay valid.
+   */
+  addFiles?(files: readonly BinaryFileData[]): void
 }

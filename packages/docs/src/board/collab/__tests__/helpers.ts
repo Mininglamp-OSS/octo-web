@@ -1,6 +1,6 @@
 // Shared helpers for the whiteboard binding tests.
 import * as Y from 'yjs'
-import type { ExcalidrawBindingAPI, ExcalidrawElement } from '../types.ts'
+import type { BinaryFileData, ExcalidrawBindingAPI, ExcalidrawElement } from '../types.ts'
 
 let nonceSeq = 1000
 
@@ -34,6 +34,9 @@ export function bump(el: ExcalidrawElement, overrides: Partial<ExcalidrawElement
 export class FakeExcalidrawApi implements ExcalidrawBindingAPI {
   scene: ExcalidrawElement[] = []
   updateSceneCalls = 0
+  /** File binaries handed to the canvas via addFiles (image rehydrate path). */
+  addedFiles: BinaryFileData[] = []
+  addFilesCalls = 0
   /** Optional reentrancy hook: invoked inside updateScene to simulate Excalidraw's onChange. */
   onUpdate?: (elements: readonly ExcalidrawElement[]) => void
 
@@ -41,6 +44,11 @@ export class FakeExcalidrawApi implements ExcalidrawBindingAPI {
     this.updateSceneCalls++
     this.scene = [...(scene.elements ?? [])]
     this.onUpdate?.(this.scene)
+  }
+
+  addFiles(files: readonly BinaryFileData[]): void {
+    this.addFilesCalls++
+    this.addedFiles.push(...files)
   }
 
   getSceneElementsIncludingDeleted(): readonly ExcalidrawElement[] {

@@ -52,6 +52,7 @@ function makeSilentSession(role: 'writer' | 'reader' = 'reader'): WhiteboardSess
   const binding = {
     setApi: () => {},
     setRenderAdapter: () => {},
+    setFileSync: () => {},
     handleLocalChange: () => {},
     snapshotElements: () => [] as unknown[],
   }

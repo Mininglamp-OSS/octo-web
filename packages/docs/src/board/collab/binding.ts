@@ -78,6 +78,39 @@ export interface RenderAdapter {
   ): ExcalidrawElement[]
 }
 
+/** Minimal file-ref shape handed to the fetcher: enough to fetch the binary by its object handle. */
+export interface FileRef {
+  /** Excalidraw file id (the key under `Y.Map('files')` and the element's `fileId`). */
+  id: string
+  /** Object-store handle returned by the upload endpoint. */
+  attachId: string
+  mimeType?: string
+}
+
+/**
+ * Upload a freshly inserted image binary to object storage and return its durable `attachId`
+ * (or null if the upload was skipped / failed). Injected by the host (BoardShell) so the binding
+ * never imports the REST client and stays node-testable — the tests pass a fake.
+ */
+export type FileUploader = (file: BinaryFileData) => Promise<string | null>
+
+/**
+ * Fetch an image binary by its `attachId` and return a `BinaryFileData` (with a `dataURL`) ready to
+ * `addFiles()` into the canvas — or null if it could not be fetched. Injected by the host.
+ */
+export type FileFetcher = (ref: FileRef) => Promise<BinaryFileData | null>
+
+/**
+ * Host-injected object-storage bridge (XIN-702). `uploader` runs on local insert and writes the
+ * returned `attachId` into the Y.Doc file ref so peers can fetch it; `fetcher` runs on remote apply
+ * to pull the binary a peer authored and paint it. Either may be omitted (M1 standalone / no backend
+ * → images stay local-only, no upload/fetch).
+ */
+export interface FileSync {
+  uploader?: FileUploader | null
+  fetcher?: FileFetcher | null
+}
+
 /** Strip a BinaryFileData down to Y.Doc-safe reference metadata (no dataURL/base64). */
 function toFileRef(file: BinaryFileData): Record<string, Json> {
   const ref: Record<string, Json> = { id: file.id }
@@ -104,6 +137,18 @@ export class ExcalidrawYjsBinding {
   private api: ExcalidrawBindingAPI | null
   /** Host-injected restore/reconcile contract (null until BoardShell wires it). */
   private renderAdapter: RenderAdapter | null = null
+  /** Host-injected object-storage bridge for image binaries (null until BoardShell wires it). */
+  private fileSync: FileSync | null = null
+  /** File ids whose upload is in flight, so a re-emitted onChange does not upload the same binary twice. */
+  private readonly uploadingFileIds = new Set<string>()
+  /** File ids this client already uploaded (attachId mirrored) — never re-upload, never re-fetch. */
+  private readonly uploadedFileIds = new Set<string>()
+  /** File ids this client holds the binary for locally (inserted here) — skip the rehydrate fetch. */
+  private readonly localFileIds = new Set<string>()
+  /** File ids whose rehydrate fetch is in flight, so overlapping applies do not double-fetch. */
+  private readonly fetchingFileIds = new Set<string>()
+  /** File ids already fetched + addFiles()'d into this canvas — fetch each remote binary once. */
+  private readonly fetchedFileIds = new Set<string>()
   private readonly telemetry: BindingTelemetry = emptyTelemetry()
   /** Last element state this binding knows the canvas to hold, keyed by id, for the local diff. */
   private lastKnown = new Map<string, ExcalidrawElement>()
@@ -131,6 +176,7 @@ export class ExcalidrawYjsBinding {
   private applyingRemote = false
   private destroyed = false
   private readonly onElements: (events: Y.YEvent<Y.Map<unknown>>[], txn: Y.Transaction) => void
+  private readonly onFiles: (events: Y.YEvent<Y.Map<unknown>>[], txn: Y.Transaction) => void
 
   constructor(ydoc: Y.Doc, opts: WhiteboardBindingOptions = {}) {
     this.ydoc = ydoc
@@ -155,6 +201,18 @@ export class ExcalidrawYjsBinding {
 
     this.onElements = (_events, txn) => this.onRemote(txn)
     this.elements.observeDeep(this.onElements)
+
+    // Files map observer (XIN-702): image binaries sync in two steps — a peer syncs the image
+    // element first, then (asynchronously, after the upload resolves) writes the attachId onto the
+    // file ref. The elements observer already fired for step 1, so without watching files too a
+    // late attachId would never trigger a fetch and the image would stay a grey placeholder until an
+    // unrelated element edit. Our OWN attachId write is LOCAL_ORIGIN (and its file is in
+    // localFileIds), so skip it; any other file change rehydrates. rehydrateFiles is idempotent.
+    this.onFiles = (_events, txn) => {
+      if (this.destroyed || txn.origin === LOCAL_ORIGIN) return
+      this.rehydrateFiles()
+    }
+    this.files.observeDeep(this.onFiles)
   }
 
   /** Read-only telemetry snapshot (frontend-design §5.7.4). */
@@ -186,6 +244,17 @@ export class ExcalidrawYjsBinding {
   setRenderAdapter(adapter: RenderAdapter | null): void {
     this.renderAdapter = adapter
     if (adapter && this.api && !this.destroyed && this.elements.size > 0) this.applyRemote()
+  }
+
+  /**
+   * Inject the object-storage bridge for image binaries (XIN-702). BoardShell wires this once the
+   * board's docId + REST client are available; the binding itself never imports the client. Setting
+   * a fetcher and re-running the apply lets an already-synced board rehydrate its images the moment
+   * the bridge attaches (e.g. the canvas mounted before the fetcher was ready).
+   */
+  setFileSync(sync: FileSync | null): void {
+    this.fileSync = sync
+    if (sync?.fetcher && this.api && !this.destroyed && this.elements.size > 0) this.rehydrateFiles()
   }
 
   /** Update local presence (selection/cursor). Never touches the Y.Doc (XIN-16 §7). */
@@ -305,6 +374,8 @@ export class ExcalidrawYjsBinding {
       // Files: mirror reference metadata only; binary never enters the Y.Doc.
       for (const file of fileEntries) {
         if (!file?.id) continue
+        // This client holds the binary for anything it just inserted — never fetch it back later.
+        if (typeof file.dataURL === 'string' && file.dataURL.length > 0) this.localFileIds.add(file.id)
         let yFile = this.files.get(file.id)
         if (!yFile) {
           yFile = new Y.Map<unknown>()
@@ -316,6 +387,13 @@ export class ExcalidrawYjsBinding {
         }
       }
     }, LOCAL_ORIGIN)
+
+    // Upload-on-insert (XIN-702): after mirroring the refs, upload any freshly inserted image binary
+    // to object storage and write the returned attachId back into the Y.Doc ref, so a peer can fetch
+    // it. Runs OUTSIDE the transaction (it is async) and dedupes on the in-flight / done sets.
+    for (const file of fileEntries) {
+      if (file?.id) this.startUpload(file)
+    }
 
     if (wrote === 0 && changed.length > 0 && fileEntries.length === 0) {
       // Everything was CAS-rejected: no element actually written.
@@ -355,6 +433,80 @@ export class ExcalidrawYjsBinding {
     if (count === 0 || !this.api || this.destroyed) return
     this.telemetry.reinitRepaints++
     this.applyRemote()
+  }
+
+  /**
+   * Upload a freshly inserted image binary to object storage and mirror the returned attachId into
+   * the Y.Doc file ref (XIN-702). Idempotent: skips files with no binary, files that already carry
+   * an attachId, and files already uploading / uploaded. The attachId write is a separate
+   * LOCAL_ORIGIN transaction — guard 1 ignores it here, and peers see it as a remote ref update and
+   * fetch the binary. The binary itself is NEVER written to the Y.Doc (XIN-16 §2.2).
+   */
+  private startUpload(file: BinaryFileData): void {
+    const uploader = this.fileSync?.uploader
+    if (!uploader || this.destroyed) return
+    const id = file.id
+    if (!id) return
+    const hasBinary = typeof file.dataURL === 'string' && file.dataURL.length > 0
+    const hasAttach = typeof file.attachId === 'string' && file.attachId.length > 0
+    if (!hasBinary || hasAttach) return
+    if (this.uploadingFileIds.has(id) || this.uploadedFileIds.has(id)) return
+    this.uploadingFileIds.add(id)
+    Promise.resolve(uploader(file))
+      .then((attachId) => {
+        this.uploadingFileIds.delete(id)
+        if (this.destroyed || !attachId) return
+        this.uploadedFileIds.add(id)
+        // Mirror the durable handle so peers can fetch the binary. Create the ref if a concurrent
+        // prune removed it; only write when the value actually changes (idempotent re-run safe).
+        this.ydoc.transact(() => {
+          let yFile = this.files.get(id)
+          if (!yFile) {
+            yFile = new Y.Map<unknown>()
+            this.files.set(id, yFile)
+          }
+          if (yFile.get('attachId') !== attachId) yFile.set('attachId', attachId)
+        }, LOCAL_ORIGIN)
+        this.telemetry.fileUploads++
+      })
+      .catch(() => {
+        this.uploadingFileIds.delete(id)
+        this.telemetry.fileUploadErrors++
+      })
+  }
+
+  /**
+   * Rehydrate remote-authored image binaries (XIN-702). For every file ref in the Y.Doc that carries
+   * an attachId, is NOT one this client inserted, and has not already been fetched, pull the binary
+   * by attachId and `addFiles()` it into the canvas so the image renders instead of a grey
+   * placeholder. Each attachId is fetched at most once (dedup sets); errors leave the placeholder and
+   * the next apply retries. Fire-and-forget — never blocks the updateScene path.
+   */
+  private rehydrateFiles(): void {
+    const fetcher = this.fileSync?.fetcher
+    if (!fetcher || !this.api?.addFiles || this.destroyed) return
+    for (const [id, yFile] of this.files) {
+      if (this.localFileIds.has(id) || this.fetchedFileIds.has(id) || this.fetchingFileIds.has(id)) {
+        continue
+      }
+      const attachId = yFile.get('attachId')
+      if (typeof attachId !== 'string' || attachId.length === 0) continue
+      const rawMime = yFile.get('mimeType')
+      const mimeType = typeof rawMime === 'string' ? rawMime : undefined
+      this.fetchingFileIds.add(id)
+      Promise.resolve(fetcher({ id, attachId, mimeType }))
+        .then((file) => {
+          this.fetchingFileIds.delete(id)
+          if (this.destroyed || !file) return
+          this.fetchedFileIds.add(id)
+          this.api?.addFiles?.([file])
+          this.telemetry.fileRehydrates++
+        })
+        .catch(() => {
+          this.fetchingFileIds.delete(id)
+          this.telemetry.fileFetchErrors++
+        })
+    }
   }
 
   // ── Y.Doc → canvas ─────────────────────────────────────────────────────────────────────────
@@ -441,6 +593,9 @@ export class ExcalidrawYjsBinding {
     this.lastKnown = snap
     this.telemetry.remoteApplies++
     this.telemetry.remoteElements += elements.length
+    // Rehydrate any remote-authored image binaries this scene references (XIN-702): fetch by
+    // attachId and addFiles() so the image renders instead of a grey placeholder.
+    this.rehydrateFiles()
   }
 
   /**
@@ -463,6 +618,7 @@ export class ExcalidrawYjsBinding {
     if (this.destroyed) return
     this.destroyed = true
     this.elements.unobserveDeep(this.onElements)
+    this.files.unobserveDeep(this.onFiles)
     this.undoManager?.destroy()
   }
 }

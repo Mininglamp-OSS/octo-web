@@ -29,7 +29,9 @@ import { BoardMainMenu, type ExcalidrawMainMenu } from './BoardMainMenu.tsx'
 import { installExcalidrawDebrand } from './excalidrawDebrand.ts'
 import { installLibraryControlButtons } from './libraryControlButtons.ts'
 import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
-import type { ExcalidrawElement, BinaryFileData } from './collab/index.ts'
+import type { ExcalidrawElement, BinaryFileData, FileRef } from './collab/index.ts'
+import { makeGenerateIdForFile, dataURLToBlob, blobToDataURL } from './collab/index.ts'
+import { presignUpload, uploadBinary, getReadUrl } from '../attachments/api.ts'
 import {
   setLocalPresenceUser,
   publishLocalPointer,
@@ -70,6 +72,13 @@ interface ExcalidrawProps {
   viewModeEnabled?: boolean
   theme?: 'light' | 'dark'
   langCode?: string
+  /**
+   * Content-address a freshly inserted image file WITHOUT `crypto.subtle` (XIN-702 / P1). Excalidraw
+   * 0.18.1's built-in id generator calls `crypto.subtle.digest`, which is undefined on plain-http LAN
+   * and throws (caught into a non-deterministic nanoid fallback + a red console error). Supplying this
+   * prop makes the id a stable FNV hash of the bytes that works in an insecure context.
+   */
+  generateIdForFile?: (file: File) => string | Promise<string>
   UIOptions?: Record<string, unknown>
   /** Custom menu / dialog composition rendered inside the canvas (we supply a de-branded MainMenu). */
   children?: ReactNode
@@ -185,6 +194,14 @@ export interface BoardShellProps {
 function toExcalidrawLang(locale: string): string {
   return locale.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
 }
+
+/**
+ * Stable, content-addressed file-id generator for Excalidraw's `generateIdForFile` prop (XIN-702).
+ * Built once at module scope (it holds no state) so passing it to <Excalidraw> never changes the
+ * prop identity across renders. Hashes the file bytes without `crypto.subtle`, so an image insert on
+ * a plain-http LAN neither throws nor logs the digest error the built-in generator does.
+ */
+const boardGenerateIdForFile = makeGenerateIdForFile()
 
 /** Best-effort theme: follow the OS preference, matching the docs `.octo-theme` media query. */
 function prefersDark(): boolean {
@@ -756,6 +773,39 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     setExcalidrawApi(api as { updateScene: (scene: { collaborators: Map<string, BoardCollaborator> }) => void })
   }, [])
 
+  // XIN-702 image binary bridge. Upload a freshly inserted image to the doc object store and return
+  // its durable attachId (the binding mirrors it into the Y.Doc file ref so peers can fetch it); on a
+  // remote apply the fetcher pulls a peer's binary by attachId back into a dataURL for addFiles().
+  // Both reuse the existing docs attachments contract (`/docs/{docId}/attachments/*`) — a board IS a
+  // doc, so its member auth already scopes these routes (BE half XIN-701). Base64 never enters the
+  // Y.Doc: only the attachId (durable) and the transient dataURL (local canvas only) move.
+  const uploadBoardFile = useCallback(
+    async (file: BinaryFileData): Promise<string | null> => {
+      if (!file.dataURL) return null
+      const blob = dataURLToBlob(file.dataURL)
+      if (!blob) return null // already a remote URL, or not decodable — nothing to upload
+      const presign = await presignUpload(docId, {
+        fileName: file.id,
+        mime: file.mimeType ?? blob.type ?? 'application/octet-stream',
+        sizeBytes: blob.size,
+      })
+      await uploadBinary(presign, blob)
+      return presign.attachId
+    },
+    [docId],
+  )
+  const fetchBoardFile = useCallback(
+    async (ref: FileRef): Promise<BinaryFileData | null> => {
+      const read = await getReadUrl(docId, ref.attachId)
+      const res = await fetch(read.url)
+      if (!res.ok) return null
+      const blob = await res.blob()
+      const dataURL = await blobToDataURL(blob)
+      return { id: ref.id, dataURL, mimeType: read.mime ?? ref.mimeType, created: Date.now() }
+    },
+    [docId],
+  )
+
   // P1a: gate the imperative binding replay (setApi → applyRemote → updateScene) and the
   // restore/reconcile adapter (XIN-87) on `accessConfirmed`. The declarative gates already withhold
   // cached content — `initialElements` returns [] and the local mirror is not loaded before access
@@ -782,13 +832,17 @@ export function BoardShell(props: BoardShellProps): ReactElement {
         reconcile: (local, restoredRemote) => reconcile(local, restoredRemote, imperative.getAppState?.()),
       })
     }
+    // XIN-702: wire the image object-store bridge so inserts upload (attachId → Y.Doc ref) and remote
+    // images rehydrate (fetch by attachId → addFiles). Gated on the same accessConfirmed floor.
+    binding.setFileSync({ uploader: uploadBoardFile, fetcher: fetchBoardFile })
     return () => {
       // Access lost or the session/canvas swapped: detach the api so no further applyRemote can
       // paint, and drop the adapter. setApi(null) only clears the handle — it never pushes a scene.
       binding.setApi(null)
       binding.setRenderAdapter(null)
+      binding.setFileSync(null)
     }
-  }, [collabSession, accessConfirmed, excalidrawApi])
+  }, [collabSession, accessConfirmed, excalidrawApi, uploadBoardFile, fetchBoardFile])
 
   // Presence (XIN-111 / case8 presence_delta=0). The board opened a real HocuspocusProvider for
   // content sync (XIN-55) but never wired presence onto it — the binding's __awareness was a
@@ -1108,6 +1162,9 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               viewModeEnabled={readOnly}
               theme={dark ? 'dark' : 'light'}
               langCode={langCode}
+              // XIN-702 / P1: content-address inserted images without crypto.subtle so an insert on a
+              // plain-http LAN does not throw the digest error and yields a peer-stable file id.
+              generateIdForFile={boardGenerateIdForFile}
             >
               {/* De-branded hamburger menu: Excalidraw's default items minus the "Excalidraw
                   links" (Socials) group (XIN-531 item 1). */}

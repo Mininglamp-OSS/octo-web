@@ -59,6 +59,7 @@ function makeSession(role: 'admin' | 'writer' | 'reader'): WhiteboardSession {
   const binding = {
     setApi: () => {},
     setRenderAdapter: () => {},
+    setFileSync: () => {},
     handleLocalChange: () => {},
     snapshotElements: () => [] as unknown[],
   }
