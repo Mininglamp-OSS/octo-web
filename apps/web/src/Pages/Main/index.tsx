@@ -229,97 +229,123 @@ export class MainPage extends Component<{}, MainPageState> {
 
                 return (
                     <>
-                        <WKLayout
-                            onRenderTab={() => (
-                                <NavRail
-                                    // Space
-                                    spaces={allSpaces}
-                                    currentSpaceId={currentSpaceId}
-                                    onSpaceSelect={this.handleSpaceSelected}
-                                    onJoinSpace={() => this.setState({ showJoinSpace: true })}
-                                    onCreateSpace={() => this.setState({ showCreateSpace: true })}
-                                    canManageSpace={canManageSpace}
-                                    // 菜单
-                                    menusList={vm.menusList}
-                                    currentMenus={vm.currentMenus}
-                                    onMenuClick={(menus) => {
-                                        const prevMenuId = vm.currentMenus?.id;
-                                        vm.currentMenus = menus;
-                                        WKApp.currentMenuId = menus.id;
-                                        if (menus.onPress) {
-                                            menus.onPress();
-                                        } else {
-                                            WKApp.routeLeft.popToRoot();
-                                            const stayInChat = prevMenuId === "chat" && menus.id === "chat";
-                                            if (!stayInChat) {
-                                                WKApp.routeRight.popToRoot();
+                        <div
+                            aria-hidden={showOnboardingGate ? true : undefined}
+                            {...(showOnboardingGate ? { inert: "" } : {})}
+                        >
+                            <WKLayout
+                                onRenderTab={() => (
+                                    <NavRail
+                                        // Space
+                                        spaces={allSpaces}
+                                        currentSpaceId={currentSpaceId}
+                                        onSpaceSelect={this.handleSpaceSelected}
+                                        onJoinSpace={() => this.setState({ showJoinSpace: true })}
+                                        onCreateSpace={() => this.setState({ showCreateSpace: true })}
+                                        canManageSpace={canManageSpace}
+                                        // 菜单
+                                        menusList={vm.menusList}
+                                        currentMenus={vm.currentMenus}
+                                        onMenuClick={(menus) => {
+                                            const prevMenuId = vm.currentMenus?.id;
+                                            vm.currentMenus = menus;
+                                            WKApp.currentMenuId = menus.id;
+                                            if (menus.onPress) {
+                                                menus.onPress();
+                                            } else {
+                                                WKApp.routeLeft.popToRoot();
+                                                const stayInChat = prevMenuId === "chat" && menus.id === "chat";
+                                                if (!stayInChat) {
+                                                    WKApp.routeRight.popToRoot();
+                                                }
                                             }
+                                            // MainContentLeft 把已访问路由都挂在 DOM 里 (靠 display
+                                            // 切换可见性), 所以切回某个菜单时组件不会重新 mount。
+                                            // 发 mitt 事件通知依赖数据新鲜度的页面主动 reload。
+                                            WKApp.mittBus.emit("wk:nav-menu-activated", { menuId: menus.id });
+                                        }}
+                                        // 用户
+                                        onAvatarClick={this.handleAvatarClick}
+                                        isOnline={navigator.onLine}
+                                        // 设置
+                                        settingSelected={vm.settingSelected}
+                                        hasNewVersion={vm.hasNewVersion}
+                                        showNewVersion={vm.showNewVersion}
+                                        showAppVersion={vm.showAppVersion}
+                                        showAppUpdate={vm.showAppUpdate}
+                                        appUpdateProgress={vm.appUpdateProgress}
+                                        showAppUpdateOperation={vm.showAppUpdateOperation}
+                                        lastVersionInfo={vm.lastVersionInfo}
+                                        onToggleSetting={() => { vm.settingSelected = !vm.settingSelected; }}
+                                        onSetShowNewVersion={(v) => {
+                                            vm.showNewVersion = v;
+                                            if (!v) { vm.markVersionRead(); }
+                                            vm.notifyListener();
+                                        }}
+                                        onSetShowAppVersion={(v) => {
+                                            vm.showAppVersion = v;
+                                            if (!v) { vm.markVersionRead(); }
+                                            vm.notifyListener();
+                                        }}
+                                        onInstallUpdate={() => vm.installUpdate()}
+                                        onNotifyListener={() => vm.notifyListener()}
+                                        onOpenOnboarding={this.handleOpenOnboarding}
+                                        onDismissNewVersion={() => { vm.markVersionRead(); }}
+                                    />
+                                )}
+                                contentLeft={<MainContentLeft vm={vm} />}
+                                onRightContext={(context) => {
+                                    WKApp.routeRight.setPush = (view) => { context.push(view); };
+                                    WKApp.routeRight.setReplaceToRoot = (view) => { context.replaceToRoot(view); };
+                                    WKApp.routeRight.setPop = () => { context.pop(); };
+                                    WKApp.routeRight.setPopToRoot = () => { context.popToRoot(); };
+                                }}
+                                onLeftContext={(context) => {
+                                    WKApp.routeLeft.setPush = (view) => { context.push(view); };
+                                    WKApp.routeLeft.setReplaceToRoot = (view) => { context.replaceToRoot(view); };
+                                    WKApp.routeLeft.setPop = () => { context.pop(); };
+                                    WKApp.routeLeft.setPopToRoot = () => { context.popToRoot(); };
+                                    // Bind menu switch callback for showConversation
+                                    WKApp.switchToMenuById = (menuId: string) => {
+                                        const target = vm.menusList.find((m: any) => m.id === menuId);
+                                        if (target && vm.currentMenus?.id !== menuId) {
+                                            vm.currentMenus = target;
+                                            WKApp.currentMenuId = menuId;
+                                            // NOTE: do NOT popToRoot() here. routeLeft is a shared
+                                            // stack across tabs; popping it would destroy the detail
+                                            // view (e.g. summary detail page) the user was on,
+                                            // breaking rendering when they later switch back.
                                         }
-                                        // MainContentLeft 把已访问路由都挂在 DOM 里 (靠 display
-                                        // 切换可见性), 所以切回某个菜单时组件不会重新 mount。
-                                        // 发 mitt 事件通知依赖数据新鲜度的页面主动 reload。
-                                        WKApp.mittBus.emit("wk:nav-menu-activated", { menuId: menus.id });
-                                    }}
-                                    // 用户
-                                    onAvatarClick={this.handleAvatarClick}
-                                    isOnline={navigator.onLine}
-                                    // 设置
-                                    settingSelected={vm.settingSelected}
-                                    hasNewVersion={vm.hasNewVersion}
-                                    showNewVersion={vm.showNewVersion}
-                                    showAppVersion={vm.showAppVersion}
-                                    showAppUpdate={vm.showAppUpdate}
-                                    appUpdateProgress={vm.appUpdateProgress}
-                                    showAppUpdateOperation={vm.showAppUpdateOperation}
-                                    lastVersionInfo={vm.lastVersionInfo}
-                                    onToggleSetting={() => { vm.settingSelected = !vm.settingSelected; }}
-                                    onSetShowNewVersion={(v) => {
-                                        vm.showNewVersion = v;
-                                        if (!v) { vm.markVersionRead(); }
-                                        vm.notifyListener();
-                                    }}
-                                    onSetShowAppVersion={(v) => {
-                                        vm.showAppVersion = v;
-                                        if (!v) { vm.markVersionRead(); }
-                                        vm.notifyListener();
-                                    }}
-                                    onInstallUpdate={() => vm.installUpdate()}
-                                    onNotifyListener={() => vm.notifyListener()}
-                                    onOpenOnboarding={this.handleOpenOnboarding}
-                                    onDismissNewVersion={() => { vm.markVersionRead(); }}
-                                />
-                            )}
-                            contentLeft={<MainContentLeft vm={vm} />}
-                            onRightContext={(context) => {
-                                WKApp.routeRight.setPush = (view) => { context.push(view); };
-                                WKApp.routeRight.setReplaceToRoot = (view) => { context.replaceToRoot(view); };
-                                WKApp.routeRight.setPop = () => { context.pop(); };
-                                WKApp.routeRight.setPopToRoot = () => { context.popToRoot(); };
-                            }}
-                            onLeftContext={(context) => {
-                                WKApp.routeLeft.setPush = (view) => { context.push(view); };
-                                WKApp.routeLeft.setReplaceToRoot = (view) => { context.replaceToRoot(view); };
-                                WKApp.routeLeft.setPop = () => { context.pop(); };
-                                WKApp.routeLeft.setPopToRoot = () => { context.popToRoot(); };
-                                // Bind menu switch callback for showConversation
-                                WKApp.switchToMenuById = (menuId: string) => {
-                                    const target = vm.menusList.find((m: any) => m.id === menuId);
-                                    if (target && vm.currentMenus?.id !== menuId) {
-                                        vm.currentMenus = target;
-                                        WKApp.currentMenuId = menuId;
-                                        // NOTE: do NOT popToRoot() here. routeLeft is a shared
-                                        // stack across tabs; popping it would destroy the detail
-                                        // view (e.g. summary detail page) the user was on,
-                                        // breaking rendering when they later switch back.
+                                    };
+                                    // Keep currentMenuId in sync with initial / user-driven menu changes
+                                    if (vm.currentMenus?.id && WKApp.currentMenuId !== vm.currentMenus.id) {
+                                        WKApp.currentMenuId = vm.currentMenus.id;
                                     }
-                                };
-                                // Keep currentMenuId in sync with initial / user-driven menu changes
-                                if (vm.currentMenus?.id && WKApp.currentMenuId !== vm.currentMenus.id) {
-                                    WKApp.currentMenuId = vm.currentMenus.id;
-                                }
-                            }}
-                            contentRight={<EmptyStateIllustration />}
-                        />
+                                }}
+                                contentRight={<EmptyStateIllustration />}
+                            />
+
+                            {/* MeInfo Modal */}
+                            <WKModal
+                                className="wk-main-sider-modal wk-main-sider-meinfo"
+                                visible={showMeInfo}
+                                options={{ mask: false, closable: false }}
+                                onCancel={() => this.setState({ showMeInfo: false })}
+                            >
+                                <MeInfo onClose={() => this.setState({ showMeInfo: false })} />
+                            </WKModal>
+
+                            <JoinSpaceModalConnected
+                                visible={showJoinSpace}
+                                onClose={() => this.setState({ showJoinSpace: false })}
+                                onSuccess={this.handleSpaceSelected}
+                            />
+                            <SpaceCreate
+                                visible={!WKApp.remoteConfig.disableUserCreateSpace && showCreateSpace}
+                                onClose={() => this.setState({ showCreateSpace: false })}
+                                onSuccess={this.handleSpaceSelected}
+                            />
+                        </div>
                         {showOnboardingGate ? (
                             <Onboarding
                                 forceVisible={forceOnboardingVisible}
@@ -327,27 +353,6 @@ export class MainPage extends Component<{}, MainPageState> {
                                 onDismiss={this.handleOnboardingDismissed}
                             />
                         ) : null}
-
-                        {/* MeInfo Modal */}
-                        <WKModal
-                            className="wk-main-sider-modal wk-main-sider-meinfo"
-                            visible={showMeInfo}
-                            options={{ mask: false, closable: false }}
-                            onCancel={() => this.setState({ showMeInfo: false })}
-                        >
-                            <MeInfo onClose={() => this.setState({ showMeInfo: false })} />
-                        </WKModal>
-
-                        <JoinSpaceModalConnected
-                            visible={showJoinSpace}
-                            onClose={() => this.setState({ showJoinSpace: false })}
-                            onSuccess={this.handleSpaceSelected}
-                        />
-                        <SpaceCreate
-                            visible={!WKApp.remoteConfig.disableUserCreateSpace && showCreateSpace}
-                            onClose={() => this.setState({ showCreateSpace: false })}
-                            onSuccess={this.handleSpaceSelected}
-                        />
                     </>
                 );
             }}>

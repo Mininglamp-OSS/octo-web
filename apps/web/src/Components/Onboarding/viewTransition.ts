@@ -53,7 +53,7 @@ export function runOnboardingViewTransition({ duration = 1240, onTransition }: O
     }
 
     if (typeof transition.finished?.finally === "function") {
-        transition.finished.finally(cleanup);
+        transition.finished.finally(cleanup).catch(() => {});
     } else {
         cleanup();
     }
@@ -67,7 +67,7 @@ export function runOnboardingViewTransition({ duration = 1240, onTransition }: O
                 pseudoElement: "::view-transition-new(root)",
             },
         );
-    });
+    }).catch(() => {});
 
     return true;
 }

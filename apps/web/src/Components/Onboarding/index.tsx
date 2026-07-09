@@ -46,6 +46,15 @@ const CELEBRATION_PARTICLES = Array.from({ length: 46 }, (_, index) => {
   };
 });
 
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "textarea:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
 type OnboardingSectionId = ResolvedOnboardingSection["id"];
 
 type OnboardingProps = {
@@ -104,6 +113,20 @@ function getCompletionOrigin(
   }
 
   return getElementCenter(event?.currentTarget || fallbackElement || null);
+}
+
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+  ).filter((element) => {
+    if (element.getAttribute("aria-hidden") === "true") return false;
+    if (element.hasAttribute("disabled")) return false;
+    return element.offsetParent !== null || element === document.activeElement;
+  });
+}
+
+function focusElement(element: HTMLElement | null) {
+  element?.focus({ preventScroll: true });
 }
 
 function ImageVisual({ section }: { section: ResolvedOnboardingSection }) {
@@ -175,8 +198,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({
   const [introLeaving, setIntroLeaving] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const finishButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const completionStartedRef = useRef(false);
   const completionTimerRef = useRef<number | null>(null);
+  const introFallbackTimerRef = useRef<number | null>(null);
+  const focusTimerRef = useRef<number | null>(null);
 
   const activeSection =
     onboardingSections.find((section) => section.id === activeId) ||
@@ -189,21 +216,41 @@ export const Onboarding: React.FC<OnboardingProps> = ({
       if (completionTimerRef.current !== null) {
         window.clearTimeout(completionTimerRef.current);
       }
+      if (introFallbackTimerRef.current !== null) {
+        window.clearTimeout(introFallbackTimerRef.current);
+      }
+      if (focusTimerRef.current !== null) {
+        window.clearTimeout(focusTimerRef.current);
+      }
     };
   }, []);
 
   useEffect(() => {
     if (!visible || forceVisible) return;
-    markOnboardingSeen(window.localStorage);
+    try {
+      markOnboardingSeen(window.localStorage);
+    } catch {
+      // Some hardened browsers throw on localStorage writes; onboarding still closes normally.
+    }
   }, [forceVisible, visible]);
 
   const persistDismissed = () => {
-    markOnboardingSeen(window.localStorage);
+    try {
+      markOnboardingSeen(window.localStorage);
+    } catch {
+      // Best-effort persistence only.
+    }
   };
 
   const hideOnboarding = () => {
     setVisible(false);
     onDismiss?.();
+  };
+
+  const dismissOnEscape = () => {
+    if (isCompleting) return;
+    persistDismissed();
+    hideOnboarding();
   };
 
   const handleClose = () => {
@@ -244,11 +291,83 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     if (transitioned) return;
 
     setIntroLeaving(true);
-    window.setTimeout(() => {
+    introFallbackTimerRef.current = window.setTimeout(() => {
+      introFallbackTimerRef.current = null;
       setShowIntro(false);
       setIntroLeaving(false);
     }, 620);
   };
+
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      dismissOnEscape();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const focusableElements = getFocusableElements(dialog);
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      focusElement(dialog);
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const activeElement = document.activeElement;
+
+    if (event.shiftKey) {
+      if (activeElement === firstElement || !dialog.contains(activeElement)) {
+        event.preventDefault();
+        focusElement(lastElement);
+      }
+      return;
+    }
+
+    if (activeElement === lastElement) {
+      event.preventDefault();
+      focusElement(firstElement);
+    }
+  };
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      previousFocusRef.current = activeElement;
+    }
+
+    return () => {
+      const previousFocus = previousFocusRef.current;
+      previousFocusRef.current = null;
+      if (previousFocus?.isConnected) {
+        focusElement(previousFocus);
+      }
+    };
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    if (focusTimerRef.current !== null) {
+      window.clearTimeout(focusTimerRef.current);
+    }
+
+    focusTimerRef.current = window.setTimeout(() => {
+      focusTimerRef.current = null;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      focusElement(getFocusableElements(dialog)[0] || dialog);
+    }, 0);
+  }, [showIntro, visible]);
 
   if (!visible) {
     return null;
@@ -261,12 +380,15 @@ export const Onboarding: React.FC<OnboardingProps> = ({
   if (showIntro) {
     return (
       <div
+        ref={dialogRef}
         className={`wk-onboarding-overlay wk-onboarding-overlay-intro${
           introLeaving ? " is-intro-leaving" : ""
         }`}
         role="dialog"
         aria-modal="true"
         aria-label={t("app.onboarding.dialog.introAria")}
+        tabIndex={-1}
+        onKeyDown={handleDialogKeyDown}
       >
         <OnboardingIntro onContinue={handleIntroContinue} />
       </div>
@@ -275,12 +397,15 @@ export const Onboarding: React.FC<OnboardingProps> = ({
 
   return (
     <div
+      ref={dialogRef}
       className={`wk-onboarding-overlay wk-onboarding-overlay-panel${
         isCompleting ? " is-completing" : ""
       }`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="wk-onboarding-title"
+      tabIndex={-1}
+      onKeyDown={handleDialogKeyDown}
     >
       {isCompleting ? (
         <div

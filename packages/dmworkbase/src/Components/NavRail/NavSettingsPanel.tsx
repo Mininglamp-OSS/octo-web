@@ -161,12 +161,14 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                     }}>
                         {t("base.navRail.settingsPanel.changelog")}
                     </li>
-                    <li onClick={() => {
-                        onToggleSetting();
-                        onOpenOnboarding?.();
-                    }}>
-                        {t("base.navRail.settingsPanel.onboarding")}
-                    </li>
+                    {onOpenOnboarding && (
+                        <li onClick={() => {
+                            onToggleSetting();
+                            onOpenOnboarding();
+                        }}>
+                            {t("base.navRail.settingsPanel.onboarding")}
+                        </li>
+                    )}
                     {canManageSpace && (
                         <li onClick={() => {
                             onToggleSetting();
