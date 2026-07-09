@@ -366,7 +366,7 @@ function convertImage(node: MdNode, ctx: DocxContext): FileChild[] {
     ]
   }
 
-  const dims = getImageDimensions(node)
+  const dims = getImageDimensions(node, buffer)
   // Image uses `align` attr (left/center/right), not `textAlign`
   const align = mapTextAlign(node.attrs?.align)
 

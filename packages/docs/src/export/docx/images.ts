@@ -194,32 +194,147 @@ export function getImageBuffer(node: MdNode, ctx: DocxContext): ArrayBuffer | un
   return undefined
 }
 
-/**
- * Guess image dimensions from node attrs or use defaults.
- */
-export function getImageDimensions(node: MdNode): { width: number; height: number } {
-  const width = typeof node.attrs?.width === 'number' ? node.attrs.width : undefined
-  const height = typeof node.attrs?.height === 'number' ? node.attrs.height : undefined
+/** Max rendered image width (px) — keeps images inside the A4 content column. */
+const MAX_IMAGE_WIDTH = 600
+/** Fallback box only used when neither attrs nor the bytes yield a real size. */
+const DEFAULT_IMAGE = { width: 400, height: 300 }
 
-  // Only accept strictly positive, finite dimensions; anything else
-  // (negative, zero, NaN, Infinity) falls back to the default size.
-  if (
-    width &&
-    height &&
-    Number.isFinite(width) &&
-    Number.isFinite(height) &&
-    width > 0 &&
-    height > 0
-  ) {
-    // Cap width at 600px for DOCX page width
-    const maxWidth = 600
-    if (width > maxWidth) {
-      const ratio = maxWidth / width
-      return { width: maxWidth, height: Math.round(height * ratio) }
-    }
-    return { width, height }
+/**
+ * Read the intrinsic pixel dimensions from an encoded image's header bytes.
+ * Supports PNG, JPEG, GIF and BMP (the four types the exporter emits). Returns
+ * undefined when the bytes are too short or the format is unrecognized.
+ *
+ * The editor's ImageNode only persists `width` (resize is width-only, height is
+ * CSS `height:auto` in the browser), so the true aspect ratio is not in the
+ * document model — it must come from the image itself. Without this the export
+ * fell back to a fixed 400x300 box and squished every non-4:3 image flat.
+ */
+export function readIntrinsicSize(
+  buffer: ArrayBuffer,
+): { width: number; height: number } | undefined {
+  const b = new Uint8Array(buffer)
+  if (b.length < 4) return undefined
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A, IHDR width/height are big-endian at bytes 16..23.
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) {
+    if (b.length < 24) return undefined
+    const dv = new DataView(buffer)
+    const w = dv.getUint32(16, false)
+    const h = dv.getUint32(20, false)
+    if (w > 0 && h > 0) return { width: w, height: h }
+    return undefined
   }
 
-  // Default image size
-  return { width: 400, height: 300 }
+  // GIF: 'GIF', logical screen width/height are little-endian at bytes 6..9.
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) {
+    if (b.length < 10) return undefined
+    const dv = new DataView(buffer)
+    const w = dv.getUint16(6, true)
+    const h = dv.getUint16(8, true)
+    if (w > 0 && h > 0) return { width: w, height: h }
+    return undefined
+  }
+
+  // BMP: 'BM', BITMAPINFOHEADER width/height are little-endian int32 at bytes 18..25.
+  if (b[0] === 0x42 && b[1] === 0x4d) {
+    if (b.length < 26) return undefined
+    const dv = new DataView(buffer)
+    const w = dv.getInt32(18, true)
+    const h = Math.abs(dv.getInt32(22, true)) // height may be negative (top-down)
+    if (w > 0 && h > 0) return { width: w, height: h }
+    return undefined
+  }
+
+  // JPEG: FF D8, then walk marker segments to the SOF (start-of-frame) which
+  // carries height/width as big-endian uint16 at offsets +5 and +7 from the marker.
+  if (b[0] === 0xff && b[1] === 0xd8) {
+    let offset = 2
+    const dv = new DataView(buffer)
+    while (offset + 9 < b.length) {
+      if (b[offset] !== 0xff) {
+        offset++
+        continue
+      }
+      const marker = b[offset + 1]
+      // Standalone markers (no length): padding 0xFF, RSTn, TEM, EOI.
+      if (marker === 0xff) {
+        offset++
+        continue
+      }
+      if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+        offset += 2
+        continue
+      }
+      const segLen = dv.getUint16(offset + 2, false)
+      if (segLen < 2) return undefined
+      // SOF0..SOF15 except DHT(C4)/DAC(CC)/RSTn — these carry frame dimensions.
+      const isSof =
+        marker >= 0xc0 &&
+        marker <= 0xcf &&
+        marker !== 0xc4 &&
+        marker !== 0xc8 &&
+        marker !== 0xcc
+      if (isSof) {
+        if (offset + 9 >= b.length) return undefined
+        const h = dv.getUint16(offset + 5, false)
+        const w = dv.getUint16(offset + 7, false)
+        if (w > 0 && h > 0) return { width: w, height: h }
+        return undefined
+      }
+      offset += 2 + segLen
+    }
+    return undefined
+  }
+
+  return undefined
+}
+
+/**
+ * Compute the DOCX render dimensions for an image, preserving aspect ratio.
+ *
+ * Priority for the shape (aspect ratio): the image's intrinsic bytes, since the
+ * editor never stores height. The stored `width` attr (if any) sets the target
+ * display width; otherwise the intrinsic width is used. Result width is capped
+ * at MAX_IMAGE_WIDTH and height is always derived from the true ratio so nothing
+ * gets stretched or flattened.
+ */
+export function getImageDimensions(
+  node: MdNode,
+  buffer?: ArrayBuffer,
+): { width: number; height: number } {
+  const attrWidth =
+    typeof node.attrs?.width === 'number' && Number.isFinite(node.attrs.width) && node.attrs.width > 0
+      ? node.attrs.width
+      : undefined
+  const attrHeight =
+    typeof node.attrs?.height === 'number' &&
+    Number.isFinite(node.attrs.height) &&
+    node.attrs.height > 0
+      ? node.attrs.height
+      : undefined
+
+  const intrinsic = buffer ? readIntrinsicSize(buffer) : undefined
+
+  // Aspect ratio (height / width). Prefer intrinsic bytes; fall back to an
+  // explicit attr pair if both are present; otherwise the default box shape.
+  let ratio: number | undefined
+  if (intrinsic) ratio = intrinsic.height / intrinsic.width
+  else if (attrWidth && attrHeight) ratio = attrHeight / attrWidth
+
+  // Target display width: stored attr, else intrinsic, else default.
+  let width = attrWidth ?? intrinsic?.width ?? DEFAULT_IMAGE.width
+  if (width > MAX_IMAGE_WIDTH) width = MAX_IMAGE_WIDTH
+
+  // If we still have no real ratio, fall back to the legacy default box so we
+  // never emit a zero/NaN dimension.
+  if (!ratio || !Number.isFinite(ratio) || ratio <= 0) {
+    if (attrWidth) {
+      // Have a width but no ratio at all: keep the default box aspect.
+      const defRatio = DEFAULT_IMAGE.height / DEFAULT_IMAGE.width
+      return { width: Math.round(width), height: Math.round(width * defRatio) }
+    }
+    return { ...DEFAULT_IMAGE }
+  }
+
+  return { width: Math.round(width), height: Math.max(1, Math.round(width * ratio)) }
 }
