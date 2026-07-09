@@ -519,6 +519,59 @@ describe("EmojiPanel sticker hover preview（原位放大预览）", () => {
         });
         expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
     });
+
+    it("clears a visible preview when a background refresh removes the previewed sticker (no ghost)", async () => {
+        const item = await mountWithSticker();
+        vi.useFakeTimers();
+        hover(item);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
+
+        // 已加载过贴纸的面板才会重拉（stickersLoaded 已在 mountWithSticker 里置 true），
+        // 模拟后台「stickers-updated」广播把正在预览的这张贴纸移除掉——指针没有移动，
+        // 不会触发任何既有的 hide 路径，必须靠 requestStickers 自己核对 sticker_id。
+        hoisted.userStickers.mockResolvedValueOnce({ list: [] });
+        await act(async () => {
+            hoisted.state.mittHandlers["stickers-updated"]?.();
+            await Promise.resolve();
+        });
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
+    it("does not show a pending preview for a sticker removed by a refresh before the delay elapses", async () => {
+        const item = await mountWithSticker();
+        vi.useFakeTimers();
+        hover(item); // 起了 120ms 延时，还没浮出
+
+        // 延时排队期间后台广播把这张贴纸移除掉。
+        hoisted.userStickers.mockResolvedValueOnce({ list: [] });
+        await act(async () => {
+            hoisted.state.mittHandlers["stickers-updated"]?.();
+            await Promise.resolve();
+        });
+
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
+    it("marks the portaled preview aria-hidden so it is not announced as a duplicate", async () => {
+        const item = await mountWithSticker();
+        vi.useFakeTimers();
+        hover(item);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+
+        const preview = document.body.querySelector(".wk-sticker-preview");
+        expect(preview?.getAttribute("aria-hidden")).toBe("true");
+    });
 });
 
 describe("EmojiPanel sticker upload validation (WKApp.remoteConfig.stickerUploadLimits)", () => {
