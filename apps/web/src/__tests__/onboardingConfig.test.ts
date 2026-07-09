@@ -31,35 +31,35 @@ function makeConfig(overrides: Partial<OnboardingConfig> = {}): OnboardingConfig
 
 describe("onboarding config visibility", () => {
   it("shows once per browser storage", () => {
-    const storage = new MemoryStorage();
+    const store = new MemoryStorage();
     const config = makeConfig();
 
-    expect(shouldShowOnboarding(config, storage)).toBe(true);
+    expect(shouldShowOnboarding(config, store)).toBe(true);
 
-    markOnboardingSeen(storage);
+    markOnboardingSeen(store);
 
-    expect(shouldShowOnboarding(config, storage)).toBe(false);
+    expect(shouldShowOnboarding(config, store)).toBe(false);
     expect(
-      shouldShowOnboarding({ ...config, version: "test-v2" }, storage)
+      shouldShowOnboarding({ ...config, version: "test-v2" }, store)
     ).toBe(false);
   });
 
   it("uses one storage key even when uid is missing", () => {
-    const storage = new MemoryStorage();
+    const store = new MemoryStorage();
     const config = makeConfig();
     const key = getOnboardingSeenStorageKey();
 
-    markOnboardingSeen(storage);
+    markOnboardingSeen(store);
 
-    expect(storage.getItem(key)).toBe("seen");
-    expect(shouldShowOnboarding(config, storage)).toBe(false);
+    expect(store.getItem(key)).toBe("seen");
+    expect(shouldShowOnboarding(config, store)).toBe(false);
   });
 
   it("does not show when config is disabled", () => {
-    const storage = new MemoryStorage();
+    const store = new MemoryStorage();
     const config = makeConfig({ enabled: false });
 
-    expect(shouldShowOnboarding(config, storage)).toBe(false);
+    expect(shouldShowOnboarding(config, store)).toBe(false);
   });
 });
 

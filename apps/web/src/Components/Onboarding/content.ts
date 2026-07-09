@@ -191,16 +191,16 @@ export function getOnboardingSeenStorageKey() {
 
 export function shouldShowOnboarding(
   config: OnboardingConfig,
-  storage: Pick<Storage, "getItem">
+  store: Pick<Storage, "getItem">
 ) {
   if (!config.enabled) return false;
-  return storage.getItem(getOnboardingSeenStorageKey()) !== "seen";
+  return store.getItem(getOnboardingSeenStorageKey()) !== "seen";
 }
 
 export function markOnboardingSeen(
-  storage: Pick<Storage, "setItem">
+  store: Pick<Storage, "setItem">
 ) {
-  storage.setItem(getOnboardingSeenStorageKey(), "seen");
+  store.setItem(getOnboardingSeenStorageKey(), "seen");
 }
 
 export function resolveOnboardingSections(
