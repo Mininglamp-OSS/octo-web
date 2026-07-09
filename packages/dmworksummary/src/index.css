@@ -659,11 +659,11 @@
 .summary-regenerate-topic-textarea {
     width: 100%;
     box-sizing: border-box;
-    padding: 8px 12px;
-    font-size: 14px;
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    font-size: var(--wk-text-size-md);
     line-height: 1.6;
     border: 1px solid var(--semi-color-border);
-    border-radius: 6px;
+    border-radius: var(--wk-r-sm);
     resize: vertical;
     font-family: inherit;
     color: var(--semi-color-text-0);

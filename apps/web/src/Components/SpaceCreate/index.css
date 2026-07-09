@@ -22,12 +22,12 @@ body[theme-mode=dark] .wk-spacecreate-label {
     display: block;
     width: 100%;
     box-sizing: border-box;
-    padding: 8px 12px;
+    padding: var(--wk-sp-2) var(--wk-sp-3);
     border: 1px solid var(--wk-border-default);
     border-radius: var(--wk-r-sm);
     background: var(--wk-bg-surface);
     color: var(--wk-text-primary);
-    font-size: 14px;
+    font-size: var(--wk-text-size-md);
     line-height: 1.5;
     resize: vertical;
     outline: none;

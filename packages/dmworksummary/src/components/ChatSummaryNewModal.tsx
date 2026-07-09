@@ -471,7 +471,7 @@ export default class ChatSummaryNewModal extends Component<
                     </div>
 
                     <div className="chat-summary-modal-input-area">
-                        <div style={{ position: 'relative' }}>
+                        <div className="chat-summary-modal-input-wrap">
                             <textarea
                                 ref={this.inputRef}
                                 className="chat-summary-modal-input"

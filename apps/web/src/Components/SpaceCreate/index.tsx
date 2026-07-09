@@ -32,14 +32,18 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
             this.setState({ description: text.slice(0, 200) });
         } else if (mode === "selection" && savedRange) {
             this.setState((prev) => {
-                const updated = prev.description.slice(0, savedRange.from) + text + prev.description.slice(savedRange.to);
-                return { description: updated.slice(0, 200) };
+                const before = prev.description.slice(0, savedRange.from);
+                const after = prev.description.slice(savedRange.to);
+                const budget = Math.max(0, 200 - before.length - after.length);
+                return { description: before + text.slice(0, budget) + after };
             });
         } else {
             this.setState((prev) => {
                 const pos = savedRange?.from ?? prev.description.length;
-                const updated = prev.description.slice(0, pos) + text + prev.description.slice(pos);
-                return { description: updated.slice(0, 200) };
+                const before = prev.description.slice(0, pos);
+                const after = prev.description.slice(pos);
+                const budget = Math.max(0, 200 - before.length - after.length);
+                return { description: before + text.slice(0, budget) + after };
             });
         }
     };

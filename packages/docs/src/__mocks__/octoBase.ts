@@ -97,5 +97,5 @@ export class SpaceService {
 export function VoiceInputButton() {
   return null
 }
-export type ReplaceMode = 'append' | 'all' | 'selection'
+export type ReplaceMode = 'all' | 'selection' | 'insert'
 export type SelectionRange = { from: number; to: number }

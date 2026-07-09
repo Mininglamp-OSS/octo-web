@@ -115,14 +115,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.setState({ regenerateTopic: text.slice(0, 1000) });
         } else if (mode === "selection" && savedRange) {
             this.setState((prev) => {
-                const updated = prev.regenerateTopic.slice(0, savedRange.from) + text + prev.regenerateTopic.slice(savedRange.to);
-                return { regenerateTopic: updated.slice(0, 1000) };
+                const before = prev.regenerateTopic.slice(0, savedRange.from);
+                const after = prev.regenerateTopic.slice(savedRange.to);
+                const budget = Math.max(0, 1000 - before.length - after.length);
+                return { regenerateTopic: before + text.slice(0, budget) + after };
             });
         } else {
             this.setState((prev) => {
                 const pos = savedRange?.from ?? prev.regenerateTopic.length;
-                const updated = prev.regenerateTopic.slice(0, pos) + text + prev.regenerateTopic.slice(pos);
-                return { regenerateTopic: updated.slice(0, 1000) };
+                const before = prev.regenerateTopic.slice(0, pos);
+                const after = prev.regenerateTopic.slice(pos);
+                const budget = Math.max(0, 1000 - before.length - after.length);
+                return { regenerateTopic: before + text.slice(0, budget) + after };
             });
         }
     };

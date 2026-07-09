@@ -73,14 +73,18 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
             this.setState({ descriptionDraft: text.slice(0, 200) });
         } else if (mode === "selection" && savedRange) {
             this.setState((prev) => {
-                const updated = prev.descriptionDraft.slice(0, savedRange.from) + text + prev.descriptionDraft.slice(savedRange.to);
-                return { descriptionDraft: updated.slice(0, 200) };
+                const before = prev.descriptionDraft.slice(0, savedRange.from);
+                const after = prev.descriptionDraft.slice(savedRange.to);
+                const budget = Math.max(0, 200 - before.length - after.length);
+                return { descriptionDraft: before + text.slice(0, budget) + after };
             });
         } else {
             this.setState((prev) => {
                 const pos = savedRange?.from ?? prev.descriptionDraft.length;
-                const updated = prev.descriptionDraft.slice(0, pos) + text + prev.descriptionDraft.slice(pos);
-                return { descriptionDraft: updated.slice(0, 200) };
+                const before = prev.descriptionDraft.slice(0, pos);
+                const after = prev.descriptionDraft.slice(pos);
+                const budget = Math.max(0, 200 - before.length - after.length);
+                return { descriptionDraft: before + text.slice(0, budget) + after };
             });
         }
     };
