@@ -98,7 +98,8 @@ export default class ConversationVM extends ProviderListener {
     typingListener!: TypingListener // 输入中监听
     messageListener!: MessageListener // 消息监听
     connectStatusListener!: ConnectStatusListener // 连接状态监听（重连补刷当前会话）
-    private lastReconnectRefreshAt: number = 0 // 重连补刷去抖时间戳
+    private lastReconnectRefreshAt: number = 0 // 重连补刷（离线消息）去抖时间戳
+    private lastSubscriberResyncAt: number = 0 // 成员重同步去抖时间戳（独立于消息补刷，避免前台成员刷压制重连消息补拉，octo-web#568 review）
     cmdListener!: MessageListener // cmd消息监听
     messageStatusListener!: MessageStatusListener // 消息状态监听
     conversationListener!: ConversationListener // 会话监听
@@ -1012,7 +1013,8 @@ export default class ConversationVM extends ProviderListener {
             // 断连期间的成员变更 CMD（加/减成员，含龙虾）随 WS 丢失，SDK 重连
             // 只 reSubscribe 不补拉，subscriberChangeListener 因此不会被触发，
             // 导致 subscribers 停在断连前旧快照 → @ 提及弹窗搜不到新成员。
-            // 这里在补拉首屏消息的同时补拉当前会话成员，修复 octo-web#567。
+            // 成员重同步自带独立节流（lastSubscriberResyncAt），不与上方消息补拉
+            // 共用时间戳，修复 octo-web#567/#568。
             this.resyncSubscribers()
         }
         WKSDK.shared().connectManager.addConnectStatusListener(this.connectStatusListener)
@@ -1278,33 +1280,48 @@ export default class ConversationVM extends ProviderListener {
         this.notifyListener()
     }
 
-    // 回前台重刷处理器：App.tsx 回前台时全局 emit，这里节流后重同步当前会话成员。
+    // 回前台重刷处理器：App.tsx 回前台时全局 emit，这里直接重同步当前会话成员。
+    // 节流已下沉到 resyncSubscribers 内（lastSubscriberResyncAt），不再共用重连的
+    // lastReconnectRefreshAt，避免前台成员刷抢先设时间戳后压制重连的消息补拉（octo-web#568 review）。
     private _foregroundResyncHandler = () => {
-        const now = Date.now()
-        if (now - this.lastReconnectRefreshAt < 5000) {
-            return
-        }
-        this.lastReconnectRefreshAt = now
         this.resyncSubscribers()
     }
 
     // 主动重同步当前会话成员列表（重连 / 回前台调用）。
     // 断连期间的成员变更 CMD 随 WS 丢失、SDK 重连不补拉，subscriberChangeListener
     // 因此不会触发，subscribers 停在旧快照 → @ 弹窗搜不到新成员（octo-web#567）。
-    // 这里复用进频道时的加载分支：超级群拉第一页，普通群走服务端全量同步。
+    // 自带 5s 节流（lastSubscriberResyncAt），与重连的消息补拉节流相互独立。
+    // 复用进频道时的加载分支：超级群（含子区的超级群父群）拉第一页，普通群走服务端全量同步。
     async resyncSubscribers() {
+        const now = Date.now()
+        if (now - this.lastSubscriberResyncAt < 5000) {
+            return
+        }
+        this.lastSubscriberResyncAt = now
         try {
             if (this.channel.channelType === ChannelTypeCommunityTopic) {
-                // 子区用父群成员，父群 syncSubscribes 后其 subscriberChangeListener
-                // 会回调刷新，这里不重复处理。
+                // 子区用父群成员。需镜像进频道时的分支：父群是超级群时只拉第一页，
+                // 否则会对几千人的超级群父群每次重连/回前台都全量同步（octo-web#568 review）。
                 const parentGroupNo = this.channelInfo?.orgData?.parentGroupNo
-                if (parentGroupNo) {
-                    const parentChannel = new Channel(parentGroupNo, ChannelTypeGroup)
+                if (!parentGroupNo) {
+                    return
+                }
+                const parentChannel = new Channel(parentGroupNo, ChannelTypeGroup)
+                const parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(parentChannel)
+                const isSuperGroup = parentChannelInfo?.orgData?.group_type == SuperGroup
+                if (isSuperGroup) {
+                    // 超级群父群：只拉第一页（与进频道时一致）
+                    this.subscribers = await WKApp.dataSource.channelDataSource.subscribers(parentChannel, {
+                        limit: 100,
+                        page: 1,
+                    })
+                } else {
+                    // 普通父群：全量同步后取缓存
                     await WKSDK.shared().channelManager.syncSubscribes(parentChannel)
                     this.subscribers = WKSDK.shared().channelManager.getSubscribes(parentChannel) || []
-                    this._resolveSubscribersReady()
-                    this.notifyListener()
                 }
+                this._resolveSubscribersReady()
+                this.notifyListener()
                 return
             }
             if (this.channel.channelType !== ChannelTypeGroup) {
