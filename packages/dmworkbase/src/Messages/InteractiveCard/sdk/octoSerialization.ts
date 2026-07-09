@@ -14,8 +14,8 @@ import {
  *
  * - **动作**是有副作用的（触发 host 回调），移除 `Action.Execute`/`ShowCard`/`ToggleVisibility`，
  *   只留 octo 的 `Action.OpenUrl` + `Action.Submit`。
- * - **元素**移除非 octo 白名单类型（Table/Carousel/Media/RichTextBlock/ImageSet/ActionSet、
- *   Input.Number/Date/Time），只留 octo 允许的 9 类。即便 validate 疏漏，这些元素也无法被 SDK 反序列化。
+ * - **元素**移除非 octo 白名单类型（Table/Carousel/Media/RichTextBlock/ImageSet/ActionSet），
+ *   只留 octo 允许的类型。即便 validate 疏漏，这些元素也无法被 SDK 反序列化。
  *
  * 采用「populate 默认后 unregister 非白名单」而非 register-only：octo 允许的元素保持默认注册，
  * 避免漏注册导致合法卡半渲染；新版 AC 引入的未知元素虽不在此剔除列表，仍由 validate 整卡拦下。
@@ -27,8 +27,8 @@ const FORBIDDEN_ACTIONS = [
 ] as const;
 
 /** 非 octo 白名单元素（AC 默认注册但 octo 不支持）。octo 允许：TextBlock/Image/Container/
- *  ColumnSet/Column/FactSet/Input.Text/Input.Toggle/Input.ChoiceSet（Column 由 ColumnSet
- *  内部解析、非独立注册项，Table/Carousel 的行/页同理，故无需单列）。 */
+ *  ColumnSet/Column/FactSet + 6 类输入 Input.Text/Toggle/ChoiceSet/Number/Date/Time
+ *  （Column 及 Table/Carousel 的行/页由父元素内部解析、非独立注册项，故无需单列）。 */
 const FORBIDDEN_ELEMENTS = [
   "Table",
   "Carousel",
@@ -37,9 +37,6 @@ const FORBIDDEN_ELEMENTS = [
   "TextRun",
   "ImageSet",
   "ActionSet",
-  "Input.Number",
-  "Input.Date",
-  "Input.Time",
 ] as const;
 
 export function createOctoSerializationContext(): SerializationContext {

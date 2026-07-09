@@ -33,6 +33,9 @@ describe("createOctoSerializationContext — 元素层防御纵深", () => {
       "Input.Text",
       "Input.Toggle",
       "Input.ChoiceSet",
+      "Input.Number",
+      "Input.Date",
+      "Input.Time",
     ]) {
       expect(reg.findByName(t)).toBeDefined();
     }
@@ -44,9 +47,6 @@ describe("createOctoSerializationContext — 元素层防御纵深", () => {
       "RichTextBlock",
       "ImageSet",
       "ActionSet",
-      "Input.Number",
-      "Input.Date",
-      "Input.Time",
     ]) {
       expect(reg.findByName(t)).toBeUndefined();
     }

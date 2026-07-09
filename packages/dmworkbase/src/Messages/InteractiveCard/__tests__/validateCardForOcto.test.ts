@@ -70,6 +70,34 @@ describe("validateCardForOcto — 合法（ok:true）", () => {
       ).ok
     ).toBe(true);
   });
+
+  it("v2：Input.Number/Date/Time（P3-3 富输入）", () => {
+    expect(
+      validateCardForOcto(
+        AC([
+          { type: "Input.Number", id: "amount", min: 0, max: 100 },
+          { type: "Input.Date", id: "date" },
+          { type: "Input.Time", id: "time" },
+        ]),
+        V2
+      ).ok
+    ).toBe(true);
+  });
+
+  it("v2：输入的 inlineAction(Submit) 合法且 id 登记", () => {
+    expect(
+      validateCardForOcto(
+        AC([
+          {
+            type: "Input.Text",
+            id: "q",
+            inlineAction: { type: "Action.Submit", id: "go" },
+          },
+        ]),
+        V2
+      ).ok
+    ).toBe(true);
+  });
 });
 
 describe("validateCardForOcto — 整卡降级（ok:false）", () => {
@@ -80,6 +108,32 @@ describe("validateCardForOcto — 整卡降级（ok:false）", () => {
   it("未知元素", () => bad(AC([{ type: "Media" }])));
   it("元素无 type", () => bad(AC([{ text: "no type" }])));
   it("Input.* 在 v1（禁交互）", () => bad(AC([{ type: "Input.Text", id: "t" }])));
+  it("Input.Number 在 v1（禁交互）", () =>
+    bad(AC([{ type: "Input.Number", id: "n" }])));
+  it("Input.Date 缺 id（v2，D1）", () =>
+    bad(AC([{ type: "Input.Date" }]), V2));
+  it("输入 inlineAction 为 Action.Execute（v2）→ 整卡降级", () =>
+    bad(
+      AC([
+        {
+          type: "Input.Text",
+          id: "q",
+          inlineAction: { type: "Action.Execute", id: "x" },
+        },
+      ]),
+      V2
+    ));
+  it("输入 inlineAction id 与输入 id 冲突（v2，D1）→ 整卡降级", () =>
+    bad(
+      AC([
+        {
+          type: "Input.Text",
+          id: "dup",
+          inlineAction: { type: "Action.Submit", id: "dup" },
+        },
+      ]),
+      V2
+    ));
   it("Action.Submit 在 v1", () =>
     bad(AC([{ type: "TextBlock", text: "x" }], { actions: [{ type: "Action.Submit", id: "s" }] })));
   it("Action.Execute 在 v2（永不支持）", () =>

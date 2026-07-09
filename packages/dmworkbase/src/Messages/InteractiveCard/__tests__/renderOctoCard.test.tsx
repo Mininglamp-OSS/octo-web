@@ -96,6 +96,27 @@ describe("renderOctoCard", () => {
     target.remove();
   });
 
+  it("P3-3 富输入 Input.Number/Date/Time 渲染出对应原生控件", () => {
+    const target = mountTarget();
+    renderOctoCard({
+      card: {
+        type: "AdaptiveCard",
+        version: "1.5",
+        body: [
+          { type: "Input.Number", id: "n" },
+          { type: "Input.Date", id: "d" },
+          { type: "Input.Time", id: "tm" },
+        ],
+      },
+      target,
+      onAction: () => {},
+    });
+    expect(target.querySelector("input[type=number]")).not.toBeNull();
+    expect(target.querySelector("input[type=date]")).not.toBeNull();
+    expect(target.querySelector("input[type=time]")).not.toBeNull();
+    target.remove();
+  });
+
   it("requires+fallback 子树不被渲染（fallback/requires 已剥，防未校验子树逃逸）", () => {
     const target = mountTarget();
     renderOctoCard({

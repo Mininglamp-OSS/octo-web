@@ -98,6 +98,9 @@
 }
 
 .wk-interactive-card-sdk .ac-textInput,
+.wk-interactive-card-sdk .ac-numberInput,
+.wk-interactive-card-sdk .ac-dateInput,
+.wk-interactive-card-sdk .ac-timeInput,
 .wk-interactive-card-sdk .ac-choiceSetInput-compact {
   min-height: 30px;
   padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
@@ -110,6 +113,9 @@
 }
 
 .wk-interactive-card-sdk .ac-textInput:focus-visible,
+.wk-interactive-card-sdk .ac-numberInput:focus-visible,
+.wk-interactive-card-sdk .ac-dateInput:focus-visible,
+.wk-interactive-card-sdk .ac-timeInput:focus-visible,
 .wk-interactive-card-sdk .ac-choiceSetInput-compact:focus-visible {
   outline: none;
   border-color: var(--wk-brand-primary);

@@ -144,7 +144,10 @@ function validateElement(el: unknown, ctx: Ctx): void {
     }
     case "Input.Text":
     case "Input.Toggle":
-    case "Input.ChoiceSet": {
+    case "Input.ChoiceSet":
+    case "Input.Number":
+    case "Input.Date":
+    case "Input.Time": {
       if (!ctx.allowInteractive) {
         // octo/v1 内出现 Input.* = 白名单外 → 整卡降级。
         throw new OctoInvalidCard("unsupported element (interactive)");
@@ -157,6 +160,14 @@ function validateElement(el: unknown, ctx: Ctx): void {
           if (!ctx.budget.consume())
             throw new OctoInvalidCard("node count exceeded");
         }
+      }
+      // 输入的 inlineAction（框内内联按钮，通常 Action.Submit）：按动作同规则校验
+      // （id 帧内唯一 / OpenUrl url 安全 / 非白名单动作整卡降级）并计入预算，
+      // 避免 SDK 渲染出未经 validate 的内联动作（对齐服务端 inlineAction 路由）。
+      if (obj.inlineAction !== undefined && obj.inlineAction !== null) {
+        validateAction(obj.inlineAction, ctx);
+        if (!ctx.budget.consume())
+          throw new OctoInvalidCard("node count exceeded");
       }
       return;
     }
