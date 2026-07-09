@@ -69,11 +69,20 @@ const SHEET_LIFECYCLE_IDS = new Set<string>([
   'sheet.mutation.set-worksheet-name',
 ])
 
+/**
+ * Drawing (image) changes. Insert / update / delete / arrange of every float or cell image
+ * ultimately lands on this ONE mutation (with a `type` discriminator), so it's the single
+ * point to observe — same idea as the cell/merge mutation triggers above.
+ */
+const DRAWING_TRIGGER_IDS = new Set<string>(['sheet.mutation.set-drawing-apply'])
+
 export const SHEET_YMAP_FIELD = 'sheet'
 export const SHEET_DIMS_FIELD = 'sheetDims'
 export const SHEET_MERGES_FIELD = 'sheetMerges'
 /** Registry of logical sheets: logicalId -> { name, order }. */
 export const SHEET_LIST_FIELD = 'sheetList'
+/** Images/drawings: `${logicalId}!${drawingId}` -> serialized ISheetImage (base64 inline). */
+export const SHEET_DRAWINGS_FIELD = 'sheetDrawings'
 
 /**
  * The logical id used for the first/only sheet of a freshly-seeded book. Kept as
@@ -98,11 +107,33 @@ interface SyncCell {
   v?: string | number | boolean | null
   f?: string
   s?: Record<string, unknown>
+  // Rich-text document snapshot. Univer stores an INLINE CELL IMAGE here as
+  // `p.drawings[id].source` (base64 with the OSS image service), so a cell image is just
+  // ordinary cell data — but only if we carry `p`. `t` is the cell type (1 = rich text);
+  // both must round-trip or an image cell reloads blank.
+  p?: Record<string, unknown>
+  t?: number
 }
 
 interface SheetMeta {
   name: string
   order: number
+}
+
+/**
+ * A serialized Univer sheet image/drawing. Kept STRUCTURAL (like WSLike below) to avoid a hard
+ * type dependency on @univerjs internals — we only ever read a whole drawing object and write it
+ * back verbatim. `unitId`/`subUnitId` are per-client / per-doc runtime ids: they are stripped
+ * before storage and re-attached (to the receiver's local ids) on apply, exactly as cell keys use
+ * the stable logical id rather than Univer's per-client sheet id. With the OSS base64 image service
+ * (collaboration:false) `source` is an inline data URL, so the binary rides along in the object and
+ * no external image host is needed.
+ */
+type StoredDrawing = Record<string, unknown> & { drawingId?: string }
+
+/** Minimal ISheetDrawingService read surface: a sheet's images as `{ [drawingId]: image }`. */
+export interface DrawingReaderLike {
+  getDrawingData(unitId: string, subUnitId: string): Record<string, StoredDrawing> | undefined
 }
 
 function cellKey(logicalId: string, row: number, col: number): string {
@@ -111,7 +142,7 @@ function cellKey(logicalId: string, row: number, col: number): string {
 
 function pickCell(cell: unknown, resolveStyle: () => Record<string, unknown> | null): SyncCell | null {
   if (cell == null || typeof cell !== 'object') return null
-  const c = cell as { v?: SyncCell['v']; f?: string; s?: Record<string, unknown> | string }
+  const c = cell as { v?: SyncCell['v']; f?: string; s?: Record<string, unknown> | string; p?: Record<string, unknown>; t?: number }
   const out: SyncCell = {}
   if (c.v !== undefined) out.v = c.v
   if (c.f !== undefined) out.f = c.f
@@ -119,7 +150,13 @@ function pickCell(cell: unknown, resolveStyle: () => Record<string, unknown> | n
     const resolved = typeof c.s === 'string' ? resolveStyle() : c.s
     if (resolved && Object.keys(resolved).length > 0) out.s = resolved
   }
-  return out.v === undefined && out.f === undefined && out.s === undefined ? null : out
+  // Inline cell image (and any other rich text) lives in `p`; keep `t` so Univer re-reads it
+  // as rich text rather than a plain value.
+  if (c.p != null && typeof c.p === 'object') out.p = c.p
+  if (c.t !== undefined) out.t = c.t
+  return out.v === undefined && out.f === undefined && out.s === undefined && out.p === undefined && out.t === undefined
+    ? null
+    : out
 }
 
 function stylesEqual(a: SyncCell['s'], b: SyncCell['s']): boolean {
@@ -131,7 +168,15 @@ function stylesEqual(a: SyncCell['s'], b: SyncCell['s']): boolean {
 function cellsEqual(a: SyncCell | null, b: SyncCell | null): boolean {
   if (a == null && b == null) return true
   if (a == null || b == null) return false
-  return a.v === b.v && a.f === b.f && stylesEqual(a.s, b.s)
+  return (
+    a.v === b.v &&
+    a.f === b.f &&
+    a.t === b.t &&
+    stylesEqual(a.s, b.s) &&
+    // `p` holds the rich-text / cell-image snapshot; deep-compare so an image edit is detected
+    // but an unchanged image doesn't churn the Y.Map on every unrelated cell scan.
+    stylesEqual(a.p, b.p)
+  )
 }
 
 /** Minimal FWorksheet surface we rely on. */
@@ -151,8 +196,16 @@ interface WSLike {
   setColumnWidth?(col: number, width: number): void
   setRowHeight?(row: number, height: number): void
   getMergeData?(): Array<{ getRange?(): { startRow: number; startColumn: number; endRow: number; endColumn: number } }>
+  // Drawing (image) facade — used to APPLY remote image changes into this worksheet. Writes go
+  // through the facade (which fires the proper commands + updates the UI); reads use the injected
+  // DrawingReaderLike instead, since FOverGridImage has no public whole-object getter.
+  getImageById?(id: string): unknown | null
+  insertImages?(images: StoredDrawing[]): unknown
+  updateImages?(images: StoredDrawing[]): unknown
+  deleteImages?(images: unknown[]): unknown
 }
 interface WBLike {
+  getId?(): string
   getSheets(): WSLike[]
   getActiveSheet(): WSLike | null
   getSheetBySheetId?(id: string): WSLike | null
@@ -171,15 +224,18 @@ export class UniverYjsBinding {
   private readonly dimMap: Y.Map<number>
   private readonly mergeMap: Y.Map<boolean>
   private readonly sheetListMap: Y.Map<SheetMeta>
+  private readonly drawingMap: Y.Map<StoredDrawing>
   private readonly commandDisposable: { dispose(): void }
   private readonly observer: (events: Y.YMapEvent<SyncCell>) => void
   private readonly dimObserver: (event: Y.YMapEvent<number>) => void
   private readonly mergeObserver: (event: Y.YMapEvent<boolean>) => void
   private readonly sheetListObserver: (event: Y.YMapEvent<SheetMeta>) => void
+  private readonly drawingObserver: (event: Y.YMapEvent<StoredDrawing>) => void
   private applyingRemote = false
   private readonly lastSeen = new Map<string, SyncCell | null>()
   private readonly lastSeenDims = new Map<string, number>()
   private readonly lastSeenMerges = new Set<string>()
+  private readonly lastSeenDrawings = new Map<string, StoredDrawing>()
   /** logical id -> local (univer) sheet id, and the reverse. */
   private readonly logicalToLocal = new Map<string, string>()
   private readonly localToLogical = new Map<string, string>()
@@ -191,11 +247,15 @@ export class UniverYjsBinding {
     ydoc: Y.Doc,
     private readonly canWrite: () => boolean = () => true,
     private readonly opts: { deferInitialSync?: boolean } = {},
+    /** Read side of image sync. When null (e.g. unit tests) drawing sync is inert: the observer
+     *  still attaches so remote images could apply, but nothing is read/pushed locally. */
+    private readonly drawingReader: DrawingReaderLike | null = null,
   ) {
     this.ymap = ydoc.getMap<SyncCell>(SHEET_YMAP_FIELD)
     this.dimMap = ydoc.getMap<number>(SHEET_DIMS_FIELD)
     this.mergeMap = ydoc.getMap<boolean>(SHEET_MERGES_FIELD)
     this.sheetListMap = ydoc.getMap<SheetMeta>(SHEET_LIST_FIELD)
+    this.drawingMap = ydoc.getMap<StoredDrawing>(SHEET_DRAWINGS_FIELD)
 
     // 1) Establish the sheet set + identity map, then seed or apply content.
     //    Runs synchronously by default. When the host (CollabSheet) sets `deferInitialSync`,
@@ -214,6 +274,7 @@ export class UniverYjsBinding {
         if (TRIGGER_IDS.has(command.id)) this.syncLocalToYmap()
         else if (DIM_TRIGGER_IDS.has(command.id)) this.syncDimFromCommand(command)
         else if (MERGE_TRIGGER_IDS.has(command.id)) this.syncMergesToYmap()
+        else if (DRAWING_TRIGGER_IDS.has(command.id)) this.syncDrawingsToYmap()
         else if (SHEET_LIFECYCLE_IDS.has(command.id)) {
           this.syncSheetListFromUniver()
           // A rename/insert may also expose new content on the (now-)active sheet.
@@ -261,9 +322,19 @@ export class UniverYjsBinding {
         const belongs = (k: string) => dimMergePrefixes.some((p) => k.startsWith(p))
         this.applyRemoteDims(Array.from(this.dimMap.keys()).filter(belongs))
         this.applyRemoteMerges(Array.from(this.mergeMap.keys()).filter(belongs))
+        // Drawings keyed `${logicalId}!${drawingId}` share the `${id}!` prefix with cells; apply
+        // the new sheet's images too (same not-yet-mapped-on-first-fire reasoning as dims/merges).
+        this.applyRemoteDrawings(Array.from(this.drawingMap.keys()).filter((k) => prefixes.some((p) => k.startsWith(p))))
       }
     }
     this.sheetListMap.observe(this.sheetListObserver)
+
+    // 7) drawings (images). Remote insert/update/delete -> apply into the sheet it names.
+    this.drawingObserver = (event: Y.YMapEvent<StoredDrawing>) => {
+      if (this.disposed || event.transaction.local) return
+      this.applyRemoteDrawings(Array.from(event.keys.keys()))
+    }
+    this.drawingMap.observe(this.drawingObserver)
   }
 
   private workbook(): WBLike | null {
@@ -288,6 +359,7 @@ export class UniverYjsBinding {
       this.applyRemoteToUniver(Array.from(this.ymap.keys()))
       this.applyRemoteDims(Array.from(this.dimMap.keys()))
       this.applyRemoteMerges(Array.from(this.mergeMap.keys()))
+      this.applyRemoteDrawings(Array.from(this.drawingMap.keys()))
     } else if (this.ymap.size > 0 || this.dimMap.size > 0 || this.mergeMap.size > 0) {
       // Legacy V1 single-sheet doc: has populated `default!r:c` cells (and/or dims/merges)
       // but NO sheetList registry. Map the first local sheet to the 'default' logical id,
@@ -299,6 +371,7 @@ export class UniverYjsBinding {
       this.applyRemoteToUniver(Array.from(this.ymap.keys()))
       this.applyRemoteDims(Array.from(this.dimMap.keys()))
       this.applyRemoteMerges(Array.from(this.mergeMap.keys()))
+      this.applyRemoteDrawings(Array.from(this.drawingMap.keys()))
     } else if (this.canWrite()) {
       // Doc LOOKS empty. This is either a genuinely brand-new doc we may author, OR a COLD
       // cache whose persisted (possibly renamed) registry hasn't arrived over the network yet.
@@ -318,6 +391,9 @@ export class UniverYjsBinding {
       this.initialSynced = true
       this.seedIdentityFromUniver()
       this.seedContentFromUniver()
+      // A brand-new book normally has no images, but seed defensively (e.g. a book created via
+      // an import path that dropped images in) so they aren't lost. No-op when there are none.
+      this.syncDrawingsToYmap()
     } else {
       // Reader on an empty doc: never authors, so it's safe regardless of network state. Map
       // local sheets so later remote content applies.
@@ -822,6 +898,124 @@ export class UniverYjsBinding {
     }
   }
 
+  // ---- Drawings (images) --------------------------------------------------------------------
+
+  /**
+   * Strip the per-client / per-doc runtime ids (`unitId` / `subUnitId`) from a drawing so the
+   * stored form is client-agnostic (the logical sheet id in the Y.Map key identifies the sheet).
+   * They are re-attached to the receiver's local ids in applyRemoteDrawings.
+   */
+  private normalizeDrawing(img: StoredDrawing, drawingId: string): StoredDrawing {
+    const rest: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(img)) {
+      if (k === 'unitId' || k === 'subUnitId') continue
+      rest[k] = v
+    }
+    rest.drawingId = drawingId
+    return rest
+  }
+
+  /**
+   * Read EVERY mapped sheet's images via the injected drawing service, keyed by
+   * `${logicalId}!${drawingId}` and normalized (no local unit/subUnit ids). Cheap — a sheet
+   * has at most a handful of images. Returns empty when no reader is wired (tests).
+   */
+  private scanAllDrawings(): Map<string, StoredDrawing> {
+    const out = new Map<string, StoredDrawing>()
+    const svc = this.drawingReader
+    const wb = this.workbook()
+    if (!svc || !wb) return out
+    const unitId = wb.getId?.()
+    if (!unitId) return out
+    for (const [localId, logicalId] of this.localToLogical) {
+      let data: Record<string, StoredDrawing> | undefined
+      try {
+        data = svc.getDrawingData(unitId, localId)
+      } catch {
+        continue
+      }
+      if (!data) continue
+      for (const [drawingId, img] of Object.entries(data)) {
+        if (!img || typeof img !== 'object') continue
+        out.set(`${logicalId}!${drawingId}`, this.normalizeDrawing(img, drawingId))
+      }
+    }
+    return out
+  }
+
+  /** Diff the live images of all sheets vs lastSeenDrawings; write only changed/removed ones. */
+  private syncDrawingsToYmap(): void {
+    if (!this.drawingReader) return
+    const live = this.scanAllDrawings()
+    const changed: Array<[string, StoredDrawing | null]> = []
+    for (const [key, d] of live) {
+      const prev = this.lastSeenDrawings.get(key)
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(d)) changed.push([key, d])
+    }
+    for (const key of this.lastSeenDrawings.keys()) {
+      if (!live.has(key)) changed.push([key, null])
+    }
+    if (changed.length === 0) return
+    this.drawingMap.doc?.transact(() => {
+      for (const [key, d] of changed) {
+        if (d) {
+          this.lastSeenDrawings.set(key, d)
+          this.drawingMap.set(key, d)
+        } else {
+          this.lastSeenDrawings.delete(key)
+          this.drawingMap.delete(key)
+        }
+      }
+    })
+  }
+
+  /**
+   * Apply remote-changed drawing keys into the sheet each names (by logical id). Insert vs update
+   * is decided by whether the image already exists locally; a deleted key removes it. Writes go
+   * through the FWorksheet drawing facade (which fires the proper commands + updates the UI); the
+   * `applyingRemote` guard stops those commands from echoing back into the Y.Map. Per-item isolation
+   * mirrors the cell path: one bad image can't abort the batch, and lastSeen is only recorded on
+   * success so a failed apply is retried on a later pass.
+   */
+  private applyRemoteDrawings(keys: string[]): void {
+    const wb = this.workbook()
+    if (!wb) return
+    const unitId = wb.getId?.()
+    if (!unitId) return
+    this.applyingRemote = true
+    try {
+      for (const key of keys) {
+        const bang = key.indexOf('!')
+        if (bang < 0) continue
+        const logicalId = key.slice(0, bang)
+        const drawingId = key.slice(bang + 1)
+        if (!drawingId) continue
+        const localId = this.logicalToLocal.get(logicalId)
+        if (!localId) continue // sheet not created locally yet (registry reconcile pending)
+        const sheet = wb.getSheetBySheetId?.(localId) ?? null
+        if (!sheet) continue
+        const stored = this.drawingMap.get(key) ?? null
+        try {
+          if (stored) {
+            const image: StoredDrawing = { ...stored, unitId, subUnitId: localId, drawingId }
+            const existing = sheet.getImageById?.(drawingId)
+            if (existing) sheet.updateImages?.([image])
+            else sheet.insertImages?.([image])
+            this.lastSeenDrawings.set(key, stored)
+          } else {
+            const existing = sheet.getImageById?.(drawingId)
+            if (existing) sheet.deleteImages?.([existing])
+            this.lastSeenDrawings.delete(key)
+          }
+        } catch {
+          // leave lastSeenDrawings untouched so a later pass retries this image
+        }
+      }
+    } finally {
+      this.applyingRemote = false
+    }
+  }
+
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
@@ -830,9 +1024,11 @@ export class UniverYjsBinding {
     this.dimMap.unobserve(this.dimObserver)
     this.mergeMap.unobserve(this.mergeObserver)
     this.sheetListMap.unobserve(this.sheetListObserver)
+    this.drawingMap.unobserve(this.drawingObserver)
     this.lastSeen.clear()
     this.lastSeenDims.clear()
     this.lastSeenMerges.clear()
+    this.lastSeenDrawings.clear()
     this.logicalToLocal.clear()
     this.localToLogical.clear()
   }

@@ -465,7 +465,7 @@ export function StandaloneDocPage({
             </span>
             <h1 className="octo-standalone-card-title">{t('docs.forward.forbiddenTitle')}</h1>
             <p className="octo-standalone-card-msg">{t('docs.error.permission.forbidden')}</p>
-            <RequestAccessButton docId={docId} />
+            <RequestAccessButton docId={docId} spaceId={preflightSpace} />
           </div>
         </div>
       )

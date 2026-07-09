@@ -19,6 +19,12 @@ import { SheetCommentPanel, parseCell as parseCommentAnchor } from './SheetComme
 import { useDocComments } from '../comments/useDocComments.ts'
 import { pendingSheetImports } from './xlsxImport.ts'
 import { buildSheetDims, buildSheetMerges, excelSheetName } from './sheetExport.ts'
+import {
+  injectImagesIntoXlsx,
+  floatingToExportImage,
+  cellPToExportImages,
+  type ExportImage,
+} from './sheetImageExport.ts'
 import { PresenceBar } from '../editor/PresenceBar.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import * as XLSX from 'xlsx-js-style'
@@ -212,14 +218,25 @@ export function SheetView(props: SheetViewProps) {
     if (!sheet) return
     const imp = pendingSheetImports.get(docId)
     if (!imp) return
-    let applied = false
-    try {
-      applied = sheet.importCells(imp.sheets)
-    } catch (err) {
-      console.error('[docs] sheet import threw — keeping pending import for a retry on reopen', err)
+    let cancelled = false
+    void (async () => {
+      let applied = false
+      try {
+        // Async: importCells awaits image insertion. Only drop the pending import once it truly
+        // applied AND this mount wasn't torn down meanwhile — otherwise a doomed mount (StrictMode /
+        // the import-navigation remount) would delete the entry while images were still landing,
+        // losing them; keeping it lets the stable mount finish the import.
+        applied = await sheet.importCells(imp.sheets)
+      } catch (err) {
+        console.error('[docs] sheet import threw — keeping pending import for a retry on reopen', err)
+      }
+      if (cancelled) return
+      if (applied) pendingSheetImports.delete(docId)
+      else console.warn('[docs] sheet import did not apply — pending import kept, will retry on reopen')
+    })()
+    return () => {
+      cancelled = true
     }
-    if (applied) pendingSheetImports.delete(docId)
-    else console.warn('[docs] sheet import did not apply — pending import kept, will retry on reopen')
   }, [sheet, docId])
 
   // Right-click "评论" menu item: open an inline compose bubble next to the cell (the
@@ -366,12 +383,13 @@ export function SheetView(props: SheetViewProps) {
   // one output worksheet per logical sheet in the 'sheetList' registry (ordered), each with
   // its OWN cells / merges / dims — all keyed by that sheet's logical id. A pre-multi-sheet
   // doc (empty registry) falls back to a single 'default' sheet (its keys are `default!…`).
-  const exportXlsx = () => {
+  const exportXlsx = async () => {
     if (!sheet) return
-    const cellMap = sheet.ydoc.getMap<{ v?: unknown; f?: string; s?: Record<string, unknown> }>('sheet')
+    const cellMap = sheet.ydoc.getMap<{ v?: unknown; f?: string; s?: Record<string, unknown>; p?: Record<string, unknown> }>('sheet')
     const mergeMap = sheet.ydoc.getMap<boolean>('sheetMerges')
     const dimMap = sheet.ydoc.getMap<number>('sheetDims')
     const listMap = sheet.ydoc.getMap<{ name: string; order: number }>('sheetList')
+    const drawingMap = sheet.ydoc.getMap<Record<string, unknown>>('sheetDrawings')
 
     // Normalize a Univer color (#rrggbb / rrggbb / rgb(r,g,b)) to the 6-hex SheetJS wants.
     const toHex = (rgb?: string): string | undefined => {
@@ -500,6 +518,9 @@ export function SheetView(props: SheetViewProps) {
     const wb = XLSX.utils.book_new()
     const used = new Set<string>()
     let appended = 0
+    // Track which logical sheet landed at which 1-based worksheet index (sheet{N}.xml), so the
+    // image injector can anchor each image into the right sheet after xlsx-js-style writes.
+    const appendedLogicalIds: string[] = []
     for (const meta of metas) {
       // Excel-legal, unique name for this sheet (rules + `(n)` collision suffix, ≤31 chars).
       // Extracted to sheetExport.excelSheetName so the P2 slice-overflow fix is unit-testable.
@@ -509,12 +530,55 @@ export function SheetView(props: SheetViewProps) {
       try {
         XLSX.utils.book_append_sheet(wb, buildWs(meta.id), n)
         appended++
+        appendedLogicalIds.push(meta.id)
       } catch {
         // Malformed sheet name/content — drop this one sheet, keep exporting the rest.
       }
     }
     if (appended === 0) return
-    XLSX.writeFile(wb, `${title || docId}.xlsx`)
+
+    // Collect FLOATING images (sheetDrawings Y.Map) + CELL images (cell.p.drawings) per appended
+    // sheet, keyed by 1-based worksheet index. xlsx-js-style can't write images, so we inject them
+    // into the generated zip separately (sheetImageExport). A cell image degrades to a floating
+    // image anchored at its cell (WPS DISPIMG is proprietary; a floating image is the portable form).
+    const imagesBySheetIndex = new Map<number, ExportImage[]>()
+    appendedLogicalIds.forEach((logicalId, idx) => {
+      const list: ExportImage[] = []
+      const drawPrefix = `${logicalId}!`
+      for (const [key, raw] of drawingMap.entries()) {
+        if (!key.startsWith(drawPrefix)) continue
+        const img = floatingToExportImage(raw)
+        if (img) list.push(img)
+      }
+      const cellPrefix = `${logicalId}!`
+      for (const [key, cell] of cellMap.entries()) {
+        if (!key.startsWith(cellPrefix)) continue
+        const rc = key.slice(cellPrefix.length).split(':')
+        const row = Number(rc[0])
+        const col = Number(rc[1])
+        if (!Number.isInteger(row) || !Number.isInteger(col)) continue
+        const imgs = cellPToExportImages(cell?.p, col, row)
+        list.push(...imgs)
+      }
+      if (list.length) imagesBySheetIndex.set(idx + 1, list)
+    })
+
+    const rawOut = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+    const finalBuf =
+      imagesBySheetIndex.size > 0 ? await injectImagesIntoXlsx(rawOut, imagesBySheetIndex) : rawOut
+
+    // Trigger a download from the (possibly image-injected) buffer.
+    const blob = new Blob([finalBuf], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${title || docId}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   }
 
   // "Forward to chat" (mirror of EditorShell, feature #511): reader+ entry. Gated on canForward so
@@ -586,7 +650,10 @@ export function SheetView(props: SheetViewProps) {
           onChange={(e) => setTitle(e.target.value)}
           onBlur={saveTitle}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur()
+            // Skip Enter that only confirms an IME composition (e.g. typing English via a
+            // Chinese IME): blurring mid-composition interrupts it and the committed text
+            // gets duplicated ("test" → "testtest"). A real (non-composing) Enter still saves.
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.currentTarget.blur()
           }}
           style={{ border: 'none', background: 'transparent', outline: 'none', color: 'inherit', flex: '0 1 auto', minWidth: 0, maxWidth: '55%' }}
         />

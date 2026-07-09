@@ -218,7 +218,9 @@ function DocTitle({
           void commit()
         }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') {
+          // Ignore Enter that only confirms an IME composition (e.g. English typed via a
+          // Chinese IME): committing mid-composition duplicates the text ("test" → "testtest").
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
             e.preventDefault()
             void commit() // commit directly; doneRef stops the trailing blur re-commit
           } else if (e.key === 'Escape') {

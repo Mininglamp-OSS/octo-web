@@ -25,6 +25,13 @@ export interface DocTarget {
 }
 
 /**
+ * Excel import is temporarily HIDDEN for this release (owner request — ships next week). The
+ * import machinery (parse + float-image support) is complete and left intact; only the entry
+ * button is gated. Flip this to `true` to restore the "导入" button.
+ */
+const IMPORT_ENABLED = false
+
+/**
  * A dropdown menu rendered in a body portal at fixed coords, so it is never clipped by an
  * ancestor's `overflow` (the docs list panel scrolls, which was cutting off inline menus).
  * A full-screen transparent backdrop closes it on outside click.
@@ -459,6 +466,9 @@ function DocsList({
             </button>
           </PortalMenu>
         )}
+        {/* Import entry hidden for this release — re-enable by flipping IMPORT_ENABLED. */}
+        {IMPORT_ENABLED && (
+          <>
         <button
           type="button"
           className="octo-docs-list-new"
@@ -501,6 +511,8 @@ function DocsList({
             e.currentTarget.value = ''
           }}
         />
+          </>
+        )}
       </div>
       {loading && <p className="octo-docs-list-state">{t('docs.state.loading')}</p>}
       {error && !loading && (

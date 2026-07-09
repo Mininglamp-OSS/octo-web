@@ -2718,11 +2718,21 @@
   background: var(--octo-accent, #3370ff);
 }
 
-/* Sheet toolbar: left-align the Univer ribbon tabs (开始 / 公式 …) instead of
-   centering them. Univer centers the ribbon via `justify-center` on the
-   overflow-x-auto flex row; we scope the override to our own sheet container so
-   nothing outside the spreadsheet is affected. */
-.octo-sheet-container .univer-justify-center.univer-overflow-x-auto {
+/* Sheet toolbar: left-align the Univer ribbon toolbar (the icon row) instead of
+   centering it. In classic ribbon mode Univer adds `univer-justify-center` to the
+   inner flex row carrying `data-u-comp="ribbon-toolbar"`; we override that. We key
+   off the stable `data-u-comp` attribute (not the hashed utility classes, which the
+   old `.univer-overflow-x-auto` selector guessed wrong — that class isn't on this
+   row, so the rule never applied). Scoped to our own sheet container. */
+.octo-sheet-container [data-u-comp="ribbon-toolbar"] {
+  justify-content: flex-start !important;
+}
+
+/* Sheet toolbar: also left-align the tab row (开始 / 插入 / 公式). That row is a
+   SEPARATE container from the icon toolbar above — the ClassicMenu `role="tablist"`
+   flex inside `data-u-comp="ribbon-header-menu"`, which also defaults to
+   `univer-justify-center`. Overriding only ribbon-toolbar left the tabs centered. */
+.octo-sheet-container [data-u-comp="ribbon-header-menu"] [role="tablist"] {
   justify-content: flex-start !important;
 }
 

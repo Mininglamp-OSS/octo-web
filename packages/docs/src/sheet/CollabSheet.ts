@@ -20,6 +20,14 @@ import { createUniver } from './createUniver.ts'
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core'
 import sheetsCoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN'
 import '@univerjs/preset-sheets-core/lib/index.css'
+// Drawing (insert image / float shapes) + Table (native table objects) presets. These are
+// OSS `@univerjs/*` packages — not the paid `@univerjs-pro/*` ones — so re-adding them keeps
+// the "no pro deps" invariant from createUniver.ts intact. Drawing defaults to the built-in
+// IImageIoService (base64-inline image storage), so no upload backend is required to insert.
+import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing'
+import { ISheetDrawingService } from '@univerjs/preset-sheets-drawing'
+import sheetsDrawingZhCN from '@univerjs/preset-sheets-drawing/locales/zh-CN'
+import '@univerjs/preset-sheets-drawing/lib/index.css'
 
 import { buildDocumentName } from '../documentName/index.ts'
 import { resolveCollabWsUrl } from '../config.ts'
@@ -30,7 +38,7 @@ import { cacheKey, deleteDatabaseAwait, type DocScope } from '../offline/cache.t
 import { RoleController } from '../collab/statelessRole.ts'
 import { CloseCodeMachine, type CloseEvent } from '../collab/closeCode.ts'
 import type { ConnState, TerminalState } from '../collab/createCollabEditor.ts'
-import { UniverYjsBinding } from './binding.ts'
+import { UniverYjsBinding, type DrawingReaderLike } from './binding.ts'
 import { SheetCursorOverlay } from './sheetCursors.ts'
 import { SheetCommentMarkers, type MarkedCell } from './sheetCommentMarkers.ts'
 import { colorFromId } from '../awareness/presence.ts'
@@ -141,7 +149,7 @@ export class CollabSheet {
     //    has data (existing session vs fresh book).
     const { univer, univerAPI } = createUniver({
       locale: LocaleType.ZH_CN,
-      locales: { [LocaleType.ZH_CN]: mergeLocales(sheetsCoreZhCN) },
+      locales: { [LocaleType.ZH_CN]: mergeLocales(sheetsCoreZhCN, sheetsDrawingZhCN) },
       darkMode: isDarkTheme(),
       presets: [
         UniverSheetsCorePreset({
@@ -155,6 +163,10 @@ export class CollabSheet {
             'sheet.contextMenu.text-to-number': { hidden: true },
           },
         }),
+        // Insert image / drawing objects. collaboration:false keeps the OSS base64 image
+        // service (no pro collab client). NOTE: binding.ts does not yet sync drawing
+        // mutations through Yjs, so inserted images are local-only until that lands.
+        UniverSheetsDrawingPreset(),
       ],
     })
     this.univer = univer
@@ -178,6 +190,18 @@ export class CollabSheet {
       },
     })
     this.univerAPI = univerAPI
+    // Resolve the drawing (image) service from Univer's DI container so the binding can READ a
+    // sheet's images for sync. `__getInjector` is Univer's own accessor (FUniver.newAPI uses it);
+    // wrapped defensively so a Univer API change can't break sheet load — worst case images just
+    // don't persist (same as before this feature). Writes go through the facade, not this service.
+    let drawingReader: DrawingReaderLike | null = null
+    try {
+      const injector = (univer as unknown as { __getInjector?: () => { get(id: unknown): unknown } }).__getInjector?.()
+      const svc = injector?.get(ISheetDrawingService) as { getDrawingData?: unknown } | undefined
+      if (svc && typeof svc.getDrawingData === 'function') drawingReader = svc as unknown as DrawingReaderLike
+    } catch {
+      drawingReader = null
+    }
     // Pass a live write-gate: readers / downgraded users must NOT write to the shared Y.Doc
     // (the server rejects their writes anyway, but an ungated binding would still persist the
     // edit to local IndexedDB and replay it on a later privilege upgrade — B3).
@@ -190,7 +214,7 @@ export class CollabSheet {
     // initialSync() is idempotent and only runs the seed decision once, against the settled doc.
     this.binding = new UniverYjsBinding(univerAPI, this.ydoc, () => canEdit(this.currentRole), {
       deferInitialSync: true,
-    })
+    }, drawingReader)
     // Drive it after the local cache has replayed (whenSynced), or immediately if offline cache
     // is disabled (no persistence layer to wait on). A one-shot guard + the binding's own
     // idempotency make a later provider 'synced' or the timeout fallback harmless.
@@ -467,21 +491,28 @@ export class CollabSheet {
    * merge fires a command the binding observes, so the whole multi-sheet import replicates
    * + persists through Yjs. Returns true if any sheet applied.
    */
-  importCells(
+  async importCells(
     sheets: Array<{
       name?: string
       matrix: Array<Array<{ v?: unknown; f?: string; s?: Record<string, unknown> } | null>>
       merges?: Array<{ startRow: number; startColumn: number; endRow: number; endColumn: number }>
+      drawings?: Array<{ source: string; col: number; row: number }>
     }>,
-  ): boolean {
+  ): Promise<boolean> {
     const wb = this.univerAPI.getActiveWorkbook() as unknown as {
       getActiveSheet: () => unknown
       insertSheet?: (name?: string) => unknown
     } | null
     if (!wb) return false
-    const parsed = sheets.filter((s) => s.matrix.length > 0)
+    const parsed = sheets.filter((s) => s.matrix.length > 0 || (s.drawings?.length ?? 0) > 0)
     if (parsed.length === 0) return false
     let anyApplied = false
+    // insertImage is async (it loads the image to size it). We AWAIT every image before returning
+    // so the caller only drops the pending import once images have actually landed — otherwise a
+    // mount that gets torn down mid-import (StrictMode / import-navigation) would delete the pending
+    // entry while the async insert was still in flight, and the image would be lost (cells survive
+    // because they write to the Y.Doc synchronously; images did not).
+    const imagePromises: Array<Promise<unknown>> = []
     parsed.forEach((ps, i) => {
       let ws: unknown
       if (i === 0) {
@@ -496,8 +527,21 @@ export class CollabSheet {
       } else {
         ws = wb.insertSheet?.(ps.name) ?? null
       }
-      if (ws && this.populateSheet(ws, ps.matrix, ps.merges ?? [])) anyApplied = true
+      if (ws && ps.matrix.length > 0 && this.populateSheet(ws, ps.matrix, ps.merges ?? [])) anyApplied = true
+      if (ws && ps.drawings?.length) {
+        const dws = ws as { insertImage?: (url: string, col?: number, row?: number) => Promise<unknown> }
+        for (const d of ps.drawings) {
+          try {
+            // Fire the async insert and track it so the caller can await all images landing.
+            imagePromises.push(Promise.resolve(dws.insertImage?.(d.source, d.col, d.row)).catch(() => {}))
+            anyApplied = true
+          } catch {
+            // ignore a single image that fails to insert
+          }
+        }
+      }
     })
+    if (imagePromises.length) await Promise.allSettled(imagePromises)
     return anyApplied
   }
 
