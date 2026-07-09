@@ -7,9 +7,9 @@
   },
   "dependencies": {
     "@octo/base": "workspace:*",
-    "@douyinfe/semi-foundation": "^2.93.0",
-    "@douyinfe/semi-ui": "^2.93.0",
-    "@tanstack/react-virtual": "^3.13.23",
+    "@douyinfe/semi-foundation": "^2.101.0",
+    "@douyinfe/semi-ui": "^2.101.0",
+    "@tanstack/react-virtual": "^3.14.5",
     "classnames": "^2.3.1",
     "lucide-react": "^0.577.0",
     "react": "^17.0.2",
@@ -17,6 +17,6 @@
     "wukongimjssdk": "^1.3.5"
   },
   "devDependencies": {
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.10"
   }
 }
