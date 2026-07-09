@@ -126,18 +126,38 @@ describe('BoardVersionPanel', () => {
     await waitFor(() => expect(createNamedVersion).toHaveBeenCalledWith('bd_1', 'v2'))
   })
 
-  it('renames a named version', async () => {
-    vi.spyOn(window, 'prompt').mockReturnValue('renamed')
+  it('renames a named version inline and refetches the list', async () => {
     await renderPanel('admin')
+    // Clicking Rename opens an in-panel input (no native window.prompt).
     fireEvent.click(screen.getByText('docs.board.version.rename'))
+    const input = screen.getByPlaceholderText('docs.board.version.renamePrompt')
+    fireEvent.change(input, { target: { value: '  renamed  ' } })
+    listVersions.mockClear()
+    fireEvent.click(screen.getByText('docs.board.version.saveAction'))
     await waitFor(() => expect(renameVersion).toHaveBeenCalledWith('bd_1', 7, 'renamed'))
+    // The list refetches after a successful rename so the row reflects the change.
+    await waitFor(() => expect(listVersions).toHaveBeenCalled())
   })
 
-  it('deletes a version after confirmation', async () => {
+  it('cancels an inline rename without calling the API', async () => {
+    await renderPanel('admin')
+    fireEvent.click(screen.getByText('docs.board.version.rename'))
+    fireEvent.change(screen.getByPlaceholderText('docs.board.version.renamePrompt'), {
+      target: { value: 'nope' },
+    })
+    fireEvent.click(screen.getByText('docs.board.version.cancel'))
+    expect(renameVersion).not.toHaveBeenCalled()
+    // Back to the normal action row.
+    expect(screen.getByText('docs.board.version.rename')).toBeTruthy()
+  })
+
+  it('deletes a version after confirmation and refetches the list', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     await renderPanel('admin')
+    listVersions.mockClear()
     fireEvent.click(screen.getByText('docs.board.version.delete'))
     await waitFor(() => expect(deleteVersion).toHaveBeenCalledWith('bd_1', 7))
+    await waitFor(() => expect(listVersions).toHaveBeenCalled())
   })
 
   it('renders a read-only scene preview for the selected version', async () => {

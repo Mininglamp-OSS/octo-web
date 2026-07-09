@@ -61,6 +61,12 @@ export function BoardVersionPanel({
   const [snapshotOpen, setSnapshotOpen] = useState(false)
   const [snapshotLabel, setSnapshotLabel] = useState('')
 
+  // Inline rename compose row (same pattern as the save row above). A native window.prompt does not
+  // reliably surface here — it is dismissed by headless automation and reads awkwardly over the
+  // modal — so renaming a named version turns its action area into a name input + save/cancel.
+  const [renamingSeq, setRenamingSeq] = useState<number | null>(null)
+  const [renameLabel, setRenameLabel] = useState('')
+
   const [preview, setPreview] = useState<{ seq: number; scene: BoardVersionScene } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
@@ -147,13 +153,27 @@ export function BoardVersionPanel({
     }
   }
 
-  const onRename = async (seq: number, cur: string) => {
-    const label = window.prompt(t('docs.board.version.renamePrompt'), cur)
-    if (label === null || label.trim() === '') return
+  const beginRename = (seq: number, cur: string) => {
+    setRenamingSeq(seq)
+    setRenameLabel(cur)
+  }
+
+  const cancelRename = () => {
+    setRenamingSeq(null)
+    setRenameLabel('')
+  }
+
+  const commitRename = async (seq: number) => {
+    const label = renameLabel.trim()
+    if (label === '') return
     setBusy(true)
     setError(null)
     try {
-      await renameVersion(docId, seq, label.trim())
+      await renameVersion(docId, seq, label)
+      // Optimistically reflect the new label so the row updates immediately, then refetch to
+      // reconcile with server ordering/counts.
+      setItems((cur) => cur.map((v) => (v.docVersionSeq === seq ? { ...v, label } : v)))
+      cancelRename()
       await refresh()
     } catch {
       setError(t('docs.board.version.errRename'))
@@ -169,6 +189,9 @@ export function BoardVersionPanel({
     try {
       await deleteVersion(docId, seq)
       if (preview?.seq === seq) setPreview(null)
+      if (renamingSeq === seq) cancelRename()
+      // Optimistically drop the row, then refetch to reconcile counts/pagination.
+      setItems((cur) => cur.filter((v) => v.docVersionSeq !== seq))
       await refresh()
     } catch (e) {
       setError(t(versionErrorKey(e, 'docs.board.version.errDelete')))
@@ -288,31 +311,59 @@ export function BoardVersionPanel({
             <div className="octo-uid" style={{ fontSize: 12, opacity: 0.7 }}>
               {nameOf(v.createdBy)}
             </div>
-            <div className="octo-comment-actions">
-              <button
-                type="button"
-                className="octo-tb-btn"
-                disabled={previewLoading}
-                onClick={() => void onPreview(v.docVersionSeq)}
-              >
-                {t('docs.board.version.preview')}
-              </button>
-              {canManage(role) && (
-                <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => void onRestore(v.docVersionSeq)}>
-                  {t('docs.board.version.restore')}
+            {renamingSeq === v.docVersionSeq ? (
+              <div className="octo-comment-actions octo-board-version-rename">
+                <input
+                  className="octo-uid"
+                  style={{ flex: 1 }}
+                  placeholder={t('docs.board.version.renamePrompt')}
+                  value={renameLabel}
+                  onChange={(e) => setRenameLabel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void commitRename(v.docVersionSeq)
+                    else if (e.key === 'Escape') cancelRename()
+                  }}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  disabled={busy || renameLabel.trim() === ''}
+                  onClick={() => void commitRename(v.docVersionSeq)}
+                >
+                  {t('docs.board.version.saveAction')}
                 </button>
-              )}
-              {canEdit(role) && v.kind === 'named' && (
-                <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => void onRename(v.docVersionSeq, v.label)}>
-                  {t('docs.board.version.rename')}
+                <button type="button" className="octo-tb-btn" disabled={busy} onClick={cancelRename}>
+                  {t('docs.board.version.cancel')}
                 </button>
-              )}
-              {canManage(role) && (
-                <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => void onDelete(v.docVersionSeq)}>
-                  {t('docs.board.version.delete')}
+              </div>
+            ) : (
+              <div className="octo-comment-actions">
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  disabled={previewLoading}
+                  onClick={() => void onPreview(v.docVersionSeq)}
+                >
+                  {t('docs.board.version.preview')}
                 </button>
-              )}
-            </div>
+                {canManage(role) && (
+                  <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => void onRestore(v.docVersionSeq)}>
+                    {t('docs.board.version.restore')}
+                  </button>
+                )}
+                {canEdit(role) && v.kind === 'named' && (
+                  <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => beginRename(v.docVersionSeq, v.label)}>
+                    {t('docs.board.version.rename')}
+                  </button>
+                )}
+                {canManage(role) && (
+                  <button type="button" className="octo-tb-btn" disabled={busy} onClick={() => void onDelete(v.docVersionSeq)}>
+                    {t('docs.board.version.delete')}
+                  </button>
+                )}
+              </div>
+            )}
           </li>
         ))}
       </ul>
