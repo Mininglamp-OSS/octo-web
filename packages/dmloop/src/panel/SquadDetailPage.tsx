@@ -84,7 +84,7 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
           <div className="loop-comments">
             {(row.members ?? []).map((m) => (
               <div key={m.member_id} className="loop-comment" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Avatar size="extra-extra-small" color="light-blue">{(m.member_name ?? "?").slice(0, 1)}</Avatar>
+                <Avatar size="extra-extra-small" color="light-blue" src={m.member_avatar ?? undefined}>{(m.member_name ?? "?").slice(0, 1)}</Avatar>
                 <Text>{m.member_name}</Text>
                 <Tag color={ASSIGNEE_TYPE_COLOR[m.member_type]} size="small">{t(`loop.assignee.${m.member_type}`)}</Tag>
                 {m.role === "leader" ? (

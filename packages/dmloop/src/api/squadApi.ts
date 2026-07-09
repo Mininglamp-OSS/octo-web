@@ -1,18 +1,20 @@
 // @octo/loop — Squad API（真实 fleet 联调）
 import type { Squad, SquadMember, UpsertSquadReq, ListParams } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete, httpPatch } from "./http";
-import { ensureDirectory, actorName } from "./directory";
+import { ensureDirectory, actorName, actorAvatar } from "./directory";
 
 function enrichSquad(s: Squad, dir: Awaited<ReturnType<typeof ensureDirectory>>): Squad {
   const members = (s.members ?? s.member_preview ?? []).map((m) => ({
     ...m,
     member_name: actorName(dir, m.member_type, m.member_id) ?? m.member_id,
+    member_avatar: actorAvatar(dir, m.member_type, m.member_id),
   }));
   return {
     ...s,
     members,
     leader_name: actorName(dir, "agent", s.leader_id) ?? actorName(dir, "member", s.leader_id),
     creator_name: actorName(dir, "member", s.creator_id),
+    leader_avatar: actorAvatar(dir, "member", s.leader_id),
   };
 }
 
