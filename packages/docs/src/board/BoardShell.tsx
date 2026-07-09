@@ -24,7 +24,7 @@ import { getDoc, getUserName } from '../pages/docsApi.ts'
 import type { Role } from '../auth/roles.ts'
 import type { ConnState } from '../collab/createCollabEditor.ts'
 import { i18n, t, getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
-import { loadBoardScene, persistBoardScene, clearBoardScene, type BoardScene } from './boardStore.ts'
+import { loadBoardScene, persistBoardScene, clearBoardScene, forgetBoard, type BoardScene } from './boardStore.ts'
 import { BoardMainMenu, type ExcalidrawMainMenu } from './BoardMainMenu.tsx'
 import { installExcalidrawDebrand } from './excalidrawDebrand.ts'
 import { installLibraryControlButtons } from './libraryControlButtons.ts'
@@ -348,8 +348,16 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // server permission model, so it stays editable unless the meta explicitly says reader.
   const collabMode = collab ?? !!collabSession
   const terminalActive = terminal.kind !== 'none'
+  // On the collab path editability additionally requires `roleResolved`, not just a truthy `role`.
+  // `role` is shell state that outlives the collab session: an in-session account switch keeps this
+  // shell mounted (BoardSession is keyed by docId only) while `useWhiteboardSession` (keyed by
+  // `${uid}::${documentName}`) tears down and re-primes, so `collabSession` transitions through
+  // `null` with the PREVIOUS account's `role` still set. Gating on `roleResolved` (reset to false
+  // for the duration of that re-prime window) keeps the canvas read-only until the NEW account's
+  // role is authoritatively resolved, matching `accessConfirmed` above and the fail-closed contract
+  // — a stale `role` alone must never fall open to editable.
   const readOnly = collabMode
-    ? terminalActive || !(role !== undefined && canEdit(role))
+    ? terminalActive || !roleResolved || !(role !== undefined && canEdit(role))
     : role === 'reader'
 
   // Access is "confirmed" for hydrating the local mirror only once the collab path has an
@@ -655,6 +663,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     }
     if (collabMode) {
       // Session expected but not ready yet — fail closed until it attaches (this effect re-runs).
+      // Also clear any role carried over from a prior session/account: on an in-session account
+      // switch this shell is not remounted, so a stale `role` (e.g. the previous account's
+      // `writer`) would otherwise persist through the re-prime window. `readOnly` already gates on
+      // `roleResolved` here, so this reset is defence-in-depth that also stops the stale value from
+      // leaking into anything else that reads `role`.
+      setRole(undefined)
       setRoleResolved(false)
       return () => {
         cancelled = true
@@ -844,6 +858,10 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const handleDeleted = useCallback(
     (id: string) => {
       clearBoardScene(id, uid)
+      // Also drop the board-kind registry entry: `clearBoardScene` only removes the scene mirror,
+      // so without this the `octo.board.ids.{uid}` registry keeps a "this docId is a board" record
+      // for a now-deleted board and grows unbounded / mislabels a later reused id as a board.
+      forgetBoard(id, uid)
       if (onDeleted) onDeleted(id)
       else returnToList?.()
     },

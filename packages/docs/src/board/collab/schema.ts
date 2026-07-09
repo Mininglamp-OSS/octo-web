@@ -1,7 +1,7 @@
 // Frozen shared schema — now wired to the real `@octo/whiteboard-schema` (XIN-16 §3, XIN-26).
 //
 // This module was the seam that isolated the one package-gated dependency. The package has
-// shipped (vendored verbatim from boris-clark/octo-whiteboard-schema@v0.1.0 as the workspace
+// shipped (vendored verbatim from boris-clark/octo-whiteboard-schema@v0.2.0 as the workspace
 // package `@octo/whiteboard-schema`), so the seam now simply RE-EXPORTS it. The binding and the
 // repair pass import the shared field-name constants, `WB_SCHEMA_VERSION`, the element-type
 // whitelist, the `normalizeElement` rule set, the CAS arbiter (`elementSupersedes`) and the
