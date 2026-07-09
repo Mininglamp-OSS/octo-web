@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@octo/base";
 import { OnboardingHoverButton } from "./HoverButton";
 import NarrativeRail from "./NarrativeRail";
@@ -14,6 +14,7 @@ const narrativeDurations = [2150, 2150, 2900];
 const CONTENT_TRANSITION_MS = 280;
 const SILK_SHIFT_OUT_MS = 260;
 const SILK_SHIFT_REVEAL_MS = 560;
+const SILK_AUTO_CONTINUE_MS = 7200;
 
 const silkBackdropSettings = {
   opening: {
@@ -62,6 +63,7 @@ export const OnboardingIntro: React.FC<OnboardingIntroProps> = ({
   const [isSilkRevealed, setIsSilkRevealed] = useState(false);
   const [activeMeaningIndex, setActiveMeaningIndex] = useState(0);
   const transitionTimerRefs = useRef<number[]>([]);
+  const continueStartedRef = useRef(false);
   const octoMeanings = useMemo(
     () => [
       {
@@ -148,15 +150,31 @@ export const OnboardingIntro: React.FC<OnboardingIntroProps> = ({
     transitionTimerRefs.current = [timer];
   };
 
+  const continueFromSilk = useCallback(() => {
+    if (continueStartedRef.current || phase !== "silk" || !isSilkRevealed) {
+      return;
+    }
+
+    continueStartedRef.current = true;
+    onContinue();
+  }, [isSilkRevealed, onContinue, phase]);
+
+  const handleSilkKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+
+    event.preventDefault();
+    continueFromSilk();
+  };
+
   useEffect(() => {
     if (phase !== "silk" || !isSilkRevealed) return;
 
     const timer = window.setTimeout(() => {
-      onContinue();
-    }, 7200);
+      continueFromSilk();
+    }, SILK_AUTO_CONTINUE_MS);
 
     return () => window.clearTimeout(timer);
-  }, [isSilkRevealed, onContinue, phase]);
+  }, [continueFromSilk, isSilkRevealed, phase]);
 
   useEffect(() => {
     return () => {
@@ -244,7 +262,16 @@ export const OnboardingIntro: React.FC<OnboardingIntroProps> = ({
             </div>
           </div>
         ) : (
-          <div className="wk-onboarding-silk-stage" aria-live="polite">
+          <div
+            className="wk-onboarding-silk-stage"
+            aria-live="polite"
+            aria-label={t("app.onboarding.intro.actions.enter")}
+            data-cursor-interactive={isSilkRevealed ? "true" : undefined}
+            onClick={continueFromSilk}
+            onKeyDown={handleSilkKeyDown}
+            role={isSilkRevealed ? "button" : undefined}
+            tabIndex={isSilkRevealed ? 0 : -1}
+          >
             {isSilkRevealed ? (
               <NarrativeRail
                 items={narrativeItems}

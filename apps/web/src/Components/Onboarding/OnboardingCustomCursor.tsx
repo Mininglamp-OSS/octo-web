@@ -65,6 +65,7 @@ export const OnboardingCustomCursor: React.FC<OnboardingCustomCursorProps> = ({ 
         let rafId = 0;
         let initialized = false;
         let interactive = false;
+        let lastTarget: EventTarget | null = null;
 
         const canAnimate = () => pointerQuery.matches && !reducedMotionQuery.matches;
 
@@ -79,6 +80,7 @@ export const OnboardingCustomCursor: React.FC<OnboardingCustomCursorProps> = ({ 
             cursor.classList.remove("is-visible", "is-interactive", "is-native");
             root.classList.remove("has-native-cursor");
             interactive = false;
+            lastTarget = null;
         };
 
         const animateRing = () => {
@@ -130,7 +132,10 @@ export const OnboardingCustomCursor: React.FC<OnboardingCustomCursorProps> = ({ 
 
             dot.style.transform = `translate3d(${targetX - 3}px, ${targetY - 3}px, 0)`;
             cursor.classList.add("is-visible");
-            syncTargetState(event.target);
+            if (event.target !== lastTarget) {
+                lastTarget = event.target;
+                syncTargetState(event.target);
+            }
             startAnimation();
         };
 

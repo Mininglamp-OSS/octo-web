@@ -477,7 +477,7 @@ html[data-octo-onboarding-vt="active"]::view-transition-new(root) {
     isolation: isolate;
     display: grid;
     justify-items: center;
-    gap: var(--wk-sp-7);
+    gap: var(--wk-sp-8);
     width: 100%;
     margin-top: var(--wk-sp-4);
 }
@@ -748,6 +748,10 @@ html[data-octo-onboarding-vt="active"]::view-transition-new(root) {
     transform: translate(-50%, -50%);
 }
 
+.wk-onboarding-intro.is-silk.is-silk-revealed .wk-onboarding-intro-core {
+    pointer-events: auto;
+}
+
 .wk-onboarding-silk-stage {
     position: relative;
     z-index: 2;
@@ -764,6 +768,17 @@ html[data-octo-onboarding-vt="active"]::view-transition-new(root) {
 
 .wk-onboarding-intro.is-silk.is-silk-revealed .wk-onboarding-silk-stage {
     animation: wkSilkStageIn 1080ms cubic-bezier(0.19, 1, 0.22, 1) forwards;
+    pointer-events: auto;
+}
+
+.wk-onboarding-silk-stage[role="button"] {
+    cursor: pointer;
+}
+
+.wk-onboarding-silk-stage[role="button"]:focus-visible {
+    border-radius: var(--wk-r-xl);
+    outline: 2px solid rgba(99, 179, 237, 0.66);
+    outline-offset: var(--wk-sp-3);
 }
 
 .wk-onboarding-silk-kicker {
@@ -1615,7 +1630,8 @@ html[data-octo-onboarding-vt="active"]::view-transition-new(root) {
     text-align: left;
 }
 
-.wk-onboarding-name-field label {
+.wk-onboarding-name-field label,
+.wk-onboarding-name-label {
     color: var(--wk-text-tertiary);
     font: var(--wk-text-caption);
     font-weight: var(--wk-font-bold);

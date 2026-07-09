@@ -172,6 +172,7 @@ const SilkBackground: React.FC<SilkBackgroundProps> = ({
     textureScale = 1,
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const contextLossTimerRef = useRef<number | null>(null);
     const targetSettingsRef = useRef<SilkRenderSettings>({
         brightness,
         damping,
@@ -204,6 +205,11 @@ const SilkBackground: React.FC<SilkBackgroundProps> = ({
     }, [brightness, damping, hue, mouseSensitivity, saturation, speed, textureScale]);
 
     useEffect(() => {
+        if (contextLossTimerRef.current !== null) {
+            window.clearTimeout(contextLossTimerRef.current);
+            contextLossTimerRef.current = null;
+        }
+
         const canvas = canvasRef.current;
         if (!canvas) return;
 
@@ -320,6 +326,16 @@ const SilkBackground: React.FC<SilkBackgroundProps> = ({
             window.removeEventListener("resize", resize);
             gl.deleteBuffer(positionBuffer);
             gl.deleteProgram(program);
+            const loseContext = gl.getExtension("WEBGL_lose_context");
+            if (loseContext) {
+                const lossTimer = window.setTimeout(() => {
+                    if (contextLossTimerRef.current !== lossTimer) return;
+
+                    loseContext.loseContext();
+                    contextLossTimerRef.current = null;
+                }, 0);
+                contextLossTimerRef.current = lossTimer;
+            }
         };
     }, []);
 
