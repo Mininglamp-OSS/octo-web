@@ -113,6 +113,7 @@ import {
 } from "./Utils/clipboard";
 import { shouldSkipMessageForSpace } from "./Service/SpaceService";
 import { t, I18nText } from "./i18n";
+import { GROUP_NAME_MAX_LENGTH, THREAD_NAME_MAX_LENGTH } from "./Service/nameLimits";
 import {
   ThreadCreatedCell,
   ThreadCreatedContent,
@@ -1656,7 +1657,7 @@ export default class BaseModule implements IModule {
                         });
                     },
                     t("base.module.channelSettings.groupNamePlaceholder"),
-                    50
+                    GROUP_NAME_MAX_LENGTH
                   );
                 },
               },
@@ -2362,7 +2363,7 @@ export default class BaseModule implements IModule {
                     data.refresh();
                   },
                   t("base.module.thread.name"),
-                  100
+                  THREAD_NAME_MAX_LENGTH
                 );
               },
             },

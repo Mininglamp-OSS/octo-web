@@ -51,6 +51,7 @@ import { VideoRenderer } from "../FilePreviewPanel/renderers/VideoRenderer";
 import { isChannelSearchEnabled } from "../ChannelSearch/feature";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
+import { THREAD_NAME_MAX_LENGTH } from "../../Service/nameLimits";
 import {
   ArchiveAction,
   deriveArchiveAction,
@@ -66,7 +67,7 @@ import {
 } from "../WKLayout/layoutWidth";
 import "./index.css";
 
-const THREAD_NAME_MAX_LENGTH = 100;
+
 
 /**
  * 子区名称输入框 — 带字数计数器（当前/最大）
