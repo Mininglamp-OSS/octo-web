@@ -31,6 +31,7 @@ export interface NavRailVMProps {
     onInstallUpdate: () => void;
     onNotifyListener: () => void;
     onAvatarClick: () => void;
+    onOpenOnboarding?: () => void;
 
     /** 用户在线状态，true 时显示绿色状态点 */
     isOnline?: boolean;
@@ -68,6 +69,7 @@ export default class NavRail extends Component<NavRailProps> {
             onInstallUpdate,
             onNotifyListener,
             onAvatarClick,
+            onOpenOnboarding,
             onDismissNewVersion,
             isOnline = false,
             spaces,
@@ -144,6 +146,7 @@ export default class NavRail extends Component<NavRailProps> {
                     onSetShowAppVersion={onSetShowAppVersion}
                     onInstallUpdate={onInstallUpdate}
                     onNotifyListener={onNotifyListener}
+                    onOpenOnboarding={onOpenOnboarding}
                 />
 
 

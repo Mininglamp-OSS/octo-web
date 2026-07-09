@@ -3,6 +3,11 @@ import React, { Component } from "react";
 import "./index.css"
 import MainVM from "./vm";
 import { EmptyStateIllustration } from "./EmptyStateIllustration";
+import { Onboarding } from "../../Components/Onboarding";
+import {
+    defaultOnboardingConfig,
+    shouldShowOnboarding,
+} from "../../Components/Onboarding/content";
 import { Space, SpaceService } from "@octo/base";
 import { JoinSpaceModalConnected, NavRail, MeInfo, SpaceCreate } from "@octo/base";
 import { consumeJoinSuccessNotice, showJoinSuccessToast } from "@octo/base";
@@ -39,6 +44,22 @@ interface MainPageState {
     showJoinSpace: boolean;
     showCreateSpace: boolean;
     showMeInfo: boolean;
+    showOnboardingGate: boolean;
+    forceOnboardingVisible: boolean;
+    skipOnboardingIntro: boolean;
+}
+
+function shouldGateMainOnboarding() {
+    if (typeof window === "undefined") return false;
+
+    try {
+        return shouldShowOnboarding(
+            defaultOnboardingConfig,
+            window.localStorage
+        );
+    } catch {
+        return false;
+    }
 }
 
 export class MainPage extends Component<{}, MainPageState> {
@@ -49,6 +70,9 @@ export class MainPage extends Component<{}, MainPageState> {
             showJoinSpace: false,
             showCreateSpace: false,
             showMeInfo: false,
+            showOnboardingGate: shouldGateMainOnboarding(),
+            forceOnboardingVisible: false,
+            skipOnboardingIntro: false,
         };
     }
 
@@ -167,8 +191,34 @@ export class MainPage extends Component<{}, MainPageState> {
             });
     };
 
+    handleOnboardingDismissed = () => {
+        if (!this.state.showOnboardingGate) return;
+
+        this.setState({
+            showOnboardingGate: false,
+            forceOnboardingVisible: false,
+            skipOnboardingIntro: false,
+        });
+    };
+
+    handleOpenOnboarding = () => {
+        this.setState({
+            showOnboardingGate: true,
+            forceOnboardingVisible: true,
+            skipOnboardingIntro: true,
+        });
+    };
+
     render() {
-        const { allSpaces, showJoinSpace, showCreateSpace, showMeInfo } = this.state;
+        const {
+            allSpaces,
+            showJoinSpace,
+            showCreateSpace,
+            showMeInfo,
+            showOnboardingGate,
+            forceOnboardingVisible,
+            skipOnboardingIntro,
+        } = this.state;
         // 客户端 UI 可见性控制：仅在用户拥有任一 Space 的 owner/admin 角色时显示入口；
         // 真正的接口鉴权由 admin SPA 后端负责。allSpaces 来自登录后刷新，角色变更需重新加载。
         const canManageSpace = allSpaces.some(s => s.role === 1 || s.role === 2);
@@ -235,6 +285,7 @@ export class MainPage extends Component<{}, MainPageState> {
                                     }}
                                     onInstallUpdate={() => vm.installUpdate()}
                                     onNotifyListener={() => vm.notifyListener()}
+                                    onOpenOnboarding={this.handleOpenOnboarding}
                                     onDismissNewVersion={() => { vm.markVersionRead(); }}
                                 />
                             )}
@@ -269,6 +320,13 @@ export class MainPage extends Component<{}, MainPageState> {
                             }}
                             contentRight={<EmptyStateIllustration />}
                         />
+                        {showOnboardingGate ? (
+                            <Onboarding
+                                forceVisible={forceOnboardingVisible}
+                                skipIntro={skipOnboardingIntro}
+                                onDismiss={this.handleOnboardingDismissed}
+                            />
+                        ) : null}
 
                         {/* MeInfo Modal */}
                         <WKModal
