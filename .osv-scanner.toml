@@ -1,0 +1,10 @@
+# xlsx (SheetJS) — CVE 已通过 CDN 0.20.3 修复
+# OSV 数据库的 GHSA 条目以 npm 生态为索引，而 SheetJS 只通过自建 CDN 发布修复版，
+# npm 上无 fixed version，导致 osv-scanner 持续报告。实际已使用 CDN 0.20.3，漏洞已修复。
+[[IgnoredVulns]]
+id = "GHSA-4r6h-8v6p-xvw6"
+reason = "Fixed in SheetJS CDN 0.20.3; npm advisory has no fixed-version entry"
+
+[[IgnoredVulns]]
+id = "GHSA-5pgg-2g8v-p4x9"
+reason = "Fixed in SheetJS CDN 0.20.3; npm advisory has no fixed-version entry"
