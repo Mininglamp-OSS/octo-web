@@ -97,6 +97,53 @@ public sealed class ServerConfigService : IServerConfigService
         return _api.PingAsync(url, ct);
     }
 
+    /// <inheritdoc />
+    public async Task<ServerInfo?> ProbeAsync(string url, CancellationToken ct = default)
+    {
+        string normalized;
+        try
+        {
+            normalized = ApiService.NormalizeUrl(url);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+
+        // Step 1: reachability check (5s timeout via PingAsync).
+        if (!await _api.PingAsync(normalized, ct))
+            return null;
+
+        // Step 2: temporarily point the ApiService at the candidate URL so
+        // GetServerInfoAsync hits the right server, then restore the previous
+        // URL so the service state is unchanged if the user cancels.
+        var previousUrl = _options.BaseUrl;
+        try
+        {
+            _api.UpdateBaseUrl(normalized);
+            _options.BaseUrl = normalized;
+            return await _api.GetServerInfoAsync(ct);
+        }
+        catch
+        {
+            return new ServerInfo();
+        }
+        finally
+        {
+            // Restore — never persist the probed URL here.
+            try
+            {
+                _api.UpdateBaseUrl(previousUrl);
+                _options.BaseUrl = previousUrl;
+            }
+            catch
+            {
+                // If the previous URL was empty/invalid, leave the api pointed
+                // at the candidate so subsequent SetServerUrlAsync works.
+            }
+        }
+    }
+
     // --- helpers ---
 
     private async Task ProbeServerInfoAsync()

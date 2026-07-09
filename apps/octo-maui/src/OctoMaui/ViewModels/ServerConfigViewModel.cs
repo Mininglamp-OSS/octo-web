@@ -1,35 +1,46 @@
+using System.Collections.ObjectModel;
 using System.Windows.Input;
+using OctoMaui.Models;
 using OctoMaui.Services;
 
 namespace OctoMaui.ViewModels;
 
 /// <summary>
-/// View model for the server configuration page. Lets the user enter a server
-/// domain, test the connection, and save it. On success the app navigates to
-/// the login page.
+/// View model for the server configuration page. Provides a guided
+/// initialization flow: enter a server address → verify connection → preview
+/// server capabilities → save and continue. Also supports quick-reconnect via
+/// saved history entries.
 /// </summary>
 public sealed class ServerConfigViewModel : ViewModelBase
 {
     private readonly IServerConfigService _server;
     private readonly IThemeService _theme;
+    private readonly IServerHistoryService _history;
 
-    public ServerConfigViewModel(IServerConfigService server, IThemeService theme)
+    public ServerConfigViewModel(IServerConfigService server, IThemeService theme, IServerHistoryService history)
     {
         _server = server;
         _theme = theme;
+        _history = history;
 
         // Pre-fill with the current URL if already configured.
         ServerUrl = _server.ServerUrl;
 
-        TestCommand = CreateCommand(async () => await TestAsync(),
+        VerifyCommand = CreateCommand(async () => await VerifyAsync(),
             () => !IsBusy && !string.IsNullOrWhiteSpace(ServerUrl));
-        SaveCommand = CreateCommand(async () => await SaveAsync(),
-            () => !IsBusy && !string.IsNullOrWhiteSpace(ServerUrl));
+        ContinueCommand = CreateCommand(async () => await ContinueAsync(),
+            () => !IsBusy && IsVerified);
+        SelectRecentCommand = CreateCommand<ServerHistoryEntry>(async e => await SelectRecentAsync(e!), () => !IsBusy);
+        RemoveRecentCommand = CreateCommand<ServerHistoryEntry>(async e => await RemoveRecentAsync(e!), () => !IsBusy);
         ToggleThemeCommand = CreateCommand(async () => await ToggleThemeAsync());
 
         _theme.ThemeChanged += (_, _) => MainThread.BeginInvokeOnMainThread(RefreshThemeLabel);
+        _history.Changed += (_, _) => MainThread.BeginInvokeOnMainThread(RefreshHistory);
         RefreshThemeLabel();
+        RefreshHistory();
     }
+
+    // --- input ---
 
     /// <summary>User-entered server domain / URL.</summary>
     public string ServerUrl
@@ -38,88 +49,216 @@ public sealed class ServerConfigViewModel : ViewModelBase
         set
         {
             Set(value);
-            ((Command)TestCommand).ChangeCanExecute();
-            ((Command)SaveCommand).ChangeCanExecute();
+            // Editing the URL invalidates any previous verification.
+            if (IsVerified) IsVerified = false;
+            if (HasPreview) { PreviewInfo = null; OnPropertyChanged(nameof(HasPreview)); }
+            ((Command)VerifyCommand).ChangeCanExecute();
+            ((Command)ContinueCommand).ChangeCanExecute();
         }
     }
 
-    public bool IsBusy { get => Get<bool>(); set => Set(value); }
+    public bool IsBusy { get => Get<bool>(); set { Set(value); RefreshCanExecute(); } }
 
-    /// <summary>Status message shown below the input (success / error).</summary>
-    public string StatusMessage
+    // --- step-by-step verification status ---
+
+    /// <summary>Current step description shown next to the spinner.</summary>
+    public string StepStatus { get => Get<string>(); set => Set(value); } = string.Empty;
+
+    public bool HasError { get => Get<bool>(); set => Set(value); }
+    public string ErrorMessage { get => Get<string>(); set => Set(value); } = string.Empty;
+
+    /// <summary>True after a successful verification (ping + config probe).</summary>
+    public bool IsVerified
     {
-        get => Get<string>();
+        get => Get<bool>();
         set
         {
             Set(value);
-            OnPropertyChanged(nameof(HasStatus));
+            ((Command)ContinueCommand).ChangeCanExecute();
         }
     }
 
-    /// <summary>True when StatusMessage is non-empty (drives visibility).</summary>
-    public bool HasStatus => !string.IsNullOrWhiteSpace(StatusMessage);
+    // --- capability preview ---
 
-    /// <summary>True when the last test/save succeeded (drives text color).</summary>
-    public bool IsSuccess { get => Get<bool>(); set => Set(value); }
+    /// <summary>Server capabilities discovered during verification.</summary>
+    public ServerInfo? PreviewInfo
+    {
+        get => Get<ServerInfo?>();
+        set
+        {
+            Set(value);
+            OnPropertyChanged(nameof(HasPreview));
+            OnPropertyChanged(nameof(PreviewAuthModes));
+            OnPropertyChanged(nameof(PreviewOidcNames));
+        }
+    }
 
-    /// <summary>Localized label for the theme toggle button.</summary>
+    public bool HasPreview => PreviewInfo is not null;
+
+    /// <summary>Summary of available login methods, e.g. "企业 SSO · 账号密码".</summary>
+    public string PreviewAuthModes
+    {
+        get
+        {
+            if (PreviewInfo is not { } info) return "";
+            var modes = new List<string>();
+            if (info.HasOidcProviders)
+                modes.Add("企业 SSO");
+            modes.Add("账号密码");
+            return string.Join(" · ", modes);
+        }
+    }
+
+    /// <summary>Comma-separated OIDC provider names, or empty.</summary>
+    public string PreviewOidcNames
+    {
+        get => PreviewInfo is { HasOidcProviders: true } info
+            ? string.Join(", ", info.OidcProviders.Select(p => p.Name))
+            : "";
+    }
+
+    // --- history ---
+
+    public ObservableCollection<ServerHistoryEntry> RecentServers { get; } = new();
+    public bool HasRecentServers { get => Get<bool>(); set => Set(value); }
+
+    // --- theme ---
+
     public string ThemeLabel { get => Get<string>(); set => Set(value); } = "主题";
 
-    public ICommand TestCommand { get; }
-    public ICommand SaveCommand { get; }
+    // --- commands ---
+
+    public ICommand VerifyCommand { get; }
+    public ICommand ContinueCommand { get; }
+    public ICommand SelectRecentCommand { get; }
+    public ICommand RemoveRecentCommand { get; }
     public ICommand ToggleThemeCommand { get; }
 
-    private async Task TestAsync()
+    // --- verification flow ---
+
+    private async Task VerifyAsync()
     {
         IsBusy = true;
-        StatusMessage = "正在测试连接…";
-        IsSuccess = false;
+        HasError = false;
+        ErrorMessage = string.Empty;
+        IsVerified = false;
+        PreviewInfo = null;
+
+        // Step 1: Ping the server.
+        StepStatus = "正在连接服务器…";
         try
         {
             var ok = await _server.ValidateAsync(ServerUrl);
-            StatusMessage = ok ? "✓ 服务器可达" : "✗ 无法连接到服务器";
-            IsSuccess = ok;
+            if (!ok)
+            {
+                HasError = true;
+                ErrorMessage = "无法连接到服务器，请检查地址是否正确";
+                StepStatus = string.Empty;
+                IsBusy = false;
+                return;
+            }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"✗ {ex.Message}";
-            IsSuccess = false;
+            HasError = true;
+            ErrorMessage = $"连接失败: {ex.Message}";
+            StepStatus = string.Empty;
+            IsBusy = false;
+            return;
         }
-        finally
+
+        // Step 2: Probe server config (appconfig) WITHOUT saving the URL.
+        // ProbeAsync temporarily points the ApiService at the candidate URL,
+        // fetches capability info, then restores the previous URL — so the
+        // ServerChanged event is NOT raised and we stay on this page.
+        StepStatus = "正在获取服务端配置…";
+        ServerInfo? info;
+        try
         {
+            info = await _server.ProbeAsync(ServerUrl);
+            if (info is null)
+            {
+                HasError = true;
+                ErrorMessage = "无法获取服务端配置，请检查地址";
+                StepStatus = string.Empty;
+                IsBusy = false;
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Non-fatal: fall back to local-only login.
+            info = new ServerInfo();
+            _ = ex; // suppress unused warning
+        }
+
+        // Step 3: Show the preview.
+        StepStatus = "连接成功，请确认服务端能力";
+        PreviewInfo = info;
+        IsVerified = true;
+        IsBusy = false;
+    }
+
+    private async Task ContinueAsync()
+    {
+        if (!IsVerified) return;
+
+        IsBusy = true;
+        StepStatus = "正在保存并跳转…";
+        try
+        {
+            // Persist the URL — SetServerUrlAsync raises ServerChanged which
+            // triggers AppShell to navigate to the login page.
+            var ok = await _server.SetServerUrlAsync(ServerUrl);
+            if (!ok)
+            {
+                HasError = true;
+                ErrorMessage = "保存失败：服务器不可达，请重试";
+                StepStatus = string.Empty;
+                IsBusy = false;
+                return;
+            }
+
+            // Record in history (best-effort, non-blocking).
+            try { await _history.AddAsync(ServerUrl); }
+            catch { /* ignore */ }
+        }
+        catch (Exception ex)
+        {
+            HasError = true;
+            ErrorMessage = $"保存失败: {ex.Message}";
+            StepStatus = string.Empty;
             IsBusy = false;
         }
     }
 
-    private async Task SaveAsync()
+    private async Task SelectRecentAsync(ServerHistoryEntry entry)
     {
-        IsBusy = true;
-        StatusMessage = "正在保存…";
-        IsSuccess = false;
-        try
-        {
-            var ok = await _server.SetServerUrlAsync(ServerUrl);
-            if (ok)
-            {
-                StatusMessage = "✓ 已保存，正在跳转…";
-                IsSuccess = true;
-                // The AppShell will navigate to login via ServerChanged event.
-            }
-            else
-            {
-                StatusMessage = "✗ 无法连接到服务器，请检查地址";
-                IsSuccess = false;
-            }
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"✗ {ex.Message}";
-            IsSuccess = false;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        ServerUrl = entry.Url;
+        await VerifyAsync();
+    }
+
+    private async Task RemoveRecentAsync(ServerHistoryEntry entry)
+    {
+        await _history.RemoveAsync(entry.Url);
+    }
+
+    // --- helpers ---
+
+    private void RefreshHistory()
+    {
+        RecentServers.Clear();
+        foreach (var e in _history.Entries)
+            RecentServers.Add(e);
+        HasRecentServers = RecentServers.Count > 0;
+    }
+
+    private void RefreshCanExecute()
+    {
+        ((Command)VerifyCommand).ChangeCanExecute();
+        ((Command)ContinueCommand).ChangeCanExecute();
+        ((Command)SelectRecentCommand).ChangeCanExecute();
+        ((Command)RemoveRecentCommand).ChangeCanExecute();
     }
 
     private async Task ToggleThemeAsync()

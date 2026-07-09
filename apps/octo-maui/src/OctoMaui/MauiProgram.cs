@@ -29,6 +29,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IWebSocketService, WebSocketService>();
         builder.Services.AddSingleton<IThemeService, ThemeService>();
         builder.Services.AddSingleton<IServerConfigService, ServerConfigService>();
+        builder.Services.AddSingleton<IServerHistoryService, ServerHistoryService>();
 
         // --- ViewModels ---
         builder.Services.AddTransient<ViewModels.LoginViewModel>();

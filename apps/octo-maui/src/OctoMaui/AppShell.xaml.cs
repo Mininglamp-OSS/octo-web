@@ -7,6 +7,7 @@ public partial class AppShell : Shell
     private readonly IAuthService _auth;
     private readonly IThemeService _theme;
     private readonly IServerConfigService _server;
+    private readonly IServerHistoryService _history;
 
     /// <summary>
     /// Set by <see cref="SuppressAutoNavigate"/> when the user explicitly
@@ -16,11 +17,12 @@ public partial class AppShell : Shell
     /// </summary>
     private bool _suppressAutoNavigate;
 
-    public AppShell(IAuthService auth, IThemeService theme, IServerConfigService server)
+    public AppShell(IAuthService auth, IThemeService theme, IServerConfigService server, IServerHistoryService history)
     {
         _auth = auth;
         _theme = theme;
         _server = server;
+        _history = history;
 
         InitializeComponent();
 
@@ -34,6 +36,9 @@ public partial class AppShell : Shell
 
         // Apply the saved theme early to avoid a flash of the default palette.
         _ = _theme.InitializeAsync();
+
+        // Load saved server history (best-effort, non-blocking).
+        _ = _history.InitializeAsync();
 
         // Load any saved server URL, then navigate to the right page.
         _ = InitializeAndNavigateAsync();

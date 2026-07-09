@@ -52,4 +52,11 @@ public interface IServerConfigService
     /// Returns true if the server responds with any HTTP status.
     /// </summary>
     Task<bool> ValidateAsync(string url, CancellationToken ct = default);
+
+    /// <summary>
+    /// Probe a server URL for reachability AND capabilities (OIDC providers
+    /// etc.) WITHOUT saving it. Returns null if unreachable. Used by the
+    /// server-config page to show a preview before the user commits.
+    /// </summary>
+    Task<ServerInfo?> ProbeAsync(string url, CancellationToken ct = default);
 }

@@ -1,99 +1,257 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:models="clr-namespace:OctoMaui.Models"
              x:Class="OctoMaui.Pages.ServerConfigPage"
-             Title="服务端设置"
+             Title="连接到服务端"
              BackgroundColor="{DynamicResource PageBackground}">
 
-    <Grid RowDefinitions="Auto,*,*,*"
-          Padding="32">
-
+    <Grid RowDefinitions="Auto,*">
         <!-- Top bar with theme toggle -->
         <HorizontalStackLayout Grid.Row="0"
-                               HorizontalOptions="End">
+                               HorizontalOptions="End"
+                               Padding="32,16,32,0">
             <Button Text="{Binding ThemeLabel}"
                     Command="{Binding ToggleThemeCommand}"
-                    BackgroundColor="Transparent"
-                    TextColor="{DynamicResource SecondaryText}"
+                    Style="{StaticResource GhostButton}"
                     FontSize="12"
                     Padding="10,4" />
         </HorizontalStackLayout>
 
-        <!-- Spacer -->
-        <BoxView Grid.Row="1" />
+        <!-- Scrollable guided setup -->
+        <ScrollView Grid.Row="1"
+                    Padding="32,8,32,32">
+            <VerticalStackLayout Spacing="18"
+                                 MaximumWidthRequest="460"
+                                 HorizontalOptions="Center"
+                                 VerticalOptions="Start">
 
-        <!-- Logo / Title -->
-        <VerticalStackLayout Grid.Row="2"
-                             HorizontalOptions="Center"
-                             Spacing="8">
-            <Label Text="🐙"
-                   FontSize="56"
-                   HorizontalOptions="Center" />
-            <Label Text="连接到服务端"
-                   FontSize="24"
-                   FontAttributes="Bold"
-                   HorizontalOptions="Center"
-                   TextColor="{DynamicResource PrimaryText}" />
-            <Label Text="OCTO 是开源项目，请输入你要连接的服务端地址"
-                   FontSize="12"
-                   TextColor="{DynamicResource SecondaryText}"
-                   HorizontalOptions="Center" />
-        </VerticalStackLayout>
+                <!-- Welcome / hero -->
+                <VerticalStackLayout Spacing="6"
+                                     HorizontalOptions="Center"
+                                     Margin="0,8,0,4">
+                    <Label Text="🐙"
+                           FontSize="52"
+                           HorizontalOptions="Center" />
+                    <Label Text="连接到服务端"
+                           FontSize="24"
+                           FontAttributes="Bold"
+                           HorizontalOptions="Center"
+                           TextColor="{DynamicResource PrimaryText}" />
+                    <Label Text="OCTO 是开源项目，请输入你要连接的服务端地址"
+                           FontSize="12"
+                           TextColor="{DynamicResource SecondaryText}"
+                           HorizontalOptions="Center"
+                           HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
 
-        <!-- Config form -->
-        <VerticalStackLayout Grid.Row="3"
-                             Spacing="12"
-                             MaximumWidthRequest="420"
-                             HorizontalOptions="Center"
-                             VerticalOptions="Center">
+                <!-- Recent servers (quick reconnect) -->
+                <Frame IsVisible="{Binding HasRecentServers}"
+                       BackgroundColor="{DynamicResource CardBackground}"
+                       BorderColor="{DynamicResource Border}"
+                       HasShadow="False"
+                       CornerRadius="10"
+                       Padding="14">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="最近连接"
+                               FontSize="12"
+                               FontAttributes="Bold"
+                               TextColor="{DynamicResource SecondaryText}" />
 
-            <Entry Placeholder="例如 octo.example.com 或 https://192.168.1.100:8080"
-                   Text="{Binding ServerUrl}"
-                   ReturnType="Done"
-                   FontSize="16"
-                   Keyboard="Url" />
+                        <CollectionView ItemsSource="{Binding RecentServers}"
+                                        Margin="0"
+                                        ItemSizingStrategy="MeasureFirstItem">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="models:ServerHistoryEntry">
+                                    <Grid ColumnDefinitions="*,Auto,Auto"
+                                          ColumnSpacing="8"
+                                          RowSpacing="0"
+                                          Margin="0,4">
+                                        <HorizontalStackLayout Grid.Column="0"
+                                                               Spacing="8"
+                                                               VerticalOptions="Center">
+                                            <Label Text="🔗"
+                                                   FontSize="12"
+                                                   VerticalOptions="Center" />
+                                            <VerticalStackLayout Spacing="1">
+                                                <Label Text="{Binding Url}"
+                                                       FontSize="13"
+                                                       TextColor="{DynamicResource PrimaryText}"
+                                                       LineBreakMode="TailTruncation"
+                                                       MaxLines="1" />
+                                                <Label Text="{Binding LastUsedText}"
+                                                       FontSize="10"
+                                                       TextColor="{DynamicResource SecondaryText}" />
+                                            </VerticalStackLayout>
+                                        </HorizontalStackLayout>
 
-            <Label Text="{Binding StatusMessage}"
-                   FontSize="13"
-                   IsVisible="{Binding HasStatus}">
-                <Label.Triggers>
-                    <DataTrigger TargetType="Label"
-                                 Binding="{Binding IsSuccess}"
-                                 Value="True">
-                        <Setter Property="TextColor" Value="{DynamicResource Success}" />
-                    </DataTrigger>
-                    <DataTrigger TargetType="Label"
-                                 Binding="{Binding IsSuccess}"
-                                 Value="False">
-                        <Setter Property="TextColor" Value="{DynamicResource Danger}" />
-                    </DataTrigger>
-                </Label.Triggers>
-            </Label>
+                                        <!-- Select (reconnect) -->
+                                        <Button Grid.Column="1"
+                                                Text="连接"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.SelectRecentCommand}"
+                                                CommandParameter="{Binding .}"
+                                                Style="{StaticResource GhostButton}"
+                                                TextColor="{DynamicResource Primary}"
+                                                FontSize="12"
+                                                Padding="12,4"
+                                                HeightRequest="32"
+                                                CornerRadius="6" />
 
-            <Grid ColumnDefinitions="*,*" Spacing="8">
-                <Button Grid.Column="0"
-                        Text="测试连接"
-                        Command="{Binding TestCommand}"
-                        BackgroundColor="Transparent"
-                        TextColor="{DynamicResource Primary}"
+                                        <!-- Remove from history -->
+                                        <Button Grid.Column="2"
+                                                Text="×"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.RemoveRecentCommand}"
+                                                CommandParameter="{Binding .}"
+                                                Style="{StaticResource GhostButton}"
+                                                TextColor="{DynamicResource SecondaryText}"
+                                                FontSize="16"
+                                                Padding="8,0"
+                                                HeightRequest="32"
+                                                WidthRequest="32"
+                                                CornerRadius="16" />
+                                    </Grid>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Server address input -->
+                <Frame BackgroundColor="{DynamicResource CardBackground}"
+                       BorderColor="{DynamicResource Border}"
+                       HasShadow="False"
+                       CornerRadius="10"
+                       Padding="14">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="服务端地址"
+                               FontSize="12"
+                               FontAttributes="Bold"
+                               TextColor="{DynamicResource SecondaryText}" />
+
+                        <Entry Placeholder="例如 octo.example.com 或 https://192.168.1.100:8080"
+                               Text="{Binding ServerUrl}"
+                               ReturnType="Go"
+                               ReturnCommand="{Binding VerifyCommand}"
+                               FontSize="15"
+                               Keyboard="Url"
+                               IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+
+                        <Button Text="测试连接"
+                                Command="{Binding VerifyCommand}"
+                                Style="{StaticResource PrimaryButton}"
+                                CornerRadius="8"
+                                HeightRequest="42" />
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Step-by-step progress (while busy) -->
+                <HorizontalStackLayout IsVisible="{Binding IsBusy}"
+                                       Spacing="10"
+                                       HorizontalOptions="Center"
+                                       Margin="0,4">
+                    <ActivityIndicator IsRunning="{Binding IsBusy}"
+                                       Color="{DynamicResource Primary}"
+                                       WidthRequest="18"
+                                       HeightRequest="18"
+                                       VerticalOptions="Center" />
+                    <Label Text="{Binding StepStatus}"
+                           FontSize="13"
+                           TextColor="{DynamicResource SecondaryText}"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
+
+                <!-- Error message -->
+                <Frame IsVisible="{Binding HasError}"
+                       BackgroundColor="#22E5484D"
+                       BorderColor="{DynamicResource Danger}"
+                       HasShadow="False"
+                       CornerRadius="8"
+                       Padding="12,8">
+                    <HorizontalStackLayout Spacing="8">
+                        <Label Text="✗"
+                               FontSize="14"
+                               TextColor="{DynamicResource Danger}"
+                               VerticalOptions="Center" />
+                        <Label Text="{Binding ErrorMessage}"
+                               FontSize="13"
+                               TextColor="{DynamicResource Danger}"
+                               VerticalOptions="Center"
+                               LineBreakMode="WordWrap" />
+                    </HorizontalStackLayout>
+                </Frame>
+
+                <!-- Capability preview card (after successful verify) -->
+                <Frame IsVisible="{Binding IsVerified}"
+                       BackgroundColor="{DynamicResource CardBackground}"
+                       BorderColor="{DynamicResource Accent}"
+                       HasShadow="False"
+                       CornerRadius="10"
+                       Padding="14">
+                    <VerticalStackLayout Spacing="8">
+                        <HorizontalStackLayout Spacing="6">
+                            <Label Text="✓"
+                                   FontSize="14"
+                                   TextColor="{DynamicResource Success}"
+                                   VerticalOptions="Center" />
+                            <Label Text="连接成功"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   TextColor="{DynamicResource PrimaryText}"
+                                   VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+
+                        <!-- Login methods summary -->
+                        <Grid ColumnDefinitions="Auto,*"
+                              ColumnSpacing="8"
+                              IsVisible="{Binding HasPreview}">
+                            <Label Grid.Column="0"
+                                   Text="登录方式"
+                                   FontSize="12"
+                                   TextColor="{DynamicResource SecondaryText}"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding PreviewAuthModes}"
+                                   FontSize="13"
+                                   TextColor="{DynamicResource PrimaryText}"
+                                   VerticalOptions="Center" />
+                        </Grid>
+
+                        <!-- OIDC provider names (if any) -->
+                        <Grid ColumnDefinitions="Auto,*"
+                              ColumnSpacing="8"
+                              IsVisible="{Binding HasPreview}">
+                            <Label Grid.Column="0"
+                                   Text="SSO 提供商"
+                                   FontSize="12"
+                                   TextColor="{DynamicResource SecondaryText}"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding PreviewOidcNames}"
+                                   FontSize="13"
+                                   TextColor="{DynamicResource PrimaryText}"
+                                   VerticalOptions="Center"
+                                   LineBreakMode="TailTruncation"
+                                   MaxLines="2" />
+                        </Grid>
+
+                        <Label Text="确认无误后，点击下方“保存并继续”进入登录"
+                               FontSize="11"
+                               TextColor="{DynamicResource SecondaryText}"
+                               Margin="0,2,0,0" />
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Action: save and continue -->
+                <Button Text="保存并继续"
+                        Command="{Binding ContinueCommand}"
+                        Style="{StaticResource PrimaryButton}"
                         CornerRadius="8"
-                        HeightRequest="44"
-                        BorderWidth="1"
-                        BorderColor="{DynamicResource Border}" />
-                <Button Grid.Column="1"
-                        Text="保存并继续"
-                        Command="{Binding SaveCommand}"
-                        BackgroundColor="{DynamicResource Primary}"
-                        TextColor="White"
-                        CornerRadius="8"
-                        HeightRequest="44" />
-            </Grid>
+                        HeightRequest="46"
+                        FontSize="15"
+                        Margin="0,4,0,0" />
 
-            <ActivityIndicator IsRunning="{Binding IsBusy}"
-                               IsVisible="{Binding IsBusy}"
-                               Color="{DynamicResource Primary}" />
-        </VerticalStackLayout>
-
+            </VerticalStackLayout>
+        </ScrollView>
     </Grid>
 
 </ContentPage>
