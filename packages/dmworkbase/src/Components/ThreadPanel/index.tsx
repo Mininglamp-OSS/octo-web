@@ -90,13 +90,12 @@ const ThreadNameInput = React.forwardRef<
         type="text"
         value={value}
         placeholder={placeholder}
-        maxLength={THREAD_NAME_MAX_LENGTH}
         autoFocus={autoFocus}
         style={{
           width: "100%",
           padding: "10px 12px",
           background: "var(--wk-bg-base)",
-          border: "1px solid var(--wk-border-default)",
+          border: exceeded ? "1px solid var(--wk-color-danger)" : "1px solid var(--wk-border-default)",
           borderRadius: "6px",
           fontSize: "14px",
           color: "var(--wk-text-primary)",
@@ -769,6 +768,10 @@ export default class ThreadPanel extends Component<
             Toast.error(t("base.threadPanel.nameRequired"));
             return;
           }
+          if (newName.length > THREAD_NAME_MAX_LENGTH) {
+            Toast.warning(t("base.threadCreate.nameMaxLength"));
+            return;
+          }
           try {
             await WKApp.dataSource.channelDataSource.threadUpdate(
               groupNo,
@@ -1080,6 +1083,10 @@ export default class ThreadPanel extends Component<
         threadName = inputRef.current?.value ?? "";
         if (!threadName || threadName.trim() === "") {
           Toast.error(t("base.module.createThread.nameRequired"));
+          return;
+        }
+        if (threadName.length > THREAD_NAME_MAX_LENGTH) {
+          Toast.warning(t("base.threadCreate.nameMaxLength"));
           return;
         }
         try {
