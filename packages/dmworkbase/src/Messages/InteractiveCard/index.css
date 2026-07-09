@@ -13,7 +13,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--wk-sp-1, 4px);
-  max-width: 420px;
+  width: 520px;
+  max-width: 100%;
   min-width: 0;
 }
 
@@ -21,13 +22,13 @@
 .wk-interactive-card-plain {
   white-space: pre-wrap;
   word-break: break-word;
-  line-height: 1.5;
+  line-height: var(--wk-leading-normal, 1.5);
   color: var(--wk-text-primary, inherit);
 }
 
 .wk-interactive-card-hint {
   margin-top: var(--wk-sp-1, 4px);
-  font-size: 12px;
+  font-size: var(--wk-text-size-sm, 12px);
   color: var(--wk-text-secondary);
 }
 
@@ -56,6 +57,38 @@
 .wk-interactive-card-sdk {
   position: relative;
   min-width: 0;
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  box-shadow: var(--wk-shadow-sm);
+  overflow: hidden;
+}
+
+.wk-interactive-card-sdk::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  width: var(--wk-sp-0-5, 2px);
+  background: var(--wk-text-accent, var(--wk-brand-primary));
+  pointer-events: none;
+}
+
+.wk-interactive-card-sdk > .ac-adaptiveCard {
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.wk-interactive-card-sdk > .ac-adaptiveCard > :first-child {
+  margin-top: 0;
+}
+
+.wk-interactive-card-sdk > .ac-adaptiveCard > :last-child {
+  margin-bottom: 0;
 }
 
 /* 提交中：整卡置灰、禁点，等新帧或 10s 超时恢复 */
@@ -82,19 +115,130 @@
 /* ── SDK(AdaptiveCards) 输出基线样式 ──
  * SDK 未引入默认样式表，按钮/输入本无样式；此处用 --wk-* token 补基线，待真机微调。
  * 颜色/间距/字体等由 HostConfig 就地注入（inline），此处只补 SDK 未覆盖的控件外观。 */
+.wk-interactive-card-sdk .ac-textBlock,
+.wk-interactive-card-sdk .ac-textRun {
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.wk-interactive-card-sdk .ac-textBlock {
+  color: var(--wk-text-primary);
+}
+
+.wk-interactive-card-sdk .ac-container {
+  box-sizing: border-box;
+  border-radius: var(--wk-r-sm);
+  overflow: hidden;
+}
+
+.wk-interactive-card-sdk .ac-columnSet {
+  box-sizing: border-box;
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-interactive-card-sdk .ac-columnSet > .ac-container {
+  border: 1px solid var(--wk-border-subtle);
+}
+
+.wk-interactive-card-sdk .ac-richTextBlock {
+  box-sizing: border-box;
+  padding: var(--wk-sp-1, 4px) 0;
+  color: var(--wk-text-primary);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.wk-interactive-card-sdk .ac-richTextBlock .ac-textRun {
+  line-height: var(--wk-leading-normal);
+}
+
+.wk-interactive-card-sdk > .ac-adaptiveCard > .ac-richTextBlock + .ac-richTextBlock {
+  border-top: 1px solid var(--wk-border-subtle);
+}
+
+.wk-interactive-card-sdk .ac-factset {
+  width: 100%;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.wk-interactive-card-sdk .ac-fact-title,
+.wk-interactive-card-sdk .ac-fact-value {
+  padding: var(--wk-sp-1, 4px) 0;
+  vertical-align: top;
+}
+
+.wk-interactive-card-sdk .ac-fact-title {
+  width: 62%;
+  padding-right: var(--wk-sp-3, 12px);
+  color: var(--wk-text-secondary);
+}
+
+.wk-interactive-card-sdk .ac-fact-value {
+  color: var(--wk-text-primary);
+  font-weight: var(--wk-font-medium);
+}
+
+.wk-interactive-card-sdk .ac-factset tr + tr .ac-fact-title,
+.wk-interactive-card-sdk .ac-factset tr + tr .ac-fact-value {
+  border-top: 1px solid var(--wk-border-subtle);
+}
+
+.wk-interactive-card-sdk table:not(.ac-factset) {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-sm);
+  border-spacing: 0;
+  background: var(--wk-bg-surface);
+}
+
+.wk-interactive-card-sdk table:not(.ac-factset) td,
+.wk-interactive-card-sdk table:not(.ac-factset) th {
+  padding: var(--wk-sp-1-5, 6px) var(--wk-sp-2, 8px);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  vertical-align: top;
+}
+
+.wk-interactive-card-sdk table:not(.ac-factset) tr:last-child td,
+.wk-interactive-card-sdk table:not(.ac-factset) tr:last-child th {
+  border-bottom: none;
+}
+
+.wk-interactive-card-sdk .ac-image {
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-interactive-card-sdk .ac-imageSet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wk-sp-2, 8px);
+}
+
 .wk-interactive-card-sdk .ac-pushButton {
   min-height: 30px;
   padding: var(--wk-sp-1, 4px) var(--wk-sp-3, 12px);
-  font-size: 13px;
+  font-size: var(--wk-text-size-base, 13px);
   color: var(--wk-text-accent, var(--wk-brand-primary));
-  background: transparent;
+  background: var(--wk-bg-surface);
   border: 1px solid var(--wk-border-default);
   border-radius: var(--wk-r-sm, 4px);
   cursor: pointer;
+  transition:
+    background var(--wk-dur-fast) var(--wk-ease),
+    border-color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-interactive-card-sdk .ac-pushButton:hover {
-  background: var(--wk-bg-elevated);
+  background: var(--wk-bg-hover);
+  border-color: var(--wk-border-strong);
+}
+
+.wk-interactive-card-sdk .ac-pushButton:focus-visible {
+  outline: none;
+  border-color: var(--wk-border-glow);
+  box-shadow: 0 0 0 var(--wk-sp-0-5, 2px) var(--wk-border-glow);
 }
 
 .wk-interactive-card-sdk .ac-textInput,
@@ -104,7 +248,7 @@
 .wk-interactive-card-sdk .ac-choiceSetInput-compact {
   min-height: 30px;
   padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
-  font-size: 13px;
+  font-size: var(--wk-text-size-base, 13px);
   color: var(--wk-text-primary);
   background: var(--wk-bg-surface, transparent);
   border: 1px solid var(--wk-border-default);
@@ -119,4 +263,5 @@
 .wk-interactive-card-sdk .ac-choiceSetInput-compact:focus-visible {
   outline: none;
   border-color: var(--wk-brand-primary);
+  box-shadow: 0 0 0 var(--wk-sp-0-5, 2px) var(--wk-border-glow);
 }
