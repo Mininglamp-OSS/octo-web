@@ -1040,6 +1040,7 @@ export default class BaseModule implements IModule {
                     type="text"
                     placeholder={t("base.module.createThread.namePlaceholder")}
                     defaultValue={defaultName}
+                    maxLength={THREAD_NAME_MAX_LENGTH}
                     style={{
                       width: "100%",
                       padding: "10px 12px",
@@ -1061,6 +1062,10 @@ export default class BaseModule implements IModule {
               onOk: async () => {
                 if (!threadName || threadName.trim() === "") {
                   Toast.error(t("base.module.createThread.nameRequired"));
+                  return;
+                }
+                if (threadName.length > THREAD_NAME_MAX_LENGTH) {
+                  Toast.warning(t("base.threadCreate.nameMaxLength"));
                   return;
                 }
                 try {
