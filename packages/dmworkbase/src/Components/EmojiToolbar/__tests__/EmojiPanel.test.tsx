@@ -334,6 +334,94 @@ describe("EmojiPanel sticker gating", () => {
     });
 });
 
+describe("EmojiPanel sticker hover preview（原位放大预览）", () => {
+    const STICKER = {
+        sticker_id: "s1",
+        path: "sticker-1.png",
+        category: "sticker",
+        placeholder: "",
+        format: "png",
+    };
+
+    // 切到「我的贴纸」tab 并等首屏懒加载完成，返回渲染出来的第一个贴纸格子。
+    async function mountWithSticker(): Promise<HTMLElement> {
+        hoisted.userStickers.mockResolvedValueOnce({ list: [STICKER] });
+        render(<EmojiPanel />);
+        await act(async () => {
+            tabs()[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            await Promise.resolve();
+        });
+        const item = container.querySelector(".wk-sticker-item") as HTMLElement;
+        expect(item).not.toBeNull();
+        return item;
+    }
+
+    // React 17 的 onMouseEnter/onMouseLeave 由根节点上的 mouseover/mouseout 合成而来，
+    // 直接 dispatch 原生 mouseenter/mouseleave 不会触发合成事件，故用 mouseover/mouseout。
+    function hover(el: HTMLElement) {
+        act(() => {
+            el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body }));
+        });
+    }
+    function leave(el: HTMLElement) {
+        act(() => {
+            el.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+        });
+    }
+
+    it("portals an enlarged preview to <body> after the hover delay elapses", async () => {
+        const item = await mountWithSticker();
+
+        vi.useFakeTimers();
+        hover(item);
+        // 延时未到之前不浮出，避免鼠标扫过网格时狂闪。
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+
+        const preview = document.body.querySelector(".wk-sticker-preview");
+        expect(preview).not.toBeNull();
+        // 位图贴纸走 <img>，且尺寸远大于 60px 缩略图（由 CSS 控制，这里只断言渲染出媒体）。
+        expect(preview!.querySelector("img")).not.toBeNull();
+    });
+
+    it("hides the preview when the pointer leaves the sticker grid", async () => {
+        const item = await mountWithSticker();
+        const ul = container.querySelector(".wk-emojipanel-content ul") as HTMLElement;
+
+        vi.useFakeTimers();
+        hover(item);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
+
+        leave(ul);
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
+    it("clears a still-pending preview timer on unmount without throwing", async () => {
+        const item = await mountWithSticker();
+
+        vi.useFakeTimers();
+        hover(item); // 起了延时但还没浮出
+        act(() => {
+            ReactDOM.unmountComponentAtNode(container);
+        });
+        // 卸载后即使 fire 掉挂起的 timer 也不应 setState 报错或残留浮层。
+        expect(() => {
+            act(() => {
+                vi.advanceTimersByTime(500);
+            });
+        }).not.toThrow();
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+});
+
 describe("EmojiPanel sticker upload validation (WKApp.remoteConfig.stickerUploadLimits)", () => {
     const bytes = (size: number) => new Uint8Array(size);
 
