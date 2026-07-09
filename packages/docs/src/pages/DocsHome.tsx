@@ -6,7 +6,7 @@ import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
 import { BoardSession } from '../board/BoardSession.tsx'
 import { isBoardDoc, isBoardIdLocally, rememberBoard } from '../board/boardStore.ts'
-import { runMarkdownImport, ImportContentCorruptError } from '../editor/importFlow.ts'
+import { runMarkdownImport, runDocxImport, ImportContentCorruptError } from '../editor/importFlow.ts'
 import '../editor/styles.css'
 import {
   DEFAULT_DOC_SPACE,
@@ -503,6 +503,30 @@ function DocsList({
     }
   }
 
+  // "从 Word 导入" → pick a .docx file, create a NEW doc, POST the file to the server-side
+  // importer (parses OOXML → ProseMirror JSON, uploads embedded images scoped to the new doc),
+  // stash the returned content, then open it. Like every import path, it lands in its own new
+  // file and never overwrites an existing doc.
+  const onImportWord = async () => {
+    if (creating) return
+    setCreating(true)
+    try {
+      const result = await runDocxImport(space || undefined, folder || undefined)
+      onSelect(result.docId, 'doc')
+      reload()
+    } catch (err) {
+      if (err instanceof ImportContentCorruptError) {
+        setError(t('docs.toolbar.importCorrupt'))
+      } else if (err instanceof Error && /取消|cancel/i.test(err.message)) {
+        // silent: user closed the file picker
+      } else {
+        setError(t('docs.import.wordError'))
+      }
+    } finally {
+      setCreating(false)
+    }
+  }
+
   return (
     <div className="octo-docs-list">
       <div className="octo-docs-list-header">
@@ -615,6 +639,18 @@ function DocsList({
               }}
             >
               📄 {t('docs.sheet.importExcel')}
+            </button>
+            <button
+              type="button"
+              className="octo-tb-btn"
+              disabled={creating}
+              style={{ display: 'block', width: '100%', textAlign: 'left' }}
+              onClick={() => {
+                setImportMenuAt(null)
+                void onImportWord()
+              }}
+            >
+              📃 {t('docs.import.word')}
             </button>
             <button
               type="button"

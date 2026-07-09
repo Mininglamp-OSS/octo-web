@@ -182,6 +182,43 @@ export async function exportDocPdf(docId: string): Promise<ArrayBuffer> {
 }
 
 /**
+ * Parsed ProseMirror document + non-fatal warnings returned by the server-side
+ * .docx import. `doc` is a ProseMirror `doc` JSON ready to inject via setContent;
+ * `warnings` surface best-effort degradations (e.g. an image that failed to
+ * upload was replaced by a file-attachment placeholder).
+ */
+export interface DocxImportResult {
+  doc: unknown
+  warnings: string[]
+}
+
+/**
+ * Import a .docx file into an (already created, empty) doc. The raw file bytes
+ * are POSTed to the server-side importer, which parses the OOXML to ProseMirror
+ * JSON, uploads embedded images as attachments scoped to `docId`, and returns
+ * the document plus any degradation warnings. The caller injects `doc` into the
+ * editor. Requires editor role on `docId` (import writes content).
+ *
+ * Goes through the shared host apiClient so the global token / X-Space-Id
+ * interceptor and `/api/v1/` baseURL apply. The docx content-type is set per
+ * request; a longer timeout covers large documents with many images.
+ */
+export async function importDocx(docId: string, file: File): Promise<DocxImportResult> {
+  const bytes = await file.arrayBuffer()
+  const { data } = await apiClient().post<DocxImportResult>(
+    `/docs/${docId}/import/docx`,
+    bytes,
+    {
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      },
+      timeout: 120_000,
+    },
+  )
+  return data
+}
+
+/**
  * Delete outcome classification (contract C3 final), kept as a pure function so the 200/404/403/409
  * handling is unit-testable and shared wherever the delete entry lives:
  *   200 → 'deleted'; 404 → 'gone' (already removed — treat as success); 403 → 'forbidden';

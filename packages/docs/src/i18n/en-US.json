@@ -148,6 +148,8 @@
     "importCorrupt": "The imported content is corrupt or unreadable and couldn't be loaded."
   },
   "import": {
+    "word": "Import from Word",
+    "wordError": "Couldn't parse this Word document. Please make sure it's a valid .docx.",
     "markdown": "Import from Markdown"
   },
   "slash": {

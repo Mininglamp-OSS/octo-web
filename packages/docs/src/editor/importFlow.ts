@@ -6,7 +6,7 @@
 // injects it via setContent once the editor is ready.
 
 import { parseMarkdownToPmDoc } from '../import/markdown.ts'
-import { createDoc } from '../pages/docsApi.ts'
+import { createDoc, importDocx } from '../pages/docsApi.ts'
 import { emojiGlyph } from './emoji.ts'
 
 const IMPORT_KEY_PREFIX = 'octo-import-pm-'
@@ -160,6 +160,39 @@ export async function runMarkdownImport(
   }
 }
 
+/**
+ * Run the full .docx import flow: pick file → create an empty doc → POST the file
+ * to the server-side importer → stash the returned ProseMirror JSON. Unlike the
+ * Markdown flow (which parses client-side), docx parsing + image upload happen
+ * on the server, so we must create the doc FIRST to get a docId that scopes the
+ * uploaded image attachments. Caller navigates to result.docId after this
+ * resolves; EditorShell drains the stash on mount.
+ */
+export async function runDocxImport(
+  spaceId?: string,
+  folderId?: string,
+): Promise<ImportResult> {
+  // 1. File picker
+  const { file, fileName } = await pickDocxFile()
+
+  // 2. Create the destination doc first (its id scopes server-side image uploads).
+  const title = stripDocxExtension(fileName) || 'Imported document'
+  const created = await createDoc({ title, spaceId, folderId })
+
+  // 3. Server parses the .docx to ProseMirror JSON and uploads embedded images.
+  const { doc, warnings } = await importDocx(created.docId, file)
+
+  // 4. Stash content + warnings for EditorShell to pick up after navigation.
+  stashImportContent(created.docId, doc)
+  stashImportWarnings(created.docId, warnings)
+
+  return {
+    docId: created.docId,
+    title,
+    warnings,
+  }
+}
+
 // ── File picker ───────────────────────────────────────────────────────────────
 
 interface PickedFile {
@@ -204,4 +237,44 @@ function pickMdFile(): Promise<PickedFile> {
 
 function stripExtension(name: string): string {
   return name.replace(/\.(md|markdown|txt|text)$/i, '')
+}
+
+interface PickedDocxFile {
+  file: File
+  fileName: string
+}
+
+/**
+ * Open a native file picker for a single .docx file and hand back the raw File (the bytes are
+ * uploaded to the server importer, so we never read them client-side). Resolves with the file
+ * and its name so the caller derives the doc title without relying on module-level state.
+ */
+function pickDocxFile(): Promise<PickedDocxFile> {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept =
+      '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    input.style.display = 'none'
+
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) { reject(new Error('未选择文件')); cleanup(); return }
+      resolve({ file, fileName: file.name })
+      cleanup()
+    }
+
+    input.oncancel = () => { reject(new Error('用户取消')); cleanup() }
+
+    const cleanup = () => {
+      setTimeout(() => input.remove(), 100)
+    }
+
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
+function stripDocxExtension(name: string): string {
+  return name.replace(/\.docx$/i, '')
 }

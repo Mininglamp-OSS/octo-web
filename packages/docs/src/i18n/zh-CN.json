@@ -148,6 +148,8 @@
     "importCorrupt": "导入内容已损坏或无法解析，未能载入。"
   },
   "import": {
+    "word": "从 Word 导入",
+    "wordError": "无法解析该 Word 文档，请确认是有效的 .docx",
     "markdown": "从 Markdown 导入"
   },
   "slash": {
