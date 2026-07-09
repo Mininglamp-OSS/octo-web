@@ -1656,7 +1656,7 @@ export default class BaseModule implements IModule {
                         });
                     },
                     t("base.module.channelSettings.groupNamePlaceholder"),
-                    20
+                    50
                   );
                 },
               },
@@ -2362,7 +2362,7 @@ export default class BaseModule implements IModule {
                     data.refresh();
                   },
                   t("base.module.thread.name"),
-                  50
+                  100
                 );
               },
             },

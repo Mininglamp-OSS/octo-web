@@ -704,7 +704,7 @@
   "module.userInfo.removeFromBlacklist": "Remove from blacklist",
   "module.userInfo.source": "Source",
   "threadCreate.creating": "Creating...",
-  "threadCreate.nameMaxLength": "Thread name cannot exceed 50 characters",
+  "threadCreate.nameMaxLength": "Thread name cannot exceed 100 characters",
   "threadCreate.namePlaceholder": "Enter thread name",
   "threadCreate.nameRequired": "Please enter a thread name",
   "threadCreate.success": "Created",

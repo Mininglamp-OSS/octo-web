@@ -49,7 +49,7 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
       return
     }
 
-    if (name.length > 50) {
+    if (name.length > 100) {
       Toast.warning(t("base.threadCreate.nameMaxLength"))
       return
     }
@@ -94,7 +94,7 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
             value={name}
             onChange={this.handleNameChange}
             onKeyDown={this.handleKeyDown}
-            maxLength={50}
+            maxLength={100}
             autoFocus
           />
         </div>

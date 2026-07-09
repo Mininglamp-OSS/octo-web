@@ -366,6 +366,8 @@
 .wk-chat-conversation-header-channel {
   display: flex;
   align-items: center;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .wk-chat-conversation-header-channel-avatar img {
@@ -390,6 +392,8 @@
 .wk-chat-conversation-header-channel-info {
   display: flex;
   align-items: center;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .wk-chat-conversation-header-channel-info-name {
@@ -409,20 +413,22 @@
   gap: 4px;
   flex-wrap: nowrap;
   overflow: hidden;
+  min-width: 0;
 }
 
 /* 父群组 badge：# icon + 群组名，可点击 */
 .wk-chat-conversation-header-parent-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
+  display: block;
   color: var(--wk-text-tertiary, #9498a8);
   font-size: 13px;
   font-weight: 400;
   cursor: pointer;
   transition: color 150ms;
   white-space: nowrap;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .wk-chat-conversation-header-parent-group:hover {
@@ -446,15 +452,15 @@
 
 /* 子区名称（当前频道）：🧵 icon + 名称，加粗 */
 .wk-chat-conversation-header-thread-name {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
+  display: block;
   color: var(--wk-text-primary, #1a1c24);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .wk-chat-conversation-header-content {

@@ -704,7 +704,7 @@
   "module.userInfo.removeFromBlacklist": "拉出黑名单",
   "module.userInfo.source": "来源",
   "threadCreate.creating": "创建中...",
-  "threadCreate.nameMaxLength": "子区名称不能超过50个字符",
+  "threadCreate.nameMaxLength": "子区名称不能超过100个字符",
   "threadCreate.namePlaceholder": "输入子区名称",
   "threadCreate.nameRequired": "请输入子区名称",
   "threadCreate.success": "创建成功",

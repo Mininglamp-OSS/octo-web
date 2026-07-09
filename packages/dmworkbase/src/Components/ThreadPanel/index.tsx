@@ -1,4 +1,4 @@
-import React, { Component } from "react";
+import React, { Component, useState } from "react";
 import {
   Channel,
   ChannelTypePerson,
@@ -65,6 +65,59 @@ import {
   persistThreadWidth,
 } from "../WKLayout/layoutWidth";
 import "./index.css";
+
+const THREAD_NAME_MAX_LENGTH = 100;
+
+/**
+ * 子区名称输入框 — 带字数计数器（当前/最大）
+ * 用于 ThreadPanel 内创建/编辑子区名的 wkConfirm 弹窗。
+ */
+const ThreadNameInput = React.forwardRef<
+  HTMLInputElement,
+  {
+    defaultValue?: string;
+    placeholder?: string;
+    autoFocus?: boolean;
+  }
+>(({ defaultValue = "", placeholder, autoFocus }, ref) => {
+  const [value, setValue] = useState(defaultValue);
+  const exceeded = value.length > THREAD_NAME_MAX_LENGTH;
+  return (
+    <div>
+      <input
+        ref={ref}
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        maxLength={THREAD_NAME_MAX_LENGTH}
+        autoFocus={autoFocus}
+        style={{
+          width: "100%",
+          padding: "10px 12px",
+          background: "var(--wk-bg-base)",
+          border: "1px solid var(--wk-border-default)",
+          borderRadius: "6px",
+          fontSize: "14px",
+          color: "var(--wk-text-primary)",
+          outline: "none",
+          boxSizing: "border-box",
+        }}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <div
+        style={{
+          textAlign: "right",
+          marginTop: "4px",
+          fontSize: "12px",
+          color: exceeded ? "var(--wk-color-danger)" : "var(--wk-text-tertiary)",
+        }}
+      >
+        {value.length} / {THREAD_NAME_MAX_LENGTH}
+      </div>
+    </div>
+  );
+});
+ThreadNameInput.displayName = "ThreadNameInput";
 
 // 消息 ACK 只代表发送成功；后端把归档子区恢复为活跃存在短暂异步窗口。
 // 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
@@ -697,34 +750,20 @@ export default class ThreadPanel extends Component<
     // 延迟弹窗，等 Popover 完全关闭后再触发，避免 Modal 被 Popover 关闭事件误关
     setTimeout(() => {
       let newName = thread.name;
+      const inputRef = React.createRef<HTMLInputElement>();
       wkConfirm({
         title: t("base.threadPanel.editNameTitle"),
         okText: t("base.threadPanel.save"),
         cancelText: t("base.common.cancel"),
         content: (
-          <div>
-            <input
-              type="text"
-              defaultValue={thread.name}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                background: "var(--wk-bg-base)",
-                border: "1px solid var(--wk-border-default)",
-                borderRadius: "6px",
-                fontSize: "14px",
-                color: "var(--wk-text-primary)",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-              onChange={(e) => {
-                newName = e.target.value;
-              }}
-              autoFocus
-            />
-          </div>
+          <ThreadNameInput
+            ref={inputRef}
+            defaultValue={thread.name}
+            autoFocus
+          />
         ),
         onOk: async () => {
+          newName = inputRef.current?.value ?? thread.name;
           if (!newName || newName.trim() === "") {
             Toast.error(t("base.threadPanel.nameRequired"));
             return;
@@ -1013,6 +1052,7 @@ export default class ThreadPanel extends Component<
     if (!groupNo) return;
 
     let threadName = "";
+    const inputRef = React.createRef<HTMLInputElement>();
     wkConfirm({
       title: t("base.module.createThread.title"),
       okText: t("base.module.createThread.ok"),
@@ -1028,28 +1068,15 @@ export default class ThreadPanel extends Component<
           >
             {t("base.module.createThread.nameLabel")}
           </div>
-          <input
-            type="text"
+          <ThreadNameInput
+            ref={inputRef}
             placeholder={t("base.module.createThread.namePlaceholder")}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              background: "var(--wk-bg-base)",
-              border: "1px solid var(--wk-border-default)",
-              borderRadius: "6px",
-              fontSize: "14px",
-              color: "var(--wk-text-primary)",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
-            onChange={(e) => {
-              threadName = e.target.value;
-            }}
             autoFocus
           />
         </div>
       ),
       onOk: async () => {
+        threadName = inputRef.current?.value ?? "";
         if (!threadName || threadName.trim() === "") {
           Toast.error(t("base.module.createThread.nameRequired"));
           return;

@@ -767,10 +767,13 @@ export class OrganizationalGroupNew extends Component<
             </div>
             <Input
               value={groupName}
-              maxLength={20}
+              maxLength={50}
               placeholder={t("contacts.groupCreate.namePlaceholder")}
               onChange={(value) => this.setState({ groupName: value })}
             />
+            <div className="group-create-input-count">
+              {groupName.length} / 50
+            </div>
           </div>
 
           <div className="group-create-field">
