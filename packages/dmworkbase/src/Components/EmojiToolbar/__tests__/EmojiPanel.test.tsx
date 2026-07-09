@@ -547,6 +547,26 @@ describe("EmojiPanel sticker hover preview（原位放大预览）", () => {
         expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
     });
 
+    it("clears a visible preview when a background refresh fails (grid goes empty too)", async () => {
+        const item = await mountWithSticker();
+        vi.useFakeTimers();
+        hover(item);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+        expect(document.body.querySelector(".wk-sticker-preview")).not.toBeNull();
+
+        // 失败分支把 stickers 清空——和成功分支返回空列表是同一类残影，预览必须一起清掉，
+        // 否则放大卡片会浮在一个已经空掉的网格上方。
+        hoisted.userStickers.mockRejectedValueOnce(new Error("network error"));
+        await act(async () => {
+            hoisted.state.mittHandlers["stickers-updated"]?.();
+            await Promise.resolve();
+        });
+        expect(document.body.querySelector(".wk-sticker-preview")).toBeNull();
+    });
+
     it("does not show a pending preview for a sticker removed by a refresh before the delay elapses", async () => {
         const item = await mountWithSticker();
         vi.useFakeTimers();

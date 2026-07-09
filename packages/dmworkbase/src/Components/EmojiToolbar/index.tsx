@@ -321,7 +321,9 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
             }
         }).catch(() => {
             if (!this.isUnmounted) {
-                this.setState({ stickers: [] })
+                // 失败分支把 stickers 清空，等于「新列表里不含任何 sticker_id」——和成功分支
+                // 同一类残影，正在显示的预览必然指向一个已经不在（空）列表里的贴纸，一并清掉。
+                this.setState({ stickers: [], preview: null })
             }
         })
     }
