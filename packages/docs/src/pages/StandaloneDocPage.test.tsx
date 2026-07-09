@@ -45,10 +45,11 @@ vi.mock('../editor/EditorShell.tsx', () => ({
 // board-open path is testable in jsdom without mounting the heavy canvas / opening a WebSocket —
 // exactly like the editor marker above. The marker echoes the docId + space it was addressed with.
 vi.mock('../board/BoardSession.tsx', () => ({
-  BoardSession: (props: { docId: string; space?: string }) => (
+  BoardSession: (props: { docId: string; space?: string; folder?: string }) => (
     <div data-testid="board-session">
       <span data-testid="board-doc">{props.docId}</span>
       <span data-testid="board-space">{props.space}</span>
+      <span data-testid="board-folder">{props.folder}</span>
     </div>
   ),
 }))
@@ -455,6 +456,39 @@ describe('StandaloneDocPage — board-kind resolved from authoritative docType (
     await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
     expect(screen.getByTestId('editor-doc').textContent).toBe('d_plain')
     expect(screen.queryByTestId('board-session')).toBeNull()
+  })
+
+  it('addresses the board to the authoritative whiteboard space/folder/board from the preflight documentName (non-default folder)', async () => {
+    // XIN-634 P1-a: a board that lives in a NON-default folder. The preflight documentName is the
+    // authoritative whiteboard key octo:{space}:{folder}:wb:{board}; the addressing memo must honor
+    // parsed.space/folder/board symmetrically with the document branch. Before the fix a whiteboard
+    // key fell through to { space: preflightSpace, folder: DEFAULT_DOC_FOLDER, board: docId }, so the
+    // standalone share link derived a DIFFERENT room than the REST preflight authorized (wrong collab
+    // token / WS room / uid-scoped cache) for any board outside the default folder.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/b_infolder') {
+        return {
+          data: {
+            docId: 'b_infolder',
+            title: 'Board In Folder',
+            ownerId: 'u_owner',
+            docType: 'board',
+            documentName: 'octo:s_auth:f_team:wb:board_xyz',
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="b_infolder" />)
+
+    await waitFor(() => expect(screen.getByTestId('board-session')).toBeTruthy())
+    // Board segment comes from parsed.board, NOT the URL docId; folder/space from the parsed key.
+    expect(screen.getByTestId('board-doc').textContent).toBe('board_xyz')
+    expect(screen.getByTestId('board-folder').textContent).toBe('f_team')
+    expect(screen.getByTestId('board-folder').textContent).not.toBe('f_default')
+    expect(screen.getByTestId('board-space').textContent).toBe('s_auth')
   })
 })
 

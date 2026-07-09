@@ -295,8 +295,15 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // by this uid so a shared browser never exposes one user's board to the next.
   const uid = user?.id
   // Remote peers' presence (XIN-111): cursors + online list, rebuilt from provider.awareness on
-  // every awareness `change`. Empty on the M1 standalone path (no session).
-  const [collaborators, setCollaborators] = useState<Map<string, BoardCollaborator>>(() => new Map())
+  // every awareness `change`. Held in a REF, not React state (XIN-634 P1-b): awareness 'change'
+  // fires on every remote pointer coordinate delta, and routing that through setState re-rendered
+  // the whole BoardShell — header, ≡ menu, member panel — on every cursor move under multiple
+  // peers. The map has NO React consumer that needs re-render: Excalidraw's `collaborators` prop is
+  // inert in 0.18.1 (see below) so the only render path is the imperative api.updateScene, and the
+  // online avatars come from PresenceBar, which subscribes to the provider itself. So the presence
+  // listener pushes straight into the canvas and stashes the map here for a late-mounting canvas to
+  // be primed with; empty on the M1 standalone path (no session).
+  const collaboratorsRef = useRef<Map<string, BoardCollaborator>>(new Map())
 
   // XIN-115 (case8 presence_delta=0 v2 — real-runtime root cause): the `collaborators` PROP is INERT
   // in @excalidraw/excalidraw 0.18.1. It is declared on ExcalidrawProps, but the component wrapper
@@ -306,9 +313,11 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // (XIN-111 made delta=1 at the data layer), yet nothing rendered: no remote cursor, no online
   // avatar, presence_delta on the canvas stayed 0. node tests never caught it because they assert
   // readBoardCollaborators (the Map) and never mount the real Excalidraw that ignores the prop.
-  // Fix: hold the imperative API in state and push the map through updateScene from an effect keyed
-  // on (api, collaborators) — so the push always runs post-commit, after the canvas has mounted, and
-  // covers either arrival order (peers resolved before the heavy canvas chunk, or after).
+  // Fix: hold the imperative API in state and push the map through updateScene. The push runs from
+  // the awareness listener below (XIN-634 P1-b keeps it out of React state); this stays state (not
+  // a ref) because the listener effect depends on it, so a canvas that mounts AFTER peers arrive
+  // re-subscribes and replays the current map — covering either arrival order (peers resolved
+  // before the heavy canvas chunk, or after).
   const [excalidrawApi, setExcalidrawApi] = useState<{
     updateScene: (scene: { collaborators: Map<string, BoardCollaborator> }) => void
   } | null>(null)
@@ -773,11 +782,23 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // publish this peer's identity into provider.awareness and rebuild the Excalidraw `collaborators`
   // map from remote peers on every awareness change. Volatile only — never the Y.Doc, so the 0-7
   // content path is untouched.
+  //
+  // XIN-634 P1-b: push the map into the canvas IMPERATIVELY inside the change listener, with no
+  // setState round-trip — a remote cursor delta fires 'change' continuously, and re-rendering the
+  // whole shell on every one was the thrash. The `collaborators` prop is inert in Excalidraw 0.18.1
+  // (XIN-115), so api.updateScene is the sole render path and needs no React state. `excalidrawApi`
+  // is a dependency so that a canvas mounting AFTER peers are already present re-subscribes and
+  // replays the current map once the API resolves (covering either arrival order the previous
+  // two-effect state+push design handled).
   useEffect(() => {
     const awareness = collabSession?.provider?.awareness
     if (!awareness) return
     if (user) setLocalPresenceUser(awareness, user)
-    const update = () => setCollaborators(readBoardCollaborators(awareness))
+    const update = () => {
+      const map = readBoardCollaborators(awareness)
+      collaboratorsRef.current = map
+      excalidrawApi?.updateScene({ collaborators: map })
+    }
     update()
     awareness.on('change', update)
     return () => {
@@ -785,14 +806,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       // Drop our cursor so peers stop drawing a stale one once we leave this board.
       clearLocalPointer(awareness)
     }
-  }, [collabSession, user])
-
-  // XIN-115: push the presence map into the real canvas via the imperative API (the `collaborators`
-  // prop is inert in Excalidraw 0.18.1). Keyed on (api, collaborators) so it runs after the canvas
-  // has mounted and again whenever a peer joins/moves/leaves — regardless of which arrived first.
-  useEffect(() => {
-    excalidrawApi?.updateScene({ collaborators })
-  }, [excalidrawApi, collaborators])
+  }, [collabSession, user, excalidrawApi])
 
   // Excalidraw's live pointer (scene coords) → provider.awareness, so remote peers render this
   // cursor. No Y.Doc write; inert when there is no session.
@@ -1062,8 +1076,10 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               onChange={onChange}
               excalidrawAPI={handleApi}
               // Kept for intent/forward-compat, but inert in 0.18.1 — presence actually renders via
-              // the imperative api.updateScene({ collaborators }) above (XIN-115).
-              collaborators={collaborators}
+              // the imperative api.updateScene({ collaborators }) in the awareness listener (XIN-115
+              // / XIN-634 P1-b). Reads the ref (never triggers a re-render) purely so the prop still
+              // reflects the current map for anything that later honors it.
+              collaborators={collaboratorsRef.current}
               onPointerUpdate={onPointerUpdate}
               viewModeEnabled={readOnly}
               theme={dark ? 'dark' : 'light'}

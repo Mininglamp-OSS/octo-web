@@ -426,13 +426,22 @@ export function StandaloneDocPage({
       try {
         const parsed = parseDocumentName(phase.meta.documentName)
         if (parsed.kind === 'document') {
-          return { space: parsed.space, folder: parsed.folder, doc: parsed.doc }
+          return { space: parsed.space, folder: parsed.folder, doc: parsed.doc, board: undefined }
+        }
+        // A whiteboard key (octo:{space}:{folder}:wb:{board}) is authoritative for the board
+        // surface just as the document key is for the editor: honor it symmetrically. Falling
+        // through to DEFAULT_DOC_FOLDER here derived a DIFFERENT whiteboard key than the REST
+        // preflight authorized for any board in a non-default folder — a wrong collab token / WS
+        // room / uid-scoped cache on the cross-node/cross-user `/d/:docId` share surface (XIN-634
+        // P1-a). It only worked before because in-app boards hardcode DEFAULT_DOC_FOLDER.
+        if (parsed.kind === 'whiteboard') {
+          return { space: parsed.space, folder: parsed.folder, doc: docId ?? '', board: parsed.board }
         }
       } catch {
         // Malformed documentName from the backend: fall back to the caller's space + default folder.
       }
     }
-    return { space: preflightSpace, folder: DEFAULT_DOC_FOLDER, doc: docId ?? '' }
+    return { space: preflightSpace, folder: DEFAULT_DOC_FOLDER, doc: docId ?? '', board: undefined }
   }, [phase, preflightSpace, docId])
 
   const names = useMemberNames(addressing.space)
@@ -496,11 +505,16 @@ export function StandaloneDocPage({
   // plain docs and legacy backends that omit docType). This mirrors DocsHome's buildRightPane
   // dispatch so both open paths agree on the shell for every member.
   if (meta.docType === 'board') {
+    // The whiteboard {board} segment is BoardSession's `docId` (it becomes octo:{space}:{folder}:
+    // wb:{board}). Prefer the authoritative segment parsed from the preflight documentName so the
+    // key matches what REST authorized; fall back to the addressed id for legacy backends whose
+    // preflight omitted the documentName (XIN-634 P1-a).
+    const boardId = addressing.board || editorDocId
     return (
       <div className="octo-doc-standalone">
         <BoardSession
-          key={editorDocId}
-          docId={editorDocId}
+          key={boardId}
+          docId={boardId}
           title={meta.title || t('docs.state.untitled')}
           uid={uid}
           space={addressing.space}
