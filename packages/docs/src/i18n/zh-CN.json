@@ -144,7 +144,11 @@
     "exportPdf": "导出为 PDF",
     "exportError": "导出文档失败，请重试。",
     "export": "导出",
-    "exportSignedLinkNotice": "此文档包含共享链接，请注意访问权限"
+    "exportSignedLinkNotice": "此文档包含共享链接，请注意访问权限",
+    "importCorrupt": "导入内容已损坏或无法解析，未能载入。"
+  },
+  "import": {
+    "markdown": "从 Markdown 导入"
   },
   "slash": {
     "groupBasic": "基础",

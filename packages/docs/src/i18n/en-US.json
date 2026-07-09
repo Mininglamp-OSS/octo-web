@@ -144,7 +144,11 @@
     "exportPdf": "Export as PDF",
     "exportError": "Couldn't export this document. Please try again.",
     "export": "Export",
-    "exportSignedLinkNotice": "This document contains shared links — please verify access permissions"
+    "exportSignedLinkNotice": "This document contains shared links — please verify access permissions",
+    "importCorrupt": "The imported content is corrupt or unreadable and couldn't be loaded."
+  },
+  "import": {
+    "markdown": "Import from Markdown"
   },
   "slash": {
     "groupBasic": "Basic",

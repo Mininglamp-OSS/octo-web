@@ -6,6 +6,7 @@ import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
 import { BoardSession } from '../board/BoardSession.tsx'
 import { isBoardDoc, isBoardIdLocally, rememberBoard } from '../board/boardStore.ts'
+import { runMarkdownImport, ImportContentCorruptError } from '../editor/importFlow.ts'
 import '../editor/styles.css'
 import {
   DEFAULT_DOC_SPACE,
@@ -478,6 +479,30 @@ function DocsList({
     }
   }
 
+  // "从 Markdown 导入" → pick a .md file, parse it to a ProseMirror document client-side, create a
+  // NEW doc (title from the H1 / filename), stash the parsed content, then open it. Import never
+  // touches an existing doc — it always lands in its own new file, mirroring the Excel import flow.
+  const onImportMarkdown = async () => {
+    if (creating) return
+    setCreating(true)
+    try {
+      const result = await runMarkdownImport(space || undefined, folder || undefined)
+      onSelect(result.docId, 'doc')
+      reload()
+    } catch (err) {
+      // User-cancelled picker rejects with a benign error; only surface real failures.
+      if (err instanceof ImportContentCorruptError) {
+        setError(t('docs.toolbar.importCorrupt'))
+      } else if (err instanceof Error && /取消|cancel/i.test(err.message)) {
+        // silent: user closed the file picker
+      } else {
+        setError(t('docs.state.error'))
+      }
+    } finally {
+      setCreating(false)
+    }
+  }
+
   return (
     <div className="octo-docs-list">
       <div className="octo-docs-list-header">
@@ -590,6 +615,18 @@ function DocsList({
               }}
             >
               📄 {t('docs.sheet.importExcel')}
+            </button>
+            <button
+              type="button"
+              className="octo-tb-btn"
+              disabled={creating}
+              style={{ display: 'block', width: '100%', textAlign: 'left' }}
+              onClick={() => {
+                setImportMenuAt(null)
+                void onImportMarkdown()
+              }}
+            >
+              📝 {t('docs.import.markdown')}
             </button>
           </PortalMenu>
         )}

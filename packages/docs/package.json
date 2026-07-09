@@ -61,6 +61,7 @@
     "y-protocols": "1.0.6",
     "yjs": "13.6.21",
     "docx": "^9.7.1",
+    "markdown-it": "^14.1.1",
     "mathjax-full": "^3.2.2",
     "xml-js": "^1.6.11"
   },
@@ -71,6 +72,7 @@
   "devDependencies": {
     "@testing-library/react": "16.1.0",
     "@types/node": "^22.19.21",
+    "@types/markdown-it": "^14.1.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^6.0.1",

@@ -26,6 +26,7 @@ import { getDoc, getUserName, updateDocTitle } from '../pages/docsApi.ts'
 import { startDocForward } from '../forward/startDocForward.ts'
 import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
 import { useAccessRequests } from '../access-request/useAccessRequests.ts'
+import { consumeImportContent, consumeImportWarnings, ImportContentCorruptError } from './importFlow.ts'
 import { DocTerminal } from './DocTerminal.tsx'
 import {
   DocMoreMenu,
@@ -297,6 +298,38 @@ export function EditorShell(props: EditorShellProps) {
       cancelled = true
     }
   }, [docId])
+
+  // Import injection (#import): when a doc was just created by a Markdown/Word import in DocsHome,
+  // the parsed ProseMirror document is stashed in sessionStorage keyed by docId. Once the editor
+  // is ready we drain the stash, inject it, then clear it. A corrupt stash (e.g. tampered
+  // sessionStorage) or non-fatal parse warnings surface as a dismissible notice instead of
+  // crashing the editor.
+  const [importNotice, setImportNotice] = useState<string | null>(null)
+  useEffect(() => {
+    const ed = instance?.editor
+    if (!ed || !ready) return
+    let pmDoc: unknown
+    try {
+      pmDoc = consumeImportContent(docId)
+    } catch (err) {
+      if (err instanceof ImportContentCorruptError) {
+        setImportNotice(t('docs.toolbar.importCorrupt'))
+      } else {
+        console.error('[docs] Import content read failed:', err)
+      }
+      return
+    }
+    if (!pmDoc) return
+    try {
+      ed.commands.setContent(pmDoc as never)
+    } catch (err) {
+      console.error('[docs] Import content injection failed:', err)
+      setImportNotice(t('docs.toolbar.importCorrupt'))
+      return
+    }
+    const warnings = consumeImportWarnings(docId)
+    if (warnings.length) setImportNotice(warnings.join(' '))
+  }, [instance, ready, docId])
 
   // uid → display name for this space (#8): once resolved, push the real name into awareness so
   // the presence avatar initial and the collaboration caret label show the name, not the uid.
@@ -718,6 +751,11 @@ export function EditorShell(props: EditorShellProps) {
       {exportError && (
         <p className="octo-member-error" role="alert">
           {exportError}
+        </p>
+      )}
+      {importNotice && (
+        <p className="octo-member-error" role="status" onClick={() => setImportNotice(null)}>
+          {importNotice}
         </p>
       )}
 
