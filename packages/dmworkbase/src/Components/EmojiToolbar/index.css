@@ -283,13 +283,15 @@ body[theme-mode=dark] .wk-emojipanel-tab-item-selected {
     position: fixed;
     z-index: 1002;
     box-sizing: border-box;
-    padding: 10px;
+    padding: var(--wk-sp-3);
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 16px;
+    border-radius: var(--wk-r-lg);
+    /* 背景与阴影都用主题感知的语义 token（--wk-color-item / --wk-shadow-lg 在
+       body[theme-mode=dark] 下各自有暗色变体），所以不再需要单独的暗色覆盖块。 */
     background: var(--wk-color-item);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+    box-shadow: var(--wk-shadow-lg);
     pointer-events: none;
     animation: wkStickerPreviewIn .12s ease;
 }
@@ -302,10 +304,6 @@ body[theme-mode=dark] .wk-emojipanel-tab-item-selected {
 @keyframes wkStickerPreviewIn {
     from { opacity: 0; transform: scale(.85); }
     to { opacity: 1; transform: scale(1); }
-}
-body[theme-mode=dark] .wk-sticker-preview {
-    background: var(--wk-color-secondary-2);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
 }
 
 /* dark mode */
