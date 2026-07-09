@@ -13,8 +13,9 @@ import {
 import { DocTitle } from '../editor/EditorShell.tsx'
 import { DocTerminal } from '../editor/DocTerminal.tsx'
 import { PresenceBar } from '../editor/PresenceBar.tsx'
-import { DocMoreMenu, DeleteIcon, OpenNewPageIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
+import { DocMoreMenu, DeleteIcon, OpenNewPageIcon, HistoryIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { MemberPanel } from '../members/MemberPanel.tsx'
+import { BoardVersionPanel } from './BoardVersionPanel.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { useAccessRequests } from '../access-request/useAccessRequests.ts'
 import { startDocForward } from '../forward/startDocForward.ts'
@@ -311,6 +312,9 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   const [synced, setSynced] = useState(false)
   // Members modal toggle (manage role only), matching the doc editor's #A4 modal.
   const [membersOpen, setMembersOpen] = useState(false)
+  // Version-history modal toggle (any role — reader+ can browse/preview; restore/delete gate to
+  // admin inside the panel). Opened from the ≡ "more" menu, like the doc/sheet history entry.
+  const [versionOpen, setVersionOpen] = useState(false)
   // Creator + creation date for the ≡ "more" menu head, fetched from the per-doc GET like EditorShell.
   const [ownerId, setOwnerId] = useState<string | undefined>(undefined)
   const [createdAt, setCreatedAt] = useState<string | undefined>(undefined)
@@ -1072,9 +1076,9 @@ export function BoardShell(props: BoardShellProps): ReactElement {
 
   // ≡ "more" menu (XIN-601 item 2 / XIN-621 ②): delete is collapsed into the destructive slot,
   // matching the doc editor. The neutral item list holds "Open in new page" when the host wired the
-  // handler (in-app path) — mirroring EditorShell — and is otherwise empty (boards have no version-
-  // history / markdown-export rows, and the standalone page never wires open-in-new-page). Creator
-  // name falls back to a short uid → placeholder, so the head never blanks or crashes on a miss.
+  // handler (in-app path) — mirroring EditorShell — and the version-history entry (consuming the P1
+  // board version REST). Creator name falls back to a short uid → placeholder, so the head never
+  // blanks or crashes on a miss.
   const moreItems: DocMoreMenuItem[] = []
   if (onOpenInNewPage) {
     moreItems.push({
@@ -1084,6 +1088,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       onClick: onOpenInNewPage,
     })
   }
+  moreItems.push({
+    key: 'history',
+    label: t('docs.toolbar.history'),
+    icon: HistoryIcon,
+    onClick: () => setVersionOpen((v) => !v),
+  })
   const deleteItem: DocMoreMenuItem | undefined = manage
     ? {
         key: 'delete',
@@ -1231,6 +1241,29 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               ownerId={ownerId}
               accessRequests={pendingAccess}
               onClose={() => setMembersOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Version history opens a dedicated modal (like members), wide enough for the read-only scene
+          preview. Available to any role: reader+ can browse/preview, restore/delete gate to admin
+          inside the panel. */}
+      {versionOpen && (
+        <div className="octo-modal-overlay" role="presentation" onMouseDown={() => setVersionOpen(false)}>
+          <div
+            className="octo-modal octo-board-version-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('docs.board.version.title')}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <BoardVersionPanel
+              docId={docId}
+              role={role ?? 'reader'}
+              dark={dark}
+              names={names}
+              onClose={() => setVersionOpen(false)}
             />
           </div>
         </div>

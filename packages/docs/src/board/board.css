@@ -136,3 +136,44 @@
 .octo-board-canvas .excalidraw .UserList__wrapper {
   display: none;
 }
+
+/* Version-history modal (BoardVersionPanel). Wider than the default 560px member modal so the
+   read-only scene preview has room; the preview itself is a fixed-height, self-scrolling
+   Excalidraw canvas embedded in the panel. */
+.octo-board-version-modal {
+  max-width: 880px;
+}
+.octo-board-version-filters {
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+}
+/* Success line after a restore (non-error, informational). */
+.octo-board-version-notice {
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--octo-success, #00b42a);
+}
+.octo-board-version-preview {
+  position: relative;
+  height: 46vh;
+  min-height: 260px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.octo-board-version-preview .excalidraw {
+  width: 100%;
+  height: 100%;
+}
+/* Empty-scene hint floats over the (empty) canvas so the preview box never collapses. */
+.octo-board-version-preview-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  z-index: 1;
+  pointer-events: none;
+}
