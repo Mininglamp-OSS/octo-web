@@ -33,6 +33,27 @@ public sealed class Message
     public DateTimeOffset CreatedAt =>
         DateTimeOffset.FromUnixTimeMilliseconds(TimestampMs);
 
+    /// <summary>
+    /// Friendly localized timestamp: "HH:mm" for today, "昨天 HH:mm" for
+    /// yesterday, "MM-dd HH:mm" for this year, "yyyy-MM-dd HH:mm" otherwise.
+    /// </summary>
+    [JsonIgnore]
+    public string CreatedAtFormatted
+    {
+        get
+        {
+            var now = DateTimeOffset.Now;
+            var local = CreatedAt.ToLocalTime();
+            if (local.Date == now.Date)
+                return local.ToString("HH:mm");
+            if (local.Date == now.Date.AddDays(-1))
+                return $"昨天 {local:HH:mm}";
+            if (local.Year == now.Year)
+                return local.ToString("MM-dd HH:mm");
+            return local.ToString("yyyy-MM-dd HH:mm");
+        }
+    }
+
     /// <summary>True if streamed from an AI agent (partial / typing).</summary>
     [JsonPropertyName("streaming")]
     public bool IsStreaming { get; set; }

@@ -13,23 +13,36 @@
                 StrokeThickness="0">
             <Grid RowDefinitions="Auto,*">
                 <!-- Header -->
-                <HorizontalStackLayout Grid.Row="0"
-                                       Padding="16,16,16,8"
-                                       Spacing="8">
-                    <Label Text="🐙" FontSize="20" VerticalOptions="Center" />
-                    <Label Text="OCTO"
+                <Grid Grid.Row="0"
+                      Padding="16,16,16,8"
+                      ColumnDefinitions="Auto,*,Auto,Auto">
+                    <Label Grid.Column="0"
+                           Text="🐙"
+                           FontSize="20"
+                           VerticalOptions="Center" />
+                    <Label Grid.Column="1"
+                           Text="OCTO"
                            FontSize="16"
                            FontAttributes="Bold"
                            TextColor="White"
-                           VerticalOptions="Center" />
-                    <Button Text="退出"
+                           VerticalOptions="Center"
+                           Margin="8,0,0,0" />
+                    <Button Grid.Column="2"
+                            Text="{Binding ThemeLabel}"
+                            Command="{Binding ToggleThemeCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="{DynamicResource SecondaryText}"
+                            FontSize="12"
+                            Padding="8,2"
+                            Margin="0,0,4,0" />
+                    <Button Grid.Column="3"
+                            Text="退出"
                             Command="{Binding LogoutCommand}"
                             BackgroundColor="Transparent"
                             TextColor="{DynamicResource SecondaryText}"
                             FontSize="12"
-                            Margin="80,0,0,0"
-                            HorizontalOptions="End" />
-                </HorizontalStackLayout>
+                            Padding="8,2" />
+                </Grid>
 
                 <!-- Channel list -->
                 <CollectionView Grid.Row="1"
@@ -91,6 +104,7 @@
 
             <!-- Message list -->
             <CollectionView Grid.Row="1"
+                            x:Name="MessagesList"
                             ItemsSource="{Binding Messages}"
                             Margin="0">
                 <CollectionView.ItemTemplate>
@@ -108,7 +122,7 @@
                                 <Label Text="{Binding Content}"
                                        FontSize="14"
                                        TextColor="{DynamicResource PrimaryText}" />
-                                <Label Text="{Binding CreatedAt, StringFormat='{0:HH:mm}'}"
+                                <Label Text="{Binding CreatedAtFormatted}"
                                        FontSize="10"
                                        TextColor="{DynamicResource SecondaryText}" />
                             </VerticalStackLayout>
@@ -116,6 +130,28 @@
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
+
+            <!-- Empty state overlay -->
+            <Grid Grid.Row="1"
+                  BackgroundColor="{DynamicResource PageBackground}"
+                  IsVisible="{Binding IsEmpty}">
+                <VerticalStackLayout HorizontalOptions="Center"
+                                     VerticalOptions="Center"
+                                     Spacing="8">
+                    <Label Text="💬"
+                           FontSize="48"
+                           HorizontalOptions="Center"
+                           TextColor="{DynamicResource SecondaryText}" />
+                    <Label Text="暂无消息"
+                           FontSize="14"
+                           TextColor="{DynamicResource SecondaryText}"
+                           HorizontalOptions="Center" />
+                    <Label Text="选择一个频道开始对话"
+                           FontSize="12"
+                           TextColor="{DynamicResource SecondaryText}"
+                           HorizontalOptions="Center" />
+                </VerticalStackLayout>
+            </Grid>
 
             <!-- Composer -->
             <Border Grid.Row="2"
@@ -125,16 +161,18 @@
                 <Grid ColumnDefinitions="*,Auto">
                     <Entry Grid.Column="0"
                            Text="{Binding Draft}"
-                           Placeholder="输入消息…"
+                           Placeholder="输入消息，按 Enter 发送…"
                            ReturnType="Send"
                            ReturnCommand="{Binding SendCommand}"
-                           FontSize="14" />
+                           FontSize="14"
+                           HeightRequest="38" />
                     <Button Grid.Column="1"
                             Text="发送"
                             Command="{Binding SendCommand}"
                             BackgroundColor="{DynamicResource Primary}"
                             TextColor="White"
-                            CornerRadius="6" />
+                            CornerRadius="6"
+                            HeightRequest="38" />
                 </Grid>
             </Border>
         </Grid>

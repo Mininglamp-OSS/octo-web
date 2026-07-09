@@ -5,14 +5,25 @@
              Title="登录 OCTO"
              BackgroundColor="{DynamicResource PageBackground}">
 
-    <Grid RowDefinitions="*,Auto,*,*"
+    <Grid RowDefinitions="Auto,*,*,*"
           Padding="32">
 
+        <!-- Top bar with theme toggle -->
+        <HorizontalStackLayout Grid.Row="0"
+                               HorizontalOptions="End">
+            <Button Text="{Binding ThemeLabel}"
+                    Command="{Binding ToggleThemeCommand}"
+                    BackgroundColor="Transparent"
+                    TextColor="{DynamicResource SecondaryText}"
+                    FontSize="12"
+                    Padding="10,4" />
+        </HorizontalStackLayout>
+
         <!-- Spacer -->
-        <BoxView Grid.Row="0" />
+        <BoxView Grid.Row="1" />
 
         <!-- Logo / Title -->
-        <VerticalStackLayout Grid.Row="1"
+        <VerticalStackLayout Grid.Row="2"
                              HorizontalOptions="Center"
                              Spacing="8">
             <Label Text="🐙"
@@ -30,7 +41,7 @@
         </VerticalStackLayout>
 
         <!-- Login form -->
-        <VerticalStackLayout Grid.Row="2"
+        <VerticalStackLayout Grid.Row="3"
                              Spacing="12"
                              MaximumWidthRequest="360"
                              HorizontalOptions="Center"
@@ -66,13 +77,6 @@
                                Color="{DynamicResource Primary}" />
         </VerticalStackLayout>
 
-        <!-- Footer -->
-        <Label Grid.Row="3"
-               Text=".NET MAUI client"
-               FontSize="11"
-               TextColor="{DynamicResource SecondaryText}"
-               HorizontalOptions="Center"
-               VerticalOptions="End" />
     </Grid>
 
 </ContentPage>

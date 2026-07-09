@@ -14,24 +14,33 @@ public sealed class ChatViewModel : ViewModelBase
     private readonly IAuthService _auth;
     private readonly IApiService _api;
     private readonly IWebSocketService _ws;
+    private readonly IThemeService _theme;
 
-    public ChatViewModel(IAuthService auth, IApiService api, IWebSocketService ws)
+    public ChatViewModel(IAuthService auth, IApiService api, IWebSocketService ws, IThemeService theme)
     {
         _auth = auth;
         _api = api;
         _ws = ws;
+        _theme = theme;
 
         SendCommand = CreateCommand(async () => await SendAsync(), () => !string.IsNullOrWhiteSpace(Draft) && SelectedChannel is not null);
         LogoutCommand = CreateCommand(async () => await LogoutAsync());
+        ToggleThemeCommand = CreateCommand(async () => await ToggleThemeAsync());
 
         _ws.MessageReceived += OnMessageReceived;
         _ws.ConnectionClosed += OnConnectionClosed;
+        _theme.ThemeChanged += (_, _) => MainThread.BeginInvokeOnMainThread(RefreshThemeLabel);
+        Messages.CollectionChanged += (_, _) => IsEmpty = Messages.Count == 0;
+        RefreshThemeLabel();
     }
 
     // --- bound properties ---
 
     public ObservableCollection<Channel> Channels { get; } = new();
     public ObservableCollection<Message> Messages { get; } = new();
+
+    /// <summary>True when the current channel has no messages (drives the empty-state overlay).</summary>
+    public bool IsEmpty { get => Get<bool>(); private set => Set(value); }
 
     public Channel? SelectedChannel
     {
@@ -49,8 +58,12 @@ public sealed class ChatViewModel : ViewModelBase
     public bool IsLoading { get => Get<bool>(); set => Set(value); }
     public string StatusText { get => Get<string>(); set => Set(value); } = string.Empty;
 
+    /// <summary>Localized label for the theme toggle button.</summary>
+    public string ThemeLabel { get => Get<string>(); set => Set(value); } = "主题";
+
     public ICommand SendCommand { get; }
     public ICommand LogoutCommand { get; }
+    public ICommand ToggleThemeCommand { get; }
 
     // --- lifecycle ---
 
@@ -143,5 +156,30 @@ public sealed class ChatViewModel : ViewModelBase
     {
         await _ws.DisconnectAsync();
         await _auth.LogoutAsync();
+    }
+
+    // --- theme ---
+
+    /// <summary>Cycle System → Light → Dark → System.</summary>
+    private async Task ToggleThemeAsync()
+    {
+        var next = _theme.Mode switch
+        {
+            AppTheme.Unspecified => AppTheme.Light,
+            AppTheme.Light => AppTheme.Dark,
+            _ => AppTheme.Unspecified,
+        };
+        await _theme.SetModeAsync(next);
+        RefreshThemeLabel();
+    }
+
+    private void RefreshThemeLabel()
+    {
+        ThemeLabel = _theme.Mode switch
+        {
+            AppTheme.Light => "浅色",
+            AppTheme.Dark => "深色",
+            _ => "跟随系统",
+        };
     }
 }

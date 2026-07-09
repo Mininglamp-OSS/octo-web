@@ -24,6 +24,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IApiService, ApiService>();
         builder.Services.AddSingleton<IAuthService, AuthService>();
         builder.Services.AddSingleton<IWebSocketService, WebSocketService>();
+        builder.Services.AddSingleton<IThemeService, ThemeService>();
 
         // --- ViewModels ---
         builder.Services.AddTransient<ViewModels.LoginViewModel>();
