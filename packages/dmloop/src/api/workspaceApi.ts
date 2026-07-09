@@ -34,6 +34,17 @@ export function inviteMember(
   return httpPost<Invitation>(`/workspaces/${workspaceId}/members`, req);
 }
 
+/**
+ * 按 octo IM uid 直接加成员（octo web 面，无邮箱邀请/接受环节）。
+ * 后端校验目标 uid 属于当前 space 且非 AI，随即物化为 member。
+ */
+export function addOctoMember(
+  workspaceId: string,
+  req: { octo_uid: string; role?: string },
+): Promise<WorkspaceMember> {
+  return httpPost<WorkspaceMember>(`/workspaces/${workspaceId}/octo-members`, req);
+}
+
 /** 修改成员角色。 */
 export function updateMemberRole(
   workspaceId: string,
