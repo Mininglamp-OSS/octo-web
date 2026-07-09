@@ -86,8 +86,7 @@
 
 .wk-file-preview-excel-renderer__virtual-table table {
   border-collapse: collapse;
-  table-layout: fixed;
-  width: 100%;
+  min-width: 100%;
 }
 
 .wk-file-preview-excel-renderer__th {
