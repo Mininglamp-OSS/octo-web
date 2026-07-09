@@ -7,13 +7,14 @@ import {
     Dropdown,
     Tag,
     Modal,
-    TextArea,
     Popconfirm,
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconMore, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit } from "@douyinfe/semi-icons";
 import { Channel, ChannelTypeGroup, ChannelTypePerson, MessageText, WKSDK } from "wukongimjssdk";
 import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
+import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
+import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import { splitSummaryText } from "../utils/splitMessage";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
@@ -102,6 +103,29 @@ const SUMMARY_WORKFLOW_STAGES: Array<{ key: WorkflowStage; labelKey: string }> =
 export default class SummaryDetailPage extends Component<SummaryDetailPageProps, SummaryDetailPageState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
+
+    private regenerateTopicRef = React.createRef<HTMLTextAreaElement>();
+
+    private handleRegenerateTopicVoice = (
+        text: string,
+        mode: ReplaceMode,
+        savedRange?: SelectionRange
+    ) => {
+        if (mode === "all") {
+            this.setState({ regenerateTopic: text.slice(0, 1000) });
+        } else if (mode === "selection" && savedRange) {
+            this.setState((prev) => {
+                const updated = prev.regenerateTopic.slice(0, savedRange.from) + text + prev.regenerateTopic.slice(savedRange.to);
+                return { regenerateTopic: updated.slice(0, 1000) };
+            });
+        } else {
+            this.setState((prev) => {
+                const pos = savedRange?.from ?? prev.regenerateTopic.length;
+                const updated = prev.regenerateTopic.slice(0, pos) + text + prev.regenerateTopic.slice(pos);
+                return { regenerateTopic: updated.slice(0, 1000) };
+            });
+        }
+    };
 
     state: SummaryDetailPageState = {
         detail: null,
@@ -2299,13 +2323,25 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <label id="regenerate-topic-label" style={{ display: "block", marginBottom: 8, color: "var(--semi-color-text-1)" }}>
                         {t("summary.detail.regenerateTopicLabel")}
                     </label>
-                    <TextArea
-                        aria-labelledby="regenerate-topic-label"
-                        autosize={{ minRows: 3, maxRows: 8 }}
-                        maxCount={1000}
-                        value={this.state.regenerateTopic}
-                        onChange={(value) => this.setState({ regenerateTopic: value.slice(0, 1000) })}
-                    />
+                    <div style={{ position: "relative" }}>
+                        <textarea
+                            ref={this.regenerateTopicRef}
+                            aria-labelledby="regenerate-topic-label"
+                            className="summary-regenerate-topic-textarea"
+                            rows={3}
+                            maxLength={1000}
+                            value={this.state.regenerateTopic}
+                            onChange={(e) => this.setState({ regenerateTopic: e.target.value.slice(0, 1000) })}
+                        />
+                        <VoiceInputButton
+                            inputRef={this.regenerateTopicRef}
+                            onTranscribed={this.handleRegenerateTopicVoice}
+                            getCurrentText={() => this.state.regenerateTopic}
+                            showModeMenu
+                            size="sm"
+                            className="wk-vib--textarea-corner"
+                        />
+                    </div>
                 </Modal>
             </div>
         );

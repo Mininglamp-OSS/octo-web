@@ -78,4 +78,31 @@ declare module '@octo/base' {
     static shared: SpaceService
     getMembers(spaceId: string, page?: number, limit?: number): Promise<SpaceMember[]>
   }
+
+  // Voice-input transcription contract (#571). The docs comment composers wire the shared
+  // VoiceInputButton and receive transcribed text back through `onTranscribed`. Only the
+  // surface octoweb/index.ts re-exports is declared here; the real component lives in
+  // packages/dmworkbase/src/Components/VoiceInputButton.
+  export type ReplaceMode = 'all' | 'selection' | 'insert'
+  export interface SelectionRange {
+    from: number
+    to: number
+  }
+  // Props the docs composers pass. `inputRef`/icons are typed loosely (`unknown`/`any`) to
+  // avoid pulling host react typings across the seam (mirrors WKApp/Menus above), while
+  // `onTranscribed` keeps precise signatures so composer callbacks infer their params.
+  export interface VoiceInputButtonProps {
+    inputRef: { current: HTMLTextAreaElement | HTMLInputElement | null }
+    onTranscribed: (
+      text: string,
+      replaceMode: ReplaceMode,
+      savedSelectionRange?: SelectionRange,
+    ) => void
+    getCurrentText?: () => string
+    showModeMenu?: boolean
+    size?: 'sm' | 'md'
+    className?: string
+    onRecordingStart?: () => void
+  }
+  export function VoiceInputButton(props: VoiceInputButtonProps): any
 }

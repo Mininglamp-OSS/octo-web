@@ -7,6 +7,8 @@
 // whenever no override has been set — i.e. in production and dev.
 
 import { WKApp, i18n, t, useI18n, Menus, SpaceService } from '@octo/base'
+import { VoiceInputButton } from '@octo/base'
+import type { ReplaceMode, SelectionRange } from '@octo/base'
 import type {
   APIClient,
   ApiRequestConfig,
@@ -306,5 +308,10 @@ export { t, useI18n }
 /** Re-export the real Menus class so the docs module can register a NavRail entry
  * through the seam without importing @octo/base directly. */
 export { Menus }
+
+/** Re-export the shared VoiceInputButton (#571) through the seam so docs comment composers
+ * can wire voice input without importing @octo/base subpaths directly (tests alias the seam). */
+export { VoiceInputButton }
+export type { ReplaceMode, SelectionRange }
 
 export * from './types.ts'

@@ -2,6 +2,8 @@ import React, { Component, createRef } from 'react';
 import { Modal, Toast, Tag, Button } from '@douyinfe/semi-ui';
 import { IconPlus, IconClock } from '@douyinfe/semi-icons';
 import { WKApp, I18nContext } from '@octo/base';
+import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';
+import type { ReplaceMode, SelectionRange } from '@octo/base/src/Components/VoiceInputButton';
 import type { TopicTemplate, ChatCandidate, ScheduleConfig } from '../types/summary';
 import { SourceType, SummaryMode } from '../types/summary';
 import { getSourceType } from '../utils/channelType';
@@ -52,6 +54,29 @@ export default class ChatSummaryNewModal extends Component<
     declare context: React.ContextType<typeof I18nContext>;
 
     private inputRef = createRef<HTMLTextAreaElement>();
+
+    private handleVoiceTranscribed = (
+        text: string,
+        mode: ReplaceMode,
+        savedRange?: SelectionRange
+    ) => {
+        if (mode === 'all') {
+            this.setState({ topic: text, templatePlaceholderRange: null });
+        } else if (mode === 'selection' && savedRange) {
+            this.setState((prev) => ({
+                topic: prev.topic.slice(0, savedRange.from) + text + prev.topic.slice(savedRange.to),
+                templatePlaceholderRange: null,
+            }));
+        } else {
+            this.setState((prev) => {
+                const pos = savedRange?.from ?? prev.topic.length;
+                return {
+                    topic: prev.topic.slice(0, pos) + text + prev.topic.slice(pos),
+                    templatePlaceholderRange: null,
+                };
+            });
+        }
+    };
 
     constructor(props: ChatSummaryNewModalProps) {
         super(props);
@@ -446,20 +471,30 @@ export default class ChatSummaryNewModal extends Component<
                     </div>
 
                     <div className="chat-summary-modal-input-area">
-                        <textarea
-                            ref={this.inputRef}
-                            className="chat-summary-modal-input"
-                            placeholder={t('summary.create.topicPlaceholderInChat')}
-                            value={topic}
-                            onChange={(e) => this.setState({ topic: e.target.value, templatePlaceholderRange: null })}
-                            onFocus={this.handleInputFocus}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey && !submitting) {
-                                    e.preventDefault();
-                                    void this.handleSubmit();
-                                }
-                            }}
-                        />
+                        <div style={{ position: 'relative' }}>
+                            <textarea
+                                ref={this.inputRef}
+                                className="chat-summary-modal-input"
+                                placeholder={t('summary.create.topicPlaceholderInChat')}
+                                value={topic}
+                                onChange={(e) => this.setState({ topic: e.target.value, templatePlaceholderRange: null })}
+                                onFocus={this.handleInputFocus}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey && !submitting) {
+                                        e.preventDefault();
+                                        void this.handleSubmit();
+                                    }
+                                }}
+                            />
+                            <VoiceInputButton
+                                inputRef={this.inputRef}
+                                onTranscribed={this.handleVoiceTranscribed}
+                                getCurrentText={() => this.state.topic}
+                                showModeMenu
+                                size="sm"
+                                className="wk-vib--textarea-corner"
+                            />
+                        </div>
                         {topic.trim() && appliedTemplateLabel && (
                             <div className="summary-template-applied-bar">
                                 <span className="summary-template-applied-text">

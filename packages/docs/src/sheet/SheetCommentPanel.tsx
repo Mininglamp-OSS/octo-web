@@ -14,11 +14,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
 import { canComment, canEdit, canManage } from '../auth/roles.ts'
-import { getCurrentUid, t } from '../octoweb/index.ts'
+import { getCurrentUid, t, VoiceInputButton } from '../octoweb/index.ts'
 import { formatRelative, formatAbsolute } from '../versions/format.ts'
 import type { UseDocComments } from '../comments/useDocComments.ts'
 import type { Comment, CommentThread } from '../comments/api.ts'
 import type { CollabSheet } from './CollabSheet.ts'
+import { applyVoiceTranscription } from '../comments/voiceText.ts'
 
 /**
  * Legacy V1 single-sheet docs anchored comments to the raw Univer sheet id (`octo-sheet-1`,
@@ -82,6 +83,7 @@ function CommentBody({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(comment.body)
   const [busy, setBusy] = useState(false)
+  const draftRef = useRef<HTMLTextAreaElement>(null)
 
   const isAuthor = comment.authorUid === currentUid
   const canHardDelete = !isAuthor && canManage(role)
@@ -117,12 +119,25 @@ function CommentBody({
       </div>
       {editing ? (
         <div className="octo-comment-compose">
-          <textarea
-            className="octo-comment-input"
-            value={draft}
-            autoFocus
-            onChange={(e) => setDraft(e.target.value)}
-          />
+          <div style={{ position: 'relative' }}>
+            <textarea
+              ref={draftRef}
+              className="octo-comment-input"
+              value={draft}
+              autoFocus
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <VoiceInputButton
+              inputRef={draftRef}
+              onTranscribed={(text, mode, savedRange) =>
+                setDraft((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
+              }
+              getCurrentText={() => draft}
+              showModeMenu
+              size="sm"
+              className="wk-vib--textarea-corner"
+            />
+          </div>
           <div className="octo-comment-compose-actions">
             <button type="button" className="octo-tb-btn" disabled={busy || draft.trim() === ''} onClick={saveEdit}>
               {t('docs.comment.save')}
@@ -182,6 +197,7 @@ function Thread({
   const [replyBody, setReplyBody] = useState('')
   const [busy, setBusy] = useState(false)
   const ref = useRef<HTMLLIElement>(null)
+  const replyRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     if (active) ref.current?.scrollIntoView({ block: 'nearest' })
@@ -245,13 +261,26 @@ function Thread({
 
       {replyOpen && (
         <div className="octo-comment-compose">
-          <textarea
-            className="octo-comment-input"
-            placeholder={t('docs.comment.replyPlaceholder')}
-            value={replyBody}
-            autoFocus
-            onChange={(e) => setReplyBody(e.target.value)}
-          />
+          <div style={{ position: 'relative' }}>
+            <textarea
+              ref={replyRef}
+              className="octo-comment-input"
+              placeholder={t('docs.comment.replyPlaceholder')}
+              value={replyBody}
+              autoFocus
+              onChange={(e) => setReplyBody(e.target.value)}
+            />
+            <VoiceInputButton
+              inputRef={replyRef}
+              onTranscribed={(text, mode, savedRange) =>
+                setReplyBody((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
+              }
+              getCurrentText={() => replyBody}
+              showModeMenu
+              size="sm"
+              className="wk-vib--textarea-corner"
+            />
+          </div>
           <div className="octo-comment-compose-actions">
             <button type="button" className="octo-tb-btn" disabled={busy || replyBody.trim() === ''} onClick={submitReply}>
               {t('docs.comment.reply')}
@@ -299,6 +328,7 @@ export function SheetCommentPanel({
   const [activeCellKey, setActiveCellKey] = useState<string | null>(null)
   const [composeError, setComposeError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   // Map every thread to its cell (for selection matching), keyed by thread id.
   const cellByThread = useMemo(() => {
@@ -382,13 +412,26 @@ export function SheetCommentPanel({
 
       {canComment(role) && (
         <div className="octo-comment-compose">
-          <textarea
-            className="octo-comment-input"
-            placeholder={t('docs.sheet.comment.placeholder')}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={2}
-          />
+          <div style={{ position: 'relative' }}>
+            <textarea
+              ref={bodyRef}
+              className="octo-comment-input"
+              placeholder={t('docs.sheet.comment.placeholder')}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={2}
+            />
+            <VoiceInputButton
+              inputRef={bodyRef}
+              onTranscribed={(text, mode, savedRange) =>
+                setBody((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
+              }
+              getCurrentText={() => body}
+              showModeMenu
+              size="sm"
+              className="wk-vib--textarea-corner"
+            />
+          </div>
           <div className="octo-comment-compose-actions">
             <button type="button" className="octo-tb-btn" disabled={busy || !body.trim()} onClick={() => void submit()}>
               {activeCellKey ? `${t('docs.sheet.comment.menu')} ${activeCellKey}` : t('docs.sheet.comment.current')}

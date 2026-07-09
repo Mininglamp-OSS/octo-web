@@ -656,6 +656,27 @@
     margin-top: 14px;
 }
 
+.summary-regenerate-topic-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    font-size: 14px;
+    line-height: 1.6;
+    border: 1px solid var(--semi-color-border);
+    border-radius: 6px;
+    resize: vertical;
+    font-family: inherit;
+    color: var(--semi-color-text-0);
+    background-color: var(--semi-color-fill-0);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.summary-regenerate-topic-textarea:focus {
+    border-color: var(--semi-color-primary);
+    box-shadow: 0 0 0 2px var(--semi-color-primary-light-default);
+}
+
 .summary-detail-team-meta {
     display: flex;
     align-items: center;

@@ -34,7 +34,8 @@ import {
 } from '../editor/DocMoreMenu.tsx'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { useDocDelete } from '../editor/useDocDelete.ts'
-import { t, getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
+import { t, getCurrentUid, canForwardToChat, VoiceInputButton } from '../octoweb/index.ts'
+import { applyVoiceTranscription } from '../comments/voiceText.ts'
 import '../editor/styles.css'
 
 export type SheetViewProps = Omit<CollabSheetOptions, 'container' | 'onRole' | 'onConnState' | 'onTerminal'> & {
@@ -97,6 +98,7 @@ function SheetCommentComposer({
 }) {
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
   const submit = async () => {
     if (busy || !body.trim()) return
     setBusy(true)
@@ -124,19 +126,32 @@ function SheetCommentComposer({
       }}
     >
       <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 4 }}>{t('docs.sheet.comment.menu')} {anchor.a1}</div>
-      <textarea
-        autoFocus
-        className="octo-comment-input"
-        placeholder={t('docs.sheet.comment.add')}
-        value={body}
-        rows={3}
-        onChange={(e) => setBody(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') onCancel()
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit()
-        }}
-        style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical' }}
-      />
+      <div style={{ position: 'relative' }}>
+        <textarea
+          ref={bodyRef}
+          autoFocus
+          className="octo-comment-input"
+          placeholder={t('docs.sheet.comment.add')}
+          value={body}
+          rows={3}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') onCancel()
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit()
+          }}
+          style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical' }}
+        />
+        <VoiceInputButton
+          inputRef={bodyRef}
+          onTranscribed={(text, mode, savedRange) =>
+            setBody((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
+          }
+          getCurrentText={() => body}
+          showModeMenu
+          size="sm"
+          className="wk-vib--textarea-corner"
+        />
+      </div>
       <div className="octo-comment-compose-actions" style={{ marginTop: 6, display: 'flex', gap: 8 }}>
         <button type="button" className="octo-tb-btn" disabled={busy || !body.trim()} onClick={() => void submit()}>
           {t('docs.sheet.comment.menu')}

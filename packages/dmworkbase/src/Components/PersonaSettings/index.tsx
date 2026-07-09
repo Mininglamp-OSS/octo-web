@@ -6,6 +6,7 @@ import RoutePage from "../RoutePage"
 import { MyBot, OboGrant, PersonaSettingsVM } from "./vm"
 import PersonaEdit from "./PersonaEdit"
 import { I18nContext, useI18n } from "../../i18n"
+import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton"
 import "./index.css"
 
 /**
@@ -367,6 +368,23 @@ function PersonaCreate(props: {
     const [selectedUid, setSelectedUid] = React.useState<string>("")
     const [prompt, setPrompt] = React.useState<string>("")
     const [submitting, setSubmitting] = React.useState<boolean>(false)
+    const promptRef = React.useRef<HTMLTextAreaElement>(null)
+    const handleVoiceTranscribed = (
+        text: string,
+        mode: ReplaceMode,
+        savedRange?: SelectionRange
+    ) => {
+        if (mode === "all") {
+            setPrompt(text)
+        } else if (mode === "selection" && savedRange) {
+            setPrompt((prev) => prev.slice(0, savedRange.from) + text + prev.slice(savedRange.to))
+        } else {
+            setPrompt((prev) => {
+                const pos = savedRange?.from ?? prev.length
+                return prev.slice(0, pos) + text + prev.slice(pos)
+            })
+        }
+    }
     // 让 VM 的 notifyListener 能驱动本组件重渲染（octo-web#95）。
     //
     // 历史背景：`PersonaCreate` 通过父级 `routeContext.push()` 推入 RoutePage 的
@@ -434,14 +452,25 @@ function PersonaCreate(props: {
                     <div className="wk-persona-create-form-label">
                         {t("base.persona.edit.promptOptionalLabel")}
                     </div>
-                    <textarea
-                        className="wk-persona-create-prompt"
-                        placeholder={t("base.persona.edit.promptPlaceholder")}
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        rows={4}
-                        data-testid="persona-create-prompt"
-                    />
+                    <div style={{ position: "relative" }}>
+                        <textarea
+                            ref={promptRef}
+                            className="wk-persona-create-prompt"
+                            placeholder={t("base.persona.edit.promptPlaceholder")}
+                            value={prompt}
+                            onChange={(e) => setPrompt(e.target.value)}
+                            rows={4}
+                            data-testid="persona-create-prompt"
+                        />
+                        <VoiceInputButton
+                            inputRef={promptRef}
+                            onTranscribed={handleVoiceTranscribed}
+                            getCurrentText={() => prompt}
+                            showModeMenu
+                            size="sm"
+                            className="wk-vib--textarea-corner"
+                        />
+                    </div>
                     <button
                         className="wk-persona-add-btn"
                         disabled={submitting}

@@ -102,6 +102,8 @@ export { isSafeUrl } from './Utils/security'
 // 等包外组件在「按当前查看 Space 相对渲染」时复用，避免各自复制逻辑漂移。
 export { resolveExternalForViewer } from './Utils/externalViewer'
 export type { ExternalViewerInput, ExternalViewerResult } from './Utils/externalViewer'
+export { default as VoiceInputButton } from './Components/VoiceInputButton'
+export type { ReplaceMode, SelectionRange } from './Components/VoiceInputButton'
 
 // Claw components
 export { default as ClawOverviewTab } from './Components/ClawOverviewTab'

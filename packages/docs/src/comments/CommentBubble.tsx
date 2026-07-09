@@ -6,12 +6,13 @@
 // for the body and POSTs a root comment. A distinct pluginKey keeps it from clashing with the
 // formatting BubbleMenu in Toolbar.tsx.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import type { Editor } from '@tiptap/core'
 import { encodeAnchorRange, type EncodedAnchor } from './anchor.ts'
-import { t } from '../octoweb/index.ts'
+import { t, VoiceInputButton } from '../octoweb/index.ts'
 import type { CreateRootInput } from './api.ts'
+import { applyVoiceTranscription } from './voiceText.ts'
 
 export function CommentBubble({
   editor,
@@ -24,6 +25,7 @@ export function CommentBubble({
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   function startComposing() {
     const { from, to } = editor.state.selection
@@ -72,13 +74,26 @@ export function CommentBubble({
       <div className="octo-comment-bubble">
         {pending ? (
           <div className="octo-comment-compose">
-            <textarea
-              className="octo-comment-input"
-              placeholder={t('docs.comment.composePlaceholder')}
-              value={body}
-              autoFocus
-              onChange={(e) => setBody(e.target.value)}
-            />
+            <div style={{ position: 'relative' }}>
+              <textarea
+                ref={bodyRef}
+                className="octo-comment-input"
+                placeholder={t('docs.comment.composePlaceholder')}
+                value={body}
+                autoFocus
+                onChange={(e) => setBody(e.target.value)}
+              />
+              <VoiceInputButton
+                inputRef={bodyRef}
+                onTranscribed={(text, mode, savedRange) =>
+                  setBody((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
+                }
+                getCurrentText={() => body}
+                showModeMenu
+                size="sm"
+                className="wk-vib--textarea-corner"
+              />
+            </div>
             <div className="octo-comment-compose-actions">
               <button
                 type="button"
