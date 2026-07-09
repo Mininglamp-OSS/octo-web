@@ -1,5 +1,6 @@
+// @ts-nocheck
 import { Color, Mesh, Program, Renderer, Triangle } from "ogl";
-import { type CSSProperties, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import "./Strands.css";
 
 const MAX_STRANDS = 12;
@@ -105,28 +106,6 @@ void main() {
 }
 `;
 
-type StrandsRuntimeProps = {
-    colors: string[];
-    count: number;
-    speed: number;
-    amplitude: number;
-    waviness: number;
-    thickness: number;
-    glow: number;
-    taper: number;
-    spread: number;
-    hueShift: number;
-    intensity: number;
-    saturation: number;
-    opacity: number;
-    scale: number;
-};
-
-type StrandsProps = Partial<StrandsRuntimeProps> & {
-    className?: string;
-    style?: CSSProperties;
-};
-
 function buildPalette(colors: string[]) {
     const filled = colors && colors.length ? colors : ["#ffffff"];
     const padded = [];
@@ -157,23 +136,8 @@ export default function Strands({
     scale = 1.32,
     className = "",
     style,
-}: StrandsProps) {
-    const propsRef = useRef<StrandsRuntimeProps>({
-        colors,
-        count,
-        speed,
-        amplitude,
-        waviness,
-        thickness,
-        glow,
-        taper,
-        spread,
-        hueShift,
-        intensity,
-        saturation,
-        opacity,
-        scale,
-    });
+}) {
+    const propsRef = useRef({});
     const containerRef = useRef<HTMLDivElement | null>(null);
 
     propsRef.current = {

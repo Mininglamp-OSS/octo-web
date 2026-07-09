@@ -320,7 +320,6 @@ const SilkBackground: React.FC<SilkBackgroundProps> = ({
             window.removeEventListener("resize", resize);
             gl.deleteBuffer(positionBuffer);
             gl.deleteProgram(program);
-            gl.getExtension("WEBGL_lose_context")?.loseContext();
         };
     }, []);
 

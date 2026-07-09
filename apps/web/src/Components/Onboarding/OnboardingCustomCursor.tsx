@@ -24,9 +24,6 @@ const nativeCursorSelector = [
     '[data-cursor-native="true"]',
 ].join(", ");
 
-const dotEasing = 0.82;
-const ringEasing = 0.2;
-
 const hasSelectionInside = (root: HTMLElement) => {
     const selection = document.getSelection();
 
@@ -63,14 +60,11 @@ export const OnboardingCustomCursor: React.FC<OnboardingCustomCursorProps> = ({ 
         const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
         let targetX = 0;
         let targetY = 0;
-        let dotX = 0;
-        let dotY = 0;
         let ringX = 0;
         let ringY = 0;
         let rafId = 0;
         let initialized = false;
         let interactive = false;
-        let lastTarget: EventTarget | null = null;
 
         const canAnimate = () => pointerQuery.matches && !reducedMotionQuery.matches;
 
@@ -85,30 +79,26 @@ export const OnboardingCustomCursor: React.FC<OnboardingCustomCursorProps> = ({ 
             cursor.classList.remove("is-visible", "is-interactive", "is-native");
             root.classList.remove("has-native-cursor");
             interactive = false;
-            initialized = false;
-            lastTarget = null;
         };
 
-        const animateCursor = () => {
-            dotX += (targetX - dotX) * dotEasing;
-            dotY += (targetY - dotY) * dotEasing;
-            ringX += (targetX - ringX) * ringEasing;
-            ringY += (targetY - ringY) * ringEasing;
+        const animateRing = () => {
+            ringX += (targetX - ringX) * 0.2;
+            ringY += (targetY - ringY) * 0.2;
 
-            dot.style.transform = `translate3d(${dotX}px, ${dotY}px, 0)`;
             ring.style.transform = `translate3d(${ringX}px, ${ringY}px, 0)`;
 
-            rafId = window.requestAnimationFrame(animateCursor);
+            rafId = window.requestAnimationFrame(animateRing);
         };
 
         const startAnimation = () => {
             if (!rafId && canAnimate()) {
-                rafId = window.requestAnimationFrame(animateCursor);
+                rafId = window.requestAnimationFrame(animateRing);
             }
         };
 
         const updateAvailability = () => {
             if (canAnimate()) {
+                startAnimation();
                 return;
             }
 
@@ -133,20 +123,14 @@ export const OnboardingCustomCursor: React.FC<OnboardingCustomCursorProps> = ({ 
             targetY = event.clientY;
 
             if (!initialized) {
-                dotX = targetX;
-                dotY = targetY;
                 ringX = targetX;
                 ringY = targetY;
-                dot.style.transform = `translate3d(${dotX}px, ${dotY}px, 0)`;
-                ring.style.transform = `translate3d(${ringX}px, ${ringY}px, 0)`;
                 initialized = true;
             }
 
+            dot.style.transform = `translate3d(${targetX - 3}px, ${targetY - 3}px, 0)`;
             cursor.classList.add("is-visible");
-            if (event.target !== lastTarget) {
-                lastTarget = event.target;
-                syncTargetState(event.target);
-            }
+            syncTargetState(event.target);
             startAnimation();
         };
 
