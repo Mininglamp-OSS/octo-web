@@ -187,17 +187,6 @@ function SheetTable({ sheetData }: { sheetData: SheetData }) {
  * 使用虚拟滚动高效渲染大数据量
  */
 const ExcelRenderer: React.FC<ExcelRendererProps> = ({ file, onError }) => {
-  // 文件大小检查（超过上限不渲染；size 未知时放行，不阻塞正常预览）
-  if (file.size && isFileTooLarge(file.size)) {
-    return (
-      <FileTooLarge
-        fileName={file.name}
-        fileSize={file.size}
-        fileUrl={file.url}
-      />
-    );
-  }
-
   const [parseError, setParseError] = useState<string | null>(null);
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [activeSheet, setActiveSheet] = useState(0);
@@ -254,6 +243,17 @@ const ExcelRenderer: React.FC<ExcelRendererProps> = ({ file, onError }) => {
   // 合并加载和解析状态
   const loading = fetching || parsing;
   const error = fetchError || parseError;
+
+  // 文件大小检查（hooks 之后 return，避免 Rules-of-Hooks 违规）
+  if (file.size && isFileTooLarge(file.size)) {
+    return (
+      <FileTooLarge
+        fileName={file.name}
+        fileSize={file.size}
+        fileUrl={file.url}
+      />
+    );
+  }
 
   if (loading) {
     return <RendererState type="loading" />;
