@@ -112,6 +112,28 @@ export interface UpdateIssueReq {
   assignee_id?: string | null;
   project_id?: string | null;
   position?: number;
+  // 指派/状态变更触发 agent run 时：suppress_run=true 表示“暂不开始”；handoff_note 仅在真起 run 时消费。
+  suppress_run?: boolean;
+  handoff_note?: string;
+}
+
+/* ---------- 派单预触发（RunConfirm 预确认，只读） ---------- */
+export interface IssueTriggerPreviewParams {
+  issue_ids?: string[];
+  is_create?: boolean;
+  assignee_type?: AssigneeType | null;
+  assignee_id?: string | null;
+  status?: IssueStatus;
+}
+export interface IssueTriggerPreviewItem {
+  issue_id: string;
+  agent_id: string; // 将运行的 agent（squad 则为 leader）
+  source: string; // "assign" | "status"
+  handoff_supported: boolean; // 目标 runtime CLI 版本是否支持渲染 handoff note
+}
+export interface IssueTriggerPreview {
+  triggers: IssueTriggerPreviewItem[];
+  total_count: number;
 }
 
 export interface IssueComment {

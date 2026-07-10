@@ -6,6 +6,8 @@ import type {
   UpdateIssueReq,
   ListParams,
   AssigneeCandidate,
+  IssueTriggerPreview,
+  IssueTriggerPreviewParams,
 } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
 import { ensureDirectory, actorName, actorAvatar, listAssigneeCandidates as dirCandidates } from "./directory";
@@ -52,6 +54,11 @@ export function updateIssue(id: string, req: UpdateIssueReq): Promise<Issue> {
 
 export function deleteIssue(id: string): Promise<void> {
   return httpDelete<void>(`/issues/${id}`);
+}
+
+// 派单预触发（只读）：问后端“这次指派/状态变更会不会起 run、谁跑”。绝不前端猜。
+export function previewIssueTrigger(params: IssueTriggerPreviewParams): Promise<IssueTriggerPreview> {
+  return httpPost<IssueTriggerPreview>("/issues/preview-trigger", params);
 }
 
 /* ---------- 评论 ---------- */
