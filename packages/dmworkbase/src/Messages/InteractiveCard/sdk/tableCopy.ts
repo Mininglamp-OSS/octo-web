@@ -10,6 +10,17 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+/**
+ * AdaptiveCards `isVisible:false` 语义：元素在 DOM 中隐藏，用户不可见。
+ * 表格复制必须与所见一致，故抽取阶段跳过（含 ToggleVisibility 初始隐藏）。
+ * 校验层已保证 isVisible 只能是 boolean（validateCardForOcto），
+ * 但为鲁棒性这里仍按「显式 false 才隐藏」判定。
+ */
+function isHidden(node: unknown): boolean {
+  const obj = asObject(node);
+  return obj?.isVisible === false;
+}
+
 function normalizeCellText(text: string): string {
   return text
     .replace(/[\t\r\n]+/g, " ")
@@ -18,6 +29,7 @@ function normalizeCellText(text: string): string {
 }
 
 function extractTextFromElement(element: unknown): string {
+  if (isHidden(element)) return "";
   const obj = asObject(element);
   if (!obj || typeof obj.type !== "string") return "";
 
@@ -26,6 +38,7 @@ function extractTextFromElement(element: unknown): string {
       return typeof obj.text === "string" ? obj.text : "";
     case "RichTextBlock":
       return asArray(obj.inlines)
+        .filter((inline) => !isHidden(inline))
         .map((inline) => {
           const run = asObject(inline);
           return run?.type === "TextRun" && typeof run.text === "string"
@@ -46,9 +59,13 @@ function extractTextFromElement(element: unknown): string {
         .filter(Boolean)
         .join(" ");
     case "Container":
-      return asArray(obj.items).map(extractTextFromElement).join(" ");
+      return asArray(obj.items)
+        .filter((item) => !isHidden(item))
+        .map(extractTextFromElement)
+        .join(" ");
     case "ColumnSet":
       return asArray(obj.columns)
+        .filter((column) => !isHidden(column))
         .map((column) => extractTextFromItems(asObject(column)?.items))
         .join(" ");
     case "Image":
@@ -59,9 +76,23 @@ function extractTextFromElement(element: unknown): string {
 }
 
 function extractTextFromItems(items: unknown): string {
-  return asArray(items).map(extractTextFromElement).join(" ");
+  return asArray(items)
+    .filter((item) => !isHidden(item))
+    .map(extractTextFromElement)
+    .join(" ");
 }
 
+/**
+ * 收集卡片树中所有 Table 节点。
+ *
+ * 与 findTableRoots / extractTableShapes 严格同序、同长度：调用方按 index 位置
+ * 把 root ↔ copyText 配对（see attachTableCopyButtons）。任何一处引入
+ * filter/dedup 都会让 index 错位，进而把 A 表的按钮绑定到 B 表的文本。
+ *
+ * 隐藏 Table（isVisible:false）**仍纳入序列**——SDK 会把它渲进 DOM（仅 CSS 隐藏），
+ * findTableRoots 走 HTML 路径时也能命中，故位序不能省。抽取时会返回空文本，
+ * attachTableCopyButtons 检测到空文本自动跳过挂按钮（既不泄内容也不错位）。
+ */
 function collectTables(node: unknown, out: JsonObject[]): void {
   const obj = asObject(node);
   if (!obj) return;
@@ -77,25 +108,37 @@ function collectTables(node: unknown, out: JsonObject[]): void {
   for (const cellItem of asArray(obj.cells)) collectTables(cellItem, out);
 }
 
+function extractTableText(table: JsonObject): string {
+  if (isHidden(table)) return "";
+  return asArray(table.rows)
+    .filter((row) => !isHidden(row))
+    .map((row) => {
+      const rowObj = asObject(row);
+      return asArray(rowObj?.cells)
+        .filter((cell) => !isHidden(cell))
+        .map((cell) =>
+          normalizeCellText(extractTextFromItems(asObject(cell)?.items))
+        )
+        .join("\t");
+    })
+    .join("\n")
+    .trim();
+}
+
+/**
+ * 返回每张 Table 的 TSV 文本，长度和顺序与 collectTables 严格对齐。
+ *
+ * 契约（安全 & 数据完整性）：
+ *   1. 一表一槽：**不做 filter/dedup**，空文本的表返回 `""` 占位。这样
+ *      copyTexts[i] 始终对应 tableRoots[i]（see attachTableCopyButtons），
+ *      否则一张早期的空表会让后续所有按钮串到错误内容。
+ *   2. isVisible 感知：隐藏行/单元格/元素不参与文本抽取，杜绝 ToggleVisibility
+ *      场景下「显示的内容 ≠ 复制的内容」的隐藏内容泄漏。
+ */
 export function extractTableCopyTexts(card: Record<string, unknown>): string[] {
   const tables: JsonObject[] = [];
   collectTables(card, tables);
-
-  return tables
-    .map((table) =>
-      asArray(table.rows)
-        .map((row) => {
-          const rowObj = asObject(row);
-          return asArray(rowObj?.cells)
-            .map((cell) =>
-              normalizeCellText(extractTextFromItems(asObject(cell)?.items))
-            )
-            .join("\t");
-        })
-        .join("\n")
-        .trim()
-    )
-    .filter(Boolean);
+  return tables.map(extractTableText);
 }
 
 function isElement(value: unknown): value is HTMLElement {
@@ -198,10 +241,14 @@ export function attachTableCopyButtons(
 ): void {
   const { card, target, label, onCopy } = options;
   const copyTexts = extractTableCopyTexts(card);
+  // 允许全空：hidden/纯图表格返回 [""...]，forEach 会自动跳过挂按钮。
+  // 但完全没有 Table 时提前退出，省去 DOM 查询。
   if (copyTexts.length === 0) return;
 
   const tableRoots = findTableRoots(target, card);
   tableRoots.forEach((tableRoot, index) => {
+    // index 与 copyTexts 严格对齐（extractTableCopyTexts / collectTables 契约）；
+    // 空文本 → 该 Table 无可复制内容（纯图或整表 isVisible:false），跳过挂按钮但不解构后续索引。
     const text = copyTexts[index];
     if (!text) {
       return;

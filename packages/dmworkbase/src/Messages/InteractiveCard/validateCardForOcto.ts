@@ -132,7 +132,12 @@ function validateToggleVisibilityAction(
   if (targets.length === 0) {
     throw new OctoInvalidCard("ToggleVisibility targetElements required");
   }
-  for (const target of targets) validateToggleTargetElement(target, ctx);
+  for (const target of targets) {
+    // 每个 target 计入节点预算（与 facts / actions / columns / choices / images 一致），
+    // 对齐服务端 walker MAX_NODES 计数口径，防止巨量 target 数组绕过预算。
+    if (!ctx.budget.consume()) throw new OctoInvalidCard("node count exceeded");
+    validateToggleTargetElement(target, ctx);
+  }
 }
 
 function validateCopyToClipboardAction(obj: Record<string, unknown>): void {
