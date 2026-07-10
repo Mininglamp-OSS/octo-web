@@ -179,3 +179,13 @@
   line-height: 1; padding: 2px 4px; border-radius: 6px;
 }
 .loop-reaction-picker button:hover { background: var(--semi-color-fill-1, #eef0f3); }
+
+/* 子 issue 列表(PR-C) */
+.loop-subissues { display: flex; flex-direction: column; gap: 6px; }
+.loop-subissue {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border: 1px solid var(--semi-color-border, #e8e9eb); border-radius: 8px;
+  font-size: 13px;
+}
+.loop-subissue__id { color: var(--semi-color-text-2, #8590a6); font-size: 12px; flex-shrink: 0; }
+.loop-subissue__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
