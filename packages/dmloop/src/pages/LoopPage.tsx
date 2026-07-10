@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Typography, Dropdown, Avatar, Modal, Input, Toast, Button } from "@douyinfe/semi-ui";
 import {
-  ClipboardList, Sparkles, Briefcase, Bot, Users, Cpu, Settings,
+  ClipboardList, Briefcase, Bot, Users, Settings,
   ChevronDown, Check, Plus, SquarePen, FolderPlus,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
@@ -12,25 +12,21 @@ import { invalidateDirectory } from "../api/directory";
 import { invalidateRuntimeMap } from "../api/agentApi";
 import CreateIssueModal from "../ui/CreateIssueModal";
 import IssuePage from "./IssuePage";
-import SkillPage from "./SkillPage";
 import ProjectPage from "./ProjectPage";
 import AgentPage from "./AgentPage";
 import SquadPage from "./SquadPage";
-import RuntimePage from "./RuntimePage";
 import SettingsPage from "./SettingsPage";
 import "./loop.css";
 
 const { Title, Text } = Typography;
 
-type TabKey = "issue" | "skill" | "project" | "agent" | "squad" | "runtime" | "settings";
+type TabKey = "issue" | "project" | "agent" | "squad" | "settings";
 
 const TABS: { key: TabKey; icon: React.ReactNode }[] = [
   { key: "issue", icon: <ClipboardList size={16} /> },
-  { key: "skill", icon: <Sparkles size={16} /> },
   { key: "project", icon: <Briefcase size={16} /> },
   { key: "agent", icon: <Bot size={16} /> },
   { key: "squad", icon: <Users size={16} /> },
-  { key: "runtime", icon: <Cpu size={16} /> },
   { key: "settings", icon: <Settings size={16} /> },
 ];
 
@@ -59,11 +55,9 @@ export default function LoopPage() {
     const k = `${key}:${ws?.id ?? "none"}`;
     switch (key) {
       case "issue": return <IssuePage key={k} />;
-      case "skill": return <SkillPage key={k} />;
       case "project": return <ProjectPage key={k} />;
       case "agent": return <AgentPage key={k} />;
       case "squad": return <SquadPage key={k} />;
-      case "runtime": return <RuntimePage key={k} />;
       case "settings": return <SettingsPage key={k} workspace={ws} onUpdated={() => reloadWorkspaces()} />;
       default: return <IssuePage key={k} />;
     }

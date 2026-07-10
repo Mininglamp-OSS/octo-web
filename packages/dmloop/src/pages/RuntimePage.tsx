@@ -1,13 +1,74 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Typography, Input, Spin, Empty, Tag, Avatar, Banner } from "@douyinfe/semi-ui";
-import { Search, Monitor, Cloud, Cpu, Circle, Bot } from "lucide-react";
-import { useI18n } from "@octo/base";
-import type { RuntimeDevice, RuntimeMode, Agent } from "../api/types";
+import { Typography, Spin, Tag, Banner, Button, Toast } from "@douyinfe/semi-ui";
+import { Box, Check, Circle, Code2, Copy, Cpu, Monitor, Plus, Terminal } from "lucide-react";
+import { copyToClipboard, useI18n, WKModal } from "@octo/base";
+import type { RuntimeDevice, RuntimeMode } from "../api/types";
 import { listRuntimes } from "../api/runtimeApi";
-import { listAgents } from "../api/agentApi";
+import { LOOP_API_BASE } from "../api/http";
 import "./runtime.css";
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
+
+const DEFAULT_FLEET_API_PATH = "/fleet/api/v1";
+
+function envValue(key: string): string {
+  return (import.meta as { env?: Record<string, string | undefined> }).env?.[key]?.trim() ?? "";
+}
+
+function trimEndSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function isAbsoluteUrl(value: string): boolean {
+  try {
+    return Boolean(new URL(value).origin);
+  } catch {
+    return false;
+  }
+}
+
+function originOf(value: string): string {
+  if (!value) return "";
+  try {
+    return new URL(value).origin;
+  } catch {
+    return "";
+  }
+}
+
+function currentOrigin(): string {
+  if (typeof window !== "undefined" && window.location.origin) {
+    return window.location.origin;
+  }
+  return originOf(envValue("VITE_APP_URL")) || originOf(envValue("VITE_API_URL"));
+}
+
+function withOrigin(pathOrUrl: string, origin: string): string {
+  if (isAbsoluteUrl(pathOrUrl)) return trimEndSlash(pathOrUrl);
+  if (!origin) return trimEndSlash(pathOrUrl);
+  return `${trimEndSlash(origin)}${pathOrUrl.startsWith("/") ? "" : "/"}${trimEndSlash(pathOrUrl)}`;
+}
+
+function fleetApiUrl(): string {
+  const explicitLoopBase = envValue("VITE_LOOP_API_BASE");
+  if (explicitLoopBase) {
+    return withOrigin(explicitLoopBase, currentOrigin());
+  }
+  return withOrigin(LOOP_API_BASE || DEFAULT_FLEET_API_PATH, currentOrigin());
+}
+
+function appUrl(): string {
+  const configuredAppUrl = originOf(envValue("VITE_APP_URL"));
+  if (configuredAppUrl) return configuredAppUrl;
+  return currentOrigin();
+}
+
+function addComputerCommand(): string {
+  return `MULTICA_APP_URL=${appUrl()} \\
+./octo-daemon \\
+  --server-url ${fleetApiUrl()} \\
+  login`;
+}
 
 interface Device {
   key: string;
@@ -16,10 +77,32 @@ interface Device {
   runtimes: RuntimeDevice[];
 }
 
+type ProviderTone = "claude" | "codex" | "hermes" | "openclaw" | "opencode" | "default";
+
 function deviceName(r: RuntimeDevice): string {
   const info = r.device_info || "";
   const head = info.split("·")[0]?.trim();
   return head || r.name;
+}
+
+function runtimeVersion(r: RuntimeDevice): string {
+  const version = r.metadata?.version;
+  if (typeof version === "string" && version.trim()) return version.trim();
+  const info = r.device_info || "";
+  const parts = info.split("·").map((part) => part.trim()).filter(Boolean);
+  return parts.slice(1).join(" · ") || r.launch_header || "-";
+}
+
+function deviceStatus(runtimes: RuntimeDevice[]): RuntimeDevice["status"] {
+  return runtimes.some((runtime) => runtime.status === "online") ? "online" : "offline";
+}
+
+function deviceVersion(runtimes: RuntimeDevice[]): string {
+  for (const runtime of runtimes) {
+    const version = runtimeVersion(runtime);
+    if (version !== "-") return version;
+  }
+  return "-";
 }
 
 function relTime(iso: string | null): string {
@@ -33,39 +116,63 @@ function relTime(iso: string | null): string {
   return `${Math.floor(hr / 24)}d`;
 }
 
-/**
- * 设备页（四栏）：Loop一级 + 二级菜单 + [设备列表(本地/远程) | 选中设备的 Runtime 列表 | Runtime 详情]。
- * 设备 = 按 daemon_id 聚合的机器；Runtime = 该机器上的各运行时；详情含「哪些 agents 在用」。
- */
+function shortDaemon(id?: string | null): string {
+  if (!id) return "-";
+  return `daemon ${id.slice(0, 8)}`;
+}
+
+function providerName(provider: string): string {
+  if (!provider) return "-";
+  return provider.slice(0, 1).toUpperCase() + provider.slice(1);
+}
+
+function providerTone(provider: string): ProviderTone {
+  const key = provider.toLowerCase();
+  if (key.includes("claude")) return "claude";
+  if (key.includes("codex")) return "codex";
+  if (key.includes("hermes")) return "hermes";
+  if (key.includes("openclaw")) return "openclaw";
+  if (key.includes("opencode")) return "opencode";
+  return "default";
+}
+
+function providerIcon(provider: string) {
+  const tone = providerTone(provider);
+  if (tone === "codex") return <Box size={12} />;
+  if (tone === "opencode") return <Code2 size={12} />;
+  if (tone === "default") return <Terminal size={12} />;
+  return <span aria-hidden>{providerName(provider).slice(0, 1)}</span>;
+}
+
+/** Runtime 列表页：机器作为分组，组内展示该机器上的 runtimes。 */
 export default function RuntimePage() {
   const { t } = useI18n();
   const [runtimes, setRuntimes] = useState<RuntimeDevice[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [keyword, setKeyword] = useState("");
-  const [deviceKey, setDeviceKey] = useState<string | null>(null);
-  const [runtimeId, setRuntimeId] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return undefined;
+    const timer = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    Promise.all([listRuntimes(), listAgents()])
-      .then(([rs, ags]) => {
+    listRuntimes()
+      .then((rs) => {
         setRuntimes(rs);
-        setAgents(ags);
       })
       .catch((e) => setError(e?.message ?? "load failed"))
       .finally(() => setLoading(false));
   }, []);
 
   const devices = useMemo<Device[]>(() => {
-    const kw = keyword.trim().toLowerCase();
-    const rows = kw
-      ? runtimes.filter((r) => deviceName(r).toLowerCase().includes(kw) || r.provider.toLowerCase().includes(kw))
-      : runtimes;
     const map = new Map<string, Device>();
-    for (const r of rows) {
+    for (const r of runtimes) {
       const key = r.daemon_id || deviceName(r);
       let d = map.get(key);
       if (!d) {
@@ -75,35 +182,31 @@ export default function RuntimePage() {
       d.runtimes.push(r);
     }
     return Array.from(map.values());
-  }, [runtimes, keyword]);
+  }, [runtimes]);
 
-  // 默认选中第一个设备 + 第一个 runtime
-  useEffect(() => {
-    if (!deviceKey && devices[0]) {
-      setDeviceKey(devices[0].key);
-      setRuntimeId(devices[0].runtimes[0]?.id ?? null);
+  const copyCommand = async () => {
+    const ok = await copyToClipboard(addComputerCommand());
+    if (!ok) {
+      Toast.error(t("loop.runtime.copyFailed"));
+      return;
     }
-  }, [devices, deviceKey]);
-
-  const groups = useMemo(() => {
-    const local = devices.filter((d) => d.mode !== "cloud");
-    const remote = devices.filter((d) => d.mode === "cloud");
-    return [
-      { key: "local", label: t("loop.device.local"), icon: <Monitor size={13} />, items: local },
-      { key: "remote", label: t("loop.device.remote"), icon: <Cloud size={13} />, items: remote },
-    ].filter((g) => g.items.length > 0);
-  }, [devices, t]);
-
-  const activeDevice = devices.find((d) => d.key === deviceKey) ?? null;
-  const activeRuntime = runtimes.find((r) => r.id === runtimeId) ?? null;
-  const agentsUsing = activeRuntime ? agents.filter((a) => a.runtime_id === activeRuntime.id) : [];
+    setCopied(true);
+    Toast.success(t("loop.runtime.copySuccess"));
+  };
 
   return (
     <div className="loop-page">
-      <div className="loop-page__head">
-        <Title heading={4}>{t("loop.nav.runtime")}</Title>
-        <div className="loop-page__spacer" />
-        <Input prefix={<Search size={14} />} placeholder={t("loop.runtime.search")} value={keyword} onChange={setKeyword} showClear style={{ width: 220 }} />
+      <div className="loop-runtime-hero">
+        <div>
+          <div className="loop-runtime-hero__title">
+            <Title heading={4}>{t("loop.nav.runtime")}</Title>
+            <span>{runtimes.length}</span>
+          </div>
+          <div className="loop-runtime-hero__subtitle">{t("loop.runtime.subtitle")}</div>
+        </div>
+        <Button className="loop-runtime-hero__action" theme="solid" type="tertiary" icon={<Plus size={13} />} onClick={() => setAddOpen(true)}>
+          {t("loop.runtime.add")}
+        </Button>
       </div>
       <div className="loop-page__body" style={{ padding: 0 }}>
         {error ? (
@@ -113,88 +216,74 @@ export default function RuntimePage() {
         ) : devices.length === 0 ? (
           <div className="loop-empty"><Cpu size={40} className="loop-empty__icon" /><div className="loop-empty__title">{t("loop.runtime.empty")}</div></div>
         ) : (
-          <div className="loop-dev">
-            {/* 第3栏：设备列表（本地/远程分组） */}
-            <div className="loop-dev__col loop-dev__devices">
-              <div className="loop-dev__col-title">{t("loop.device.devices")}</div>
-              {groups.map((g) => (
-                <div key={g.key} className="loop-dev__grp">
-                  <div className="loop-dev__grp-title">{g.icon}<span>{g.label}</span><em>{g.items.length}</em></div>
-                  {g.items.map((d) => (
-                    <button key={d.key} className={`loop-dev__row ${d.key === deviceKey ? "is-active" : ""}`}
-                      onClick={() => { setDeviceKey(d.key); setRuntimeId(d.runtimes[0]?.id ?? null); }}>
-                      <Monitor size={14} />
-                      <span className="loop-dev__row-main"><strong>{d.name}</strong><small>{d.runtimes.length} runtimes</small></span>
-                    </button>
+          <div className="loop-runtime-list">
+            {devices.map((device) => {
+              const status = deviceStatus(device.runtimes);
+              const version = deviceVersion(device.runtimes);
+              return (
+              <section className="loop-runtime-machine" key={device.key} aria-label={device.name}>
+                <div className="loop-runtime-machine__head">
+                  <div className="loop-runtime-machine__identity">
+                    <span className="loop-runtime-machine__icon"><Monitor size={14} /></span>
+                    <strong>{device.name}</strong>
+                    <span className={`loop-runtime-status is-${status}`}>
+                      <Circle size={6} fill="currentColor" />
+                      {t(`loop.runtime.${status}`)}
+                    </span>
+                  </div>
+                  <div className="loop-runtime-machine__meta">
+                    {version !== "-" && <Tag size="small" color="grey">{version}</Tag>}
+                    <span>{shortDaemon(device.runtimes[0]?.daemon_id)}</span>
+                    <span>{t("loop.runtime.allSpace")}</span>
+                    <strong>{t("loop.runtime.runtimeCount", { values: { count: device.runtimes.length } })}</strong>
+                  </div>
+                </div>
+                <div className="loop-runtime-rows" role="table" aria-label={`${device.name} ${t("loop.nav.runtime")}`}>
+                  {device.runtimes.map((runtime) => (
+                    <div key={runtime.id} className="loop-runtime-row" role="row">
+                      <div className="loop-runtime-row__name" role="cell">
+                        <span className={`loop-runtime-row__provider is-${providerTone(runtime.provider)}`}>
+                          {providerIcon(runtime.provider)}
+                        </span>
+                        <strong>{providerName(runtime.provider)}</strong>
+                        <Tag size="small" color="grey">{t("loop.runtime.builtIn")}</Tag>
+                      </div>
+                      <div className={`loop-runtime-status is-${runtime.status}`} role="cell">
+                        <Circle size={6} fill="currentColor" />
+                        {t(`loop.runtime.${runtime.status}`)}
+                      </div>
+                      <div className="loop-runtime-row__version" role="cell">{runtimeVersion(runtime)}</div>
+                      <time className="loop-runtime-row__seen" role="cell">{relTime(runtime.last_seen_at)}</time>
+                    </div>
                   ))}
                 </div>
-              ))}
-            </div>
-
-            {/* 第4栏：选中设备的 Runtime 列表 */}
-            <div className="loop-dev__col loop-dev__runtimes">
-              <div className="loop-dev__col-title">{t("loop.device.runtimes")}</div>
-              {!activeDevice ? (
-                <div className="loop-dev__hint">{t("loop.device.pickDevice")}</div>
-              ) : (
-                activeDevice.runtimes.map((r) => (
-                  <button key={r.id} className={`loop-dev__row ${r.id === runtimeId ? "is-active" : ""}`} onClick={() => setRuntimeId(r.id)}>
-                    <Circle size={8} style={{ color: r.status === "online" ? "#23a55a" : "#c9cdd4" }} />
-                    <span className="loop-dev__row-main"><strong>{r.provider}</strong><small>{r.name}</small></span>
-                    <time>{relTime(r.last_seen_at)}</time>
-                  </button>
-                ))
-              )}
-            </div>
-
-            {/* Runtime 详情（含使用中的 agents） */}
-            <div className="loop-dev__col loop-dev__detail">
-              {!activeRuntime ? (
-                <div className="loop-dev__hint">{t("loop.device.pickRuntime")}</div>
-              ) : (
-                <div className="loop-dev__detail-inner">
-                  <header className="loop-dev__detail-head">
-                    <Avatar color="light-blue" shape="square"><Cpu size={18} /></Avatar>
-                    <div>
-                      <Title heading={5} style={{ margin: 0 }}>
-                        <Circle size={9} style={{ marginRight: 6, color: activeRuntime.status === "online" ? "#23a55a" : "#c9cdd4" }} />
-                        {activeRuntime.name}
-                      </Title>
-                      <Text type="tertiary" style={{ fontSize: 12 }}>{activeRuntime.provider}</Text>
-                    </div>
-                    <Tag color={activeRuntime.status === "online" ? "green" : "grey"} style={{ marginLeft: "auto" }}>
-                      {t(`loop.runtime.${activeRuntime.status}`)}
-                    </Tag>
-                  </header>
-
-                  <dl className="loop-dev__fields">
-                    <dt>{t("loop.runtime.mode")}</dt><dd>{t(`loop.runtime.modeVal.${activeRuntime.runtime_mode}`) || activeRuntime.runtime_mode}</dd>
-                    <dt>{t("loop.runtime.device")}</dt><dd>{activeRuntime.device_info}</dd>
-                    <dt>{t("loop.runtime.launchHeader")}</dt><dd>{activeRuntime.launch_header ?? "—"}</dd>
-                    <dt>{t("loop.runtime.visibility")}</dt><dd>{activeRuntime.visibility}</dd>
-                    <dt>{t("loop.runtime.lastSeen")}</dt><dd>{relTime(activeRuntime.last_seen_at)} ago</dd>
-                  </dl>
-
-                  <div className="loop-dev__section-title">{t("loop.device.agentsUsing")} ({agentsUsing.length})</div>
-                  {agentsUsing.length === 0 ? (
-                    <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.device.noAgents")}</Text>
-                  ) : (
-                    <div className="loop-dev__agents">
-                      {agentsUsing.map((a) => (
-                        <div key={a.id} className="loop-dev__agent">
-                          <Avatar size="extra-extra-small" color="violet"><Bot size={12} /></Avatar>
-                          <Text>{a.name}</Text>
-                          <Tag size="small" color="grey">{a.model}</Tag>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+              </section>
+              );
+            })}
           </div>
         )}
       </div>
+      <WKModal
+        visible={addOpen}
+        onCancel={() => setAddOpen(false)}
+        title={t("loop.runtime.addComputerTitle")}
+        size="lg"
+        footer={(
+          <>
+            <Button theme="borderless" type="tertiary" onClick={() => setAddOpen(false)}>
+              {t("loop.action.cancel")}
+            </Button>
+            <Button theme="solid" type="tertiary" icon={copied ? <Check size={14} /> : <Copy size={14} />} onClick={copyCommand}>
+              {copied ? t("loop.runtime.copied") : t("loop.runtime.copyCommand")}
+            </Button>
+          </>
+        )}
+      >
+        <div className="loop-runtime-add">
+          <p>{t("loop.runtime.addComputerDesc")}</p>
+          <pre className="loop-runtime-add__command"><code>{addComputerCommand()}</code></pre>
+        </div>
+      </WKModal>
     </div>
   );
 }

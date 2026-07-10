@@ -1,0 +1,93 @@
+.dmpersonal-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--semi-color-bg-1);
+  color: var(--semi-color-text-0);
+}
+
+.dmpersonal-sidebar__title {
+  padding: var(--wk-sp-5) var(--wk-sp-5) var(--wk-sp-3);
+  font-size: var(--wk-text-size-xl);
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
+
+.dmpersonal-sidebar__menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-0-5);
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+}
+
+.dmpersonal-sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  width: 100%;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border: none;
+  background: transparent;
+  border-radius: var(--wk-r-md);
+  cursor: pointer;
+  font-size: var(--wk-text-size-base);
+  color: var(--semi-color-text-1);
+  text-align: left;
+}
+
+.dmpersonal-sidebar__item:hover {
+  background: var(--semi-color-fill-0);
+}
+
+.dmpersonal-sidebar__item.is-active {
+  background: var(--semi-color-primary-light-default);
+  color: var(--semi-color-primary);
+  font-weight: 600;
+}
+
+.dmpersonal-sidebar__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.dmpersonal-sidebar__hint {
+  margin: var(--wk-sp-3) var(--wk-sp-3) 0;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--semi-color-warning-light-default);
+  color: var(--semi-color-warning);
+  font: var(--wk-text-caption);
+}
+
+.dmpersonal-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 70%;
+  padding: var(--wk-sp-6);
+  text-align: center;
+  color: var(--semi-color-text-2);
+}
+
+.dmpersonal-state__icon {
+  display: flex;
+  margin-bottom: var(--wk-sp-3);
+  color: var(--semi-color-text-2);
+  opacity: 0.55;
+}
+
+.dmpersonal-state__title {
+  font-size: var(--wk-text-size-lg);
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
+
+.dmpersonal-state__desc {
+  max-width: 360px;
+  margin-top: var(--wk-sp-1-5);
+  font-size: var(--wk-text-size-base);
+  line-height: 1.5;
+  color: var(--semi-color-text-2);
+}
