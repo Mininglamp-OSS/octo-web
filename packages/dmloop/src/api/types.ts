@@ -52,6 +52,11 @@ export interface Invitation {
 export interface ListParams {
   workspace_id?: string;
   keyword?: string;
+  status?: IssueStatus;
+  priority?: IssuePriority;
+  assignee_id?: string;
+  limit?: number;
+  offset?: number;
 }
 
 /* ---------- Issue ---------- */
@@ -123,17 +128,6 @@ export interface IssueComment {
 
 export type TaskStatus =
   | "queued" | "dispatched" | "running" | "completed" | "failed" | "cancelled" | string;
-
-export interface AgentTask {
-  id: string;
-  issue_id: string;
-  agent_id?: string | null;
-  status: TaskStatus;
-  trigger_summary?: string;
-  created_at: string;
-  completed_at?: string | null;
-  agent_name?: string | null;
-}
 
 /** 执行记录（run）：GET /issues/:id/task-runs。 */
 export interface TaskRun {

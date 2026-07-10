@@ -29,18 +29,19 @@ import type {
   TaskRun,
   IssueStatus,
   IssuePriority,
-  AssigneeCandidate,
 } from "../api/types";
 import {
   getIssue,
   updateIssue,
+  deleteIssue,
   listComments,
   addComment,
   deleteComment,
-  listAssigneeCandidates,
+  updateComment,
 } from "../api/issueApi";
 import { listRuns } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
+import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import LoopMarkdown from "../ui/LoopMarkdown";
 import { confirmDelete } from "../ui/confirmDelete";
 import RunDetailModal from "./RunDetailModal";
@@ -78,12 +79,14 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [activeRun, setActiveRun] = useState<TaskRun | null>(null);
   const [runOpen, setRunOpen] = useState(false);
   const [editingDesc, setEditingDesc] = useState(false);
-  const [cands, setCands] = useState<AssigneeCandidate[]>([]);
+  const cands = useAssigneeCandidates();
   const [loading, setLoading] = useState(true);
   const [titleDraft, setTitleDraft] = useState("");
   const [descDraft, setDescDraft] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
 
   const reload = () => {
     setLoading(true);
@@ -100,7 +103,6 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   };
 
   useEffect(reload, [issueId]);
-  useEffect(() => { listAssigneeCandidates().then(setCands); }, []);
 
   const patch = async (p: Parameters<typeof updateIssue>[1]) => {
     if (!issue) return;
@@ -123,6 +125,40 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     await deleteComment(id);
     setComments(await listComments(issueId));
     Toast.success(t("loop.toast.commentDeleted"));
+  };
+
+  const saveEdit = async (id: string) => {
+    const content = editDraft.trim();
+    if (!content) return;
+    try {
+      await updateComment(id, content);
+    } catch (e) {
+      Toast.error((e as Error)?.message ?? t("loop.toast.editFailed"));
+      return;
+    }
+    // 编辑已落库；重拉以回填 directory 名字/头像。重拉失败不应报“编辑失败”。
+    setEditingId(null);
+    setComments(await listComments(issueId));
+    Toast.success(t("loop.toast.commentUpdated"));
+  };
+
+  const handleDeleteIssue = () => {
+    if (!issue) return;
+    confirmDelete({
+      title: t("loop.confirm.deleteIssue"),
+      okText: t("loop.action.delete"),
+      cancelText: t("loop.action.cancel"),
+      onOk: async () => {
+        try {
+          await deleteIssue(issue.id);
+          Toast.success(t("loop.toast.deleted"));
+          onChanged?.();
+          back();
+        } catch (e) {
+          Toast.error((e as Error)?.message ?? t("loop.toast.deleteFailed"));
+        }
+      },
+    });
   };
 
   const back = () => WKApp.routeRight.pop();
@@ -198,6 +234,10 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       >
         <Dropdown.Item>{t("loop.menu.changeAssignee")}</Dropdown.Item>
       </Dropdown>
+      <Dropdown.Divider />
+      <Dropdown.Item type="danger" icon={<Trash2 size={13} />} onClick={handleDeleteIssue}>
+        {t("loop.menu.deleteIssue")}
+      </Dropdown.Item>
     </Dropdown.Menu>
   );
 
@@ -244,11 +284,17 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               size="small"
               theme="borderless"
               icon={<CornerDownRight size={13} />}
-              onClick={() => setReplyTo(replyTo === c.id ? null : c.id)}
+              onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setEditingId(null); }}
             >
               {t("loop.comment.reply")}
             </Button>
           )}
+          <Button
+            size="small"
+            theme="borderless"
+            icon={<Pencil size={13} />}
+            onClick={() => { setEditingId(c.id); setEditDraft(c.content); setReplyTo(null); }}
+          />
           <Button
             size="small"
             theme="borderless"
@@ -258,7 +304,17 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           />
         </div>
       </div>
-      <div className="loop-comment__body"><LoopMarkdown content={c.content} /></div>
+      {editingId === c.id ? (
+        <div className="loop-comment__body" style={{ marginTop: 6 }}>
+          <TextArea value={editDraft} onChange={setEditDraft} autosize={{ minRows: 2, maxRows: 10 }} />
+          <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
+            <Button size="small" theme="solid" onClick={() => saveEdit(c.id)}>{t("loop.action.save")}</Button>
+            <Button size="small" theme="borderless" onClick={() => setEditingId(null)}>{t("loop.action.cancel")}</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="loop-comment__body"><LoopMarkdown content={c.content} /></div>
+      )}
       {!reply && repliesOf(c.id).map((r) => renderComment(r, true))}
       {!reply && replyTo === c.id && (
         <div style={{ marginTop: 8, display: "flex", gap: 8 }}>

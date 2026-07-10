@@ -3,7 +3,8 @@
     "title": "Loop",
     "changeStatus": "修改状态",
     "changePriority": "修改优先级",
-    "changeAssignee": "修改负责人"
+    "changeAssignee": "修改负责人",
+    "deleteIssue": "删除 Issue"
   },
   "nav": {
     "issue": "Issue",
@@ -40,6 +41,11 @@
     "project": "搜索项目",
     "agent": "搜索智能体",
     "squad": "搜索小队"
+  },
+  "filter": {
+    "status": "状态",
+    "priority": "优先级",
+    "assignee": "负责人"
   },
   "action": {
     "newIssue": "新建 Issue",
@@ -165,14 +171,18 @@
     "archived": "已归档",
     "deleted": "已删除",
     "commentAdded": "评论已添加",
-    "commentDeleted": "评论已删除"
+    "commentDeleted": "评论已删除",
+    "commentUpdated": "评论已更新",
+    "editFailed": "编辑失败",
+    "deleteFailed": "删除失败"
   },
   "validate": {
     "nameRequired": "请填写名称",
     "titleRequired": "请填写标题"
   },
   "confirm": {
-    "delete": "确定删除？"
+    "delete": "确定删除？",
+    "deleteIssue": "确定删除该 Issue？此操作不可撤销。"
   },
   "skill": {
     "source": "来源",
