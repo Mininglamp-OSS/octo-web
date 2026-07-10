@@ -699,6 +699,28 @@
   text-decoration: line-through;
 }
 
+/* Restore bullet markers and indentation for plain bullet lists inside the editor.
+   The app-wide reset (App.css `ul { list-style-type: none; padding-inline-start: 0 }`)
+   strips the disc marker, which made the bullet-list button look like it did nothing.
+   Scope this to the editor prose so the app's other lists stay unaffected; the
+   `[data-type='taskList']` exclusion keeps the checkbox list untouched. Specificity
+   here (0,2,1) beats the global reset (0,0,1) with no `!important`. */
+.octo-prose .ProseMirror ul:not([data-type='taskList']) {
+  list-style: disc;
+  padding-left: 1.5em;
+}
+.octo-prose .ProseMirror ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+}
+/* Nested bullet levels get distinct markers, matching common editor conventions. */
+.octo-prose .ProseMirror ul:not([data-type='taskList']) ul {
+  list-style: circle;
+}
+.octo-prose .ProseMirror ul:not([data-type='taskList']) ul ul {
+  list-style: square;
+}
+
 /* Remote collaboration carets (collaboration-caret; v3 default render uses
    the `collaboration-carets__*` class names, renamed from v2's
    `collaboration-cursor__*`). */
