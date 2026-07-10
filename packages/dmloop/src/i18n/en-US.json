@@ -200,7 +200,13 @@
     "placeholder": "Write a comment…",
     "send": "Send",
     "willWake": "Will wake:",
-    "tapToSuppress": "(tap to skip one)"
+    "tapToSuppress": "(tap to skip one)",
+    "resolve": "Resolve",
+    "unresolve": "Unresolve",
+    "resolved": "Resolved"
+  },
+  "activity": {
+    "title": "Activity"
   },
   "toast": {
     "created": "Created",

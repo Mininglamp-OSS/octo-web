@@ -109,8 +109,10 @@ export default function IssuePage() {
   const switchView = (v: ViewMode) => { setView(v); setPage(0); };
 
   // 点击 Issue → 跳转独立详情页（push 到右主栏，返回可 pop）。
+  // key=id:issueId 变化即整体重挂载 → 详情页所有异步状态从零开始,结构性杜绝跨 issue 陈旧写入
+  // (如未来点子 issue 原地切换时,慢请求无法把旧 issue 数据写进新 issue 视图)。
   const openDetail = (id: string) => {
-    WKApp.routeRight.push(<IssueDetailPage issueId={id} onChanged={reload} />);
+    WKApp.routeRight.push(<IssueDetailPage key={id} issueId={id} onChanged={reload} />);
   };
 
   return (

@@ -200,7 +200,13 @@
     "placeholder": "写下评论…",
     "send": "发送",
     "willWake": "将唤醒：",
-    "tapToSuppress": "(点击可跳过某个)"
+    "tapToSuppress": "(点击可跳过某个)",
+    "resolve": "标记解决",
+    "unresolve": "取消解决",
+    "resolved": "已解决"
+  },
+  "activity": {
+    "title": "活动"
   },
   "toast": {
     "created": "已创建",
