@@ -60,6 +60,7 @@ export interface ListParams {
   priority?: IssuePriority;
   assignee_id?: string;
   creator_id?: string;
+  project_id?: string;
   // 后端白名单 sort：position(默认)|priority|title|created_at|start_date|due_date。
   // direction 仅在 sort_by != position 时被后端采纳(asc|desc)。
   sort_by?: IssueSortField;

@@ -34,6 +34,7 @@ export async function listIssues(
     priority: params?.priority,
     assignee_id: params?.assignee_id,
     creator_id: params?.creator_id,
+    project_id: params?.project_id,
     sort: params?.sort_by,
     direction: params?.sort_direction,
     limit: params?.limit,
