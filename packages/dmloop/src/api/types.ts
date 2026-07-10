@@ -136,6 +136,13 @@ export interface IssueTriggerPreview {
   total_count: number;
 }
 
+/** 评论派单预览:这条评论会唤醒的 agent(POST /issues/:id/comments/trigger-preview)。
+ *  后端还返回 avatar_url/source/reason,前端暂只用 id+name,按需再加。 */
+export interface CommentTriggerAgent {
+  id: string;
+  name: string;
+}
+
 export interface IssueComment {
   id: string;
   issue_id: string;

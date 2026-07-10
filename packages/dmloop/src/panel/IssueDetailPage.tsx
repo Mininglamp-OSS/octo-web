@@ -31,6 +31,7 @@ import type {
   TaskRun,
   IssueStatus,
   IssuePriority,
+  CommentTriggerAgent,
 } from "../api/types";
 import {
   getIssue,
@@ -40,6 +41,7 @@ import {
   addComment,
   deleteComment,
   updateComment,
+  previewCommentTriggers,
 } from "../api/issueApi";
 import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
@@ -89,6 +91,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [descDraft, setDescDraft] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
+  const [triggerAgents, setTriggerAgents] = useState<CommentTriggerAgent[]>([]); // 这条评论会唤醒的 agent
+  const [suppressed, setSuppressed] = useState<Set<string>>(new Set()); // 被用户跳过的 agent id
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [busyRunId, setBusyRunId] = useState<string | null>(null); // 正在重跑的 task,防双击
@@ -119,12 +123,33 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const submitComment = async () => {
     const content = commentDraft.trim();
     if (!content) return;
-    await addComment(issueId, content, replyTo);
+    const suppressIds = triggerAgents.filter((a) => suppressed.has(a.id)).map((a) => a.id);
+    await addComment(issueId, content, replyTo, suppressIds);
     setCommentDraft("");
     setReplyTo(null);
+    setTriggerAgents([]);
+    setSuppressed(new Set());
     setComments(await listComments(issueId));
     Toast.success(t("loop.toast.commentAdded"));
   };
+
+  // 顶层评论输入时防抖预览"会唤醒哪些 agent"(回复暂不预览)。
+  useEffect(() => {
+    const content = commentDraft.trim();
+    // 预览更新时把 suppressed 裁剪到当前触发集,避免"移除又重提及"的 agent 带着旧的跳过意图。
+    const prune = (ids: string[]) => setSuppressed((s) => new Set([...s].filter((id) => ids.includes(id))));
+    if (!content || replyTo) { setTriggerAgents([]); prune([]); return; }
+    let cancelled = false;
+    const h = setTimeout(() => {
+      previewCommentTriggers(issueId, content, null)
+        .then((a) => { if (cancelled) return; setTriggerAgents(a); prune(a.map((x) => x.id)); })
+        .catch(() => { if (cancelled) return; setTriggerAgents([]); prune([]); });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(h); };
+  }, [commentDraft, replyTo, issueId]);
+
+  const toggleSuppress = (id: string) =>
+    setSuppressed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const removeComment = async (id: string) => {
     await deleteComment(id);
@@ -441,6 +466,26 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               )}
               {roots.map((c) => renderComment(c))}
             </div>
+            {!replyTo && triggerAgents.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10, alignItems: "center" }}>
+                <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.comment.willWake")}</Text>
+                {triggerAgents.map((a) => {
+                  const off = suppressed.has(a.id);
+                  return (
+                    <Tag
+                      key={a.id}
+                      size="small"
+                      color={off ? "grey" : "light-blue"}
+                      style={{ cursor: "pointer", opacity: off ? 0.55 : 1, textDecoration: off ? "line-through" : "none" }}
+                      onClick={() => toggleSuppress(a.id)}
+                    >
+                      {a.name}
+                    </Tag>
+                  );
+                })}
+                <Text type="tertiary" style={{ fontSize: 11 }}>{t("loop.comment.tapToSuppress")}</Text>
+              </div>
+            )}
             <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
               <Input
                 value={replyTo ? "" : commentDraft}

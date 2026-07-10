@@ -176,7 +176,9 @@
     "replyingHint": "Replying to a comment above — use its reply box",
     "empty": "No comments yet",
     "placeholder": "Write a comment…",
-    "send": "Send"
+    "send": "Send",
+    "willWake": "Will wake:",
+    "tapToSuppress": "(tap to skip one)"
   },
   "toast": {
     "created": "Created",

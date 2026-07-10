@@ -176,7 +176,9 @@
     "replyingHint": "正在回复上方评论，请在对应输入框输入",
     "empty": "暂无评论",
     "placeholder": "写下评论…",
-    "send": "发送"
+    "send": "发送",
+    "willWake": "将唤醒：",
+    "tapToSuppress": "(点击可跳过某个)"
   },
   "toast": {
     "created": "已创建",
