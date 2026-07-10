@@ -30,7 +30,7 @@ import { installExcalidrawDebrand } from './excalidrawDebrand.ts'
 import { installLibraryControlButtons } from './libraryControlButtons.ts'
 import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
 import type { ExcalidrawElement, BinaryFileData, FileFetchRef } from './collab/index.ts'
-import { makeGenerateIdForFile, dataURLToBlob } from './collab/index.ts'
+import { makeGenerateIdForFile, dataURLToBlob, sanitizeFractionalIndices } from './collab/index.ts'
 import { presignUpload, uploadBinary } from '../attachments/api.ts'
 import { fetchBoardFileBinaries } from './boardFiles.ts'
 import {
@@ -1018,14 +1018,20 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     }
     const restore = restoreElementsRef.current
     if (!restore) return [...raw]
-    // XIN-795 ④ depth defence: this restore runs during render (not inside the collab binding's
-    // guarded applyRemote), so a throw on a structurally-invalid persisted key — one the BE repair
-    // (XIN-794) failed to stop at source — would take down the whole BoardShell render, not just a
-    // frame. `normalizeIndices` lets Excalidraw re-index recoverable keys; the try/catch degrades an
+    // XIN-791 render defence: strip any fractional-index key Excalidraw cannot parse before restore.
+    // This memo seeds `initialData` straight from raw Y.Doc elements (bypassing repairForRender), so a
+    // backend `r00000000`-style key would otherwise reach restoreElements and blank a cold-opened
+    // bot-written board. sanitizeFractionalIndices is a no-op for valid-keyed (human) scenes.
+    // XIN-795 ④ depth defence: this restore runs during render (outside the collab binding's guarded
+    // applyRemote and outside BoardErrorBoundary's subtree), so a throw on a structurally-invalid
+    // persisted key that even normalizeIndices cannot repair would take down the whole BoardShell
+    // render. `normalizeIndices` lets Excalidraw re-index recoverable keys; the try/catch degrades an
     // unrecoverable throw to an empty initial scene so the canvas still mounts and the later
     // observe→applyRemote path can repaint, with BoardErrorBoundary as the final backstop.
     try {
-      return restore(raw, null, { normalizeIndices: true })
+      return restore(sanitizeFractionalIndices(raw as readonly ExcalidrawElement[]), null, {
+        normalizeIndices: true,
+      })
     } catch {
       return []
     }

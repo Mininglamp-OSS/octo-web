@@ -18,6 +18,7 @@
 // FE receives its result over the wire. This pass only makes the local render self-consistent.
 
 import { normalizeElement } from './schema.ts'
+import { sanitizeFractionalIndices } from './fractionalIndex.ts'
 import type { ExcalidrawElement } from './types.ts'
 
 /**
@@ -45,5 +46,9 @@ export function repairForRender(
     const n = normalizeElement(el, { elementIds: survivors, fileIds })
     if (n) out.push(n as ExcalidrawElement)
   }
-  return out
+  // Pass 3 (XIN-791): strip any fractional-index key Excalidraw's grammar cannot parse (e.g. the
+  // backend's zero-padded `r00000000` scheme) so restoreElements/reconcileElements regenerate a
+  // valid key instead of throwing `invalid order key` — the throw that blanks bot-written boards.
+  // Render-only, never written back to the Y.Doc; valid-keyed scenes pass through untouched.
+  return sanitizeFractionalIndices(out) as ExcalidrawElement[]
 }

@@ -112,4 +112,21 @@ describe('repairForRender (shared normalizeElement)', () => {
     expect((out[0] as Record<string, unknown>).future).toEqual({ k: 1 })
     expect(out[0]).not.toBe(el)
   })
+
+  it('XIN-791: strips a backend index key Excalidraw cannot parse, keeping the element', () => {
+    // The backend fills a missing key with `r00000000` (zero-padded), which passes the shared
+    // loose charset but is not a valid Excalidraw fractional index; left in place it makes
+    // restore/reconcile throw and blank the canvas. Pass 3 drops the key (element survives) so
+    // Excalidraw's syncInvalidIndices regenerates a valid one.
+    const out = repairForRender([makeEl('rect', { index: 'r00000000', width: 220, height: 100 })])
+    expect(out.map((e) => e.id)).toEqual(['rect']) // element kept
+    expect('index' in (out[0] as Record<string, unknown>)).toBe(false) // unparseable key dropped
+    expect((out[0] as Record<string, unknown>).width).toBe(220) // geometry intact
+  })
+
+  it('XIN-791: leaves a valid Excalidraw index key untouched', () => {
+    const out = repairForRender([makeEl('a', { index: 'a0' }), makeEl('b', { index: 'a1' })])
+    expect((out[0] as Record<string, unknown>).index).toBe('a0')
+    expect((out[1] as Record<string, unknown>).index).toBe('a1')
+  })
 })

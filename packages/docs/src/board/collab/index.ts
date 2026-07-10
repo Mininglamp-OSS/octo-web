@@ -29,6 +29,7 @@ export type { WhiteboardSession, WhiteboardSessionOptions, BoardTerminal } from 
 export { shouldOverwrite, reconcileElement, elementSupersedes } from './reconcile.ts'
 export type { VersionStamp } from './reconcile.ts'
 export { repairForRender } from './repair.ts'
+export { sanitizeFractionalIndices, isExcalidrawFractionalIndex } from './fractionalIndex.ts'
 export {
   ELEMENTS_FIELD,
   FILES_FIELD,
