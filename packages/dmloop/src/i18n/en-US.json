@@ -63,6 +63,18 @@
     "emptyTitle": "No workspace yet",
     "emptyDesc": "Create a workspace to start using Loop."
   },
+  "cliAuthorize": {
+    "title": "Authorize this computer",
+    "description": "Connect this computer to the selected Loop workspace. The CLI will continue local device registration after authorization.",
+    "authorize": "Authorize",
+    "loading": "Loading",
+    "workspaceLoading": "Loading workspace",
+    "invalidCallback": "Invalid CLI callback URL",
+    "loginRequired": "Sign in to Octo and select a Space first",
+    "noWorkspace": "No workspace is available in this Space",
+    "loadFailed": "Failed to load workspaces",
+    "authorizeFailed": "Authorization failed"
+  },
   "taskStatus": {
     "queued": "Queued",
     "dispatched": "Dispatched",
