@@ -47,7 +47,12 @@
     "priority": "Priority",
     "assignee": "Assignee",
     "creator": "Creator",
-    "project": "Project"
+    "project": "Project",
+    "dateRange": "Date range"
+  },
+  "dateField": {
+    "created_at": "Created",
+    "updated_at": "Updated"
   },
   "sort": {
     "direction": "Asc/desc",
