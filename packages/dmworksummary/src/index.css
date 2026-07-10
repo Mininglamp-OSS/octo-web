@@ -1941,8 +1941,8 @@
 
 .summary-template-edit-desc {
     min-height: 96px;
-    max-height: 180px;
     resize: vertical;
+    max-height: 180px;
     overflow-y: auto;
 }
 
