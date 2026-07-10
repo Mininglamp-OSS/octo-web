@@ -178,6 +178,25 @@ export interface CommentTriggerAgent {
   name: string;
 }
 
+/** 评论 emoji 反应(后端 /comments/:id/reactions;list/timeline 端点按 comment 分组回填)。 */
+export interface CommentReaction {
+  id: string;
+  comment_id: string;
+  actor_type: string;
+  actor_id: string;
+  emoji: string;
+  created_at: string;
+}
+
+/** issue 订阅者(GET /issues/:id/subscribers)。reason: manual|creator|assignee|mention|... */
+export interface IssueSubscriber {
+  issue_id: string;
+  user_type: string;
+  user_id: string;
+  reason: string;
+  created_at: string;
+}
+
 export interface IssueComment {
   id: string;
   issue_id: string;
@@ -188,6 +207,8 @@ export interface IssueComment {
   created_at: string;
   author_name?: string | null;
   author_avatar?: string | null;
+  // 后端 list/timeline 端点按 comment 分组回填;其它端点不带 → 保持已有。
+  reactions?: CommentReaction[] | null;
 }
 
 export type TaskStatus =
