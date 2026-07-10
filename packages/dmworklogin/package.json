@@ -4,8 +4,8 @@
   "main": "src/index.tsx",
   "dependencies": {
     "@octo/base": "workspace:*",
-    "@douyinfe/semi-icons": "^2.93.0",
-    "@douyinfe/semi-ui": "^2.93.0",
+    "@douyinfe/semi-icons": "^2.101.0",
+    "@douyinfe/semi-ui": "^2.101.0",
     "@types/qrcode.react": "^1.0.2",
     "classnames": "^2.5.1",
     "qrcode.react": "^4.2.0",
@@ -15,8 +15,8 @@
   },
   "devDependencies": {
     "@types/zxcvbn": "^4.4.5",
-    "vitest": "^4.1.5",
-    "jsdom": "^29.0.1"
+    "vitest": "^4.1.10",
+    "jsdom": "^29.1.1"
   },
   "scripts": {
     "test": "vitest run",
