@@ -4,6 +4,7 @@ import { useI18n } from "@octo/base";
 import type { Issue, IssueStatus, IssuePriority } from "../api/types";
 import { updateIssue } from "../api/issueApi";
 import AssigneePicker from "../ui/AssigneePicker";
+import { useRunConfirm } from "../ui/RunConfirmModal";
 import {
   ISSUE_STATUS_ORDER,
   ISSUE_STATUS_COLOR,
@@ -26,6 +27,7 @@ export default function IssueList({
   onChanged,
 }: IssueListProps) {
   const { t } = useI18n();
+  const { requestAssign, runConfirmModal } = useRunConfirm();
 
   const patch = async (id: string, p: Parameters<typeof updateIssue>[1]) => {
     await updateIssue(id, p);
@@ -105,7 +107,7 @@ export default function IssueList({
           size="small"
           value={r.assignee_id}
           valueName={r.assignee_name ?? null}
-          onChange={(id, type) => patch(r.id, { assignee_id: id, assignee_type: type })}
+          onChange={(id, type, name) => requestAssign({ issueId: r.id, status: r.status, assigneeType: type, assigneeId: id, assigneeName: name, apply: (extra) => patch(r.id, { assignee_id: id, assignee_type: type, ...extra }) })}
         />
       ),
     },
@@ -118,12 +120,15 @@ export default function IssueList({
   ];
 
   return (
-    <Table
-      rowKey="id"
-      columns={columns}
-      dataSource={issues}
-      pagination={false}
-      size="small"
-    />
+    <>
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={issues}
+        pagination={false}
+        size="small"
+      />
+      {runConfirmModal}
+    </>
   );
 }
