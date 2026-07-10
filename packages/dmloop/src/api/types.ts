@@ -293,6 +293,14 @@ export interface SkillOrigin {
   skill?: string;
   source_url?: string;
 }
+export interface SkillFile {
+  id: string;
+  skill_id: string;
+  path: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
 export interface Skill {
   id: string;
   workspace_id: string;
@@ -300,6 +308,7 @@ export interface Skill {
   description: string;
   config?: { origin?: SkillOrigin } & Record<string, unknown>;
   content?: string;
+  files?: SkillFile[];
   created_by?: string | null;
   created_at: string;
   updated_at: string;
@@ -308,6 +317,7 @@ export interface UpsertSkillReq {
   name: string;
   description?: string;
   content?: string;
+  files?: { path: string; content: string }[];
 }
 
 /** 从运行时拷贝技能：runtime 上发现的本地技能条目。 */
