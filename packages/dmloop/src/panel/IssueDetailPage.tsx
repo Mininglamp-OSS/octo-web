@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Typography,
   Input,
@@ -11,6 +11,9 @@ import {
   Popconfirm,
   TextArea,
   Dropdown,
+  DatePicker,
+  InputNumber,
+  Progress,
 } from "@douyinfe/semi-ui";
 import {
   ArrowLeft,
@@ -43,6 +46,8 @@ import {
   enrichIssue,
   deleteIssue,
   listComments,
+  listChildren,
+  listIssues,
   addComment,
   deleteComment,
   updateComment,
@@ -70,7 +75,6 @@ import {
   PRIORITY_COLOR,
   RUN_STATUS_COLOR,
   isActiveRun,
-  isOverdue,
 } from "../ui/meta";
 import "./issueDetail.css";
 
@@ -99,6 +103,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [issue, setIssue] = useState<Issue | null>(null);
   const [comments, setComments] = useState<IssueComment[]>([]);
   const [subscribers, setSubscribers] = useState<IssueSubscriber[]>([]);
+  const [children, setChildren] = useState<Issue[]>([]);
+  const [parentCands, setParentCands] = useState<Issue[]>([]); // 父 issue 选择器候选(懒加载)
   const [runs, setRuns] = useState<TaskRun[]>([]);
   const [activeRun, setActiveRun] = useState<TaskRun | null>(null);
   const [runOpen, setRunOpen] = useState(false);
@@ -116,35 +122,64 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [editDraft, setEditDraft] = useState("");
   const [busyRunId, setBusyRunId] = useState<string | null>(null); // 正在重跑的 task,防双击
 
+  // 每次 reload 递增;异步响应回来前先比对 token,丢弃 issueId 原地切换后到达的旧请求结果,
+  // 防止慢请求(issue A)在切到 B 后把 A 的数据写进 B 的视图(导航竞态)。
+  const reqRef = useRef(0);
+
   const reload = () => {
+    const token = ++reqRef.current;
+    const fresh = () => token === reqRef.current;
     setLoading(true);
+    // 重置随 issueId 变化的异步辅助 state:避免 issueId 原地切换时(如后续点子项跳转)
+    // 短暂残留上一个 issue 的子列表、订阅者、父候选(旧候选还会漏掉新的自己)。
+    setChildren([]);
+    setSubscribers([]);
+    setParentCands([]);
     Promise.all([getIssue(issueId), listComments(issueId), listRuns(issueId)])
       .then(([i, c, r]) => {
+        if (!fresh()) return;
         setIssue(i);
         setComments(c);
         setRuns(r);
         setTitleDraft(i?.title ?? "");
         setDescDraft(i?.description ?? "");
       })
-      .catch(() => Toast.error(t("loop.detail.notFound")))
-      .finally(() => setLoading(false));
-    // 订阅者旁路加载:失败不影响主体渲染。
-    listSubscribers(issueId).then(setSubscribers).catch(() => {});
+      .catch(() => { if (fresh()) Toast.error(t("loop.detail.notFound")); })
+      .finally(() => { if (fresh()) setLoading(false); });
+    // 订阅者、子 issue 旁路加载:失败不影响主体渲染;同样按 token 丢弃过期响应。
+    listSubscribers(issueId).then((s) => { if (fresh()) setSubscribers(s); }).catch(() => {});
+    listChildren(issueId).then((c) => { if (fresh()) setChildren(c); }).catch(() => {});
   };
 
   useEffect(reload, [issueId]);
 
   const patch = async (p: Parameters<typeof updateIssue>[1]) => {
     if (!issue) return;
-    const updated = await updateIssue(issue.id, p);
-    // PUT 响应不带 labels(仅 list/detail 端点回填);re-enrich 修回 assignee_name/project_name
-    // 等展示字段(按新值重算),labels 保留当前值,避免编辑后属性栏字段被清成空。
-    setIssue({ ...(await enrichIssue(updated)), labels: updated.labels ?? issue.labels });
-    onChanged?.();
+    try {
+      const updated = await updateIssue(issue.id, p);
+      // PUT 响应不带 labels(仅 list/detail 端点回填);re-enrich 修回 assignee_name/project_name
+      // 等展示字段(按新值重算),labels 保留当前值,避免编辑后属性栏字段被清成空。
+      setIssue({ ...(await enrichIssue(updated)), labels: updated.labels ?? issue.labels });
+      onChanged?.();
+    } catch (e) {
+      // 后端可能拒绝(如父 issue 环检测、非法日期):给出反馈,避免静默失败。
+      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+    }
   };
 
   // 轻量刷新 issue(标签挂/摘后重取 detail,含最新 labels;不重置草稿、不整页 loading)。
   const syncIssue = () => getIssue(issueId).then(setIssue).catch(() => {});
+
+  // 父 issue 选择器:下拉展开时懒加载工作区 issue 作候选(排除自己;环检测由后端兜底)。
+  const loadParentCands = (open: boolean) => {
+    if (!open || parentCands.length) return;
+    const token = reqRef.current;
+    // ponytail: 取前 100 条工作区 issue + Select 客户端过滤;小工作区够用,
+    // 大工作区需服务端 search-as-you-type,留给 UI 重做。
+    listIssues({ limit: 100 })
+      .then((r) => { if (token === reqRef.current) setParentCands(r.issues.filter((i) => i.id !== issueId)); })
+      .catch(() => {});
+  };
 
   // 订阅/取消订阅(后端默认操作调用者本人、幂等);两项都常驻,不猜"我是否已订阅"。
   const toggleSubscribe = async (on: boolean) => {
@@ -389,6 +424,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
   const roots = comments.filter((c) => !c.parent_id);
   const repliesOf = (id: string) => comments.filter((c) => c.parent_id === id);
+  const childrenDone = children.filter((c) => c.status === "done").length;
 
   // 评论 emoji 反应条:已有反应按 emoji 分组显示计数(点=删自己那条)+ 选择器加新反应。
   const renderReactions = (c: IssueComment) => {
@@ -540,6 +576,29 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
             )}
           </div>
 
+          {children.length > 0 && (
+            <div className="loop-idp__section">
+              <div className="loop-detail__section-title">
+                {t("loop.subIssue.title")} ({childrenDone}/{children.length})
+              </div>
+              <Progress
+                percent={Math.round((childrenDone / children.length) * 100)}
+                style={{ marginBottom: 10 }}
+              />
+              <div className="loop-subissues">
+                {children.map((c) => (
+                  <div key={c.id} className="loop-subissue">
+                    <Tag color={ISSUE_STATUS_COLOR[c.status]} size="small">
+                      {t(`loop.status.${c.status}`)}
+                    </Tag>
+                    <span className="loop-subissue__id">{c.identifier}</span>
+                    <span className="loop-subissue__title">{c.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="loop-idp__section">
             <div className="loop-detail__section-title">
               {t("loop.detail.comments")} ({comments.length})
@@ -642,18 +701,58 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               <dd>
                 <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(); onChanged?.(); }} />
               </dd>
+              <dt>{t("loop.field.parent")}</dt>
+              <dd>
+                <Select
+                  value={issue.parent_issue_id ?? undefined}
+                  onChange={(v) => patch({ parent_issue_id: (v as string) || "" })}
+                  onDropdownVisibleChange={loadParentCands}
+                  placeholder={t("loop.field.noParent")}
+                  size="small"
+                  filter
+                  showClear
+                  style={{ width: "100%" }}
+                >
+                  {parentCands.map((i) => (
+                    <Select.Option key={i.id} value={i.id}>
+                      {i.identifier} {i.title}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </dd>
               <dt>{t("loop.field.startDate")}</dt>
               <dd>
-                <Text type="tertiary" style={{ fontSize: 12 }}>{fmt(issue.start_date)}</Text>
+                <DatePicker
+                  type="date"
+                  format="yyyy-MM-dd"
+                  value={issue.start_date ? issue.start_date.slice(0, 10) : undefined}
+                  onChange={(_, ds) => patch({ start_date: (ds as string) || "" })}
+                  size="small"
+                  style={{ width: "100%" }}
+                />
               </dd>
               <dt>{t("loop.field.dueDate")}</dt>
               <dd>
-                <Text
-                  type={isOverdue(issue.due_date, issue.status) ? "danger" : "tertiary"}
-                  style={{ fontSize: 12 }}
-                >
-                  {fmt(issue.due_date)}
-                </Text>
+                <DatePicker
+                  type="date"
+                  format="yyyy-MM-dd"
+                  value={issue.due_date ? issue.due_date.slice(0, 10) : undefined}
+                  onChange={(_, ds) => patch({ due_date: (ds as string) || "" })}
+                  size="small"
+                  style={{ width: "100%" }}
+                />
+              </dd>
+              <dt>{t("loop.field.stage")}</dt>
+              <dd>
+                <InputNumber
+                  value={issue.stage ?? undefined}
+                  // 仅在有效数字时提交:编辑中退格清空会以空值触发 onChange,
+                  // 忽略它可避免误发 stage=null(unstage)+ 竞态。清 stage 待 UI 重做。
+                  onChange={(v) => { if (typeof v === "number") patch({ stage: v }); }}
+                  min={1}
+                  size="small"
+                  style={{ width: "100%" }}
+                />
               </dd>
               <dt>{t("loop.field.creator")}</dt>
               <dd>

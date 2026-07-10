@@ -72,6 +72,13 @@ export async function getIssue(id: string): Promise<Issue> {
   return enrichIssue(issue);
 }
 
+// 子 issue 列表(GET /issues/:id/children):后端包裹 { issues }。子项含 status,
+// 进度(done/total)由页面本地算,不再调批量 /child-progress(那是列表/看板用的)。
+export async function listChildren(id: string): Promise<Issue[]> {
+  const data = await httpGet<{ issues?: Issue[] }>(`/issues/${id}/children`);
+  return enrich(data?.issues ?? []);
+}
+
 export function createIssue(req: CreateIssueReq): Promise<Issue> {
   return httpPost<Issue>("/issues", req);
 }

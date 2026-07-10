@@ -137,7 +137,10 @@
     "creator": "Creator",
     "labels": "Labels",
     "startDate": "Start date",
-    "dueDate": "Due date"
+    "dueDate": "Due date",
+    "parent": "Parent issue",
+    "noParent": "No parent",
+    "stage": "Stage"
   },
   "status": {
     "backlog": "Backlog",
@@ -254,6 +257,9 @@
     "unsubscribe": "Unsubscribe",
     "subscribed": "Subscribed",
     "unsubscribed": "Unsubscribed"
+  },
+  "subIssue": {
+    "title": "Sub-issues"
   },
   "reaction": {
     "add": "Add reaction"
