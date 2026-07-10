@@ -272,7 +272,8 @@
     "start": "开始",
     "apply": "应用",
     "handoffPlaceholder": "可选：给这次派单一段交接说明…",
-    "handoffUnsupported": "目标运行环境版本较旧，暂不支持交接说明"
+    "handoffUnsupported": "目标运行环境版本较旧，暂不支持交接说明",
+    "previewFailed": "无法预取派单信息，将按“会启动执行”处理，请确认"
   },
   "device": {
     "devices": "设备",
