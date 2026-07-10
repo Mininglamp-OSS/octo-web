@@ -1,7 +1,7 @@
 // @octo/loop — Agent API（真实 fleet 联调）
 import type { Agent, CreateAgentReq, UpdateAgentReq, ListParams, RuntimeDevice } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
-import { ensureDirectory, actorName } from "./directory";
+import { ensureDirectory, actorName, actorAvatar } from "./directory";
 
 // runtime 名字缓存（用于 agent.runtime_name 回填）
 let _runtimeMap: Map<string, string> | null = null;
@@ -21,6 +21,7 @@ async function enrich(agents: Agent[]): Promise<Agent[]> {
     ...a,
     runtime_name: rmap.get(a.runtime_id) ?? null,
     owner_name: actorName(dir, "member", a.owner_id),
+    owner_avatar: actorAvatar(dir, "member", a.owner_id),
   }));
 }
 

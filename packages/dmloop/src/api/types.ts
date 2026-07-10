@@ -10,6 +10,9 @@ export interface AssigneeCandidate {
   type: AssigneeType;
   name: string;
   avatar_color?: string;
+  // octo IM uid for member-type candidates (null for native members / agents /
+  // squads), used to render the octo avatar via WKApp.shared.avatarUser.
+  octo_uid?: string | null;
 }
 
 export interface Workspace {
@@ -81,6 +84,9 @@ export interface Issue {
   assignee_name?: string | null;
   project_name?: string | null;
   creator_name?: string | null;
+  // octo 头像 URL（member 型 actor，由 directory 回填；agent/squad/原生成员为空）
+  assignee_avatar?: string | null;
+  creator_avatar?: string | null;
 }
 
 export interface CreateIssueReq {
@@ -112,6 +118,7 @@ export interface IssueComment {
   content: string;
   created_at: string;
   author_name?: string | null;
+  author_avatar?: string | null;
 }
 
 export type TaskStatus =
@@ -265,6 +272,7 @@ export interface Agent {
   // 回填
   runtime_name?: string | null;
   owner_name?: string | null;
+  owner_avatar?: string | null;
 }
 export interface CreateAgentReq {
   name: string;
@@ -293,6 +301,7 @@ export interface SquadMember {
   member_id: string;
   role: string;
   member_name?: string | null;
+  member_avatar?: string | null;
 }
 export interface Squad {
   id: string;
@@ -310,6 +319,7 @@ export interface Squad {
   updated_at: string;
   leader_name?: string | null;
   creator_name?: string | null;
+  leader_avatar?: string | null;
 }
 export interface UpsertSquadReq {
   name: string;

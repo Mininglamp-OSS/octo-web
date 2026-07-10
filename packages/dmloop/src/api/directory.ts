@@ -9,6 +9,8 @@ import { WKApp, SpaceService } from "@octo/base";
 interface Directory {
   slug: string;
   memberName: Map<string, string>;
+  // member user_id → octo_uid (only for octo-bridged members), for avatar resolution.
+  memberOctoUid: Map<string, string>;
   agentName: Map<string, string>;
   squadName: Map<string, string>;
   projectName: Map<string, string>;
@@ -36,12 +38,14 @@ async function build(): Promise<Directory> {
     for (const s of roster) octoName.set(s.uid, s.name);
   }
   const memberName = new Map<string, string>();
+  const memberOctoUid = new Map<string, string>();
   const candidates: AssigneeCandidate[] = [];
   for (const m of members) {
     // octo 身份优先：octo_uid 命中 space 名册取 octo 名字，否则回退 multica 名。
     const name = (m.octo_uid && octoName.get(m.octo_uid)) || m.name;
     memberName.set(m.user_id, name);
-    candidates.push({ id: m.user_id, type: "member", name });
+    if (m.octo_uid) memberOctoUid.set(m.user_id, m.octo_uid);
+    candidates.push({ id: m.user_id, type: "member", name, octo_uid: m.octo_uid ?? null });
   }
   const agentName = new Map<string, string>();
   for (const a of agents) {
@@ -55,7 +59,7 @@ async function build(): Promise<Directory> {
   }
   const projectName = new Map<string, string>();
   for (const p of (projectsResp.projects ?? [])) projectName.set(p.id, p.title);
-  return { slug, memberName, agentName, squadName, projectName, candidates };
+  return { slug, memberName, memberOctoUid, agentName, squadName, projectName, candidates };
 }
 
 export async function ensureDirectory(force = false): Promise<Directory> {
@@ -84,6 +88,19 @@ export function actorName(
   if (type === "agent") return dir.agentName.get(id) ?? null;
   if (type === "squad") return dir.squadName.get(id) ?? null;
   return null;
+}
+
+// actorAvatar returns the octo avatar URL for a MEMBER actor (resolved by
+// octo_uid), or undefined for agents/squads and non-octo members — callers keep
+// their type icon / initial fallback in those cases.
+export function actorAvatar(
+  dir: Directory,
+  type: AssigneeType | null | undefined,
+  id: string | null | undefined,
+): string | undefined {
+  if (type !== "member" || !id) return undefined;
+  const uid = dir.memberOctoUid.get(id);
+  return uid ? WKApp.shared.avatarUser(uid) : undefined;
 }
 
 export async function listAssigneeCandidates(): Promise<AssigneeCandidate[]> {

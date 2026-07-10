@@ -231,8 +231,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const renderComment = (c: IssueComment, reply = false) => (
     <div key={c.id} className={`loop-comment ${reply ? "is-reply" : ""}`}>
       <div className="loop-comment__head">
-        <Avatar size="extra-extra-small" color="light-blue">
-          {c.author_name.slice(0, 1)}
+        <Avatar size="extra-extra-small" color="light-blue" src={c.author_avatar ?? undefined}>
+          {(c.author_name ?? "?").slice(0, 1)}
         </Avatar>
         <Text strong style={{ fontSize: 12 }}>
           {c.author_name}
