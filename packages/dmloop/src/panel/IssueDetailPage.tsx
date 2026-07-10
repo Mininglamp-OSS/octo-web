@@ -35,6 +35,7 @@ import type {
   Issue,
   IssueComment,
   IssueSubscriber,
+  TimelineEntry,
   TaskRun,
   IssueStatus,
   IssuePriority,
@@ -59,6 +60,11 @@ import {
   unsubscribeIssue,
   addCommentReaction,
   removeCommentReaction,
+  addIssueReaction,
+  removeIssueReaction,
+  resolveComment,
+  unresolveComment,
+  listTimeline,
 } from "../api/collabApi";
 import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
@@ -104,6 +110,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [comments, setComments] = useState<IssueComment[]>([]);
   const [subscribers, setSubscribers] = useState<IssueSubscriber[]>([]);
   const [children, setChildren] = useState<Issue[]>([]);
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [parentCands, setParentCands] = useState<Issue[]>([]); // 父 issue 选择器候选(懒加载)
   const [runs, setRuns] = useState<TaskRun[]>([]);
   const [activeRun, setActiveRun] = useState<TaskRun | null>(null);
@@ -135,6 +142,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     setChildren([]);
     setSubscribers([]);
     setParentCands([]);
+    setTimeline([]);
     Promise.all([getIssue(issueId), listComments(issueId), listRuns(issueId)])
       .then(([i, c, r]) => {
         if (!fresh()) return;
@@ -146,9 +154,10 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       })
       .catch(() => { if (fresh()) Toast.error(t("loop.detail.notFound")); })
       .finally(() => { if (fresh()) setLoading(false); });
-    // 订阅者、子 issue 旁路加载:失败不影响主体渲染;同样按 token 丢弃过期响应。
+    // 订阅者、子 issue、时间线旁路加载:失败不影响主体渲染;同样按 token 丢弃过期响应。
     listSubscribers(issueId).then((s) => { if (fresh()) setSubscribers(s); }).catch(() => {});
     listChildren(issueId).then((c) => { if (fresh()) setChildren(c); }).catch(() => {});
+    listTimeline(issueId).then((tl) => { if (fresh()) setTimeline(tl); }).catch(() => {});
   };
 
   useEffect(reload, [issueId]);
@@ -157,9 +166,13 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     if (!issue) return;
     try {
       const updated = await updateIssue(issue.id, p);
-      // PUT 响应不带 labels(仅 list/detail 端点回填);re-enrich 修回 assignee_name/project_name
-      // 等展示字段(按新值重算),labels 保留当前值,避免编辑后属性栏字段被清成空。
-      setIssue({ ...(await enrichIssue(updated)), labels: updated.labels ?? issue.labels });
+      // PUT 响应不带 labels/reactions(仅 list/detail 端点回填);re-enrich 修回 assignee_name/
+      // project_name 等展示字段(按新值重算),labels/reactions 保留当前值,避免编辑后被清空。
+      setIssue({
+        ...(await enrichIssue(updated)),
+        labels: updated.labels ?? issue.labels,
+        reactions: updated.reactions ?? issue.reactions,
+      });
       onChanged?.();
     } catch (e) {
       // 后端可能拒绝(如父 issue 环检测、非法日期):给出反馈,避免静默失败。
@@ -167,8 +180,16 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     }
   };
 
-  // 轻量刷新 issue(标签挂/摘后重取 detail,含最新 labels;不重置草稿、不整页 loading)。
-  const syncIssue = () => getIssue(issueId).then(setIssue).catch(() => {});
+  // 轻量刷新 issue(标签挂/摘、反应后重取 detail,含最新 labels/reactions;不重置草稿、不整页 loading)。
+  // token 由调用方在 mutation 前捕获传入:issueId 原地切换后到达的旧结果丢弃(同 reload)。
+  const syncIssue = (token: number) =>
+    getIssue(issueId).then((i) => { if (token === reqRef.current) setIssue(i); }).catch(() => {});
+
+  // 变更后重取评论并写状态;token 同样由调用方在 mutation 前捕获传入(避免切 issue 后旧评论写进新视图)。
+  const reloadComments = async (token: number) => {
+    const c = await listComments(issueId);
+    if (token === reqRef.current) setComments(c);
+  };
 
   // 父 issue 选择器:下拉展开时懒加载工作区 issue 作候选(排除自己;环检测由后端兜底)。
   const loadParentCands = (open: boolean) => {
@@ -183,9 +204,11 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
   // 订阅/取消订阅(后端默认操作调用者本人、幂等);两项都常驻,不猜"我是否已订阅"。
   const toggleSubscribe = async (on: boolean) => {
+    const token = reqRef.current;
     try {
       await (on ? subscribeIssue : unsubscribeIssue)(issueId);
-      setSubscribers(await listSubscribers(issueId));
+      const s = await listSubscribers(issueId);
+      if (token === reqRef.current) setSubscribers(s);
       Toast.success(t(on ? "loop.subscribe.subscribed" : "loop.subscribe.unsubscribed"));
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
@@ -194,9 +217,33 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
   // 评论 emoji 反应:选择器点 emoji=加,已有 chip 点击=删自己那条(后端按 actor+emoji 定位)。
   const reactComment = async (commentId: string, emoji: string, add: boolean) => {
+    const token = reqRef.current;
     try {
       await (add ? addCommentReaction : removeCommentReaction)(commentId, emoji);
-      setComments(await listComments(issueId));
+      await reloadComments(token);
+    } catch (e) {
+      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+    }
+  };
+
+  // issue 级 emoji 反应:同评论,读回走 getIssue 的 issue.reactions(syncIssue 重取详情)。
+  const reactIssue = async (emoji: string, add: boolean) => {
+    const token = reqRef.current;
+    try {
+      await (add ? addIssueReaction : removeIssueReaction)(issueId, emoji);
+      await syncIssue(token);
+    } catch (e) {
+      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+    }
+  };
+
+  // 评论 resolve/unresolve:后端「一线程至多一条 resolved」会清同线程兄弟,操作后重拉评论即可。
+  // (resolve 只发实时事件、不写 activity_log,故活动流无需刷新。)
+  const toggleResolve = async (commentId: string, resolved: boolean) => {
+    const token = reqRef.current;
+    try {
+      await (resolved ? unresolveComment : resolveComment)(commentId);
+      await reloadComments(token);
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
     }
@@ -205,13 +252,14 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const submitComment = async () => {
     const content = commentDraft.trim();
     if (!content) return;
+    const token = reqRef.current;
     const suppressIds = triggerAgents.filter((a) => suppressed.has(a.id)).map((a) => a.id);
     await addComment(issueId, content, replyTo, suppressIds);
     setCommentDraft("");
     setReplyTo(null);
     setTriggerAgents([]);
     setSuppressed(new Set());
-    setComments(await listComments(issueId));
+    await reloadComments(token);
     Toast.success(t("loop.toast.commentAdded"));
   };
 
@@ -234,14 +282,16 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     setSuppressed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const removeComment = async (id: string) => {
+    const token = reqRef.current;
     await deleteComment(id);
-    setComments(await listComments(issueId));
+    await reloadComments(token);
     Toast.success(t("loop.toast.commentDeleted"));
   };
 
   const saveEdit = async (id: string) => {
     const content = editDraft.trim();
     if (!content) return;
+    const token = reqRef.current;
     try {
       await updateComment(id, content);
     } catch (e) {
@@ -250,7 +300,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     }
     // 编辑已落库；重拉以回填 directory 名字/头像。重拉失败不应报“编辑失败”。
     setEditingId(null);
-    setComments(await listComments(issueId));
+    await reloadComments(token);
     Toast.success(t("loop.toast.commentUpdated"));
   };
 
@@ -425,15 +475,20 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const roots = comments.filter((c) => !c.parent_id);
   const repliesOf = (id: string) => comments.filter((c) => c.parent_id === id);
   const childrenDone = children.filter((c) => c.status === "done").length;
+  // 活动流只取 activity 类(评论已在评论区渲染,避免重复)。filter 返回新数组,reverse 不改原 state。倒序:最新在上。
+  const activities = timeline.filter((e) => e.type === "activity").reverse();
 
-  // 评论 emoji 反应条:已有反应按 emoji 分组显示计数(点=删自己那条)+ 选择器加新反应。
-  const renderReactions = (c: IssueComment) => {
+  // emoji 反应条(评论 + issue 通用):按 emoji 分组显示计数(点=删自己那条)+ 选择器加新反应。
+  const renderReactionBar = (
+    reactions: Array<{ emoji: string }> | null | undefined,
+    onToggle: (emoji: string, add: boolean) => void,
+  ) => {
     const groups = new Map<string, number>();
-    (c.reactions ?? []).forEach((rx) => groups.set(rx.emoji, (groups.get(rx.emoji) ?? 0) + 1));
+    (reactions ?? []).forEach((rx) => groups.set(rx.emoji, (groups.get(rx.emoji) ?? 0) + 1));
     return (
       <div className="loop-comment__reactions">
         {[...groups.entries()].map(([emoji, n]) => (
-          <button key={emoji} type="button" className="loop-reaction" onClick={() => reactComment(c.id, emoji, false)}>
+          <button key={emoji} type="button" className="loop-reaction" onClick={() => onToggle(emoji, false)}>
             <span>{emoji}</span>
             <b>{n}</b>
           </button>
@@ -445,7 +500,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           render={
             <div className="loop-reaction-picker">
               {REACTION_EMOJIS.map((e) => (
-                <button key={e} type="button" onClick={() => reactComment(c.id, e, true)}>{e}</button>
+                <button key={e} type="button" onClick={() => onToggle(e, true)}>{e}</button>
               ))}
             </div>
           }
@@ -468,6 +523,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           {c.author_name}
         </Text>
         <time>{fmt(c.created_at)}</time>
+        {c.resolved_at && <Tag size="small" color="green">{t("loop.comment.resolved")}</Tag>}
         <div className="loop-comment__actions">
           {!reply && (
             <Button
@@ -477,6 +533,16 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setEditingId(null); }}
             >
               {t("loop.comment.reply")}
+            </Button>
+          )}
+          {!reply && (
+            <Button
+              size="small"
+              theme="borderless"
+              icon={c.resolved_at ? <CircleSlash size={13} /> : <Check size={13} />}
+              onClick={() => toggleResolve(c.id, !!c.resolved_at)}
+            >
+              {t(c.resolved_at ? "loop.comment.unresolve" : "loop.comment.resolve")}
             </Button>
           )}
           <Button
@@ -505,7 +571,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       ) : (
         <div className="loop-comment__body"><LoopMarkdown content={c.content} /></div>
       )}
-      {renderReactions(c)}
+      {renderReactionBar(c.reactions, (emoji, add) => reactComment(c.id, emoji, add))}
       {!reply && repliesOf(c.id).map((r) => renderComment(r, true))}
       {!reply && replyTo === c.id && (
         <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
@@ -547,6 +613,9 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
             onBlur={() => titleDraft.trim() && titleDraft !== issue.title && patch({ title: titleDraft.trim() })}
             style={{ fontWeight: 600, fontSize: 20 }}
           />
+
+          {/* issue 级 emoji 反应条 */}
+          {renderReactionBar(issue.reactions, reactIssue)}
 
           <div className="loop-idp__section">
             <div className="loop-detail__section-title loop-idp__desc-title">
@@ -593,6 +662,29 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                     </Tag>
                     <span className="loop-subissue__id">{c.identifier}</span>
                     <span className="loop-subissue__title">{c.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activities.length > 0 && (
+            <div className="loop-idp__section">
+              <div className="loop-detail__section-title">
+                {t("loop.activity.title")} ({activities.length})
+              </div>
+              <div className="loop-activities">
+                {activities.map((a) => (
+                  <div key={a.id} className="loop-activity">
+                    <Avatar size="extra-extra-small" color="light-blue" src={a.actor_avatar ?? undefined}>
+                      {(a.actor_name ?? "?").slice(0, 1)}
+                    </Avatar>
+                    <Text style={{ fontSize: 12 }}>
+                      <strong>{a.actor_name ?? a.actor_id}</strong>{" "}
+                      {/* ponytail: 原样展示 action(如 status_changed);细化文案映射留给 UI 重做 */}
+                      <Text type="tertiary">{(a.action ?? "").replace(/_/g, " ")}</Text>
+                    </Text>
+                    <time>{fmt(a.created_at)}</time>
                   </div>
                 ))}
               </div>
@@ -699,7 +791,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               </dd>
               <dt>{t("loop.field.labels")}</dt>
               <dd>
-                <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(); onChanged?.(); }} />
+                <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }} />
               </dd>
               <dt>{t("loop.field.parent")}</dt>
               <dd>
