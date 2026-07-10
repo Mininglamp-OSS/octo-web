@@ -13,7 +13,7 @@ import { Search, Plus, LayoutGrid, List as ListIcon, ClipboardList, ArrowUp, Arr
 import { useI18n, WKApp } from "@octo/base";
 import type { Issue, IssueStatus, IssuePriority, IssueSortField, IssueDateField } from "../api/types";
 import { ISSUE_SORT_FIELDS, ISSUE_DATE_FIELDS } from "../api/types";
-import { listIssues } from "../api/issueApi";
+import { listIssues, searchIssues } from "../api/issueApi";
 import { listProjectOptions } from "../api/directory";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import { ISSUE_STATUS_ORDER, PRIORITY_ORDER } from "../ui/meta";
@@ -63,28 +63,32 @@ export default function IssuePage() {
     const my = ++seq.current;
     setLoading(true);
     const paged = view === "list";
+    const kw = f.keyword.trim();
     // 时间范围:三参数须同时给且 start<end。onChange 已把 dateRange 归一为 undefined|[起,止]。
     // 止端 +1 日历日 → 半开区间,既含止日当天、又保证 start<end(即使起止同一天);setDate 处理 DST。
     const dr = f.dateRange;
     const endExclusive = dr && new Date(dr[1]);
     if (endExclusive) endExclusive.setDate(endExclusive.getDate() + 1);
-    listIssues({
-      keyword: f.keyword,
-      status: f.status,
-      priority: f.priority,
-      assignee_id: f.assignee,
-      creator_id: f.creator,
-      project_id: f.project,
-      date_field: dr ? f.dateField : undefined,
-      date_start: dr ? dr[0].toISOString() : undefined,
-      date_end: endExclusive ? endExclusive.toISOString() : undefined,
-      // 排序仅用于列表视图;看板按 status 分列 + 100 上限,叠加全局排序会把某状态整列截没,故看板固定后端默认(position)。
-      sort_by: paged ? f.sortBy : undefined,
-      sort_direction: paged ? f.sortDir : undefined,
-      // ponytail: 看板不分页——按 status 分列需全量，取后端上限 100；超量请用筛选或列表视图。
-      limit: paged ? PAGE_SIZE : 100,
-      offset: paged ? page * PAGE_SIZE : 0,
-    })
+    // 有关键词 → 走全文搜索端点(独立语义:后端不吃其它筛选/排序、上限 50);否则常规筛选列表。
+    const req = kw
+      ? searchIssues(kw, { limit: paged ? PAGE_SIZE : 50, offset: paged ? page * PAGE_SIZE : 0 })
+      : listIssues({
+          status: f.status,
+          priority: f.priority,
+          assignee_id: f.assignee,
+          creator_id: f.creator,
+          project_id: f.project,
+          date_field: dr ? f.dateField : undefined,
+          date_start: dr ? dr[0].toISOString() : undefined,
+          date_end: endExclusive ? endExclusive.toISOString() : undefined,
+          // 排序仅用于列表视图;看板按 status 分列 + 100 上限,叠加全局排序会把某状态整列截没,故看板固定后端默认(position)。
+          sort_by: paged ? f.sortBy : undefined,
+          sort_direction: paged ? f.sortDir : undefined,
+          // ponytail: 看板不分页——按 status 分列需全量，取后端上限 100；超量请用筛选或列表视图。
+          limit: paged ? PAGE_SIZE : 100,
+          offset: paged ? page * PAGE_SIZE : 0,
+        });
+    req
       .then(({ issues, total }) => {
         if (my !== seq.current) return; // 有更新的请求在途，丢弃本次过期响应
         // 删除/改状态使匹配数下降时，当前 page 可能越界（offset≥total）→ 钳到最后一页并重取。
