@@ -1,4 +1,4 @@
-// @octo/loop — Agent API（真实 fleet 联调）
+// @octo/loop — Agent API（后端契约联调）
 import type { Agent, CreateAgentReq, UpdateAgentReq, ListParams, RuntimeDevice } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
 import { ensureDirectory, actorName, actorAvatar } from "./directory";
@@ -46,7 +46,7 @@ export function updateAgent(id: string, req: UpdateAgentReq): Promise<Agent> {
   return httpPut<Agent>(`/agents/${id}`, req);
 }
 
-// fleet 不支持 DELETE /agents/:id（405）；改用归档。
+// 后端不支持 DELETE /agents/:id（405）；改用归档。
 export function archiveAgent(id: string): Promise<void> {
   return httpPost<void>(`/agents/${id}/archive`, {});
 }

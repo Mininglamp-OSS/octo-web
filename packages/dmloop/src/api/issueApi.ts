@@ -1,4 +1,4 @@
-// @octo/loop — Issue API（真实 fleet 联调）
+// @octo/loop — Issue API（后端契约联调）
 import type {
   Issue,
   IssueComment,

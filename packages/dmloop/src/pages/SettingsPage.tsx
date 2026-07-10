@@ -15,7 +15,7 @@ const { Title, Text } = Typography;
 const ROLES = ["admin", "member"];
 
 /**
- * Loop 设置页（对标 multica）：通用（General，无 Danger Zone）+ 成员管理（Members）。
+ * Loop 设置页（对齐产品设计）：通用（General，无 Danger Zone）+ 成员管理（Members）。
  */
 export default function SettingsPage({
   workspace,
@@ -190,7 +190,7 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
     });
   };
 
-  // octo 身份优先：按 octo_uid 命中 space 名册取名字，否则回退 multica 侧 name/email。
+  // octo 身份优先：按 octo_uid 命中 space 名册取名字，否则回退后端侧 name/email。
   const displayName = (m: WorkspaceMember): string =>
     (m.octo_uid && rosterByUid[m.octo_uid]?.name) || m.name || m.email || m.octo_uid || m.user_id;
   const avatarSrc = (m: WorkspaceMember): string | undefined =>

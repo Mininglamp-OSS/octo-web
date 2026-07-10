@@ -1,4 +1,4 @@
-// @octo/loop — Squad API（真实 fleet 联调）
+// @octo/loop — Squad API（后端契约联调）
 import type { Squad, SquadMember, UpsertSquadReq, ListParams } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete, httpPatch } from "./http";
 import { ensureDirectory, actorName, actorAvatar } from "./directory";
@@ -36,7 +36,7 @@ export async function getSquad(id: string): Promise<Squad> {
 }
 
 export function createSquad(req: UpsertSquadReq): Promise<Squad> {
-  // fleet 要求 leader_id；无则由页面校验。
+  // 后端要求 leader_id；无则由页面校验。
   return httpPost<Squad>("/squads", req);
 }
 

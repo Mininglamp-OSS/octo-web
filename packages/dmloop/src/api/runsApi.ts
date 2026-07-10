@@ -1,4 +1,4 @@
-// @octo/loop — 执行记录 API（真实 fleet 联调）
+// @octo/loop — 执行记录 API（后端契约联调）
 import type { TaskRun, RunMessage } from "./types";
 import { httpGet, httpPost } from "./http";
 import { ensureDirectory } from "./directory";
