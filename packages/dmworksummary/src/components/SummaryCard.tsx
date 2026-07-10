@@ -44,9 +44,9 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, onClick, onDelete, onRe
                 <OverflowTooltip className="summary-card-title" title={task.title || task.task_no}>
                     {task.title || task.task_no}
                 </OverflowTooltip>
-                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <div className="summary-card-header-badges">
                     {isAgentGenerated && (
-                        <Tag size="small" color="violet" style={{ marginRight: 4 }}>
+                        <Tag size="small" color="violet">
                             🤖 {t("summary.summaryCard.aiGenerated")}
                         </Tag>
                     )}

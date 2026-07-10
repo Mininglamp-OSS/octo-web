@@ -4,7 +4,7 @@ import { IconPlus, IconClock, IconChevronDown } from '@douyinfe/semi-icons';
 import { WKApp, I18nContext } from '@octo/base';
 import type { TopicTemplate, ChatCandidate, ScheduleConfig, ChatMessage } from '../types/summary';
 import { SourceType, SummaryMode } from '../types/summary';
-import { getSourceType } from '../utils/channelType';
+import { getSourceType, getOriginChannelType } from '../utils/channelType';
 import { channelToChatCandidate } from '../utils/channelConvert';
 import { resolveTemplate, computeTemplateSelection, type ResolvableTemplate } from '../utils/templateResolver';
 import { describeSchedule, scheduleToParams, genSessionId } from '../utils/summaryHelpers';
@@ -92,7 +92,6 @@ export default class ChatSummaryNewModal extends Component<
                 submitting: false,
                 agentSubmitting: false,
                 savingSummary: false,
-            savingSummary: false,
                 templatePlaceholderRange: null,
                 scheduleConfig: null,
                 showScheduleConfig: false,
@@ -216,6 +215,7 @@ export default class ChatSummaryNewModal extends Component<
                 }),
             );
             onSubmit(res.task_id);
+            return true;
         } catch (err: unknown) {
             const msg = err instanceof Error
                 ? err.message
@@ -286,21 +286,24 @@ export default class ChatSummaryNewModal extends Component<
         }));
     };
 
-    /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。 */
-    handleSaveAsSummary = async (title: string) => {
+    /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。返回成功/失败。 */
+    handleSaveAsSummary = async (title: string): Promise<boolean> => {
         const { sessionId, selectedChats } = this.state;
         const { channel, onSubmit } = this.props;
         const { t } = this.context;
         
         if (!sessionId) {
             Toast.warning(t('summary.create.noOutputToSave'));
-            return;
+            return false;
         }
 
         this.setState({ savingSummary: true });
         try {
+            const originChannelType = getOriginChannelType(channel);
             const sourceType = getSourceType(channel);
-            if (sourceType === null) return;
+            if (sourceType === null) {
+                throw new Error(`不支持的频道类型: ${channel.channelType}`);
+            }
 
             const sources = selectedChats.length > 0
                 ? selectedChats.map((c) => ({
@@ -320,7 +323,7 @@ export default class ChatSummaryNewModal extends Component<
                 session_id: sessionId,
                 title,
                 origin_channel_id: channel.channelID,
-                origin_channel_type: sourceType,
+                origin_channel_type: originChannelType,
                 sources,
             });
 
@@ -333,15 +336,22 @@ export default class ChatSummaryNewModal extends Component<
                 }),
             );
             onSubmit(res.task_id);
-        } catch (err: any) {
-            const code = err?.response?.data?.code;
-            // 40004: session 无产出
-            if (code === 40004) {
-                Toast.error(t('summary.create.noOutputToSave'));
-            } else {
-                const msg = err instanceof Error ? err.message : t('summary.common.createFailedRetry');
-                Toast.error(msg);
+            return true;
+        } catch (err: unknown) {
+            // 类型守卫:axios 错误
+            if (err && typeof err === 'object' && 'response' in err) {
+                const axiosErr = err as { response?: { data?: { code?: number } } };
+                const code = axiosErr.response?.data?.code;
+                // 40004: session 无产出
+                if (code === 40004) {
+                    Toast.error(t('summary.create.noOutputToSave'));
+                    return false;
+                }
             }
+            // 其他错误
+            const msg = err instanceof Error ? err.message : t('summary.common.createFailedRetry');
+            Toast.error(msg);
+            return false;
         } finally {
             this.setState({ savingSummary: false });
         }

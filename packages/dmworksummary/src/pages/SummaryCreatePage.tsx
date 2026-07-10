@@ -303,24 +303,26 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }));
     };
 
-    /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。 */
-    handleSaveAsSummary = async (title: string) => {
+    /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。返回成功/失败。 */
+    handleSaveAsSummary = async (title: string): Promise<boolean> => {
         const { sessionId, selectedChats, selectedMembers } = this.state;
         const { t } = this.context;
         
         if (!sessionId) {
             Toast.warning(t('summary.create.noOutputToSave'));
-            return;
+            return false;
         }
 
         this.setState({ savingSummary: true });
         try {
             const channel = WKApp.shared.currentChannel;
+            const originChannelType = getOriginChannelType(channel);
+            
             const params: api.CreateAgentSummaryParams = {
                 session_id: sessionId,
                 title,
                 origin_channel_id: channel.channelID,
-                origin_channel_type: channel.channelType,
+                origin_channel_type: originChannelType,
             };
 
             if (selectedChats.length > 0) {
@@ -353,14 +355,22 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             WKApp.routeRight.popToRoot();
             WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
             this.props.onCreated?.();
-        } catch (err: any) {
-            const code = err?.response?.data?.code;
-            // 40004: session 无产出
-            if (code === 40004) {
-                Toast.error(t('summary.create.noOutputToSave'));
-            } else {
-                Toast.error(err.message || t('summary.common.createFailed'));
+            return true;
+        } catch (err: unknown) {
+            // 类型守卫:axios 错误
+            if (err && typeof err === 'object' && 'response' in err) {
+                const axiosErr = err as { response?: { data?: { code?: number } } };
+                const code = axiosErr.response?.data?.code;
+                // 40004: session 无产出
+                if (code === 40004) {
+                    Toast.error(t('summary.create.noOutputToSave'));
+                    return false;
+                }
             }
+            // 其他错误
+            const message = err instanceof Error ? err.message : t('summary.common.createFailedRetry');
+            Toast.error(message);
+            return false;
         } finally {
             this.setState({ savingSummary: false });
         }

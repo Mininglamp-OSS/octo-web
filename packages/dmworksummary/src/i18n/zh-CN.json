@@ -160,7 +160,7 @@
     "scheduleBindFailed": "总结已创建，但定时绑定失败，已撤销该定时，请到详情页重试",
     "scheduleBindFailedOrphan": "总结已创建，但定时绑定失败且撤销未成功，可能残留未绑定定时，请到定时列表检查清理",
     "archivedNotice": "默认总结活跃子区，不含已归档子区",
-    "saveAsS ummary": "保存为总结",
+    "saveAsSummary": "保存为总结",
     "saveDialogTitle": "保存为总结",
     "titlePlaceholder": "为这份总结起个标题",
     "titleRequired": "标题不能为空",

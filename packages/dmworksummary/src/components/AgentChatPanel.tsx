@@ -10,8 +10,8 @@ interface AgentChatPanelProps {
     sending: boolean;
     /** 可选开场气泡（assistant 视角），无消息时展示在列表顶部 */
     welcome?: string;
-    /** 可选：「保存为总结」回调 */
-    onSaveAsSummary?: (title: string) => void;
+    /** 可选：「保存为总结」回调,返回 Promise 表示成功/失败 */
+    onSaveAsSummary?: (title: string) => Promise<boolean>;
     /** 保存中状态 */
     savingSummary?: boolean;
 }
@@ -87,16 +87,22 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         this.setState({ showSaveDialog: true, summaryTitle: '' });
     };
 
-    // 提交保存
-    private handleSaveConfirm = () => {
+    // 提交保存 - 异步等待结果,成功才关闭对话框
+    private handleSaveConfirm = async () => {
         const { t } = this.context;
         const title = this.state.summaryTitle.trim();
         if (!title) {
             Toast.warning(t('summary.create.titleRequired'));
             return;
         }
-        this.props.onSaveAsSummary?.(title);
-        this.setState({ showSaveDialog: false, summaryTitle: '' });
+        if (!this.props.onSaveAsSummary) return;
+        
+        const success = await this.props.onSaveAsSummary(title);
+        if (success) {
+            // 成功才关闭对话框并清空标题
+            this.setState({ showSaveDialog: false, summaryTitle: '' });
+        }
+        // 失败时保留对话框和已填标题,方便用户重试
     };
 
     render() {
