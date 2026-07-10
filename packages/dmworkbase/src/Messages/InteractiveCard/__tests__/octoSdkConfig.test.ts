@@ -1,21 +1,23 @@
 // @vitest-environment jsdom
 //
-// S3 registry + HostConfig：动作层防御纵深（移除 Execute/ShowCard/ToggleVisibility），
+// S3 registry + HostConfig：动作层防御纵深（移除 Execute/ShowCard，保留本地安全动作），
 // HostConfig 颜色经可注入解析器映射自 --wk-* token。
 
 import { describe, expect, it, vi } from "vitest";
+import { FontType } from "adaptivecards";
 import { createOctoSerializationContext } from "../sdk/octoSerialization";
 import { buildOctoHostConfig } from "../sdk/octoHostConfig";
 
 describe("createOctoSerializationContext — 动作层防御纵深", () => {
-  it("只保留 Action.OpenUrl + Action.Submit，移除有副作用的动作", () => {
+  it("保留 octo 动作，移除 Execute/ShowCard", () => {
     const ctx = createOctoSerializationContext();
     const reg = ctx.actionRegistry;
     expect(reg.findByName("Action.OpenUrl")).toBeDefined();
     expect(reg.findByName("Action.Submit")).toBeDefined();
+    expect(reg.findByName("Action.ToggleVisibility")).toBeDefined();
+    expect(reg.findByName("Action.CopyToClipboard")).toBeDefined();
     expect(reg.findByName("Action.Execute")).toBeUndefined();
     expect(reg.findByName("Action.ShowCard")).toBeUndefined();
-    expect(reg.findByName("Action.ToggleVisibility")).toBeUndefined();
   });
 });
 
@@ -101,19 +103,24 @@ describe("buildOctoHostConfig — --wk-* 颜色映射", () => {
     expect(accent.backgroundColor).toBe("rgb(230, 240, 255)");
   });
 
+  it("monospace 字体映射到项目 token，供工具参数等宽展示", () => {
+    const hc = buildOctoHostConfig(buildStubResolver());
+    const monospace = hc.getFontTypeDefinition(FontType.Monospace);
+    expect(monospace.fontFamily).toBe("var(--wk-font-mono)");
+    expect(monospace.fontSizes.default).toBe(13);
+    expect(monospace.fontWeights.default).toBe(400);
+  });
+
   it.each([
     { name: "good", bg: "rgb(230, 250, 230)", fgToken: "rgb(0, 150, 0)" },
     { name: "warning", bg: "rgb(255, 250, 230)", fgToken: "rgb(200, 150, 0)" },
     { name: "attention", bg: "rgb(255, 235, 235)", fgToken: "rgb(200, 0, 0)" },
-  ])(
-    "$name 容器有语义填色背景（进度条分段可见）",
-    ({ name, bg, fgToken }) => {
-      const hc = buildOctoHostConfig(buildStubResolver());
-      const style = hc.containerStyles.getStyleByName(name);
-      expect(style.backgroundColor).toBe(bg);
-      // 对应语义前景色也映射到位，使 TextBlock color=Good/Warning/Attention 生效。
-      const fgKey = name as "good" | "warning" | "attention";
-      expect(style.foregroundColors[fgKey].default).toBe(fgToken);
-    }
-  );
+  ])("$name 容器有语义填色背景（进度条分段可见）", ({ name, bg, fgToken }) => {
+    const hc = buildOctoHostConfig(buildStubResolver());
+    const style = hc.containerStyles.getStyleByName(name);
+    expect(style.backgroundColor).toBe(bg);
+    // 对应语义前景色也映射到位，使 TextBlock color=Good/Warning/Attention 生效。
+    const fgKey = name as "good" | "warning" | "attention";
+    expect(style.foregroundColors[fgKey].default).toBe(fgToken);
+  });
 });

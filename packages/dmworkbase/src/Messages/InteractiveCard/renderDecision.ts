@@ -16,7 +16,7 @@ import { validateCardForOcto } from "./validateCardForOcto";
  * 说明：SDK 默认逐元素 fallback，不满足 octo 整卡降级契约，故渲染前先走 validate；
  * `kind:"card"` 只携带**已通过校验**的 card 与两个能力位，具体 DOM 渲染由 Cell 用 SDK 完成。
  *   - allowInteractive：profile 派生，是否**渲染** Input.* / Submit；
- *   - interactive：sender 派生，是否可**提交**（仅 bot 卡开放交互；webhook 卡展示-only）。
+ *   - interactive：sender 派生，是否可**提交**（仅原始 bot 卡开放交互；webhook/转发卡展示-only）。
  */
 export type CardDecision =
   | { kind: "plain" }
@@ -30,6 +30,7 @@ export type CardDecision =
 
 export interface DecideCardInput {
   fromUID: string | undefined;
+  forwardedFromUID?: string;
   profile: string;
   cardVersion: string;
   card: Record<string, unknown>;
@@ -37,9 +38,18 @@ export interface DecideCardInput {
 
 export function decideCardBody(input: DecideCardInput): CardDecision {
   // 1. sender trust gate：仅 webhook / bot 可信；其余 fail-closed 渲 plain。
-  const trust = classifyCardSender(input.fromUID);
+  // 逐条转发后 message.fromUID 会变成普通用户；此时仅当 payload 携带的原始
+  // forwarded_from_uid 仍能判为可信发送者，才允许只读展示结构卡。
+  const directTrust = classifyCardSender(input.fromUID);
+  let trust = directTrust;
+  let isForwardedTrustedCard = false;
   if (!isTrustedCardSender(trust)) {
-    return { kind: "plain" };
+    const forwardedTrust = classifyCardSender(input.forwardedFromUID);
+    if (!isTrustedCardSender(forwardedTrust)) {
+      return { kind: "plain" };
+    }
+    trust = forwardedTrust;
+    isForwardedTrustedCard = true;
   }
 
   // 2. profile / card_version 协商：不支持 → plain + 更新提示。
@@ -57,7 +67,6 @@ export function decideCardBody(input: DecideCardInput): CardDecision {
     kind: "card",
     card: input.card,
     allowInteractive,
-    interactive: trust === "bot",
+    interactive: !isForwardedTrustedCard && trust === "bot",
   };
 }
-

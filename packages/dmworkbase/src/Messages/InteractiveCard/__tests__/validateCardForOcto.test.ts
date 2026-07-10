@@ -13,7 +13,9 @@ const V2 = { allowInteractive: true } as const;
 
 describe("validateCardForOcto — 合法（ok:true）", () => {
   it("合法 v1 卡（TextBlock）", () => {
-    expect(validateCardForOcto(AC([{ type: "TextBlock", text: "x" }])).ok).toBe(true);
+    expect(validateCardForOcto(AC([{ type: "TextBlock", text: "x" }])).ok).toBe(
+      true
+    );
   });
   it("空卡（无 body）", () => {
     expect(validateCardForOcto({ type: "AdaptiveCard" }).ok).toBe(true);
@@ -92,14 +94,112 @@ describe("validateCardForOcto — 合法（ok:true）", () => {
   it("Action.OpenUrl 安全 url + selectAction OpenUrl", () => {
     expect(
       validateCardForOcto(
+        AC(
+          [
+            {
+              type: "Container",
+              items: [],
+              selectAction: { type: "Action.OpenUrl", url: "https://e.com" },
+            },
+          ],
+          {
+            actions: [
+              { type: "Action.OpenUrl", url: "https://e.com", title: "x" },
+            ],
+          }
+        )
+      ).ok
+    ).toBe(true);
+  });
+  it("Action.ToggleVisibility 支持前向引用与 target object", () => {
+    expect(
+      validateCardForOcto(
         AC([
           {
-            type: "Container",
-            items: [],
-            selectAction: { type: "Action.OpenUrl", url: "https://e.com" },
+            type: "ActionSet",
+            actions: [
+              {
+                type: "Action.ToggleVisibility",
+                title: "展开",
+                targetElements: [
+                  "detail",
+                  { elementId: "cell-detail", isVisible: true },
+                ],
+              },
+            ],
           },
-        ],
-        { actions: [{ type: "Action.OpenUrl", url: "https://e.com", title: "x" }] })
+          {
+            type: "Container",
+            id: "detail",
+            isVisible: false,
+            items: [{ type: "TextBlock", text: "隐藏详情" }],
+          },
+          {
+            type: "Table",
+            columns: [{ width: 1 }],
+            rows: [
+              {
+                type: "TableRow",
+                id: "row-detail",
+                cells: [
+                  {
+                    type: "TableCell",
+                    id: "cell-detail",
+                    items: [{ type: "TextBlock", text: "cell" }],
+                  },
+                ],
+              },
+            ],
+          },
+        ])
+      ).ok
+    ).toBe(true);
+  });
+  it("Action.ToggleVisibility 可引用 Column 与 ImageSet 子 Image id", () => {
+    expect(
+      validateCardForOcto(
+        AC([
+          {
+            type: "ActionSet",
+            actions: [
+              {
+                type: "Action.ToggleVisibility",
+                title: "切换",
+                targetElements: ["col-a", "image-a"],
+              },
+            ],
+          },
+          {
+            type: "ColumnSet",
+            columns: [
+              {
+                id: "col-a",
+                items: [{ type: "TextBlock", text: "column" }],
+              },
+            ],
+          },
+          {
+            type: "ImageSet",
+            images: [
+              { type: "Image", id: "image-a", url: "https://cdn/a.png" },
+            ],
+          },
+        ])
+      ).ok
+    ).toBe(true);
+  });
+  it("Action.CopyToClipboard 按 UTF-8 字节限制 text（中文 4095 bytes 合法）", () => {
+    expect(
+      validateCardForOcto(
+        AC([{ type: "TextBlock", text: "x" }], {
+          actions: [
+            {
+              type: "Action.CopyToClipboard",
+              title: "复制",
+              text: "中".repeat(1365),
+            },
+          ],
+        })
       ).ok
     ).toBe(true);
   });
@@ -153,8 +253,10 @@ describe("validateCardForOcto — 合法（ok:true）", () => {
 });
 
 describe("validateCardForOcto — 整卡降级（ok:false）", () => {
-  const bad = (card: Record<string, unknown>, opts?: { allowInteractive: boolean }) =>
-    expect(validateCardForOcto(card, opts).ok).toBe(false);
+  const bad = (
+    card: Record<string, unknown>,
+    opts?: { allowInteractive: boolean }
+  ) => expect(validateCardForOcto(card, opts).ok).toBe(false);
 
   it("非 AdaptiveCard 根", () => bad({ type: "Nope" }));
   it("未知元素", () => bad(AC([{ type: "Media" }])));
@@ -185,15 +287,49 @@ describe("validateCardForOcto — 整卡降级（ok:false）", () => {
   it("TextRun 不能作为 body 元素单独出现", () =>
     bad(AC([{ type: "TextRun", text: "x" }])));
   it("ImageSet.images 只能包含 Image 元素", () =>
-    bad(AC([{ type: "ImageSet", images: [{ type: "TextBlock", text: "x" }] }])));
+    bad(
+      AC([{ type: "ImageSet", images: [{ type: "TextBlock", text: "x" }] }])
+    ));
   it("TableCell.items 非数组", () =>
-    bad(AC([{ type: "Table", rows: [{ cells: [{ items: "bad" }] }] }])));
+    bad(
+      AC([
+        {
+          type: "Table",
+          columns: [{ width: 1 }],
+          rows: [{ cells: [{ items: "bad" }] }],
+        },
+      ])
+    ));
+  it("Table 缺 columns 或 columns 为空", () => {
+    bad(AC([{ type: "Table", rows: [{ cells: [] }] }]));
+    bad(AC([{ type: "Table", columns: [], rows: [{ cells: [] }] }]));
+  });
+  it("Table row cells 数量必须和 columns 对齐", () =>
+    bad(
+      AC([
+        {
+          type: "Table",
+          columns: [{ width: 1 }, { width: 1 }],
+          rows: [
+            {
+              type: "TableRow",
+              cells: [
+                {
+                  type: "TableCell",
+                  items: [{ type: "TextBlock", text: "only one cell" }],
+                },
+              ],
+            },
+          ],
+        },
+      ])
+    ));
   it("元素无 type", () => bad(AC([{ text: "no type" }])));
-  it("Input.* 在 v1（禁交互）", () => bad(AC([{ type: "Input.Text", id: "t" }])));
+  it("Input.* 在 v1（禁交互）", () =>
+    bad(AC([{ type: "Input.Text", id: "t" }])));
   it("Input.Number 在 v1（禁交互）", () =>
     bad(AC([{ type: "Input.Number", id: "n" }])));
-  it("Input.Date 缺 id（v2，D1）", () =>
-    bad(AC([{ type: "Input.Date" }]), V2));
+  it("Input.Date 缺 id（v2，D1）", () => bad(AC([{ type: "Input.Date" }]), V2));
   it("输入 inlineAction 为 Action.Execute（v2）→ 整卡降级", () =>
     bad(
       AC([
@@ -217,39 +353,153 @@ describe("validateCardForOcto — 整卡降级（ok:false）", () => {
       V2
     ));
   it("Action.Submit 在 v1", () =>
-    bad(AC([{ type: "TextBlock", text: "x" }], { actions: [{ type: "Action.Submit", id: "s" }] })));
+    bad(
+      AC([{ type: "TextBlock", text: "x" }], {
+        actions: [{ type: "Action.Submit", id: "s" }],
+      })
+    ));
   it("Action.Execute 在 v2（永不支持）", () =>
-    bad(AC([{ type: "TextBlock", text: "x" }], { actions: [{ type: "Action.Execute", id: "e" }] }), V2));
+    bad(
+      AC([{ type: "TextBlock", text: "x" }], {
+        actions: [{ type: "Action.Execute", id: "e" }],
+      }),
+      V2
+    ));
   it("body 非数组", () => bad({ type: "AdaptiveCard", body: "bad" }));
-  it("Container.items 非数组", () => bad(AC([{ type: "Container", items: "bad" }])));
-  it("ColumnSet.columns 非数组", () => bad(AC([{ type: "ColumnSet", columns: "bad" }])));
+  it("Container.items 非数组", () =>
+    bad(AC([{ type: "Container", items: "bad" }])));
+  it("ColumnSet.columns 非数组", () =>
+    bad(AC([{ type: "ColumnSet", columns: "bad" }])));
   it("actions 非数组", () =>
     bad(AC([{ type: "TextBlock", text: "x" }], { actions: { foo: 1 } })));
-  it("FactSet.facts 非数组", () => bad(AC([{ type: "FactSet", facts: "bad" }])));
+  it("FactSet.facts 非数组", () =>
+    bad(AC([{ type: "FactSet", facts: "bad" }])));
   it("ChoiceSet.choices 非数组（v2）", () =>
     bad(AC([{ type: "Input.ChoiceSet", id: "c", choices: "bad" }]), V2));
   it("Column 显式非 Column type", () =>
-    bad(AC([{ type: "ColumnSet", columns: [{ type: "TextBlock", text: "x" }] }])));
+    bad(
+      AC([{ type: "ColumnSet", columns: [{ type: "TextBlock", text: "x" }] }])
+    ));
   it("Action.OpenUrl javascript: url", () =>
-    bad(AC([{ type: "TextBlock", text: "x" }], {
-      actions: [{ type: "Action.OpenUrl", url: "javascript:alert(1)", title: "x" }],
-    })));
+    bad(
+      AC([{ type: "TextBlock", text: "x" }], {
+        actions: [
+          { type: "Action.OpenUrl", url: "javascript:alert(1)", title: "x" },
+        ],
+      })
+    ));
+  it("Action.ToggleVisibility targetElements 缺失/空数组", () =>
+    bad(
+      AC([{ type: "TextBlock", text: "x" }], {
+        actions: [
+          {
+            type: "Action.ToggleVisibility",
+            title: "展开",
+            targetElements: [],
+          },
+        ],
+      })
+    ));
+  it("Action.ToggleVisibility 引用不存在的 target id", () =>
+    bad(
+      AC([{ type: "TextBlock", text: "x" }], {
+        actions: [
+          {
+            type: "Action.ToggleVisibility",
+            title: "展开",
+            targetElements: ["missing"],
+          },
+        ],
+      })
+    ));
+  it("Action.ToggleVisibility target object 结构非法", () =>
+    bad(
+      AC([{ type: "TextBlock", id: "x", text: "x" }], {
+        actions: [
+          {
+            type: "Action.ToggleVisibility",
+            title: "展开",
+            targetElements: [{ elementId: "x", isVisible: "yes" }],
+          },
+        ],
+      })
+    ));
+  it("元素 id 为空或重复", () => {
+    bad(AC([{ type: "TextBlock", id: "", text: "x" }]));
+    bad(
+      AC([
+        { type: "TextBlock", id: "dup", text: "x" },
+        { type: "Container", id: "dup", items: [] },
+      ])
+    );
+  });
+  it("isVisible 只能是 boolean", () =>
+    bad(AC([{ type: "TextBlock", id: "x", isVisible: "false", text: "x" }])));
+  it("Action.CopyToClipboard text 必填且按 UTF-8 字节限制", () => {
+    bad(
+      AC([{ type: "TextBlock", text: "x" }], {
+        actions: [{ type: "Action.CopyToClipboard", title: "复制" }],
+      })
+    );
+    bad(
+      AC([{ type: "TextBlock", text: "x" }], {
+        actions: [
+          {
+            type: "Action.CopyToClipboard",
+            title: "复制",
+            text: "中".repeat(1366),
+          },
+        ],
+      })
+    );
+  });
   it("selectAction Submit 在 v1", () =>
-    bad(AC([{ type: "Container", items: [], selectAction: { type: "Action.Submit", id: "s" } }])));
+    bad(
+      AC([
+        {
+          type: "Container",
+          items: [],
+          selectAction: { type: "Action.Submit", id: "s" },
+        },
+      ])
+    ));
   it("Input.* 缺 id（v2，D1）", () => bad(AC([{ type: "Input.Text" }]), V2));
   it("Action.Submit 缺 id（v2，D1）", () =>
-    bad(AC([{ type: "TextBlock", text: "x" }], { actions: [{ type: "Action.Submit", title: "x" }] }), V2));
+    bad(
+      AC([{ type: "TextBlock", text: "x" }], {
+        actions: [{ type: "Action.Submit", title: "x" }],
+      }),
+      V2
+    ));
   it("帧内重复 id（Input 与 Submit 同 id，v2，D1）", () =>
-    bad(AC([{ type: "Input.Text", id: "dup" }], { actions: [{ type: "Action.Submit", id: "dup" }] }), V2));
+    bad(
+      AC([{ type: "Input.Text", id: "dup" }], {
+        actions: [{ type: "Action.Submit", id: "dup" }],
+      }),
+      V2
+    ));
+  it("帧内重复 id（展示元素与 Submit 同 id）", () =>
+    bad(
+      AC([{ type: "TextBlock", id: "dup", text: "x" }], {
+        actions: [{ type: "Action.Submit", id: "dup" }],
+      }),
+      V2
+    ));
 });
 
 describe("validateCardForOcto — 真实预算上限（MAX_NODES=200 / MAX_DEPTH=16）", () => {
   it("201 个节点 → 越界降级", () => {
-    const many = Array.from({ length: 201 }, () => ({ type: "TextBlock", text: "x" }));
+    const many = Array.from({ length: 201 }, () => ({
+      type: "TextBlock",
+      text: "x",
+    }));
     expect(validateCardForOcto(AC(many)).ok).toBe(false);
   });
   it("200 个节点 → 恰好合法", () => {
-    const many = Array.from({ length: 200 }, () => ({ type: "TextBlock", text: "x" }));
+    const many = Array.from({ length: 200 }, () => ({
+      type: "TextBlock",
+      text: "x",
+    }));
     expect(validateCardForOcto(AC(many)).ok).toBe(true);
   });
   it("嵌套深度 17 层 → 越界降级", () => {

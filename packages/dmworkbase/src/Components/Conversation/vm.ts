@@ -12,6 +12,11 @@ import { HistorySplitContent } from "../../Messages/HistorySplit";
 import { MessageListener, MessageStatusListener } from "wukongimjssdk";
 import { SendackPacket, Setting } from "wukongimjssdk";
 import MergeforwardContent from "../../Messages/Mergeforward";
+import {
+    InteractiveCardContent,
+    InteractiveCardForwardBlockedError,
+    isInteractiveCardForwardable,
+} from "../../Messages/InteractiveCard/InteractiveCardContent";
 import { TypingListener, TypingManager } from "../../Service/TypingManager";
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
 import { SYSTEM_BOTS } from "../../Service/SpaceService";
@@ -613,9 +618,22 @@ export default class ConversationVM extends ProviderListener {
             const msg = messageWrap.message
             // 如果消息被编辑过，用编辑后内容替换 content，保证合并转发预览和内容正确
             if (msg.remoteExtra?.isEdit && msg.remoteExtra?.contentEdit) {
-                return Object.assign(Object.create(Object.getPrototypeOf(msg)), msg, {
+                const edited = Object.assign(Object.create(Object.getPrototypeOf(msg)), msg, {
                     content: msg.remoteExtra.contentEdit
                 })
+                if (
+                    edited.content instanceof InteractiveCardContent &&
+                    !isInteractiveCardForwardable(edited.content)
+                ) {
+                    throw new InteractiveCardForwardBlockedError()
+                }
+                return edited
+            }
+            if (
+                msg.content instanceof InteractiveCardContent &&
+                !isInteractiveCardForwardable(msg.content)
+            ) {
+                throw new InteractiveCardForwardBlockedError()
             }
             return msg
         })

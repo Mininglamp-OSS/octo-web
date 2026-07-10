@@ -17,10 +17,15 @@ vi.mock("wukongimjssdk", () => ({
 
 vi.mock("../../../i18n", () => ({
   // 与 message.digest.interactiveCard 对应的静态兜底文案
-  t: (key: string) => (key === "base.message.digest.interactiveCard" ? "[卡片]" : ""),
+  t: (key: string) =>
+    key === "base.message.digest.interactiveCard" ? "[卡片]" : "",
 }));
 
-import { InteractiveCardContent } from "../InteractiveCardContent";
+import {
+  InteractiveCardContent,
+  cloneInteractiveCardContentForForward,
+  isInteractiveCardForwardable,
+} from "../InteractiveCardContent";
 
 function decode(raw: unknown): InteractiveCardContent {
   const c = new InteractiveCardContent();
@@ -85,12 +90,104 @@ describe("InteractiveCardContent.decodeJSON", () => {
     expect(c.transient).toBe(true);
   });
 
+  it("转发来源 forwarded_from_uid 逐字段解析并编码保留", () => {
+    const c = decode({
+      card: {},
+      plain: "x",
+      profile: "octo/v1",
+      card_version: "1.5",
+      forwarded_from_uid: "iwh_original",
+    });
+    expect(c.forwardedFromUID).toBe("iwh_original");
+    expect(c.encodeJSON().forwarded_from_uid).toBe("iwh_original");
+  });
+
   it("null / undefined content：安全默认，不抛错", () => {
     expect(() => decode(null)).not.toThrow();
     expect(() => decode(undefined)).not.toThrow();
     const c = decode(null);
     expect(c.card).toEqual({});
     expect(c.plain).toBe("");
+  });
+});
+
+describe("cloneInteractiveCardContentForForward", () => {
+  it("克隆卡片转发副本并写入原始可信发送者，不修改原对象", () => {
+    const original = decode({
+      card: { type: "AdaptiveCard", body: [] },
+      plain: "展示卡",
+      profile: "octo/v1",
+      card_version: "1.5",
+      card_seq: 9,
+      transient: true,
+    });
+    const cloned = cloneInteractiveCardContentForForward(
+      original,
+      "iwh_original"
+    );
+    expect(cloned).not.toBe(original);
+    expect(cloned.card).toBe(original.card);
+    expect(cloned.plain).toBe("展示卡");
+    expect(cloned.cardVersion).toBe("1.5");
+    expect(cloned.profile).toBe("octo/v1");
+    expect(cloned.cardSeq).toBe(9);
+    expect(cloned.transient).toBe(true);
+    expect(cloned.forwardedFromUID).toBe("iwh_original");
+    expect(original.forwardedFromUID).toBe("");
+  });
+});
+
+describe("isInteractiveCardForwardable", () => {
+  it("展示型卡片可转发", () => {
+    const c = decode({
+      card: {
+        type: "AdaptiveCard",
+        body: [
+          { type: "TextBlock", text: "x" },
+          {
+            type: "Table",
+            columns: [{ width: 1 }],
+            rows: [
+              {
+                type: "TableRow",
+                cells: [
+                  {
+                    type: "TableCell",
+                    items: [{ type: "TextBlock", text: "cell" }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        actions: [{ type: "Action.CopyToClipboard", title: "复制", text: "x" }],
+      },
+    });
+    expect(isInteractiveCardForwardable(c)).toBe(true);
+  });
+
+  it("带 Input 或 Submit 的交互卡不可转发", () => {
+    expect(
+      isInteractiveCardForwardable(
+        decode({
+          card: {
+            type: "AdaptiveCard",
+            body: [{ type: "Input.Text", id: "name" }],
+          },
+        })
+      )
+    ).toBe(false);
+    expect(
+      isInteractiveCardForwardable(
+        decode({
+          card: {
+            type: "AdaptiveCard",
+            body: [{ type: "TextBlock", text: "x" }],
+            actions: [{ type: "Action.Submit", title: "提交" }],
+          },
+        })
+      )
+    ).toBe(false);
   });
 });
 
@@ -114,7 +211,9 @@ describe("InteractiveCardContent.conversationDigest", () => {
   });
 
   it("plain 全空白：视为空，回退占位", () => {
-    expect(decode({ card: {}, plain: "   " }).conversationDigest).toBe("[卡片]");
+    expect(decode({ card: {}, plain: "   " }).conversationDigest).toBe(
+      "[卡片]"
+    );
   });
 
   // 防回归：getMessageDigestText（Conversation/index.tsx）与 ReplyBlock 读取顺序为

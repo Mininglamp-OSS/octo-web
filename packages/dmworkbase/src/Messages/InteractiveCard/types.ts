@@ -5,11 +5,12 @@
  * 与 type=7 名片（Card）无任何关系。
  *
  * octo/v1（展示型）：TextBlock/RichTextBlock/Image/ImageSet/Container/ColumnSet/
- *   FactSet/Table/ActionSet + Action.OpenUrl + selectAction(仅含 OpenUrl)。
+ *   FactSet/Table/ActionSet + Action.OpenUrl / ToggleVisibility / CopyToClipboard
+ *   + selectAction(仅含本地/导航动作)。
  * octo/v2（交互型，波 2）：追加 Input.Text/Toggle/ChoiceSet + Action.Submit（含 selectAction 携带），
  *   Input.* / Action.Submit 的 id 必填且帧内唯一。
  * 未知元素/动作、未知 profile/version、损坏 payload 一律整卡降级为 plain。
- * Action.Execute / ShowCard / ToggleVisibility / 模板绑定 永不支持（P3 再议）。
+ * Action.Execute / ShowCard / 模板绑定 永不支持（P3 再议）。
  */
 
 /** 消息信封字段名（与服务端契约对齐；未知顶层字段必须容忍）。 */

@@ -50,17 +50,101 @@ interface Ctx {
   budget: RenderBudget;
   allowInteractive: boolean;
   seenIds: Set<string>;
+  targetableElementIds: Set<string>;
+  targetRefs: string[];
 }
 
-/** 登记帧内交互 id（Input.* / Action.Submit 共享命名空间，D1）；缺失/重复 → 整卡降级。 */
-function registerId(ctx: Ctx, rawId: unknown): void {
+function normalizeRequiredId(kind: string, rawId: unknown): string {
   if (typeof rawId !== "string" || rawId.trim() === "") {
-    throw new OctoInvalidCard("interactive element missing id");
+    throw new OctoInvalidCard(`${kind} missing id`);
   }
-  if (ctx.seenIds.has(rawId)) {
-    throw new OctoInvalidCard("duplicate interactive id in frame");
+  return rawId;
+}
+
+function registerUniqueId(ctx: Ctx, id: string): void {
+  if (ctx.seenIds.has(id)) {
+    throw new OctoInvalidCard("duplicate id in frame");
   }
-  ctx.seenIds.add(rawId);
+  ctx.seenIds.add(id);
+}
+
+/** 登记帧内交互 id（Input.* / Action.Submit 与元素 id 共享命名空间）；缺失/重复 → 整卡降级。 */
+function registerInteractiveId(ctx: Ctx, rawId: unknown): void {
+  registerUniqueId(ctx, normalizeRequiredId("interactive element", rawId));
+}
+
+function requireRegisteredElementId(rawId: unknown): void {
+  normalizeRequiredId("interactive element", rawId);
+}
+
+function registerElementId(ctx: Ctx, rawId: unknown): string | undefined {
+  if (rawId === undefined || rawId === null) return undefined;
+  const id = normalizeRequiredId("element", rawId);
+  registerUniqueId(ctx, id);
+  ctx.targetableElementIds.add(id);
+  return id;
+}
+
+function registerElementIdWithVisibility(
+  ctx: Ctx,
+  obj: Record<string, unknown>
+): string | undefined {
+  const id = registerElementId(ctx, obj.id);
+  if (obj.isVisible !== undefined && typeof obj.isVisible !== "boolean") {
+    throw new OctoInvalidCard("isVisible must be boolean");
+  }
+  return id;
+}
+
+function utf8ByteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+function validateToggleTargetElement(target: unknown, ctx: Ctx): void {
+  if (typeof target === "string") {
+    if (target.trim() === "") {
+      throw new OctoInvalidCard("ToggleVisibility target id is empty");
+    }
+    ctx.targetRefs.push(target);
+    return;
+  }
+  const obj = asObject(target);
+  if (
+    !obj ||
+    typeof obj.elementId !== "string" ||
+    obj.elementId.trim() === ""
+  ) {
+    throw new OctoInvalidCard("malformed ToggleVisibility target");
+  }
+  if (obj.isVisible !== undefined && typeof obj.isVisible !== "boolean") {
+    throw new OctoInvalidCard(
+      "ToggleVisibility target isVisible must be boolean"
+    );
+  }
+  ctx.targetRefs.push(obj.elementId);
+}
+
+function validateToggleVisibilityAction(
+  obj: Record<string, unknown>,
+  ctx: Ctx
+): void {
+  const targets = requireArray(obj.targetElements);
+  if (targets.length === 0) {
+    throw new OctoInvalidCard("ToggleVisibility targetElements required");
+  }
+  for (const target of targets) validateToggleTargetElement(target, ctx);
+}
+
+function validateCopyToClipboardAction(obj: Record<string, unknown>): void {
+  if (typeof obj.text !== "string") {
+    throw new OctoInvalidCard("CopyToClipboard text required");
+  }
+  if (utf8ByteLength(obj.text) > 4096) {
+    throw new OctoInvalidCard("CopyToClipboard text too large");
+  }
+  if (obj.title !== undefined && typeof obj.title !== "string") {
+    throw new OctoInvalidCard("CopyToClipboard title must be string");
+  }
 }
 
 /** 校验一个动作（根 actions / selectAction 共用）。非 OpenUrl 且非（v2）Submit → 降级。 */
@@ -68,11 +152,19 @@ function validateAction(action: unknown, ctx: Ctx): void {
   const obj = asObject(action);
   if (ctx.allowInteractive && obj?.type === "Action.Submit") {
     // Action.Submit：id 必填 + 帧内唯一（data 不参与校验，客户端不回传）。
-    registerId(ctx, obj.id);
+    registerInteractiveId(ctx, obj.id);
+    return;
+  }
+  if (obj?.type === "Action.ToggleVisibility") {
+    validateToggleVisibilityAction(obj, ctx);
+    return;
+  }
+  if (obj?.type === "Action.CopyToClipboard") {
+    validateCopyToClipboardAction(obj);
     return;
   }
   if (!obj || obj.type !== "Action.OpenUrl") {
-    // 未知/不支持动作（Execute/ShowCard/ToggleVisibility/v1 下的 Submit/其他）→ 整卡降级。
+    // 未知/不支持动作（Execute/ShowCard/v1 下的 Submit/其他）→ 整卡降级。
     throw new OctoInvalidCard("unsupported action");
   }
   const url = obj.url;
@@ -108,6 +200,7 @@ function validateImageSetImage(image: unknown, ctx: Ctx): void {
   if (!obj || obj.type !== "Image") {
     throw new OctoInvalidCard("malformed image set image");
   }
+  registerElementIdWithVisibility(ctx, obj);
   validateSelectAction(obj.selectAction, ctx);
 }
 
@@ -117,6 +210,7 @@ function validateElement(el: unknown, ctx: Ctx): void {
   if (!obj || typeof obj.type !== "string") {
     throw new OctoInvalidCard("malformed element");
   }
+  const elementId = registerElementIdWithVisibility(ctx, obj);
   switch (obj.type) {
     case "TextBlock":
       return;
@@ -161,8 +255,12 @@ function validateElement(el: unknown, ctx: Ctx): void {
     case "Table": {
       if (!ctx.budget.enter()) throw new OctoInvalidCard("depth exceeded");
       const columns = requireArray(obj.columns);
+      if (columns.length === 0) {
+        throw new OctoInvalidCard("Table columns required");
+      }
       for (const column of columns) {
-        if (!asObject(column)) throw new OctoInvalidCard("malformed table column");
+        if (!asObject(column))
+          throw new OctoInvalidCard("malformed table column");
         if (!ctx.budget.consume())
           throw new OctoInvalidCard("node count exceeded");
       }
@@ -170,12 +268,17 @@ function validateElement(el: unknown, ctx: Ctx): void {
       for (const row of rows) {
         const rowObj = asObject(row);
         if (!rowObj) throw new OctoInvalidCard("malformed table row");
+        registerElementIdWithVisibility(ctx, rowObj);
         if (!ctx.budget.consume())
           throw new OctoInvalidCard("node count exceeded");
         const cells = requireArray(rowObj.cells);
+        if (cells.length !== columns.length) {
+          throw new OctoInvalidCard("Table row cell count mismatch");
+        }
         for (const cell of cells) {
           const cellObj = asObject(cell);
           if (!cellObj) throw new OctoInvalidCard("malformed table cell");
+          registerElementIdWithVisibility(ctx, cellObj);
           if (!ctx.budget.consume())
             throw new OctoInvalidCard("node count exceeded");
           if (!ctx.budget.enter()) throw new OctoInvalidCard("depth exceeded");
@@ -198,6 +301,7 @@ function validateElement(el: unknown, ctx: Ctx): void {
         if (co.type !== undefined && co.type !== "Column") {
           throw new OctoInvalidCard("unsupported column");
         }
+        registerElementIdWithVisibility(ctx, co);
         if (!ctx.budget.consume())
           throw new OctoInvalidCard("node count exceeded");
         if (!ctx.budget.enter()) throw new OctoInvalidCard("depth exceeded");
@@ -218,7 +322,11 @@ function validateElement(el: unknown, ctx: Ctx): void {
         // octo/v1 内出现 Input.* = 白名单外 → 整卡降级。
         throw new OctoInvalidCard("unsupported element (interactive)");
       }
-      registerId(ctx, obj.id);
+      if (elementId === undefined) {
+        registerInteractiveId(ctx, obj.id);
+      } else {
+        requireRegisteredElementId(obj.id);
+      }
       if (obj.type === "Input.ChoiceSet") {
         // 每个 choice 计入节点预算（与 FactSet.facts / actions / columns 一致，对齐服务端 walker）。
         const choices = requireArray(obj.choices);
@@ -257,6 +365,8 @@ export function validateCardForOcto(
       budget: new RenderBudget(),
       allowInteractive: opts?.allowInteractive ?? false,
       seenIds: new Set<string>(),
+      targetableElementIds: new Set<string>(),
+      targetRefs: [],
     };
     validateSelectAction(card.selectAction, ctx);
     validateItems(requireArray(card.body), ctx);
@@ -265,6 +375,11 @@ export function validateCardForOcto(
       if (!ctx.budget.consume())
         throw new OctoInvalidCard("node count exceeded");
       validateAction(a, ctx);
+    }
+    for (const elementId of ctx.targetRefs) {
+      if (!ctx.targetableElementIds.has(elementId)) {
+        throw new OctoInvalidCard("ToggleVisibility target does not exist");
+      }
     }
     if (ctx.budget.exceeded) throw new OctoInvalidCard("budget exceeded");
     return { ok: true };

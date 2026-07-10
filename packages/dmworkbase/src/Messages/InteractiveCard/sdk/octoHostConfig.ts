@@ -64,6 +64,14 @@ export function buildOctoHostConfig(resolve: CssColorResolver): HostConfig {
   const warningBackground = resolve(COLOR_TOKENS.warningBackground);
   const attention = resolve(COLOR_TOKENS.attention);
   const attentionBackground = resolve(COLOR_TOKENS.attentionBackground);
+  const fontSizes = {
+    small: 12,
+    default: 13,
+    medium: 14,
+    large: 17,
+    extraLarge: 20,
+  };
+  const fontWeights = { lighter: 200, default: 400, bolder: 600 };
 
   // 前景色集：good/warning/attention 映射到语义色，使 TextBlock color=Good/... 也正确着色。
   // 所有 containerStyle 共用同一前景集，仅背景/边框不同——文本默认取 default（深色），
@@ -78,8 +86,19 @@ export function buildOctoHostConfig(resolve: CssColorResolver): HostConfig {
 
   return new HostConfig({
     // 字体继承宿主（不强设，随 IM 主体字体）。
-    fontSizes: { small: 12, default: 13, medium: 14, large: 17, extraLarge: 20 },
-    fontWeights: { lighter: 200, default: 400, bolder: 600 },
+    fontSizes,
+    fontWeights,
+    fontTypes: {
+      default: {
+        fontSizes,
+        fontWeights,
+      },
+      monospace: {
+        fontFamily: "var(--wk-font-mono)",
+        fontSizes,
+        fontWeights,
+      },
+    },
     spacing: {
       none: 0,
       small: 4,
@@ -87,7 +106,7 @@ export function buildOctoHostConfig(resolve: CssColorResolver): HostConfig {
       medium: 12,
       large: 16,
       extraLarge: 20,
-      padding: 12,
+      padding: 16,
     },
     separator: { lineThickness: 1, lineColor: subtle },
     supportsInteractivity: true,
@@ -96,6 +115,22 @@ export function buildOctoHostConfig(resolve: CssColorResolver): HostConfig {
       spacing: "default",
       actionsOrientation: "horizontal",
       actionAlignment: "left",
+    },
+    factSet: {
+      title: {
+        color: "default",
+        isSubtle: true,
+        weight: "default",
+        wrap: true,
+        maxWidth: 80,
+      },
+      value: {
+        color: "default",
+        isSubtle: false,
+        weight: "default",
+        wrap: true,
+      },
+      spacing: 6,
     },
     // 六种 containerStyle 全部显式提供背景填色（缺任一都会退化成裸白底）。
     containerStyles: {

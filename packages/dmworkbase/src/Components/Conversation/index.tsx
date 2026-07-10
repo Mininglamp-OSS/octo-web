@@ -108,15 +108,45 @@ import {
   buildRichTextMixedCandidate,
   isImageFileForRichTextMixed,
 } from "./richTextMixedSend";
+import {
+  InteractiveCardContent,
+  InteractiveCardForwardBlockedError,
+  cloneInteractiveCardContentForForward,
+  isInteractiveCardForwardable,
+} from "../../Messages/InteractiveCard/InteractiveCardContent";
+import {
+  classifyCardSender,
+  isTrustedCardSender,
+} from "../../Messages/InteractiveCard/senderTrust";
 
 /**
  * 取消息的有效内容：如果消息被编辑过，返回编辑后的 contentEdit；否则返回原始 content
  */
 function getEffectiveContent(message: Message): MessageContent {
-  if (message.remoteExtra?.isEdit && message.remoteExtra?.contentEdit) {
-    return message.remoteExtra.contentEdit;
+  const content =
+    message.remoteExtra?.isEdit && message.remoteExtra?.contentEdit
+      ? message.remoteExtra.contentEdit
+      : message.content;
+  if (content instanceof InteractiveCardContent) {
+    if (!isInteractiveCardForwardable(content)) {
+      throw new InteractiveCardForwardBlockedError();
+    }
+    const trustedForwardSource = isTrustedCardSender(
+      classifyCardSender(message.fromUID)
+    )
+      ? message.fromUID
+      : content.forwardedFromUID;
+    if (
+      trustedForwardSource &&
+      isTrustedCardSender(classifyCardSender(trustedForwardSource))
+    ) {
+      return cloneInteractiveCardContentForForward(
+        content,
+        trustedForwardSource
+      );
+    }
   }
-  return message.content;
+  return content;
 }
 
 /**
@@ -499,7 +529,11 @@ export class Conversation
         this.showForwardResult(failed, channels.length);
       } catch (e) {
         console.error("[forward] build content failed", e);
-        Toast.error(t("base.conversation.forward.allFailed"));
+        Toast.error(
+          e instanceof InteractiveCardForwardBlockedError
+            ? t("base.conversation.forward.interactiveCardBlocked")
+            : t("base.conversation.forward.allFailed")
+        );
       }
     });
   }
@@ -2617,7 +2651,11 @@ export class Conversation
                           } catch (e) {
                             console.error("[forward] build content failed", e);
                             Toast.error(
-                              t("base.conversation.forward.allFailed"),
+                              e instanceof InteractiveCardForwardBlockedError
+                                ? t(
+                                    "base.conversation.forward.interactiveCardBlocked"
+                                  )
+                                : t("base.conversation.forward.allFailed"),
                             );
                           }
                           vm.editOn = false;
@@ -2651,7 +2689,11 @@ export class Conversation
                               e,
                             );
                             Toast.error(
-                              t("base.conversation.forward.allFailed"),
+                              e instanceof InteractiveCardForwardBlockedError
+                                ? t(
+                                    "base.conversation.forward.interactiveCardBlocked"
+                                  )
+                                : t("base.conversation.forward.allFailed"),
                             );
                           }
                           vm.editOn = false;

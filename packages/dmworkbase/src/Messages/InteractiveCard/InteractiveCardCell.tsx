@@ -1,5 +1,6 @@
 import React from "react";
 import { type Action, type AdaptiveCard } from "adaptivecards";
+import { Toast } from "@douyinfe/semi-ui";
 import WKApp from "../../App";
 import { getMessageRow } from "../../bridge/message/useMessageRow";
 import { isMessageSelectable } from "../../Service/messageSelection";
@@ -8,14 +9,11 @@ import MessageRow from "../../ui/message/MessageRow";
 import ReplyBlock from "../../ui/message/ReplyBlock";
 import { MessageCell } from "../MessageCell";
 import { t } from "../../i18n";
-import {
-  isRetryableCardActionError,
-  submitCardAction,
-} from "./cardAction";
+import { isRetryableCardActionError, submitCardAction } from "./cardAction";
 import { InteractiveCardContent } from "./InteractiveCardContent";
 import { decideCardBody, type CardDecision } from "./renderDecision";
 import { resolveEffectiveCardContent } from "./resolveContent";
-import { openUrl } from "./renderer/actions";
+import { copyText, openUrl } from "./renderer/actions";
 import { collectCardInputs, validateCardInputs } from "./sdk/cardInputs";
 import { renderOctoCard } from "./sdk/renderOctoCard";
 import { classifyCardSender, fetchSenderChannelInfo } from "./senderTrust";
@@ -115,10 +113,16 @@ export class InteractiveCardCell extends MessageCell {
    */
   private ensureSenderTrustResolvable() {
     if (this._fetchedSenderInfo) return;
-    const fromUID = this.props.message.fromUID;
-    if (classifyCardSender(fromUID) === "pending" && fromUID) {
+    const { message } = this.props;
+    const content = message.content as InteractiveCardContent;
+    const effective = resolveEffectiveCardContent(content, message.remoteExtra);
+    const uid =
+      classifyCardSender(message.fromUID) === "pending"
+        ? message.fromUID
+        : effective.forwardedFromUID;
+    if (classifyCardSender(uid) === "pending" && uid) {
       this._fetchedSenderInfo = true;
-      fetchSenderChannelInfo(fromUID);
+      fetchSenderChannelInfo(uid);
     }
   }
 
@@ -137,6 +141,7 @@ export class InteractiveCardCell extends MessageCell {
       : effective.conversationDigest;
     const decision = decideCardBody({
       fromUID: message.fromUID,
+      forwardedFromUID: effective.forwardedFromUID,
       profile: effective.profile,
       cardVersion: effective.cardVersion,
       card: effective.card,
@@ -176,6 +181,8 @@ export class InteractiveCardCell extends MessageCell {
         card: decision.card,
         target,
         onAction: (action, card) => this.handleCardAction(action, card),
+        tableCopyLabel: t("base.message.interactiveCard.copyTable"),
+        onTableCopy: (text) => this.handleTableCopy(text),
       });
     } catch {
       // 已过 octo 预校验仍渲染失败属极端边角 → fail-safe 渲纯文本（不走 markdown/HTML）。
@@ -184,9 +191,21 @@ export class InteractiveCardCell extends MessageCell {
     if (wasBusy) this.forceUpdate(); // 清除 loading/错误的外层态（不会重挂载：key 已一致）。
   }
 
+  private handleTableCopy(text: string) {
+    void copyText(text)
+      .then(() => {
+        Toast.success(t("base.message.interactiveCard.copySuccess"));
+      })
+      .catch(() => {
+        Toast.warning(t("base.message.interactiveCard.copyFailed"));
+      });
+  }
+
   /**
    * SDK 动作回调。
    *   - Action.OpenUrl：新标签打开（openUrl 内部 isSafeUrl 二次校验）；始终可用；
+   *   - Action.ToggleVisibility：SDK 已原生翻转目标 isVisible，这里不做业务副作用；
+   *   - Action.CopyToClipboard：本地复制显式声明的 text；
    *   - Action.Submit：仅 bot 卡（decision.interactive）提交，走 no-data 闭环。
    */
   private handleCardAction(action: Action, card: AdaptiveCard) {
@@ -194,6 +213,21 @@ export class InteractiveCardCell extends MessageCell {
     if (type === "Action.OpenUrl") {
       const url = (action as unknown as { url?: unknown }).url;
       if (typeof url === "string") openUrl(url);
+      return;
+    }
+    if (type === "Action.ToggleVisibility") {
+      return;
+    }
+    if (type === "Action.CopyToClipboard") {
+      const text = (action as unknown as { text?: unknown }).text;
+      if (typeof text !== "string") return;
+      void copyText(text)
+        .then(() => {
+          Toast.success(t("base.message.interactiveCard.copySuccess"));
+        })
+        .catch(() => {
+          Toast.warning(t("base.message.interactiveCard.copyFailed"));
+        });
       return;
     }
     if (type === "Action.Submit") {
