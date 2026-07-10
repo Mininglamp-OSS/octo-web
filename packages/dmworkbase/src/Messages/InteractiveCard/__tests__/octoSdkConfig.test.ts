@@ -4,7 +4,7 @@
 // HostConfig 颜色经可注入解析器映射自 --wk-* token。
 
 import { describe, expect, it, vi } from "vitest";
-import { FontType, GlobalRegistry } from "adaptivecards";
+import { FontType, GlobalRegistry, Table, Versions } from "adaptivecards";
 import { createOctoSerializationContext } from "../sdk/octoSerialization";
 import { buildOctoHostConfig } from "../sdk/octoHostConfig";
 
@@ -57,6 +57,7 @@ describe("createOctoSerializationContext — 元素层防御纵深", () => {
       const ctx = createOctoSerializationContext();
       expect(ctx.elementRegistry.findByName("Table")).toBeDefined();
     } finally {
+      GlobalRegistry.defaultElements.register("Table", Table, Versions.v1_5);
       GlobalRegistry.reset();
     }
   });
