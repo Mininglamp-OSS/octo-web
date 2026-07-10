@@ -83,7 +83,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [runOpen, setRunOpen] = useState(false);
   const [editingDesc, setEditingDesc] = useState(false);
   const cands = useAssigneeCandidates();
-  const { requestAssign, runConfirmModal } = useRunConfirm();
+  const { requestAssign, requestStatus, runConfirmModal } = useRunConfirm();
   const [loading, setLoading] = useState(true);
   const [titleDraft, setTitleDraft] = useState("");
   const [descDraft, setDescDraft] = useState("");
@@ -226,7 +226,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         render={
           <Dropdown.Menu>
             {ISSUE_STATUS_ORDER.map((s) => (
-              <Dropdown.Item key={s} active={issue?.status === s} onClick={() => patch({ status: s })}>
+              <Dropdown.Item key={s} active={issue?.status === s} onClick={() => issue && requestStatus(issue, s, (extra) => patch({ status: s, ...extra }))}>
                 <Tag color={ISSUE_STATUS_COLOR[s]} size="small">{t(`loop.status.${s}`)}</Tag>
               </Dropdown.Item>
             ))}
@@ -465,7 +465,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               <dd>
                 <Select
                   value={issue.status}
-                  onChange={(v) => patch({ status: v as IssueStatus })}
+                  onChange={(v) => requestStatus(issue, v as IssueStatus, (extra) => patch({ status: v as IssueStatus, ...extra }))}
                   size="small"
                   style={{ width: "100%" }}
                 >

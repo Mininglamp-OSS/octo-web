@@ -27,7 +27,7 @@ export default function IssueList({
   onChanged,
 }: IssueListProps) {
   const { t } = useI18n();
-  const { requestAssign, runConfirmModal } = useRunConfirm();
+  const { requestAssign, requestStatus, runConfirmModal } = useRunConfirm();
 
   const patch = async (id: string, p: Parameters<typeof updateIssue>[1]) => {
     await updateIssue(id, p);
@@ -63,7 +63,7 @@ export default function IssueList({
           value={v}
           size="small"
           borderless
-          onChange={(nv) => patch(r.id, { status: nv as IssueStatus })}
+          onChange={(nv) => requestStatus(r, nv as IssueStatus, (extra) => patch(r.id, { status: nv as IssueStatus, ...extra }))}
           style={{ width: 130 }}
         >
           {ISSUE_STATUS_ORDER.map((s) => (
