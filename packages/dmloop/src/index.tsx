@@ -2,6 +2,11 @@
 
 export { default as LoopModule } from "./module";
 export { default as LoopPage } from "./pages/LoopPage";
+export { default as MulticaCliAuthorizePage } from "./pages/MulticaCliAuthorizePage";
+export {
+  isMulticaCliAuthorizePath,
+  MULTICA_CLI_AUTHORIZE_PATH,
+} from "./cliAuthorizeSession";
 
 export * from "./api/types";
 export * as issueApi from "./api/issueApi";
@@ -11,6 +16,7 @@ export * as agentApi from "./api/agentApi";
 export * as squadApi from "./api/squadApi";
 export * as runtimeApi from "./api/runtimeApi";
 export * as workspaceApi from "./api/workspaceApi";
+export * as authApi from "./api/authApi";
 export {
   LOOP_API_BASE,
   currentWorkspaceSlug,

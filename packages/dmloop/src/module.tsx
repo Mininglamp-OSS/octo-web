@@ -2,10 +2,18 @@ import React from "react";
 import { WKApp, Menus, i18n, t as translate } from "@octo/base";
 import type { IModule } from "@octo/base";
 import LoopPage from "./pages/LoopPage";
+import MulticaCliAuthorizePage from "./pages/MulticaCliAuthorizePage";
+import {
+  isMulticaCliAuthorizePath,
+  MULTICA_CLI_AUTHORIZE_PATH,
+  resolveMulticaCliAuthorizeSearch,
+  visibleMulticaCliAuthorizeSearch,
+} from "./cliAuthorizeSession";
 import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
 
 let _initialized = false;
+let multicaCliAuthorizeInitialSearch = "";
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     _initialized = false;
@@ -48,7 +56,43 @@ export default class LoopModule implements IModule {
       "en-US": enUS,
     });
 
+    if (
+      typeof window !== "undefined" &&
+      isMulticaCliAuthorizePath(window.location.pathname)
+    ) {
+      multicaCliAuthorizeInitialSearch = resolveMulticaCliAuthorizeSearch(
+        window.location.pathname,
+        window.location.search,
+        window.sessionStorage
+      );
+
+      // RouteManager keeps only `sid` on pageshow. Capture the callback above,
+      // then remove it from the address bar before it can remain in history.
+      if (new URLSearchParams(window.location.search).get("cli_callback")) {
+        try {
+          window.history.replaceState(
+            {},
+            "",
+            window.location.pathname +
+              visibleMulticaCliAuthorizeSearch(window.location.search)
+          );
+        } catch {
+          // The captured prop still protects the flow if History is unavailable.
+        }
+      }
+    }
+
     WKApp.route.register("/loop", () => <LoopPage />);
+    const renderMulticaCliAuthorize = () => (
+      <MulticaCliAuthorizePage
+        initialSearch={multicaCliAuthorizeInitialSearch}
+      />
+    );
+    WKApp.route.register(MULTICA_CLI_AUTHORIZE_PATH, renderMulticaCliAuthorize);
+    WKApp.route.register(
+      `${MULTICA_CLI_AUTHORIZE_PATH}/`,
+      renderMulticaCliAuthorize
+    );
 
     WKApp.menus.register(
       "loop",
@@ -58,10 +102,10 @@ export default class LoopModule implements IModule {
           "/loop",
           translate("loop.menu.title"),
           <LoopIcon />,
-          <LoopIcon active />,
+          <LoopIcon active />
         );
       },
-      4003,
+      4003
     );
   }
 }
