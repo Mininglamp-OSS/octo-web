@@ -1,14 +1,18 @@
 import React, { useState } from "react";
 import { Tag } from "@douyinfe/semi-ui";
+import { CalendarClock } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { Issue, IssueStatus } from "../api/types";
 import { updateIssue } from "../api/issueApi";
 import { AssigneeBadge } from "../ui/AssigneePicker";
+import LabelChips from "../ui/LabelChips";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import {
   ISSUE_STATUS_ORDER,
   ISSUE_STATUS_COLOR,
   PRIORITY_COLOR,
+  formatShortDate,
+  isOverdue,
 } from "../ui/meta";
 
 export interface IssueBoardProps {
@@ -83,10 +87,22 @@ export default function IssueBoard({
                 >
                   <div className="loop-card__key">{issue.identifier}</div>
                   <div className="loop-card__title">{issue.title}</div>
+                  {issue.labels && issue.labels.length > 0 && (
+                    <div style={{ marginTop: 4 }}><LabelChips labels={issue.labels} max={3} /></div>
+                  )}
                   <div className="loop-card__foot">
                     <Tag color={PRIORITY_COLOR[issue.priority]} size="small">
                       {t(`loop.priority.${issue.priority}`)}
                     </Tag>
+                    {issue.due_date && (
+                      <span
+                        className="loop-card__due"
+                        style={{ color: isOverdue(issue.due_date, issue.status) ? "var(--semi-color-danger)" : "var(--semi-color-text-2)" }}
+                      >
+                        <CalendarClock size={12} />
+                        {formatShortDate(issue.due_date)}
+                      </span>
+                    )}
                     <AssigneeBadge
                       type={issue.assignee_type}
                       name={issue.assignee_name ?? null}

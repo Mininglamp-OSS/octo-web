@@ -129,7 +129,10 @@
     "assignee": "Assignee",
     "project": "Project",
     "noProject": "No project",
-    "creator": "Creator"
+    "creator": "Creator",
+    "labels": "Labels",
+    "startDate": "Start date",
+    "dueDate": "Due date"
   },
   "status": {
     "backlog": "Backlog",

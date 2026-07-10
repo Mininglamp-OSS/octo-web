@@ -377,6 +377,13 @@
   flex-wrap: wrap;
 }
 
+.loop-card__due {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+}
+
 /* ===== 通用表格辅助 ===== */
 .loop-cell-title {
   font-weight: 500;

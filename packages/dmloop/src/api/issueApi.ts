@@ -44,9 +44,13 @@ export async function listIssues(
   return { issues, total: data.total ?? issues.length };
 }
 
+export async function enrichIssue(issue: Issue): Promise<Issue> {
+  return (await enrich([issue]))[0];
+}
+
 export async function getIssue(id: string): Promise<Issue> {
   const issue = await httpGet<Issue>(`/issues/${id}`);
-  return (await enrich([issue]))[0];
+  return enrichIssue(issue);
 }
 
 export function createIssue(req: CreateIssueReq): Promise<Issue> {
