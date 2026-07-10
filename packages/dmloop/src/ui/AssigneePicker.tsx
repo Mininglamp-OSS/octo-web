@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Dropdown, Avatar, Tag } from "@douyinfe/semi-ui";
 import { ChevronDown, User, Bot, Users, CircleSlash } from "lucide-react";
-import { useI18n } from "@octo/base";
+import { useI18n, WKApp } from "@octo/base";
 import type { AssigneeCandidate, AssigneeType } from "../api/types";
 import { listAssigneeCandidates } from "../api/issueApi";
 import { ASSIGNEE_TYPE_COLOR } from "./meta";
@@ -48,7 +48,14 @@ export default function AssigneePicker({ value, valueName, onChange, size = "def
             <Dropdown.Divider />
             <Dropdown.Title>{g.label}</Dropdown.Title>
             {items.map((c) => (
-              <Dropdown.Item key={c.id} icon={typeIcon(c.type)} active={c.id === value} onClick={() => onChange(c.id, c.type)}>
+              <Dropdown.Item
+                key={c.id}
+                icon={c.type === "member" && c.octo_uid
+                  ? <Avatar size="extra-extra-small" color="light-blue" src={WKApp.shared.avatarUser(c.octo_uid)}>{c.name.slice(0, 1)}</Avatar>
+                  : typeIcon(c.type)}
+                active={c.id === value}
+                onClick={() => onChange(c.id, c.type)}
+              >
                 {c.name}
               </Dropdown.Item>
             ))}
@@ -63,7 +70,11 @@ export default function AssigneePicker({ value, valueName, onChange, size = "def
       <span className="loop-assignee-trigger" style={{ fontSize: size === "small" ? 12 : 13 }}>
         {current || valueName ? (
           <>
-            <Avatar size="extra-extra-small" color={ASSIGNEE_TYPE_COLOR[current?.type ?? "member"] as never}>
+            <Avatar
+              size="extra-extra-small"
+              color={ASSIGNEE_TYPE_COLOR[current?.type ?? "member"] as never}
+              src={current?.octo_uid ? WKApp.shared.avatarUser(current.octo_uid) : undefined}
+            >
               {(current?.name ?? valueName ?? "?").slice(0, 1)}
             </Avatar>
             <span className="loop-assignee-name">{current?.name ?? valueName}</span>

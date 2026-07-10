@@ -9,7 +9,7 @@ import type {
   AssigneeCandidate,
 } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
-import { ensureDirectory, actorName, listAssigneeCandidates as dirCandidates } from "./directory";
+import { ensureDirectory, actorName, actorAvatar, listAssigneeCandidates as dirCandidates } from "./directory";
 
 async function enrich(issues: Issue[]): Promise<Issue[]> {
   const dir = await ensureDirectory();
@@ -17,6 +17,8 @@ async function enrich(issues: Issue[]): Promise<Issue[]> {
     ...i,
     assignee_name: actorName(dir, i.assignee_type, i.assignee_id),
     creator_name: actorName(dir, i.creator_type ?? "member", i.creator_id),
+    assignee_avatar: actorAvatar(dir, i.assignee_type, i.assignee_id),
+    creator_avatar: actorAvatar(dir, i.creator_type ?? "member", i.creator_id),
     project_name: i.project_id ? dir.projectName.get(i.project_id) ?? null : null,
   }));
 }
@@ -54,6 +56,7 @@ export async function listComments(issueId: string): Promise<IssueComment[]> {
   return (rows ?? []).map((c) => ({
     ...c,
     author_name: actorName(dir, c.author_type, c.author_id) ?? c.author_id,
+    author_avatar: actorAvatar(dir, c.author_type, c.author_id),
   }));
 }
 
