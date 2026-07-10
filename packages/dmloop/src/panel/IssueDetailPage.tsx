@@ -56,6 +56,7 @@ import {
   PRIORITY_ORDER,
   PRIORITY_COLOR,
   RUN_STATUS_COLOR,
+  isActiveRun,
 } from "../ui/meta";
 import "./issueDetail.css";
 
@@ -233,9 +234,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     });
   };
 
-  // 运行中(可终止)vs 已结束(可重跑)。
-  const isActiveRun = (s: TaskRun["status"]) =>
-    s === "queued" || s === "dispatched" || s === "waiting_local_directory" || s === "running";
+  // 运行中(可终止)vs 已结束(可重跑):用共享 isActiveRun(ui/meta)。
 
   const saveDesc = async () => {
     if (descDraft !== (issue?.description ?? "")) await patch({ description: descDraft });
