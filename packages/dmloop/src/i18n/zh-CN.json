@@ -45,7 +45,17 @@
   "filter": {
     "status": "状态",
     "priority": "优先级",
-    "assignee": "负责人"
+    "assignee": "负责人",
+    "creator": "创建者"
+  },
+  "sort": {
+    "direction": "升/降序",
+    "position": "手动排序",
+    "priority": "优先级",
+    "title": "标题",
+    "created_at": "创建时间",
+    "start_date": "开始日期",
+    "due_date": "截止日期"
   },
   "action": {
     "newIssue": "新建 Issue",

@@ -8,9 +8,10 @@ import {
   Select,
   Pagination,
 } from "@douyinfe/semi-ui";
-import { Search, Plus, LayoutGrid, List as ListIcon, ClipboardList } from "lucide-react";
+import { Search, Plus, LayoutGrid, List as ListIcon, ClipboardList, ArrowUp, ArrowDown } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
-import type { Issue, IssueStatus, IssuePriority } from "../api/types";
+import type { Issue, IssueStatus, IssuePriority, IssueSortField } from "../api/types";
+import { ISSUE_SORT_FIELDS } from "../api/types";
 import { listIssues } from "../api/issueApi";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import { ISSUE_STATUS_ORDER, PRIORITY_ORDER } from "../ui/meta";
@@ -28,9 +29,13 @@ interface Filters {
   status?: IssueStatus;
   priority?: IssuePriority;
   assignee?: string;
+  creator?: string;
+  sortBy: IssueSortField;
+  sortDir: "asc" | "desc";
 }
 
 const PAGE_SIZE = 50;
+
 
 export default function IssuePage() {
   const { t } = useI18n();
@@ -38,7 +43,7 @@ export default function IssuePage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewMode>("board");
-  const [f, setF] = useState<Filters>({ keyword: "" });
+  const [f, setF] = useState<Filters>({ keyword: "", sortBy: "position", sortDir: "desc" });
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
   const [createOpen, setCreateOpen] = useState(false);
   const cands = useAssigneeCandidates();
@@ -53,6 +58,10 @@ export default function IssuePage() {
       status: f.status,
       priority: f.priority,
       assignee_id: f.assignee,
+      creator_id: f.creator,
+      // 排序仅用于列表视图;看板按 status 分列 + 100 上限,叠加全局排序会把某状态整列截没,故看板固定后端默认(position)。
+      sort_by: paged ? f.sortBy : undefined,
+      sort_direction: paged ? f.sortDir : undefined,
       // ponytail: 看板不分页——按 status 分列需全量，取后端上限 100；超量请用筛选或列表视图。
       limit: paged ? PAGE_SIZE : 100,
       offset: paged ? page * PAGE_SIZE : 0,
@@ -133,6 +142,42 @@ export default function IssuePage() {
             <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
           ))}
         </Select>
+        <Select
+          placeholder={t("loop.filter.creator")}
+          value={f.creator}
+          onChange={(v) => update({ creator: v as string | undefined })}
+          showClear
+          filter
+          size="small"
+          style={{ width: 130 }}
+        >
+          {cands.filter((c) => c.type === "member").map((c) => (
+            <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
+          ))}
+        </Select>
+        {view === "list" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <Select
+            value={f.sortBy}
+            onChange={(v) => update({ sortBy: v as IssueSortField })}
+            size="small"
+            style={{ width: 120 }}
+          >
+            {ISSUE_SORT_FIELDS.map((s) => (
+              <Select.Option key={s} value={s}>{t(`loop.sort.${s}`)}</Select.Option>
+            ))}
+          </Select>
+          <Button
+            size="small"
+            theme="borderless"
+            // position(手动序)后端忽略方向,禁用切换。
+            disabled={f.sortBy === "position"}
+            icon={f.sortDir === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+            aria-label={t("loop.sort.direction")}
+            onClick={() => update({ sortDir: f.sortDir === "asc" ? "desc" : "asc" })}
+          />
+        </div>
+        )}
         <Input
           prefix={<Search size={14} />}
           placeholder={t("loop.search.issue")}

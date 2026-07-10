@@ -49,12 +49,21 @@ export interface Invitation {
   created_at?: string;
 }
 
+// 后端 /issues sort 白名单(单一来源,派生类型 + 供 UI 枚举)。
+export const ISSUE_SORT_FIELDS = ["position", "priority", "title", "created_at", "start_date", "due_date"] as const;
+export type IssueSortField = (typeof ISSUE_SORT_FIELDS)[number];
+
 export interface ListParams {
   workspace_id?: string;
   keyword?: string;
   status?: IssueStatus;
   priority?: IssuePriority;
   assignee_id?: string;
+  creator_id?: string;
+  // 后端白名单 sort：position(默认)|priority|title|created_at|start_date|due_date。
+  // direction 仅在 sort_by != position 时被后端采纳(asc|desc)。
+  sort_by?: IssueSortField;
+  sort_direction?: "asc" | "desc";
   limit?: number;
   offset?: number;
 }
