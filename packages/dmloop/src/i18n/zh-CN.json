@@ -248,6 +248,16 @@
     "newPlaceholder": "新标签名",
     "create": "创建标签"
   },
+  "subscribe": {
+    "label": "订阅者",
+    "subscribe": "订阅此 Issue",
+    "unsubscribe": "取消订阅",
+    "subscribed": "已订阅",
+    "unsubscribed": "已取消订阅"
+  },
+  "reaction": {
+    "add": "添加反应"
+  },
   "agent": {
     "runtime": "运行环境",
     "model": "模型",

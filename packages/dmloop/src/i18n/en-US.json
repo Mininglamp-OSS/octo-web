@@ -248,6 +248,16 @@
     "newPlaceholder": "New label",
     "create": "Create label"
   },
+  "subscribe": {
+    "label": "Subscribers",
+    "subscribe": "Subscribe to issue",
+    "unsubscribe": "Unsubscribe",
+    "subscribed": "Subscribed",
+    "unsubscribed": "Unsubscribed"
+  },
+  "reaction": {
+    "add": "Add reaction"
+  },
   "agent": {
     "runtime": "Runtime",
     "model": "Model",
