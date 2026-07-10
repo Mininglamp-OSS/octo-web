@@ -64,7 +64,9 @@ async function build(): Promise<Directory> {
 
 export async function ensureDirectory(force = false): Promise<Directory> {
   if (!force && _cache && _cache.slug === currentWorkspaceSlug()) return _cache;
-  if (_loading && _cache?.slug === currentWorkspaceSlug()) return _loading;
+  // 已有 in-flight build 时并发调用者直接搭车(切 workspace 会 invalidateDirectory 清空 _loading),
+  // 避免冷启动(_cache 尚为 null)多个消费者各拉一遍 directory。
+  if (!force && _loading) return _loading;
   _loading = build().then((d) => {
     _cache = d;
     _loading = null;
@@ -106,4 +108,11 @@ export function actorAvatar(
 export async function listAssigneeCandidates(): Promise<AssigneeCandidate[]> {
   const dir = await ensureDirectory();
   return dir.candidates;
+}
+
+// 项目筛选下拉的选项，复用已缓存的 directory（不额外请求 /projects），与
+// listAssigneeCandidates 对称——调用方无需伸手进 Directory 内部结构。
+export async function listProjectOptions(): Promise<Array<{ id: string; title: string }>> {
+  const dir = await ensureDirectory();
+  return [...dir.projectName].map(([id, title]) => ({ id, title }));
 }

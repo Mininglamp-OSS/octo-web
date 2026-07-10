@@ -46,7 +46,8 @@
     "status": "Status",
     "priority": "Priority",
     "assignee": "Assignee",
-    "creator": "Creator"
+    "creator": "Creator",
+    "project": "Project"
   },
   "sort": {
     "direction": "Asc/desc",
