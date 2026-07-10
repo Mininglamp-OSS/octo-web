@@ -45,7 +45,17 @@
   "filter": {
     "status": "Status",
     "priority": "Priority",
-    "assignee": "Assignee"
+    "assignee": "Assignee",
+    "creator": "Creator"
+  },
+  "sort": {
+    "direction": "Asc/desc",
+    "position": "Manual",
+    "priority": "Priority",
+    "title": "Title",
+    "created_at": "Created",
+    "start_date": "Start date",
+    "due_date": "Due date"
   },
   "action": {
     "newIssue": "New Issue",
