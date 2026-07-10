@@ -53,6 +53,10 @@ export interface Invitation {
 export const ISSUE_SORT_FIELDS = ["position", "priority", "title", "created_at", "start_date", "due_date"] as const;
 export type IssueSortField = (typeof ISSUE_SORT_FIELDS)[number];
 
+// 时间范围筛选可选字段(后端仅接受这两列)。
+export const ISSUE_DATE_FIELDS = ["created_at", "updated_at"] as const;
+export type IssueDateField = (typeof ISSUE_DATE_FIELDS)[number];
+
 export interface ListParams {
   workspace_id?: string;
   keyword?: string;
@@ -61,6 +65,11 @@ export interface ListParams {
   assignee_id?: string;
   creator_id?: string;
   project_id?: string;
+  // 时间范围筛选:date_field(仅 created_at|updated_at)+ date_start + date_end 必须同时给,
+  // 值为 RFC3339;后端要求 start 严格早于 end。
+  date_field?: IssueDateField;
+  date_start?: string;
+  date_end?: string;
   // 后端白名单 sort：position(默认)|priority|title|created_at|start_date|due_date。
   // direction 仅在 sort_by != position 时被后端采纳(asc|desc)。
   sort_by?: IssueSortField;
