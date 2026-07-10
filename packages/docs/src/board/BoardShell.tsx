@@ -99,6 +99,7 @@ type ExcalidrawComponent = ComponentType<ExcalidrawProps>
 type RestoreElementsFn = (
   elements: readonly unknown[] | null | undefined,
   localElements: readonly unknown[] | null | undefined,
+  opts?: { refreshDimensions?: boolean; repairBindings?: boolean; normalizeIndices?: boolean },
 ) => ExcalidrawElement[]
 type ReconcileElementsFn = (
   localElements: readonly unknown[],
@@ -828,7 +829,12 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     if (restore && reconcile) {
       const imperative = api as { getAppState?: () => unknown }
       binding.setRenderAdapter({
-        restore: (remote) => restore(remote, null),
+        // XIN-795 ④ depth defence: ask Excalidraw to re-index on restore so a recoverable
+        // out-of-order key is normalised rather than thrown on. A structurally-invalid key that
+        // even normalizeIndices cannot repair still throws, but that throw is caught by
+        // `applyRemote` (collab/binding.ts), which keeps the last good scene instead of blanking
+        // the canvas — the root fix for invalid persisted keys lives in BE repair (XIN-794).
+        restore: (remote) => restore(remote, null, { normalizeIndices: true }),
         reconcile: (local, restoredRemote) => reconcile(local, restoredRemote, imperative.getAppState?.()),
       })
     }
@@ -1011,7 +1017,18 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       if (docEls.length > 0) raw = docEls
     }
     const restore = restoreElementsRef.current
-    return restore ? restore(raw, null) : [...raw]
+    if (!restore) return [...raw]
+    // XIN-795 ④ depth defence: this restore runs during render (not inside the collab binding's
+    // guarded applyRemote), so a throw on a structurally-invalid persisted key — one the BE repair
+    // (XIN-794) failed to stop at source — would take down the whole BoardShell render, not just a
+    // frame. `normalizeIndices` lets Excalidraw re-index recoverable keys; the try/catch degrades an
+    // unrecoverable throw to an empty initial scene so the canvas still mounts and the later
+    // observe→applyRemote path can repaint, with BoardErrorBoundary as the final backstop.
+    try {
+      return restore(raw, null, { normalizeIndices: true })
+    } catch {
+      return []
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Excalidraw, collabSession, accessConfirmed])
 

@@ -20,8 +20,51 @@
 import { WB_ELEMENT_TYPES, FILE_BEARING_TYPES } from './constants.ts'
 import type { WhiteboardElement, NormalizeContext } from './types.ts'
 
-/** Fractional-index keys are non-empty base62 strings (Excalidraw `index`). */
-const INDEX_RE = /^[A-Za-z0-9]+$/
+/**
+ * Fractional-index (order key) validity — cross-repo contract (XIN-794/795).
+ *
+ * Excalidraw's `index` is a jitterbug / fractional-indexing order key, NOT just
+ * any base62 string. The old rule `/^[A-Za-z0-9]+$/` only checked the character
+ * set, so a synthetic key like `r00000003` (produced by a since-fixed BE repair)
+ * passed as valid, reached `updateScene`, and crashed the canvas — the head 'r'
+ * declares a 19-char integer part but the key is 9 chars, so the real library
+ * rejects it. The rules below replicate `fractional-indexing`'s `validateOrderKey`
+ * as a pure boolean (no throw, no runtime dependency), so the FE binding, the BE
+ * authoritative repair, and the Agent path all agree byte-for-byte on legality.
+ *
+ * A key is valid iff ALL hold:
+ *   1. non-empty and every char is in the base62 alphabet below;
+ *   2. it is not the reserved SMALLEST_INTEGER sentinel;
+ *   3. the head char is 'a'..'z' or 'A'..'Z' AND the integer-part length it
+ *      declares (2..27) fits inside the key;
+ *   4. the fractional part (everything after the integer part) does not end in
+ *      the first digit ('0').
+ */
+const BASE62_DIGITS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+const BASE62_RE = /^[0-9A-Za-z]+$/
+const SMALLEST_INTEGER = 'A00000000000000000000000000'
+
+/**
+ * Integer-part length encoded by an order key's head char (jitterbug):
+ * 'a'..'z' -> 2..27 and 'A'..'Z' -> 27..2. Any other head is illegal.
+ * Mirrors fractional-indexing `getIntegerLength`; returns 0 for an illegal head.
+ */
+function orderKeyIntegerLength(head: string): number {
+  if (head >= 'a' && head <= 'z') return head.charCodeAt(0) - 97 + 2
+  if (head >= 'A' && head <= 'Z') return 90 - head.charCodeAt(0) + 2
+  return 0
+}
+
+/** Structural validity of a fractional-index key (see contract above). */
+function isValidOrderKey(key: string): boolean {
+  if (key.length === 0 || !BASE62_RE.test(key)) return false
+  if (key === SMALLEST_INTEGER) return false
+  const intLen = orderKeyIntegerLength(key.charAt(0))
+  if (intLen === 0 || intLen > key.length) return false
+  const fraction = key.slice(intLen)
+  if (fraction.slice(-1) === BASE62_DIGITS[0]) return false
+  return true
+}
 
 /** Known numeric fields clamped to finite values; opacity additionally [0,100]. */
 const FINITE_FIELDS = ['x', 'y', 'width', 'height', 'angle', 'strokeWidth', 'fontSize'] as const
@@ -42,9 +85,9 @@ export function deterministicNonce(seed: string): number {
   return h & 0x7fffffff
 }
 
-/** True if `v` is a valid fractional-index key. */
+/** True if `v` is a structurally valid fractional-index (order) key. */
 export function isValidIndex(v: unknown): v is string {
-  return typeof v === 'string' && v.length > 0 && INDEX_RE.test(v)
+  return typeof v === 'string' && isValidOrderKey(v)
 }
 
 function coerceVersion(v: unknown): number {
