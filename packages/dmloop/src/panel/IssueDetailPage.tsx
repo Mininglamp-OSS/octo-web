@@ -21,6 +21,8 @@ import {
   CircleSlash,
   Pencil,
   Check,
+  Square,
+  RotateCcw,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
@@ -39,7 +41,7 @@ import {
   deleteComment,
   updateComment,
 } from "../api/issueApi";
-import { listRuns } from "../api/runsApi";
+import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
@@ -89,6 +91,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [commentDraft, setCommentDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [busyRunId, setBusyRunId] = useState<string | null>(null); // 正在重跑的 task,防双击
 
   const reload = () => {
     setLoading(true);
@@ -169,6 +172,45 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     setActiveRun(run);
     setRunOpen(true);
   };
+
+  const reloadRuns = () => listRuns(issueId).then(setRuns).catch(() => {});
+
+  // 重跑该 task 的 agent（后端按 task_id 新建一次 fresh run）。busyRunId 防双击重复派单。
+  const rerun = async (taskId: string) => {
+    if (busyRunId) return;
+    setBusyRunId(taskId);
+    try {
+      await rerunIssue(issueId, taskId);
+      Toast.success(t("loop.run.rerunStarted"));
+      await reloadRuns();
+    } catch (e) {
+      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+    } finally {
+      setBusyRunId(null);
+    }
+  };
+
+  // 终止运行中的 task，二次确认。
+  const cancelRun = (taskId: string) => {
+    confirmDelete({
+      title: t("loop.run.cancelConfirm"),
+      okText: t("loop.run.stop"),
+      cancelText: t("loop.action.cancel"),
+      onOk: async () => {
+        try {
+          await cancelTask(issueId, taskId);
+          Toast.success(t("loop.run.cancelled"));
+          await reloadRuns();
+        } catch (e) {
+          Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+        }
+      },
+    });
+  };
+
+  // 运行中(可终止)vs 已结束(可重跑)。
+  const isActiveRun = (s: TaskRun["status"]) =>
+    s === "queued" || s === "dispatched" || s === "waiting_local_directory" || s === "running";
 
   const saveDesc = async () => {
     if (descDraft !== (issue?.description ?? "")) await patch({ description: descDraft });
@@ -486,17 +528,31 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               </Text>
             ) : (
               <div className="loop-idp__tasks">
-                {runs.map((r) => (
-                  <button key={r.id} className="loop-idp__run" onClick={() => openRun(r)}>
-                    <span className="loop-idp__task-main">
-                      <strong>{r.agent_name ?? r.agent_id ?? "—"}</strong>
-                      <small>{r.trigger_summary || fmt(r.dispatched_at ?? r.created_at)}</small>
-                    </span>
-                    <Tag size="small" color={RUN_STATUS_COLOR[r.status] ?? "grey"}>
-                      {t(`loop.taskStatus.${r.status}`)}
-                    </Tag>
-                  </button>
-                ))}
+                {runs.map((r) => {
+                  const active = isActiveRun(r.status);
+                  return (
+                    <div key={r.id} className="loop-idp__task">
+                      <button className="loop-idp__run" onClick={() => openRun(r)}>
+                        <span className="loop-idp__task-main">
+                          <strong>{r.agent_name ?? r.agent_id ?? "—"}</strong>
+                          <small>{r.trigger_summary || fmt(r.dispatched_at ?? r.created_at)}</small>
+                        </span>
+                        <Tag size="small" color={RUN_STATUS_COLOR[r.status] ?? "grey"}>
+                          {t(`loop.taskStatus.${r.status}`)}
+                        </Tag>
+                      </button>
+                      <Button
+                        size="small"
+                        theme="borderless"
+                        type={active ? "danger" : "tertiary"}
+                        loading={!active && busyRunId === r.id}
+                        icon={active ? <Square size={13} /> : <RotateCcw size={13} />}
+                        aria-label={t(active ? "loop.run.stop" : "loop.run.rerun")}
+                        onClick={() => (active ? cancelRun(r.id) : rerun(r.id))}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

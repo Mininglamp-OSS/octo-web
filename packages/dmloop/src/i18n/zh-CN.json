@@ -84,6 +84,7 @@
   "taskStatus": {
     "queued": "排队中",
     "dispatched": "已派发",
+    "waiting_local_directory": "等待本地目录",
     "running": "运行中",
     "completed": "已完成",
     "failed": "失败",
@@ -273,7 +274,12 @@
     "apply": "应用",
     "handoffPlaceholder": "可选：给这次派单一段交接说明…",
     "handoffUnsupported": "目标运行环境版本较旧，暂不支持交接说明",
-    "previewFailed": "无法预取派单信息，将按“会启动执行”处理，请确认"
+    "previewFailed": "无法预取派单信息，将按“会启动执行”处理，请确认",
+    "stop": "终止",
+    "rerun": "重跑",
+    "rerunStarted": "已重新派单",
+    "cancelConfirm": "确定终止这次执行？",
+    "cancelled": "已终止"
   },
   "device": {
     "devices": "设备",

@@ -84,6 +84,7 @@
   "taskStatus": {
     "queued": "Queued",
     "dispatched": "Dispatched",
+    "waiting_local_directory": "Waiting for local dir",
     "running": "Running",
     "completed": "Completed",
     "failed": "Failed",
@@ -273,7 +274,12 @@
     "apply": "Apply",
     "handoffPlaceholder": "Optional: a handoff note for this dispatch…",
     "handoffUnsupported": "Target runtime is too old to support a handoff note",
-    "previewFailed": "Couldn't fetch dispatch info; treating as \"will start\" — please confirm"
+    "previewFailed": "Couldn't fetch dispatch info; treating as \"will start\" — please confirm",
+    "stop": "Stop",
+    "rerun": "Re-run",
+    "rerunStarted": "Re-dispatched",
+    "cancelConfirm": "Stop this run?",
+    "cancelled": "Stopped"
   },
   "device": {
     "devices": "Devices",

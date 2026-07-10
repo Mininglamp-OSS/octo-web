@@ -89,6 +89,7 @@ export const ASSIGNEE_TYPE_COLOR: Record<AssigneeType, TagColor> = {
 export const RUN_STATUS_COLOR: Record<string, TagColor> = {
   queued: "grey",
   dispatched: "blue",
+  waiting_local_directory: "blue",
   running: "amber",
   completed: "green",
   failed: "red",
