@@ -23,11 +23,15 @@ import {
   Check,
   Square,
   RotateCcw,
+  SmilePlus,
+  Bell,
+  BellOff,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
   Issue,
   IssueComment,
+  IssueSubscriber,
   TaskRun,
   IssueStatus,
   IssuePriority,
@@ -44,6 +48,13 @@ import {
   updateComment,
   previewCommentTriggers,
 } from "../api/issueApi";
+import {
+  listSubscribers,
+  subscribeIssue,
+  unsubscribeIssue,
+  addCommentReaction,
+  removeCommentReaction,
+} from "../api/collabApi";
 import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
 import LabelEditor from "../ui/LabelEditor";
@@ -65,6 +76,9 @@ import "./issueDetail.css";
 
 const { Title, Text } = Typography;
 
+// 反应选择器的固定 emoji 集(轻量,够验证能力;完整 picker 留给 UI 重做)。
+const REACTION_EMOJIS = ["👍", "❤️", "🎉", "😄", "🚀", "👀"];
+
 function fmt(iso?: string | null): string {
   if (!iso) return "-";
   const d = new Date(iso);
@@ -84,6 +98,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const { t } = useI18n();
   const [issue, setIssue] = useState<Issue | null>(null);
   const [comments, setComments] = useState<IssueComment[]>([]);
+  const [subscribers, setSubscribers] = useState<IssueSubscriber[]>([]);
   const [runs, setRuns] = useState<TaskRun[]>([]);
   const [activeRun, setActiveRun] = useState<TaskRun | null>(null);
   const [runOpen, setRunOpen] = useState(false);
@@ -113,6 +128,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       })
       .catch(() => Toast.error(t("loop.detail.notFound")))
       .finally(() => setLoading(false));
+    // 订阅者旁路加载:失败不影响主体渲染。
+    listSubscribers(issueId).then(setSubscribers).catch(() => {});
   };
 
   useEffect(reload, [issueId]);
@@ -128,6 +145,27 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
   // 轻量刷新 issue(标签挂/摘后重取 detail,含最新 labels;不重置草稿、不整页 loading)。
   const syncIssue = () => getIssue(issueId).then(setIssue).catch(() => {});
+
+  // 订阅/取消订阅(后端默认操作调用者本人、幂等);两项都常驻,不猜"我是否已订阅"。
+  const toggleSubscribe = async (on: boolean) => {
+    try {
+      await (on ? subscribeIssue : unsubscribeIssue)(issueId);
+      setSubscribers(await listSubscribers(issueId));
+      Toast.success(t(on ? "loop.subscribe.subscribed" : "loop.subscribe.unsubscribed"));
+    } catch (e) {
+      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+    }
+  };
+
+  // 评论 emoji 反应:选择器点 emoji=加,已有 chip 点击=删自己那条(后端按 actor+emoji 定位)。
+  const reactComment = async (commentId: string, emoji: string, add: boolean) => {
+    try {
+      await (add ? addCommentReaction : removeCommentReaction)(commentId, emoji);
+      setComments(await listComments(issueId));
+    } catch (e) {
+      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+    }
+  };
 
   const submitComment = async () => {
     const content = commentDraft.trim();
@@ -312,6 +350,13 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changeAssignee")}</Dropdown.Item>
       </Dropdown>
       <Dropdown.Divider />
+      <Dropdown.Item icon={<Bell size={13} />} onClick={() => toggleSubscribe(true)}>
+        {t("loop.subscribe.subscribe")}
+      </Dropdown.Item>
+      <Dropdown.Item icon={<BellOff size={13} />} onClick={() => toggleSubscribe(false)}>
+        {t("loop.subscribe.unsubscribe")}
+      </Dropdown.Item>
+      <Dropdown.Divider />
       <Dropdown.Item type="danger" icon={<Trash2 size={13} />} onClick={handleDeleteIssue}>
         {t("loop.menu.deleteIssue")}
       </Dropdown.Item>
@@ -344,6 +389,38 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
   const roots = comments.filter((c) => !c.parent_id);
   const repliesOf = (id: string) => comments.filter((c) => c.parent_id === id);
+
+  // 评论 emoji 反应条:已有反应按 emoji 分组显示计数(点=删自己那条)+ 选择器加新反应。
+  const renderReactions = (c: IssueComment) => {
+    const groups = new Map<string, number>();
+    (c.reactions ?? []).forEach((rx) => groups.set(rx.emoji, (groups.get(rx.emoji) ?? 0) + 1));
+    return (
+      <div className="loop-comment__reactions">
+        {[...groups.entries()].map(([emoji, n]) => (
+          <button key={emoji} type="button" className="loop-reaction" onClick={() => reactComment(c.id, emoji, false)}>
+            <span>{emoji}</span>
+            <b>{n}</b>
+          </button>
+        ))}
+        <Dropdown
+          trigger="click"
+          clickToHide
+          position="topLeft"
+          render={
+            <div className="loop-reaction-picker">
+              {REACTION_EMOJIS.map((e) => (
+                <button key={e} type="button" onClick={() => reactComment(c.id, e, true)}>{e}</button>
+              ))}
+            </div>
+          }
+        >
+          <button type="button" className="loop-reaction loop-reaction--add" aria-label={t("loop.reaction.add")}>
+            <SmilePlus size={13} />
+          </button>
+        </Dropdown>
+      </div>
+    );
+  };
 
   const renderComment = (c: IssueComment, reply = false) => (
     <div key={c.id} className={`loop-comment ${reply ? "is-reply" : ""}`}>
@@ -392,6 +469,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       ) : (
         <div className="loop-comment__body"><LoopMarkdown content={c.content} /></div>
       )}
+      {renderReactions(c)}
       {!reply && repliesOf(c.id).map((r) => renderComment(r, true))}
       {!reply && replyTo === c.id && (
         <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
@@ -584,6 +662,10 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               <dt>{t("loop.detail.created")}</dt>
               <dd>
                 <Text type="tertiary" style={{ fontSize: 12 }}>{fmt(issue.created_at)}</Text>
+              </dd>
+              <dt>{t("loop.subscribe.label")}</dt>
+              <dd>
+                <Text type="tertiary" style={{ fontSize: 12 }}>{subscribers.length}</Text>
               </dd>
             </dl>
           </div>
