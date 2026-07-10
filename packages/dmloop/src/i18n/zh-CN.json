@@ -209,6 +209,11 @@
   "activity": {
     "title": "活动"
   },
+  "attach": {
+    "title": "附件",
+    "add": "添加附件",
+    "empty": "暂无附件"
+  },
   "toast": {
     "created": "已创建",
     "saved": "已保存",

@@ -29,6 +29,7 @@ import {
   SmilePlus,
   Bell,
   BellOff,
+  Paperclip,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
@@ -36,6 +37,7 @@ import type {
   IssueComment,
   IssueSubscriber,
   TimelineEntry,
+  Attachment,
   TaskRun,
   IssueStatus,
   IssuePriority,
@@ -66,6 +68,7 @@ import {
   unresolveComment,
   listTimeline,
 } from "../api/collabApi";
+import { uploadAttachment } from "../api/attachmentApi";
 import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
 import LabelEditor from "../ui/LabelEditor";
@@ -128,6 +131,9 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [busyRunId, setBusyRunId] = useState<string | null>(null); // 正在重跑的 task,防双击
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]); // 评论输入区:待随评论提交的本地文件(发送时才上传)
+  const [uploading, setUploading] = useState(false); // issue 附件上传中
+  const [submitting, setSubmitting] = useState(false); // 评论提交中(含附件上传),防重复提交
 
   // 每次 reload 递增;异步响应回来前先比对 token,丢弃 issueId 原地切换后到达的旧请求结果,
   // 防止慢请求(issue A)在切到 B 后把 A 的数据写进 B 的视图(导航竞态)。
@@ -166,12 +172,13 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     if (!issue) return;
     try {
       const updated = await updateIssue(issue.id, p);
-      // PUT 响应不带 labels/reactions(仅 list/detail 端点回填);re-enrich 修回 assignee_name/
-      // project_name 等展示字段(按新值重算),labels/reactions 保留当前值,避免编辑后被清空。
+      // PUT 响应不带 labels/reactions/attachments(仅 list/detail 端点回填);re-enrich 修回
+      // assignee_name/project_name 等展示字段(按新值重算),labels/reactions/attachments 保留当前值,避免编辑后被清空。
       setIssue({
         ...(await enrichIssue(updated)),
         labels: updated.labels ?? issue.labels,
         reactions: updated.reactions ?? issue.reactions,
+        attachments: updated.attachments ?? issue.attachments,
       });
       onChanged?.();
     } catch (e) {
@@ -249,18 +256,89 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     }
   };
 
+  // 评论附件:本地持有 File,发送时才带 commentId 上传绑定(见 submitComment),
+  // 避免像 issue-first 那样在评论发出前就产生 issue 级孤儿附件。取消/离开=什么都没上传。
+  const addPendingFiles = (files: FileList | null) => {
+    if (!files?.length) return;
+    setPendingFiles((p) => [...p, ...Array.from(files)]);
+  };
+  const removePendingFile = (idx: number) => setPendingFiles((p) => p.filter((_, i) => i !== idx));
+
+  // issue 附件:issue 已存在,选完即刻带 issueId 上传绑定并重取详情读回。
+  const uploadForIssue = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const token = reqRef.current;
+    setUploading(true);
+    try {
+      for (const f of Array.from(files)) await uploadAttachment(f, { issueId });
+    } catch (e) {
+      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+    } finally {
+      // 先解锁再触发重取(syncIssue 自带 catch、fire-and-forget):即使重取失败也不会把上传按钮永久卡在 disabled。
+      setUploading(false);
+      syncIssue(token);
+    }
+  };
+
+  // 附件渲染(评论/issue 共用):图片内联缩略,其它为带图标的下载链接(用短时 download_url)。
+  const renderAttachments = (atts: Attachment[] | null | undefined) => {
+    if (!atts?.length) return null;
+    return (
+      <div className="loop-atts">
+        {atts.map((a) =>
+          a.content_type.startsWith("image/") ? (
+            <a key={a.id} href={a.download_url} target="_blank" rel="noreferrer" className="loop-att loop-att--img">
+              <img src={a.download_url} alt={a.filename} />
+            </a>
+          ) : (
+            <a key={a.id} href={a.download_url} target="_blank" rel="noreferrer" className="loop-att">
+              <Paperclip size={12} />
+              <span>{a.filename}</span>
+            </a>
+          ),
+        )}
+      </div>
+    );
+  };
+
   const submitComment = async () => {
     const content = commentDraft.trim();
-    if (!content) return;
+    if (!content || submitting) return;
     const token = reqRef.current;
+    // 附件只随顶层评论;回复不带(pendingFiles 属主输入区)。
+    const files = replyTo ? [] : pendingFiles;
     const suppressIds = triggerAgents.filter((a) => suppressed.has(a.id)).map((a) => a.id);
-    await addComment(issueId, content, replyTo, suppressIds);
-    setCommentDraft("");
-    setReplyTo(null);
-    setTriggerAgents([]);
-    setSuppressed(new Set());
-    await reloadComments(token);
-    Toast.success(t("loop.toast.commentAdded"));
+    setSubmitting(true);
+    try {
+      let comment: IssueComment;
+      try {
+        comment = await addComment(issueId, content, replyTo, suppressIds);
+      } catch (e) {
+        // 评论未创建:保留草稿/待发文件供重试。
+        Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+        return;
+      }
+      // 评论已创建 → 立即清理输入态,避免后续附件上传失败时用户重复提交同一条评论。
+      setCommentDraft("");
+      setReplyTo(null);
+      setTriggerAgents([]);
+      setSuppressed(new Set());
+      if (!replyTo) setPendingFiles([]);
+      // 把待发文件带 commentId 绑到已建评论;单个失败只记录、不回滚评论。
+      let attFailed = false;
+      for (const f of files) {
+        try {
+          await uploadAttachment(f, { commentId: comment.id });
+        } catch {
+          attFailed = true;
+        }
+      }
+      await reloadComments(token);
+      if (attFailed) Toast.error(t("loop.toast.saveFailed"));
+      else Toast.success(t("loop.toast.commentAdded"));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // 顶层评论输入时防抖预览"会唤醒哪些 agent"(回复暂不预览)。
@@ -477,6 +555,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const childrenDone = children.filter((c) => c.status === "done").length;
   // 活动流只取 activity 类(评论已在评论区渲染,避免重复)。filter 返回新数组,reverse 不改原 state。倒序:最新在上。
   const activities = timeline.filter((e) => e.type === "activity").reverse();
+  // issue 附件区只显 issue 级(comment_id 为空);评论附件归各评论下,避免重复。
+  const issueAtts = (issue.attachments ?? []).filter((a) => !a.comment_id);
 
   // emoji 反应条(评论 + issue 通用):按 emoji 分组显示计数(点=删自己那条)+ 选择器加新反应。
   const renderReactionBar = (
@@ -571,6 +651,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       ) : (
         <div className="loop-comment__body"><LoopMarkdown content={c.content} /></div>
       )}
+      {renderAttachments(c.attachments)}
       {renderReactionBar(c.reactions, (emoji, add) => reactComment(c.id, emoji, add))}
       {!reply && repliesOf(c.id).map((r) => renderComment(r, true))}
       {!reply && replyTo === c.id && (
@@ -668,6 +749,27 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
             </div>
           )}
 
+          <div className="loop-idp__section">
+            <div className="loop-detail__section-title loop-idp__desc-title">
+              <span>{t("loop.attach.title")} ({issueAtts.length})</span>
+              <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
+                {uploading ? <Spin size="small" /> : <Paperclip size={13} />}
+                <input
+                  type="file"
+                  multiple
+                  hidden
+                  disabled={uploading}
+                  onChange={(e) => { uploadForIssue(e.target.files); e.target.value = ""; }}
+                />
+              </label>
+            </div>
+            {issueAtts.length ? (
+              renderAttachments(issueAtts)
+            ) : (
+              <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.attach.empty")}</Text>
+            )}
+          </div>
+
           {activities.length > 0 && (
             <div className="loop-idp__section">
               <div className="loop-detail__section-title">
@@ -723,7 +825,18 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                 <Text type="tertiary" style={{ fontSize: 11 }}>{t("loop.comment.tapToSuppress")}</Text>
               </div>
             )}
-            <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+            {!replyTo && pendingFiles.length > 0 && (
+              <div className="loop-atts" style={{ marginTop: 10 }}>
+                {pendingFiles.map((f, i) => (
+                  <span key={i} className="loop-att loop-att--pending">
+                    <Paperclip size={12} />
+                    <span>{f.name}</span>
+                    <button type="button" aria-label={t("loop.action.delete")} onClick={() => removePendingFile(i)}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
               <Input
                 value={replyTo ? "" : commentDraft}
                 disabled={!!replyTo}
@@ -731,7 +844,17 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                 placeholder={replyTo ? t("loop.comment.replyingHint") : t("loop.comment.placeholder")}
                 onEnterPress={submitComment}
               />
-              <Button theme="solid" icon={<Send size={14} />} onClick={submitComment} disabled={!!replyTo}>
+              <label className="loop-attach-btn" aria-label={t("loop.attach.add")} style={{ opacity: replyTo ? 0.4 : 1 }}>
+                <Paperclip size={16} />
+                <input
+                  type="file"
+                  multiple
+                  hidden
+                  disabled={!!replyTo || submitting}
+                  onChange={(e) => { addPendingFiles(e.target.files); e.target.value = ""; }}
+                />
+              </label>
+              <Button theme="solid" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!!replyTo}>
                 {t("loop.comment.send")}
               </Button>
             </div>
