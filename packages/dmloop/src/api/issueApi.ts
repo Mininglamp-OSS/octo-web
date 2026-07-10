@@ -25,11 +25,15 @@ async function enrich(issues: Issue[]): Promise<Issue[]> {
   }));
 }
 
-export async function listIssues(
-  params?: ListParams,
-): Promise<{ issues: Issue[]; total: number }> {
-  const data = await httpGet<{ issues: Issue[]; total?: number }>("/issues", {
-    keyword: params?.keyword,
+// 拉取 issue 列表并 enrich + 兜底 total(listIssues/searchIssues 共用尾巴)。
+async function fetchIssues(path: string, query: Record<string, unknown>): Promise<{ issues: Issue[]; total: number }> {
+  const data = await httpGet<{ issues: Issue[]; total?: number }>(path, query);
+  const issues = await enrich(data.issues ?? []);
+  return { issues, total: data.total ?? issues.length };
+}
+
+export function listIssues(params?: ListParams): Promise<{ issues: Issue[]; total: number }> {
+  return fetchIssues("/issues", {
     status: params?.status,
     priority: params?.priority,
     assignee_id: params?.assignee_id,
@@ -43,8 +47,20 @@ export async function listIssues(
     limit: params?.limit,
     offset: params?.offset,
   });
-  const issues = await enrich(data.issues ?? []);
-  return { issues, total: data.total ?? issues.length };
+}
+
+// 关键词搜索(GET /issues/search):独立端点,后端全文搜标题/描述/评论并回高亮片段。
+// 与 listIssues 是两套语义(不吃状态/优先级等筛选、limit≤50),故单列一个函数。
+export function searchIssues(
+  q: string,
+  opts?: { limit?: number; offset?: number; includeClosed?: boolean },
+): Promise<{ issues: Issue[]; total: number }> {
+  return fetchIssues("/issues/search", {
+    q,
+    limit: opts?.limit,
+    offset: opts?.offset,
+    include_closed: opts?.includeClosed ? "true" : undefined,
+  });
 }
 
 export async function enrichIssue(issue: Issue): Promise<Issue> {

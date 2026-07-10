@@ -46,7 +46,7 @@ import {
 } from "../api/issueApi";
 import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
-import LabelChips from "../ui/LabelChips";
+import LabelEditor from "../ui/LabelEditor";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import LoopMarkdown from "../ui/LoopMarkdown";
@@ -125,6 +125,9 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     setIssue({ ...(await enrichIssue(updated)), labels: updated.labels ?? issue.labels });
     onChanged?.();
   };
+
+  // 轻量刷新 issue(标签挂/摘后重取 detail,含最新 labels;不重置草稿、不整页 loading)。
+  const syncIssue = () => getIssue(issueId).then(setIssue).catch(() => {});
 
   const submitComment = async () => {
     const content = commentDraft.trim();
@@ -559,7 +562,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               </dd>
               <dt>{t("loop.field.labels")}</dt>
               <dd>
-                {issue.labels && issue.labels.length > 0 ? <LabelChips labels={issue.labels} /> : <Text type="tertiary">—</Text>}
+                <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(); onChanged?.(); }} />
               </dd>
               <dt>{t("loop.field.startDate")}</dt>
               <dd>
