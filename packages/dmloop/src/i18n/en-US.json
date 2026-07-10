@@ -3,7 +3,8 @@
     "title": "Loop",
     "changeStatus": "Change status",
     "changePriority": "Change priority",
-    "changeAssignee": "Change assignee"
+    "changeAssignee": "Change assignee",
+    "deleteIssue": "Delete issue"
   },
   "nav": {
     "issue": "Issue",
@@ -40,6 +41,11 @@
     "project": "Search project",
     "agent": "Search agent",
     "squad": "Search squad"
+  },
+  "filter": {
+    "status": "Status",
+    "priority": "Priority",
+    "assignee": "Assignee"
   },
   "action": {
     "newIssue": "New Issue",
@@ -165,14 +171,18 @@
     "archived": "Archived",
     "deleted": "Deleted",
     "commentAdded": "Comment added",
-    "commentDeleted": "Comment deleted"
+    "commentDeleted": "Comment deleted",
+    "commentUpdated": "Comment updated",
+    "editFailed": "Edit failed",
+    "deleteFailed": "Delete failed"
   },
   "validate": {
     "nameRequired": "Name is required",
     "titleRequired": "Title is required"
   },
   "confirm": {
-    "delete": "Delete?"
+    "delete": "Delete?",
+    "deleteIssue": "Delete this issue? This cannot be undone."
   },
   "skill": {
     "source": "Source",

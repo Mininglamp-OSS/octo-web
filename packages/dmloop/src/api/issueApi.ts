@@ -2,7 +2,6 @@
 import type {
   Issue,
   IssueComment,
-  AgentTask,
   CreateIssueReq,
   UpdateIssueReq,
   ListParams,
@@ -23,11 +22,19 @@ async function enrich(issues: Issue[]): Promise<Issue[]> {
   }));
 }
 
-export async function listIssues(params?: ListParams): Promise<Issue[]> {
+export async function listIssues(
+  params?: ListParams,
+): Promise<{ issues: Issue[]; total: number }> {
   const data = await httpGet<{ issues: Issue[]; total?: number }>("/issues", {
     keyword: params?.keyword,
+    status: params?.status,
+    priority: params?.priority,
+    assignee_id: params?.assignee_id,
+    limit: params?.limit,
+    offset: params?.offset,
   });
-  return enrich(data.issues ?? []);
+  const issues = await enrich(data.issues ?? []);
+  return { issues, total: data.total ?? issues.length };
 }
 
 export async function getIssue(id: string): Promise<Issue> {
@@ -75,16 +82,9 @@ export function deleteComment(commentId: string): Promise<void> {
   return httpDelete<void>(`/comments/${commentId}`);
 }
 
-/* ---------- 执行日志 ---------- */
-export async function listTasks(issueId: string): Promise<AgentTask[]> {
-  const [rows, dir] = await Promise.all([
-    httpGet<AgentTask[]>(`/issues/${issueId}/tasks`).catch(() => [] as AgentTask[]),
-    ensureDirectory(),
-  ]);
-  return (rows ?? []).map((tk) => ({
-    ...tk,
-    agent_name: tk.agent_id ? dir.agentName.get(tk.agent_id) ?? null : null,
-  }));
+// 编辑评论：仅作者或 workspace owner/admin 可改（后端 PUT /comments/:id 强校验）。
+export function updateComment(commentId: string, content: string): Promise<IssueComment> {
+  return httpPut<IssueComment>(`/comments/${commentId}`, { content });
 }
 
 /* ---------- 指派候选 ---------- */
