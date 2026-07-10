@@ -7,11 +7,12 @@ import {
   Toast,
   Select,
   Pagination,
+  DatePicker,
 } from "@douyinfe/semi-ui";
 import { Search, Plus, LayoutGrid, List as ListIcon, ClipboardList, ArrowUp, ArrowDown } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
-import type { Issue, IssueStatus, IssuePriority, IssueSortField } from "../api/types";
-import { ISSUE_SORT_FIELDS } from "../api/types";
+import type { Issue, IssueStatus, IssuePriority, IssueSortField, IssueDateField } from "../api/types";
+import { ISSUE_SORT_FIELDS, ISSUE_DATE_FIELDS } from "../api/types";
 import { listIssues } from "../api/issueApi";
 import { listProjectOptions } from "../api/directory";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
@@ -32,6 +33,8 @@ interface Filters {
   assignee?: string;
   creator?: string;
   project?: string;
+  dateField: IssueDateField; // 时间范围筛选的列(created_at|updated_at)
+  dateRange?: Date[];        // [start, end];为空则不按时间筛选
   sortBy: IssueSortField;
   sortDir: "asc" | "desc";
 }
@@ -44,7 +47,7 @@ export default function IssuePage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewMode>("board");
-  const [f, setF] = useState<Filters>({ keyword: "", sortBy: "position", sortDir: "desc" });
+  const [f, setF] = useState<Filters>({ keyword: "", sortBy: "position", sortDir: "desc", dateField: "created_at" });
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
   const [createOpen, setCreateOpen] = useState(false);
   const cands = useAssigneeCandidates();
@@ -60,6 +63,11 @@ export default function IssuePage() {
     const my = ++seq.current;
     setLoading(true);
     const paged = view === "list";
+    // 时间范围:三参数须同时给且 start<end。onChange 已把 dateRange 归一为 undefined|[起,止]。
+    // 止端 +1 日历日 → 半开区间,既含止日当天、又保证 start<end(即使起止同一天);setDate 处理 DST。
+    const dr = f.dateRange;
+    const endExclusive = dr && new Date(dr[1]);
+    if (endExclusive) endExclusive.setDate(endExclusive.getDate() + 1);
     listIssues({
       keyword: f.keyword,
       status: f.status,
@@ -67,6 +75,9 @@ export default function IssuePage() {
       assignee_id: f.assignee,
       creator_id: f.creator,
       project_id: f.project,
+      date_field: dr ? f.dateField : undefined,
+      date_start: dr ? dr[0].toISOString() : undefined,
+      date_end: endExclusive ? endExclusive.toISOString() : undefined,
       // 排序仅用于列表视图;看板按 status 分列 + 100 上限,叠加全局排序会把某状态整列截没,故看板固定后端默认(position)。
       sort_by: paged ? f.sortBy : undefined,
       sort_direction: paged ? f.sortDir : undefined,
@@ -178,6 +189,29 @@ export default function IssuePage() {
             ))}
           </Select>
         )}
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {f.dateRange && (
+            <Select
+              value={f.dateField}
+              onChange={(v) => update({ dateField: v as IssueDateField })}
+              size="small"
+              style={{ width: 104 }}
+            >
+              {ISSUE_DATE_FIELDS.map((d) => (
+                <Select.Option key={d} value={d}>{t(`loop.dateField.${d}`)}</Select.Option>
+              ))}
+            </Select>
+          )}
+          <DatePicker
+            type="dateRange"
+            size="small"
+            density="compact"
+            value={f.dateRange}
+            onChange={(d) => update({ dateRange: Array.isArray(d) && d.length === 2 && d[0] && d[1] ? (d as Date[]) : undefined })}
+            placeholder={t("loop.filter.dateRange")}
+            style={{ width: 220 }}
+          />
+        </div>
         {view === "list" && (
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
           <Select
