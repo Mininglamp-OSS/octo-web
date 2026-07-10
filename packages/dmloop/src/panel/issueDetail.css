@@ -127,7 +127,8 @@
 
 /* 执行记录 run 行（可点击） */
 .loop-idp__run {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
