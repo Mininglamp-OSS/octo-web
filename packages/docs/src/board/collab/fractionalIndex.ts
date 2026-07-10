@@ -7,10 +7,12 @@
 // `syncInvalidIndices` → `generateNKeysBetween`, which passes neighbouring keys straight to the
 // library's `validateOrderKey`; a key it cannot parse makes the WHOLE apply throw.
 //
-// The shared `@octo/whiteboard-schema` `isValidIndex` only checks the loose `/^[A-Za-z0-9]+$/`
-// charset (deliberately — it is the FE/BE contract and the backend authoritative repair writes
-// under it). The backend fills a missing key with a zero-padded scheme (`r00000000`, see
-// octo-docs-backend `whiteboard/repair.ts`) that passes that loose check but is NOT a valid
+// Whether a key is a parseable Excalidraw order key is decided by the SINGLE shared validator
+// `isValidIndex` in `@octo/whiteboard-schema` (a non-throwing port of `fractional-indexing`'s
+// `validateOrderKey`, hardened in XIN-794/795). This module reuses that one definition rather than
+// keeping a second copy, so FE render defence, FE binding normalize and BE authoritative repair
+// all agree byte-for-byte on legality. The backend fills a missing key with a zero-padded scheme
+// (`r00000000`, see octo-docs-backend `whiteboard/repair.ts`) that is NOT a valid
 // Excalidraw key: head `r` claims a 19-digit integer part while only 9 chars follow. Such a key
 // renders fine as long as the scene never needs an index REGENERATED (all keys already ordered),
 // but the moment one does — a local element inserted between two remote ones, a non-monotonic /
@@ -32,41 +34,16 @@
 // so existing real-time collaboration / reconcile behaviour does not change.
 
 import type { ExcalidrawElement } from './types.ts'
-
-const BASE_62_DIGITS = new Set(
-  '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split(''),
-)
-
-/**
- * Integer-part length a fractional-index head char encodes, or -1 for a non-head char. Mirrors
- * `fractional-indexing`'s `getIntegerLength`: `a`→2 … `z`→27 (positive), `Z`→2 … `A`→27 (negative).
- */
-function integerLengthFromHead(head: string): number {
-  if (head >= 'a' && head <= 'z') return head.charCodeAt(0) - 'a'.charCodeAt(0) + 2
-  if (head >= 'A' && head <= 'Z') return 'Z'.charCodeAt(0) - head.charCodeAt(0) + 2
-  return -1
-}
+import { isValidIndex } from './schema.ts'
 
 /**
  * True when `key` is a fractional-index string Excalidraw's `fractional-indexing` can parse —
- * i.e. one `generateKeyBetween`/`validateOrderKey` will accept as a neighbour bound. Faithful to
- * that library's `validateOrderKey` + `getIntegerPart`, with the extra guarantee that every digit
- * is base-62 (a non-base-62 fractional char parses in `validateOrderKey` but breaks the base-62
- * arithmetic in `generateNKeysBetween`, so treating it as invalid here is the safe, stricter call).
+ * i.e. one `generateKeyBetween` / `validateOrderKey` will accept as a neighbour bound. Delegates to
+ * the shared `@octo/whiteboard-schema` `isValidIndex` so this render-defence pass and the FE/BE
+ * schema layer share ONE legality definition and can never drift apart.
  */
 export function isExcalidrawFractionalIndex(key: unknown): key is string {
-  if (typeof key !== 'string' || key.length === 0) return false
-  // The one explicitly-forbidden key in the library (smallest-integer sentinel).
-  if (key === 'A' + '0'.repeat(26)) return false
-  const intLen = integerLengthFromHead(key[0])
-  if (intLen < 0 || intLen > key.length) return false
-  for (let i = 1; i < key.length; i++) {
-    if (!BASE_62_DIGITS.has(key[i])) return false
-  }
-  // A fractional part is never allowed to end in the smallest digit (`0`).
-  const frac = key.slice(intLen)
-  if (frac.length > 0 && frac[frac.length - 1] === '0') return false
-  return true
+  return isValidIndex(key)
 }
 
 /**
