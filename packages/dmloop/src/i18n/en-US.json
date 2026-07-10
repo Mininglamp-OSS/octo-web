@@ -209,6 +209,11 @@
   "activity": {
     "title": "Activity"
   },
+  "attach": {
+    "title": "Attachments",
+    "add": "Add attachment",
+    "empty": "No attachments"
+  },
   "toast": {
     "created": "Created",
     "saved": "Saved",

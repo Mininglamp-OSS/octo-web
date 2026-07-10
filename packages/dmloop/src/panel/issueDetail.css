@@ -194,3 +194,25 @@
 .loop-activities { display: flex; flex-direction: column; gap: 8px; }
 .loop-activity { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .loop-activity time { margin-left: auto; font-size: 11px; color: var(--semi-color-text-2, #8590a6); }
+
+/* 附件(PR-E) */
+.loop-atts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.loop-att {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 220px;
+  padding: 2px 8px; border: 1px solid var(--semi-color-border, #e8e9eb); border-radius: 8px;
+  background: var(--semi-color-fill-0, #f5f6f8); color: var(--semi-color-text-1, #4e5969);
+  font-size: 12px; line-height: 18px; text-decoration: none;
+}
+.loop-att:hover { background: var(--semi-color-fill-1, #eef0f3); }
+.loop-att span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loop-att--img { padding: 0; border: none; background: none; }
+.loop-att--img img { max-height: 96px; max-width: 220px; border-radius: 8px; display: block; object-fit: cover; }
+.loop-att--pending button {
+  border: none; background: transparent; cursor: pointer; color: var(--semi-color-text-2, #8590a6);
+  font-size: 14px; line-height: 1; padding: 0 0 0 2px;
+}
+.loop-attach-btn {
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  color: var(--semi-color-text-2, #8590a6); padding: 4px; border-radius: 6px;
+}
+.loop-attach-btn:hover { background: var(--semi-color-fill-1, #eef0f3); color: var(--semi-color-text-0, #1c1f23); }

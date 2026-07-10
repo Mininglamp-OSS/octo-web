@@ -124,6 +124,8 @@ export interface Issue {
   labels?: IssueLabel[] | null;
   // issue 级 emoji 反应:仅详情端点(GetIssue)回填;list/update/ws 不带 → 保持已有。
   reactions?: IssueReaction[] | null;
+  // issue 附件:仅详情端点(GetIssue)回填;list/update/ws 不带 → 保持已有。
+  attachments?: Attachment[] | null;
   // 搜索结果专属(GET /issues/search):命中来源 + 高亮片段。列表/详情端点不返回。
   match_source?: string;
   matched_snippet?: string | null;
@@ -139,6 +141,8 @@ export interface CreateIssueReq {
   assignee_type?: AssigneeType | null;
   assignee_id?: string | null;
   project_id?: string | null;
+  // 新建时绑定已上传附件(上传返回的 id 列表)。
+  attachment_ids?: string[];
 }
 export interface UpdateIssueReq {
   title?: string;
@@ -156,6 +160,8 @@ export interface UpdateIssueReq {
   due_date?: string | null;
   parent_issue_id?: string | null;
   stage?: number | null;
+  // 绑定新上传的附件(id 列表);后端幂等,重复 id 无副作用。
+  attachment_ids?: string[];
   // 指派/状态变更触发 agent run 时：suppress_run=true 表示“暂不开始”；handoff_note 仅在真起 run 时消费。
   suppress_run?: boolean;
   handoff_note?: string;
@@ -216,6 +222,23 @@ export interface IssueSubscriber {
   created_at: string;
 }
 
+/** 附件(上传返回 + issue/comment 详情回填)。
+ *  download_url 为短时签名 URL(仅即时展示、勿持久化);markdown_url 可持久化内联进 markdown 正文。 */
+export interface Attachment {
+  id: string;
+  filename: string;
+  url: string;
+  download_url: string;
+  markdown_url: string;
+  content_type: string;
+  size_bytes: number;
+  created_at?: string;
+  // 归属:issue 级附件 comment_id 为空;评论附件 comment_id 指向评论。
+  // (后端 attachment 先绑 issue_id,再由 comment 的 attachment_ids 补 comment_id。)
+  issue_id?: string | null;
+  comment_id?: string | null;
+}
+
 /** issue 时间线条目(GET /issues/:id/timeline,不带分页参数时为裸数组、ASC)。
  *  合并 comment + activity 两类;活动流只用 activity 类(action/details)。 */
 export interface TimelineEntry {
@@ -248,6 +271,8 @@ export interface IssueComment {
   reactions?: CommentReaction[] | null;
   // 已解决时间(resolve/unresolve);非空=该评论已标记为线程结论。后端一线程至多一条 resolved。
   resolved_at?: string | null;
+  // 评论附件:后端 list/timeline 端点按 comment 分组回填;其它端点不带 → 保持已有。
+  attachments?: Attachment[] | null;
 }
 
 export type TaskStatus =
