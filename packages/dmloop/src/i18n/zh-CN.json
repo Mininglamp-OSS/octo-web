@@ -31,12 +31,18 @@
     "search": "搜索运行时 / 提供方",
     "empty": "暂无运行时",
     "subtitle": "你名下的机器与运行时。工作区里的 AI 队友都跑在这里。",
-    "add": "添加运行时",
+    "add": "添加电脑",
     "allSpace": "全部空间",
     "runtimeCount": "{{count}} 个运行时",
     "servingAgents": "服务 {{count}} 个 AI 队友",
     "noAgents": "—",
-    "builtIn": "内置"
+    "builtIn": "内置",
+    "addComputerTitle": "添加电脑",
+    "addComputerDesc": "在需要接入的电脑上运行下面的命令，完成登录后运行时会出现在列表里。",
+    "copyCommand": "复制命令",
+    "copied": "已复制",
+    "copySuccess": "命令已复制",
+    "copyFailed": "复制失败，请手动复制"
   },
   "view": {
     "board": "看板",

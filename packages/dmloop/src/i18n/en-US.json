@@ -31,12 +31,18 @@
     "search": "Search device / provider",
     "empty": "No runtimes",
     "subtitle": "Machines and runtimes under your account. Workspace AI teammates run here.",
-    "add": "Add runtime",
+    "add": "Add computer",
     "allSpace": "All spaces",
     "runtimeCount": "{{count}} runtimes",
     "servingAgents": "Serving {{count}} AI teammates",
     "noAgents": "—",
-    "builtIn": "Built-in"
+    "builtIn": "Built-in",
+    "addComputerTitle": "Add computer",
+    "addComputerDesc": "Run this command on the computer you want to connect. After login, its runtimes will appear in the list.",
+    "copyCommand": "Copy command",
+    "copied": "Copied",
+    "copySuccess": "Command copied",
+    "copyFailed": "Copy failed. Please copy manually."
   },
   "view": {
     "board": "Board",

@@ -1,12 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Typography, Spin, Tag, Banner, Button } from "@douyinfe/semi-ui";
-import { Box, Circle, Code2, Cpu, Monitor, Plus, Terminal } from "lucide-react";
-import { useI18n } from "@octo/base";
+import { Typography, Spin, Tag, Banner, Button, Toast } from "@douyinfe/semi-ui";
+import { Box, Check, Circle, Code2, Copy, Cpu, Monitor, Plus, Terminal } from "lucide-react";
+import { copyToClipboard, useI18n, WKModal } from "@octo/base";
 import type { RuntimeDevice, RuntimeMode } from "../api/types";
 import { listRuntimes } from "../api/runtimeApi";
 import "./runtime.css";
 
 const { Title } = Typography;
+
+const ADD_COMPUTER_COMMAND = `MULTICA_APP_URL=https://octo-dev.mlamp.cn \\
+./octo-daemon \\
+  --server-url https://octo-dev.mlamp.cn/fleet/api/v1 \\
+  login`;
 
 interface Device {
   key: string;
@@ -76,6 +81,8 @@ export default function RuntimePage() {
   const [runtimes, setRuntimes] = useState<RuntimeDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -102,6 +109,17 @@ export default function RuntimePage() {
     return Array.from(map.values());
   }, [runtimes]);
 
+  const copyCommand = async () => {
+    const ok = await copyToClipboard(ADD_COMPUTER_COMMAND);
+    if (!ok) {
+      Toast.error(t("loop.runtime.copyFailed"));
+      return;
+    }
+    setCopied(true);
+    Toast.success(t("loop.runtime.copySuccess"));
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+
   return (
     <div className="loop-page">
       <div className="loop-runtime-hero">
@@ -112,7 +130,7 @@ export default function RuntimePage() {
           </div>
           <div className="loop-runtime-hero__subtitle">{t("loop.runtime.subtitle")}</div>
         </div>
-        <Button className="loop-runtime-hero__action" theme="solid" type="tertiary" icon={<Plus size={13} />}>
+        <Button className="loop-runtime-hero__action" theme="solid" type="tertiary" icon={<Plus size={13} />} onClick={() => setAddOpen(true)}>
           {t("loop.runtime.add")}
         </Button>
       </div>
@@ -167,6 +185,27 @@ export default function RuntimePage() {
           </div>
         )}
       </div>
+      <WKModal
+        visible={addOpen}
+        onCancel={() => setAddOpen(false)}
+        title={t("loop.runtime.addComputerTitle")}
+        size="lg"
+        footer={(
+          <>
+            <Button theme="borderless" type="tertiary" onClick={() => setAddOpen(false)}>
+              {t("loop.action.cancel")}
+            </Button>
+            <Button theme="solid" type="tertiary" icon={copied ? <Check size={14} /> : <Copy size={14} />} onClick={copyCommand}>
+              {copied ? t("loop.runtime.copied") : t("loop.runtime.copyCommand")}
+            </Button>
+          </>
+        )}
+      >
+        <div className="loop-runtime-add">
+          <p>{t("loop.runtime.addComputerDesc")}</p>
+          <pre className="loop-runtime-add__command"><code>{ADD_COMPUTER_COMMAND}</code></pre>
+        </div>
+      </WKModal>
     </div>
   );
 }

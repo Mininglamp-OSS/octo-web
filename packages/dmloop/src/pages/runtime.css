@@ -236,6 +236,30 @@
   white-space: nowrap;
 }
 
+.loop-runtime-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+}
+
+.loop-runtime-add p {
+  margin: 0;
+  color: var(--wk-text-secondary);
+  font: var(--wk-text-caption);
+}
+
+.loop-runtime-add__command {
+  margin: 0;
+  padding: var(--wk-sp-4);
+  overflow: auto;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
+  font: var(--wk-text-code);
+  white-space: pre;
+}
+
 @media (max-width: 960px) {
   .loop-runtime-hero {
     padding-right: var(--wk-sp-4);
