@@ -2,6 +2,7 @@ import {
   CardObjectRegistry,
   GlobalRegistry,
   SerializationContext,
+  Table,
   Versions,
   type Action,
   type CardElement,
@@ -50,6 +51,9 @@ export function createOctoSerializationContext(): SerializationContext {
 
   const elementRegistry = new CardObjectRegistry<CardElement>();
   GlobalRegistry.populateWithDefaultElements(elementRegistry);
+  // adaptivecards 声明了 sideEffects:false；production build 可能剪掉 lib/table.js
+  // 的默认注册副作用。Table 是 octo 白名单元素，需显式注册，不能依赖全局 registry。
+  elementRegistry.register("Table", Table, Versions.v1_5);
   for (const type of FORBIDDEN_ELEMENTS) {
     elementRegistry.unregister(type);
   }

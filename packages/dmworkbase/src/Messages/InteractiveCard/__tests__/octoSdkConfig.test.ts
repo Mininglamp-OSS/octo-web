@@ -4,7 +4,7 @@
 // HostConfig 颜色经可注入解析器映射自 --wk-* token。
 
 import { describe, expect, it, vi } from "vitest";
-import { FontType } from "adaptivecards";
+import { FontType, GlobalRegistry } from "adaptivecards";
 import { createOctoSerializationContext } from "../sdk/octoSerialization";
 import { buildOctoHostConfig } from "../sdk/octoHostConfig";
 
@@ -48,6 +48,16 @@ describe("createOctoSerializationContext — 元素层防御纵深", () => {
     // 非白名单元素被移除。
     for (const t of ["Carousel", "Media"]) {
       expect(reg.findByName(t)).toBeUndefined();
+    }
+  });
+
+  it("Table 不依赖 adaptivecards 全局注册副作用，production tree-shaking 后仍可用", () => {
+    GlobalRegistry.defaultElements.unregister("Table");
+    try {
+      const ctx = createOctoSerializationContext();
+      expect(ctx.elementRegistry.findByName("Table")).toBeDefined();
+    } finally {
+      GlobalRegistry.reset();
     }
   });
 });
