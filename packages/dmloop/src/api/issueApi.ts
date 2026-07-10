@@ -33,6 +33,9 @@ export async function listIssues(
     status: params?.status,
     priority: params?.priority,
     assignee_id: params?.assignee_id,
+    creator_id: params?.creator_id,
+    sort: params?.sort_by,
+    direction: params?.sort_direction,
     limit: params?.limit,
     offset: params?.offset,
   });
