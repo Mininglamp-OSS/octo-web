@@ -55,3 +55,10 @@
 .loop-md th { background: var(--semi-color-fill-0, #f5f6f8); font-weight: 600; }
 .loop-md hr { border: none; border-top: 1px solid var(--semi-color-border, #e8e9eb); margin: 16px 0; }
 .loop-md img { max-width: 100%; border-radius: 6px; }
+
+/* @提及 chip(mention:// 链接,不可导航;PR @提及) */
+.loop-mention {
+  color: var(--semi-color-primary, #0064fa);
+  background: var(--semi-color-primary-light-default, #e8f0ff);
+  border-radius: 4px; padding: 0 4px; font-weight: 500; white-space: nowrap;
+}

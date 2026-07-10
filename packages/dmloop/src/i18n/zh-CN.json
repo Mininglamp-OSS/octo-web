@@ -312,6 +312,9 @@
   "reaction": {
     "add": "添加反应"
   },
+  "mention": {
+    "add": "@ 提及"
+  },
   "agent": {
     "runtime": "运行环境",
     "model": "模型",
