@@ -4,14 +4,71 @@ import { Box, Check, Circle, Code2, Copy, Cpu, Monitor, Plus, Terminal } from "l
 import { copyToClipboard, useI18n, WKModal } from "@octo/base";
 import type { RuntimeDevice, RuntimeMode } from "../api/types";
 import { listRuntimes } from "../api/runtimeApi";
+import { LOOP_API_BASE } from "../api/http";
 import "./runtime.css";
 
 const { Title } = Typography;
 
-const ADD_COMPUTER_COMMAND = `MULTICA_APP_URL=https://octo-dev.mlamp.cn \\
+const DEFAULT_FLEET_API_PATH = "/fleet/api/v1";
+
+function envValue(key: string): string {
+  return (import.meta as { env?: Record<string, string | undefined> }).env?.[key]?.trim() ?? "";
+}
+
+function trimEndSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function isAbsoluteUrl(value: string): boolean {
+  try {
+    return Boolean(new URL(value).origin);
+  } catch {
+    return false;
+  }
+}
+
+function originOf(value: string): string {
+  if (!value) return "";
+  try {
+    return new URL(value).origin;
+  } catch {
+    return "";
+  }
+}
+
+function currentOrigin(): string {
+  if (typeof window !== "undefined" && window.location.origin) {
+    return window.location.origin;
+  }
+  return originOf(envValue("VITE_APP_URL")) || originOf(envValue("VITE_API_URL"));
+}
+
+function withOrigin(pathOrUrl: string, origin: string): string {
+  if (isAbsoluteUrl(pathOrUrl)) return trimEndSlash(pathOrUrl);
+  if (!origin) return trimEndSlash(pathOrUrl);
+  return `${trimEndSlash(origin)}${pathOrUrl.startsWith("/") ? "" : "/"}${trimEndSlash(pathOrUrl)}`;
+}
+
+function fleetApiUrl(): string {
+  const explicitLoopBase = envValue("VITE_LOOP_API_BASE");
+  if (explicitLoopBase) {
+    return withOrigin(explicitLoopBase, currentOrigin());
+  }
+  return withOrigin(LOOP_API_BASE || DEFAULT_FLEET_API_PATH, currentOrigin());
+}
+
+function appUrl(): string {
+  const configuredAppUrl = originOf(envValue("VITE_APP_URL"));
+  if (configuredAppUrl) return configuredAppUrl;
+  return currentOrigin();
+}
+
+function addComputerCommand(): string {
+  return `MULTICA_APP_URL=${appUrl()} \\
 ./octo-daemon \\
-  --server-url https://octo-dev.mlamp.cn/fleet/api/v1 \\
+  --server-url ${fleetApiUrl()} \\
   login`;
+}
 
 interface Device {
   key: string;
@@ -34,6 +91,18 @@ function runtimeVersion(r: RuntimeDevice): string {
   const info = r.device_info || "";
   const parts = info.split("·").map((part) => part.trim()).filter(Boolean);
   return parts.slice(1).join(" · ") || r.launch_header || "-";
+}
+
+function deviceStatus(runtimes: RuntimeDevice[]): RuntimeDevice["status"] {
+  return runtimes.some((runtime) => runtime.status === "online") ? "online" : "offline";
+}
+
+function deviceVersion(runtimes: RuntimeDevice[]): string {
+  for (const runtime of runtimes) {
+    const version = runtimeVersion(runtime);
+    if (version !== "-") return version;
+  }
+  return "-";
 }
 
 function relTime(iso: string | null): string {
@@ -116,7 +185,7 @@ export default function RuntimePage() {
   }, [runtimes]);
 
   const copyCommand = async () => {
-    const ok = await copyToClipboard(ADD_COMPUTER_COMMAND);
+    const ok = await copyToClipboard(addComputerCommand());
     if (!ok) {
       Toast.error(t("loop.runtime.copyFailed"));
       return;
@@ -148,19 +217,22 @@ export default function RuntimePage() {
           <div className="loop-empty"><Cpu size={40} className="loop-empty__icon" /><div className="loop-empty__title">{t("loop.runtime.empty")}</div></div>
         ) : (
           <div className="loop-runtime-list">
-            {devices.map((device) => (
+            {devices.map((device) => {
+              const status = deviceStatus(device.runtimes);
+              const version = deviceVersion(device.runtimes);
+              return (
               <section className="loop-runtime-machine" key={device.key} aria-label={device.name}>
                 <div className="loop-runtime-machine__head">
                   <div className="loop-runtime-machine__identity">
                     <span className="loop-runtime-machine__icon"><Monitor size={14} /></span>
                     <strong>{device.name}</strong>
-                    <span className="loop-runtime-status is-online">
+                    <span className={`loop-runtime-status is-${status}`}>
                       <Circle size={6} fill="currentColor" />
-                      {t("loop.runtime.online")}
+                      {t(`loop.runtime.${status}`)}
                     </span>
                   </div>
                   <div className="loop-runtime-machine__meta">
-                    <Tag size="small" color="grey">v0.3.12</Tag>
+                    {version !== "-" && <Tag size="small" color="grey">{version}</Tag>}
                     <span>{shortDaemon(device.runtimes[0]?.daemon_id)}</span>
                     <span>{t("loop.runtime.allSpace")}</span>
                     <strong>{t("loop.runtime.runtimeCount", { values: { count: device.runtimes.length } })}</strong>
@@ -186,7 +258,8 @@ export default function RuntimePage() {
                   ))}
                 </div>
               </section>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -208,7 +281,7 @@ export default function RuntimePage() {
       >
         <div className="loop-runtime-add">
           <p>{t("loop.runtime.addComputerDesc")}</p>
-          <pre className="loop-runtime-add__command"><code>{ADD_COMPUTER_COMMAND}</code></pre>
+          <pre className="loop-runtime-add__command"><code>{addComputerCommand()}</code></pre>
         </div>
       </WKModal>
     </div>
