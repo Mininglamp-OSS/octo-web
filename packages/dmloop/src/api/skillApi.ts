@@ -1,4 +1,4 @@
-// @octo/loop — Skill API（真实 fleet 联调）
+// @octo/loop — Skill API（后端契约联调）
 import type {
   Skill,
   UpsertSkillReq,

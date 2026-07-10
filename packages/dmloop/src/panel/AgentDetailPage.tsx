@@ -37,7 +37,7 @@ interface EnvEntry {
 }
 
 /**
- * Agent 独立详情/编辑页（1:1 复刻 multica）：
+ * Agent 独立详情/编辑页（对齐产品设计）：
  * 左侧 Inspector（身份 + 属性）+ 右侧 Tabs（指令 / 技能 / 环境变量 / 自定义参数）。
  * 渲染在右主栏（routeRight.push），顶部返回 pop。
  */

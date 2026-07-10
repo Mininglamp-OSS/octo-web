@@ -1,7 +1,7 @@
 // @octo/loop — Directory：解析展示用名字 + 提供 assignee 候选。
-// fleet 列表接口不返回 assignee_name/project_name 等，这里统一加载并缓存后回填。
+// 后端列表接口不返回 assignee_name/project_name 等，这里统一加载并缓存后回填。
 // member 身份按 octo_uid 解析成 octo IM 名字（octo web 面统一以 octo 身份展示，
-// 而非 multica 原生名）；无 octo_uid 的原生成员回退其 multica 名。
+// 而非 后端侧原生显示名）；无 octo_uid 的原生成员回退其后端显示名。
 import type { AssigneeCandidate, AssigneeType } from "./types";
 import { httpGet, currentWorkspaceId, currentWorkspaceSlug } from "./http";
 import { WKApp, SpaceService } from "@octo/base";
@@ -30,7 +30,7 @@ async function build(): Promise<Directory> {
     httpGet<{ projects: Array<{ id: string; title: string }> }>("/projects").catch(() => ({ projects: [] })),
   ]);
   // Resolve member identity to octo names — but only pull the (potentially large)
-  // space roster when at least one member is octo-bridged; a pure-multica
+  // space roster when at least one member is octo-bridged; a pure-native
   // workspace skips the roster fetch entirely.
   const octoName = new Map<string, string>();
   if (members.some((m) => m.octo_uid)) {
@@ -41,7 +41,7 @@ async function build(): Promise<Directory> {
   const memberOctoUid = new Map<string, string>();
   const candidates: AssigneeCandidate[] = [];
   for (const m of members) {
-    // octo 身份优先：octo_uid 命中 space 名册取 octo 名字，否则回退 multica 名。
+    // octo 身份优先：octo_uid 命中 space 名册取 octo 名字，否则回退后端显示名。
     const name = (m.octo_uid && octoName.get(m.octo_uid)) || m.name;
     memberName.set(m.user_id, name);
     if (m.octo_uid) memberOctoUid.set(m.user_id, m.octo_uid);

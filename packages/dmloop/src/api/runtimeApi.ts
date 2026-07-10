@@ -1,4 +1,4 @@
-// @octo/loop — Runtime API（真实 fleet 联调；Runtime 已并入 Loop 二级菜单）
+// @octo/loop — Runtime API（后端契约联调；Runtime 已并入 Loop 二级菜单）
 import type { RuntimeDevice, ListParams } from "./types";
 import { httpGet } from "./http";
 

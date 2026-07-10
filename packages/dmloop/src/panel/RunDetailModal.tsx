@@ -38,7 +38,7 @@ export default function RunDetailModal({
   const [loading, setLoading] = useState(false);
   const lastSeqRef = useRef(0);
 
-  // 打开时全量拉;运行中的 run 则每 2s 用 ?since 增量轮询消息 + 刷新 run 状态,终态即停(dmloop 无 fleet WS,退化为轮询)。
+  // 打开时全量拉;运行中的 run 则每 2s 用 ?since 增量轮询消息 + 刷新 run 状态,终态即停(dmloop 无后端 WS 推送,退化为轮询)。
   useEffect(() => {
     if (!visible || !run) { setMessages([]); setLiveRun(null); lastSeqRef.current = 0; return; }
     let cancelled = false;

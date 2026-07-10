@@ -1,6 +1,6 @@
 export const MULTICA_CLI_AUTHORIZE_PATH = "/loop/cli-authorize";
 
-const PENDING_SEARCH_KEY = "octo.multica.cli-authorize.pending-search";
+const PENDING_SEARCH_KEY = "octo.loop.cli-authorize.pending-search";
 
 type SessionStorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
