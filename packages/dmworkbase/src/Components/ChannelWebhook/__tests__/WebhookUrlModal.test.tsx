@@ -113,6 +113,16 @@ const clickAdapterTab = async (name: string): Promise<void> => {
   await flush();
 };
 
+// 眼睛 toggle 统一治理整个弹窗的 secret 展示：默认遮罩，示例区 URL/token 也被隐藏。
+// 需要断言明文内容时先揭示。幂等：仅在当前处于隐藏态时点击。
+const revealSecrets = async (): Promise<void> => {
+  const eye = container.querySelector<HTMLButtonElement>('[aria-label="显示明文"]');
+  if (eye) {
+    act(() => { eye.click(); });
+    await flush();
+  }
+};
+
 describe('WebhookUrlModal renderExample branch mapping', () => {
   it('renders the short /v1/webhooks alias (not canonical /incoming-webhooks) for the push address (#452)', async () => {
     await render();
@@ -214,7 +224,14 @@ describe('WebhookUrlModal renderExample branch mapping', () => {
     expect(
       githubGroup.querySelector<HTMLDetailsElement>('.wk-webhook-url__steps-details')!.open
     ).toBe(false);
-    const code = githubGroup.querySelector('code.wk-webhook-url__value');
+    // 默认遮罩：Payload URL 以掩码呈现，揭示后才是完整地址。
+    expect(
+      githubGroup.querySelector('code.wk-webhook-url__value')?.textContent
+    ).toContain('••••••••');
+    await revealSecrets();
+    const code = groupContaining('.wk-webhook-url__steps').querySelector(
+      'code.wk-webhook-url__value'
+    );
     expect(code?.textContent).toContain('/github');
   });
 
@@ -240,6 +257,48 @@ describe('WebhookUrlModal renderExample branch mapping', () => {
     expect(wecomPre).toBeTruthy();
     expect(wecomPre!.textContent).toContain('"text"');
     expect(wecomPre!.textContent).toContain('curl -X POST');
+  });
+});
+
+describe('WebhookUrlModal masking (secret never leaks while hidden) (#594)', () => {
+  it('keeps the full tokenized URL out of the DOM — text, curl <pre>, and title — while masked', async () => {
+    await render();
+    const fullUrl = 'http://localhost:3000/api/v1/webhooks/iwh_test/tok';
+    // 默认遮罩态：完整地址不出现在任何可见文本里（native 是默认 Tab，其 curl <pre> 也在内）。
+    expect(container.textContent).not.toContain(fullUrl);
+    expect(container.textContent).not.toContain('iwh_test/tok');
+    // 且不落在任何 title 属性上（hover tooltip 也不会明文弹出 secret）。
+    const withTitle = Array.from(container.querySelectorAll<HTMLElement>('[title]'));
+    expect(
+      withTitle.some((el) => (el.getAttribute('title') || '').includes('iwh_test/tok'))
+    ).toBe(false);
+    // 默认 native curl <pre>：命令结构仍在，但 URL 段被遮罩。
+    const pre = container.querySelector('pre.wk-webhook-url__example-code');
+    expect(pre?.textContent).toContain('curl -X POST');
+    expect(pre?.textContent).not.toContain('iwh_test/tok');
+    // 点眼睛揭示后，完整地址（含 curl 内）才出现——复制功能不受影响。
+    await revealSecrets();
+    expect(container.textContent).toContain(fullUrl);
+    expect(
+      container.querySelector('pre.wk-webhook-url__example-code')?.textContent
+    ).toContain('iwh_test/tok');
+  });
+
+  it('masks the one-time auth token (text + title) until revealed', async () => {
+    await render(respWithExamples);
+    await clickAdapterTab('GitLab');
+    // 遮罩态：auth-hint 里的一次性 token 以掩码呈现，且 title 不带明文 token。
+    let tokenCode = container.querySelector<HTMLElement>(
+      '.wk-webhook-url__auth-hint code.wk-webhook-url__value'
+    )!;
+    expect(tokenCode.textContent).toBe('••••••••');
+    expect(tokenCode.getAttribute('title')).toBeNull();
+    // 揭示后展示完整 token。
+    await revealSecrets();
+    tokenCode = container.querySelector<HTMLElement>(
+      '.wk-webhook-url__auth-hint code.wk-webhook-url__value'
+    )!;
+    expect(tokenCode.textContent).toBe('tok');
   });
 });
 
@@ -309,6 +368,7 @@ describe('WebhookUrlModal adapter tabs', () => {
     expect(
       container.querySelectorAll('.wk-webhook-url__example-group')
     ).toHaveLength(1);
+    await revealSecrets();
     expect(container.textContent).toContain('/tok/feishu');
     expect(container.textContent).not.toContain('/tok/github');
     expect(container.textContent).not.toContain('/tok/wecom');
@@ -319,6 +379,7 @@ describe('WebhookUrlModal adapter tabs', () => {
   it('reveals only the selected adapter detail and keeps gitlab without curl or setup steps', async () => {
     await render(respWithExtra);
     await clickAdapterTab('GitLab');
+    await revealSecrets();
 
     // 找到包含 /tok/gitlab 的示例组，断言它既无 curl <pre> 也无 github 式步骤。
     const groups = Array.from(
@@ -405,6 +466,8 @@ describe('WebhookUrlModal server-driven adapter examples (#475)', () => {
       container.querySelector<HTMLElement>('[role="tabpanel"]')?.getAttribute('aria-label')
     ).toBe('GitHub 事件 SRV');
     expect(container.textContent).toContain('desc-github-srv');
+    // 揭示明文后才能按 URL 文本定位面板；showWebhookUrl 为组件级状态，切换 Tab 保持。
+    await revealSecrets();
     let groups = Array.from(
       container.querySelectorAll<HTMLElement>('.wk-webhook-url__example-group')
     );

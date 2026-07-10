@@ -143,6 +143,17 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
         if (value.length <= 18) return "••••••••";
         return `${value.slice(0, 12)}••••••••${value.slice(-6)}`;
     };
+    // native 推送地址本身是 tokenized 的（/v1/webhooks/{id}/{token}），token 即路径段，
+    // 所以「地址」就是一次性 secret。眼睛 toggle 必须统一治理整个弹窗内所有含 token 的
+    // 地址/凭证展示——顶部行、各适配器示例 code、curl <pre>、token 行——否则遮罩形同虚设
+    // （录屏/肩窥时 secret 仍从示例块或 tooltip 泄露）。复制动作始终取完整值：「复制去用」
+    // 是核心功能，不能复制出遮罩串。
+    const displayUrl = (value: string): string =>
+        showWebhookUrl ? value : maskValue(value);
+    // title 属性会把完整值塞进 DOM，并在 hover 时以原生 tooltip 明文弹出，绕过视觉遮罩。
+    // 遮罩态下一律不带 title。
+    const secretTitle = (value: string): string | undefined =>
+        showWebhookUrl ? value : undefined;
 
     // 复制成功的即时反馈：记录最近一次复制的目标 key，按钮图标短暂变 ✓。
     // 一次性弹窗里「复制是否真成功」是核心焦虑点，按钮本身给反馈比一闪而过的 toast 更可靠。
@@ -186,8 +197,8 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                         {t("base.channelWebhook.url.example.github.intro")}
                     </span>
                     <div className="wk-webhook-url__value-block">
-                        <code className="wk-webhook-url__value" title={row.url}>
-                            {row.url}
+                        <code className="wk-webhook-url__value" title={secretTitle(row.url)}>
+                            {displayUrl(row.url)}
                         </code>
                     </div>
                     <button
@@ -228,13 +239,18 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                     ? "base.channelWebhook.url.example.wecom.sample"
                     : "base.channelWebhook.url.example.native.sample";
             const curl = buildWebhookCurlExample(row.key, row.url, t(sampleKey));
+            // 遮罩态下 <pre> 里的 URL 同样是 token，必须隐藏；用遮罩后的 URL 重新构建展示串，
+            // 复制仍取含完整 URL 的 curl。
+            const displayCurl = showWebhookUrl
+                ? curl
+                : buildWebhookCurlExample(row.key, maskValue(row.url), t(sampleKey));
             const noteKey =
                 row.key === "wecom"
                     ? "base.channelWebhook.url.example.wecom.note"
                     : "base.channelWebhook.url.example.native.note";
             return (
                 <div className="wk-webhook-url__example">
-                    <pre className="wk-webhook-url__example-code">{curl}</pre>
+                    <pre className="wk-webhook-url__example-code">{displayCurl}</pre>
                     <span className="wk-webhook-url__example-note">{t(noteKey)}</span>
                     <button
                         type="button"
@@ -258,8 +274,8 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
         return (
             <div className="wk-webhook-url__example">
                 <div className="wk-webhook-url__value-block">
-                    <code className="wk-webhook-url__value" title={row.url}>
-                        {row.url}
+                    <code className="wk-webhook-url__value" title={secretTitle(row.url)}>
+                        {displayUrl(row.url)}
                     </code>
                 </div>
                 <span className="wk-webhook-url__example-note">
@@ -298,8 +314,8 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                     <span className="wk-webhook-url__example-note">{ex.description}</span>
                 )}
                 <div className="wk-webhook-url__value-block">
-                    <code className="wk-webhook-url__value" title={ex.url}>
-                        {ex.url}
+                    <code className="wk-webhook-url__value" title={secretTitle(ex.url)}>
+                        {displayUrl(ex.url)}
                     </code>
                 </div>
                 <button
@@ -338,8 +354,11 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                         {/* value_source=token：header 值就是本次响应的明文 token，单独给一行可复制。 */}
                         {ex.auth.value_source === "token" && resp.token && (
                             <div className="wk-webhook-url__value-wrap">
-                                <code className="wk-webhook-url__value" title={resp.token}>
-                                    {resp.token}
+                                <code
+                                    className="wk-webhook-url__value"
+                                    title={secretTitle(resp.token)}
+                                >
+                                    {displayUrl(resp.token)}
                                 </code>
                                 <button
                                     type="button"
@@ -404,7 +423,7 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
                                     type="button"
                                     className="wk-webhook-url__secret-copy"
                                     onClick={() => void handleCopy(nativeRow.url, "url:native")}
-                                    title={nativeRow.url}
+                                    title={secretTitle(nativeRow.url)}
                                     aria-label={t("base.channelWebhook.url.copy")}
                                 >
                                     <code className="wk-webhook-url__value">
