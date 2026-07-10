@@ -36,6 +36,7 @@ import type {
 import {
   getIssue,
   updateIssue,
+  enrichIssue,
   deleteIssue,
   listComments,
   addComment,
@@ -45,6 +46,7 @@ import {
 } from "../api/issueApi";
 import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
+import LabelChips from "../ui/LabelChips";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import LoopMarkdown from "../ui/LoopMarkdown";
@@ -57,6 +59,7 @@ import {
   PRIORITY_COLOR,
   RUN_STATUS_COLOR,
   isActiveRun,
+  isOverdue,
 } from "../ui/meta";
 import "./issueDetail.css";
 
@@ -116,8 +119,10 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
   const patch = async (p: Parameters<typeof updateIssue>[1]) => {
     if (!issue) return;
-    const next = await updateIssue(issue.id, p);
-    setIssue(next);
+    const updated = await updateIssue(issue.id, p);
+    // PUT 响应不带 labels(仅 list/detail 端点回填);re-enrich 修回 assignee_name/project_name
+    // 等展示字段(按新值重算),labels 保留当前值,避免编辑后属性栏字段被清成空。
+    setIssue({ ...(await enrichIssue(updated)), labels: updated.labels ?? issue.labels });
     onChanged?.();
   };
 
@@ -551,6 +556,23 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               <dt>{t("loop.field.project")}</dt>
               <dd>
                 <Text>{issue.project_name ?? "—"}</Text>
+              </dd>
+              <dt>{t("loop.field.labels")}</dt>
+              <dd>
+                {issue.labels && issue.labels.length > 0 ? <LabelChips labels={issue.labels} /> : <Text type="tertiary">—</Text>}
+              </dd>
+              <dt>{t("loop.field.startDate")}</dt>
+              <dd>
+                <Text type="tertiary" style={{ fontSize: 12 }}>{fmt(issue.start_date)}</Text>
+              </dd>
+              <dt>{t("loop.field.dueDate")}</dt>
+              <dd>
+                <Text
+                  type={isOverdue(issue.due_date, issue.status) ? "danger" : "tertiary"}
+                  style={{ fontSize: 12 }}
+                >
+                  {fmt(issue.due_date)}
+                </Text>
               </dd>
               <dt>{t("loop.field.creator")}</dt>
               <dd>
