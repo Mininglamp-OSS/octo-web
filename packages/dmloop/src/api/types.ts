@@ -74,6 +74,13 @@ export type IssueStatus =
   | "backlog" | "todo" | "in_progress" | "in_review" | "done" | "blocked" | "cancelled";
 export type IssuePriority = "urgent" | "high" | "medium" | "low" | "none";
 
+/** issue 标签(后端 list/detail 端点批量回填 issue.labels)。color 为 hex。 */
+export interface IssueLabel {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export interface Issue {
   id: string;
   workspace_id: string;
@@ -102,6 +109,8 @@ export interface Issue {
   // octo 头像 URL（member 型 actor，由 directory 回填；agent/squad/原生成员为空）
   assignee_avatar?: string | null;
   creator_avatar?: string | null;
+  // 后端 list/detail 端点批量回填；其它端点(update/ws)不带 → 保持已有。
+  labels?: IssueLabel[] | null;
 }
 
 export interface CreateIssueReq {

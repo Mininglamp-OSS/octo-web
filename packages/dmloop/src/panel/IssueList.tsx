@@ -4,6 +4,7 @@ import { useI18n } from "@octo/base";
 import type { Issue, IssueStatus, IssuePriority } from "../api/types";
 import { updateIssue } from "../api/issueApi";
 import AssigneePicker from "../ui/AssigneePicker";
+import LabelChips from "../ui/LabelChips";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import {
   ISSUE_STATUS_ORDER,
@@ -51,6 +52,7 @@ export default function IssueList({
       render: (v: string, r: Issue) => (
         <span className="loop-cell-title" onClick={() => onOpen(r.id)}>
           {v}
+          <LabelChips labels={r.labels} max={3} />
         </span>
       ),
     },
