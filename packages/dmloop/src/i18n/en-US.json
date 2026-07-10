@@ -243,6 +243,11 @@
     "progress": "Progress",
     "lead": "Lead"
   },
+  "label": {
+    "add": "Add labels",
+    "newPlaceholder": "New label",
+    "create": "Create label"
+  },
   "agent": {
     "runtime": "Runtime",
     "model": "Model",

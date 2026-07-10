@@ -243,6 +243,11 @@
     "progress": "进度",
     "lead": "负责人"
   },
+  "label": {
+    "add": "添加标签",
+    "newPlaceholder": "新标签名",
+    "create": "创建标签"
+  },
   "agent": {
     "runtime": "运行环境",
     "model": "模型",

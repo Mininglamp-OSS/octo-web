@@ -59,6 +59,8 @@ export type IssueDateField = (typeof ISSUE_DATE_FIELDS)[number];
 
 export interface ListParams {
   workspace_id?: string;
+  // 客户端关键词过滤:projectApi/skillApi/squadApi/agentApi/runtimeApi 共用此字段。
+  // issue 列表不再用它(关键词走 searchIssues → /issues/search),但其它 list 端点仍需,勿删。
   keyword?: string;
   status?: IssueStatus;
   priority?: IssuePriority;
@@ -120,6 +122,11 @@ export interface Issue {
   creator_avatar?: string | null;
   // 后端 list/detail 端点批量回填；其它端点(update/ws)不带 → 保持已有。
   labels?: IssueLabel[] | null;
+  // 搜索结果专属(GET /issues/search):命中来源 + 高亮片段。列表/详情端点不返回。
+  match_source?: string;
+  matched_snippet?: string | null;
+  matched_description_snippet?: string | null;
+  matched_comment_snippet?: string | null;
 }
 
 export interface CreateIssueReq {
