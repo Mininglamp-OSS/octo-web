@@ -211,7 +211,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       .catch(() => {});
   };
 
-  // 订阅/取消订阅(后端默认操作调用者本人、幂等);两项都常驻,不猜"我是否已订阅"。
+  // 订阅/取消订阅(后端默认操作调用者本人、幂等)。
   const toggleSubscribe = async (on: boolean) => {
     const token = reqRef.current;
     try {
@@ -223,6 +223,12 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
     }
   };
+
+  // 当前 octo 成员是否已订阅:subscriber 现在带 octo_uid(仅 member 有),与
+  // loginInfo.uid 比对即可判定,无需前端反查 member↔user 映射(去桥后仍成立)。
+  const myUid = WKApp.loginInfo.uid;
+  const amSubscribed =
+    !!myUid && subscribers.some((s) => s.user_type === "member" && s.octo_uid === myUid);
 
   // 评论 emoji 反应:选择器点 emoji=加,已有 chip 点击=删自己那条(后端按 actor+emoji 定位)。
   const reactComment = async (commentId: string, emoji: string, add: boolean) => {
@@ -524,12 +530,15 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changeAssignee")}</Dropdown.Item>
       </Dropdown>
       <Dropdown.Divider />
-      <Dropdown.Item icon={<Bell size={13} />} onClick={() => toggleSubscribe(true)}>
-        {t("loop.subscribe.subscribe")}
-      </Dropdown.Item>
-      <Dropdown.Item icon={<BellOff size={13} />} onClick={() => toggleSubscribe(false)}>
-        {t("loop.subscribe.unsubscribe")}
-      </Dropdown.Item>
+      {amSubscribed ? (
+        <Dropdown.Item icon={<BellOff size={13} />} onClick={() => toggleSubscribe(false)}>
+          {t("loop.subscribe.unsubscribe")}
+        </Dropdown.Item>
+      ) : (
+        <Dropdown.Item icon={<Bell size={13} />} onClick={() => toggleSubscribe(true)}>
+          {t("loop.subscribe.subscribe")}
+        </Dropdown.Item>
+      )}
       <Dropdown.Divider />
       <Dropdown.Item type="danger" icon={<Trash2 size={13} />} onClick={handleDeleteIssue}>
         {t("loop.menu.deleteIssue")}
@@ -1014,6 +1023,11 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               <dt>{t("loop.subscribe.label")}</dt>
               <dd>
                 <Text type="tertiary" style={{ fontSize: 12 }}>{subscribers.length}</Text>
+                {amSubscribed && (
+                  <Text style={{ fontSize: 12, marginLeft: 6, color: "var(--semi-color-primary)" }}>
+                    · {t("loop.subscribe.subscribed")}
+                  </Text>
+                )}
               </dd>
             </dl>
           </div>

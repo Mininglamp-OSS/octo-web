@@ -220,6 +220,9 @@ export interface IssueSubscriber {
   user_id: string;
   reason: string;
   created_at: string;
+  /** octo IM uid the member is bridged to; null for agent/squad subscribers.
+   *  Lets the web tell whether the current octo member is subscribed. */
+  octo_uid?: string | null;
 }
 
 /** 附件(上传返回 + issue/comment 详情回填)。
