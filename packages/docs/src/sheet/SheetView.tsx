@@ -735,7 +735,7 @@ export function SheetView(props: SheetViewProps) {
             aria-label={t('docs.member.manage')}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <MemberPanel docId={docId} role={role} space={space} ownerId={uid} onClose={closePanel} />
+            <MemberPanel docId={docId} role={role} space={space} ownerId={ownerId} onClose={closePanel} />
           </div>
         </div>
       )}
