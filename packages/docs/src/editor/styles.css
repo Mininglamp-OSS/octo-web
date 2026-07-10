@@ -384,6 +384,47 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
+/* Table editing UI (#595). The floating table toolbar reuses .octo-bubble-menu; it only needs to
+   keep its buttons on one line and align the separators vertically. */
+.octo-table-bubble {
+  align-items: center;
+}
+.octo-table-bubble .octo-tb-sep {
+  align-self: stretch;
+}
+
+/* Grid picker for inserting a table at a chosen size (replaces the fixed 3×3). Floats under the
+   toolbar button via the shared .octo-color-control / .octo-color-popover pattern. */
+.octo-table-picker {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.octo-table-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 16px);
+  grid-auto-rows: 16px;
+  gap: 3px;
+}
+.octo-table-grid-cell {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--octo-border);
+  border-radius: 2px;
+  background: var(--octo-bg);
+  cursor: pointer;
+}
+.octo-table-grid-cell.is-on {
+  background: var(--octo-accent);
+  border-color: var(--octo-accent);
+}
+.octo-table-grid-label {
+  text-align: center;
+  font-size: 12px;
+  color: var(--octo-muted, #8a919e);
+}
+
 .octo-editor-region {
   position: relative;
   margin-top: 0;

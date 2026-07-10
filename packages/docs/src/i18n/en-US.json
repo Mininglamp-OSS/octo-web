@@ -126,6 +126,17 @@
     "callout": "Callout",
     "mathBlock": "Block formula"
   },
+  "table": {
+    "addRowBefore": "Insert row above",
+    "addRowAfter": "Insert row below",
+    "deleteRow": "Delete row",
+    "addColumnBefore": "Insert column left",
+    "addColumnAfter": "Insert column right",
+    "deleteColumn": "Delete column",
+    "deleteTable": "Delete table",
+    "pickerHint": "Pick a size",
+    "pickerLabel": "Table size"
+  },
   "callout": {
     "info": "Info",
     "warn": "Warning",

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode, UIEvent } from 'react'
 import { BubbleMenu } from '@tiptap/react/menus'
+import { CellSelection } from '@tiptap/pm/tables'
 import type { Editor } from '@tiptap/core'
 import { pickAndUploadImage } from './imageUpload.ts'
 import { pickAndUploadFile } from './fileUpload.ts'
@@ -10,6 +11,7 @@ import { pickerEmojis } from './emoji.ts'
 import { promptAndInsertMath } from './mathInsert.ts'
 import { sanitizeLinkHref } from './sanitize.ts'
 import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
+import { TableGridPicker } from './TableControls.tsx'
 import { t } from '../octoweb/index.ts'
 
 // Inline SVG toolbar icons (C2–C4): crisp, correct glyphs for underline / strikethrough /
@@ -235,7 +237,9 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
   return (
     <BubbleMenu
       editor={editor}
-      shouldShow={({ editor: e, from, to }) => from !== to && e.isEditable}
+      shouldShow={({ editor: e, from, to }) =>
+        from !== to && e.isEditable && !(e.state.selection instanceof CellSelection)
+      }
     >
       <div className="octo-bubble-menu">
         <Btn label="B" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
@@ -940,11 +944,7 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <span className="octo-tb-sep" />
       <HighlightControl editor={editor} />
       <TextColorControl editor={editor} />
-      <Btn
-        label="Table"
-        title={t('docs.toolbar.table')}
-        onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-      />
+      <TableGridPicker editor={editor} />
       <Btn label="Image" title={t('docs.toolbar.image')} onClick={() => void pickAndUploadImage(editor)} />
       <Btn label="File" title={t('docs.toolbar.file')} onClick={() => void pickAndUploadFile(editor)} />
       <Btn label="Bookmark" title={t('docs.toolbar.bookmark')} onClick={() => void promptAndInsertBookmark(editor)} />
