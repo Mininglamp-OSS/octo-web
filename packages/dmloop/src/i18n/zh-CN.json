@@ -69,6 +69,18 @@
     "emptyTitle": "还没有工作区",
     "emptyDesc": "创建一个工作区开始使用 Loop。"
   },
+  "cliAuthorize": {
+    "title": "授权当前电脑",
+    "description": "将当前电脑接入所选 Loop 工作区，授权后命令行会继续完成本机设备注册。",
+    "authorize": "授权",
+    "loading": "加载中",
+    "workspaceLoading": "正在加载工作区",
+    "invalidCallback": "CLI 回调地址无效",
+    "loginRequired": "请先登录 Octo 并选择 Space",
+    "noWorkspace": "当前 Space 下没有可用工作区",
+    "loadFailed": "加载工作区失败",
+    "authorizeFailed": "授权失败"
+  },
   "taskStatus": {
     "queued": "排队中",
     "dispatched": "已派发",

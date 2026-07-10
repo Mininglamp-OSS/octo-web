@@ -193,6 +193,79 @@
   max-width: 360px;
 }
 
+/* ===== Multica CLI 授权 ===== */
+.loop-cli-auth {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--semi-color-bg-0);
+}
+
+.loop-cli-auth__panel {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  background: var(--semi-color-bg-1);
+}
+
+.loop-cli-auth__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+}
+
+.loop-cli-auth__title {
+  margin: 0;
+}
+
+.loop-cli-auth__desc {
+  display: block;
+  line-height: 1.6;
+}
+
+.loop-cli-auth__workspace {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 10px 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+}
+
+.loop-cli-auth__workspace-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.loop-cli-auth__workspace-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-cli-auth__error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--semi-color-danger);
+  background: var(--semi-color-danger-light-default);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* ===== 视图切换按钮 ===== */
 .loop-viewtoggle {
   display: inline-flex;

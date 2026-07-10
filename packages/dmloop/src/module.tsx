@@ -2,6 +2,7 @@ import React from "react";
 import { WKApp, Menus, i18n, t as translate } from "@octo/base";
 import type { IModule } from "@octo/base";
 import LoopPage from "./pages/LoopPage";
+import MulticaCliAuthorizePage from "./pages/MulticaCliAuthorizePage";
 import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
 
@@ -49,6 +50,10 @@ export default class LoopModule implements IModule {
     });
 
     WKApp.route.register("/loop", () => <LoopPage />);
+    // TODO(octo-multica): adjust this path after the Octo Web product route is finalized.
+    WKApp.route.register("/loop/multica/cli-authorize", () => (
+      <MulticaCliAuthorizePage />
+    ));
 
     WKApp.menus.register(
       "loop",
@@ -58,10 +63,10 @@ export default class LoopModule implements IModule {
           "/loop",
           translate("loop.menu.title"),
           <LoopIcon />,
-          <LoopIcon active />,
+          <LoopIcon active />
         );
       },
-      4003,
+      4003
     );
   }
 }
