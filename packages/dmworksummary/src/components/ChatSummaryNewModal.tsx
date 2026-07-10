@@ -660,10 +660,10 @@ export default class ChatSummaryNewModal extends Component<
                         <input
                             className="summary-template-edit-input"
                             value={editingTemplateLabel}
-                            maxLength={40}
+                            maxLength={100}
                             disabled={savingTemplate}
                             placeholder={t('summary.templates.custom.namePlaceholder')}
-                            onChange={(e) => this.setState({ editingTemplateLabel: e.target.value.slice(0, 40) })}
+                            onChange={(e) => this.setState({ editingTemplateLabel: e.target.value.slice(0, 100) })}
                         />
                     </div>
                     <div className="summary-template-edit-field">
@@ -673,10 +673,10 @@ export default class ChatSummaryNewModal extends Component<
                         <textarea
                             className="summary-template-edit-input summary-template-edit-desc"
                             value={editingTemplateDescription}
-                            maxLength={120}
+                            maxLength={200}
                             disabled={savingTemplate}
                             placeholder={t('summary.templates.custom.descriptionPlaceholder')}
-                            onChange={(e) => this.setState({ editingTemplateDescription: e.target.value.slice(0, 120) })}
+                            onChange={(e) => this.setState({ editingTemplateDescription: e.target.value.slice(0, 200) })}
                         />
                     </div>
                     <div className="summary-template-edit-hint">

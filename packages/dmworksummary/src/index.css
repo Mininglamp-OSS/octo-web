@@ -1940,7 +1940,10 @@
 }
 
 .summary-template-edit-desc {
-    min-height: 72px;
+    min-height: 96px;
+    max-height: 180px;
+    resize: vertical;
+    overflow-y: auto;
 }
 
 .summary-template-edit-hint {
