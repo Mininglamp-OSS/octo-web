@@ -247,6 +247,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       <Dropdown
         position="leftTop"
         trigger="hover"
+        clickToHide
         render={
           <Dropdown.Menu>
             {ISSUE_STATUS_ORDER.map((s) => (
@@ -257,11 +258,12 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           </Dropdown.Menu>
         }
       >
-        <Dropdown.Item>{t("loop.menu.changeStatus")}</Dropdown.Item>
+        <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changeStatus")}</Dropdown.Item>
       </Dropdown>
       <Dropdown
         position="leftTop"
         trigger="hover"
+        clickToHide
         render={
           <Dropdown.Menu>
             {PRIORITY_ORDER.map((p) => (
@@ -272,11 +274,12 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           </Dropdown.Menu>
         }
       >
-        <Dropdown.Item>{t("loop.menu.changePriority")}</Dropdown.Item>
+        <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changePriority")}</Dropdown.Item>
       </Dropdown>
       <Dropdown
         position="leftTop"
         trigger="hover"
+        clickToHide
         render={
           <Dropdown.Menu>
             <Dropdown.Item icon={<CircleSlash size={13} />} onClick={() => patch({ assignee_id: null, assignee_type: null })}>
@@ -300,7 +303,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           </Dropdown.Menu>
         }
       >
-        <Dropdown.Item>{t("loop.menu.changeAssignee")}</Dropdown.Item>
+        <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changeAssignee")}</Dropdown.Item>
       </Dropdown>
       <Dropdown.Divider />
       <Dropdown.Item type="danger" icon={<Trash2 size={13} />} onClick={handleDeleteIssue}>
@@ -409,7 +412,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           {issue.identifier}
         </Text>
         <div style={{ flex: 1 }} />
-        <Dropdown trigger="click" position="bottomRight" render={renderMoreMenu()}>
+        <Dropdown trigger="click" position="bottomRight" render={renderMoreMenu()} clickToHide>
           <Button icon={<MoreHorizontal size={18} />} theme="borderless" aria-label="more" />
         </Dropdown>
       </div>

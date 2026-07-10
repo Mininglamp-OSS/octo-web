@@ -169,7 +169,7 @@ export default function LoopPage() {
   return (
     <div className="loop-sidebar">
       <div className="loop-sidebar__ws">
-        <Dropdown render={wsMenu} trigger="click" position="bottomLeft">
+        <Dropdown render={wsMenu} trigger="click" position="bottomLeft" clickToHide>
           <button className="loop-sidebar__ws-btn">
             <Avatar size="extra-extra-small" color="blue" shape="square">{(current?.name ?? "L").slice(0, 1)}</Avatar>
             <span className="loop-sidebar__ws-name">{current?.name ?? (loaded && !hasWs ? t("loop.workspace.none") : t("loop.menu.title"))}</span>

@@ -66,7 +66,7 @@ export default function AssigneePicker({ value, valueName, onChange, size = "def
   );
 
   return (
-    <Dropdown render={menu} trigger="click" position="bottomLeft">
+    <Dropdown render={menu} trigger="click" position="bottomLeft" clickToHide>
       <span className="loop-assignee-trigger" style={{ fontSize: size === "small" ? 12 : 13 }}>
         {current || valueName ? (
           <>
