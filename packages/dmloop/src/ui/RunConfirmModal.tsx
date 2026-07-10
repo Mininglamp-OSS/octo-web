@@ -6,8 +6,9 @@ import { previewIssueTrigger } from "../api/issueApi";
 
 const { Text } = Typography;
 
-/** 一次指派/状态变更请求：apply 由调用方给出（真正落库的 updateIssue 调用）。 */
-export interface RunConfirmRequest {
+/** 一次指派/状态变更请求：apply 由调用方给出（真正落库的 updateIssue 调用）。
+ *  hook 内部类型——调用方走 requestAssign / requestStatus,不直接构造。 */
+interface RunConfirmRequest {
   issueId: string;
   status: IssueStatus;
   assigneeType: AssigneeType | null;
@@ -42,7 +43,7 @@ function statusMightTrigger(issue: Issue, next: IssueStatus): boolean {
 /**
  * 指派即触发的预确认 hook。用法：
  *   const { requestAssign, requestStatus, runConfirmModal } = useRunConfirm();
- *   <AssigneePicker onChange={(id,type,name)=>requestAssign({...,apply:(extra)=>patch({assignee_id:id,assignee_type:type,...extra})})}/>
+ *   <AssigneePicker onChange={(id,type,name)=>requestAssign(issue,type,id,name,(extra)=>patch({assignee_id:id,assignee_type:type,...extra}))}/>
  *   {runConfirmModal}
  * 不需确认（member/取消指派/backlog）直接 apply；需确认则弹窗，先 preview-trigger 问后端。
  */
@@ -55,8 +56,24 @@ export function useRunConfirm() {
     Promise.resolve(apply({})).catch((e) => Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed")));
   };
 
-  const requestAssign = (r: RunConfirmRequest) => {
-    if (!needsConfirm(r)) { applyDirect(r.apply); return; }
+  // 指派 actor：status 保持 issue 当前值(指派不改状态),请求对象在此组装,
+  // 与 requestStatus 同构——调用方只给 issue + 新 assignee + apply。
+  const requestAssign = (
+    issue: Issue,
+    assigneeType: AssigneeType | null,
+    assigneeId: string | null,
+    assigneeName: string | null,
+    apply: RunConfirmRequest["apply"],
+  ) => {
+    const r: RunConfirmRequest = {
+      issueId: issue.id,
+      status: issue.status,
+      assigneeType,
+      assigneeId,
+      assigneeName,
+      apply,
+    };
+    if (!needsConfirm(r)) { applyDirect(apply); return; }
     setPending(r);
   };
 
