@@ -149,7 +149,7 @@ export interface IssueComment {
 }
 
 export type TaskStatus =
-  | "queued" | "dispatched" | "running" | "completed" | "failed" | "cancelled" | string;
+  | "queued" | "dispatched" | "waiting_local_directory" | "running" | "completed" | "failed" | "cancelled" | string;
 
 /** 执行记录（run）：GET /issues/:id/task-runs。 */
 export interface TaskRun {
