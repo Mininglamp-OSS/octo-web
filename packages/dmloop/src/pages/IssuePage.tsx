@@ -13,6 +13,7 @@ import { useI18n, WKApp } from "@octo/base";
 import type { Issue, IssueStatus, IssuePriority, IssueSortField } from "../api/types";
 import { ISSUE_SORT_FIELDS } from "../api/types";
 import { listIssues } from "../api/issueApi";
+import { listProjectOptions } from "../api/directory";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import { ISSUE_STATUS_ORDER, PRIORITY_ORDER } from "../ui/meta";
 import IssueBoard from "../panel/IssueBoard";
@@ -30,6 +31,7 @@ interface Filters {
   priority?: IssuePriority;
   assignee?: string;
   creator?: string;
+  project?: string;
   sortBy: IssueSortField;
   sortDir: "asc" | "desc";
 }
@@ -46,7 +48,13 @@ export default function IssuePage() {
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
   const [createOpen, setCreateOpen] = useState(false);
   const cands = useAssigneeCandidates();
+  // 项目下拉复用 directory 已缓存的 /projects(避免重复请求);随 workspace 切换整页重挂而刷新。
+  const [projects, setProjects] = useState<Array<{ id: string; title: string }>>([]);
   const seq = useRef(0); // 请求序号：只应用最新一次的响应，防并发乱序覆盖
+
+  useEffect(() => {
+    listProjectOptions().then(setProjects).catch(() => {});
+  }, []);
 
   const reload = useCallback(() => {
     const my = ++seq.current;
@@ -58,6 +66,7 @@ export default function IssuePage() {
       priority: f.priority,
       assignee_id: f.assignee,
       creator_id: f.creator,
+      project_id: f.project,
       // 排序仅用于列表视图;看板按 status 分列 + 100 上限,叠加全局排序会把某状态整列截没,故看板固定后端默认(position)。
       sort_by: paged ? f.sortBy : undefined,
       sort_direction: paged ? f.sortDir : undefined,
@@ -154,6 +163,21 @@ export default function IssuePage() {
             <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
           ))}
         </Select>
+        {projects.length > 0 && (
+          <Select
+            placeholder={t("loop.filter.project")}
+            value={f.project}
+            onChange={(v) => update({ project: v as string | undefined })}
+            showClear
+            filter
+            size="small"
+            style={{ width: 140 }}
+          >
+            {projects.map((p) => (
+              <Select.Option key={p.id} value={p.id}>{p.title}</Select.Option>
+            ))}
+          </Select>
+        )}
         {view === "list" && (
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
           <Select
