@@ -392,6 +392,18 @@
 .octo-table-bubble .octo-tb-sep {
   align-self: stretch;
 }
+/* While the caret is inside a table cell this toolbar floats over the table (placement: top). Its
+   frame would otherwise sit on top of the column-resize hot zone and swallow the hover/mousedown
+   the resize plugin listens for on the editor DOM, so `.column-resize-handle` never appears and the
+   column can't be dragged (#595 C1). pointer-events is inherited, so making the floating wrapper
+   transparent lets those events fall through to the table underneath; only the buttons re-capture
+   the pointer so they stay clickable. */
+.octo-table-bubble-portal {
+  pointer-events: none;
+}
+.octo-table-bubble-portal .octo-tb-btn {
+  pointer-events: auto;
+}
 
 /* Grid picker for inserting a table at a chosen size (replaces the fixed 3×3). Floats under the
    toolbar button via the shared .octo-color-control / .octo-color-popover pattern. */

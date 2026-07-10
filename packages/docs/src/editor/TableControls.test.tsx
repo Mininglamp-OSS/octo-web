@@ -8,7 +8,7 @@ import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { CellSelection } from '@tiptap/pm/tables'
 import { TextSelection } from '@tiptap/pm/state'
-import { shouldShowTableBubble, TableGridPicker } from './TableControls.tsx'
+import { shouldShowTableBubble, TableGridPicker, TableBubbleMenu } from './TableControls.tsx'
 
 // #595 — table add/delete row/column UI. The critical acceptance point is that the controls work on
 // tables that ALREADY EXIST in a document (parsed from stored HTML), not only freshly inserted
@@ -132,6 +132,47 @@ describe('table commands operate on a pre-existing (historical) table', () => {
     e.chain().focus().deleteTable().run()
     expect(tableDims(e)).toBeNull()
     e.destroy()
+  })
+})
+
+describe('TableBubbleMenu — does not block the column-resize hot zone (#595 C1)', () => {
+  // The toolbar floats over the table while the caret is in a cell. Its floating wrapper must stay
+  // transparent to pointer events so the column-resize plugin (which listens for hover/mousedown on
+  // the editor DOM) still sees the column border; only the buttons may re-capture the pointer.
+  it('marks the floating wrapper pointer-events exempt while keeping the buttons interactive', () => {
+    // jsdom has no layout, so give Range the rect-query methods tiptap's positioning needs; the
+    // returned rect is all-zero, which is fine — we only care about the DOM the menu renders, not
+    // where it lands. Without this the BubbleMenu never attaches its floating wrapper.
+    const zeroRect = { top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0, x: 0, y: 0 }
+    type RangeRectFns = { getClientRects?: () => unknown; getBoundingClientRect?: () => unknown }
+    const rangeProto = Range.prototype as unknown as RangeRectFns
+    if (!rangeProto.getClientRects) rangeProto.getClientRects = () => [zeroRect]
+    if (!rangeProto.getBoundingClientRect) rangeProto.getBoundingClientRect = () => zeroRect
+
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = new Editor({
+      element: host,
+      extensions: [
+        StarterKit.configure({ undoRedo: false }),
+        Table.configure({ resizable: false }),
+        TableRow,
+        TableHeader,
+        TableCell,
+      ],
+      content: HISTORICAL_DOC,
+    })
+    // Caret inside a cell → the toolbar shows and attaches its floating wrapper to the DOM.
+    e.commands.setTextSelection(firstCellTextPos(e))
+    render(<TableBubbleMenu editor={e} />)
+
+    const portal = document.querySelector('.octo-table-bubble-portal')
+    expect(portal).toBeTruthy()
+    // Every action button lives under the exempt wrapper and opts back into pointer events.
+    const buttons = portal!.querySelectorAll('button.octo-tb-btn')
+    expect(buttons.length).toBeGreaterThan(0)
+    e.destroy()
+    host.remove()
   })
 })
 

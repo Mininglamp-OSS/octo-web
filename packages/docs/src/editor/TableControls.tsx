@@ -122,6 +122,11 @@ export function TableBubbleMenu({ editor }: { editor: Editor }) {
     <BubbleMenu
       editor={editor}
       pluginKey="octoTableBubble"
+      // The toolbar floats over the table while the caret sits in a cell, so its frame would
+      // otherwise sit on top of the column-resize hot zone and swallow the hover/drag the resize
+      // plugin listens for on the editor DOM. octo-table-bubble-portal makes the floating wrapper
+      // transparent to pointer events (see styles.css); only the buttons below re-capture them.
+      className="octo-table-bubble-portal"
       options={{ placement: 'top', offset: 8 }}
       shouldShow={({ editor: e }) => shouldShowTableBubble(e)}
     >
