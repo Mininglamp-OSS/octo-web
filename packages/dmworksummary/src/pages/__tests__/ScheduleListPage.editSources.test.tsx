@@ -54,7 +54,7 @@ describe('ScheduleListPage.handleSaveSources — 来源就地编辑', () => {
         const page = makePage();
         page.state = {
             ...(page.state as any),
-            schedules: [{ schedule_id: 11, sources: [src('g0')] } as any],
+            schedules: [{ schedule_id: 11, sources: [src('g0')], creator_id: 'test-uid' } as any],
             editingSourcesId: 11,
             editingSourcesDraft: [src('g1')],
         };
@@ -75,8 +75,8 @@ describe('ScheduleListPage.handleSaveSources — 来源就地编辑', () => {
         page.state = {
             ...(page.state as any),
             schedules: [
-                { schedule_id: 12, sources: [src('old')], title: 'local' } as any,
-                { schedule_id: 99, sources: [src('other')] } as any,
+                { schedule_id: 12, sources: [src('old')], title: 'local', creator_id: 'test-uid' } as any,
+                { schedule_id: 99, sources: [src('other')], creator_id: 'test-uid' } as any,
             ],
             editingSourcesId: 12,
             editingSourcesDraft: [src('g2')],
@@ -112,7 +112,7 @@ describe('ScheduleListPage.handleSaveSources — 来源就地编辑', () => {
         const page = makePage();
         page.state = {
             ...(page.state as any),
-            schedules: [{ schedule_id: 14, sources: [src('old')] } as any],
+            schedules: [{ schedule_id: 14, sources: [src('old')], creator_id: 'test-uid' } as any],
             editingSourcesId: 14,
             editingSourcesDraft: [src('draft')],
         };
@@ -127,7 +127,7 @@ describe('ScheduleListPage.handleSaveSources — 来源就地编辑', () => {
         const page = makePage();
         page.state = {
             ...(page.state as any),
-            schedules: [{ schedule_id: 15, sources: [src('old')] } as any],
+            schedules: [{ schedule_id: 15, sources: [src('old')], creator_id: 'test-uid' } as any],
             editingSourcesId: 15,
             editingSourcesDraft: [src('draft')],
         };
@@ -146,10 +146,57 @@ describe('ScheduleListPage.openSourcesEditor — 打开卡片来源编辑', () =
     it('以副本装入 draft，避免直接引用列表里的 sources', () => {
         const page = makePage();
         const listSources = [src('g0')];
-        page.openSourcesEditor({ schedule_id: 20, sources: listSources } as any);
+        page.openSourcesEditor({ schedule_id: 20, sources: listSources, creator_id: 'test-uid' } as any);
         const draft = (page.state as any).editingSourcesDraft;
         expect(draft).toEqual(listSources);
         expect(draft).not.toBe(listSources);
         expect((page.state as any).editingSourcesId).toBe(20);
+    });
+});
+
+// 权限判定 (OCT-128)：只有 creator 才展示「编辑来源」入口。creator_id 缺失（旧后端）
+// 按 fail-closed 处理不展示，配合后端 403 兜底做双层防御。
+// 直接调 render() 遍历树，靠 aria-label 定位那颗按钮。
+describe('ScheduleListPage — 编辑来源按钮 creator 权限判定 (fail-closed)', () => {
+    function collectElements(node: any, acc: any[] = []): any[] {
+        if (node == null || typeof node !== 'object') return acc;
+        if (Array.isArray(node)) { node.forEach((n) => collectElements(n, acc)); return acc; }
+        if (node.props) {
+            acc.push(node);
+            Object.keys(node.props).forEach((k) => {
+                const v = node.props[k];
+                if (v && typeof v === 'object') collectElements(v, acc);
+            });
+        }
+        return acc;
+    }
+
+    // aria-label='summary.schedule.editSourcesTitle'（context.t = (k)=>k，返回原 key）
+    // 是那颗按钮的唯一标识；卡片操作栏那颗铅笔（打开完整 editModal）没有 aria-label。
+    function editSourcesButtons(page: any) {
+        return collectElements(page.render()).filter(
+            (e) => e.props && e.props['aria-label'] === 'summary.schedule.editSourcesTitle',
+        );
+    }
+
+    function pageWithSchedules(schedules: any[]) {
+        const page = makePage();
+        page.state = { ...(page.state as any), loading: false, schedules };
+        return page;
+    }
+
+    it('creator（creator_id === loginInfo.uid）→ 按钮渲染', () => {
+        const page = pageWithSchedules([{ schedule_id: 1, sources: [src('g0')], creator_id: 'test-uid', cron_expr: '0 9 * * 1' } as any]);
+        expect(editSourcesButtons(page)).toHaveLength(1);
+    });
+
+    it('非 creator（creator_id 属于他人）→ 按钮不渲染', () => {
+        const page = pageWithSchedules([{ schedule_id: 2, sources: [src('g0')], creator_id: 'someone-else', cron_expr: '0 9 * * 1' } as any]);
+        expect(editSourcesButtons(page)).toHaveLength(0);
+    });
+
+    it('creator_id undefined（旧后端未透出）→ fail-closed 按钮不渲染', () => {
+        const page = pageWithSchedules([{ schedule_id: 3, sources: [src('g0')], cron_expr: '0 9 * * 1' } as any]);
+        expect(editSourcesButtons(page)).toHaveLength(0);
     });
 });

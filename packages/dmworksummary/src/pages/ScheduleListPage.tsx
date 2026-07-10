@@ -242,7 +242,12 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
 
                 {!loading && schedules.length > 0 && (
                     <div className="summary-schedule-list">
-                        {schedules.map((item) => (
+                        {schedules.map((item) => {
+                            // fail-closed：creator_id 缺失（旧后端）一律按非 creator，安全侧默认。
+                            // 不做 participants 兜底 —— 后端才是真授权，前端只做入口隐藏。
+                            const currentUid = WKApp.loginInfo.uid;
+                            const isCreator = item.creator_id != null && item.creator_id === currentUid;
+                            return (
                             <div key={item.schedule_id} className="summary-schedule-card">
                                 <div className="summary-schedule-card-header">
                                     <span className="summary-schedule-card-title">
@@ -265,16 +270,18 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                     <span>
                                         {translate("summary.source.label")}{(item.sources ?? []).map((s) => s.source_name || s.source_id).join("、") || "-"}
                                     </span>
-                                    <Button
-                                        icon={<IconEdit />}
-                                        size="small"
-                                        theme="borderless"
-                                        aria-label={translate("summary.schedule.editSourcesTitle")}
-                                        style={{ marginLeft: 4 }}
-                                        onClick={() => this.openSourcesEditor(item)}
-                                    >
-                                        {translate("summary.schedule.editSourcesButton")}
-                                    </Button>
+                                    {isCreator && (
+                                        <Button
+                                            icon={<IconEdit />}
+                                            size="small"
+                                            theme="borderless"
+                                            aria-label={translate("summary.schedule.editSourcesTitle")}
+                                            style={{ marginLeft: 4 }}
+                                            onClick={() => this.openSourcesEditor(item)}
+                                        >
+                                            {translate("summary.schedule.editSourcesButton")}
+                                        </Button>
+                                    )}
                                 </div>
                                 <div className="summary-schedule-card-actions">
                                     <Button
@@ -300,7 +307,8 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                     </Popconfirm>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
 

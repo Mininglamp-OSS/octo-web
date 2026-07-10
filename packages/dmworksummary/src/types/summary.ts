@@ -267,6 +267,12 @@ export interface ScheduleItem {
     created_at: string;
     updated_at: string;
     /**
+     * 定时创建者 user_id。前端 UX：只有 creator 才展示「编辑来源」入口；
+     * 缺失一律按非 creator 处理（fail-closed），配合后端 403 兜底做双层防御。
+     * optional 兼容旧后端未透出的情况。
+     */
+    creator_id?: string;
+    /**
      * V5：确认策略。0=AUTO（无需确认）、1=CONFIRM（一次性确认）。
      * 多人定时默认 1；后端 GET /summary-schedules/:id 响应携带。
      * （confirm_lead_minutes 已废弃，不传不显示。）
