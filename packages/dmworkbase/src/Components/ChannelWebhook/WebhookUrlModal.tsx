@@ -139,9 +139,17 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
         setActiveAdapterKey(adapterTabs[nextIndex].key);
         focusAdapterTab(nextIndex);
     };
+    // 遮罩：secret 是 token，而 token 是推送 URL 的某个路径段——native 为末段
+    // （/v1/webhooks/{id}/{token}），适配器 URL 形如 …/{id}/{token}/{adapter} 时为中间段，
+    // 也可能是传入的裸 token 值本身。按「秘密段」整体替换：用已知的 resp.token 做字面量
+    // 替换，把 token 整体换成固定长度掩码，绝不暴露其任何前缀/后缀。
+    // （旧版首12+末6 的按位置遮罩会泄露 token 尾部 6 字符——token 恰是 URL 末段/裸值尾部，
+    //  显著缩小猜测空间，见 #594 review。）token 缺失或不在串内时整体遮罩兜底。
     const maskValue = (value: string): string => {
-        if (value.length <= 18) return "••••••••";
-        return `${value.slice(0, 12)}••••••••${value.slice(-6)}`;
+        if (resp.token && value.includes(resp.token)) {
+            return value.split(resp.token).join("••••••••");
+        }
+        return "••••••••";
     };
     // native 推送地址本身是 tokenized 的（/v1/webhooks/{id}/{token}），token 即路径段，
     // 所以「地址」就是一次性 secret。眼睛 toggle 必须统一治理整个弹窗内所有含 token 的

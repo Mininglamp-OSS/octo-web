@@ -300,6 +300,33 @@ describe('WebhookUrlModal masking (secret never leaks while hidden) (#594)', () 
     )!;
     expect(tokenCode.textContent).toBe('tok');
   });
+
+  // 回归：token 是 URL 的路径段/裸值，遮罩必须整段隐藏 token，绝不暴露其任何
+  // 前缀/后缀。旧版首12+末6 的按位置遮罩会泄露 token 末 6 字符（#594 review）。
+  // 用真实长度 token 才能结构性地抓到后缀泄露——短 token 会整段落进掩码中间，测不出。
+  it('masks the entire token segment — never a prefix/suffix — for a realistic-length token', async () => {
+    const longTok = 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6'; // 32 chars
+    const r: any = {
+      url: `/v1/incoming-webhooks/iwh_test/${longTok}`,
+      token: longTok,
+      urls: {
+        native: `/v1/incoming-webhooks/iwh_test/${longTok}`,
+        github: `/v1/incoming-webhooks/iwh_test/${longTok}/github`,
+      },
+    };
+    await render(r);
+    const masked = container.textContent || '';
+    // token 的任何子串都不得出现——包括旧版会泄露的首/末 6 字符（默认 native tab 的
+    // 地址行与 curl <pre> 都在 textContent 内）。
+    expect(masked).not.toContain(longTok);
+    expect(masked).not.toContain(longTok.slice(-6));
+    expect(masked).not.toContain(longTok.slice(0, 6));
+    // 但非秘密的结构前缀（webhook id）保留，便于识别。
+    expect(masked).toContain('iwh_test');
+    // 揭示后完整 token 才出现。
+    await revealSecrets();
+    expect(container.textContent).toContain(longTok);
+  });
 });
 
 describe('WebhookUrlModal copy feedback', () => {
