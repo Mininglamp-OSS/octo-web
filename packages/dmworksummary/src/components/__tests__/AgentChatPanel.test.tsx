@@ -1,5 +1,5 @@
 import React from 'react';
-import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AgentChatPanel from '../AgentChatPanel';
 
@@ -10,8 +10,22 @@ vi.mock('@douyinfe/semi-ui', () => ({
             {children}
         </button>
     ),
-    Modal: ({ visible, children }: any) => 
-        visible ? <div data-testid="save-modal">{children}</div> : null,
+    Modal: ({ visible, children, onOk, onCancel, confirmLoading }: any) => 
+        visible ? (
+            <div data-testid="save-modal">
+                {children}
+                <button 
+                    data-testid="modal-ok" 
+                    onClick={onOk} 
+                    disabled={confirmLoading}
+                >
+                    确定
+                </button>
+                <button data-testid="modal-cancel" onClick={onCancel}>
+                    取消
+                </button>
+            </div>
+        ) : null,
     Input: ({ value, onChange, placeholder }: any) => (
         <input
             data-testid="summary-title-input"
@@ -53,14 +67,13 @@ describe('AgentChatPanel - Save as Summary', () => {
         vi.clearAllMocks();
     });
 
-    it('无 assistant 产出时点击保存按钮应显示警告', async () => {
+    it('无 assistant 产出时不渲染保存按钮', async () => {
         const onSend = vi.fn();
         const onSaveAsSummary = vi.fn();
         const { Toast } = await import('@douyinfe/semi-ui');
         
-        // 注意: 组件实际行为是 canSave = hasAssistantOutput() && onSaveAsSummary
+        // 组件实际行为是 canSave = hasAssistantOutput() && onSaveAsSummary
         // 所以无 assistant 产出时,按钮根本不渲染
-        // 这个测试改为验证: 无 assistant 时按钮不渲染
         rtlRender(
             <AgentChatPanel
                 messages={[{ role: 'user', content: '你好' }]}
@@ -123,11 +136,13 @@ describe('AgentChatPanel - Save as Summary', () => {
         // 验证对话框已打开
         expect(screen.getByTestId('save-modal')).toBeInTheDocument();
         
-        // 输入框为空时,因为 Modal mock 是简化版,无法直接触发onOk
-        // 实际组件会在 handleSaveConfirm 中调用 Toast.warning
-        // 这里验证输入框为空状态即可
-        const titleInput = screen.getByTestId('summary-title-input');
-        expect(titleInput).toHaveValue('');
+        // 不输入标题,直接点确定
+        const okButton = screen.getByTestId('modal-ok');
+        fireEvent.click(okButton);
+        
+        // 验证警告被调用,onSaveAsSummary 未被调用
+        expect(Toast.warning).toHaveBeenCalled();
+        expect(onSaveAsSummary).not.toHaveBeenCalled();
     });
 
     it('保存成功后应关闭对话框并清空标题', async () => {
@@ -156,11 +171,23 @@ describe('AgentChatPanel - Save as Summary', () => {
         // 输入标题
         const titleInput = screen.getByTestId('summary-title-input');
         fireEvent.change(titleInput, { target: { value: '测试总结' } });
-        
         expect(titleInput).toHaveValue('测试总结');
         
-        // 注意: Modal mock 是简化版,这里验证组件状态而非完整的保存流程
-        // 实际保存流程需要完整的 Modal onOk 触发 handleSaveConfirm
+        // 点击确定
+        const okButton = screen.getByTestId('modal-ok');
+        fireEvent.click(okButton);
+        
+        // 等待异步操作完成
+        await waitFor(() => {
+            // 验证 onSaveAsSummary 被正确调用
+            expect(onSaveAsSummary).toHaveBeenCalledWith('测试总结');
+            expect(onSaveAsSummary).toHaveBeenCalledTimes(1);
+        });
+        
+        // 保存成功后,对话框应该关闭
+        await waitFor(() => {
+            expect(screen.queryByTestId('save-modal')).not.toBeInTheDocument();
+        });
     });
 
     it('保存失败后应保留对话框和已填标题', async () => {
@@ -189,8 +216,22 @@ describe('AgentChatPanel - Save as Summary', () => {
         // 输入标题
         const titleInput = screen.getByTestId('summary-title-input');
         fireEvent.change(titleInput, { target: { value: '测试总结' } });
+        expect(titleInput).toHaveValue('测试总结');
         
-        // 验证标题已填写
+        // 点击确定
+        const okButton = screen.getByTestId('modal-ok');
+        fireEvent.click(okButton);
+        
+        // 等待异步操作完成
+        await waitFor(() => {
+            // 验证 onSaveAsSummary 被调用
+            expect(onSaveAsSummary).toHaveBeenCalledWith('测试总结');
+            expect(onSaveAsSummary).toHaveBeenCalledTimes(1);
+        });
+        
+        // 保存失败后,对话框应该仍然存在
+        expect(screen.getByTestId('save-modal')).toBeInTheDocument();
+        // 标题应该保留
         expect(titleInput).toHaveValue('测试总结');
     });
 });
