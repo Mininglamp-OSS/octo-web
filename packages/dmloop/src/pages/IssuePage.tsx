@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Typography,
   Input,
@@ -42,8 +42,10 @@ export default function IssuePage() {
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
   const [createOpen, setCreateOpen] = useState(false);
   const cands = useAssigneeCandidates();
+  const seq = useRef(0); // 请求序号：只应用最新一次的响应，防并发乱序覆盖
 
   const reload = useCallback(() => {
+    const my = ++seq.current;
     setLoading(true);
     const paged = view === "list";
     listIssues({
@@ -56,10 +58,16 @@ export default function IssuePage() {
       offset: paged ? page * PAGE_SIZE : 0,
     })
       .then(({ issues, total }) => {
+        if (my !== seq.current) return; // 有更新的请求在途，丢弃本次过期响应
+        // 删除/改状态使匹配数下降时，当前 page 可能越界（offset≥total）→ 钳到最后一页并重取。
+        if (paged) {
+          const maxPage = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1);
+          if (page > maxPage) { setPage(maxPage); return; }
+        }
         setIssues(issues);
         setTotal(total);
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (my === seq.current) setLoading(false); });
   }, [f, view, page]);
 
   useEffect(reload, [reload]);

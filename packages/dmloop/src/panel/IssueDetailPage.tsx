@@ -132,12 +132,14 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     if (!content) return;
     try {
       await updateComment(id, content);
-      setEditingId(null);
-      setComments(await listComments(issueId));
-      Toast.success(t("loop.toast.commentUpdated"));
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.toast.editFailed"));
+      return;
     }
+    // 编辑已落库；重拉以回填 directory 名字/头像。重拉失败不应报“编辑失败”。
+    setEditingId(null);
+    setComments(await listComments(issueId));
+    Toast.success(t("loop.toast.commentUpdated"));
   };
 
   const handleDeleteIssue = () => {
@@ -282,7 +284,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               size="small"
               theme="borderless"
               icon={<CornerDownRight size={13} />}
-              onClick={() => setReplyTo(replyTo === c.id ? null : c.id)}
+              onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setEditingId(null); }}
             >
               {t("loop.comment.reply")}
             </Button>
