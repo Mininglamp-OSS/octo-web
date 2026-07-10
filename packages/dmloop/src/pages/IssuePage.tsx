@@ -36,7 +36,6 @@ interface Filters {
 
 const PAGE_SIZE = 50;
 
-
 export default function IssuePage() {
   const { t } = useI18n();
   const [issues, setIssues] = useState<Issue[]>([]);

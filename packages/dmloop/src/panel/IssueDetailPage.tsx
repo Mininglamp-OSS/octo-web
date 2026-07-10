@@ -234,8 +234,6 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     });
   };
 
-  // 运行中(可终止)vs 已结束(可重跑):用共享 isActiveRun(ui/meta)。
-
   const saveDesc = async () => {
     if (descDraft !== (issue?.description ?? "")) await patch({ description: descDraft });
     setEditingDesc(false);
@@ -293,7 +291,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                   <Dropdown.Divider />
                   <Dropdown.Title>{t(`loop.assignee.${type}`)}</Dropdown.Title>
                   {items.map((c) => (
-                    <Dropdown.Item key={c.id} active={issue?.assignee_id === c.id} onClick={() => issue && requestAssign({ issueId: issue.id, status: issue.status, assigneeType: c.type, assigneeId: c.id, assigneeName: c.name, apply: (extra) => patch({ assignee_id: c.id, assignee_type: c.type, ...extra }) })}>
+                    <Dropdown.Item key={c.id} active={issue?.assignee_id === c.id} onClick={() => issue && requestAssign(issue, c.type, c.id, c.name, (extra) => patch({ assignee_id: c.id, assignee_type: c.type, ...extra }))}>
                       {c.name}
                     </Dropdown.Item>
                   ))}
@@ -547,7 +545,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                 <AssigneePicker
                   value={issue.assignee_id}
                   valueName={issue.assignee_name ?? null}
-                  onChange={(id, type, name) => requestAssign({ issueId: issue.id, status: issue.status, assigneeType: type, assigneeId: id, assigneeName: name, apply: (extra) => patch({ assignee_id: id, assignee_type: type, ...extra }) })}
+                  onChange={(id, type, name) => requestAssign(issue, type, id, name, (extra) => patch({ assignee_id: id, assignee_type: type, ...extra }))}
                 />
               </dd>
               <dt>{t("loop.field.project")}</dt>

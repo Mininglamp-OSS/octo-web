@@ -107,7 +107,7 @@ export default function IssueList({
           size="small"
           value={r.assignee_id}
           valueName={r.assignee_name ?? null}
-          onChange={(id, type, name) => requestAssign({ issueId: r.id, status: r.status, assigneeType: type, assigneeId: id, assigneeName: name, apply: (extra) => patch(r.id, { assignee_id: id, assignee_type: type, ...extra }) })}
+          onChange={(id, type, name) => requestAssign(r, type, id, name, (extra) => patch(r.id, { assignee_id: id, assignee_type: type, ...extra }))}
         />
       ),
     },
