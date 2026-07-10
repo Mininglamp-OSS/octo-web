@@ -16,26 +16,13 @@
     "settings": "设置"
   },
   "runtime": {
-    "provider": "提供方",
-    "mode": "类型",
-    "modeVal": {
-      "local": "本地",
-      "cloud": "云端"
-    },
     "online": "在线",
     "offline": "离线",
-    "device": "设备信息",
-    "launchHeader": "启动标识",
-    "visibility": "可见性",
-    "lastSeen": "最近在线",
-    "search": "搜索运行时 / 提供方",
     "empty": "暂无运行时",
     "subtitle": "你名下的机器与运行时。工作区里的 AI 队友都跑在这里。",
     "add": "添加电脑",
     "allSpace": "全部空间",
     "runtimeCount": "{{count}} 个运行时",
-    "servingAgents": "服务 {{count}} 个 AI 队友",
-    "noAgents": "—",
     "builtIn": "内置",
     "addComputerTitle": "添加电脑",
     "addComputerDesc": "在需要接入的电脑上运行下面的命令，完成登录后运行时会出现在列表里。",
@@ -306,16 +293,6 @@
     "rerunStarted": "已重新派单",
     "cancelConfirm": "确定终止这次执行？",
     "cancelled": "已终止"
-  },
-  "device": {
-    "devices": "设备",
-    "runtimes": "运行时",
-    "local": "本地",
-    "remote": "远程",
-    "pickDevice": "选择左侧设备",
-    "pickRuntime": "选择一个 Runtime 查看详情",
-    "agentsUsing": "使用中的智能体",
-    "noAgents": "暂无智能体使用该 Runtime"
   },
   "settings": {
     "general": "通用",
