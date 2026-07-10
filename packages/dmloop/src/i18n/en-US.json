@@ -12,24 +12,24 @@
     "project": "Project",
     "agent": "Agent",
     "squad": "Squad",
-    "runtime": "Devices",
+    "runtime": "Runtimes",
     "settings": "Settings"
   },
   "runtime": {
-    "provider": "Provider",
-    "mode": "Mode",
-    "modeVal": {
-      "local": "Local",
-      "cloud": "Cloud"
-    },
     "online": "Online",
     "offline": "Offline",
-    "device": "Device info",
-    "launchHeader": "Launch header",
-    "visibility": "Visibility",
-    "lastSeen": "Last seen",
-    "search": "Search device / provider",
-    "empty": "No devices"
+    "empty": "No runtimes",
+    "subtitle": "Machines and runtimes under your account. Workspace AI teammates run here.",
+    "add": "Add computer",
+    "allSpace": "All spaces",
+    "runtimeCount": "{{count}} runtimes",
+    "builtIn": "Built-in",
+    "addComputerTitle": "Add computer",
+    "addComputerDesc": "Run this command on the computer you want to connect. After login, its runtimes will appear in the list.",
+    "copyCommand": "Copy command",
+    "copied": "Copied",
+    "copySuccess": "Command copied",
+    "copyFailed": "Copy failed. Please copy manually."
   },
   "view": {
     "board": "Board",
@@ -293,16 +293,6 @@
     "rerunStarted": "Re-dispatched",
     "cancelConfirm": "Stop this run?",
     "cancelled": "Stopped"
-  },
-  "device": {
-    "devices": "Devices",
-    "runtimes": "Runtimes",
-    "local": "Local",
-    "remote": "Remote",
-    "pickDevice": "Pick a device",
-    "pickRuntime": "Select a runtime to view detail",
-    "agentsUsing": "Agents using",
-    "noAgents": "No agents use this runtime"
   },
   "settings": {
     "general": "General",
