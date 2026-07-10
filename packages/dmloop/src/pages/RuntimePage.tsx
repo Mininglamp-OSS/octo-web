@@ -85,6 +85,12 @@ export default function RuntimePage() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    if (!copied) return undefined;
+    const timer = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  useEffect(() => {
     setLoading(true);
     setError(null);
     listRuntimes()
@@ -117,7 +123,6 @@ export default function RuntimePage() {
     }
     setCopied(true);
     Toast.success(t("loop.runtime.copySuccess"));
-    window.setTimeout(() => setCopied(false), 1600);
   };
 
   return (

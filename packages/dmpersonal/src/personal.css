@@ -8,8 +8,8 @@
 }
 
 .dmpersonal-sidebar__title {
-  padding: 20px 20px 12px;
-  font-size: 16px;
+  padding: var(--wk-sp-5) var(--wk-sp-5) var(--wk-sp-3);
+  font-size: var(--wk-text-size-xl);
   font-weight: 600;
   color: var(--semi-color-text-0);
 }
@@ -17,21 +17,21 @@
 .dmpersonal-sidebar__menu {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 4px 8px;
+  gap: var(--wk-sp-0-5);
+  padding: var(--wk-sp-1) var(--wk-sp-2);
 }
 
 .dmpersonal-sidebar__item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--wk-sp-2);
   width: 100%;
-  padding: 9px 12px;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
   border: none;
   background: transparent;
-  border-radius: 8px;
+  border-radius: var(--wk-r-md);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--wk-text-size-base);
   color: var(--semi-color-text-1);
   text-align: left;
 }
@@ -52,13 +52,12 @@
 }
 
 .dmpersonal-sidebar__hint {
-  margin: 12px 12px 0;
-  padding: 10px 12px;
-  border-radius: 8px;
+  margin: var(--wk-sp-3) var(--wk-sp-3) 0;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
   background: var(--semi-color-warning-light-default);
   color: var(--semi-color-warning);
-  font-size: 12px;
-  line-height: 18px;
+  font: var(--wk-text-caption);
 }
 
 .dmpersonal-state {
@@ -67,28 +66,28 @@
   align-items: center;
   justify-content: center;
   height: 70%;
-  padding: 24px;
+  padding: var(--wk-sp-6);
   text-align: center;
   color: var(--semi-color-text-2);
 }
 
 .dmpersonal-state__icon {
   display: flex;
-  margin-bottom: 12px;
+  margin-bottom: var(--wk-sp-3);
   color: var(--semi-color-text-2);
   opacity: 0.55;
 }
 
 .dmpersonal-state__title {
-  font-size: 15px;
+  font-size: var(--wk-text-size-lg);
   font-weight: 600;
   color: var(--semi-color-text-0);
 }
 
 .dmpersonal-state__desc {
   max-width: 360px;
-  margin-top: 6px;
-  font-size: 13px;
-  line-height: 20px;
+  margin-top: var(--wk-sp-1-5);
+  font-size: var(--wk-text-size-base);
+  line-height: 1.5;
   color: var(--semi-color-text-2);
 }

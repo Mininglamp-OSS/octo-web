@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { AlertCircle, Cpu, FolderPlus, Loader2, Sparkles } from "lucide-react";
-import { RuntimePage, SkillPage } from "@octo/loop";
+import { currentWorkspaceId, RuntimePage, setWorkspaceContext, SkillPage, workspaceApi } from "@octo/loop";
 import { useI18n, WKApp } from "@octo/base";
-import { listWorkspaces } from "@octo/loop/src/api/workspaceApi";
-import { currentWorkspaceId, setWorkspaceContext } from "@octo/loop";
 import "@octo/loop/src/pages/loop.css";
 import "./personal.css";
 
@@ -45,7 +43,7 @@ export default function PersonalPage() {
       <PersonalWorkspaceState icon={<Loader2 size={36} />} title={t("personal.workspace.loading")} />,
     );
 
-    listWorkspaces()
+    workspaceApi.listWorkspaces()
       .then((workspaces) => {
         if (cancelled) return;
         const selected = workspaces.find((workspace) => workspace.id === currentWorkspaceId()) ?? workspaces[0] ?? null;
@@ -86,7 +84,7 @@ export default function PersonalPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   return (
     <div className="dmpersonal-sidebar">
