@@ -136,6 +136,13 @@ export interface IssueTriggerPreview {
   total_count: number;
 }
 
+/** 评论派单预览:这条评论会唤醒的 agent(POST /issues/:id/comments/trigger-preview)。
+ *  后端还返回 avatar_url/source/reason,前端暂只用 id+name,按需再加。 */
+export interface CommentTriggerAgent {
+  id: string;
+  name: string;
+}
+
 export interface IssueComment {
   id: string;
   issue_id: string;
@@ -170,17 +177,17 @@ export interface TaskRun {
   agent_name?: string | null;
 }
 
-/** 执行消息（run-messages）：GET /tasks/:id/messages。 */
+/** 执行消息（run-messages）：GET /tasks/:id/messages。对齐后端 TaskMessagePayload。 */
 export interface RunMessage {
   task_id: string;
   issue_id?: string;
   seq: number;
-  type: string;
-  tool?: string;
-  input?: unknown;
-  text?: string;
-  content?: unknown;
-  created_at: string;
+  type: string; // thinking | text | tool_use | tool_result | error
+  tool?: string; // tool_use/tool_result 的工具名
+  content?: string; // 文本内容(text/thinking/error)
+  input?: Record<string, unknown>; // tool_use 的入参
+  output?: string; // tool_result 的输出
+  created_at?: string;
 }
 
 /* ---------- Skill ---------- */

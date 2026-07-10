@@ -4,6 +4,7 @@ import { useI18n } from "@octo/base";
 import type { Issue, IssueStatus } from "../api/types";
 import { updateIssue } from "../api/issueApi";
 import { AssigneeBadge } from "../ui/AssigneePicker";
+import { useRunConfirm } from "../ui/RunConfirmModal";
 import {
   ISSUE_STATUS_ORDER,
   ISSUE_STATUS_COLOR,
@@ -23,18 +24,22 @@ export default function IssueBoard({
   onChanged,
 }: IssueBoardProps) {
   const { t } = useI18n();
+  const { requestStatus, runConfirmModal } = useRunConfirm();
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropCol, setDropCol] = useState<IssueStatus | null>(null);
 
-  const handleDrop = async (status: IssueStatus) => {
+  const handleDrop = (status: IssueStatus) => {
     setDropCol(null);
     const id = dragId;
     setDragId(null);
     if (!id) return;
     const issue = issues.find((i) => i.id === id);
     if (!issue || issue.status === status) return;
-    await updateIssue(id, { status });
-    onChanged();
+    // 拖到 agent 已指派的 backlog→活跃列会触发 run,先走确认;其余直接落库。
+    requestStatus(issue, status, async (extra) => {
+      await updateIssue(id, { status, ...extra });
+      onChanged();
+    });
   };
 
   return (
@@ -84,7 +89,7 @@ export default function IssueBoard({
                     </Tag>
                     <AssigneeBadge
                       type={issue.assignee_type}
-                      name={issue.assignee_name}
+                      name={issue.assignee_name ?? null}
                     />
                   </div>
                 </div>
@@ -93,6 +98,7 @@ export default function IssueBoard({
           </div>
         );
       })}
+      {runConfirmModal}
     </div>
   );
 }

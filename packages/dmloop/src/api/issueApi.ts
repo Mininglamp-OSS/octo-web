@@ -8,6 +8,7 @@ import type {
   AssigneeCandidate,
   IssueTriggerPreview,
   IssueTriggerPreviewParams,
+  CommentTriggerAgent,
 } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
 import { ensureDirectory, actorName, actorAvatar, listAssigneeCandidates as dirCandidates } from "./directory";
@@ -78,11 +79,25 @@ export function addComment(
   issueId: string,
   content: string,
   parentId: string | null = null,
+  suppressAgentIds: string[] = [],
 ): Promise<IssueComment> {
   return httpPost<IssueComment>(`/issues/${issueId}/comments`, {
     content,
     parent_id: parentId ?? undefined,
+    suppress_agent_ids: suppressAgentIds.length ? suppressAgentIds : undefined,
   });
+}
+
+// 评论派单预览（只读）：这条评论会唤醒哪些 agent（issue 负责人 / @提及）。绝不前端猜。
+export function previewCommentTriggers(
+  issueId: string,
+  content: string,
+  parentId: string | null = null,
+): Promise<CommentTriggerAgent[]> {
+  return httpPost<{ agents?: CommentTriggerAgent[] }>(`/issues/${issueId}/comments/trigger-preview`, {
+    content,
+    parent_id: parentId ?? undefined,
+  }).then((r) => r.agents ?? []);
 }
 
 export function deleteComment(commentId: string): Promise<void> {

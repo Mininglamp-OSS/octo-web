@@ -95,3 +95,9 @@ export const RUN_STATUS_COLOR: Record<string, TagColor> = {
   failed: "red",
   cancelled: "grey",
 };
+
+// run 是否处于活跃(未结束)态——可终止/仍在产生消息。单一来源,供运行面板与执行详情共用。
+const ACTIVE_RUN_STATUSES = ["queued", "dispatched", "waiting_local_directory", "running"];
+export function isActiveRun(status: string): boolean {
+  return ACTIVE_RUN_STATUSES.includes(status);
+}
