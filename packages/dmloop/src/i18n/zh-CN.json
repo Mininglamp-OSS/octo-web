@@ -186,7 +186,8 @@
     "commentDeleted": "评论已删除",
     "commentUpdated": "评论已更新",
     "editFailed": "编辑失败",
-    "deleteFailed": "删除失败"
+    "deleteFailed": "删除失败",
+    "saveFailed": "保存失败"
   },
   "validate": {
     "nameRequired": "请填写名称",
@@ -263,7 +264,15 @@
     "completed": "完成时间",
     "result": "结果",
     "messages": "消息流",
-    "noMessages": "暂无消息"
+    "noMessages": "暂无消息",
+    "confirmTitle": "派单确认",
+    "willStart": "将立即派单给 {{name}} 开始执行。",
+    "nothing": "指派给 {{name}}，不会触发执行。",
+    "suppress": "暂不开始",
+    "start": "开始",
+    "apply": "应用",
+    "handoffPlaceholder": "可选：给这次派单一段交接说明…",
+    "handoffUnsupported": "目标运行环境版本较旧，暂不支持交接说明"
   },
   "device": {
     "devices": "设备",

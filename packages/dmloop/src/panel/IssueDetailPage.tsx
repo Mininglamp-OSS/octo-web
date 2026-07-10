@@ -41,6 +41,7 @@ import {
 } from "../api/issueApi";
 import { listRuns } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
+import { useRunConfirm } from "../ui/RunConfirmModal";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import LoopMarkdown from "../ui/LoopMarkdown";
 import { confirmDelete } from "../ui/confirmDelete";
@@ -80,6 +81,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [runOpen, setRunOpen] = useState(false);
   const [editingDesc, setEditingDesc] = useState(false);
   const cands = useAssigneeCandidates();
+  const { requestAssign, runConfirmModal } = useRunConfirm();
   const [loading, setLoading] = useState(true);
   const [titleDraft, setTitleDraft] = useState("");
   const [descDraft, setDescDraft] = useState("");
@@ -222,7 +224,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                   <Dropdown.Divider />
                   <Dropdown.Title>{t(`loop.assignee.${type}`)}</Dropdown.Title>
                   {items.map((c) => (
-                    <Dropdown.Item key={c.id} active={issue?.assignee_id === c.id} onClick={() => patch({ assignee_id: c.id, assignee_type: c.type })}>
+                    <Dropdown.Item key={c.id} active={issue?.assignee_id === c.id} onClick={() => issue && requestAssign({ issueId: issue.id, status: issue.status, assigneeType: c.type, assigneeId: c.id, assigneeName: c.name, apply: (extra) => patch({ assignee_id: c.id, assignee_type: c.type, ...extra }) })}>
                       {c.name}
                     </Dropdown.Item>
                   ))}
@@ -456,7 +458,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                 <AssigneePicker
                   value={issue.assignee_id}
                   valueName={issue.assignee_name ?? null}
-                  onChange={(id, type) => patch({ assignee_id: id, assignee_type: type })}
+                  onChange={(id, type, name) => requestAssign({ issueId: issue.id, status: issue.status, assigneeType: type, assigneeId: id, assigneeName: name, apply: (extra) => patch({ assignee_id: id, assignee_type: type, ...extra }) })}
                 />
               </dd>
               <dt>{t("loop.field.project")}</dt>
@@ -502,6 +504,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       </div>
 
       <RunDetailModal run={activeRun} visible={runOpen} onClose={() => setRunOpen(false)} />
+      {runConfirmModal}
     </div>
   );
 }

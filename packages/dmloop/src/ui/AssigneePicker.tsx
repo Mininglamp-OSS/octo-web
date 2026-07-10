@@ -15,7 +15,7 @@ function typeIcon(type: AssigneeType) {
 export interface AssigneePickerProps {
   value: string | null;
   valueName: string | null;
-  onChange: (id: string | null, type: AssigneeType | null) => void;
+  onChange: (id: string | null, type: AssigneeType | null, name: string | null) => void;
   size?: "small" | "default";
 }
 
@@ -37,7 +37,7 @@ export default function AssigneePicker({ value, valueName, onChange, size = "def
 
   const menu = (
     <Dropdown.Menu>
-      <Dropdown.Item onClick={() => onChange(null, null)} icon={<CircleSlash size={13} />}>
+      <Dropdown.Item onClick={() => onChange(null, null, null)} icon={<CircleSlash size={13} />}>
         {t("loop.assignee.unassigned")}
       </Dropdown.Item>
       {groups.map((g) => {
@@ -54,7 +54,7 @@ export default function AssigneePicker({ value, valueName, onChange, size = "def
                   ? <Avatar size="extra-extra-small" color="light-blue" src={WKApp.shared.avatarUser(c.octo_uid)}>{c.name.slice(0, 1)}</Avatar>
                   : typeIcon(c.type)}
                 active={c.id === value}
-                onClick={() => onChange(c.id, c.type)}
+                onClick={() => onChange(c.id, c.type, c.name)}
               >
                 {c.name}
               </Dropdown.Item>
