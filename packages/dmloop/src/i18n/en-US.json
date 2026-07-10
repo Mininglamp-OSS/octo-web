@@ -312,6 +312,9 @@
   "reaction": {
     "add": "Add reaction"
   },
+  "mention": {
+    "add": "Mention"
+  },
   "agent": {
     "runtime": "Runtime",
     "model": "Model",

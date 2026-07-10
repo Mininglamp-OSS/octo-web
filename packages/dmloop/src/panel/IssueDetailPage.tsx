@@ -30,6 +30,7 @@ import {
   Bell,
   BellOff,
   Paperclip,
+  AtSign,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
@@ -38,6 +39,7 @@ import type {
   IssueSubscriber,
   TimelineEntry,
   Attachment,
+  AssigneeCandidate,
   TaskRun,
   IssueStatus,
   IssuePriority,
@@ -254,6 +256,15 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
     }
+  };
+
+  // @提及:选中候选(成员/AI队友/AI小队)→ 往草稿插入 mention markdown。
+  // 后端 util.MentionRe 认 [@Label](mention://<type>/<id>);插入草稿后 previewCommentTriggers 会反映"将唤醒"。
+  const insertMention = (c: AssigneeCandidate) => {
+    // label 剥掉 []:名字里的方括号会破坏 markdown 链接语法 [label](url);id 才是真引用,label 仅显示。
+    const label = c.name.replace(/[[\]]/g, "");
+    const token = `[@${label}](mention://${c.type}/${c.id})`;
+    setCommentDraft((d) => (d && !d.endsWith(" ") ? d + " " : d) + token + " ");
   };
 
   // 评论附件:本地持有 File,发送时才带 commentId 上传绑定(见 submitComment),
@@ -844,6 +855,29 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                 placeholder={replyTo ? t("loop.comment.replyingHint") : t("loop.comment.placeholder")}
                 onEnterPress={submitComment}
               />
+              <Dropdown
+                trigger="click"
+                clickToHide
+                position="topRight"
+                render={
+                  <Dropdown.Menu>
+                    {(["member", "agent", "squad"] as const).map((type) => {
+                      const items = cands.filter((c) => c.type === type);
+                      if (!items.length) return null;
+                      return (
+                        <React.Fragment key={type}>
+                          <Dropdown.Title>{t(`loop.assignee.${type}`)}</Dropdown.Title>
+                          {items.map((c) => (
+                            <Dropdown.Item key={c.id} onClick={() => insertMention(c)}>{c.name}</Dropdown.Item>
+                          ))}
+                        </React.Fragment>
+                      );
+                    })}
+                  </Dropdown.Menu>
+                }
+              >
+                <Button theme="borderless" icon={<AtSign size={16} />} disabled={!!replyTo} aria-label={t("loop.mention.add")} />
+              </Dropdown>
               <label className="loop-attach-btn" aria-label={t("loop.attach.add")} style={{ opacity: replyTo ? 0.4 : 1 }}>
                 <Paperclip size={16} />
                 <input
