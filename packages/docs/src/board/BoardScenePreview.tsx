@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from 'react'
 import { i18n, t } from '../octoweb/index.ts'
 import { BoardMainMenu, type ExcalidrawMainMenu } from './BoardMainMenu.tsx'
-import { normalizeFileRef, type BinaryFileData, type FileFetchRef } from './collab/index.ts'
+import { normalizeFileRef, sanitizeFractionalIndices, type BinaryFileData, type FileFetchRef } from './collab/index.ts'
 import { fetchBoardFileBinaries } from './boardFiles.ts'
 import type { BoardVersionScene } from './boardVersions.ts'
 
@@ -113,10 +113,19 @@ export function BoardScenePreview({ scene, dark, docId }: { scene: BoardVersionS
 
   // Rehydrate raw persisted/historical elements into renderable Excalidraw shapes (drops unknown
   // element types, fills defaults) — the same restore step the live board applies to initialData.
-  const elements = useMemo(() => {
+  //
+  // Strip any fractional-index key Excalidraw's grammar cannot parse BEFORE restore (XIN-791): a
+  // historical scene is the same backend-authored Y.Doc state the live board renders, carrying the
+  // zero-padded `r00000000` scheme, and `restoreElements` runs the same `syncInvalidIndices` that
+  // throws `invalid order key` on an unparseable key — which here (unlike the live board) is a
+  // render-time throw the BoardVersionPanel only catches with an error boundary. Sanitizing here
+  // closes the third untrusted-restore path (BoardShell cold-open + repairForRender were the other
+  // two); it is a no-op for valid-keyed human scenes.
+  const elements = useMemo<unknown[]>(() => {
     const restore = restoreElementsRef.current
-    if (restore) return restore(scene.elements, null)
-    return scene.elements
+    const safe = sanitizeFractionalIndices(scene.elements as Parameters<typeof sanitizeFractionalIndices>[0])
+    if (restore) return restore(safe, null)
+    return [...safe]
     // Recompute once the helper resolves (Excalidraw becoming non-null flips this).
   }, [scene, Excalidraw])
 

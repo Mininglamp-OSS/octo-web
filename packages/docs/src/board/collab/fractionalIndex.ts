@@ -20,12 +20,16 @@
 //
 // This pass detects keys Excalidraw's grammar rejects and DROPS them (render-only, never written
 // back to the Y.Doc — the backend stays the authoritative index writer, XIN-16 §4), letting
-// Excalidraw's own `syncInvalidIndices` assign fresh, valid keys. Order is preserved by
-// stable-sorting on the original key strings first — the same string comparison Excalidraw's
-// `orderByFractionalIndex` uses and the ordering the backend's zero-padded scheme intends — so a
-// bot scene keeps its authored z-order. Scenes whose keys are already all valid (every
-// human-drawn board) take a zero-copy fast path and are handed through untouched, so existing
-// real-time collaboration / reconcile behaviour does not change.
+// Excalidraw's own `syncInvalidIndices` assign fresh, valid keys. Z-order is preserved per scene
+// shape: a HOMOGENEOUS bot scene (only the backend's unparseable scheme) is stable-sorted on the
+// raw key strings — the same comparison Excalidraw's `orderByFractionalIndex` uses and the order
+// the backend's zero-padded scheme intends — because its source array order is arbitrary Y.Map
+// iteration order. A MIXED scene (valid Excalidraw keys alongside the backend scheme) is NEVER
+// sorted: the two key spaces are not comparable as strings (`'a5' < 'r00000000'`), so a global
+// sort would invert the author's stacking; instead the original array order is preserved and
+// `syncInvalidIndices` regenerates only the stripped keys in place. Scenes whose keys are already
+// all valid (every human-drawn board) take a zero-copy fast path and are handed through untouched,
+// so existing real-time collaboration / reconcile behaviour does not change.
 
 import type { ExcalidrawElement } from './types.ts'
 
@@ -71,24 +75,55 @@ export function isExcalidrawFractionalIndex(key: unknown): key is string {
  * back to the Y.Doc.
  *
  * Fast path: if every element already carries a valid key (or none), the input array is returned
- * as-is — no reorder, no copy — so ordinary human-drawn boards are untouched. Otherwise a new,
- * stable-sorted array is returned with the invalid keys stripped, so Excalidraw's
- * `syncInvalidIndices` regenerates valid keys in the authored z-order instead of throwing.
+ * as-is — no reorder, no copy — so ordinary human-drawn boards are untouched.
+ *
+ * Otherwise the invalid keys are stripped and the array is handed to Excalidraw in the z-order its
+ * `syncInvalidIndices` will honour, with the choice of order gated on whether the scene is
+ * HOMOGENEOUS or MIXED:
+ *
+ *  - HOMOGENEOUS (every keyed element uses the backend's unparseable scheme, no valid Excalidraw
+ *    key present): the source array order is arbitrary (Y.Map iteration order), but the backend's
+ *    zero-padded scheme is string-monotonic, so a stable sort on the raw key strings recovers the
+ *    authored z-order. This is the fuzz-verified pure-bot-board path — kept byte-for-byte.
+ *
+ *  - MIXED (valid Excalidraw keys coexist with the backend scheme): the two key spaces are NOT
+ *    comparable as strings — a valid key like `a5` sorts before `r00000000`, so a global string
+ *    sort silently drags every valid-keyed element beneath the bot scheme and inverts the author's
+ *    stacking (the mixed-scene z-order corruption fixed here). We therefore do NOT sort a mixed
+ *    scene: Excalidraw's own `syncInvalidIndices` treats ARRAY ORDER as the desired stacking and
+ *    only regenerates the stripped keys in place, so preserving the original order keeps the
+ *    valid-keyed elements' relative order intact and re-slots the stripped (bot) elements back at
+ *    their original anchors.
  */
 export function sanitizeFractionalIndices(
   elements: readonly ExcalidrawElement[],
 ): readonly ExcalidrawElement[] {
   let anyInvalid = false
+  let anyValidKey = false
   for (const el of elements) {
     const idx = el.index
-    if (idx != null && !isExcalidrawFractionalIndex(idx)) {
-      anyInvalid = true
-      break
-    }
+    if (idx == null) continue
+    if (isExcalidrawFractionalIndex(idx)) anyValidKey = true
+    else anyInvalid = true
   }
   if (!anyInvalid) return elements
 
-  // Preserve authored order (elements with no key sort first, matching Excalidraw's own
+  // Drop only the offending key; every other field (unknown ones included) passes through.
+  const strip = (el: ExcalidrawElement): ExcalidrawElement => {
+    const idx = el.index
+    if (idx != null && !isExcalidrawFractionalIndex(idx)) {
+      const { index: _dropped, ...rest } = el
+      return rest as ExcalidrawElement
+    }
+    return el
+  }
+
+  // MIXED scene: never string-sort across the two incomparable key spaces — preserve the author's
+  // array order and let syncInvalidIndices regenerate only the stripped keys in place.
+  if (anyValidKey) return elements.map(strip)
+
+  // HOMOGENEOUS scene: stable-sort on the raw key strings to recover the authored order from the
+  // arbitrary Y.Map iteration order (elements with no key sort first, matching Excalidraw's own
   // treatment of a missing index as ordering-first), keeping ties in original array order.
   const positioned = elements.map((el, i) => ({ el, i }))
   positioned.sort((a, b) => {
@@ -98,13 +133,5 @@ export function sanitizeFractionalIndices(
     if (ka > kb) return 1
     return a.i - b.i
   })
-  return positioned.map(({ el }) => {
-    const idx = el.index
-    if (idx != null && !isExcalidrawFractionalIndex(idx)) {
-      // Drop only the offending key; every other field (unknown ones included) passes through.
-      const { index: _dropped, ...rest } = el
-      return rest as ExcalidrawElement
-    }
-    return el
-  })
+  return positioned.map(({ el }) => strip(el))
 }

@@ -87,4 +87,49 @@ describe('sanitizeFractionalIndices', () => {
       expect(el.index == null || isExcalidrawFractionalIndex(el.index)).toBe(true)
     }
   })
+
+  // Mixed scenes: valid Excalidraw keys coexisting with the backend's unparseable `r00000000`
+  // scheme. A global string sort compares across the two incomparable key spaces (`'a5' < 'r0…'`),
+  // dragging every valid-keyed element beneath the bot scheme and inverting the author's stacking.
+  // syncInvalidIndices honours ARRAY ORDER and regenerates only the stripped keys in place, so a
+  // mixed scene must be handed through in its original order — sorted output would corrupt z-order.
+  describe('mixed scene (valid + backend keys) — z-order fidelity', () => {
+    it('keeps a bottom bot element below a top human element (does not sort the valid key first)', () => {
+      // Authored bottom→top: a bot-written background (unparseable `r00000000`) UNDER a human shape
+      // (valid `a5`). A string sort would place `a5` before `r00000000` and sink the human shape.
+      const els = [makeEl('bg', { index: 'r00000000' }), makeEl('human', { index: 'a5' })]
+      const out = sanitizeFractionalIndices(els)
+      expect(out.map((e) => e.id)).toEqual(['bg', 'human'])
+      // Bot key stripped so Excalidraw regenerates it in array position; valid key left intact.
+      expect('index' in out.find((e) => e.id === 'bg')!).toBe(false)
+      expect(out.find((e) => e.id === 'human')!.index).toBe('a5')
+    })
+
+    it('preserves valid-keyed relative order and re-slots stripped bot elements at their anchors', () => {
+      // human a0, two bot elements, human a1 — author order must survive verbatim (no cross-scheme
+      // sort would move the bot pair below both humans, and no intra-scheme sort should reorder
+      // elements the author already placed).
+      const els = [
+        makeEl('h0', { index: 'a0' }),
+        makeEl('bot1', { index: 'r00000001' }),
+        makeEl('bot0', { index: 'r00000000' }),
+        makeEl('h1', { index: 'a1' }),
+      ]
+      const out = sanitizeFractionalIndices(els)
+      expect(out.map((e) => e.id)).toEqual(['h0', 'bot1', 'bot0', 'h1'])
+      expect(out.find((e) => e.id === 'h0')!.index).toBe('a0')
+      expect(out.find((e) => e.id === 'h1')!.index).toBe('a1')
+      for (const id of ['bot0', 'bot1']) expect('index' in out.find((e) => e.id === id)!).toBe(false)
+    })
+
+    it('leaves no unparseable key in a mixed scene', () => {
+      const els = [
+        makeEl('bg', { index: 'r00000000' }),
+        makeEl('mid', { index: 'a2' }),
+        makeEl('fg', { index: 'r00000005' }),
+      ]
+      const out = sanitizeFractionalIndices(els)
+      for (const el of out) expect(el.index == null || isExcalidrawFractionalIndex(el.index)).toBe(true)
+    })
+  })
 })
