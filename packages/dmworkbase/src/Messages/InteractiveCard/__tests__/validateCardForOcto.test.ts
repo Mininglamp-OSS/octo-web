@@ -17,6 +17,15 @@ describe("validateCardForOcto — 合法（ok:true）", () => {
       true
     );
   });
+  it("metadata.octo_layout 仅作为客户端布局提示，不影响结构校验", () => {
+    expect(
+      validateCardForOcto(
+        AC([{ type: "TextBlock", text: "x" }], {
+          metadata: { octo_layout: "agent_progress_v1" },
+        })
+      ).ok
+    ).toBe(true);
+  });
   it("空卡（无 body）", () => {
     expect(validateCardForOcto({ type: "AdaptiveCard" }).ok).toBe(true);
   });

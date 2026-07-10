@@ -330,4 +330,32 @@ describe("renderOctoCard", () => {
     expect(target.querySelector("input")).toBeNull(); // fallback 未逃逸
     target.remove();
   });
+
+  it("普通卡即使含 timeline_detail 也不会触发 agent progress 后处理", () => {
+    const target = mountTarget();
+    renderOctoCard({
+      card: {
+        type: "AdaptiveCard",
+        version: "1.5",
+        body: [
+          {
+            type: "Container",
+            id: "timeline_detail",
+            style: "attention",
+            items: [{ type: "TextBlock", text: "普通卡状态块" }],
+          },
+        ],
+      },
+      target,
+      onAction: () => {},
+    });
+
+    expect(
+      target.querySelector(".wk-interactive-card-progress-step")
+    ).toBeNull();
+    expect(
+      target.querySelector(".wk-interactive-card-progress-step--status")
+    ).toBeNull();
+    target.remove();
+  });
 });

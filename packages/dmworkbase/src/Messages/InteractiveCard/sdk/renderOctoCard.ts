@@ -3,6 +3,7 @@ import { cardMarkdownToSafeHtml } from "../renderer/cardMarkdownHtml";
 import { browserCssVarResolver, buildOctoHostConfig } from "./octoHostConfig";
 import { createOctoSerializationContext } from "./octoSerialization";
 import { sanitizeCardTree } from "./sanitizeCardTree";
+import { enhanceAgentProgressLayout } from "./agentProgressLayout";
 import { attachTableCopyButtons } from "./tableCopy";
 
 /**
@@ -49,6 +50,7 @@ export function renderOctoCard(options: RenderOctoCardOptions): void {
   const rendered = ac.render();
   target.textContent = "";
   if (rendered) target.appendChild(rendered);
+  if (rendered) enhanceAgentProgressLayout(card, target);
   if (rendered && tableCopyLabel && onTableCopy) {
     attachTableCopyButtons({
       card,

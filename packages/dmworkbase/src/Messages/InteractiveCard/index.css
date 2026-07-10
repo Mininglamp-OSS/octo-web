@@ -10,12 +10,19 @@
  */
 
 .wk-interactive-card {
+  align-self: flex-start;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: var(--wk-sp-1, 4px);
   width: 480px;
   max-width: 100%;
   min-width: 0;
+}
+
+.wk-interactive-card > .wk-interactive-card-sdk,
+.wk-interactive-card > .wk-interactive-card-plain {
+  width: 100%;
 }
 
 /* 兜底纯文本（不可信发送者 / fallback / 协商失败） */
@@ -89,6 +96,190 @@
 
 .wk-interactive-card-sdk > .ac-adaptiveCard > :last-child {
   margin-bottom: 0;
+}
+
+.wk-interactive-card-sdk--agent-progress {
+  border-color: var(--wk-border-glow);
+  box-shadow: none;
+}
+
+.wk-interactive-card-sdk--agent-progress::before {
+  display: none;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > .ac-columnSet:first-child {
+  align-items: center;
+  padding-bottom: var(--wk-sp-3, 12px);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > .ac-columnSet:first-child
+  > .ac-container:last-child {
+  display: flex;
+  justify-content: flex-end;
+  min-width: max-content;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > .ac-columnSet:first-child
+  .ac-pushButton {
+  min-height: 30px;
+  padding: 0 var(--wk-sp-3, 12px);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border-color: var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > .ac-columnSet:first-child
+  .ac-pushButton:hover {
+  color: var(--wk-text-accent, var(--wk-brand-primary));
+  background: var(--wk-bg-elevated);
+  border-color: var(--wk-border-glow);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail {
+  position: relative;
+  margin-left: var(--wk-sp-3, 12px);
+  border-radius: 0;
+  overflow: visible;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail::before {
+  content: "";
+  display: none;
+  position: absolute;
+  top: var(--wk-sp-3, 12px);
+  bottom: var(--wk-sp-3, 12px);
+  left: var(--wk-sp-1, 4px);
+  width: 1px;
+  background: var(--wk-border-glow);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail:has(> .ac-columnSet)::before {
+  display: block;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-container,
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet {
+  margin-left: var(--wk-sp-7, 28px);
+}
+
+.wk-interactive-card-progress-step--status {
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
+  background: var(--wk-color-danger-bg);
+  border: 1px solid var(--wk-color-danger-border, var(--wk-border-subtle));
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-interactive-card-progress-step--status .ac-richTextBlock {
+  padding: var(--wk-sp-0-5, 2px) 0;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-richTextBlock {
+  position: relative;
+  padding: var(--wk-sp-1, 4px) 0 var(--wk-sp-2, 8px);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet {
+  column-gap: var(--wk-sp-3, 12px);
+  padding: var(--wk-sp-1, 4px) 0 var(--wk-sp-3, 12px);
+  overflow: visible;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet:last-child {
+  padding-bottom: 0;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet
+  > .ac-container:first-child {
+  width: var(--wk-sp-4, 16px);
+  min-width: var(--wk-sp-4, 16px);
+  margin-left: calc(var(--wk-sp-8, 32px) * -1);
+  padding-top: var(--wk-sp-0-5, 2px);
+  background: var(--wk-bg-surface);
+  text-align: center;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet
+  > .ac-container:first-child
+  .ac-textBlock,
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet
+  > .ac-container:first-child
+  .ac-textRun {
+  color: var(--wk-text-accent, var(--wk-brand-primary));
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-leading-snug);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet
+  > .ac-container:last-child
+  > .ac-container {
+  margin-top: var(--wk-sp-2, 8px);
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
+  background: var(--wk-bg-elevated);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet
+  > .ac-container:last-child
+  > .ac-container
+  .ac-richTextBlock {
+  padding: 0;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet
+  > .ac-container:last-child
+  > .ac-container
+  .ac-textRun {
+  line-height: var(--wk-leading-snug);
 }
 
 /* 提交中：整卡置灰、禁点，等新帧或 10s 超时恢复 */

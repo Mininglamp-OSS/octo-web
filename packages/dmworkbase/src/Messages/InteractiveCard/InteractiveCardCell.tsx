@@ -10,6 +10,7 @@ import ReplyBlock from "../../ui/message/ReplyBlock";
 import { MessageCell } from "../MessageCell";
 import { t } from "../../i18n";
 import { isRetryableCardActionError, submitCardAction } from "./cardAction";
+import { isAgentProgressCard } from "./cardLayout";
 import { InteractiveCardContent } from "./InteractiveCardContent";
 import { decideCardBody, type CardDecision } from "./renderDecision";
 import { resolveEffectiveCardContent } from "./resolveContent";
@@ -334,6 +335,8 @@ export class InteractiveCardCell extends MessageCell {
 
     const reply = (message.content as any).reply;
     const { plain, decision } = this.computeState();
+    const agentProgress =
+      decision.kind === "card" && isAgentProgressCard(decision.card);
 
     return (
       <MessageRow
@@ -343,7 +346,12 @@ export class InteractiveCardCell extends MessageCell {
         onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
         onSenderNameClick={() => context.showUser(message.fromUID)}
       >
-        <div className="wk-interactive-card">
+        <div
+          className={
+            "wk-interactive-card" +
+            (agentProgress ? " wk-interactive-card--agent-progress" : "")
+          }
+        >
           {reply && (
             <ReplyBlock
               fromName={reply.fromName || ""}
@@ -352,7 +360,7 @@ export class InteractiveCardCell extends MessageCell {
               onClick={() => context.locateMessage(reply.messageSeq)}
             />
           )}
-          {this.renderBody(decision, plain, message.clientMsgNo)}
+          {this.renderBody(decision, plain, message.clientMsgNo, agentProgress)}
         </div>
       </MessageRow>
     );
@@ -365,12 +373,14 @@ export class InteractiveCardCell extends MessageCell {
   private renderBody(
     decision: CardDecision,
     plain: string,
-    keyPrefix: string
+    keyPrefix: string,
+    agentProgress: boolean
   ): React.ReactNode {
     switch (decision.kind) {
       case "card": {
         const cls =
           "wk-interactive-card-sdk" +
+          (agentProgress ? " wk-interactive-card-sdk--agent-progress" : "") +
           (this.submitting ? " wk-interactive-card-sdk--submitting" : "") +
           // webhook 卡展示-only：输入置灰不可交互（提交侧另有 handleSubmit 双保险）。
           (decision.interactive ? "" : " wk-interactive-card-sdk--readonly");
