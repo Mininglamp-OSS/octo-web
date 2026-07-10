@@ -1,47 +1,181 @@
-import React, { useEffect, useState } from "react";
-import { Typography, Input, Button, Spin, Tag, Toast, TextArea, Banner } from "@douyinfe/semi-ui";
-import { ArrowLeft, Save, Trash2 } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Typography, Input, Button, Spin, Toast, Banner, Tooltip } from "@douyinfe/semi-ui";
+import { ArrowLeft, BookOpen, Clock3, ExternalLink, Save, Trash2, Plus, Users } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
-import type { Skill } from "../api/types";
+import type { I18nFormatter } from "@octo/base";
+import type { Agent, Skill, SkillFile } from "../api/types";
 import { getSkill, updateSkill, deleteSkill, skillSource } from "../api/skillApi";
+import { listAgents } from "../api/agentApi";
+import { confirmDelete } from "../ui/confirmDelete";
+import SkillFileTree from "./SkillFileTree";
+import SkillFileViewer from "./SkillFileViewer";
+import { isValidSkillName } from "../ui/skillName";
+import { parseFrontmatter } from "../ui/frontmatter";
 import "./sideDetail.css";
 
 const { Text } = Typography;
-const SRC: Record<string, "green" | "blue" | "grey"> = { github: "green", local: "blue", workspace: "grey" };
+const SKILL_MD = "SKILL.md";
 
-/** Skill 独立详情页：左侧元信息 + 右侧内容编辑。 */
+type DraftFile = { path: string; content: string };
+
+function toDraftFiles(files?: SkillFile[]): DraftFile[] {
+  return (files ?? [])
+    .filter((f) => f.path !== SKILL_MD)
+    .map((f) => ({ path: f.path, content: f.content }));
+}
+
+function formatSkillTime(value: string | undefined, format: Pick<I18nFormatter, "date" | "relativeTime">): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  const diff = date.getTime() - Date.now();
+  if (!Number.isFinite(diff)) return "-";
+  const absDiff = Math.abs(diff);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (absDiff < minute) return format.relativeTime(0, "minute");
+  if (absDiff < hour) return format.relativeTime(Math.round(diff / minute), "minute");
+  if (absDiff < day) return format.relativeTime(Math.round(diff / hour), "hour");
+  if (absDiff < 10 * day) return format.relativeTime(Math.round(diff / day), "day");
+  return format.date(date, { month: "short", day: "numeric" });
+}
+
+/** Skill 详情页：左侧文件树 + 右侧多文件编辑器（SKILL.md 映射到 content）。 */
 export default function SkillDetailPage({ skillId, onChanged }: { skillId: string; onChanged?: () => void }) {
-  const { t } = useI18n();
+  const { t, format } = useI18n();
   const [row, setRow] = useState<Skill | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [usedAgents, setUsedAgents] = useState<Agent[]>([]);
+
   const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
   const [content, setContent] = useState("");
+  const [files, setFiles] = useState<DraftFile[]>([]);
+  const [selectedPath, setSelectedPath] = useState(SKILL_MD);
   const [dirty, setDirty] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+
+  const [addingFile, setAddingFile] = useState(false);
+  const [newPath, setNewPath] = useState("");
+  const [addError, setAddError] = useState("");
+
+  const seed = (s: Skill) => {
+    setRow(s);
+    setName(s.name);
+    setContent(s.content ?? "");
+    setFiles(toDraftFiles(s.files));
+    setDirty(false);
+  };
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    getSkill(skillId)
-      .then((s) => { setRow(s); setName(s.name); setDesc(s.description); setContent(s.content ?? ""); setDirty(false); })
+    setSelectedPath(SKILL_MD);
+    Promise.all([
+      getSkill(skillId),
+      listAgents().catch(() => [] as Agent[]),
+    ])
+      .then(([skill, agents]) => {
+        seed(skill);
+        setUsedAgents(agents.filter((agent) => (agent.skills ?? []).some((sk) => sk.id === skill.id)));
+      })
       .catch((e) => setError(e?.message ?? "load failed"))
       .finally(() => setLoading(false));
   }, [skillId]);
 
+  const fileMap = useMemo(() => {
+    const map = new Map<string, string>();
+    map.set(SKILL_MD, content);
+    for (const f of files) if (f.path.trim()) map.set(f.path, f.content);
+    return map;
+  }, [content, files]);
+  const filePaths = useMemo(() => Array.from(fileMap.keys()), [fileMap]);
+  const selectedContent = fileMap.get(selectedPath) ?? "";
+  const skillFrontmatter = useMemo(() => parseFrontmatter(content).frontmatter, [content]);
+  const skillDescription = skillFrontmatter?.description?.trim() ?? "";
+
+  useEffect(() => {
+    if (selectedPath !== SKILL_MD && !fileMap.has(selectedPath)) setSelectedPath(SKILL_MD);
+  }, [fileMap, selectedPath]);
+
   const back = () => WKApp.routeRight.pop();
-  const save = async () => {
-    if (!name.trim()) { Toast.warning(t("loop.validate.nameRequired")); return; }
-    try { await updateSkill(skillId, { name: name.trim(), description: desc, content }); setDirty(false); Toast.success(t("loop.toast.saved")); onChanged?.(); }
-    catch (e) { Toast.error((e as Error)?.message ?? "save failed"); }
+
+  const onFileContentChange = (next: string) => {
+    if (selectedPath === SKILL_MD) setContent(next);
+    else setFiles((prev) => prev.map((f) => (f.path === selectedPath ? { ...f, content: next } : f)));
+    setDirty(true);
   };
-  const remove = async () => {
-    try { await deleteSkill(skillId); Toast.success(t("loop.toast.deleted")); onChanged?.(); back(); }
-    catch (e) { Toast.error((e as Error)?.message ?? "delete failed"); }
+
+  const validateNewPath = (p: string): string => {
+    const v = p.trim();
+    if (!v) return t("loop.skill.detail.addFile.empty");
+    if (v.startsWith("/")) return t("loop.skill.detail.addFile.absolute");
+    if (v.split("/").includes("..")) return t("loop.skill.detail.addFile.doubleDot");
+    if (v === SKILL_MD) return t("loop.skill.detail.addFile.reserved");
+    if (filePaths.includes(v)) return t("loop.skill.detail.addFile.exists");
+    return "";
+  };
+
+  const submitNewFile = () => {
+    const err = validateNewPath(newPath);
+    if (err) { setAddError(err); return; }
+    const p = newPath.trim();
+    setFiles((prev) => [...prev, { path: p, content: "" }]);
+    setSelectedPath(p);
+    setDirty(true);
+    setAddingFile(false);
+    setNewPath("");
+    setAddError("");
+  };
+
+  const cancelNewFile = () => { setAddingFile(false); setNewPath(""); setAddError(""); };
+
+  const deleteSelectedFile = () => {
+    if (selectedPath === SKILL_MD) return;
+    setFiles((prev) => prev.filter((f) => f.path !== selectedPath));
+    setSelectedPath(SKILL_MD);
+    setDirty(true);
+  };
+
+  const save = async () => {
+    const skillName = name.trim();
+    if (!skillName) { Toast.warning(t("loop.validate.nameRequired")); return; }
+    if (!isValidSkillName(skillName)) { Toast.warning(t("loop.skill.namePattern")); return; }
+    try {
+      const updated = await updateSkill(skillId, {
+        name: skillName,
+        description: skillDescription,
+        content,
+        files: files.filter((f) => f.path.trim() && f.path !== SKILL_MD),
+      });
+      seed(updated);
+      Toast.success(t("loop.toast.saved"));
+      onChanged?.();
+    } catch (e) {
+      Toast.error((e as Error)?.message ?? "save failed");
+    }
+  };
+
+  const remove = () => {
+    confirmDelete({
+      title: t("loop.confirm.delete"),
+      okText: t("loop.action.delete"),
+      cancelText: t("loop.action.cancel"),
+      onOk: async () => {
+        try { await deleteSkill(skillId); Toast.success(t("loop.toast.deleted")); onChanged?.(); back(); }
+        catch (e) { Toast.error((e as Error)?.message ?? "delete failed"); }
+      },
+    });
   };
 
   if (loading) return <div className="loop-sd"><div className="loop-sd__center"><Spin /></div></div>;
-  if (error || !row) return <div className="loop-sd"><div className="loop-sd__topbar"><Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={back}>{t("loop.detail.back")}</Button></div><div className="loop-sd__center">{error ? <Banner type="danger" description={error} /> : <Text type="tertiary">{t("loop.detail.notFound")}</Text>}</div></div>;
+  if (error || !row) return (
+    <div className="loop-sd">
+      <div className="loop-sd__topbar"><Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={back}>{t("loop.detail.back")}</Button></div>
+      <div className="loop-sd__center">{error ? <Banner type="danger" description={error} /> : <Text type="tertiary">{t("loop.detail.notFound")}</Text>}</div>
+    </div>
+  );
 
   const src = skillSource(row);
 
@@ -54,18 +188,118 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
         <Button theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={remove}>{t("loop.action.delete")}</Button>
         <Button theme="solid" icon={<Save size={14} />} disabled={!dirty} onClick={save}>{t("loop.action.save")}</Button>
       </div>
-      <div className="loop-sd__body">
-        <aside className="loop-sd__aside">
-          <div className="loop-detail__section-title">{t("loop.field.name")}</div>
-          <Input value={name} onChange={(v) => { setName(v); setDirty(true); }} />
-          <div className="loop-detail__section-title" style={{ marginTop: 14 }}>{t("loop.field.description")}</div>
-          <TextArea value={desc} onChange={(v) => { setDesc(v); setDirty(true); }} autosize={{ minRows: 2, maxRows: 5 }} />
-          <div className="loop-detail__section-title" style={{ marginTop: 14 }}>{t("loop.skill.source")}</div>
-          <Tag color={SRC[src]} size="small">{t(`loop.skill.sourceType.${src}`)}</Tag>
+
+      <div className="loop-skill-body">
+        <aside className="loop-skill-tree">
+          <section className="loop-skill-profile">
+            <div className="loop-skill-profile__main">
+              <div className="loop-skill-profile__icon"><BookOpen size={18} /></div>
+              <div className="loop-skill-profile__copy">
+                {editingName ? (
+                  <Input
+                    autoFocus
+                    value={name}
+                    onBlur={() => setEditingName(false)}
+                    onChange={(v) => { setName(v); setDirty(true); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") setEditingName(false); }}
+                    placeholder={t("loop.field.name")}
+                    className="loop-skill-profile__nameInput"
+                  />
+                ) : (
+                  <button type="button" className="loop-skill-profile__name" onClick={() => setEditingName(true)}>
+                    {name || t("loop.field.name")}
+                  </button>
+                )}
+                <Tooltip
+                  content={<div className="loop-skill-profile__descTip">{skillDescription || t("loop.skill.detail.noDescription")}</div>}
+                  position="bottomLeft"
+                >
+                  <div className={skillDescription ? "loop-skill-profile__desc" : "loop-skill-profile__desc is-empty"}>
+                    {skillDescription || t("loop.skill.detail.noDescription")}
+                  </div>
+                </Tooltip>
+              </div>
+            </div>
+            <div className="loop-skill-profile__subline">
+              <div className="loop-skill-profile__fact">
+                <ExternalLink size={12} />
+                <span>{t("loop.skill.source")}</span>
+                <strong>{t(`loop.skill.sourceType.${src}`)}</strong>
+              </div>
+              <div className="loop-skill-profile__fact">
+                <Clock3 size={12} />
+                <span>{t("loop.detail.updated")}</span>
+                <strong>{formatSkillTime(row.updated_at, format)}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section className="loop-skill-files">
+            <div className="loop-skill-files__head">
+              <span className="loop-skill-files__label">{t("loop.skill.detail.files")}（{filePaths.length}）</span>
+              <Tooltip content={t("loop.skill.detail.addFile.add")}>
+                <Button theme="borderless" size="small" icon={<Plus size={14} />} onClick={() => setAddingFile(true)} />
+              </Tooltip>
+            </div>
+            {addingFile && (
+              <div className="loop-skill-files__addfile">
+                <Input
+                  autoFocus
+                  size="small"
+                  value={newPath}
+                  placeholder={t("loop.skill.detail.addFile.placeholder")}
+                  onChange={(v) => { setNewPath(v); setAddError(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") submitNewFile(); if (e.key === "Escape") cancelNewFile(); }}
+                />
+                {addError && <div className="loop-skill-files__adderr">{addError}</div>}
+                <div className="loop-skill-files__addbtns">
+                  <Button size="small" theme="solid" onClick={submitNewFile}>{t("loop.skill.detail.addFile.add")}</Button>
+                  <Button size="small" theme="borderless" onClick={cancelNewFile}>{t("loop.action.cancel")}</Button>
+                </div>
+              </div>
+            )}
+            <div className="loop-skill-files__scroll">
+              <SkillFileTree
+                filePaths={filePaths}
+                selectedPath={selectedPath}
+                onSelect={setSelectedPath}
+                emptyText={t("loop.skill.detail.noFiles")}
+              />
+            </div>
+            {selectedPath !== SKILL_MD && (
+              <div className="loop-skill-files__foot">
+                <Button theme="borderless" type="danger" size="small" icon={<Trash2 size={13} />} onClick={deleteSelectedFile}>
+                  {t("loop.skill.detail.deleteFile")}
+                </Button>
+              </div>
+            )}
+          </section>
+
+          <section className="loop-skill-agents">
+            <div className="loop-skill-agents__head">
+              <Users size={13} />
+              <span>{t("loop.skill.detail.usedAgents", { values: { count: usedAgents.length } })}</span>
+            </div>
+            {usedAgents.length > 0 ? (
+              <div className="loop-skill-agents__list">
+                {usedAgents.map((agent) => (
+                  <div key={agent.id} className="loop-skill-agents__item">
+                    <span className="loop-skill-agents__avatar">{agent.name.trim().slice(0, 1).toUpperCase() || "A"}</span>
+                    <span className="loop-skill-agents__name">{agent.name}</span>
+                    <span className="loop-skill-agents__type">{t("loop.skill.detail.agentType")}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="loop-skill-agents__empty">{t("loop.skill.detail.noUsedAgents")}</div>
+            )}
+          </section>
         </aside>
-        <section className="loop-sd__main">
-          <div className="loop-detail__section-title">{t("loop.skill.content")}</div>
-          <TextArea value={content} onChange={(v) => { setContent(v); setDirty(true); }} autosize={{ minRows: 16, maxRows: 40 }} className="loop-mono" />
+
+        <section className="loop-skill-editor">
+          <div className="loop-skill-editor__viewer">
+            <SkillFileViewer key={selectedPath} path={selectedPath} content={selectedContent} onChange={onFileContentChange} />
+          </div>
         </section>
       </div>
     </div>

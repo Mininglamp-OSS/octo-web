@@ -1,0 +1,69 @@
+// 保留捕获组尾部换行以对齐服务端 Go 侧 `server/internal/skill` 的正则语义。
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?\r?\n)---\r?\n?/;
+
+export type SkillFrontmatter = Record<string, string>;
+
+export interface ParsedFrontmatter {
+  frontmatter: SkillFrontmatter | null;
+  body: string;
+}
+
+function stripQuotes(v: string): string {
+  if (v.length >= 2 && ((v[0] === '"' && v.endsWith('"')) || (v[0] === "'" && v.endsWith("'")))) {
+    return v.slice(1, -1);
+  }
+  return v;
+}
+
+// 轻量 frontmatter 解析：仅用于展示技能文件头部的 key: value 字段。
+// 不引入 yaml 依赖；如需严格 YAML 解析（多行块标量等），改用 `yaml` 包的 parse。
+function parseSimpleYaml(block: string): SkillFrontmatter {
+  const result: SkillFrontmatter = {};
+  for (const rawLine of block.split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    if (!line.trim() || line.trimStart().startsWith("#")) continue;
+    const idx = line.indexOf(":");
+    if (idx <= 0) continue;
+    const key = line.slice(0, idx).trim();
+    const value = stripQuotes(line.slice(idx + 1).trim());
+    if (key) result[key] = value;
+  }
+  return result;
+}
+
+/** 解析 Markdown frontmatter：无头/无字段时回退为纯正文。 */
+export function parseFrontmatter(raw: string): ParsedFrontmatter {
+  const match = FRONTMATTER_RE.exec(raw);
+  if (!match) return { frontmatter: null, body: raw };
+
+  const body = raw.slice(match[0].length);
+  const parsed = parseSimpleYaml(match[1]!);
+
+  return {
+    frontmatter: Object.keys(parsed).length > 0 ? parsed : null,
+    body,
+  };
+}
+
+/** 是否已带 `---\n...\n---` frontmatter 分隔块（不要求字段非空）。 */
+export function hasFrontmatter(raw: string): boolean {
+  return FRONTMATTER_RE.test(raw);
+}
+
+// 把值渲染成安全的 YAML 标量：含冒号/井号/引号/换行或首尾空格等不安全字符时用
+// 双引号包裹（JSON 字符串是合法的 YAML 双引号标量，转义规则一致）。
+function yamlScalar(v: string): string {
+  const unsafe = v === "" || /[:#\n"'\\]/.test(v) || /^[\s\-?&*!|>%@`[\]{},]/.test(v) || /\s$/.test(v);
+  return unsafe ? JSON.stringify(v) : v;
+}
+
+/**
+ * 确保 SKILL.md 带标准 frontmatter：若正文已含分隔块则原样返回；否则按
+ * `---\nname: ...\ndescription: ...\n---` 生成头部并拼在正文前，使新建的
+ * SKILL.md 符合服务端 ParseSkillFrontmatter 的解析格式。
+ */
+export function ensureSkillFrontmatter(name: string, description: string, content: string): string {
+  if (hasFrontmatter(content)) return content;
+  const header = `---\nname: ${yamlScalar(name)}\ndescription: ${yamlScalar(description)}\n---\n`;
+  return content.trim() ? `${header}\n${content}` : header;
+}
