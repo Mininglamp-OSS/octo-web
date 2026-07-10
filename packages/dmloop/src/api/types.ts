@@ -122,6 +122,8 @@ export interface Issue {
   creator_avatar?: string | null;
   // 后端 list/detail 端点批量回填；其它端点(update/ws)不带 → 保持已有。
   labels?: IssueLabel[] | null;
+  // issue 级 emoji 反应:仅详情端点(GetIssue)回填;list/update/ws 不带 → 保持已有。
+  reactions?: IssueReaction[] | null;
   // 搜索结果专属(GET /issues/search):命中来源 + 高亮片段。列表/详情端点不返回。
   match_source?: string;
   matched_snippet?: string | null;
@@ -195,6 +197,16 @@ export interface CommentReaction {
   created_at: string;
 }
 
+/** issue 级 emoji 反应(GET issue 详情回填 issue.reactions;POST/DELETE /issues/:id/reactions)。 */
+export interface IssueReaction {
+  id: string;
+  issue_id: string;
+  actor_type: string;
+  actor_id: string;
+  emoji: string;
+  created_at: string;
+}
+
 /** issue 订阅者(GET /issues/:id/subscribers)。reason: manual|creator|assignee|mention|... */
 export interface IssueSubscriber {
   issue_id: string;
@@ -202,6 +214,24 @@ export interface IssueSubscriber {
   user_id: string;
   reason: string;
   created_at: string;
+}
+
+/** issue 时间线条目(GET /issues/:id/timeline,不带分页参数时为裸数组、ASC)。
+ *  合并 comment + activity 两类;活动流只用 activity 类(action/details)。 */
+export interface TimelineEntry {
+  type: "activity" | "comment";
+  id: string;
+  actor_type: string;
+  actor_id: string;
+  created_at: string;
+  // activity 专属
+  action?: string;
+  details?: unknown;
+  // comment 专属(活动流不用,列全为完整性)
+  content?: string | null;
+  // 由 directory 回填(展示用)
+  actor_name?: string | null;
+  actor_avatar?: string | null;
 }
 
 export interface IssueComment {
@@ -216,6 +246,8 @@ export interface IssueComment {
   author_avatar?: string | null;
   // 后端 list/timeline 端点按 comment 分组回填;其它端点不带 → 保持已有。
   reactions?: CommentReaction[] | null;
+  // 已解决时间(resolve/unresolve);非空=该评论已标记为线程结论。后端一线程至多一条 resolved。
+  resolved_at?: string | null;
 }
 
 export type TaskStatus =
