@@ -19,7 +19,7 @@ export interface CreateIssueModalProps {
 }
 
 /**
- * 新建 Issue 弹窗（1:1 复刻 multica 手动创建）：
+ * 新建 Issue 弹窗（对齐产品设计的手动创建流程）：
  * 标题 / 描述 / 指派(member|agent|squad 三态) / 状态 / 优先级 / 项目。
  */
 export default function CreateIssueModal({ visible, onClose, onCreated }: CreateIssueModalProps) {

@@ -1,6 +1,6 @@
-// @octo/loop — 领域类型（对齐真实 fleet 契约）。
+// @octo/loop — 领域类型（对齐后端契约）。
 // 命名一律使用 Loop 语义，不暴露上游品牌。
-// 说明：fleet 列表接口不返回展示用名字（assignee_name / project_name 等），
+// 说明：后端列表接口不返回展示用名字（assignee_name / project_name 等），
 // 这些由 directory.ts 解析后作为可选字段回填，页面直接读取。
 
 export type AssigneeType = "member" | "agent" | "squad";
@@ -34,7 +34,7 @@ export interface WorkspaceMember {
   name: string;
   email?: string;
   avatar_url?: string | null;
-  // octo IM uid this multica user is bridged to, or null for native members.
+  // octo IM uid this backend user is bridged to, or null for native members.
   // The UI renders member identity (name/avatar) from octo by this uid.
   octo_uid?: string | null;
 }

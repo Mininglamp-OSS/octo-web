@@ -1,5 +1,5 @@
-// @octo/loop — HTTP 客户端（真实 fleet 联调）
-// 所有请求走 /fleet/api/v1（Vite dev proxy → http://127.0.0.1:8091），路径与 fleet 契约一致。
+// @octo/loop — HTTP 客户端（后端契约联调）
+// 所有请求走 /fleet/api/v1（Vite dev proxy → http://127.0.0.1:8091），路径与 后端契约一致。
 // workspace 相关接口统一携带 header `x-workspace-slug`（值取自顶部 workspace 下拉当前 slug）。
 import axios from "axios";
 import { WKApp } from "@octo/base";
@@ -62,7 +62,7 @@ export function setWorkspaceContext(slug: string, id: string): void {
 client.interceptors.request.use((config) => {
   config.headers = config.headers ?? {};
   if (_workspaceSlug) config.headers["x-workspace-slug"] = _workspaceSlug;
-  // fleet 后端对 loop 全域接口校验以下两个鉴权 header，复用 octo-web 其他模块
+  // 后端对 loop 全域接口校验以下两个鉴权 header，复用 octo-web 其他模块
   // （dmworkbase APIClient）的取值来源：token 取自 WKApp.loginInfo.token，
   // space_id 取自 WKApp.shared.currentSpaceId。仅在非空时注入。
   const token = WKApp.loginInfo.token;

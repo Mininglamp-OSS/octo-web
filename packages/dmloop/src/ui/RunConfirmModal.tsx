@@ -22,7 +22,7 @@ function isAgentAssignee(type: AssigneeType | null, id: string | null): boolean 
   return (type === "agent" || type === "squad") && !!id;
 }
 
-// 是否需要“派单预确认”：与 multica 一致——agent/squad 指派且 issue 非 backlog。
+// 是否需要“派单预确认”：与产品设计一致——agent/squad 指派且 issue 非 backlog。
 function needsConfirm(r: RunConfirmRequest): boolean {
   return isAgentAssignee(r.assigneeType, r.assigneeId) && r.status !== "backlog";
 }
@@ -31,7 +31,7 @@ function needsConfirm(r: RunConfirmRequest): boolean {
 // agent/squad 已指派,且从 backlog 移到非 backlog/done/cancelled。
 // ponytail: 这是**客户端尽力判断**,用的是本地缓存的 assignee;真正是否起 run 由 preview-trigger
 // 权威判定。并发场景(他人刚改派为 agent、本地视图未刷新)下本判断可能漏判 → 跳过确认弹窗,
-// 但后端仍按持久 assignee 正确起 run(只是少了一次确认 UX)。与 multica 原生 web 的客户端 gate 同源。
+// 但后端仍按持久 assignee 正确起 run(只是少了一次确认 UX)。沿用同一套客户端预确认 gate。
 function statusMightTrigger(issue: Issue, next: IssueStatus): boolean {
   return (
     isAgentAssignee(issue.assignee_type, issue.assignee_id) &&

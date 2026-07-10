@@ -74,7 +74,7 @@ export interface IssueDetailPageProps {
 }
 
 /**
- * Issue 独立详情页（1:1 复刻 multica）：主体(标题/描述/评论) + 右侧属性栏 + 执行日志。
+ * Issue 独立详情页（对齐产品设计）：主体(标题/描述/评论) + 右侧属性栏 + 执行日志。
  * 渲染在右主栏（routeRight.push），顶部返回按钮 pop 回列表/看板。
  */
 export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageProps) {
@@ -239,7 +239,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     setEditingDesc(false);
   };
 
-  // 右上角 ··· 菜单：快速改 status / priority / assignee（1:1 复刻 multica）。
+  // 右上角 ··· 菜单：快速改 status / priority / assignee（对齐产品设计）。
   const renderMoreMenu = () => (
     <Dropdown.Menu>
       <Dropdown

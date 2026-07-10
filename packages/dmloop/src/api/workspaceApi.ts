@@ -1,4 +1,4 @@
-// @octo/loop — Workspace / Members / Invitations API（真实 fleet 联调）
+// @octo/loop — Workspace / Members / Invitations API（后端契约联调）
 import type { Workspace, WorkspaceMember, Invitation } from "./types";
 import { httpGet, httpPost, httpPatch, httpDelete } from "./http";
 

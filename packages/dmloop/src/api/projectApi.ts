@@ -1,4 +1,4 @@
-// @octo/loop — Project API（真实 fleet 联调）
+// @octo/loop — Project API（后端契约联调）
 import type { Project, UpsertProjectReq, ListParams } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
 import { ensureDirectory, actorName } from "./directory";

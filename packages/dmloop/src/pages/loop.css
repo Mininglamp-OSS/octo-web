@@ -193,7 +193,7 @@
   max-width: 360px;
 }
 
-/* ===== Multica CLI 授权 ===== */
+/* ===== CLI 授权 ===== */
 .loop-cli-auth {
   min-height: 100vh;
   display: flex;
