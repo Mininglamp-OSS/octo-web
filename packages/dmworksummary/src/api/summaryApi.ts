@@ -128,18 +128,15 @@ export async function createSummary(params: CreateSummaryParams): Promise<{ task
 }
 
 /**
- * 创建 Agent 总结（预留）。
+ * 创建 Agent 总结（契约 v1.0）。
  *
- * 与 createSummary 的区别：让后端 agent 根据用户输入的自然语言 requirement
- * 自主规划并生成总结，而非按固定主题/模板汇总。
- *
- * NOTE(预留)：后端接口尚未就绪，'/summaries/agent' 为占位路径。后端接口定稿后
- * 只需在此处替换真实 path（及必要的响应字段映射），callsite（ChatSummaryNewModal）
- * 无需改动。当前调用会命中未实现的后端并抛错，由 UI 层 catch 后 Toast 提示。
+ * POST /summary/api/v1/summaries/agent
+ * 让后端 agent 自主总结当前对话的产出内容，落库为可检索的交付物。
+ * 响应与传统 createSummary 同构：{ task_id, task_no, status, created_at }
  */
 export async function createAgentSummary(
     params: CreateAgentSummaryParams,
-): Promise<{ task_id: number }> {
+): Promise<{ task_id: number; task_no: string; status: number; created_at: string }> {
     return post('/summaries/agent', params);
 }
 

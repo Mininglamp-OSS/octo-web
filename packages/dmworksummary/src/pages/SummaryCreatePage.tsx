@@ -54,6 +54,7 @@ interface SummaryCreatePageState {
     showScheduleConfig: boolean;
     submitting: boolean;
     agentSubmitting: boolean;
+    savingSummary: boolean;
     // Agent 多轮问答：气泡 UI + session_id。后端按 session_id 持久化记忆，同一会话复用即可续上下文。
     messages: ChatMessage[];
     sessionId: string;
@@ -79,6 +80,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         showScheduleConfig: false,
         submitting: false,
         agentSubmitting: false,
+        savingSummary: false,
         messages: [],
         sessionId: '',
         error: null,
@@ -301,6 +303,70 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }));
     };
 
+    /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。 */
+    handleSaveAsSummary = async (title: string) => {
+        const { sessionId, selectedChats, selectedMembers } = this.state;
+        const { t } = this.context;
+        
+        if (!sessionId) {
+            Toast.warning(t('summary.create.noOutputToSave'));
+            return;
+        }
+
+        this.setState({ savingSummary: true });
+        try {
+            const channel = WKApp.shared.currentChannel;
+            const params: api.CreateAgentSummaryParams = {
+                session_id: sessionId,
+                title,
+                origin_channel_id: channel.channelID,
+                origin_channel_type: channel.channelType,
+            };
+
+            if (selectedChats.length > 0) {
+                params.sources = selectedChats.map((c) => ({
+                    source_type: c.chat_type === "group" ? SourceType.GROUP_CHAT
+                               : c.chat_type === "thread" ? SourceType.THREAD
+                               : SourceType.DIRECT_MESSAGE,
+                    source_id: c.chat_id,
+                }));
+            }
+
+            if (selectedMembers.length > 0) {
+                params.participants = selectedMembers.map((m) => ({ 
+                    user_id: m.user_id,
+                    user_name: m.name,
+                }));
+            }
+
+            const result = await api.createAgentSummary(params);
+
+            Toast.success(t('summary.create.agentSummaryCreated'));
+            
+            // dispatch 刷新事件
+            const event = new CustomEvent('chat-summary-created', {
+                detail: { taskId: result.task_id, channelId: channel.channelID }
+            });
+            window.dispatchEvent(event);
+            
+            // 跳转到详情页
+            WKApp.routeRight.popToRoot();
+            WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
+            this.props.onCreated?.();
+        } catch (err: any) {
+            const code = err?.response?.data?.code;
+            // 40004: session 无产出
+            if (code === 40004) {
+                Toast.error(t('summary.create.noOutputToSave'));
+            } else {
+                Toast.error(err.message || t('summary.common.createFailed'));
+            }
+        } finally {
+            this.setState({ savingSummary: false });
+        }
+    };
+
+
     render() {
         const {
             topic,
@@ -338,6 +404,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 onSend={this.handleAgentSend}
                                 sending={agentSubmitting}
                                 welcome={translate("summary.create.agentChatWelcome")}
+                                onSaveAsSummary={this.handleSaveAsSummary}
+                                savingSummary={this.state.savingSummary}
                             />
                         </div>
                     ) : (

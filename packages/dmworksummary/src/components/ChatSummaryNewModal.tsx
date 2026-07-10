@@ -33,6 +33,7 @@ interface ChatSummaryNewModalState {
     showChatSelector: boolean;
     submitting: boolean;
     agentSubmitting: boolean;
+    savingSummary: boolean;
     templatePlaceholderRange: [number, number] | null;
     scheduleConfig: ScheduleConfig | null;
     showScheduleConfig: boolean;
@@ -63,6 +64,7 @@ export default class ChatSummaryNewModal extends Component<
             showChatSelector: false,
             submitting: false,
             agentSubmitting: false,
+            savingSummary: false,
             templatePlaceholderRange: null,
             scheduleConfig: null,
             showScheduleConfig: false,
@@ -89,6 +91,8 @@ export default class ChatSummaryNewModal extends Component<
                 showChatSelector: false,
                 submitting: false,
                 agentSubmitting: false,
+                savingSummary: false,
+            savingSummary: false,
                 templatePlaceholderRange: null,
                 scheduleConfig: null,
                 showScheduleConfig: false,
@@ -282,6 +286,68 @@ export default class ChatSummaryNewModal extends Component<
         }));
     };
 
+    /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。 */
+    handleSaveAsSummary = async (title: string) => {
+        const { sessionId, selectedChats } = this.state;
+        const { channel, onSubmit } = this.props;
+        const { t } = this.context;
+        
+        if (!sessionId) {
+            Toast.warning(t('summary.create.noOutputToSave'));
+            return;
+        }
+
+        this.setState({ savingSummary: true });
+        try {
+            const sourceType = getSourceType(channel);
+            if (sourceType === null) return;
+
+            const sources = selectedChats.length > 0
+                ? selectedChats.map((c) => ({
+                    source_type: (c.chat_type === 'group'
+                        ? SourceType.GROUP_CHAT
+                        : c.chat_type === 'thread'
+                        ? SourceType.THREAD
+                        : SourceType.DIRECT_MESSAGE),
+                    source_id: c.chat_id,
+                }))
+                : [{
+                    source_type: sourceType as 1 | 2 | 3,
+                    source_id: channel.channelID,
+                }];
+
+            const res = await summaryApi.createAgentSummary({
+                session_id: sessionId,
+                title,
+                origin_channel_id: channel.channelID,
+                origin_channel_type: sourceType,
+                sources,
+            });
+
+            Toast.success(t('summary.create.agentSummaryCreated'));
+            
+            // dispatch 刷新事件
+            window.dispatchEvent(
+                new CustomEvent('chat-summary-created', {
+                    detail: { taskId: res.task_id, channelId: channel.channelID },
+                }),
+            );
+            onSubmit(res.task_id);
+        } catch (err: any) {
+            const code = err?.response?.data?.code;
+            // 40004: session 无产出
+            if (code === 40004) {
+                Toast.error(t('summary.create.noOutputToSave'));
+            } else {
+                const msg = err instanceof Error ? err.message : t('summary.common.createFailedRetry');
+                Toast.error(msg);
+            }
+        } finally {
+            this.setState({ savingSummary: false });
+        }
+    };
+
+
     private handleRemoveChat = (chatId: string) => {
         this.setState((prev) => ({
             selectedChats: prev.selectedChats.filter((c) => c.chat_id !== chatId),
@@ -380,6 +446,8 @@ export default class ChatSummaryNewModal extends Component<
                                     onSend={this.handleAgentSend}
                                     sending={agentSubmitting}
                                     welcome={t('summary.create.agentChatWelcome')}
+                                    onSaveAsSummary={this.handleSaveAsSummary}
+                                    savingSummary={this.state.savingSummary}
                                 />
                             </div>
                         ) : (

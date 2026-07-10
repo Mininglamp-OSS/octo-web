@@ -20,6 +20,7 @@ export type TaskStatusType = typeof TaskStatus[keyof typeof TaskStatus];
 export const TriggerType = {
     MANUAL: 1,
     SCHEDULED: 2,
+    AGENT: 3,
 } as const;
 export type TriggerTypeType = typeof TriggerType[keyof typeof TriggerType];
 
@@ -211,23 +212,24 @@ export interface CreateSummaryParams {
 }
 
 /**
- * Agent 总结创建请求。
+ * Agent 总结创建请求（契约 v1.0）。
  *
- * 区别于普通 createSummary：普通总结按固定主题/模板汇总聊天内容，
- * Agent 总结让后端 agent 根据用户输入的自然语言「需求」自主规划并生成总结。
- *
- * NOTE(预留)：后端接口尚未就绪。字段以「需求 requirement」为核心，其余
- * sources / origin_channel_* 与 CreateSummaryParams 对齐，便于后端复用同一套
- * 来源解析。后端接口定稿后按实际契约调整此类型与 summaryApi.createAgentSummary。
+ * 让后端 agent 自主总结当前对话的产出内容，落库为可检索的交付物。
+ * POST /summary/api/v1/summaries/agent
  */
 export interface CreateAgentSummaryParams {
-    /** 用户输入的自然语言总结需求（复用弹窗内的主题输入框内容） */
-    requirement: string;
+    /** 当前 agent 对话的 session_id */
+    session_id: string;
+    /** 触发对话的频道 id */
+    origin_channel_id: string;
+    /** 频道类型：1=群聊 / 2=子区 / 3=私聊 */
+    origin_channel_type: number;
+    /** 用户填写的总结标题（必填，前端弹窗输入） */
     title?: string;
-    time_range?: TimeRange;
+    /** 可选来源（沿用传统结构） */
     sources?: SourceItem[];
-    origin_channel_id?: string;
-    origin_channel_type?: number;
+    /** 可选参与者（沿用传统结构） */
+    participants?: { user_id: string; user_name?: string }[];
 }
 
 /** Agent 对话单条消息（user 右气泡 / assistant 左气泡） */

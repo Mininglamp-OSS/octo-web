@@ -159,7 +159,14 @@
     "scheduleMonthly": "每月{{day}}日 {{time}}",
     "scheduleBindFailed": "总结已创建，但定时绑定失败，已撤销该定时，请到详情页重试",
     "scheduleBindFailedOrphan": "总结已创建，但定时绑定失败且撤销未成功，可能残留未绑定定时，请到定时列表检查清理",
-    "archivedNotice": "默认总结活跃子区，不含已归档子区"
+    "archivedNotice": "默认总结活跃子区，不含已归档子区",
+    "saveAsS ummary": "保存为总结",
+    "saveDialogTitle": "保存为总结",
+    "titlePlaceholder": "为这份总结起个标题",
+    "titleRequired": "标题不能为空",
+    "saving": "保存中...",
+    "noOutputToSave": "当前对话还没有可保存的总结，请先与 AI 对话产出内容",
+    "agentSummaryCreated": "AI 总结已保存"
   },
   "chatSummary": {
     "panelTitle": "聊天内的智能总结",
@@ -372,7 +379,8 @@
     "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。",
     "deleteScheduledContent": "「{{title}}」是定时更新的总结。删除后将停止定时更新，并移除该总结的全部历史记录，确定删除吗？",
     "leaveTitle": "退出多人协作",
-    "leaveContent": "退出后将不再参与该多人协作，确定退出「{{title}}」吗？"
+    "leaveContent": "退出后将不再参与该多人协作，确定退出「{{title}}」吗？",
+    "aiGenerated": "AI 生成"
   },
   "editor": {
     "saveSuccess": "保存成功",
