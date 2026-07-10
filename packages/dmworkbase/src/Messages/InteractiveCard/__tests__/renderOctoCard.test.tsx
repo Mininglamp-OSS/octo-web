@@ -4,7 +4,10 @@
 // OpenUrl 动作回调、重复挂载清空旧内容。
 
 import { beforeAll, describe, expect, it } from "vitest";
-import { renderOctoCard } from "../sdk/renderOctoCard";
+import {
+  enhanceRenderedOctoCard,
+  renderOctoCard,
+} from "../sdk/renderOctoCard";
 import { extractTableCopyTexts } from "../sdk/tableCopy";
 
 beforeAll(() => {
@@ -248,6 +251,21 @@ describe("renderOctoCard", () => {
     );
     copyButton?.click();
     expect(copied).toEqual(["项目\t结果\n响应\t已发"]);
+
+    firstCell?.style.setProperty("padding", "0px");
+    enhanceRenderedOctoCard({
+      card: tableCard,
+      target,
+      onAction: () => {},
+      tableCopyLabel: "复制",
+      onTableCopy: (text) => copied.push(text),
+    });
+    expect(firstCell?.style.getPropertyValue("padding")).toBe(
+      "var(--wk-sp-2, 8px) var(--wk-sp-5, 20px)"
+    );
+    expect(
+      target.querySelectorAll(".wk-interactive-card-table-header").length
+    ).toBe(1);
     target.remove();
   });
 

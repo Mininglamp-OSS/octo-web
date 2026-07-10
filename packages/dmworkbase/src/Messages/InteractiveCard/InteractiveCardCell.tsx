@@ -16,7 +16,10 @@ import { decideCardBody, type CardDecision } from "./renderDecision";
 import { resolveEffectiveCardContent } from "./resolveContent";
 import { copyText, openUrl } from "./renderer/actions";
 import { collectCardInputs, validateCardInputs } from "./sdk/cardInputs";
-import { renderOctoCard } from "./sdk/renderOctoCard";
+import {
+  enhanceRenderedOctoCard,
+  renderOctoCard,
+} from "./sdk/renderOctoCard";
 import { classifyCardSender, fetchSenderChannelInfo } from "./senderTrust";
 import "./index.css";
 
@@ -202,6 +205,29 @@ export class InteractiveCardCell extends MessageCell {
       });
   }
 
+  private enhanceMountedCard() {
+    const target = this.cardMountRef.current;
+    if (!target) return;
+    const { decision } = this.computeState();
+    if (decision.kind !== "card") return;
+    enhanceRenderedOctoCard({
+      card: decision.card,
+      target,
+      onAction: (action, card) => this.handleCardAction(action, card),
+      tableCopyLabel: t("base.message.interactiveCard.copyTable"),
+      onTableCopy: (text) => this.handleTableCopy(text),
+    });
+  }
+
+  private scheduleEnhanceMountedCard() {
+    const run = () => this.enhanceMountedCard();
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(run);
+      return;
+    }
+    setTimeout(run, 0);
+  }
+
   /**
    * SDK 动作回调。
    *   - Action.OpenUrl：新标签打开（openUrl 内部 isSafeUrl 二次校验）；始终可用；
@@ -217,6 +243,7 @@ export class InteractiveCardCell extends MessageCell {
       return;
     }
     if (type === "Action.ToggleVisibility") {
+      this.scheduleEnhanceMountedCard();
       return;
     }
     if (type === "Action.CopyToClipboard") {

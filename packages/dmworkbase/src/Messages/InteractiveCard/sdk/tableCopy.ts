@@ -203,8 +203,12 @@ export function attachTableCopyButtons(
   const tableRoots = findTableRoots(target, card);
   tableRoots.forEach((tableRoot, index) => {
     const text = copyTexts[index];
+    if (!text) {
+      return;
+    }
+    applyTableCellSpacing(tableRoot);
+
     if (
-      !text ||
       tableRoot.parentElement?.classList.contains(
         "wk-interactive-card-table-frame"
       )
@@ -214,7 +218,6 @@ export function attachTableCopyButtons(
 
     const frame = document.createElement("div");
     frame.className = "wk-interactive-card-table-frame";
-    applyTableCellSpacing(tableRoot);
 
     const header = document.createElement("div");
     header.className = "wk-interactive-card-table-header";

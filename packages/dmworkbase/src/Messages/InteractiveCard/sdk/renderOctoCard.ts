@@ -39,6 +39,19 @@ export interface RenderOctoCardOptions {
   onTableCopy?: (text: string) => void;
 }
 
+export function enhanceRenderedOctoCard(options: RenderOctoCardOptions): void {
+  const { card, target, tableCopyLabel, onTableCopy } = options;
+  enhanceAgentProgressLayout(card, target);
+  if (tableCopyLabel && onTableCopy) {
+    attachTableCopyButtons({
+      card,
+      target,
+      label: tableCopyLabel,
+      onCopy: onTableCopy,
+    });
+  }
+}
+
 export function renderOctoCard(options: RenderOctoCardOptions): void {
   const { card, target, onAction, tableCopyLabel, onTableCopy } = options;
   ensureMarkdownHook();
@@ -50,15 +63,14 @@ export function renderOctoCard(options: RenderOctoCardOptions): void {
   const rendered = ac.render();
   target.textContent = "";
   if (rendered) target.appendChild(rendered);
-  if (rendered) enhanceAgentProgressLayout(card, target);
-  if (rendered && tableCopyLabel && onTableCopy) {
-    attachTableCopyButtons({
+  if (rendered)
+    enhanceRenderedOctoCard({
       card,
       target,
-      label: tableCopyLabel,
-      onCopy: onTableCopy,
+      onAction,
+      tableCopyLabel,
+      onTableCopy,
     });
-  }
 }
 
 export default renderOctoCard;
