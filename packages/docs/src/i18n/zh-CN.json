@@ -53,6 +53,7 @@
       "restoreConfirm": "恢复到该版本？当前画板会先自动存为一个安全版本，可再恢复回来。",
       "deleteConfirm": "删除该版本？此操作不可撤销。",
       "restoredNotice": "已恢复。已创建新版本，画板稍后将自动更新。",
+      "staleNotice": "操作已完成，但列表未能刷新——重新打开可查看最新内容。",
       "errLoad": "加载版本历史失败",
       "errSave": "保存版本失败",
       "errRename": "重命名失败",

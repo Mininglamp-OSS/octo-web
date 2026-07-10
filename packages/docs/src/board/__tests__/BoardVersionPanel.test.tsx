@@ -112,7 +112,7 @@ describe('BoardVersionPanel', () => {
   it('paginates via load more using nextCursor', async () => {
     await renderPanel()
     fireEvent.click(screen.getByText('docs.board.version.loadMore'))
-    await waitFor(() => expect(listVersions).toHaveBeenLastCalledWith('bd_1', { kind: 'all', cursor: 100, limit: 30 }))
+    await waitFor(() => expect(listVersions).toHaveBeenLastCalledWith('bd_1', { kind: 'all', cursor: 100, limit: 30, signal: expect.any(AbortSignal) }))
     await screen.findByText('Older')
   })
 
@@ -206,6 +206,34 @@ describe('BoardVersionPanel', () => {
     expect(screen.queryByText('docs.board.version.rename')).toBeNull()
     // reader may still preview
     expect(screen.getByText('docs.board.version.preview')).toBeTruthy()
+  })
+
+  it('treats a failed post-restore refresh as a soft stale notice, not a restore failure', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await renderPanel('admin')
+    // The mutation itself succeeds; only the follow-up list refresh fails (transient network).
+    listVersions.mockRejectedValueOnce(new Error('network'))
+    fireEvent.click(screen.getByText('docs.board.version.restore'))
+    await waitFor(() => expect(restoreVersion).toHaveBeenCalledWith('bd_1', 7))
+    // Restore landed → show the soft "list may be stale" notice, never the red "restore failed".
+    await screen.findByText('docs.board.version.staleNotice')
+    expect(screen.queryByText('docs.board.version.errRestore')).toBeNull()
+  })
+
+  it('disables the filter buttons while a load-more page is in flight', async () => {
+    await renderPanel()
+    // The next listVersions call (the load-more page) hangs so it stays in flight.
+    let resolveMore: (v: { items: typeof NAMED[]; nextCursor: null; counts: typeof COUNTS }) => void = () => {}
+    listVersions.mockImplementationOnce(() => new Promise((r) => { resolveMore = r }))
+    fireEvent.click(screen.getByText('docs.board.version.loadMore'))
+    // A filter switch during an in-flight load-more would append the old filter's page and clobber
+    // nextCursor — so the filter buttons must be disabled until the page settles.
+    await waitFor(() =>
+      expect((screen.getByText('docs.board.version.filterAuto') as HTMLButtonElement).disabled).toBe(true),
+    )
+    resolveMore({ items: [{ ...NAMED, docVersionSeq: 4, label: 'Older' }], nextCursor: null, counts: COUNTS })
+    await screen.findByText('Older')
+    expect((screen.getByText('docs.board.version.filterAuto') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('discards an out-of-order list response so a slow earlier refresh cannot overwrite a newer one', async () => {

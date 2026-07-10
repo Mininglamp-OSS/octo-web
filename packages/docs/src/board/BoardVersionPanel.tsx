@@ -26,6 +26,7 @@ import {
 } from '../versions/api.ts'
 import { getBoardVersionState, versionErrorKey, type BoardVersionScene } from './boardVersions.ts'
 import { BoardScenePreview } from './BoardScenePreview.tsx'
+import { BoardErrorBoundary } from './BoardErrorBoundary.tsx'
 
 type KindFilter = 'all' | 'manual' | 'auto'
 const PAGE = 30
@@ -68,7 +69,10 @@ export function BoardVersionPanel({
   const [renameLabel, setRenameLabel] = useState('')
 
   const [preview, setPreview] = useState<{ seq: number; scene: BoardVersionScene } | null>(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
+  // Which row's preview is currently in flight (null = none). Scoped to the requesting row so a
+  // second Preview click can preempt the first — a single global "loading" flag would disable EVERY
+  // row's button and the abort/generation guard below could never actually fire through the UI.
+  const [previewingSeq, setPreviewingSeq] = useState<number | null>(null)
 
   const nameOf = (uid: string) => names?.get(uid) || uid
 
@@ -76,49 +80,72 @@ export function BoardVersionPanel({
   // filter switches, previewing A then B) and the responses may land out of order over the network.
   // Each fire bumps a monotonic generation and aborts the prior in-flight request; a response whose
   // generation is no longer current is discarded, so a slow earlier call can never overwrite the
-  // selection made by a newer one.
+  // selection made by a newer one. Load-more shares the refresh generation: a page that resolves
+  // after a filter switch / restore / delete replaced the list is dropped rather than appended.
   const refreshGen = useRef(0)
   const refreshAbort = useRef<AbortController | null>(null)
+  const loadMoreAbort = useRef<AbortController | null>(null)
   const previewGen = useRef(0)
   const previewAbort = useRef<AbortController | null>(null)
 
-  const refresh = useCallback(async () => {
-    refreshAbort.current?.abort()
-    const controller = new AbortController()
-    refreshAbort.current = controller
-    const gen = ++refreshGen.current
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await listVersions(docId, { kind, limit: PAGE, signal: controller.signal })
-      if (gen !== refreshGen.current) return
-      setItems(res.items)
-      setNextCursor(res.nextCursor)
-      setCounts(res.counts ?? null)
-    } catch {
-      if (gen !== refreshGen.current) return
-      setError(t('docs.board.version.errLoad'))
-    } finally {
-      if (gen === refreshGen.current) setLoading(false)
-    }
-  }, [docId, kind])
+  // Reload the first page for the current filter. Returns whether the fresh list was applied, so a
+  // caller that just performed a mutation can tell an in-place refresh failure (list may be stale,
+  // a soft state) apart from the mutation itself failing. `soft` suppresses the red load error for
+  // that post-mutation case. Clears any lingering notice at the top (a stale success/notice must not
+  // survive a filter switch or reload).
+  const refresh = useCallback(
+    async (opts?: { soft?: boolean }): Promise<boolean> => {
+      refreshAbort.current?.abort()
+      loadMoreAbort.current?.abort()
+      const controller = new AbortController()
+      refreshAbort.current = controller
+      const gen = ++refreshGen.current
+      setLoading(true)
+      setError(null)
+      setNotice(null)
+      try {
+        const res = await listVersions(docId, { kind, limit: PAGE, signal: controller.signal })
+        if (gen !== refreshGen.current) return false
+        setItems(res.items)
+        setNextCursor(res.nextCursor)
+        setCounts(res.counts ?? null)
+        return true
+      } catch {
+        if (gen !== refreshGen.current) return false
+        if (!opts?.soft) setError(t('docs.board.version.errLoad'))
+        return false
+      } finally {
+        if (gen === refreshGen.current) setLoading(false)
+      }
+    },
+    [docId, kind],
+  )
   useEffect(() => {
     void refresh()
   }, [refresh])
 
   const onLoadMore = async () => {
     if (loadingMore || nextCursor == null) return
+    loadMoreAbort.current?.abort()
+    const controller = new AbortController()
+    loadMoreAbort.current = controller
+    // Bind this page to the current refresh generation. If a filter switch / restore / delete bumps
+    // the generation before it lands, the page belongs to a list that no longer exists — drop it
+    // rather than append the old filter's rows and clobber the freshly-replaced nextCursor.
+    const gen = refreshGen.current
     setLoadingMore(true)
     setError(null)
     try {
-      const res = await listVersions(docId, { kind, cursor: nextCursor, limit: PAGE })
+      const res = await listVersions(docId, { kind, cursor: nextCursor, limit: PAGE, signal: controller.signal })
+      if (gen !== refreshGen.current) return
       setItems((cur) => [...cur, ...res.items])
       setNextCursor(res.nextCursor)
       if (res.counts) setCounts(res.counts)
     } catch {
+      if (gen !== refreshGen.current) return
       setError(t('docs.board.version.errLoad'))
     } finally {
-      setLoadingMore(false)
+      if (gen === refreshGen.current) setLoadingMore(false)
     }
   }
 
@@ -128,14 +155,18 @@ export function BoardVersionPanel({
     setError(null)
     try {
       await createNamedVersion(docId, snapshotLabel.trim() || undefined)
-      setSnapshotOpen(false)
-      setSnapshotLabel('')
-      await refresh()
     } catch {
       setError(t('docs.board.version.errSave'))
-    } finally {
       setBusy(false)
+      return
     }
+    // The snapshot landed on the server. From here a refresh failure is NOT a save failure — surface
+    // it as a soft "list may be stale" notice rather than the red "save failed" error.
+    setSnapshotOpen(false)
+    setSnapshotLabel('')
+    const ok = await refresh({ soft: true })
+    if (!ok) setNotice(t('docs.board.version.staleNotice'))
+    setBusy(false)
   }
 
   const onPreview = async (seq: number) => {
@@ -143,8 +174,9 @@ export function BoardVersionPanel({
     const controller = new AbortController()
     previewAbort.current = controller
     const gen = ++previewGen.current
-    setPreviewLoading(true)
+    setPreviewingSeq(seq)
     setError(null)
+    setNotice(null)
     try {
       const state = await getBoardVersionState(docId, seq, controller.signal)
       if (gen !== previewGen.current) return
@@ -153,7 +185,7 @@ export function BoardVersionPanel({
       if (gen !== previewGen.current) return
       setError(t(versionErrorKey(e, 'docs.board.version.errPreview')))
     } finally {
-      if (gen === previewGen.current) setPreviewLoading(false)
+      if (gen === previewGen.current) setPreviewingSeq(null)
     }
   }
 
@@ -164,15 +196,18 @@ export function BoardVersionPanel({
     setNotice(null)
     try {
       await restoreVersion(docId, seq)
-      setPreview(null)
-      setNotice(t('docs.board.version.restoredNotice'))
-      await refresh()
-      onRestored?.()
     } catch (e) {
       setError(t(versionErrorKey(e, 'docs.board.version.errRestore')))
-    } finally {
       setBusy(false)
+      return
     }
+    // Restore landed. A follow-up refresh failure means the panel list may be stale — the board still
+    // reconciles via Yjs — so show the restored notice (or the soft stale notice), never "restore failed".
+    setPreview(null)
+    const ok = await refresh({ soft: true })
+    setNotice(t(ok ? 'docs.board.version.restoredNotice' : 'docs.board.version.staleNotice'))
+    onRestored?.()
+    setBusy(false)
   }
 
   const beginRename = (seq: number, cur: string) => {
@@ -192,16 +227,19 @@ export function BoardVersionPanel({
     setError(null)
     try {
       await renameVersion(docId, seq, label)
-      // Optimistically reflect the new label so the row updates immediately, then refetch to
-      // reconcile with server ordering/counts.
-      setItems((cur) => cur.map((v) => (v.docVersionSeq === seq ? { ...v, label } : v)))
-      cancelRename()
-      await refresh()
-    } catch {
-      setError(t('docs.board.version.errRename'))
-    } finally {
+    } catch (e) {
+      // Use the typed classifier so 403/409 surface a specific message, matching restore/delete/preview.
+      setError(t(versionErrorKey(e, 'docs.board.version.errRename')))
       setBusy(false)
+      return
     }
+    // Optimistically reflect the new label so the row updates immediately, then refetch to reconcile
+    // with server ordering/counts; a refresh failure here is soft (rename already landed).
+    setItems((cur) => cur.map((v) => (v.docVersionSeq === seq ? { ...v, label } : v)))
+    cancelRename()
+    const ok = await refresh({ soft: true })
+    if (!ok) setNotice(t('docs.board.version.staleNotice'))
+    setBusy(false)
   }
 
   const onDelete = async (seq: number) => {
@@ -210,16 +248,18 @@ export function BoardVersionPanel({
     setError(null)
     try {
       await deleteVersion(docId, seq)
-      if (preview?.seq === seq) setPreview(null)
-      if (renamingSeq === seq) cancelRename()
-      // Optimistically drop the row, then refetch to reconcile counts/pagination.
-      setItems((cur) => cur.filter((v) => v.docVersionSeq !== seq))
-      await refresh()
     } catch (e) {
       setError(t(versionErrorKey(e, 'docs.board.version.errDelete')))
-    } finally {
       setBusy(false)
+      return
     }
+    if (preview?.seq === seq) setPreview(null)
+    if (renamingSeq === seq) cancelRename()
+    // Optimistically drop the row, then refetch to reconcile counts/pagination; refresh failure is soft.
+    setItems((cur) => cur.filter((v) => v.docVersionSeq !== seq))
+    const ok = await refresh({ soft: true })
+    if (!ok) setNotice(t('docs.board.version.staleNotice'))
+    setBusy(false)
   }
 
   const kindLabel = (k: VersionMeta['kind']) =>
@@ -234,8 +274,13 @@ export function BoardVersionPanel({
       type="button"
       className={kind === k ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
       aria-pressed={kind === k}
-      disabled={loading}
-      onClick={() => setKind(k)}
+      disabled={loading || loadingMore}
+      onClick={() => {
+        // Switching filter reloads the list; drop the open preview (it belongs to the previous
+        // result set) and let the ensuing refresh clear any lingering notice.
+        if (k !== kind) setPreview(null)
+        setKind(k)
+      }}
     >
       {label}
     </button>
@@ -314,8 +359,13 @@ export function BoardVersionPanel({
           {/* key={preview.seq} remounts the preview per version: Excalidraw seeds from initialData
               only once at mount (it does not reactively consume props — see the XIN-115 note in
               BoardShell), so without a keyed remount switching versions would keep showing the
-              previously previewed scene while the header advanced. */}
-          <BoardScenePreview key={preview.seq} scene={preview.scene} dark={dark} />
+              previously previewed scene while the header advanced.
+              The preview is a SECOND real Excalidraw; wrap it in the same BoardErrorBoundary the live
+              canvas uses so a render-time throw (malformed historical initialData, a bad restore, a
+              mount failure) degrades to a recoverable message instead of unmounting the whole host. */}
+          <BoardErrorBoundary key={preview.seq}>
+            <BoardScenePreview scene={preview.scene} dark={dark} docId={docId} />
+          </BoardErrorBoundary>
         </div>
       )}
 
@@ -368,7 +418,7 @@ export function BoardVersionPanel({
                 <button
                   type="button"
                   className="octo-tb-btn"
-                  disabled={previewLoading}
+                  disabled={previewingSeq === v.docVersionSeq}
                   onClick={() => void onPreview(v.docVersionSeq)}
                 >
                   {t('docs.board.version.preview')}

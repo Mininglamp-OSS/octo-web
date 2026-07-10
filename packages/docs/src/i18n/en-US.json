@@ -53,6 +53,7 @@
       "restoreConfirm": "Restore this version? The current board is saved as a safe version first, so you can roll back.",
       "deleteConfirm": "Delete this version? This can't be undone.",
       "restoredNotice": "Restored. A new version was created; the board will update shortly.",
+      "staleNotice": "Done, but the list couldn't refresh — reopen to see the latest.",
       "errLoad": "Failed to load version history",
       "errSave": "Failed to save version",
       "errRename": "Failed to rename",

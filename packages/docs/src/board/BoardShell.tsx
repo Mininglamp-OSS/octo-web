@@ -1,12 +1,10 @@
 import {
-  Component,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type ComponentType,
-  type ErrorInfo,
   type ReactElement,
   type ReactNode,
 } from 'react'
@@ -16,6 +14,7 @@ import { PresenceBar } from '../editor/PresenceBar.tsx'
 import { DocMoreMenu, DeleteIcon, OpenNewPageIcon, HistoryIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { MemberPanel } from '../members/MemberPanel.tsx'
 import { BoardVersionPanel } from './BoardVersionPanel.tsx'
+import { BoardErrorBoundary } from './BoardErrorBoundary.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { useAccessRequests } from '../access-request/useAccessRequests.ts'
 import { startDocForward } from '../forward/startDocForward.ts'
@@ -31,8 +30,9 @@ import { installExcalidrawDebrand } from './excalidrawDebrand.ts'
 import { installLibraryControlButtons } from './libraryControlButtons.ts'
 import type { WhiteboardSession, BoardTerminal } from './collab/index.ts'
 import type { ExcalidrawElement, BinaryFileData, FileFetchRef } from './collab/index.ts'
-import { makeGenerateIdForFile, dataURLToBlob, blobToDataURL } from './collab/index.ts'
-import { presignUpload, uploadBinary, resolveAttachments } from '../attachments/api.ts'
+import { makeGenerateIdForFile, dataURLToBlob } from './collab/index.ts'
+import { presignUpload, uploadBinary } from '../attachments/api.ts'
+import { fetchBoardFileBinaries } from './boardFiles.ts'
 import {
   setLocalPresenceUser,
   publishLocalPointer,
@@ -245,27 +245,6 @@ function boardTerminalForAccessLoss(err: unknown): BoardTerminal | null {
   if (status === 403) return { kind: 'deleted' }
   if (status === 404) return { kind: 'not-found' }
   return null
-}
-
-/**
- * Error boundary around the Excalidraw subtree (mirrors DocsErrorBoundary): a render throw in the
- * board canvas surfaces a recoverable message instead of tearing down the host tree.
- */
-class BoardErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  constructor(props: { children: ReactNode }) {
-    super(props)
-    this.state = { error: null }
-  }
-  static getDerivedStateFromError(error: Error): { error: Error } {
-    return { error }
-  }
-  componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error('[board] canvas failed', error, info.componentStack)
-  }
-  render(): ReactNode {
-    if (this.state.error) return <div className="octo-board-state octo-error">{t('docs.state.error')}</div>
-    return this.props.children
-  }
 }
 
 /**
@@ -819,34 +798,11 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     },
     [docId],
   )
+  // Batch-resolve fresh signed GET urls in ONE round trip (contract: POST /attachments/resolve),
+  // then download each binary. Shared with the version-history preview (boardFiles.ts) so the live
+  // canvas and the historical preview can never drift onto different fetch/decoding paths.
   const fetchBoardFiles = useCallback(
-    async (refs: readonly FileFetchRef[]): Promise<BinaryFileData[]> => {
-      if (refs.length === 0) return []
-      // Batch-resolve fresh signed GET urls in ONE round trip (contract: POST /attachments/resolve),
-      // then download each binary. Re-resolving each time honours the read-URL TTL. An attachId the
-      // backend can't resolve (deleted / unknown) is simply skipped — the next apply retries.
-      const refByAttach = new Map(refs.map((r) => [r.attachId, r]))
-      const { items } = await resolveAttachments(
-        docId,
-        refs.map((r) => r.attachId),
-      )
-      const out: BinaryFileData[] = []
-      await Promise.all(
-        items.map(async (item) => {
-          const ref = refByAttach.get(item.attachId)
-          if (!ref) return
-          try {
-            const res = await fetch(item.url)
-            if (!res.ok) return
-            const dataURL = await blobToDataURL(await res.blob())
-            out.push({ id: ref.id, dataURL, mimeType: item.mime ?? ref.mimeType, created: Date.now() })
-          } catch {
-            // Leave this one a placeholder; the next applyRemote re-collects and retries it.
-          }
-        }),
-      )
-      return out
-    },
+    (refs: readonly FileFetchRef[]): Promise<BinaryFileData[]> => fetchBoardFileBinaries(docId, refs),
     [docId],
   )
 
