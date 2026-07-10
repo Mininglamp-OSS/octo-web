@@ -137,7 +137,10 @@
     "creator": "创建者",
     "labels": "标签",
     "startDate": "开始日期",
-    "dueDate": "截止日期"
+    "dueDate": "截止日期",
+    "parent": "父 Issue",
+    "noParent": "无父 Issue",
+    "stage": "阶段"
   },
   "status": {
     "backlog": "待规划",
@@ -254,6 +257,9 @@
     "unsubscribe": "取消订阅",
     "subscribed": "已订阅",
     "unsubscribed": "已取消订阅"
+  },
+  "subIssue": {
+    "title": "子 Issue"
   },
   "reaction": {
     "add": "添加反应"

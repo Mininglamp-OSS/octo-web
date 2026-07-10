@@ -147,6 +147,13 @@ export interface UpdateIssueReq {
   assignee_id?: string | null;
   project_id?: string | null;
   position?: number;
+  // 后端按 rawFields 存在性判断：省略=不动；传值=设置；传 ""/null=清除。
+  // start_date/due_date 为日历日 "YYYY-MM-DD"(后端 ParseCalendarDate)。
+  // parent_issue_id 设置时后端做环检测(不能设自己或后代为父)。stage 需 >= 1。
+  start_date?: string | null;
+  due_date?: string | null;
+  parent_issue_id?: string | null;
+  stage?: number | null;
   // 指派/状态变更触发 agent run 时：suppress_run=true 表示“暂不开始”；handoff_note 仅在真起 run 时消费。
   suppress_run?: boolean;
   handoff_note?: string;
