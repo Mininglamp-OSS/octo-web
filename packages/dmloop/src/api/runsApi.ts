@@ -14,9 +14,9 @@ export async function listRuns(issueId: string): Promise<TaskRun[]> {
     .sort((a, b) => (b.created_at ?? b.dispatched_at ?? "").localeCompare(a.created_at ?? a.dispatched_at ?? ""));
 }
 
-/** 某次执行的消息流（run-messages）。 */
-export function listRunMessages(taskId: string): Promise<RunMessage[]> {
-  return httpGet<RunMessage[]>(`/tasks/${taskId}/messages`);
+/** 某次执行的消息流（run-messages）。since 给出后只取 seq 更大的增量（clean 会剔除 undefined）。 */
+export function listRunMessages(taskId: string, since?: number): Promise<RunMessage[]> {
+  return httpGet<RunMessage[]>(`/tasks/${taskId}/messages`, { since });
 }
 
 /** 重跑 issue：不带 task_id 按当前 assignee 重跑，带则重跑该 task 的 agent。后端返回新建 task。 */

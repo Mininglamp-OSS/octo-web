@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Modal, Button, TextArea, Spin, Typography, Toast } from "@douyinfe/semi-ui";
 import { useI18n } from "@octo/base";
-import type { AssigneeType, IssueStatus } from "../api/types";
+import type { AssigneeType, IssueStatus, Issue } from "../api/types";
 import { previewIssueTrigger } from "../api/issueApi";
 
 const { Text } = Typography;
@@ -16,15 +16,33 @@ export interface RunConfirmRequest {
   apply: (extra: { suppress_run?: boolean; handoff_note?: string }) => void | Promise<void>;
 }
 
+// 该 actor 是否是会执行的 agent/squad(而非 member/未指派)。
+function isAgentAssignee(type: AssigneeType | null, id: string | null): boolean {
+  return (type === "agent" || type === "squad") && !!id;
+}
+
 // 是否需要“派单预确认”：与 multica 一致——agent/squad 指派且 issue 非 backlog。
 function needsConfirm(r: RunConfirmRequest): boolean {
-  return (r.assigneeType === "agent" || r.assigneeType === "squad") && !!r.assigneeId && r.status !== "backlog";
+  return isAgentAssignee(r.assigneeType, r.assigneeId) && r.status !== "backlog";
+}
+
+// 状态变更是否会触发 run(与后端 WillEnqueueRun status 源一致):
+// agent/squad 已指派,且从 backlog 移到非 backlog/done/cancelled。
+// ponytail: 这是**客户端尽力判断**,用的是本地缓存的 assignee;真正是否起 run 由 preview-trigger
+// 权威判定。并发场景(他人刚改派为 agent、本地视图未刷新)下本判断可能漏判 → 跳过确认弹窗,
+// 但后端仍按持久 assignee 正确起 run(只是少了一次确认 UX)。与 multica 原生 web 的客户端 gate 同源。
+function statusMightTrigger(issue: Issue, next: IssueStatus): boolean {
+  return (
+    isAgentAssignee(issue.assignee_type, issue.assignee_id) &&
+    issue.status === "backlog" &&
+    next !== "backlog" && next !== "done" && next !== "cancelled"
+  );
 }
 
 /**
  * 指派即触发的预确认 hook。用法：
- *   const { requestAssign, runConfirmModal } = useRunConfirm();
- *   <AssigneePicker onChange={(id,type)=>requestAssign({...,apply:(extra)=>patch({assignee_id:id,assignee_type:type,...extra})})}/>
+ *   const { requestAssign, requestStatus, runConfirmModal } = useRunConfirm();
+ *   <AssigneePicker onChange={(id,type,name)=>requestAssign({...,apply:(extra)=>patch({assignee_id:id,assignee_type:type,...extra})})}/>
  *   {runConfirmModal}
  * 不需确认（member/取消指派/backlog）直接 apply；需确认则弹窗，先 preview-trigger 问后端。
  */
@@ -32,17 +50,36 @@ export function useRunConfirm() {
   const { t } = useI18n();
   const [pending, setPending] = useState<RunConfirmRequest | null>(null);
 
+  const applyDirect = (apply: RunConfirmRequest["apply"]) => {
+    // 直接落库路径：失败要给反馈,别静默吞错。
+    Promise.resolve(apply({})).catch((e) => Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed")));
+  };
+
   const requestAssign = (r: RunConfirmRequest) => {
-    if (!needsConfirm(r)) {
-      // 直接落库路径（member/取消指派/backlog）：失败要给反馈，与确认路径一致，别静默吞错。
-      Promise.resolve(r.apply({})).catch((e) => Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed")));
-      return;
-    }
+    if (!needsConfirm(r)) { applyDirect(r.apply); return; }
     setPending(r);
   };
 
+  // 状态变更:仅在 backlog→活跃且已指派 agent/squad(会静默起 run)时弹确认;
+  // preview 传当前 assignee(不变)+ 新 status,后端按 status 源判定。
+  const requestStatus = (
+    issue: Issue,
+    next: IssueStatus,
+    apply: RunConfirmRequest["apply"],
+  ) => {
+    if (!statusMightTrigger(issue, next)) { applyDirect(apply); return; }
+    setPending({
+      issueId: issue.id,
+      status: next,
+      assigneeType: issue.assignee_type,
+      assigneeId: issue.assignee_id,
+      assigneeName: issue.assignee_name ?? null,
+      apply,
+    });
+  };
+
   const runConfirmModal = <RunConfirmModal pending={pending} onClose={() => setPending(null)} />;
-  return { requestAssign, runConfirmModal };
+  return { requestAssign, requestStatus, runConfirmModal };
 }
 
 function RunConfirmModal({ pending, onClose }: { pending: RunConfirmRequest | null; onClose: () => void }) {
