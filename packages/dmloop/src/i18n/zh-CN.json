@@ -12,7 +12,7 @@
     "project": "项目",
     "agent": "智能体",
     "squad": "小队",
-    "runtime": "设备",
+    "runtime": "运行时",
     "settings": "设置"
   },
   "runtime": {
@@ -28,8 +28,15 @@
     "launchHeader": "启动标识",
     "visibility": "可见性",
     "lastSeen": "最近在线",
-    "search": "搜索设备 / 提供方",
-    "empty": "暂无设备"
+    "search": "搜索运行时 / 提供方",
+    "empty": "暂无运行时",
+    "subtitle": "你名下的机器与运行时。工作区里的 AI 队友都跑在这里。",
+    "add": "添加运行时",
+    "allSpace": "全部空间",
+    "runtimeCount": "{{count}} 个运行时",
+    "servingAgents": "服务 {{count}} 个 AI 队友",
+    "noAgents": "—",
+    "builtIn": "内置"
   },
   "view": {
     "board": "看板",

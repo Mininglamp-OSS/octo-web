@@ -3,6 +3,8 @@
 export { default as LoopModule } from "./module";
 export { default as LoopPage } from "./pages/LoopPage";
 export { default as MulticaCliAuthorizePage } from "./pages/MulticaCliAuthorizePage";
+export { default as RuntimePage } from "./pages/RuntimePage";
+export { default as SkillPage } from "./pages/SkillPage";
 export {
   isMulticaCliAuthorizePath,
   MULTICA_CLI_AUTHORIZE_PATH,
