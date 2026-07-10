@@ -1,17 +1,17 @@
 {
   "menu": {
-    "title": "Loop",
+    "title": "回路",
     "changeStatus": "修改状态",
     "changePriority": "修改优先级",
     "changeAssignee": "修改负责人",
-    "deleteIssue": "删除 Issue"
+    "deleteIssue": "删除回路"
   },
   "nav": {
-    "issue": "Issue",
+    "issue": "回路",
     "skill": "技能",
     "project": "项目",
-    "agent": "智能体",
-    "squad": "小队",
+    "agent": "AI队友",
+    "squad": "AI小队",
     "runtime": "运行时",
     "settings": "设置"
   },
@@ -19,7 +19,7 @@
     "online": "在线",
     "offline": "离线",
     "empty": "暂无运行时",
-    "subtitle": "你名下的机器与运行时。工作区里的 AI 队友都跑在这里。",
+    "subtitle": "你名下的机器与运行时。工作区里的 AI队友都跑在这里。",
     "add": "添加电脑",
     "allSpace": "全部空间",
     "runtimeCount": "{{count}} 个运行时",
@@ -36,11 +36,11 @@
     "list": "列表"
   },
   "search": {
-    "issue": "搜索 Issue / 编号",
+    "issue": "搜索回路/ 编号",
     "skill": "搜索技能",
     "project": "搜索项目",
-    "agent": "搜索智能体",
-    "squad": "搜索小队"
+    "agent": "搜索 AI队友",
+    "squad": "搜索 AI小队"
   },
   "filter": {
     "status": "状态",
@@ -64,11 +64,11 @@
     "due_date": "截止日期"
   },
   "action": {
-    "newIssue": "新建 Issue",
+    "newIssue": "新建回路",
     "newSkill": "新建技能",
     "newProject": "新建项目",
-    "newAgent": "新建智能体",
-    "newSquad": "新建小队",
+    "newAgent": "新建 AI队友",
+    "newSquad": "新建 AI小队",
     "create": "创建",
     "cancel": "取消",
     "save": "保存",
@@ -83,11 +83,11 @@
     "nameRequired": "请填写工作区名称",
     "slugRequired": "请填写 slug",
     "emptyTitle": "还没有工作区",
-    "emptyDesc": "创建一个工作区开始使用 Loop。"
+    "emptyDesc": "创建一个工作区开始使用回路。"
   },
   "cliAuthorize": {
     "title": "授权当前电脑",
-    "description": "将当前电脑接入所选 Loop 工作区，授权后命令行会继续完成本机设备注册。",
+    "description": "将当前电脑接入所选回路工作区，授权后命令行会继续完成本机设备注册。",
     "authorize": "授权",
     "loading": "加载中",
     "workspaceLoading": "正在加载工作区",
@@ -107,21 +107,21 @@
     "cancelled": "已取消"
   },
   "empty": {
-    "issue": "暂无 Issue",
+    "issue": "暂无回路",
     "skill": "暂无技能",
     "project": "暂无项目",
-    "agent": "暂无智能体",
-    "squad": "暂无小队",
-    "issueTitle": "还没有 Issue",
-    "issueDesc": "创建第一个 Issue，开始跟踪你的工作。",
+    "agent": "暂无 AI队友",
+    "squad": "暂无 AI小队",
+    "issueTitle": "还没有回路",
+    "issueDesc": "创建第一个回路，开始跟踪你的工作。",
     "skillTitle": "还没有技能",
-    "skillDesc": "创建或导入技能，供智能体复用。",
+    "skillDesc": "创建或导入技能，供 AI队友复用。",
     "projectTitle": "还没有项目",
-    "projectDesc": "创建项目来组织相关的 Issue。",
-    "agentTitle": "还没有智能体",
-    "agentDesc": "创建智能体来自动处理你的任务。",
-    "squadTitle": "还没有小队",
-    "squadDesc": "组建小队，让成员与智能体协作。"
+    "projectDesc": "创建项目来组织相关的回路。",
+    "agentTitle": "还没有 AI队友",
+    "agentDesc": "创建 AI队友来自动处理你的任务。",
+    "squadTitle": "还没有 AI小队",
+    "squadDesc": "组建 AI小队，让成员与 AI队友协作。"
   },
   "field": {
     "title": "标题",
@@ -173,21 +173,22 @@
   },
   "assignee": {
     "member": "成员",
-    "agent": "智能体",
-    "squad": "小队",
+    "agent": "AI队友",
+    "squad": "AI小队",
     "unassigned": "未指派"
   },
   "detail": {
-    "issueTitle": "Issue 详情",
+    "issueTitle": "回路详情",
     "skillTitle": "技能详情",
     "projectTitle": "项目详情",
-    "agentTitle": "智能体详情",
-    "squadTitle": "小队详情",
+    "agentTitle": "AI队友详情",
+    "squadTitle": "AI小队详情",
     "notFound": "未找到该条目",
     "properties": "属性",
     "comments": "评论",
     "back": "返回",
     "created": "创建于",
+    "updated": "更新于",
     "execLog": "执行日志",
     "execEmpty": "暂无执行记录"
   },
@@ -220,7 +221,7 @@
   },
   "confirm": {
     "delete": "确定删除？",
-    "deleteIssue": "确定删除该 Issue？此操作不可撤销。"
+    "deleteIssue": "确定删除该回路？此操作不可撤销。"
   },
   "skill": {
     "source": "来源",
@@ -230,6 +231,7 @@
       "workspace": "工作区"
     },
     "usedBy": "被引用",
+    "usedCount": "{{count}} 个 AI队友",
     "content": "内容",
     "local": "本地",
     "fromWeb": "从 Web 拷贝",
@@ -240,7 +242,42 @@
     "importSelected": "导入所选",
     "imported": "已导入",
     "urlRequired": "请填写 URL",
-    "rtUnsupported": "该运行时不支持技能发现"
+    "rtUnsupported": "该运行时不支持技能发现",
+    "namePattern": "Skill 名称只能包含英文字母、数字和连字符 -",
+    "importInvalidName": "已跳过 {{name}}：Skill 名称只能包含英文字母、数字和连字符 -",
+    "create": {
+      "subtitle": "选一种方式创建，右侧实时预览。",
+      "draft": "空白起草",
+      "url": "从 URL 导入",
+      "runtime": "从运行时复制",
+      "urlLabel": "Skill URL",
+      "supportedSources": "支持的来源",
+      "preview": "预览",
+      "previewNote": "创建后出现在工作区 Skills，可分配给任意 AI队友。",
+      "unnamed": "未命名 Skill"
+    },
+    "detail": {
+      "files": "文件",
+      "noFiles": "暂无文件",
+      "noContent": "暂无内容",
+      "noDescription": "SKILL.md frontmatter 中暂无 description",
+      "preview": "预览",
+      "edit": "编辑",
+      "deleteFile": "删除文件",
+      "usedAgents": "被 {{count}} 个 AI队友使用",
+      "noUsedAgents": "暂无 AI队友使用",
+      "agentType": "AI队友",
+      "contentPlaceholder": "输入文件内容…",
+      "addFile": {
+        "add": "新增文件",
+        "placeholder": "例如 reference/guide.md",
+        "empty": "请填写路径",
+        "absolute": "路径不能以 / 开头",
+        "doubleDot": "路径不能包含 ..",
+        "reserved": "SKILL.md 为保留名",
+        "exists": "该路径的文件已存在"
+      }
+    }
   },
   "project": {
     "progress": "进度",
@@ -269,7 +306,7 @@
     "model": "模型",
     "runs30d": "近 30 天任务",
     "instructions": "指令",
-    "instructionsPlaceholder": "系统提示词 / 智能体行为定义…",
+    "instructionsPlaceholder": "系统提示词 / AI队友行为定义…",
     "visibility": "可见性",
     "visWorkspace": "工作区",
     "visPrivate": "私有",
@@ -330,7 +367,7 @@
     "wsName": "工作区名称",
     "wsSlug": "工作区 slug",
     "slugHint": "slug 创建后不可修改",
-    "issuePrefix": "Issue 前缀",
+    "issuePrefix": "回路前缀",
     "role": "角色",
     "removeMember": "移除成员",
     "revokeInvite": "撤销邀请",

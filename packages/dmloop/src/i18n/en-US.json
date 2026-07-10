@@ -4,14 +4,14 @@
     "changeStatus": "Change status",
     "changePriority": "Change priority",
     "changeAssignee": "Change assignee",
-    "deleteIssue": "Delete issue"
+    "deleteIssue": "Delete Loop"
   },
   "nav": {
-    "issue": "Issue",
+    "issue": "Loop",
     "skill": "Skill",
     "project": "Project",
-    "agent": "Agent",
-    "squad": "Squad",
+    "agent": "AI teammate",
+    "squad": "AI squad",
     "runtime": "Runtimes",
     "settings": "Settings"
   },
@@ -36,11 +36,11 @@
     "list": "List"
   },
   "search": {
-    "issue": "Search issue / id",
+    "issue": "Search Loop / id",
     "skill": "Search skill",
     "project": "Search project",
-    "agent": "Search agent",
-    "squad": "Search squad"
+    "agent": "Search AI teammate",
+    "squad": "Search AI squad"
   },
   "filter": {
     "status": "Status",
@@ -64,11 +64,11 @@
     "due_date": "Due date"
   },
   "action": {
-    "newIssue": "New Issue",
+    "newIssue": "New Loop",
     "newSkill": "New Skill",
     "newProject": "New Project",
-    "newAgent": "New Agent",
-    "newSquad": "New Squad",
+    "newAgent": "New AI teammate",
+    "newSquad": "New AI squad",
     "create": "Create",
     "cancel": "Cancel",
     "save": "Save",
@@ -107,21 +107,21 @@
     "cancelled": "Cancelled"
   },
   "empty": {
-    "issue": "No issues",
+    "issue": "No Loops",
     "skill": "No skills",
     "project": "No projects",
-    "agent": "No agents",
-    "squad": "No squads",
-    "issueTitle": "No issues yet",
-    "issueDesc": "Create your first issue to start tracking work.",
+    "agent": "No AI teammates",
+    "squad": "No AI squads",
+    "issueTitle": "No Loops yet",
+    "issueDesc": "Create your first Loop to start tracking work.",
     "skillTitle": "No skills yet",
-    "skillDesc": "Create or import a skill for your agents to reuse.",
+    "skillDesc": "Create or import a skill for your AI teammates to reuse.",
     "projectTitle": "No projects yet",
-    "projectDesc": "Create a project to organize related issues.",
-    "agentTitle": "No agents yet",
-    "agentDesc": "Create an agent to automate your tasks.",
-    "squadTitle": "No squads yet",
-    "squadDesc": "Form a squad so members and agents collaborate."
+    "projectDesc": "Create a project to organize related Loops.",
+    "agentTitle": "No AI teammates yet",
+    "agentDesc": "Create an AI teammate to automate your tasks.",
+    "squadTitle": "No AI squads yet",
+    "squadDesc": "Form an AI squad so members and AI teammates collaborate."
   },
   "field": {
     "title": "Title",
@@ -173,21 +173,22 @@
   },
   "assignee": {
     "member": "Member",
-    "agent": "Agent",
-    "squad": "Squad",
+    "agent": "AI teammate",
+    "squad": "AI squad",
     "unassigned": "Unassigned"
   },
   "detail": {
-    "issueTitle": "Issue detail",
+    "issueTitle": "Loop detail",
     "skillTitle": "Skill detail",
     "projectTitle": "Project detail",
-    "agentTitle": "Agent detail",
-    "squadTitle": "Squad detail",
+    "agentTitle": "AI teammate detail",
+    "squadTitle": "AI squad detail",
     "notFound": "Item not found",
     "properties": "Properties",
     "comments": "Comments",
     "back": "Back",
     "created": "Created",
+    "updated": "Updated",
     "execLog": "Execution log",
     "execEmpty": "No runs yet"
   },
@@ -220,7 +221,7 @@
   },
   "confirm": {
     "delete": "Delete?",
-    "deleteIssue": "Delete this issue? This cannot be undone."
+    "deleteIssue": "Delete this Loop? This cannot be undone."
   },
   "skill": {
     "source": "Source",
@@ -230,6 +231,7 @@
       "workspace": "Workspace"
     },
     "usedBy": "Used by",
+    "usedCount": "{{count}} AI teammates",
     "content": "Content",
     "local": "Local",
     "fromWeb": "Copy from web",
@@ -240,7 +242,42 @@
     "importSelected": "Import selected",
     "imported": "Imported",
     "urlRequired": "URL is required",
-    "rtUnsupported": "This runtime does not support skill discovery"
+    "rtUnsupported": "This runtime does not support skill discovery",
+    "namePattern": "Skill names can only contain English letters, numbers, and hyphens (-)",
+    "importInvalidName": "Skipped {{name}}: skill names can only contain English letters, numbers, and hyphens (-)",
+    "create": {
+      "subtitle": "Choose a way to create — live preview on the right.",
+      "draft": "Blank draft",
+      "url": "Import from URL",
+      "runtime": "Copy from runtime",
+      "urlLabel": "Skill URL",
+      "supportedSources": "Supported sources",
+      "preview": "Preview",
+      "previewNote": "After creation it appears under workspace Skills and can be assigned to any AI teammate.",
+      "unnamed": "Untitled skill"
+    },
+    "detail": {
+      "files": "Files",
+      "noFiles": "No files",
+      "noContent": "No content",
+      "noDescription": "No description in SKILL.md frontmatter",
+      "preview": "Preview",
+      "edit": "Edit",
+      "deleteFile": "Delete file",
+      "usedAgents": "Used by {{count}} AI teammates",
+      "noUsedAgents": "No AI teammates use this yet",
+      "agentType": "AI teammate",
+      "contentPlaceholder": "Enter file content…",
+      "addFile": {
+        "add": "Add file",
+        "placeholder": "e.g. reference/guide.md",
+        "empty": "Path is required",
+        "absolute": "Path must not start with /",
+        "doubleDot": "Path must not contain ..",
+        "reserved": "SKILL.md is reserved",
+        "exists": "A file with this path already exists"
+      }
+    }
   },
   "project": {
     "progress": "Progress",
@@ -269,7 +306,7 @@
     "model": "Model",
     "runs30d": "Runs (30d)",
     "instructions": "Instructions",
-    "instructionsPlaceholder": "System prompt / agent behavior…",
+    "instructionsPlaceholder": "System prompt / AI teammate behavior…",
     "visibility": "Visibility",
     "visWorkspace": "Workspace",
     "visPrivate": "Private",
@@ -330,7 +367,7 @@
     "wsName": "Workspace name",
     "wsSlug": "Workspace slug",
     "slugHint": "Slug cannot be changed after creation",
-    "issuePrefix": "Issue prefix",
+    "issuePrefix": "Loop prefix",
     "role": "Role",
     "removeMember": "Remove member",
     "revokeInvite": "Revoke invitation",
