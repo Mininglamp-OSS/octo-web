@@ -6,6 +6,7 @@ import type { Workspace } from "../api/types";
 import { issueMulticaCliToken } from "../api/authApi";
 import { listWorkspaces } from "../api/workspaceApi";
 import { currentWorkspaceId, setWorkspaceContext } from "../api/http";
+import { clearPendingMulticaCliAuthorizeSearch } from "../cliAuthorizeSession";
 import "./loop.css";
 
 const { Text, Title } = Typography;
@@ -44,15 +45,26 @@ function redirectToCli(
   token: string,
   state: string | null
 ): void {
+  // TODO(octo-multica!18 security follow-up): replace this JWT-in-query
+  // handoff with server-bound device authorization or a one-time PKCE code.
   const target = new URL(callbackURL);
   target.searchParams.set("token", token);
   if (state) target.searchParams.set("state", state);
   window.location.href = target.toString();
 }
 
-export default function MulticaCliAuthorizePage() {
+interface MulticaCliAuthorizePageProps {
+  initialSearch?: string;
+}
+
+export default function MulticaCliAuthorizePage({
+  initialSearch = window.location.search,
+}: MulticaCliAuthorizePageProps) {
   const { t } = useI18n();
-  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const params = useMemo(
+    () => new URLSearchParams(initialSearch),
+    [initialSearch]
+  );
   const cliCallback = params.get("cli_callback") ?? "";
   const cliState = params.get("cli_state");
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -104,6 +116,7 @@ export default function MulticaCliAuthorizePage() {
     setError("");
     try {
       const { token } = await issueMulticaCliToken();
+      clearPendingMulticaCliAuthorizeSearch(window.sessionStorage);
       redirectToCli(cliCallback, token, cliState);
     } catch (err) {
       const msg =
