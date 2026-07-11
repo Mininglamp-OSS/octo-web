@@ -219,7 +219,14 @@ export function VersionHistoryPanel<TState, TCurrent>({
       if (!isCurrent()) return
       setError(t('docs.version.errorMore'))
     } finally {
-      if (isCurrent()) setLoadingMore(false)
+      // Always clear the loading flag on this follow-up's own completion, independent of
+      // isCurrent(). The guard's job is to discard the stale *result* (handled by the early
+      // returns above); the *loading flag* must not be gated on isCurrent(), or a superseded
+      // load-more (filter switch / refresh / restore while a page is in flight) would skip this
+      // reset and wedge loadingMore=true forever, permanently disabling the Load More button.
+      // A superseded-but-mounted setState is harmless; a genuine unmount is covered by the guard
+      // util's abort; a newer load-more re-sets the flag true itself.
+      setLoadingMore(false)
     }
   }
 

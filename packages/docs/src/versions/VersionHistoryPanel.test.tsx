@@ -139,6 +139,55 @@ describe('VersionHistoryPanel — list / filter / counts', () => {
     await waitFor(() => expect(document.querySelectorAll('.octo-version-row').length).toBe(3))
     expect(document.body.textContent).not.toContain('docs.version.errorMore')
   })
+
+  it('re-enables Load More after a superseded load-more (no stuck loadingMore deadlock)', async () => {
+    // Regression for the P1 flagged on #656: setLoadingMore(false) used to be gated on isCurrent(),
+    // so a load-more superseded (by a filter switch / refresh / restore) before its finally ran
+    // would skip the reset and wedge loadingMore=true forever — permanently disabling the Load More
+    // button. Here we hang the load-more page, supersede it with a primary refresh (docId change →
+    // begin()), then release the stale page: its result must be dropped, but loadingMore MUST clear
+    // regardless of isCurrent(), so the fresh list's Load More button is enabled, not deadlocked.
+    let releaseLoadMore: (() => void) | null = null
+    listVersionsMock.mockImplementation(
+      async (_docId: unknown, opts?: { kind?: string; cursor?: number | null }) => {
+        if (opts?.cursor != null) {
+          await new Promise<void>((resolve) => {
+            releaseLoadMore = resolve as () => void
+          })
+          return { items: [{ ...AUTO, docVersionSeq: 4 }], nextCursor: 200, counts: COUNTS }
+        }
+        return { items: [NAMED, AUTO], nextCursor: 100, counts: COUNTS }
+      },
+    )
+    const Panel = (p: { docId: string }) => (
+      <VersionHistoryPanel<PreviewState, string>
+        docId={p.docId}
+        role="admin"
+        loadPreviewState={async (seq: number) => ({ body: `body-${seq}` })}
+        renderPreview={(s) => <div data-testid="preview-body">{s.body}</div>}
+      />
+    )
+    const { rerender } = render(<Panel docId="d_1" />)
+    await screen.findByText('Draft v1')
+    // Kick off load-more; its page request now hangs, so loadingMore stays true and the button
+    // is disabled.
+    fireEvent.click(btnByText(document.body, 'docs.version.loadMore'))
+    await waitFor(() => expect(btnByText(document.body, 'docs.version.loadMore').disabled).toBe(true))
+    // Supersede the in-flight follow-up with a primary refresh (docId change → begin()), which
+    // makes the hanging load-more's isCurrent() report false.
+    rerender(<Panel docId="d_2" />)
+    await waitFor(() =>
+      expect(listVersionsMock.mock.calls.some((c) => c[0] === 'd_2')).toBe(true),
+    )
+    // Release the now-stale load-more: its rows are dropped (isCurrent() false), but the finally
+    // must still clear loadingMore. Before the fix this reset was gated out and the flag stuck.
+    ;(releaseLoadMore as (() => void) | null)?.()
+    await waitFor(() => {
+      const btn = btnByText(document.body, 'docs.version.loadMore')
+      expect(btn).toBeTruthy()
+      expect(btn.disabled).toBe(false)
+    })
+  })
 })
 
 describe('VersionHistoryPanel — centered preview modal', () => {
