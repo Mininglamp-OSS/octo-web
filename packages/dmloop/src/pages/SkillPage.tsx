@@ -1,16 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Typography, Input, Button, Tag, Spin, Modal, Toast, TextArea, Banner,
-  Select, Checkbox, Tooltip,
+  Select, Checkbox, Tooltip, Popover,
 } from "@douyinfe/semi-ui";
 import { Search, Plus, Trash2, Sparkles, Download, FileText, Link2, Copy, Clock3, Users } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
-import type { Agent, Skill, RuntimeDevice, RuntimeLocalSkillSummary } from "../api/types";
+import type { Agent, Skill, Workspace, RuntimeDevice, RuntimeLocalSkillSummary } from "../api/types";
 import {
   listSkills, createSkill, deleteSkill, skillSource, importSkill,
   fetchRuntimeSkills, importRuntimeSkill,
 } from "../api/skillApi";
 import { listAgents } from "../api/agentApi";
+import { listWorkspaces } from "../api/workspaceApi";
 import { listRuntimes } from "../api/runtimeApi";
 import SkillDetailPage from "../panel/SkillDetailPage";
 import { confirmDelete } from "../ui/confirmDelete";
@@ -26,6 +27,7 @@ export default function SkillPage() {
   const { t, format } = useI18n();
   const [rows, setRows] = useState<Skill[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [keyword, setKeyword] = useState("");
@@ -49,17 +51,35 @@ export default function SkillPage() {
 
   const reload = useCallback(() => {
     setLoading(true); setError(null);
-    Promise.all([listSkills(), listAgents().catch(() => [] as Agent[])])
-      .then(([sk, ag]) => { setRows(sk); setAgents(ag); })
+    Promise.all([
+      listSkills(),
+      listAgents().catch(() => [] as Agent[]),
+      listWorkspaces().catch(() => [] as Workspace[]),
+    ])
+      .then(([sk, ag, ws]) => { setRows(sk); setAgents(ag); setWorkspaces(ws); })
       .catch((e) => setError(e?.message ?? "load failed"))
       .finally(() => setLoading(false));
   }, []);
   useEffect(reload, [reload]);
 
-  // 每个 skill 被多少个 AI队友引用：由 agents 的 skills 反向折叠得到。
-  const usedByCount = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const a of agents) for (const s of a.skills ?? []) m.set(s.id, (m.get(s.id) ?? 0) + 1);
+  // workspace_id → 展示名映射，用于 hover 时标注 agent 属于哪个工作空间。
+  const workspaceName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const w of workspaces) m.set(w.id, w.name);
+    return m;
+  }, [workspaces]);
+
+  // 每个 skill 被哪些 AI队友引用：由 agents 的 skills 反向折叠得到。
+  // 只统计「未归档」的 agent（archived_at 为空），归档的不计入使用数。
+  const usedBy = useMemo(() => {
+    const m = new Map<string, Agent[]>();
+    for (const a of agents) {
+      if (a.archived_at) continue; // 已归档 agent 不计入引用
+      for (const s of a.skills ?? []) {
+        const arr = m.get(s.id);
+        if (arr) arr.push(a); else m.set(s.id, [a]);
+      }
+    }
     return m;
   }, [agents]);
 
@@ -137,6 +157,46 @@ export default function SkillPage() {
     catch (e) { Toast.error((e as Error)?.message ?? "delete failed"); }
   };
 
+  // 渲染 skill 的「被谁使用」徽标：0 个显示未使用；>0 个显示数量 + hover 弹出
+  // 具体的 [工作空间] · agent 列表（按 workspace 分组）。
+  const renderUsedBy = (skillId: string) => {
+    const list = usedBy.get(skillId) ?? [];
+    if (list.length === 0) {
+      return <span className="loop-skill-list__used loop-skill-list__used--empty"><Users size={13} />{t("loop.skill.unused")}</span>;
+    }
+    // 按 workspace 分组
+    const groups = new Map<string, Agent[]>();
+    for (const a of list) {
+      const arr = groups.get(a.workspace_id);
+      if (arr) arr.push(a); else groups.set(a.workspace_id, [a]);
+    }
+    const popContent = (
+      <div className="loop-skill-used-pop">
+        {Array.from(groups.entries()).map(([wsId, ags]) => (
+          <div key={wsId} className="loop-skill-used-pop__group">
+            <div className="loop-skill-used-pop__ws">{workspaceName.get(wsId) ?? t("loop.skill.unknownWorkspace")}</div>
+            {ags.map((a) => (
+              <div key={a.id} className="loop-skill-used-pop__agent">
+                <span className="loop-skill-used-pop__avatar">{a.name.trim().slice(0, 1).toUpperCase() || "A"}</span>
+                <span className="loop-skill-used-pop__name">{a.name}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+    return (
+      <Popover content={popContent} position="bottomLeft" showArrow>
+        <span
+          className="loop-skill-list__used"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Users size={13} />{t("loop.skill.usedCount", { values: { count: list.length } })}
+        </span>
+      </Popover>
+    );
+  };
+
   return (
     <div className="loop-page">
       <div className="loop-skill-page-head">
@@ -187,11 +247,7 @@ export default function SkillPage() {
                       )}
                     </div>
                     <div className="loop-skill-list__meta">
-                      {(usedByCount.get(row.id) ?? 0) > 0 && (
-                        <span className="loop-skill-list__used">
-                          <Users size={13} />{t("loop.skill.usedCount", { values: { count: usedByCount.get(row.id) ?? 0 } })}
-                        </span>
-                      )}
+                      {renderUsedBy(row.id)}
                       <Tag color={SRC[src]} size="small">{t(`loop.skill.sourceType.${src}`)}</Tag>
                       <span className="loop-skill-list__time"><Clock3 size={13} />{formatRelativeTime(row.updated_at ?? row.created_at, format)}</span>
                       <Button

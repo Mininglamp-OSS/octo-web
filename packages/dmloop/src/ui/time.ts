@@ -22,3 +22,17 @@ export function formatRelativeTime(
   if (absDiff < 10 * day) return format.relativeTime(Math.round(diff / day), "day");
   return format.date(date, { month: "short", day: "numeric" });
 }
+
+/** 时长展示：<1min → Ns；<1h → Nm SSs；否则 Nh Mm。用于运行履历。 */
+export function formatDurationMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
+  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))}s`;
+  if (ms < 3_600_000) {
+    const m = Math.floor(ms / 60_000);
+    const s = Math.round((ms % 60_000) / 1000);
+    return `${m}m ${String(s).padStart(2, "0")}s`;
+  }
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return `${h}h ${m}m`;
+}
