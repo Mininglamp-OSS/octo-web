@@ -1,6 +1,7 @@
 // @octo/loop — Workspace / Members / Invitations API（后端契约联调）
 import type { Workspace, WorkspaceMember, Invitation } from "./types";
 import { httpGet, httpPost, httpPatch, httpDelete } from "./http";
+import { afterDirectoryMutation } from "./directory";
 
 export function listWorkspaces(): Promise<Workspace[]> {
   return httpGet<Workspace[]>("/workspaces");
@@ -42,7 +43,8 @@ export function addOctoMember(
   workspaceId: string,
   req: { octo_uid: string; role?: string },
 ): Promise<WorkspaceMember> {
-  return httpPost<WorkspaceMember>(`/workspaces/${workspaceId}/octo-members`, req);
+  // 加成员后目录候选(负责人/创建者下拉、内联指派)会变 → 清缓存,下次读重建。
+  return httpPost<WorkspaceMember>(`/workspaces/${workspaceId}/octo-members`, req).then(afterDirectoryMutation);
 }
 
 /** 修改成员角色。 */
@@ -56,7 +58,8 @@ export function updateMemberRole(
 
 /** 移除成员。 */
 export function removeMember(workspaceId: string, memberId: string): Promise<void> {
-  return httpDelete<void>(`/workspaces/${workspaceId}/members/${memberId}`);
+  // 删成员后目录候选变 → 清缓存,避免下拉仍显示已删成员。
+  return httpDelete<void>(`/workspaces/${workspaceId}/members/${memberId}`).then(afterDirectoryMutation);
 }
 
 /** 待处理邀请列表。 */

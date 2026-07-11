@@ -19,6 +19,11 @@ interface Directory {
 
 let _cache: Directory | null = null;
 let _loading: Promise<Directory> | null = null;
+// generation:每次 invalidate 自增。in-flight build 只在自己启动时的 gen 未被 invalidate
+// 打断时才提交到 _cache —— 否则(mutation/切 workspace 在 build 途中发生)build 会把
+// **失效前的陈旧数据**写回 _cache,重新污染。等待者仍拿到本次 d(自身发起早于 mutation),
+// 但不毒害后续读。
+let _gen = 0;
 
 async function build(): Promise<Directory> {
   const slug = currentWorkspaceSlug();
@@ -67,9 +72,14 @@ export async function ensureDirectory(force = false): Promise<Directory> {
   // 已有 in-flight build 时并发调用者直接搭车(切 workspace 会 invalidateDirectory 清空 _loading),
   // 避免冷启动(_cache 尚为 null)多个消费者各拉一遍 directory。
   if (!force && _loading) return _loading;
+  const myGen = _gen;
   _loading = build().then((d) => {
-    _cache = d;
-    _loading = null;
+    // 只有本次 build 未被 invalidate 打断才提交并清 _loading;被打断则不写 _cache
+    // (下次 ensureDirectory 见 _cache/_loading 均已被 invalidate 清空 → 重新 build)。
+    if (myGen === _gen) {
+      _cache = d;
+      _loading = null;
+    }
     return d;
   });
   return _loading;
@@ -78,6 +88,15 @@ export async function ensureDirectory(force = false): Promise<Directory> {
 export function invalidateDirectory(): void {
   _cache = null;
   _loading = null;
+  _gen++;
+}
+
+// 目录相关实体(member/agent/squad/project)的写操作**成功后**链在 .then 上:清缓存,
+// 下次读(打开新建弹窗、渲染筛选/看板 enrich)即重建 → 增删改后候选/名字/项目选项不再陈旧。
+// 放在共享 API 层而非各 UI 处,一处收口护全部消费者(Rule 9)。
+export function afterDirectoryMutation<T>(result: T): T {
+  invalidateDirectory();
+  return result;
 }
 
 export function actorName(

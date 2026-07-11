@@ -1,7 +1,7 @@
 // @octo/loop — Squad API（后端契约联调）
 import type { Squad, SquadMember, UpsertSquadReq, ListParams } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete, httpPatch } from "./http";
-import { ensureDirectory, actorName, actorAvatar } from "./directory";
+import { ensureDirectory, actorName, actorAvatar, afterDirectoryMutation } from "./directory";
 
 function enrichSquad(s: Squad, dir: Awaited<ReturnType<typeof ensureDirectory>>): Squad {
   const members = (s.members ?? s.member_preview ?? []).map((m) => ({
@@ -37,15 +37,15 @@ export async function getSquad(id: string): Promise<Squad> {
 
 export function createSquad(req: UpsertSquadReq): Promise<Squad> {
   // 后端要求 leader_id；无则由页面校验。
-  return httpPost<Squad>("/squads", req);
+  return httpPost<Squad>("/squads", req).then(afterDirectoryMutation);
 }
 
 export function updateSquad(id: string, req: UpsertSquadReq): Promise<Squad> {
-  return httpPut<Squad>(`/squads/${id}`, req);
+  return httpPut<Squad>(`/squads/${id}`, req).then(afterDirectoryMutation);
 }
 
 export function deleteSquad(id: string): Promise<void> {
-  return httpDelete<void>(`/squads/${id}`);
+  return httpDelete<void>(`/squads/${id}`).then(afterDirectoryMutation);
 }
 
 export function listSquadMembers(id: string): Promise<SquadMember[]> {
