@@ -982,3 +982,12 @@
   background: var(--semi-color-fill-0, #f6f7f9);
   border-radius: 8px;
 }
+
+/* ---------- 分组板 no-* 复选(含无负责人/无项目) ---------- */
+.loop-nofilter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}

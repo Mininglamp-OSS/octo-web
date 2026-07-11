@@ -93,6 +93,10 @@ export interface GroupedParams {
   involves_user_id?: string;
   creator_id?: string;
   project_id?: string;
+  project_ids?: string[];
+  // 纳入无项目的 issue(后端 include_no_project)。与项目多选配对 = 所选项目 ∪ 无项目。
+  // (未加 include_no_assignee:仅与 assignee_filters 配对有意义,本 UI 用 assignee_types/involves。)
+  include_no_project?: boolean;
   date_field?: IssueDateField;
   date_start?: string;
   date_end?: string;

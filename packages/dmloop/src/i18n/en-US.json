@@ -60,7 +60,8 @@
     "assignee": "Assignee",
     "creator": "Creator",
     "project": "Project",
-    "dateRange": "Date range"
+    "dateRange": "Date range",
+    "noProject": "Incl. no project"
   },
   "dateField": {
     "created_at": "Created",
