@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
+import type { Editor } from '@tiptap/core'
 
-// Batch 8 item 2: the version preview/compare moved out of the sidebar drawer into a centered,
-// scrollable modal. The sidebar keeps only the version list; clicking "preview" on a row opens the
-// modal, which keeps the preview/compare toggle and closes on overlay-click / Escape. The
-// previewGuard + previewState machine and the (row-triggered) restore flow are unchanged.
+// XIN-840: the doc VersionPanel is now a THIN ADAPTER over the unified <VersionHistoryPanel>. The
+// shell's own behavior (list / filter / counts / load-more, the preview modal machine, race guard,
+// mutations, role gating) is pinned by VersionHistoryPanel.test.tsx. These tests pin only the
+// doc-specific wiring the adapter injects: it renders the shell as a single mixed list, loads a
+// preview via getVersionState (decoded PM-JSON → throwaway-editor preview), and compares a version
+// against the live editor's JSON through the real block-level diff.
 
-const VERSION = {
+const NAMED = {
   docVersionSeq: 7,
   kind: 'named' as const,
   label: 'Draft v1',
@@ -16,8 +19,7 @@ const VERSION = {
   schemaVersion: 1,
   restoredFrom: null,
 }
-
-const AUTO_VERSION = {
+const AUTO = {
   docVersionSeq: 6,
   kind: 'auto' as const,
   label: '',
@@ -27,26 +29,23 @@ const AUTO_VERSION = {
   schemaVersion: 1,
   restoredFrom: null,
 }
-
 const COUNTS = { auto: 5, manual: 2, restore: 1, total: 8 }
 
-// Kind-aware mock: the manual stream carries named+restore rows, the auto stream carries autosaves.
-// Each stream has its own cursor; both responses embed the full per-kind counts.
+const HISTORICAL_DOC = {
+  type: 'doc',
+  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'historical body' }] }],
+}
+
 const listVersionsMock = vi.fn(
   async (_docId: unknown, opts?: { kind?: string; cursor?: number | null }) => {
-    const kind = opts?.kind
-    const cursor = opts?.cursor
-    if (kind === 'auto') {
-      if (cursor == null) return { items: [AUTO_VERSION], nextCursor: 200, counts: COUNTS }
-      return { items: [{ ...AUTO_VERSION, docVersionSeq: 5 }], nextCursor: null, counts: COUNTS }
-    }
-    if (cursor == null) return { items: [VERSION], nextCursor: 100, counts: COUNTS }
-    return { items: [{ ...VERSION, docVersionSeq: 4 }], nextCursor: null, counts: COUNTS }
+    if (opts?.cursor != null) return { items: [{ ...AUTO, docVersionSeq: 4 }], nextCursor: null, counts: COUNTS }
+    return { items: [NAMED, AUTO], nextCursor: 100, counts: COUNTS }
   },
 )
 const getVersionStateMock = vi.fn(async (..._a: unknown[]) => ({
-  doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'historical body' }] }] },
+  doc: HISTORICAL_DOC,
   schemaVersion: 1,
+  docVersionSeq: 7,
 }))
 
 vi.mock('./api.ts', async (importOriginal) => {
@@ -69,204 +68,77 @@ vi.mock('@tiptap/react', () => ({
 
 import { VersionPanel } from './VersionPanel.tsx'
 
+/** A live editor whose JSON is the "current" side of a diff (read-only in the panel). */
+function fakeEditor(text: string): Editor {
+  return {
+    getJSON: () => ({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    }),
+  } as unknown as Editor
+}
+
+const btnByText = (root: ParentNode, text: string) =>
+  Array.from(root.querySelectorAll('button')).find((b) => b.textContent === text) as HTMLButtonElement
+
 beforeEach(() => {
   listVersionsMock.mockClear()
   getVersionStateMock.mockClear()
 })
-
 afterEach(() => cleanup())
 
-async function renderAndPreview() {
-  render(<VersionPanel docId="d_1" role="admin" />)
-  // Wait for the list to load and the row's "preview" action to appear.
-  const previewBtn = await screen.findByText('docs.version.preview')
-  // No modal until preview is clicked.
-  expect(document.querySelector('.docs-version-preview-modal')).toBeNull()
-  fireEvent.click(previewBtn)
-  // The state fetch resolves and the modal shows the preview.
-  await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeTruthy())
-  return previewBtn
-}
-
-describe('VersionPanel — preview modal (item 2)', () => {
-  it('opens a centered modal (not an inline sidebar detail) on preview click, showing the content', async () => {
-    await renderAndPreview()
-    const modal = document.querySelector('.docs-version-preview-modal') as HTMLElement
-    // It is a modal dialog mounted on the shared overlay.
-    expect(modal.closest('.octo-modal-overlay')).toBeTruthy()
-    expect(modal.getAttribute('role')).toBe('dialog')
-    // The historical content renders inside the modal's scrollable body.
-    await waitFor(() =>
-      expect(modal.querySelector('[data-testid="version-preview-content"]')).toBeTruthy(),
-    )
-    expect(modal.querySelector('.docs-version-preview-modal-body')).toBeTruthy()
-    // The sidebar section no longer carries the inline preview detail.
-    expect(document.querySelector('.octo-version-panel .octo-version-detail')).toBeNull()
-  })
-
-  it('keeps the preview / compare toggle inside the modal', async () => {
-    await renderAndPreview()
-    const modal = document.querySelector('.docs-version-preview-modal') as HTMLElement
-    // Starts on preview → the toggle offers "compare".
-    const toggle = await waitFor(() => {
-      const b = Array.from(modal.querySelectorAll('button')).find(
-        (el) => el.textContent === 'docs.version.compare',
-      )
-      expect(b).toBeTruthy()
-      return b as HTMLButtonElement
-    })
-    expect(toggle.disabled).toBe(false)
-    fireEvent.click(toggle)
-    // Now in compare mode → the toggle offers "show preview" again.
-    expect(
-      Array.from(modal.querySelectorAll('button')).some(
-        (el) => el.textContent === 'docs.version.showPreview',
-      ),
-    ).toBe(true)
-  })
-
-  it('closes the modal on overlay click', async () => {
-    await renderAndPreview()
-    const overlay = document.querySelector('.octo-modal-overlay') as HTMLElement
-    fireEvent.mouseDown(overlay)
-    await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeNull())
-  })
-
-  it('does not close when the dialog body itself is clicked (overlay stopPropagation)', async () => {
-    await renderAndPreview()
-    const modal = document.querySelector('.docs-version-preview-modal') as HTMLElement
-    fireEvent.mouseDown(modal)
-    expect(document.querySelector('.docs-version-preview-modal')).toBeTruthy()
-  })
-
-  it('closes the modal on Escape', async () => {
-    await renderAndPreview()
-    fireEvent.keyDown(document, { key: 'Escape' })
-    await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeNull())
-  })
-
-  it('closes via the modal close button', async () => {
-    await renderAndPreview()
-    const modal = document.querySelector('.docs-version-preview-modal') as HTMLElement
-    const close = Array.from(modal.querySelectorAll('button')).find(
-      (el) => el.textContent === 'docs.version.close',
-    ) as HTMLButtonElement
-    fireEvent.click(close)
-    await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeNull())
-  })
-})
-
-// Item 3: the history is two collapsible streams — manual (named + restore) expanded by default,
-// auto snapshots collapsed and lazily fetched. Each stream owns its items / cursor / load-more.
-describe('VersionPanel — two-stream groups (item 3)', () => {
-  const groupHeader = (root: HTMLElement, key: string) =>
-    Array.from(root.querySelectorAll('.octo-version-group-header')).find((b) =>
-      b.textContent?.includes(key),
-    ) as HTMLButtonElement
-
-  it('renders both group headers with their counts; manual expanded, auto collapsed', async () => {
+describe('VersionPanel — thin adapter over VersionHistoryPanel', () => {
+  it('renders the shell as a single mixed list (kind="all") with the unified counts header', async () => {
     render(<VersionPanel docId="d_1" role="admin" />)
-    await screen.findByText('docs.version.manualGroup')
-
-    const manual = groupHeader(document.body, 'docs.version.manualGroup')
-    const auto = groupHeader(document.body, 'docs.version.autoGroup')
-    // Manual count = counts.manual + counts.restore (2 + 1); auto count = counts.auto (5).
-    expect(manual.textContent).toContain('(3)')
-    expect(auto.textContent).toContain('(5)')
-    expect(manual.getAttribute('aria-expanded')).toBe('true')
-    expect(auto.getAttribute('aria-expanded')).toBe('false')
-
-    // On mount only the manual stream is fetched (auto is lazy).
-    const kinds = listVersionsMock.mock.calls.map((c) => (c[1] as { kind?: string })?.kind)
-    expect(kinds).toContain('manual')
-    expect(kinds).not.toContain('auto')
+    await screen.findByText('Draft v1')
+    // One flat list, not two collapsible group headers.
+    expect(document.querySelectorAll('.octo-version-list .octo-version-row').length).toBe(2)
+    expect(document.querySelector('.octo-version-group-manual')).toBeNull()
+    expect(document.querySelector('.octo-version-group-auto')).toBeNull()
+    // The shell requests the merged stream on mount.
+    expect((listVersionsMock.mock.calls[0][1] as { kind?: string }).kind).toBe('all')
+    // Counts header: manual(2)+restore(1)=3 · auto=5.
+    const counts = document.querySelector('.octo-version-counts') as HTMLElement
+    expect(counts.textContent).toContain('3')
+    expect(counts.textContent).toContain('5')
   })
 
-  it('lazily fetches the auto stream the first time the auto group is expanded', async () => {
+  it('exposes the doc filter tabs and reloads with the chosen kind', async () => {
     render(<VersionPanel docId="d_1" role="admin" />)
-    await screen.findByText('docs.version.autoGroup')
-    expect(listVersionsMock.mock.calls.some((c) => (c[1] as { kind?: string })?.kind === 'auto')).toBe(false)
-
-    fireEvent.click(groupHeader(document.body, 'docs.version.autoGroup'))
-
+    await screen.findByText('Draft v1')
+    fireEvent.click(btnByText(document.body, 'docs.version.filterAuto'))
     await waitFor(() =>
       expect(listVersionsMock.mock.calls.some((c) => (c[1] as { kind?: string })?.kind === 'auto')).toBe(true),
     )
-    // Auto rows show the auto badge + the autosave-time fallback label (empty wire label).
-    await screen.findByText('docs.version.badgeAuto')
-    expect(screen.getByText('docs.time.autosave')).toBeTruthy()
   })
 
-  it('does not re-fetch the auto stream on a second expand toggle', async () => {
+  it('previews a version through getVersionState and renders the throwaway-editor preview', async () => {
     render(<VersionPanel docId="d_1" role="admin" />)
-    await screen.findByText('docs.version.autoGroup')
-    const auto = groupHeader(document.body, 'docs.version.autoGroup')
-    fireEvent.click(auto) // expand → fetch
-    await waitFor(() =>
-      expect(listVersionsMock.mock.calls.filter((c) => (c[1] as { kind?: string })?.kind === 'auto').length).toBe(1),
-    )
-    fireEvent.click(auto) // collapse
-    fireEvent.click(auto) // expand again — must reuse the already-loaded stream
-    expect(listVersionsMock.mock.calls.filter((c) => (c[1] as { kind?: string })?.kind === 'auto').length).toBe(1)
-  })
-
-  it("each group's load-more pages its OWN cursor stream", async () => {
-    render(<VersionPanel docId="d_1" role="admin" />)
-    await screen.findByText('docs.version.manualGroup')
-
-    // Manual group: load-more uses the manual cursor (100) with kind=manual.
-    const manualGroup = document.querySelector('.octo-version-group-manual') as HTMLElement
-    const manualMore = Array.from(manualGroup.querySelectorAll('button')).find(
-      (b) => b.textContent === 'docs.version.loadMore',
-    ) as HTMLButtonElement
-    fireEvent.click(manualMore)
-    await waitFor(() =>
-      expect(
-        listVersionsMock.mock.calls.some(
-          (c) => (c[1] as { kind?: string; cursor?: number })?.kind === 'manual' && (c[1] as { cursor?: number })?.cursor === 100,
-        ),
-      ).toBe(true),
-    )
-
-    // Expand auto, then its load-more uses the auto cursor (200) with kind=auto.
-    fireEvent.click(groupHeader(document.body, 'docs.version.autoGroup'))
-    await screen.findByText('docs.version.badgeAuto')
-    const autoGroup = document.querySelector('.octo-version-group-auto') as HTMLElement
-    const autoMore = Array.from(autoGroup.querySelectorAll('button')).find(
-      (b) => b.textContent === 'docs.version.loadMore',
-    ) as HTMLButtonElement
-    fireEvent.click(autoMore)
-    await waitFor(() =>
-      expect(
-        listVersionsMock.mock.calls.some(
-          (c) => (c[1] as { kind?: string; cursor?: number })?.kind === 'auto' && (c[1] as { cursor?: number })?.cursor === 200,
-        ),
-      ).toBe(true),
-    )
-  })
-
-  it('previews and restores an auto row (kind-agnostic)', async () => {
-    render(<VersionPanel docId="d_1" role="admin" />)
-    await screen.findByText('docs.version.autoGroup')
-    fireEvent.click(groupHeader(document.body, 'docs.version.autoGroup'))
-    await screen.findByText('docs.version.badgeAuto')
-
-    const autoGroup = document.querySelector('.octo-version-group-auto') as HTMLElement
-    // Preview the auto row → the shared preview modal opens.
-    const autoPreview = Array.from(autoGroup.querySelectorAll('button')).find(
-      (b) => b.textContent === 'docs.version.preview',
-    ) as HTMLButtonElement
-    fireEvent.click(autoPreview)
+    await screen.findByText('Draft v1')
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
     await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeTruthy())
+    // Loaded via GET /versions/:seq/state for the clicked row (docId + seq forwarded).
     expect(getVersionStateMock).toHaveBeenCalled()
-    fireEvent.keyDown(document, { key: 'Escape' })
-    await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeNull())
+    expect(getVersionStateMock.mock.calls[0][0]).toBe('d_1')
+    expect(getVersionStateMock.mock.calls[0][1]).toBe(7)
+    const modal = document.querySelector('.docs-version-preview-modal') as HTMLElement
+    await waitFor(() =>
+      expect(modal.querySelector('[data-testid="version-preview-content"]')).toBeTruthy(),
+    )
+  })
 
-    // Restore the auto row → the (kind-agnostic) confirm dialog opens.
-    const autoRestore = Array.from(autoGroup.querySelectorAll('button')).find(
-      (b) => b.textContent === 'docs.version.restore',
-    ) as HTMLButtonElement
-    fireEvent.click(autoRestore)
-    await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeTruthy())
+  it('compares a version against the live editor JSON via the block-level diff', async () => {
+    render(<VersionPanel docId="d_1" role="admin" editor={fakeEditor('current body')} />)
+    await screen.findByText('Draft v1')
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
+    const modal = await waitFor(() => document.querySelector('.docs-version-preview-modal') as HTMLElement)
+    await waitFor(() => expect(modal.querySelector('[data-testid="version-preview-content"]')).toBeTruthy())
+    // Toggle into compare → the real DiffView renders the historical-vs-current block diff.
+    fireEvent.click(btnByText(modal, 'docs.version.compare'))
+    await waitFor(() => expect(modal.querySelector('.octo-version-diff')).toBeTruthy())
+    const diff = modal.querySelector('.octo-version-diff') as HTMLElement
+    // 'historical body' → 'current body' is a single changed block.
+    expect(diff.querySelector('.octo-diff-removed')?.textContent).toContain('historical body')
+    expect(diff.querySelector('.octo-diff-added')?.textContent).toContain('current body')
   })
 })
