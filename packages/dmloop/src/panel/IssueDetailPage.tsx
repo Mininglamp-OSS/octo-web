@@ -313,11 +313,18 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     if (!files?.length) return;
     const token = reqRef.current;
     setUploading(true);
+    let failed = 0;
     try {
-      for (const f of Array.from(files)) await uploadAttachment(f, { issueId });
-    } catch (e) {
-      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+      // 逐文件隔离:一个失败不影响其余(与 submitComment 一致),否则首个失败会漏传后续文件。
+      for (const f of Array.from(files)) {
+        try {
+          await uploadAttachment(f, { issueId });
+        } catch {
+          failed++;
+        }
+      }
     } finally {
+      if (failed) Toast.error(t("loop.toast.attachFailed", { values: { count: failed } }));
       // 先解锁再触发重取(syncIssue 自带 catch、fire-and-forget):即使重取失败也不会把上传按钮永久卡在 disabled。
       setUploading(false);
       syncIssue(token);
@@ -369,17 +376,25 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       setSuppressed(new Set());
       if (!replyTo) setPendingFiles([]);
       // 把待发文件带 commentId 绑到已建评论;单个失败只记录、不回滚评论。
-      let attFailed = false;
+      const failedFiles: File[] = [];
       for (const f of files) {
         try {
           await uploadAttachment(f, { commentId: comment.id });
         } catch {
-          attFailed = true;
+          failedFiles.push(f);
         }
       }
+      // 先做失败回填 + 文案(同步、不会抛),再刷新评论列表:reloadComments await listComments 可能抛,
+      // 若放在其后,reload 失败会跳过回填 → 失败文件再次丢失(#647 评审抓到的排序缺口)。
+      if (failedFiles.length) {
+        // 评论已建成功、仅附件失败:把失败文件放回输入区(否则文件对象被丢弃、永久丢失且无重试入口),
+        // 并用区分于"评论失败"的文案——避免误导用户以为整条评论没发出去。
+        if (!replyTo) setPendingFiles(failedFiles);
+        Toast.error(t("loop.toast.commentAttachFailed", { values: { count: failedFiles.length } }));
+      } else {
+        Toast.success(t("loop.toast.commentAdded"));
+      }
       await reloadComments(token);
-      if (attFailed) Toast.error(t("loop.toast.saveFailed"));
-      else Toast.success(t("loop.toast.commentAdded"));
     } finally {
       setSubmitting(false);
     }
