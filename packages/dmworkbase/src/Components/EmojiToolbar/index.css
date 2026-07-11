@@ -208,11 +208,16 @@ body[theme-mode=dark] .wk-emojipanel-tab-item-selected {
     box-shadow: 0 4px 10px rgba(0, 0, 0, .12);
 }
 
-/* sticker thumbnails are 60px — override the 28px emoji-img rule via higher specificity */
+/* sticker thumbnails are 60px — override the 28px emoji-img rule via higher specificity。
+   max-width/height:100% 是给 grid 化后的兜底：格子随窄面板收缩到 <72px 时内容盒会小于
+   60px，固定 60px 的媒体会被 .wk-sticker-item{overflow:hidden} 裁掉；封顶到内容盒后随格子
+   缩、object-fit 保持比例、永不裁。正常宽度下内容盒 ≥60px，媒体仍是 60px，观感不变。 */
 .wk-emojipanel-content ul li.wk-sticker-item img,
 .wk-emojipanel-content ul li.wk-sticker-item tgs-player {
     width: 60px;
     height: 60px;
+    max-width: 100%;
+    max-height: 100%;
     object-fit: contain;
     margin: 0;
 }
@@ -295,7 +300,7 @@ body[theme-mode=dark] .wk-emojipanel-tab-item-selected {
 
 /* hover「原位弹大」预览：portal 到 <body>、position:fixed，盖过面板（面板 z-index:999）。
    pointer-events:none 让它不拦截鼠标——既不打断「点击即发送」，也保证网格的 mouseleave
-   能正常触发去隐藏预览。尺寸/坐标由行内 style 给（computeStickerPreviewStyle）。 */
+   能正常触发去隐藏预览。尺寸/坐标由行内 style 给（computeStickerPreviewGeometry）。 */
 .wk-sticker-preview {
     position: fixed;
     z-index: 1002;

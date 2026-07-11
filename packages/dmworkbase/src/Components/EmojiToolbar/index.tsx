@@ -82,6 +82,9 @@ const STICKER_PREVIEW_SIZE = 170
 const STICKER_PREVIEW_MARGIN = 8
 // 放大卡片与格子之间的间距，避免贴着格子边缘。
 const STICKER_PREVIEW_GAP = 8
+// caret 尖角在卡片内的最小左右内边距：--wk-r-lg 圆角 16 + 尖角半基座 8 = 24，
+// 保证边列贴纸把卡片夹到视口边时，尖角基座仍整段落在卡片直边、不压圆角。
+const STICKER_PREVIEW_CARET_INSET = 24
 // 首次悬停到浮出的延时：扫过网格时不会一路狂闪；一旦浮出，格子间移动直接无缝切换。
 const STICKER_PREVIEW_DELAY = 120
 
@@ -480,7 +483,8 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
     // 把放大卡片定位并夹进视口（口径同 computePanelPos）：水平以格子中心对齐；垂直优先浮在
     // 格子上方（保留格子与删除「×」可见），上方空间不足则翻到格子下方，最后统一夹进视口。
     // 一并算出指向源格子的 caret：placement=above 时卡片在格子上方、尖朝下；below 时反之。
-    // caretLeft 是尖角相对卡片左边缘的偏移，对齐格子中心并夹在卡片左右内 14px（不压圆角）。
+    // caretLeft 是尖角相对卡片左边缘的偏移，对齐格子中心并夹进卡片内 STICKER_PREVIEW_CARET_INSET，
+    // 保证尖角基座整段落在卡片直边上、不压到圆角。
     private computeStickerPreviewGeometry(rect: DOMRect): {
         style: React.CSSProperties
         placement: "above" | "below"
@@ -501,7 +505,10 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
             placement = "below"
         }
         top = Math.max(m, Math.min(top, vh - size - m))
-        const caretLeft = Math.max(14, Math.min(cellCenterX - left, size - 14))
+        const caretLeft = Math.max(
+            STICKER_PREVIEW_CARET_INSET,
+            Math.min(cellCenterX - left, size - STICKER_PREVIEW_CARET_INSET)
+        )
         return { style: { left, top, width: size, height: size }, placement, caretLeft }
     }
 
