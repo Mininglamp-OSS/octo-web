@@ -34,7 +34,8 @@
   "view": {
     "board": "看板",
     "grouped": "分组",
-    "list": "列表"
+    "list": "列表",
+    "card": "卡片"
   },
   "scope": {
     "all": "全部",
@@ -307,7 +308,32 @@
   },
   "project": {
     "progress": "进度",
-    "lead": "负责人"
+    "lead": "负责人",
+    "descPlaceholder": "添加描述...",
+    "descHint": "会作为项目上下文提供给智能体，应用于该项目下的每个任务。"
+  },
+  "webhook": {
+    "title": "Webhook",
+    "hint": "在 issue 状态变化时触发。每个请求都用 HMAC-SHA256 签名，放在 X-Multica-Signature-256 请求头里。",
+    "urlPlaceholder": "https://example.com/webhooks/multica",
+    "add": "添加",
+    "empty": "还没有 webhook。",
+    "enabled": "启用",
+    "delete": "删除 webhook",
+    "deleteConfirm": "删除这个 webhook？",
+    "deleteConfirmDesc": "接收地址会立刻停止收到事件。此操作无法撤销。",
+    "secretTitle": "复制你的签名密钥",
+    "secretDesc": "这个密钥只显示一次。用它来校验收到的请求里的 X-Multica-Signature-256 请求头。现在就妥善保存。",
+    "done": "完成",
+    "copy": "复制",
+    "copied": "密钥已复制",
+    "copyFailed": "复制失败",
+    "created": "webhook 已创建",
+    "createFailed": "创建 webhook 失败",
+    "updateFailed": "更新 webhook 失败",
+    "deleted": "webhook 已删除",
+    "deleteFailed": "删除 webhook 失败",
+    "urlRequired": "请填写接收地址"
   },
   "label": {
     "add": "添加标签",

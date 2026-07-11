@@ -447,6 +447,30 @@ export interface UpsertProjectReq {
   lead_id?: string | null;
 }
 
+/* ---------- Webhook（对齐 multica /webhook-subscriptions，后端契约不变） ---------- */
+export interface WebhookSubscription {
+  id: string;
+  workspace_id: string;
+  project_id: string | null;
+  url: string;
+  events: string[];
+  enabled: boolean;
+  secret_hint: string;
+  secret?: string; // 仅创建返回一次，需立即展示给用户保存
+  created_at: string;
+  updated_at: string;
+}
+export interface CreateWebhookReq {
+  url: string;
+  project_id?: string | null;
+  events?: string[];
+}
+export interface UpdateWebhookReq {
+  url?: string;
+  events?: string[];
+  enabled?: boolean;
+}
+
 /* ---------- Agent ---------- */
 export type AgentStatus = "idle" | "working" | "offline" | "error" | string;
 export type AgentVisibility = "workspace" | "private";
