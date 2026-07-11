@@ -1,7 +1,7 @@
 // @octo/loop — Project API（后端契约联调）
 import type { Project, UpsertProjectReq, ListParams } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
-import { ensureDirectory, actorName } from "./directory";
+import { ensureDirectory, actorName, afterDirectoryMutation } from "./directory";
 
 export async function listProjects(params?: ListParams): Promise<Project[]> {
   const [data, dir] = await Promise.all([
@@ -26,13 +26,13 @@ export async function getProject(id: string): Promise<Project> {
 }
 
 export function createProject(req: UpsertProjectReq): Promise<Project> {
-  return httpPost<Project>("/projects", req);
+  return httpPost<Project>("/projects", req).then(afterDirectoryMutation);
 }
 
 export function updateProject(id: string, req: UpsertProjectReq): Promise<Project> {
-  return httpPut<Project>(`/projects/${id}`, req);
+  return httpPut<Project>(`/projects/${id}`, req).then(afterDirectoryMutation);
 }
 
 export function deleteProject(id: string): Promise<void> {
-  return httpDelete<void>(`/projects/${id}`);
+  return httpDelete<void>(`/projects/${id}`).then(afterDirectoryMutation);
 }
