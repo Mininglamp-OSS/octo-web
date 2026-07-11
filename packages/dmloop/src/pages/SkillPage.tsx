@@ -7,7 +7,7 @@ import { Search, Plus, Trash2, Sparkles, Download, FileText, Link2, Copy, Clock3
 import { useI18n, WKApp } from "@octo/base";
 import type { Agent, Skill, Workspace, RuntimeDevice, RuntimeLocalSkillSummary } from "../api/types";
 import {
-  listSkills, createSkill, deleteSkill, skillSource, importSkill,
+  listSkills, createSkill, deleteSkill, importSkill,
   fetchRuntimeSkills, importRuntimeSkill,
 } from "../api/skillApi";
 import { listAgents } from "../api/agentApi";
@@ -20,7 +20,6 @@ import { ensureSkillFrontmatter, parseFrontmatter } from "../ui/frontmatter";
 import { formatRelativeTime } from "../ui/time";
 
 const { Title, Text } = Typography;
-const SRC: Record<string, "green" | "blue" | "grey"> = { github: "green", local: "blue", workspace: "grey" };
 type CreateTab = "local" | "web" | "runtime";
 
 export default function SkillPage() {
@@ -234,7 +233,6 @@ export default function SkillPage() {
           ) : (
             <div className="loop-skill-list" role="list">
               {filteredRows.map((row) => {
-                const src = skillSource(row);
                 const desc = row.description?.trim();
                 return (
                   <div key={row.id} className="loop-skill-list__row" role="listitem" onClick={() => openDetail(row.id)}>
@@ -248,7 +246,6 @@ export default function SkillPage() {
                     </div>
                     <div className="loop-skill-list__meta">
                       {renderUsedBy(row.id)}
-                      <Tag color={SRC[src]} size="small">{t(`loop.skill.sourceType.${src}`)}</Tag>
                       <span className="loop-skill-list__time"><Clock3 size={13} />{formatRelativeTime(row.updated_at ?? row.created_at, format)}</span>
                       <Button
                         theme="borderless"
