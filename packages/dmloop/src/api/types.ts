@@ -489,14 +489,52 @@ export interface Agent {
   max_concurrent_tasks: number;
   custom_args?: string[];
   has_custom_env?: boolean;
+  // 连接器（MCP）配置：原始 JSON，交由运行时解析。三态：字段缺省=不变、null=清空、对象=覆盖。
+  mcp_config?: unknown | null;
+  // 调用方无权查看时后端会抹掉 mcp_config 并置此位。
+  mcp_config_redacted?: boolean;
   owner_id?: string | null;
   skills?: Array<{ id: string; name: string; description?: string }>;
   created_at: string;
   updated_at: string;
+  // 归档（软删除）标记：非空即已归档，可经 restore 恢复。
+  archived_at?: string | null;
+  archived_by?: string | null;
   // 回填
   runtime_name?: string | null;
   owner_name?: string | null;
   owner_avatar?: string | null;
+}
+
+/** Agent 任务（档案页的运行履历，读自既有 GET /agents/:id/tasks）。 */
+export type AgentTaskStatus =
+  | "queued"
+  | "dispatched"
+  | "waiting_local_directory"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+export type AgentTaskKind = "comment" | "autopilot" | "chat" | "quick_create" | "direct";
+export interface AgentTask {
+  id: string;
+  agent_id: string;
+  issue_id: string;
+  status: AgentTaskStatus;
+  created_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  kind?: AgentTaskKind;
+  trigger_summary?: string;
+  trigger_comment_id?: string;
+  autopilot_run_id?: string;
+  chat_session_id?: string;
+}
+
+/** Agent 贡献图数据点（GitHub 风格日历，读自 GET /agents/:id/contributions，稠密无缺口按天升序）。 */
+export interface AgentContribution {
+  date: string; // YYYY-MM-DD
+  count: number;
 }
 export interface CreateAgentReq {
   name: string;
@@ -517,6 +555,7 @@ export interface UpdateAgentReq {
   visibility?: AgentVisibility;
   max_concurrent_tasks?: number;
   custom_args?: string[];
+  mcp_config?: unknown | null;
 }
 
 /* ---------- Squad ---------- */

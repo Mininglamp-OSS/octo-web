@@ -447,6 +447,140 @@
   color: var(--semi-color-primary, #6a5cff);
 }
 
+/* ===== AI队友列表（行） ===== */
+.loop-agent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 作用域切换（我的 / 全部 / 已归档） */
+.loop-agent-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 0 20px 10px;
+}
+.loop-agent-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.loop-agent-scope__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--semi-color-text-2, #6b7075);
+}
+.loop-agent-scope__btn:hover { background: var(--semi-color-fill-0, #f5f6f8); }
+.loop-agent-scope__btn.is-active {
+  background: var(--semi-color-fill-1, #eceef1);
+  color: var(--semi-color-text-0, #1f2329);
+  font-weight: 600;
+}
+.loop-agent-scope__count {
+  font-size: 11px;
+  color: var(--semi-color-text-3, #b8bcc8);
+  font-variant-numeric: tabular-nums;
+}
+
+.loop-agent-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 10px 6px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+.loop-agent-row:hover { background: var(--semi-color-fill-0, #f5f6f8); }
+
+.loop-agent-row__avatar { position: relative; flex: 0 0 auto; display: inline-flex; }
+.loop-agent-row__dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  border: 1px solid var(--semi-color-bg-0, #fff);
+  background: var(--semi-color-tertiary, #b8bcc8);
+}
+.loop-agent-row__dot[data-status="working"] { background: #52c41a; }
+.loop-agent-row__dot[data-status="error"] { background: var(--semi-color-danger, #f5222d); }
+
+.loop-agent-row__name {
+  flex: 0 0 auto;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-0, #1f2329);
+}
+
+.loop-agent-row__desc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--semi-color-text-2, #6b7075);
+}
+
+.loop-agent-row__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 20px;
+  flex: 0 0 auto;
+  color: var(--semi-color-text-2, #6b7075);
+  font-size: 12px;
+}
+
+.loop-agent-row__device { width: 160px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.loop-agent-row__owner { display: inline-flex; align-items: center; gap: 6px; width: 96px; }
+.loop-agent-row__ownername { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.loop-agent-row__time { width: 88px; text-align: right; white-space: nowrap; }
+
+.loop-agent-row__archive {
+  flex: 0 0 auto;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.loop-agent-row:hover .loop-agent-row__archive { opacity: 1; pointer-events: auto; }
+
+/* 已归档：头像/文字置灰，恢复按钮常显 */
+.loop-agent-row.is-archived .loop-agent-row__avatar,
+.loop-agent-row.is-archived .loop-agent-row__name,
+.loop-agent-row.is-archived .loop-agent-row__desc {
+  opacity: 0.55;
+  filter: grayscale(1);
+}
+.loop-agent-row.is-archived .loop-agent-row__archive { opacity: 1; pointer-events: auto; }
+
+@media (max-width: 900px) {
+  .loop-agent-row__device { width: auto; max-width: 120px; }
+  .loop-agent-row__owner { display: none; }
+}
+
+
 /* ===== Skill list ===== */
 .loop-skill-list {
   display: flex;
@@ -541,10 +675,63 @@
   align-items: center;
   gap: 5px;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.loop-skill-list__used--empty {
+  color: var(--semi-color-text-3, #b6bbc6);
+  cursor: default;
 }
 
 .loop-skill-list__used svg {
   color: var(--semi-color-text-3, #b6bbc6);
+}
+
+/* Popover: agents that use this skill, grouped by workspace */
+.loop-skill-used-pop {
+  max-width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.loop-skill-used-pop__ws {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--semi-color-text-2, #6b7280);
+  margin-bottom: 4px;
+}
+
+.loop-skill-used-pop__agent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.loop-skill-used-pop__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--semi-color-primary, #3b82f6);
+  flex: 0 0 auto;
+}
+
+.loop-skill-used-pop__name {
+  font-size: 12px;
+  color: var(--semi-color-text-0, #1f2329);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .loop-skill-list__delete {
