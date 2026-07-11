@@ -111,6 +111,25 @@ export default function LoopPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 顶部一级导航「Loop」被再次点击时，onMenuClick 会先 routeRight.popToRoot() 清空右栏
+  // （LoopPage 常驻不重挂，useEffect 不会重跑）。这里监听激活事件，把体验对齐「首次进入」
+  // ——重置到默认的 Issue（回路）视图，避免右栏残留空白/报错。
+  useEffect(() => {
+    const onNavMenuActivated = ({ menuId }: { menuId: string }) => {
+      if (menuId !== "loop") return;
+      // workspace 列表尚未加载完时不处理：挂载副作用会在加载完成后自行铺默认视图，
+      // 避免 workspaces 还是 [] 时误闪空态引导。
+      if (!loaded) return;
+      const ws = findWs(workspaces, wsId);
+      if (!ws) { showEmptyGuide(); return; }
+      setTab("issue");
+      WKApp.routeRight.replaceToRoot(renderTab("issue", ws));
+    };
+    WKApp.mittBus.on("wk:nav-menu-activated", onNavMenuActivated);
+    return () => WKApp.mittBus.off("wk:nav-menu-activated", onNavMenuActivated);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaces, wsId, loaded]);
+
   const switchWorkspace = (w: Workspace) => {
     setWorkspaceContext(w.slug, w.id);
     setWsId(w.id);

@@ -10,7 +10,7 @@ import { confirmDelete } from "../ui/confirmDelete";
 import SkillFileTree from "./SkillFileTree";
 import SkillFileViewer from "./SkillFileViewer";
 import { isValidSkillName } from "../ui/skillName";
-import { parseFrontmatter } from "../ui/frontmatter";
+import { ensureSkillFrontmatter, parseFrontmatter, setFrontmatterField } from "../ui/frontmatter";
 import "./sideDetail.css";
 
 const { Text } = Typography;
@@ -49,7 +49,6 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
   const [error, setError] = useState<string | null>(null);
   const [usedAgents, setUsedAgents] = useState<Agent[]>([]);
 
-  const [name, setName] = useState("");
   const [content, setContent] = useState("");
   const [files, setFiles] = useState<DraftFile[]>([]);
   const [selectedPath, setSelectedPath] = useState(SKILL_MD);
@@ -62,8 +61,9 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
 
   const seed = (s: Skill) => {
     setRow(s);
-    setName(s.name);
-    setContent(s.content ?? "");
+    // 规范化：保证 SKILL.md 一定带合法 frontmatter（name/description），
+    // 避免头部缺失导致解析异常，并让下方 name 输入框从头部取值。
+    setContent(ensureSkillFrontmatter(s.name, s.description ?? "", s.content ?? ""));
     setFiles(toDraftFiles(s.files));
     setDirty(false);
   };
@@ -93,7 +93,14 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
   const filePaths = useMemo(() => Array.from(fileMap.keys()), [fileMap]);
   const selectedContent = fileMap.get(selectedPath) ?? "";
   const skillFrontmatter = useMemo(() => parseFrontmatter(content).frontmatter, [content]);
+  // content 为唯一数据源：name/description 都取自 SKILL.md 头部，输入框改动回写头部。
+  const nameValue = skillFrontmatter?.name ?? "";
   const skillDescription = skillFrontmatter?.description?.trim() ?? "";
+
+  const onNameChange = (next: string) => {
+    setContent((prev) => setFrontmatterField(prev, "name", next));
+    setDirty(true);
+  };
 
   useEffect(() => {
     if (selectedPath !== SKILL_MD && !fileMap.has(selectedPath)) setSelectedPath(SKILL_MD);
@@ -139,7 +146,7 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
   };
 
   const save = async () => {
-    const skillName = name.trim();
+    const skillName = nameValue.trim();
     if (!skillName) { Toast.warning(t("loop.validate.nameRequired")); return; }
     if (!isValidSkillName(skillName)) { Toast.warning(t("loop.skill.namePattern")); return; }
     try {
@@ -198,16 +205,16 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
                 {editingName ? (
                   <Input
                     autoFocus
-                    value={name}
+                    value={nameValue}
                     onBlur={() => setEditingName(false)}
-                    onChange={(v) => { setName(v); setDirty(true); }}
+                    onChange={onNameChange}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") setEditingName(false); }}
                     placeholder={t("loop.field.name")}
                     className="loop-skill-profile__nameInput"
                   />
                 ) : (
                   <button type="button" className="loop-skill-profile__name" onClick={() => setEditingName(true)}>
-                    {name || t("loop.field.name")}
+                    {nameValue || t("loop.field.name")}
                   </button>
                 )}
                 <Tooltip
