@@ -1,7 +1,7 @@
 // @octo/loop — Agent API（后端契约联调）
 import type { Agent, CreateAgentReq, UpdateAgentReq, ListParams, RuntimeDevice } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
-import { ensureDirectory, actorName, actorAvatar } from "./directory";
+import { ensureDirectory, actorName, actorAvatar, afterDirectoryMutation } from "./directory";
 
 // runtime 名字缓存（用于 agent.runtime_name 回填）
 let _runtimeMap: Map<string, string> | null = null;
@@ -39,16 +39,16 @@ export async function getAgent(id: string): Promise<Agent> {
 }
 
 export function createAgent(req: CreateAgentReq): Promise<Agent> {
-  return httpPost<Agent>("/agents", req);
+  return httpPost<Agent>("/agents", req).then(afterDirectoryMutation);
 }
 
 export function updateAgent(id: string, req: UpdateAgentReq): Promise<Agent> {
-  return httpPut<Agent>(`/agents/${id}`, req);
+  return httpPut<Agent>(`/agents/${id}`, req).then(afterDirectoryMutation);
 }
 
 // 后端不支持 DELETE /agents/:id（405）；改用归档。
 export function archiveAgent(id: string): Promise<void> {
-  return httpPost<void>(`/agents/${id}/archive`, {});
+  return httpPost<void>(`/agents/${id}/archive`, {}).then(afterDirectoryMutation);
 }
 
 /* ---------- 环境变量（密钥） ---------- */
