@@ -102,6 +102,12 @@ export function isActiveRun(status: string): boolean {
   return ACTIVE_RUN_STATUSES.includes(status);
 }
 
+// run 是否处于终结态——已产生结果,进入履历统计。与 isActiveRun 同为状态生命周期的单一来源。
+const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"];
+export function isTerminalRun(status: string): boolean {
+  return TERMINAL_RUN_STATUSES.includes(status);
+}
+
 // 日期展示辅助(列表/看板/详情共用):短格式 M/D,以及是否逾期(未完成且已过截止)。
 export function formatShortDate(iso?: string | null): string {
   if (!iso) return "";

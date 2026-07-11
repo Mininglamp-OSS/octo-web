@@ -1,5 +1,5 @@
 // @octo/loop — Agent API（后端契约联调）
-import type { Agent, CreateAgentReq, UpdateAgentReq, ListParams, RuntimeDevice } from "./types";
+import type { Agent, CreateAgentReq, UpdateAgentReq, ListParams, RuntimeDevice, AgentTask, AgentContribution } from "./types";
 import { httpGet, httpPost, httpPut, httpDelete } from "./http";
 import { ensureDirectory, actorName, actorAvatar, afterDirectoryMutation } from "./directory";
 
@@ -25,8 +25,8 @@ async function enrich(agents: Agent[]): Promise<Agent[]> {
   }));
 }
 
-export async function listAgents(params?: ListParams): Promise<Agent[]> {
-  const rows = await httpGet<Agent[]>("/agents");
+export async function listAgents(params?: ListParams & { includeArchived?: boolean }): Promise<Agent[]> {
+  const rows = await httpGet<Agent[]>("/agents", { include_archived: params?.includeArchived ? true : undefined });
   let out = await enrich(rows ?? []);
   const kw = params?.keyword?.trim().toLowerCase();
   if (kw) out = out.filter((a) => a.name.toLowerCase().includes(kw) || (a.description ?? "").toLowerCase().includes(kw));
@@ -51,6 +51,11 @@ export function archiveAgent(id: string): Promise<void> {
   return httpPost<void>(`/agents/${id}/archive`, {}).then(afterDirectoryMutation);
 }
 
+// 恢复已归档 agent（软删除的逆操作）。
+export function restoreAgent(id: string): Promise<void> {
+  return httpPost<void>(`/agents/${id}/restore`, {}).then(afterDirectoryMutation);
+}
+
 /* ---------- 环境变量（密钥） ---------- */
 export async function getAgentEnv(id: string): Promise<Record<string, string>> {
   const data = await httpGet<{ custom_env: Record<string, string> }>(`/agents/${id}/env`);
@@ -64,6 +69,25 @@ export async function updateAgentEnv(id: string, customEnv: Record<string, strin
 /* ---------- 技能 ---------- */
 export function getAgentSkills(id: string): Promise<Array<{ id: string; name: string }>> {
   return httpGet<Array<{ id: string; name: string }>>(`/agents/${id}/skills`);
+}
+
+// 整体替换 Agent 的技能集合（PUT = 覆盖，与 multica 一致）。
+export async function setAgentSkills(id: string, skillIds: string[]): Promise<void> {
+  await httpPut<void>(`/agents/${id}/skills`, { skill_ids: skillIds });
+}
+
+/* ---------- 运行履历（档案页活动面板，读自既有端点） ---------- */
+export async function listAgentTasks(id: string): Promise<AgentTask[]> {
+  return (await httpGet<AgentTask[]>(`/agents/${id}/tasks`)) ?? [];
+}
+
+/* ---------- 贡献图（档案页 GitHub 风格日历） ---------- */
+export async function getAgentContributions(
+  id: string,
+  params?: { from?: string; to?: string; metric?: string },
+): Promise<AgentContribution[]> {
+  const data = await httpGet<{ data: AgentContribution[] }>(`/agents/${id}/contributions`, params);
+  return data?.data ?? [];
 }
 
 /* ---------- runtimes（供新建 Agent 选择运行环境） ---------- */
