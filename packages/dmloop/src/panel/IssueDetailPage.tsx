@@ -384,7 +384,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           failedFiles.push(f);
         }
       }
-      await reloadComments(token);
+      // 先做失败回填 + 文案(同步、不会抛),再刷新评论列表:reloadComments await listComments 可能抛,
+      // 若放在其后,reload 失败会跳过回填 → 失败文件再次丢失(#647 评审抓到的排序缺口)。
       if (failedFiles.length) {
         // 评论已建成功、仅附件失败:把失败文件放回输入区(否则文件对象被丢弃、永久丢失且无重试入口),
         // 并用区分于"评论失败"的文案——避免误导用户以为整条评论没发出去。
@@ -393,6 +394,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       } else {
         Toast.success(t("loop.toast.commentAdded"));
       }
+      await reloadComments(token);
     } finally {
       setSubmitting(false);
     }
