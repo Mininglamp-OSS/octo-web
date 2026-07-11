@@ -5,7 +5,6 @@ import {
 } from "@douyinfe/semi-ui";
 import { Search, Plus, Trash2, Sparkles, Download, FileText, Link2, Copy, Clock3, Users } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
-import type { I18nFormatter } from "@octo/base";
 import type { Agent, Skill, RuntimeDevice, RuntimeLocalSkillSummary } from "../api/types";
 import {
   listSkills, createSkill, deleteSkill, skillSource, importSkill,
@@ -17,26 +16,11 @@ import SkillDetailPage from "../panel/SkillDetailPage";
 import { confirmDelete } from "../ui/confirmDelete";
 import { isValidSkillName } from "../ui/skillName";
 import { ensureSkillFrontmatter, parseFrontmatter } from "../ui/frontmatter";
+import { formatRelativeTime } from "../ui/time";
 
 const { Title, Text } = Typography;
 const SRC: Record<string, "green" | "blue" | "grey"> = { github: "green", local: "blue", workspace: "grey" };
 type CreateTab = "local" | "web" | "runtime";
-
-function formatSkillTime(value: string | undefined, format: Pick<I18nFormatter, "date" | "relativeTime">): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  const diff = date.getTime() - Date.now();
-  const absDiff = Math.abs(diff);
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (absDiff < minute) return format.relativeTime(0, "minute");
-  if (absDiff < hour) return format.relativeTime(Math.round(diff / minute), "minute");
-  if (absDiff < day) return format.relativeTime(Math.round(diff / hour), "hour");
-  if (absDiff < 10 * day) return format.relativeTime(Math.round(diff / day), "day");
-  return format.date(date, { month: "short", day: "numeric" });
-}
 
 export default function SkillPage() {
   const { t, format } = useI18n();
@@ -209,7 +193,7 @@ export default function SkillPage() {
                         </span>
                       )}
                       <Tag color={SRC[src]} size="small">{t(`loop.skill.sourceType.${src}`)}</Tag>
-                      <span className="loop-skill-list__time"><Clock3 size={13} />{formatSkillTime(row.updated_at ?? row.created_at, format)}</span>
+                      <span className="loop-skill-list__time"><Clock3 size={13} />{formatRelativeTime(row.updated_at ?? row.created_at, format)}</span>
                       <Button
                         theme="borderless"
                         type="danger"

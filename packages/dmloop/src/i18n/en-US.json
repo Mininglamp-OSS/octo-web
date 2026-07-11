@@ -34,7 +34,8 @@
   "view": {
     "board": "Board",
     "grouped": "Grouped",
-    "list": "List"
+    "list": "List",
+    "card": "Card"
   },
   "scope": {
     "all": "All",
@@ -307,7 +308,32 @@
   },
   "project": {
     "progress": "Progress",
-    "lead": "Lead"
+    "lead": "Lead",
+    "descPlaceholder": "Add a description...",
+    "descHint": "Provided to agents as project context and applied to every task in this project."
+  },
+  "webhook": {
+    "title": "Webhooks",
+    "hint": "Fires on issue status changes. Each request is signed with HMAC-SHA256 in the X-Multica-Signature-256 header.",
+    "urlPlaceholder": "https://example.com/webhooks/multica",
+    "add": "Add",
+    "empty": "No webhooks yet.",
+    "enabled": "Enabled",
+    "delete": "Delete webhook",
+    "deleteConfirm": "Delete this webhook?",
+    "deleteConfirmDesc": "The endpoint will stop receiving events immediately. This cannot be undone.",
+    "secretTitle": "Copy your signing secret",
+    "secretDesc": "This secret is shown only once. Use it to verify the X-Multica-Signature-256 header on incoming requests. Store it somewhere safe now.",
+    "done": "Done",
+    "copy": "Copy",
+    "copied": "Secret copied",
+    "copyFailed": "Failed to copy",
+    "created": "Webhook created",
+    "createFailed": "Failed to create webhook",
+    "updateFailed": "Failed to update webhook",
+    "deleted": "Webhook deleted",
+    "deleteFailed": "Failed to delete webhook",
+    "urlRequired": "Endpoint URL is required"
   },
   "label": {
     "add": "Add labels",
