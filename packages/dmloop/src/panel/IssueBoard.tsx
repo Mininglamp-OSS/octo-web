@@ -1,24 +1,18 @@
 import React, { useState } from "react";
 import { Tag } from "@douyinfe/semi-ui";
-import { CalendarClock } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { Issue, IssueStatus } from "../api/types";
 import { updateIssue } from "../api/issueApi";
-import { AssigneeBadge } from "../ui/AssigneePicker";
-import LabelChips from "../ui/LabelChips";
+import IssueCard from "../ui/IssueCard";
 import { useRunConfirm } from "../ui/RunConfirmModal";
-import {
-  ISSUE_STATUS_ORDER,
-  ISSUE_STATUS_COLOR,
-  PRIORITY_COLOR,
-  formatShortDate,
-  isOverdue,
-} from "../ui/meta";
+import { ISSUE_STATUS_ORDER, ISSUE_STATUS_COLOR } from "../ui/meta";
 
 export interface IssueBoardProps {
   issues: Issue[];
   onOpen: (id: string) => void;
   onChanged: () => void;
+  /** 有 agent 正在跑的 issue-id 集合(渲染 running chip)。 */
+  running?: ReadonlySet<string>;
 }
 
 /** 看板：按 status 分列 + 原生 HTML5 拖拽跨列改状态。 */
@@ -26,6 +20,7 @@ export default function IssueBoard({
   issues,
   onOpen,
   onChanged,
+  running,
 }: IssueBoardProps) {
   const { t } = useI18n();
   const { requestStatus, runConfirmModal } = useRunConfirm();
@@ -74,41 +69,19 @@ export default function IssueBoard({
             </div>
             <div className="loop-board__cards">
               {cards.map((issue) => (
-                <div
+                <IssueCard
                   key={issue.id}
-                  className={`loop-card ${dragId === issue.id ? "is-dragging" : ""}`}
+                  issue={issue}
+                  onOpen={onOpen}
+                  running={running?.has(issue.id)}
                   draggable
+                  dragging={dragId === issue.id}
                   onDragStart={() => setDragId(issue.id)}
                   onDragEnd={() => {
                     setDragId(null);
                     setDropCol(null);
                   }}
-                  onClick={() => onOpen(issue.id)}
-                >
-                  <div className="loop-card__key">{issue.identifier}</div>
-                  <div className="loop-card__title">{issue.title}</div>
-                  {issue.labels && issue.labels.length > 0 && (
-                    <div style={{ marginTop: 4 }}><LabelChips labels={issue.labels} max={3} /></div>
-                  )}
-                  <div className="loop-card__foot">
-                    <Tag color={PRIORITY_COLOR[issue.priority]} size="small">
-                      {t(`loop.priority.${issue.priority}`)}
-                    </Tag>
-                    {issue.due_date && (
-                      <span
-                        className="loop-card__due"
-                        style={{ color: isOverdue(issue.due_date, issue.status) ? "var(--semi-color-danger)" : "var(--semi-color-text-2)" }}
-                      >
-                        <CalendarClock size={12} />
-                        {formatShortDate(issue.due_date)}
-                      </span>
-                    )}
-                    <AssigneeBadge
-                      type={issue.assignee_type}
-                      name={issue.assignee_name ?? null}
-                    />
-                  </div>
-                </div>
+                />
               ))}
             </div>
           </div>

@@ -1,4 +1,4 @@
-// @octo/loop — 附件 API(上传走 multica /api/upload-file,multipart)。
+// @octo/loop — 附件 API(上传走后端 /api/upload-file,multipart)。
 import type { Attachment } from "./types";
 import { httpPost } from "./http";
 

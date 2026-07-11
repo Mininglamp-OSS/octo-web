@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Typography,
   Input,
@@ -8,23 +8,41 @@ import {
   Select,
   Pagination,
   DatePicker,
+  RadioGroup,
+  Radio,
 } from "@douyinfe/semi-ui";
-import { Search, Plus, LayoutGrid, List as ListIcon, ClipboardList, ArrowUp, ArrowDown } from "lucide-react";
+import { Search, Plus, LayoutGrid, List as ListIcon, Users, ClipboardList, ArrowUp, ArrowDown } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
-import type { Issue, IssueStatus, IssuePriority, IssueSortField, IssueDateField } from "../api/types";
+import type {
+  Issue,
+  IssueGroup,
+  IssueScope,
+  IssueStatus,
+  IssuePriority,
+  IssueSortField,
+  IssueDateField,
+} from "../api/types";
 import { ISSUE_SORT_FIELDS, ISSUE_DATE_FIELDS } from "../api/types";
-import { listIssues, searchIssues } from "../api/issueApi";
+import { listIssues, searchIssues, listGroupedIssues, listMyGroupedIssues, getAgentTaskSnapshot } from "../api/issueApi";
 import { listProjectOptions } from "../api/directory";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
-import { ISSUE_STATUS_ORDER, PRIORITY_ORDER } from "../ui/meta";
+import { ISSUE_STATUS_ORDER, PRIORITY_ORDER, isActiveRun } from "../ui/meta";
 import IssueBoard from "../panel/IssueBoard";
+import IssueGroupBoard from "../panel/IssueGroupBoard";
 import IssueList from "../panel/IssueList";
 import IssueDetailPage from "../panel/IssueDetailPage";
 import CreateIssueModal from "../ui/CreateIssueModal";
 
 const { Title } = Typography;
 
-type ViewMode = "board" | "list";
+type ViewMode = "board" | "grouped" | "list";
+
+// scope pill → assignee_types 过滤(仅 /grouped 支持;all/involves 不按类型收窄)。
+function scopeToAssigneeTypes(scope: IssueScope): ("member" | "agent" | "squad")[] | undefined {
+  if (scope === "members") return ["member"];
+  if (scope === "agents") return ["agent", "squad"];
+  return undefined;
+}
 
 interface Filters {
   keyword: string;
@@ -44,13 +62,22 @@ const PAGE_SIZE = 50;
 export default function IssuePage() {
   const { t } = useI18n();
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [groups, setGroups] = useState<IssueGroup[]>([]);
+  const [running, setRunning] = useState<ReadonlySet<string>>(new Set());
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewMode>("board");
+  const [scope, setScope] = useState<IssueScope>("all");
   const [f, setF] = useState<Filters>({ keyword: "", sortBy: "position", sortDir: "desc", dateField: "created_at" });
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
   const [createOpen, setCreateOpen] = useState(false);
   const cands = useAssigneeCandidates();
+  // 当前 octo 成员的后端 user_id(involves_user_id 需 UUID,非 octo uid)：
+  // 复用订阅特性的身份解析——候选里 octo_uid===loginInfo.uid 的 member。未解析出则「与我相关」不可用。
+  const myMemberId = useMemo(() => {
+    const uid = WKApp.loginInfo.uid;
+    return uid ? cands.find((c) => c.type === "member" && c.octo_uid === uid)?.id : undefined;
+  }, [cands]);
   // 项目下拉复用 directory 已缓存的 /projects(避免重复请求);随 workspace 切换整页重挂而刷新。
   const [projects, setProjects] = useState<Array<{ id: string; title: string }>>([]);
   const seq = useRef(0); // 请求序号：只应用最新一次的响应，防并发乱序覆盖
@@ -62,13 +89,40 @@ export default function IssuePage() {
   const reload = useCallback(() => {
     const my = ++seq.current;
     setLoading(true);
-    const paged = view === "list";
-    const kw = f.keyword.trim();
     // 时间范围:三参数须同时给且 start<end。onChange 已把 dateRange 归一为 undefined|[起,止]。
-    // 止端 +1 日历日 → 半开区间,既含止日当天、又保证 start<end(即使起止同一天);setDate 处理 DST。
+    // 止端 +1 日历日 → 半开区间,既含止日当天、又保证 start<end;setDate 处理 DST。
     const dr = f.dateRange;
     const endExclusive = dr && new Date(dr[1]);
     if (endExclusive) endExclusive.setDate(endExclusive.getDate() + 1);
+
+    // 分组板:走 /issues/grouped(按负责人);scope pill 收窄 assignee_types。
+    // grouped 不吃关键词/排序,故这两项在分组视图隐藏。
+    if (view === "grouped") {
+      const gp = {
+        statuses: f.status ? [f.status] : undefined,
+        priorities: f.priority ? [f.priority] : undefined,
+        creator_id: f.creator,
+        project_id: f.project,
+        date_field: dr ? f.dateField : undefined,
+        date_start: dr ? dr[0].toISOString() : undefined,
+        date_end: endExclusive ? endExclusive.toISOString() : undefined,
+        // ponytail: 每组取后端上限 100；超量请用筛选。
+        limit: 100,
+      };
+      // 「与我相关」= 指派给我 ∪ 我创建 ∪ 间接关联(后端三过滤并集,fan-out 合并);
+      // 其余 scope 单发一次、按 assignee_types 收窄。myMemberId 缺失时 pill 已禁用,不会走到此分支。
+      const req =
+        scope === "involves" && myMemberId
+          ? listMyGroupedIssues(myMemberId, gp)
+          : listGroupedIssues({ ...gp, assignee_types: scopeToAssigneeTypes(scope) });
+      req
+        .then((gs) => { if (my === seq.current) setGroups(gs); })
+        .finally(() => { if (my === seq.current) setLoading(false); });
+      return;
+    }
+
+    const paged = view === "list";
+    const kw = f.keyword.trim();
     // 有关键词 → 走全文搜索端点(独立语义:后端不吃其它筛选/排序、上限 50);否则常规筛选列表。
     const req = kw
       ? searchIssues(kw, { limit: paged ? PAGE_SIZE : 50, offset: paged ? page * PAGE_SIZE : 0 })
@@ -100,9 +154,28 @@ export default function IssuePage() {
         setTotal(total);
       })
       .finally(() => { if (my === seq.current) setLoading(false); });
-  }, [f, view, page]);
+  }, [f, view, page, scope, myMemberId]);
 
   useEffect(reload, [reload]);
+
+  // 运行中快照:视图/筛选无关(工作区级),故不进 reload 的依赖 —— 不随筛选/翻页/切视图白拉。
+  // seq 守卫:agent 任务独立起停,多次刷新在途时只让最新一次落地,防旧响应覆盖新。
+  const runSeq = useRef(0);
+  const refreshRunning = useCallback(() => {
+    const my = ++runSeq.current;
+    getAgentTaskSnapshot()
+      .then((tasks) => { if (my === runSeq.current) setRunning(new Set(tasks.filter((tk) => isActiveRun(tk.status) && tk.issue_id).map((tk) => tk.issue_id))); })
+      .catch(() => {});
+  }, []);
+  // 挂载取一次 + 每 15s 轮询:无 WS 推送,agent 起停靠轮询让 running chip 最终收敛(而非只在本地 mutation 后)。
+  useEffect(() => {
+    refreshRunning();
+    const timer = setInterval(refreshRunning, 15000);
+    return () => clearInterval(timer);
+  }, [refreshRunning]);
+
+  // 变更后刷新:既重取列表,又刷新运行中快照(指派/状态变更可能起/停 agent run)。
+  const onMutated = useCallback(() => { reload(); refreshRunning(); }, [reload, refreshRunning]);
 
   // 改任一筛选/搜索都回到第一页，避免停在越界的 offset（此规则只此一处表达）。
   const update = (p: Partial<Filters>) => { setF((prev) => ({ ...prev, ...p })); setPage(0); };
@@ -112,8 +185,10 @@ export default function IssuePage() {
   // key=id:issueId 变化即整体重挂载 → 详情页所有异步状态从零开始,结构性杜绝跨 issue 陈旧写入
   // (如未来点子 issue 原地切换时,慢请求无法把旧 issue 数据写进新 issue 视图)。
   const openDetail = (id: string) => {
-    WKApp.routeRight.push(<IssueDetailPage key={id} issueId={id} onChanged={reload} />);
+    WKApp.routeRight.push(<IssueDetailPage key={id} issueId={id} onChanged={onMutated} />);
   };
+
+  const isEmpty = view === "grouped" ? groups.every((g) => g.issues.length === 0) : total === 0;
 
   return (
     <div className="loop-page">
@@ -124,11 +199,29 @@ export default function IssuePage() {
             <LayoutGrid size={14} />
             {t("loop.view.board")}
           </button>
+          <button className={view === "grouped" ? "is-active" : ""} onClick={() => switchView("grouped")}>
+            <Users size={14} />
+            {t("loop.view.grouped")}
+          </button>
           <button className={view === "list" ? "is-active" : ""} onClick={() => switchView("list")}>
             <ListIcon size={14} />
             {t("loop.view.list")}
           </button>
         </div>
+        {view === "grouped" && (
+          <RadioGroup
+            type="button"
+            buttonSize="small"
+            value={scope}
+            onChange={(e) => setScope(e.target.value as IssueScope)}
+          >
+            <Radio value="all">{t("loop.scope.all")}</Radio>
+            <Radio value="members">{t("loop.scope.members")}</Radio>
+            <Radio value="agents">{t("loop.scope.agents")}</Radio>
+            {/* 「与我相关」需当前成员的后端 id;未解析出则禁用(而非静默失效)。 */}
+            <Radio value="involves" disabled={!myMemberId}>{t("loop.scope.involves")}</Radio>
+          </RadioGroup>
+        )}
         <div className="loop-page__spacer" />
         <Select
           placeholder={t("loop.filter.status")}
@@ -154,32 +247,38 @@ export default function IssuePage() {
             <Select.Option key={p} value={p}>{t(`loop.priority.${p}`)}</Select.Option>
           ))}
         </Select>
-        <Select
-          placeholder={t("loop.filter.assignee")}
-          value={f.assignee}
-          onChange={(v) => update({ assignee: v as string | undefined })}
-          showClear
-          filter
-          size="small"
-          style={{ width: 150 }}
-        >
-          {cands.map((c) => (
-            <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
-          ))}
-        </Select>
-        <Select
-          placeholder={t("loop.filter.creator")}
-          value={f.creator}
-          onChange={(v) => update({ creator: v as string | undefined })}
-          showClear
-          filter
-          size="small"
-          style={{ width: 130 }}
-        >
-          {cands.filter((c) => c.type === "member").map((c) => (
-            <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
-          ))}
-        </Select>
+        {/* assignee 单选筛选仅扁平列表/看板用(grouped 用 scope pill 按类型收窄)。 */}
+        {view !== "grouped" && (
+          <Select
+            placeholder={t("loop.filter.assignee")}
+            value={f.assignee}
+            onChange={(v) => update({ assignee: v as string | undefined })}
+            showClear
+            filter
+            size="small"
+            style={{ width: 150 }}
+          >
+            {cands.map((c) => (
+              <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
+            ))}
+          </Select>
+        )}
+        {/* 「与我相关」自带 creator=我 的并集腿,creator 下拉对它无效 → 隐藏,避免设了不生效。 */}
+        {!(view === "grouped" && scope === "involves") && (
+          <Select
+            placeholder={t("loop.filter.creator")}
+            value={f.creator}
+            onChange={(v) => update({ creator: v as string | undefined })}
+            showClear
+            filter
+            size="small"
+            style={{ width: 130 }}
+          >
+            {cands.filter((c) => c.type === "member").map((c) => (
+              <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
+            ))}
+          </Select>
+        )}
         {projects.length > 0 && (
           <Select
             placeholder={t("loop.filter.project")}
@@ -241,14 +340,17 @@ export default function IssuePage() {
           />
         </div>
         )}
-        <Input
-          prefix={<Search size={14} />}
-          placeholder={t("loop.search.issue")}
-          value={f.keyword}
-          onChange={(v) => update({ keyword: v })}
-          showClear
-          style={{ width: 200 }}
-        />
+        {/* 关键词走全文搜索(独立语义,不与 grouped 组合),故分组视图隐藏。 */}
+        {view !== "grouped" && (
+          <Input
+            prefix={<Search size={14} />}
+            placeholder={t("loop.search.issue")}
+            value={f.keyword}
+            onChange={(v) => update({ keyword: v })}
+            showClear
+            style={{ width: 200 }}
+          />
+        )}
         <Button theme="solid" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>
           {t("loop.action.newIssue")}
         </Button>
@@ -259,7 +361,7 @@ export default function IssuePage() {
           <div className="loop-page__center">
             <Spin />
           </div>
-        ) : total === 0 ? (
+        ) : isEmpty ? (
           <div className="loop-empty">
             <ClipboardList size={40} className="loop-empty__icon" />
             <div className="loop-empty__title">{t("loop.empty.issueTitle")}</div>
@@ -269,10 +371,12 @@ export default function IssuePage() {
             </Button>
           </div>
         ) : view === "board" ? (
-          <IssueBoard issues={issues} onOpen={openDetail} onChanged={reload} />
+          <IssueBoard issues={issues} onOpen={openDetail} onChanged={onMutated} running={running} />
+        ) : view === "grouped" ? (
+          <IssueGroupBoard groups={groups} onOpen={openDetail} running={running} />
         ) : (
           <>
-            <IssueList issues={issues} onOpen={openDetail} onChanged={reload} />
+            <IssueList issues={issues} onOpen={openDetail} onChanged={onMutated} running={running} />
             {total > PAGE_SIZE && (
               <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 4px" }}>
                 <Pagination
@@ -290,7 +394,7 @@ export default function IssuePage() {
       <CreateIssueModal
         visible={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={() => { Toast.success(t("loop.toast.created")); reload(); }}
+        onCreated={() => { Toast.success(t("loop.toast.created")); onMutated(); }}
       />
     </div>
   );

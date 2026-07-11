@@ -3,10 +3,10 @@ import { Avatar, Button, Toast, Typography } from "@douyinfe/semi-ui";
 import { Laptop, ShieldCheck } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Workspace } from "../api/types";
-import { issueMulticaCliToken } from "../api/authApi";
+import { issueLoopCliToken } from "../api/authApi";
 import { listWorkspaces } from "../api/workspaceApi";
 import { currentWorkspaceId, setWorkspaceContext } from "../api/http";
-import { clearPendingMulticaCliAuthorizeSearch } from "../cliAuthorizeSession";
+import { clearPendingLoopCliAuthorizeSearch } from "../cliAuthorizeSession";
 import "./loop.css";
 
 const { Text, Title } = Typography;
@@ -45,7 +45,7 @@ function redirectToCli(
   token: string,
   state: string | null
 ): void {
-  // TODO(octo-multica!18 security follow-up): replace this JWT-in-query
+  // TODO(security follow-up): replace this JWT-in-query
   // handoff with server-bound device authorization or a one-time PKCE code.
   const target = new URL(callbackURL);
   target.searchParams.set("token", token);
@@ -53,13 +53,13 @@ function redirectToCli(
   window.location.href = target.toString();
 }
 
-interface MulticaCliAuthorizePageProps {
+interface LoopCliAuthorizePageProps {
   initialSearch?: string;
 }
 
-export default function MulticaCliAuthorizePage({
+export default function LoopCliAuthorizePage({
   initialSearch = window.location.search,
-}: MulticaCliAuthorizePageProps) {
+}: LoopCliAuthorizePageProps) {
   const { t } = useI18n();
   const params = useMemo(
     () => new URLSearchParams(initialSearch),
@@ -115,8 +115,8 @@ export default function MulticaCliAuthorizePage({
     setAuthorizing(true);
     setError("");
     try {
-      const { token } = await issueMulticaCliToken();
-      clearPendingMulticaCliAuthorizeSearch(window.sessionStorage);
+      const { token } = await issueLoopCliToken();
+      clearPendingLoopCliAuthorizeSearch(window.sessionStorage);
       redirectToCli(cliCallback, token, cliState);
     } catch (err) {
       const msg =

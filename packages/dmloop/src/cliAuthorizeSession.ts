@@ -1,11 +1,11 @@
-export const MULTICA_CLI_AUTHORIZE_PATH = "/loop/cli-authorize";
+export const LOOP_CLI_AUTHORIZE_PATH = "/loop/cli-authorize";
 
 const PENDING_SEARCH_KEY = "octo.loop.cli-authorize.pending-search";
 
 type SessionStorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-export function isMulticaCliAuthorizePath(pathname: string): boolean {
-  return pathname.replace(/\/+$/, "") === MULTICA_CLI_AUTHORIZE_PATH;
+export function isLoopCliAuthorizePath(pathname: string): boolean {
+  return pathname.replace(/\/+$/, "") === LOOP_CLI_AUTHORIZE_PATH;
 }
 
 /**
@@ -13,12 +13,12 @@ export function isMulticaCliAuthorizePath(pathname: string): boolean {
  * string with a sid-only URL. The pending value also survives the full reload
  * performed after an interactive login.
  */
-export function resolveMulticaCliAuthorizeSearch(
+export function resolveLoopCliAuthorizeSearch(
   pathname: string,
   search: string,
   storage: SessionStorageLike
 ): string {
-  if (!isMulticaCliAuthorizePath(pathname)) return search;
+  if (!isLoopCliAuthorizePath(pathname)) return search;
 
   const params = new URLSearchParams(search);
   if (params.get("cli_callback")) {
@@ -37,7 +37,7 @@ export function resolveMulticaCliAuthorizeSearch(
   }
 }
 
-export function clearPendingMulticaCliAuthorizeSearch(
+export function clearPendingLoopCliAuthorizeSearch(
   storage: SessionStorageLike
 ): void {
   try {
@@ -47,7 +47,7 @@ export function clearPendingMulticaCliAuthorizeSearch(
   }
 }
 
-export function visibleMulticaCliAuthorizeSearch(search: string): string {
+export function visibleLoopCliAuthorizeSearch(search: string): string {
   const params = new URLSearchParams(search);
   params.delete("cli_callback");
   params.delete("cli_state");

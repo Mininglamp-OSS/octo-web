@@ -30,7 +30,7 @@ export default function ProjectDetailPage({ projectId, onChanged }: { projectId:
   const back = () => WKApp.routeRight.pop();
   const patch = async (p: Parameters<typeof updateProject>[1]) => {
     if (!row) return;
-    const next = await updateProject(row.id, { title: p.title ?? row.title, ...p });
+    const next = await updateProject(row.id, { ...p, title: p.title ?? row.title });
     setRow(next);
     onChanged?.();
   };

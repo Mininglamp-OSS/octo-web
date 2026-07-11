@@ -15,7 +15,7 @@ import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
 import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn, withReturnSid } from "@octo/docs";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
-import { isMulticaCliAuthorizePath, MULTICA_CLI_AUTHORIZE_PATH } from "@octo/loop";
+import { isLoopCliAuthorizePath, LOOP_CLI_AUTHORIZE_PATH } from "@octo/loop";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -352,7 +352,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
 
         // The CLI authorization deep-link is a full-page flow outside the normal app shell.
         // Reuse a single stored Octo session when the clean URL carries no sid-specific token.
-        if (isMulticaCliAuthorizePath(window.location.pathname)) {
+        if (isLoopCliAuthorizePath(window.location.pathname)) {
             if (!WKApp.loginInfo.token) {
                 WKApp.loginInfo.load();
             }
@@ -364,7 +364,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                     const cachedSpaceId = localStorage.getItem("currentSpaceId") || "";
                     if (cachedSpaceId) WKApp.shared.currentSpaceId = cachedSpaceId;
                 }
-                const cliAuthorizeComponent = WKApp.route.get(MULTICA_CLI_AUTHORIZE_PATH);
+                const cliAuthorizeComponent = WKApp.route.get(LOOP_CLI_AUTHORIZE_PATH);
                 if (cliAuthorizeComponent) return cliAuthorizeComponent;
             }
         }

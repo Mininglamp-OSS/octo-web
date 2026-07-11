@@ -411,6 +411,9 @@
 .loop-card__key {
   font-size: 11px;
   color: var(--semi-color-text-2, #8590a6);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .loop-card__title {
@@ -931,4 +934,51 @@
   .loop-nsk__form,
   .loop-nsk__preview { width: 100%; }
   .loop-nsk__preview { border-left: none; border-top: 1px solid var(--semi-color-border, #e8e9eb); }
+}
+
+/* ---------- running chip 旋转 ---------- */
+.loop-spin { animation: loop-spin 1s linear infinite; }
+@keyframes loop-spin { to { transform: rotate(360deg); } }
+
+/* ---------- 按负责人分组板 ---------- */
+.loop-groupboard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px;
+  overflow: auto;
+}
+
+.loop-groupboard__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.loop-groupboard__head em {
+  font-style: normal;
+  color: var(--semi-color-text-2, #8590a6);
+}
+
+.loop-groupboard__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+/* 分组板卡片非拖拽,光标用指针而非 grab。 */
+.loop-groupboard .loop-card { cursor: pointer; }
+
+/* ---------- 列表批量操作条 ---------- */
+.loop-batchbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--semi-color-fill-0, #f6f7f9);
+  border-radius: 8px;
 }
