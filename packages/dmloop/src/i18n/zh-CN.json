@@ -224,7 +224,9 @@
     "commentUpdated": "评论已更新",
     "editFailed": "编辑失败",
     "deleteFailed": "删除失败",
-    "saveFailed": "保存失败"
+    "saveFailed": "保存失败",
+    "commentAttachFailed": "评论已发送，但 {{count}} 个附件上传失败，已放回输入框请重试",
+    "attachFailed": "{{count}} 个附件上传失败"
   },
   "validate": {
     "nameRequired": "请填写名称",
