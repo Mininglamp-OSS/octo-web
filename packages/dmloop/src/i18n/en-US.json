@@ -224,7 +224,9 @@
     "commentUpdated": "Comment updated",
     "editFailed": "Edit failed",
     "deleteFailed": "Delete failed",
-    "saveFailed": "Save failed"
+    "saveFailed": "Save failed",
+    "commentAttachFailed": "Comment posted, but {{count}} attachment(s) failed to upload — re-added to the box, please retry",
+    "attachFailed": "{{count}} attachment(s) failed to upload"
   },
   "validate": {
     "nameRequired": "Name is required",
