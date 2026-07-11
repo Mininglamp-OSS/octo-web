@@ -139,6 +139,9 @@ export function VersionHistoryPanel<TState, TCurrent>({
 
   // Restore is confirmed in a centered in-panel box (doc model), not a native window.confirm.
   const [confirmRestore, setConfirmRestore] = useState<VersionMeta | null>(null)
+  // Delete is likewise confirmed in the same in-panel box (was a native window.confirm) so the
+  // destructive-action UX is unified across doc/sheet/board rather than falling back to the browser.
+  const [confirmDelete, setConfirmDelete] = useState<VersionMeta | null>(null)
 
   // Centered preview / diff modal.
   const [selected, setSelected] = useState<VersionMeta | null>(null)
@@ -151,6 +154,10 @@ export function VersionHistoryPanel<TState, TCurrent>({
   // preview — both from the shared createRaceGuard so all three chains abort + last-write-win.
   const listGuard = useRef(createRaceGuard())
   const previewGuard = useRef(createRaceGuard())
+  // Liveness flag: mutation handlers setState after an await, and refresh()/the guards only cover
+  // their own async chains — this guards the trailing setBusy/setNotice/onRestored in the handlers
+  // so they no-op if the panel unmounted mid-flight (no setState-after-unmount).
+  const mounted = useRef(true)
 
   const mySnapshot = canSnapshot(role)
   const myRestore = canRestoreVersion(role)
@@ -194,6 +201,7 @@ export function VersionHistoryPanel<TState, TCurrent>({
     const list = listGuard.current
     const preview = previewGuard.current
     return () => {
+      mounted.current = false
       list.abort()
       preview.abort()
     }
@@ -244,13 +252,16 @@ export function VersionHistoryPanel<TState, TCurrent>({
     try {
       await createNamedVersion(docId, snapshotLabel.trim() || undefined)
     } catch {
+      if (!mounted.current) return
       setError(t('docs.version.errorSave'))
       setBusy(false)
       return
     }
+    if (!mounted.current) return
     setSnapshotOpen(false)
     setSnapshotLabel('')
     const ok = await refresh({ soft: true })
+    if (!mounted.current) return
     if (!ok) setNotice(t('docs.version.staleNotice'))
     setBusy(false)
   }
@@ -273,33 +284,40 @@ export function VersionHistoryPanel<TState, TCurrent>({
     try {
       await renameVersion(docId, seq, label)
     } catch {
+      if (!mounted.current) return
       setError(t('docs.version.errorRename'))
       setBusy(false)
       return
     }
+    if (!mounted.current) return
     // Optimistic label update, then reconcile with server ordering/counts (soft: rename landed).
     setItems((cur) => cur.map((v) => (v.docVersionSeq === seq ? { ...v, label } : v)))
     cancelRename()
     const ok = await refresh({ soft: true })
+    if (!mounted.current) return
     if (!ok) setNotice(t('docs.version.staleNotice'))
     setBusy(false)
   }
 
   const onDelete = async (v: VersionMeta) => {
-    if (!window.confirm(t('docs.version.deleteConfirm', { values: { seq: v.docVersionSeq } }))) return
     setBusy(true)
     setError(null)
     try {
       await deleteVersion(docId, v.docVersionSeq)
     } catch {
+      if (!mounted.current) return
       setError(t('docs.version.errorDelete'))
+      setConfirmDelete(null)
       setBusy(false)
       return
     }
+    if (!mounted.current) return
+    setConfirmDelete(null)
     if (selected?.docVersionSeq === v.docVersionSeq) closePreview()
     if (renamingSeq === v.docVersionSeq) cancelRename()
     setItems((cur) => cur.filter((x) => x.docVersionSeq !== v.docVersionSeq))
     const ok = await refresh({ soft: true })
+    if (!mounted.current) return
     if (!ok) setNotice(t('docs.version.staleNotice'))
     setBusy(false)
   }
@@ -312,15 +330,18 @@ export function VersionHistoryPanel<TState, TCurrent>({
     try {
       res = await restoreVersion(docId, v.docVersionSeq)
     } catch (e) {
+      if (!mounted.current) return
       setError(t(restoreErrorKey ? restoreErrorKey(e) : 'docs.version.errorRestore'))
       setConfirmRestore(null)
       setBusy(false)
       return
     }
+    if (!mounted.current) return
     // Restore landed — the live surface reconciles via Yjs. A follow-up refresh miss is soft.
     setConfirmRestore(null)
     closePreview()
     const ok = await refresh({ soft: true })
+    if (!mounted.current) return
     setNotice(
       ok
         ? t('docs.version.restoredNotice', { values: { from: res.restoredFrom, seq: res.newDocVersionSeq } })
@@ -458,7 +479,7 @@ export function VersionHistoryPanel<TState, TCurrent>({
                     type="button"
                     className="octo-tb-btn"
                     disabled={busy}
-                    onClick={() => void onDelete(v)}
+                    onClick={() => setConfirmDelete(v)}
                   >
                     {t('docs.version.delete')}
                   </button>
@@ -564,6 +585,30 @@ export function VersionHistoryPanel<TState, TCurrent>({
                 className="octo-tb-btn"
                 disabled={busy}
                 onClick={() => setConfirmRestore(null)}
+              >
+                {t('docs.version.cancel')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {confirmDelete && (
+          <div className="octo-version-confirm">
+            <p>{t('docs.version.deleteConfirm', { values: { seq: confirmDelete.docVersionSeq } })}</p>
+            <div className="octo-member-row">
+              <button
+                type="button"
+                className="octo-tb-btn"
+                disabled={busy}
+                onClick={() => void onDelete(confirmDelete)}
+              >
+                {t('docs.version.delete')}
+              </button>
+              <button
+                type="button"
+                className="octo-tb-btn"
+                disabled={busy}
+                onClick={() => setConfirmDelete(null)}
               >
                 {t('docs.version.cancel')}
               </button>

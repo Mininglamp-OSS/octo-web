@@ -289,6 +289,22 @@ describe('VersionHistoryPanel — mutations & permissions', () => {
     await waitFor(() => expect(onRestored).toHaveBeenCalled())
   })
 
+  it('delete goes through the same in-panel confirm box (not window.confirm)', async () => {
+    // P2 (XIN-848): delete used a native window.confirm; it now uses the unified in-panel confirm
+    // box like restore. Guard against a regression to the native dialog and confirm the row is
+    // removed only after the box's confirm is clicked.
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    renderPanel('admin')
+    await screen.findByText('Draft v1')
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.delete'))
+    // No native dialog; a centered in-panel confirm box appears instead.
+    expect(confirmSpy).not.toHaveBeenCalled()
+    const box = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
+    fireEvent.click(btnByText(box, 'docs.version.delete'))
+    await waitFor(() => expect(deleteVersionMock).toHaveBeenCalledWith('d_1', 7))
+    confirmSpy.mockRestore()
+  })
+
   it('renames a named version inline (no native prompt)', async () => {
     renderPanel('admin')
     await screen.findByText('Draft v1')
