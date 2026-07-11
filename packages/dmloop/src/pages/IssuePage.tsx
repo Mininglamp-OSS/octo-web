@@ -10,6 +10,7 @@ import {
   DatePicker,
   RadioGroup,
   Radio,
+  Checkbox,
 } from "@douyinfe/semi-ui";
 import { Search, Plus, LayoutGrid, List as ListIcon, Users, ClipboardList, ArrowUp, ArrowDown } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
@@ -46,11 +47,19 @@ function scopeToAssigneeTypes(scope: IssueScope): ("member" | "agent" | "squad")
 
 interface Filters {
   keyword: string;
-  status?: IssueStatus;
-  priority?: IssuePriority;
+  status?: IssueStatus;        // board/list 单选
+  priority?: IssuePriority;    // board/list 单选
   assignee?: string;
   creator?: string;
-  project?: string;
+  project?: string;            // board/list 单选
+  // 分组板专属多选 + no-project(仅 /grouped 支持 statuses[]/priorities[]/project_ids[]/include_no_project)。
+  // 注:无 include_no_assignee —— scope pill 用 assignee_types(类型级、顶层 AND),后端
+  // include_no_assignee 只与 assignee_filters(具体 actor)配对才是「含」语义;与 assignee_types/
+  // involves 的 assignee_id 腿 AND 会矛盾成空。grouped 在 scope=all 下本就显示未指派组。
+  gStatuses: IssueStatus[];
+  gPriorities: IssuePriority[];
+  gProjectIds: string[];
+  noProject: boolean;
   dateField: IssueDateField; // 时间范围筛选的列(created_at|updated_at)
   dateRange?: Date[];        // [start, end];为空则不按时间筛选
   sortBy: IssueSortField;
@@ -68,7 +77,7 @@ export default function IssuePage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewMode>("board");
   const [scope, setScope] = useState<IssueScope>("all");
-  const [f, setF] = useState<Filters>({ keyword: "", sortBy: "position", sortDir: "desc", dateField: "created_at" });
+  const [f, setF] = useState<Filters>({ keyword: "", gStatuses: [], gPriorities: [], gProjectIds: [], noProject: false, sortBy: "position", sortDir: "desc", dateField: "created_at" });
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
   const [createOpen, setCreateOpen] = useState(false);
   const cands = useAssigneeCandidates();
@@ -99,10 +108,12 @@ export default function IssuePage() {
     // grouped 不吃关键词/排序,故这两项在分组视图隐藏。
     if (view === "grouped") {
       const gp = {
-        statuses: f.status ? [f.status] : undefined,
-        priorities: f.priority ? [f.priority] : undefined,
+        // 分组板多选:空数组 → 不发(不收窄)。
+        statuses: f.gStatuses.length ? f.gStatuses : undefined,
+        priorities: f.gPriorities.length ? f.gPriorities : undefined,
+        project_ids: f.gProjectIds.length ? f.gProjectIds : undefined,
+        include_no_project: f.noProject || undefined,
         creator_id: f.creator,
-        project_id: f.project,
         date_field: dr ? f.dateField : undefined,
         date_start: dr ? dr[0].toISOString() : undefined,
         date_end: endExclusive ? endExclusive.toISOString() : undefined,
@@ -190,6 +201,17 @@ export default function IssuePage() {
 
   const isEmpty = view === "grouped" ? groups.every((g) => g.issues.length === 0) : total === 0;
 
+  // 状态/优先级/项目的选项列表:单选与多选两个分支共用(避免重复 map)。
+  const statusOpts = ISSUE_STATUS_ORDER.map((s) => (
+    <Select.Option key={s} value={s}>{t(`loop.status.${s}`)}</Select.Option>
+  ));
+  const priorityOpts = PRIORITY_ORDER.map((p) => (
+    <Select.Option key={p} value={p}>{t(`loop.priority.${p}`)}</Select.Option>
+  ));
+  const projectOpts = projects.map((p) => (
+    <Select.Option key={p.id} value={p.id}>{p.title}</Select.Option>
+  ));
+
   return (
     <div className="loop-page">
       <div className="loop-page__head">
@@ -223,30 +245,56 @@ export default function IssuePage() {
           </RadioGroup>
         )}
         <div className="loop-page__spacer" />
-        <Select
-          placeholder={t("loop.filter.status")}
-          value={f.status}
-          onChange={(v) => update({ status: v as IssueStatus | undefined })}
-          showClear
-          size="small"
-          style={{ width: 130 }}
-        >
-          {ISSUE_STATUS_ORDER.map((s) => (
-            <Select.Option key={s} value={s}>{t(`loop.status.${s}`)}</Select.Option>
-          ))}
-        </Select>
-        <Select
-          placeholder={t("loop.filter.priority")}
-          value={f.priority}
-          onChange={(v) => update({ priority: v as IssuePriority | undefined })}
-          showClear
-          size="small"
-          style={{ width: 120 }}
-        >
-          {PRIORITY_ORDER.map((p) => (
-            <Select.Option key={p} value={p}>{t(`loop.priority.${p}`)}</Select.Option>
-          ))}
-        </Select>
+        {view === "grouped" ? (
+          <Select
+            placeholder={t("loop.filter.status")}
+            multiple
+            value={f.gStatuses}
+            onChange={(v) => update({ gStatuses: (v ?? []) as IssueStatus[] })}
+            showClear
+            maxTagCount={2}
+            size="small"
+            style={{ minWidth: 150, maxWidth: 260 }}
+          >
+            {statusOpts}
+          </Select>
+        ) : (
+          <Select
+            placeholder={t("loop.filter.status")}
+            value={f.status}
+            onChange={(v) => update({ status: v as IssueStatus | undefined })}
+            showClear
+            size="small"
+            style={{ width: 130 }}
+          >
+            {statusOpts}
+          </Select>
+        )}
+        {view === "grouped" ? (
+          <Select
+            placeholder={t("loop.filter.priority")}
+            multiple
+            value={f.gPriorities}
+            onChange={(v) => update({ gPriorities: (v ?? []) as IssuePriority[] })}
+            showClear
+            maxTagCount={2}
+            size="small"
+            style={{ minWidth: 140, maxWidth: 240 }}
+          >
+            {priorityOpts}
+          </Select>
+        ) : (
+          <Select
+            placeholder={t("loop.filter.priority")}
+            value={f.priority}
+            onChange={(v) => update({ priority: v as IssuePriority | undefined })}
+            showClear
+            size="small"
+            style={{ width: 120 }}
+          >
+            {priorityOpts}
+          </Select>
+        )}
         {/* assignee 单选筛选仅扁平列表/看板用(grouped 用 scope pill 按类型收窄)。 */}
         {view !== "grouped" && (
           <Select
@@ -279,7 +327,21 @@ export default function IssuePage() {
             ))}
           </Select>
         )}
-        {projects.length > 0 && (
+        {projects.length > 0 && (view === "grouped" ? (
+          <Select
+            placeholder={t("loop.filter.project")}
+            multiple
+            value={f.gProjectIds}
+            onChange={(v) => update({ gProjectIds: (v ?? []) as string[] })}
+            showClear
+            filter
+            maxTagCount={1}
+            size="small"
+            style={{ minWidth: 150, maxWidth: 240 }}
+          >
+            {projectOpts}
+          </Select>
+        ) : (
           <Select
             placeholder={t("loop.filter.project")}
             value={f.project}
@@ -289,10 +351,19 @@ export default function IssuePage() {
             size="small"
             style={{ width: 140 }}
           >
-            {projects.map((p) => (
-              <Select.Option key={p.id} value={p.id}>{p.title}</Select.Option>
-            ))}
+            {projectOpts}
           </Select>
+        ))}
+        {/* no-project:仅分组板(后端 include_no_project 仅 /grouped 支持),与项目多选配对
+            = 所选项目 ∪ 无项目。project 维度独立于 assignee,与 scope/involves 都能正确 AND。 */}
+        {view === "grouped" && (
+          <Checkbox
+            className="loop-nofilter"
+            checked={f.noProject}
+            onChange={(e) => update({ noProject: !!e.target.checked })}
+          >
+            {t("loop.filter.noProject")}
+          </Checkbox>
         )}
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           {f.dateRange && (

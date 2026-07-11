@@ -113,6 +113,8 @@ export async function listGroupedIssues(params: GroupedParams): Promise<IssueGro
     involves_user_id: params.involves_user_id,
     creator_id: params.creator_id,
     project_id: params.project_id,
+    project_ids: params.project_ids?.join(","),
+    include_no_project: params.include_no_project ? "true" : undefined,
     date_field: params.date_field,
     date_start: params.date_start,
     date_end: params.date_end,
