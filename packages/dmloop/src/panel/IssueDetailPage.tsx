@@ -114,6 +114,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [issue, setIssue] = useState<Issue | null>(null);
   const [comments, setComments] = useState<IssueComment[]>([]);
   const [subscribers, setSubscribers] = useState<IssueSubscriber[]>([]);
+  // 订阅者列表是否已成功加载:未加载/加载失败时"我是否已订阅"不可判定,菜单回退到两项都显示。
+  const [subLoaded, setSubLoaded] = useState(false);
   const [children, setChildren] = useState<Issue[]>([]);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [parentCands, setParentCands] = useState<Issue[]>([]); // 父 issue 选择器候选(懒加载)
@@ -149,6 +151,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     // 短暂残留上一个 issue 的子列表、订阅者、父候选(旧候选还会漏掉新的自己)。
     setChildren([]);
     setSubscribers([]);
+    setSubLoaded(false);
     setParentCands([]);
     setTimeline([]);
     Promise.all([getIssue(issueId), listComments(issueId), listRuns(issueId)])
@@ -163,7 +166,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       .catch(() => { if (fresh()) Toast.error(t("loop.detail.notFound")); })
       .finally(() => { if (fresh()) setLoading(false); });
     // 订阅者、子 issue、时间线旁路加载:失败不影响主体渲染;同样按 token 丢弃过期响应。
-    listSubscribers(issueId).then((s) => { if (fresh()) setSubscribers(s); }).catch(() => {});
+    listSubscribers(issueId).then((s) => { if (fresh()) { setSubscribers(s); setSubLoaded(true); } }).catch(() => {});
     listChildren(issueId).then((c) => { if (fresh()) setChildren(c); }).catch(() => {});
     listTimeline(issueId).then((tl) => { if (fresh()) setTimeline(tl); }).catch(() => {});
   };
@@ -217,7 +220,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     try {
       await (on ? subscribeIssue : unsubscribeIssue)(issueId);
       const s = await listSubscribers(issueId);
-      if (token === reqRef.current) setSubscribers(s);
+      if (token === reqRef.current) { setSubscribers(s); setSubLoaded(true); }
       Toast.success(t(on ? "loop.subscribe.subscribed" : "loop.subscribe.unsubscribed"));
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
@@ -226,9 +229,24 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
   // 当前 octo 成员是否已订阅:subscriber 现在带 octo_uid(仅 member 有),与
   // loginInfo.uid 比对即可判定,无需前端反查 member↔user 映射(去桥后仍成立)。
+  // 三态:列表未成功加载、或后端未透出 octo_uid(前后端独立上线的版本错配窗口)时
+  // "我是否已订阅"不可判定 → selfKnown=false,菜单回退到"订阅+取消订阅"两项都显示,
+  // 避免已订阅用户在此期间够不到 unsubscribe(#645 单一 toggle 的回归)。
   const myUid = WKApp.loginInfo.uid;
-  const amSubscribed =
-    !!myUid && subscribers.some((s) => s.user_type === "member" && s.octo_uid === myUid);
+  const memberSubs = subscribers.filter((s) => s.user_type === "member");
+  const octoUidSkew = memberSubs.length > 0 && memberSubs.every((s) => s.octo_uid == null);
+  const selfKnown = subLoaded && !octoUidSkew && !!myUid;
+  const amSubscribed = !!myUid && memberSubs.some((s) => s.octo_uid === myUid);
+  const subscribeItem = (
+    <Dropdown.Item icon={<Bell size={13} />} onClick={() => toggleSubscribe(true)}>
+      {t("loop.subscribe.subscribe")}
+    </Dropdown.Item>
+  );
+  const unsubscribeItem = (
+    <Dropdown.Item icon={<BellOff size={13} />} onClick={() => toggleSubscribe(false)}>
+      {t("loop.subscribe.unsubscribe")}
+    </Dropdown.Item>
+  );
 
   // 评论 emoji 反应:选择器点 emoji=加,已有 chip 点击=删自己那条(后端按 actor+emoji 定位)。
   const reactComment = async (commentId: string, emoji: string, add: boolean) => {
@@ -530,14 +548,16 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changeAssignee")}</Dropdown.Item>
       </Dropdown>
       <Dropdown.Divider />
-      {amSubscribed ? (
-        <Dropdown.Item icon={<BellOff size={13} />} onClick={() => toggleSubscribe(false)}>
-          {t("loop.subscribe.unsubscribe")}
-        </Dropdown.Item>
+      {/* 订阅态不可判定(未加载/加载失败/后端未透出 octo_uid)时两项都显示,保证 unsubscribe 可达 */}
+      {!selfKnown ? (
+        <>
+          {subscribeItem}
+          {unsubscribeItem}
+        </>
+      ) : amSubscribed ? (
+        unsubscribeItem
       ) : (
-        <Dropdown.Item icon={<Bell size={13} />} onClick={() => toggleSubscribe(true)}>
-          {t("loop.subscribe.subscribe")}
-        </Dropdown.Item>
+        subscribeItem
       )}
       <Dropdown.Divider />
       <Dropdown.Item type="danger" icon={<Trash2 size={13} />} onClick={handleDeleteIssue}>
