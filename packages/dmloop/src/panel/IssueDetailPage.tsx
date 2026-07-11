@@ -219,11 +219,20 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     const token = reqRef.current;
     try {
       await (on ? subscribeIssue : unsubscribeIssue)(issueId);
+    } catch (e) {
+      // mutation 失败:服务端状态未变,不动本地订阅态。
+      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+      return;
+    }
+    Toast.success(t(on ? "loop.subscribe.subscribed" : "loop.subscribe.unsubscribed"));
+    // mutation 成功后刷新确认新状态;刷新失败则把订阅态标记为"未知"(subLoaded=false),
+    // 菜单回退到两项都显示——否则会留下过期的"已知"态(如刚订阅成功但列表还是旧的空),
+    // 导致服务端已订阅、菜单却只显示「订阅」、藏了「取消订阅」(即本修复要防的回归)。
+    try {
       const s = await listSubscribers(issueId);
       if (token === reqRef.current) { setSubscribers(s); setSubLoaded(true); }
-      Toast.success(t(on ? "loop.subscribe.subscribed" : "loop.subscribe.unsubscribed"));
-    } catch (e) {
-      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+    } catch {
+      if (token === reqRef.current) setSubLoaded(false);
     }
   };
 
