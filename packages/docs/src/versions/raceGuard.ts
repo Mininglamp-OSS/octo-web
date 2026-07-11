@@ -14,12 +14,20 @@
 //
 // A guard has a PRIMARY lane (refresh / filter switch / preview) and a subordinate FOLLOW-UP
 // lane (load-more):
-//   - begin() bumps the generation and aborts EVERYTHING in the guard (primary + any follow-up),
-//     then hands back a ticket bound to the new generation.
-//   - beginFollowUp() starts a request bound to the CURRENT generation with its own abort
-//     controller (aborting only a prior follow-up). It does NOT bump the generation, so a later
-//     begin() supersedes it: a page that resolves after a filter switch / restore / delete
-//     replaced the list is dropped rather than appended onto a list that no longer exists.
+//   - begin() bumps the PRIMARY generation and aborts EVERYTHING in the guard (primary + any
+//     follow-up), then hands back a primary ticket bound to the new generation.
+//   - beginFollowUp() bumps a SEPARATE follow-up token and aborts only a prior follow-up. Its
+//     ticket is current only while BOTH the primary generation is unchanged AND it is still the
+//     latest follow-up, so:
+//       * a later begin() (filter switch / restore / delete) supersedes it — the page is dropped
+//         rather than appended onto a list that no longer exists; and
+//       * a later beginFollowUp() (a second rapid load-more) also supersedes it — the earlier
+//         page, even if its request resolved a hair before being aborted, is dropped rather than
+//         appended as stale / duplicate rows. (A shared generation alone could not express this:
+//         two follow-ups share the primary generation, so the aborted first ticket would wrongly
+//         still report itself current — the bug this lane token fixes.)
+//   The primary lane is NOT affected by follow-ups: a load-more never invalidates an in-flight
+//   refresh/preview ticket.
 //
 // A panel typically holds one guard for the list (refresh = primary, load-more = follow-up) and a
 // second, independent guard for preview (primary only — it never calls beginFollowUp).
@@ -52,13 +60,22 @@ export interface RaceGuard {
 
 /** Create a fresh race guard (one per lane, held in a useRef for the component's lifetime). */
 export function createRaceGuard(): RaceGuard {
+  // Primary generation (refresh / preview). Follow-ups also observe it so a new primary drops them.
   let generation = 0
+  // Separate follow-up token: distinguishes rapid successive load-mores that share `generation`.
+  let followToken = 0
   let primary: AbortController | null = null
   let followUp: AbortController | null = null
 
-  const ticketFor = (gen: number, controller: AbortController): GuardTicket => ({
+  const primaryTicket = (gen: number, controller: AbortController): GuardTicket => ({
     signal: controller.signal,
     isCurrent: () => gen === generation,
+  })
+
+  const followTicket = (gen: number, token: number, controller: AbortController): GuardTicket => ({
+    signal: controller.signal,
+    // Current only if neither a newer primary NOR a newer follow-up has superseded this one.
+    isCurrent: () => gen === generation && token === followToken,
   })
 
   return {
@@ -70,23 +87,29 @@ export function createRaceGuard(): RaceGuard {
       const controller = new AbortController()
       primary = controller
       const gen = ++generation
-      return ticketFor(gen, controller)
+      // Invalidate any outstanding follow-up ticket bound to the previous list.
+      followToken++
+      return primaryTicket(gen, controller)
     },
     beginFollowUp() {
-      // Cancel a prior page but keep the current generation: this page belongs to the list the
-      // most recent begin() produced, and a later begin() must be able to invalidate it.
+      // Cancel a prior page and advance the follow-up token so its ticket goes stale — being
+      // aborted alone does not flip isCurrent(), so a page that resolved just before the abort
+      // must be excluded by the token, not merely by the signal. Keeps the primary generation so a
+      // later begin() can still invalidate this page.
       followUp?.abort()
       const controller = new AbortController()
       followUp = controller
-      return ticketFor(generation, controller)
+      const token = ++followToken
+      return followTicket(generation, token, controller)
     },
     abort() {
       primary?.abort()
       followUp?.abort()
       primary = null
       followUp = null
-      // Bump so any outstanding ticket's isCurrent() flips to false even without a fresh begin().
+      // Bump both so any outstanding ticket's isCurrent() flips to false even without a fresh begin().
       generation++
+      followToken++
     },
   }
 }

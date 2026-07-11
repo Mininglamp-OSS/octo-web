@@ -29,12 +29,11 @@ const AUTO = {
 }
 const COUNTS = { auto: 5, manual: 2, restore: 1, total: 8 }
 
-const listVersionsMock = vi.fn(
-  async (_docId: unknown, opts?: { kind?: string; cursor?: number | null }) => {
-    if (opts?.cursor != null) return { items: [{ ...AUTO, docVersionSeq: 4 }], nextCursor: null, counts: COUNTS }
-    return { items: [NAMED, AUTO], nextCursor: 100, counts: COUNTS }
-  },
-)
+const defaultListImpl = async (_docId: unknown, opts?: { kind?: string; cursor?: number | null }) => {
+  if (opts?.cursor != null) return { items: [{ ...AUTO, docVersionSeq: 4 }], nextCursor: null, counts: COUNTS }
+  return { items: [NAMED, AUTO], nextCursor: 100, counts: COUNTS }
+}
+const listVersionsMock = vi.fn(defaultListImpl)
 const createNamedVersionMock = vi.fn(async () => 8)
 const restoreVersionMock = vi.fn(async () => ({ newDocVersionSeq: 9, restoredFrom: 7 }))
 const renameVersionMock = vi.fn(async () => undefined)
@@ -92,7 +91,8 @@ const btnByText = (root: ParentNode, text: string) =>
   Array.from(root.querySelectorAll('button')).find((b) => b.textContent === text) as HTMLButtonElement
 
 beforeEach(() => {
-  listVersionsMock.mockClear()
+  listVersionsMock.mockReset()
+  listVersionsMock.mockImplementation(defaultListImpl)
   createNamedVersionMock.mockClear()
   restoreVersionMock.mockClear()
   renameVersionMock.mockClear()
@@ -126,13 +126,18 @@ describe('VersionHistoryPanel — list / filter / counts', () => {
     )
   })
 
-  it('pages the current filter via cursor on load-more', async () => {
+  it('pages the current filter via cursor on load-more and appends the page (no stale error)', async () => {
     renderPanel()
     await screen.findByText('Draft v1')
+    expect(document.querySelectorAll('.octo-version-row').length).toBe(2)
     fireEvent.click(btnByText(document.body, 'docs.version.loadMore'))
     await waitFor(() =>
       expect(listVersionsMock.mock.calls.some((c) => (c[1] as { cursor?: number })?.cursor === 100)).toBe(true),
     )
+    // The fetched page (seq 4) is appended onto the existing rows — the append path the load-more
+    // guard protects. isCurrent() gates both append and errorMore, so no stale error leaks.
+    await waitFor(() => expect(document.querySelectorAll('.octo-version-row').length).toBe(3))
+    expect(document.body.textContent).not.toContain('docs.version.errorMore')
   })
 })
 

@@ -47,12 +47,16 @@ describe('createRaceGuard — follow-up lane (load-more)', () => {
     expect(page.signal.aborted).toBe(true)
   })
 
-  it('aborts a prior follow-up when a newer follow-up starts', () => {
+  it('aborts a prior follow-up AND makes its ticket stale when a newer follow-up starts', () => {
     const guard = createRaceGuard()
     guard.begin()
     const firstPage = guard.beginFollowUp()
     const secondPage = guard.beginFollowUp()
     expect(firstPage.signal.aborted).toBe(true)
+    // Regression (PM CHANGES_REQUESTED / Jerry-Xin): the superseded follow-up must NOT report
+    // itself current — otherwise a load-more whose request resolved just before it was aborted
+    // would still pass the isCurrent() gate and append stale / duplicate rows.
+    expect(firstPage.isCurrent()).toBe(false)
     // Both belong to the current generation, so the newest page still applies.
     expect(secondPage.isCurrent()).toBe(true)
   })

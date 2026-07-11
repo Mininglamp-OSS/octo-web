@@ -206,8 +206,11 @@ export function VersionHistoryPanel<TState, TCurrent>({
     setError(null)
     try {
       const res = await listVersions(docId, { kind: filter, cursor: nextCursor, limit: pageSize, signal })
-      // Bound to the list generation: if a refresh / filter switch / restore replaced the list
-      // before this page landed, drop it rather than append onto a list that no longer exists.
+      // Bound to the list guard: if a refresh / filter switch / restore (begin) OR a newer
+      // load-more (beginFollowUp) superseded this page before it landed, isCurrent() is false and
+      // we drop it — never appending stale/duplicate rows onto a list that moved on. The follow-up
+      // token in createRaceGuard is what makes the "newer load-more" case report non-current even
+      // though the aborted request may have resolved a hair before its abort.
       if (!isCurrent()) return
       setItems((cur) => [...cur, ...res.items])
       setNextCursor(res.nextCursor)
