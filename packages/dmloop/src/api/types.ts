@@ -80,6 +80,44 @@ export interface ListParams {
   offset?: number;
 }
 
+/* ---------- 按负责人分组板 (GET /issues/grouped) ---------- */
+// 后端仅支持 group_by=assignee。scope pill 通过 assignee_types / involves_user_id 收窄范围。
+// "involves" 需后端 user UUID(非 octo uid):由候选里 octo_uid===loginInfo.uid 的成员解析。
+export type IssueScope = "all" | "members" | "agents" | "involves";
+
+export interface GroupedParams {
+  statuses?: IssueStatus[];
+  priorities?: IssuePriority[];
+  assignee_types?: AssigneeType[];
+  assignee_id?: string;
+  involves_user_id?: string;
+  creator_id?: string;
+  project_id?: string;
+  date_field?: IssueDateField;
+  date_start?: string;
+  date_end?: string;
+  limit?: number;
+}
+
+// 一个负责人分组;assignee_type/assignee_id 为 null 表示「未指派」组。
+export interface IssueGroup {
+  id: string;
+  assignee_type: AssigneeType | null;
+  assignee_id: string | null;
+  issues: Issue[];
+  total: number;
+  // 由 directory 回填(展示用):分组头显示的负责人名。
+  assignee_name?: string | null;
+  assignee_avatar?: string | null;
+}
+
+// 工作区级运行中任务快照的最小消费形状 (GET /agent-task-snapshot 裸数组)。
+// 只取 issue_id + status,用于算「哪些 issue 有 agent 正在跑」的集合。
+export interface AgentTaskSnapshotItem {
+  issue_id: string; // 空串表示无关联 issue(聊天/autopilot 触发)
+  status: TaskStatus;
+}
+
 /* ---------- Issue ---------- */
 export type IssueStatus =
   | "backlog" | "todo" | "in_progress" | "in_review" | "done" | "blocked" | "cancelled";
@@ -141,6 +179,8 @@ export interface CreateIssueReq {
   assignee_type?: AssigneeType | null;
   assignee_id?: string | null;
   project_id?: string | null;
+  // 新建子 issue 时绑定父任务(后端 CreateIssueRequest.parent_issue_id)。
+  parent_issue_id?: string | null;
   // 新建时绑定已上传附件(上传返回的 id 列表)。
   attachment_ids?: string[];
 }

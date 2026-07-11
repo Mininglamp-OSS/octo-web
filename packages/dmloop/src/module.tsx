@@ -2,18 +2,18 @@ import React from "react";
 import { WKApp, Menus, i18n, t as translate } from "@octo/base";
 import type { IModule } from "@octo/base";
 import LoopPage from "./pages/LoopPage";
-import MulticaCliAuthorizePage from "./pages/MulticaCliAuthorizePage";
+import LoopCliAuthorizePage from "./pages/LoopCliAuthorizePage";
 import {
-  isMulticaCliAuthorizePath,
-  MULTICA_CLI_AUTHORIZE_PATH,
-  resolveMulticaCliAuthorizeSearch,
-  visibleMulticaCliAuthorizeSearch,
+  isLoopCliAuthorizePath,
+  LOOP_CLI_AUTHORIZE_PATH,
+  resolveLoopCliAuthorizeSearch,
+  visibleLoopCliAuthorizeSearch,
 } from "./cliAuthorizeSession";
 import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
 
 let _initialized = false;
-let multicaCliAuthorizeInitialSearch = "";
+let loopCliAuthorizeInitialSearch = "";
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     _initialized = false;
@@ -58,9 +58,9 @@ export default class LoopModule implements IModule {
 
     if (
       typeof window !== "undefined" &&
-      isMulticaCliAuthorizePath(window.location.pathname)
+      isLoopCliAuthorizePath(window.location.pathname)
     ) {
-      multicaCliAuthorizeInitialSearch = resolveMulticaCliAuthorizeSearch(
+      loopCliAuthorizeInitialSearch = resolveLoopCliAuthorizeSearch(
         window.location.pathname,
         window.location.search,
         window.sessionStorage
@@ -74,7 +74,7 @@ export default class LoopModule implements IModule {
             {},
             "",
             window.location.pathname +
-              visibleMulticaCliAuthorizeSearch(window.location.search)
+              visibleLoopCliAuthorizeSearch(window.location.search)
           );
         } catch {
           // The captured prop still protects the flow if History is unavailable.
@@ -83,15 +83,15 @@ export default class LoopModule implements IModule {
     }
 
     WKApp.route.register("/loop", () => <LoopPage />);
-    const renderMulticaCliAuthorize = () => (
-      <MulticaCliAuthorizePage
-        initialSearch={multicaCliAuthorizeInitialSearch}
+    const renderLoopCliAuthorize = () => (
+      <LoopCliAuthorizePage
+        initialSearch={loopCliAuthorizeInitialSearch}
       />
     );
-    WKApp.route.register(MULTICA_CLI_AUTHORIZE_PATH, renderMulticaCliAuthorize);
+    WKApp.route.register(LOOP_CLI_AUTHORIZE_PATH, renderLoopCliAuthorize);
     WKApp.route.register(
-      `${MULTICA_CLI_AUTHORIZE_PATH}/`,
-      renderMulticaCliAuthorize
+      `${LOOP_CLI_AUTHORIZE_PATH}/`,
+      renderLoopCliAuthorize
     );
 
     WKApp.menus.register(

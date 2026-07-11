@@ -1,5 +1,5 @@
 import { httpPost } from "./http";
 
-export function issueMulticaCliToken(): Promise<{ token: string }> {
+export function issueLoopCliToken(): Promise<{ token: string }> {
   return httpPost<{ token: string }>("/cli-token");
 }

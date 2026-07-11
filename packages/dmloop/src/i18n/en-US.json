@@ -33,7 +33,19 @@
   },
   "view": {
     "board": "Board",
+    "grouped": "Grouped",
     "list": "List"
+  },
+  "scope": {
+    "all": "All",
+    "members": "Members",
+    "agents": "AI",
+    "involves": "Involves me"
+  },
+  "batch": {
+    "selected": "{{count}} selected",
+    "done": "Updated",
+    "deleteConfirm": "Delete {{count}} selected issue(s)? This cannot be undone."
   },
   "search": {
     "issue": "Search Loop / id",
@@ -309,7 +321,8 @@
     "unsubscribed": "Unsubscribed"
   },
   "subIssue": {
-    "title": "Sub-issues"
+    "title": "Sub-issues",
+    "create": "New sub-issue"
   },
   "reaction": {
     "add": "Add reaction"

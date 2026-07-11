@@ -33,7 +33,19 @@
   },
   "view": {
     "board": "看板",
+    "grouped": "分组",
     "list": "列表"
+  },
+  "scope": {
+    "all": "全部",
+    "members": "成员",
+    "agents": "AI",
+    "involves": "与我相关"
+  },
+  "batch": {
+    "selected": "已选 {{count}} 项",
+    "done": "已更新",
+    "deleteConfirm": "确定删除选中的 {{count}} 项？此操作不可撤销。"
   },
   "search": {
     "issue": "搜索回路/ 编号",
@@ -309,7 +321,8 @@
     "unsubscribed": "已取消订阅"
   },
   "subIssue": {
-    "title": "子 Issue"
+    "title": "子 Issue",
+    "create": "新建子 Issue"
   },
   "reaction": {
     "add": "添加反应"
