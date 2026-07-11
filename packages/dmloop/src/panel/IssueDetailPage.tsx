@@ -257,38 +257,55 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     </Dropdown.Item>
   );
 
-  // 评论 emoji 反应:选择器点 emoji=加,已有 chip 点击=删自己那条(后端按 actor+emoji 定位)。
-  const reactComment = async (commentId: string, emoji: string, add: boolean) => {
-    const token = reqRef.current;
+  // 写操作与"写后刷新"分离的通用漏斗:只有写失败才报错并中止;写成功后先跑同步的成功处理
+  // (onOk:toast / 本地 state,不会抛),再刷新——刷新失败不当作写失败、不误报、也不 strand 已成功的写。
+  // 收敛这一类 async 写(reaction / resolve / 删评论),杜绝"写+刷新同一 try"导致刷新失败误报或漏处理
+  // (原则:修一类而非单点)。
+  const mutateThenRefresh = async (
+    mutate: () => Promise<unknown>,
+    refresh: () => Promise<unknown>,
+    onOk?: () => void,
+  ) => {
     try {
-      await (add ? addCommentReaction : removeCommentReaction)(commentId, emoji);
-      await reloadComments(token);
+      await mutate();
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+      return;
+    }
+    onOk?.();
+    try {
+      await refresh();
+    } catch {
+      /* 刷新失败:写已成功,不误报;下次 reload 自愈 */
     }
   };
 
-  // issue 级 emoji 反应:同评论,读回走 getIssue 的 issue.reactions(syncIssue 重取详情)。
-  const reactIssue = async (emoji: string, add: boolean) => {
+  // 评论 emoji 反应:选择器点 emoji=加,已有 chip 点击=删自己那条(后端按 actor+emoji 定位)。
+  const reactComment = (commentId: string, emoji: string, add: boolean) => {
     const token = reqRef.current;
-    try {
-      await (add ? addIssueReaction : removeIssueReaction)(issueId, emoji);
-      await syncIssue(token);
-    } catch (e) {
-      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
-    }
+    return mutateThenRefresh(
+      () => (add ? addCommentReaction : removeCommentReaction)(commentId, emoji),
+      () => reloadComments(token),
+    );
+  };
+
+  // issue 级 emoji 反应:同评论,读回走 getIssue 的 issue.reactions(syncIssue 重取详情)。
+  const reactIssue = (emoji: string, add: boolean) => {
+    const token = reqRef.current;
+    return mutateThenRefresh(
+      () => (add ? addIssueReaction : removeIssueReaction)(issueId, emoji),
+      () => syncIssue(token),
+    );
   };
 
   // 评论 resolve/unresolve:后端「一线程至多一条 resolved」会清同线程兄弟,操作后重拉评论即可。
   // (resolve 只发实时事件、不写 activity_log,故活动流无需刷新。)
-  const toggleResolve = async (commentId: string, resolved: boolean) => {
+  const toggleResolve = (commentId: string, resolved: boolean) => {
     const token = reqRef.current;
-    try {
-      await (resolved ? unresolveComment : resolveComment)(commentId);
-      await reloadComments(token);
-    } catch (e) {
-      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
-    }
+    return mutateThenRefresh(
+      () => (resolved ? unresolveComment : resolveComment)(commentId),
+      () => reloadComments(token),
+    );
   };
 
   // @提及:选中候选(成员/AI队友/AI小队)→ 往草稿插入 mention markdown。
@@ -418,11 +435,14 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const toggleSuppress = (id: string) =>
     setSuppressed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  const removeComment = async (id: string) => {
+  const removeComment = (id: string) => {
     const token = reqRef.current;
-    await deleteComment(id);
-    await reloadComments(token);
-    Toast.success(t("loop.toast.commentDeleted"));
+    // 删除失败→报错(否则静默);删除成功→先弹 commentDeleted(刷新前),再刷新评论列表。
+    return mutateThenRefresh(
+      () => deleteComment(id),
+      () => reloadComments(token),
+      () => Toast.success(t("loop.toast.commentDeleted")),
+    );
   };
 
   const saveEdit = async (id: string) => {
