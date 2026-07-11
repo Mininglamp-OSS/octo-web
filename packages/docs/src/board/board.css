@@ -137,22 +137,13 @@
   display: none;
 }
 
-/* Version-history modal (BoardVersionPanel). Wider than the default 560px member modal so the
-   read-only scene preview has room; the preview itself is a fixed-height, self-scrolling
-   Excalidraw canvas embedded in the panel. */
-.octo-board-version-modal {
-  max-width: 880px;
-}
-.octo-board-version-filters {
-  align-items: center;
-  gap: 6px;
-  margin: 8px 0;
-}
-/* Success line after a restore (non-error, informational). */
-.octo-board-version-notice {
-  margin: 6px 0;
-  font-size: 13px;
-  color: var(--octo-success, #00b42a);
+/* Version history now renders through the unified <VersionHistoryPanel> shell: the list lives in a
+   right-side drawer (.octo-doc-drawer, styled in editor/styles.css and shared with doc / sheet) and
+   the read-only scene preview pops in the shell's centered preview modal (.docs-version-preview-modal).
+   The board drawer sits above Excalidraw's in-canvas UI islands, so it takes a higher stacking order
+   than the doc/sheet drawer's default. */
+.octo-board-version-drawer {
+  z-index: 40;
 }
 .octo-board-version-preview {
   position: relative;
@@ -176,4 +167,18 @@
   margin: 0;
   z-index: 1;
   pointer-events: none;
+}
+
+/* The board's scene preview is a live Excalidraw canvas, unlike the doc/sheet text previews the
+   shell modal was sized for. When the shared preview modal hosts it, widen the dialog well past the
+   720px text default so the drawing has real horizontal room and is never squished, and give the
+   canvas a definite, generous height: Excalidraw measures its container once on mount, so a
+   collapsed / 0-height box would render a squished canvas and skip scrollToContent. The modal body
+   stays the single scroll container (.docs-version-preview-modal-body { overflow: auto }). */
+.octo-modal.docs-version-preview-modal:has(.octo-board-version-preview) {
+  max-width: 960px;
+}
+.docs-version-preview-modal-body .octo-board-version-preview {
+  height: 62vh;
+  min-height: 360px;
 }
