@@ -67,3 +67,32 @@ export function ensureSkillFrontmatter(name: string, description: string, conten
   const header = `---\nname: ${yamlScalar(name)}\ndescription: ${yamlScalar(description)}\n---\n`;
   return content.trim() ? `${header}\n${content}` : header;
 }
+
+/**
+ * 更新（或插入）frontmatter 中某个字段并返回新的完整文本，其余行、正文保持不变。
+ * 无 frontmatter 时补建分隔块。用于「外层输入框 ↔ SKILL.md 头部」的双向同步：
+ * content 作为唯一数据源，字段值改动后回写到头部，避免两份 name 漂移。
+ */
+export function setFrontmatterField(raw: string, key: string, value: string): string {
+  const newLine = `${key}: ${yamlScalar(value)}`;
+  const match = FRONTMATTER_RE.exec(raw);
+  if (!match) {
+    const header = `---\n${newLine}\n---\n`;
+    return raw.trim() ? `${header}\n${raw}` : header;
+  }
+  const body = raw.slice(match[0].length);
+  // 捕获组尾部带一个换行；去掉后按行处理，避免产生空字段行。
+  const inner = match[1]!.replace(/\r?\n$/, "");
+  const lines = inner.length ? inner.split(/\r?\n/) : [];
+  let replaced = false;
+  const updated = lines.map((line) => {
+    const idx = line.indexOf(":");
+    if (!replaced && idx > 0 && line.slice(0, idx).trim() === key) {
+      replaced = true;
+      return newLine;
+    }
+    return line;
+  });
+  if (!replaced) updated.push(newLine);
+  return `---\n${updated.join("\n")}\n---\n${body}`;
+}
