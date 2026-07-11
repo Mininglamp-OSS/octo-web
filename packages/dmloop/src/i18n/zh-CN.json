@@ -254,9 +254,9 @@
   "skill": {
     "source": "来源",
     "sourceType": {
-      "github": "GitHub",
+      "github": "外部导入",
       "local": "本地",
-      "workspace": "工作区"
+      "workspace": "本地"
     },
     "usedBy": "被引用",
     "usedCount": "{{count}} 个 AI队友",
@@ -273,8 +273,8 @@
     "imported": "已导入",
     "urlRequired": "请填写 URL",
     "rtUnsupported": "该运行时不支持技能发现",
-    "namePattern": "Skill 名称只能包含英文字母、数字和连字符 -",
-    "importInvalidName": "已跳过 {{name}}：Skill 名称只能包含英文字母、数字和连字符 -",
+    "namePattern": "Skill 名称只能包含英文字母、数字、连字符 - 和下划线 _",
+    "importInvalidName": "已跳过 {{name}}：Skill 名称只能包含英文字母、数字、连字符 - 和下划线 _",
     "create": {
       "subtitle": "选一种方式创建，右侧实时预览。",
       "draft": "空白起草",

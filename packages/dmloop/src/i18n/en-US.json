@@ -254,9 +254,9 @@
   "skill": {
     "source": "Source",
     "sourceType": {
-      "github": "GitHub",
+      "github": "Imported",
       "local": "Local",
-      "workspace": "Workspace"
+      "workspace": "Local"
     },
     "usedBy": "Used by",
     "usedCount": "{{count}} AI teammates",
@@ -273,8 +273,8 @@
     "imported": "Imported",
     "urlRequired": "URL is required",
     "rtUnsupported": "This runtime does not support skill discovery",
-    "namePattern": "Skill names can only contain English letters, numbers, and hyphens (-)",
-    "importInvalidName": "Skipped {{name}}: skill names can only contain English letters, numbers, and hyphens (-)",
+    "namePattern": "Skill names can only contain English letters, numbers, hyphens (-), and underscores (_)",
+    "importInvalidName": "Skipped {{name}}: skill names can only contain English letters, numbers, hyphens (-), and underscores (_)",
     "create": {
       "subtitle": "Choose a way to create — live preview on the right.",
       "draft": "Blank draft",

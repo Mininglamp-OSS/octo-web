@@ -58,14 +58,24 @@ function yamlScalar(v: string): string {
 }
 
 /**
- * 确保 SKILL.md 带标准 frontmatter：若正文已含分隔块则原样返回；否则按
- * `---\nname: ...\ndescription: ...\n---` 生成头部并拼在正文前，使新建的
- * SKILL.md 符合服务端 ParseSkillFrontmatter 的解析格式。
+ * 确保 SKILL.md 带标准 frontmatter，且 name/description 两个必填字段一定存在：
+ * 无分隔块时按 `---\nname: ...\ndescription: ...\n---` 生成头部拼在正文前；已有
+ * 分隔块但缺 name/description 时，用入参（通常来自 DB 记录）补齐缺失字段。
+ *
+ * 关键点：不能因为「已有 frontmatter 块」就原样返回——若块内没有 name，头部会
+ * 缺标题，详情页的 name 输入框读到空值、保存校验必然失败，技能变得不可编辑。
+ * 补齐缺失字段可保证头部标题与 DB 标题一致（agent 依赖二者一致才能正确使用技能）。
  */
 export function ensureSkillFrontmatter(name: string, description: string, content: string): string {
-  if (hasFrontmatter(content)) return content;
-  const header = `---\nname: ${yamlScalar(name)}\ndescription: ${yamlScalar(description)}\n---\n`;
-  return content.trim() ? `${header}\n${content}` : header;
+  if (!hasFrontmatter(content)) {
+    const header = `---\nname: ${yamlScalar(name)}\ndescription: ${yamlScalar(description)}\n---\n`;
+    return content.trim() ? `${header}\n${content}` : header;
+  }
+  const parsed = parseFrontmatter(content).frontmatter;
+  let out = content;
+  if (!parsed?.name?.trim()) out = setFrontmatterField(out, "name", name);
+  if (!parsed?.description?.trim()) out = setFrontmatterField(out, "description", description);
+  return out;
 }
 
 /**
