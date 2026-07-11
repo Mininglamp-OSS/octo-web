@@ -16,13 +16,16 @@ export interface CreateIssueModalProps {
   visible: boolean;
   onClose: () => void;
   onCreated?: () => void;
+  /** 传入即新建为该 issue 的子任务(绑定 parent_issue_id)。 */
+  parentIssueId?: string;
 }
 
 /**
  * 新建 Issue 弹窗（对齐产品设计的手动创建流程）：
  * 标题 / 描述 / 指派(member|agent|squad 三态) / 状态 / 优先级 / 项目。
+ * 传 parentIssueId 时创建为子任务。
  */
-export default function CreateIssueModal({ visible, onClose, onCreated }: CreateIssueModalProps) {
+export default function CreateIssueModal({ visible, onClose, onCreated, parentIssueId }: CreateIssueModalProps) {
   const { t } = useI18n();
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
@@ -54,6 +57,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated }: Create
         assignee_id: assigneeId,
         assignee_type: assigneeType,
         project_id: projectId,
+        parent_issue_id: parentIssueId,
       });
       onClose();
       onCreated?.();
@@ -64,7 +68,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated }: Create
 
   return (
     <Modal
-      title={t("loop.action.newIssue")}
+      title={parentIssueId ? t("loop.subIssue.create") : t("loop.action.newIssue")}
       visible={visible}
       onOk={submit}
       onCancel={onClose}

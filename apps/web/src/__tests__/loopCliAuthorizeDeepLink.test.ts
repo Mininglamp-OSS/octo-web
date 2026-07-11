@@ -2,21 +2,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  clearPendingMulticaCliAuthorizeSearch,
-  isMulticaCliAuthorizePath,
-  resolveMulticaCliAuthorizeSearch,
-  visibleMulticaCliAuthorizeSearch,
+  clearPendingLoopCliAuthorizeSearch,
+  isLoopCliAuthorizePath,
+  resolveLoopCliAuthorizeSearch,
+  visibleLoopCliAuthorizeSearch,
 } from "../../../../packages/dmloop/src/cliAuthorizeSession";
 
-describe("Multica CLI authorize deep link", () => {
+describe("Loop CLI authorize deep link", () => {
   beforeEach(() => {
     sessionStorage.clear();
   });
 
   it("accepts the canonical route with or without a trailing slash", () => {
-    expect(isMulticaCliAuthorizePath("/loop/cli-authorize")).toBe(true);
-    expect(isMulticaCliAuthorizePath("/loop/cli-authorize/")).toBe(true);
-    expect(isMulticaCliAuthorizePath("/loop/multica")).toBe(false);
+    expect(isLoopCliAuthorizePath("/loop/cli-authorize")).toBe(true);
+    expect(isLoopCliAuthorizePath("/loop/cli-authorize/")).toBe(true);
+    expect(isLoopCliAuthorizePath("/loop/not-authorize")).toBe(false);
   });
 
   it("keeps callback parameters after RouteManager replaces the query with sid", () => {
@@ -24,7 +24,7 @@ describe("Multica CLI authorize deep link", () => {
       "?cli_callback=http%3A%2F%2Flocalhost%3A57270%2Fcallback&cli_state=state-1";
 
     expect(
-      resolveMulticaCliAuthorizeSearch(
+      resolveLoopCliAuthorizeSearch(
         "/loop/cli-authorize",
         original,
         sessionStorage
@@ -32,7 +32,7 @@ describe("Multica CLI authorize deep link", () => {
     ).toBe(original);
 
     expect(
-      resolveMulticaCliAuthorizeSearch(
+      resolveLoopCliAuthorizeSearch(
         "/loop/cli-authorize/",
         "?sid=llg60f",
         sessionStorage
@@ -41,16 +41,16 @@ describe("Multica CLI authorize deep link", () => {
   });
 
   it("clears the pending callback after redirecting to the CLI", () => {
-    resolveMulticaCliAuthorizeSearch(
+    resolveLoopCliAuthorizeSearch(
       "/loop/cli-authorize",
       "?cli_callback=http%3A%2F%2Flocalhost%3A57270%2Fcallback&cli_state=x",
       sessionStorage
     );
 
-    clearPendingMulticaCliAuthorizeSearch(sessionStorage);
+    clearPendingLoopCliAuthorizeSearch(sessionStorage);
 
     expect(
-      resolveMulticaCliAuthorizeSearch(
+      resolveLoopCliAuthorizeSearch(
         "/loop/cli-authorize",
         "?sid=next",
         sessionStorage
@@ -60,7 +60,7 @@ describe("Multica CLI authorize deep link", () => {
 
   it("keeps the existing sid when callback parameters are hidden", () => {
     expect(
-      visibleMulticaCliAuthorizeSearch(
+      visibleLoopCliAuthorizeSearch(
         "?sid=5asghu&cli_callback=http%3A%2F%2Flocalhost%3A52652%2Fcallback&cli_state=state"
       )
     ).toBe("?sid=5asghu");
@@ -71,7 +71,7 @@ describe("Multica CLI authorize deep link", () => {
       path.join(__dirname, "../Layout/index.tsx"),
       "utf-8"
     );
-    const cliRoute = layout.indexOf("isMulticaCliAuthorizePath(");
+    const cliRoute = layout.indexOf("isLoopCliAuthorizePath(");
     const provider = layout.search(/return\s*(?:\(\s*)?<Provider/);
 
     expect(cliRoute).toBeGreaterThan(-1);
@@ -79,7 +79,7 @@ describe("Multica CLI authorize deep link", () => {
     expect(cliRoute).toBeLessThan(provider);
     expect(layout).toContain("recoverOctoSessionFromStorage(true)");
     expect(layout).toMatch(
-      /WKApp\.route\.get\(\s*MULTICA_CLI_AUTHORIZE_PATH\s*\)/
+      /WKApp\.route\.get\(\s*LOOP_CLI_AUTHORIZE_PATH\s*\)/
     );
   });
 });

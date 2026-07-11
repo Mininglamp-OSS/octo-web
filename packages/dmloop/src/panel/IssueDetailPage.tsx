@@ -31,6 +31,7 @@ import {
   BellOff,
   Paperclip,
   AtSign,
+  Plus,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
@@ -79,6 +80,7 @@ import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import LoopMarkdown from "../ui/LoopMarkdown";
 import { confirmDelete } from "../ui/confirmDelete";
 import RunDetailModal from "./RunDetailModal";
+import CreateIssueModal from "../ui/CreateIssueModal";
 import {
   ISSUE_STATUS_ORDER,
   ISSUE_STATUS_COLOR,
@@ -117,6 +119,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   // 订阅者列表是否已成功加载:未加载/加载失败时"我是否已订阅"不可判定,菜单回退到两项都显示。
   const [subLoaded, setSubLoaded] = useState(false);
   const [children, setChildren] = useState<Issue[]>([]);
+  const [childCreateOpen, setChildCreateOpen] = useState(false); // 新建子 issue 弹窗
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [parentCands, setParentCands] = useState<Issue[]>([]); // 父 issue 选择器候选(懒加载)
   const [runs, setRuns] = useState<TaskRun[]>([]);
@@ -810,28 +813,41 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
             )}
           </div>
 
-          {children.length > 0 && (
-            <div className="loop-idp__section">
-              <div className="loop-detail__section-title">
-                {t("loop.subIssue.title")} ({childrenDone}/{children.length})
-              </div>
-              <Progress
-                percent={Math.round((childrenDone / children.length) * 100)}
-                style={{ marginBottom: 10 }}
-              />
-              <div className="loop-subissues">
-                {children.map((c) => (
-                  <div key={c.id} className="loop-subissue">
-                    <Tag color={ISSUE_STATUS_COLOR[c.status]} size="small">
-                      {t(`loop.status.${c.status}`)}
-                    </Tag>
-                    <span className="loop-subissue__id">{c.identifier}</span>
-                    <span className="loop-subissue__title">{c.title}</span>
-                  </div>
-                ))}
-              </div>
+          <div className="loop-idp__section">
+            <div className="loop-detail__section-title loop-idp__desc-title">
+              <span>
+                {t("loop.subIssue.title")}
+                {children.length > 0 && ` (${childrenDone}/${children.length})`}
+              </span>
+              <Button
+                theme="borderless"
+                size="small"
+                icon={<Plus size={13} />}
+                onClick={() => setChildCreateOpen(true)}
+              >
+                {t("loop.subIssue.create")}
+              </Button>
             </div>
-          )}
+            {children.length > 0 && (
+              <>
+                <Progress
+                  percent={Math.round((childrenDone / children.length) * 100)}
+                  style={{ margin: "8px 0 10px" }}
+                />
+                <div className="loop-subissues">
+                  {children.map((c) => (
+                    <div key={c.id} className="loop-subissue">
+                      <Tag color={ISSUE_STATUS_COLOR[c.status]} size="small">
+                        {t(`loop.status.${c.status}`)}
+                      </Tag>
+                      <span className="loop-subissue__id">{c.identifier}</span>
+                      <span className="loop-subissue__title">{c.title}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
 
           <div className="loop-idp__section">
             <div className="loop-detail__section-title loop-idp__desc-title">
@@ -1139,6 +1155,16 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
       <RunDetailModal run={activeRun} visible={runOpen} onClose={() => setRunOpen(false)} />
       {runConfirmModal}
+      <CreateIssueModal
+        visible={childCreateOpen}
+        parentIssueId={issueId}
+        onClose={() => setChildCreateOpen(false)}
+        onCreated={() => {
+          Toast.success(t("loop.toast.created"));
+          // 只刷新子列表(非整页 reload,避免详情主体闪 loading);key-remount 已隔离跨 issue 陈旧写入。
+          listChildren(issueId).then(setChildren).catch(() => {});
+        }}
+      />
     </div>
   );
 }

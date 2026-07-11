@@ -2,12 +2,12 @@
 
 export { default as LoopModule } from "./module";
 export { default as LoopPage } from "./pages/LoopPage";
-export { default as MulticaCliAuthorizePage } from "./pages/MulticaCliAuthorizePage";
+export { default as LoopCliAuthorizePage } from "./pages/LoopCliAuthorizePage";
 export { default as RuntimePage } from "./pages/RuntimePage";
 export { default as SkillPage } from "./pages/SkillPage";
 export {
-  isMulticaCliAuthorizePath,
-  MULTICA_CLI_AUTHORIZE_PATH,
+  isLoopCliAuthorizePath,
+  LOOP_CLI_AUTHORIZE_PATH,
 } from "./cliAuthorizeSession";
 
 export * from "./api/types";
