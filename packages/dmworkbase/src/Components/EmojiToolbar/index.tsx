@@ -78,7 +78,7 @@ const EMOJI_PANEL_MARGIN = 8
 // <body>、position:fixed 并夹进视口——因为面板内容区 .wk-emojipanel-content 是
 // overflow:hidden，放大卡片会被裁掉顶部/边缘，portal 才能让它浮出面板而不被裁。
 // 浮在格子上方（而非盖住格子）是为了不遮挡 hover 才出现的右上角删除「×」。
-const STICKER_PREVIEW_SIZE = 140
+const STICKER_PREVIEW_SIZE = 170
 const STICKER_PREVIEW_MARGIN = 8
 // 放大卡片与格子之间的间距，避免贴着格子边缘。
 const STICKER_PREVIEW_GAP = 8
@@ -479,20 +479,30 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
 
     // 把放大卡片定位并夹进视口（口径同 computePanelPos）：水平以格子中心对齐；垂直优先浮在
     // 格子上方（保留格子与删除「×」可见），上方空间不足则翻到格子下方，最后统一夹进视口。
-    private computeStickerPreviewStyle(rect: DOMRect): React.CSSProperties {
+    // 一并算出指向源格子的 caret：placement=above 时卡片在格子上方、尖朝下；below 时反之。
+    // caretLeft 是尖角相对卡片左边缘的偏移，对齐格子中心并夹在卡片左右内 14px（不压圆角）。
+    private computeStickerPreviewGeometry(rect: DOMRect): {
+        style: React.CSSProperties
+        placement: "above" | "below"
+        caretLeft: number
+    } {
         const vw = typeof window !== "undefined" ? window.innerWidth : STICKER_PREVIEW_SIZE
         const vh = typeof window !== "undefined" ? window.innerHeight : STICKER_PREVIEW_SIZE
         const m = STICKER_PREVIEW_MARGIN
         // 小视口兜底：卡片边长不超过可用视口，避免极窄/极矮窗口下夹取退化后仍溢出、盖住
         // 格子与删除「×」。正常面板尺寸下就是 STICKER_PREVIEW_SIZE。
         const size = Math.max(0, Math.min(STICKER_PREVIEW_SIZE, vw - 2 * m, vh - 2 * m))
-        const left = Math.max(m, Math.min(rect.left + rect.width / 2 - size / 2, vw - size - m))
+        const cellCenterX = rect.left + rect.width / 2
+        const left = Math.max(m, Math.min(cellCenterX - size / 2, vw - size - m))
         let top = rect.top - STICKER_PREVIEW_GAP - size
+        let placement: "above" | "below" = "above"
         if (top < m) {
             top = rect.bottom + STICKER_PREVIEW_GAP
+            placement = "below"
         }
         top = Math.max(m, Math.min(top, vh - size - m))
-        return { left, top, width: size, height: size }
+        const caretLeft = Math.max(14, Math.min(cellCenterX - left, size - 14))
+        return { style: { left, top, width: size, height: size }, placement, caretLeft }
     }
 
     render(): React.ReactNode {
@@ -506,15 +516,21 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
         const isSticker = stickerCustomEnabled && category === STICKER_CATEGORY
         // 放大预览层 portal 到 <body>，逃出 .wk-emojipanel-content 的 overflow:hidden 裁剪，
         // 并盖过面板（面板 z-index:999）。pointer-events:none（见 CSS）保证不拦截点击即发送。
-        const previewOverlay = isSticker && preview && typeof document !== "undefined"
+        const previewGeo = isSticker && preview ? this.computeStickerPreviewGeometry(preview.rect) : null
+        const previewOverlay = isSticker && preview && previewGeo && typeof document !== "undefined"
             ? ReactDOM.createPortal(
-                <div className="wk-sticker-preview" style={this.computeStickerPreviewStyle(preview.rect)} aria-hidden="true">
+                <div className="wk-sticker-preview" style={previewGeo.style} aria-hidden="true">
                     {/* key 按 sticker_id：切换目标时重建媒体元素，避免复用同一 <tgs-player>、
                         只换 src 时 Lottie 动画不重启（沿用 renderStickerMedia 的分流）。 */}
                     {React.cloneElement(
                         this.renderStickerMedia(preview.sticker) as React.ReactElement,
                         { key: preview.sticker.sticker_id }
                     )}
+                    {/* 指向被 hover 的源格子的小三角，让"大图 ↔ 哪张贴纸"连起来。 */}
+                    <span
+                        className={classNames("wk-sticker-preview-caret", previewGeo.placement === "below" ? "is-below" : "is-above")}
+                        style={{ left: previewGeo.caretLeft }}
+                    />
                 </div>,
                 document.body
             )

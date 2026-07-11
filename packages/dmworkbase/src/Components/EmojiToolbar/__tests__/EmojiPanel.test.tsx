@@ -598,6 +598,23 @@ describe("EmojiPanel sticker hover preview（原位放大预览）", () => {
         const preview = document.body.querySelector(".wk-sticker-preview");
         expect(preview?.getAttribute("aria-hidden")).toBe("true");
     });
+
+    it("renders a caret pointing at the source cell alongside the preview", async () => {
+        const item = await mountWithSticker();
+        vi.useFakeTimers();
+        hover(item);
+        act(() => {
+            vi.advanceTimersByTime(120);
+        });
+        vi.useRealTimers();
+
+        // caret 与预览同在浮层内；朝向类名二选一（jsdom 下 rect 全 0，上方放不下会翻到下方）。
+        const caret = document.body.querySelector(".wk-sticker-preview .wk-sticker-preview-caret");
+        expect(caret).not.toBeNull();
+        expect(
+            caret!.classList.contains("is-above") || caret!.classList.contains("is-below")
+        ).toBe(true);
+    });
 });
 
 describe("EmojiPanel sticker upload validation (WKApp.remoteConfig.stickerUploadLimits)", () => {

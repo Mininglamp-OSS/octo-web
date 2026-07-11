@@ -165,8 +165,25 @@ body[theme-mode=dark] .wk-emojipanel-tab-item-selected {
 }
 
 /* ===== 我的贴纸（用户自定义贴纸）===== */
+/* 固定 5 列网格 + gap，替代原来的 flex-wrap。flex 下 74px 格子 + 12px gap 在面板出现滚动条
+   时（可用宽度少 ~15px）会时而挤成一排 5 个、时而回落到 4 个，随贴纸数量抖动。改用 grid 5 列
+   + 1fr 让列宽自适应，稳定一排 5 个，格子之间恒定留 12px（--wk-sp-3），不再贴在一起。 */
 .wk-emojipanel-content-sticker ul {
     align-content: flex-start;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--wk-sp-3);
+}
+/* grid 化后格子撑满列宽（原来是固定 74px），用 aspect-ratio 保持正方。 */
+.wk-emojipanel-content-sticker ul .wk-sticker-item,
+.wk-emojipanel-content-sticker ul .wk-sticker-add {
+    width: auto;
+    height: auto;
+    aspect-ratio: 1 / 1;
+}
+/* 空态提示铺满整行（否则在 grid 里只占 1 列）。 */
+.wk-emojipanel-content-sticker ul .wk-sticker-empty {
+    grid-column: 1 / -1;
 }
 
 .wk-sticker-item,
@@ -301,9 +318,33 @@ body[theme-mode=dark] .wk-emojipanel-tab-item-selected {
     height: 100%;
     object-fit: contain;
 }
+/* 指向源格子的小三角：朝向由 is-above/is-below 决定，水平位置由行内 left 给（对齐格子中心）。
+   用 --wk-color-item 填充、与卡片同色，像卡片探出的尾巴；主题感知，暗色下自动跟着变。 */
+.wk-sticker-preview-caret {
+    position: absolute;
+    width: 0;
+    height: 0;
+    transform: translateX(-50%);
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+}
+.wk-sticker-preview-caret.is-above {
+    bottom: -8px;
+    border-top: 9px solid var(--wk-color-item);
+}
+.wk-sticker-preview-caret.is-below {
+    top: -8px;
+    border-bottom: 9px solid var(--wk-color-item);
+}
 @keyframes wkStickerPreviewIn {
     from { opacity: 0; transform: scale(.85); }
     to { opacity: 1; transform: scale(1); }
+}
+/* 尊重「减少动态」偏好：关掉浮入动画，直接显示。 */
+@media (prefers-reduced-motion: reduce) {
+    .wk-sticker-preview {
+        animation: none;
+    }
 }
 
 /* dark mode */
