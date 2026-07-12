@@ -4,7 +4,8 @@
     "changeStatus": "Change status",
     "changePriority": "Change priority",
     "changeAssignee": "Change assignee",
-    "deleteIssue": "Delete Loop"
+    "deleteIssue": "Delete Loop",
+    "editProps": "Edit properties"
   },
   "nav": {
     "myloop": "My loops",
@@ -42,7 +43,11 @@
     "runFailed": "Failed to trigger",
     "triggerFailed": "Automation created, but scheduling failed — retry from Edit",
     "confirmDelete": "Delete this automation?",
-    "statusLabel": { "active": "Active", "paused": "Paused", "archived": "Archived" },
+    "statusLabel": {
+      "active": "Active",
+      "paused": "Paused",
+      "archived": "Archived"
+    },
     "triggers": "Triggers",
     "addTrigger": "Add trigger",
     "editTrigger": "Edit trigger",
@@ -53,8 +58,19 @@
     "runsError": "Failed to load run history",
     "retry": "Retry",
     "noTaskDesc": "No task instructions",
-    "runStatus": { "issue_created": "Loop created", "running": "Running", "completed": "Succeeded", "failed": "Failed", "skipped": "Skipped" },
-    "runSource": { "schedule": "Schedule", "manual": "Manual", "webhook": "Webhook", "api": "API" },
+    "runStatus": {
+      "issue_created": "Loop created",
+      "running": "Running",
+      "completed": "Succeeded",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "runSource": {
+      "schedule": "Schedule",
+      "manual": "Manual",
+      "webhook": "Webhook",
+      "api": "API"
+    },
     "emptyTitle": "No automations yet",
     "emptyDesc": "Create an automation to let AI teammates run on a cadence",
     "freq": {
@@ -149,7 +165,13 @@
     "cancel": "Cancel",
     "save": "Save",
     "delete": "Delete",
-    "edit": "Edit"
+    "edit": "Edit",
+    "filter": "Filter",
+    "show": "Display",
+    "clearFilters": "Clear filters",
+    "dispatch": "Dispatch",
+    "copy": "Copy",
+    "more": "More"
   },
   "workspace": {
     "title": "Workspaces",
@@ -268,13 +290,14 @@
     "created": "Created",
     "updated": "Updated",
     "execLog": "Execution log",
-    "execEmpty": "No runs yet"
+    "execEmpty": "No runs yet",
+    "board": "Board",
+    "detailsTitle": "Details"
   },
   "comment": {
     "reply": "Reply",
     "deleteConfirm": "Delete this comment?",
     "replyPlaceholder": "Reply…",
-    "replyingHint": "Replying to a comment above — use its reply box",
     "empty": "No comments yet",
     "placeholder": "Write a comment…",
     "send": "Send",
@@ -282,10 +305,12 @@
     "tapToSuppress": "(tap to skip one)",
     "resolve": "Resolve",
     "unresolve": "Unresolve",
-    "resolved": "Resolved"
+    "resolved": "Resolved",
+    "newTitle": "Add a comment"
   },
   "activity": {
-    "title": "Activity"
+    "title": "Activity",
+    "count": "{{count}} activities"
   },
   "attach": {
     "title": "Attachments",
@@ -300,8 +325,6 @@
     "deleted": "Deleted",
     "commentAdded": "Comment added",
     "commentDeleted": "Comment deleted",
-    "commentUpdated": "Comment updated",
-    "editFailed": "Edit failed",
     "deleteFailed": "Delete failed",
     "saveFailed": "Save failed",
     "loadFailed": "Load failed",
@@ -580,7 +603,22 @@
     "rerun": "Re-run",
     "rerunStarted": "Re-dispatched",
     "cancelConfirm": "Stop this run?",
-    "cancelled": "Stopped"
+    "cancelled": "Stopped",
+    "copyAll": "Copy all",
+    "copied": "Copied",
+    "events": "{{count}} events",
+    "toolCalls": "{{count}} tool calls",
+    "duration": "Duration",
+    "noData": "No data",
+    "waiting": "Waiting for events…",
+    "event": {
+      "text": "Agent",
+      "thinking": "Thinking",
+      "tool": "Tool",
+      "result": "Result",
+      "error": "Error"
+    },
+    "showHistory": "Show run history ({{count}})"
   },
   "settings": {
     "general": "General",
@@ -603,5 +641,40 @@
     "added": "Member added",
     "pendingInvites": "Pending invitations",
     "revoke": "Revoke"
+  },
+  "newLoop": {
+    "title": "Hand it to an AI teammate",
+    "subtitle": "Describe the outcome in one line — {{name}} turns it into a running loop.",
+    "subtitleGeneric": "Describe the outcome in one line — an AI teammate turns it into a running loop.",
+    "placeholder": "e.g. \"Have Bohan fix the slow inbox loading in the Web project\"",
+    "skills": "Skills",
+    "noProject": "No project",
+    "pickAssignee": "Pick an AI teammate",
+    "dispatch": "Dispatch",
+    "dispatched": "Dispatched",
+    "examplesTitle": "Start from an example",
+    "ex1Title": "Polish the demo script",
+    "ex1Desc": "Take one line from ticket to loop, end to end.",
+    "ex1Prompt": "Polish the OctoLoop demo script: one-line dispatch, full chain",
+    "ex2Title": "Digest user feedback",
+    "ex2Desc": "Merge last week's feedback into a top-10 pain-point table.",
+    "ex2Prompt": "Merge last week's user feedback into a top-10 pain-point table",
+    "ex3Title": "Debug slow inbox",
+    "ex3Desc": "Have a teammate fix the slow inbox loading in the Web project.",
+    "ex3Prompt": "Fix the slow inbox loading in the Web project"
+  },
+  "activityAction": {
+    "created": "created this loop",
+    "statusChanged": "updated the status",
+    "priorityChanged": "updated the priority",
+    "assigneeChanged": "changed the assignee",
+    "projectChanged": "changed the project",
+    "titleChanged": "edited the title",
+    "descriptionChanged": "updated the description",
+    "labelChanged": "updated labels",
+    "dateChanged": "updated dates",
+    "reopened": "reopened",
+    "completed": "marked complete",
+    "generic": "updated this loop"
   }
 }
