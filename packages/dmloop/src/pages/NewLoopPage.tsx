@@ -78,8 +78,9 @@ export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
         project_id: projectId,
         attachment_ids: attachmentIds,
       });
+      // 创建成功后由调用方负责导航(pop 回列表 / 切到回路看板)——此处不再自行 back(),
+      // 避免与调用方的 replaceToRoot 叠加导致把新根也 pop 掉、右栏变空。
       onCreated?.();
-      back();
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
     } finally {

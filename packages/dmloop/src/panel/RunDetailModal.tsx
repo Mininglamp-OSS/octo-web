@@ -208,7 +208,7 @@ export default function RunDetailModal({
 
   const copyAll = () => {
     const text = messages.map((m) => `[${eventLabel(m)}] ${eventSummary(m)}`).join("\n");
-    navigator.clipboard?.writeText(text).then(() => {
+    navigator.clipboard?.writeText(text)?.then(() => {
       setCopied(true);
       Toast.success(t("loop.run.copied"));
       setTimeout(() => setCopied(false), 2000);

@@ -637,6 +637,10 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changeAssignee")}</Dropdown.Item>
       </Dropdown>
       <Dropdown.Divider />
+      <Dropdown.Item icon={<Plus size={13} />} onClick={() => setChildCreateOpen(true)}>
+        {t("loop.subIssue.create")}
+      </Dropdown.Item>
+      <Dropdown.Divider />
       {/* 订阅态不可判定(未加载/加载失败/后端未透出 octo_uid)时两项都显示,保证 unsubscribe 可达 */}
       {!selfKnown ? (
         <>
@@ -708,7 +712,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
             clickToHide
             render={
               <Dropdown.Menu>
-                <Dropdown.Item icon={<Copy size={13} />} onClick={() => { navigator.clipboard?.writeText(c.content).then(() => Toast.success(t("loop.run.copied"))).catch(() => {}); }}>
+                <Dropdown.Item icon={<Copy size={13} />} onClick={() => { navigator.clipboard?.writeText(c.content)?.then(() => Toast.success(t("loop.run.copied"))).catch(() => {}); }}>
                   {t("loop.action.copy")}
                 </Dropdown.Item>
                 <Dropdown.Item icon={c.resolved_at ? <CircleSlash size={13} /> : <Check size={13} />} onClick={() => toggleResolve(c.id, !!c.resolved_at)}>

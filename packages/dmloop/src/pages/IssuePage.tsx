@@ -200,11 +200,11 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
     WKApp.routeRight.push(<IssueDetailPage key={id} issueId={id} onChanged={onMutated} />);
   };
 
-  // 新建回路 → 唤起独立 composer 页（非弹窗，对齐 Figma）。创建成功后返回并刷新列表。
+  // 新建回路 → 唤起独立 composer 页（非弹窗，对齐 Figma）。创建成功后 pop 回列表并刷新。
   const openNewLoop = () => {
     WKApp.routeRight.push(
       <NewLoopPage
-        onCreated={() => { Toast.success(t("loop.toast.created")); onMutated(); }}
+        onCreated={() => { Toast.success(t("loop.toast.created")); onMutated(); WKApp.routeRight.pop(); }}
       />,
     );
   };
