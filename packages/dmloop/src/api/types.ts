@@ -447,7 +447,7 @@ export interface UpsertProjectReq {
   lead_id?: string | null;
 }
 
-/* ---------- Webhook（对齐 multica /webhook-subscriptions，后端契约不变） ---------- */
+/* ---------- Webhook（后端 /webhook-subscriptions，契约不变） ---------- */
 export interface WebhookSubscription {
   id: string;
   workspace_id: string;
@@ -589,6 +589,27 @@ export interface UpsertSquadReq {
   description?: string;
   instructions?: string;
   leader_id?: string;
+}
+/** 局部更新：名称/描述/指引/领队等均可单独提交（内联编辑、设为领队）。 */
+export type UpdateSquadReq = Partial<UpsertSquadReq>;
+
+/* Squad 成员实时状态（后端 deriveSquadMemberStatus 收敛的五态；人类成员 status=null）。 */
+export type SquadMemberStatusValue = "working" | "idle" | "offline" | "unstable" | "archived";
+export interface SquadActiveIssueBrief {
+  issue_id: string;
+  identifier: string;
+  title: string;
+  issue_status: string;
+}
+export interface SquadMemberStatus {
+  member_type: AssigneeType;
+  member_id: string;
+  status: SquadMemberStatusValue | null;
+  active_issues: SquadActiveIssueBrief[];
+  last_active_at: string | null;
+}
+export interface SquadMemberStatusListResponse {
+  members: SquadMemberStatus[];
 }
 
 /* ---------- Runtime ---------- */

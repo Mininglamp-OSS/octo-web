@@ -21,6 +21,14 @@ type TagColor =
   | "teal"
   | "light-blue";
 
+/** 依据名称稳定地挑一个 Semi 头像色，避免同一实体每次渲染换色（Agent/Squad 头像共用）。 */
+const AVATAR_COLORS = ["violet", "blue", "cyan", "teal", "green", "amber", "orange", "purple", "indigo", "pink"] as const;
+export function avatarColor(name: string): (typeof AVATAR_COLORS)[number] {
+  let h = 0;
+  for (let i = 0; i < name.length; i += 1) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+
 export const ISSUE_STATUS_ORDER: IssueStatus[] = [
   "backlog",
   "todo",
