@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Modal, Input, Select, Tag, TextArea } from "@douyinfe/semi-ui";
+import { Modal, Select, Tag } from "@douyinfe/semi-ui";
 import { useI18n } from "@octo/base";
 import type { IssueStatus, IssuePriority, Project } from "../api/types";
 import { createIssue } from "../api/issueApi";
@@ -79,26 +79,26 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
       width={560}
     >
       <div className="loop-createissue">
-        <Input
+        <input
           autoFocus
-          size="large"
+          className="loop-field loop-field--lg"
           value={title}
-          onChange={setTitle}
+          onChange={(e) => setTitle(e.target.value)}
           placeholder={t("loop.field.titlePlaceholder")}
-          onEnterPress={submit}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
         />
-        <TextArea
+        <textarea
+          className="loop-field-textarea"
           value={desc}
-          onChange={setDesc}
+          onChange={(e) => setDesc(e.target.value)}
           placeholder={t("loop.field.descriptionPlaceholder")}
-          autosize={{ minRows: 3, maxRows: 8 }}
           style={{ marginTop: 12 }}
         />
 
         <div className="loop-createissue__row">
           <div className="loop-createissue__field">
             <label>{t("loop.field.status")}</label>
-            <Select value={status} onChange={(v) => setStatus(v as IssueStatus)} style={{ width: "100%" }} size="small">
+            <Select value={status} onChange={(v) => setStatus(v as IssueStatus)} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} size="small">
               {ISSUE_STATUS_ORDER.map((s) => (
                 <Select.Option key={s} value={s}>
                   <Tag color={ISSUE_STATUS_COLOR[s]} size="small">{t(`loop.status.${s}`)}</Tag>
@@ -108,7 +108,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
           </div>
           <div className="loop-createissue__field">
             <label>{t("loop.field.priority")}</label>
-            <Select value={priority} onChange={(v) => setPriority(v as IssuePriority)} style={{ width: "100%" }} size="small">
+            <Select value={priority} onChange={(v) => setPriority(v as IssuePriority)} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} size="small">
               {PRIORITY_ORDER.map((p) => (
                 <Select.Option key={p} value={p}>
                   <Tag color={PRIORITY_COLOR[p]} size="small">{t(`loop.priority.${p}`)}</Tag>
@@ -130,6 +130,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
             <Select
               value={projectId ?? undefined}
               onChange={(v) => setProjectId((v as string) ?? null)}
+              dropdownClassName="loop-fields__dropdown"
               style={{ width: "100%" }}
               size="small"
               showClear

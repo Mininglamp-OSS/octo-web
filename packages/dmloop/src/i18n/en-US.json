@@ -140,6 +140,8 @@
   "workspace": {
     "title": "Workspaces",
     "create": "Create workspace",
+    "namePlaceholder": "Workspace name",
+    "descPlaceholder": "What is this workspace for?",
     "created": "Workspace created",
     "none": "No workspace",
     "nameRequired": "Workspace name is required",
@@ -362,6 +364,7 @@
     "progress": "Progress",
     "lead": "Lead",
     "descPlaceholder": "Add a description...",
+    "namePlaceholder": "Project name, e.g. Growth experiments",
     "descHint": "Provided to agents as project context and applied to every task in this project."
   },
   "webhook": {
@@ -412,6 +415,8 @@
   "agent": {
     "runtime": "Runtime",
     "model": "Model",
+    "namePlaceholder": "Teammate name, e.g. Frontend helper",
+    "descPlaceholder": "Briefly describe what this AI teammate does",
     "runs30d": "Runs (30d)",
     "instructions": "Instructions",
     "instructionsPlaceholder": "System prompt / AI teammate behavior…",

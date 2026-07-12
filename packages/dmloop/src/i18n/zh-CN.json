@@ -140,6 +140,8 @@
   "workspace": {
     "title": "工作空间",
     "create": "创建工作区",
+    "namePlaceholder": "工作区名称",
+    "descPlaceholder": "这个工作区用来做什么？",
     "created": "工作区已创建",
     "none": "无工作区",
     "nameRequired": "请填写工作区名称",
@@ -362,6 +364,7 @@
     "progress": "进度",
     "lead": "负责人",
     "descPlaceholder": "添加描述...",
+    "namePlaceholder": "项目名称，例如 增长实验",
     "descHint": "会作为项目上下文提供给智能体，应用于该项目下的每个任务。"
   },
   "webhook": {
@@ -412,6 +415,8 @@
   "agent": {
     "runtime": "运行环境",
     "model": "模型",
+    "namePlaceholder": "队友名称，例如 前端小助手",
+    "descPlaceholder": "简单描述这个 AI 队友的职责",
     "runs30d": "近 30 天任务",
     "instructions": "指令",
     "instructionsPlaceholder": "系统提示词 / AI队友行为定义…",

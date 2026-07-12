@@ -275,7 +275,7 @@ export default function CreateAutomationModal({ visible, onClose, onSaved, editi
           <div className="loop-fields__label">{t("loop.automation.taskDesc")}</div>
           <div className="loop-fields__hint">{t("loop.automation.taskDescHint")}</div>
           <textarea
-            className="loop-field-textarea"
+            className="loop-field-textarea loop-field-textarea--lg"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder={t("loop.automation.taskDescTemplate")}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Typography, Dropdown, Avatar, Modal, Input, Toast, Button } from "@douyinfe/semi-ui";
+import { Typography, Dropdown, Avatar, Modal, Toast, Button } from "@douyinfe/semi-ui";
 import {
   ClipboardList, Briefcase, Bot, Users, Settings,
   ChevronDown, Check, Plus, SquarePen, FolderPlus,
@@ -245,14 +245,14 @@ export default function LoopPage() {
         cancelText={t("loop.action.cancel")}
         okButtonProps={{ loading: wsBusy }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div>
-            <div className="loop-detail__section-title">{t("loop.settings.wsName")}</div>
-            <Input autoFocus value={wsName} onChange={(v) => { setWsName(v); if (!wsSlugTouched) setWsSlug(slugify(v)); }} />
+        <div className="loop-fields">
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.settings.wsName")}</div>
+            <input autoFocus className="loop-field" value={wsName} onChange={(e) => { setWsName(e.target.value); if (!wsSlugTouched) setWsSlug(slugify(e.target.value)); }} placeholder={t("loop.workspace.namePlaceholder")} />
           </div>
-          <div>
-            <div className="loop-detail__section-title">{t("loop.settings.wsSlug")}</div>
-            <Input value={wsSlug} onChange={(v) => { setWsSlug(v); setWsSlugTouched(true); }} placeholder="my-workspace" />
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.settings.wsSlug")}</div>
+            <input className="loop-field" value={wsSlug} onChange={(e) => { setWsSlug(e.target.value); setWsSlugTouched(true); }} placeholder="my-workspace" />
           </div>
         </div>
       </Modal>

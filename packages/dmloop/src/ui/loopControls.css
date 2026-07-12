@@ -87,11 +87,30 @@
   padding: 8px 12px;
 }
 
+/* 大号单行输入（如新建回路的标题） */
+.loop-field--lg {
+  height: 40px;
+  font-size: 15px;
+}
+
 .loop-field-textarea {
   display: block;
+  min-height: 96px;
+  padding: 10px 12px;
+  overflow: auto; /* 内容超出出现滚动条 */
+  resize: vertical; /* 可手动拖高 */
+}
+
+/* 大号多行编辑框（如自动化「任务说明」） */
+.loop-field-textarea--lg {
   min-height: 168px;
-  padding: 12px 14px;
-  resize: vertical;
+}
+
+.loop-field:disabled,
+.loop-field-textarea:disabled {
+  background: var(--semi-color-fill-0, #f5f6f8);
+  color: var(--semi-color-text-2, #8a8f99);
+  cursor: not-allowed;
 }
 
 /* ---------- Semi Select / Input（含 TimePicker/DatePicker/InputNumber 触发器）统一质感 ---------- */
@@ -158,6 +177,38 @@
 .loop-fields__dropdown .semi-select-option-selected {
   color: var(--semi-color-primary, #6a5cff);
   background: var(--semi-color-primary-light-default, #eef2ff);
+}
+
+/* Semi 内部：字号 / 行高 / placeholder 统一——服务保留 Semi 的搜索框、Select、内联与详情控件，
+ * 让它们的手感与原生 .loop-field 一致（外层 wrapper 的边框/圆角/focus 在上方已统一）。 */
+.loop-page .semi-input,
+.loop-sd .semi-input,
+.loop-fields .semi-input,
+.loop-modal .semi-input,
+.loop-page .semi-select-selection,
+.loop-sd .semi-select-selection,
+.loop-fields .semi-select-selection,
+.loop-modal .semi-select-selection {
+  font-size: 13px;
+}
+
+.loop-page textarea.semi-input-textarea,
+.loop-sd textarea.semi-input-textarea,
+.loop-fields textarea.semi-input-textarea,
+.loop-modal textarea.semi-input-textarea {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.loop-page .semi-input::placeholder,
+.loop-sd .semi-input::placeholder,
+.loop-fields .semi-input::placeholder,
+.loop-modal .semi-input::placeholder,
+.loop-page textarea.semi-input-textarea::placeholder,
+.loop-sd textarea.semi-input-textarea::placeholder,
+.loop-fields textarea.semi-input-textarea::placeholder,
+.loop-modal textarea.semi-input-textarea::placeholder {
+  color: var(--semi-color-text-2, #a4a9b3);
 }
 
 /* ---------- 分段控件（tab 质感，对齐技能编辑器的 edit/preview 切换） ---------- */

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Typography, Input, Button, Tag, Spin, Modal, Toast, TextArea } from "@douyinfe/semi-ui";
+import { Typography, Input, Button, Tag, Spin, Modal, Toast } from "@douyinfe/semi-ui";
 import { Search, Plus, Trash2, Briefcase, List, LayoutGrid, ListChecks } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Project } from "../api/types";
@@ -181,11 +181,14 @@ export default function ProjectPage() {
           ) : view === "card" ? renderCards() : renderList()}
       </div>
       <Modal className="loop-modal" title={t("loop.action.newProject")} visible={createOpen} onOk={doCreate} onCancel={() => setCreateOpen(false)} okText={t("loop.action.create")} cancelText={t("loop.action.cancel")}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div><div className="loop-detail__section-title">{t("loop.field.name")}</div><Input autoFocus value={nTitle} onChange={setNTitle} /></div>
-          <div>
-            <div className="loop-detail__section-title">{t("loop.field.description")}</div>
-            <TextArea value={nDesc} onChange={setNDesc} placeholder={t("loop.project.descPlaceholder")} autosize={{ minRows: 2, maxRows: 5 }} />
+        <div className="loop-fields">
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.name")}</div>
+            <input autoFocus className="loop-field" value={nTitle} onChange={(e) => setNTitle(e.target.value)} placeholder={t("loop.project.namePlaceholder")} />
+          </div>
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.description")}</div>
+            <textarea className="loop-field-textarea" value={nDesc} onChange={(e) => setNDesc(e.target.value)} placeholder={t("loop.project.descPlaceholder")} />
           </div>
         </div>
       </Modal>

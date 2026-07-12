@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Typography, Input, Button, Select, Avatar, Spin, Modal, Toast, TextArea, Banner, Dropdown } from "@douyinfe/semi-ui";
+import { Typography, Button, Select, Avatar, Spin, Modal, Toast, Banner, Dropdown } from "@douyinfe/semi-ui";
 import { Plus, Trash2, Users, Filter, ArrowUp, ArrowDown, ChevronDown, Check } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Squad, AssigneeCandidate } from "../api/types";
@@ -286,31 +286,31 @@ export default function SquadPage() {
 
       <Modal className="loop-modal" title={t("loop.action.newSquad")} visible={createOpen} onOk={doCreate} onCancel={() => setCreateOpen(false)}
         okText={t("loop.action.create")} cancelText={t("loop.action.cancel")} confirmLoading={creating}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="loop-fields">
           <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.squad.createDesc")}</Text>
-          <div>
-            <div className="loop-detail__section-title">{t("loop.field.name")}</div>
-            <Input autoFocus value={nName} onChange={setNName} placeholder={t("loop.squad.namePlaceholder")} />
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.name")}</div>
+            <input autoFocus className="loop-field" value={nName} onChange={(e) => setNName(e.target.value)} placeholder={t("loop.squad.namePlaceholder")} />
           </div>
-          <div>
-            <div className="loop-detail__section-title">{t("loop.field.description")}</div>
-            <TextArea value={nDesc} onChange={setNDesc} placeholder={t("loop.squad.descPlaceholder")} autosize={{ minRows: 2, maxRows: 4 }} />
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.description")}</div>
+            <textarea className="loop-field-textarea" value={nDesc} onChange={(e) => setNDesc(e.target.value)} placeholder={t("loop.squad.descPlaceholder")} />
           </div>
-          <div>
-            <div className="loop-detail__section-title">{t("loop.squad.leader")}</div>
-            <div className="loop-detail__section-hint">{t("loop.squad.leaderHint")}</div>
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.squad.leader")}</div>
+            <div className="loop-fields__hint">{t("loop.squad.leaderHint")}</div>
             {agentCands.length === 0 ? (
               <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.squad.noAgents")}</Text>
             ) : (
-              <Select value={nLeader} onChange={(v) => setNLeader(v as string)} filter style={{ width: "100%" }} placeholder={t("loop.squad.leaderPlaceholder")}>
+              <Select value={nLeader} onChange={(v) => setNLeader(v as string)} dropdownClassName="loop-fields__dropdown" filter style={{ width: "100%" }} placeholder={t("loop.squad.leaderPlaceholder")}>
                 {agentCands.map((a) => <Select.Option key={a.id} value={a.id}>{a.name}</Select.Option>)}
               </Select>
             )}
           </div>
-          <div>
-            <div className="loop-detail__section-title">{t("loop.squad.membersLabel")} <span className="loop-detail__section-optional">{t("loop.squad.membersOptional")}</span></div>
-            <div className="loop-detail__section-hint">{t("loop.squad.membersHint")}</div>
-            <Select multiple filter value={nMembers} onChange={(v) => setNMembers(v as string[])} style={{ width: "100%" }} placeholder={t("loop.squad.membersPlaceholder")} maxTagCount={3}>
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.squad.membersLabel")} <span className="loop-detail__section-optional">{t("loop.squad.membersOptional")}</span></div>
+            <div className="loop-fields__hint">{t("loop.squad.membersHint")}</div>
+            <Select multiple filter value={nMembers} onChange={(v) => setNMembers(v as string[])} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.squad.membersPlaceholder")} maxTagCount={3}>
               {cands.filter((c) => !(c.type === "agent" && c.id === nLeader)).map((c) => (
                 <Select.Option key={`${c.type}:${c.id}`} value={`${c.type}:${c.id}`}>{c.name} · {t(`loop.assignee.${c.type}`)}</Select.Option>
               ))}

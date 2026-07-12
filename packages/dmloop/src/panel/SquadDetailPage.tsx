@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Typography, Input, Select, Button, Avatar, Spin, Toast, TextArea, Modal, Tooltip } from "@douyinfe/semi-ui";
+import { Typography, Input, Select, Button, Avatar, Spin, Toast, Modal, Tooltip } from "@douyinfe/semi-ui";
 import { ChevronRight, Archive, Users, FileText, Plus, Trash2, Crown, ArrowUpRight, Save, Pencil } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Squad, SquadMember, SquadMemberStatus, SquadMemberStatusValue, AssigneeCandidate } from "../api/types";
@@ -300,22 +300,22 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
       </div>
 
       <Modal className="loop-modal" title={t("loop.squad.descPlaceholder")} visible={descOpen} onOk={saveDesc} onCancel={() => setDescOpen(false)} okText={t("loop.action.save")} cancelText={t("loop.action.cancel")}>
-        <TextArea autoFocus value={descDraft} onChange={setDescDraft} autosize={{ minRows: 4, maxRows: 10 }} placeholder={t("loop.squad.descPlaceholder")} />
+        <textarea autoFocus className="loop-field-textarea loop-field-textarea--lg" value={descDraft} onChange={(e) => setDescDraft(e.target.value)} placeholder={t("loop.squad.descPlaceholder")} />
       </Modal>
 
       <Modal className="loop-modal" title={t("loop.squad.addMember")} visible={addOpen} onOk={addMember} onCancel={() => setAddOpen(false)}
         okText={t("loop.squad.add")} cancelText={t("loop.action.cancel")} confirmLoading={busy}
         okButtonProps={{ disabled: !addPick }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div>
-            <div className="loop-detail__section-title">{t("loop.squad.memberPickerPlaceholder")}</div>
-            <Select value={addPick} onChange={(v) => setAddPick(v as string)} filter style={{ width: "100%" }} placeholder={t("loop.squad.memberSearch")}>
+        <div className="loop-fields">
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.squad.memberPickerPlaceholder")}</div>
+            <Select value={addPick} onChange={(v) => setAddPick(v as string)} dropdownClassName="loop-fields__dropdown" filter style={{ width: "100%" }} placeholder={t("loop.squad.memberSearch")}>
               {availCands.map((c) => <Select.Option key={`${c.type}:${c.id}`} value={`${c.type}:${c.id}`}>{c.name} · {t(`loop.assignee.${c.type}`)}</Select.Option>)}
             </Select>
           </div>
-          <div>
-            <div className="loop-detail__section-title">{t("loop.squad.role")} <span className="loop-detail__section-optional">{t("loop.squad.roleOptional")}</span></div>
-            <Input value={addRole} onChange={setAddRole} placeholder={t("loop.squad.rolePlaceholder")} />
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.squad.role")} <span className="loop-detail__section-optional">{t("loop.squad.roleOptional")}</span></div>
+            <input className="loop-field" value={addRole} onChange={(e) => setAddRole(e.target.value)} placeholder={t("loop.squad.rolePlaceholder")} />
           </div>
         </div>
       </Modal>
