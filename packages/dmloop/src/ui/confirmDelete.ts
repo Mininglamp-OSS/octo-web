@@ -10,6 +10,7 @@ export function confirmDelete(opts: {
   okText: string;
   cancelText: string;
   onOk: () => void | Promise<void>;
+  onCancel?: () => void;
 }): void {
   Modal.confirm({
     title: opts.title,
@@ -19,5 +20,6 @@ export function confirmDelete(opts: {
     okButtonProps: { type: "danger" },
     centered: true,
     onOk: opts.onOk,
+    onCancel: opts.onCancel,
   });
 }

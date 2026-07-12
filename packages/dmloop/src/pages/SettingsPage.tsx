@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Typography, Button, Tabs, TabPane, Table, Tag, Select, Spin, Toast, Banner, Modal, Avatar,
 } from "@douyinfe/semi-ui";
@@ -110,6 +110,7 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
   const [error, setError] = useState<string | null>(null);
   // octo space 成员（仅人，robot===0）+ uid→身份 映射，供选择器候选与列表渲染复用。
   const [spaceHumans, setSpaceHumans] = useState<SpaceMember[]>([]);
+  const seqRef = useRef(0); // reload 请求序号:切 workspace 时只让最新一次落地
   const [selectedUid, setSelectedUid] = useState<string>("");
   const [role, setRole] = useState("member");
   const [adding, setAdding] = useState(false);
@@ -127,15 +128,16 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
   }, []);
 
   const reload = useCallback(() => {
+    const my = ++seqRef.current; // 切 workspace 时旧 in-flight 结果不得覆盖新的
     setLoading(true); setError(null);
     Promise.all([
       listWorkspaceMembers(workspaceId),
       listWorkspaceInvitations(workspaceId).catch(() => [] as Invitation[]),
       loadSpaceMembers().catch(() => [] as SpaceMember[]),
     ])
-      .then(([m, inv, humans]) => { setMembers(m); setInvites(inv); setSpaceHumans(humans); })
-      .catch((e) => setError(e?.message ?? "load failed"))
-      .finally(() => setLoading(false));
+      .then(([m, inv, humans]) => { if (my !== seqRef.current) return; setMembers(m); setInvites(inv); setSpaceHumans(humans); })
+      .catch((e) => { if (my === seqRef.current) setError(e?.message ?? "load failed"); })
+      .finally(() => { if (my === seqRef.current) setLoading(false); });
   }, [workspaceId, loadSpaceMembers]);
   useEffect(reload, [reload]);
 

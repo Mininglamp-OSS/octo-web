@@ -45,6 +45,11 @@ export default function IssueList({
   // busy(可能陈旧),双击开两个弹窗/两次 onOk 会各自看到 busy=false 而重复批量写。ref
   // 在进入 runBatch 时同步置位,结构性挡住重入(setBusy 仅驱动 UI 的 disabled)。
   const busyRef = useRef(false);
+  // 删除确认层的重入守卫:删除先开 Modal.confirm,busyRef 只在 onOk 进 runBatch 后才置位,
+  // 故双击可在任一 OK 执行前叠开两个确认框;第一个 OK 跑完 runBatch 即复位 busyRef,第二个框
+  // 的 OK 再次 batchDeleteIssues(同一批 ids)→ 重复删除。confirmingRef 在开框时同步置位、
+  // onOk 完成/onCancel 时复位,把互斥下沉到确认框本身(codex 补审 #665 抓到)。
+  const confirmingRef = useRef(false);
 
   // 行内指派改派（保留旧列表的行内编辑能力）：写库后刷新；触发 agent run 走 RunConfirm 预确认。
   const patch = async (id: string, p: Parameters<typeof updateIssue>[1]) => {
@@ -140,14 +145,21 @@ export default function IssueList({
             theme="borderless"
             icon={<Trash2 size={14} />}
             disabled={busy}
-            onClick={() =>
+            onClick={() => {
+              if (confirmingRef.current) return; // 已有删除确认框在途,不叠开第二个
+              confirmingRef.current = true;
+              const ids = selected; // 快照:runBatch 成功会清空 selected,删除须用开框时捕获的 ids
               confirmDelete({
-                title: t("loop.batch.deleteConfirm", { values: { count: selected.length } }),
+                title: t("loop.batch.deleteConfirm", { values: { count: ids.length } }),
                 okText: t("loop.action.delete"),
                 cancelText: t("loop.action.cancel"),
-                onOk: () => runBatch(() => batchDeleteIssues(selected)),
-              })
-            }
+                onOk: async () => {
+                  try { await runBatch(() => batchDeleteIssues(ids)); }
+                  finally { confirmingRef.current = false; }
+                },
+                onCancel: () => { confirmingRef.current = false; },
+              });
+            }}
           >
             {t("loop.action.delete")}
           </Button>
