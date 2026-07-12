@@ -4,27 +4,12 @@ import { Box, Check, Circle, Code2, Copy, Cpu, Monitor, Plus, Terminal } from "l
 import { copyToClipboard, useI18n, WKModal } from "@octo/base";
 import type { RuntimeDevice, RuntimeMode } from "../api/types";
 import { listRuntimes } from "../api/runtimeApi";
-import { LOOP_API_BASE } from "../api/http";
 import "./runtime.css";
 
 const { Title } = Typography;
 
-const DEFAULT_FLEET_API_PATH = "/fleet/api/v1";
-
 function envValue(key: string): string {
   return (import.meta as { env?: Record<string, string | undefined> }).env?.[key]?.trim() ?? "";
-}
-
-function trimEndSlash(value: string): string {
-  return value.replace(/\/+$/, "");
-}
-
-function isAbsoluteUrl(value: string): boolean {
-  try {
-    return Boolean(new URL(value).origin);
-  } catch {
-    return false;
-  }
 }
 
 function originOf(value: string): string {
@@ -43,31 +28,10 @@ function currentOrigin(): string {
   return originOf(envValue("VITE_APP_URL")) || originOf(envValue("VITE_API_URL"));
 }
 
-function withOrigin(pathOrUrl: string, origin: string): string {
-  if (isAbsoluteUrl(pathOrUrl)) return trimEndSlash(pathOrUrl);
-  if (!origin) return trimEndSlash(pathOrUrl);
-  return `${trimEndSlash(origin)}${pathOrUrl.startsWith("/") ? "" : "/"}${trimEndSlash(pathOrUrl)}`;
-}
-
-function fleetApiUrl(): string {
-  const explicitLoopBase = envValue("VITE_LOOP_API_BASE");
-  if (explicitLoopBase) {
-    return withOrigin(explicitLoopBase, currentOrigin());
-  }
-  return withOrigin(LOOP_API_BASE || DEFAULT_FLEET_API_PATH, currentOrigin());
-}
-
-function appUrl(): string {
-  const configuredAppUrl = originOf(envValue("VITE_APP_URL"));
-  if (configuredAppUrl) return configuredAppUrl;
-  return currentOrigin();
-}
-
+// 「添加计算机」引导命令：octo-daemon 以当前 web 站点 origin 作为 --server-url
+// （daemon 会据此推导 fleet 地址）。
 function addComputerCommand(): string {
-  return `MULTICA_APP_URL=${appUrl()} \\
-./octo-daemon \\
-  --server-url ${fleetApiUrl()} \\
-  login`;
+  return `octo-daemon --server-url ${currentOrigin()}`;
 }
 
 interface Device {

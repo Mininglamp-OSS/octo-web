@@ -8,7 +8,7 @@ import { listSkills } from "../api/skillApi";
 const { Text } = Typography;
 
 /**
- * 为 Agent 追加技能的选择弹窗（对齐 multica skill-add-dialog）：
+ * 为 Agent 追加技能的选择弹窗：
  * 拉取工作区技能、过滤掉已挂载的、可搜索多选，确认后与已挂载合并交给父组件保存。
  */
 export default function SkillAddDialog({

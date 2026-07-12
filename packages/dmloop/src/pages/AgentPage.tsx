@@ -7,6 +7,7 @@ import { listAgents, createAgent, archiveAgent, restoreAgent, listRuntimesForAge
 import { listAssigneeCandidates } from "../api/issueApi";
 import AgentDetailPage from "../panel/AgentDetailPage";
 import { confirmDelete } from "../ui/confirmDelete";
+import { avatarColor } from "../ui/meta";
 import { formatRelativeTime } from "../ui/time";
 
 const { Title } = Typography;
@@ -14,14 +15,6 @@ const { Title } = Typography;
 type Scope = "mine" | "all" | "archived";
 const SCOPES: Scope[] = ["mine", "all", "archived"];
 const SCOPE_LABEL: Record<Scope, string> = { mine: "scopeMine", all: "scopeAll", archived: "scopeArchived" };
-
-// 依据名称稳定地挑一个 Semi 头像色，避免同一 Agent 每次渲染换色。
-const AVATAR_COLORS = ["violet", "blue", "cyan", "teal", "green", "amber", "orange", "purple", "indigo", "pink"] as const;
-function avatarColor(name: string): (typeof AVATAR_COLORS)[number] {
-  let h = 0;
-  for (let i = 0; i < name.length; i += 1) h = (h * 31 + name.charCodeAt(i)) | 0;
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
-}
 
 export default function AgentPage() {
   const { t, format } = useI18n();
