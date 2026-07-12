@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Table, Select, Tag, Typography, Button, Toast } from "@douyinfe/semi-ui";
 import { Trash2, X } from "lucide-react";
 import { useI18n } from "@octo/base";
@@ -40,6 +40,10 @@ export default function IssueList({
   const { requestAssign, requestStatus, runConfirmModal } = useRunConfirm();
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  // busy 的同步镜像:setBusy 是异步的,confirmDelete 弹窗的 onOk 闭包捕获的是渲染时的
+  // busy(可能陈旧),双击开两个弹窗/两次 onOk 会各自看到 busy=false 而重复批量写。ref
+  // 在进入 runBatch 时同步置位,结构性挡住重入(setBusy 仅驱动 UI 的 disabled)。
+  const busyRef = useRef(false);
 
   // 筛选/搜索/排序/翻页令 issues 变化后,裁掉已不可见的选中项 —— 否则批量条会对
   // 当前结果集看不到的行发批量写(改/删隐藏行)。只保留仍在可见集合里的 id。
@@ -56,11 +60,13 @@ export default function IssueList({
     onChanged();
   };
 
-  // 批量:写失败 toast+中止;成功清选择+刷新。批量不走 RunConfirm 预览(显式批操作,
-  // 与原生 web 一致);状态/指派若触发 agent run 由后端处理。
-  // busy 守卫放这里(而非逐个控件 disabled):结构性防重入,任一触发器在途都挡住重叠批量写。
+  // 批量:写失败 toast+中止;成功清选择+刷新。批量不走 RunConfirm 预览(显式批操作);
+  // 且一律带 suppress_run —— 批量改状态/指派是管理性整理,绝不能每条静默起一个 agent run
+  // (要派单请逐条走 RunConfirm 预览确认)。派单是有意的单条动作,不是批量副作用。
+  // 重入守卫用 busyRef 同步置位(见上):任一触发器在途都挡住重叠批量写,不受闭包 stale 影响。
   const runBatch = async (fn: () => Promise<unknown>) => {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       await fn();
@@ -70,6 +76,7 @@ export default function IssueList({
     } catch (e) {
       Toast.error((e as Error).message || t("loop.toast.saveFailed"));
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -171,7 +178,7 @@ export default function IssueList({
             size="small"
             disabled={busy}
             value={NO_VALUE}
-            onChange={(v) => runBatch(() => batchUpdateIssues(selected, { status: v as IssueStatus }))}
+            onChange={(v) => runBatch(() => batchUpdateIssues(selected, { status: v as IssueStatus, suppress_run: true }))}
             style={{ width: 130 }}
           >
             {ISSUE_STATUS_ORDER.map((s) => (
@@ -183,7 +190,7 @@ export default function IssueList({
             size="small"
             disabled={busy}
             value={NO_VALUE}
-            onChange={(v) => runBatch(() => batchUpdateIssues(selected, { priority: v as IssuePriority }))}
+            onChange={(v) => runBatch(() => batchUpdateIssues(selected, { priority: v as IssuePriority, suppress_run: true }))}
             style={{ width: 120 }}
           >
             {PRIORITY_ORDER.map((p) => (
@@ -194,7 +201,7 @@ export default function IssueList({
             size="small"
             value={null}
             valueName={null}
-            onChange={(id, type) => runBatch(() => batchUpdateIssues(selected, { assignee_id: id, assignee_type: type }))}
+            onChange={(id, type) => runBatch(() => batchUpdateIssues(selected, { assignee_id: id, assignee_type: type, suppress_run: true }))}
           />
           <Button
             size="small"
