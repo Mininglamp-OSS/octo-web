@@ -89,8 +89,6 @@ Key files: `voiceMention.ts`, `MessageInput/index.tsx`, mention parsing in `dmwo
 
 Plain CSS files (no CSS Modules, no Tailwind). Styles co-located with components.
 
-**dmloop control skin (allowed exception):** the loop display system (`packages/dmloop/src/ui/loopControls.css`) intentionally skins Semi UI controls (Select/Input/date-time pickers) to the loop look. It overrides `.semi-*` classes **only** under loop container roots (`:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd)`) — never globally — and uses a few `!important` declarations solely to beat Semi's focus-state specificity. This scoped skin layer is a sanctioned carve-out; see the `octo-loop-design-spec` skill.
-
 ## Coding Conventions
 
 - Commit messages: English, Conventional Commits (`feat:`, `fix:`, etc.)
