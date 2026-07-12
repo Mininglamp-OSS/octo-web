@@ -123,15 +123,14 @@ export default function SquadPage() {
     setCreating(true);
     try {
       const squad = await createSquad({ name: nName.trim(), description: nDesc.trim() || undefined, leader_id: nLeader });
-      // 追加成员：领队不重复加入；单个失败不阻塞其余。
-      const extra = nMembers.filter((id) => id !== nLeader);
+      // 追加成员：value 为 type:id，避免 agent 与 member 同 id 撞类型；领队不重复加入；单个失败不阻塞其余。
+      const extra = nMembers
+        .map((key) => cands.find((c) => `${c.type}:${c.id}` === key))
+        .filter((c): c is AssigneeCandidate => !!c && !(c.type === "agent" && c.id === nLeader));
       if (extra.length) {
-        await Promise.all(extra.map((id) => {
-          const c = cands.find((x) => x.id === id);
-          if (!c) return Promise.resolve();
-          return addSquadMember(squad.id, c.type as "agent" | "member", c.id).catch(() =>
-            Toast.warning(t("loop.squad.memberAddFailed", { values: { name: c.name } })));
-        }));
+        await Promise.all(extra.map((c) =>
+          addSquadMember(squad.id, c.type as "agent" | "member", c.id).catch(() =>
+            Toast.warning(t("loop.squad.memberAddFailed", { values: { name: c.name } })))));
       }
       setCreateOpen(false); setNName(""); setNDesc(""); setNMembers([]); setNLeader(undefined);
       Toast.success(t("loop.toast.created"));
@@ -312,8 +311,8 @@ export default function SquadPage() {
             <div className="loop-detail__section-title">{t("loop.squad.membersLabel")} <span className="loop-detail__section-optional">{t("loop.squad.membersOptional")}</span></div>
             <div className="loop-detail__section-hint">{t("loop.squad.membersHint")}</div>
             <Select multiple filter value={nMembers} onChange={(v) => setNMembers(v as string[])} style={{ width: "100%" }} placeholder={t("loop.squad.membersPlaceholder")} maxTagCount={3}>
-              {cands.filter((c) => c.id !== nLeader).map((c) => (
-                <Select.Option key={c.id} value={c.id}>{c.name} · {t(`loop.assignee.${c.type}`)}</Select.Option>
+              {cands.filter((c) => !(c.type === "agent" && c.id === nLeader)).map((c) => (
+                <Select.Option key={`${c.type}:${c.id}`} value={`${c.type}:${c.id}`}>{c.name} · {t(`loop.assignee.${c.type}`)}</Select.Option>
               ))}
             </Select>
           </div>

@@ -78,8 +78,10 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
   const back = () => WKApp.routeRight.pop();
   const afterMutate = () => { load(); onChanged?.(); };
 
+  // PUT /squads/:id 是全量替换、name 必填；局部编辑需带上当前 name（对齐 AgentDetailPage）。
   const patch = async (p: Parameters<typeof updateSquad>[1]) => {
-    await updateSquad(squadId, p);
+    if (!row) return;
+    await updateSquad(squadId, { name: row.name, ...p });
     afterMutate();
   };
 
@@ -117,7 +119,7 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
 
   const addMember = async () => {
     if (!addPick) return;
-    const c = cands.find((x) => x.id === addPick);
+    const c = cands.find((x) => `${x.type}:${x.id}` === addPick);
     if (!c) return;
     setBusy(true);
     try {
@@ -308,7 +310,7 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
           <div>
             <div className="loop-detail__section-title">{t("loop.squad.memberPickerPlaceholder")}</div>
             <Select value={addPick} onChange={(v) => setAddPick(v as string)} filter style={{ width: "100%" }} placeholder={t("loop.squad.memberSearch")}>
-              {availCands.map((c) => <Select.Option key={`${c.type}:${c.id}`} value={c.id}>{c.name} · {t(`loop.assignee.${c.type}`)}</Select.Option>)}
+              {availCands.map((c) => <Select.Option key={`${c.type}:${c.id}`} value={`${c.type}:${c.id}`}>{c.name} · {t(`loop.assignee.${c.type}`)}</Select.Option>)}
             </Select>
           </div>
           <div>

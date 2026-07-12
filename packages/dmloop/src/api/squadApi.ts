@@ -64,7 +64,12 @@ export function listSquadMembers(id: string): Promise<SquadMember[]> {
 export function getSquadMemberStatus(id: string): Promise<SquadMemberStatus[]> {
   return httpGet<SquadMemberStatusListResponse>(`/squads/${id}/members/status`)
     .then((r) => r?.members ?? [])
-    .catch(() => [] as SquadMemberStatus[]);
+    .catch((e) => {
+      // 状态是软增强，失败不阻断详情页；但需可见以便排查权限/后端问题（不再静默吞掉）。
+      // eslint-disable-next-line no-console
+      console.warn("[loop] load squad member status failed", e);
+      return [] as SquadMemberStatus[];
+    });
 }
 
 export async function addSquadMember(
