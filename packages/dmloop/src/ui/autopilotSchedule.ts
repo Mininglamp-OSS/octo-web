@@ -17,7 +17,7 @@ type TFn = (
   opts?: { values?: Record<string, string | number> },
 ) => string;
 
-export function getLocalTimezone(): string {
+function getLocalTimezone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   } catch {
@@ -121,10 +121,10 @@ export function describeSchedule(cfg: ScheduleConfig, t: TFn): string {
   }
 }
 
-// 卡片用：把 ISO 的 next_run_at 格式化为「M月D日 HH:MM」。
+// 卡片/详情用：把 ISO 的 next_run_at 格式化为语言中立的「M/D HH:MM」。
 export function formatNextRunAt(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
