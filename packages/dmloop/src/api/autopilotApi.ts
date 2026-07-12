@@ -8,18 +8,20 @@ import type {
   UpdateAutopilotTriggerRequest,
   GetAutopilotResponse,
   ListAutopilotsResponse,
+  ListAutopilotRunsResponse,
   AutopilotRun,
 } from "./types";
 import { httpGet, httpPost, httpPatch, httpDelete } from "./http";
-import { ensureDirectory, actorName, actorAvatar } from "./directory";
+import { ensureDirectory, actorName, actorAvatar, projectNameOf } from "./directory";
 
-// 后端列表不返回执行方名字/头像，用 directory 缓存回填（与 projectApi.listProjects 对称）。
+// 后端列表不返回执行方名字/头像/项目名，用 directory 缓存回填（与 projectApi.listProjects 对称）。
 async function enrich(rows: Autopilot[]): Promise<Autopilot[]> {
   const dir = await ensureDirectory();
   return rows.map((a) => ({
     ...a,
     assignee_name: actorName(dir, a.assignee_type, a.assignee_id),
     assignee_avatar: actorAvatar(dir, a.assignee_type, a.assignee_id),
+    project_name: projectNameOf(dir, a.project_id),
   }));
 }
 
@@ -69,4 +71,16 @@ export function updateAutopilotTrigger(
     `/autopilots/${autopilotId}/triggers/${triggerId}`,
     req,
   );
+}
+
+export function deleteAutopilotTrigger(autopilotId: string, triggerId: string): Promise<void> {
+  return httpDelete<void>(`/autopilots/${autopilotId}/triggers/${triggerId}`);
+}
+
+export async function listAutopilotRuns(
+  id: string,
+  params?: { limit?: number; offset?: number },
+): Promise<ListAutopilotRunsResponse> {
+  const data = await httpGet<ListAutopilotRunsResponse>(`/autopilots/${id}/runs`, params);
+  return { runs: data.runs ?? [], total: data.total ?? 0 };
 }

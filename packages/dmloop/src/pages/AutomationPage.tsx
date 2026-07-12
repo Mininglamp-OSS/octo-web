@@ -1,37 +1,27 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Typography, Button, Spin, Toast, Switch, Avatar, Dropdown } from "@douyinfe/semi-ui";
 import { Zap, Plus, MoreHorizontal, Play, Trash2 } from "lucide-react";
-import { useI18n } from "@octo/base";
+import { useI18n, WKApp } from "@octo/base";
 import type { Autopilot } from "../api/types";
 import {
   listAutopilots,
-  getAutopilot,
   updateAutopilot,
   deleteAutopilot,
   triggerAutopilot,
 } from "../api/autopilotApi";
-import { avatarColor } from "../ui/meta";
+import { avatarColor, AUTOPILOT_RUN_DOT, AUTOPILOT_RUN_DOT_FALLBACK } from "../ui/meta";
 import { confirmDelete } from "../ui/confirmDelete";
 import { formatNextRunAt } from "../ui/autopilotSchedule";
-import CreateAutomationModal, { type AutomationEditing } from "../ui/CreateAutomationModal";
+import CreateAutomationModal from "../ui/CreateAutomationModal";
+import AutopilotDetailPage from "../panel/AutopilotDetailPage";
 
 const { Title, Text } = Typography;
-
-// last_run_status → 状态点颜色（后端驱动，未知值走灰兜底）。
-const RUN_DOT_COLOR: Record<string, string> = {
-  completed: "#23a55a",
-  issue_created: "#23a55a",
-  running: "#f5a623",
-  failed: "#f5222d",
-  skipped: "#8a8f99",
-};
 
 export default function AutomationPage() {
   const { t } = useI18n();
   const [rows, setRows] = useState<Autopilot[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
-  const [editing, setEditing] = useState<AutomationEditing | null>(null);
   const seq = useRef(0);
 
   const reload = useCallback(() => {
@@ -43,16 +33,8 @@ export default function AutomationPage() {
   }, []);
   useEffect(reload, [reload]);
 
-  const openCreate = () => { setEditing(null); setCreateOpen(true); };
-  const openEdit = async (a: Autopilot) => {
-    try {
-      const detail = await getAutopilot(a.id);
-      setEditing(detail);
-      setCreateOpen(true);
-    } catch (e) {
-      Toast.error((e as Error)?.message ?? t("loop.toast.loadFailed"));
-    }
-  };
+  const openDetail = (a: Autopilot) =>
+    WKApp.routeRight.push(<AutopilotDetailPage autopilotId={a.id} onChanged={reload} />);
 
   const toggleEnabled = async (a: Autopilot, on: boolean) => {
     try {
@@ -86,10 +68,10 @@ export default function AutomationPage() {
 
   const cards = () => rows.map((a) => {
     const paused = a.status === "paused";
-    const dotColor = a.last_run_status ? (RUN_DOT_COLOR[a.last_run_status] ?? "#c9cdd4") : "#c9cdd4";
+    const dotColor = a.last_run_status ? (AUTOPILOT_RUN_DOT[a.last_run_status] ?? AUTOPILOT_RUN_DOT_FALLBACK) : AUTOPILOT_RUN_DOT_FALLBACK;
     const nextRun = formatNextRunAt(a.next_run_at);
     return (
-      <div key={a.id} className="loop-automation-card" role="listitem" onClick={() => openEdit(a)}>
+      <div key={a.id} className="loop-automation-card" role="listitem" onClick={() => openDetail(a)}>
         <div className="loop-automation-card__head">
           <strong className="loop-automation-card__title">{a.title}</strong>
           <div onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex" }}>
@@ -137,7 +119,7 @@ export default function AutomationPage() {
         <Title heading={4}>{t("loop.nav.automation")}</Title>
         <Text type="tertiary" style={{ fontSize: 13 }}>{rows.length}</Text>
         <div className="loop-page__spacer" />
-        <Button theme="solid" icon={<Plus size={14} />} onClick={openCreate}>{t("loop.automation.create")}</Button>
+        <Button theme="solid" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>{t("loop.automation.create")}</Button>
       </div>
       <div className="loop-page__body">
         {loading ? (
@@ -147,7 +129,7 @@ export default function AutomationPage() {
             <Zap size={40} className="loop-empty__icon" />
             <div className="loop-empty__title">{t("loop.automation.emptyTitle")}</div>
             <div className="loop-empty__desc">{t("loop.automation.emptyDesc")}</div>
-            <Button theme="solid" icon={<Plus size={14} />} onClick={openCreate} style={{ marginTop: 12 }}>{t("loop.automation.create")}</Button>
+            <Button theme="solid" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)} style={{ marginTop: 12 }}>{t("loop.automation.create")}</Button>
           </div>
         ) : (
           <div className="loop-automation-cards" role="list">{cards()}</div>
@@ -155,8 +137,7 @@ export default function AutomationPage() {
       </div>
       <CreateAutomationModal
         visible={createOpen}
-        editing={editing}
-        onClose={() => { setCreateOpen(false); setEditing(null); }}
+        onClose={() => setCreateOpen(false)}
         onSaved={reload}
       />
     </div>

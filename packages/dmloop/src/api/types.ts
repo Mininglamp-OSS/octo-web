@@ -672,6 +672,7 @@ export interface Autopilot {
   // 前端 enrich 回填（后端列表不返回名字/头像）。
   assignee_name?: string | null;
   assignee_avatar?: string;
+  project_name?: string | null;
 }
 
 export interface AutopilotTrigger {
@@ -749,4 +750,9 @@ export interface ListAutopilotsResponse {
 export interface GetAutopilotResponse {
   autopilot: Autopilot;
   triggers: AutopilotTrigger[];
+}
+
+export interface ListAutopilotRunsResponse {
+  runs: AutopilotRun[];
+  total: number;
 }

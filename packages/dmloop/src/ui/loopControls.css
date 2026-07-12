@@ -106,6 +106,12 @@
   min-height: 168px;
 }
 
+/* 自动增高：内容超出时由 JS 撑高，不出滚动条、不手动拖拽（配合 AutoGrowTextarea） */
+.loop-field-textarea--auto {
+  overflow: hidden;
+  resize: none;
+}
+
 .loop-field:disabled,
 .loop-field-textarea:disabled {
   background: var(--semi-color-fill-0, #f5f6f8);
@@ -275,4 +281,21 @@
 .loop-fields .loop-assignee-empty {
   flex: 1;
 }
+
+/* 详情页(.loop-apd) 内的 Semi Select（发送到）统一质感——与 .loop-fields 一致 */
+.loop-apd .semi-select {
+  border-radius: 8px;
+  border-color: var(--semi-color-border, #e8e9eb);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+  min-height: 36px;
+}
+.loop-apd .semi-select:hover {
+  border-color: var(--semi-color-text-3, #c9cdd4);
+}
+.loop-apd .semi-select-focus,
+.loop-apd .semi-select-open {
+  border-color: var(--semi-color-primary, #6a5cff) !important;
+  box-shadow: 0 0 0 3px var(--semi-color-primary-light-default, #eef2ff);
+}
+.loop-apd .semi-select-selection { font-size: 13px; }
 
