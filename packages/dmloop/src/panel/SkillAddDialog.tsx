@@ -66,6 +66,7 @@ export default function SkillAddDialog({
 
   return (
     <Modal
+      className="loop-modal"
       title={t("loop.agent.addSkillTitle")}
       visible={visible}
       onCancel={onClose}
@@ -75,7 +76,7 @@ export default function SkillAddDialog({
       okButtonProps={{ loading: saving, disabled: selected.size === 0 }}
     >
       <div className="loop-adp__skilldlg">
-        <Input prefix={<Search size={14} />} placeholder={t("loop.agent.addSkillSearch")} value={kw} onChange={setKw} showClear />
+        <Input className="loop-search" prefix={<Search size={14} />} placeholder={t("loop.agent.addSkillSearch")} value={kw} onChange={setKw} showClear />
         <div className="loop-adp__skilldlg-list">
           {loading ? (
             <div className="loop-adp__skilldlg-center"><Spin /></div>

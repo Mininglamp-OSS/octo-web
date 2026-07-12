@@ -104,6 +104,16 @@ export const RUN_STATUS_COLOR: Record<string, TagColor> = {
   cancelled: "grey",
 };
 
+// Autopilot 运行状态 → 状态点颜色（卡片 last-run 点与详情运行行共用；未知值走灰兜底）。
+export const AUTOPILOT_RUN_DOT: Record<string, string> = {
+  issue_created: "#23a55a",
+  completed: "#23a55a",
+  running: "#f5a623",
+  failed: "#f5222d",
+  skipped: "#8a8f99",
+};
+export const AUTOPILOT_RUN_DOT_FALLBACK = "#c9cdd4";
+
 // run 是否处于活跃(未结束)态——可终止/仍在产生消息。单一来源,供运行面板与执行详情共用。
 const ACTIVE_RUN_STATUSES = ["queued", "dispatched", "waiting_local_directory", "running"];
 export function isActiveRun(status: string): boolean {

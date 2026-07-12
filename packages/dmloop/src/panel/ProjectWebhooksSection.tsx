@@ -120,6 +120,7 @@ export default function ProjectWebhooksSection({ projectId }: { projectId: strin
       </div>
 
       <Modal
+        className="loop-modal"
         visible={!!secret}
         title={t("loop.webhook.secretTitle")}
         onCancel={() => setSecret(null)}

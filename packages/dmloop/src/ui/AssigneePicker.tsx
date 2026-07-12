@@ -17,10 +17,13 @@ export interface AssigneePickerProps {
   valueName: string | null;
   onChange: (id: string | null, type: AssigneeType | null, name: string | null) => void;
   size?: "small" | "default";
+  // 限定可选类型（默认三态 member/agent/squad）。传入后只渲染这些组，
+  // 且当其中不含 member 时隐藏「未指派」项——用于「执行方」只能是 agent/squad。
+  types?: AssigneeType[];
 }
 
 /** 三态指派选择器：member / agent / squad，支持清空。onChange 同时回传 type。 */
-export default function AssigneePicker({ value, valueName, onChange, size = "default" }: AssigneePickerProps) {
+export default function AssigneePicker({ value, valueName, onChange, size = "default", types }: AssigneePickerProps) {
   const { t } = useI18n();
   const [cands, setCands] = useState<AssigneeCandidate[]>([]);
 
@@ -29,17 +32,22 @@ export default function AssigneePicker({ value, valueName, onChange, size = "def
   }, []);
 
   const current = cands.find((c) => c.id === value);
-  const groups: { type: AssigneeType; label: string }[] = [
+  const allGroups: { type: AssigneeType; label: string }[] = [
     { type: "member", label: t("loop.assignee.member") },
     { type: "agent", label: t("loop.assignee.agent") },
     { type: "squad", label: t("loop.assignee.squad") },
   ];
+  const groups = types ? allGroups.filter((g) => types.includes(g.type)) : allGroups;
+  // 只有当可选类型包含 member 时才提供「未指派」（执行方场景 types=[agent,squad] 不允许清空）。
+  const allowUnassigned = !types || types.includes("member");
 
   const menu = (
     <Dropdown.Menu>
-      <Dropdown.Item onClick={() => onChange(null, null, null)} icon={<CircleSlash size={13} />}>
-        {t("loop.assignee.unassigned")}
-      </Dropdown.Item>
+      {allowUnassigned && (
+        <Dropdown.Item onClick={() => onChange(null, null, null)} icon={<CircleSlash size={13} />}>
+          {t("loop.assignee.unassigned")}
+        </Dropdown.Item>
+      )}
       {groups.map((g) => {
         const items = cands.filter((c) => c.type === g.type);
         if (items.length === 0) return null;

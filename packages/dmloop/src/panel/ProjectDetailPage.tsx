@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Typography, Input, Button, Spin, Toast, TextArea } from "@douyinfe/semi-ui";
+import { Typography, Button, Spin, Toast } from "@douyinfe/semi-ui";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Project } from "../api/types";
@@ -71,25 +71,25 @@ export default function ProjectDetailPage({ projectId, onChanged }: { projectId:
       </div>
       <div className="loop-sd__body" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
         <section className="loop-sd__main">
-          <div style={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 20 }}>
-            <div>
-              <div className="loop-detail__section-title">{t("loop.field.name")}</div>
-              <Input value={title} onChange={(v) => { setTitle(v); setDirty(true); }} />
+          <div className="loop-fields" style={{ maxWidth: 640 }}>
+            <div className="loop-fields__row">
+              <div className="loop-fields__label">{t("loop.field.name")}</div>
+              <input className="loop-field" value={title} onChange={(e) => { setTitle(e.target.value); setDirty(true); }} placeholder={t("loop.project.namePlaceholder")} />
             </div>
-            <div>
-              <div className="loop-detail__section-title">{t("loop.field.description")}</div>
-              <TextArea
+            <div className="loop-fields__row">
+              <div className="loop-fields__label">{t("loop.field.description")}</div>
+              <textarea
+                className="loop-field-textarea loop-field-textarea--lg"
                 value={desc}
-                onChange={(v) => { setDesc(v); setDirty(true); }}
+                onChange={(e) => { setDesc(e.target.value); setDirty(true); }}
                 placeholder={t("loop.project.descPlaceholder")}
-                autosize={{ minRows: 4, maxRows: 16 }}
               />
-              <Text type="tertiary" style={{ fontSize: 12, marginTop: 6, display: "block", lineHeight: 1.5 }}>
+              <Text type="tertiary" style={{ fontSize: 12, marginTop: 2, display: "block", lineHeight: 1.5 }}>
                 {t("loop.project.descHint")}
               </Text>
             </div>
-            <div>
-              <div className="loop-detail__section-title">{t("loop.webhook.title")}</div>
+            <div className="loop-fields__row">
+              <div className="loop-fields__label">{t("loop.webhook.title")}</div>
               <ProjectWebhooksSection projectId={row.id} />
             </div>
           </div>

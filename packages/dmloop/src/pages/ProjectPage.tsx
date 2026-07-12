@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Typography, Input, Button, Tag, Spin, Modal, Toast, TextArea } from "@douyinfe/semi-ui";
+import { Typography, Input, Button, Tag, Spin, Modal, Toast } from "@douyinfe/semi-ui";
 import { Search, Plus, Trash2, Briefcase, List, LayoutGrid, ListChecks } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Project } from "../api/types";
@@ -153,7 +153,7 @@ export default function ProjectPage() {
         <Button theme="solid" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>{t("loop.action.newProject")}</Button>
       </div>
       <div className="loop-project-toolbar">
-        <Input prefix={<Search size={14} />} placeholder={t("loop.search.project")} value={keyword} onChange={setKeyword} showClear style={{ width: 240 }} />
+        <Input className="loop-search" prefix={<Search size={14} />} placeholder={t("loop.search.project")} value={keyword} onChange={setKeyword} showClear style={{ width: 240 }} />
         <div className="loop-project-toolbar__spacer" />
         <div className="loop-viewtoggle">
           <button type="button" className={view === "list" ? "is-active" : ""} onClick={() => setViewMode("list")}>
@@ -180,12 +180,15 @@ export default function ProjectPage() {
             </div>
           ) : view === "card" ? renderCards() : renderList()}
       </div>
-      <Modal title={t("loop.action.newProject")} visible={createOpen} onOk={doCreate} onCancel={() => setCreateOpen(false)} okText={t("loop.action.create")} cancelText={t("loop.action.cancel")}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div><div className="loop-detail__section-title">{t("loop.field.name")}</div><Input autoFocus value={nTitle} onChange={setNTitle} /></div>
-          <div>
-            <div className="loop-detail__section-title">{t("loop.field.description")}</div>
-            <TextArea value={nDesc} onChange={setNDesc} placeholder={t("loop.project.descPlaceholder")} autosize={{ minRows: 2, maxRows: 5 }} />
+      <Modal className="loop-modal" title={t("loop.action.newProject")} visible={createOpen} onOk={doCreate} onCancel={() => setCreateOpen(false)} okText={t("loop.action.create")} cancelText={t("loop.action.cancel")}>
+        <div className="loop-fields">
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.name")}</div>
+            <input autoFocus className="loop-field" value={nTitle} onChange={(e) => setNTitle(e.target.value)} placeholder={t("loop.project.namePlaceholder")} />
+          </div>
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.description")}</div>
+            <textarea className="loop-field-textarea" value={nDesc} onChange={(e) => setNDesc(e.target.value)} placeholder={t("loop.project.descPlaceholder")} />
           </div>
         </div>
       </Modal>
