@@ -1,0 +1,259 @@
+/* @octo/loop — 通用表单控件样式套件（input / textarea / select / 分段 tab 统一质感）
+ *
+ * 用法：
+ *   - 给表单容器加 `loop-fields`（负责纵向间距）。
+ *   - 每个字段包一层 `loop-fields__row`（label + 控件），label 用 `loop-fields__label`。
+ *   - 原生输入用 `loop-field`（单行）/ `loop-field-textarea`（多行）。
+ *   - Semi Select / TimePicker / DatePicker / InputNumber 无需额外类，落在 `.loop-fields` 内即被统一；
+ *     Select 需要同款下拉面板时传 dropdownClassName="loop-fields__dropdown"。
+ *   - tab 风格的分段选择用 `loop-seg` + `loop-seg__btn`（对齐技能编辑器的 edit/preview 切换质感）。
+ *
+ * 所有 Semi 覆盖都收敛在 `.loop-fields` 作用域内，不影响模块外的全局 Semi 样式。
+ */
+
+.loop-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.loop-fields__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.loop-fields__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semi-color-text-1, #4e5969);
+}
+
+.loop-fields__hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--semi-color-text-2, #8a8f99);
+}
+
+/* 一行内并排的控件（如「日期/星期 + 时间」） */
+.loop-fields__inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 字段下方的辅助说明（带图标，如「下次运行 …」） */
+.loop-fields__note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--semi-color-text-2, #8a8f99);
+}
+
+/* ---------- 原生输入 / 多行编辑框 ---------- */
+.loop-field,
+.loop-field-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  border-radius: 8px;
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
+  font-size: 13px;
+  line-height: 1.6;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.loop-field::placeholder,
+.loop-field-textarea::placeholder {
+  color: var(--semi-color-text-2, #a4a9b3);
+}
+
+.loop-field:hover,
+.loop-field-textarea:hover {
+  border-color: var(--semi-color-text-3, #c9cdd4);
+}
+
+.loop-field:focus,
+.loop-field-textarea:focus {
+  border-color: var(--semi-color-primary, #6a5cff);
+  box-shadow: 0 0 0 3px var(--semi-color-primary-light-default, #eef2ff);
+}
+
+.loop-field {
+  height: 36px;
+  padding: 8px 12px;
+}
+
+/* 大号单行输入（如新建回路的标题） */
+.loop-field--lg {
+  height: 40px;
+  font-size: 15px;
+}
+
+.loop-field-textarea {
+  display: block;
+  min-height: 96px;
+  padding: 10px 12px;
+  overflow: auto; /* 内容超出出现滚动条 */
+  resize: vertical; /* 可手动拖高 */
+}
+
+/* 大号多行编辑框（如自动化「任务说明」） */
+.loop-field-textarea--lg {
+  min-height: 168px;
+}
+
+/* 自动增高：内容超出时由 JS 撑高，不出滚动条、不手动拖拽（配合 AutoGrowTextarea） */
+.loop-field-textarea--auto {
+  overflow: hidden;
+  resize: none;
+}
+
+.loop-field:disabled,
+.loop-field-textarea:disabled {
+  background: var(--semi-color-fill-0, #f5f6f8);
+  color: var(--semi-color-text-2, #8a8f99);
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+ * Loop 皮肤层：把 Semi 常用输入控件统一到 loop 设计风格。
+ * 作用域 = loop 各容器根，用 :is() 收敛（避免逐根重复、也防漏加）：
+ *   .loop-page 页面正文/工具栏 · .loop-sd / .loop-apd 详情面板 · .loop-fields 表单区 ·
+ *   .loop-modal 弹框（Semi Modal portal 到 body，需给 <Modal className="loop-modal">）。
+ * 覆盖 Select / Input / DatePicker / TimePicker / InputNumber
+ *（后三者触发器内部都是 .semi-input-wrapper，故一并命中）。
+ * ========================================================================== */
+
+/* 触发器外观：白底 + 描边 + 圆角（白底修复了 Semi 默认灰 fill 与 loop 白底控件的冲突） */
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-select,
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-input-wrapper {
+  background: var(--semi-color-bg-0, #fff);
+  border-radius: 8px;
+  border-color: var(--semi-color-border, #e8e9eb);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-select:hover,
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-input-wrapper:hover {
+  border-color: var(--semi-color-text-3, #c9cdd4);
+}
+
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-select-focus,
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-select-open,
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-input-wrapper-focus {
+  border-color: var(--semi-color-primary, #6a5cff) !important;
+  box-shadow: 0 0 0 3px var(--semi-color-primary-light-default, #eef2ff);
+}
+
+/* 表单区/弹框/详情里的 Select 给足高度（工具栏保持 Semi 原尺寸不动） */
+:is(.loop-fields, .loop-modal, .loop-apd) .semi-select {
+  min-height: 36px;
+}
+
+/* 字号 / 行高 / placeholder 统一——让 Semi 控件手感与原生 .loop-field 一致 */
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-input,
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-select-selection {
+  font-size: 13px;
+}
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) textarea.semi-input-textarea {
+  font-size: 13px;
+  line-height: 1.6;
+}
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) .semi-input::placeholder,
+:is(.loop-page, .loop-sd, .loop-fields, .loop-modal, .loop-apd) textarea.semi-input-textarea::placeholder {
+  color: var(--semi-color-text-2, #a4a9b3);
+}
+
+/* Select 下拉面板（portal 到 body，需通过 dropdownClassName 命中） */
+.loop-fields__dropdown .semi-select-option-list {
+  padding: 4px;
+}
+.loop-fields__dropdown .semi-select-option {
+  border-radius: 6px;
+}
+.loop-fields__dropdown .semi-select-option-selected {
+  color: var(--semi-color-primary, #6a5cff);
+  background: var(--semi-color-primary-light-default, #eef2ff);
+}
+
+/* ---------- 搜索框：放大镜留白 + 浅灰图标（Semi Input prefix 默认贴边、拥挤） ---------- */
+.loop-search .semi-input-prefix {
+  padding-left: 10px;
+  padding-right: 4px;
+  color: var(--semi-color-text-2, #a4a9b3);
+}
+.loop-search .semi-input {
+  padding-left: 2px;
+}
+
+/* ---------- 分段控件（tab 质感，对齐技能编辑器的 edit/preview 切换） ---------- */
+.loop-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  border-radius: 8px;
+  background: var(--semi-color-fill-0, #f5f6f8);
+}
+
+.loop-seg__btn {
+  min-width: 56px;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--semi-color-text-1, #4e5969);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.loop-seg__btn:hover {
+  color: var(--semi-color-text-0, #1c1f23);
+}
+
+.loop-seg__btn.is-active {
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.loop-seg__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- 指派选择器（AssigneePicker）在表单里表现为整行字段框 ---------- */
+.loop-fields .loop-assignee-trigger {
+  width: 100%;
+  box-sizing: border-box;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  border-radius: 8px;
+  background: var(--semi-color-bg-0, #fff);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.loop-fields .loop-assignee-trigger:hover {
+  background: var(--semi-color-bg-0, #fff);
+  border-color: var(--semi-color-text-3, #c9cdd4);
+}
+
+.loop-fields .loop-assignee-name {
+  flex: 1;
+  max-width: none;
+}
+
+.loop-fields .loop-assignee-empty {
+  flex: 1;
+}
+
+/* 详情页(.loop-apd) 内联 Semi 控件由上方 :is() 皮肤层统一覆盖，无需单列。 */
+

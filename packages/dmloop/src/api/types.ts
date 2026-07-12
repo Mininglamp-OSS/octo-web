@@ -633,3 +633,126 @@ export interface RuntimeDevice {
   created_at: string;
   updated_at: string;
 }
+
+/* ---------- Autopilot（自动化，对接自动化后端契约） ---------- */
+export type AutopilotStatus = "active" | "paused" | "archived";
+export type AutopilotExecutionMode = "create_issue" | "run_only";
+// "agent" → assignee_id 指向 agent；"squad" → 指向 squad，派发时解析到 leader。
+export type AutopilotAssigneeType = "agent" | "squad";
+export type AutopilotTriggerKind = "schedule" | "webhook" | "api";
+// 后端驱动字符串——渲染未知值时走通用兜底，勿用穷尽 switch。
+export type AutopilotRunStatus =
+  | "issue_created"
+  | "running"
+  | "completed"
+  | "failed"
+  | "skipped";
+export type AutopilotRunSource = "schedule" | "manual" | "webhook" | "api";
+
+export interface Autopilot {
+  id: string;
+  workspace_id: string;
+  title: string;
+  description: string | null;
+  project_id?: string | null;
+  assignee_type: AutopilotAssigneeType;
+  assignee_id: string;
+  status: AutopilotStatus;
+  execution_mode: AutopilotExecutionMode;
+  issue_title_template: string | null;
+  created_by_type: string;
+  created_by_id: string;
+  last_run_at: string | null;
+  created_at: string;
+  updated_at: string;
+  // 仅列表端点返回的派生字段（detail/create/update 及旧服务端可能缺省）。
+  trigger_kinds?: string[];
+  next_run_at?: string | null;
+  last_run_status?: string | null;
+  // 前端 enrich 回填（后端列表不返回名字/头像）。
+  assignee_name?: string | null;
+  assignee_avatar?: string;
+  project_name?: string | null;
+}
+
+export interface AutopilotTrigger {
+  id: string;
+  autopilot_id: string;
+  kind: AutopilotTriggerKind;
+  enabled: boolean;
+  cron_expression: string | null;
+  timezone: string | null;
+  next_run_at: string | null;
+  webhook_token?: string | null;
+  webhook_path?: string | null;
+  webhook_url?: string | null;
+  label: string | null;
+  last_fired_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AutopilotRun {
+  id: string;
+  autopilot_id: string;
+  trigger_id: string | null;
+  source: AutopilotRunSource;
+  status: AutopilotRunStatus;
+  issue_id: string | null;
+  task_id: string | null;
+  triggered_at: string;
+  completed_at: string | null;
+  failure_reason: string | null;
+  created_at: string;
+}
+
+export interface CreateAutopilotRequest {
+  title: string;
+  description?: string;
+  project_id?: string | null;
+  assignee_type?: AutopilotAssigneeType;
+  assignee_id: string;
+  execution_mode: AutopilotExecutionMode;
+  issue_title_template?: string;
+}
+
+export interface UpdateAutopilotRequest {
+  title?: string;
+  description?: string | null;
+  project_id?: string | null;
+  // 换 assignee 时须与 assignee_id 同时提交（服务端要求成对）。
+  assignee_type?: AutopilotAssigneeType;
+  assignee_id?: string;
+  status?: AutopilotStatus;
+  execution_mode?: AutopilotExecutionMode;
+  issue_title_template?: string | null;
+}
+
+export interface CreateAutopilotTriggerRequest {
+  kind: AutopilotTriggerKind;
+  cron_expression?: string;
+  timezone?: string;
+  label?: string;
+}
+
+export interface UpdateAutopilotTriggerRequest {
+  enabled?: boolean;
+  cron_expression?: string;
+  timezone?: string;
+  label?: string;
+}
+
+export interface ListAutopilotsResponse {
+  autopilots: Autopilot[];
+  total: number;
+}
+
+export interface GetAutopilotResponse {
+  autopilot: Autopilot;
+  triggers: AutopilotTrigger[];
+}
+
+export interface ListAutopilotRunsResponse {
+  runs: AutopilotRun[];
+  total: number;
+}

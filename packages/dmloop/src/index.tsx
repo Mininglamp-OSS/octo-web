@@ -16,6 +16,7 @@ export * as skillApi from "./api/skillApi";
 export * as projectApi from "./api/projectApi";
 export * as agentApi from "./api/agentApi";
 export * as squadApi from "./api/squadApi";
+export * as autopilotApi from "./api/autopilotApi";
 export * as runtimeApi from "./api/runtimeApi";
 export * as workspaceApi from "./api/workspaceApi";
 export * as authApi from "./api/authApi";

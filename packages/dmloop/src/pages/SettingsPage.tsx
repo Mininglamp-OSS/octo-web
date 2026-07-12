@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Typography, Input, Button, Tabs, TabPane, Table, Tag, Select, Spin, Toast, Banner, Modal, Avatar,
+  Typography, Button, Tabs, TabPane, Table, Tag, Select, Spin, Toast, Banner, Modal, Avatar,
 } from "@douyinfe/semi-ui";
 import { Save, UserPlus, Trash2, User } from "lucide-react";
 import { useI18n, WKApp, SpaceService } from "@octo/base";
@@ -76,25 +76,25 @@ function GeneralTab({ workspace, onUpdated }: { workspace: Workspace; onUpdated?
   };
 
   return (
-    <div style={{ maxWidth: 560, paddingTop: 12, display: "flex", flexDirection: "column", gap: 14 }}>
-      <div>
-        <div className="loop-detail__section-title">{t("loop.settings.wsName")}</div>
-        <Input value={name} onChange={setName} />
+    <div className="loop-fields" style={{ maxWidth: 560, paddingTop: 12 }}>
+      <div className="loop-fields__row">
+        <div className="loop-fields__label">{t("loop.settings.wsName")}</div>
+        <input className="loop-field" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("loop.workspace.namePlaceholder")} />
       </div>
-      <div>
-        <div className="loop-detail__section-title">{t("loop.settings.wsSlug")}</div>
-        <Input value={workspace.slug} disabled />
+      <div className="loop-fields__row">
+        <div className="loop-fields__label">{t("loop.settings.wsSlug")}</div>
+        <input className="loop-field" value={workspace.slug} disabled />
         <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.settings.slugHint")}</Text>
       </div>
-      <div>
-        <div className="loop-detail__section-title">{t("loop.settings.issuePrefix")}</div>
-        <Input value={prefix} onChange={setPrefix} placeholder="KOCT" style={{ width: 200 }} />
+      <div className="loop-fields__row">
+        <div className="loop-fields__label">{t("loop.settings.issuePrefix")}</div>
+        <input className="loop-field" value={prefix} onChange={(e) => setPrefix(e.target.value)} placeholder="KOCT" style={{ width: 200 }} />
       </div>
-      <div>
-        <div className="loop-detail__section-title">{t("loop.field.description")}</div>
-        <Input value={desc} onChange={setDesc} />
+      <div className="loop-fields__row">
+        <div className="loop-fields__label">{t("loop.field.description")}</div>
+        <input className="loop-field" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t("loop.workspace.descPlaceholder")} />
       </div>
-      <div>
+      <div className="loop-fields__row">
         <Button theme="solid" icon={<Save size={14} />} loading={saving} onClick={save}>{t("loop.action.save")}</Button>
       </div>
     </div>
@@ -230,6 +230,7 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
           onChange={(v) => setSelectedUid(v as string)}
           placeholder={candidates.length ? t("loop.settings.selectMember") : t("loop.settings.noCandidates")}
           disabled={!candidates.length}
+          dropdownClassName="loop-fields__dropdown"
           style={{ flex: 1 }}
           emptyContent={t("loop.settings.noCandidates")}
         >
@@ -242,7 +243,7 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
             </Select.Option>
           ))}
         </Select>
-        <Select value={role} onChange={(v) => setRole(v as string)} style={{ width: 120 }}>
+        <Select value={role} onChange={(v) => setRole(v as string)} dropdownClassName="loop-fields__dropdown" style={{ width: 120 }}>
           {ROLES.map((x) => <Select.Option key={x} value={x}>{x}</Select.Option>)}
         </Select>
         <Button theme="solid" icon={<UserPlus size={14} />} loading={adding} disabled={!selectedUid} onClick={add}>{t("loop.settings.addMember")}</Button>

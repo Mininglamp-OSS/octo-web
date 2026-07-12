@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Typography, Input, Button, Tag, Spin, Modal, Toast, TextArea, Banner,
+  Typography, Input, Button, Tag, Spin, Modal, Toast, Banner,
   Select, Checkbox, Tooltip, Popover,
 } from "@douyinfe/semi-ui";
 import { Search, Plus, Trash2, Sparkles, Download, FileText, Link2, Copy, Clock3, Users } from "lucide-react";
@@ -272,6 +272,7 @@ export default function SkillPage() {
       </div>
 
       <Modal
+        className="loop-modal"
         visible={createOpen}
         onCancel={() => setCreateOpen(false)}
         footer={null}
@@ -304,15 +305,15 @@ export default function SkillPage() {
                 <div className="loop-nsk__fields">
                   <div className="loop-nsk__field">
                     <label className="loop-nsk__label">{t("loop.field.name")}</label>
-                    <Input value={nName} onChange={setNName} placeholder={t("loop.field.name")} />
+                    <input className="loop-field" value={nName} onChange={(e) => setNName(e.target.value)} placeholder={t("loop.field.name")} />
                   </div>
                   <div className="loop-nsk__field">
                     <label className="loop-nsk__label">{t("loop.field.description")}</label>
-                    <Input value={nDesc} onChange={setNDesc} placeholder={t("loop.field.descriptionPlaceholder")} />
+                    <input className="loop-field" value={nDesc} onChange={(e) => setNDesc(e.target.value)} placeholder={t("loop.field.descriptionPlaceholder")} />
                   </div>
                   <div className="loop-nsk__field">
                     <label className="loop-nsk__label">{t("loop.skill.content")}</label>
-                    <TextArea value={nContent} onChange={setNContent} autosize={{ minRows: 5, maxRows: 12 }} />
+                    <textarea className="loop-field-textarea loop-field-textarea--lg" value={nContent} onChange={(e) => setNContent(e.target.value)} placeholder={t("loop.skill.content")} spellCheck={false} />
                   </div>
                 </div>
               )}
@@ -321,7 +322,7 @@ export default function SkillPage() {
                 <div className="loop-nsk__fields">
                   <div className="loop-nsk__field">
                     <label className="loop-nsk__label">{t("loop.skill.create.urlLabel")}</label>
-                    <Input value={webUrl} onChange={setWebUrl} placeholder="https://clawhub.ai/owner/skill" />
+                    <input className="loop-field" value={webUrl} onChange={(e) => setWebUrl(e.target.value)} placeholder="https://clawhub.ai/owner/skill" />
                   </div>
                   <div className="loop-nsk__field">
                     <label className="loop-nsk__label">{t("loop.skill.create.supportedSources")}</label>
@@ -337,7 +338,7 @@ export default function SkillPage() {
               {createTab === "runtime" && (
                 <div className="loop-nsk__fields">
                   <div className="loop-nsk__rtbar">
-                    <Select value={rtId} onChange={(v) => setRtId(v as string)} style={{ flex: 1 }} placeholder={t("loop.agent.runtime")}>
+                    <Select value={rtId} onChange={(v) => setRtId(v as string)} dropdownClassName="loop-fields__dropdown" style={{ flex: 1 }} placeholder={t("loop.agent.runtime")}>
                       {runtimes.map((r) => <Select.Option key={r.id} value={r.id}>{r.name}（{r.provider}）</Select.Option>)}
                     </Select>
                     <Button loading={rtBusy} onClick={loadRuntimeSkills}>{t("loop.skill.fetch")}</Button>

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Typography, Dropdown, Avatar, Modal, Input, Toast, Button } from "@douyinfe/semi-ui";
+import { Typography, Dropdown, Avatar, Modal, Toast, Button } from "@douyinfe/semi-ui";
 import {
   ClipboardList, Briefcase, Bot, Users, Settings,
   ChevronDown, Check, Plus, SquarePen, FolderPlus,
+  Zap, CircleUserRound,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Workspace } from "../api/types";
@@ -15,20 +16,26 @@ import IssuePage from "./IssuePage";
 import ProjectPage from "./ProjectPage";
 import AgentPage from "./AgentPage";
 import SquadPage from "./SquadPage";
+import AutomationPage from "./AutomationPage";
 import SettingsPage from "./SettingsPage";
 import "./loop.css";
+import "../ui/loopControls.css";
 
 const { Title, Text } = Typography;
 
-type TabKey = "issue" | "project" | "agent" | "squad" | "settings";
+type TabKey = "myloop" | "issue" | "project" | "automation" | "agent" | "squad" | "settings";
 
-const TABS: { key: TabKey; icon: React.ReactNode }[] = [
+// 顶部独立入口：我的回路（复用 Issue 视图的「与我相关」分组）。
+const MY_TAB: { key: TabKey; icon: React.ReactNode } = { key: "myloop", icon: <CircleUserRound size={16} /> };
+// 工作区分组：回路 / 项目 / 自动化 / AI队友 / AI小队。
+const WORKSPACE_TABS: { key: TabKey; icon: React.ReactNode }[] = [
   { key: "issue", icon: <ClipboardList size={16} /> },
   { key: "project", icon: <Briefcase size={16} /> },
+  { key: "automation", icon: <Zap size={16} /> },
   { key: "agent", icon: <Bot size={16} /> },
   { key: "squad", icon: <Users size={16} /> },
-  { key: "settings", icon: <Settings size={16} /> },
 ];
+const SETTINGS_TAB: { key: TabKey; icon: React.ReactNode } = { key: "settings", icon: <Settings size={16} /> };
 
 function slugify(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
@@ -54,8 +61,10 @@ export default function LoopPage() {
     // 重挂子页面 → useEffect 重新以新的 x-workspace-slug 拉取数据，避免残留旧 workspace 数据。
     const k = `${key}:${ws?.id ?? "none"}`;
     switch (key) {
+      case "myloop": return <IssuePage key={k} defaultView="grouped" defaultScope="involves" />;
       case "issue": return <IssuePage key={k} />;
       case "project": return <ProjectPage key={k} />;
+      case "automation": return <AutomationPage key={k} />;
       case "agent": return <AgentPage key={k} />;
       case "squad": return <SquadPage key={k} />;
       case "settings": return <SettingsPage key={k} workspace={ws} onUpdated={() => reloadWorkspaces()} />;
@@ -205,12 +214,21 @@ export default function LoopPage() {
             </button>
           </div>
           <nav className="loop-sidebar__menu">
-            {TABS.map((it) => (
+            <button className={`loop-sidebar__item ${tab === MY_TAB.key ? "is-active" : ""}`} onClick={() => openTab(MY_TAB.key)}>
+              {MY_TAB.icon}
+              <span>{t(`loop.nav.${MY_TAB.key}`)}</span>
+            </button>
+            <div className="loop-sidebar__group-label">{t("loop.nav.workspaceGroup")}</div>
+            {WORKSPACE_TABS.map((it) => (
               <button key={it.key} className={`loop-sidebar__item ${tab === it.key ? "is-active" : ""}`} onClick={() => openTab(it.key)}>
                 {it.icon}
                 <span>{t(`loop.nav.${it.key}`)}</span>
               </button>
             ))}
+            <button className={`loop-sidebar__item ${tab === SETTINGS_TAB.key ? "is-active" : ""}`} onClick={() => openTab(SETTINGS_TAB.key)}>
+              {SETTINGS_TAB.icon}
+              <span>{t(`loop.nav.${SETTINGS_TAB.key}`)}</span>
+            </button>
           </nav>
         </>
       )}
@@ -218,6 +236,7 @@ export default function LoopPage() {
       <CreateIssueModal visible={newIssueOpen} onClose={() => setNewIssueOpen(false)} onCreated={() => openTab("issue")} />
 
       <Modal
+        className="loop-modal"
         title={t("loop.workspace.create")}
         visible={wsModalOpen}
         onOk={doCreateWs}
@@ -226,14 +245,14 @@ export default function LoopPage() {
         cancelText={t("loop.action.cancel")}
         okButtonProps={{ loading: wsBusy }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div>
-            <div className="loop-detail__section-title">{t("loop.settings.wsName")}</div>
-            <Input autoFocus value={wsName} onChange={(v) => { setWsName(v); if (!wsSlugTouched) setWsSlug(slugify(v)); }} />
+        <div className="loop-fields">
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.settings.wsName")}</div>
+            <input autoFocus className="loop-field" value={wsName} onChange={(e) => { setWsName(e.target.value); if (!wsSlugTouched) setWsSlug(slugify(e.target.value)); }} placeholder={t("loop.workspace.namePlaceholder")} />
           </div>
-          <div>
-            <div className="loop-detail__section-title">{t("loop.settings.wsSlug")}</div>
-            <Input value={wsSlug} onChange={(v) => { setWsSlug(v); setWsSlugTouched(true); }} placeholder="my-workspace" />
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.settings.wsSlug")}</div>
+            <input className="loop-field" value={wsSlug} onChange={(e) => { setWsSlug(e.target.value); setWsSlugTouched(true); }} placeholder="my-workspace" />
           </div>
         </div>
       </Modal>

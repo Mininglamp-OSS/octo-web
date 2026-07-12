@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Typography, Input, Button, Select, Avatar, Spin, Modal, Toast, TextArea, Banner } from "@douyinfe/semi-ui";
+import { Typography, Input, Button, Select, Avatar, Spin, Modal, Toast, Banner } from "@douyinfe/semi-ui";
 import { Search, Plus, Trash2, Bot, RotateCcw } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Agent, AgentVisibility, RuntimeDevice } from "../api/types";
@@ -103,7 +103,7 @@ export default function AgentPage() {
       <div className="loop-page__head">
         <Title heading={4}>{t("loop.nav.agent")}</Title>
         <div className="loop-page__spacer" />
-        <Input prefix={<Search size={14} />} placeholder={t("loop.search.agent")} value={keyword} onChange={setKeyword} showClear style={{ width: 220 }} />
+        <Input className="loop-search" prefix={<Search size={14} />} placeholder={t("loop.search.agent")} value={keyword} onChange={setKeyword} showClear style={{ width: 220 }} />
         <Button theme="solid" icon={<Plus size={14} />} onClick={openCreate}>{t("loop.action.newAgent")}</Button>
       </div>
 
@@ -157,18 +157,29 @@ export default function AgentPage() {
           )}
       </div>
 
-      <Modal title={t("loop.action.newAgent")} visible={createOpen} onOk={doCreate} onCancel={() => setCreateOpen(false)} okText={t("loop.action.create")} cancelText={t("loop.action.cancel")}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div><div className="loop-detail__section-title">{t("loop.field.name")}</div><Input autoFocus value={nName} onChange={setNName} /></div>
-          <div><div className="loop-detail__section-title">{t("loop.field.description")}</div><TextArea value={nDesc} onChange={setNDesc} autosize={{ minRows: 2, maxRows: 4 }} /></div>
-          <div><div className="loop-detail__section-title">{t("loop.agent.runtime")}</div>
-            <Select value={nRuntimeId} onChange={(v) => setNRuntimeId(v as string)} style={{ width: "100%" }} placeholder={t("loop.agent.runtime")}>
+      <Modal className="loop-modal" title={t("loop.action.newAgent")} visible={createOpen} onOk={doCreate} onCancel={() => setCreateOpen(false)} okText={t("loop.action.create")} cancelText={t("loop.action.cancel")}>
+        <div className="loop-fields">
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.name")}</div>
+            <input autoFocus className="loop-field" value={nName} onChange={(e) => setNName(e.target.value)} placeholder={t("loop.agent.namePlaceholder")} />
+          </div>
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.description")}</div>
+            <textarea className="loop-field-textarea" value={nDesc} onChange={(e) => setNDesc(e.target.value)} placeholder={t("loop.agent.descPlaceholder")} />
+          </div>
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.agent.runtime")}</div>
+            <Select value={nRuntimeId} onChange={(v) => setNRuntimeId(v as string)} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.agent.runtime")}>
               {runtimes.map((r) => <Select.Option key={r.id} value={r.id}>{r.name}（{r.provider}）</Select.Option>)}
             </Select>
           </div>
-          <div><div className="loop-detail__section-title">{t("loop.agent.model")}</div><Input value={nModel} onChange={setNModel} placeholder="claude-opus-4 / codex-latest…" /></div>
-          <div><div className="loop-detail__section-title">{t("loop.agent.visibility")}</div>
-            <Select value={nVis} onChange={(v) => setNVis(v as AgentVisibility)} style={{ width: "100%" }}>
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.agent.model")}</div>
+            <input className="loop-field" value={nModel} onChange={(e) => setNModel(e.target.value)} placeholder="claude-opus-4 / codex-latest…" />
+          </div>
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.agent.visibility")}</div>
+            <Select value={nVis} onChange={(v) => setNVis(v as AgentVisibility)} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }}>
               <Select.Option value="workspace">{t("loop.agent.visWorkspace")}</Select.Option>
               <Select.Option value="private">{t("loop.agent.visPrivate")}</Select.Option>
             </Select>

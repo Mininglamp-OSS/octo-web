@@ -124,6 +124,15 @@ export function actorAvatar(
   return uid ? WKApp.shared.avatarUser(uid) : undefined;
 }
 
+// 项目名解析（后端列表不返回 project_name）——与 actorName 对称，复用已缓存 directory。
+export function projectNameOf(
+  dir: Directory,
+  id: string | null | undefined,
+): string | null {
+  if (!id) return null;
+  return dir.projectName.get(id) ?? null;
+}
+
 export async function listAssigneeCandidates(): Promise<AssigneeCandidate[]> {
   const dir = await ensureDirectory();
   return dir.candidates;

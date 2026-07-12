@@ -319,26 +319,37 @@
 /* ===== 视图切换按钮 ===== */
 .loop-viewtoggle {
   display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
   border: 1px solid var(--semi-color-border, #e8e9eb);
   border-radius: 8px;
-  overflow: hidden;
+  background: var(--semi-color-fill-0, #f5f6f8);
 }
 
 .loop-viewtoggle button {
   border: none;
   background: transparent;
   padding: 5px 12px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
   color: var(--semi-color-text-1, #4e5969);
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.loop-viewtoggle button:hover {
+  color: var(--semi-color-text-0, #1c1f23);
 }
 
 .loop-viewtoggle button.is-active {
-  background: var(--semi-color-primary-light-default, #eef2ff);
-  color: var(--semi-color-primary, #6a5cff);
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 /* ===== 看板 ===== */
@@ -454,7 +465,7 @@
   gap: 2px;
 }
 
-/* 作用域切换（我的 / 全部 / 已归档） */
+/* 作用域切换（我的 / 全部 / 已归档）——文字 tab：无背景无边框，靠字色/字重区分 */
 .loop-agent-toolbar {
   display: flex;
   align-items: center;
@@ -463,29 +474,28 @@
 .loop-agent-scope {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 18px;
 }
 .loop-agent-scope__btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   height: 28px;
-  padding: 0 10px;
+  padding: 0;
   border: none;
   background: transparent;
-  border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
-  color: var(--semi-color-text-2, #6b7075);
+  color: var(--semi-color-text-2, #8a8f99);
+  transition: color 120ms ease;
 }
-.loop-agent-scope__btn:hover { background: var(--semi-color-fill-0, #f5f6f8); }
+.loop-agent-scope__btn:hover { color: var(--semi-color-text-0, #1c1f23); }
 .loop-agent-scope__btn.is-active {
-  background: var(--semi-color-fill-1, #eceef1);
-  color: var(--semi-color-text-0, #1f2329);
+  color: var(--semi-color-text-0, #1c1f23);
   font-weight: 600;
 }
 .loop-agent-scope__count {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--semi-color-text-3, #b8bcc8);
   font-variant-numeric: tabular-nums;
 }
@@ -1708,20 +1718,21 @@
 }
 
 /* 成员 */
-.loop-sqd__members { display: flex; flex-direction: column; gap: 12px; }
-.loop-sqd__members-head { display: flex; align-items: center; justify-content: space-between; }
+.loop-sqd__members { display: flex; flex-direction: column; gap: 0; }
+.loop-sqd__members-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid var(--semi-color-border, #e8e9eb); }
 .loop-sqd__members-title { display: inline-flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 700; color: var(--semi-color-text-0, #1f2329); }
 .loop-sqd__members-count { font-size: 12px; font-weight: 500; color: var(--semi-color-text-2, #6b7075); }
 
-.loop-sqd__memlist { display: flex; flex-direction: column; gap: 8px; }
+.loop-sqd__memlist { display: flex; flex-direction: column; }
 .loop-sqd__mem {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--semi-color-border, rgba(0, 0, 0, 0.08));
-  border-radius: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--semi-color-fill-1, #eceef1);
 }
+.loop-sqd__mem:last-child { border-bottom: none; }
+.loop-sqd__mem:hover { background: var(--semi-color-fill-0, #f5f6f8); }
 .loop-sqd__mem-ava { position: relative; flex: 0 0 auto; display: inline-flex; }
 .loop-sqd__mem-dot {
   width: 8px;
@@ -1746,17 +1757,22 @@
 .loop-sqd__mem-line { display: flex; align-items: center; gap: 8px; }
 .loop-sqd__mem-name { font-size: 13px; font-weight: 600; color: var(--semi-color-text-0, #1f2329); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .loop-sqd__mem-type { font-size: 12px; color: var(--semi-color-text-3, #b8bcc8); flex: 0 0 auto; }
-.loop-sqd__mem-leader {
+/* 身份标签（领队 / 成员），置于右侧信息区 */
+.loop-sqd__mem-badge {
   display: inline-flex;
   align-items: center;
   gap: 3px;
   flex: 0 0 auto;
-  padding: 1px 7px;
+  padding: 1px 8px;
   border-radius: 999px;
-  background: var(--semi-color-warning-light-default, #fbecd0);
-  color: var(--semi-color-warning, #a25e0a);
+  background: var(--semi-color-fill-1, #eceef1);
+  color: var(--semi-color-text-2, #6b7075);
   font-size: 11px;
   font-weight: 600;
+}
+.loop-sqd__mem-badge.is-leader {
+  background: var(--semi-color-warning-light-default, #fbecd0);
+  color: var(--semi-color-warning, #a25e0a);
 }
 .loop-sqd__mem-role {
   border: none;
@@ -1788,9 +1804,10 @@
 .loop-sqd__mem-ident { font-family: var(--loop-mono-font, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 10px; text-transform: uppercase; flex: 0 0 auto; }
 .loop-sqd__mem-ititle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .loop-sqd__mem-more { flex: 0 0 auto; }
-.loop-sqd__mem-actions { display: inline-flex; align-items: center; gap: 2px; opacity: 0; transition: opacity 120ms ease; }
-.loop-sqd__mem:hover .loop-sqd__mem-actions,
-.loop-sqd__mem:focus-within .loop-sqd__mem-actions { opacity: 1; }
+/* 行操作收进右端 kebab「⋯」菜单（hover 显现）——单图标宽度一致，右侧天然对齐 */
+.loop-sqd__mem-kebab { flex: 0 0 auto; opacity: 0; transition: opacity 120ms ease; }
+.loop-sqd__mem:hover .loop-sqd__mem-kebab,
+.loop-sqd__mem:focus-within .loop-sqd__mem-kebab { opacity: 1; }
 
 /* 指引 */
 .loop-sqd__instr { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
@@ -1819,3 +1836,129 @@
   background: var(--semi-color-bg-0, #fff);
 }
 .loop-sqd__unsaved { font-size: 12px; color: var(--semi-color-text-2, #6b7075); }
+
+/* ===== 侧栏分组标题（工作区） ===== */
+.loop-sidebar__group-label {
+  padding: 12px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--semi-color-text-2, #8a8f99);
+}
+
+/* ===== 自动化：卡片网格 ===== */
+.loop-automation-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.loop-automation-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  border-radius: 10px;
+  background: var(--semi-color-bg-0, #fff);
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.loop-automation-card:hover {
+  border-color: var(--semi-color-primary, #6a5cff);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.loop-automation-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loop-automation-card__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--semi-color-text-0, #1c1f23);
+}
+
+.loop-automation-card__desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--semi-color-text-2, #8a8f99);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.loop-automation-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--semi-color-text-2, #8a8f99);
+}
+
+.loop-automation-card__paused {
+  color: var(--semi-color-text-2, #8a8f99);
+}
+
+.loop-automation-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--semi-color-fill-0, #f0f1f3);
+}
+
+.loop-automation-card__assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.loop-automation-card__assignee-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--semi-color-text-1, #4e5969);
+}
+
+.loop-automation-card__runs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.loop-automation-card__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.loop-automation-card__more {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  background: var(--semi-color-bg-0, #fff);
+}
+
+/* hover 时 kebab 显现（覆盖底部运行点区域，避让顶部开关） */
+.loop-automation-card:hover .loop-automation-card__more {
+  opacity: 1;
+  pointer-events: auto;
+}

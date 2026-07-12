@@ -7,13 +7,75 @@
     "deleteIssue": "Delete Loop"
   },
   "nav": {
+    "myloop": "My loops",
+    "workspaceGroup": "Workspace",
     "issue": "Loop",
     "skill": "Skill",
     "project": "Project",
+    "automation": "Automation",
     "agent": "AI teammate",
     "squad": "AI squad",
     "runtime": "Runtimes",
     "settings": "Settings"
+  },
+  "automation": {
+    "newTitle": "New automation",
+    "editTitle": "Edit automation",
+    "create": "Create automation",
+    "namePlaceholder": "e.g. Daily digest",
+    "executor": "Executor",
+    "executorRequired": "Please select an executor",
+    "sendTo": "Send to",
+    "sendToPlaceholder": "Select a project (optional)",
+    "trigger": "Trigger",
+    "nextRun": "Next run",
+    "dayUnit": "",
+    "taskDesc": "Task instructions",
+    "taskDescHint": "Instructions handed to the executor on trigger; the AI teammate reads them at run time. The more it reads like a clear brief, the better.",
+    "taskDescTemplate": "# Goal\nWhat do you want the AI teammate to accomplish?\n\n# Steps\n1. \n\nEnabled on creation; runs on the set cadence until paused.",
+    "paused": "Paused",
+    "runNow": "Run now",
+    "runNowConfirm": "Run this automation now?",
+    "runNowConfirmDesc": "This triggers a run immediately and hands the task to the executor.",
+    "viewIssue": "View loop",
+    "runStarted": "Run triggered",
+    "runFailed": "Failed to trigger",
+    "triggerFailed": "Automation created, but scheduling failed — retry from Edit",
+    "confirmDelete": "Delete this automation?",
+    "statusLabel": { "active": "Active", "paused": "Paused", "archived": "Archived" },
+    "triggers": "Triggers",
+    "addTrigger": "Add trigger",
+    "editTrigger": "Edit trigger",
+    "noTriggers": "No triggers yet — add a schedule to run automatically",
+    "confirmDeleteTrigger": "Delete this trigger?",
+    "runHistory": "Run history",
+    "noRuns": "No runs yet",
+    "runsError": "Failed to load run history",
+    "retry": "Retry",
+    "noTaskDesc": "No task instructions",
+    "runStatus": { "issue_created": "Loop created", "running": "Running", "completed": "Succeeded", "failed": "Failed", "skipped": "Skipped" },
+    "runSource": { "schedule": "Schedule", "manual": "Manual", "webhook": "Webhook", "api": "API" },
+    "emptyTitle": "No automations yet",
+    "emptyDesc": "Create an automation to let AI teammates run on a cadence",
+    "freq": {
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly"
+    },
+    "weekdays": {
+      "0": "Sun",
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat"
+    },
+    "summary": {
+      "daily": "Daily {{time}}",
+      "weekly": "Every {{day}} {{time}}",
+      "monthly": "Monthly on day {{day}} {{time}}"
+    }
   },
   "runtime": {
     "online": "Online",
@@ -92,6 +154,8 @@
   "workspace": {
     "title": "Workspaces",
     "create": "Create workspace",
+    "namePlaceholder": "Workspace name",
+    "descPlaceholder": "What is this workspace for?",
     "created": "Workspace created",
     "none": "No workspace",
     "nameRequired": "Workspace name is required",
@@ -240,6 +304,7 @@
     "editFailed": "Edit failed",
     "deleteFailed": "Delete failed",
     "saveFailed": "Save failed",
+    "loadFailed": "Load failed",
     "commentAttachFailed": "Comment posted, but {{count}} attachment(s) failed to upload — re-added to the box, please retry",
     "attachFailed": "{{count}} attachment(s) failed to upload"
   },
@@ -313,6 +378,7 @@
     "progress": "Progress",
     "lead": "Lead",
     "descPlaceholder": "Add a description...",
+    "namePlaceholder": "Project name, e.g. Growth experiments",
     "descHint": "Provided to agents as project context and applied to every task in this project."
   },
   "webhook": {
@@ -363,6 +429,8 @@
   "agent": {
     "runtime": "Runtime",
     "model": "Model",
+    "namePlaceholder": "Teammate name, e.g. Frontend helper",
+    "descPlaceholder": "Briefly describe what this AI teammate does",
     "runs30d": "Runs (30d)",
     "instructions": "Instructions",
     "instructionsPlaceholder": "System prompt / AI teammate behavior…",
@@ -431,6 +499,7 @@
     "leaderRequired": "Please select a leader",
     "members": "Members",
     "roleLeader": "Leader",
+    "roleMember": "Member",
     "addMember": "Add member",
     "add": "Add",
     "instructions": "Instructions",
