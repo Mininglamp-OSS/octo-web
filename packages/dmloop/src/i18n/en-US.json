@@ -499,6 +499,7 @@
     "leaderRequired": "Please select a leader",
     "members": "Members",
     "roleLeader": "Leader",
+    "roleMember": "Member",
     "addMember": "Add member",
     "add": "Add",
     "instructions": "Instructions",

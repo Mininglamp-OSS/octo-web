@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Typography, Input, Select, Button, Avatar, Spin, Toast, Modal, Tooltip } from "@douyinfe/semi-ui";
-import { ChevronRight, Archive, Users, FileText, Plus, Trash2, Crown, ArrowUpRight, Save, Pencil } from "lucide-react";
+import { Typography, Input, Select, Button, Avatar, Spin, Toast, Modal, Dropdown } from "@douyinfe/semi-ui";
+import { ChevronRight, Archive, Users, FileText, Plus, Trash2, Crown, ArrowUpRight, Save, Pencil, MoreHorizontal } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Squad, SquadMember, SquadMemberStatus, SquadMemberStatusValue, AssigneeCandidate } from "../api/types";
 import {
@@ -214,7 +214,7 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
           <div className="loop-sqd__members">
             <div className="loop-sqd__members-head">
               <div className="loop-sqd__members-title">{t("loop.squad.members")}<span className="loop-sqd__members-count">{members.length}</span></div>
-              <Button theme="light" size="small" icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>{t("loop.squad.addMember")}</Button>
+              <Button theme="outline" size="small" icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>{t("loop.squad.addMember")}</Button>
             </div>
             <div className="loop-sqd__memlist">
               {members.map((m) => {
@@ -235,7 +235,6 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
                       <div className="loop-sqd__mem-line">
                         <span className="loop-sqd__mem-name">{m.member_name ?? m.member_id.slice(0, 8)}</span>
                         <span className="loop-sqd__mem-type">{t(`loop.assignee.${m.member_type}`)}</span>
-                        {leader && <span className="loop-sqd__mem-leader"><Crown size={11} />{t("loop.squad.roleLeader")}</span>}
                       </div>
                       <InlineText value={m.role ?? ""} onCommit={(v) => setRole(m, v)} size="small" allowEmpty inputStyle={{ maxWidth: 220, marginTop: 2 }}>
                         {(begin) => (
@@ -246,6 +245,12 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
                       </InlineText>
                     </div>
                     <div className="loop-sqd__mem-right">
+                      {m.member_type === "agent" && (
+                        <span className={`loop-sqd__mem-badge${leader ? " is-leader" : ""}`}>
+                          {leader && <Crown size={11} />}
+                          {t(leader ? "loop.squad.roleLeader" : "loop.squad.roleMember")}
+                        </span>
+                      )}
                       {m.member_type === "agent" && sv && (
                         <span className="loop-sqd__mem-status">
                           <i className="loop-sqd__mem-dot" data-status={sv} />
@@ -258,23 +263,26 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
                             : <span>{t(STATUS_LABEL[sv])}{showLast ? ` · ${t("loop.squad.lastActive", { values: { time: formatRelativeTime(st!.last_active_at!, format) } })}` : ""}</span>}
                         </span>
                       )}
-                      <span className="loop-sqd__mem-actions">
-                        {m.member_type === "agent" && (
-                          <Tooltip content={t("loop.squad.viewAgent")}>
-                            <Button theme="borderless" type="tertiary" size="small" icon={<ArrowUpRight size={14} />} onClick={() => openAgent(m.member_id)} />
-                          </Tooltip>
-                        )}
-                        {m.member_type === "agent" && !leader && (
-                          <Tooltip content={t("loop.squad.makeLeader")}>
-                            <Button theme="borderless" type="tertiary" size="small" icon={<Crown size={14} />} onClick={() => setLeader(m.member_id)} />
-                          </Tooltip>
-                        )}
-                        {!leader && (
-                          <Tooltip content={t("loop.squad.removeMember")}>
-                            <Button theme="borderless" type="danger" size="small" icon={<Trash2 size={14} />} onClick={() => dropMember(m)} />
-                          </Tooltip>
-                        )}
-                      </span>
+                      <Dropdown
+                        trigger="click"
+                        position="bottomRight"
+                        clickToHide
+                        render={
+                          <Dropdown.Menu>
+                            {m.member_type === "agent" && (
+                              <Dropdown.Item icon={<ArrowUpRight size={13} />} onClick={() => openAgent(m.member_id)}>{t("loop.squad.viewAgent")}</Dropdown.Item>
+                            )}
+                            {m.member_type === "agent" && !leader && (
+                              <Dropdown.Item icon={<Crown size={13} />} onClick={() => setLeader(m.member_id)}>{t("loop.squad.makeLeader")}</Dropdown.Item>
+                            )}
+                            {!leader && (
+                              <Dropdown.Item icon={<Trash2 size={13} />} type="danger" onClick={() => dropMember(m)}>{t("loop.squad.removeMember")}</Dropdown.Item>
+                            )}
+                          </Dropdown.Menu>
+                        }
+                      >
+                        <Button className="loop-sqd__mem-kebab" theme="borderless" type="tertiary" size="small" icon={<MoreHorizontal size={16} />} />
+                      </Dropdown>
                     </div>
                   </div>
                 );

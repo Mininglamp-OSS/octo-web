@@ -499,6 +499,7 @@
     "leaderRequired": "请选择领队",
     "members": "成员",
     "roleLeader": "领队",
+    "roleMember": "成员",
     "addMember": "添加成员",
     "add": "添加",
     "instructions": "指引",

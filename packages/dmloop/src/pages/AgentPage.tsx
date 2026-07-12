@@ -103,7 +103,7 @@ export default function AgentPage() {
       <div className="loop-page__head">
         <Title heading={4}>{t("loop.nav.agent")}</Title>
         <div className="loop-page__spacer" />
-        <Input prefix={<Search size={14} />} placeholder={t("loop.search.agent")} value={keyword} onChange={setKeyword} showClear style={{ width: 220 }} />
+        <Input className="loop-search" prefix={<Search size={14} />} placeholder={t("loop.search.agent")} value={keyword} onChange={setKeyword} showClear style={{ width: 220 }} />
         <Button theme="solid" icon={<Plus size={14} />} onClick={openCreate}>{t("loop.action.newAgent")}</Button>
       </div>
 

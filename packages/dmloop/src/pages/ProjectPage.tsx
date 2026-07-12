@@ -153,7 +153,7 @@ export default function ProjectPage() {
         <Button theme="solid" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>{t("loop.action.newProject")}</Button>
       </div>
       <div className="loop-project-toolbar">
-        <Input prefix={<Search size={14} />} placeholder={t("loop.search.project")} value={keyword} onChange={setKeyword} showClear style={{ width: 240 }} />
+        <Input className="loop-search" prefix={<Search size={14} />} placeholder={t("loop.search.project")} value={keyword} onChange={setKeyword} showClear style={{ width: 240 }} />
         <div className="loop-project-toolbar__spacer" />
         <div className="loop-viewtoggle">
           <button type="button" className={view === "list" ? "is-active" : ""} onClick={() => setViewMode("list")}>
