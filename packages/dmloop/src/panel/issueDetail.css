@@ -339,15 +339,27 @@
 .loop-idp__prop-k { font-size: 12px; color: var(--semi-color-text-2, #8a8f99); }
 .loop-idp__prop-v { font-size: 13px; color: var(--semi-color-text-0, #1f2329); }
 .loop-idp__prop-v--muted { color: var(--semi-color-text-2, #6b7075); }
-/* 状态/优先级 只读值：图标 + 文字 */
-.loop-idp__prop-val {
+/* 内联可编辑属性值：点击弹 popup(对标 multica),hover 提示可点 */
+.loop-idp__prop-edit {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  max-width: 170px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 3px 6px;
+  margin-right: -6px;
+  border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   color: var(--semi-color-text-0, #1f2329);
+  transition: background-color 120ms ease;
 }
+.loop-idp__prop-edit:hover { background: var(--semi-color-fill-0, #f5f6f8); }
+.loop-idp__prop-edit--text { overflow: hidden; }
+.loop-idp__prop-edit--text > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loop-idp__prop-caret { flex: 0 0 auto; color: var(--semi-color-text-3, #b8bcc8); }
 /* 创建者 只读值：头像 + 名字 */
 .loop-idp__prop-person {
   display: inline-flex;

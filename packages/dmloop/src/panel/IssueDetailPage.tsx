@@ -29,6 +29,7 @@ import {
   AtSign,
   Plus,
   ChevronRight,
+  ChevronDown,
   SlidersHorizontal,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
@@ -42,6 +43,7 @@ import type {
   TaskRun,
   IssueStatus,
   IssuePriority,
+  Project,
   CommentTriggerAgent,
 } from "../api/types";
 import {
@@ -65,8 +67,9 @@ import {
   listTimeline,
 } from "../api/collabApi";
 import { uploadAttachment } from "../api/attachmentApi";
+import { listProjects } from "../api/projectApi";
 import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
-import { AssigneeBadge } from "../ui/AssigneePicker";
+import AssigneePicker from "../ui/AssigneePicker";
 import LabelEditor from "../ui/LabelEditor";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
@@ -187,6 +190,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [childCreateOpen, setChildCreateOpen] = useState(false); // 新建子 issue 弹窗
   const [propsOpen, setPropsOpen] = useState(false); // 「编辑属性」弹窗(标签/父回路/日期/阶段)
   const [parentCands, setParentCands] = useState<Issue[]>([]); // 父 issue 选择器候选(懒加载)
+  const [projects, setProjects] = useState<Project[]>([]); // 项目候选(内联项目 popup)
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [runs, setRuns] = useState<TaskRun[]>([]);
   const [activeRun, setActiveRun] = useState<TaskRun | null>(null);
@@ -244,6 +248,11 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   };
 
   useEffect(reload, [issueId]);
+
+  // 项目候选:内联「项目」popup 用;工作区级、随详情挂载取一次。
+  useEffect(() => {
+    listProjects().then(setProjects).catch(() => {});
+  }, []);
 
   const patch = async (p: Parameters<typeof updateIssue>[1]) => {
     if (!issue) return;
@@ -590,71 +599,10 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     setEditingDesc(false);
   };
 
-  // 右上角 ··· 菜单：快速改 status / priority / assignee（对齐产品设计）。
+  // 右上角 ··· 菜单：编辑属性(标签/父回路/日期/阶段) / 新建子回路 / 订阅 / 删除。
+  // 状态/优先级/负责人/项目 改走右栏内联点击 popup(对标 multica),不在此重复。
   const renderMoreMenu = () => (
     <Dropdown.Menu>
-      <Dropdown
-        position="leftTop"
-        trigger="hover"
-        clickToHide
-        render={
-          <Dropdown.Menu>
-            {ISSUE_STATUS_ORDER.map((s) => (
-              <Dropdown.Item key={s} active={issue?.status === s} onClick={() => issue && requestStatus(issue, s, (extra) => patch({ status: s, ...extra }))}>
-                <Tag color={ISSUE_STATUS_COLOR[s]} size="small">{t(`loop.status.${s}`)}</Tag>
-              </Dropdown.Item>
-            ))}
-          </Dropdown.Menu>
-        }
-      >
-        <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changeStatus")}</Dropdown.Item>
-      </Dropdown>
-      <Dropdown
-        position="leftTop"
-        trigger="hover"
-        clickToHide
-        render={
-          <Dropdown.Menu>
-            {PRIORITY_ORDER.map((p) => (
-              <Dropdown.Item key={p} active={issue?.priority === p} onClick={() => patch({ priority: p })}>
-                <Tag color={PRIORITY_COLOR[p]} size="small">{t(`loop.priority.${p}`)}</Tag>
-              </Dropdown.Item>
-            ))}
-          </Dropdown.Menu>
-        }
-      >
-        <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changePriority")}</Dropdown.Item>
-      </Dropdown>
-      <Dropdown
-        position="leftTop"
-        trigger="hover"
-        clickToHide
-        render={
-          <Dropdown.Menu>
-            <Dropdown.Item icon={<CircleSlash size={13} />} onClick={() => patch({ assignee_id: null, assignee_type: null })}>
-              {t("loop.assignee.unassigned")}
-            </Dropdown.Item>
-            {(["member", "agent", "squad"] as const).map((type) => {
-              const items = cands.filter((c) => c.type === type);
-              if (!items.length) return null;
-              return (
-                <React.Fragment key={type}>
-                  <Dropdown.Divider />
-                  <Dropdown.Title>{t(`loop.assignee.${type}`)}</Dropdown.Title>
-                  {items.map((c) => (
-                    <Dropdown.Item key={c.id} active={issue?.assignee_id === c.id} onClick={() => issue && requestAssign(issue, c.type, c.id, c.name, (extra) => patch({ assignee_id: c.id, assignee_type: c.type, ...extra }))}>
-                      {c.name}
-                    </Dropdown.Item>
-                  ))}
-                </React.Fragment>
-              );
-            })}
-          </Dropdown.Menu>
-        }
-      >
-        <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changeAssignee")}</Dropdown.Item>
-      </Dropdown>
-      <Dropdown.Divider />
       <Dropdown.Item icon={<SlidersHorizontal size={13} />} onClick={() => { loadParentCands(); setPropsOpen(true); }}>
         {t("loop.menu.editProps")}
       </Dropdown.Item>
@@ -1107,27 +1055,90 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
             </button>
             {secOpen("props") && (
               <div className="loop-idp__asec-body">
-                <div className="loop-idp__prop">
+                {/* 状态：点击值弹 popup 改(对标 multica) */}
+                <div className="loop-idp__prop loop-idp__prop--inline">
                   <span className="loop-idp__prop-k">{t("loop.field.status")}</span>
-                  <span className="loop-idp__prop-val">
-                    <StatusIcon size={14} strokeWidth={2} style={{ color: ISSUE_STATUS_HEX[issue.status] }} />
-                    {t(`loop.status.${issue.status}`)}
-                  </span>
+                  <Dropdown
+                    trigger="click"
+                    position="bottomRight"
+                    clickToHide
+                    render={
+                      <Dropdown.Menu>
+                        {ISSUE_STATUS_ORDER.map((s) => (
+                          <Dropdown.Item key={s} active={issue.status === s} onClick={() => requestStatus(issue, s, (extra) => patch({ status: s, ...extra }))}>
+                            <Tag color={ISSUE_STATUS_COLOR[s]} size="small">{t(`loop.status.${s}`)}</Tag>
+                          </Dropdown.Item>
+                        ))}
+                      </Dropdown.Menu>
+                    }
+                  >
+                    <button type="button" className="loop-idp__prop-edit">
+                      <StatusIcon size={14} strokeWidth={2} style={{ color: ISSUE_STATUS_HEX[issue.status] }} />
+                      {t(`loop.status.${issue.status}`)}
+                      <ChevronDown size={12} className="loop-idp__prop-caret" />
+                    </button>
+                  </Dropdown>
                 </div>
-                <div className="loop-idp__prop">
+                {/* 优先级 */}
+                <div className="loop-idp__prop loop-idp__prop--inline">
                   <span className="loop-idp__prop-k">{t("loop.field.priority")}</span>
-                  <span className="loop-idp__prop-val">
-                    <PriIcon size={14} strokeWidth={2} style={{ color: PRIORITY_HEX[issue.priority] }} />
-                    {t(`loop.priority.${issue.priority}`)}
-                  </span>
+                  <Dropdown
+                    trigger="click"
+                    position="bottomRight"
+                    clickToHide
+                    render={
+                      <Dropdown.Menu>
+                        {PRIORITY_ORDER.map((p) => (
+                          <Dropdown.Item key={p} active={issue.priority === p} onClick={() => patch({ priority: p })}>
+                            <Tag color={PRIORITY_COLOR[p]} size="small">{t(`loop.priority.${p}`)}</Tag>
+                          </Dropdown.Item>
+                        ))}
+                      </Dropdown.Menu>
+                    }
+                  >
+                    <button type="button" className="loop-idp__prop-edit">
+                      <PriIcon size={14} strokeWidth={2} style={{ color: PRIORITY_HEX[issue.priority] }} />
+                      {t(`loop.priority.${issue.priority}`)}
+                      <ChevronDown size={12} className="loop-idp__prop-caret" />
+                    </button>
+                  </Dropdown>
                 </div>
-                <div className="loop-idp__prop">
+                {/* 负责人：复用 AssigneePicker(自带点击 popup + 三态) */}
+                <div className="loop-idp__prop loop-idp__prop--inline">
                   <span className="loop-idp__prop-k">{t("loop.field.assignee")}</span>
-                  <AssigneeBadge type={issue.assignee_type} name={issue.assignee_name ?? null} />
+                  <AssigneePicker
+                    size="small"
+                    value={issue.assignee_id}
+                    valueName={issue.assignee_name ?? null}
+                    onChange={(id, type, name) => requestAssign(issue, type, id, name, (extra) => patch({ assignee_id: id, assignee_type: type, ...extra }))}
+                  />
                 </div>
-                <div className="loop-idp__prop">
+                {/* 项目 */}
+                <div className="loop-idp__prop loop-idp__prop--inline">
                   <span className="loop-idp__prop-k">{t("loop.field.project")}</span>
-                  <span className="loop-idp__prop-v">{issue.project_name ?? "—"}</span>
+                  <Dropdown
+                    trigger="click"
+                    position="bottomRight"
+                    clickToHide
+                    render={
+                      <Dropdown.Menu>
+                        <Dropdown.Item active={!issue.project_id} onClick={() => patch({ project_id: null })}>
+                          {t("loop.field.noProject")}
+                        </Dropdown.Item>
+                        {projects.length > 0 && <Dropdown.Divider />}
+                        {projects.map((p) => (
+                          <Dropdown.Item key={p.id} active={issue.project_id === p.id} onClick={() => patch({ project_id: p.id })}>
+                            {p.icon} {p.title}
+                          </Dropdown.Item>
+                        ))}
+                      </Dropdown.Menu>
+                    }
+                  >
+                    <button type="button" className="loop-idp__prop-edit loop-idp__prop-edit--text">
+                      {issue.project_name ?? t("loop.field.noProject")}
+                      <ChevronDown size={12} className="loop-idp__prop-caret" />
+                    </button>
+                  </Dropdown>
                 </div>
               </div>
             )}
