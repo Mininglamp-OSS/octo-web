@@ -15,9 +15,13 @@
   display: flex;
   flex-direction: column;
   gap: var(--wk-sp-1, 4px);
-  width: 480px;
-  max-width: 100%;
-  min-width: 0;
+  /* 随内容自适应，[300px, 480px] 区间：短卡（提示/欢迎/单行状态）不再被定宽
+     撑成右侧大片留白的空面板；富内容卡（表格等）仍可长到 480px。300px 下限
+     对齐名片(300px)，避免卡过窄导致表格/长值被挤到截断。对齐 File / 名片
+     「盒子随内容」的既有消息语言。 */
+  width: fit-content;
+  min-width: min(300px, 100%);
+  max-width: min(480px, 100%);
 }
 
 .wk-interactive-card > .wk-interactive-card-sdk,
@@ -60,27 +64,29 @@
   text-decoration: underline;
 }
 
-/* ── SDK 挂载容器 + 交互态（octo/v2） ── */
+/* ── SDK 挂载容器 + 交互态（octo/v2） ──
+ * 静止态对齐 App 既有「盒子型」消息（File / 名片）：hairline 描边、无阴影、
+ * 8px 圆角、无左竖条——卡片读作「有结构的消息」而非「悬浮的 widget」。
+ * hover 轻微抬起（描边加深 + shadow-sm），与 .wk-message-file--clickable:hover
+ * 同一反馈层级，补齐卡片此前缺失的 body 级 hover（不透明卡片会挡住行级
+ * .wk-msg-row:hover 高亮）。
+ * 左竖条曾是全 App 独一份的信号，且打磨过的 --agent-progress 布局已弃用它，
+ * 故默认去除（agent-progress 保留自有形态，见下方 --agent-progress 段）。 */
 .wk-interactive-card-sdk {
   position: relative;
   min-width: 0;
   background: var(--wk-bg-surface);
-  border: 1px solid var(--wk-border-default);
+  border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-md);
-  box-shadow: var(--wk-shadow-sm);
   overflow: hidden;
+  transition: border-color var(--wk-dur-fast, 0.15s) var(--wk-ease, ease),
+    box-shadow var(--wk-dur-fast, 0.15s) var(--wk-ease, ease);
 }
 
-.wk-interactive-card-sdk::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 1;
-  width: var(--wk-sp-0-5, 2px);
-  background: var(--wk-text-accent, var(--wk-brand-primary));
-  pointer-events: none;
+/* 非 agent-progress 卡的 hover 抬起；agent-progress 有自己的 glow 形态，排除在外。 */
+.wk-interactive-card-sdk:not(.wk-interactive-card-sdk--agent-progress):hover {
+  border-color: var(--wk-border-default);
+  box-shadow: var(--wk-shadow-sm);
 }
 
 .wk-interactive-card-sdk > .ac-adaptiveCard {
@@ -101,10 +107,6 @@
 .wk-interactive-card-sdk--agent-progress {
   border-color: var(--wk-border-glow);
   box-shadow: none;
-}
-
-.wk-interactive-card-sdk--agent-progress::before {
-  display: none;
 }
 
 .wk-interactive-card-sdk--agent-progress
