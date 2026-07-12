@@ -624,6 +624,7 @@
   border-bottom: 1px solid var(--semi-color-fill-0, #f0f1f3);
 }
 .loop-apd__run:last-child { border-bottom: none; }
+.loop-apd__runs-error { display: flex; align-items: center; gap: 8px; }
 .loop-apd__run.is-clickable { cursor: pointer; border-radius: 6px; }
 .loop-apd__run.is-clickable:hover { background: var(--semi-color-fill-0, #f5f6f8); }
 .loop-apd__run-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }

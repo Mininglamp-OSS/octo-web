@@ -1,5 +1,5 @@
 import React from "react";
-import { Select, DatePicker, InputNumber, TimePicker, Typography } from "@douyinfe/semi-ui";
+import { Select, InputNumber, TimePicker, Typography } from "@douyinfe/semi-ui";
 import { Clock } from "lucide-react";
 import { useI18n } from "@octo/base";
 import { type Frequency, type ScheduleConfig, describeSchedule } from "./autopilotSchedule";
@@ -7,7 +7,7 @@ import "./loopControls.css";
 
 const { Text } = Typography;
 
-const FREQUENCIES: Frequency[] = ["once", "daily", "weekly", "monthly"];
+const FREQUENCIES: Frequency[] = ["daily", "weekly", "monthly"];
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 
 /** 定时排程配置字段（频率分段 + 日期/星期/月日 + 时间 + 下次运行预览）。
@@ -40,15 +40,6 @@ export default function ScheduleFields({
       </div>
 
       <div className="loop-fields__inline">
-        {config.frequency === "once" && (
-          <DatePicker
-            type="date"
-            format="yyyy-MM-dd"
-            value={config.date}
-            onChange={(_, ds) => patch({ date: (ds as string) || config.date })}
-            style={{ width: 150 }}
-          />
-        )}
         {config.frequency === "weekly" && (
           <Select
             value={config.dayOfWeek}

@@ -50,13 +50,14 @@
     "confirmDeleteTrigger": "删除这个触发器？",
     "runHistory": "运行历史",
     "noRuns": "暂无运行记录",
+    "runsError": "运行历史加载失败",
+    "retry": "重试",
     "noTaskDesc": "暂无任务说明",
     "runStatus": { "issue_created": "已建回路", "running": "运行中", "completed": "成功", "failed": "失败", "skipped": "跳过" },
     "runSource": { "schedule": "定时触发", "manual": "手动触发", "webhook": "Webhook", "api": "API" },
     "emptyTitle": "暂无自动化",
     "emptyDesc": "创建一个自动化，让 AI 队友按节奏自动运行",
     "freq": {
-      "once": "单次",
       "daily": "每天",
       "weekly": "每周",
       "monthly": "每月"
@@ -71,7 +72,6 @@
       "6": "周六"
     },
     "summary": {
-      "once": "单次 {{date}} {{time}}",
       "daily": "每天 {{time}}",
       "weekly": "每{{day}} {{time}}",
       "monthly": "每月 {{day}} 日 {{time}}"

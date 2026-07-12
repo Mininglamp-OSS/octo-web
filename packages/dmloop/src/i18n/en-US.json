@@ -50,13 +50,14 @@
     "confirmDeleteTrigger": "Delete this trigger?",
     "runHistory": "Run history",
     "noRuns": "No runs yet",
+    "runsError": "Failed to load run history",
+    "retry": "Retry",
     "noTaskDesc": "No task instructions",
     "runStatus": { "issue_created": "Loop created", "running": "Running", "completed": "Succeeded", "failed": "Failed", "skipped": "Skipped" },
     "runSource": { "schedule": "Schedule", "manual": "Manual", "webhook": "Webhook", "api": "API" },
     "emptyTitle": "No automations yet",
     "emptyDesc": "Create an automation to let AI teammates run on a cadence",
     "freq": {
-      "once": "Once",
       "daily": "Daily",
       "weekly": "Weekly",
       "monthly": "Monthly"
@@ -71,7 +72,6 @@
       "6": "Sat"
     },
     "summary": {
-      "once": "Once {{date}} {{time}}",
       "daily": "Daily {{time}}",
       "weekly": "Every {{day}} {{time}}",
       "monthly": "Monthly on day {{day}} {{time}}"

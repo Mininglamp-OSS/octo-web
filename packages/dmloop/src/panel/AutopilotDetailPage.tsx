@@ -70,6 +70,7 @@ export default function AutopilotDetailPage({ autopilotId, onChanged }: { autopi
   const [triggers, setTriggers] = useState<AutopilotTrigger[]>([]);
   const [runs, setRuns] = useState<AutopilotRun[]>([]);
   const [total, setTotal] = useState(0);
+  const [runsError, setRunsError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Array<{ id: string; title: string }>>([]);
   const [desc, setDesc] = useState("");
@@ -85,7 +86,9 @@ export default function AutopilotDetailPage({ autopilotId, onChanged }: { autopi
     setLoading(true);
     Promise.all([
       getAutopilot(autopilotId),
-      listAutopilotRuns(autopilotId, { limit: 50 }).catch(() => ({ runs: [], total: 0 })),
+      listAutopilotRuns(autopilotId, { limit: 50 })
+        .then((r) => ({ ok: true, runs: r.runs, total: r.total }))
+        .catch(() => ({ ok: false, runs: [] as AutopilotRun[], total: 0 })),
     ])
       .then(([detail, runsResp]) => {
         if (my !== seq.current) return;
@@ -93,6 +96,7 @@ export default function AutopilotDetailPage({ autopilotId, onChanged }: { autopi
         setTriggers(detail.triggers);
         setRuns(runsResp.runs);
         setTotal(runsResp.total);
+        setRunsError(!runsResp.ok);
         // 保留用户未保存的任务说明草稿；否则以服务端值为准。
         if (!descDirtyRef.current) setDesc(detail.autopilot.description ?? "");
       })
@@ -265,7 +269,12 @@ export default function AutopilotDetailPage({ autopilotId, onChanged }: { autopi
               <span className="loop-apd__block-title">{t("loop.automation.runHistory")}</span>
               <Text type="tertiary" size="small">{total}</Text>
             </div>
-            {runs.length === 0 ? (
+            {runsError ? (
+              <div className="loop-apd__runs-error">
+                <Text type="tertiary" size="small">{t("loop.automation.runsError")}</Text>
+                <Button theme="borderless" size="small" onClick={reload}>{t("loop.automation.retry")}</Button>
+              </div>
+            ) : runs.length === 0 ? (
               <Text type="tertiary" size="small">{t("loop.automation.noRuns")}</Text>
             ) : (
               <div className="loop-apd__runs">
