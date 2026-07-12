@@ -38,6 +38,8 @@ const FORWARD_ITEM_ACCESSORS: ChatSelectorAccessors<ForwardItem> = {
   getKind: forwardItemKind,
   getParentId: (i) => i.parentChannelID,
   getKey: forwardItemKey,
+  // 父群恒为群聊，故以群类型（ChannelTypeGroup）构造复合 key，与 forwardItemKey 同构。
+  getGroupKeyFromId: (parentId) => `${ChannelTypeGroup}::${parentId}`,
 }
 
 function channelInfoToForwardItem(channelInfo: ChannelInfo): ForwardItem {

@@ -22,6 +22,7 @@ const acc: ChatSelectorAccessors<TestItem> = {
   getKind: (i) => i.kind,
   getParentId: (i) => i.parentId,
   getKey: (i) => `${KIND_CODE[i.kind]}::${i.id}`,
+  getGroupKeyFromId: (parentId) => `${KIND_CODE.group}::${parentId}`,
 }
 
 function key(kind: ChatKind, id: string) {
@@ -95,5 +96,25 @@ describe("filterChatSelectorItems — 关键字过滤（方案 A）", () => {
   it("关键字过滤叠加在 Tab 作用域之上（followed Tab 内再按关键字）", () => {
     // followed 命中 g1 + g2，关键字「product」只留 g2。
     expect(run("followed", "product", [key("group", "g1"), key("group", "g2")])).toEqual(["g2"])
+  })
+
+  it("关键字命中不跨类型泄漏：同 raw id 不同类型，命中其一不带出另一（复合 key 防碰撞）", () => {
+    // direct:42 与 group:42 同处 recent 作用域、raw id 相同类型不同。
+    const items: TestItem[] = [
+      { id: "42", name: "Group42", kind: "group" },
+      { id: "42", name: "Direct42", kind: "direct" },
+    ]
+    const out = filterChatSelectorItems(
+      items,
+      {
+        activeTab: "recent",
+        keyword: "direct42", // 只命中 direct:42
+        followedKeys: new Set(),
+        recentKeys: new Set([key("group", "42"), key("direct", "42")]),
+      },
+      acc,
+    )
+    // 若关键字过滤退化成裸 id 比较，group:42 会被 direct:42 的命中一并带出——此处断言不会。
+    expect(out.map((i) => i.name)).toEqual(["Direct42"])
   })
 })

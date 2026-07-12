@@ -32,6 +32,9 @@ export interface ChatSelectorAccessors<T> {
   getParentId(item: T): string | undefined
   /** 复合 key（${type}::${id}），用于关注/最近集合匹配，防跨类型 id 碰撞。 */
   getKey(item: T): string
+  /** 由父群原始 id 构造「群类型」复合 key。父群恒为群，故带出父群时须以群类型 key
+   *  匹配，而非复用子区自身的 key，否则会退化成裸 id 比较、跨类型碰撞。 */
+  getGroupKeyFromId(parentId: string): string
 }
 
 export interface ChatSelectorFilterOptions {
@@ -76,22 +79,23 @@ export function filterChatSelectorItems<T>(
   const kw = opts.keyword.trim().toLowerCase()
   if (!kw) return scoped
 
-  // 命中项
+  // 命中项（以复合 key 记录，防同 id 不同类型互相牵连）
   const matched = scoped.filter((i) => acc.getName(i).toLowerCase().includes(kw))
-  const matchedIds = new Set(matched.map((i) => acc.getId(i)))
+  const matchedKeys = new Set(matched.map((i) => acc.getKey(i)))
 
   // 命中子区时，把其父群带出（父群本身未命中也带出），仅在当前 Tab 作用域内查找。
-  const parentIdsToInclude = new Set<string>()
+  // 父群恒为群，故按「群类型」复合 key 匹配，而非子区自身 key。
+  const parentKeysToInclude = new Set<string>()
   for (const item of matched) {
     const parentId = acc.getParentId(item)
-    if (parentId) parentIdsToInclude.add(parentId)
+    if (parentId) parentKeysToInclude.add(acc.getGroupKeyFromId(parentId))
   }
   const parents =
-    parentIdsToInclude.size > 0
-      ? scoped.filter((i) => parentIdsToInclude.has(acc.getId(i)) && !matchedIds.has(acc.getId(i)))
+    parentKeysToInclude.size > 0
+      ? scoped.filter((i) => parentKeysToInclude.has(acc.getKey(i)) && !matchedKeys.has(acc.getKey(i)))
       : []
 
-  const includeIds = new Set<string>([...matchedIds, ...parents.map((p) => acc.getId(p))])
+  const includeKeys = new Set<string>([...matchedKeys, ...parents.map((p) => acc.getKey(p))])
   // 遍历 scoped 保持顺序，只保留命中项 + 需带出的父群。
-  return scoped.filter((i) => includeIds.has(acc.getId(i)))
+  return scoped.filter((i) => includeKeys.has(acc.getKey(i)))
 }
