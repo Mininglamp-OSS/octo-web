@@ -1163,6 +1163,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           Toast.success(t("loop.toast.created"));
           // 只刷新子列表(非整页 reload,避免详情主体闪 loading);key-remount 已隔离跨 issue 陈旧写入。
           listChildren(issueId).then(setChildren).catch(() => {});
+          // 通知父级:新子 issue 改变了父看板的子进度/计数,不刷父会陈旧。
+          onChanged?.();
         }}
       />
     </div>
