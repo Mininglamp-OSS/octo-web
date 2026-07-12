@@ -168,7 +168,9 @@
     "filter": "筛选",
     "show": "显示",
     "clearFilters": "清除筛选",
-    "dispatch": "派单"
+    "dispatch": "派单",
+    "copy": "复制",
+    "more": "更多"
   },
   "workspace": {
     "title": "工作空间",
@@ -306,7 +308,8 @@
     "resolved": "已解决"
   },
   "activity": {
-    "title": "动态"
+    "title": "动态",
+    "count": "{{count}} 条动态"
   },
   "attach": {
     "title": "附件",

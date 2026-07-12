@@ -46,7 +46,9 @@ export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
 
   const addFiles = (files: FileList | null) => {
     if (!files?.length) return;
-    setPendingFiles((p) => [...p, ...Array.from(files)]);
+    // 同步捕获:调用点随后 e.target.value="" 会清空 FileList,延迟到 setState 更新函数里读会丢多选。
+    const arr = Array.from(files);
+    setPendingFiles((p) => [...p, ...arr]);
   };
   const removeFile = (idx: number) => setPendingFiles((p) => p.filter((_, i) => i !== idx));
 

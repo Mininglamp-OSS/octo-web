@@ -168,7 +168,9 @@
     "filter": "Filter",
     "show": "Display",
     "clearFilters": "Clear filters",
-    "dispatch": "Dispatch"
+    "dispatch": "Dispatch",
+    "copy": "Copy",
+    "more": "More"
   },
   "workspace": {
     "title": "Workspaces",
@@ -306,7 +308,8 @@
     "resolved": "Resolved"
   },
   "activity": {
-    "title": "Activity"
+    "title": "Activity",
+    "count": "{{count}} activities"
   },
   "attach": {
     "title": "Attachments",
