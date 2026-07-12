@@ -76,13 +76,22 @@
   margin-bottom: 8px;
 }
 
-/* 评论输入区 */
-.loop-idp__composer {
-  margin-top: 12px;
+/* 新建评论区块：分割线 + 多行 textarea + 工具栏，明确区别于逐条回复 */
+.loop-idp__newcomment {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--semi-color-border, #e8e9eb);
   display: flex;
-  gap: 8px;
-  align-items: center;
+  flex-direction: column;
+  gap: 10px;
 }
+.loop-idp__newcomment-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-0, #1f2329);
+}
+.loop-idp__newcomment-input.loop-field-textarea { min-height: 76px; }
+.loop-idp__newcomment-bar { display: flex; align-items: center; gap: 6px; }
 
 /* 执行记录行：状态圆点 + 名称 + 状态文字 */
 .loop-idp__run-dot {
@@ -297,14 +306,15 @@
 .loop-idp__aside {
   border-left: 1px solid var(--semi-color-border, #e8e9eb);
   overflow: auto;
-  padding: 20px 18px;
+  padding: 4px 18px 20px;
   background: var(--semi-color-bg-0, #fff);
   display: flex;
   flex-direction: column;
-  gap: 22px;
 }
 
-.loop-idp__asec { display: flex; flex-direction: column; gap: 12px; }
+.loop-idp__asec { display: flex; flex-direction: column; gap: 12px; padding: 18px 0; }
+/* 分组之间用分割线分开(对齐 Figma 29-1593) */
+.loop-idp__asec + .loop-idp__asec { border-top: 1px solid var(--semi-color-border, #e8e9eb); }
 .loop-idp__asec-head {
   display: flex;
   align-items: center;

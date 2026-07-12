@@ -16,7 +16,6 @@ import {
   MoreHorizontal,
   Copy,
   CircleSlash,
-  Pencil,
   Check,
   Square,
   RotateCcw,
@@ -50,17 +49,12 @@ import {
   listChildren,
   addComment,
   deleteComment,
-  updateComment,
   previewCommentTriggers,
 } from "../api/issueApi";
 import {
   listSubscribers,
   subscribeIssue,
   unsubscribeIssue,
-  addCommentReaction,
-  removeCommentReaction,
-  addIssueReaction,
-  removeIssueReaction,
   resolveComment,
   unresolveComment,
   listTimeline,
@@ -201,12 +195,9 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [loading, setLoading] = useState(true);
   const [titleDraft, setTitleDraft] = useState("");
   const [descDraft, setDescDraft] = useState("");
-  const [replyTo, setReplyTo] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [triggerAgents, setTriggerAgents] = useState<CommentTriggerAgent[]>([]); // 这条评论会唤醒的 agent
   const [suppressed, setSuppressed] = useState<Set<string>>(new Set()); // 被用户跳过的 agent id
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState("");
   const [busyRunId, setBusyRunId] = useState<string | null>(null); // 正在重跑的 task,防双击
   const [pendingFiles, setPendingFiles] = useState<File[]>([]); // 评论输入区:待随评论提交的本地文件(发送时才上传)
   const [uploading, setUploading] = useState(false); // issue 附件上传中
@@ -257,6 +248,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         reactions: updated.reactions ?? issue.reactions,
         attachments: updated.attachments ?? issue.attachments,
       });
+      Toast.success(t("loop.toast.saved"));
       onChanged?.();
     } catch (e) {
       // 后端可能拒绝(如父 issue 环检测、非法日期):给出反馈,避免静默失败。
@@ -418,14 +410,13 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     const content = commentDraft.trim();
     if (!content || submitting) return;
     const token = reqRef.current;
-    // 附件只随顶层评论;回复不带(pendingFiles 属主输入区)。
-    const files = replyTo ? [] : pendingFiles;
+    const files = pendingFiles;
     const suppressIds = triggerAgents.filter((a) => suppressed.has(a.id)).map((a) => a.id);
     setSubmitting(true);
     try {
       let comment: IssueComment;
       try {
-        comment = await addComment(issueId, content, replyTo, suppressIds);
+        comment = await addComment(issueId, content, null, suppressIds);
       } catch (e) {
         // 评论未创建:保留草稿/待发文件供重试。
         Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
@@ -433,10 +424,9 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       }
       // 评论已创建 → 立即清理输入态,避免后续附件上传失败时用户重复提交同一条评论。
       setCommentDraft("");
-      setReplyTo(null);
       setTriggerAgents([]);
       setSuppressed(new Set());
-      if (!replyTo) setPendingFiles([]);
+      setPendingFiles([]);
       // 把待发文件带 commentId 绑到已建评论;单个失败只记录、不回滚评论。
       const failedFiles: File[] = [];
       for (const f of files) {
@@ -451,7 +441,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       if (failedFiles.length) {
         // 评论已建成功、仅附件失败:把失败文件放回输入区(否则文件对象被丢弃、永久丢失且无重试入口),
         // 并用区分于"评论失败"的文案——避免误导用户以为整条评论没发出去。
-        if (!replyTo) setPendingFiles(failedFiles);
+        setPendingFiles(failedFiles);
         Toast.error(t("loop.toast.commentAttachFailed", { values: { count: failedFiles.length } }));
       } else {
         Toast.success(t("loop.toast.commentAdded"));
@@ -462,12 +452,12 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     }
   };
 
-  // 顶层评论输入时防抖预览"会唤醒哪些 agent"(回复暂不预览)。
+  // 新建评论输入时防抖预览"会唤醒哪些 agent"。
   useEffect(() => {
     const content = commentDraft.trim();
     // 预览更新时把 suppressed 裁剪到当前触发集,避免"移除又重提及"的 agent 带着旧的跳过意图。
     const prune = (ids: string[]) => setSuppressed((s) => new Set([...s].filter((id) => ids.includes(id))));
-    if (!content || replyTo) { setTriggerAgents([]); prune([]); return; }
+    if (!content) { setTriggerAgents([]); prune([]); return; }
     let cancelled = false;
     const h = setTimeout(() => {
       previewCommentTriggers(issueId, content, null)
@@ -475,7 +465,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         .catch(() => { if (cancelled) return; setTriggerAgents([]); prune([]); });
     }, 400);
     return () => { cancelled = true; clearTimeout(h); };
-  }, [commentDraft, replyTo, issueId]);
+  }, [commentDraft, issueId]);
 
   const toggleSuppress = (id: string) =>
     setSuppressed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -509,22 +499,6 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       () => reloadComments(token),
       () => Toast.success(t("loop.toast.commentDeleted")),
     );
-  };
-
-  const saveEdit = async (id: string) => {
-    const content = editDraft.trim();
-    if (!content) return;
-    const token = reqRef.current;
-    try {
-      await updateComment(id, content);
-    } catch (e) {
-      Toast.error((e as Error)?.message ?? t("loop.toast.editFailed"));
-      return;
-    }
-    // 编辑已落库；重拉以回填 directory 名字/头像。重拉失败不应报“编辑失败”。
-    setEditingId(null);
-    await reloadComments(token);
-    Toast.success(t("loop.toast.commentUpdated"));
   };
 
   const handleDeleteIssue = () => {
@@ -740,9 +714,6 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                 <Dropdown.Item icon={c.resolved_at ? <CircleSlash size={13} /> : <Check size={13} />} onClick={() => toggleResolve(c.id, !!c.resolved_at)}>
                   {t(c.resolved_at ? "loop.comment.unresolve" : "loop.comment.resolve")}
                 </Dropdown.Item>
-                <Dropdown.Item icon={<Pencil size={13} />} onClick={() => { setEditingId(c.id); setEditDraft(c.content); }}>
-                  {t("loop.action.edit")}
-                </Dropdown.Item>
                 <Dropdown.Divider />
                 <Dropdown.Item type="danger" icon={<Trash2 size={13} />} onClick={() => confirmDelete({ title: t("loop.comment.deleteConfirm"), okText: t("loop.action.delete"), cancelText: t("loop.action.cancel"), onOk: () => removeComment(c.id) })}>
                   {t("loop.action.delete")}
@@ -754,17 +725,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           </Dropdown>
         </div>
       </div>
-      {editingId === c.id ? (
-        <div className="loop-cmt__body" style={{ marginTop: 6 }}>
-          <AutoGrowTextarea className="loop-field-textarea loop-field-textarea--auto" value={editDraft} onChange={setEditDraft} />
-          <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
-            <Button size="small" theme="solid" onClick={() => saveEdit(c.id)}>{t("loop.action.save")}</Button>
-            <Button size="small" theme="borderless" onClick={() => setEditingId(null)}>{t("loop.action.cancel")}</Button>
-          </div>
-        </div>
-      ) : (
-        <div className="loop-cmt__body"><LoopMarkdown content={c.content} /></div>
-      )}
+      <div className="loop-cmt__body"><LoopMarkdown content={c.content} /></div>
       {renderAttachments(c.attachments)}
     </div>
   );
@@ -803,6 +764,40 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     if (a.includes("clos") || a.includes("complet") || a.includes("done")) return t("loop.activityAction.completed");
     return t("loop.activityAction.generic");
   };
+
+  // 执行记录单行(运行中/历史 复用)：状态点 + agent 名 + 触发摘要 + 状态文字 + 终止/重跑。
+  const renderRunRow = (r: TaskRun) => {
+    const active = isActiveRun(r.status);
+    return (
+      <div key={r.id} className="loop-idp__task">
+        <button className="loop-idp__run" onClick={() => openRun(r)}>
+          <span
+            className={`loop-idp__run-dot${active ? " is-active" : ""}`}
+            style={{ background: RUN_STATUS_HEX[r.status] ?? RUN_STATUS_HEX_FALLBACK }}
+          />
+          <span className="loop-idp__task-main">
+            <strong>{r.agent_name ?? r.agent_id ?? "—"}</strong>
+            <small>{r.trigger_summary || fmt(r.dispatched_at ?? r.created_at)}</small>
+          </span>
+          <span className="loop-idp__run-status" style={{ color: RUN_STATUS_HEX[r.status] ?? RUN_STATUS_HEX_FALLBACK }}>
+            {t(`loop.taskStatus.${r.status}`)}
+          </span>
+        </button>
+        <Button
+          size="small"
+          theme="borderless"
+          type={active ? "danger" : "tertiary"}
+          loading={!active && busyRunId === r.id}
+          icon={active ? <Square size={13} /> : <RotateCcw size={13} />}
+          aria-label={t(active ? "loop.run.stop" : "loop.run.rerun")}
+          onClick={() => (active ? cancelRun(r.id) : rerun(r.id))}
+        />
+      </div>
+    );
+  };
+  // 运行中/排队中重点常显在外;仅终态归入「显示历史运行」折叠(对标 multica)。
+  const activeRuns = runs.filter((r) => isActiveRun(r.status));
+  const pastRuns = runs.filter((r) => !isActiveRun(r.status));
 
   // 动态区(对标 multica)：根评论与「有意义的活动」按时间升序合并；连续活动归并成一个折叠动态块，
   // 评论各自独立成卡片。噪声活动(activityText 为 null)先过滤，不进块、不计数。
@@ -934,22 +929,22 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
             </label>
           </div>
 
-          {/* 子回路 */}
-          <div className="loop-idp__section">
-            <div className="loop-idp__stitle loop-idp__desc-title">
-              <span>
-                {t("loop.subIssue.title")}
-                {children.length > 0 && <em className="loop-idp__count"> {childrenDone} / {children.length}</em>}
-              </span>
-              <Button
-                theme="borderless"
-                size="small"
-                icon={<Plus size={14} />}
-                aria-label={t("loop.subIssue.create")}
-                onClick={() => setChildCreateOpen(true)}
-              />
-            </div>
-            {children.length > 0 && (
+          {/* 子回路：仅当确有子回路时才展示整个模块(空则不显示,避免突兀的孤零标题) */}
+          {children.length > 0 && (
+            <div className="loop-idp__section">
+              <div className="loop-idp__stitle loop-idp__desc-title">
+                <span>
+                  {t("loop.subIssue.title")}
+                  <em className="loop-idp__count"> {childrenDone} / {children.length}</em>
+                </span>
+                <Button
+                  theme="borderless"
+                  size="small"
+                  icon={<Plus size={14} />}
+                  aria-label={t("loop.subIssue.create")}
+                  onClick={() => setChildCreateOpen(true)}
+                />
+              </div>
               <div className="loop-subissues">
                 {children.map((c) => {
                   const SIcon = ISSUE_STATUS_ICON[c.status];
@@ -965,8 +960,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                   );
                 })}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* 动态：活动 + 评论 合并时间线 */}
           <div className="loop-idp__section loop-idp__feed-sec">
@@ -992,82 +987,88 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
               )}
             </div>
 
-            {!replyTo && triggerAgents.length > 0 && (
-              <div className="loop-idp__wake">
-                <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.comment.willWake")}</Text>
-                {triggerAgents.map((a) => {
-                  const off = suppressed.has(a.id);
-                  return (
-                    <Tag
-                      key={a.id}
-                      size="small"
-                      color={off ? "grey" : "light-blue"}
-                      style={{ cursor: "pointer", opacity: off ? 0.55 : 1, textDecoration: off ? "line-through" : "none" }}
-                      onClick={() => toggleSuppress(a.id)}
-                    >
-                      {a.name}
-                    </Tag>
-                  );
-                })}
-                <Text type="tertiary" style={{ fontSize: 11 }}>{t("loop.comment.tapToSuppress")}</Text>
-              </div>
-            )}
-            {!replyTo && pendingFiles.length > 0 && (
-              <div className="loop-atts" style={{ marginTop: 10 }}>
-                {pendingFiles.map((f, i) => (
-                  <span key={i} className="loop-att loop-att--pending">
-                    <Paperclip size={12} />
-                    <span>{f.name}</span>
-                    <button type="button" aria-label={t("loop.action.delete")} onClick={() => removePendingFile(i)}>×</button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* 评论输入区 */}
-            <div className="loop-idp__composer">
-              <input
-                className="loop-field"
-                value={replyTo ? "" : commentDraft}
-                disabled={!!replyTo}
-                onChange={(e) => setCommentDraft(e.target.value)}
-                placeholder={replyTo ? t("loop.comment.replyingHint") : t("loop.comment.placeholder")}
-                onKeyDown={(e) => { if (e.key === "Enter") submitComment(); }}
+            {/* 新建评论：独立区块(分割线 + 多行 textarea),明确区别于上方逐条回复 */}
+            <div className="loop-idp__newcomment">
+              <div className="loop-idp__newcomment-title">{t("loop.comment.newTitle")}</div>
+              <AutoGrowTextarea
+                className="loop-field-textarea loop-field-textarea--auto loop-idp__newcomment-input"
+                value={commentDraft}
+                onChange={setCommentDraft}
+                placeholder={t("loop.comment.placeholder")}
+                onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submitComment(); }}
               />
-              <Dropdown
-                trigger="click"
-                clickToHide
-                position="topRight"
-                render={
-                  <Dropdown.Menu>
-                    {(["member", "agent", "squad"] as const).map((type) => {
-                      const items = cands.filter((c) => c.type === type);
-                      if (!items.length) return null;
-                      return (
-                        <React.Fragment key={type}>
-                          <Dropdown.Title>{t(`loop.assignee.${type}`)}</Dropdown.Title>
-                          {items.map((c) => (
-                            <Dropdown.Item key={c.id} onClick={() => insertMention(c)}>{c.name}</Dropdown.Item>
-                          ))}
-                        </React.Fragment>
-                      );
-                    })}
-                  </Dropdown.Menu>
-                }
-              >
-                <Button theme="borderless" icon={<AtSign size={16} />} disabled={!!replyTo} aria-label={t("loop.mention.add")} />
-              </Dropdown>
-              <label className="loop-attach-btn" aria-label={t("loop.attach.add")} style={{ opacity: replyTo ? 0.4 : 1 }}>
-                <Paperclip size={16} />
-                <input
-                  type="file"
-                  multiple
-                  hidden
-                  disabled={!!replyTo || submitting}
-                  onChange={(e) => { addPendingFiles(e.target.files); e.target.value = ""; }}
-                />
-              </label>
-              <Button theme="solid" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!!replyTo} aria-label={t("loop.comment.send")} />
+              {triggerAgents.length > 0 && (
+                <div className="loop-idp__wake">
+                  <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.comment.willWake")}</Text>
+                  {triggerAgents.map((a) => {
+                    const off = suppressed.has(a.id);
+                    return (
+                      <Tag
+                        key={a.id}
+                        size="small"
+                        color={off ? "grey" : "light-blue"}
+                        style={{ cursor: "pointer", opacity: off ? 0.55 : 1, textDecoration: off ? "line-through" : "none" }}
+                        onClick={() => toggleSuppress(a.id)}
+                      >
+                        {a.name}
+                      </Tag>
+                    );
+                  })}
+                  <Text type="tertiary" style={{ fontSize: 11 }}>{t("loop.comment.tapToSuppress")}</Text>
+                </div>
+              )}
+              {pendingFiles.length > 0 && (
+                <div className="loop-filechips">
+                  {pendingFiles.map((f, i) => (
+                    <div key={i} className="loop-filechip">
+                      <FileText size={16} className="loop-filechip__icon" />
+                      <span className="loop-filechip__name">{f.name}</span>
+                      <button type="button" className="loop-filechip__act" aria-label={t("loop.action.delete")} onClick={() => removePendingFile(i)}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="loop-idp__newcomment-bar">
+                <Dropdown
+                  trigger="click"
+                  clickToHide
+                  position="topRight"
+                  render={
+                    <Dropdown.Menu>
+                      {(["member", "agent", "squad"] as const).map((type) => {
+                        const items = cands.filter((c) => c.type === type);
+                        if (!items.length) return null;
+                        return (
+                          <React.Fragment key={type}>
+                            <Dropdown.Title>{t(`loop.assignee.${type}`)}</Dropdown.Title>
+                            {items.map((c) => (
+                              <Dropdown.Item key={c.id} onClick={() => insertMention(c)}>{c.name}</Dropdown.Item>
+                            ))}
+                          </React.Fragment>
+                        );
+                      })}
+                    </Dropdown.Menu>
+                  }
+                >
+                  <Button theme="borderless" icon={<AtSign size={16} />} aria-label={t("loop.mention.add")} />
+                </Dropdown>
+                <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
+                  <Paperclip size={16} />
+                  <input
+                    type="file"
+                    multiple
+                    hidden
+                    disabled={submitting}
+                    onChange={(e) => { addPendingFiles(e.target.files); e.target.value = ""; }}
+                  />
+                </label>
+                <span style={{ flex: 1 }} />
+                <Button theme="solid" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!commentDraft.trim() && pendingFiles.length === 0}>
+                  {t("loop.comment.send")}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -1146,42 +1147,21 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                   <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.run.empty")}</Text>
                 ) : (
                   <>
-                    <button type="button" className="loop-idp__runs-toggle" onClick={() => setShowRuns((s) => !s)}>
-                      <ChevronRight size={13} className={`loop-idp__runs-chevron${showRuns ? " is-open" : ""}`} />
-                      {t("loop.run.showHistory", { values: { count: runs.length } })}
-                    </button>
-                    {showRuns && (
+                    {/* 运行中/排队中 —— 重点常显 */}
+                    {activeRuns.length > 0 && (
                       <div className="loop-idp__tasks">
-                        {runs.map((r) => {
-                          const active = isActiveRun(r.status);
-                          return (
-                            <div key={r.id} className="loop-idp__task">
-                              <button className="loop-idp__run" onClick={() => openRun(r)}>
-                                <span
-                                  className={`loop-idp__run-dot${active ? " is-active" : ""}`}
-                                  style={{ background: RUN_STATUS_HEX[r.status] ?? RUN_STATUS_HEX_FALLBACK }}
-                                />
-                                <span className="loop-idp__task-main">
-                                  <strong>{r.agent_name ?? r.agent_id ?? "—"}</strong>
-                                  <small>{r.trigger_summary || fmt(r.dispatched_at ?? r.created_at)}</small>
-                                </span>
-                                <span className="loop-idp__run-status" style={{ color: RUN_STATUS_HEX[r.status] ?? RUN_STATUS_HEX_FALLBACK }}>
-                                  {t(`loop.taskStatus.${r.status}`)}
-                                </span>
-                              </button>
-                              <Button
-                                size="small"
-                                theme="borderless"
-                                type={active ? "danger" : "tertiary"}
-                                loading={!active && busyRunId === r.id}
-                                icon={active ? <Square size={13} /> : <RotateCcw size={13} />}
-                                aria-label={t(active ? "loop.run.stop" : "loop.run.rerun")}
-                                onClick={() => (active ? cancelRun(r.id) : rerun(r.id))}
-                              />
-                            </div>
-                          );
-                        })}
+                        {activeRuns.map(renderRunRow)}
                       </div>
+                    )}
+                    {/* 历史(终态) —— 折叠 */}
+                    {pastRuns.length > 0 && (
+                      <>
+                        <button type="button" className="loop-idp__runs-toggle" onClick={() => setShowRuns((s) => !s)}>
+                          <ChevronRight size={13} className={`loop-idp__runs-chevron${showRuns ? " is-open" : ""}`} />
+                          {t("loop.run.showHistory", { values: { count: pastRuns.length } })}
+                        </button>
+                        {showRuns && <div className="loop-idp__tasks">{pastRuns.map(renderRunRow)}</div>}
+                      </>
                     )}
                   </>
                 )}

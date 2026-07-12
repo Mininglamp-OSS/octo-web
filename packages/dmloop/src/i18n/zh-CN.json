@@ -297,7 +297,6 @@
     "reply": "回复",
     "deleteConfirm": "确定删除这条评论？",
     "replyPlaceholder": "回复…",
-    "replyingHint": "正在回复上方评论，请在对应输入框输入",
     "empty": "暂无评论",
     "placeholder": "写下评论…",
     "send": "发送",
@@ -305,7 +304,8 @@
     "tapToSuppress": "(点击可跳过某个)",
     "resolve": "标记解决",
     "unresolve": "取消解决",
-    "resolved": "已解决"
+    "resolved": "已解决",
+    "newTitle": "写下评论"
   },
   "activity": {
     "title": "动态",
@@ -324,8 +324,6 @@
     "deleted": "已删除",
     "commentAdded": "评论已添加",
     "commentDeleted": "评论已删除",
-    "commentUpdated": "评论已更新",
-    "editFailed": "编辑失败",
     "deleteFailed": "删除失败",
     "saveFailed": "保存失败",
     "loadFailed": "加载失败",

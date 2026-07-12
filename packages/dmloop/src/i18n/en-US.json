@@ -297,7 +297,6 @@
     "reply": "Reply",
     "deleteConfirm": "Delete this comment?",
     "replyPlaceholder": "Reply…",
-    "replyingHint": "Replying to a comment above — use its reply box",
     "empty": "No comments yet",
     "placeholder": "Write a comment…",
     "send": "Send",
@@ -305,7 +304,8 @@
     "tapToSuppress": "(tap to skip one)",
     "resolve": "Resolve",
     "unresolve": "Unresolve",
-    "resolved": "Resolved"
+    "resolved": "Resolved",
+    "newTitle": "Add a comment"
   },
   "activity": {
     "title": "Activity",
@@ -324,8 +324,6 @@
     "deleted": "Deleted",
     "commentAdded": "Comment added",
     "commentDeleted": "Comment deleted",
-    "commentUpdated": "Comment updated",
-    "editFailed": "Edit failed",
     "deleteFailed": "Delete failed",
     "saveFailed": "Save failed",
     "loadFailed": "Load failed",
