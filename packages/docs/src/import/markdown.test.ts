@@ -59,6 +59,21 @@ describe('parseMarkdownToPmDoc — block nodes', () => {
     expect(firstBlock(r).content![1]).toMatchObject({ type: 'taskItem', attrs: { checked: true } })
   })
 
+  it('maps a checkmark glyph in the checkbox to a checked task item', () => {
+    // Someone may hand-write `[✓]` / `[√]` instead of `[x]`; treat as checked.
+    const r = parse('- [✓] a\n- [√] b\n- [ ] c')
+    expect(firstBlock(r).type).toBe('taskList')
+    expect(firstBlock(r).content![0]).toMatchObject({ type: 'taskItem', attrs: { checked: true } })
+    expect(firstBlock(r).content![1]).toMatchObject({ type: 'taskItem', attrs: { checked: true } })
+    expect(firstBlock(r).content![2]).toMatchObject({ type: 'taskItem', attrs: { checked: false } })
+  })
+
+  it('does NOT treat a normal bullet starting with a check emoji as a task', () => {
+    // A bare leading ✅ (no brackets) is ordinary list content, not a checkbox.
+    const r = parse('- ✅ 这是普通列表项\n- ⚠／ 警告项')
+    expect(firstBlock(r).type).toBe('bulletList')
+  })
+
   it('parses blockquotes', () => {
     const r = parse('> quoted text')
     expect(firstBlock(r).type).toBe('blockquote')

@@ -369,15 +369,26 @@ function orderedListStart(openTok: Token): number | null {
   return null
 }
 
-/** Detect a GFM task-list checkbox prefix (`[ ] ` / `[x] `) inside the item's first paragraph. */
+/**
+ * Detect a task-list checkbox prefix inside the item's first paragraph.
+ *
+ * Only the bracketed GFM-style checkbox counts as a task marker, so a normal
+ * bullet whose text merely starts with a check/cross emoji is NOT misread as a
+ * task item. Within the brackets we accept the ASCII `x`/`X` plus common
+ * check glyphs some editors emit, and treat any non-space bracket content as
+ * checked:
+ *   checked:   [x] [X] [✓] [✔] [√]
+ *   unchecked: [ ]
+ */
 function extractTask(blocks: PmNode[]): { isTask: boolean; checked: boolean; content: PmNode[] } {
   const first = blocks[0]
   if (first?.type === 'paragraph' && first.content && first.content.length) {
     const firstInline = first.content[0]
     if (firstInline?.type === 'text' && typeof firstInline.text === 'string') {
-      const m = /^\[([ xX])\]\s+/.exec(firstInline.text)
+      // Bracketed checkbox only: [ ] (unchecked) / [x] [X] [✓] [✔] [√] (checked).
+      const m = /^\[([ xX✓✔√])\]\s+/.exec(firstInline.text)
       if (m) {
-        const checked = m[1].toLowerCase() === 'x'
+        const checked = m[1] !== ' '
         const stripped = firstInline.text.slice(m[0].length)
         const newContent = [...blocks]
         const newFirstInline = stripped

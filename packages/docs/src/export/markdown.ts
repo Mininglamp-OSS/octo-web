@@ -264,8 +264,13 @@ function serializeListItem(
 ): string {
   const indent = '  '.repeat(depth)
   let marker: string
-  if (item.type === 'taskItem') marker = item.attrs?.checked ? '- [x] ' : '- [ ] '
-  else marker = ordered ? `${num}. ` : '- '
+  if (item.type === 'taskItem') {
+    // GFM task-list syntax (`- [x]` / `- [ ]`). GFM-aware viewers render an
+    // interactive checkbox; the import side maps `[x]`/`[X]` (and a checked box
+    // glyph) back to a checked taskItem, so the round-trip is correct even if a
+    // given previewer shows the literal `x`.
+    marker = item.attrs?.checked ? '- [x] ' : '- [ ] '
+  } else marker = ordered ? `${num}. ` : '- '
 
   const blocks = item.content ?? []
   let line = indent + marker
@@ -482,9 +487,14 @@ function applyMarks(text: string, marks: Array<{ type: string; attrs?: Record<st
       }
       case 'textStyle': {
         const color = mark.attrs?.color
-        // Color lands inside a `style="..."` attribute — escape it so it can't break out of the
-        // attribute (and inject markup). `color: red"><img onerror=…>` becomes inert text.
-        if (typeof color === 'string' && color) out = `<span style="color:${escapeHtmlAttr(color)}">${out}</span>`
+        const fontSize = mark.attrs?.fontSize
+        // Collect inline style declarations. Both color and fontSize land inside a
+        // `style="..."` attribute, so escape each value so it can't break out of the
+        // attribute and inject markup (`color: red"><img onerror=…>` becomes inert text).
+        const decls: string[] = []
+        if (typeof color === 'string' && color) decls.push(`color:${escapeHtmlAttr(color)}`)
+        if (typeof fontSize === 'string' && fontSize) decls.push(`font-size:${escapeHtmlAttr(fontSize)}`)
+        if (decls.length > 0) out = `<span style="${decls.join(';')}">${out}</span>`
         break
       }
       case 'subscript':
