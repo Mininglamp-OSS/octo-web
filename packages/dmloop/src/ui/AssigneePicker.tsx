@@ -27,9 +27,10 @@ export default function AssigneePicker({ value, valueName, onChange, size = "def
   const { t } = useI18n();
   const [cands, setCands] = useState<AssigneeCandidate[]>([]);
 
-  useEffect(() => {
-    listAssigneeCandidates().then(setCands).catch(() => setCands([]));
-  }, []);
+  // 挂载先取一次;每次开框再取 —— afterDirectoryMutation 只清共享缓存,挂载中的 picker
+  // 不会自动重读,故开框时刷新以反映其间的成员/agent/squad 增删。
+  const loadCands = () => { listAssigneeCandidates().then(setCands).catch(() => setCands([])); };
+  useEffect(() => { loadCands(); }, []);
 
   const current = cands.find((c) => c.id === value);
   const allGroups: { type: AssigneeType; label: string }[] = [
@@ -74,7 +75,7 @@ export default function AssigneePicker({ value, valueName, onChange, size = "def
   );
 
   return (
-    <Dropdown render={menu} trigger="click" position="bottomLeft" clickToHide>
+    <Dropdown render={menu} trigger="click" position="bottomLeft" clickToHide onVisibleChange={(v) => { if (v) loadCands(); }}>
       <span className="loop-assignee-trigger" style={{ fontSize: size === "small" ? 12 : 13 }}>
         {current || valueName ? (
           <>
