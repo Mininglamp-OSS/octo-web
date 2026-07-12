@@ -6,6 +6,7 @@
 // injects it via setContent once the editor is ready.
 
 import { parseMarkdownToPmDoc } from '../import/markdown.ts'
+import { parsePdfToPmDoc, PDF_NO_TEXT_LAYER } from '../import/pdf.ts'
 import { createDoc, importDocx } from '../pages/docsApi.ts'
 import { emojiGlyph } from './emoji.ts'
 
@@ -193,6 +194,48 @@ export async function runDocxImport(
   }
 }
 
+/**
+ * Run the full PDF import flow: pick file → parse (pdf.js, client-side) → create doc →
+ * stash content. Only native (text-layer) PDFs are supported; scanned/image-only PDFs are
+ * rejected with a user-facing message (OCR is out of scope). Caller navigates to
+ * result.docId after this resolves; EditorShell drains the stash on mount.
+ */
+export async function runPdfImport(
+  spaceId?: string,
+  folderId?: string,
+): Promise<ImportResult> {
+  // 1. File picker
+  const { buffer, fileName } = await pickPdfFile()
+
+  // 2. Parse client-side. A missing text layer means a scanned/image-only PDF; surface a
+  // clear message rather than a generic parse error.
+  let parsed
+  try {
+    parsed = await parsePdfToPmDoc(buffer)
+  } catch (err) {
+    if ((err as Error).message === PDF_NO_TEXT_LAYER) {
+      throw new Error('不支持扫描件/图片型 PDF，请使用带文本层（可选中文字）的 PDF')
+    }
+    throw err
+  }
+
+  // 3. Determine title
+  const title = parsed.title || stripPdfExtension(fileName) || 'Imported document'
+
+  // 4. Create new doc
+  const created = await createDoc({ title, spaceId, folderId })
+
+  // 5. Stash content + warnings for EditorShell to pick up after navigation
+  stashImportContent(created.docId, parsed.doc)
+  stashImportWarnings(created.docId, parsed.warnings)
+
+  return {
+    docId: created.docId,
+    title,
+    warnings: parsed.warnings,
+  }
+}
+
 // ── File picker ───────────────────────────────────────────────────────────────
 
 interface PickedFile {
@@ -277,4 +320,48 @@ function pickDocxFile(): Promise<PickedDocxFile> {
 
 function stripDocxExtension(name: string): string {
   return name.replace(/\.docx$/i, '')
+}
+
+interface PickedPdfFile {
+  buffer: ArrayBuffer
+  fileName: string
+}
+
+/**
+ * Open a native file picker for a single .pdf file and read it as an ArrayBuffer (pdf.js
+ * parses the bytes client-side). Resolves with both the buffer and its name so the caller
+ * never depends on module-level mutable state (which would race across quick successive
+ * imports).
+ */
+function pickPdfFile(): Promise<PickedPdfFile> {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.pdf,application/pdf'
+    input.style.display = 'none'
+
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) { reject(new Error('未选择文件')); cleanup(); return }
+      const fileName = file.name
+      const reader = new FileReader()
+      reader.onload = () => resolve({ buffer: reader.result as ArrayBuffer, fileName })
+      reader.onerror = () => reject(new Error('文件读取失败'))
+      reader.readAsArrayBuffer(file)
+      cleanup()
+    }
+
+    input.oncancel = () => { reject(new Error('用户取消')); cleanup() }
+
+    const cleanup = () => {
+      setTimeout(() => input.remove(), 100)
+    }
+
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
+function stripPdfExtension(name: string): string {
+  return name.replace(/\.pdf$/i, '')
 }

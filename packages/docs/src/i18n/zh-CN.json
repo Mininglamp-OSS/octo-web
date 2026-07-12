@@ -151,7 +151,9 @@
     "word": "从 Word 导入",
     "wordError": "无法解析该 Word 文档，请确认是有效的 .docx",
     "wordTooLarge": "该 Word 文档过大或结构过于复杂，无法导入",
-    "markdown": "从 Markdown 导入"
+    "markdown": "从 Markdown 导入",
+    "pdf": "从 PDF 导入",
+    "pdfError": "无法解析该 PDF，请确认是带文本层的有效 PDF"
   },
   "slash": {
     "groupBasic": "基础",
