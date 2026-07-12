@@ -143,13 +143,19 @@ export default function RunDetailModal({
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const lastSeqRef = useRef(0);
+  // listRuns 内部吞掉 task-runs 的 HTTP 失败返回 []([] 既可能是"run 消失"也可能是"瞬时网络失败",
+  // 无法区分)。连续 miss 计数:容忍偶发 [](下轮即恢复),连续多次才判定 run 真消失并停轮询——
+  // 既修原「run 消失后无限轮询」,又不因一次网络抖动误停仍在跑的 run。
+  const missRef = useRef(0);
+  const MAX_MISSES = 3;
 
   // 打开时全量拉;运行中的 run 则每 2s 增量轮询 + 刷新状态,终态即停(无 WS,退化轮询)。
   useEffect(() => {
-    if (!visible || !run) { setMessages([]); setLiveRun(null); lastSeqRef.current = 0; return; }
+    if (!visible || !run) { setMessages([]); setLiveRun(null); lastSeqRef.current = 0; missRef.current = 0; return; }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     lastSeqRef.current = 0;
+    missRef.current = 0;
     setLiveRun(run);
 
     const apply = (batch: RunMessage[], incremental: boolean) => {
@@ -169,8 +175,10 @@ export default function RunDetailModal({
         let stillActive = true;
         try {
           const fresh = (await listRuns(run.issue_id)).find((r) => r.id === run.id);
-          if (fresh && !cancelled) { setLiveRun(fresh); stillActive = isActiveRun(fresh.status); }
-        } catch { /* 保持轮询 */ }
+          if (cancelled) return;
+          if (fresh) { setLiveRun(fresh); stillActive = isActiveRun(fresh.status); missRef.current = 0; }
+          else { missRef.current += 1; stillActive = missRef.current < MAX_MISSES; } // 连续 miss 达阈值才停(容忍瞬时 [])
+        } catch { /* ensureDirectory 等抛错:保持轮询 */ }
         if (!cancelled && stillActive) poll();
       }, POLL_MS);
     };
