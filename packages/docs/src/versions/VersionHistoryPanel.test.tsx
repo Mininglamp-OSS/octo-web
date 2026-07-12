@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 
@@ -336,5 +337,35 @@ describe('VersionHistoryPanel — mutations & permissions', () => {
     expect(btnByText(row, 'docs.version.rename')).toBeTruthy()
     expect(btnByText(row, 'docs.version.restore')).toBeUndefined()
     expect(btnByText(row, 'docs.version.delete')).toBeUndefined()
+  })
+})
+
+describe('VersionHistoryPanel — StrictMode liveness (mounted-ref re-arm)', () => {
+  it('finishes a mutation after a StrictMode double-mount (mounted ref stays live)', async () => {
+    // React 18 StrictMode (dev) runs an effect mount → cleanup → remount on the same node. The
+    // abort/cleanup effect flips the `mounted` liveness ref to false on cleanup; unless the effect
+    // body re-arms it to true on every (re)mount, the ref stays false for the real mount's whole
+    // lifetime and every mutation handler early-returns after its await — the trailing state reset
+    // (busy=false / confirm cleared) never runs and the panel freezes with buttons stuck busy.
+    // This pins that the delete confirm box closes once the delete resolves, which only happens
+    // while the liveness ref is true through the double-mount.
+    render(
+      <StrictMode>
+        <VersionHistoryPanel<PreviewState, string>
+          docId="d_1"
+          role="admin"
+          loadPreviewState={async (seq: number) => ({ body: `body-${seq}` })}
+          renderPreview={(s) => <div data-testid="preview-body">{s.body}</div>}
+        />
+      </StrictMode>,
+    )
+    await screen.findByText('Draft v1')
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.delete'))
+    const box = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
+    fireEvent.click(btnByText(box, 'docs.version.delete'))
+    await waitFor(() => expect(deleteVersionMock).toHaveBeenCalledWith('d_1', 7))
+    // Re-armed: onDelete runs past its `if (!mounted.current) return` gate → setConfirmDelete(null)
+    // closes the box. Gated (no re-arm): ref stuck false → early return → the box never closes.
+    await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
   })
 })

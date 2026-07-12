@@ -198,6 +198,7 @@ export function VersionHistoryPanel<TState, TCurrent>({
 
   // Abort any in-flight request when the panel unmounts.
   useEffect(() => {
+    mounted.current = true // re-arm on (re)mount so StrictMode's mount→cleanup→remount stays live
     const list = listGuard.current
     const preview = previewGuard.current
     return () => {
