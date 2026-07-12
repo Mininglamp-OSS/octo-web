@@ -669,7 +669,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     <div key={c.id} className={`loop-cmt__row${isRoot ? " is-root" : ""}`}>
       <div className="loop-cmt__head">
         <Avatar size="extra-extra-small" color="light-blue" src={c.author_avatar ?? undefined}>
-          {(c.author_name ?? "?").slice(0, 1)}
+          {[...(c.author_name ?? "?")][0]}
         </Avatar>
         <Text strong style={{ fontSize: 13 }}>{c.author_name}</Text>
         <time>{fmt(c.created_at)}</time>
@@ -1155,7 +1155,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                   <span className="loop-idp__prop-k">{t("loop.field.creator")}</span>
                   <span className="loop-idp__prop-person">
                     <Avatar size="extra-extra-small" color="light-blue" src={issue.creator_avatar ?? undefined}>
-                      {(issue.creator_name ?? "?").slice(0, 1)}
+                      {[...(issue.creator_name ?? "?")][0]}
                     </Avatar>
                     {issue.creator_name ?? "—"}
                   </span>

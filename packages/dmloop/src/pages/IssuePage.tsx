@@ -81,6 +81,11 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
   const [scope, setScope] = useState<IssueScope>(defaultScope ?? "all");
   const [f, setF] = useState<Filters>({ keyword: "", gStatuses: [], gPriorities: [], gProjectIds: [], noProject: false, sortBy: "position", sortDir: "desc", dateField: "created_at" });
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
+  // 筛选/显示 面板受控可见:不用 clickToHide(它会在点击内部 Select/DatePicker/Checkbox
+  // 时冒泡关闭,且这些控件的 portal 选项面板点击也会误触发关闭),改为显式
+  // onVisibleChange —— 仅外部点击关闭,内部多字段交互保持面板打开。
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [showOpen, setShowOpen] = useState(false);
   const cands = useAssigneeCandidates();
   // 当前 octo 成员的后端 user_id(involves_user_id 需 UUID,非 octo uid)：
   // 复用订阅特性的身份解析——候选里 octo_uid===loginInfo.uid 的 member。未解析出则「与我相关」不可用。
@@ -374,14 +379,14 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
             </div>
           )}
           <div className="loop-page__spacer" />
-          <Dropdown trigger="click" position="bottomRight" clickToHide render={filterPanel}>
+          <Dropdown trigger="click" visible={filterOpen} onVisibleChange={setFilterOpen} position="bottomRight" render={filterPanel}>
             <button className={`loop-toolbtn${activeFilters > 0 ? " is-on" : ""}`}>
               <Filter size={14} />
               {t("loop.action.filter")}
               {activeFilters > 0 && <span className="loop-toolbtn__badge">{activeFilters}</span>}
             </button>
           </Dropdown>
-          <Dropdown trigger="click" position="bottomRight" clickToHide render={showPanel}>
+          <Dropdown trigger="click" visible={showOpen} onVisibleChange={setShowOpen} position="bottomRight" render={showPanel}>
             <button className="loop-toolbtn">
               <SlidersHorizontal size={14} />
               {t("loop.action.show")}
