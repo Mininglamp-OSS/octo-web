@@ -1,11 +1,10 @@
 import React, { useState } from "react";
-import { Tag } from "@douyinfe/semi-ui";
 import { useI18n } from "@octo/base";
 import type { Issue, IssueStatus } from "../api/types";
 import { updateIssue } from "../api/issueApi";
 import IssueCard from "../ui/IssueCard";
 import { useRunConfirm } from "../ui/RunConfirmModal";
-import { ISSUE_STATUS_ORDER, ISSUE_STATUS_COLOR } from "../ui/meta";
+import { ISSUE_STATUS_ORDER, ISSUE_STATUS_ICON, ISSUE_STATUS_HEX } from "../ui/meta";
 
 export interface IssueBoardProps {
   issues: Issue[];
@@ -45,6 +44,7 @@ export default function IssueBoard({
     <div className="loop-board">
       {ISSUE_STATUS_ORDER.map((status) => {
         const cards = issues.filter((i) => i.status === status);
+        const StatusIcon = ISSUE_STATUS_ICON[status];
         return (
           <div
             key={status}
@@ -62,9 +62,8 @@ export default function IssueBoard({
             onDrop={() => handleDrop(status)}
           >
             <div className="loop-board__col-head">
-              <Tag color={ISSUE_STATUS_COLOR[status]} size="small">
-                {t(`loop.status.${status}`)}
-              </Tag>
+              <StatusIcon size={14} strokeWidth={2} style={{ color: ISSUE_STATUS_HEX[status] }} />
+              <span className="loop-board__col-name">{t(`loop.status.${status}`)}</span>
               <em>{cards.length}</em>
             </div>
             <div className="loop-board__cards">

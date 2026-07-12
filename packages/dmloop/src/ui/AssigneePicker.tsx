@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Dropdown, Avatar, Tag } from "@douyinfe/semi-ui";
+import { Dropdown, Avatar } from "@douyinfe/semi-ui";
 import { ChevronDown, User, Bot, Users, CircleSlash } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { AssigneeCandidate, AssigneeType } from "../api/types";
@@ -99,15 +99,13 @@ export default function AssigneePicker({ value, valueName, onChange, size = "def
   );
 }
 
-/** 只读小徽标：展示 assignee 类型 + 名称。 */
+/** 只读小徽标：中性胶囊 + 类型图标（member/agent/squad 靠图标形状区分，不用高亮色，避免突兀）。 */
 export function AssigneeBadge({ type, name }: { type: AssigneeType | null; name: string | null }) {
   if (!type || !name) return <span className="loop-assignee-empty">—</span>;
   return (
-    <Tag color={ASSIGNEE_TYPE_COLOR[type]} size="small" shape="circle">
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-        {typeIcon(type)}
-        {name}
-      </span>
-    </Tag>
+    <span className="loop-abadge" data-type={type}>
+      {typeIcon(type)}
+      <span className="loop-abadge__name">{name}</span>
+    </span>
   );
 }

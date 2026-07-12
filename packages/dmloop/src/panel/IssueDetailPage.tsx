@@ -1,37 +1,36 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Typography,
-  Input,
   Select,
   Button,
   Avatar,
   Tag,
   Spin,
   Toast,
-  Popconfirm,
-  TextArea,
   Dropdown,
+  Modal,
   DatePicker,
   InputNumber,
-  Progress,
 } from "@douyinfe/semi-ui";
 import {
   ArrowLeft,
   Trash2,
-  CornerDownRight,
   Send,
   MoreHorizontal,
+  Copy,
   CircleSlash,
-  Pencil,
   Check,
   Square,
   RotateCcw,
-  SmilePlus,
   Bell,
   BellOff,
   Paperclip,
+  FileText,
   AtSign,
   Plus,
+  ChevronRight,
+  ChevronDown,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
@@ -44,6 +43,7 @@ import type {
   TaskRun,
   IssueStatus,
   IssuePriority,
+  Project,
   CommentTriggerAgent,
 } from "../api/types";
 import {
@@ -56,45 +56,113 @@ import {
   listIssues,
   addComment,
   deleteComment,
-  updateComment,
   previewCommentTriggers,
 } from "../api/issueApi";
 import {
   listSubscribers,
   subscribeIssue,
   unsubscribeIssue,
-  addCommentReaction,
-  removeCommentReaction,
-  addIssueReaction,
-  removeIssueReaction,
   resolveComment,
   unresolveComment,
   listTimeline,
 } from "../api/collabApi";
 import { uploadAttachment } from "../api/attachmentApi";
+import { listProjects } from "../api/projectApi";
 import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
 import AssigneePicker from "../ui/AssigneePicker";
 import LabelEditor from "../ui/LabelEditor";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import LoopMarkdown from "../ui/LoopMarkdown";
+import AutoGrowTextarea from "../ui/AutoGrowTextarea";
 import { confirmDelete } from "../ui/confirmDelete";
 import RunDetailModal from "./RunDetailModal";
 import CreateIssueModal from "../ui/CreateIssueModal";
 import {
   ISSUE_STATUS_ORDER,
   ISSUE_STATUS_COLOR,
+  ISSUE_STATUS_ICON,
+  ISSUE_STATUS_HEX,
   PRIORITY_ORDER,
   PRIORITY_COLOR,
-  RUN_STATUS_COLOR,
+  PRIORITY_ICON,
+  PRIORITY_HEX,
+  RUN_STATUS_HEX,
+  RUN_STATUS_HEX_FALLBACK,
   isActiveRun,
 } from "../ui/meta";
 import "./issueDetail.css";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
-// 反应选择器的固定 emoji 集(轻量,够验证能力;完整 picker 留给 UI 重做)。
-const REACTION_EMOJIS = ["👍", "❤️", "🎉", "😄", "🚀", "👀"];
+// 线程回复输入：常驻在每张评论卡底部(对标 multica),各自独立 draft/附件(不共享全局状态),
+// 提交成功后清空。回评一律归到该线程根评论;附件在评论创建后绑到 commentId(见 replyToThread)。
+function ThreadReply({
+  onSubmit,
+  placeholder,
+  sendLabel,
+}: {
+  onSubmit: (content: string, files: File[]) => Promise<boolean>;
+  placeholder: string;
+  sendLabel: string;
+}) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    const c = draft.trim();
+    if ((!c && files.length === 0) || busy) return;
+    setBusy(true);
+    const ok = await onSubmit(c, files);
+    setBusy(false);
+    if (ok) { setDraft(""); setFiles([]); }
+  };
+  return (
+    <div className="loop-cmt__reply">
+      <div className="loop-cmt__reply-row">
+        <input
+          className="loop-field"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={placeholder}
+          disabled={busy}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+        />
+        <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
+          <Paperclip size={16} />
+          <input
+            type="file"
+            multiple
+            hidden
+            disabled={busy}
+            onChange={(e) => {
+              // 先同步捕获选中文件再清空 value：若在异步 setFiles 里读 e.target.files,
+              // value 已被重置、FileList 清空,会丢掉多选文件(只剩一个/为空)。
+              const picked = Array.from(e.target.files ?? []);
+              e.target.value = "";
+              if (picked.length) setFiles((p) => [...p, ...picked]);
+            }}
+          />
+        </label>
+        <Button theme="solid" icon={<Send size={14} />} onClick={submit} loading={busy} disabled={!draft.trim() && files.length === 0} aria-label={sendLabel} />
+      </div>
+      {files.length > 0 && (
+        <div className="loop-filechips">
+          {files.map((f, i) => (
+            <div key={i} className="loop-filechip">
+              <FileText size={16} className="loop-filechip__icon" />
+              <span className="loop-filechip__name">{f.name}</span>
+              <button type="button" className="loop-filechip__act" onClick={() => setFiles((p) => p.filter((_, idx) => idx !== i))} aria-label={t("loop.action.delete")}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function fmt(iso?: string | null): string {
   if (!iso) return "-";
@@ -120,23 +188,28 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [subLoaded, setSubLoaded] = useState(false);
   const [children, setChildren] = useState<Issue[]>([]);
   const [childCreateOpen, setChildCreateOpen] = useState(false); // 新建子 issue 弹窗
-  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+  const [propsOpen, setPropsOpen] = useState(false); // 「编辑属性」弹窗(标签/父回路/日期/阶段)
   const [parentCands, setParentCands] = useState<Issue[]>([]); // 父 issue 选择器候选(懒加载)
+  const [projects, setProjects] = useState<Project[]>([]); // 项目候选(内联项目 popup)
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [runs, setRuns] = useState<TaskRun[]>([]);
   const [activeRun, setActiveRun] = useState<TaskRun | null>(null);
   const [runOpen, setRunOpen] = useState(false);
+  const [showRuns, setShowRuns] = useState(false); // 「执行日志」折叠展开
+  const [collapsedSecs, setCollapsedSecs] = useState<Set<string>>(new Set()); // 右栏分区折叠
+  // 动态块展开态：最后一个动态块默认展开(第一次进来即见最新动态,对标 multica);
+  // expandedActs=被显式展开的(非默认块),collapsedActs=被显式折叠的(默认块)。二者覆盖默认。
+  const [expandedActs, setExpandedActs] = useState<Set<string>>(new Set());
+  const [collapsedActs, setCollapsedActs] = useState<Set<string>>(new Set());
   const [editingDesc, setEditingDesc] = useState(false);
   const cands = useAssigneeCandidates();
   const { requestAssign, requestStatus, runConfirmModal } = useRunConfirm();
   const [loading, setLoading] = useState(true);
   const [titleDraft, setTitleDraft] = useState("");
   const [descDraft, setDescDraft] = useState("");
-  const [replyTo, setReplyTo] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [triggerAgents, setTriggerAgents] = useState<CommentTriggerAgent[]>([]); // 这条评论会唤醒的 agent
   const [suppressed, setSuppressed] = useState<Set<string>>(new Set()); // 被用户跳过的 agent id
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState("");
   const [busyRunId, setBusyRunId] = useState<string | null>(null); // 正在重跑的 task,防双击
   const [pendingFiles, setPendingFiles] = useState<File[]>([]); // 评论输入区:待随评论提交的本地文件(发送时才上传)
   const [uploading, setUploading] = useState(false); // issue 附件上传中
@@ -176,6 +249,11 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
   useEffect(reload, [issueId]);
 
+  // 项目候选:内联「项目」popup 用;工作区级、随详情挂载取一次。
+  useEffect(() => {
+    listProjects().then(setProjects).catch(() => {});
+  }, []);
+
   const patch = async (p: Parameters<typeof updateIssue>[1]) => {
     if (!issue) return;
     try {
@@ -188,6 +266,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         reactions: updated.reactions ?? issue.reactions,
         attachments: updated.attachments ?? issue.attachments,
       });
+      Toast.success(t("loop.toast.saved"));
       onChanged?.();
     } catch (e) {
       // 后端可能拒绝(如父 issue 环检测、非法日期):给出反馈,避免静默失败。
@@ -206,12 +285,10 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     if (token === reqRef.current) setComments(c);
   };
 
-  // 父 issue 选择器:下拉展开时懒加载工作区 issue 作候选(排除自己;环检测由后端兜底)。
-  const loadParentCands = (open: boolean) => {
-    if (!open || parentCands.length) return;
+  // 父 issue 选择器:「编辑属性」弹窗展开时懒加载工作区 issue 作候选(排除自己;环检测由后端兜底)。
+  const loadParentCands = () => {
+    if (parentCands.length) return;
     const token = reqRef.current;
-    // ponytail: 取前 100 条工作区 issue + Select 客户端过滤;小工作区够用,
-    // 大工作区需服务端 search-as-you-type,留给 UI 重做。
     listIssues({ limit: 100 })
       .then((r) => { if (token === reqRef.current) setParentCands(r.issues.filter((i) => i.id !== issueId)); })
       .catch(() => {});
@@ -283,24 +360,6 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     }
   };
 
-  // 评论 emoji 反应:选择器点 emoji=加,已有 chip 点击=删自己那条(后端按 actor+emoji 定位)。
-  const reactComment = (commentId: string, emoji: string, add: boolean) => {
-    const token = reqRef.current;
-    return mutateThenRefresh(
-      () => (add ? addCommentReaction : removeCommentReaction)(commentId, emoji),
-      () => reloadComments(token),
-    );
-  };
-
-  // issue 级 emoji 反应:同评论,读回走 getIssue 的 issue.reactions(syncIssue 重取详情)。
-  const reactIssue = (emoji: string, add: boolean) => {
-    const token = reqRef.current;
-    return mutateThenRefresh(
-      () => (add ? addIssueReaction : removeIssueReaction)(issueId, emoji),
-      () => syncIssue(token),
-    );
-  };
-
   // 评论 resolve/unresolve:后端「一线程至多一条 resolved」会清同线程兄弟,操作后重拉评论即可。
   // (resolve 只发实时事件、不写 activity_log,故活动流无需刷新。)
   const toggleResolve = (commentId: string, resolved: boolean) => {
@@ -324,7 +383,9 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   // 避免像 issue-first 那样在评论发出前就产生 issue 级孤儿附件。取消/离开=什么都没上传。
   const addPendingFiles = (files: FileList | null) => {
     if (!files?.length) return;
-    setPendingFiles((p) => [...p, ...Array.from(files)]);
+    // 同步捕获数组:调用点随后会 e.target.value="" 清空 FileList,若在 setState 更新函数里再读会丢多选文件。
+    const arr = Array.from(files);
+    setPendingFiles((p) => [...p, ...arr]);
   };
   const removePendingFile = (idx: number) => setPendingFiles((p) => p.filter((_, i) => i !== idx));
 
@@ -376,14 +437,13 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     const content = commentDraft.trim();
     if (!content || submitting) return;
     const token = reqRef.current;
-    // 附件只随顶层评论;回复不带(pendingFiles 属主输入区)。
-    const files = replyTo ? [] : pendingFiles;
+    const files = pendingFiles;
     const suppressIds = triggerAgents.filter((a) => suppressed.has(a.id)).map((a) => a.id);
     setSubmitting(true);
     try {
       let comment: IssueComment;
       try {
-        comment = await addComment(issueId, content, replyTo, suppressIds);
+        comment = await addComment(issueId, content, null, suppressIds);
       } catch (e) {
         // 评论未创建:保留草稿/待发文件供重试。
         Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
@@ -391,10 +451,9 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       }
       // 评论已创建 → 立即清理输入态,避免后续附件上传失败时用户重复提交同一条评论。
       setCommentDraft("");
-      setReplyTo(null);
       setTriggerAgents([]);
       setSuppressed(new Set());
-      if (!replyTo) setPendingFiles([]);
+      setPendingFiles([]);
       // 把待发文件带 commentId 绑到已建评论;单个失败只记录、不回滚评论。
       const failedFiles: File[] = [];
       for (const f of files) {
@@ -409,7 +468,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       if (failedFiles.length) {
         // 评论已建成功、仅附件失败:把失败文件放回输入区(否则文件对象被丢弃、永久丢失且无重试入口),
         // 并用区分于"评论失败"的文案——避免误导用户以为整条评论没发出去。
-        if (!replyTo) setPendingFiles(failedFiles);
+        setPendingFiles(failedFiles);
         Toast.error(t("loop.toast.commentAttachFailed", { values: { count: failedFiles.length } }));
       } else {
         Toast.success(t("loop.toast.commentAdded"));
@@ -420,12 +479,12 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     }
   };
 
-  // 顶层评论输入时防抖预览"会唤醒哪些 agent"(回复暂不预览)。
+  // 新建评论输入时防抖预览"会唤醒哪些 agent"。
   useEffect(() => {
     const content = commentDraft.trim();
     // 预览更新时把 suppressed 裁剪到当前触发集,避免"移除又重提及"的 agent 带着旧的跳过意图。
     const prune = (ids: string[]) => setSuppressed((s) => new Set([...s].filter((id) => ids.includes(id))));
-    if (!content || replyTo) { setTriggerAgents([]); prune([]); return; }
+    if (!content) { setTriggerAgents([]); prune([]); return; }
     let cancelled = false;
     const h = setTimeout(() => {
       previewCommentTriggers(issueId, content, null)
@@ -433,10 +492,31 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         .catch(() => { if (cancelled) return; setTriggerAgents([]); prune([]); });
     }, 400);
     return () => { cancelled = true; clearTimeout(h); };
-  }, [commentDraft, replyTo, issueId]);
+  }, [commentDraft, issueId]);
 
   const toggleSuppress = (id: string) =>
     setSuppressed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  // 线程回复:回评归到根评论(parent=rootId)。附件在评论创建后带 commentId 绑定(逐个隔离,失败只提示)。
+  // 成功返回 true 供输入框清空。
+  const replyToThread = async (rootId: string, content: string, files: File[]): Promise<boolean> => {
+    const token = reqRef.current;
+    let comment: IssueComment;
+    try {
+      comment = await addComment(issueId, content, rootId, []);
+    } catch (e) {
+      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+      return false;
+    }
+    let failed = 0;
+    for (const f of files) {
+      try { await uploadAttachment(f, { commentId: comment.id }); } catch { failed++; }
+    }
+    if (failed) Toast.error(t("loop.toast.commentAttachFailed", { values: { count: failed } }));
+    else Toast.success(t("loop.toast.commentAdded"));
+    try { await reloadComments(token); } catch { /* 刷新失败:下次 reload 自愈 */ }
+    return true;
+  };
 
   const removeComment = (id: string) => {
     const token = reqRef.current;
@@ -446,22 +526,6 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       () => reloadComments(token),
       () => Toast.success(t("loop.toast.commentDeleted")),
     );
-  };
-
-  const saveEdit = async (id: string) => {
-    const content = editDraft.trim();
-    if (!content) return;
-    const token = reqRef.current;
-    try {
-      await updateComment(id, content);
-    } catch (e) {
-      Toast.error((e as Error)?.message ?? t("loop.toast.editFailed"));
-      return;
-    }
-    // 编辑已落库；重拉以回填 directory 名字/头像。重拉失败不应报“编辑失败”。
-    setEditingId(null);
-    await reloadComments(token);
-    Toast.success(t("loop.toast.commentUpdated"));
   };
 
   const handleDeleteIssue = () => {
@@ -488,6 +552,11 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const openRun = (run: TaskRun) => {
     setActiveRun(run);
     setRunOpen(true);
+  };
+
+  // 打开子回路详情（递归复用本页，key 隔离跨 issue 陈旧写入）。
+  const openChild = (id: string) => {
+    WKApp.routeRight.push(<IssueDetailPage key={id} issueId={id} onChanged={onChanged} />);
   };
 
   const reloadRuns = () => listRuns(issueId).then(setRuns).catch(() => {});
@@ -530,70 +599,16 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     setEditingDesc(false);
   };
 
-  // 右上角 ··· 菜单：快速改 status / priority / assignee（对齐产品设计）。
+  // 右上角 ··· 菜单：编辑属性(标签/父回路/日期/阶段) / 新建子回路 / 订阅 / 删除。
+  // 状态/优先级/负责人/项目 改走右栏内联点击 popup(对标 multica),不在此重复。
   const renderMoreMenu = () => (
     <Dropdown.Menu>
-      <Dropdown
-        position="leftTop"
-        trigger="hover"
-        clickToHide
-        render={
-          <Dropdown.Menu>
-            {ISSUE_STATUS_ORDER.map((s) => (
-              <Dropdown.Item key={s} active={issue?.status === s} onClick={() => issue && requestStatus(issue, s, (extra) => patch({ status: s, ...extra }))}>
-                <Tag color={ISSUE_STATUS_COLOR[s]} size="small">{t(`loop.status.${s}`)}</Tag>
-              </Dropdown.Item>
-            ))}
-          </Dropdown.Menu>
-        }
-      >
-        <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changeStatus")}</Dropdown.Item>
-      </Dropdown>
-      <Dropdown
-        position="leftTop"
-        trigger="hover"
-        clickToHide
-        render={
-          <Dropdown.Menu>
-            {PRIORITY_ORDER.map((p) => (
-              <Dropdown.Item key={p} active={issue?.priority === p} onClick={() => patch({ priority: p })}>
-                <Tag color={PRIORITY_COLOR[p]} size="small">{t(`loop.priority.${p}`)}</Tag>
-              </Dropdown.Item>
-            ))}
-          </Dropdown.Menu>
-        }
-      >
-        <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changePriority")}</Dropdown.Item>
-      </Dropdown>
-      <Dropdown
-        position="leftTop"
-        trigger="hover"
-        clickToHide
-        render={
-          <Dropdown.Menu>
-            <Dropdown.Item icon={<CircleSlash size={13} />} onClick={() => patch({ assignee_id: null, assignee_type: null })}>
-              {t("loop.assignee.unassigned")}
-            </Dropdown.Item>
-            {(["member", "agent", "squad"] as const).map((type) => {
-              const items = cands.filter((c) => c.type === type);
-              if (!items.length) return null;
-              return (
-                <React.Fragment key={type}>
-                  <Dropdown.Divider />
-                  <Dropdown.Title>{t(`loop.assignee.${type}`)}</Dropdown.Title>
-                  {items.map((c) => (
-                    <Dropdown.Item key={c.id} active={issue?.assignee_id === c.id} onClick={() => issue && requestAssign(issue, c.type, c.id, c.name, (extra) => patch({ assignee_id: c.id, assignee_type: c.type, ...extra }))}>
-                      {c.name}
-                    </Dropdown.Item>
-                  ))}
-                </React.Fragment>
-              );
-            })}
-          </Dropdown.Menu>
-        }
-      >
-        <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changeAssignee")}</Dropdown.Item>
-      </Dropdown>
+      <Dropdown.Item icon={<SlidersHorizontal size={13} />} onClick={() => { loadParentCands(); setPropsOpen(true); }}>
+        {t("loop.menu.editProps")}
+      </Dropdown.Item>
+      <Dropdown.Item icon={<Plus size={13} />} onClick={() => setChildCreateOpen(true)}>
+        {t("loop.subIssue.create")}
+      </Dropdown.Item>
       <Dropdown.Divider />
       {/* 订阅态不可判定(未加载/加载失败/后端未透出 octo_uid)时两项都显示,保证 unsubscribe 可达 */}
       {!selfKnown ? (
@@ -640,132 +655,203 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const roots = comments.filter((c) => !c.parent_id);
   const repliesOf = (id: string) => comments.filter((c) => c.parent_id === id);
   const childrenDone = children.filter((c) => c.status === "done").length;
-  // 活动流只取 activity 类(评论已在评论区渲染,避免重复)。filter 返回新数组,reverse 不改原 state。倒序:最新在上。
-  const activities = timeline.filter((e) => e.type === "activity").reverse();
   // issue 附件区只显 issue 级(comment_id 为空);评论附件归各评论下,避免重复。
   const issueAtts = (issue.attachments ?? []).filter((a) => !a.comment_id);
+  const StatusIcon = ISSUE_STATUS_ICON[issue.status];
+  const PriIcon = PRIORITY_ICON[issue.priority];
+  const secOpen = (k: string) => !collapsedSecs.has(k);
+  const toggleSec = (k: string) =>
+    setCollapsedSecs((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
-  // emoji 反应条(评论 + issue 通用):按 emoji 分组显示计数(点=删自己那条)+ 选择器加新反应。
-  const renderReactionBar = (
-    reactions: Array<{ emoji: string }> | null | undefined,
-    onToggle: (emoji: string, add: boolean) => void,
-  ) => {
-    const groups = new Map<string, number>();
-    (reactions ?? []).forEach((rx) => groups.set(rx.emoji, (groups.get(rx.emoji) ?? 0) + 1));
+  // 评论线程(对标 multica)：主评论为首行,其所有回评都是同级平铺行(分隔线区分先后,不缩进)；
+  // 卡片底部一个回复输入。任何回评都归到主评论(parent=root),视觉上像一张「主评论 + 评审意见」表。
+  const renderRow = (c: IssueComment, isRoot: boolean, rootId: string) => (
+    <div key={c.id} className={`loop-cmt__row${isRoot ? " is-root" : ""}`}>
+      <div className="loop-cmt__head">
+        <Avatar size="extra-extra-small" color="light-blue" src={c.author_avatar ?? undefined}>
+          {[...(c.author_name ?? "?")][0]}
+        </Avatar>
+        <Text strong style={{ fontSize: 13 }}>{c.author_name}</Text>
+        <time>{fmt(c.created_at)}</time>
+        {c.resolved_at && <span className="loop-cmt__resolved">{t("loop.comment.resolved")}</span>}
+        <div className="loop-cmt__actions">
+          <Dropdown
+            trigger="click"
+            position="bottomRight"
+            clickToHide
+            render={
+              <Dropdown.Menu>
+                <Dropdown.Item icon={<Copy size={13} />} onClick={() => { navigator.clipboard?.writeText(c.content)?.then(() => Toast.success(t("loop.run.copied"))).catch(() => {}); }}>
+                  {t("loop.action.copy")}
+                </Dropdown.Item>
+                <Dropdown.Item icon={c.resolved_at ? <CircleSlash size={13} /> : <Check size={13} />} onClick={() => toggleResolve(c.id, !!c.resolved_at)}>
+                  {t(c.resolved_at ? "loop.comment.unresolve" : "loop.comment.resolve")}
+                </Dropdown.Item>
+                <Dropdown.Divider />
+                <Dropdown.Item type="danger" icon={<Trash2 size={13} />} onClick={() => confirmDelete({ title: t("loop.comment.deleteConfirm"), okText: t("loop.action.delete"), cancelText: t("loop.action.cancel"), onOk: () => removeComment(c.id) })}>
+                  {t("loop.action.delete")}
+                </Dropdown.Item>
+              </Dropdown.Menu>
+            }
+          >
+            <Button size="small" theme="borderless" icon={<MoreHorizontal size={15} />} aria-label={t("loop.action.more")} />
+          </Dropdown>
+        </div>
+      </div>
+      <div className="loop-cmt__body"><LoopMarkdown content={c.content} /></div>
+      {renderAttachments(c.attachments)}
+    </div>
+  );
+
+  const renderComment = (root: IssueComment) => (
+    <div key={root.id} className="loop-cmt">
+      {renderRow(root, true, root.id)}
+      {repliesOf(root.id).map((r) => renderRow(r, false, root.id))}
+      <ThreadReply
+        onSubmit={(content, files) => replyToThread(root.id, content, files)}
+        placeholder={t("loop.comment.replyPlaceholder")}
+        sendLabel={t("loop.comment.send")}
+      />
+    </div>
+  );
+
+  // 动态：把活动流(activity) 与顶层评论合并成一条时间线(升序,最新在下、贴近底部输入框),
+  // 对齐 Figma —— 不再把「活动」「评论」拆成两个挤在一起的区块。timeline 为 ASC。
+  const activities = timeline.filter((e) => e.type === "activity");
+  // 活动文案人话化：后端 action 是机器串(如 status_changed),普通运营看不懂。按语义归类成中文；
+  // 订阅类噪声直接隐藏(返回 null → 不渲染、不计数)；未知归为通用「更新了这个回路」，绝不暴露原始串。
+  const activityText = (action?: string): string | null => {
+    if (!action) return null;
+    const a = action.toLowerCase();
+    if (a.includes("subscrib") || a.includes("view")) return null;
+    if (a.includes("creat")) return t("loop.activityAction.created");
+    if (a.includes("status")) return t("loop.activityAction.statusChanged");
+    if (a.includes("priorit")) return t("loop.activityAction.priorityChanged");
+    if (a.includes("assign")) return t("loop.activityAction.assigneeChanged");
+    if (a.includes("project")) return t("loop.activityAction.projectChanged");
+    if (a.includes("title")) return t("loop.activityAction.titleChanged");
+    if (a.includes("descri")) return t("loop.activityAction.descriptionChanged");
+    if (a.includes("label")) return t("loop.activityAction.labelChanged");
+    if (a.includes("due") || a.includes("date")) return t("loop.activityAction.dateChanged");
+    if (a.includes("reopen")) return t("loop.activityAction.reopened");
+    if (a.includes("clos") || a.includes("complet") || a.includes("done")) return t("loop.activityAction.completed");
+    return t("loop.activityAction.generic");
+  };
+
+  // 执行记录单行(运行中/历史 复用)：状态点 + agent 名 + 触发摘要 + 状态文字 + 终止/重跑。
+  const renderRunRow = (r: TaskRun) => {
+    const active = isActiveRun(r.status);
     return (
-      <div className="loop-comment__reactions">
-        {[...groups.entries()].map(([emoji, n]) => (
-          <button key={emoji} type="button" className="loop-reaction" onClick={() => onToggle(emoji, false)}>
-            <span>{emoji}</span>
-            <b>{n}</b>
-          </button>
-        ))}
-        <Dropdown
-          trigger="click"
-          clickToHide
-          position="topLeft"
-          render={
-            <div className="loop-reaction-picker">
-              {REACTION_EMOJIS.map((e) => (
-                <button key={e} type="button" onClick={() => onToggle(e, true)}>{e}</button>
-              ))}
-            </div>
-          }
-        >
-          <button type="button" className="loop-reaction loop-reaction--add" aria-label={t("loop.reaction.add")}>
-            <SmilePlus size={13} />
-          </button>
-        </Dropdown>
+      <div key={r.id} className="loop-idp__task">
+        <button className="loop-idp__run" onClick={() => openRun(r)}>
+          <span
+            className={`loop-idp__run-dot${active ? " is-active" : ""}`}
+            style={{ background: RUN_STATUS_HEX[r.status] ?? RUN_STATUS_HEX_FALLBACK }}
+          />
+          <span className="loop-idp__task-main">
+            <strong>{r.agent_name ?? r.agent_id ?? "—"}</strong>
+            <small>{r.trigger_summary || fmt(r.dispatched_at ?? r.created_at)}</small>
+          </span>
+          <span className="loop-idp__run-status" style={{ color: RUN_STATUS_HEX[r.status] ?? RUN_STATUS_HEX_FALLBACK }}>
+            {t(`loop.taskStatus.${r.status}`)}
+          </span>
+        </button>
+        <Button
+          size="small"
+          theme="borderless"
+          type={active ? "danger" : "tertiary"}
+          loading={!active && busyRunId === r.id}
+          icon={active ? <Square size={13} /> : <RotateCcw size={13} />}
+          aria-label={t(active ? "loop.run.stop" : "loop.run.rerun")}
+          onClick={() => (active ? cancelRun(r.id) : rerun(r.id))}
+        />
+      </div>
+    );
+  };
+  // 运行中/排队中重点常显在外;仅终态归入「显示历史运行」折叠(对标 multica)。
+  const activeRuns = runs.filter((r) => isActiveRun(r.status));
+  const pastRuns = runs.filter((r) => !isActiveRun(r.status));
+
+  // 动态区(对标 multica)：根评论与「有意义的活动」按时间升序合并；连续活动归并成一个折叠动态块，
+  // 评论各自独立成卡片。噪声活动(activityText 为 null)先过滤，不进块、不计数。
+  const visibleActs = activities.filter((a) => activityText(a.action) !== null);
+  type FeedNode = { ts: string; c?: IssueComment; a?: TimelineEntry };
+  const seq: FeedNode[] = [
+    ...roots.map((c) => ({ ts: c.created_at, c })),
+    ...visibleActs.map((a) => ({ ts: a.created_at, a })),
+  ].sort((x, y) => new Date(x.ts).getTime() - new Date(y.ts).getTime());
+  type FeedGroup =
+    | { kind: "comment"; comment: IssueComment }
+    | { kind: "acts"; id: string; entries: TimelineEntry[] };
+  const feedGroups: FeedGroup[] = [];
+  for (const n of seq) {
+    if (n.c) {
+      feedGroups.push({ kind: "comment", comment: n.c });
+    } else if (n.a) {
+      const last = feedGroups[feedGroups.length - 1];
+      if (last && last.kind === "acts") last.entries.push(n.a);
+      else feedGroups.push({ kind: "acts", id: n.a.id, entries: [n.a] });
+    }
+  }
+
+  // 最后一个动态块默认展开(用户可再折叠);其余默认折叠(用户可再展开)。
+  let lastActsId: string | null = null;
+  for (const g of feedGroups) if (g.kind === "acts") lastActsId = g.id;
+  const isActsOpen = (id: string) =>
+    collapsedActs.has(id) ? false : (expandedActs.has(id) || id === lastActsId);
+  const toggleActs = (id: string, open: boolean) => {
+    if (open) {
+      setCollapsedActs((s) => new Set(s).add(id));
+      setExpandedActs((s) => { const n = new Set(s); n.delete(id); return n; });
+    } else {
+      setExpandedActs((s) => new Set(s).add(id));
+      setCollapsedActs((s) => { const n = new Set(s); n.delete(id); return n; });
+    }
+  };
+
+  // 单个折叠动态块：折叠时只一行「N 条动态」(chevron-right,小灰字);展开显示每条活动小行。
+  const renderActsBlock = (g: { id: string; entries: TimelineEntry[] }) => {
+    const open = isActsOpen(g.id);
+    return (
+      <div key={`acts-${g.id}`} className="loop-acts">
+        <button type="button" className="loop-acts__toggle" onClick={() => toggleActs(g.id, open)}>
+          <ChevronRight size={13} className={`loop-acts__chevron${open ? " is-open" : ""}`} />
+          <span>{t("loop.activity.count", { values: { count: g.entries.length } })}</span>
+        </button>
+        {open && (
+          <div className="loop-acts__list">
+            {g.entries.map((a) => (
+              <div key={a.id} className="loop-acts__item">
+                <span className="loop-acts__dot" />
+                <span className="loop-acts__text">
+                  <strong>{a.actor_name ?? a.actor_id}</strong> {activityText(a.action)}
+                </span>
+                <time>{fmt(a.created_at)}</time>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
 
-  const renderComment = (c: IssueComment, reply = false) => (
-    <div key={c.id} className={`loop-comment ${reply ? "is-reply" : ""}`}>
-      <div className="loop-comment__head">
-        <Avatar size="extra-extra-small" color="light-blue" src={c.author_avatar ?? undefined}>
-          {(c.author_name ?? "?").slice(0, 1)}
-        </Avatar>
-        <Text strong style={{ fontSize: 12 }}>
-          {c.author_name}
-        </Text>
-        <time>{fmt(c.created_at)}</time>
-        {c.resolved_at && <Tag size="small" color="green">{t("loop.comment.resolved")}</Tag>}
-        <div className="loop-comment__actions">
-          {!reply && (
-            <Button
-              size="small"
-              theme="borderless"
-              icon={<CornerDownRight size={13} />}
-              onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setEditingId(null); }}
-            >
-              {t("loop.comment.reply")}
-            </Button>
-          )}
-          {!reply && (
-            <Button
-              size="small"
-              theme="borderless"
-              icon={c.resolved_at ? <CircleSlash size={13} /> : <Check size={13} />}
-              onClick={() => toggleResolve(c.id, !!c.resolved_at)}
-            >
-              {t(c.resolved_at ? "loop.comment.unresolve" : "loop.comment.resolve")}
-            </Button>
-          )}
-          <Button
-            size="small"
-            theme="borderless"
-            icon={<Pencil size={13} />}
-            onClick={() => { setEditingId(c.id); setEditDraft(c.content); setReplyTo(null); }}
-          />
-          <Button
-            size="small"
-            theme="borderless"
-            type="danger"
-            icon={<Trash2 size={13} />}
-            onClick={() => confirmDelete({ title: t("loop.comment.deleteConfirm"), okText: t("loop.action.delete"), cancelText: t("loop.action.cancel"), onOk: () => removeComment(c.id) })}
-          />
-        </div>
-      </div>
-      {editingId === c.id ? (
-        <div className="loop-comment__body" style={{ marginTop: 6 }}>
-          <TextArea value={editDraft} onChange={setEditDraft} autosize={{ minRows: 2, maxRows: 10 }} />
-          <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
-            <Button size="small" theme="solid" onClick={() => saveEdit(c.id)}>{t("loop.action.save")}</Button>
-            <Button size="small" theme="borderless" onClick={() => setEditingId(null)}>{t("loop.action.cancel")}</Button>
-          </div>
-        </div>
-      ) : (
-        <div className="loop-comment__body"><LoopMarkdown content={c.content} /></div>
-      )}
-      {renderAttachments(c.attachments)}
-      {renderReactionBar(c.reactions, (emoji, add) => reactComment(c.id, emoji, add))}
-      {!reply && repliesOf(c.id).map((r) => renderComment(r, true))}
-      {!reply && replyTo === c.id && (
-        <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-          <Input
-            value={commentDraft}
-            onChange={setCommentDraft}
-            placeholder={t("loop.comment.replyPlaceholder")}
-            onEnterPress={submitComment}
-          />
-          <Button icon={<Send size={14} />} onClick={submitComment} />
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <div className="loop-idp">
       <div className="loop-idp__topbar">
-        <Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={back}>
-          {t("loop.detail.back")}
-        </Button>
-        <Text type="tertiary" style={{ fontSize: 12 }}>
-          {issue.project_name ? `${issue.project_name} · ` : ""}
-          {issue.identifier}
-        </Text>
+        <div className="loop-idp__crumbs">
+          <button className="loop-idp__crumb" onClick={back}>
+            {issue.project_name ?? t("loop.nav.issue")}
+          </button>
+          <ChevronRight size={14} className="loop-idp__crumb-sep" />
+          <span className="loop-idp__crumb-cur">
+            <span className="loop-idp__crumb-id">{issue.identifier}</span>
+            <span className="loop-idp__crumb-title">{issue.title}</span>
+          </span>
+        </div>
         <div style={{ flex: 1 }} />
+        <Button className="loop-idp__boardbtn" theme="borderless" onClick={back}>
+          {t("loop.detail.board")}
+        </Button>
         <Dropdown trigger="click" position="bottomRight" render={renderMoreMenu()} clickToHide>
           <Button icon={<MoreHorizontal size={18} />} theme="borderless" aria-label="more" />
         </Dropdown>
@@ -774,382 +860,350 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       <div className="loop-idp__body">
         {/* 主体 */}
         <div className="loop-idp__main">
-          <Input
-            size="large"
+          <input
+            className="loop-field loop-field--lg loop-idp__title"
             value={titleDraft}
-            onChange={setTitleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
             onBlur={() => titleDraft.trim() && titleDraft !== issue.title && patch({ title: titleDraft.trim() })}
-            style={{ fontWeight: 600, fontSize: 20 }}
           />
 
-          {/* issue 级 emoji 反应条 */}
-          {renderReactionBar(issue.reactions, reactIssue)}
-
-          <div className="loop-idp__section">
-            <div className="loop-detail__section-title loop-idp__desc-title">
-              <span>{t("loop.field.description")}</span>
-              {editingDesc ? (
-                <Button size="small" theme="borderless" icon={<Check size={13} />} onClick={saveDesc}>
-                  {t("loop.action.save")}
-                </Button>
+          {/* 描述：紧贴标题的段落（点击进入编辑），无独立分区标题，对齐 Figma */}
+          {editingDesc ? (
+            <AutoGrowTextarea
+              className="loop-field-textarea loop-field-textarea--lg loop-field-textarea--auto"
+              value={descDraft}
+              onChange={setDescDraft}
+              onBlur={saveDesc}
+              autoFocus
+              placeholder={t("loop.field.descriptionPlaceholder")}
+            />
+          ) : (
+            <div className="loop-idp__desc" onClick={() => setEditingDesc(true)}>
+              {issue.description ? (
+                <LoopMarkdown content={issue.description} />
               ) : (
-                <Button size="small" theme="borderless" icon={<Pencil size={13} />} onClick={() => setEditingDesc(true)}>
-                  {t("loop.action.edit")}
-                </Button>
+                <span className="loop-idp__desc-empty">{t("loop.field.descriptionPlaceholder")}</span>
               )}
             </div>
-            {editingDesc ? (
-              <TextArea
-                value={descDraft}
-                onChange={setDescDraft}
-                onBlur={saveDesc}
-                autosize={{ minRows: 4, maxRows: 20 }}
-                placeholder={t("loop.field.descriptionPlaceholder")}
+          )}
+
+          {/* issue 附件 + 工具栏（附件上传） */}
+          {issueAtts.length > 0 && renderAttachments(issueAtts)}
+          <div className="loop-idp__toolbar">
+            <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
+              {uploading ? <Spin size="small" /> : <Paperclip size={15} />}
+              <input
+                type="file"
+                multiple
+                hidden
+                disabled={uploading}
+                onChange={(e) => { uploadForIssue(e.target.files); e.target.value = ""; }}
               />
-            ) : issue.description ? (
-              <LoopMarkdown content={issue.description} />
-            ) : (
-              <Text type="tertiary" style={{ fontSize: 13 }}>{t("loop.field.descriptionPlaceholder")}</Text>
-            )}
+            </label>
           </div>
 
-          <div className="loop-idp__section">
-            <div className="loop-detail__section-title loop-idp__desc-title">
-              <span>
-                {t("loop.subIssue.title")}
-                {children.length > 0 && ` (${childrenDone}/${children.length})`}
-              </span>
-              <Button
-                theme="borderless"
-                size="small"
-                icon={<Plus size={13} />}
-                onClick={() => setChildCreateOpen(true)}
-              >
-                {t("loop.subIssue.create")}
-              </Button>
-            </div>
-            {children.length > 0 && (
-              <>
-                <Progress
-                  percent={Math.round((childrenDone / children.length) * 100)}
-                  style={{ margin: "8px 0 10px" }}
+          {/* 子回路：仅当确有子回路时才展示整个模块(空则不显示,避免突兀的孤零标题) */}
+          {children.length > 0 && (
+            <div className="loop-idp__section">
+              <div className="loop-idp__stitle loop-idp__desc-title">
+                <span>
+                  {t("loop.subIssue.title")}
+                  <em className="loop-idp__count"> {childrenDone} / {children.length}</em>
+                </span>
+                <Button
+                  theme="borderless"
+                  size="small"
+                  icon={<Plus size={14} />}
+                  aria-label={t("loop.subIssue.create")}
+                  onClick={() => setChildCreateOpen(true)}
                 />
-                <div className="loop-subissues">
-                  {children.map((c) => (
-                    <div key={c.id} className="loop-subissue">
-                      <Tag color={ISSUE_STATUS_COLOR[c.status]} size="small">
-                        {t(`loop.status.${c.status}`)}
-                      </Tag>
+              </div>
+              <div className="loop-subissues">
+                {children.map((c) => {
+                  const SIcon = ISSUE_STATUS_ICON[c.status];
+                  const PIcon = PRIORITY_ICON[c.priority];
+                  return (
+                    <div key={c.id} className="loop-subissue" onClick={() => openChild(c.id)}>
+                      <SIcon size={14} strokeWidth={2} style={{ color: ISSUE_STATUS_HEX[c.status] }} />
                       <span className="loop-subissue__id">{c.identifier}</span>
                       <span className="loop-subissue__title">{c.title}</span>
+                      <span className="loop-subissue__spacer" />
+                      <PIcon size={14} strokeWidth={2} style={{ color: PRIORITY_HEX[c.priority] }} />
                     </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="loop-idp__section">
-            <div className="loop-detail__section-title loop-idp__desc-title">
-              <span>{t("loop.attach.title")} ({issueAtts.length})</span>
-              <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
-                {uploading ? <Spin size="small" /> : <Paperclip size={13} />}
-                <input
-                  type="file"
-                  multiple
-                  hidden
-                  disabled={uploading}
-                  onChange={(e) => { uploadForIssue(e.target.files); e.target.value = ""; }}
-                />
-              </label>
-            </div>
-            {issueAtts.length ? (
-              renderAttachments(issueAtts)
-            ) : (
-              <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.attach.empty")}</Text>
-            )}
-          </div>
-
-          {activities.length > 0 && (
-            <div className="loop-idp__section">
-              <div className="loop-detail__section-title">
-                {t("loop.activity.title")} ({activities.length})
-              </div>
-              <div className="loop-activities">
-                {activities.map((a) => (
-                  <div key={a.id} className="loop-activity">
-                    <Avatar size="extra-extra-small" color="light-blue" src={a.actor_avatar ?? undefined}>
-                      {(a.actor_name ?? "?").slice(0, 1)}
-                    </Avatar>
-                    <Text style={{ fontSize: 12 }}>
-                      <strong>{a.actor_name ?? a.actor_id}</strong>{" "}
-                      {/* ponytail: 原样展示 action(如 status_changed);细化文案映射留给 UI 重做 */}
-                      <Text type="tertiary">{(a.action ?? "").replace(/_/g, " ")}</Text>
-                    </Text>
-                    <time>{fmt(a.created_at)}</time>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
-          <div className="loop-idp__section">
-            <div className="loop-detail__section-title">
-              {t("loop.detail.comments")} ({comments.length})
-            </div>
-            <div className="loop-comments">
-              {roots.length === 0 && (
-                <Text type="tertiary" style={{ fontSize: 12 }}>
-                  {t("loop.comment.empty")}
-                </Text>
-              )}
-              {roots.map((c) => renderComment(c))}
-            </div>
-            {!replyTo && triggerAgents.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10, alignItems: "center" }}>
-                <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.comment.willWake")}</Text>
-                {triggerAgents.map((a) => {
-                  const off = suppressed.has(a.id);
-                  return (
-                    <Tag
-                      key={a.id}
-                      size="small"
-                      color={off ? "grey" : "light-blue"}
-                      style={{ cursor: "pointer", opacity: off ? 0.55 : 1, textDecoration: off ? "line-through" : "none" }}
-                      onClick={() => toggleSuppress(a.id)}
-                    >
-                      {a.name}
-                    </Tag>
-                  );
-                })}
-                <Text type="tertiary" style={{ fontSize: 11 }}>{t("loop.comment.tapToSuppress")}</Text>
-              </div>
-            )}
-            {!replyTo && pendingFiles.length > 0 && (
-              <div className="loop-atts" style={{ marginTop: 10 }}>
-                {pendingFiles.map((f, i) => (
-                  <span key={i} className="loop-att loop-att--pending">
-                    <Paperclip size={12} />
-                    <span>{f.name}</span>
-                    <button type="button" aria-label={t("loop.action.delete")} onClick={() => removePendingFile(i)}>×</button>
-                  </span>
-                ))}
-              </div>
-            )}
-            <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
-              <Input
-                value={replyTo ? "" : commentDraft}
-                disabled={!!replyTo}
-                onChange={setCommentDraft}
-                placeholder={replyTo ? t("loop.comment.replyingHint") : t("loop.comment.placeholder")}
-                onEnterPress={submitComment}
-              />
-              <Dropdown
-                trigger="click"
-                clickToHide
-                position="topRight"
-                render={
-                  <Dropdown.Menu>
-                    {(["member", "agent", "squad"] as const).map((type) => {
-                      const items = cands.filter((c) => c.type === type);
-                      if (!items.length) return null;
-                      return (
-                        <React.Fragment key={type}>
-                          <Dropdown.Title>{t(`loop.assignee.${type}`)}</Dropdown.Title>
-                          {items.map((c) => (
-                            <Dropdown.Item key={c.id} onClick={() => insertMention(c)}>{c.name}</Dropdown.Item>
-                          ))}
-                        </React.Fragment>
-                      );
-                    })}
-                  </Dropdown.Menu>
-                }
+          {/* 动态：活动 + 评论 合并时间线 */}
+          <div className="loop-idp__section loop-idp__feed-sec">
+            <div className="loop-idp__feed-head">
+              <span className="loop-idp__stitle">{t("loop.activity.title")}</span>
+              <button
+                type="button"
+                className="loop-idp__subbtn"
+                onClick={() => toggleSubscribe(!(selfKnown && amSubscribed))}
               >
-                <Button theme="borderless" icon={<AtSign size={16} />} disabled={!!replyTo} aria-label={t("loop.mention.add")} />
-              </Dropdown>
-              <label className="loop-attach-btn" aria-label={t("loop.attach.add")} style={{ opacity: replyTo ? 0.4 : 1 }}>
-                <Paperclip size={16} />
-                <input
-                  type="file"
-                  multiple
-                  hidden
-                  disabled={!!replyTo || submitting}
-                  onChange={(e) => { addPendingFiles(e.target.files); e.target.value = ""; }}
-                />
-              </label>
-              <Button theme="solid" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!!replyTo}>
-                {t("loop.comment.send")}
-              </Button>
+                {selfKnown && amSubscribed ? <BellOff size={13} /> : <Bell size={13} />}
+                {selfKnown && amSubscribed ? t("loop.subscribe.unsubscribe") : t("loop.subscribe.subscribe")}
+              </button>
+            </div>
+
+            <div className="loop-feed">
+              {feedGroups.length === 0 ? (
+                <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.comment.empty")}</Text>
+              ) : (
+                feedGroups.map((g) =>
+                  g.kind === "comment" ? renderComment(g.comment) : renderActsBlock(g),
+                )
+              )}
+            </div>
+
+            {/* 新建评论：独立区块(分割线 + 多行 textarea),明确区别于上方逐条回复 */}
+            <div className="loop-idp__newcomment">
+              <div className="loop-idp__newcomment-title">{t("loop.comment.newTitle")}</div>
+              <AutoGrowTextarea
+                className="loop-field-textarea loop-field-textarea--auto loop-idp__newcomment-input"
+                value={commentDraft}
+                onChange={setCommentDraft}
+                placeholder={t("loop.comment.placeholder")}
+                onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submitComment(); }}
+              />
+              {triggerAgents.length > 0 && (
+                <div className="loop-idp__wake">
+                  <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.comment.willWake")}</Text>
+                  {triggerAgents.map((a) => {
+                    const off = suppressed.has(a.id);
+                    return (
+                      <Tag
+                        key={a.id}
+                        size="small"
+                        color={off ? "grey" : "light-blue"}
+                        style={{ cursor: "pointer", opacity: off ? 0.55 : 1, textDecoration: off ? "line-through" : "none" }}
+                        onClick={() => toggleSuppress(a.id)}
+                      >
+                        {a.name}
+                      </Tag>
+                    );
+                  })}
+                  <Text type="tertiary" style={{ fontSize: 11 }}>{t("loop.comment.tapToSuppress")}</Text>
+                </div>
+              )}
+              {pendingFiles.length > 0 && (
+                <div className="loop-filechips">
+                  {pendingFiles.map((f, i) => (
+                    <div key={i} className="loop-filechip">
+                      <FileText size={16} className="loop-filechip__icon" />
+                      <span className="loop-filechip__name">{f.name}</span>
+                      <button type="button" className="loop-filechip__act" aria-label={t("loop.action.delete")} onClick={() => removePendingFile(i)}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="loop-idp__newcomment-bar">
+                <Dropdown
+                  trigger="click"
+                  clickToHide
+                  position="topRight"
+                  render={
+                    <Dropdown.Menu>
+                      {(["member", "agent", "squad"] as const).map((type) => {
+                        const items = cands.filter((c) => c.type === type);
+                        if (!items.length) return null;
+                        return (
+                          <React.Fragment key={type}>
+                            <Dropdown.Title>{t(`loop.assignee.${type}`)}</Dropdown.Title>
+                            {items.map((c) => (
+                              <Dropdown.Item key={c.id} onClick={() => insertMention(c)}>{c.name}</Dropdown.Item>
+                            ))}
+                          </React.Fragment>
+                        );
+                      })}
+                    </Dropdown.Menu>
+                  }
+                >
+                  <Button theme="borderless" icon={<AtSign size={16} />} aria-label={t("loop.mention.add")} />
+                </Dropdown>
+                <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
+                  <Paperclip size={16} />
+                  <input
+                    type="file"
+                    multiple
+                    hidden
+                    disabled={submitting}
+                    onChange={(e) => { addPendingFiles(e.target.files); e.target.value = ""; }}
+                  />
+                </label>
+                <span style={{ flex: 1 }} />
+                <Button theme="solid" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!commentDraft.trim() && pendingFiles.length === 0}>
+                  {t("loop.comment.send")}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* 右侧属性栏 */}
+        {/* 右侧属性栏（只读展示,对齐 Figma 29-1593；改属性走右上角 ⋯ 菜单，对标 multica） */}
         <aside className="loop-idp__aside">
-          <div className="loop-idp__aside-card">
-            <div className="loop-detail__section-title">{t("loop.detail.properties")}</div>
-            <dl className="loop-idp__props">
-              <dt>{t("loop.field.status")}</dt>
-              <dd>
-                <Select
-                  value={issue.status}
-                  onChange={(v) => requestStatus(issue, v as IssueStatus, (extra) => patch({ status: v as IssueStatus, ...extra }))}
-                  size="small"
-                  style={{ width: "100%" }}
-                >
-                  {ISSUE_STATUS_ORDER.map((s) => (
-                    <Select.Option key={s} value={s}>
-                      <Tag color={ISSUE_STATUS_COLOR[s]} size="small">
-                        {t(`loop.status.${s}`)}
-                      </Tag>
-                    </Select.Option>
-                  ))}
-                </Select>
-              </dd>
-              <dt>{t("loop.field.priority")}</dt>
-              <dd>
-                <Select
-                  value={issue.priority}
-                  onChange={(v) => patch({ priority: v as IssuePriority })}
-                  size="small"
-                  style={{ width: "100%" }}
-                >
-                  {PRIORITY_ORDER.map((p) => (
-                    <Select.Option key={p} value={p}>
-                      <Tag color={PRIORITY_COLOR[p]} size="small">
-                        {t(`loop.priority.${p}`)}
-                      </Tag>
-                    </Select.Option>
-                  ))}
-                </Select>
-              </dd>
-              <dt>{t("loop.field.assignee")}</dt>
-              <dd>
-                <AssigneePicker
-                  value={issue.assignee_id}
-                  valueName={issue.assignee_name ?? null}
-                  onChange={(id, type, name) => requestAssign(issue, type, id, name, (extra) => patch({ assignee_id: id, assignee_type: type, ...extra }))}
-                />
-              </dd>
-              <dt>{t("loop.field.project")}</dt>
-              <dd>
-                <Text>{issue.project_name ?? "—"}</Text>
-              </dd>
-              <dt>{t("loop.field.labels")}</dt>
-              <dd>
-                <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }} />
-              </dd>
-              <dt>{t("loop.field.parent")}</dt>
-              <dd>
-                <Select
-                  value={issue.parent_issue_id ?? undefined}
-                  onChange={(v) => patch({ parent_issue_id: (v as string) || "" })}
-                  onDropdownVisibleChange={loadParentCands}
-                  placeholder={t("loop.field.noParent")}
-                  size="small"
-                  filter
-                  showClear
-                  style={{ width: "100%" }}
-                >
-                  {parentCands.map((i) => (
-                    <Select.Option key={i.id} value={i.id}>
-                      {i.identifier} {i.title}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </dd>
-              <dt>{t("loop.field.startDate")}</dt>
-              <dd>
-                <DatePicker
-                  type="date"
-                  format="yyyy-MM-dd"
-                  value={issue.start_date ? issue.start_date.slice(0, 10) : undefined}
-                  onChange={(_, ds) => patch({ start_date: (ds as string) || "" })}
-                  size="small"
-                  style={{ width: "100%" }}
-                />
-              </dd>
-              <dt>{t("loop.field.dueDate")}</dt>
-              <dd>
-                <DatePicker
-                  type="date"
-                  format="yyyy-MM-dd"
-                  value={issue.due_date ? issue.due_date.slice(0, 10) : undefined}
-                  onChange={(_, ds) => patch({ due_date: (ds as string) || "" })}
-                  size="small"
-                  style={{ width: "100%" }}
-                />
-              </dd>
-              <dt>{t("loop.field.stage")}</dt>
-              <dd>
-                <InputNumber
-                  value={issue.stage ?? undefined}
-                  // 仅在有效数字时提交:编辑中退格清空会以空值触发 onChange,
-                  // 忽略它可避免误发 stage=null(unstage)+ 竞态。清 stage 待 UI 重做。
-                  onChange={(v) => { if (typeof v === "number") patch({ stage: v }); }}
-                  min={1}
-                  size="small"
-                  style={{ width: "100%" }}
-                />
-              </dd>
-              <dt>{t("loop.field.creator")}</dt>
-              <dd>
-                <Text>{issue.creator_name}</Text>
-              </dd>
-              <dt>{t("loop.detail.created")}</dt>
-              <dd>
-                <Text type="tertiary" style={{ fontSize: 12 }}>{fmt(issue.created_at)}</Text>
-              </dd>
-              <dt>{t("loop.subscribe.label")}</dt>
-              <dd>
-                <Text type="tertiary" style={{ fontSize: 12 }}>{subscribers.length}</Text>
-                {amSubscribed && (
-                  <Text style={{ fontSize: 12, marginLeft: 6, color: "var(--semi-color-primary)" }}>
-                    · {t("loop.subscribe.subscribed")}
-                  </Text>
-                )}
-              </dd>
-            </dl>
-          </div>
-
-          <div className="loop-idp__aside-card">
-            <div className="loop-detail__section-title">
-              {t("loop.run.title")} ({runs.length})
-            </div>
-            {runs.length === 0 ? (
-              <Text type="tertiary" style={{ fontSize: 12 }}>
-                {t("loop.run.empty")}
-              </Text>
-            ) : (
-              <div className="loop-idp__tasks">
-                {runs.map((r) => {
-                  const active = isActiveRun(r.status);
-                  return (
-                    <div key={r.id} className="loop-idp__task">
-                      <button className="loop-idp__run" onClick={() => openRun(r)}>
-                        <span className="loop-idp__task-main">
-                          <strong>{r.agent_name ?? r.agent_id ?? "—"}</strong>
-                          <small>{r.trigger_summary || fmt(r.dispatched_at ?? r.created_at)}</small>
-                        </span>
-                        <Tag size="small" color={RUN_STATUS_COLOR[r.status] ?? "grey"}>
-                          {t(`loop.taskStatus.${r.status}`)}
-                        </Tag>
-                      </button>
-                      <Button
-                        size="small"
-                        theme="borderless"
-                        type={active ? "danger" : "tertiary"}
-                        loading={!active && busyRunId === r.id}
-                        icon={active ? <Square size={13} /> : <RotateCcw size={13} />}
-                        aria-label={t(active ? "loop.run.stop" : "loop.run.rerun")}
-                        onClick={() => (active ? cancelRun(r.id) : rerun(r.id))}
-                      />
-                    </div>
-                  );
-                })}
+          <section className="loop-idp__asec">
+            <button type="button" className="loop-idp__asec-head" onClick={() => toggleSec("props")}>
+              <ChevronRight size={13} className={`loop-idp__asec-chevron${secOpen("props") ? " is-open" : ""}`} />
+              {t("loop.detail.properties")}
+            </button>
+            {secOpen("props") && (
+              <div className="loop-idp__asec-body">
+                {/* 状态：点击值弹 popup 改(对标 multica) */}
+                <div className="loop-idp__prop loop-idp__prop--inline">
+                  <span className="loop-idp__prop-k">{t("loop.field.status")}</span>
+                  <Dropdown
+                    trigger="click"
+                    position="bottomRight"
+                    clickToHide
+                    render={
+                      <Dropdown.Menu>
+                        {ISSUE_STATUS_ORDER.map((s) => (
+                          <Dropdown.Item key={s} active={issue.status === s} onClick={() => requestStatus(issue, s, (extra) => patch({ status: s, ...extra }))}>
+                            <Tag color={ISSUE_STATUS_COLOR[s]} size="small">{t(`loop.status.${s}`)}</Tag>
+                          </Dropdown.Item>
+                        ))}
+                      </Dropdown.Menu>
+                    }
+                  >
+                    <button type="button" className="loop-idp__prop-edit">
+                      <StatusIcon size={14} strokeWidth={2} style={{ color: ISSUE_STATUS_HEX[issue.status] }} />
+                      {t(`loop.status.${issue.status}`)}
+                      <ChevronDown size={12} className="loop-idp__prop-caret" />
+                    </button>
+                  </Dropdown>
+                </div>
+                {/* 优先级 */}
+                <div className="loop-idp__prop loop-idp__prop--inline">
+                  <span className="loop-idp__prop-k">{t("loop.field.priority")}</span>
+                  <Dropdown
+                    trigger="click"
+                    position="bottomRight"
+                    clickToHide
+                    render={
+                      <Dropdown.Menu>
+                        {PRIORITY_ORDER.map((p) => (
+                          <Dropdown.Item key={p} active={issue.priority === p} onClick={() => patch({ priority: p })}>
+                            <Tag color={PRIORITY_COLOR[p]} size="small">{t(`loop.priority.${p}`)}</Tag>
+                          </Dropdown.Item>
+                        ))}
+                      </Dropdown.Menu>
+                    }
+                  >
+                    <button type="button" className="loop-idp__prop-edit">
+                      <PriIcon size={14} strokeWidth={2} style={{ color: PRIORITY_HEX[issue.priority] }} />
+                      {t(`loop.priority.${issue.priority}`)}
+                      <ChevronDown size={12} className="loop-idp__prop-caret" />
+                    </button>
+                  </Dropdown>
+                </div>
+                {/* 负责人：复用 AssigneePicker(自带点击 popup + 三态) */}
+                <div className="loop-idp__prop loop-idp__prop--inline">
+                  <span className="loop-idp__prop-k">{t("loop.field.assignee")}</span>
+                  <AssigneePicker
+                    size="small"
+                    value={issue.assignee_id}
+                    valueName={issue.assignee_name ?? null}
+                    onChange={(id, type, name) => requestAssign(issue, type, id, name, (extra) => patch({ assignee_id: id, assignee_type: type, ...extra }))}
+                  />
+                </div>
+                {/* 项目 */}
+                <div className="loop-idp__prop loop-idp__prop--inline">
+                  <span className="loop-idp__prop-k">{t("loop.field.project")}</span>
+                  <Dropdown
+                    trigger="click"
+                    position="bottomRight"
+                    clickToHide
+                    render={
+                      <Dropdown.Menu>
+                        <Dropdown.Item active={!issue.project_id} onClick={() => patch({ project_id: null })}>
+                          {t("loop.field.noProject")}
+                        </Dropdown.Item>
+                        {projects.length > 0 && <Dropdown.Divider />}
+                        {projects.map((p) => (
+                          <Dropdown.Item key={p.id} active={issue.project_id === p.id} onClick={() => patch({ project_id: p.id })}>
+                            {p.icon} {p.title}
+                          </Dropdown.Item>
+                        ))}
+                      </Dropdown.Menu>
+                    }
+                  >
+                    <button type="button" className="loop-idp__prop-edit loop-idp__prop-edit--text">
+                      {issue.project_name ?? t("loop.field.noProject")}
+                      <ChevronDown size={12} className="loop-idp__prop-caret" />
+                    </button>
+                  </Dropdown>
+                </div>
               </div>
             )}
-          </div>
+          </section>
+
+          <section className="loop-idp__asec">
+            <button type="button" className="loop-idp__asec-head" onClick={() => toggleSec("detail")}>
+              <ChevronRight size={13} className={`loop-idp__asec-chevron${secOpen("detail") ? " is-open" : ""}`} />
+              {t("loop.detail.detailsTitle")}
+            </button>
+            {secOpen("detail") && (
+              <div className="loop-idp__asec-body">
+                <div className="loop-idp__prop loop-idp__prop--inline">
+                  <span className="loop-idp__prop-k">{t("loop.field.creator")}</span>
+                  <span className="loop-idp__prop-person">
+                    <Avatar size="extra-extra-small" color="light-blue" src={issue.creator_avatar ?? undefined}>
+                      {[...(issue.creator_name ?? "?")][0]}
+                    </Avatar>
+                    {issue.creator_name ?? "—"}
+                  </span>
+                </div>
+                <div className="loop-idp__prop loop-idp__prop--inline">
+                  <span className="loop-idp__prop-k">{t("loop.detail.created")}</span>
+                  <span className="loop-idp__prop-v loop-idp__prop-v--muted">{fmt(issue.created_at)}</span>
+                </div>
+                <div className="loop-idp__prop loop-idp__prop--inline">
+                  <span className="loop-idp__prop-k">{t("loop.detail.updated")}</span>
+                  <span className="loop-idp__prop-v loop-idp__prop-v--muted">{fmt(issue.updated_at)}</span>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="loop-idp__asec">
+            <button type="button" className="loop-idp__asec-head" onClick={() => toggleSec("runs")}>
+              <ChevronRight size={13} className={`loop-idp__asec-chevron${secOpen("runs") ? " is-open" : ""}`} />
+              {t("loop.detail.execLog")}
+            </button>
+            {secOpen("runs") && (
+              <div className="loop-idp__asec-body">
+                {runs.length === 0 ? (
+                  <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.run.empty")}</Text>
+                ) : (
+                  <>
+                    {/* 运行中/排队中 —— 重点常显 */}
+                    {activeRuns.length > 0 && (
+                      <div className="loop-idp__tasks">
+                        {activeRuns.map(renderRunRow)}
+                      </div>
+                    )}
+                    {/* 历史(终态) —— 折叠 */}
+                    {pastRuns.length > 0 && (
+                      <>
+                        <button type="button" className="loop-idp__runs-toggle" onClick={() => setShowRuns((s) => !s)}>
+                          <ChevronRight size={13} className={`loop-idp__runs-chevron${showRuns ? " is-open" : ""}`} />
+                          {t("loop.run.showHistory", { values: { count: pastRuns.length } })}
+                        </button>
+                        {showRuns && <div className="loop-idp__tasks">{pastRuns.map(renderRunRow)}</div>}
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </section>
         </aside>
       </div>
 
@@ -1167,6 +1221,72 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           onChanged?.();
         }}
       />
+
+      {/* 编辑属性弹窗：标签 / 父回路 / 开始/截止日期 / 阶段（侧栏保持只读，编辑走 ⋯ → 此弹窗） */}
+      <Modal
+        className="loop-modal"
+        title={t("loop.menu.editProps")}
+        visible={propsOpen}
+        onCancel={() => setPropsOpen(false)}
+        footer={null}
+        width={460}
+      >
+        <div className="loop-fields">
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.labels")}</div>
+            <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }} />
+          </div>
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.parent")}</div>
+            <Select
+              value={issue.parent_issue_id ?? undefined}
+              onChange={(v) => patch({ parent_issue_id: (v as string) || "" })}
+              dropdownClassName="loop-fields__dropdown"
+              placeholder={t("loop.field.noParent")}
+              filter
+              showClear
+              style={{ width: "100%" }}
+            >
+              {parentCands.map((i) => (
+                <Select.Option key={i.id} value={i.id}>{i.identifier} {i.title}</Select.Option>
+              ))}
+            </Select>
+          </div>
+          <div className="loop-fields__row">
+            <div className="loop-fields__inline">
+              <div style={{ flex: 1 }}>
+                <div className="loop-fields__label">{t("loop.field.startDate")}</div>
+                <DatePicker
+                  type="date"
+                  format="yyyy-MM-dd"
+                  value={issue.start_date ? issue.start_date.slice(0, 10) : undefined}
+                  onChange={(_, ds) => patch({ start_date: (ds as string) || "" })}
+                  style={{ width: "100%" }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div className="loop-fields__label">{t("loop.field.dueDate")}</div>
+                <DatePicker
+                  type="date"
+                  format="yyyy-MM-dd"
+                  value={issue.due_date ? issue.due_date.slice(0, 10) : undefined}
+                  onChange={(_, ds) => patch({ due_date: (ds as string) || "" })}
+                  style={{ width: "100%" }}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.stage")}</div>
+            <InputNumber
+              value={issue.stage ?? undefined}
+              onChange={(v) => { if (typeof v === "number") patch({ stage: v }); }}
+              min={1}
+              style={{ width: "100%" }}
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
