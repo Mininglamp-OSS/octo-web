@@ -652,6 +652,8 @@
     "pickAssignee": "选择 AI 队友",
     "dispatch": "派单",
     "dispatched": "已派单",
+    "agentUnavailable": "AI 队友当前不在线，无法派单——请等它上线，或换一个在线的队友。",
+    "daemonUnsupported": "AI 队友的运行环境版本过低，无法安全派单——请先升级它的运行时后重试。",
     "examplesTitle": "从一个例子开始",
     "ex1Title": "打磨演示脚本",
     "ex1Desc": "从建单到回路，把一句话派单全链路走顺。",

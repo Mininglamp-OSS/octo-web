@@ -3,6 +3,7 @@ import type {
   Issue,
   IssueComment,
   CreateIssueReq,
+  QuickCreateReq,
   UpdateIssueReq,
   ListParams,
   GroupedParams,
@@ -89,6 +90,13 @@ export async function listChildren(id: string): Promise<Issue[]> {
 
 export function createIssue(req: CreateIssueReq): Promise<Issue> {
   return httpPost<Issue>("/issues", req);
+}
+
+// 一句话派单(POST /issues/quick-create):异步建单 + 派给 agent/squad,返回 { task_id }。
+// 相比 createIssue,后端建单前查 runtime 在线 + daemon 版本,离线/过旧当场返 422
+// (LoopApiError.code = agent_unavailable / daemon_version_unsupported)供即时反馈。
+export function quickCreateIssue(req: QuickCreateReq): Promise<{ task_id: string }> {
+  return httpPost<{ task_id: string }>("/issues/quick-create", req);
 }
 
 export function updateIssue(id: string, req: UpdateIssueReq): Promise<Issue> {
