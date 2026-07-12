@@ -4,7 +4,8 @@
     "changeStatus": "Change status",
     "changePriority": "Change priority",
     "changeAssignee": "Change assignee",
-    "deleteIssue": "Delete Loop"
+    "deleteIssue": "Delete Loop",
+    "editProps": "Edit properties"
   },
   "nav": {
     "myloop": "My loops",

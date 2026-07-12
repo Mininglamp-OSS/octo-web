@@ -4,7 +4,8 @@
     "changeStatus": "修改状态",
     "changePriority": "修改优先级",
     "changeAssignee": "修改负责人",
-    "deleteIssue": "删除回路"
+    "deleteIssue": "删除回路",
+    "editProps": "编辑属性"
   },
   "nav": {
     "myloop": "我的回路",

@@ -8,6 +8,9 @@ import {
   Spin,
   Toast,
   Dropdown,
+  Modal,
+  DatePicker,
+  InputNumber,
 } from "@douyinfe/semi-ui";
 import {
   ArrowLeft,
@@ -26,6 +29,7 @@ import {
   AtSign,
   Plus,
   ChevronRight,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
@@ -47,6 +51,7 @@ import {
   deleteIssue,
   listComments,
   listChildren,
+  listIssues,
   addComment,
   deleteComment,
   previewCommentTriggers,
@@ -62,6 +67,7 @@ import {
 import { uploadAttachment } from "../api/attachmentApi";
 import { listRuns, rerunIssue, cancelTask } from "../api/runsApi";
 import { AssigneeBadge } from "../ui/AssigneePicker";
+import LabelEditor from "../ui/LabelEditor";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import LoopMarkdown from "../ui/LoopMarkdown";
@@ -179,6 +185,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [subLoaded, setSubLoaded] = useState(false);
   const [children, setChildren] = useState<Issue[]>([]);
   const [childCreateOpen, setChildCreateOpen] = useState(false); // 新建子 issue 弹窗
+  const [propsOpen, setPropsOpen] = useState(false); // 「编辑属性」弹窗(标签/父回路/日期/阶段)
+  const [parentCands, setParentCands] = useState<Issue[]>([]); // 父 issue 选择器候选(懒加载)
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [runs, setRuns] = useState<TaskRun[]>([]);
   const [activeRun, setActiveRun] = useState<TaskRun | null>(null);
@@ -216,6 +224,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     setChildren([]);
     setSubscribers([]);
     setSubLoaded(false);
+    setParentCands([]);
     setTimeline([]);
     Promise.all([getIssue(issueId), listComments(issueId), listRuns(issueId)])
       .then(([i, c, r]) => {
@@ -265,6 +274,15 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const reloadComments = async (token: number) => {
     const c = await listComments(issueId);
     if (token === reqRef.current) setComments(c);
+  };
+
+  // 父 issue 选择器:「编辑属性」弹窗展开时懒加载工作区 issue 作候选(排除自己;环检测由后端兜底)。
+  const loadParentCands = () => {
+    if (parentCands.length) return;
+    const token = reqRef.current;
+    listIssues({ limit: 100 })
+      .then((r) => { if (token === reqRef.current) setParentCands(r.issues.filter((i) => i.id !== issueId)); })
+      .catch(() => {});
   };
 
   // 订阅/取消订阅(后端默认操作调用者本人、幂等)。
@@ -637,6 +655,9 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         <Dropdown.Item onClick={(e) => e.stopPropagation()}>{t("loop.menu.changeAssignee")}</Dropdown.Item>
       </Dropdown>
       <Dropdown.Divider />
+      <Dropdown.Item icon={<SlidersHorizontal size={13} />} onClick={() => { loadParentCands(); setPropsOpen(true); }}>
+        {t("loop.menu.editProps")}
+      </Dropdown.Item>
       <Dropdown.Item icon={<Plus size={13} />} onClick={() => setChildCreateOpen(true)}>
         {t("loop.subIssue.create")}
       </Dropdown.Item>
@@ -1189,6 +1210,72 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           onChanged?.();
         }}
       />
+
+      {/* 编辑属性弹窗：标签 / 父回路 / 开始/截止日期 / 阶段（侧栏保持只读，编辑走 ⋯ → 此弹窗） */}
+      <Modal
+        className="loop-modal"
+        title={t("loop.menu.editProps")}
+        visible={propsOpen}
+        onCancel={() => setPropsOpen(false)}
+        footer={null}
+        width={460}
+      >
+        <div className="loop-fields">
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.labels")}</div>
+            <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }} />
+          </div>
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.parent")}</div>
+            <Select
+              value={issue.parent_issue_id ?? undefined}
+              onChange={(v) => patch({ parent_issue_id: (v as string) || "" })}
+              dropdownClassName="loop-fields__dropdown"
+              placeholder={t("loop.field.noParent")}
+              filter
+              showClear
+              style={{ width: "100%" }}
+            >
+              {parentCands.map((i) => (
+                <Select.Option key={i.id} value={i.id}>{i.identifier} {i.title}</Select.Option>
+              ))}
+            </Select>
+          </div>
+          <div className="loop-fields__row">
+            <div className="loop-fields__inline">
+              <div style={{ flex: 1 }}>
+                <div className="loop-fields__label">{t("loop.field.startDate")}</div>
+                <DatePicker
+                  type="date"
+                  format="yyyy-MM-dd"
+                  value={issue.start_date ? issue.start_date.slice(0, 10) : undefined}
+                  onChange={(_, ds) => patch({ start_date: (ds as string) || "" })}
+                  style={{ width: "100%" }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div className="loop-fields__label">{t("loop.field.dueDate")}</div>
+                <DatePicker
+                  type="date"
+                  format="yyyy-MM-dd"
+                  value={issue.due_date ? issue.due_date.slice(0, 10) : undefined}
+                  onChange={(_, ds) => patch({ due_date: (ds as string) || "" })}
+                  style={{ width: "100%" }}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="loop-fields__row">
+            <div className="loop-fields__label">{t("loop.field.stage")}</div>
+            <InputNumber
+              value={issue.stage ?? undefined}
+              onChange={(v) => { if (typeof v === "number") patch({ stage: v }); }}
+              min={1}
+              style={{ width: "100%" }}
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
