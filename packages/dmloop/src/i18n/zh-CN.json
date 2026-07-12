@@ -317,7 +317,7 @@
   },
   "webhook": {
     "title": "Webhook",
-    "hint": "在 issue 状态变化时触发。每个请求都用 HMAC-SHA256 签名，放在 X-Multica-Signature-256 请求头里。",
+    "hint": "在 issue 状态变化时触发。每个请求都用 HMAC-SHA256 签名，放在 X-Octo-Signature-256 请求头里。",
     "urlPlaceholder": "https://example.com/webhooks/octo",
     "add": "添加",
     "empty": "还没有 webhook。",
@@ -326,7 +326,7 @@
     "deleteConfirm": "删除这个 webhook？",
     "deleteConfirmDesc": "接收地址会立刻停止收到事件。此操作无法撤销。",
     "secretTitle": "复制你的签名密钥",
-    "secretDesc": "这个密钥只显示一次。用它来校验收到的请求里的 X-Multica-Signature-256 请求头。现在就妥善保存。",
+    "secretDesc": "这个密钥只显示一次。用它来校验收到的请求里的 X-Octo-Signature-256 请求头。现在就妥善保存。",
     "done": "完成",
     "copy": "复制",
     "copied": "密钥已复制",

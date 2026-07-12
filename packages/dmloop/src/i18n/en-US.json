@@ -317,7 +317,7 @@
   },
   "webhook": {
     "title": "Webhooks",
-    "hint": "Fires on issue status changes. Each request is signed with HMAC-SHA256 in the X-Multica-Signature-256 header.",
+    "hint": "Fires on issue status changes. Each request is signed with HMAC-SHA256 in the X-Octo-Signature-256 header.",
     "urlPlaceholder": "https://example.com/webhooks/octo",
     "add": "Add",
     "empty": "No webhooks yet.",
@@ -326,7 +326,7 @@
     "deleteConfirm": "Delete this webhook?",
     "deleteConfirmDesc": "The endpoint will stop receiving events immediately. This cannot be undone.",
     "secretTitle": "Copy your signing secret",
-    "secretDesc": "This secret is shown only once. Use it to verify the X-Multica-Signature-256 header on incoming requests. Store it somewhere safe now.",
+    "secretDesc": "This secret is shown only once. Use it to verify the X-Octo-Signature-256 header on incoming requests. Store it somewhere safe now.",
     "done": "Done",
     "copy": "Copy",
     "copied": "Secret copied",
