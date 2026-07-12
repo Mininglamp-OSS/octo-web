@@ -168,6 +168,7 @@ function RunConfirmModal({ pending, onClose }: { pending: RunConfirmRequest | nu
 
   return (
     <Modal
+      className="loop-modal"
       title={t("loop.run.confirmTitle")}
       visible={!!pending}
       onCancel={onClose}

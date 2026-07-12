@@ -180,7 +180,7 @@ export default function ProjectPage() {
             </div>
           ) : view === "card" ? renderCards() : renderList()}
       </div>
-      <Modal title={t("loop.action.newProject")} visible={createOpen} onOk={doCreate} onCancel={() => setCreateOpen(false)} okText={t("loop.action.create")} cancelText={t("loop.action.cancel")}>
+      <Modal className="loop-modal" title={t("loop.action.newProject")} visible={createOpen} onOk={doCreate} onCancel={() => setCreateOpen(false)} okText={t("loop.action.create")} cancelText={t("loop.action.cancel")}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div><div className="loop-detail__section-title">{t("loop.field.name")}</div><Input autoFocus value={nTitle} onChange={setNTitle} /></div>
           <div>

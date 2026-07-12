@@ -7,13 +7,61 @@
     "deleteIssue": "删除回路"
   },
   "nav": {
+    "myloop": "我的回路",
+    "workspaceGroup": "工作区",
     "issue": "回路",
     "skill": "技能",
     "project": "项目",
+    "automation": "自动化",
     "agent": "AI队友",
     "squad": "AI小队",
     "runtime": "运行时",
     "settings": "设置"
+  },
+  "automation": {
+    "newTitle": "新建自动化",
+    "editTitle": "编辑自动化",
+    "create": "创建自动化",
+    "namePlaceholder": "例如 每日晨报",
+    "executor": "执行方",
+    "executorRequired": "请选择执行方",
+    "sendTo": "发送到",
+    "sendToPlaceholder": "选择项目（可选）",
+    "trigger": "触发时间",
+    "nextRun": "下次运行",
+    "dayUnit": "日",
+    "taskDesc": "任务说明",
+    "taskDescHint": "触发时交给执行方的指令，AI 队友会在运行时读取。写得越像给他人的交代，效果越好。",
+    "taskDescTemplate": "# 目标\n你希望 AI 队友完成什么？\n\n# 步骤\n1. \n\n创建后立即启用，按设定的节奏运行，直至停用。",
+    "paused": "已停用",
+    "runNow": "手动运行",
+    "runStarted": "已触发运行",
+    "runFailed": "触发失败",
+    "triggerFailed": "自动化已创建，但排程设置失败，请在编辑里重试",
+    "confirmDelete": "删除这个自动化？",
+    "emptyTitle": "暂无自动化",
+    "emptyDesc": "创建一个自动化，让 AI 队友按节奏自动运行",
+    "freq": {
+      "once": "单次",
+      "daily": "每天",
+      "weekly": "每周",
+      "monthly": "每月"
+    },
+    "weekdays": {
+      "0": "周日",
+      "1": "周一",
+      "2": "周二",
+      "3": "周三",
+      "4": "周四",
+      "5": "周五",
+      "6": "周六"
+    },
+    "summary": {
+      "once": "单次 {{date}} {{time}}",
+      "daily": "每天 {{time}}",
+      "weekly": "每{{day}} {{time}}",
+      "monthly": "每月 {{day}} 日 {{time}}"
+    }
   },
   "runtime": {
     "online": "在线",
@@ -240,6 +288,7 @@
     "editFailed": "编辑失败",
     "deleteFailed": "删除失败",
     "saveFailed": "保存失败",
+    "loadFailed": "加载失败",
     "commentAttachFailed": "评论已发送，但 {{count}} 个附件上传失败，已放回输入框请重试",
     "attachFailed": "{{count}} 个附件上传失败"
   },

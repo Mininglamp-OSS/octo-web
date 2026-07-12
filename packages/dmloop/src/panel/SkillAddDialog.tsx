@@ -66,6 +66,7 @@ export default function SkillAddDialog({
 
   return (
     <Modal
+      className="loop-modal"
       title={t("loop.agent.addSkillTitle")}
       visible={visible}
       onCancel={onClose}

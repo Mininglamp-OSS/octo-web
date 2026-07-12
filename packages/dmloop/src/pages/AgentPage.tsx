@@ -157,7 +157,7 @@ export default function AgentPage() {
           )}
       </div>
 
-      <Modal title={t("loop.action.newAgent")} visible={createOpen} onOk={doCreate} onCancel={() => setCreateOpen(false)} okText={t("loop.action.create")} cancelText={t("loop.action.cancel")}>
+      <Modal className="loop-modal" title={t("loop.action.newAgent")} visible={createOpen} onOk={doCreate} onCancel={() => setCreateOpen(false)} okText={t("loop.action.create")} cancelText={t("loop.action.cancel")}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div><div className="loop-detail__section-title">{t("loop.field.name")}</div><Input autoFocus value={nName} onChange={setNName} /></div>
           <div><div className="loop-detail__section-title">{t("loop.field.description")}</div><TextArea value={nDesc} onChange={setNDesc} autosize={{ minRows: 2, maxRows: 4 }} /></div>

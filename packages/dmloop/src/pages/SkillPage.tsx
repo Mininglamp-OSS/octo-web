@@ -272,6 +272,7 @@ export default function SkillPage() {
       </div>
 
       <Modal
+        className="loop-modal"
         visible={createOpen}
         onCancel={() => setCreateOpen(false)}
         footer={null}

@@ -299,11 +299,11 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
         )}
       </div>
 
-      <Modal title={t("loop.squad.descPlaceholder")} visible={descOpen} onOk={saveDesc} onCancel={() => setDescOpen(false)} okText={t("loop.action.save")} cancelText={t("loop.action.cancel")}>
+      <Modal className="loop-modal" title={t("loop.squad.descPlaceholder")} visible={descOpen} onOk={saveDesc} onCancel={() => setDescOpen(false)} okText={t("loop.action.save")} cancelText={t("loop.action.cancel")}>
         <TextArea autoFocus value={descDraft} onChange={setDescDraft} autosize={{ minRows: 4, maxRows: 10 }} placeholder={t("loop.squad.descPlaceholder")} />
       </Modal>
 
-      <Modal title={t("loop.squad.addMember")} visible={addOpen} onOk={addMember} onCancel={() => setAddOpen(false)}
+      <Modal className="loop-modal" title={t("loop.squad.addMember")} visible={addOpen} onOk={addMember} onCancel={() => setAddOpen(false)}
         okText={t("loop.squad.add")} cancelText={t("loop.action.cancel")} confirmLoading={busy}
         okButtonProps={{ disabled: !addPick }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

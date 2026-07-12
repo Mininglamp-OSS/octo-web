@@ -8,8 +8,6 @@ import {
   Select,
   Pagination,
   DatePicker,
-  RadioGroup,
-  Radio,
   Checkbox,
 } from "@douyinfe/semi-ui";
 import { Search, Plus, LayoutGrid, List as ListIcon, Users, ClipboardList, ArrowUp, ArrowDown } from "lucide-react";
@@ -68,15 +66,21 @@ interface Filters {
 
 const PAGE_SIZE = 50;
 
-export default function IssuePage() {
+// 「我的回路」复用本页：defaultView="grouped" + defaultScope="involves" 即只看与我相关。
+interface IssuePageProps {
+  defaultScope?: IssueScope;
+  defaultView?: ViewMode;
+}
+
+export default function IssuePage({ defaultScope, defaultView }: IssuePageProps = {}) {
   const { t } = useI18n();
   const [issues, setIssues] = useState<Issue[]>([]);
   const [groups, setGroups] = useState<IssueGroup[]>([]);
   const [running, setRunning] = useState<ReadonlySet<string>>(new Set());
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<ViewMode>("board");
-  const [scope, setScope] = useState<IssueScope>("all");
+  const [view, setView] = useState<ViewMode>(defaultView ?? "board");
+  const [scope, setScope] = useState<IssueScope>(defaultScope ?? "all");
   const [f, setF] = useState<Filters>({ keyword: "", gStatuses: [], gPriorities: [], gProjectIds: [], noProject: false, sortBy: "position", sortDir: "desc", dateField: "created_at" });
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
   const [createOpen, setCreateOpen] = useState(false);
@@ -231,18 +235,25 @@ export default function IssuePage() {
           </button>
         </div>
         {view === "grouped" && (
-          <RadioGroup
-            type="button"
-            buttonSize="small"
-            value={scope}
-            onChange={(e) => setScope(e.target.value as IssueScope)}
-          >
-            <Radio value="all">{t("loop.scope.all")}</Radio>
-            <Radio value="members">{t("loop.scope.members")}</Radio>
-            <Radio value="agents">{t("loop.scope.agents")}</Radio>
-            {/* 「与我相关」需当前成员的后端 id;未解析出则禁用(而非静默失效)。 */}
-            <Radio value="involves" disabled={!myMemberId}>{t("loop.scope.involves")}</Radio>
-          </RadioGroup>
+          <div className="loop-seg" role="tablist">
+            {(["all", "members", "agents", "involves"] as IssueScope[]).map((s) => {
+              // 「与我相关」需当前成员的后端 id；未解析出则禁用（而非静默失效）。
+              const disabled = s === "involves" && !myMemberId;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  role="tab"
+                  aria-selected={scope === s}
+                  disabled={disabled}
+                  className={`loop-seg__btn${scope === s ? " is-active" : ""}`}
+                  onClick={() => setScope(s)}
+                >
+                  {t(`loop.scope.${s}`)}
+                </button>
+              );
+            })}
+          </div>
         )}
         <div className="loop-page__spacer" />
         {view === "grouped" ? (

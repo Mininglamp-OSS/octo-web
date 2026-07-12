@@ -88,6 +88,7 @@ export default function RunDetailModal({
 
   return (
     <Modal
+      className="loop-modal"
       title={t("loop.run.detailTitle")}
       visible={visible}
       onCancel={onClose}

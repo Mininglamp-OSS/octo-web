@@ -284,7 +284,7 @@ export default function SquadPage() {
           )}
       </div>
 
-      <Modal title={t("loop.action.newSquad")} visible={createOpen} onOk={doCreate} onCancel={() => setCreateOpen(false)}
+      <Modal className="loop-modal" title={t("loop.action.newSquad")} visible={createOpen} onOk={doCreate} onCancel={() => setCreateOpen(false)}
         okText={t("loop.action.create")} cancelText={t("loop.action.cancel")} confirmLoading={creating}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.squad.createDesc")}</Text>

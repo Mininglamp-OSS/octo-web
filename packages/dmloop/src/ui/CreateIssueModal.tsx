@@ -68,6 +68,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
 
   return (
     <Modal
+      className="loop-modal"
       title={parentIssueId ? t("loop.subIssue.create") : t("loop.action.newIssue")}
       visible={visible}
       onOk={submit}

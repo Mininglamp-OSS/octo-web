@@ -7,13 +7,61 @@
     "deleteIssue": "Delete Loop"
   },
   "nav": {
+    "myloop": "My loops",
+    "workspaceGroup": "Workspace",
     "issue": "Loop",
     "skill": "Skill",
     "project": "Project",
+    "automation": "Automation",
     "agent": "AI teammate",
     "squad": "AI squad",
     "runtime": "Runtimes",
     "settings": "Settings"
+  },
+  "automation": {
+    "newTitle": "New automation",
+    "editTitle": "Edit automation",
+    "create": "Create automation",
+    "namePlaceholder": "e.g. Daily digest",
+    "executor": "Executor",
+    "executorRequired": "Please select an executor",
+    "sendTo": "Send to",
+    "sendToPlaceholder": "Select a project (optional)",
+    "trigger": "Trigger",
+    "nextRun": "Next run",
+    "dayUnit": "",
+    "taskDesc": "Task instructions",
+    "taskDescHint": "Instructions handed to the executor on trigger; the AI teammate reads them at run time. The more it reads like a clear brief, the better.",
+    "taskDescTemplate": "# Goal\nWhat do you want the AI teammate to accomplish?\n\n# Steps\n1. \n\nEnabled on creation; runs on the set cadence until paused.",
+    "paused": "Paused",
+    "runNow": "Run now",
+    "runStarted": "Run triggered",
+    "runFailed": "Failed to trigger",
+    "triggerFailed": "Automation created, but scheduling failed — retry from Edit",
+    "confirmDelete": "Delete this automation?",
+    "emptyTitle": "No automations yet",
+    "emptyDesc": "Create an automation to let AI teammates run on a cadence",
+    "freq": {
+      "once": "Once",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly"
+    },
+    "weekdays": {
+      "0": "Sun",
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat"
+    },
+    "summary": {
+      "once": "Once {{date}} {{time}}",
+      "daily": "Daily {{time}}",
+      "weekly": "Every {{day}} {{time}}",
+      "monthly": "Monthly on day {{day}} {{time}}"
+    }
   },
   "runtime": {
     "online": "Online",
@@ -240,6 +288,7 @@
     "editFailed": "Edit failed",
     "deleteFailed": "Delete failed",
     "saveFailed": "Save failed",
+    "loadFailed": "Load failed",
     "commentAttachFailed": "Comment posted, but {{count}} attachment(s) failed to upload — re-added to the box, please retry",
     "attachFailed": "{{count}} attachment(s) failed to upload"
   },
