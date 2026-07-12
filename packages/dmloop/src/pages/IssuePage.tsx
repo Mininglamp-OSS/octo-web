@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Typography,
   Input,
   Button,
   Spin,
@@ -9,8 +8,9 @@ import {
   Pagination,
   DatePicker,
   Checkbox,
+  Dropdown,
 } from "@douyinfe/semi-ui";
-import { Search, Plus, LayoutGrid, List as ListIcon, Users, ClipboardList, ArrowUp, ArrowDown } from "lucide-react";
+import { Search, Plus, LayoutGrid, List as ListIcon, Users, ClipboardList, ArrowUp, ArrowDown, SlidersHorizontal, Filter } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
   Issue,
@@ -30,9 +30,7 @@ import IssueBoard from "../panel/IssueBoard";
 import IssueGroupBoard from "../panel/IssueGroupBoard";
 import IssueList from "../panel/IssueList";
 import IssueDetailPage from "../panel/IssueDetailPage";
-import CreateIssueModal from "../ui/CreateIssueModal";
-
-const { Title } = Typography;
+import NewLoopPage from "./NewLoopPage";
 
 type ViewMode = "board" | "grouped" | "list";
 
@@ -83,7 +81,6 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
   const [scope, setScope] = useState<IssueScope>(defaultScope ?? "all");
   const [f, setF] = useState<Filters>({ keyword: "", gStatuses: [], gPriorities: [], gProjectIds: [], noProject: false, sortBy: "position", sortDir: "desc", dateField: "created_at" });
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
-  const [createOpen, setCreateOpen] = useState(false);
   const cands = useAssigneeCandidates();
   // 当前 octo 成员的后端 user_id(involves_user_id 需 UUID,非 octo uid)：
   // 复用订阅特性的身份解析——候选里 octo_uid===loginInfo.uid 的 member。未解析出则「与我相关」不可用。
@@ -203,6 +200,15 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
     WKApp.routeRight.push(<IssueDetailPage key={id} issueId={id} onChanged={onMutated} />);
   };
 
+  // 新建回路 → 唤起独立 composer 页（非弹窗，对齐 Figma）。创建成功后返回并刷新列表。
+  const openNewLoop = () => {
+    WKApp.routeRight.push(
+      <NewLoopPage
+        onCreated={() => { Toast.success(t("loop.toast.created")); onMutated(); }}
+      />,
+    );
+  };
+
   const isEmpty = view === "grouped" ? groups.every((g) => g.issues.length === 0) : total === 0;
 
   // 状态/优先级/项目的选项列表:单选与多选两个分支共用(避免重复 map)。
@@ -216,226 +222,175 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
     <Select.Option key={p.id} value={p.id}>{p.title}</Select.Option>
   ));
 
+  const title = defaultScope === "involves" ? t("loop.nav.myloop") : t("loop.nav.issue");
+
+  // 「筛选」按钮上的激活计数(仅计当前视图会生效的维度)。
+  const activeFilters =
+    (view === "grouped"
+      ? f.gStatuses.length + f.gPriorities.length + f.gProjectIds.length + (f.noProject ? 1 : 0)
+      : (f.status ? 1 : 0) + (f.priority ? 1 : 0) + (f.assignee ? 1 : 0) + (f.project ? 1 : 0) + (f.keyword.trim() ? 1 : 0)) +
+    (f.creator ? 1 : 0) +
+    (f.dateRange ? 1 : 0);
+
+  const clearFilters = () =>
+    update({
+      keyword: "", status: undefined, priority: undefined, assignee: undefined, creator: undefined, project: undefined,
+      gStatuses: [], gPriorities: [], gProjectIds: [], noProject: false, dateRange: undefined,
+    });
+
+  // 「筛选」面板：把原工具栏散落的下拉收进一个面板（对齐 multica 的筛选框）。维度按视图切换单选/多选。
+  const filterPanel = (
+    <div className="loop-fields loop-filter-panel">
+      <div className="loop-filter-panel__head">
+        <span>{t("loop.action.filter")}</span>
+        {activeFilters > 0 && (
+          <button type="button" className="loop-filter-panel__clear" onClick={clearFilters}>{t("loop.action.clearFilters")}</button>
+        )}
+      </div>
+      <div className="loop-fields__row">
+        <div className="loop-fields__label">{t("loop.filter.status")}</div>
+        {view === "grouped" ? (
+          <Select multiple value={f.gStatuses} onChange={(v) => update({ gStatuses: (v ?? []) as IssueStatus[] })} showClear maxTagCount={2} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.status")}>{statusOpts}</Select>
+        ) : (
+          <Select value={f.status} onChange={(v) => update({ status: v as IssueStatus | undefined })} showClear dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.status")}>{statusOpts}</Select>
+        )}
+      </div>
+      <div className="loop-fields__row">
+        <div className="loop-fields__label">{t("loop.filter.priority")}</div>
+        {view === "grouped" ? (
+          <Select multiple value={f.gPriorities} onChange={(v) => update({ gPriorities: (v ?? []) as IssuePriority[] })} showClear maxTagCount={2} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.priority")}>{priorityOpts}</Select>
+        ) : (
+          <Select value={f.priority} onChange={(v) => update({ priority: v as IssuePriority | undefined })} showClear dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.priority")}>{priorityOpts}</Select>
+        )}
+      </div>
+      {/* assignee 单选仅扁平列表/看板(grouped 用 scope 按类型收窄)。 */}
+      {view !== "grouped" && (
+        <div className="loop-fields__row">
+          <div className="loop-fields__label">{t("loop.filter.assignee")}</div>
+          <Select value={f.assignee} onChange={(v) => update({ assignee: v as string | undefined })} showClear filter dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.assignee")}>
+            {cands.map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>))}
+          </Select>
+        </div>
+      )}
+      {/* 「与我相关」自带 creator=我 并集腿,creator 下拉对它无效 → 隐藏。 */}
+      {!(view === "grouped" && scope === "involves") && (
+        <div className="loop-fields__row">
+          <div className="loop-fields__label">{t("loop.filter.creator")}</div>
+          <Select value={f.creator} onChange={(v) => update({ creator: v as string | undefined })} showClear filter dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.creator")}>
+            {cands.filter((c) => c.type === "member").map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>))}
+          </Select>
+        </div>
+      )}
+      {projects.length > 0 && (
+        <div className="loop-fields__row">
+          <div className="loop-fields__label">{t("loop.filter.project")}</div>
+          {view === "grouped" ? (
+            <Select multiple value={f.gProjectIds} onChange={(v) => update({ gProjectIds: (v ?? []) as string[] })} showClear filter maxTagCount={1} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.project")}>{projectOpts}</Select>
+          ) : (
+            <Select value={f.project} onChange={(v) => update({ project: v as string | undefined })} showClear filter dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} placeholder={t("loop.filter.project")}>{projectOpts}</Select>
+          )}
+        </div>
+      )}
+      {/* no-project:仅分组板(后端 include_no_project 仅 /grouped 支持)。 */}
+      {view === "grouped" && (
+        <div className="loop-fields__row">
+          <Checkbox className="loop-nofilter" checked={f.noProject} onChange={(e) => update({ noProject: !!e.target.checked })}>{t("loop.filter.noProject")}</Checkbox>
+        </div>
+      )}
+      <div className="loop-fields__row">
+        <div className="loop-fields__label">{t("loop.filter.dateRange")}</div>
+        <div className="loop-fields__inline">
+          <Select value={f.dateField} onChange={(v) => update({ dateField: v as IssueDateField })} dropdownClassName="loop-fields__dropdown" style={{ width: 104 }}>
+            {ISSUE_DATE_FIELDS.map((d) => (<Select.Option key={d} value={d}>{t(`loop.dateField.${d}`)}</Select.Option>))}
+          </Select>
+          <DatePicker type="dateRange" density="compact" value={f.dateRange} onChange={(d) => update({ dateRange: Array.isArray(d) && d.length === 2 && d[0] && d[1] ? (d as Date[]) : undefined })} placeholder={t("loop.filter.dateRange")} style={{ flex: 1 }} />
+        </div>
+      </div>
+      {/* 关键词走全文搜索(独立语义,不与 grouped 组合),故分组视图隐藏。 */}
+      {view !== "grouped" && (
+        <div className="loop-fields__row">
+          <div className="loop-fields__label">{t("loop.search.issue")}</div>
+          <Input className="loop-search" prefix={<Search size={14} />} placeholder={t("loop.search.issue")} value={f.keyword} onChange={(v) => update({ keyword: v })} showClear style={{ width: "100%" }} />
+        </div>
+      )}
+    </div>
+  );
+
+  // 「显示」面板：视图切换 + 列表排序。
+  const showPanel = (
+    <div className="loop-fields loop-show-panel">
+      <div className="loop-filter-panel__head"><span>{t("loop.action.show")}</span></div>
+      <div className="loop-fields__row">
+        <div className="loop-fields__label">{t("loop.view.board")}</div>
+        <div className="loop-seg" role="tablist">
+          {(["board", "grouped", "list"] as ViewMode[]).map((v) => (
+            <button key={v} type="button" role="tab" aria-selected={view === v} className={`loop-seg__btn${view === v ? " is-active" : ""}`} onClick={() => switchView(v)}>
+              {v === "board" ? <LayoutGrid size={14} /> : v === "grouped" ? <Users size={14} /> : <ListIcon size={14} />}
+              {t(`loop.view.${v}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+      {view === "list" && (
+        <div className="loop-fields__row">
+          <div className="loop-fields__label">{t("loop.sort.direction")}</div>
+          <div className="loop-fields__inline">
+            <Select value={f.sortBy} onChange={(v) => update({ sortBy: v as IssueSortField })} dropdownClassName="loop-fields__dropdown" style={{ flex: 1 }}>
+              {ISSUE_SORT_FIELDS.map((s) => (<Select.Option key={s} value={s}>{t(`loop.sort.${s}`)}</Select.Option>))}
+            </Select>
+            <Button theme="borderless" disabled={f.sortBy === "position"} icon={f.sortDir === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14} />} aria-label={t("loop.sort.direction")} onClick={() => update({ sortDir: f.sortDir === "asc" ? "desc" : "asc" })} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="loop-page">
-      <div className="loop-page__head">
-        <Title heading={4}>{t("loop.nav.issue")}</Title>
-        <div className="loop-viewtoggle">
-          <button className={view === "board" ? "is-active" : ""} onClick={() => switchView("board")}>
-            <LayoutGrid size={14} />
-            {t("loop.view.board")}
-          </button>
-          <button className={view === "grouped" ? "is-active" : ""} onClick={() => switchView("grouped")}>
-            <Users size={14} />
-            {t("loop.view.grouped")}
-          </button>
-          <button className={view === "list" ? "is-active" : ""} onClick={() => switchView("list")}>
-            <ListIcon size={14} />
-            {t("loop.view.list")}
-          </button>
+      <div className="loop-page__head loop-page__head--stack">
+        <div className="loop-page__title-row">
+          <h2 className="loop-page__title">{title}</h2>
         </div>
-        {view === "grouped" && (
-          <div className="loop-seg" role="tablist">
-            {(["all", "members", "agents", "involves"] as IssueScope[]).map((s) => {
-              // 「与我相关」需当前成员的后端 id；未解析出则禁用（而非静默失效）。
-              const disabled = s === "involves" && !myMemberId;
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  role="tab"
-                  aria-selected={scope === s}
-                  disabled={disabled}
-                  className={`loop-seg__btn${scope === s ? " is-active" : ""}`}
-                  onClick={() => setScope(s)}
-                >
-                  {t(`loop.scope.${s}`)}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <div className="loop-page__spacer" />
-        {view === "grouped" ? (
-          <Select
-            placeholder={t("loop.filter.status")}
-            multiple
-            value={f.gStatuses}
-            onChange={(v) => update({ gStatuses: (v ?? []) as IssueStatus[] })}
-            showClear
-            maxTagCount={2}
-            size="small"
-            style={{ minWidth: 150, maxWidth: 260 }}
-          >
-            {statusOpts}
-          </Select>
-        ) : (
-          <Select
-            placeholder={t("loop.filter.status")}
-            value={f.status}
-            onChange={(v) => update({ status: v as IssueStatus | undefined })}
-            showClear
-            size="small"
-            style={{ width: 130 }}
-          >
-            {statusOpts}
-          </Select>
-        )}
-        {view === "grouped" ? (
-          <Select
-            placeholder={t("loop.filter.priority")}
-            multiple
-            value={f.gPriorities}
-            onChange={(v) => update({ gPriorities: (v ?? []) as IssuePriority[] })}
-            showClear
-            maxTagCount={2}
-            size="small"
-            style={{ minWidth: 140, maxWidth: 240 }}
-          >
-            {priorityOpts}
-          </Select>
-        ) : (
-          <Select
-            placeholder={t("loop.filter.priority")}
-            value={f.priority}
-            onChange={(v) => update({ priority: v as IssuePriority | undefined })}
-            showClear
-            size="small"
-            style={{ width: 120 }}
-          >
-            {priorityOpts}
-          </Select>
-        )}
-        {/* assignee 单选筛选仅扁平列表/看板用(grouped 用 scope pill 按类型收窄)。 */}
-        {view !== "grouped" && (
-          <Select
-            placeholder={t("loop.filter.assignee")}
-            value={f.assignee}
-            onChange={(v) => update({ assignee: v as string | undefined })}
-            showClear
-            filter
-            size="small"
-            style={{ width: 150 }}
-          >
-            {cands.map((c) => (
-              <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
-            ))}
-          </Select>
-        )}
-        {/* 「与我相关」自带 creator=我 的并集腿,creator 下拉对它无效 → 隐藏,避免设了不生效。 */}
-        {!(view === "grouped" && scope === "involves") && (
-          <Select
-            placeholder={t("loop.filter.creator")}
-            value={f.creator}
-            onChange={(v) => update({ creator: v as string | undefined })}
-            showClear
-            filter
-            size="small"
-            style={{ width: 130 }}
-          >
-            {cands.filter((c) => c.type === "member").map((c) => (
-              <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>
-            ))}
-          </Select>
-        )}
-        {projects.length > 0 && (view === "grouped" ? (
-          <Select
-            placeholder={t("loop.filter.project")}
-            multiple
-            value={f.gProjectIds}
-            onChange={(v) => update({ gProjectIds: (v ?? []) as string[] })}
-            showClear
-            filter
-            maxTagCount={1}
-            size="small"
-            style={{ minWidth: 150, maxWidth: 240 }}
-          >
-            {projectOpts}
-          </Select>
-        ) : (
-          <Select
-            placeholder={t("loop.filter.project")}
-            value={f.project}
-            onChange={(v) => update({ project: v as string | undefined })}
-            showClear
-            filter
-            size="small"
-            style={{ width: 140 }}
-          >
-            {projectOpts}
-          </Select>
-        ))}
-        {/* no-project:仅分组板(后端 include_no_project 仅 /grouped 支持),与项目多选配对
-            = 所选项目 ∪ 无项目。project 维度独立于 assignee,与 scope/involves 都能正确 AND。 */}
-        {view === "grouped" && (
-          <Checkbox
-            className="loop-nofilter"
-            checked={f.noProject}
-            onChange={(e) => update({ noProject: !!e.target.checked })}
-          >
-            {t("loop.filter.noProject")}
-          </Checkbox>
-        )}
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          {f.dateRange && (
-            <Select
-              value={f.dateField}
-              onChange={(v) => update({ dateField: v as IssueDateField })}
-              size="small"
-              style={{ width: 104 }}
-            >
-              {ISSUE_DATE_FIELDS.map((d) => (
-                <Select.Option key={d} value={d}>{t(`loop.dateField.${d}`)}</Select.Option>
-              ))}
-            </Select>
+        <div className="loop-page__toolbar">
+          {/* 作用域文字 tab —— grouped 视图按负责人类型收窄(all/成员/AI/与我相关)。 */}
+          {view === "grouped" && (
+            <div className="loop-agent-scope" role="tablist">
+              {(["all", "members", "agents", "involves"] as IssueScope[]).map((s) => {
+                const disabled = s === "involves" && !myMemberId;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    role="tab"
+                    aria-selected={scope === s}
+                    disabled={disabled}
+                    className={`loop-agent-scope__btn${scope === s ? " is-active" : ""}`}
+                    onClick={() => setScope(s)}
+                  >
+                    {t(`loop.scope.${s}`)}
+                  </button>
+                );
+              })}
+            </div>
           )}
-          <DatePicker
-            type="dateRange"
-            size="small"
-            density="compact"
-            value={f.dateRange}
-            onChange={(d) => update({ dateRange: Array.isArray(d) && d.length === 2 && d[0] && d[1] ? (d as Date[]) : undefined })}
-            placeholder={t("loop.filter.dateRange")}
-            style={{ width: 220 }}
-          />
+          <div className="loop-page__spacer" />
+          <Dropdown trigger="click" position="bottomRight" clickToHide render={filterPanel}>
+            <button className={`loop-toolbtn${activeFilters > 0 ? " is-on" : ""}`}>
+              <Filter size={14} />
+              {t("loop.action.filter")}
+              {activeFilters > 0 && <span className="loop-toolbtn__badge">{activeFilters}</span>}
+            </button>
+          </Dropdown>
+          <Dropdown trigger="click" position="bottomRight" clickToHide render={showPanel}>
+            <button className="loop-toolbtn">
+              <SlidersHorizontal size={14} />
+              {t("loop.action.show")}
+            </button>
+          </Dropdown>
+          <Button theme="solid" icon={<Plus size={14} />} onClick={openNewLoop}>
+            {t("loop.action.newIssue")}
+          </Button>
         </div>
-        {view === "list" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Select
-            value={f.sortBy}
-            onChange={(v) => update({ sortBy: v as IssueSortField })}
-            size="small"
-            style={{ width: 120 }}
-          >
-            {ISSUE_SORT_FIELDS.map((s) => (
-              <Select.Option key={s} value={s}>{t(`loop.sort.${s}`)}</Select.Option>
-            ))}
-          </Select>
-          <Button
-            size="small"
-            theme="borderless"
-            // position(手动序)后端忽略方向,禁用切换。
-            disabled={f.sortBy === "position"}
-            icon={f.sortDir === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
-            aria-label={t("loop.sort.direction")}
-            onClick={() => update({ sortDir: f.sortDir === "asc" ? "desc" : "asc" })}
-          />
-        </div>
-        )}
-        {/* 关键词走全文搜索(独立语义,不与 grouped 组合),故分组视图隐藏。 */}
-        {view !== "grouped" && (
-          <Input
-            prefix={<Search size={14} />}
-            placeholder={t("loop.search.issue")}
-            value={f.keyword}
-            onChange={(v) => update({ keyword: v })}
-            showClear
-            style={{ width: 200 }}
-          />
-        )}
-        <Button theme="solid" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>
-          {t("loop.action.newIssue")}
-        </Button>
       </div>
 
       <div className="loop-page__body">
@@ -448,7 +403,7 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
             <ClipboardList size={40} className="loop-empty__icon" />
             <div className="loop-empty__title">{t("loop.empty.issueTitle")}</div>
             <div className="loop-empty__desc">{t("loop.empty.issueDesc")}</div>
-            <Button theme="solid" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)} style={{ marginTop: 12 }}>
+            <Button theme="solid" icon={<Plus size={14} />} onClick={openNewLoop} style={{ marginTop: 12 }}>
               {t("loop.action.newIssue")}
             </Button>
           </div>
@@ -472,12 +427,6 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
           </>
         )}
       </div>
-
-      <CreateIssueModal
-        visible={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={() => { Toast.success(t("loop.toast.created")); onMutated(); }}
-      />
     </div>
   );
 }

@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Table, Select, Tag, Typography, Button, Toast } from "@douyinfe/semi-ui";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Select, Button, Toast } from "@douyinfe/semi-ui";
 import { Trash2, X } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { Issue, IssueStatus, IssuePriority } from "../api/types";
-import { updateIssue, batchUpdateIssues, batchDeleteIssues } from "../api/issueApi";
+import { batchUpdateIssues, batchDeleteIssues, updateIssue } from "../api/issueApi";
 import AssigneePicker from "../ui/AssigneePicker";
 import LabelChips from "../ui/LabelChips";
 import RunningChip from "../ui/RunningChip";
@@ -11,12 +11,13 @@ import { confirmDelete } from "../ui/confirmDelete";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import {
   ISSUE_STATUS_ORDER,
-  ISSUE_STATUS_COLOR,
+  ISSUE_STATUS_ICON,
+  ISSUE_STATUS_HEX,
   PRIORITY_ORDER,
-  PRIORITY_COLOR,
+  PRIORITY_ICON,
+  PRIORITY_HEX,
 } from "../ui/meta";
-
-const { Text } = Typography;
+import { formatRelativeTime } from "../ui/time";
 
 // 批量操作下拉是纯命令菜单(选后触发动作、不持有值);受控 value 恒空。
 const NO_VALUE = undefined as unknown as string;
@@ -29,21 +30,27 @@ export interface IssueListProps {
   running?: ReadonlySet<string>;
 }
 
-/** 列表视图：行内改 status/priority/assignee + 多选批量改删。 */
+/** 列表视图：按状态分组的清爽行 + 多选批量改删（对齐 Figma；行内编辑收敛到批量条与详情页）。 */
 export default function IssueList({
   issues,
   onOpen,
   onChanged,
   running,
 }: IssueListProps) {
-  const { t } = useI18n();
-  const { requestAssign, requestStatus, runConfirmModal } = useRunConfirm();
+  const { t, format } = useI18n();
+  const { requestAssign, runConfirmModal } = useRunConfirm();
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   // busy 的同步镜像:setBusy 是异步的,confirmDelete 弹窗的 onOk 闭包捕获的是渲染时的
   // busy(可能陈旧),双击开两个弹窗/两次 onOk 会各自看到 busy=false 而重复批量写。ref
   // 在进入 runBatch 时同步置位,结构性挡住重入(setBusy 仅驱动 UI 的 disabled)。
   const busyRef = useRef(false);
+
+  // 行内指派改派（保留旧列表的行内编辑能力）：写库后刷新；触发 agent run 走 RunConfirm 预确认。
+  const patch = async (id: string, p: Parameters<typeof updateIssue>[1]) => {
+    await updateIssue(id, p);
+    onChanged();
+  };
 
   // 筛选/搜索/排序/翻页令 issues 变化后,裁掉已不可见的选中项 —— 否则批量条会对
   // 当前结果集看不到的行发批量写(改/删隐藏行)。只保留仍在可见集合里的 id。
@@ -55,15 +62,24 @@ export default function IssueList({
     });
   }, [issues]);
 
-  const patch = async (id: string, p: Parameters<typeof updateIssue>[1]) => {
-    await updateIssue(id, p);
-    onChanged();
-  };
+  // 按状态分组（保留服务端返回的组内顺序，即用户所选排序）；仅渲染非空组。
+  const groups = useMemo(
+    () =>
+      ISSUE_STATUS_ORDER.map((status) => ({
+        status,
+        rows: issues.filter((i) => i.status === status),
+      })).filter((g) => g.rows.length > 0),
+    [issues],
+  );
+
+  const selectedSet = new Set(selected);
+  const toggleRow = (id: string) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   // 批量:写失败 toast+中止;成功清选择+刷新。批量不走 RunConfirm 预览(显式批操作);
   // 且一律带 suppress_run —— 批量改状态/指派是管理性整理,绝不能每条静默起一个 agent run
   // (要派单请逐条走 RunConfirm 预览确认)。派单是有意的单条动作,不是批量副作用。
-  // 重入守卫用 busyRef 同步置位(见上):任一触发器在途都挡住重叠批量写,不受闭包 stale 影响。
+  // 重入守卫用 busyRef 同步置位:任一触发器在途都挡住重叠批量写,不受闭包 stale 影响。
   const runBatch = async (fn: () => Promise<unknown>) => {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -81,103 +97,17 @@ export default function IssueList({
     }
   };
 
-  const columns = [
-    {
-      title: "ID",
-      dataIndex: "identifier",
-      width: 96,
-      render: (v: string) => (
-        <Text type="tertiary" style={{ fontSize: 12 }}>
-          {v}
-        </Text>
-      ),
-    },
-    {
-      title: t("loop.field.title"),
-      dataIndex: "title",
-      render: (v: string, r: Issue) => (
-        <span className="loop-cell-title" onClick={() => onOpen(r.id)}>
-          {v}
-          {running?.has(r.id) && <RunningChip />}
-          <LabelChips labels={r.labels} max={3} />
-        </span>
-      ),
-    },
-    {
-      title: t("loop.field.status"),
-      dataIndex: "status",
-      width: 150,
-      render: (v: IssueStatus, r: Issue) => (
-        <Select
-          value={v}
-          size="small"
-          borderless
-          onChange={(nv) => requestStatus(r, nv as IssueStatus, (extra) => patch(r.id, { status: nv as IssueStatus, ...extra }))}
-          style={{ width: 130 }}
-        >
-          {ISSUE_STATUS_ORDER.map((s) => (
-            <Select.Option key={s} value={s}>
-              <Tag color={ISSUE_STATUS_COLOR[s]} size="small">
-                {t(`loop.status.${s}`)}
-              </Tag>
-            </Select.Option>
-          ))}
-        </Select>
-      ),
-    },
-    {
-      title: t("loop.field.priority"),
-      dataIndex: "priority",
-      width: 130,
-      render: (v: IssuePriority, r: Issue) => (
-        <Select
-          value={v}
-          size="small"
-          borderless
-          onChange={(nv) => patch(r.id, { priority: nv as IssuePriority })}
-          style={{ width: 110 }}
-        >
-          {PRIORITY_ORDER.map((p) => (
-            <Select.Option key={p} value={p}>
-              <Tag color={PRIORITY_COLOR[p]} size="small">
-                {t(`loop.priority.${p}`)}
-              </Tag>
-            </Select.Option>
-          ))}
-        </Select>
-      ),
-    },
-    {
-      title: t("loop.field.assignee"),
-      dataIndex: "assignee_id",
-      width: 180,
-      render: (_v: string, r: Issue) => (
-        <AssigneePicker
-          size="small"
-          value={r.assignee_id}
-          valueName={r.assignee_name ?? null}
-          onChange={(id, type, name) => requestAssign(r, type, id, name, (extra) => patch(r.id, { assignee_id: id, assignee_type: type, ...extra }))}
-        />
-      ),
-    },
-    {
-      title: t("loop.field.project"),
-      dataIndex: "project_name",
-      width: 130,
-      render: (v: string | null) => <Text>{v ?? "—"}</Text>,
-    },
-  ];
-
   return (
     <>
       {selected.length > 0 && (
         <div className="loop-batchbar">
-          <Text strong>{t("loop.batch.selected", { values: { count: selected.length } })}</Text>
+          <strong>{t("loop.batch.selected", { values: { count: selected.length } })}</strong>
           <Select
             placeholder={t("loop.menu.changeStatus")}
             size="small"
             disabled={busy}
             value={NO_VALUE}
+            dropdownClassName="loop-fields__dropdown"
             onChange={(v) => runBatch(() => batchUpdateIssues(selected, { status: v as IssueStatus, suppress_run: true }))}
             style={{ width: 130 }}
           >
@@ -190,6 +120,7 @@ export default function IssueList({
             size="small"
             disabled={busy}
             value={NO_VALUE}
+            dropdownClassName="loop-fields__dropdown"
             onChange={(v) => runBatch(() => batchUpdateIssues(selected, { priority: v as IssuePriority, suppress_run: true }))}
             style={{ width: 120 }}
           >
@@ -223,17 +154,52 @@ export default function IssueList({
           <Button size="small" theme="borderless" icon={<X size={14} />} onClick={() => setSelected([])} aria-label={t("loop.action.cancel")} />
         </div>
       )}
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={issues}
-        pagination={false}
-        size="small"
-        rowSelection={{
-          selectedRowKeys: selected,
-          onChange: (keys) => setSelected((keys ?? []) as string[]),
-        }}
-      />
+
+      <div className="loop-list">
+        {groups.map((g) => {
+          const StatusIcon = ISSUE_STATUS_ICON[g.status];
+          return (
+            <div key={g.status} className="loop-list__group">
+              <div className="loop-list__group-head">
+                <StatusIcon size={14} strokeWidth={2} style={{ color: ISSUE_STATUS_HEX[g.status] }} />
+                <span className="loop-list__group-name">{t(`loop.status.${g.status}`)}</span>
+                <em>{g.rows.length}</em>
+              </div>
+              {g.rows.map((r) => {
+                const PriIcon = PRIORITY_ICON[r.priority];
+                const checked = selectedSet.has(r.id);
+                return (
+                  <div key={r.id} className={`loop-list__row ${checked ? "is-selected" : ""}`}>
+                    <label className="loop-list__check" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleRow(r.id)} />
+                    </label>
+                    <span className="loop-list__icon" title={t(`loop.priority.${r.priority}`)}>
+                      <PriIcon size={14} strokeWidth={2} style={{ color: PRIORITY_HEX[r.priority] }} />
+                    </span>
+                    <button className="loop-list__title" onClick={() => onOpen(r.id)}>
+                      {r.title}
+                      {running?.has(r.id) && <RunningChip />}
+                    </button>
+                    <LabelChips labels={r.labels} max={2} />
+                    <span className="loop-list__spacer" />
+                    {r.project_name && <span className="loop-list__project">{r.project_name}</span>}
+                    <span className="loop-list__id">{r.identifier}</span>
+                    <span className="loop-list__assignee" onClick={(e) => e.stopPropagation()}>
+                      <AssigneePicker
+                        size="small"
+                        value={r.assignee_id}
+                        valueName={r.assignee_name ?? null}
+                        onChange={(id, type, name) => requestAssign(r, type, id, name, (extra) => patch(r.id, { assignee_id: id, assignee_type: type, ...extra }))}
+                      />
+                    </span>
+                    <time className="loop-list__time">{formatRelativeTime(r.updated_at ?? r.created_at, format)}</time>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
       {runConfirmModal}
     </>
   );

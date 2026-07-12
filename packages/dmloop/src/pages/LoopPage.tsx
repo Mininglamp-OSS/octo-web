@@ -11,8 +11,8 @@ import { listWorkspaces, createWorkspace } from "../api/workspaceApi";
 import { setWorkspaceContext, currentWorkspaceId } from "../api/http";
 import { invalidateDirectory } from "../api/directory";
 import { invalidateRuntimeMap } from "../api/agentApi";
-import CreateIssueModal from "../ui/CreateIssueModal";
 import IssuePage from "./IssuePage";
+import NewLoopPage from "./NewLoopPage";
 import ProjectPage from "./ProjectPage";
 import AgentPage from "./AgentPage";
 import SquadPage from "./SquadPage";
@@ -47,7 +47,6 @@ export default function LoopPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [wsId, setWsId] = useState<string>(currentWorkspaceId());
   const [loaded, setLoaded] = useState(false);
-  const [newIssueOpen, setNewIssueOpen] = useState(false);
   const [wsModalOpen, setWsModalOpen] = useState(false);
   const [wsName, setWsName] = useState("");
   const [wsSlug, setWsSlug] = useState("");
@@ -75,6 +74,13 @@ export default function LoopPage() {
   const openTab = (key: TabKey) => {
     setTab(key);
     WKApp.routeRight.replaceToRoot(renderTab(key, findWs(workspaces, wsId)));
+  };
+
+  // 新建回路 → 唤起 composer 独立页；成功后落到回路看板（新回路即在其中）。
+  const openNewLoop = () => {
+    WKApp.routeRight.push(
+      <NewLoopPage onCreated={() => { Toast.success(t("loop.toast.created")); openTab("issue"); }} />,
+    );
   };
 
   // 空态引导：无 workspace 时右栏提示创建
@@ -207,7 +213,7 @@ export default function LoopPage() {
       ) : (
         <>
           <div className="loop-sidebar__new">
-            <button className="loop-sidebar__new-btn" onClick={() => setNewIssueOpen(true)}>
+            <button className="loop-sidebar__new-btn" onClick={openNewLoop}>
               <SquarePen size={15} />
               <span>{t("loop.action.newIssue")}</span>
               <Plus size={14} style={{ marginLeft: "auto", opacity: 0.5 }} />
@@ -232,8 +238,6 @@ export default function LoopPage() {
           </nav>
         </>
       )}
-
-      <CreateIssueModal visible={newIssueOpen} onClose={() => setNewIssueOpen(false)} onCreated={() => openTab("issue")} />
 
       <Modal
         className="loop-modal"

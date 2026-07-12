@@ -1,4 +1,19 @@
 import React from "react";
+import {
+  Circle,
+  CircleDashed,
+  CircleDot,
+  CircleDotDashed,
+  CircleCheck,
+  CircleAlert,
+  CircleX,
+  SignalLow,
+  SignalMedium,
+  SignalHigh,
+  TriangleAlert,
+  Minus,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type {
   IssueStatus,
   IssuePriority,
@@ -49,6 +64,27 @@ export const ISSUE_STATUS_COLOR: Record<IssueStatus, TagColor> = {
   cancelled: "grey",
 };
 
+// 状态图标 + 语义色（看板列头 / 卡片 / 列表行 / 详情共用；hex 用于内联 icon 上色）。
+export const ISSUE_STATUS_ICON: Record<IssueStatus, LucideIcon> = {
+  backlog: CircleDashed,
+  todo: Circle,
+  in_progress: CircleDot,
+  in_review: CircleDotDashed,
+  done: CircleCheck,
+  blocked: CircleAlert,
+  cancelled: CircleX,
+};
+
+export const ISSUE_STATUS_HEX: Record<IssueStatus, string> = {
+  backlog: "#8a8f99",
+  todo: "#6b7280",
+  in_progress: "var(--semi-color-warning, #f5a623)",
+  in_review: "#7f3bf5",
+  done: "var(--semi-color-success, #23a55a)",
+  blocked: "var(--semi-color-danger, #f5222d)",
+  cancelled: "#b8bcc8",
+};
+
 export const PRIORITY_ORDER: IssuePriority[] = [
   "urgent",
   "high",
@@ -56,6 +92,23 @@ export const PRIORITY_ORDER: IssuePriority[] = [
   "low",
   "none",
 ];
+
+// 优先级图标 + 语义色（信号强度隐喻；urgent 用告警三角）。
+export const PRIORITY_ICON: Record<IssuePriority, LucideIcon> = {
+  urgent: TriangleAlert,
+  high: SignalHigh,
+  medium: SignalMedium,
+  low: SignalLow,
+  none: Minus,
+};
+
+export const PRIORITY_HEX: Record<IssuePriority, string> = {
+  urgent: "var(--semi-color-danger, #f5222d)",
+  high: "#fc8800",
+  medium: "#f5a623",
+  low: "#6b93ff",
+  none: "#c9cdd4",
+};
 
 export const PRIORITY_COLOR: Record<IssuePriority, TagColor> = {
   urgent: "red",
@@ -94,15 +147,17 @@ export const ASSIGNEE_TYPE_COLOR: Record<AssigneeType, TagColor> = {
   squad: "purple",
 };
 
-export const RUN_STATUS_COLOR: Record<string, TagColor> = {
-  queued: "grey",
-  dispatched: "blue",
-  waiting_local_directory: "blue",
-  running: "amber",
-  completed: "green",
-  failed: "red",
-  cancelled: "grey",
+// run 状态点颜色（执行记录行的状态圆点；未知值走灰兜底）。
+export const RUN_STATUS_HEX: Record<string, string> = {
+  queued: "#b8bcc8",
+  dispatched: "var(--semi-color-info, #2f6fed)",
+  waiting_local_directory: "var(--semi-color-info, #2f6fed)",
+  running: "var(--semi-color-warning, #f5a623)",
+  completed: "var(--semi-color-success, #35824a)",
+  failed: "var(--semi-color-danger, #f5222d)",
+  cancelled: "#b8bcc8",
 };
+export const RUN_STATUS_HEX_FALLBACK = "#c9cdd4";
 
 // Autopilot 运行状态 → 状态点颜色（卡片 last-run 点与详情运行行共用；未知值走灰兜底）。
 export const AUTOPILOT_RUN_DOT: Record<string, string> = {

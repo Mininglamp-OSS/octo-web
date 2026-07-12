@@ -1,19 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Typography,
-  Input,
   Select,
   Button,
   Avatar,
   Tag,
   Spin,
   Toast,
-  Popconfirm,
-  TextArea,
   Dropdown,
   DatePicker,
   InputNumber,
-  Progress,
 } from "@douyinfe/semi-ui";
 import {
   ArrowLeft,
@@ -26,12 +22,12 @@ import {
   Check,
   Square,
   RotateCcw,
-  SmilePlus,
   Bell,
   BellOff,
   Paperclip,
   AtSign,
   Plus,
+  ChevronRight,
 } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
@@ -78,23 +74,26 @@ import LabelEditor from "../ui/LabelEditor";
 import { useRunConfirm } from "../ui/RunConfirmModal";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import LoopMarkdown from "../ui/LoopMarkdown";
+import AutoGrowTextarea from "../ui/AutoGrowTextarea";
 import { confirmDelete } from "../ui/confirmDelete";
 import RunDetailModal from "./RunDetailModal";
 import CreateIssueModal from "../ui/CreateIssueModal";
 import {
   ISSUE_STATUS_ORDER,
   ISSUE_STATUS_COLOR,
+  ISSUE_STATUS_ICON,
+  ISSUE_STATUS_HEX,
   PRIORITY_ORDER,
   PRIORITY_COLOR,
-  RUN_STATUS_COLOR,
+  PRIORITY_ICON,
+  PRIORITY_HEX,
+  RUN_STATUS_HEX,
+  RUN_STATUS_HEX_FALLBACK,
   isActiveRun,
 } from "../ui/meta";
 import "./issueDetail.css";
 
-const { Title, Text } = Typography;
-
-// 反应选择器的固定 emoji 集(轻量,够验证能力;完整 picker 留给 UI 重做)。
-const REACTION_EMOJIS = ["👍", "❤️", "🎉", "😄", "🚀", "👀"];
+const { Text } = Typography;
 
 function fmt(iso?: string | null): string {
   if (!iso) return "-";
@@ -125,6 +124,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [runs, setRuns] = useState<TaskRun[]>([]);
   const [activeRun, setActiveRun] = useState<TaskRun | null>(null);
   const [runOpen, setRunOpen] = useState(false);
+  const [showRuns, setShowRuns] = useState(false); // 「执行日志」折叠展开
   const [editingDesc, setEditingDesc] = useState(false);
   const cands = useAssigneeCandidates();
   const { requestAssign, requestStatus, runConfirmModal } = useRunConfirm();
@@ -281,24 +281,6 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     } catch {
       /* 刷新失败:写已成功,不误报;下次 reload 自愈 */
     }
-  };
-
-  // 评论 emoji 反应:选择器点 emoji=加,已有 chip 点击=删自己那条(后端按 actor+emoji 定位)。
-  const reactComment = (commentId: string, emoji: string, add: boolean) => {
-    const token = reqRef.current;
-    return mutateThenRefresh(
-      () => (add ? addCommentReaction : removeCommentReaction)(commentId, emoji),
-      () => reloadComments(token),
-    );
-  };
-
-  // issue 级 emoji 反应:同评论,读回走 getIssue 的 issue.reactions(syncIssue 重取详情)。
-  const reactIssue = (emoji: string, add: boolean) => {
-    const token = reqRef.current;
-    return mutateThenRefresh(
-      () => (add ? addIssueReaction : removeIssueReaction)(issueId, emoji),
-      () => syncIssue(token),
-    );
   };
 
   // 评论 resolve/unresolve:后端「一线程至多一条 resolved」会清同线程兄弟,操作后重拉评论即可。
@@ -490,6 +472,11 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     setRunOpen(true);
   };
 
+  // 打开子回路详情（递归复用本页，key 隔离跨 issue 陈旧写入）。
+  const openChild = (id: string) => {
+    WKApp.routeRight.push(<IssueDetailPage key={id} issueId={id} onChanged={onChanged} />);
+  };
+
   const reloadRuns = () => listRuns(issueId).then(setRuns).catch(() => {});
 
   // 重跑该 task 的 agent（后端按 task_id 新建一次 fresh run）。busyRunId 防双击重复派单。
@@ -640,96 +627,33 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const roots = comments.filter((c) => !c.parent_id);
   const repliesOf = (id: string) => comments.filter((c) => c.parent_id === id);
   const childrenDone = children.filter((c) => c.status === "done").length;
-  // 活动流只取 activity 类(评论已在评论区渲染,避免重复)。filter 返回新数组,reverse 不改原 state。倒序:最新在上。
-  const activities = timeline.filter((e) => e.type === "activity").reverse();
   // issue 附件区只显 issue 级(comment_id 为空);评论附件归各评论下,避免重复。
   const issueAtts = (issue.attachments ?? []).filter((a) => !a.comment_id);
 
-  // emoji 反应条(评论 + issue 通用):按 emoji 分组显示计数(点=删自己那条)+ 选择器加新反应。
-  const renderReactionBar = (
-    reactions: Array<{ emoji: string }> | null | undefined,
-    onToggle: (emoji: string, add: boolean) => void,
-  ) => {
-    const groups = new Map<string, number>();
-    (reactions ?? []).forEach((rx) => groups.set(rx.emoji, (groups.get(rx.emoji) ?? 0) + 1));
-    return (
-      <div className="loop-comment__reactions">
-        {[...groups.entries()].map(([emoji, n]) => (
-          <button key={emoji} type="button" className="loop-reaction" onClick={() => onToggle(emoji, false)}>
-            <span>{emoji}</span>
-            <b>{n}</b>
-          </button>
-        ))}
-        <Dropdown
-          trigger="click"
-          clickToHide
-          position="topLeft"
-          render={
-            <div className="loop-reaction-picker">
-              {REACTION_EMOJIS.map((e) => (
-                <button key={e} type="button" onClick={() => onToggle(e, true)}>{e}</button>
-              ))}
-            </div>
-          }
-        >
-          <button type="button" className="loop-reaction loop-reaction--add" aria-label={t("loop.reaction.add")}>
-            <SmilePlus size={13} />
-          </button>
-        </Dropdown>
-      </div>
-    );
-  };
-
+  // 评论渲染（评论 + 其回复；无 emoji 反应）。
   const renderComment = (c: IssueComment, reply = false) => (
     <div key={c.id} className={`loop-comment ${reply ? "is-reply" : ""}`}>
       <div className="loop-comment__head">
         <Avatar size="extra-extra-small" color="light-blue" src={c.author_avatar ?? undefined}>
           {(c.author_name ?? "?").slice(0, 1)}
         </Avatar>
-        <Text strong style={{ fontSize: 12 }}>
-          {c.author_name}
-        </Text>
+        <Text strong style={{ fontSize: 12 }}>{c.author_name}</Text>
         <time>{fmt(c.created_at)}</time>
         {c.resolved_at && <Tag size="small" color="green">{t("loop.comment.resolved")}</Tag>}
         <div className="loop-comment__actions">
           {!reply && (
-            <Button
-              size="small"
-              theme="borderless"
-              icon={<CornerDownRight size={13} />}
-              onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setEditingId(null); }}
-            >
-              {t("loop.comment.reply")}
-            </Button>
+            <Button size="small" theme="borderless" icon={<CornerDownRight size={13} />} onClick={() => { setReplyTo(replyTo === c.id ? null : c.id); setEditingId(null); }} aria-label={t("loop.comment.reply")} />
           )}
           {!reply && (
-            <Button
-              size="small"
-              theme="borderless"
-              icon={c.resolved_at ? <CircleSlash size={13} /> : <Check size={13} />}
-              onClick={() => toggleResolve(c.id, !!c.resolved_at)}
-            >
-              {t(c.resolved_at ? "loop.comment.unresolve" : "loop.comment.resolve")}
-            </Button>
+            <Button size="small" theme="borderless" icon={c.resolved_at ? <CircleSlash size={13} /> : <Check size={13} />} onClick={() => toggleResolve(c.id, !!c.resolved_at)} aria-label={t(c.resolved_at ? "loop.comment.unresolve" : "loop.comment.resolve")} />
           )}
-          <Button
-            size="small"
-            theme="borderless"
-            icon={<Pencil size={13} />}
-            onClick={() => { setEditingId(c.id); setEditDraft(c.content); setReplyTo(null); }}
-          />
-          <Button
-            size="small"
-            theme="borderless"
-            type="danger"
-            icon={<Trash2 size={13} />}
-            onClick={() => confirmDelete({ title: t("loop.comment.deleteConfirm"), okText: t("loop.action.delete"), cancelText: t("loop.action.cancel"), onOk: () => removeComment(c.id) })}
-          />
+          <Button size="small" theme="borderless" icon={<Pencil size={13} />} onClick={() => { setEditingId(c.id); setEditDraft(c.content); setReplyTo(null); }} aria-label={t("loop.action.edit")} />
+          <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />} onClick={() => confirmDelete({ title: t("loop.comment.deleteConfirm"), okText: t("loop.action.delete"), cancelText: t("loop.action.cancel"), onOk: () => removeComment(c.id) })} aria-label={t("loop.action.delete")} />
         </div>
       </div>
       {editingId === c.id ? (
         <div className="loop-comment__body" style={{ marginTop: 6 }}>
-          <TextArea value={editDraft} onChange={setEditDraft} autosize={{ minRows: 2, maxRows: 10 }} />
+          <AutoGrowTextarea className="loop-field-textarea loop-field-textarea--auto" value={editDraft} onChange={setEditDraft} />
           <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
             <Button size="small" theme="solid" onClick={() => saveEdit(c.id)}>{t("loop.action.save")}</Button>
             <Button size="small" theme="borderless" onClick={() => setEditingId(null)}>{t("loop.action.cancel")}</Button>
@@ -739,33 +663,81 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
         <div className="loop-comment__body"><LoopMarkdown content={c.content} /></div>
       )}
       {renderAttachments(c.attachments)}
-      {renderReactionBar(c.reactions, (emoji, add) => reactComment(c.id, emoji, add))}
       {!reply && repliesOf(c.id).map((r) => renderComment(r, true))}
       {!reply && replyTo === c.id && (
         <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-          <Input
+          <input
+            className="loop-field"
             value={commentDraft}
-            onChange={setCommentDraft}
+            onChange={(e) => setCommentDraft(e.target.value)}
             placeholder={t("loop.comment.replyPlaceholder")}
-            onEnterPress={submitComment}
+            onKeyDown={(e) => { if (e.key === "Enter") submitComment(); }}
           />
-          <Button icon={<Send size={14} />} onClick={submitComment} />
+          <Button icon={<Send size={14} />} onClick={submitComment} aria-label={t("loop.comment.send")} />
         </div>
       )}
     </div>
   );
 
+  // 动态：把活动流(activity) 与顶层评论合并成一条时间线(升序,最新在下、贴近底部输入框),
+  // 对齐 Figma —— 不再把「活动」「评论」拆成两个挤在一起的区块。timeline 为 ASC。
+  const activities = timeline.filter((e) => e.type === "activity");
+  // 活动文案人话化：后端 action 是机器串(如 status_changed),普通运营看不懂。按语义归类成中文；
+  // 订阅类噪声直接隐藏(返回 null → 不渲染)；未知归为通用「更新了这个回路」，绝不暴露原始串。
+  const activityText = (action?: string): string | null => {
+    if (!action) return null;
+    const a = action.toLowerCase();
+    if (a.includes("subscrib") || a.includes("view")) return null;
+    if (a.includes("creat")) return t("loop.activityAction.created");
+    if (a.includes("status")) return t("loop.activityAction.statusChanged");
+    if (a.includes("priorit")) return t("loop.activityAction.priorityChanged");
+    if (a.includes("assign")) return t("loop.activityAction.assigneeChanged");
+    if (a.includes("project")) return t("loop.activityAction.projectChanged");
+    if (a.includes("title")) return t("loop.activityAction.titleChanged");
+    if (a.includes("descri")) return t("loop.activityAction.descriptionChanged");
+    if (a.includes("label")) return t("loop.activityAction.labelChanged");
+    if (a.includes("due") || a.includes("date")) return t("loop.activityAction.dateChanged");
+    if (a.includes("reopen")) return t("loop.activityAction.reopened");
+    if (a.includes("clos") || a.includes("complet") || a.includes("done")) return t("loop.activityAction.completed");
+    return t("loop.activityAction.generic");
+  };
+  const feed: Array<{ ts: string; node: React.ReactNode }> = [
+    ...activities.flatMap((a) => {
+      const verb = activityText(a.action);
+      if (!verb) return [];
+      return [{
+        ts: a.created_at,
+        node: (
+          <div key={`a-${a.id}`} className="loop-feed__act">
+            <span className="loop-feed__act-dot" />
+            <span className="loop-feed__act-text">
+              <strong>{a.actor_name ?? a.actor_id}</strong> {verb}
+            </span>
+            <time>{fmt(a.created_at)}</time>
+          </div>
+        ),
+      }];
+    }),
+    ...roots.map((c) => ({ ts: c.created_at, node: renderComment(c) })),
+  ].sort((x, y) => new Date(x.ts).getTime() - new Date(y.ts).getTime());
+
   return (
     <div className="loop-idp">
       <div className="loop-idp__topbar">
-        <Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={back}>
-          {t("loop.detail.back")}
-        </Button>
-        <Text type="tertiary" style={{ fontSize: 12 }}>
-          {issue.project_name ? `${issue.project_name} · ` : ""}
-          {issue.identifier}
-        </Text>
+        <div className="loop-idp__crumbs">
+          <button className="loop-idp__crumb" onClick={back}>
+            {issue.project_name ?? t("loop.nav.issue")}
+          </button>
+          <ChevronRight size={14} className="loop-idp__crumb-sep" />
+          <span className="loop-idp__crumb-cur">
+            <span className="loop-idp__crumb-id">{issue.identifier}</span>
+            <span className="loop-idp__crumb-title">{issue.title}</span>
+          </span>
+        </div>
         <div style={{ flex: 1 }} />
+        <Button className="loop-idp__boardbtn" theme="borderless" onClick={back}>
+          {t("loop.detail.board")}
+        </Button>
         <Dropdown trigger="click" position="bottomRight" render={renderMoreMenu()} clickToHide>
           <Button icon={<MoreHorizontal size={18} />} theme="borderless" aria-label="more" />
         </Dropdown>
@@ -774,139 +746,106 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       <div className="loop-idp__body">
         {/* 主体 */}
         <div className="loop-idp__main">
-          <Input
-            size="large"
+          <input
+            className="loop-field loop-field--lg loop-idp__title"
             value={titleDraft}
-            onChange={setTitleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
             onBlur={() => titleDraft.trim() && titleDraft !== issue.title && patch({ title: titleDraft.trim() })}
-            style={{ fontWeight: 600, fontSize: 20 }}
           />
 
-          {/* issue 级 emoji 反应条 */}
-          {renderReactionBar(issue.reactions, reactIssue)}
-
-          <div className="loop-idp__section">
-            <div className="loop-detail__section-title loop-idp__desc-title">
-              <span>{t("loop.field.description")}</span>
-              {editingDesc ? (
-                <Button size="small" theme="borderless" icon={<Check size={13} />} onClick={saveDesc}>
-                  {t("loop.action.save")}
-                </Button>
+          {/* 描述：紧贴标题的段落（点击进入编辑），无独立分区标题，对齐 Figma */}
+          {editingDesc ? (
+            <AutoGrowTextarea
+              className="loop-field-textarea loop-field-textarea--lg loop-field-textarea--auto"
+              value={descDraft}
+              onChange={setDescDraft}
+              onBlur={saveDesc}
+              autoFocus
+              placeholder={t("loop.field.descriptionPlaceholder")}
+            />
+          ) : (
+            <div className="loop-idp__desc" onClick={() => setEditingDesc(true)}>
+              {issue.description ? (
+                <LoopMarkdown content={issue.description} />
               ) : (
-                <Button size="small" theme="borderless" icon={<Pencil size={13} />} onClick={() => setEditingDesc(true)}>
-                  {t("loop.action.edit")}
-                </Button>
+                <span className="loop-idp__desc-empty">{t("loop.field.descriptionPlaceholder")}</span>
               )}
             </div>
-            {editingDesc ? (
-              <TextArea
-                value={descDraft}
-                onChange={setDescDraft}
-                onBlur={saveDesc}
-                autosize={{ minRows: 4, maxRows: 20 }}
-                placeholder={t("loop.field.descriptionPlaceholder")}
+          )}
+
+          {/* issue 附件 + 工具栏（附件上传） */}
+          {issueAtts.length > 0 && renderAttachments(issueAtts)}
+          <div className="loop-idp__toolbar">
+            <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
+              {uploading ? <Spin size="small" /> : <Paperclip size={15} />}
+              <input
+                type="file"
+                multiple
+                hidden
+                disabled={uploading}
+                onChange={(e) => { uploadForIssue(e.target.files); e.target.value = ""; }}
               />
-            ) : issue.description ? (
-              <LoopMarkdown content={issue.description} />
-            ) : (
-              <Text type="tertiary" style={{ fontSize: 13 }}>{t("loop.field.descriptionPlaceholder")}</Text>
-            )}
+            </label>
           </div>
 
+          {/* 子回路 */}
           <div className="loop-idp__section">
-            <div className="loop-detail__section-title loop-idp__desc-title">
+            <div className="loop-idp__stitle loop-idp__desc-title">
               <span>
                 {t("loop.subIssue.title")}
-                {children.length > 0 && ` (${childrenDone}/${children.length})`}
+                {children.length > 0 && <em className="loop-idp__count"> {childrenDone} / {children.length}</em>}
               </span>
               <Button
                 theme="borderless"
                 size="small"
-                icon={<Plus size={13} />}
+                icon={<Plus size={14} />}
+                aria-label={t("loop.subIssue.create")}
                 onClick={() => setChildCreateOpen(true)}
-              >
-                {t("loop.subIssue.create")}
-              </Button>
+              />
             </div>
             {children.length > 0 && (
-              <>
-                <Progress
-                  percent={Math.round((childrenDone / children.length) * 100)}
-                  style={{ margin: "8px 0 10px" }}
-                />
-                <div className="loop-subissues">
-                  {children.map((c) => (
-                    <div key={c.id} className="loop-subissue">
-                      <Tag color={ISSUE_STATUS_COLOR[c.status]} size="small">
-                        {t(`loop.status.${c.status}`)}
-                      </Tag>
+              <div className="loop-subissues">
+                {children.map((c) => {
+                  const SIcon = ISSUE_STATUS_ICON[c.status];
+                  const PIcon = PRIORITY_ICON[c.priority];
+                  return (
+                    <div key={c.id} className="loop-subissue" onClick={() => openChild(c.id)}>
+                      <SIcon size={14} strokeWidth={2} style={{ color: ISSUE_STATUS_HEX[c.status] }} />
                       <span className="loop-subissue__id">{c.identifier}</span>
                       <span className="loop-subissue__title">{c.title}</span>
+                      <span className="loop-subissue__spacer" />
+                      <PIcon size={14} strokeWidth={2} style={{ color: PRIORITY_HEX[c.priority] }} />
                     </div>
-                  ))}
-                </div>
-              </>
+                  );
+                })}
+              </div>
             )}
           </div>
 
-          <div className="loop-idp__section">
-            <div className="loop-detail__section-title loop-idp__desc-title">
-              <span>{t("loop.attach.title")} ({issueAtts.length})</span>
-              <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
-                {uploading ? <Spin size="small" /> : <Paperclip size={13} />}
-                <input
-                  type="file"
-                  multiple
-                  hidden
-                  disabled={uploading}
-                  onChange={(e) => { uploadForIssue(e.target.files); e.target.value = ""; }}
-                />
-              </label>
+          {/* 动态：活动 + 评论 合并时间线 */}
+          <div className="loop-idp__section loop-idp__feed-sec">
+            <div className="loop-idp__feed-head">
+              <span className="loop-idp__stitle">{t("loop.activity.title")}</span>
+              <button
+                type="button"
+                className="loop-idp__subbtn"
+                onClick={() => toggleSubscribe(!(selfKnown && amSubscribed))}
+              >
+                {selfKnown && amSubscribed ? <BellOff size={13} /> : <Bell size={13} />}
+                {selfKnown && amSubscribed ? t("loop.subscribe.unsubscribe") : t("loop.subscribe.subscribe")}
+              </button>
             </div>
-            {issueAtts.length ? (
-              renderAttachments(issueAtts)
-            ) : (
-              <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.attach.empty")}</Text>
-            )}
-          </div>
 
-          {activities.length > 0 && (
-            <div className="loop-idp__section">
-              <div className="loop-detail__section-title">
-                {t("loop.activity.title")} ({activities.length})
-              </div>
-              <div className="loop-activities">
-                {activities.map((a) => (
-                  <div key={a.id} className="loop-activity">
-                    <Avatar size="extra-extra-small" color="light-blue" src={a.actor_avatar ?? undefined}>
-                      {(a.actor_name ?? "?").slice(0, 1)}
-                    </Avatar>
-                    <Text style={{ fontSize: 12 }}>
-                      <strong>{a.actor_name ?? a.actor_id}</strong>{" "}
-                      {/* ponytail: 原样展示 action(如 status_changed);细化文案映射留给 UI 重做 */}
-                      <Text type="tertiary">{(a.action ?? "").replace(/_/g, " ")}</Text>
-                    </Text>
-                    <time>{fmt(a.created_at)}</time>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="loop-idp__section">
-            <div className="loop-detail__section-title">
-              {t("loop.detail.comments")} ({comments.length})
-            </div>
-            <div className="loop-comments">
-              {roots.length === 0 && (
-                <Text type="tertiary" style={{ fontSize: 12 }}>
-                  {t("loop.comment.empty")}
-                </Text>
+            <div className="loop-feed">
+              {feed.length === 0 ? (
+                <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.comment.empty")}</Text>
+              ) : (
+                feed.map((it) => it.node)
               )}
-              {roots.map((c) => renderComment(c))}
             </div>
+
             {!replyTo && triggerAgents.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10, alignItems: "center" }}>
+              <div className="loop-idp__wake">
                 <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.comment.willWake")}</Text>
                 {triggerAgents.map((a) => {
                   const off = suppressed.has(a.id);
@@ -936,13 +875,16 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                 ))}
               </div>
             )}
-            <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
-              <Input
+
+            {/* 评论输入区 */}
+            <div className="loop-idp__composer">
+              <input
+                className="loop-field"
                 value={replyTo ? "" : commentDraft}
                 disabled={!!replyTo}
-                onChange={setCommentDraft}
+                onChange={(e) => setCommentDraft(e.target.value)}
                 placeholder={replyTo ? t("loop.comment.replyingHint") : t("loop.comment.placeholder")}
-                onEnterPress={submitComment}
+                onKeyDown={(e) => { if (e.key === "Enter") submitComment(); }}
               />
               <Dropdown
                 trigger="click"
@@ -977,89 +919,84 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                   onChange={(e) => { addPendingFiles(e.target.files); e.target.value = ""; }}
                 />
               </label>
-              <Button theme="solid" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!!replyTo}>
-                {t("loop.comment.send")}
-              </Button>
+              <Button theme="solid" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!!replyTo} aria-label={t("loop.comment.send")} />
             </div>
           </div>
         </div>
 
         {/* 右侧属性栏 */}
         <aside className="loop-idp__aside">
-          <div className="loop-idp__aside-card">
-            <div className="loop-detail__section-title">{t("loop.detail.properties")}</div>
-            <dl className="loop-idp__props">
-              <dt>{t("loop.field.status")}</dt>
-              <dd>
-                <Select
-                  value={issue.status}
-                  onChange={(v) => requestStatus(issue, v as IssueStatus, (extra) => patch({ status: v as IssueStatus, ...extra }))}
-                  size="small"
-                  style={{ width: "100%" }}
-                >
-                  {ISSUE_STATUS_ORDER.map((s) => (
-                    <Select.Option key={s} value={s}>
-                      <Tag color={ISSUE_STATUS_COLOR[s]} size="small">
-                        {t(`loop.status.${s}`)}
-                      </Tag>
-                    </Select.Option>
-                  ))}
-                </Select>
-              </dd>
-              <dt>{t("loop.field.priority")}</dt>
-              <dd>
-                <Select
-                  value={issue.priority}
-                  onChange={(v) => patch({ priority: v as IssuePriority })}
-                  size="small"
-                  style={{ width: "100%" }}
-                >
-                  {PRIORITY_ORDER.map((p) => (
-                    <Select.Option key={p} value={p}>
-                      <Tag color={PRIORITY_COLOR[p]} size="small">
-                        {t(`loop.priority.${p}`)}
-                      </Tag>
-                    </Select.Option>
-                  ))}
-                </Select>
-              </dd>
-              <dt>{t("loop.field.assignee")}</dt>
-              <dd>
-                <AssigneePicker
-                  value={issue.assignee_id}
-                  valueName={issue.assignee_name ?? null}
-                  onChange={(id, type, name) => requestAssign(issue, type, id, name, (extra) => patch({ assignee_id: id, assignee_type: type, ...extra }))}
-                />
-              </dd>
-              <dt>{t("loop.field.project")}</dt>
-              <dd>
-                <Text>{issue.project_name ?? "—"}</Text>
-              </dd>
-              <dt>{t("loop.field.labels")}</dt>
-              <dd>
-                <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }} />
-              </dd>
-              <dt>{t("loop.field.parent")}</dt>
-              <dd>
-                <Select
-                  value={issue.parent_issue_id ?? undefined}
-                  onChange={(v) => patch({ parent_issue_id: (v as string) || "" })}
-                  onDropdownVisibleChange={loadParentCands}
-                  placeholder={t("loop.field.noParent")}
-                  size="small"
-                  filter
-                  showClear
-                  style={{ width: "100%" }}
-                >
-                  {parentCands.map((i) => (
-                    <Select.Option key={i.id} value={i.id}>
-                      {i.identifier} {i.title}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </dd>
-              <dt>{t("loop.field.startDate")}</dt>
-              <dd>
+          <section className="loop-idp__asec">
+            <div className="loop-idp__asec-head">{t("loop.detail.properties")}</div>
+            <div className="loop-idp__prop">
+              <span className="loop-idp__prop-k">{t("loop.field.status")}</span>
+              <Select
+                value={issue.status}
+                onChange={(v) => requestStatus(issue, v as IssueStatus, (extra) => patch({ status: v as IssueStatus, ...extra }))}
+                dropdownClassName="loop-fields__dropdown"
+                size="small"
+                style={{ width: "100%" }}
+              >
+                {ISSUE_STATUS_ORDER.map((s) => (
+                  <Select.Option key={s} value={s}>
+                    <Tag color={ISSUE_STATUS_COLOR[s]} size="small">{t(`loop.status.${s}`)}</Tag>
+                  </Select.Option>
+                ))}
+              </Select>
+            </div>
+            <div className="loop-idp__prop">
+              <span className="loop-idp__prop-k">{t("loop.field.priority")}</span>
+              <Select
+                value={issue.priority}
+                onChange={(v) => patch({ priority: v as IssuePriority })}
+                dropdownClassName="loop-fields__dropdown"
+                size="small"
+                style={{ width: "100%" }}
+              >
+                {PRIORITY_ORDER.map((p) => (
+                  <Select.Option key={p} value={p}>
+                    <Tag color={PRIORITY_COLOR[p]} size="small">{t(`loop.priority.${p}`)}</Tag>
+                  </Select.Option>
+                ))}
+              </Select>
+            </div>
+            <div className="loop-idp__prop">
+              <span className="loop-idp__prop-k">{t("loop.field.assignee")}</span>
+              <AssigneePicker
+                value={issue.assignee_id}
+                valueName={issue.assignee_name ?? null}
+                onChange={(id, type, name) => requestAssign(issue, type, id, name, (extra) => patch({ assignee_id: id, assignee_type: type, ...extra }))}
+              />
+            </div>
+            <div className="loop-idp__prop">
+              <span className="loop-idp__prop-k">{t("loop.field.project")}</span>
+              <span className="loop-idp__prop-v">{issue.project_name ?? "—"}</span>
+            </div>
+            <div className="loop-idp__prop">
+              <span className="loop-idp__prop-k">{t("loop.field.labels")}</span>
+              <LabelEditor issueId={issue.id} labels={issue.labels} onChanged={() => { syncIssue(reqRef.current); onChanged?.(); }} />
+            </div>
+            <div className="loop-idp__prop">
+              <span className="loop-idp__prop-k">{t("loop.field.parent")}</span>
+              <Select
+                value={issue.parent_issue_id ?? undefined}
+                onChange={(v) => patch({ parent_issue_id: (v as string) || "" })}
+                onDropdownVisibleChange={loadParentCands}
+                dropdownClassName="loop-fields__dropdown"
+                placeholder={t("loop.field.noParent")}
+                size="small"
+                filter
+                showClear
+                style={{ width: "100%" }}
+              >
+                {parentCands.map((i) => (
+                  <Select.Option key={i.id} value={i.id}>{i.identifier} {i.title}</Select.Option>
+                ))}
+              </Select>
+            </div>
+            <div className="loop-idp__prop-row2">
+              <div className="loop-idp__prop">
+                <span className="loop-idp__prop-k">{t("loop.field.startDate")}</span>
                 <DatePicker
                   type="date"
                   format="yyyy-MM-dd"
@@ -1068,9 +1005,9 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                   size="small"
                   style={{ width: "100%" }}
                 />
-              </dd>
-              <dt>{t("loop.field.dueDate")}</dt>
-              <dd>
+              </div>
+              <div className="loop-idp__prop">
+                <span className="loop-idp__prop-k">{t("loop.field.dueDate")}</span>
                 <DatePicker
                   type="date"
                   format="yyyy-MM-dd"
@@ -1079,77 +1016,82 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                   size="small"
                   style={{ width: "100%" }}
                 />
-              </dd>
-              <dt>{t("loop.field.stage")}</dt>
-              <dd>
-                <InputNumber
-                  value={issue.stage ?? undefined}
-                  // 仅在有效数字时提交:编辑中退格清空会以空值触发 onChange,
-                  // 忽略它可避免误发 stage=null(unstage)+ 竞态。清 stage 待 UI 重做。
-                  onChange={(v) => { if (typeof v === "number") patch({ stage: v }); }}
-                  min={1}
-                  size="small"
-                  style={{ width: "100%" }}
-                />
-              </dd>
-              <dt>{t("loop.field.creator")}</dt>
-              <dd>
-                <Text>{issue.creator_name}</Text>
-              </dd>
-              <dt>{t("loop.detail.created")}</dt>
-              <dd>
-                <Text type="tertiary" style={{ fontSize: 12 }}>{fmt(issue.created_at)}</Text>
-              </dd>
-              <dt>{t("loop.subscribe.label")}</dt>
-              <dd>
-                <Text type="tertiary" style={{ fontSize: 12 }}>{subscribers.length}</Text>
-                {amSubscribed && (
-                  <Text style={{ fontSize: 12, marginLeft: 6, color: "var(--semi-color-primary)" }}>
-                    · {t("loop.subscribe.subscribed")}
-                  </Text>
-                )}
-              </dd>
-            </dl>
-          </div>
-
-          <div className="loop-idp__aside-card">
-            <div className="loop-detail__section-title">
-              {t("loop.run.title")} ({runs.length})
-            </div>
-            {runs.length === 0 ? (
-              <Text type="tertiary" style={{ fontSize: 12 }}>
-                {t("loop.run.empty")}
-              </Text>
-            ) : (
-              <div className="loop-idp__tasks">
-                {runs.map((r) => {
-                  const active = isActiveRun(r.status);
-                  return (
-                    <div key={r.id} className="loop-idp__task">
-                      <button className="loop-idp__run" onClick={() => openRun(r)}>
-                        <span className="loop-idp__task-main">
-                          <strong>{r.agent_name ?? r.agent_id ?? "—"}</strong>
-                          <small>{r.trigger_summary || fmt(r.dispatched_at ?? r.created_at)}</small>
-                        </span>
-                        <Tag size="small" color={RUN_STATUS_COLOR[r.status] ?? "grey"}>
-                          {t(`loop.taskStatus.${r.status}`)}
-                        </Tag>
-                      </button>
-                      <Button
-                        size="small"
-                        theme="borderless"
-                        type={active ? "danger" : "tertiary"}
-                        loading={!active && busyRunId === r.id}
-                        icon={active ? <Square size={13} /> : <RotateCcw size={13} />}
-                        aria-label={t(active ? "loop.run.stop" : "loop.run.rerun")}
-                        onClick={() => (active ? cancelRun(r.id) : rerun(r.id))}
-                      />
-                    </div>
-                  );
-                })}
               </div>
+            </div>
+            <div className="loop-idp__prop">
+              <span className="loop-idp__prop-k">{t("loop.field.stage")}</span>
+              <InputNumber
+                value={issue.stage ?? undefined}
+                onChange={(v) => { if (typeof v === "number") patch({ stage: v }); }}
+                min={1}
+                size="small"
+                style={{ width: "100%" }}
+              />
+            </div>
+          </section>
+
+          <section className="loop-idp__asec">
+            <div className="loop-idp__asec-head">{t("loop.detail.detailsTitle")}</div>
+            <div className="loop-idp__prop loop-idp__prop--inline">
+              <span className="loop-idp__prop-k">{t("loop.field.creator")}</span>
+              <span className="loop-idp__prop-v">{issue.creator_name ?? "—"}</span>
+            </div>
+            <div className="loop-idp__prop loop-idp__prop--inline">
+              <span className="loop-idp__prop-k">{t("loop.detail.created")}</span>
+              <span className="loop-idp__prop-v loop-idp__prop-v--muted">{fmt(issue.created_at)}</span>
+            </div>
+            <div className="loop-idp__prop loop-idp__prop--inline">
+              <span className="loop-idp__prop-k">{t("loop.detail.updated")}</span>
+              <span className="loop-idp__prop-v loop-idp__prop-v--muted">{fmt(issue.updated_at)}</span>
+            </div>
+          </section>
+
+          <section className="loop-idp__asec">
+            <div className="loop-idp__asec-head">{t("loop.detail.execLog")}</div>
+            {runs.length === 0 ? (
+              <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.run.empty")}</Text>
+            ) : (
+              <>
+                <button type="button" className="loop-idp__runs-toggle" onClick={() => setShowRuns((s) => !s)}>
+                  <ChevronRight size={13} className={`loop-idp__runs-chevron${showRuns ? " is-open" : ""}`} />
+                  {t("loop.run.showHistory", { values: { count: runs.length } })}
+                </button>
+                {showRuns && (
+                  <div className="loop-idp__tasks">
+                    {runs.map((r) => {
+                      const active = isActiveRun(r.status);
+                      return (
+                        <div key={r.id} className="loop-idp__task">
+                          <button className="loop-idp__run" onClick={() => openRun(r)}>
+                            <span
+                              className={`loop-idp__run-dot${active ? " is-active" : ""}`}
+                              style={{ background: RUN_STATUS_HEX[r.status] ?? RUN_STATUS_HEX_FALLBACK }}
+                            />
+                            <span className="loop-idp__task-main">
+                              <strong>{r.agent_name ?? r.agent_id ?? "—"}</strong>
+                              <small>{r.trigger_summary || fmt(r.dispatched_at ?? r.created_at)}</small>
+                            </span>
+                            <span className="loop-idp__run-status" style={{ color: RUN_STATUS_HEX[r.status] ?? RUN_STATUS_HEX_FALLBACK }}>
+                              {t(`loop.taskStatus.${r.status}`)}
+                            </span>
+                          </button>
+                          <Button
+                            size="small"
+                            theme="borderless"
+                            type={active ? "danger" : "tertiary"}
+                            loading={!active && busyRunId === r.id}
+                            icon={active ? <Square size={13} /> : <RotateCcw size={13} />}
+                            aria-label={t(active ? "loop.run.stop" : "loop.run.rerun")}
+                            onClick={() => (active ? cancelRun(r.id) : rerun(r.id))}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
-          </div>
+          </section>
         </aside>
       </div>
 

@@ -42,7 +42,11 @@
     "runFailed": "触发失败",
     "triggerFailed": "自动化已创建，但排程设置失败，请在编辑里重试",
     "confirmDelete": "删除这个自动化？",
-    "statusLabel": { "active": "运行中", "paused": "已停用", "archived": "已归档" },
+    "statusLabel": {
+      "active": "运行中",
+      "paused": "已停用",
+      "archived": "已归档"
+    },
     "triggers": "触发器",
     "addTrigger": "添加触发器",
     "editTrigger": "编辑触发器",
@@ -53,8 +57,19 @@
     "runsError": "运行历史加载失败",
     "retry": "重试",
     "noTaskDesc": "暂无任务说明",
-    "runStatus": { "issue_created": "已建回路", "running": "运行中", "completed": "成功", "failed": "失败", "skipped": "跳过" },
-    "runSource": { "schedule": "定时触发", "manual": "手动触发", "webhook": "Webhook", "api": "API" },
+    "runStatus": {
+      "issue_created": "已建回路",
+      "running": "运行中",
+      "completed": "成功",
+      "failed": "失败",
+      "skipped": "跳过"
+    },
+    "runSource": {
+      "schedule": "定时触发",
+      "manual": "手动触发",
+      "webhook": "Webhook",
+      "api": "API"
+    },
     "emptyTitle": "暂无自动化",
     "emptyDesc": "创建一个自动化，让 AI 队友按节奏自动运行",
     "freq": {
@@ -149,7 +164,11 @@
     "cancel": "取消",
     "save": "保存",
     "delete": "删除",
-    "edit": "编辑"
+    "edit": "编辑",
+    "filter": "筛选",
+    "show": "显示",
+    "clearFilters": "清除筛选",
+    "dispatch": "派单"
   },
   "workspace": {
     "title": "工作空间",
@@ -268,7 +287,9 @@
     "created": "创建于",
     "updated": "更新于",
     "execLog": "执行日志",
-    "execEmpty": "暂无执行记录"
+    "execEmpty": "暂无执行记录",
+    "board": "看板",
+    "detailsTitle": "详情"
   },
   "comment": {
     "reply": "回复",
@@ -285,7 +306,7 @@
     "resolved": "已解决"
   },
   "activity": {
-    "title": "活动"
+    "title": "动态"
   },
   "attach": {
     "title": "附件",
@@ -580,7 +601,22 @@
     "rerun": "重跑",
     "rerunStarted": "已重新派单",
     "cancelConfirm": "确定终止这次执行？",
-    "cancelled": "已终止"
+    "cancelled": "已终止",
+    "copyAll": "复制全部",
+    "copied": "已复制",
+    "events": "{{count}} 个事件",
+    "toolCalls": "{{count}} 次工具调用",
+    "duration": "时长",
+    "noData": "暂无数据",
+    "waiting": "等待事件…",
+    "event": {
+      "text": "回答",
+      "thinking": "思考",
+      "tool": "工具",
+      "result": "结果",
+      "error": "错误"
+    },
+    "showHistory": "显示历史运行 ({{count}})"
   },
   "settings": {
     "general": "通用",
@@ -603,5 +639,40 @@
     "added": "成员已添加",
     "pendingInvites": "待处理邀请",
     "revoke": "撤销"
+  },
+  "newLoop": {
+    "title": "把活交给 AI 队友",
+    "subtitle": "一句话描述你要的结果，{{name}} 会把它变成一个跑起来的回路。",
+    "subtitleGeneric": "一句话描述你要的结果，AI 队友会把它变成一个跑起来的回路。",
+    "placeholder": "例如：“让 Bohan 修一下 Web 项目里收件箱加载慢的问题”",
+    "skills": "Skills",
+    "noProject": "无项目",
+    "pickAssignee": "选择 AI 队友",
+    "dispatch": "派单",
+    "dispatched": "已派单",
+    "examplesTitle": "从一个例子开始",
+    "ex1Title": "打磨演示脚本",
+    "ex1Desc": "从建单到回路，把一句话派单全链路走顺。",
+    "ex1Prompt": "打磨 OctoLoop 演示脚本：一句话派单全链路",
+    "ex2Title": "整理用户反馈",
+    "ex2Desc": "把上周反馈归并成 top 10 痛点表格。",
+    "ex2Prompt": "把上周用户反馈归并成 top 10 痛点表格",
+    "ex3Title": "排查收件箱加载慢",
+    "ex3Desc": "让 AI 队友修一下 Web 项目里收件箱加载慢的问题。",
+    "ex3Prompt": "修一下 Web 项目里收件箱加载慢的问题"
+  },
+  "activityAction": {
+    "created": "创建了这个回路",
+    "statusChanged": "更新了状态",
+    "priorityChanged": "更新了优先级",
+    "assigneeChanged": "变更了负责人",
+    "projectChanged": "变更了项目",
+    "titleChanged": "修改了标题",
+    "descriptionChanged": "更新了描述",
+    "labelChanged": "更新了标签",
+    "dateChanged": "更新了时间",
+    "reopened": "重新打开",
+    "completed": "标记完成",
+    "generic": "更新了这个回路"
   }
 }
