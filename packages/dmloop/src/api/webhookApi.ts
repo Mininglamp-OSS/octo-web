@@ -1,4 +1,4 @@
-// @octo/loop — Webhook API（复用 multica /webhook-subscriptions，后端契约不变）
+// @octo/loop — Webhook API（后端 /webhook-subscriptions，契约不变）
 import type { WebhookSubscription, CreateWebhookReq, UpdateWebhookReq } from "./types";
 import { httpGet, httpPost, httpPatch, httpDelete } from "./http";
 

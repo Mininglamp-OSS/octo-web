@@ -204,7 +204,7 @@ export default function AgentDetailPage({
     return cols;
   }, [contribs]);
 
-  // ---- 履历标题/跳转：按 issue_id 二次拉取 issue（对齐 multica，标题取 issue.title） ----
+  // ---- 履历标题/跳转：按 issue_id 二次拉取 issue（标题取 issue.title） ----
   useEffect(() => {
     const ids = Array.from(new Set(stats.recent.map((r) => r.issue_id).filter(Boolean)));
     const missing = ids.filter((id) => !(id in issueMap));

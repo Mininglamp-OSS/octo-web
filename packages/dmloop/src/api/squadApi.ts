@@ -1,5 +1,13 @@
 // @octo/loop — Squad API（后端契约联调）
-import type { Squad, SquadMember, UpsertSquadReq, ListParams } from "./types";
+import type {
+  Squad,
+  SquadMember,
+  SquadMemberStatus,
+  SquadMemberStatusListResponse,
+  UpsertSquadReq,
+  UpdateSquadReq,
+  ListParams,
+} from "./types";
 import { httpGet, httpPost, httpPut, httpDelete, httpPatch } from "./http";
 import { ensureDirectory, actorName, actorAvatar, afterDirectoryMutation } from "./directory";
 
@@ -14,7 +22,7 @@ function enrichSquad(s: Squad, dir: Awaited<ReturnType<typeof ensureDirectory>>)
     members,
     leader_name: actorName(dir, "agent", s.leader_id) ?? actorName(dir, "member", s.leader_id),
     creator_name: actorName(dir, "member", s.creator_id),
-    leader_avatar: actorAvatar(dir, "member", s.leader_id),
+    leader_avatar: actorAvatar(dir, "agent", s.leader_id) ?? actorAvatar(dir, "member", s.leader_id),
   };
 }
 
@@ -40,7 +48,7 @@ export function createSquad(req: UpsertSquadReq): Promise<Squad> {
   return httpPost<Squad>("/squads", req).then(afterDirectoryMutation);
 }
 
-export function updateSquad(id: string, req: UpsertSquadReq): Promise<Squad> {
+export function updateSquad(id: string, req: UpdateSquadReq): Promise<Squad> {
   return httpPut<Squad>(`/squads/${id}`, req).then(afterDirectoryMutation);
 }
 
@@ -50,6 +58,13 @@ export function deleteSquad(id: string): Promise<void> {
 
 export function listSquadMembers(id: string): Promise<SquadMember[]> {
   return httpGet<SquadMember[]>(`/squads/${id}/members`);
+}
+
+/** 成员实时状态（working/idle/offline/unstable/archived + 在处理的 issue）。 */
+export function getSquadMemberStatus(id: string): Promise<SquadMemberStatus[]> {
+  return httpGet<SquadMemberStatusListResponse>(`/squads/${id}/members/status`)
+    .then((r) => r?.members ?? [])
+    .catch(() => [] as SquadMemberStatus[]);
 }
 
 export async function addSquadMember(

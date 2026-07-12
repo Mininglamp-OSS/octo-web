@@ -71,7 +71,7 @@ export function getAgentSkills(id: string): Promise<Array<{ id: string; name: st
   return httpGet<Array<{ id: string; name: string }>>(`/agents/${id}/skills`);
 }
 
-// 整体替换 Agent 的技能集合（PUT = 覆盖，与 multica 一致）。
+// 整体替换 Agent 的技能集合（PUT = 覆盖）。
 export async function setAgentSkills(id: string, skillIds: string[]): Promise<void> {
   await httpPut<void>(`/agents/${id}/skills`, { skill_ids: skillIds });
 }
