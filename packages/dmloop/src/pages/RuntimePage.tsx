@@ -126,6 +126,7 @@ export default function RuntimePage() {
   const [daemonServerUrl, setDaemonServerUrl] = useState("");
   const [headlessCommandText, setHeadlessCommandText] = useState("");
   const [headlessLoading, setHeadlessLoading] = useState(false);
+  const [headlessCopied, setHeadlessCopied] = useState(false);
 
   useEffect(() => {
     getDaemonServerUrl().then(setDaemonServerUrl).catch(() => setDaemonServerUrl(""));
@@ -136,6 +137,12 @@ export default function RuntimePage() {
     const timer = window.setTimeout(() => setCopied(false), 1600);
     return () => window.clearTimeout(timer);
   }, [copied]);
+
+  useEffect(() => {
+    if (!headlessCopied) return undefined;
+    const timer = window.setTimeout(() => setHeadlessCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [headlessCopied]);
 
   useEffect(() => {
     setLoading(true);
@@ -172,22 +179,30 @@ export default function RuntimePage() {
     Toast.success(t("loop.runtime.copySuccess"));
   };
 
-  const onGenerateHeadless = async () => {
+  // 命令2 的复制：命令框里 token 段先显示占位符，只有点击复制的这一刻
+  // 才向后端签发一次性 PAT 并把真实命令写入框；已签发过则直接复制既有命令，
+  // 避免反复点击在账号里累积凭证。
+  const onCopyHeadless = async () => {
     if (!daemonServerUrl) {
       Toast.warning(t("loop.runtime.headlessNoBackend"));
       return;
     }
     setHeadlessLoading(true);
     try {
-      const { token } = await issueHeadlessCliToken();
-      const cmd = headlessCommand(token, daemonServerUrl);
-      setHeadlessCommandText(cmd);
+      let cmd = headlessCommandText;
+      if (!cmd) {
+        const { token } = await issueHeadlessCliToken();
+        cmd = headlessCommand(token, daemonServerUrl);
+        setHeadlessCommandText(cmd);
+      }
       const ok = await copyToClipboard(cmd);
-      if (ok) Toast.success(t("loop.runtime.copySuccess"));
-      // The command (with its freshly minted PAT) is already rendered below, so
-      // a clipboard failure is recoverable — tell the user to copy it by hand
-      // rather than implying no credential was produced.
-      else Toast.warning(t("loop.runtime.headlessCopyManual"));
+      if (ok) {
+        setHeadlessCopied(true);
+        Toast.success(t("loop.runtime.copySuccess"));
+      } else {
+        // 真实命令已写入下方命令框，复制失败可手动复制。
+        Toast.warning(t("loop.runtime.headlessCopyManual"));
+      }
     } catch {
       Toast.error(t("loop.runtime.headlessFailed"));
     } finally {
@@ -270,35 +285,46 @@ export default function RuntimePage() {
         title={t("loop.runtime.addComputerTitle")}
         size="lg"
         footer={(
-          <>
-            <Button theme="borderless" type="tertiary" onClick={() => setAddOpen(false)}>
-              {t("loop.action.cancel")}
-            </Button>
-            <Button theme="solid" type="tertiary" icon={copied ? <Check size={14} /> : <Copy size={14} />} onClick={copyCommand}>
-              {copied ? t("loop.runtime.copied") : t("loop.runtime.copyCommand")}
-            </Button>
-          </>
+          <Button theme="borderless" type="tertiary" onClick={() => setAddOpen(false)}>
+            {t("loop.action.cancel")}
+          </Button>
         )}
       >
         <div className="loop-runtime-add">
           <p>{t("loop.runtime.addComputerDesc")}</p>
+
           <p>{t("loop.runtime.addComputerBrowser")}</p>
-          <pre className="loop-runtime-add__command"><code>{addComputerCommand()}</code></pre>
-          <p>{t("loop.runtime.addComputerHeadless")}</p>
-          {headlessCommandText ? (
-            <pre className="loop-runtime-add__command"><code>{headlessCommandText}</code></pre>
-          ) : (
+          <div className="loop-runtime-add__row">
+            <pre className="loop-runtime-add__command"><code>{addComputerCommand()}</code></pre>
             <Button
+              className="loop-runtime-add__copy"
+              size="small"
               theme="solid"
               type="tertiary"
-              loading={headlessLoading}
-              disabled={!daemonServerUrl}
-              onClick={onGenerateHeadless}
+              icon={copied ? <Check size={14} /> : <Copy size={14} />}
+              onClick={copyCommand}
             >
-              {t("loop.runtime.generateHeadless")}
+              {copied ? t("loop.runtime.copied") : t("loop.runtime.copy")}
             </Button>
-          )}
-          {!daemonServerUrl && (
+          </div>
+
+          <p>{t("loop.runtime.addComputerHeadless")}</p>
+          {daemonServerUrl ? (
+            <div className="loop-runtime-add__row">
+              <pre className="loop-runtime-add__command"><code>{headlessCommandText || headlessCommand(t("loop.runtime.headlessTokenPlaceholder"), daemonServerUrl)}</code></pre>
+              <Button
+                className="loop-runtime-add__copy"
+                size="small"
+                theme="solid"
+                type="tertiary"
+                loading={headlessLoading}
+                icon={headlessCopied ? <Check size={14} /> : <Copy size={14} />}
+                onClick={onCopyHeadless}
+              >
+                {headlessCopied ? t("loop.runtime.copied") : t("loop.runtime.copy")}
+              </Button>
+            </div>
+          ) : (
             <p className="loop-runtime-add__hint">{t("loop.runtime.headlessNoBackend")}</p>
           )}
         </div>
