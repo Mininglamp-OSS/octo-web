@@ -127,7 +127,7 @@ function TimelineBar({ messages }: { messages: RunMessage[] }) {
   );
 }
 
-/** 执行详情弹窗：转写体验（对齐 multica）——状态/时长 + 时间线 + 可展开事件流。 */
+/** 执行详情弹窗：转写体验（对齐产品设计）——状态/时长 + 时间线 + 可展开事件流。 */
 export default function RunDetailModal({
   run,
   visible,
