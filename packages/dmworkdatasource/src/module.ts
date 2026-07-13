@@ -5,6 +5,7 @@ import { ConversationProvider } from "./conversation";
 import { ChannelDataSource, CommonDataSource } from "./datasource";
 import { MediaMessageUploadTask } from "./task";
 import { createChannelInfoCallback } from "./im-callbacks/channelInfo";
+import { createSyncConversationsCallback } from "./im-callbacks/conversations";
 
 export default class DataSourceModule implements IModule {
     id(): string {
@@ -168,48 +169,17 @@ export default class DataSourceModule implements IModule {
     }
 
     setSyncConversationsCallback() {
-        WKSDK.shared().config.provider.syncConversationsCallback = async (filter?: any): Promise<Array<Conversation>> => {
-            let resp: any
-            let conversations = new Array<Conversation>();
-            const spaceId = WKApp.shared.currentSpaceId || ""
-            const syncUrl = spaceId ? `conversation/sync?space_id=${encodeURIComponent(spaceId)}` : "conversation/sync"
-            resp = await WKApp.apiClient.post(syncUrl, { "msg_count": 1, "recent_filter": true })
-            if (resp) {
-                // 防止快速切换 Space 时旧响应覆盖新缓存
-                if (spaceId && WKApp.shared.currentSpaceId !== spaceId) return conversations
-                // 只更新本次 sync 响应中包含的频道缓存，保留其他 Space 的缓存
-                // （避免 clear() 导致切换 Space 后其他 Space 群聊缓存丢失）
-                resp.conversations.forEach((conversationMap: any) => {
-                    let model = Convert.toConversation(conversationMap);
-                    conversations.push(model);
-                    // 填充 channelSpaceMap / channelMySourceSpaceMap 缓存
-                    // octo-server PR#154+ 在 conversation sync 响应里携带 resolved space_id
-                    // （群表权威值）和 my_source_space_id（外部成员的 source Space）。
-                    // 老后端字段为空时跳过，仍走 channelInfo.orgData / subscriber 兜底。
-                    const key = `${conversationMap["channel_id"]}_${conversationMap["channel_type"]}`
-                    const sid = conversationMap["space_id"]
-                    if (sid) {
-                        WKApp.shared.channelSpaceMap.set(key, sid)
-                    }
-                    const mySrc = conversationMap["my_source_space_id"]
-                    if (mySrc) {
-                        WKApp.shared.channelMySourceSpaceMap.set(key, mySrc)
-                    }
-                });
-                const users = resp.users
-                if (users && users.length > 0) {
-                    for (const user of users) {
-                        WKSDK.shared().channelManager.setChannleInfoForCache(Convert.userToChannelInfo(user))
-                    }
-                }
-                const groups = resp.groups
-                if (groups && groups.length > 0) {
-                    for (const group of groups) {
-                        WKSDK.shared().channelManager.setChannleInfoForCache(Convert.groupToChannelInfo(group))
-                    }
-                }
-            }
-            return conversations
-        }
+        WKSDK.shared().config.provider.syncConversationsCallback = createSyncConversationsCallback({
+            postConversationSync: (path, body) => WKApp.apiClient.post(path, body),
+            getCurrentSpaceId: () => WKApp.shared.currentSpaceId || "",
+            setChannelSpace: (key, spaceId) => WKApp.shared.channelSpaceMap.set(key, spaceId),
+            setChannelMySourceSpace: (key, sourceSpaceId) =>
+                WKApp.shared.channelMySourceSpaceMap.set(key, sourceSpaceId),
+            toConversation: (conversationMap) => Convert.toConversation(conversationMap),
+            toUserChannelInfo: (user) => Convert.userToChannelInfo(user),
+            toGroupChannelInfo: (group) => Convert.groupToChannelInfo(group),
+            setChannelInfoForCache: (channelInfo) =>
+                WKSDK.shared().channelManager.setChannleInfoForCache(channelInfo),
+        })
     }
 }
