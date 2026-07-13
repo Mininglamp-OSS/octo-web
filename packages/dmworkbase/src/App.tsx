@@ -70,6 +70,13 @@ export type MittEvents = {
    */
   'wk:nav-menu-activated': { menuId: string };
   /**
+   * dmloop 派单(quick-create)后的看板补刷协议。派单是异步的(agent 稍后建 issue,dmloop 暂无 WS 推送):
+   * NewLoopPage 派单成功发 `wk:loop-issues-dispatched`;常驻的 LoopPage 据此有界补发 `wk:loop-issues-refresh`,
+   * 当前挂载的看板(IssuePage)订阅后重取,使新回路自动出现——统一覆盖看板内/侧栏两个建单入口。
+   */
+  'wk:loop-issues-dispatched': void;
+  'wk:loop-issues-refresh': void;
+  /**
    * 打开「密钥 / Secrets」管理面板（YUJ-3539）。由聊天反向跳转（bot 消息里的
    * 「去添加密钥」按钮）或输入框防手滑提示触发；payload 可携带预填名字 / 明文，
    * 接收方 NavSecretsSettingsItem 据此打开面板并预填新增弹窗（绝不自动发送/保存）。

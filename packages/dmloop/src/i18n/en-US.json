@@ -606,6 +606,7 @@
     "cancelled": "Stopped",
     "copyAll": "Copy all",
     "copied": "Copied",
+    "gone": "Run no longer exists",
     "events": "{{count}} events",
     "toolCalls": "{{count}} tool calls",
     "duration": "Duration",

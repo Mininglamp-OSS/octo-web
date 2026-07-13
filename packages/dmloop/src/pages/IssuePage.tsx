@@ -199,6 +199,19 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
   // 变更后刷新:既重取列表,又刷新运行中快照(指派/状态变更可能起/停 agent run)。
   const onMutated = useCallback(() => { reload(); refreshRunning(); }, [reload, refreshRunning]);
 
+  // 派单(quick-create)是异步的:agent 稍后才建 issue(dmloop 无 WS 推送,见记忆 dmloop-no-realtime-defer-ws)。
+  // NewLoopPage 派单成功发 `wk:loop-issues-dispatched`,常驻的 LoopPage 据此有界补发 `wk:loop-issues-refresh`,
+  // 看板收到即重取——一套机制覆盖"看板内新建"与"侧栏新建"两个入口(定时器归 LoopPage,见那里)。
+  // 走 ref 读最新 onMutated:延迟刷新须用当前筛选/视图,否则会用陈旧入参覆盖(reload 的 seq 守卫只防乱序)。
+  // ponytail: 真正的修法是 WS 实时推送(已记后期做),此为 stopgap;派单低频,几次补刷可接受。
+  const onMutatedRef = useRef(onMutated);
+  useEffect(() => { onMutatedRef.current = onMutated; }, [onMutated]);
+  useEffect(() => {
+    const onRefresh = () => onMutatedRef.current();
+    WKApp.mittBus.on("wk:loop-issues-refresh", onRefresh);
+    return () => WKApp.mittBus.off("wk:loop-issues-refresh", onRefresh);
+  }, []);
+
   // 改任一筛选/搜索都回到第一页，避免停在越界的 offset（此规则只此一处表达）。
   const update = (p: Partial<Filters>) => { setF((prev) => ({ ...prev, ...p })); setPage(0); };
   const switchView = (v: ViewMode) => { setView(v); setPage(0); };

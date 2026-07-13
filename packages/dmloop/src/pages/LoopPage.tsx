@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Typography, Dropdown, Avatar, Modal, Toast, Button } from "@douyinfe/semi-ui";
 import {
   ClipboardList, Briefcase, Bot, Users, Settings,
@@ -24,6 +24,10 @@ import "../ui/loopControls.css";
 const { Title, Text } = Typography;
 
 type TabKey = "myloop" | "issue" | "project" | "automation" | "agent" | "squad" | "settings";
+
+// 派单后看板补刷的退避时刻(ms):agent 异步建单的落库延迟不可观测,手调的退避窗口(非可推导状态)。
+const SETTLE_DELAYS_MS = [2000, 5000, 9000, 14000];
+
 
 // 顶部独立入口：我的回路（复用 Issue 视图的「与我相关」分组）。
 const MY_TAB: { key: TabKey; icon: React.ReactNode } = { key: "myloop", icon: <CircleUserRound size={16} /> };
@@ -144,6 +148,22 @@ export default function LoopPage() {
     return () => WKApp.mittBus.off("wk:nav-menu-activated", onNavMenuActivated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaces, wsId, loaded]);
+
+  // 派单后看板补刷:quick-create 异步(agent 稍后建 issue,dmloop 无 WS,见记忆 dmloop-no-realtime-defer-ws)。
+  // NewLoopPage 派单成功发 `wk:loop-issues-dispatched`;由常驻(不随 tab/建单入口重挂)的 LoopPage 持有定时器,
+  // 有界补发 `wk:loop-issues-refresh`,当前挂载的看板(IssuePage)订阅后重取——一套机制统一覆盖
+  // 「看板内新建」与「侧栏新建」两个入口(此前 settle 只挂在看板实例上,漏了侧栏 openTab 重挂的路径)。
+  const settleTimersRef = useRef<number[]>([]);
+  useEffect(() => {
+    const onDispatched = () => {
+      settleTimersRef.current.forEach(clearTimeout);
+      settleTimersRef.current = SETTLE_DELAYS_MS.map((d) =>
+        window.setTimeout(() => WKApp.mittBus.emit("wk:loop-issues-refresh"), d),
+      );
+    };
+    WKApp.mittBus.on("wk:loop-issues-dispatched", onDispatched);
+    return () => { WKApp.mittBus.off("wk:loop-issues-dispatched", onDispatched); settleTimersRef.current.forEach(clearTimeout); };
+  }, []);
 
   const switchWorkspace = (w: Workspace) => {
     setWorkspaceContext(w.slug, w.id);
