@@ -14,8 +14,8 @@ export default class FileHelper {
 
 
     static imgExt: Array<string> = new Array<string>(".png", ".jpg", ".jpeg", ".bmp", ".gif");//图片文件的后缀名
-    static docExt: Array<string> = new Array<string>(".doc", ".docx");//word文件的后缀名
-    static xlsExt: Array<string> = new Array<string>(".xls", ".xlsx");//excel文件的后缀名
+    static docExt: Array<string> = new Array<string>(".doc", ".docx", ".dotx");//word文件的后缀名
+    static xlsExt: Array<string> = new Array<string>(".xls", ".xlsx", ".xltx");//excel文件的后缀名
 
     static getFileExt(fileName:string) {
         const i = fileName.lastIndexOf(".")
@@ -39,7 +39,7 @@ export default class FileHelper {
             if (this.contain(ext, this.xlsExt)) {
                 return FileType.Excel;
             }
-            if (ext === '.ppt') {
+            if (ext === '.ppt' || ext === '.pptx' || ext === '.potx') {
                 return FileType.PPT;
             }
             if (ext === '.pdf') {
