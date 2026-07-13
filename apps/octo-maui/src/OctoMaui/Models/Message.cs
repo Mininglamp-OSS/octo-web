@@ -4,7 +4,14 @@ using System.Text.Json.Serialization;
 
 namespace OctoMaui.Models;
 
-/// <summary>A single chat message in a channel.</summary>
+/// <summary>
+/// A single chat message in a channel.
+///
+/// Field names and JSON mappings follow the WuKongIM SDK Message type
+/// (packages/dmworkbase/src/Service/Model.tsx — MessageWrap / Message).
+/// Until the WuKongIM .NET client is integrated, messages arrive via REST
+/// endpoints; the mappings below are ready for the SDK switch-over.
+/// </summary>
 public sealed class Message : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -15,28 +22,35 @@ public sealed class Message : INotifyPropertyChanged
     private string? _createdAtFormattedCache;
     private long _cachedTimestampMs = -1;
 
+    /// <summary>Server-assigned message id (WuKongIM: messageID).</summary>
+    [JsonPropertyName("messageID")]
     public string Id { get => _id; set => SetField(ref _id, value); }
 
     /// <summary>Channel this message belongs to.</summary>
     [JsonPropertyName("channel_id")]
     public string ChannelId { get; set; } = string.Empty;
 
-    /// <summary>Sender user id.</summary>
-    [JsonPropertyName("from_uid")]
+    /// <summary>Sender user id (WuKongIM: fromUID).</summary>
+    [JsonPropertyName("fromUID")]
     public string FromUid { get; set; } = string.Empty;
 
     /// <summary>Cached sender display name (filled by client for rendering).</summary>
     public string SenderName { get; set; } = string.Empty;
 
-    /// <summary>Plain-text or markdown body.</summary>
+    /// <summary>
+    /// Plain-text or markdown body. In WuKongIM this is the <c>content</c>
+    /// object (MessageText etc.); the MAUI client stores it as a plain string
+    /// for simplicity — full content-object decoding is deferred until the
+    /// WuKongIM .NET client is integrated.
+    /// </summary>
     public string Content
     {
         get => _content;
         set => SetField(ref _content, value);
     }
 
-    /// <summary>Message type: text / image / file / system / tool_call.</summary>
-    [JsonPropertyName("message_type")]
+    /// <summary>Message content type (WuKongIM: contentType, numeric).</summary>
+    [JsonPropertyName("contentType")]
     public MessageType Type { get; set; } = MessageType.Text;
 
     /// <summary>Server timestamp in milliseconds since epoch.</summary>
@@ -132,13 +146,24 @@ public sealed class Message : INotifyPropertyChanged
         }
     }
 
-    /// <summary>True if streamed from an AI agent (partial / typing).</summary>
-    [JsonPropertyName("streaming")]
+    /// <summary>
+    /// True if this message is part of an AI streaming response
+    /// (WuKongIM: streamOn).
+    /// </summary>
+    [JsonPropertyName("streamOn")]
     public bool IsStreaming
     {
         get => _isStreaming;
         set => SetField(ref _isStreaming, value);
     }
+
+    /// <summary>
+    /// Stream progress flag (WuKongIM: streamFlag). Stored as int because the
+    /// MAUI client does not yet bundle the WuKongIM SDK StreamFlag enum.
+    /// Typical values: 0 = START, 1 = ING, 2 = END.
+    /// </summary>
+    [JsonPropertyName("streamFlag")]
+    public int StreamFlag { get; set; }
 
     // --- INotifyPropertyChanged helpers ---
 
@@ -150,11 +175,18 @@ public sealed class Message : INotifyPropertyChanged
     }
 }
 
+/// <summary>
+/// Message content types. Values mirror WuKongIM MessageContentTypeConst
+/// (packages/dmworkbase/src/Service/Const.ts). Only types relevant to the
+/// MAUI client are listed here.
+/// </summary>
 public enum MessageType
 {
     Text = 1,
     Image = 2,
-    File = 3,
-    System = 4,
-    ToolCall = 5,
+    Gif = 3,
+    Voice = 4,
+    SmallVideo = 5,
+    File = 8,
+    RichText = 14,
 }

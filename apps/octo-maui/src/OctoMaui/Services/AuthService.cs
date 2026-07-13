@@ -12,6 +12,13 @@ namespace OctoMaui.Services;
 public sealed class AuthService : IAuthService
 {
     private const string TokenKey = "octo.auth.token";
+    // Non-sensitive user profile fields persisted to Preferences (mirrors
+    // the web client's LoginInfo.save() which stores uid/name/sex etc. in
+    // localStorage). The token goes to SecureStorage separately.
+    private const string PrefUid = "octo.auth.uid";
+    private const string PrefName = "octo.auth.name";
+    private const string PrefSex = "octo.auth.sex";
+    private const string PrefShortNo = "octo.auth.short_no";
     private readonly IApiService _api;
 
     /// <summary>Poll interval for OIDC authstatus.</summary>
@@ -62,6 +69,7 @@ public sealed class AuthService : IAuthService
             _token = result.Token;
             _user = result.ToUser();
             await SecureStorage.Default.SetAsync(TokenKey, _token);
+            PersistUser(_user);
             RaiseChanged();
             return true;
         }
@@ -106,8 +114,9 @@ public sealed class AuthService : IAuthService
                 if (status.IsSuccess && status.Result is { } r)
                 {
                     _token = r.Token;
-                    _user = new User { Id = r.Uid, Name = r.Name };
+                    _user = new User { Id = r.Uid, Name = r.Name, Sex = r.Sex, ShortNo = r.ShortNo ?? string.Empty };
                     await SecureStorage.Default.SetAsync(TokenKey, _token);
+                    PersistUser(_user);
                     progress?.Report("✓ 登录成功");
                     RaiseChanged();
                     return true;
@@ -139,28 +148,71 @@ public sealed class AuthService : IAuthService
         _token = null;
         _user = null;
         SecureStorage.Default.Remove(TokenKey);
+        ClearUserPrefs();
         RaiseChanged();
         return Task.CompletedTask;
     }
 
-    /// <summary>Hydrate CurrentUser after a cold start when a saved token exists.</summary>
+    /// <summary>
+    /// Hydrate CurrentUser after a cold start when a saved token exists.
+    /// Mirrors the web client which persists the login response and restores
+    /// from local storage — does NOT call <c>GET /v1/user/current</c> (that
+    /// endpoint is PUT-only for profile updates).
+    /// </summary>
     public async Task<bool> HydrateCurrentUserAsync(CancellationToken ct = default)
     {
         if (!IsAuthenticated) return false;
-        try
+        _user = RestoreUser();
+        if (_user is null)
         {
-            _user = await _api.GetCurrentUserAsync(_token!, ct);
-            return true;
-        }
-        catch
-        {
-            // Token invalid — force logout.
+            // No persisted user profile (e.g. upgrading from a version that
+            // didn't persist user info). Force re-login to populate it.
             await LogoutAsync();
             return false;
         }
+        return true;
     }
 
     private void RaiseChanged()
         => MainThread.BeginInvokeOnMainThread(
             () => AuthStateChanged?.Invoke(this, EventArgs.Empty));
+
+    /// <summary>
+    /// Persist non-sensitive user profile fields to <see cref="Preferences"/>.
+    /// Mirrors the web client's <c>LoginInfo.save()</c>.
+    /// </summary>
+    private void PersistUser(User? user)
+    {
+        if (user is null)
+        {
+            ClearUserPrefs();
+            return;
+        }
+        Preferences.Default.Set(PrefUid, user.Id);
+        Preferences.Default.Set(PrefName, user.Name);
+        Preferences.Default.Set(PrefSex, user.Sex);
+        Preferences.Default.Set(PrefShortNo, user.ShortNo);
+    }
+
+    /// <summary>Restore the user from <see cref="Preferences"/> (cold start).</summary>
+    private User? RestoreUser()
+    {
+        var uid = Preferences.Default.Get(PrefUid, string.Empty);
+        if (string.IsNullOrEmpty(uid)) return null;
+        return new User
+        {
+            Id = uid,
+            Name = Preferences.Default.Get(PrefName, string.Empty),
+            Sex = Preferences.Default.Get(PrefSex, 0),
+            ShortNo = Preferences.Default.Get(PrefShortNo, string.Empty),
+        };
+    }
+
+    private void ClearUserPrefs()
+    {
+        Preferences.Default.Remove(PrefUid);
+        Preferences.Default.Remove(PrefName);
+        Preferences.Default.Remove(PrefSex);
+        Preferences.Default.Remove(PrefShortNo);
+    }
 }

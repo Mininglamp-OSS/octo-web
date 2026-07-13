@@ -117,7 +117,10 @@ public sealed class ServerConfigViewModel : ViewModelBase, IDisposable
             var modes = new List<string>();
             if (info.HasOidcProviders)
                 modes.Add("企业 SSO");
-            modes.Add("账号密码");
+            // Hide "账号密码" when the server has disabled legacy password
+            // login (legacy_password_login_off in appconfig).
+            if (!info.LegacyPasswordLoginOff)
+                modes.Add("账号密码");
             return string.Join(" · ", modes);
         }
     }
@@ -181,9 +184,10 @@ public sealed class ServerConfigViewModel : ViewModelBase, IDisposable
         }
 
         // Step 2: Probe server config (appconfig) WITHOUT saving the URL.
-        // ProbeAsync temporarily points the ApiService at the candidate URL,
-        // fetches capability info, then restores the previous URL — so the
-        // ServerChanged event is NOT raised and we stay on this page.
+        // ProbeAsync uses a self-contained HttpClient to hit the candidate
+        // URL's /v1/common/appconfig — the shared ApiService / ApiOptions
+        // state is NOT mutated, so the ServerChanged event is NOT raised and
+        // we stay on this page.
         StepStatus = "正在获取服务端配置…";
         ServerInfo? info;
         try

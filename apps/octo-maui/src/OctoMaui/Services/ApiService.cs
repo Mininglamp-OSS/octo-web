@@ -47,9 +47,13 @@ public sealed class ApiService : IApiService
         using var probe = CreateClient(normalized, TimeSpan.FromSeconds(5));
         try
         {
-            // Any HTTP response (even 401/404) means the server is reachable.
-            using var resp = await probe.GetAsync("/", ct);
-            return true;
+            // Probe the real octo-server capability endpoint. A 2xx response
+            // means the server is reachable AND is an octo-server (not just
+            // any HTTP listener that would 200 on "/"). This unifies the
+            // reachability and capability checks — GetServerInfoAsync hits the
+            // same endpoint for the full OIDC config.
+            using var resp = await probe.GetAsync("/v1/common/appconfig", ct);
+            return resp.IsSuccessStatusCode;
         }
         catch
         {
@@ -59,7 +63,16 @@ public sealed class ApiService : IApiService
 
     public async Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default)
     {
-        var payload = new { username, password };
+        // Mirrors login_vm.tsx requestLoginWithUsernameAndPwd: the payload
+        // includes flag (device type: 0=app, 1=web, 2=pc) and a device info
+        // object. MAUI is a PC client, so flag=2.
+        var payload = new
+        {
+            username,
+            password,
+            flag = 2,
+            device = GetDevice(),
+        };
         var resp = await _http.PostAsJsonAsync("/v1/user/login", payload, ct);
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<LoginResult>(Json, ct)
@@ -67,6 +80,15 @@ public sealed class ApiService : IApiService
         return body;
     }
 
+    /// <remarks>
+    /// WIP: The web client never calls <c>GET /v1/user/current</c> to fetch
+    /// the current user — it persists the login response and hydrates from
+    /// local storage (see <c>loginSession.ts</c> <c>applyLoginResp</c>).
+    /// The <c>/v1/user/current</c> endpoint is used with PUT to update the
+    /// user's profile, not GET. <see cref="AuthService.HydrateCurrentUserAsync"/>
+    /// restores from Preferences instead of calling this method. Retained for
+    /// potential future server-side support.
+    /// </remarks>
     public async Task<User> GetCurrentUserAsync(string token, CancellationToken ct = default)
     {
         using var req = Authed(token, HttpMethod.Get, "/v1/user/current");
@@ -96,29 +118,81 @@ public sealed class ApiService : IApiService
         return Task.FromResult(new List<Message>());
     }
 
-    public async Task<Message> SendMessageAsync(string token, string channelId, string content, CancellationToken ct = default)
+    /// <remarks>
+    /// WIP: The octo-server does NOT expose a REST endpoint for sending
+    /// messages — outgoing messages go through the WuKongIM SDK
+    /// (<c>chatManager.send</c>) over the IM WebSocket, not HTTP. The
+    /// <c>/v1/message/send</c> endpoint used previously was a fabricated
+    /// assumption with no counterpart in octo-web/octo-server. The MAUI
+    /// client sends messages via <see cref="IWebSocketService.SendAsync"/>
+    /// (see <c>ChatViewModel.SendAsync</c>); this REST method is retained
+    /// only to satisfy the interface contract and will throw until a real
+    /// REST send path is introduced. See the README "Limitations" section.
+    /// </remarks>
+    public Task<Message> SendMessageAsync(string token, string channelId, string content, CancellationToken ct = default)
     {
-        // The octo-server uses a flat /v1/message/send endpoint (not a
-        // per-channel route). The channel_id is passed in the payload.
-        var payload = new { channel_id = channelId, content, message_type = (int)MessageType.Text };
-        using var req = Authed(token, HttpMethod.Post, "/v1/message/send");
-        req.Content = JsonContent.Create(payload);
-        return await SendAsync<Message>(req, ct);
+        throw new NotImplementedException(
+            "REST message send is not supported by octo-server. Use IWebSocketService.SendAsync (WuKongIM) instead.");
     }
 
     /// <inheritdoc />
-    public async Task<Message> UploadFileAsync(string token, string channelId, Stream fileStream, string fileName, string contentType, CancellationToken ct = default)
+    public async Task<string> UploadFileAsync(string token, string channelId, ChannelType channelType, Stream fileStream, string fileName, string contentType, CancellationToken ct = default)
     {
-        // The octo-server uses a flat /v1/file/upload endpoint (not a
-        // per-channel route). The channel_id is passed as a form field.
-        using var req = Authed(token, HttpMethod.Post, "/v1/file/upload");
-        using var multipart = new MultipartFormDataContent();
-        var fileContent = new StreamContent(fileStream);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-        multipart.Add(fileContent, "file", fileName);
-        multipart.Add(new StringContent(channelId), "channel_id");
-        req.Content = multipart;
-        return await SendAsync<Message>(req, ct);
+        // Two-step presigned direct upload (matches packages/dmworkbase/src/
+        // Service/UploadCredentials.ts — uploadChatMedia):
+        // 1. GET /v1/file/upload/credentials?path=...&type=chat&... → credentials
+        // 2. PUT raw file body to credentials.uploadUrl → return downloadUrl
+        var ext = Path.GetExtension(fileName);
+        var path = $"/{(int)channelType}/{channelId}/{Guid.NewGuid():N}{ext}";
+        var fileSize = fileStream.CanSeek ? fileStream.Length : 0;
+
+        var query = $"path={Uri.EscapeDataString(path)}"
+                  + "&type=chat"
+                  + $"&filename={Uri.EscapeDataString(fileName)}"
+                  + $"&contentType={Uri.EscapeDataString(contentType)}"
+                  + $"&fileSize={fileSize}";
+
+        using var credReq = Authed(token, HttpMethod.Get, $"/v1/file/upload/credentials?{query}");
+        var cred = await SendAsync<UploadCredentials>(credReq, ct);
+
+        // Step 2: PUT raw body to the presigned uploadUrl. No token header —
+        // the presigned URL carries its own signature; adding auth headers
+        // could break signature validation on some object stores.
+        using var putReq = new HttpRequestMessage(HttpMethod.Put, cred.UploadUrl);
+        var body = new StreamContent(fileStream);
+        body.Headers.ContentType = new MediaTypeHeaderValue(cred.ContentType);
+        if (!string.IsNullOrEmpty(cred.ContentDisposition))
+        {
+            // Content-Disposition is a restricted header in .NET — add it
+            // without validation to preserve the server-provided value verbatim.
+            body.Headers.TryAddWithoutValidation("Content-Disposition", cred.ContentDisposition);
+        }
+        putReq.Content = body;
+        using var putResp = await _http.SendAsync(putReq, ct);
+        putResp.EnsureSuccessStatusCode();
+
+        return cred.DownloadUrl;
+    }
+
+    /// <summary>
+    /// Presigned upload credentials returned by
+    /// <c>GET /v1/file/upload/credentials</c>. Matches the
+    /// <c>UploadCredentials</c> interface in
+    /// packages/dmworkbase/src/Service/UploadCredentials.ts (camelCase).
+    /// </summary>
+    private sealed class UploadCredentials
+    {
+        [JsonPropertyName("uploadUrl")]
+        public string UploadUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("downloadUrl")]
+        public string DownloadUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("contentType")]
+        public string ContentType { get; set; } = string.Empty;
+
+        [JsonPropertyName("contentDisposition")]
+        public string? ContentDisposition { get; set; }
     }
 
     // --- OIDC / enterprise passport (SSO) ---
@@ -133,17 +207,41 @@ public sealed class ApiService : IApiService
             if (!resp.IsSuccessStatusCode) return new ServerInfo();
             using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), ct);
             var info = new ServerInfo();
+
+            // legacy_password_login_off: when true, the server has disabled
+            // username/password login (backend field in appconfig).
+            if (doc.RootElement.TryGetProperty("legacy_password_login_off", out var lplo) && lplo.ValueKind == JsonValueKind.True)
+            {
+                info.LegacyPasswordLoginOff = true;
+            }
+
             if (doc.RootElement.TryGetProperty("oidc_providers", out var arr) && arr.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in arr.EnumerateArray())
                 {
+                    // id and name must be non-empty strings — skip otherwise.
+                    var id = item.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String
+                        ? idEl.GetString() ?? "" : "";
+                    var name = item.TryGetProperty("name", out var nameEl) && nameEl.ValueKind == JsonValueKind.String
+                        ? nameEl.GetString() ?? "" : "";
+                    if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(name)) continue;
+
+                    // authorize_path must be a safe in-site relative path
+                    // (starts with /, not //) — mirrors isSafeAuthorizePath
+                    // in OidcConfig.ts. Skip unsafe entries.
+                    var authorizePath = item.TryGetProperty("authorize_path", out var apEl) && apEl.ValueKind == JsonValueKind.String
+                        ? apEl.GetString() ?? "" : "";
+                    if (!IsSafeAuthorizePath(authorizePath)) continue;
+
                     info.OidcProviders.Add(new OidcProvider
                     {
-                        Id = item.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
-                        Name = item.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
-                        AuthorizePath = item.TryGetProperty("authorize_path", out var ap) ? ap.GetString() ?? "" : "",
-                        AccountUrl = item.TryGetProperty("account_url", out var au) && au.ValueKind == JsonValueKind.String ? au.GetString() : null,
-                        ResetPasswordUrl = item.TryGetProperty("reset_password_url", out var rp) && rp.ValueKind == JsonValueKind.String ? rp.GetString() : null,
+                        Id = id,
+                        Name = name,
+                        AuthorizePath = authorizePath,
+                        // account_url / reset_password_url must be http/https —
+                        // mirrors sanitizeHttpUrl in OidcConfig.ts.
+                        AccountUrl = SanitizeHttpUrl(item, "account_url"),
+                        ResetPasswordUrl = SanitizeHttpUrl(item, "reset_password_url"),
                     });
                 }
             }
@@ -174,11 +272,14 @@ public sealed class ApiService : IApiService
     }
 
     /// <summary>
-    /// Build the full authorize URL for a given OIDC provider. If
-    /// <paramref name="provider.AuthorizePath"/> is already absolute, it's
+    /// Build the full authorize URL for a given OIDC provider, appending the
+    /// <c>authcode</c>, <c>return_to</c>, and <c>flag</c> query parameters
+    /// (mirrors <c>buildAuthorizeURL</c> in <c>oidc/url.ts</c>). MAUI is a PC
+    /// client so <c>flag=2</c> (matching the value sent in <c>user/login</c>).
+    /// If <paramref name="provider.AuthorizePath"/> is already absolute, it's
     /// used as-is; otherwise it's resolved against the current server origin.
     /// </summary>
-    public string BuildAuthorizeUrl(OidcProvider provider, string authCode)
+    public string BuildAuthorizeUrl(OidcProvider provider, string authCode, string returnTo = "/login")
     {
         var path = provider.AuthorizePath;
         // Determine absolute-vs-relative via Uri.TryCreate instead of
@@ -195,7 +296,7 @@ public sealed class ApiService : IApiService
             full = new Uri(new Uri(_options.BaseUrl), path).ToString();
         }
         var sep = full.Contains('?') ? "&" : "?";
-        return $"{full}{sep}authcode={Uri.EscapeDataString(authCode)}&flag=1";
+        return $"{full}{sep}authcode={Uri.EscapeDataString(authCode)}&return_to={Uri.EscapeDataString(returnTo)}&flag=2";
     }
 
     // --- helpers ---
@@ -263,6 +364,73 @@ public sealed class ApiService : IApiService
         return false;
     }
 
+    /// <summary>
+    /// Build the device info payload sent with login (mirrors
+    /// <c>login_vm.tsx</c> <c>getDevice()</c>). MAUI Essentials provides
+    /// <see cref="DeviceInfo.Current"/> for platform/model/name.
+    /// </summary>
+    private static object GetDevice()
+    {
+        return new
+        {
+            device_id = GetOrCreateDeviceId(),
+            device_name = DeviceInfo.Current.Name,
+            device_model = DeviceInfo.Current.Model,
+        };
+    }
+
+    /// <summary>
+    /// Generate (and persist) a stable per-install device identifier. The web
+    /// client stores a UUID in localStorage; MAUI uses Preferences.
+    /// </summary>
+    private static string GetOrCreateDeviceId()
+    {
+        const string key = "octo.device.id";
+        var id = Preferences.Default.Get(key, string.Empty);
+        if (string.IsNullOrEmpty(id))
+        {
+            id = Guid.NewGuid().ToString("N");
+            Preferences.Default.Set(key, id);
+        }
+        return id;
+    }
+
+    /// <summary>
+    /// True when <paramref name="value"/> is a server-relative path (starts
+    /// with a single <c>/</c>, not <c>//</c>). Mirrors
+    /// <c>isSafeAuthorizePath</c> in
+    /// <c>packages/dmworkbase/src/Service/OidcConfig.ts</c> — authorize_path
+    /// is used to build a URL opened in the browser, so only in-site paths
+    /// are allowed to prevent javascript:/data:/protocol-relative redirects.
+    /// </summary>
+    private static bool IsSafeAuthorizePath(string? value)
+    {
+        return !string.IsNullOrEmpty(value)
+               && value.Length >= 2
+               && value[0] == '/'
+               && value[1] != '/';
+    }
+
+    /// <summary>
+    /// Return the string value of <paramref name="propertyName"/> from
+    /// <paramref name="element"/> only when it's a valid http/https URL.
+    /// Mirrors <c>sanitizeHttpUrl</c> in
+    /// <c>packages/dmworkbase/src/Service/OidcConfig.ts</c>.
+    /// </summary>
+    private static string? SanitizeHttpUrl(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var el) || el.ValueKind != JsonValueKind.String)
+            return null;
+        var value = el.GetString();
+        if (string.IsNullOrEmpty(value)) return null;
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+            (uri.Scheme == "https" || uri.Scheme == "http"))
+        {
+            return value;
+        }
+        return null;
+    }
+
     private HttpRequestMessage Authed(string token, HttpMethod method, string path)
     {
         var req = new HttpRequestMessage(method, path);
@@ -283,6 +451,7 @@ public sealed class ApiService : IApiService
 /// Login response from octo-server. The server returns a flat structure
 /// (<c>{ token, uid, name, sex, ... }</c>), not a nested
 /// <c>{ token, user: { id, ... } }</c> — so we map the fields directly.
+/// Mirrors <c>LoginRespFields</c> in <c>loginSession.ts</c>.
 /// </summary>
 public sealed class LoginResult
 {
@@ -295,6 +464,39 @@ public sealed class LoginResult
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
+    [JsonPropertyName("app_id")]
+    public string? AppId { get; set; }
+
+    [JsonPropertyName("short_no")]
+    public string? ShortNo { get; set; }
+
+    [JsonPropertyName("sex")]
+    public int Sex { get; set; }
+
+    /// <summary>
+    /// Realname verification status. The backend may send a boolean, an
+    /// int (0/1), or a string — captured as <see cref="JsonElement"/> to
+    /// avoid deserialization failures. Mirrors the tri-state handling in
+    /// <c>loginSession.ts</c> <c>applyLoginResp</c>.
+    /// </summary>
+    [JsonPropertyName("realname_verified")]
+    public JsonElement? RealnameVerified { get; set; }
+
+    [JsonPropertyName("real_name")]
+    public string? RealName { get; set; }
+
+    [JsonPropertyName("realname_verified_at")]
+    public long? RealnameVerifiedAt { get; set; }
+
+    [JsonPropertyName("language")]
+    public string? Language { get; set; }
+
     /// <summary>Constructs a <see cref="User"/> from the flat login response.</summary>
-    public User ToUser() => new() { Id = Uid, Name = Name };
+    public User ToUser() => new()
+    {
+        Id = Uid,
+        Name = Name,
+        Sex = Sex,
+        ShortNo = ShortNo ?? string.Empty,
+    };
 }

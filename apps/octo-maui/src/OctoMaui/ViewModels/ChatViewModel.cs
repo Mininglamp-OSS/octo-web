@@ -315,9 +315,14 @@ public sealed class ChatViewModel : ViewModelBase, IDisposable
 
             using var stream = await result.OpenReadAsync();
             var contentType = result.ContentType ?? "application/octet-stream";
+            var fileSize = stream.CanSeek ? stream.Length : 0;
             IsUploading = true;
             StatusText = "正在上传文件…";
-            await _api.UploadFileAsync(_auth.Token!, SelectedChannel.Id, stream, result.FileName, contentType);
+            // UploadFileAsync now returns the download URL (string) instead of
+            // a full Message — we build a local placeholder Message from it so
+            // the attachment shows up immediately in the chat surface.
+            var downloadUrl = await _api.UploadFileAsync(_auth.Token!, SelectedChannel.Id, stream, result.FileName, contentType);
+            AddUploadedMessage(MessageType.File, result.FileName, downloadUrl, fileSize);
             StatusText = "已上传";
         }
         catch (Exception ex)
@@ -344,9 +349,11 @@ public sealed class ChatViewModel : ViewModelBase, IDisposable
 
             using var stream = await result.OpenReadAsync();
             var contentType = result.ContentType ?? "image/png";
+            var fileSize = stream.CanSeek ? stream.Length : 0;
             IsUploading = true;
             StatusText = "正在上传图片…";
-            await _api.UploadFileAsync(_auth.Token!, SelectedChannel.Id, stream, result.FileName, contentType);
+            var downloadUrl = await _api.UploadFileAsync(_auth.Token!, SelectedChannel.Id, stream, result.FileName, contentType);
+            AddUploadedMessage(MessageType.Image, result.FileName, downloadUrl, fileSize);
             StatusText = "已上传";
         }
         catch (Exception ex)
@@ -379,8 +386,12 @@ public sealed class ChatViewModel : ViewModelBase, IDisposable
                     using var stream = File.OpenRead(path);
                     var fileName = Path.GetFileName(path);
                     var contentType = GuessContentType(fileName);
+                    var fileSize = new FileInfo(path).Length;
                     StatusText = $"正在上传 {fileName}…";
-                    await _api.UploadFileAsync(_auth.Token!, SelectedChannel.Id, stream, fileName, contentType);
+                    var downloadUrl = await _api.UploadFileAsync(_auth.Token!, SelectedChannel.Id, SelectedChannel.Type, stream, fileName, contentType);
+                    var msgType = contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                        ? MessageType.Image : MessageType.File;
+                    AddUploadedMessage(msgType, fileName, downloadUrl, fileSize);
                 }
                 catch (Exception ex)
                 {
@@ -394,6 +405,30 @@ public sealed class ChatViewModel : ViewModelBase, IDisposable
         {
             IsUploading = false;
         }
+    }
+
+    /// <summary>
+    /// Append a local placeholder Message for a just-uploaded attachment.
+    /// Uses a client-generated temp id (matching the optimistic-echo pattern
+    /// in <see cref="SendAsync"/>) so it can be de-duped if the server later
+    /// pushes the canonical copy.
+    /// </summary>
+    private void AddUploadedMessage(MessageType type, string fileName, string downloadUrl, long fileSize)
+    {
+        if (string.IsNullOrEmpty(downloadUrl)) return;
+        Messages.Add(new Message
+        {
+            Id = "local-" + Guid.NewGuid().ToString("N"),
+            ChannelId = SelectedChannel?.Id ?? "",
+            FromUid = _auth.CurrentUser?.Id ?? "me",
+            SenderName = _auth.CurrentUser?.DisplayName ?? "我",
+            Type = type,
+            Content = "",
+            Url = downloadUrl,
+            FileName = fileName,
+            FileSize = fileSize,
+            TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+        });
     }
 
     /// <summary>

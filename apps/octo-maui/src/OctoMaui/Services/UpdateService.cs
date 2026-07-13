@@ -4,16 +4,11 @@ using System.Text.Json;
 namespace OctoMaui.Services;
 
 /// <summary>
-/// Default update service. Queries <c>GET /v1/common/version</c> on the
-/// octo-server to discover the latest client release. Compares semver
-/// strings and fires <see cref="UpdateFound"/> when a newer version exists.
+/// Default update service. Fetches the server's <c>/version.json</c> static
+/// file (matches packages/dmworkbase/src/Utils/versionChecker.ts) to discover
+/// the latest client release. Compares semver strings and fires
+/// <see cref="UpdateFound"/> when a newer version exists.
 /// </summary>
-/// <remarks>
-/// WIP: The <c>/v1/common/version</c> endpoint may not exist on all
-/// deployments. The check is best-effort and silently returns "no update"
-/// (via the catch block) if the endpoint is unavailable. This will be
-/// revisited once the server-side version endpoint is finalized.
-/// </remarks>
 public sealed class UpdateService : IUpdateService
 {
     private readonly IApiService _api;
@@ -41,15 +36,16 @@ public sealed class UpdateService : IUpdateService
             // Reuse a long-lived HttpClient to avoid socket exhaustion.
             // BaseAddress is set per-call because the server URL can change.
             _http.BaseAddress = new Uri(_api.BaseUrl);
-            using var resp = await _http.GetAsync("/v1/common/version", ct);
+            // /version.json is a static file (not an API endpoint). The
+            // cache-busting query param mirrors versionChecker.ts
+            // (`'/version.json?_=' + Date.now()` with `cache: 'no-store'`).
+            using var resp = await _http.GetAsync($"/version.json?_={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}", ct);
             if (!resp.IsSuccessStatusCode) return;
 
             var info = await resp.Content.ReadFromJsonAsync<VersionInfo>(Json, ct);
             if (info is null || string.IsNullOrWhiteSpace(info.Version)) return;
 
             LatestVersion = info.Version;
-            DownloadUrl = info.DownloadUrl;
-            ReleaseNotesUrl = info.ReleaseUrl;
 
             // Simple semver comparison: parse "1.2.3" into (1, 2, 3).
             UpdateAvailable = IsNewer(info.Version, CurrentVersion);

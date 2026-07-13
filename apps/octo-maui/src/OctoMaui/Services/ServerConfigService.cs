@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text.Json;
 using OctoMaui.Models;
 
 namespace OctoMaui.Services;
@@ -98,6 +100,16 @@ public sealed class ServerConfigService : IServerConfigService
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Uses a self-contained <see cref="HttpClient"/> pointed at the candidate
+    /// URL — it does NOT swap <see cref="IApiService"/>'s BaseUrl or mutate
+    /// <see cref="ApiOptions"/>. This avoids the concurrency risk of
+    /// temporarily repointing the shared ApiService while another caller
+    /// (e.g. an in-flight chat request) is relying on the current URL. The
+    /// probe issues a single <c>GET /v1/common/appconfig</c>: a 2xx response
+    /// proves both reachability and that the host is an octo-server, and the
+    /// body carries the OIDC provider list.
+    /// </remarks>
     public async Task<ServerInfo?> ProbeAsync(string url, CancellationToken ct = default)
     {
         string normalized;
@@ -110,41 +122,80 @@ public sealed class ServerConfigService : IServerConfigService
             return null;
         }
 
-        // Step 1: reachability check (5s timeout via PingAsync).
-        if (!await _api.PingAsync(normalized, ct))
-            return null;
-
-        // Step 2: temporarily point the ApiService at the candidate URL so
-        // GetServerInfoAsync hits the right server, then restore the previous
-        // URL so the service state is unchanged if the user cancels.
-        var previousUrl = _options.BaseUrl;
+        // Local HttpClient — no mutation of _api / _options state.
+        using var probe = CreateProbeClient(normalized, TimeSpan.FromSeconds(5));
         try
         {
-            _api.UpdateBaseUrl(normalized);
-            _options.BaseUrl = normalized;
-            return await _api.GetServerInfoAsync(ct);
+            using var resp = await probe.GetAsync("/v1/common/appconfig", ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(ct), ct);
+            return ParseServerInfo(doc.RootElement);
         }
         catch
         {
-            return new ServerInfo();
-        }
-        finally
-        {
-            // Restore — never persist the probed URL here.
-            try
-            {
-                _api.UpdateBaseUrl(previousUrl);
-                _options.BaseUrl = previousUrl;
-            }
-            catch
-            {
-                // If the previous URL was empty/invalid, leave the api pointed
-                // at the candidate so subsequent SetServerUrlAsync works.
-            }
+            // Connection failure or malformed payload — treat as unreachable.
+            return null;
         }
     }
 
     // --- helpers ---
+
+    /// <summary>
+    /// Build a standalone <see cref="HttpClient"/> for probing a candidate
+    /// server URL without touching the shared ApiService. Mirrors the
+    /// AllowInsecureSsl behavior (loopback-only bypass) of
+    /// <see cref="ApiService"/>.
+    /// </summary>
+    private HttpClient CreateProbeClient(string baseUrl, TimeSpan timeout)
+    {
+        var handler = new HttpClientHandler();
+        if (_options.AllowInsecureSsl)
+        {
+            handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+            {
+                if (message.RequestUri is { } uri && IsLoopback(uri.Host))
+                    return true;  // Allow self-signed for localhost only
+                return false;  // Remote hosts must have valid certs
+            };
+        }
+        return new HttpClient(handler) { BaseAddress = new Uri(baseUrl), Timeout = timeout };
+    }
+
+    private static bool IsLoopback(string host)
+    {
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (IPAddress.TryParse(host, out var ip))
+            return IPAddress.IsLoopback(ip);
+        return false;
+    }
+
+    /// <summary>
+    /// Parse the <c>/v1/common/appconfig</c> JSON root into a
+    /// <see cref="ServerInfo"/>. Mirrors <see cref="ApiService.GetServerInfoAsync"/>
+    /// so the probe can run against a candidate URL without delegating to the
+    /// shared ApiService (which would require mutating its BaseUrl).
+    /// </summary>
+    private static ServerInfo ParseServerInfo(JsonElement root)
+    {
+        var info = new ServerInfo();
+        if (root.ValueKind != JsonValueKind.Object) return info;
+        if (root.TryGetProperty("oidc_providers", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in arr.EnumerateArray())
+            {
+                info.OidcProviders.Add(new OidcProvider
+                {
+                    Id = item.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
+                    Name = item.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
+                    AuthorizePath = item.TryGetProperty("authorize_path", out var ap) ? ap.GetString() ?? "" : "",
+                    AccountUrl = item.TryGetProperty("account_url", out var au) && au.ValueKind == JsonValueKind.String ? au.GetString() : null,
+                    ResetPasswordUrl = item.TryGetProperty("reset_password_url", out var rp) && rp.ValueKind == JsonValueKind.String ? rp.GetString() : null,
+                });
+            }
+        }
+        return info;
+    }
 
     private async Task ProbeServerInfoAsync()
     {

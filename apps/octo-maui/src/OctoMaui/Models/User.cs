@@ -17,9 +17,21 @@ public sealed class User
     /// <summary>Display name with optional agent badge.</summary>
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Id : Name;
 
-    /// <summary>True if this user is an AI agent (Lobster).</summary>
-    [JsonPropertyName("is_agent")]
-    public bool IsAgent { get; set; }
+    /// <summary>
+    /// Robot/agent flag (0 = human, 1 = AI agent). Mirrors the backend
+    /// <c>robot</c> field — the web client checks <c>contacts.robot === 1</c>
+    /// (see <c>datasource.ts</c> <c>toContacts</c>).
+    /// </summary>
+    [JsonPropertyName("robot")]
+    public int Robot { get; set; }
+
+    /// <summary>Sex/gender (0 = unknown, 1 = male, 2 = female).</summary>
+    [JsonPropertyName("sex")]
+    public int Sex { get; set; }
+
+    /// <summary>Short number (display identifier from login response).</summary>
+    [JsonPropertyName("short_no")]
+    public string ShortNo { get; set; } = string.Empty;
 
     public override string ToString() => DisplayName;
 }

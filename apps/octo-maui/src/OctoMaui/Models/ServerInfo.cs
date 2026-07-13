@@ -15,6 +15,14 @@ public sealed class ServerInfo
     [JsonPropertyName("oidc_providers")]
     public List<OidcProvider> OidcProviders { get; set; } = new();
 
+    /// <summary>
+    /// True when the server has disabled legacy username/password login
+    /// (backend <c>legacy_password_login_off</c> field in appconfig). When
+    /// true, the login page should only show OIDC/SSO buttons.
+    /// </summary>
+    [JsonPropertyName("legacy_password_login_off")]
+    public bool LegacyPasswordLoginOff { get; set; }
+
     /// <summary>True when at least one OIDC provider is available.</summary>
     [JsonIgnore]
     public bool HasOidcProviders => OidcProviders is { Count: > 0 };
@@ -34,7 +42,7 @@ public sealed class OidcProvider
 
     /// <summary>
     /// Full authorize URL (absolute) or a server-relative path. The client
-    /// appends <c>?authcode=...&amp;return_to=...&amp;flag=1</c> and opens it
+    /// appends <c>?authcode=...&amp;return_to=...&amp;flag=2</c> and opens it
     /// in the system browser.
     /// </summary>
     [JsonPropertyName("authorize_path")]
@@ -77,4 +85,12 @@ public sealed class OidcAuthResult
     public string Uid { get; set; } = string.Empty;
     public string Token { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>Short number (mirrors <c>short_no</c> from password login).</summary>
+    [JsonPropertyName("short_no")]
+    public string? ShortNo { get; set; }
+
+    /// <summary>Sex/gender (mirrors <c>sex</c> from password login).</summary>
+    [JsonPropertyName("sex")]
+    public int Sex { get; set; }
 }

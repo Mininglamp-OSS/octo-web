@@ -31,21 +31,17 @@ public interface IUpdateService
     Task CheckForUpdatesAsync(CancellationToken ct = default);
 }
 
-/// <summary>Version info returned by the server's version endpoint.</summary>
+/// <summary>
+/// Version info returned by the server's <c>/version.json</c> static file.
+/// Only <c>version</c> and <c>force</c> are defined (matches
+/// packages/dmworkbase/src/Utils/versionChecker.ts).
+/// </summary>
 public sealed class VersionInfo
 {
     [JsonPropertyName("version")]
     public string Version { get; set; } = string.Empty;
 
-    [JsonPropertyName("download_url")]
-    public string? DownloadUrl { get; set; }
-
-    [JsonPropertyName("release_notes")]
-    public string? ReleaseNotes { get; set; }
-
-    [JsonPropertyName("release_url")]
-    public string? ReleaseUrl { get; set; }
-
-    [JsonPropertyName("min_required")]
-    public string? MinRequired { get; set; }
+    /// <summary>When true, the client should force a refresh (optional, defaults to false).</summary>
+    [JsonPropertyName("force")]
+    public bool Force { get; set; }
 }

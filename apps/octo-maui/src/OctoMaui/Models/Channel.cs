@@ -2,18 +2,30 @@ using System.Text.Json.Serialization;
 
 namespace OctoMaui.Models;
 
-/// <summary>A conversation channel (1:1, group, or agent).</summary>
+/// <summary>
+/// A conversation channel (person, group, or community topic).
+///
+/// In the WuKongIM architecture <c>Channel</c> (channelID + channelType)
+/// and <c>ChannelInfo</c> (title, logo, orgData …) are separate objects —
+/// see packages/dmworkdatasource/src/module.ts channelInfoCallback.
+/// The MAUI client merges them into this single model for UI binding until
+/// the WuKongIM .NET client is integrated.
+/// </summary>
 public sealed class Channel
 {
+    /// <summary>Channel id (WuKongIM: channelID).</summary>
+    [JsonPropertyName("channelID")]
     public string Id { get; set; } = string.Empty;
 
+    /// <summary>Display name (corresponds to WuKongIM ChannelInfo.title).</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>Avatar URL (corresponds to WuKongIM ChannelInfo.logo).</summary>
     public string? Avatar { get; set; }
 
-    /// <summary>direct | group | agent</summary>
-    [JsonPropertyName("channel_type")]
-    public ChannelType Type { get; set; } = ChannelType.Direct;
+    /// <summary>person | group | communityTopic (WuKongIM: channelType).</summary>
+    [JsonPropertyName("channelType")]
+    public ChannelType Type { get; set; } = ChannelType.Person;
 
     /// <summary>Last read message id (for unread badge calc).</summary>
     [JsonPropertyName("last_read_message_id")]
@@ -34,9 +46,16 @@ public sealed class Channel
     public override string ToString() => Name;
 }
 
+/// <summary>
+/// Channel types. Values mirror WuKongIM:
+/// ChannelTypePerson = 1, ChannelTypeGroup = 2 (from wukongimjssdk);
+/// ChannelTypeCommunityTopic = 5 (packages/dmworkbase/src/Service/Const.ts).
+/// ChannelTypeCustomerService = 3 exists in WuKongIM but is not needed by
+/// the MAUI client at this time.
+/// </summary>
 public enum ChannelType
 {
-    Direct = 1,
+    Person = 1,
     Group = 2,
-    Agent = 3,
+    CommunityTopic = 5,
 }

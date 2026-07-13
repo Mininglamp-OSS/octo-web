@@ -15,8 +15,11 @@ public interface IApiService
     void UpdateBaseUrl(string url);
 
     /// <summary>
-    /// Quick reachability check: returns true if the server responds with any
-    /// HTTP status (even 401/404). Only connection failures return false.
+    /// Quick reachability + capability check: returns true if the server
+    /// responds with a 2xx status to <c>GET /v1/common/appconfig</c>. Only
+    /// connection failures or non-2xx responses return false. Because this
+    /// hits the real octo-server config endpoint, a true result also implies
+    /// the server is an octo-server (not just any HTTP listener).
     /// </summary>
     Task<bool> PingAsync(string url, CancellationToken ct = default);
 
@@ -35,8 +38,15 @@ public interface IApiService
     /// <summary>Send a text message to a channel.</summary>
     Task<Message> SendMessageAsync(string token, string channelId, string content, CancellationToken ct = default);
 
-    /// <summary>Upload a file/image to a channel via multipart/form-data.</summary>
-    Task<Message> UploadFileAsync(string token, string channelId, Stream fileStream, string fileName, string contentType, CancellationToken ct = default);
+    /// <summary>
+    /// Upload a file/image to a channel via two-step presigned direct upload
+    /// (matches packages/dmworkbase/src/Service/UploadCredentials.ts):
+    /// 1. <c>GET /v1/file/upload/credentials</c> → <c>{ uploadUrl, downloadUrl, ... }</c>
+    /// 2. <c>PUT</c> raw body to <c>uploadUrl</c> → returns <c>downloadUrl</c>.
+    /// The <paramref name="channelType"/> + <paramref name="channelId"/> form
+    /// the storage path <c>/{channelType}/{channelId}/{uuid}.{ext}</c>.
+    /// </summary>
+    Task<string> UploadFileAsync(string token, string channelId, ChannelType channelType, Stream fileStream, string fileName, string contentType, CancellationToken ct = default);
 
     // --- OIDC / enterprise passport (SSO) ---
 
@@ -65,8 +75,11 @@ public interface IApiService
 
     /// <summary>
     /// Build the full authorize URL for a given OIDC provider, appending the
-    /// <c>authcode</c> and <c>flag=1</c> query parameters. Handles both
-    /// absolute and server-relative <see cref="OidcProvider.AuthorizePath"/>.
+    /// <c>authcode</c>, <c>return_to</c>, and <c>flag</c> query parameters.
+    /// Handles both absolute and server-relative
+    /// <see cref="OidcProvider.AuthorizePath"/>. The <paramref name="returnTo"/>
+    /// parameter defaults to <c>"/login"</c> but can be overridden for
+    /// alternative passport/OAuth deployments.
     /// </summary>
-    string BuildAuthorizeUrl(OidcProvider provider, string authCode);
+    string BuildAuthorizeUrl(OidcProvider provider, string authCode, string returnTo = "/login");
 }
