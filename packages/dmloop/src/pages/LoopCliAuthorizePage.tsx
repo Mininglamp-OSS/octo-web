@@ -7,38 +7,10 @@ import { issueLoopCliToken } from "../api/authApi";
 import { listWorkspaces } from "../api/workspaceApi";
 import { currentWorkspaceId, setWorkspaceContext } from "../api/http";
 import { clearPendingLoopCliAuthorizeSearch } from "../cliAuthorizeSession";
+import { isSafeCliCallback } from "../ui/cliCallback";
 import "./loop.css";
 
 const { Text, Title } = Typography;
-
-function isPrivateIPv4(host: string): boolean {
-  const parts = host.split(".").map((p) => Number(p));
-  if (
-    parts.length !== 4 ||
-    parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)
-  ) {
-    return false;
-  }
-  const [a, b] = parts;
-  return (
-    a === 10 ||
-    a === 127 ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168)
-  );
-}
-
-function isSafeCliCallback(raw: string): boolean {
-  try {
-    const parsed = new URL(raw);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
-      return false;
-    const host = parsed.hostname.toLowerCase();
-    return host === "localhost" || host === "::1" || isPrivateIPv4(host);
-  } catch {
-    return false;
-  }
-}
 
 function redirectToCli(
   callbackURL: string,

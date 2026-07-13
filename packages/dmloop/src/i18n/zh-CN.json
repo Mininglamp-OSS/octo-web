@@ -638,6 +638,8 @@
     "addMember": "添加成员",
     "selectMember": "搜索并选择 space 成员",
     "noCandidates": "该 space 暂无可添加的成员",
+    "rosterLoadFailed": "成员列表加载失败",
+    "rosterRetry": "重试",
     "added": "成员已添加",
     "pendingInvites": "待处理邀请",
     "revoke": "撤销"

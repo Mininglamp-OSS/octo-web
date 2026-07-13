@@ -10,6 +10,7 @@ import {
   updateWorkspace, listWorkspaceMembers, addOctoMember, updateMemberRole, removeMember,
   listWorkspaceInvitations, revokeInvitation,
 } from "../api/workspaceApi";
+import { invalidateDirectory } from "../api/directory";
 
 const { Title, Text } = Typography;
 const ROLES = ["admin", "member"];
@@ -108,6 +109,9 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
   const [invites, setInvites] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // roster(space 成员)单独的失败标记:与「space 确实没有可加成员」区分开——
+  // 抓取失败时不能显示误导性的「暂无成员」并禁用添加(#581 评审 B2)。
+  const [rosterError, setRosterError] = useState(false);
   // octo space 成员（仅人，robot===0）+ uid→身份 映射，供选择器候选与列表渲染复用。
   const [spaceHumans, setSpaceHumans] = useState<SpaceMember[]>([]);
   const seqRef = useRef(0); // reload 请求序号:切 workspace 时只让最新一次落地
@@ -129,13 +133,17 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
 
   const reload = useCallback(() => {
     const my = ++seqRef.current; // 切 workspace 时旧 in-flight 结果不得覆盖新的
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setRosterError(false);
+    let rosterFailed = false;
     Promise.all([
       listWorkspaceMembers(workspaceId),
       listWorkspaceInvitations(workspaceId).catch(() => [] as Invitation[]),
-      loadSpaceMembers().catch(() => [] as SpaceMember[]),
+      loadSpaceMembers().catch(() => { rosterFailed = true; return [] as SpaceMember[]; }),
     ])
-      .then(([m, inv, humans]) => { if (my !== seqRef.current) return; setMembers(m); setInvites(inv); setSpaceHumans(humans); })
+      .then(([m, inv, humans]) => {
+        if (my !== seqRef.current) return;
+        setMembers(m); setInvites(inv); setSpaceHumans(humans); setRosterError(rosterFailed);
+      })
       .catch((e) => { if (my === seqRef.current) setError(e?.message ?? "load failed"); })
       .finally(() => { if (my === seqRef.current) setLoading(false); });
   }, [workspaceId, loadSpaceMembers]);
@@ -157,6 +165,7 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
     try {
       await addOctoMember(workspaceId, { octo_uid: selectedUid, role });
       setSelectedUid("");
+      invalidateDirectory(); // 成员变动后清共享目录缓存,否则指派选择器仍返回旧候选(#581 评审)
       Toast.success(t("loop.settings.added"));
       reload();
     } catch (e) { Toast.error((e as Error)?.message ?? "add failed"); }
@@ -164,7 +173,7 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
   };
 
   const changeRole = async (m: WorkspaceMember, r: string) => {
-    try { await updateMemberRole(workspaceId, m.id, r); Toast.success(t("loop.toast.saved")); reload(); }
+    try { await updateMemberRole(workspaceId, m.id, r); invalidateDirectory(); Toast.success(t("loop.toast.saved")); reload(); }
     catch (e) { Toast.error((e as Error)?.message ?? "failed"); }
   };
   const remove = (m: WorkspaceMember) => {
@@ -174,7 +183,7 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
       okText: t("loop.action.delete"),
       cancelText: t("loop.action.cancel"),
       onOk: async () => {
-        try { await removeMember(workspaceId, m.id); Toast.success(t("loop.toast.deleted")); reload(); }
+        try { await removeMember(workspaceId, m.id); invalidateDirectory(); Toast.success(t("loop.toast.deleted")); reload(); }
         catch (e) { Toast.error((e as Error)?.message ?? "failed"); }
       },
     });
@@ -225,6 +234,18 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
 
   return (
     <div style={{ paddingTop: 12, display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
+      {rosterError && (
+        <Banner
+          type="danger"
+          closeIcon={null}
+          description={
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
+              {t("loop.settings.rosterLoadFailed")}
+              <Button size="small" onClick={reload}>{t("loop.settings.rosterRetry")}</Button>
+            </span>
+          }
+        />
+      )}
       <div className="loop-settings-invite">
         <Select
           filter
@@ -237,7 +258,8 @@ function MembersTab({ workspaceId }: { workspaceId: string }) {
           emptyContent={t("loop.settings.noCandidates")}
         >
           {candidates.map((c) => (
-            <Select.Option key={c.uid} value={c.uid} showTick={false}>
+            // label 提供可匹配的纯字符串,否则 Semi 的 filter 拿 JSX children 无法匹配,输入即空(#581 评审 B1)
+            <Select.Option key={c.uid} value={c.uid} label={c.name} showTick={false}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                 <Avatar size="extra-small" color="light-blue" src={WKApp.shared.avatarUser(c.uid)}>{c.name?.slice(0, 1)}</Avatar>
                 <span>{c.name}</span>

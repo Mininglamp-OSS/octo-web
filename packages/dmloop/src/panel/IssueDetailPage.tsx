@@ -102,7 +102,9 @@ function ThreadReply({
   placeholder,
   sendLabel,
 }: {
-  onSubmit: (content: string, files: File[]) => Promise<boolean>;
+  // 返回 null:评论未创建(保留草稿+全部文件供重试);返回 File[]:评论已建,
+  // 数组为附件上传失败的文件(空=全部成功)——评论已存在故清空草稿、仅回填失败附件。
+  onSubmit: (content: string, files: File[]) => Promise<File[] | null>;
   placeholder: string;
   sendLabel: string;
 }) {
@@ -114,9 +116,11 @@ function ThreadReply({
     const c = draft.trim();
     if ((!c && files.length === 0) || busy) return;
     setBusy(true);
-    const ok = await onSubmit(c, files);
+    const res = await onSubmit(c, files);
     setBusy(false);
-    if (ok) { setDraft(""); setFiles([]); }
+    if (res === null) return; // 评论未创建:保留草稿与文件
+    setDraft("");
+    setFiles(res); // 评论已创建:仅保留失败附件(空数组=清空)
   };
   return (
     <div className="loop-cmt__reply">
@@ -127,7 +131,7 @@ function ThreadReply({
           onChange={(e) => setDraft(e.target.value)}
           placeholder={placeholder}
           disabled={busy}
-          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) submit(); }}
         />
         <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
           <Paperclip size={16} />
@@ -497,25 +501,26 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const toggleSuppress = (id: string) =>
     setSuppressed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  // 线程回复:回评归到根评论(parent=rootId)。附件在评论创建后带 commentId 绑定(逐个隔离,失败只提示)。
-  // 成功返回 true 供输入框清空。
-  const replyToThread = async (rootId: string, content: string, files: File[]): Promise<boolean> => {
+  // 线程回复:回评归到根评论(parent=rootId)。附件在评论创建后带 commentId 绑定(逐个隔离)。
+  // 返回 null:评论未创建(输入框保留草稿+全部文件);返回失败附件列表:评论已建,
+  // 仅这些附件上传失败——与 submitComment 一致地回填失败文件而非静默丢弃(#668 评审)。
+  const replyToThread = async (rootId: string, content: string, files: File[]): Promise<File[] | null> => {
     const token = reqRef.current;
     let comment: IssueComment;
     try {
       comment = await addComment(issueId, content, rootId, []);
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
-      return false;
+      return null;
     }
-    let failed = 0;
+    const failedFiles: File[] = [];
     for (const f of files) {
-      try { await uploadAttachment(f, { commentId: comment.id }); } catch { failed++; }
+      try { await uploadAttachment(f, { commentId: comment.id }); } catch { failedFiles.push(f); }
     }
-    if (failed) Toast.error(t("loop.toast.commentAttachFailed", { values: { count: failed } }));
+    if (failedFiles.length) Toast.error(t("loop.toast.commentAttachFailed", { values: { count: failedFiles.length } }));
     else Toast.success(t("loop.toast.commentAdded"));
     try { await reloadComments(token); } catch { /* 刷新失败:下次 reload 自愈 */ }
-    return true;
+    return failedFiles;
   };
 
   const removeComment = (id: string) => {
