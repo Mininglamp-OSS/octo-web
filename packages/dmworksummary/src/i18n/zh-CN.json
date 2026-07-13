@@ -372,6 +372,14 @@
     "leaveTask": "退出多人协作",
     "leaveConfirm": "确定退出该多人协作吗？",
     "leaveSuccess": "已退出",
+    "refineTitle": "反馈修改",
+    "refinePlaceholder": "输入修改需求，如「把风险章节扩充成一整段」",
+    "refineSubmit": "提交修改",
+    "refineSuccess": "修改成功，已更新到版本 {{version}}",
+    "refineNotSupported": "本总结不支持增量修改",
+    "refineNotCreator": "你不是本总结的创建者，无法修改",
+    "refineNoSnapshot": "本总结数据版本较老，无法增量修改",
+    "refineFailed": "修改失败，请稍后重试",
     "leaveFailed": "退出失败"
   },
   "summaryCard": {

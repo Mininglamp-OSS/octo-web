@@ -20,6 +20,7 @@ import type {
     PersonalResult,
     ScheduleItem,
     SourceItem,
+    CitationItem,
     SummaryDetail,
     SummaryTemplate,
     TopicTemplate,
@@ -272,6 +273,20 @@ export async function leaveSummary(taskId: number): Promise<void> {
 // 行，并重算团队总结。creator 不可被移除。
 export async function removeMember(taskId: number, uid: string): Promise<void> {
     return del(`/summaries/${taskId}/members?uid=${encodeURIComponent(uid)}`);
+}
+
+
+/**
+ * Agent 总结增量修改（需求2 P2）。
+ * 
+ * POST /summary/api/v1/summaries/{task_id}/refine
+ * 向已完成的 agent 生成总结提交修改需求，后端基于原快照增量修改并返回新版本。
+ */
+export async function refineAgentSummary(
+    taskId: number,
+    instruction: string,
+): Promise<{ task_id: number; new_version: number; content: string; citations?: CitationItem[] }> {
+    return post(`/summaries/${taskId}/refine`, { instruction });
 }
 
 // ─── Status Management ─────────────────────────────────

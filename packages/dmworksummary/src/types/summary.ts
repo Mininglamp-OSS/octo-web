@@ -262,6 +262,15 @@ export interface AgentChatResult {
  * 对应只读接口 GET /agent/chat/history?session_id=xxx，
  * 后端按 session_id 返回该会话已持久化的全部消息，用于「退出不丢」回显。
  */
+
+/** Agent 总结增量修改结果（需求2 P2） */
+export interface RefineSummaryResult {
+    task_id: number;
+    new_version: number;
+    content: string;
+    citations?: CitationItem[];
+}
+
 export interface AgentChatHistory {
     session_id: string;
     messages: ChatMessage[];
