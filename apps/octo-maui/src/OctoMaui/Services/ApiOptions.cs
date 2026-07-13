@@ -9,9 +9,19 @@ public sealed class ApiOptions
     public string BaseUrl { get; set; } = "http://localhost:8080";
 
     /// <summary>WebSocket URL derived from BaseUrl (http→ws / https→wss).</summary>
-    public string WebSocketUrl => BaseUrl
-        .Replace("https://", "wss://")
-        .Replace("http://", "ws://") + "/ws";
+    public string WebSocketUrl
+    {
+        get
+        {
+            var baseUri = new Uri(BaseUrl);
+            var scheme = baseUri.Scheme == "https" ? "wss" : "ws";
+            var builder = new UriBuilder(scheme, baseUri.Host, baseUri.Port)
+            {
+                Path = "/ws"
+            };
+            return builder.Uri.ToString();
+        }
+    }
 
     /// <summary>Request timeout for REST calls.</summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(15);

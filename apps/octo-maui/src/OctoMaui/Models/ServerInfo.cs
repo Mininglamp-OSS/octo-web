@@ -37,15 +37,15 @@ public sealed class OidcProvider
     /// appends <c>?authcode=...&amp;return_to=...&amp;flag=1</c> and opens it
     /// in the system browser.
     /// </summary>
-    [JsonPropertyName("authorizePath")]
+    [JsonPropertyName("authorize_path")]
     public string AuthorizePath { get; set; } = string.Empty;
 
     /// <summary>Optional account-management URL (profile page on the IdP).</summary>
-    [JsonPropertyName("accountUrl")]
+    [JsonPropertyName("account_url")]
     public string? AccountUrl { get; set; }
 
     /// <summary>Optional password-reset URL on the IdP.</summary>
-    [JsonPropertyName("resetPasswordUrl")]
+    [JsonPropertyName("reset_password_url")]
     public string? ResetPasswordUrl { get; set; }
 }
 

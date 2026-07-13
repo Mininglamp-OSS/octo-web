@@ -15,6 +15,7 @@ public sealed class WebSocketService : IWebSocketService, IAsyncDisposable
     private ClientWebSocket? _socket;
     private CancellationTokenSource? _cts;
     private Task? _receiveLoop;
+    private readonly SemaphoreSlim _connectionLock = new(1, 1);
 
     public WebSocketService(ApiOptions options) => _options = options;
 
@@ -29,35 +30,51 @@ public sealed class WebSocketService : IWebSocketService, IAsyncDisposable
 
     public async Task ConnectAsync(string token, CancellationToken ct = default)
     {
-        if (IsConnected) return;
+        await _connectionLock.WaitAsync(ct);
+        try
+        {
+            if (IsConnected) return;
 
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        _socket = new ClientWebSocket();
-        _socket.Options.SetRequestHeader("Authorization", $"Bearer {token}");
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            _socket = new ClientWebSocket();
+            _socket.Options.SetRequestHeader("token", token);
 
-        // Token is sent only via the Authorization header — NOT in the URL
-        // query string, which would leak into server/proxy access logs.
-        await _socket.ConnectAsync(new Uri(_options.WebSocketUrl), _cts.Token);
+            // Token is sent only via the `token` header — NOT in the URL
+            // query string, which would leak into server/proxy access logs.
+            await _socket.ConnectAsync(new Uri(_options.WebSocketUrl), _cts.Token);
 
-        _receiveLoop = Task.Run(ReceiveLoopAsync, _cts.Token);
+            _receiveLoop = Task.Run(ReceiveLoopAsync, _cts.Token);
+        }
+        finally
+        {
+            _connectionLock.Release();
+        }
     }
 
     public async Task DisconnectAsync()
     {
-        _cts?.Cancel();
-        if (_receiveLoop is { } loop)
-        {
-            try { await loop; } catch { /* cancellation expected */ }
-        }
-        if (_socket is null) return;
+        await _connectionLock.WaitAsync();
         try
         {
-            if (_socket.State == WebSocketState.Open)
-                await _socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "client closing", CancellationToken.None);
+            _cts?.Cancel();
+            if (_receiveLoop is { } loop)
+            {
+                try { await loop; } catch { /* cancellation expected */ }
+            }
+            if (_socket is null) return;
+            try
+            {
+                if (_socket.State == WebSocketState.Open)
+                    await _socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "client closing", CancellationToken.None);
+            }
+            catch { /* ignore close errors */ }
+            _socket.Dispose();
+            _socket = null;
         }
-        catch { /* ignore close errors */ }
-        _socket.Dispose();
-        _socket = null;
+        finally
+        {
+            _connectionLock.Release();
+        }
     }
 
     public async Task SendAsync(string channelId, string content, CancellationToken ct = default)
@@ -70,7 +87,7 @@ public sealed class WebSocketService : IWebSocketService, IAsyncDisposable
             type = "message",
             channel_id = channelId,
             content,
-            message_type = 1,
+            message_type = (int)MessageType.Text,
         });
         var bytes = Encoding.UTF8.GetBytes(payload);
         await _socket.SendAsync(bytes, WebSocketMessageType.Text, endOfMessage: true, ct);
@@ -161,5 +178,6 @@ public sealed class WebSocketService : IWebSocketService, IAsyncDisposable
         await DisconnectAsync();
         _cts?.Dispose();
         _cts = null;
+        _connectionLock.Dispose();
     }
 }

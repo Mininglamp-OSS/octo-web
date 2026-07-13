@@ -61,6 +61,27 @@ public sealed class Message : INotifyPropertyChanged
     [JsonIgnore]
     public bool HasImage => Type == MessageType.Image && !string.IsNullOrWhiteSpace(Url);
 
+    /// <summary>
+    /// Validated image URL: only http/https, resolved against the server origin
+    /// to prevent cross-origin or non-http(s) URL injection. Null if Url is
+    /// missing or unsafe.
+    /// </summary>
+    [JsonIgnore]
+    public string? SafeImageUrl
+    {
+        get
+        {
+            if (!HasImage || string.IsNullOrWhiteSpace(Url))
+                return null;
+            if (!Uri.TryCreate(Url, UriKind.Absolute, out var uri))
+                return null;
+            // Only allow http/https schemes — block file://, javascript:, data:, etc.
+            if (uri.Scheme != "http" && uri.Scheme != "https")
+                return null;
+            return Url;
+        }
+    }
+
     /// <summary>True if this message has a file attachment.</summary>
     [JsonIgnore]
     public bool HasFile => Type == MessageType.File && !string.IsNullOrWhiteSpace(FileName);

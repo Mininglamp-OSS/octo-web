@@ -143,7 +143,7 @@
                                                        IsVisible="{Binding HasImage, Converter={StaticResource InverseBoolConverter}}" />
 
                                 <!-- Image attachment -->
-                                <Image Source="{Binding Url}"
+                                <Image Source="{Binding SafeImageUrl}"
                                        MaximumHeightRequest="200"
                                        Aspect="AspectFill"
                                        IsVisible="{Binding HasImage}" />

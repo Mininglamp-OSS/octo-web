@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -58,7 +59,7 @@ public sealed class ApiService : IApiService
     public async Task<LoginResult> LoginAsync(string username, string password, CancellationToken ct = default)
     {
         var payload = new { username, password };
-        var resp = await _http.PostAsJsonAsync("/user/login", payload, ct);
+        var resp = await _http.PostAsJsonAsync("/api/v1/user/login", payload, ct);
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<LoginResult>(Json, ct)
                    ?? throw new InvalidOperationException("Empty login response.");
@@ -67,19 +68,19 @@ public sealed class ApiService : IApiService
 
     public async Task<User> GetCurrentUserAsync(string token, CancellationToken ct = default)
     {
-        using var req = Authed(token, HttpMethod.Get, "/user/current");
+        using var req = Authed(token, HttpMethod.Get, "/api/v1/user/current");
         return await SendAsync<User>(req, ct);
     }
 
     public async Task<List<Channel>> GetChannelsAsync(string token, CancellationToken ct = default)
     {
-        using var req = Authed(token, HttpMethod.Get, "/channel/list");
+        using var req = Authed(token, HttpMethod.Get, "/api/v1/channel/list");
         return await SendAsync<List<Channel>>(req, ct);
     }
 
     public async Task<List<Message>> GetMessagesAsync(string token, string channelId, int limit = 50, long? beforeTimestamp = null, CancellationToken ct = default)
     {
-        var path = $"/channel/{Uri.EscapeDataString(channelId)}/messages?limit={limit}";
+        var path = $"/api/v1/channel/{Uri.EscapeDataString(channelId)}/messages?limit={limit}";
         if (beforeTimestamp is { } ts) path += $"&before={ts}";
         using var req = Authed(token, HttpMethod.Get, path);
         return await SendAsync<List<Message>>(req, ct);
@@ -88,7 +89,7 @@ public sealed class ApiService : IApiService
     public async Task<Message> SendMessageAsync(string token, string channelId, string content, CancellationToken ct = default)
     {
         var payload = new { channel_id = channelId, content, message_type = (int)MessageType.Text };
-        using var req = Authed(token, HttpMethod.Post, $"/channel/{Uri.EscapeDataString(channelId)}/message/send");
+        using var req = Authed(token, HttpMethod.Post, $"/api/v1/channel/{Uri.EscapeDataString(channelId)}/message/send");
         req.Content = JsonContent.Create(payload);
         return await SendAsync<Message>(req, ct);
     }
@@ -96,7 +97,7 @@ public sealed class ApiService : IApiService
     /// <inheritdoc />
     public async Task<Message> UploadFileAsync(string token, string channelId, Stream fileStream, string fileName, string contentType, CancellationToken ct = default)
     {
-        using var req = Authed(token, HttpMethod.Post, $"/channel/{Uri.EscapeDataString(channelId)}/message/upload");
+        using var req = Authed(token, HttpMethod.Post, $"/api/v1/channel/{Uri.EscapeDataString(channelId)}/message/upload");
         using var multipart = new MultipartFormDataContent();
         var fileContent = new StreamContent(fileStream);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
@@ -126,9 +127,9 @@ public sealed class ApiService : IApiService
                     {
                         Id = item.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
                         Name = item.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
-                        AuthorizePath = item.TryGetProperty("authorizePath", out var ap) ? ap.GetString() ?? "" : "",
-                        AccountUrl = item.TryGetProperty("accountUrl", out var au) && au.ValueKind == JsonValueKind.String ? au.GetString() : null,
-                        ResetPasswordUrl = item.TryGetProperty("resetPasswordUrl", out var rp) && rp.ValueKind == JsonValueKind.String ? rp.GetString() : null,
+                        AuthorizePath = item.TryGetProperty("authorize_path", out var ap) ? ap.GetString() ?? "" : "",
+                        AccountUrl = item.TryGetProperty("account_url", out var au) && au.ValueKind == JsonValueKind.String ? au.GetString() : null,
+                        ResetPasswordUrl = item.TryGetProperty("reset_password_url", out var rp) && rp.ValueKind == JsonValueKind.String ? rp.GetString() : null,
                     });
                 }
             }
@@ -180,7 +181,14 @@ public sealed class ApiService : IApiService
         var handler = new HttpClientHandler();
         if (_options.AllowInsecureSsl)
         {
-            handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+            // Only bypass TLS validation for loopback (local development).
+            // Remote hosts must always use valid certificates.
+            handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) =>
+            {
+                if (message.RequestUri is { } uri && IsLoopback(uri.Host))
+                    return true;  // Allow self-signed for localhost only
+                return false;  // Remote hosts must have valid certs
+            };
         }
         return new HttpClient(handler) { BaseAddress = new Uri(baseUrl), Timeout = timeout };
     }
@@ -219,16 +227,22 @@ public sealed class ApiService : IApiService
         throw new ArgumentException($"Invalid server URL: {url}");
     }
 
-    /// <summary>True for localhost / 127.0.0.1 / [::1].</summary>
-    private static bool IsLoopback(string host) =>
-        host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
-        host.Equals("127.0.0.1") ||
-        host.Equals("[::1]");
+    /// <summary>True for localhost / 127.0.0.1 / ::1.</summary>
+    private static bool IsLoopback(string host)
+    {
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            return true;
+        // IPAddress.IsLoopback handles both IPv4 (127.0.0.1) and IPv6 (::1)
+        // without requiring bracket-stripping.
+        if (IPAddress.TryParse(host, out var ip))
+            return IPAddress.IsLoopback(ip);
+        return false;
+    }
 
     private HttpRequestMessage Authed(string token, HttpMethod method, string path)
     {
         var req = new HttpRequestMessage(method, path);
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        req.Headers.Add("token", token);
         return req;
     }
 
