@@ -7,6 +7,7 @@ import { MediaMessageUploadTask } from "./task";
 import { createChannelInfoCallback } from "./im-callbacks/channelInfo";
 import { createSyncConversationExtrasCallback } from "./im-callbacks/conversationExtras";
 import { createSyncConversationsCallback } from "./im-callbacks/conversations";
+import { createSyncMessageExtraCallback } from "./im-callbacks/messageExtras";
 import { createSyncSubscribersCallback } from "./im-callbacks/subscribers";
 
 export default class DataSourceModule implements IModule {
@@ -78,9 +79,10 @@ export default class DataSourceModule implements IModule {
     }
 
     setSyncMessageExtraCallback() {
-        WKSDK.shared().config.provider.syncMessageExtraCallback = async (channel: Channel, extraVersion: number, limit: number) => {
-            return WKApp.conversationProvider.syncMessageExtras(channel, extraVersion, limit)
-        }
+        WKSDK.shared().config.provider.syncMessageExtraCallback = createSyncMessageExtraCallback({
+            syncMessageExtras: (channel, extraVersion, limit) =>
+                WKApp.conversationProvider.syncMessageExtras(channel, extraVersion, limit),
+        })
     }
 
     setSyncRemindersCallback() {
