@@ -373,6 +373,7 @@
     "leaveConfirm": "确定退出该多人协作吗？",
     "leaveSuccess": "已退出",
     "refineTitle": "反馈修改",
+    "refineEmptyInput": "请输入修改需求",
     "refinePlaceholder": "输入修改需求，如「把风险章节扩充成一整段」",
     "refineSubmit": "提交修改",
     "refineSuccess": "修改成功，已更新到版本 {{version}}",
