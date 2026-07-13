@@ -1,8 +1,4 @@
-import { describe, it, expect } from 'vitest'
-import { getSchema } from '@tiptap/core'
-import { DOMParser as PMDOMParser, type Node as PMNode } from '@tiptap/pm/model'
-import StarterKit from '@tiptap/starter-kit'
-import { TextStyle, FontFamily } from '@tiptap/extension-text-style'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { stripPastedFontFamily } from './sanitize.ts'
 
 // FONT_FAMILY_ENABLED (config.ts) must gate every WRITE path while it is off, not just the
@@ -12,31 +8,6 @@ import { stripPastedFontFamily } from './sanitize.ts'
 // copied from Word/browser would write fontFamily into the shared Y.Doc, and an older client
 // whose schema lacks the attr would silently strip it (data loss). stripPastedFontFamily is the
 // flag-off transform; when the flag is on the caller skips it and the font is preserved.
-
-// The exact schema-touching pair for this attr: textStyle carries the fontFamily global attr.
-const schema = getSchema([
-  StarterKit.configure({ undoRedo: false, codeBlock: false }),
-  TextStyle,
-  FontFamily,
-])
-
-/** Parse an HTML fragment into a doc and return the fontFamily of the first textStyle mark. */
-function pastedFontFamily(html: string): string | null | undefined {
-  const container = document.createElement('div')
-  container.innerHTML = html
-  const doc = PMDOMParser.fromSchema(schema).parse(container)
-  let found: string | null | undefined
-  doc.descendants((node: PMNode) => {
-    const mark = node.marks.find((m) => m.type.name === 'textStyle')
-    if (mark && found === undefined) found = (mark.attrs.fontFamily as string | null) ?? null
-  })
-  // No textStyle mark, an explicit null, OR an empty string all mean "no font family was
-  // written". The shorthand path keeps font-size, so the span retains a style attr and a
-  // textStyle mark is still created — its fontFamily resolves to '' (falsy), which is the
-  // absence of a font choice, not a leaked family. Normalize '' → null so the assertion
-  // reflects that no real family reached the doc.
-  return found || null
-}
 
 describe('stripPastedFontFamily — flag-off paste sanitizer', () => {
   it('removes the inline font-family declaration', () => {
@@ -93,9 +64,7 @@ describe('stripPastedFontFamily — flag-off paste sanitizer', () => {
   })
 
   it('handles an uppercase `FONT` shorthand and sibling declarations', () => {
-    const out = stripPastedFontFamily(
-      '<span style="color: red; FONT: 16px Arial">x</span>',
-    )
+    const out = stripPastedFontFamily('<span style="color: red; FONT: 16px Arial">x</span>')
     expect(out).not.toMatch(/arial/i)
     expect(out).toMatch(/color:\s*red/i)
     expect(out).toMatch(/font-size:\s*16px/i)
@@ -108,28 +77,98 @@ describe('stripPastedFontFamily — flag-off paste sanitizer', () => {
   })
 })
 
-describe('paste write path — fontFamily gating end to end', () => {
-  const pasted = '<span style="font-family: Georgia, serif">styled</span>'
+// End-to-end through the REAL paste path. Rather than call stripPastedFontFamily directly, this
+// builds a live editor with the actual LiveFontFamily extension and pushes clipboard HTML through
+// ProseMirror's `transformPastedHTML` aggregation — the same hook the plugin registers — so the
+// FONT_FAMILY_ENABLED branch inside the plugin is what decides whether the sanitizer runs.
+// FONT_FAMILY_ENABLED is resolved from import.meta.env at module load (config.ts), so each flag
+// value stubs the env, resets the module cache, and re-imports the whole editor module graph fresh
+// (one consistent prosemirror/tiptap instance) before constructing the editor.
+async function pasteThroughEditor(
+  html: string,
+  flagOn: boolean,
+): Promise<{ family: string | null; size: string | null }> {
+  vi.resetModules()
+  vi.stubEnv('VITE_DOCS_FONT_FAMILY', flagOn ? 'true' : 'false')
 
-  it('flag ON (no sanitizer): pasted font-family survives into the doc (no false strip)', () => {
-    // FONT_FAMILY_ENABLED === true → the plugin transform is identity, so the raw HTML is parsed.
-    expect(pastedFontFamily(pasted)).toBe('Georgia, serif')
+  const [{ Editor }, starterKitMod, textStyleMod, ext] = await Promise.all([
+    import('@tiptap/core'),
+    import('@tiptap/starter-kit'),
+    import('@tiptap/extension-text-style'),
+    import('./extensions.ts'),
+  ])
+  const StarterKit = starterKitMod.default
+  const { TextStyle, FontSize } = textStyleMod
+  const { LiveFontFamily } = ext
+
+  const editor = new Editor({
+    element: document.createElement('div'),
+    extensions: [
+      StarterKit.configure({ undoRedo: false, codeBlock: false }),
+      TextStyle,
+      FontSize,
+      LiveFontFamily,
+    ],
+    content: '<p></p>',
   })
 
-  it('flag OFF (sanitizer runs): pasted font-family never reaches the doc', () => {
-    // FONT_FAMILY_ENABLED === false → the plugin applies stripPastedFontFamily before PM parses.
-    expect(pastedFontFamily(stripPastedFontFamily(pasted))).toBe(null)
+  try {
+    // Grab the real paste-gate plugin LiveFontFamily.addProseMirrorPlugins() registered on the
+    // live editor and invoke its transformPastedHTML — the exact hook (and FONT_FAMILY_ENABLED
+    // branch) ProseMirror runs on a paste. It is the only registered plugin carrying this prop.
+    const gate = editor.view.state.plugins.find(
+      (p) => typeof p.props?.transformPastedHTML === 'function',
+    )
+    expect(gate, 'LiveFontFamily should register a transformPastedHTML paste-gate plugin').toBeTruthy()
+    const transformed = gate!.props.transformPastedHTML!.call(gate!, html, editor.view) ?? html
+    editor.commands.setContent(transformed)
+
+    let family: string | null = null
+    let size: string | null = null
+    editor.state.doc.descendants((node) => {
+      const mark = node.marks.find((m) => m.type.name === 'textStyle')
+      if (mark) {
+        // '' (an empty resolved fontFamily, e.g. a span that only kept font-size) means no font
+        // was chosen — normalize it to null so the assertion tracks a real family, not a shell.
+        family = family || ((mark.attrs.fontFamily as string | null) || null)
+        size = size || ((mark.attrs.fontSize as string | null) || null)
+      }
+    })
+    return { family, size }
+  } finally {
+    editor.destroy()
+  }
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
+
+describe('paste write path — LiveFontFamily plugin + FONT_FAMILY_ENABLED gating', () => {
+  const longhand = '<span style="font-family: Georgia, serif">styled</span>'
+  const shorthand = '<span style="font: 14px Georgia">styled</span>'
+
+  it('flag ON: a pasted font-family longhand survives into the doc (transform is identity)', async () => {
+    const { family } = await pasteThroughEditor(longhand, true)
+    expect(family).toBe('Georgia, serif')
   })
 
-  // RC2: the `font` shorthand path — the browser/jsdom CSSOM expands `font: 14px Georgia`
-  // into element.style.fontFamily === "Georgia", so without gating it leaks into the doc.
-  const pastedShorthand = '<span style="font: 14px Georgia">styled</span>'
-
-  it('flag ON (no sanitizer): a `font` shorthand family survives into the doc', () => {
-    expect(pastedFontFamily(pastedShorthand)).toBe('Georgia')
+  it('flag OFF: a pasted font-family longhand never reaches the doc', async () => {
+    const { family } = await pasteThroughEditor(longhand, false)
+    expect(family).toBe(null)
   })
 
-  it('flag OFF (sanitizer runs): a `font` shorthand family never reaches the doc', () => {
-    expect(pastedFontFamily(stripPastedFontFamily(pastedShorthand))).toBe(null)
+  // RC2: the browser/jsdom CSSOM expands `font: 14px Georgia` into element.style.fontFamily ===
+  // "Georgia", so the shorthand is a fontFamily write path the gate must also cover.
+  it('flag ON: a `font` shorthand family survives, and font-size is preserved', async () => {
+    const { family, size } = await pasteThroughEditor(shorthand, true)
+    expect(family).toBe('Georgia')
+    expect(size).toBe('14px')
+  })
+
+  it('flag OFF: a `font` shorthand family is gated out, but font-size is not harmed', async () => {
+    const { family, size } = await pasteThroughEditor(shorthand, false)
+    expect(family).toBe(null)
+    expect(size).toBe('14px')
   })
 })

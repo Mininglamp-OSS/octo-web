@@ -77,7 +77,9 @@ const lowlight = createDocsLowlight()
 // schema) opening the same doc then silently strips it (data loss). This paste guard strips the
 // inline font-family from pasted HTML while the flag is off; parsing/rendering already-stored
 // content is untouched (round-trip stays intact). When the flag is on, the transform is identity.
-const LiveFontFamily = FontFamily.extend({
+// Exported so the paste-gate can be exercised through the real ProseMirror plugin (not by
+// calling the sanitizer directly) in fontFamilyPaste.test.ts.
+export const LiveFontFamily = FontFamily.extend({
   addProseMirrorPlugins() {
     return [
       ...(this.parent?.() ?? []),
