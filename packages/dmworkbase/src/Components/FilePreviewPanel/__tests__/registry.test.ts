@@ -29,7 +29,7 @@ import fileRendererRegistry from "../registry";
 
 describe("fileRendererRegistry — 扩展名 → 渲染器映射", () => {
   it("Excel 格式全部映射到 excel type", () => {
-    for (const ext of ["xlsx", "xls", "xlsb", "xlsm", "csv"]) {
+    for (const ext of ["xlsx", "xls", "xlsb", "xlsm", "csv", "xltx"]) {
       const item = fileRendererRegistry.getRenderer(ext);
       expect(item).toBeDefined();
       expect(item.type).toBe("excel");
@@ -37,7 +37,7 @@ describe("fileRendererRegistry — 扩展名 → 渲染器映射", () => {
   });
 
   it("canPreview 对 Excel 格式返回 true", () => {
-    for (const ext of ["xlsx", "xls", "xlsb", "xlsm", "csv"]) {
+    for (const ext of ["xlsx", "xls", "xlsb", "xlsm", "csv", "xltx"]) {
       expect(fileRendererRegistry.canPreview(ext)).toBe(true);
     }
   });
@@ -54,9 +54,13 @@ describe("fileRendererRegistry — 扩展名 → 渲染器映射", () => {
 
   it("Office OOXML 格式映射到对应渲染器", () => {
     expect(fileRendererRegistry.getRenderer("docx").type).toBe("docx");
+    expect(fileRendererRegistry.getRenderer("dotx").type).toBe("docx");
     expect(fileRendererRegistry.getRenderer("pptx").type).toBe("ppt");
+    expect(fileRendererRegistry.getRenderer("potx").type).toBe("ppt");
     expect(fileRendererRegistry.canPreview("docx")).toBe(true);
+    expect(fileRendererRegistry.canPreview("dotx")).toBe(true);
     expect(fileRendererRegistry.canPreview("pptx")).toBe(true);
+    expect(fileRendererRegistry.canPreview("potx")).toBe(true);
   });
 
   it("旧版 Office 二进制格式仍不支持预览", () => {

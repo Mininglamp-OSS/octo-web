@@ -134,7 +134,7 @@ class FileRendererRegistry {
     // Word OOXML 文档（Canvas 渲染）
     this.register({
       type: "docx",
-      extensions: ["docx"],
+      extensions: ["docx", "dotx"],
       renderer: DocxRenderer,
       needsFetch: true,
     });
@@ -142,7 +142,7 @@ class FileRendererRegistry {
     // PowerPoint OOXML 演示文稿（Canvas 渲染）
     this.register({
       type: "ppt",
-      extensions: ["pptx"],
+      extensions: ["pptx", "potx"],
       renderer: PptxRenderer,
       needsFetch: true,
     });
@@ -150,7 +150,7 @@ class FileRendererRegistry {
     // OOXML Excel 工作簿（Canvas 渲染）
     this.register({
       type: "excel",
-      extensions: ["xlsx", "xlsm"],
+      extensions: ["xlsx", "xlsm", "xltx"],
       renderer: XlsxRenderer,
       needsFetch: true,
     });
