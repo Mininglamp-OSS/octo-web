@@ -30,8 +30,12 @@ function pastedFontFamily(html: string): string | null | undefined {
     const mark = node.marks.find((m) => m.type.name === 'textStyle')
     if (mark && found === undefined) found = (mark.attrs.fontFamily as string | null) ?? null
   })
-  // No textStyle mark at all → the attr was never written, same as an explicit null.
-  return found ?? null
+  // No textStyle mark, an explicit null, OR an empty string all mean "no font family was
+  // written". The shorthand path keeps font-size, so the span retains a style attr and a
+  // textStyle mark is still created — its fontFamily resolves to '' (falsy), which is the
+  // absence of a font choice, not a leaked family. Normalize '' → null so the assertion
+  // reflects that no real family reached the doc.
+  return found || null
 }
 
 describe('stripPastedFontFamily — flag-off paste sanitizer', () => {
@@ -69,6 +73,39 @@ describe('stripPastedFontFamily — flag-off paste sanitizer', () => {
     const html = '<p><strong>bold</strong> and <em>italic</em></p>'
     expect(stripPastedFontFamily(html)).toBe(html)
   })
+
+  // RC2: the `font` shorthand (`font: 14px Georgia`) also populates element.style.fontFamily,
+  // so it must be stripped too — but keep the font-size/line-height it carries.
+  it('strips the family from a `font` shorthand while keeping font-size', () => {
+    const out = stripPastedFontFamily('<span style="font: 14px Georgia">x</span>')
+    expect(out).not.toMatch(/georgia/i)
+    expect(out).toMatch(/font-size:\s*14px/i)
+    expect(out).toContain('x')
+  })
+
+  it('keeps font-size and line-height from a full `font` shorthand, drops the family', () => {
+    const out = stripPastedFontFamily(
+      '<span style="font: italic bold 12px/1.5 &quot;Times New Roman&quot;">x</span>',
+    )
+    expect(out).not.toMatch(/times new roman/i)
+    expect(out).toMatch(/font-size:\s*12px/i)
+    expect(out).toMatch(/line-height:\s*1\.5/i)
+  })
+
+  it('handles an uppercase `FONT` shorthand and sibling declarations', () => {
+    const out = stripPastedFontFamily(
+      '<span style="color: red; FONT: 16px Arial">x</span>',
+    )
+    expect(out).not.toMatch(/arial/i)
+    expect(out).toMatch(/color:\s*red/i)
+    expect(out).toMatch(/font-size:\s*16px/i)
+  })
+
+  it('does not touch a `font-size` longhand (no false shorthand match)', () => {
+    const html = '<span style="font-size: 18px">x</span>'
+    const out = stripPastedFontFamily(html)
+    expect(out).toMatch(/font-size:\s*18px/i)
+  })
 })
 
 describe('paste write path — fontFamily gating end to end', () => {
@@ -82,5 +119,17 @@ describe('paste write path — fontFamily gating end to end', () => {
   it('flag OFF (sanitizer runs): pasted font-family never reaches the doc', () => {
     // FONT_FAMILY_ENABLED === false → the plugin applies stripPastedFontFamily before PM parses.
     expect(pastedFontFamily(stripPastedFontFamily(pasted))).toBe(null)
+  })
+
+  // RC2: the `font` shorthand path — the browser/jsdom CSSOM expands `font: 14px Georgia`
+  // into element.style.fontFamily === "Georgia", so without gating it leaks into the doc.
+  const pastedShorthand = '<span style="font: 14px Georgia">styled</span>'
+
+  it('flag ON (no sanitizer): a `font` shorthand family survives into the doc', () => {
+    expect(pastedFontFamily(pastedShorthand)).toBe('Georgia')
+  })
+
+  it('flag OFF (sanitizer runs): a `font` shorthand family never reaches the doc', () => {
+    expect(pastedFontFamily(stripPastedFontFamily(pastedShorthand))).toBe(null)
   })
 })

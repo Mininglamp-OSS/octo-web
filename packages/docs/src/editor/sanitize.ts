@@ -90,25 +90,45 @@ export function renderLinkAttrs(href: string): { href: string | null; rel?: stri
  * registered) FontFamily extension and land in the shared Y.Doc, so an older client
  * whose schema lacks the attr would silently strip it → data loss.
  *
- * This removes ONLY the inline `font-family` style — exactly what FontFamily.parseHTML
- * reads (`element.style.fontFamily`) — leaving all other markup, styles, and text
- * intact. It touches the paste path ONLY: parsing/rendering already-stored fonts
- * (round-trip, opening old docs) is unaffected, so the flag stays a write gate, not a
- * read gate. When the flag is on, callers skip this and pasted fonts are preserved.
+ * This removes the inline font-family that FontFamily.parseHTML reads
+ * (`element.style.fontFamily`) via BOTH inline paths that populate it:
+ *   1. the `font-family` longhand (`font-family: Georgia`), and
+ *   2. the `font` shorthand (`font: 14px Georgia`), whose family component the browser
+ *      (and jsdom's CSSOM) expands into `element.style.fontFamily` just the same.
+ * The shorthand path was the RC miss: stripping only the longhand let a
+ * `<span style="font: 14px Georgia">` copied from Word/browser still write fontFamily
+ * into the Y.Doc while the flag was off.
+ *
+ * All other markup, styles, and text stay intact. It touches the paste path ONLY:
+ * parsing/rendering already-stored fonts (round-trip, opening old docs) is unaffected,
+ * so the flag stays a write gate, not a read gate. When the flag is on, callers skip
+ * this and pasted fonts are preserved.
  */
 export function stripPastedFontFamily(html: string): string {
-  if (typeof document === 'undefined' || !/font-family/i.test(html)) return html
+  // Guard matches both `font-family:` and the `font:` shorthand (any case), but not
+  // sibling longhands like `font-size:`/`font-weight:` or the plain word "font" in text.
+  if (typeof document === 'undefined' || !/font(-family)?\s*:/i.test(html)) return html
   try {
     const parsed = new DOMParser().parseFromString(html, 'text/html')
     parsed.querySelectorAll('[style]').forEach((el) => {
       const style = el.getAttribute('style') ?? ''
-      // Rebuild the inline style without any `font-family` declaration. Work on the raw
-      // attribute string (not the CSSOM) so an upper/mixed-case `FONT-FAMILY` — which a
-      // browser normalizes and reads, but jsdom's CSSOM does not — is stripped too.
+      // Rebuild the inline style declaration-by-declaration, dropping every font-family
+      // source. Work on the raw attribute string (not the CSSOM) so an upper/mixed-case
+      // `FONT-FAMILY` / `FONT` — which a browser normalizes and reads, but jsdom's CSSOM
+      // does not surface when reading a specific longhand — is handled too.
       const kept = style
         .split(';')
-        .filter((decl) => decl.trim() && decl.split(':', 1)[0].trim().toLowerCase() !== 'font-family')
         .map((decl) => decl.trim())
+        .filter(Boolean)
+        .map((decl) => {
+          const colon = decl.indexOf(':')
+          if (colon === -1) return decl // malformed fragment: leave as-is (carries no family)
+          const prop = decl.slice(0, colon).trim().toLowerCase()
+          if (prop === 'font-family') return null // longhand: drop the whole declaration
+          if (prop === 'font') return keptFromFontShorthand(decl.slice(colon + 1)) // shorthand
+          return decl
+        })
+        .filter((decl): decl is string => Boolean(decl))
         .join('; ')
       if (kept) el.setAttribute('style', kept)
       else el.removeAttribute('style')
@@ -117,4 +137,44 @@ export function stripPastedFontFamily(html: string): string {
   } catch {
     return html
   }
+}
+
+// CSS `font` shorthand components that are safe to keep because they never carry a
+// font-family: only the size and the (slash-prefixed) line-height. Size keywords per
+// the <font-size> grammar; anything with a unit or `%` is a length/percentage size.
+const FONT_SIZE_KEYWORD = /^(xx-small|x-small|small|medium|large|x-large|xx-large|smaller|larger)$/i
+const FONT_SIZE_LENGTH = /^[+-]?(\d+\.?\d*|\.\d+)(px|pt|pc|em|rem|ex|ch|cap|ic|lh|rlh|vw|vh|vi|vb|vmin|vmax|cm|mm|in|q|%)$/i
+// `font: caption|icon|…` sets a *system* font — no explicit family text and no reusable
+// size — so it is dropped wholesale.
+const SYSTEM_FONT_KEYWORDS = new Set(['caption', 'icon', 'menu', 'message-box', 'small-caption', 'status-bar'])
+
+/**
+ * Rebuild a `font` shorthand value with its font-family removed, preserving font-size
+ * and line-height. In the shorthand grammar the font-family always trails the required
+ * `<font-size> [ / <line-height> ]?`, so we scan left-to-right for the first size token
+ * (a size keyword, length, or percentage — unitless weights like `400` are skipped),
+ * keep it plus any `/line-height`, and drop everything else (the family, and also
+ * style/variant/weight/stretch — an acceptable conservative loss for a paste gate that
+ * is off by default). Returns null to drop the declaration entirely when no font-size
+ * can be identified (e.g. a system-font keyword or an unparseable value), which keeps
+ * the gate safe: family text is never re-emitted.
+ */
+function keptFromFontShorthand(value: string): string | null {
+  const v = value.trim()
+  if (!v || SYSTEM_FONT_KEYWORDS.has(v.toLowerCase())) return null
+  // Normalize `12px/1.5` → `12px / 1.5` so the line-height slash is its own token.
+  const tokens = v.replace(/\//g, ' / ').split(/\s+/).filter(Boolean)
+  let fontSize: string | null = null
+  let lineHeight: string | null = null
+  for (let i = 0; i < tokens.length; i++) {
+    if (FONT_SIZE_KEYWORD.test(tokens[i]) || FONT_SIZE_LENGTH.test(tokens[i])) {
+      fontSize = tokens[i]
+      if (tokens[i + 1] === '/' && tokens[i + 2]) lineHeight = tokens[i + 2]
+      break
+    }
+  }
+  if (!fontSize) return null
+  const out = [`font-size: ${fontSize}`]
+  if (lineHeight) out.push(`line-height: ${lineHeight}`)
+  return out.join('; ')
 }
