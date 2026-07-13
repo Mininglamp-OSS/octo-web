@@ -578,6 +578,46 @@
   line-height: 1.6;
   font-size: 15px;
 }
+.octo-prose .ProseMirror h1,
+.octo-prose .ProseMirror h2,
+.octo-prose .ProseMirror h3,
+.octo-prose .ProseMirror h4,
+.octo-prose .ProseMirror h5,
+.octo-prose .ProseMirror h6 {
+  margin: var(--wk-sp-5) 0 var(--wk-sp-2);
+  font-family: var(--wk-font-sans);
+  letter-spacing: 0;
+}
+.octo-prose .ProseMirror h1 {
+  font-size: var(--wk-text-size-4xl);
+  font-weight: var(--wk-font-bold);
+  line-height: var(--wk-leading-tight);
+}
+.octo-prose .ProseMirror h2 {
+  font-size: var(--wk-text-size-3xl);
+  font-weight: var(--wk-font-bold);
+  line-height: var(--wk-leading-snug);
+}
+.octo-prose .ProseMirror h3 {
+  font-size: var(--wk-text-size-xl);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-snug);
+}
+.octo-prose .ProseMirror h4 {
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-normal);
+}
+.octo-prose .ProseMirror h5 {
+  font-size: var(--wk-text-size-base);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-normal);
+}
+.octo-prose .ProseMirror h6 {
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-normal);
+}
 .octo-prose .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   color: var(--octo-muted);
