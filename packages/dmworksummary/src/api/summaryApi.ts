@@ -19,6 +19,8 @@ import type {
     SourceItem,
     SummaryDetail,
     SummaryTemplate,
+    SummaryVersionDetail,
+    SummaryVersionItem,
     TopicTemplate,
     TopicTemplatesResponse,
     UpdateScheduleParams,
@@ -72,9 +74,17 @@ summaryAxios.interceptors.response.use(
 const BASE = '/summary/api/v1';
 
 function extractErrorMessage(err: unknown): string {
-    const axiosErr = err as { response?: { data?: { message?: string } } };
-    const msg = axiosErr?.response?.data?.message;
-    const raw = msg || (err instanceof Error ? err.message : 'Request failed');
+    const axiosErr = err as { response?: { status?: number; data?: { message?: string; msg?: string; error?: { message?: string } } } };
+    const status = axiosErr?.response?.status;
+    const data = axiosErr?.response?.data;
+    const msg = data?.message || data?.msg || data?.error?.message;
+    let raw = msg || (err instanceof Error ? err.message : 'Request failed');
+    if (status === 404 && raw.toLowerCase().includes('404')) {
+        raw = 'Summary refine API is not available. Please restart octo-smart-summary with the latest branch.';
+    }
+    if (status === 503 && raw.toLowerCase().includes('refine service is not configured')) {
+        raw = 'Summary refine service is not configured. Please enable LLM config for summary-api.';
+    }
     return raw.length > 200 ? raw.slice(0, 200) + '…' : raw;
 }
 
@@ -143,6 +153,122 @@ export async function deleteSummary(taskId: number): Promise<void> {
 
 export async function regenerateSummary(taskId: number, body?: { topic?: string }): Promise<{ task_id: number }> {
     return post(`/summaries/${taskId}/regenerate`, body);
+}
+
+export async function refineSummary(
+    taskId: number,
+    body: { feedback: string; base_result_id: number },
+): Promise<{
+    task_id: number;
+    result_id: number;
+    version: number;
+    content: string;
+    citations?: unknown[];
+    team_citations?: unknown[];
+    total_msg_count?: number;
+    total_token_used?: number;
+    model_version?: string;
+    operation_type?: string;
+    operation_note?: string;
+    parent_result_id?: number | null;
+    generated_at?: string;
+}> {
+    try {
+        const resp = await summaryAxios.post(`${BASE}/summaries/${taskId}/refine`, body, { timeout: 95000 });
+        return resp.data?.data ?? resp.data;
+    } catch (err: unknown) {
+        if (axios.isCancel(err)) throw err;
+        const axiosErr = err as { code?: string; response?: { status?: number } };
+        const msg = axiosErr?.code === 'ECONNABORTED'
+            ? 'Summary refine request timed out. Please check whether summary-api can reach the LLM service.'
+            : extractErrorMessage(err);
+        const error = new Error(msg) as Error & { status?: number };
+        if (axiosErr?.response?.status) error.status = axiosErr.response.status;
+        throw error;
+    }
+}
+
+
+export async function regeneratePersonalSummary(
+    taskId: number,
+    body?: { topic?: string },
+): Promise<{ task_id: number; result_id: number; status: number }> {
+    return post(`/summaries/${taskId}/personal-regenerate`, body);
+}
+
+export async function refinePersonalSummary(
+    taskId: number,
+    body: { feedback: string; base_result_id: number; base_version?: number },
+): Promise<{
+    task_id: number;
+    result_id: number;
+    version_id?: number;
+    version: number;
+    content: string;
+    citations?: unknown[];
+    msg_count?: number;
+    total_token_used?: number;
+    model_version?: string;
+    operation_type?: string;
+    operation_note?: string;
+    parent_result_id?: number | null;
+    generated_at?: string;
+}> {
+    try {
+        const resp = await summaryAxios.post(`${BASE}/summaries/${taskId}/personal-refine`, body, { timeout: 95000 });
+        return resp.data?.data ?? resp.data;
+    } catch (err: unknown) {
+        if (axios.isCancel(err)) throw err;
+        const axiosErr = err as { code?: string; response?: { status?: number } };
+        const msg = axiosErr?.code === 'ECONNABORTED'
+            ? 'Summary refine request timed out. Please check whether summary-api can reach the LLM service.'
+            : extractErrorMessage(err);
+        const error = new Error(msg) as Error & { status?: number };
+        if (axiosErr?.response?.status) error.status = axiosErr.response.status;
+        throw error;
+    }
+}
+
+export async function listPersonalSummaryVersions(
+    taskId: number,
+    limit = 3,
+): Promise<{ versions: SummaryVersionItem[]; keep_limit: number }> {
+    return get(`/summaries/${taskId}/personal-versions`, { limit });
+}
+
+export async function restorePersonalSummaryVersion(
+    taskId: number,
+    versionId: number,
+): Promise<{ task_id: number; result_id: number; version_id: number; version: number }> {
+    return post(`/summaries/${taskId}/personal-versions/${versionId}/restore`);
+}
+
+export async function getPersonalSummaryVersion(
+    taskId: number,
+    versionId: number,
+): Promise<SummaryVersionDetail> {
+    return get(`/summaries/${taskId}/personal-versions/${versionId}`);
+}
+
+export async function listSummaryVersions(
+    taskId: number,
+    limit = 3,
+): Promise<{ versions: SummaryVersionItem[]; keep_limit: number }> {
+    return get(`/summaries/${taskId}/versions`, { limit });
+}
+
+export async function restoreSummaryVersion(
+    taskId: number,
+    resultId: number,
+): Promise<{ task_id: number; result_id: number; version: number }> {
+    return post(`/summaries/${taskId}/versions/${resultId}/restore`);
+}
+
+export async function getSummaryVersion(
+    taskId: number,
+    resultId: number,
+): Promise<SummaryVersionDetail> {
+    return get(`/summaries/${taskId}/versions/${resultId}`);
 }
 
 // 不复用 put helper，因为需要保留 HTTP status 区分 409（冲突）和 5xx（服务错误）

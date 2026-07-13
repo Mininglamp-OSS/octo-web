@@ -106,7 +106,28 @@ export interface SummaryResult {
     total_token_used: number;
     model_version: string;
     version: number;
+    operation_type?: string;
+    operation_note?: string;
+    parent_result_id?: number | null;
     generated_at: string | null;
+    citations?: CitationItem[];
+    team_citations?: TeamCitationItem[];
+}
+
+export interface SummaryVersionItem {
+    result_id: number;
+    version_id?: number;
+    version: number;
+    operation_type: string;
+    operation_note?: string;
+    parent_result_id?: number | null;
+    created_by?: string;
+    generated_at: string;
+    edited_at?: string | null;
+}
+
+export interface SummaryVersionDetail extends SummaryVersionItem {
+    content: string;
     citations?: CitationItem[];
     team_citations?: TeamCitationItem[];
 }
@@ -120,6 +141,8 @@ export type WorkflowStage =
     | "generate_summary";
 
 export interface PersonalResult {
+    id?: number;
+    version?: number;
     worker_status: 0 | 1 | 2 | 3;
     workflow_stage?: WorkflowStage | "";
     content: string;
