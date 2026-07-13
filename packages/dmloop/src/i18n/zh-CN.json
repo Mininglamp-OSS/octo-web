@@ -112,7 +112,8 @@
     "addComputerHeadless": "2. 免浏览器（headless / 远程 / CI 环境）：",
     "generateHeadless": "生成并复制 headless 命令",
     "headlessNoBackend": "管理员未配置后端公开地址（MULTICA_PUBLIC_URL），无法生成 headless 命令",
-    "headlessFailed": "生成 headless 命令失败，请重试"
+    "headlessFailed": "生成 headless 命令失败，请重试",
+    "headlessCopyManual": "命令已生成在下方，自动复制失败，请手动复制"
   },
   "view": {
     "board": "看板",

@@ -184,7 +184,10 @@ export default function RuntimePage() {
       setHeadlessCommandText(cmd);
       const ok = await copyToClipboard(cmd);
       if (ok) Toast.success(t("loop.runtime.copySuccess"));
-      else Toast.error(t("loop.runtime.copyFailed"));
+      // The command (with its freshly minted PAT) is already rendered below, so
+      // a clipboard failure is recoverable — tell the user to copy it by hand
+      // rather than implying no credential was produced.
+      else Toast.warning(t("loop.runtime.headlessCopyManual"));
     } catch {
       Toast.error(t("loop.runtime.headlessFailed"));
     } finally {

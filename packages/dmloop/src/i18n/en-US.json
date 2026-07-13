@@ -112,7 +112,8 @@
     "addComputerHeadless": "2. Headless (no browser / remote / CI):",
     "generateHeadless": "Generate & copy headless command",
     "headlessNoBackend": "The administrator has not configured a public backend URL (MULTICA_PUBLIC_URL); headless command unavailable",
-    "headlessFailed": "Failed to generate headless command, please retry"
+    "headlessFailed": "Failed to generate headless command, please retry",
+    "headlessCopyManual": "Command generated below, but auto-copy failed — please copy it manually"
   },
   "view": {
     "board": "Board",
