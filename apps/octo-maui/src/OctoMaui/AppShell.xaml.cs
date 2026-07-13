@@ -31,16 +31,11 @@ public partial class AppShell : Shell
         Routing.RegisterRoute("chat", typeof(Pages.ChatPage));
 
         // React to all three state changes that affect routing.
-        _auth.AuthStateChanged += (_, _) => MainThread.BeginInvokeOnMainThread(Navigate);
+        _auth.AuthStateChanged += (_, _) => MainThread.BeginInvokeOnMainThread(async () => await Navigate());
         _server.ServerChanged += OnServerChanged;
 
-        // Apply the saved theme early to avoid a flash of the default palette.
-        _ = _theme.InitializeAsync();
-
-        // Load saved server history (best-effort, non-blocking).
-        _ = _history.InitializeAsync();
-
-        // Load any saved server URL, then navigate to the right page.
+        // Sequential initialization: theme + history + auth + server, then navigate.
+        // Avoid fire-and-forget so that theme is applied before first render.
         _ = InitializeAndNavigateAsync();
     }
 
@@ -55,15 +50,19 @@ public partial class AppShell : Shell
     {
         // A new server was saved — resume normal routing.
         _suppressAutoNavigate = false;
-        MainThread.BeginInvokeOnMainThread(Navigate);
+        MainThread.BeginInvokeOnMainThread(async () => await Navigate());
     }
 
     private async Task InitializeAndNavigateAsync()
     {
+        // Apply theme early to avoid a flash of the default palette.
+        await _theme.InitializeAsync();
+        // Load saved server history (best-effort, non-blocking).
+        await _history.InitializeAsync();
         // Load the saved token from SecureStorage before checking auth state.
         await _auth.InitializeAsync();
         await _server.InitializeAsync();
-        Navigate();
+        await Navigate();
     }
 
     /// <summary>
@@ -72,13 +71,13 @@ public partial class AppShell : Shell
     ///   2. Server configured but not logged in → login
     ///   3. Logged in → chat
     /// </summary>
-    private void Navigate()
+    private async Task Navigate()
     {
         if (_suppressAutoNavigate) return;
 
         var route = !_server.IsConfigured ? "server-config"
             : !_auth.IsAuthenticated ? "login"
             : "chat";
-        Current.GoToAsync($"//{route}");
+        await Current.GoToAsync($"//{route}");
     }
 }

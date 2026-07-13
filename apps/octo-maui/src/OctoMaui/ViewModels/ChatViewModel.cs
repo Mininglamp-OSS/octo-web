@@ -10,7 +10,7 @@ namespace OctoMaui.ViewModels;
 /// the right, plus a send box. Subscribes to live WebSocket pushes including
 /// streaming AI agent replies and supports file/image attachments.
 /// </summary>
-public sealed class ChatViewModel : ViewModelBase
+public sealed class ChatViewModel : ViewModelBase, IDisposable
 {
     private readonly IAuthService _auth;
     private readonly IApiService _api;
@@ -22,6 +22,9 @@ public sealed class ChatViewModel : ViewModelBase
 
     /// <summary>Cancels the previous LoadMessagesAsync when switching channels.</summary>
     private CancellationTokenSource? _loadMessagesCts;
+
+    /// <summary>Guard to make Dispose idempotent.</summary>
+    private bool _disposed;
 
     public ChatViewModel(IAuthService auth, IApiService api, IWebSocketService ws, IThemeService theme)
     {
@@ -42,7 +45,7 @@ public sealed class ChatViewModel : ViewModelBase
         _ws.StreamChunkReceived += OnStreamChunkReceived;
         _ws.StreamEnded += OnStreamEnded;
         _ws.ConnectionClosed += OnConnectionClosed;
-        _theme.ThemeChanged += (_, _) => MainThread.BeginInvokeOnMainThread(RefreshThemeLabel);
+        _theme.ThemeChanged += OnThemeChanged;
         Messages.CollectionChanged += (_, _) => IsEmpty = Messages.Count == 0;
         RefreshThemeLabel();
     }
@@ -118,6 +121,14 @@ public sealed class ChatViewModel : ViewModelBase
         {
             await _auth.HydrateCurrentUserAsync();
             await LoadChannelsAsync();
+
+            if (string.IsNullOrEmpty(_auth.Token))
+            {
+                // Cannot connect without a token — user needs to re-login.
+                StatusText = "未登录，请重新登录";
+                return;
+            }
+
             await _ws.ConnectAsync(_auth.Token!);
             StatusText = "已连接";
         }
@@ -357,7 +368,8 @@ public sealed class ChatViewModel : ViewModelBase
             catch (Exception ex)
             {
                 StatusText = $"上传失败: {ex.Message}";
-                return;
+                // Log and continue with remaining files.
+                continue;
             }
             finally
             {
@@ -367,6 +379,11 @@ public sealed class ChatViewModel : ViewModelBase
         StatusText = "上传完成";
     }
 
+    /// <summary>
+    /// Guesses the content type from the file extension.
+    /// NOTE: The server SHOULD validate file type via magic bytes, not rely
+    /// on client-provided extensions, to prevent spoofing.
+    /// </summary>
     private static string GuessContentType(string fileName)
     {
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
@@ -434,5 +451,30 @@ public sealed class ChatViewModel : ViewModelBase
             AppTheme.Dark => "深色",
             _ => "跟随系统",
         };
+    }
+
+    private void OnThemeChanged(object? sender, EventArgs e)
+        => MainThread.BeginInvokeOnMainThread(RefreshThemeLabel);
+
+    // --- IDisposable ---
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        // Unsubscribe from singleton service events to prevent the
+        // Transient ViewModel from being kept alive by them.
+        _ws.MessageReceived -= OnMessageReceived;
+        _ws.StreamStarted -= OnStreamStarted;
+        _ws.StreamChunkReceived -= OnStreamChunkReceived;
+        _ws.StreamEnded -= OnStreamEnded;
+        _ws.ConnectionClosed -= OnConnectionClosed;
+        _theme.ThemeChanged -= OnThemeChanged;
+
+        _loadMessagesCts?.Cancel();
+        _loadMessagesCts?.Dispose();
+
+        GC.SuppressFinalize(this);
     }
 }

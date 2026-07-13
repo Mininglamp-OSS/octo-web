@@ -15,4 +15,7 @@ public sealed class ApiOptions
 
     /// <summary>Request timeout for REST calls.</summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(15);
+
+    /// <summary>Allow self-signed certificates for internal deployments. Default false.</summary>
+    public bool AllowInsecureSsl { get; set; } = false;
 }

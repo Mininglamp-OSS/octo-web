@@ -44,8 +44,12 @@ public sealed class WebSocketService : IWebSocketService, IAsyncDisposable
 
     public async Task DisconnectAsync()
     {
-        if (_socket is null) return;
         _cts?.Cancel();
+        if (_receiveLoop is { } loop)
+        {
+            try { await loop; } catch { /* cancellation expected */ }
+        }
+        if (_socket is null) return;
         try
         {
             if (_socket.State == WebSocketState.Open)
@@ -74,7 +78,7 @@ public sealed class WebSocketService : IWebSocketService, IAsyncDisposable
 
     private async Task ReceiveLoopAsync()
     {
-        var buffer = new byte[8192];
+        var buffer = new byte[65536];
         var sb = new StringBuilder();
         try
         {
@@ -156,5 +160,6 @@ public sealed class WebSocketService : IWebSocketService, IAsyncDisposable
     {
         await DisconnectAsync();
         _cts?.Dispose();
+        _cts = null;
     }
 }

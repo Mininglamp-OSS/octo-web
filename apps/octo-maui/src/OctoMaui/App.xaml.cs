@@ -21,6 +21,9 @@ public partial class App : Application
     /// <summary>Debounce token for SaveBounds — a drag-resize fires SizeChanged many times per second.</summary>
     private CancellationTokenSource? _saveBoundsCts;
 
+    /// <summary>Guards against re-subscribing to AuthStateChanged on every PageAppearing.</summary>
+    private bool _authTitleWired;
+
     public App()
     {
         InitializeComponent();
@@ -38,11 +41,17 @@ public partial class App : Application
     {
         // Resolve AppShell from DI so its constructor-injected services
         // (auth, theme, server config, history) are populated.
-        var shell = Resolve<AppShell>() ?? new AppShell(
-            Handler?.MauiContext?.Services?.GetService<IAuthService>()!,
-            Handler?.MauiContext?.Services?.GetService<IThemeService>()!,
-            Handler?.MauiContext?.Services?.GetService<IServerConfigService>()!,
-            Handler?.MauiContext?.Services?.GetService<IServerHistoryService>()!);
+        var shell = Resolve<AppShell>();
+        if (shell is null)
+        {
+            var auth = Handler?.MauiContext?.Services?.GetService<IAuthService>();
+            var theme = Handler?.MauiContext?.Services?.GetService<IThemeService>();
+            var server = Handler?.MauiContext?.Services?.GetService<IServerConfigService>();
+            var history = Handler?.MauiContext?.Services?.GetService<IServerHistoryService>();
+            if (auth is null || theme is null || server is null || history is null)
+                throw new InvalidOperationException("Required services are not registered in the DI container.");
+            shell = new AppShell(auth, theme, server, history);
+        }
         var window = new Window(shell);
 
         // Default size + minimum size. On Windows this maps to the Win32
@@ -138,6 +147,9 @@ public partial class App : Application
         var auth = Resolve<IAuthService>();
         if (auth is null) return;
 
+        // Subscribe only once — PageAppearing can fire multiple times.
+        if (_authTitleWired) { UpdateTitle(window, auth); return; }
+        _authTitleWired = true;
         auth.AuthStateChanged += (_, _) =>
             MainThread.BeginInvokeOnMainThread(() => UpdateTitle(window, auth));
         UpdateTitle(window, auth);
@@ -160,8 +172,9 @@ public partial class App : Application
         _saveBoundsCts?.Cancel();
         _saveBoundsCts = new CancellationTokenSource();
         var ct = _saveBoundsCts.Token;
-        _ = Task.Delay(500, ct).ContinueWith(_ =>
+        _ = Task.Delay(500, ct).ContinueWith(t =>
         {
+            if (t.IsFaulted) return;
             if (!ct.IsCancellationRequested)
                 MainThread.BeginInvokeOnMainThread(() => SaveBounds(window));
         }, TaskScheduler.Default);

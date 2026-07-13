@@ -80,4 +80,13 @@ public partial class ChatPage : ContentPage
         // Initialize channels + websocket once the page is first shown.
         await _vm.InitializeAsync();
     }
+
+    protected override void OnNavigatedFrom(NavigatedFromEventArgs args)
+    {
+        base.OnNavigatedFrom(args);
+        // Release singleton service event subscriptions held by the
+        // Transient ViewModel to avoid memory leaks.
+        if (BindingContext is ChatViewModel vm)
+            vm.Dispose();
+    }
 }

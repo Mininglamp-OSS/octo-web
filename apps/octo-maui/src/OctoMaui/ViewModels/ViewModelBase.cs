@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
@@ -13,7 +14,7 @@ public abstract class ViewModelBase : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    private readonly Dictionary<string, object?> _values = new();
+    private readonly ConcurrentDictionary<string, object?> _values = new();
 
     /// <summary>Strongly-typed property storage with change notification.</summary>
     protected T Get<T>([CallerMemberName] string? name = null)
@@ -21,6 +22,9 @@ public abstract class ViewModelBase : INotifyPropertyChanged
 
     protected bool Set<T>(T value, [CallerMemberName] string? name = null)
     {
+        // ConcurrentDictionary does not support an atomic "compare-and-swap",
+        // but we accept the rare duplicate notification in exchange for a
+        // lock-free read path.
         if (_values.TryGetValue(name!, out var current) && Equals(current, value))
             return false;
         _values[name!] = value;

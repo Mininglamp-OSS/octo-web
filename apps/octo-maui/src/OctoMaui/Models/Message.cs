@@ -12,6 +12,8 @@ public sealed class Message : INotifyPropertyChanged
     private string _id = string.Empty;
     private string _content = string.Empty;
     private bool _isStreaming;
+    private string? _createdAtFormattedCache;
+    private long _cachedTimestampMs = -1;
 
     public string Id { get => _id; set => SetField(ref _id, value); }
 
@@ -87,15 +89,25 @@ public sealed class Message : INotifyPropertyChanged
     {
         get
         {
-            var now = DateTimeOffset.Now;
-            var local = CreatedAt.ToLocalTime();
-            if (local.Date == now.Date)
-                return local.ToString("HH:mm");
-            if (local.Date == now.Date.AddDays(-1))
-                return $"昨天 {local:HH:mm}";
-            if (local.Year == now.Year)
-                return local.ToString("MM-dd HH:mm");
-            return local.ToString("yyyy-MM-dd HH:mm");
+            // Invalidate cache when TimestampMs changes.
+            if (_cachedTimestampMs != TimestampMs)
+            {
+                _cachedTimestampMs = TimestampMs;
+                _createdAtFormattedCache = null;
+            }
+            if (_createdAtFormattedCache is null)
+            {
+                var now = DateTimeOffset.Now;
+                var local = CreatedAt.ToLocalTime();
+                _createdAtFormattedCache = local.Date switch
+                {
+                    var d when d == now.Date => local.ToString("HH:mm"),
+                    var d when d == now.Date.AddDays(-1) => $"昨天 {local:HH:mm}",
+                    var d when local.Year == now.Year => local.ToString("MM-dd HH:mm"),
+                    _ => local.ToString("yyyy-MM-dd HH:mm"),
+                };
+            }
+            return _createdAtFormattedCache;
         }
     }
 

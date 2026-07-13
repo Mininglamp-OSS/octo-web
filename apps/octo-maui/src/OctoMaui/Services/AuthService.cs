@@ -65,6 +65,10 @@ public sealed class AuthService : IAuthService
             RaiseChanged();
             return true;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch
         {
             return false;
@@ -130,13 +134,13 @@ public sealed class AuthService : IAuthService
         }
     }
 
-    public async Task LogoutAsync()
+    public Task LogoutAsync()
     {
         _token = null;
         _user = null;
         SecureStorage.Default.Remove(TokenKey);
         RaiseChanged();
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     /// <summary>Hydrate CurrentUser after a cold start when a saved token exists.</summary>

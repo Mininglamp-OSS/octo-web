@@ -32,9 +32,10 @@ public sealed class ApiService : IApiService
     {
         var normalized = NormalizeUrl(url);
         _options.BaseUrl = normalized;
-        var old = _http;
-        _http = CreateClient(normalized, _options.Timeout);
-        old.Dispose();
+        var oldClient = Interlocked.Exchange(ref _http, CreateClient(normalized, _options.Timeout));
+        // Old instance is disposed after a delay to avoid ObjectDisposedException
+        // for in-flight requests that still hold a reference to it.
+        _ = Task.Delay(TimeSpan.FromSeconds(30)).ContinueWith(_ => oldClient?.Dispose(), TaskScheduler.Default);
     }
 
     /// <inheritdoc />
@@ -78,7 +79,7 @@ public sealed class ApiService : IApiService
 
     public async Task<List<Message>> GetMessagesAsync(string token, string channelId, int limit = 50, long? beforeTimestamp = null, CancellationToken ct = default)
     {
-        var path = $"/channel/{channelId}/messages?limit={limit}";
+        var path = $"/channel/{Uri.EscapeDataString(channelId)}/messages?limit={limit}";
         if (beforeTimestamp is { } ts) path += $"&before={ts}";
         using var req = Authed(token, HttpMethod.Get, path);
         return await SendAsync<List<Message>>(req, ct);
@@ -86,8 +87,8 @@ public sealed class ApiService : IApiService
 
     public async Task<Message> SendMessageAsync(string token, string channelId, string content, CancellationToken ct = default)
     {
-        var payload = new { channel_id = channelId, content, message_type = 1 };
-        using var req = Authed(token, HttpMethod.Post, $"/channel/{channelId}/message/send");
+        var payload = new { channel_id = channelId, content, message_type = (int)MessageType.Text };
+        using var req = Authed(token, HttpMethod.Post, $"/channel/{Uri.EscapeDataString(channelId)}/message/send");
         req.Content = JsonContent.Create(payload);
         return await SendAsync<Message>(req, ct);
     }
@@ -95,7 +96,7 @@ public sealed class ApiService : IApiService
     /// <inheritdoc />
     public async Task<Message> UploadFileAsync(string token, string channelId, Stream fileStream, string fileName, string contentType, CancellationToken ct = default)
     {
-        using var req = Authed(token, HttpMethod.Post, $"/channel/{channelId}/message/upload");
+        using var req = Authed(token, HttpMethod.Post, $"/channel/{Uri.EscapeDataString(channelId)}/message/upload");
         using var multipart = new MultipartFormDataContent();
         var fileContent = new StreamContent(fileStream);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
@@ -174,14 +175,14 @@ public sealed class ApiService : IApiService
 
     // --- helpers ---
 
-    private static HttpClient CreateClient(string baseUrl, TimeSpan timeout)
+    private HttpClient CreateClient(string baseUrl, TimeSpan timeout)
     {
-        var client = new HttpClient
+        var handler = new HttpClientHandler();
+        if (_options.AllowInsecureSsl)
         {
-            BaseAddress = new Uri(baseUrl),
-            Timeout = timeout,
-        };
-        return client;
+            handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+        }
+        return new HttpClient(handler) { BaseAddress = new Uri(baseUrl), Timeout = timeout };
     }
 
     /// <summary>

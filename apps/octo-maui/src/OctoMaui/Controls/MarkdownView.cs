@@ -19,6 +19,12 @@ public sealed class MarkdownView : VerticalStackLayout
     private static string MonospaceFont =>
         DeviceInfo.Platform == DevicePlatform.WinUI ? "Cascadia Code" : "Menlo";
 
+    /// <summary>
+    /// Combined pattern for inline bold (**text**) and inline code (`code`).
+    /// Compiled once and reused across renders for performance.
+    /// </summary>
+    private static readonly Regex InlineFormatRegex = new(@"(\*\*[^*]+\*\*|`[^`]+`)", RegexOptions.Compiled);
+
     /// <summary>The markdown source text to render.</summary>
     public static readonly BindableProperty MarkdownProperty =
         BindableProperty.Create(nameof(Markdown), typeof(string), typeof(MarkdownView),
@@ -42,6 +48,29 @@ public sealed class MarkdownView : VerticalStackLayout
             view.Render((string)newValue);
     }
 
+    protected override void OnParentSet()
+    {
+        base.OnParentSet();
+        if (Parent is not null)
+        {
+            if (Application.Current is not null)
+                Application.Current.RequestedThemeChanged += OnThemeChanged;
+        }
+        else
+        {
+            if (Application.Current is not null)
+                Application.Current.RequestedThemeChanged -= OnThemeChanged;
+        }
+    }
+
+    private void OnThemeChanged(object? sender, AppThemeChangedEventArgs e)
+    {
+        // Re-render with new theme colors.
+        Render();
+    }
+
+    private void Render() => Render(Markdown);
+
     private void Render(string markdown)
     {
         Children.Clear();
@@ -63,6 +92,12 @@ public sealed class MarkdownView : VerticalStackLayout
                 {
                     sb.AppendLine(lines[i].TrimEnd('\r'));
                     i++;
+                }
+                if (i >= lines.Length)
+                {
+                    // Unterminated code block — include remaining lines as code content.
+                    Children.Add(CreateCodeBlock(sb.ToString()));
+                    break;
                 }
                 i++; // skip closing ```
                 Children.Add(CreateCodeBlock(sb.ToString()));
@@ -175,12 +210,15 @@ public sealed class MarkdownView : VerticalStackLayout
     /// </summary>
     private static FormattedString ParseInline(string text)
     {
+        // NOTE: The current regex patterns do not support nested inline formatting
+        // (e.g., **bold *italic* bold**). This is a known limitation; for full
+        // markdown compliance, consider a proper parser like Markdig.
+
         var fs = new FormattedString();
 
         // Pattern: matches **bold**, `code`, or plain text segments.
-        var pattern = new Regex(@"(\*\*[^*]+\*\*|`[^`]+`)");
         var pos = 0;
-        foreach (Match m in pattern.Matches(text))
+        foreach (Match m in InlineFormatRegex.Matches(text))
         {
             // Plain text before this match
             if (m.Index > pos)

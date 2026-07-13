@@ -12,7 +12,7 @@ namespace OctoMaui.Platforms.Windows;
 /// (Show Window / Exit). Uses a message-only window to receive tray callbacks.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class WindowsTrayService : ITrayService
+public sealed class WindowsTrayService : ITrayService, IDisposable
 {
     // === Win32 message constants ===
     private const int WM_USER = 0x0400;
@@ -185,6 +185,7 @@ public sealed class WindowsTrayService : ITrayService
     private IntPtr _trayIcon = IntPtr.Zero;
     private readonly WndProcDelegate _wndProcDelegate;
     private bool _initialized;
+    private bool _disposed;
 
     public bool IsSupported => OperatingSystem.IsWindows();
 
@@ -200,7 +201,10 @@ public sealed class WindowsTrayService : ITrayService
     {
         if (!IsSupported || _initialized) return Task.CompletedTask;
 
-        // Tray window must be created on the UI thread.
+        // Tray window must be created on the UI thread. Use a
+        // TaskCompletionSource so callers can await real completion rather
+        // than just the dispatch of the work.
+        var tcs = new TaskCompletionSource<bool>();
         MainThread.BeginInvokeOnMainThread(() =>
         {
             try
@@ -208,14 +212,17 @@ public sealed class WindowsTrayService : ITrayService
                 CreateListenerWindow();
                 AddTrayIcon();
                 _initialized = _messageWindow != IntPtr.Zero;
+                tcs.TrySetResult(true);
             }
-            catch
+            catch (Exception ex)
             {
-                // Tray is best-effort; never crash the app on init failure.
+                // Tray is best-effort; surface the failure to the awaiter
+                // rather than crashing the app on init failure.
+                tcs.TrySetException(ex);
             }
         });
 
-        return Task.CompletedTask;
+        return tcs.Task;
     }
 
     private void CreateListenerWindow()
@@ -465,5 +472,27 @@ public sealed class WindowsTrayService : ITrayService
 
         DestroyWindow(_messageWindow);
         _messageWindow = IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// Releases the native tray icon and listener window. Safe to call
+    /// multiple times.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        // RemoveCore performs the native Shell_NotifyIconW(NIM_DELETE) and
+        // DestroyWindow calls that free the unmanaged resources.
+        RemoveCore();
+        GC.SuppressFinalize(this);
+    }
+
+    // Finalizer ensures native resources are released even if Dispose was
+    // never called. RemoveCore is guarded against re-entry.
+    ~WindowsTrayService()
+    {
+        Dispose();
     }
 }
