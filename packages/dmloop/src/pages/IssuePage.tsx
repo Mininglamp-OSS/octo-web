@@ -3,7 +3,6 @@ import {
   Input,
   Button,
   Spin,
-  Toast,
   Select,
   Pagination,
   DatePicker,
@@ -215,7 +214,7 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
   const openNewLoop = () => {
     WKApp.routeRight.push(
       <NewLoopPage
-        onCreated={() => { Toast.success(t("loop.toast.created")); onMutated(); WKApp.routeRight.pop(); }}
+        onCreated={() => { onMutated(); WKApp.routeRight.pop(); }}
       />,
     );
   };

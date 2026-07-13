@@ -54,7 +54,9 @@ export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
     if (!text || !assigneeId || submitting) return;
     setSubmitting(true);
     try {
-      // 附件先上传拿 id（issue 尚不存在），再随派单绑定。单个失败只提示、不阻断。
+      // 附件先上传拿 id（issue 尚不存在），再随派单绑定。
+      // 派单流的附件是 agent 的上下文:任一上传失败就整体中止派单(不静默用残缺上下文派单——
+      // 异步 fire-and-forget,用户导航走后无法补救),提示重试。全成功才继续。
       let attachmentIds: string[] | undefined;
       if (pendingFiles.length) {
         const ids: string[] = [];
@@ -62,7 +64,10 @@ export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
         for (const f of pendingFiles) {
           try { ids.push((await uploadAttachment(f)).id); } catch { failed++; }
         }
-        if (failed) Toast.error({ content: t("loop.toast.attachFailed", { values: { count: failed } }), duration: 3 });
+        if (failed) {
+          Toast.error({ content: t("loop.newLoop.attachFailedAbort", { values: { count: failed } }), duration: 3 });
+          return; // finally 会复位 submitting;不派单,用户可重试
+        }
         if (ids.length) attachmentIds = ids;
       }
       // 一句话派单 → quick-create:建单前查 runtime 在线 + daemon 版本,离线/过旧当场 422 反馈,
