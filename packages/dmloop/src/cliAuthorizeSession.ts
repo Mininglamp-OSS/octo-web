@@ -16,14 +16,14 @@ export function isLoopCliAuthorizePath(pathname: string): boolean {
 export function resolveLoopCliAuthorizeSearch(
   pathname: string,
   search: string,
-  storage: SessionStorageLike
+  sessionStore: SessionStorageLike
 ): string {
   if (!isLoopCliAuthorizePath(pathname)) return search;
 
   const params = new URLSearchParams(search);
   if (params.get("cli_callback")) {
     try {
-      storage.setItem(PENDING_SEARCH_KEY, search);
+      sessionStore.setItem(PENDING_SEARCH_KEY, search);
     } catch {
       // Session storage may be unavailable in hardened browser contexts.
     }
@@ -31,17 +31,17 @@ export function resolveLoopCliAuthorizeSearch(
   }
 
   try {
-    return storage.getItem(PENDING_SEARCH_KEY) || search;
+    return sessionStore.getItem(PENDING_SEARCH_KEY) || search;
   } catch {
     return search;
   }
 }
 
 export function clearPendingLoopCliAuthorizeSearch(
-  storage: SessionStorageLike
+  sessionStore: SessionStorageLike
 ): void {
   try {
-    storage.removeItem(PENDING_SEARCH_KEY);
+    sessionStore.removeItem(PENDING_SEARCH_KEY);
   } catch {
     // Best-effort cleanup; redirecting to the loopback callback remains safe.
   }
