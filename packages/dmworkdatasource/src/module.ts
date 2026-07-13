@@ -1,11 +1,12 @@
-import { Convert, GroupRole, IModule, WKApp, hasSpacePrefix, ChannelTypeCommunityTopic, parseThreadChannelId } from "@octo/base"
-import { Channel, ChannelTypeGroup, ChannelTypePerson, Conversation, WKSDK, Message, Subscriber, ConversationExtra, Reminder } from "wukongimjssdk";
+import { Convert, IModule, WKApp, hasSpacePrefix, ChannelTypeCommunityTopic } from "@octo/base"
+import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, ConversationExtra, Reminder } from "wukongimjssdk";
 import { MessageTask } from "wukongimjssdk";
 import { ConversationProvider } from "./conversation";
 import { ChannelDataSource, CommonDataSource } from "./datasource";
 import { MediaMessageUploadTask } from "./task";
 import { createChannelInfoCallback } from "./im-callbacks/channelInfo";
 import { createSyncConversationsCallback } from "./im-callbacks/conversations";
+import { createSyncSubscribersCallback } from "./im-callbacks/subscribers";
 
 export default class DataSourceModule implements IModule {
     id(): string {
@@ -49,55 +50,14 @@ export default class DataSourceModule implements IModule {
     }
 
     setSyncSubscribersCallback() {
-        WKSDK.shared().config.provider.syncSubscribersCallback = async function (channel: Channel, version: number): Promise<Array<Subscriber>> {
-            // 子区（ChannelTypeCommunityTopic）使用父群聊 ID 拉取成员列表
-            let groupId = channel.channelID
-            if (channel.channelType === ChannelTypeCommunityTopic) {
-                const parsed = parseThreadChannelId(channel.channelID)
-                if (parsed) {
-                    groupId = parsed.groupNo
-                }
-            }
-            const resp = await WKApp.apiClient.get(`groups/${groupId}/membersync?version=${version}&limit=10000`);
-            let members = [];
-            if (resp) {
-                for (let i = 0; i < resp.length; i++) {
-                    let memberMap = resp[i];
-                    let member = new Subscriber();
-                    member.uid = memberMap.uid;
-                    member.name = memberMap.name;
-                    member.remark = memberMap.remark;
-                    member.role = memberMap.role;
-                    member.version = memberMap.version;
-                    member.isDeleted = memberMap.is_deleted;
-                    member.status = memberMap.status;
-                    member.orgData = memberMap
-                    member.orgData.bot_admin = memberMap.bot_admin || 0;
-                    member.avatar = WKApp.shared.avatarUser(member.uid)
-                    members.push(member);
-                }
-            }
-            members.sort((a, b) => {
-                const roleA = a.role === GroupRole.owner ? 999 : a.role;
-                const roleB = b.role === GroupRole.owner ? 999 : b.role;
-                return roleB - roleA;
-            })
-
-            // 将 robot 字段同步到 person channelInfo 缓存，确保消息列表能正确显示 AI 标识
-            for (const member of members) {
-                if (member.orgData?.robot === 1) {
-                    const personChannel = new Channel(member.uid, ChannelTypePerson)
-                    const existing = WKSDK.shared().channelManager.getChannelInfo(personChannel)
-                    if (existing) {
-                        existing.orgData = existing.orgData || {}
-                        existing.orgData.robot = 1
-                        WKSDK.shared().channelManager.setChannleInfoForCache(existing)
-                    }
-                }
-            }
-
-            return members;
-        }
+        WKSDK.shared().config.provider.syncSubscribersCallback = createSyncSubscribersCallback({
+            getMembers: (path) => WKApp.apiClient.get(path),
+            avatarUser: (uid) => WKApp.shared.avatarUser(uid),
+            getPersonChannelInfo: (uid) =>
+                WKSDK.shared().channelManager.getChannelInfo(new Channel(uid, ChannelTypePerson)),
+            setChannelInfoForCache: (channelInfo) =>
+                WKSDK.shared().channelManager.setChannleInfoForCache(channelInfo),
+        })
     }
 
     setMessageUploadTaskCallback() {
