@@ -6,6 +6,8 @@
   --octo-accent: #3370ff;
   --octo-border: #e5e6eb;
   --octo-hover: #f2f3f5;
+  /* Shared elevation for overlay-anchored cards (preview/diff modal + destructive confirm). */
+  --octo-modal-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -1059,7 +1061,7 @@
   color: var(--octo-fg, #1f2329);
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 12px;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--octo-modal-shadow);
   padding: 20px 24px;
   box-sizing: border-box;
 }
@@ -1387,7 +1389,7 @@
   color: var(--octo-fg, #1f2329);
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 12px;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--octo-modal-shadow);
   padding: 20px 24px;
   box-sizing: border-box;
 }
@@ -1724,12 +1726,28 @@
   justify-content: flex-end;
   gap: 6px;
 }
-.octo-version-confirm {
-  margin-top: 12px;
-  padding: 12px;
+/* Destructive-action confirm box (restore / delete). The VersionHistoryPanel shell — the single
+   confirm renderer the doc / sheet / board ends now share — renders it inside the shared
+   .octo-modal-overlay (fixed, viewport-centered), the same overlay the preview/diff modal uses
+   (decision #2), so it is always visible and clickable regardless of how far the version list has
+   scrolled. Before this, it sat at the end of the panel's content flow with only box-model styling
+   and no positioning, so on long scrolled lists it fell below the fold and users could not see the
+   confirm they had just triggered. The modal-card chrome (white bg + shadow) is scoped under
+   .octo-modal-overlay so it only applies to the overlay-anchored card and never leaks onto any path
+   that might still render this class inline in the content flow. */
+.octo-modal-overlay .octo-version-confirm {
+  width: 100%;
+  max-width: 420px;
+  padding: 16px 20px;
   border: 1px solid var(--octo-border, #e5e6eb);
-  border-radius: 8px;
-  background: var(--octo-accent-weak, #f2f3f5);
+  border-radius: 12px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  box-shadow: var(--octo-modal-shadow);
+  box-sizing: border-box;
+}
+.octo-version-confirm > p:first-child {
+  margin-top: 0;
 }
 .octo-version-confirm-detail {
   color: var(--octo-muted, #86909c);

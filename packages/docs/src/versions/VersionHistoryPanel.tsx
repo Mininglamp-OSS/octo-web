@@ -391,6 +391,20 @@ export function VersionHistoryPanel<TState, TCurrent>({
     return () => document.removeEventListener('keydown', onKey)
   }, [selected, closePreview])
 
+  // Escape also cancels the restore / delete confirm overlay, matching the preview modal's Esc/
+  // overlay-close behavior. It only clears the confirm state (never the in-flight mutation), and it
+  // no-ops while a mutation is running so a keypress can't dismiss the box mid-request.
+  useEffect(() => {
+    if (!confirmRestore && !confirmDelete) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || busy) return
+      setConfirmRestore(null)
+      setConfirmDelete(null)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [confirmRestore, confirmDelete, busy])
+
   const filterBtn = (k: KindFilter, label: string) => (
     <button
       type="button"
@@ -569,50 +583,78 @@ export function VersionHistoryPanel<TState, TCurrent>({
         )}
 
         {confirmRestore && (
-          <div className="octo-version-confirm">
-            <p>{t('docs.version.confirmTitle', { values: { seq: confirmRestore.docVersionSeq } })}</p>
-            <p className="octo-version-confirm-detail">{t('docs.version.confirmDetail')}</p>
-            <div className="octo-member-row">
-              <button
-                type="button"
-                className="octo-tb-btn"
-                disabled={busy}
-                onClick={() => void onConfirmRestore(confirmRestore)}
-              >
-                {t('docs.version.restore')}
-              </button>
-              <button
-                type="button"
-                className="octo-tb-btn"
-                disabled={busy}
-                onClick={() => setConfirmRestore(null)}
-              >
-                {t('docs.version.cancel')}
-              </button>
+          <div
+            className="octo-modal-overlay"
+            role="presentation"
+            onMouseDown={() => {
+              if (!busy) setConfirmRestore(null)
+            }}
+          >
+            <div
+              className="octo-version-confirm"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t('docs.version.restore')}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <p>{t('docs.version.confirmTitle', { values: { seq: confirmRestore.docVersionSeq } })}</p>
+              <p className="octo-version-confirm-detail">{t('docs.version.confirmDetail')}</p>
+              <div className="octo-member-row">
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  disabled={busy}
+                  onClick={() => void onConfirmRestore(confirmRestore)}
+                >
+                  {t('docs.version.restore')}
+                </button>
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  disabled={busy}
+                  onClick={() => setConfirmRestore(null)}
+                >
+                  {t('docs.version.cancel')}
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         {confirmDelete && (
-          <div className="octo-version-confirm">
-            <p>{t('docs.version.deleteConfirm', { values: { seq: confirmDelete.docVersionSeq } })}</p>
-            <div className="octo-member-row">
-              <button
-                type="button"
-                className="octo-tb-btn"
-                disabled={busy}
-                onClick={() => void onDelete(confirmDelete)}
-              >
-                {t('docs.version.delete')}
-              </button>
-              <button
-                type="button"
-                className="octo-tb-btn"
-                disabled={busy}
-                onClick={() => setConfirmDelete(null)}
-              >
-                {t('docs.version.cancel')}
-              </button>
+          <div
+            className="octo-modal-overlay"
+            role="presentation"
+            onMouseDown={() => {
+              if (!busy) setConfirmDelete(null)
+            }}
+          >
+            <div
+              className="octo-version-confirm"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t('docs.version.delete')}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <p>{t('docs.version.deleteConfirm', { values: { seq: confirmDelete.docVersionSeq } })}</p>
+              <div className="octo-member-row">
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  disabled={busy}
+                  onClick={() => void onDelete(confirmDelete)}
+                >
+                  {t('docs.version.delete')}
+                </button>
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  disabled={busy}
+                  onClick={() => setConfirmDelete(null)}
+                >
+                  {t('docs.version.cancel')}
+                </button>
+              </div>
             </div>
           </div>
         )}
