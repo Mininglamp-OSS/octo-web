@@ -19,6 +19,8 @@
     "saveFailed": "Not saved — local storage is full or unavailable",
     "untitled": "Untitled board",
     "deleteEntry": "Delete board",
+    "deleteConfirmTitle": "Delete board",
+    "deleteConfirm": "This cannot be undone. Delete this board?",
     "importLibrary": "Import from local",
     "importLibraryError": "Couldn't import that library — please make sure it's a valid .excalidrawlib",
     "saveLibrary": "Save to file",

@@ -1335,38 +1335,6 @@
 .octo-error {
   color: #eb5757;
 }
-.octo-docs-delete-confirm {
-  margin: 4px 10px 8px;
-  padding: 10px;
-  border: 1px solid var(--octo-border, #e5e6eb);
-  border-radius: 8px;
-  background: var(--octo-bg-2, #fafbfc);
-}
-.octo-docs-delete-confirm-text {
-  margin: 0 0 8px;
-  font-size: 13px;
-  color: var(--octo-fg, #1f2329);
-}
-.octo-docs-delete-confirm-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-.octo-docs-delete-confirm-go {
-  color: #fff;
-  background: #eb5757;
-}
-.octo-docs-delete-confirm-go:hover:not(:disabled) {
-  background: #d64545;
-}
-
-/* Editor delete entry (Problem 4): the delete action now lives inside the header ≡ "more" menu
-   (danger row, see .octo-doc-more-item.is-danger below). The confirm card still sits just under
-   the header instead of floating in a list row. */
-.octo-doc-delete-confirm {
-  margin: 8px 0 0;
-  max-width: 420px;
-}
 
 /* ── Centered confirm dialog (ConfirmModal): shared by document + sheet delete so both pop the
    SAME card in the MIDDLE of the screen — replacing the sheet's native window.confirm and the
