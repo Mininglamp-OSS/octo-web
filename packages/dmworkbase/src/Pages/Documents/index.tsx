@@ -20,6 +20,7 @@ import { formatFileSize, getFileIconInfo } from "../../Messages/File";
 import { downloadFile } from "../../Utils/download";
 import { createDocumentSummary, DEFAULT_DOCUMENT_VIEWER, DEMO_DOCUMENT_ACCESS, documentRepository } from "./service";
 import type { DocumentAsset, DocumentSpace, DocumentState, DocumentTab, DocumentViewer } from "./types";
+import { useDocumentState } from "./useDocumentState";
 import "./index.css";
 
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -46,22 +47,6 @@ function getCurrentDocumentViewer(): DocumentViewer {
     accessibleChannelIds: uid ? DEMO_DOCUMENT_ACCESS.accessibleChannelIds : [],
     accessibleSpaceNames: uid ? DEMO_DOCUMENT_ACCESS.accessibleSpaceNames : [],
   };
-}
-
-function useDocumentState(viewer: DocumentViewer) {
-  const [state, setState] = useState<DocumentState | null>(null);
-
-  const reload = async () => {
-    const next = await documentRepository.load(viewer);
-    setState(next);
-    return next;
-  };
-
-  useEffect(() => {
-    reload();
-  }, []);
-
-  return { state, setState, reload };
 }
 
 function getStatusText(file: DocumentAsset, translate: Translate) {
@@ -532,8 +517,8 @@ export function DocumentsWorkspace() {
 
                 <section className="wk-docs-flow">
                   <h3>{t("base.documents.sections.fileRecords")}</h3>
-                  {selectedFile.flow.map((item: string) => (
-                    <div key={item}>
+                  {selectedFile.flow.map((item: string, index: number) => (
+                    <div key={`${index}-${item}`}>
                       <span />
                       <p>{item}</p>
                     </div>

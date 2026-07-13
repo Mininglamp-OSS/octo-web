@@ -207,6 +207,10 @@ export class MockDocumentRepository implements DocumentRepository {
       throw new Error(`Document space not found: ${spaceName}`);
     }
 
+    if (file.status === "archived" && file.spaceName === spaceName) {
+      return this.load(viewer);
+    }
+
     file.status = "archived";
     file.visibility = "space";
     file.spaceName = spaceName;

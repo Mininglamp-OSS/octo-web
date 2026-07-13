@@ -61,6 +61,54 @@ describe("DocumentRepository", () => {
     });
   });
 
+  it("archives a message file into the selected document space", async () => {
+    const repo = new MockDocumentRepository();
+
+    const archived = await repo.archiveMessageFile(
+      {
+        id: "MSG-ARCHIVE-001",
+        name: "项目复盘.pdf",
+        extension: "pdf",
+        size: 4096,
+        url: "/mock-files/project-review.pdf",
+        sourceName: "产品方案讨论群",
+        sourceChannelId: "group-product-plan",
+        sourceChannelType: 2,
+        sourceType: "group",
+        sourceMessageId: "MSG-ARCHIVE-001",
+        sourceMessageSeq: 5001,
+        sourceSenderUid: "u-chenyi",
+        sourceSenderName: "陈一",
+        sourceSentAt: "2026-06-17 12:00",
+        sourcePreviewText: "项目复盘.pdf",
+        uploader: "陈一",
+        uploaderUid: "u-chenyi",
+      },
+      "产品归档空间",
+      chenViewer,
+    );
+
+    expect(archived.files.find((file) => file.id === "MSG-ARCHIVE-001")).toMatchObject({
+      name: "项目复盘.pdf",
+      status: "archived",
+      spaceName: "产品归档空间",
+      sourceChannelId: "group-product-plan",
+      sourceMessageSeq: 5001,
+    });
+  });
+
+  it("does not append another flow entry when moving to the current space", async () => {
+    const repo = new MockDocumentRepository();
+    const before = await repo.load(chenViewer);
+    const beforeFile = before.files.find((file) => file.id === "DOC-240617-002");
+
+    const after = await repo.moveFileToSpace("DOC-240617-002", "产品部公共空间", chenViewer);
+    const afterFile = after.files.find((file) => file.id === "DOC-240617-002");
+
+    expect(afterFile?.flow).toEqual(beforeFile?.flow);
+    expect(afterFile?.lastAccessAt).toBe(beforeFile?.lastAccessAt);
+  });
+
   it("moves files through trash, restores them and permanently deletes them", async () => {
     const repo = new MockDocumentRepository();
 
