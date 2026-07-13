@@ -21,7 +21,13 @@ export interface GlobalSearchChannelRef {
 
 export interface GlobalSearchFilters {
   senderUids: string[];
-  memberUid?: string;
+  // YUJ-30 bug 5: multi-select. Semantics (AND / intersection): a channel
+  // matches only when *every* listed member is in it. DMs remain valid only
+  // for a single-member selection (a DM has no notion of «all N members co-
+  // present»); the backend drops DM candidates once memberUids.length > 1.
+  // Self-uid is still ignored server-side (§6.4). The legacy single-value
+  // `memberUid` field is gone — call sites migrate to memberUids.
+  memberUids: string[];
   channels: GlobalSearchChannelRef[];
   channelTypes: number[];
   contentTypes: number[];
@@ -81,6 +87,7 @@ export interface GlobalSearchPanelState {
 
 export const defaultGlobalSearchFilters = (): GlobalSearchFilters => ({
   senderUids: [],
+  memberUids: [],
   channels: [],
   channelTypes: [],
   contentTypes: [],

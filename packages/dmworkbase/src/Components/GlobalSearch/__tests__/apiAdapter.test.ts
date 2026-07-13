@@ -263,22 +263,26 @@ describe("cleanGlobalFilters", () => {
     expect((out.sender_ids as string[])[49]).toBe("u49");
   });
 
-  it("drops member_uid when it equals selfUid", () => {
-    const withSelf = cleanGlobalFilters(
-      baseFilters({ memberUid: "self" }),
+  it("drops self from member_uids and emits the plural wire field", () => {
+    // YUJ-30 bug 5: `member_uid`(single) → `member_uids`(list). Self is
+    // still a no-op per §6.4, and dedup keeps the wire payload tight.
+    const withSelfOnly = cleanGlobalFilters(
+      baseFilters({ memberUids: ["self"] }),
       "messages",
       "project",
       "self"
     );
-    expect(withSelf.member_uid).toBeUndefined();
+    expect(withSelfOnly.member_uids).toBeUndefined();
+    expect(withSelfOnly.member_uid).toBeUndefined();
 
-    const withOther = cleanGlobalFilters(
-      baseFilters({ memberUid: "peer" }),
+    const mixed = cleanGlobalFilters(
+      baseFilters({ memberUids: ["self", "peer", "peer", "friend"] }),
       "messages",
       "project",
       "self"
     );
-    expect(withOther.member_uid).toBe("peer");
+    expect(mixed.member_uids).toEqual(["peer", "friend"]);
+    expect(mixed.member_uid).toBeUndefined();
   });
 
   it("drops content_types 2/5 in messages tab when keyword is present", () => {
@@ -352,7 +356,7 @@ describe("hasEffectiveGlobalFilters", () => {
       hasEffectiveGlobalFilters(baseFilters({ senderUids: ["u1"] }))
     ).toBe(true);
     expect(
-      hasEffectiveGlobalFilters(baseFilters({ memberUid: "u1" }))
+      hasEffectiveGlobalFilters(baseFilters({ memberUids: ["u1"] }))
     ).toBe(true);
     expect(
       hasEffectiveGlobalFilters(

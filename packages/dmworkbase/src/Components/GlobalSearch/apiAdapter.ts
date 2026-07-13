@@ -134,10 +134,15 @@ export function cleanGlobalFilters(
   if (filters.senderUids.length > 0) {
     next.sender_ids = filters.senderUids.slice(0, 50);
   }
-  // member_uid = self is a no-op per §6.4. UI already hides self, but tolerate
-  // callers that leak self by dropping the field here.
-  if (filters.memberUid && filters.memberUid !== selfUid) {
-    next.member_uid = filters.memberUid;
+  // member_uids: drop self (§6.4 no-op) and dedup. Empty array → omit the
+  // field entirely so the server sees «no member filter» rather than an
+  // explicit empty list. Wire field is `member_uids` (plural), replacing the
+  // legacy single-value `member_uid` under YUJ-30 bug 5.
+  const memberUids = Array.from(
+    new Set(filters.memberUids.filter((uid) => uid && uid !== selfUid))
+  );
+  if (memberUids.length > 0) {
+    next.member_uids = memberUids;
   }
   if (filters.channels.length > 0) {
     next.channel_ids = filters.channels.map((c) => ({
@@ -176,7 +181,7 @@ export function cleanGlobalFilters(
 export function hasEffectiveGlobalFilters(filters: GlobalSearchFilters) {
   return (
     filters.senderUids.length > 0 ||
-    !!filters.memberUid ||
+    filters.memberUids.length > 0 ||
     filters.channels.length > 0 ||
     filters.channelTypes.length > 0 ||
     filters.contentTypes.length > 0 ||

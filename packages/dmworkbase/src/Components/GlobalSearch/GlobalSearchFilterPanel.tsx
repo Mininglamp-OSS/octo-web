@@ -396,14 +396,23 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
     }));
   };
 
-  const setMemberUid = (uid?: string) => {
+  const toggleMember = (uid: string) => {
     if (uid === selfUid) return;
-    setDraft((cur) => ({ ...cur, memberUid: uid || undefined }));
+    setDraft((cur) => {
+      const has = cur.memberUids.includes(uid);
+      return {
+        ...cur,
+        memberUids: has
+          ? cur.memberUids.filter((x) => x !== uid)
+          : [...cur.memberUids, uid],
+      };
+    });
   };
 
   const clearAll = () => {
     setDraft({
       senderUids: [],
+      memberUids: [],
       channels: [],
       channelTypes: [],
       contentTypes: [],
@@ -508,17 +517,19 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       })),
     [memberOptions]
   );
-  const memberSelected = useMemo<FilterSearchOption[]>(() => {
-    if (!draft.memberUid) return [];
-    const s = dataSource.getSender(draft.memberUid);
-    return [{ id: draft.memberUid, name: s.name, avatarUrl: s.avatarUrl }];
-  }, [draft.memberUid, dataSource]);
-  const memberIsSelected = useCallback(
-    (id: string) => draft.memberUid === id,
-    [draft.memberUid]
+  const memberSelected = useMemo<FilterSearchOption[]>(
+    () =>
+      draft.memberUids.map((uid) => {
+        const s = dataSource.getSender(uid);
+        return { id: uid, name: s.name, avatarUrl: s.avatarUrl };
+      }),
+    [draft.memberUids, dataSource]
   );
-  const toggleMemberById = (id: string) =>
-    setMemberUid(draft.memberUid === id ? undefined : id);
+  const memberIsSelected = useCallback(
+    (id: string) => draft.memberUids.includes(id),
+    [draft.memberUids]
+  );
+  const toggleMemberById = (id: string) => toggleMember(id);
 
   return (
     <div
