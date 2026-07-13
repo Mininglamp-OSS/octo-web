@@ -166,8 +166,8 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     visible={showSaveDialog}
                     onOk={this.handleSaveConfirm}
                     onCancel={() => this.setState({ showSaveDialog: false })}
-                    okText={t('common.confirm')}
-                    cancelText={t('common.cancel')}
+                    okText={t('summary.common.confirm')}
+                    cancelText={t('summary.common.cancel')}
                     confirmLoading={savingSummary}
                 >
                     <Input

@@ -316,14 +316,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
         this.setState({ savingSummary: true });
         try {
-            const channel = WKApp.shared.currentChannel;
-            const originChannelType = getOriginChannelType(channel);
-            
+            // origin_channel_id / origin_channel_type 不再由前端传入 —— 后端会从
+            // session 的 tool_calls 反查 agent 实际读过的第一个 channel_id 作为
+            // origin(见 handler/agent_summary.go)。整页入口 currentChannel 一定
+            // 是 undefined,弹窗入口也不再依赖 channel prop,统一走后端反查。
             const params: api.CreateAgentSummaryParams = {
                 session_id: sessionId,
                 title,
-                origin_channel_id: channel.channelID,
-                origin_channel_type: originChannelType,
             };
 
             if (selectedChats.length > 0) {
@@ -345,10 +344,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             const result = await api.createAgentSummary(params);
 
             Toast.success(t('summary.create.agentSummaryCreated'));
-            
-            // dispatch 刷新事件
+
+            // dispatch 刷新事件。agent 整页入口下前端已不再持有具体 channel
+            // (origin 由后端从 tool_calls 反查),下游刷新监听按 taskId 走即可,
+            // channelId 传空串以保持事件字段结构不变、避免 undefined 引用崩溃。
             const event = new CustomEvent('chat-summary-created', {
-                detail: { taskId: result.task_id, channelId: channel.channelID }
+                detail: { taskId: result.task_id, channelId: '' }
             });
             window.dispatchEvent(event);
             

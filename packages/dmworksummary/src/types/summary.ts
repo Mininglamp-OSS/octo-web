@@ -220,15 +220,19 @@ export interface CreateSummaryParams {
 export interface CreateAgentSummaryParams {
     /** 当前 agent 对话的 session_id */
     session_id: string;
-    /** 触发对话的频道 id */
-    origin_channel_id: string;
-    /** 频道类型：1=群聊 / 2=子区 / 3=私聊 */
-    origin_channel_type: number;
-    /** 用户填写的总结标题（必填，前端弹窗输入） */
+    /**
+     * 触发对话的频道 id。可选:agent 对话入口没有"选来源"控件,
+     * 前端一般不传;后端会从 session 的 tool_calls 记录反查 agent
+     * 实际读过的第一个 channel_id 作为 origin。
+     */
+    origin_channel_id?: string;
+    /** 频道类型:1=群聊 / 2=子区 / 3=私聊。仅当 origin_channel_id 有值时必填。 */
+    origin_channel_type?: number;
+    /** 用户填写的总结标题(必填,前端弹窗输入) */
     title?: string;
-    /** 可选来源（沿用传统结构） */
+    /** 可选来源(沿用传统结构) */
     sources?: SourceItem[];
-    /** 可选参与者（沿用传统结构） */
+    /** 可选参与者(沿用传统结构) */
     participants?: { user_id: string; user_name?: string }[];
 }
 
