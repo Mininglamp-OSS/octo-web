@@ -201,15 +201,19 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
 
   // 派单(quick-create)是异步的:agent 稍后才建 issue,单次刷新太早看不到(dmloop 无 WS 推送,
   // 见记忆 dmloop-no-realtime-defer-ws)。这里有界补刷几次直到新回路出现。
-  // ponytail: 真正的修法是 WS 实时推送(已记后期做),此为 stopgap;派单低频,几次冗余刷新可接受。
+  // ponytail: 真正的修法是 WS 实时推送(已记后期做),此为 stopgap;派单低频,几次补刷可接受。
   // 手动建单是同步的,立即那次即命中,后续定时刷新只是无害冗余。
+  // 定时回调必须走 ref 读最新 onMutated —— 否则闭包捕获派单时刻的筛选/视图,窗口内用户改了筛选后
+  // 延迟刷新会用旧筛选参数覆盖当前视图(reload 的 seq 守卫只防乱序、不防陈旧入参)。
   const settleTimersRef = useRef<number[]>([]);
+  const onMutatedRef = useRef(onMutated);
+  useEffect(() => { onMutatedRef.current = onMutated; }, [onMutated]);
   useEffect(() => () => settleTimersRef.current.forEach(clearTimeout), []);
   const settleReload = useCallback(() => {
     settleTimersRef.current.forEach(clearTimeout);
-    onMutated(); // 立即刷一次
-    settleTimersRef.current = [2000, 5000, 9000, 14000].map((d) => window.setTimeout(onMutated, d));
-  }, [onMutated]);
+    onMutatedRef.current(); // 立即刷一次
+    settleTimersRef.current = [2000, 5000, 9000, 14000].map((d) => window.setTimeout(() => onMutatedRef.current(), d));
+  }, []);
 
   // 改任一筛选/搜索都回到第一页，避免停在越界的 offset（此规则只此一处表达）。
   const update = (p: Partial<Filters>) => { setF((prev) => ({ ...prev, ...p })); setPage(0); };

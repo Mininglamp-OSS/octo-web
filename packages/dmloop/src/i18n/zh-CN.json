@@ -606,6 +606,7 @@
     "cancelled": "已终止",
     "copyAll": "复制全部",
     "copied": "已复制",
+    "gone": "运行记录已不存在",
     "events": "{{count}} 个事件",
     "toolCalls": "{{count}} 次工具调用",
     "duration": "时长",
