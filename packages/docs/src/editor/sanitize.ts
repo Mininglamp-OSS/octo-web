@@ -78,3 +78,43 @@ export function renderLinkAttrs(href: string): { href: string | null; rel?: stri
   const safe = sanitizeLinkHref(href)
   return safe ? { href: safe, rel: 'noopener noreferrer' } : { href: null }
 }
+
+/**
+ * Strip inline `font-family` declarations from pasted HTML.
+ *
+ * Gates the paste WRITE path while FONT_FAMILY_ENABLED is off (config.ts): the flag
+ * exists so fontFamily stays unwritable until every client bundle carries the attr
+ * (version convergence). The toolbar selector is the first write path and is already
+ * flag-gated (Toolbar.tsx); paste is the second — a `<span style="font-family:…">`
+ * copied from Word/browser would otherwise be parsed by the (unconditionally
+ * registered) FontFamily extension and land in the shared Y.Doc, so an older client
+ * whose schema lacks the attr would silently strip it → data loss.
+ *
+ * This removes ONLY the inline `font-family` style — exactly what FontFamily.parseHTML
+ * reads (`element.style.fontFamily`) — leaving all other markup, styles, and text
+ * intact. It touches the paste path ONLY: parsing/rendering already-stored fonts
+ * (round-trip, opening old docs) is unaffected, so the flag stays a write gate, not a
+ * read gate. When the flag is on, callers skip this and pasted fonts are preserved.
+ */
+export function stripPastedFontFamily(html: string): string {
+  if (typeof document === 'undefined' || !/font-family/i.test(html)) return html
+  try {
+    const parsed = new DOMParser().parseFromString(html, 'text/html')
+    parsed.querySelectorAll('[style]').forEach((el) => {
+      const style = el.getAttribute('style') ?? ''
+      // Rebuild the inline style without any `font-family` declaration. Work on the raw
+      // attribute string (not the CSSOM) so an upper/mixed-case `FONT-FAMILY` — which a
+      // browser normalizes and reads, but jsdom's CSSOM does not — is stripped too.
+      const kept = style
+        .split(';')
+        .filter((decl) => decl.trim() && decl.split(':', 1)[0].trim().toLowerCase() !== 'font-family')
+        .map((decl) => decl.trim())
+        .join('; ')
+      if (kept) el.setAttribute('style', kept)
+      else el.removeAttribute('style')
+    })
+    return parsed.body.innerHTML
+  } catch {
+    return html
+  }
+}

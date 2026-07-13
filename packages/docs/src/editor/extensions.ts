@@ -50,9 +50,11 @@ import type { HocuspocusProvider } from '@hocuspocus/provider'
 // editor and the read-only preview pick up the math typography.
 import 'katex/dist/katex.min.css'
 
+import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { COLLAB_FIELD } from '../schema/index.ts'
+import { FONT_FAMILY_ENABLED } from '../config.ts'
 import { colorFromId, type OctoAwarenessUser } from '../awareness/presence.ts'
-import { sanitizeLinkHref } from './sanitize.ts'
+import { sanitizeLinkHref, stripPastedFontFamily } from './sanitize.ts'
 import { SlashCommand } from './SlashCommand.ts'
 import { FindReplace } from './findReplace.ts'
 import CharacterCount from '@tiptap/extension-character-count'
@@ -65,6 +67,30 @@ export function createDocsLowlight() {
 }
 
 const lowlight = createDocsLowlight()
+
+// SCHEMA_VERSION 16: FontFamily is registered UNCONDITIONALLY (schema must always know the
+// `fontFamily` textStyle attr so this bundle round-trips stored fonts faithfully). But the
+// FONT_FAMILY_ENABLED flag must gate every WRITE path, not just the toolbar selector. Paste is
+// the second write path: FontFamily.parseHTML(element.style.fontFamily) runs on pasted HTML
+// regardless of the flag, so a `<span style="font-family:…">` pasted from Word/browser would
+// land fontFamily in the shared Y.Doc while the flag is off — an older client (no attr in its
+// schema) opening the same doc then silently strips it (data loss). This paste guard strips the
+// inline font-family from pasted HTML while the flag is off; parsing/rendering already-stored
+// content is untouched (round-trip stays intact). When the flag is on, the transform is identity.
+const LiveFontFamily = FontFamily.extend({
+  addProseMirrorPlugins() {
+    return [
+      ...(this.parent?.() ?? []),
+      new Plugin({
+        key: new PluginKey('fontFamilyPasteGate'),
+        props: {
+          transformPastedHTML: (html) =>
+            FONT_FAMILY_ENABLED ? html : stripPastedFontFamily(html),
+        },
+      }),
+    ]
+  },
+})
 
 export interface BuildExtensionsOptions {
   ydoc: Y.Doc
@@ -124,7 +150,9 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // round-trips fonts faithfully and never strips them; the toolbar *entry* is what the
     // FONT_FAMILY_ENABLED flag gates (Toolbar.tsx), not the schema. This is the byte-aligned
     // counterpart of the backend fontFamily attr under the shared SCHEMA_VERSION 16 contract.
-    FontFamily,
+    // Uses LiveFontFamily (FontFamily + a paste-write gate) so the FONT_FAMILY_ENABLED flag
+    // also covers the paste write path, not just the toolbar selector — see LiveFontFamily above.
+    LiveFontFamily,
     // heading + paragraph nodes (not a new node/mark) → style="text-align:…". Configured for
     // exactly those two types so lists/tables/etc. keep their own layout.
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
