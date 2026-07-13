@@ -1,0 +1,7 @@
+/* TooltipCell - 单元格截断样式 */
+
+.wk-excel-tooltip-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

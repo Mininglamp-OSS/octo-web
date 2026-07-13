@@ -5,8 +5,9 @@ import {
   getExtension,
 } from "./types";
 import FileViewerRenderer from "./renderers/FileViewerRenderer";
+import ExcelRenderer from "./renderers/ExcelRenderer";
 
-/** Routes every registered preview format through file-viewer. */
+/** Routes every registered preview format through file-viewer, except Excel which uses SheetJS. */
 class FileRendererRegistry {
   private registry: Map<string, RendererRegistryItem> = new Map();
   private fallback: FileRenderer = FileViewerRenderer;
@@ -38,8 +39,8 @@ class FileRendererRegistry {
       this.register({
         type,
         extensions,
-        renderer: FileViewerRenderer,
-        needsFetch: false,
+        renderer: type === "excel" ? ExcelRenderer : FileViewerRenderer,
+        needsFetch: type === "excel",
       });
     }
   }

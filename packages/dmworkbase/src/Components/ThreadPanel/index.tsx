@@ -44,7 +44,6 @@ import FilePreviewHeader, {
   ConversationFile,
 } from "../FilePreviewPanel/FilePreviewHeader";
 import { FileListPanel } from "../FilePreviewPanel/FileListPanel";
-import FileViewerRenderer from "../FilePreviewPanel/renderers/FileViewerRenderer";
 import { isChannelSearchEnabled } from "../ChannelSearch/feature";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
@@ -1921,22 +1920,14 @@ export default class ThreadPanel extends Component<
 
   private renderFilePreviewContent() {
     const { filePreview } = this.props;
-    const { fileViewMode, isTocOpen } = this.state;
     if (!filePreview) return null;
 
     const ext = getExtension(filePreview.extension, filePreview.name);
-    const isImage = filePreview.category === "image";
-    const isVideo = filePreview.category === "video";
-    const isMarkdown = ["md", "markdown"].includes(ext);
     const handleError = (error: string) => {
       console.error("FilePreview error:", error);
     };
 
-    return (
-      <div className="wk-thread-panel-file-preview">
-        <FileViewerRenderer file={filePreview} onError={handleError} />
-      </div>
-    );
+    const { renderer: Renderer } = fileRendererRegistry.getRenderer(ext);
 
     return (
       <div className="wk-thread-panel-file-preview">

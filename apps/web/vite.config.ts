@@ -93,6 +93,38 @@ export default defineConfig(({ mode }) => {
         },
       },
       {
+        name: "bundle-spreadsheet-worker",
+        enforce: "pre",
+        buildStart() {
+          const { buildSync } = require("esbuild");
+          const fs = require("fs");
+          const path = require("path");
+          const root = process.cwd();
+          const outDir = path.join(root, "public", "vendor", "xlsx");
+          if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+          const outFile = path.join(outDir, "sheet.worker.js");
+          const workerEntry = path.join(
+            root, "../../node_modules/.pnpm/@file-viewer+renderer-spreadsheet@2.1.27/node_modules/@file-viewer/renderer-spreadsheet/dist/spreadsheet/worker/sheetjs/sheet.worker.js"
+          );
+          try {
+            buildSync({
+              entryPoints: [workerEntry],
+              bundle: true,
+              format: "esm",
+              outfile: outFile,
+              platform: "browser",
+              logLevel: "silent",
+              define: {
+                "process.env.NODE_ENV": JSON.stringify("production"),
+              },
+            });
+          } catch (e) {
+            // If bundling fails, leave the placeholder — auto fallback covers it.
+            console.warn("[vite] spreadsheet worker bundle failed:", e?.message);
+          }
+        },
+      },
+      {
         name: "exclude-test-files",
         // enforce: "pre" 让本插件的 resolveId 早于 commonjs() 等其它插件执行。
         // filehelper.ts 里 require(`./${fileIcon}`) 会被 vite-plugin-commonjs 展开
