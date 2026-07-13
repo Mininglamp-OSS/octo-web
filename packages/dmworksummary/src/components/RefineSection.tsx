@@ -83,3 +83,62 @@ export const RefineSection: React.FC<RefineSectionProps> = ({ detail, onRefineSu
             // 其他错误或无 code 字段
             Toast.error(t('summary.detail.refineFailed'));
         }
+    };
+
+    return (
+        <div
+            className="summary-detail-refine"
+            style={{
+                marginTop: 'var(--semi-spacing-base)',
+                padding: 'var(--semi-spacing-base)',
+                borderRadius: 'var(--semi-border-radius-medium)',
+                backgroundColor: 'var(--semi-color-fill-0)',
+            }}
+        >
+            <h4
+                style={{
+                    marginBottom: 'var(--semi-spacing-tight)',
+                    fontSize: 14,
+                    fontWeight: 500,
+                }}
+            >
+                {t('summary.detail.refineTitle')}
+            </h4>
+            <TextArea
+                placeholder={t('summary.detail.refinePlaceholder')}
+                value={instruction}
+                onChange={(value) => setInstruction(value.slice(0, charLimit))}
+                autosize={{ minRows: 3, maxRows: 8 }}
+                disabled={submitting}
+                style={{ marginBottom: 'var(--semi-spacing-tight)' }}
+            />
+            <div
+                style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                }}
+            >
+                <span
+                    style={{
+                        fontSize: 12,
+                        color:
+                            charCount > charLimit * 0.9
+                                ? 'var(--semi-color-warning)'
+                                : 'var(--semi-color-text-2)',
+                    }}
+                >
+                    {charCount} / {charLimit}
+                </span>
+                <Button
+                    theme="solid"
+                    onClick={handleSubmit}
+                    loading={submitting}
+                    disabled={submitting || !instruction.trim()}
+                >
+                    {t('summary.detail.refineSubmit')}
+                </Button>
+            </div>
+        </div>
+    );
+};
