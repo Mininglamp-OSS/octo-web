@@ -106,6 +106,19 @@ export default defineConfig(({ mode }) => {
           const workerEntry = path.join(
             root, "../../node_modules/.pnpm/@file-viewer+renderer-spreadsheet@2.1.27/node_modules/@file-viewer/renderer-spreadsheet/dist/spreadsheet/worker/sheetjs/sheet.worker.js"
           );
+          // Create a minimal stream shim so styled-exceljs doesn't crash on
+          // `require('stream')` in the browser Worker environment.
+          const shimDir = path.join(root, "node_modules", ".vite", "shims");
+          if (!fs.existsSync(shimDir)) fs.mkdirSync(shimDir, { recursive: true });
+          const streamShim = path.join(shimDir, "stream-shim.js");
+          fs.writeFileSync(streamShim, [
+            "// Minimal stream shim for browser Worker environment",
+            "export class Readable { constructor() {} pipe() { return this; } on() { return this; } destroy() {} }",
+            "export class Writable { constructor() {} write() { return true; } end() {} on() { return this; } destroy() {} }",
+            "export class Transform { constructor() {} pipe() { return this; } on() { return this; } write() { return true; } end() {} destroy() {} }",
+            "export class PassThrough { constructor() {} pipe() { return this; } on() { return this; } write() { return true; } end() {} destroy() {} }",
+            "export default { Readable, Writable, Transform, PassThrough };",
+          ].join("\n"));
           try {
             buildSync({
               entryPoints: [workerEntry],
@@ -114,12 +127,16 @@ export default defineConfig(({ mode }) => {
               outfile: outFile,
               platform: "browser",
               logLevel: "silent",
+              alias: {
+                stream: streamShim,
+              },
               define: {
                 "process.env.NODE_ENV": JSON.stringify("production"),
+                "process.browser": "true",
+                "global": "self",
               },
             });
           } catch (e) {
-            // If bundling fails, leave the placeholder — auto fallback covers it.
             console.warn("[vite] spreadsheet worker bundle failed:", e?.message);
           }
         },
