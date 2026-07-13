@@ -233,5 +233,28 @@ describe('AgentChatPanel - Save as Summary', () => {
         expect(screen.getByTestId('save-modal')).toBeInTheDocument();
         // 标题应该保留
         expect(titleInput).toHaveValue('测试总结');
+describe('AgentChatPanel 新会话 action', () => {
+    it('不提供 onNewSession 时不渲染「新会话」按钮', () => {
+        rtlRender(<AgentChatPanel messages={[]} onSend={vi.fn()} sending={false} />);
+        expect(screen.queryByText('新会话')).not.toBeInTheDocument();
+    });
+
+    it('提供 onNewSession 时渲染按钮，点击触发回调', () => {
+        const onNewSession = vi.fn();
+        rtlRender(
+            <AgentChatPanel messages={[]} onSend={vi.fn()} sending={false} onNewSession={onNewSession} />,
+        );
+        const btn = screen.getByText('新会话');
+        fireEvent.click(btn);
+        expect(onNewSession).toHaveBeenCalledTimes(1);
+    });
+
+    it('发送中 (sending=true) 禁用「新会话」按钮', () => {
+        const onNewSession = vi.fn();
+        rtlRender(
+            <AgentChatPanel messages={[]} onSend={vi.fn()} sending onNewSession={onNewSession} />,
+        );
+        const btn = screen.getByText('新会话') as HTMLButtonElement;
+        expect(btn).toBeDisabled();
     });
 });

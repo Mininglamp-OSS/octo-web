@@ -152,6 +152,7 @@
     "agentTopicPlaceholder": "输入需要总结的需求",
     "agentChatPlaceholder": "输入你的问题，回车发送（Shift+Enter 换行）",
     "agentChatWelcome": "你好，我是总结助手，想总结什么尽管告诉我。",
+    "newSession": "新会话",
     "send": "发送",
     "switchMode": "切换总结方式",
     "scheduleDaily": "按天 {{time}}",

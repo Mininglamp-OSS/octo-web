@@ -76,6 +76,7 @@ vi.mock('../../api/summaryApi', () => ({
     getTopicTemplates: vi.fn().mockResolvedValue([]),
     createSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
     agentChat: vi.fn(),
+    getAgentChatHistory: vi.fn().mockResolvedValue({ session_id: '', messages: [] }),
 }));
 
 vi.mock('../TemplateCard', () => ({
@@ -401,5 +402,118 @@ describe('ChatSummaryNewModal agent multi-turn session_id + single-flight', () =
             await flushPromises();
         });
         expect((summaryApi.agentChat as any).mock.calls.length).toBe(2);
+    });
+});
+
+describe('ChatSummaryNewModal agent session_id persistence + history rehydrate + new session (channel-isolated)', () => {
+    const propsFor = (channelID: string) => ({
+        visible: true,
+        channel: { channelID, channelType: 2 },
+        onClose: vi.fn(),
+        onSubmit: vi.fn(),
+    });
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+        (summaryApi.getAgentChatHistory as any).mockResolvedValue({ session_id: '', messages: [] });
+    });
+
+    it('persists session_id under a channel-scoped key on send', async () => {
+        (summaryApi.agentChat as any).mockImplementation(
+            ({ message, session_id }: { message: string; session_id: string }) =>
+                Promise.resolve({ reply: `echo: ${message}`, session_id }),
+        );
+
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal {...propsFor('ch1')} ref={ref} />);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            await (ref.current as any).handleAgentSend('hi');
+            await flushPromises();
+        });
+
+        const stored = localStorage.getItem('agent-chat-session:ch1');
+        expect(stored).toBeTruthy();
+        expect(stored).toMatch(UUID_RE);
+        // A different channel must not see this session (no cross-channel bleed).
+        expect(localStorage.getItem('agent-chat-session:ch2')).toBeNull();
+    });
+
+    it('restores session_id + history for its own channel when switching into agent mode', async () => {
+        localStorage.setItem('agent-chat-session:ch1', 'sid-ch1');
+        (summaryApi.getAgentChatHistory as any).mockResolvedValue({
+            session_id: 'sid-ch1',
+            messages: [{ role: 'user', content: 'ch1 历史' }],
+        });
+
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal {...propsFor('ch1')} ref={ref} />);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            (ref.current as any).handleSelectMode('agent');
+            await flushPromises();
+        });
+
+        expect((summaryApi.getAgentChatHistory as any).mock.calls[0][0]).toBe('sid-ch1');
+        expect((ref.current as any).state.sessionId).toBe('sid-ch1');
+        expect((ref.current as any).state.messages).toEqual([{ role: 'user', content: 'ch1 历史' }]);
+    });
+
+    it('does not restore another channel\'s session', async () => {
+        localStorage.setItem('agent-chat-session:ch2', 'sid-ch2');
+
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal {...propsFor('ch1')} ref={ref} />);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            (ref.current as any).handleSelectMode('agent');
+            await flushPromises();
+        });
+
+        // ch1 has no stored session → no history fetch, blank opener.
+        expect((summaryApi.getAgentChatHistory as any).mock.calls.length).toBe(0);
+        expect((ref.current as any).state.sessionId).toBe('');
+        expect((ref.current as any).state.messages).toEqual([]);
+    });
+
+    it('new session clears only this channel\'s stored session and the messages', async () => {
+        (summaryApi.agentChat as any).mockImplementation(
+            ({ message, session_id }: { message: string; session_id: string }) =>
+                Promise.resolve({ reply: `echo: ${message}`, session_id }),
+        );
+        localStorage.setItem('agent-chat-session:ch2', 'sid-ch2');
+
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(<ChatSummaryNewModal {...propsFor('ch1')} ref={ref} />);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            await (ref.current as any).handleAgentSend('hi');
+            await flushPromises();
+        });
+        expect(localStorage.getItem('agent-chat-session:ch1')).toBeTruthy();
+
+        await act(async () => {
+            (ref.current as any).handleNewSession();
+            await flushPromises();
+        });
+
+        expect(localStorage.getItem('agent-chat-session:ch1')).toBeNull();
+        // Other channel untouched.
+        expect(localStorage.getItem('agent-chat-session:ch2')).toBe('sid-ch2');
+        expect((ref.current as any).state.messages).toEqual([]);
+        expect((ref.current as any).state.sessionId).toBe('');
     });
 });

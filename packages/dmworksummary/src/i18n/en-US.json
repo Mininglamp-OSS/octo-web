@@ -152,6 +152,7 @@
     "agentTopicPlaceholder": "Describe what you need summarized",
     "agentChatPlaceholder": "Type your question, press Enter to send (Shift+Enter for a new line)",
     "agentChatWelcome": "Hi, I'm your summary assistant. Tell me what you'd like to summarize.",
+    "newSession": "New chat",
     "send": "Send",
     "switchMode": "Switch summary mode",
     "scheduleDaily": "Daily {{time}}",
