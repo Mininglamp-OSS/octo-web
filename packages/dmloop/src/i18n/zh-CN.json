@@ -107,7 +107,12 @@
     "copyCommand": "复制命令",
     "copied": "已复制",
     "copySuccess": "命令已复制",
-    "copyFailed": "复制失败，请手动复制"
+    "copyFailed": "复制失败，请手动复制",
+    "addComputerBrowser": "1. 浏览器授权（本机有浏览器）：",
+    "addComputerHeadless": "2. 免浏览器（headless / 远程 / CI 环境）：",
+    "generateHeadless": "生成并复制 headless 命令",
+    "headlessNoBackend": "管理员未配置后端公开地址（MULTICA_PUBLIC_URL），无法生成 headless 命令",
+    "headlessFailed": "生成 headless 命令失败，请重试"
   },
   "view": {
     "board": "看板",

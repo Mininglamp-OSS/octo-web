@@ -4,6 +4,7 @@ import { Box, Check, Circle, Code2, Copy, Cpu, Monitor, Plus, Terminal } from "l
 import { copyToClipboard, useI18n, WKModal } from "@octo/base";
 import type { RuntimeDevice, RuntimeMode } from "../api/types";
 import { listRuntimes } from "../api/runtimeApi";
+import { issueHeadlessCliToken, getDaemonServerUrl } from "../api/authApi";
 import "./runtime.css";
 
 const { Title } = Typography;
@@ -32,6 +33,12 @@ function currentOrigin(): string {
 // （daemon 会据此推导 fleet 地址）。
 function addComputerCommand(): string {
   return `octo-daemon --server-url ${currentOrigin()}`;
+}
+
+// headless 免浏览器命令:login --token 直连后端 daemon_server_url,
+// 随后 daemon start。PAT 在用户点击时才签发。
+function headlessCommand(token: string, backendUrl: string): string {
+  return `octo-daemon login --token ${token} --server-url ${backendUrl} && octo-daemon daemon start`;
 }
 
 interface Device {
@@ -116,6 +123,13 @@ export default function RuntimePage() {
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [daemonServerUrl, setDaemonServerUrl] = useState("");
+  const [headlessCommandText, setHeadlessCommandText] = useState("");
+  const [headlessLoading, setHeadlessLoading] = useState(false);
+
+  useEffect(() => {
+    getDaemonServerUrl().then(setDaemonServerUrl).catch(() => setDaemonServerUrl(""));
+  }, []);
 
   useEffect(() => {
     if (!copied) return undefined;
@@ -156,6 +170,26 @@ export default function RuntimePage() {
     }
     setCopied(true);
     Toast.success(t("loop.runtime.copySuccess"));
+  };
+
+  const onGenerateHeadless = async () => {
+    if (!daemonServerUrl) {
+      Toast.warning(t("loop.runtime.headlessNoBackend"));
+      return;
+    }
+    setHeadlessLoading(true);
+    try {
+      const { token } = await issueHeadlessCliToken();
+      const cmd = headlessCommand(token, daemonServerUrl);
+      setHeadlessCommandText(cmd);
+      const ok = await copyToClipboard(cmd);
+      if (ok) Toast.success(t("loop.runtime.copySuccess"));
+      else Toast.error(t("loop.runtime.copyFailed"));
+    } catch {
+      Toast.error(t("loop.runtime.headlessFailed"));
+    } finally {
+      setHeadlessLoading(false);
+    }
   };
 
   return (
@@ -245,7 +279,25 @@ export default function RuntimePage() {
       >
         <div className="loop-runtime-add">
           <p>{t("loop.runtime.addComputerDesc")}</p>
+          <p>{t("loop.runtime.addComputerBrowser")}</p>
           <pre className="loop-runtime-add__command"><code>{addComputerCommand()}</code></pre>
+          <p>{t("loop.runtime.addComputerHeadless")}</p>
+          {headlessCommandText ? (
+            <pre className="loop-runtime-add__command"><code>{headlessCommandText}</code></pre>
+          ) : (
+            <Button
+              theme="solid"
+              type="tertiary"
+              loading={headlessLoading}
+              disabled={!daemonServerUrl}
+              onClick={onGenerateHeadless}
+            >
+              {t("loop.runtime.generateHeadless")}
+            </Button>
+          )}
+          {!daemonServerUrl && (
+            <p className="loop-runtime-add__hint">{t("loop.runtime.headlessNoBackend")}</p>
+          )}
         </div>
       </WKModal>
     </div>
