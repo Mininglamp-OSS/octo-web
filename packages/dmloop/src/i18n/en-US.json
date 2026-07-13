@@ -638,6 +638,8 @@
     "addMember": "Add member",
     "selectMember": "Search and select a space member",
     "noCandidates": "No members available to add in this space",
+    "rosterLoadFailed": "Failed to load members",
+    "rosterRetry": "Retry",
     "added": "Member added",
     "pendingInvites": "Pending invitations",
     "revoke": "Revoke"
