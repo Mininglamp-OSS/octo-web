@@ -6,6 +6,7 @@ import type { RuntimeDevice, RuntimeMode } from "../api/types";
 import { listRuntimes } from "../api/runtimeApi";
 import { issueHeadlessCliToken, getDaemonServerUrl } from "../api/authApi";
 import { headlessCommand } from "./headlessCommand";
+import { deviceVersion, runtimeVersion } from "./runtimeVersion";
 import "./runtime.css";
 
 const { Title } = Typography;
@@ -51,24 +52,8 @@ function deviceName(r: RuntimeDevice): string {
   return head || r.name;
 }
 
-function runtimeVersion(r: RuntimeDevice): string {
-  const version = r.metadata?.version;
-  if (typeof version === "string" && version.trim()) return version.trim();
-  const info = r.device_info || "";
-  const parts = info.split("·").map((part) => part.trim()).filter(Boolean);
-  return parts.slice(1).join(" · ") || r.launch_header || "-";
-}
-
 function deviceStatus(runtimes: RuntimeDevice[]): RuntimeDevice["status"] {
   return runtimes.some((runtime) => runtime.status === "online") ? "online" : "offline";
-}
-
-function deviceVersion(runtimes: RuntimeDevice[]): string {
-  for (const runtime of runtimes) {
-    const version = runtimeVersion(runtime);
-    if (version !== "-") return version;
-  }
-  return "-";
 }
 
 function relTime(iso: string | null): string {
