@@ -18,7 +18,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import Highlight from '@tiptap/extension-highlight'
-import { TextStyle, FontSize } from '@tiptap/extension-text-style'
+import { TextStyle, FontSize, FontFamily } from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
 import TextAlign from '@tiptap/extension-text-align'
 import Underline from '@tiptap/extension-underline'
@@ -116,7 +116,15 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // 3.22.2); it adds a `fontSize` global attribute to the textStyle mark → <span
     // style="font-size:…">. MUST be registered after TextStyle (its carrier mark).
     FontSize,
-    // SCHEMA-SPEC §1 (SCHEMA_VERSION 5): text alignment. A global `textAlign` attr on the
+    // SCHEMA-SPEC §6 (SCHEMA_VERSION 16): font family. FontFamily also ships inside
+    // @tiptap/extension-text-style (there is no standalone @tiptap/extension-font-family at
+    // 3.22.2); it adds a `fontFamily` global attribute to the textStyle mark → <span
+    // style="font-family:…">. MUST be registered after TextStyle (its carrier mark), same as
+    // FontSize. Registered UNCONDITIONALLY — the schema must always know the attr so this bundle
+    // round-trips fonts faithfully and never strips them; the toolbar *entry* is what the
+    // FONT_FAMILY_ENABLED flag gates (Toolbar.tsx), not the schema. This is the byte-aligned
+    // counterpart of the backend fontFamily attr under the shared SCHEMA_VERSION 16 contract.
+    FontFamily,
     // heading + paragraph nodes (not a new node/mark) → style="text-align:…". Configured for
     // exactly those two types so lists/tables/etc. keep their own layout.
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
@@ -227,8 +235,11 @@ export function buildPreviewExtensions(docId: string): Extensions {
     TextStyle,
     Color,
     // Mirror the live editor's schema-touching marks/attrs so a historical version renders
-    // faithfully (SCHEMA_VERSION 5–8): font size + alignment + underline + super/sub-script.
+    // faithfully (SCHEMA_VERSION 5–8, 16): font size + font family + alignment + underline +
+    // super/sub-script. FontFamily is mirrored here too so a stored `fontFamily` attr renders in
+    // the read-only preview/diff even while the live toolbar entry is flag-gated off.
     FontSize,
+    FontFamily,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Underline,
     Superscript,

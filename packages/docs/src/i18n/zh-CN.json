@@ -96,6 +96,8 @@
     "subscript": "下标",
     "fontSize": "字号",
     "fontSizeDefault": "默认",
+    "fontFamily": "字体",
+    "fontFamilyDefault": "默认",
     "alignLeft": "左对齐",
     "alignCenter": "居中对齐",
     "alignRight": "右对齐",

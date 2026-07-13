@@ -58,3 +58,38 @@ describe('buildRunOptionsFromMarks — fontSize clamp', () => {
     expect(sizeOf('0.1px')).toBe(2)
   })
 })
+
+// v16: the textStyle fontFamily attr carries a CSS font-family stack; docx runs want a single
+// real face name, so buildRunOptionsFromMarks takes the first family, strips quotes, and drops
+// generic CSS keywords (which are not .docx font names). The `code` mark's monospace font wins.
+describe('buildRunOptionsFromMarks — fontFamily', () => {
+  const fontOf = (fontFamily: string) =>
+    buildRunOptionsFromMarks([{ type: 'textStyle', attrs: { fontFamily } }]).font
+
+  it('takes the first family from a stack and strips quotes', () => {
+    expect(fontOf('SimSun, "宋体", serif')).toBe('SimSun')
+    expect(fontOf('"Times New Roman", Times, serif')).toBe('Times New Roman')
+    expect(fontOf('Arial, Helvetica, sans-serif')).toBe('Arial')
+  })
+
+  it('drops a bare generic keyword (not a real docx font name)', () => {
+    expect(fontOf('serif')).toBeUndefined()
+    expect(fontOf('sans-serif')).toBeUndefined()
+    expect(fontOf('')).toBeUndefined()
+  })
+
+  it('lets the code mark font win over a textStyle fontFamily', () => {
+    // Order-independent: the code branch pins the monospace face and the fontFamily
+    // branch must not overwrite it, whichever mark is processed first.
+    const a = buildRunOptionsFromMarks([
+      { type: 'code' },
+      { type: 'textStyle', attrs: { fontFamily: 'Arial' } },
+    ]).font
+    const b = buildRunOptionsFromMarks([
+      { type: 'textStyle', attrs: { fontFamily: 'Arial' } },
+      { type: 'code' },
+    ]).font
+    expect(a).toBe(b)
+    expect(a).not.toBe('Arial')
+  })
+})

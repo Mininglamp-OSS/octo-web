@@ -96,6 +96,8 @@
     "subscript": "Subscript",
     "fontSize": "Font size",
     "fontSizeDefault": "Default",
+    "fontFamily": "Font",
+    "fontFamilyDefault": "Default",
     "alignLeft": "Align left",
     "alignCenter": "Align center",
     "alignRight": "Align right",
