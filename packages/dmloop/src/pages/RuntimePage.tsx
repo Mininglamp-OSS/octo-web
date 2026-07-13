@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Typography, Spin, Tag, Banner, Button, Toast } from "@douyinfe/semi-ui";
 import { Box, Check, Circle, Code2, Copy, Cpu, Monitor, Plus, Terminal } from "lucide-react";
 import { copyToClipboard, useI18n, WKModal } from "@octo/base";
 import type { RuntimeDevice, RuntimeMode } from "../api/types";
 import { listRuntimes } from "../api/runtimeApi";
+import { issueHeadlessCliToken, getDaemonServerUrl } from "../api/authApi";
+import { headlessCommand } from "./headlessCommand";
 import "./runtime.css";
 
 const { Title } = Typography;
@@ -116,12 +118,29 @@ export default function RuntimePage() {
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [daemonServerUrl, setDaemonServerUrl] = useState("");
+  const [headlessCommandText, setHeadlessCommandText] = useState("");
+  const [headlessLoading, setHeadlessLoading] = useState(false);
+  const [headlessCopied, setHeadlessCopied] = useState(false);
+  // 同步重入守卫：React state 是异步提交的，挡不住同一 tick 内的连点；
+  // 用 ref 在签发前就拦住并发点击，保证一次会话只签发一个 PAT。
+  const mintingRef = useRef(false);
+
+  useEffect(() => {
+    getDaemonServerUrl().then(setDaemonServerUrl).catch(() => setDaemonServerUrl(""));
+  }, []);
 
   useEffect(() => {
     if (!copied) return undefined;
     const timer = window.setTimeout(() => setCopied(false), 1600);
     return () => window.clearTimeout(timer);
   }, [copied]);
+
+  useEffect(() => {
+    if (!headlessCopied) return undefined;
+    const timer = window.setTimeout(() => setHeadlessCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [headlessCopied]);
 
   useEffect(() => {
     setLoading(true);
@@ -156,6 +175,48 @@ export default function RuntimePage() {
     }
     setCopied(true);
     Toast.success(t("loop.runtime.copySuccess"));
+  };
+
+  // 命令2 的复制：命令框里 token 段先显示占位符，只有点击复制的这一刻
+  // 才向后端签发一次性 PAT 并把真实命令写入框；已签发过则直接复制既有命令，
+  // 避免反复点击在账号里累积凭证。
+  const onCopyHeadless = async () => {
+    if (!daemonServerUrl) {
+      Toast.warning(t("loop.runtime.headlessNoBackend"));
+      return;
+    }
+    if (mintingRef.current) return;
+    mintingRef.current = true;
+    setHeadlessLoading(true);
+    try {
+      let cmd = headlessCommandText;
+      if (!cmd) {
+        const { token } = await issueHeadlessCliToken();
+        cmd = headlessCommand(token, daemonServerUrl);
+        setHeadlessCommandText(cmd);
+      }
+      const ok = await copyToClipboard(cmd);
+      if (ok) {
+        setHeadlessCopied(true);
+        Toast.success(t("loop.runtime.copySuccess"));
+      } else {
+        // 真实命令已写入下方命令框，复制失败可手动复制。
+        Toast.warning(t("loop.runtime.headlessCopyManual"));
+      }
+    } catch {
+      Toast.error(t("loop.runtime.headlessFailed"));
+    } finally {
+      mintingRef.current = false;
+      setHeadlessLoading(false);
+    }
+  };
+
+  // 关闭「添加电脑」弹窗时清除已签发的真实命令/凭证，避免重开弹窗再次把
+  // 上一次的 PAT 渲染出来。
+  const closeAddDialog = () => {
+    setAddOpen(false);
+    setHeadlessCommandText("");
+    setHeadlessCopied(false);
   };
 
   return (
@@ -229,23 +290,52 @@ export default function RuntimePage() {
       </div>
       <WKModal
         visible={addOpen}
-        onCancel={() => setAddOpen(false)}
+        onCancel={closeAddDialog}
         title={t("loop.runtime.addComputerTitle")}
         size="lg"
         footer={(
-          <>
-            <Button theme="borderless" type="tertiary" onClick={() => setAddOpen(false)}>
-              {t("loop.action.cancel")}
-            </Button>
-            <Button theme="solid" type="tertiary" icon={copied ? <Check size={14} /> : <Copy size={14} />} onClick={copyCommand}>
-              {copied ? t("loop.runtime.copied") : t("loop.runtime.copyCommand")}
-            </Button>
-          </>
+          <Button theme="borderless" type="tertiary" onClick={closeAddDialog}>
+            {t("loop.action.cancel")}
+          </Button>
         )}
       >
         <div className="loop-runtime-add">
           <p>{t("loop.runtime.addComputerDesc")}</p>
-          <pre className="loop-runtime-add__command"><code>{addComputerCommand()}</code></pre>
+
+          <p>{t("loop.runtime.addComputerBrowser")}</p>
+          <div className="loop-runtime-add__row">
+            <pre className="loop-runtime-add__command"><code>{addComputerCommand()}</code></pre>
+            <Button
+              className="loop-runtime-add__copy"
+              size="small"
+              theme="solid"
+              type="tertiary"
+              icon={copied ? <Check size={14} /> : <Copy size={14} />}
+              onClick={copyCommand}
+            >
+              {copied ? t("loop.runtime.copied") : t("loop.runtime.copy")}
+            </Button>
+          </div>
+
+          <p>{t("loop.runtime.addComputerHeadless")}</p>
+          {daemonServerUrl ? (
+            <div className="loop-runtime-add__row">
+              <pre className="loop-runtime-add__command"><code>{headlessCommandText || headlessCommand(t("loop.runtime.headlessTokenPlaceholder"), daemonServerUrl)}</code></pre>
+              <Button
+                className="loop-runtime-add__copy"
+                size="small"
+                theme="solid"
+                type="tertiary"
+                loading={headlessLoading}
+                icon={headlessCopied ? <Check size={14} /> : <Copy size={14} />}
+                onClick={onCopyHeadless}
+              >
+                {headlessCopied ? t("loop.runtime.copied") : t("loop.runtime.copy")}
+              </Button>
+            </div>
+          ) : (
+            <p className="loop-runtime-add__hint">{t("loop.runtime.headlessNoBackend")}</p>
+          )}
         </div>
       </WKModal>
     </div>

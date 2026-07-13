@@ -260,6 +260,29 @@
   white-space: pre;
 }
 
+.loop-runtime-add__row {
+  position: relative;
+}
+
+/* 复制按钮浮于命令框内右侧、纵向居中，框预留右内边距避免文字被遮挡；
+   长命令横向滚动时按钮相对框固定，不随内容滚走。 */
+.loop-runtime-add__row .loop-runtime-add__command {
+  padding-right: 88px;
+}
+
+.loop-runtime-add__copy {
+  position: absolute;
+  top: 50%;
+  right: var(--wk-sp-3);
+  transform: translateY(-50%);
+  min-width: 64px;
+  justify-content: center;
+}
+
+.loop-runtime-add__hint {
+  color: var(--wk-text-tertiary);
+}
+
 @media (max-width: 960px) {
   .loop-runtime-hero {
     padding-right: var(--wk-sp-4);
