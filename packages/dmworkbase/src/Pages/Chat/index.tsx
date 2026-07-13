@@ -694,6 +694,18 @@ export class ChatContentPage extends Component<
     };
     WKApp.mittBus.on("wk:toggle-summary-panel", this._onToggleSummaryPanel);
 
+    // 主聊天头「查找聊天内容」入口按钮触发。等同于信息栏「查找聊天内容」：
+    // 复用 _openChannelSearchPanel，内含 feature 门禁 + 与其它侧边面板互斥。
+    this._onOpenChannelSearch = (data) => {
+      if (
+        data.channelId !== channel.channelID ||
+        data.channelType !== channel.channelType
+      )
+        return;
+      this._openChannelSearchPanel();
+    };
+    WKApp.mittBus.on("wk:open-channel-search", this._onOpenChannelSearch);
+
     // 检查是否需要自动打开子区面板（查看全部子区）
     if (WKApp.shared.pendingThreadPanel === channel.channelID) {
       this.setState({
@@ -874,6 +886,10 @@ export class ChatContentPage extends Component<
     summaryPanelView: "history" | "new";
     forceOpen?: boolean;
   }) => void;
+  private _onOpenChannelSearch?: (data: {
+    channelId: string;
+    channelType: number;
+  }) => void;
 
   componentWillUnmount() {
     WKApp.mittBus.off("wk:file-preview", this._onFilePreview);
@@ -894,6 +910,9 @@ export class ChatContentPage extends Component<
     }
     if (this._onToggleSummaryPanel) {
       WKApp.mittBus.off("wk:toggle-summary-panel", this._onToggleSummaryPanel);
+    }
+    if (this._onOpenChannelSearch) {
+      WKApp.mittBus.off("wk:open-channel-search", this._onOpenChannelSearch);
     }
     this._unsubscribeChannelSearchConfig?.();
     this._unsubscribeChannelSearchConfig = undefined;
