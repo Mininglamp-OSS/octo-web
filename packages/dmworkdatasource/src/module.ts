@@ -1,10 +1,11 @@
 import { Convert, IModule, WKApp, hasSpacePrefix, ChannelTypeCommunityTopic } from "@octo/base"
-import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, ConversationExtra, Reminder } from "wukongimjssdk";
+import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, Reminder } from "wukongimjssdk";
 import { MessageTask } from "wukongimjssdk";
 import { ConversationProvider } from "./conversation";
 import { ChannelDataSource, CommonDataSource } from "./datasource";
 import { MediaMessageUploadTask } from "./task";
 import { createChannelInfoCallback } from "./im-callbacks/channelInfo";
+import { createSyncConversationExtrasCallback } from "./im-callbacks/conversationExtras";
 import { createSyncConversationsCallback } from "./im-callbacks/conversations";
 import { createSyncSubscribersCallback } from "./im-callbacks/subscribers";
 
@@ -68,17 +69,12 @@ export default class DataSourceModule implements IModule {
     }
 
     setSyncConversationExtrasCallback() {
-        WKSDK.shared().config.provider.syncConversationExtrasCallback = async (version: number) => {
-            let conversationExtras = new Array<ConversationExtra>();
-            const results = await WKApp.apiClient.post("conversation/extra/sync", { "version": version })
-            if (results) {
-                for (const result of results) {
-                    const channel = new Channel(result['channel_id'], result['channel_type'])
-                    conversationExtras.push(Convert.toConversationExtra(channel, result))
-                }
-            }
-            return conversationExtras
-        }
+        WKSDK.shared().config.provider.syncConversationExtrasCallback =
+            createSyncConversationExtrasCallback({
+                postConversationExtrasSync: (path, body) => WKApp.apiClient.post(path, body),
+                toConversationExtra: (channel, conversationExtraMap) =>
+                    Convert.toConversationExtra(channel, conversationExtraMap),
+            })
     }
 
     setSyncMessageExtraCallback() {
