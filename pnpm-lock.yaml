@@ -388,6 +388,9 @@ importers:
       '@react-pdf-viewer/zoom':
         specifier: ^3.12.0
         version: 3.12.0(pdfjs-dist@3.11.174(encoding@0.1.13))(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@silurus/ooxml':
+        specifier: ^0.71.0
+        version: 0.71.0
       '@tiptap/core':
         specifier: 3.22.2
         version: 3.22.2(@tiptap/pm@3.22.2)
@@ -3354,6 +3357,9 @@ packages:
 
   '@rushstack/eslint-patch@1.16.1':
     resolution: {integrity: sha512-TvZbIpeKqGQQ7X0zSCvPH9riMSFQFSggnfBjFZ1mEoILW+UuXCKwOoPcgjMwiUtRqFZ8jWhPJc4um14vC6I4ag==}
+
+  '@silurus/ooxml@0.71.0':
+    resolution: {integrity: sha512-pi934ijv8ABRmqyBb0g+2A6m4l4hfxdK048gvLRFOLjDlE8marbxzTerm0ABqvSgK9y1F2xLKeMas8G6Pnr16w==}
 
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
@@ -13616,6 +13622,8 @@ snapshots:
   '@rtsao/scc@1.1.0': {}
 
   '@rushstack/eslint-patch@1.16.1': {}
+
+  '@silurus/ooxml@0.71.0': {}
 
   '@sindresorhus/is@4.6.0': {}
 

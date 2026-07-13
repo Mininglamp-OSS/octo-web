@@ -15,14 +15,13 @@ import JsonRenderer from "./renderers/JsonRenderer";
 import JsonlRenderer from "./renderers/JsonlRenderer";
 import ImageRenderer from "./renderers/ImageRenderer";
 import VideoRenderer from "./renderers/VideoRenderer";
+import { DocxRenderer, PptxRenderer } from "./renderers/OfficeRenderer";
+import XlsxRenderer from "./renderers/XlsxRenderer";
 
 /**
  * 文件渲染器注册表
  * 策略模式核心：根据文件扩展名选择对应的渲染器
- *
- * 注意：以下文件类型明确不支持预览，走 FallbackRenderer：
- * - .docx / .pptx / .ppt（Word / PowerPoint）
- * - 音频（对话流内已渲染，不进入面板）
+ * 音频在对话流内渲染，不进入面板。
  */
 class FileRendererRegistry {
   private registry: Map<string, RendererRegistryItem> = new Map();
@@ -132,10 +131,34 @@ class FileRendererRegistry {
       needsFetch: true,
     });
 
-    // Excel/CSV 表格（xlsx, xls, xlsb, xlsm, csv）
+    // Word OOXML 文档（Canvas 渲染）
+    this.register({
+      type: "docx",
+      extensions: ["docx"],
+      renderer: DocxRenderer,
+      needsFetch: true,
+    });
+
+    // PowerPoint OOXML 演示文稿（Canvas 渲染）
+    this.register({
+      type: "ppt",
+      extensions: ["pptx"],
+      renderer: PptxRenderer,
+      needsFetch: true,
+    });
+
+    // OOXML Excel 工作簿（Canvas 渲染）
     this.register({
       type: "excel",
-      extensions: ["xlsx", "xls", "xlsb", "xlsm", "csv"],
+      extensions: ["xlsx", "xlsm"],
+      renderer: XlsxRenderer,
+      needsFetch: true,
+    });
+
+    // 传统 Excel / CSV（SheetJS 渲染）
+    this.register({
+      type: "excel",
+      extensions: ["xls", "xlsb", "csv"],
       renderer: ExcelRenderer,
       needsFetch: true,
     });

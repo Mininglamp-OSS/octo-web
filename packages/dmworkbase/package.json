@@ -14,6 +14,7 @@
     "@emotion/react": "^11.14.0",
     "@floating-ui/dom": "^1.7.6",
     "@lottiefiles/lottie-player": "^1.5.5",
+    "@silurus/ooxml": "^0.71.0",
     "@react-pdf-viewer/bookmark": "^3.12.0",
     "@react-pdf-viewer/core": "^3.12.0",
     "@react-pdf-viewer/page-navigation": "^3.12.0",

@@ -12,6 +12,11 @@ vi.mock("../renderers/JsonRenderer", () => ({ default: () => null }));
 vi.mock("../renderers/JsonlRenderer", () => ({ default: () => null }));
 vi.mock("../renderers/ImageRenderer", () => ({ default: () => null }));
 vi.mock("../renderers/VideoRenderer", () => ({ default: () => null }));
+vi.mock("../renderers/OfficeRenderer", () => ({
+  DocxRenderer: () => null,
+  PptxRenderer: () => null,
+}));
+vi.mock("../renderers/XlsxRenderer", () => ({ default: () => null }));
 
 import fileRendererRegistry from "../registry";
 
@@ -47,9 +52,15 @@ describe("fileRendererRegistry — 扩展名 → 渲染器映射", () => {
     expect(fileRendererRegistry.getRenderer("md").type).toBe("markdown");
   });
 
-  it("不支持的格式 canPreview 返回 false", () => {
-    expect(fileRendererRegistry.canPreview("docx")).toBe(false);
-    expect(fileRendererRegistry.canPreview("pptx")).toBe(false);
+  it("Office OOXML 格式映射到对应渲染器", () => {
+    expect(fileRendererRegistry.getRenderer("docx").type).toBe("docx");
+    expect(fileRendererRegistry.getRenderer("pptx").type).toBe("ppt");
+    expect(fileRendererRegistry.canPreview("docx")).toBe(true);
+    expect(fileRendererRegistry.canPreview("pptx")).toBe(true);
+  });
+
+  it("旧版 Office 二进制格式仍不支持预览", () => {
+    expect(fileRendererRegistry.canPreview("doc")).toBe(false);
     expect(fileRendererRegistry.canPreview("ppt")).toBe(false);
   });
 });
