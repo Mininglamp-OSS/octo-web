@@ -180,6 +180,9 @@ export default function RunDetailModal({
           else { missRef.current += 1; stillActive = missRef.current < MAX_MISSES; } // 连续 miss 达阈值才停(容忍瞬时 [])
         } catch { /* ensureDirectory 等抛错:保持轮询 */ }
         if (!cancelled && stillActive) poll();
+        // 终止前再做一次增量抓取:run 完成时的最后一批消息(result/error)常在上面抓取返回后、
+        // status 翻转前才写入,不补一次会永久丢失最关键的收尾消息(#610 评审)。
+        else if (!cancelled) await listRunMessages(run.id, lastSeqRef.current).then((b) => { if (!cancelled) apply(b ?? [], true); }).catch(() => {});
       }, POLL_MS);
     };
 
