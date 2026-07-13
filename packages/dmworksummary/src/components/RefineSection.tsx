@@ -1,10 +1,9 @@
 import React from 'react';
 import { Button, TextArea, Toast } from '@douyinfe/semi-ui';
-import { useI18n } from '@wk/i18n';
+import { useI18n, WKApp } from '@octo/base';
 import * as api from '../api/summaryApi';
 import type { SummaryDetail, CitationItem } from '../types/summary';
 import { TaskStatus, TriggerType } from '../types/summary';
-import { WKApp } from '@wk/client';
 
 interface RefineSectionProps {
     detail: SummaryDetail;
