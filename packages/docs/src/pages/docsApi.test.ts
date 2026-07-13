@@ -25,13 +25,24 @@ describe('docs list/create API (bare-relative /docs)', () => {
     api.responder = () => ({
       data: {
         total: 1,
-        items: [{ docId: 'd_real', title: 'CollabDoc1', ownerId: 'u0', role: 'admin', updatedAt: 't' }],
+        items: [
+          {
+            docId: 'd_real',
+            title: 'CollabDoc1',
+            ownerId: 'u0',
+            role: 'admin',
+            updatedAt: 't',
+            docType: 'html',
+            octoDocSlug: 'octo-html-real',
+          },
+        ],
       },
       status: 200,
     })
     const res = await listDocs({ spaceId: 'sp1', folderId: 'f_default', sort: 'updatedAt:desc' })
     expect(res.items).toHaveLength(1)
     expect(res.items[0].docId).toBe('d_real')
+    expect(res.items[0].octoDocSlug).toBe('octo-html-real')
     const call = api.calls.at(-1)!
     expect(call.method).toBe('get')
     expect(call.url).toContain('/docs?')
@@ -69,11 +80,19 @@ describe('docs list/create API (bare-relative /docs)', () => {
 
   it('fetches a single doc via GET /docs/{docId}', async () => {
     api.responder = () => ({
-      data: { docId: 'd_real', title: 'Real Title', ownerId: 'u0', role: 'admin' },
+      data: {
+        docId: 'd_real',
+        title: 'Real Title',
+        ownerId: 'u0',
+        role: 'admin',
+        docType: 'html',
+        octoDocSlug: 'octo-html-real',
+      },
       status: 200,
     })
     const meta = await getDoc('d_real')
     expect(meta.title).toBe('Real Title')
+    expect(meta.octoDocSlug).toBe('octo-html-real')
     const call = api.calls.at(-1)!
     expect(call.method).toBe('get')
     expect(call.url).toBe('/docs/d_real')

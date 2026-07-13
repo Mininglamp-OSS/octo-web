@@ -55,12 +55,13 @@ vi.mock('../sheet/SheetView.tsx', () => ({
 }))
 
 // Replace the read-only HTML view (which raw-fetches the octo-doc backend) with a marker so
-// the html docType dispatch is testable without a real octo-doc fetch. Surfaces the docId,
-// mirroring the editor / board / sheet markers above.
+// the html docType dispatch is testable without a real octo-doc fetch. Surfaces the docId and
+// optional octo-doc slug, mirroring the editor / board / sheet markers above.
 vi.mock('../html/HtmlDocView.tsx', () => ({
-  HtmlDocView: (props: { docId: string }) => (
+  HtmlDocView: (props: { docId: string; slug?: string }) => (
     <div data-testid="html-doc-view">
       <span data-testid="html-doc">{props.docId}</span>
+      <span data-testid="html-slug">{props.slug ?? ''}</span>
     </div>
   ),
 }))
@@ -990,7 +991,7 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     })
   })
 
-  it('opens an existing html row directly in the read-only HtmlDocView (no per-doc lookup)', async () => {
+  it('opens an existing html row with the octo-doc slug in the read-only HtmlDocView (no per-doc lookup)', async () => {
     const wk = createMockWKApp()
     setWKApp(wk)
     const calls: Array<{ method: string; url: string }> = []
@@ -1001,7 +1002,14 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
           data: {
             total: 1,
             items: [
-              { docId: 'h_row', title: 'Agent Report', ownerId: 'u_owner', role: 'admin', docType: 'html' },
+              {
+                docId: 'h_row',
+                title: 'Agent Report',
+                ownerId: 'u_owner',
+                role: 'admin',
+                docType: 'html',
+                octoDocSlug: 'octo-html-report',
+              },
             ],
           },
           status: 200,
@@ -1017,6 +1025,7 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
 
     await waitFor(() => expect(screen.getByTestId('html-doc-view')).toBeTruthy())
     expect(screen.getByTestId('html-doc').textContent).toBe('h_row')
+    expect(screen.getByTestId('html-slug').textContent).toBe('octo-html-report')
     // Read-only html doc: it must NOT open the rich-text editor / sheet.
     expect(screen.queryByTestId('editor-shell')).toBeNull()
     expect(screen.queryByTestId('sheet-view')).toBeNull()
@@ -1025,7 +1034,70 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
     expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
       doc: 'h_row',
       docType: 'html',
+      octoDocSlug: 'octo-html-report',
     })
+  })
+
+  it('opens an existing html row without octoDocSlug using HtmlDocView fallback', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              { docId: 'h_legacy', title: 'Legacy Report', ownerId: 'u_owner', role: 'admin', docType: 'html' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Legacy Report')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Legacy Report'))
+
+    await waitFor(() => expect(screen.getByTestId('html-doc-view')).toBeTruthy())
+    expect(screen.getByTestId('html-doc').textContent).toBe('h_legacy')
+    expect(screen.getByTestId('html-slug').textContent).toBe('')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
+  it('opens an html deep-link with the octo-doc slug resolved from getDoc metadata', async () => {
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 'h_direct' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/h_direct') {
+        return {
+          data: {
+            docId: 'h_direct',
+            title: 'Direct Report',
+            role: 'admin',
+            docType: 'html',
+            octoDocSlug: 'octo-direct-report',
+          },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByTestId('html-doc-view')).toBeTruthy())
+    expect(screen.getByTestId('html-doc').textContent).toBe('h_direct')
+    expect(screen.getByTestId('html-slug').textContent).toBe('octo-direct-report')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
 
   it('opens an existing sheet row directly in the sheet view (no per-doc lookup)', async () => {

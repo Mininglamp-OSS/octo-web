@@ -20,6 +20,8 @@ export interface DocListItem {
    * them by icon (frontend-design §4.1 / §5.1).
    */
   docType?: string
+  /** Present only for html docs: the octo-doc slug used to fetch/render the read-only body. */
+  octoDocSlug?: string
 }
 
 export interface ListDocsResult {
@@ -93,6 +95,8 @@ export interface DocMeta {
   documentName?: string
   /** `'doc'` | `'board'` — see DocListItem.docType. Absent on backends that don't persist it. */
   docType?: string
+  /** Present only for html docs: the octo-doc slug used to fetch/render the read-only body. */
+  octoDocSlug?: string
 }
 
 /**

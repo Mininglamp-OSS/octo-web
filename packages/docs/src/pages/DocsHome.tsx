@@ -27,6 +27,8 @@ export interface DocTarget {
   docId: string
   /** `'board'` opens the whiteboard shell; anything else (incl. absent) opens the rich-text editor. */
   docType?: string
+  /** Present only for html docs: octo-doc body slug; absent falls back to docId. */
+  octoDocSlug?: string
 }
 
 /**
@@ -93,12 +95,24 @@ function PortalMenu({
 const TARGET_STORAGE_KEY = DOC_TARGET_STORAGE_KEY
 
 /** Mirror the active doc target to sessionStorage so it survives the host's query-wiping. */
-function persistDocTarget(target: { space: string; folder: string; doc: string; docType?: string }): void {
+function persistDocTarget(target: {
+  space: string
+  folder: string
+  doc: string
+  docType?: string
+  octoDocSlug?: string
+}): void {
   if (typeof window === 'undefined') return
   try {
     window.sessionStorage.setItem(
       TARGET_STORAGE_KEY,
-      JSON.stringify({ space: target.space, folder: target.folder, doc: target.doc, docType: target.docType }),
+      JSON.stringify({
+        space: target.space,
+        folder: target.folder,
+        doc: target.doc,
+        docType: target.docType,
+        octoDocSlug: target.octoDocSlug,
+      }),
     )
   } catch {
     // sessionStorage unavailable (private mode / disabled): the deep-link still opens on
@@ -138,6 +152,10 @@ function readDocTarget(uid?: string): DocTarget | null {
           : isBoardIdLocally(parsed.doc, uid)
             ? 'board'
             : undefined,
+      octoDocSlug:
+        typeof parsed.octoDocSlug === 'string' && parsed.octoDocSlug
+          ? parsed.octoDocSlug
+          : undefined,
     }
   } catch {
     return null
@@ -279,7 +297,7 @@ function DocsList({
   /** Authenticated uid — scopes the board-kind registry lookups/writes (P2). */
   uid: string
   selectedDocId: string | null
-  onSelect: (docId: string, docType?: string) => void
+  onSelect: (docId: string, docType?: string, octoDocSlug?: string) => void
   reloadToken?: number
 }): React.ReactElement {
   const [items, setItems] = useState<DocListItem[]>([])
@@ -633,7 +651,7 @@ function DocsList({
                     e.preventDefault()
                     setMenu({ docId: d.docId, role: d.role, x: e.clientX, y: e.clientY })
                   }}
-                  onClick={() => onSelect(d.docId, knownKind)}
+                  onClick={() => onSelect(d.docId, knownKind, d.octoDocSlug)}
                   aria-current={active ? 'true' : undefined}
                 >
                   <span
@@ -822,6 +840,9 @@ export function DocsHome() {
   const [selectedDocType, setSelectedDocType] = useState<string | undefined>(
     () => initialKnownKind,
   )
+  const [selectedOctoDocSlug, setSelectedOctoDocSlug] = useState<string | undefined>(
+    () => initialTarget.current?.octoDocSlug,
+  )
 
   // The host's right (main) route pane. When present (production), the editor is pushed there
   // so it fills the main content area while the list stays in the left route slot — the same
@@ -860,6 +881,7 @@ export function DocsHome() {
   const backToList = useCallback(() => {
     setSelectedDocId(null)
     setSelectedDocType(undefined)
+    setSelectedOctoDocSlug(undefined)
     // Invalidate any in-flight unknown-kind open (openDoc → getDoc still pending). Without this,
     // a Space switch (this is also the onSpaceChanged reconciler) leaves latestOpenRef pointing at
     // the previous Space's docId, so a late getDoc resolve would pass the `latestOpenRef === docId`
@@ -995,10 +1017,15 @@ export function DocsHome() {
   // read-only HTML doc ('html') mounts the view-only HtmlDocView; everything else (incl.
   // unknown/absent kind) uses the Tiptap EditorShell — the safe default for legacy docs.
   const buildRightPane = useCallback(
-    (docId: string, docType: string | undefined, onBack?: () => void) => {
+    (
+      docId: string,
+      docType: string | undefined,
+      onBack?: () => void,
+      octoDocSlug?: string,
+    ) => {
       // Read-only HTML: NO editor/collab wiring — a human may only view it (comments arrive in 2b).
       if (docType === 'html') {
-        return <HtmlDocView key={docId} docId={docId} space={space} />
+        return <HtmlDocView key={docId} docId={docId} slug={octoDocSlug} space={space} />
       }
       if (docType === 'sheet') {
         return (
@@ -1028,18 +1055,21 @@ export function DocsHome() {
   // (durable sessionStorage + shareable `?doc=` URL), and push the matching shell into the host's
   // right pane. Split out from openDoc so the kind can be resolved asynchronously first.
   const commitOpen = useCallback(
-    (docId: string, docType: 'board' | 'doc' | 'sheet' | 'html') => {
+    (docId: string, docType: 'board' | 'doc' | 'sheet' | 'html', octoDocSlug?: string) => {
+      const htmlSlug = docType === 'html' ? octoDocSlug : undefined
       setSelectedDocId(docId)
       setSelectedDocType(docType)
+      setSelectedOctoDocSlug(htmlSlug)
       // Durable mirror (survives the host's query-wiping re-push) + shareable URL (replaceState,
       // no host re-push) — together neutralizing the `?doc=` strip should-fix.
-      persistDocTarget({ space, folder, doc: docId, docType })
+      persistDocTarget({ space, folder, doc: docId, docType, octoDocSlug: htmlSlug })
       mirrorDocToUrl(docId, space, folder)
       const push = (dt: string | undefined) => {
         setSelectedDocType(dt)
+        setSelectedOctoDocSlug(dt === 'html' ? htmlSlug : undefined)
         if (routeRight) {
           try {
-            routeRight.replaceToRoot(buildRightPane(docId, dt) as unknown)
+            routeRight.replaceToRoot(buildRightPane(docId, dt, undefined, htmlSlug) as unknown)
           } catch {
             // ignore — fall back to inline render below if the host pane rejects.
           }
@@ -1054,14 +1084,14 @@ export function DocsHome() {
   )
 
   const openDoc = useCallback(
-    (docId: string, docType?: string) => {
+    (docId: string, docType?: string, octoDocSlug?: string) => {
       latestOpenRef.current = docId
       // Known kind — the creator's own board (API `docType` or the local registry, both surfaced
       // by isBoardDoc at the call site), an explicit `'doc'`, a `'sheet'` (created / imported /
       // known list row), or an agent-authored read-only `'html'` doc: open the right shell
       // immediately without a round-trip.
       if (docType === 'board' || docType === 'doc' || docType === 'sheet' || docType === 'html') {
-        commitOpen(docId, docType)
+        commitOpen(docId, docType, octoDocSlug)
         return
       }
       // Unknown kind: the list API omitted `docType` AND this client has no local board record.
@@ -1094,6 +1124,7 @@ export function DocsHome() {
                 : meta?.docType === 'html'
                   ? 'html'
                   : 'doc',
+            meta?.octoDocSlug,
           )
         })
         .catch(() => {
@@ -1121,7 +1152,9 @@ export function DocsHome() {
     if (routeRight) {
       try {
         if (selectedDocId) {
-          routeRight.replaceToRoot(buildRightPane(selectedDocId, selectedDocType) as unknown)
+          routeRight.replaceToRoot(
+            buildRightPane(selectedDocId, selectedDocType, undefined, selectedOctoDocSlug) as unknown,
+          )
         } else {
           routeRight.replaceToRoot(buildEmptyState() as unknown)
         }
@@ -1173,7 +1206,7 @@ export function DocsHome() {
       </aside>
       <section className="octo-docs-split-right">
         {selectedDocId ? (
-          buildRightPane(selectedDocId, selectedDocType, backToList)
+          buildRightPane(selectedDocId, selectedDocType, backToList, selectedOctoDocSlug)
         ) : (
           <div className="octo-docs-split-empty">
             <p>{t('docs.state.empty')}</p>
