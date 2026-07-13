@@ -1,5 +1,5 @@
 // @octo/loop — 自动化触发排程助手：频率(每天/每周/每月) ↔ cron。
-// 后端只支持 5 段 cron 的定时触发，无一次性触发，故不提供「单次」（与 multica 一致）。
+// 后端只支持 5 段 cron 的定时触发，无一次性触发，故不提供「单次」（与产品设计一致）。
 
 export type Frequency = "daily" | "weekly" | "monthly";
 

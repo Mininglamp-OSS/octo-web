@@ -95,7 +95,7 @@ import "./issueDetail.css";
 
 const { Text } = Typography;
 
-// 线程回复输入：常驻在每张评论卡底部(对标 multica),各自独立 draft/附件(不共享全局状态),
+// 线程回复输入：常驻在每张评论卡底部(对标产品设计),各自独立 draft/附件(不共享全局状态),
 // 提交成功后清空。回评一律归到该线程根评论;附件在评论创建后绑到 commentId(见 replyToThread)。
 function ThreadReply({
   onSubmit,
@@ -201,7 +201,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [runOpen, setRunOpen] = useState(false);
   const [showRuns, setShowRuns] = useState(false); // 「执行日志」折叠展开
   const [collapsedSecs, setCollapsedSecs] = useState<Set<string>>(new Set()); // 右栏分区折叠
-  // 动态块展开态：最后一个动态块默认展开(第一次进来即见最新动态,对标 multica);
+  // 动态块展开态：最后一个动态块默认展开(第一次进来即见最新动态,对标产品设计);
   // expandedActs=被显式展开的(非默认块),collapsedActs=被显式折叠的(默认块)。二者覆盖默认。
   const [expandedActs, setExpandedActs] = useState<Set<string>>(new Set());
   const [collapsedActs, setCollapsedActs] = useState<Set<string>>(new Set());
@@ -605,7 +605,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   };
 
   // 右上角 ··· 菜单：编辑属性(标签/父回路/日期/阶段) / 新建子回路 / 订阅 / 删除。
-  // 状态/优先级/负责人/项目 改走右栏内联点击 popup(对标 multica),不在此重复。
+  // 状态/优先级/负责人/项目 改走右栏内联点击 popup(对标产品设计),不在此重复。
   const renderMoreMenu = () => (
     <Dropdown.Menu>
       <Dropdown.Item icon={<SlidersHorizontal size={13} />} onClick={() => { loadParentCands(); setPropsOpen(true); }}>
@@ -668,7 +668,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const toggleSec = (k: string) =>
     setCollapsedSecs((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
-  // 评论线程(对标 multica)：主评论为首行,其所有回评都是同级平铺行(分隔线区分先后,不缩进)；
+  // 评论线程(对标产品设计)：主评论为首行,其所有回评都是同级平铺行(分隔线区分先后,不缩进)；
   // 卡片底部一个回复输入。任何回评都归到主评论(parent=root),视觉上像一张「主评论 + 评审意见」表。
   const renderRow = (c: IssueComment, isRoot: boolean, rootId: string) => (
     <div key={c.id} className={`loop-cmt__row${isRoot ? " is-root" : ""}`}>
@@ -773,11 +773,11 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       </div>
     );
   };
-  // 运行中/排队中重点常显在外;仅终态归入「显示历史运行」折叠(对标 multica)。
+  // 运行中/排队中重点常显在外;仅终态归入「显示历史运行」折叠(对标产品设计)。
   const activeRuns = runs.filter((r) => isActiveRun(r.status));
   const pastRuns = runs.filter((r) => !isActiveRun(r.status));
 
-  // 动态区(对标 multica)：根评论与「有意义的活动」按时间升序合并；连续活动归并成一个折叠动态块，
+  // 动态区(对标产品设计)：根评论与「有意义的活动」按时间升序合并；连续活动归并成一个折叠动态块，
   // 评论各自独立成卡片。噪声活动(activityText 为 null)先过滤，不进块、不计数。
   const visibleActs = activities.filter((a) => activityText(a.action) !== null);
   type FeedNode = { ts: string; c?: IssueComment; a?: TimelineEntry };
@@ -1051,7 +1051,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
           </div>
         </div>
 
-        {/* 右侧属性栏（只读展示,对齐 Figma 29-1593；改属性走右上角 ⋯ 菜单，对标 multica） */}
+        {/* 右侧属性栏（只读展示,对齐 Figma 29-1593；改属性走右上角 ⋯ 菜单，对标产品设计） */}
         <aside className="loop-idp__aside">
           <section className="loop-idp__asec">
             <button type="button" className="loop-idp__asec-head" onClick={() => toggleSec("props")}>
@@ -1060,7 +1060,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
             </button>
             {secOpen("props") && (
               <div className="loop-idp__asec-body">
-                {/* 状态：点击值弹 popup 改(对标 multica) */}
+                {/* 状态：点击值弹 popup 改(对标产品设计) */}
                 <div className="loop-idp__prop loop-idp__prop--inline">
                   <span className="loop-idp__prop-k">{t("loop.field.status")}</span>
                   <Dropdown
