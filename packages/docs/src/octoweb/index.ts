@@ -154,6 +154,36 @@ export async function fetchAllSpaceMembers(spaceId: string): Promise<SpaceMember
   return all
 }
 
+/** Minimal view of a `/robot/space_bots` entry the docs seam reads (uid + display name). */
+interface HostSpaceBot {
+  uid: string
+  name?: string
+}
+
+/**
+ * Fetch the display names of ALL bots in a space via the single `GET /robot/space_bots?space_id=`
+ * request (the same endpoint the contacts module already calls — dmworkcontacts Contacts/index.tsx).
+ *
+ * WHY: `queryMembers` (the source behind fetchAllSpaceMembers) filters out bots the current user did
+ * not create, so the member panel falls back to the raw uid for a non-friend / non-self-created bot
+ * (octo-docs-backend #60). This endpoint is NOT viewer-scoped — it returns every bot in the space —
+ * so one request per space backfills those names with no per-uid fanout and no extra permission.
+ *
+ * Returns `{ uid, name }` pairs (name falls back to the uid so a bot with no display name is never
+ * blank). Resolves to an EMPTY list on any failure or non-array body so callers can merge safely and
+ * fall back to the uid — this must never break the human-member name path.
+ */
+export async function fetchSpaceBotNames(spaceId: string): Promise<SpaceMemberLite[]> {
+  if (!spaceId) return []
+  const { data } = await apiClient().get<HostSpaceBot[]>(
+    `/robot/space_bots?space_id=${encodeURIComponent(spaceId)}`,
+  )
+  const bots = Array.isArray(data) ? data : []
+  return bots
+    .filter((b): b is HostSpaceBot => !!b && !!b.uid)
+    .map((b) => ({ uid: b.uid, name: b.name || b.uid }))
+}
+
 /**
  * Re-wrap the REAL host APIClient so its responses look axios-style to docs callers.
  *
