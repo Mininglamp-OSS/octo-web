@@ -229,7 +229,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.clearAllTimers();
             // Blocking 5：切 task 立即清空上一 task 的 schedule 状态，避免在新 detail
             // 返回前闪现旧定时（bump seq 由 loadDetail 内部完成，令旧 loadSchedule 作废）。
-            this.setState({ scheduleItem: null, scheduleLoading: false });
+            this.setState({
+                scheduleItem: null,
+                scheduleLoading: false,
+                showRegenerateModal: false,
+                regenerateSubmitting: false,
+                refineLoadingTarget: null,
+                showVersionDetailModal: false,
+                versionDetailLoading: false,
+                versionDetail: null,
+                restoringVersionId: null,
+                restoringPersonalVersionId: null,
+            });
             this.loadDetail();
         }
         if (prevState && prevState.showVersionDetailModal !== this.state.showVersionDetailModal) {
@@ -838,6 +849,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     handleRegenerateConfirm = async () => {
         if (this.taskId == null || this.state.regenerateSubmitting) return;
+        const requestTaskId = this.taskId;
         const { detail, regenerateMode } = this.state;
         const trimmed = regenerateMode === "refine"
             ? this.state.refineFeedback.trim()
@@ -851,11 +863,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     const baseResultId = this.state.personalResult?.id;
                     if (!baseResultId) return;
                     this.setState({ showRegenerateModal: false, refineLoadingTarget: "personal" });
-                    const refined = await api.refinePersonalSummary(this.taskId, {
+                    const refined = await api.refinePersonalSummary(requestTaskId, {
                         feedback: trimmed,
                         base_result_id: baseResultId,
                         base_version: this.state.personalResult?.version,
                     });
+                    if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.refineSuccess"));
                     this.setState((prev) => {
                         const nextPersonal = prev.personalResult ? {
@@ -887,7 +900,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         showRegenerateModal: false,
                         refineLoadingTarget: operateOnTeamSummary ? "team" : "summary",
                     });
-                    const refined = await api.refineSummary(this.taskId, { feedback: trimmed, base_result_id: baseResultId });
+                    const refined = await api.refineSummary(requestTaskId, { feedback: trimmed, base_result_id: baseResultId });
+                    if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.refineSuccess"));
                     this.setState((prev) => {
                         if (!prev.detail?.result) return { showRegenerateModal: false, refineLoadingTarget: null } as Pick<SummaryDetailPageState, "showRegenerateModal" | "refineLoadingTarget">;
@@ -918,7 +932,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 }
             } else {
                 if (operateOnTeamSummary) {
-                    await api.regenerateSummary(this.taskId, { topic: trimmed });
+                    await api.regenerateSummary(requestTaskId, { topic: trimmed });
+                    if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.regenerateStarted"));
                     this.setState((prev) => prev.detail ? {
                         showRegenerateModal: false,
@@ -930,7 +945,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     } as Pick<SummaryDetailPageState, "showRegenerateModal" | "detail"> : { showRegenerateModal: false } as Pick<SummaryDetailPageState, "showRegenerateModal">);
                     this.loadDetail();
                 } else if (detail?.summary_mode === SummaryMode.BY_PERSON && this.isMultiCollab()) {
-                    await api.regeneratePersonalSummary(this.taskId, { topic: trimmed });
+                    await api.regeneratePersonalSummary(requestTaskId, { topic: trimmed });
+                    if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.regenerateStarted"));
                     this.setState((prev) => ({
                         showRegenerateModal: false,
@@ -958,13 +974,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     this.loadPersonalResult(seq);
                     this.loadMembers(seq);
                 } else {
-                    await api.regenerateSummary(this.taskId, { topic: trimmed });
+                    await api.regenerateSummary(requestTaskId, { topic: trimmed });
+                    if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.regenerateStarted"));
                     this.setState({ showRegenerateModal: false });
                     this.loadDetail();
                 }
             }
-            window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskId: this.taskId } }));
+            if (this.taskId !== requestTaskId) return;
+            window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskId: requestTaskId } }));
         } catch (err: any) {
             this.setState({ refineLoadingTarget: null });
             Toast.error(err.message || t("summary.common.operationFailed"));
@@ -973,23 +991,29 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     };
 
-    handleRestoreVersion = async (version: SummaryVersionItem) => {
-        if (this.taskId == null || this.state.restoringVersionId != null) return;
+    handleRestoreVersion = async (version: SummaryVersionItem): Promise<boolean> => {
+        if (this.taskId == null || this.state.restoringVersionId != null) return false;
+        const requestTaskId = this.taskId;
         this.setState({ restoringVersionId: version.result_id });
         try {
-            await api.restoreSummaryVersion(this.taskId, version.result_id);
+            await api.restoreSummaryVersion(requestTaskId, version.result_id);
+            if (this.taskId !== requestTaskId) return false;
             Toast.success(t("summary.detail.versionRestored"));
             this.loadDetail();
+            return true;
         } catch (err: any) {
+            if (this.taskId !== requestTaskId) return false;
             Toast.error(err.message || t("summary.common.operationFailed"));
+            return false;
         } finally {
             this.setState({ restoringVersionId: null });
         }
     };
 
 
-    handleRestorePersonalVersion = async (version: SummaryVersionItem) => {
-        if (this.taskId == null || this.state.restoringPersonalVersionId != null) return;
+    handleRestorePersonalVersion = async (version: SummaryVersionItem): Promise<boolean> => {
+        if (this.taskId == null || this.state.restoringPersonalVersionId != null) return false;
+        const requestTaskId = this.taskId;
         this.setState({
             restoringPersonalVersionId: version.result_id,
             workflowGateContent: false,
@@ -997,17 +1021,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             workflowDisplayIndex: -1,
         });
         try {
-            const restored = await api.restorePersonalSummaryVersion(this.taskId, version.result_id);
+            await api.restorePersonalSummaryVersion(requestTaskId, version.result_id);
+            if (this.taskId !== requestTaskId) return false;
             Toast.success(t("summary.detail.versionRestored"));
             const seq = this.nextScheduleSeq();
             this.loadPersonalResult(seq, true);
             this.loadMembers(seq);
-            this.setState((prev) => prev.personalResult ? {
-                personalResult: { ...prev.personalResult, version: restored.version },
-            } as Pick<SummaryDetailPageState, "personalResult"> : null);
             this.loadPersonalVersions(this.taskId);
+            return true;
         } catch (err: any) {
+            if (this.taskId !== requestTaskId) return false;
             Toast.error(err.message || t("summary.common.operationFailed"));
+            return false;
         } finally {
             this.setState({ restoringPersonalVersionId: null });
         }
@@ -1015,6 +1040,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     handleViewVersion = async (version: SummaryVersionItem, isPersonal: boolean) => {
         if (this.taskId == null || this.state.versionDetailLoading) return;
+        const requestTaskId = this.taskId;
+        const requestResultId = version.result_id;
         this.setState({
             showVersionDetailModal: true,
             versionDetailLoading: true,
@@ -1023,10 +1050,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         });
         try {
             const detail = isPersonal
-                ? await api.getPersonalSummaryVersion(this.taskId, version.result_id)
-                : await api.getSummaryVersion(this.taskId, version.result_id);
+                ? await api.getPersonalSummaryVersion(requestTaskId, requestResultId)
+                : await api.getSummaryVersion(requestTaskId, requestResultId);
+            if (this.taskId !== requestTaskId || detail.result_id !== requestResultId) return;
             this.setState({ versionDetail: detail, versionDetailLoading: false });
         } catch (err: any) {
+            if (this.taskId !== requestTaskId) return;
             Toast.error(err.message || t("summary.common.operationFailed"));
             this.setState({ showVersionDetailModal: false, versionDetailLoading: false, versionDetail: null });
         }
@@ -1711,13 +1740,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 loading={versionDetailIsPersonal
                                     ? this.state.restoringPersonalVersionId === versionDetail.result_id
                                     : this.state.restoringVersionId === versionDetail.result_id}
-                                onClick={() => {
-                                    if (versionDetailIsPersonal) {
-                                        this.handleRestorePersonalVersion(versionDetail);
-                                    } else {
-                                        this.handleRestoreVersion(versionDetail);
+                                onClick={async () => {
+                                    const restored = versionDetailIsPersonal
+                                        ? await this.handleRestorePersonalVersion(versionDetail)
+                                        : await this.handleRestoreVersion(versionDetail);
+                                    if (restored) {
+                                        this.setState({ showVersionDetailModal: false, versionDetail: null });
                                     }
-                                    this.setState({ showVersionDetailModal: false, versionDetail: null });
                                 }}
                             >
                                 {t("summary.detail.restoreVersion")}
@@ -1754,6 +1783,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     citations={versionDetail.citations || []}
                                     teamCitations={versionDetail.team_citations || []}
                                     members={this.state.members}
+                                    disableTeamMemberPreview
                                 />
                             </div>
                         </section>
