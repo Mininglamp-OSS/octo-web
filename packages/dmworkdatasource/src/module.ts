@@ -1,5 +1,5 @@
 import { Convert, IModule, WKApp, hasSpacePrefix, ChannelTypeCommunityTopic } from "@octo/base"
-import { Channel, ChannelTypeGroup, ChannelTypePerson, WKSDK, Message, Reminder } from "wukongimjssdk";
+import { Channel, ChannelTypePerson, WKSDK, Message } from "wukongimjssdk";
 import { MessageTask } from "wukongimjssdk";
 import { ConversationProvider } from "./conversation";
 import { ChannelDataSource, CommonDataSource } from "./datasource";
@@ -8,6 +8,7 @@ import { createChannelInfoCallback } from "./im-callbacks/channelInfo";
 import { createSyncConversationExtrasCallback } from "./im-callbacks/conversationExtras";
 import { createSyncConversationsCallback } from "./im-callbacks/conversations";
 import { createSyncMessageExtraCallback } from "./im-callbacks/messageExtras";
+import { createSyncRemindersCallback } from "./im-callbacks/reminders";
 import { createSyncSubscribersCallback } from "./im-callbacks/subscribers";
 
 export default class DataSourceModule implements IModule {
@@ -86,25 +87,11 @@ export default class DataSourceModule implements IModule {
     }
 
     setSyncRemindersCallback() {
-        WKSDK.shared().config.provider.syncRemindersCallback = async (version: number) => {
-            let reminders = new Array<Reminder>();
-            const channelIDs = new Array<string>()
-            const conversations = WKSDK.shared().conversationManager.conversations
-            if (conversations && conversations.length > 0) {
-                for (const conversation of conversations) {
-                    if (conversation.channel.channelType === ChannelTypeGroup || conversation.channel.channelType === ChannelTypeCommunityTopic) {
-                        channelIDs.push(conversation.channel.channelID)
-                    }
-                }
-            }
-            const results = await WKApp.apiClient.post("message/reminder/sync", { "version": version, "limit": 100, "channel_ids": channelIDs })
-            if (results) {
-                for (const result of results) {
-                    reminders.push(Convert.toReminder(result))
-                }
-            }
-            return reminders
-        }
+        WKSDK.shared().config.provider.syncRemindersCallback = createSyncRemindersCallback({
+            getConversations: () => WKSDK.shared().conversationManager.conversations,
+            postReminderSync: (path, body) => WKApp.apiClient.post(path, body),
+            toReminder: (reminderMap) => Convert.toReminder(reminderMap),
+        })
     }
 
     setReminderDoneCallback() {
