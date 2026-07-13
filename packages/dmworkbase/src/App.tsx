@@ -246,6 +246,22 @@ export class WKRemoteConfig {
    */
   docsOn: boolean = false;
   /**
+   * Loop(回路)模块展示开关。后端字段 dmloop_on 为 true 时，前端在侧边栏 NavRail
+   * 展示「回路」(LoopModule) 入口；false 或字段缺失时隐藏。
+   *
+   * 默认 false(fail-safe): loop 依赖后端服务 + fleet 代理 + daemon 运行时一整套未就绪前保持隐藏——
+   * feature 分支合入 main 也不对用户暴露；运维在依赖部署就绪后再下发 dmloop_on=true 放量。
+   * 镜像 docs_on(system_setting dmloop.enabled),纯 UI 展示门,不承担鉴权:/fleet/api 相关接口的
+   * 权限校验仍由后端负责。
+   */
+  dmloopOn: boolean = false;
+  /**
+   * 「我的 / 运行时」(PersonalModule) 模块展示开关。后端字段 dmpersonal_on 为 true 时展示入口。
+   * 与 dmloop_on 分开:「我的」后续会重新设计、脱离 loop 独立演进,故独立门控(可分阶段放量)。
+   * 默认 false(fail-safe),运维就绪后下发 dmpersonal_on=true。纯 UI 展示门,不承担鉴权。
+   */
+  dmpersonalOn: boolean = false;
+  /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
    * 顶层 oidc_account_url / oidc_reset_password_url 是后端兼容老前端用的,新前端只读这里。
@@ -346,6 +362,8 @@ export class WKRemoteConfig {
         this.suppressLoginMigrationNotice;
       const previousStickerCustomEnabled = this.stickerCustomEnabled;
       const previousDocsOn = this.docsOn;
+      const previousDmloopOn = this.dmloopOn;
+      const previousDmpersonalOn = this.dmpersonalOn;
       this.requestSuccess = true;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
@@ -360,6 +378,8 @@ export class WKRemoteConfig {
         result["sticker_custom_enabled"]
       );
       this.docsOn = parseRemoteBool(result["docs_on"]);
+      this.dmloopOn = parseRemoteBool(result["dmloop_on"]);
+      this.dmpersonalOn = parseRemoteBool(result["dmpersonal_on"]);
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
@@ -369,7 +389,9 @@ export class WKRemoteConfig {
         previousSuppressLoginMigrationNotice !==
           this.suppressLoginMigrationNotice ||
         previousStickerCustomEnabled !== this.stickerCustomEnabled ||
-        previousDocsOn !== this.docsOn
+        previousDocsOn !== this.docsOn ||
+        previousDmloopOn !== this.dmloopOn ||
+        previousDmpersonalOn !== this.dmpersonalOn
       ) {
         this.notifyConfigChangeListeners();
       }
