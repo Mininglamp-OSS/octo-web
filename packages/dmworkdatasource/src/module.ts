@@ -7,6 +7,7 @@ import { MediaMessageUploadTask } from "./task";
 import { createChannelInfoCallback } from "./im-callbacks/channelInfo";
 import { createSyncConversationExtrasCallback } from "./im-callbacks/conversationExtras";
 import { createSyncConversationsCallback } from "./im-callbacks/conversations";
+import { createMessageReadedCallback } from "./im-callbacks/messageReaded";
 import { createSyncMessageExtraCallback } from "./im-callbacks/messageExtras";
 import { createReminderDoneCallback } from "./im-callbacks/reminderDone";
 import { createSyncRemindersCallback } from "./im-callbacks/reminders";
@@ -102,16 +103,9 @@ export default class DataSourceModule implements IModule {
     }
 
     setMessageReadedCallback() {
-        WKSDK.shared().config.provider.messageReadedCallback = async (channel: Channel, messages: Message[]) => {
-            const messageIDs = []
-            if (messages && messages.length > 0) {
-                for (const message of messages) {
-                    messageIDs.push(message.messageID)
-                }
-            }
-            return WKApp.apiClient.post("message/readed", { "channel_id": channel.channelID, "channel_type": channel.channelType, "message_ids": messageIDs }).catch((err) => {
-            })
-        }
+        WKSDK.shared().config.provider.messageReadedCallback = createMessageReadedCallback({
+            postMessageReaded: (path, body) => WKApp.apiClient.post(path, body),
+        })
     }
 
     setSyncConversationsCallback() {
