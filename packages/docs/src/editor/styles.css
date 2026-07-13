@@ -2442,11 +2442,6 @@
 .octo-suggest-item:hover {
   background: var(--octo-hover, #f2f3f5);
 }
-.octo-suggest-empty {
-  padding: 6px 10px;
-  color: var(--octo-fg-3, #86909c);
-  font-size: 12px;
-}
 .octo-emoji-menu .octo-suggest-item {
   font-size: 15px;
 }

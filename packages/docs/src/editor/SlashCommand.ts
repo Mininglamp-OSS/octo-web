@@ -172,11 +172,15 @@ export function filterSlashItems(query: string): SlashItem[] {
 }
 
 // Minimal keyboard-navigable popup. Kept dependency-free (no tippy) so it runs headless-friendly.
-function createSlashMenuRenderer() {
+export function createSlashMenuRenderer() {
   let el: HTMLDivElement | null = null
   let items: SlashItem[] = []
   let selected = 0
   let cmd: ((item: SlashItem) => void) | null = null
+  // Set once the menu is dismissed (Escape / outside click) so a later onUpdate in the same
+  // suggestion session does not re-open it. Reset by onExit when the session ends (#624).
+  let closed = false
+  let onOutside: ((e: MouseEvent) => void) | null = null
 
   function paint() {
     if (!el) return
@@ -201,6 +205,44 @@ function createSlashMenuRenderer() {
     el.style.top = `${rect.bottom + 4}px`
   }
 
+  /** Tear down the menu element and its outside-click listener. Safe to call repeatedly. */
+  function destroy() {
+    if (onOutside) {
+      document.removeEventListener('mousedown', onOutside, true)
+      onOutside = null
+    }
+    el?.remove()
+    el = null
+  }
+
+  /** Mount the menu element (once) and wire the outside-click dismissal. */
+  function mount() {
+    if (el) return
+    el = document.createElement('div')
+    el.className = 'octo-slash-menu'
+    document.body.appendChild(el)
+    onOutside = (e) => {
+      if (el && (!(e.target instanceof Node) || !el.contains(e.target))) {
+        closed = true
+        destroy()
+      }
+    }
+    // Capture phase so the dismissal runs before ProseMirror handles the click.
+    document.addEventListener('mousedown', onOutside, true)
+  }
+
+  /** Reflect current items into the DOM: empty list renders NO box; non-empty (re)mounts (#624). */
+  function sync(clientRect?: (() => DOMRect | null) | null) {
+    if (closed) return
+    if (items.length === 0) {
+      destroy()
+      return
+    }
+    mount()
+    paint()
+    position(clientRect?.())
+  }
+
   return {
     onStart: (props: {
       items: SlashItem[]
@@ -210,11 +252,8 @@ function createSlashMenuRenderer() {
       items = props.items
       selected = 0
       cmd = props.command
-      el = document.createElement('div')
-      el.className = 'octo-slash-menu'
-      document.body.appendChild(el)
-      paint()
-      position(props.clientRect?.())
+      closed = false
+      sync(props.clientRect)
     },
     onUpdate: (props: {
       items: SlashItem[]
@@ -223,13 +262,18 @@ function createSlashMenuRenderer() {
     }) => {
       items = props.items
       cmd = props.command
-      selected = 0
-      paint()
-      position(props.clientRect?.())
+      selected = Math.min(selected, Math.max(0, items.length - 1))
+      sync(props.clientRect)
     },
     onKeyDown: (props: { event: KeyboardEvent }) => {
-      if (!items.length) return false
       const { key } = props.event
+      if (key === 'Escape') {
+        if (!el) return false
+        closed = true
+        destroy()
+        return true
+      }
+      if (!items.length || !el) return false
       if (key === 'ArrowDown') {
         selected = (selected + 1) % items.length
         paint()
@@ -244,14 +288,11 @@ function createSlashMenuRenderer() {
         cmd?.(items[selected])
         return true
       }
-      if (key === 'Escape') {
-        return true
-      }
       return false
     },
     onExit: () => {
-      el?.remove()
-      el = null
+      closed = false
+      destroy()
     },
   }
 }
