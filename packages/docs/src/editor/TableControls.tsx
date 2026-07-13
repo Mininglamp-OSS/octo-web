@@ -80,23 +80,56 @@ function TbBtn({
   onClick,
   label,
   title,
+  text,
 }: {
   onClick: () => void
   label: ReactNode
   title: string
+  // When set, a visible text caption is shown next to the icon. Used for the destructive
+  // delete controls (#621-2) so the user reads which row/column/table the action removes,
+  // instead of guessing from an icon alone.
+  text?: string
 }) {
   return (
     <button
       type="button"
-      className="octo-tb-btn"
+      className={'octo-tb-btn' + (text ? ' octo-tb-btn--labeled' : '')}
       title={title}
       aria-label={title}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
     >
       {label}
+      {text ? <span className="octo-tb-btn-label">{text}</span> : null}
     </button>
   )
+}
+
+/**
+ * Reference rect for the floating table toolbar (#625). Anchors to the OUTER edge of the table
+ * (its scroll wrapper when present) rather than the caret's cell, so the toolbar — placed above
+ * with `placement: 'top'` — floats in the block margin above the whole table instead of landing on
+ * top of the text rows above the caret. Returns a Floating-UI virtual element (computed lazily so
+ * scrolling/resizing stays accurate), or null when the caret is not inside a table, in which case
+ * the BubbleMenu falls back to its default cursor-based positioning.
+ */
+function tableReferenceElement(editor: Editor): { getBoundingClientRect: () => DOMRect; getClientRects: () => DOMRect[] } | null {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth > 0; depth--) {
+    if ($from.node(depth).type.name === 'table') {
+      const dom = editor.view.nodeDOM($from.before(depth))
+      if (dom instanceof HTMLElement) {
+        // Prefer the ProseMirror `.tableWrapper` scroll box so a horizontally scrolled wide table
+        // still anchors to the visible table region.
+        const anchor = (dom.closest('.tableWrapper') as HTMLElement | null) ?? dom
+        return {
+          getBoundingClientRect: () => anchor.getBoundingClientRect(),
+          getClientRects: () => [anchor.getBoundingClientRect()],
+        }
+      }
+    }
+  }
+  return null
 }
 
 /**
@@ -127,6 +160,11 @@ export function TableBubbleMenu({ editor }: { editor: Editor }) {
       // plugin listens for on the editor DOM. octo-table-bubble-portal makes the floating wrapper
       // transparent to pointer events (see styles.css); only the buttons below re-capture them.
       className="octo-table-bubble-portal"
+      // Anchor the toolbar to the table's outer edge rather than the caret's cell, so with
+      // placement: 'top' it floats in the block margin above the whole table and never covers the
+      // in-table text rows above the caret (#625). Falls back to the default caret rect when the
+      // helper can't find a table (never happens while shouldShow is satisfied).
+      getReferencedVirtualElement={() => tableReferenceElement(editor)}
       options={{ placement: 'top', offset: 8 }}
       shouldShow={({ editor: e }) => shouldShowTableBubble(e)}
     >
@@ -144,6 +182,7 @@ export function TableBubbleMenu({ editor }: { editor: Editor }) {
         <TbBtn
           label={<IconDeleteRow />}
           title={t('docs.table.deleteRow')}
+          text={t('docs.table.deleteRow')}
           onClick={() => editor.chain().focus().deleteRow().run()}
         />
         <span className="octo-tb-sep" />
@@ -160,12 +199,14 @@ export function TableBubbleMenu({ editor }: { editor: Editor }) {
         <TbBtn
           label={<IconDeleteCol />}
           title={t('docs.table.deleteColumn')}
+          text={t('docs.table.deleteColumn')}
           onClick={() => editor.chain().focus().deleteColumn().run()}
         />
         <span className="octo-tb-sep" />
         <TbBtn
           label={<IconDeleteTable />}
           title={t('docs.table.deleteTable')}
+          text={t('docs.table.deleteTable')}
           onClick={() => editor.chain().focus().deleteTable().run()}
         />
       </div>

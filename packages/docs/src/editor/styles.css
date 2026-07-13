@@ -394,6 +394,20 @@
 .octo-table-bubble .octo-tb-sep {
   align-self: stretch;
 }
+/* Delete controls carry a text caption (#621-2) so it's clear which row / column / table the
+   action removes. Lay the icon and caption out inline; icon-only buttons are unaffected. */
+.octo-table-bubble .octo-tb-btn {
+  display: inline-flex;
+  align-items: center;
+}
+.octo-tb-btn--labeled {
+  gap: 4px;
+}
+.octo-tb-btn-label {
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
 /* While the caret is inside a table cell this toolbar floats over the table (placement: top). Its
    frame would otherwise sit on top of the column-resize hot zone and swallow the hover/mousedown
    the resize plugin listens for on the editor DOM, so `.column-resize-handle` never appears and the
