@@ -336,6 +336,36 @@ describe('VersionHistoryPanel — mutations & permissions', () => {
     await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
   })
 
+  it('vertically-centers the confirm overlay via a scoped modifier the preview/diff overlay does not carry', async () => {
+    // Regression for XIN-887 (decision #2): the confirm card must sit centered in the viewport, not
+    // top-anchored like the preview/diff modal. The base .octo-modal-overlay is top-anchored (it can
+    // hold taller-than-viewport preview content that scrolls from the top), so the confirm overlay
+    // opts into centering with the scoped .octo-modal-overlay--center modifier. jsdom does not compute
+    // layout, so we assert the class contract: the confirm overlay carries the modifier and the
+    // preview overlay does not, keeping the two behaviors isolated.
+    renderPanel('admin', { loadPreviewState: async (seq) => ({ body: `body-${seq}` }) })
+    await screen.findByText('Draft v1')
+
+    // Delete confirm overlay is centered.
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.delete'))
+    let box = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
+    expect(box.closest('.octo-modal-overlay')!.classList.contains('octo-modal-overlay--center')).toBe(true)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
+
+    // Restore confirm overlay is centered too.
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.restore'))
+    box = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
+    expect(box.closest('.octo-modal-overlay')!.classList.contains('octo-modal-overlay--center')).toBe(true)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
+
+    // Preview/diff overlay keeps its top-anchored (non-centered) behavior — no modifier.
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
+    const modal = await waitFor(() => document.querySelector('.docs-version-preview-modal') as HTMLElement)
+    expect(modal.closest('.octo-modal-overlay')!.classList.contains('octo-modal-overlay--center')).toBe(false)
+  })
+
   it('does not dismiss the confirm overlay on backdrop-click or Escape while a restore is in flight (busy guard)', async () => {
     // The overlay-click and Escape cancel paths both no-op while a mutation is running, so a stray
     // backdrop click or keypress cannot tear the confirm down mid-request. Hold the restore mutation

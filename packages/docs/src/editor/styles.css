@@ -1054,6 +1054,16 @@
   background: rgba(0, 0, 0, 0.4);
   overflow-y: auto;
 }
+/* Vertically-center modifier for the destructive-action confirm (decision #2). The base overlay is
+   top-anchored (align-items: flex-start) because the preview/diff modal can be taller than the
+   viewport and needs to scroll from the top. The small restore/delete confirm card, however, should
+   sit centered in the viewport. `safe center` keeps it centered but degrades to top-aligned if the
+   content ever overflows, so the action buttons stay reachable instead of being clipped off-screen.
+   Only the confirm overlays carry this modifier; the preview/diff overlay keeps its top-anchored,
+   scrollable behavior. */
+.octo-modal-overlay--center {
+  align-items: safe center;
+}
 .octo-modal {
   width: 100%;
   max-width: 560px;
