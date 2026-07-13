@@ -136,10 +136,10 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // ProseMirror's native drag pipeline, so moves sync as ordinary transactions.
     BlockDragHandle,
     // SCHEMA-SPEC §4 (SCHEMA_VERSION 4): tables. extension-table series pinned at
-    // 2.27.2 (matching the stack — v3 would pull a second Tiptap core). Column
-    // resizing is on; cells use a self-built NodeView (TableCellView) that gives
-    // ProseMirror explicit ignoreMutation/stopEvent rules so resize/remote DOM
-    // writes don't desync collaborative cursors (§3.2 requirement).
+    // 3.22.2 (matching the Tiptap core). Column resizing is on; cells use a
+    // self-built NodeView (TableCellView) that gives ProseMirror explicit
+    // ignoreMutation/stopEvent rules so resize/remote DOM writes don't desync
+    // collaborative cursors (§3.2 requirement).
     Table.configure({ resizable: true }),
     TableRow,
     TableHeader.extend({

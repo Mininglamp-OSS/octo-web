@@ -68,11 +68,13 @@ export class TableCellView {
     return false
   }
 
-  /** Don't let the resize plugin's own mousedown/handle events be treated as
-   * editor input; everything else (typing, selection) flows to PM. */
-  stopEvent(event: Event): boolean {
-    const target = event.target as HTMLElement | null
-    if (!target) return false
-    return target.classList?.contains('column-resize-handle') ?? false
+  /** Let every event flow to ProseMirror. In particular the column-resize-handle
+   * mousedown MUST reach prosemirror-tables' columnResizing plugin
+   * (handleDOMEvents.mousedown) — stopping it here short-circuits eventBelongsToView
+   * so the drag never starts (the handle shows on hover but the column can't be
+   * dragged). Content mutations that resizing makes to the cell are already handled
+   * by ignoreMutation above, so nothing needs to be suppressed at the event level. */
+  stopEvent(): boolean {
+    return false
   }
 }
