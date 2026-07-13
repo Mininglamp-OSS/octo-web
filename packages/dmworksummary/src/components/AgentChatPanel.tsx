@@ -1,5 +1,5 @@
 import React, { Component, createRef } from 'react';
-import { Button } from '@douyinfe/semi-ui';
+import { Button, Modal, Input, Toast } from '@douyinfe/semi-ui';
 import { I18nContext } from '@octo/base';
 import type { ChatMessage } from '../types/summary';
 import './AgentChatPanel.css';
@@ -10,10 +10,16 @@ interface AgentChatPanelProps {
     sending: boolean;
     /** 可选开场气泡（assistant 视角），无消息时展示在列表顶部 */
     welcome?: string;
+    /** 可选：「保存为总结」回调,返回 Promise 表示成功/失败 */
+    onSaveAsSummary?: (title: string) => Promise<boolean>;
+    /** 保存中状态 */
+    savingSummary?: boolean;
 }
 
 interface AgentChatPanelState {
     input: string;
+    showSaveDialog: boolean;
+    summaryTitle: string;
 }
 
 /**
@@ -27,7 +33,11 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
     // 滚动容器：新消息 / sending 变化时自动滚到底
     private listRef = createRef<HTMLDivElement>();
 
-    state: AgentChatPanelState = { input: '' };
+    state: AgentChatPanelState = { 
+        input: '', 
+        showSaveDialog: false,
+        summaryTitle: '',
+    };
 
     componentDidMount() {
         this.scrollToBottom();
@@ -62,10 +72,44 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         }
     };
 
-    render() {
-        const { messages, sending, welcome } = this.props;
-        const { input } = this.state;
+    // 检查是否有 assistant 产出（至少一条 assistant 回复）
+    private hasAssistantOutput = (): boolean => {
+        return this.props.messages.some(m => m.role === 'assistant');
+    };
+
+    // 打开保存对话框
+    private handleOpenSaveDialog = () => {
         const { t } = this.context;
+        if (!this.hasAssistantOutput()) {
+            Toast.warning(t('summary.create.noOutputToSave'));
+            return;
+        }
+        this.setState({ showSaveDialog: true, summaryTitle: '' });
+    };
+
+    // 提交保存 - 异步等待结果,成功才关闭对话框
+    private handleSaveConfirm = async () => {
+        const { t } = this.context;
+        const title = this.state.summaryTitle.trim();
+        if (!title) {
+            Toast.warning(t('summary.create.titleRequired'));
+            return;
+        }
+        if (!this.props.onSaveAsSummary) return;
+        
+        const success = await this.props.onSaveAsSummary(title);
+        if (success) {
+            // 成功才关闭对话框并清空标题
+            this.setState({ showSaveDialog: false, summaryTitle: '' });
+        }
+        // 失败时保留对话框和已填标题,方便用户重试
+    };
+
+    render() {
+        const { messages, sending, welcome, savingSummary } = this.props;
+        const { input, showSaveDialog, summaryTitle } = this.state;
+        const { t } = this.context;
+        const canSave = this.hasAssistantOutput() && this.props.onSaveAsSummary;
 
         return (
             <div className="agent-chat-panel">
@@ -103,7 +147,38 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     >
                         {t('summary.create.send')}
                     </Button>
+                    {canSave && (
+                        <Button
+                            size="default"
+                            disabled={!this.hasAssistantOutput() || savingSummary}
+                            loading={savingSummary}
+                            onClick={this.handleOpenSaveDialog}
+                            style={{ marginLeft: 8 }}
+                        >
+                            {t('summary.create.saveAsSummary')}
+                        </Button>
+                    )}
                 </div>
+
+                {/* 保存为总结命名对话框 */}
+                <Modal
+                    title={t('summary.create.saveDialogTitle')}
+                    visible={showSaveDialog}
+                    onOk={this.handleSaveConfirm}
+                    onCancel={() => this.setState({ showSaveDialog: false })}
+                    okText={t('summary.common.confirm')}
+                    cancelText={t('summary.common.cancel')}
+                    confirmLoading={savingSummary}
+                >
+                    <Input
+                        placeholder={t('summary.create.titlePlaceholder')}
+                        value={summaryTitle}
+                        onChange={v => this.setState({ summaryTitle: v })}
+                        maxLength={100}
+                        showClear
+                        autoFocus
+                    />
+                </Modal>
             </div>
         );
     }

@@ -4,7 +4,7 @@ import { IconPlus, IconClock, IconChevronDown } from '@douyinfe/semi-icons';
 import { WKApp, I18nContext } from '@octo/base';
 import type { TopicTemplate, ChatCandidate, ScheduleConfig, ChatMessage } from '../types/summary';
 import { SourceType, SummaryMode } from '../types/summary';
-import { getSourceType } from '../utils/channelType';
+import { getSourceType, getOriginChannelType } from '../utils/channelType';
 import { channelToChatCandidate } from '../utils/channelConvert';
 import { resolveTemplate, computeTemplateSelection, type ResolvableTemplate } from '../utils/templateResolver';
 import { describeSchedule, scheduleToParams, genSessionId } from '../utils/summaryHelpers';
@@ -33,6 +33,7 @@ interface ChatSummaryNewModalState {
     showChatSelector: boolean;
     submitting: boolean;
     agentSubmitting: boolean;
+    savingSummary: boolean;
     templatePlaceholderRange: [number, number] | null;
     scheduleConfig: ScheduleConfig | null;
     showScheduleConfig: boolean;
@@ -63,6 +64,7 @@ export default class ChatSummaryNewModal extends Component<
             showChatSelector: false,
             submitting: false,
             agentSubmitting: false,
+            savingSummary: false,
             templatePlaceholderRange: null,
             scheduleConfig: null,
             showScheduleConfig: false,
@@ -89,6 +91,7 @@ export default class ChatSummaryNewModal extends Component<
                 showChatSelector: false,
                 submitting: false,
                 agentSubmitting: false,
+                savingSummary: false,
                 templatePlaceholderRange: null,
                 scheduleConfig: null,
                 showScheduleConfig: false,
@@ -212,6 +215,7 @@ export default class ChatSummaryNewModal extends Component<
                 }),
             );
             onSubmit(res.task_id);
+            return true;
         } catch (err: unknown) {
             const msg = err instanceof Error
                 ? err.message
@@ -281,6 +285,80 @@ export default class ChatSummaryNewModal extends Component<
             sessionId: mode === 'agent' && !prev.sessionId ? genSessionId() : prev.sessionId,
         }));
     };
+
+    /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。返回成功/失败。
+     *
+     * origin_channel_id / origin_channel_type 不再由前端传入 —— agent 对话入口在
+     * e5a8eee 起就特意隐藏了"选择聊天/参与者/定时更新"三个控件,前端此时既没有
+     * currentChannel 也没有让用户手选来源的地方。后端 handler 会按 session_id 从
+     * agent_message 的 tool_calls 记录反查 agent 实际读过的第一个 channel_id
+     * 作为 origin(见 agent_summary.go inferOriginChannelFromToolCalls),这样
+     * 用户完全无感,来源和 agent 实际引用的数据严格一致。
+     */
+    handleSaveAsSummary = async (title: string): Promise<boolean> => {
+        const { sessionId, selectedChats } = this.state;
+        const { onSubmit } = this.props;
+        const { t } = this.context;
+
+        if (!sessionId) {
+            Toast.warning(t('summary.create.noOutputToSave'));
+            return false;
+        }
+
+        this.setState({ savingSummary: true });
+        try {
+            // sources 保留原逻辑:若用户在别处显式选过 chats,把它们透传成 sources;
+            // 否则不传,后端会自己从 tool_calls 反推 origin,sources 留空由后续版本
+            // 的 deliverable_context 快照补齐。
+            const sources = selectedChats.length > 0
+                ? selectedChats.map((c) => ({
+                    source_type: (c.chat_type === 'group'
+                        ? SourceType.GROUP_CHAT
+                        : c.chat_type === 'thread'
+                        ? SourceType.THREAD
+                        : SourceType.DIRECT_MESSAGE),
+                    source_id: c.chat_id,
+                }))
+                : undefined;
+
+            const res = await summaryApi.createAgentSummary({
+                session_id: sessionId,
+                title,
+                sources,
+            });
+
+            Toast.success(t('summary.create.agentSummaryCreated'));
+
+            // dispatch 刷新事件。agent 保存路径下前端已不再持有具体 channel
+            // (origin 由后端从 tool_calls 反查),下游刷新监听按 taskId 走即可,
+            // channelId 传空串以保持事件字段结构不变、避免 undefined 引用崩溃。
+            window.dispatchEvent(
+                new CustomEvent('chat-summary-created', {
+                    detail: { taskId: res.task_id, channelId: '' },
+                }),
+            );
+            onSubmit(res.task_id);
+            return true;
+        } catch (err: unknown) {
+            // 类型守卫:axios 错误
+            if (err && typeof err === 'object' && 'response' in err) {
+                const axiosErr = err as { response?: { data?: { code?: number } } };
+                const code = axiosErr.response?.data?.code;
+                // 40004: session 无产出
+                if (code === 40004) {
+                    Toast.error(t('summary.create.noOutputToSave'));
+                    return false;
+                }
+            }
+            // 其他错误
+            const msg = err instanceof Error ? err.message : t('summary.common.createFailedRetry');
+            Toast.error(msg);
+            return false;
+        } finally {
+            this.setState({ savingSummary: false });
+        }
+    };
+
 
     private handleRemoveChat = (chatId: string) => {
         this.setState((prev) => ({
@@ -380,6 +458,8 @@ export default class ChatSummaryNewModal extends Component<
                                     onSend={this.handleAgentSend}
                                     sending={agentSubmitting}
                                     welcome={t('summary.create.agentChatWelcome')}
+                                    onSaveAsSummary={this.handleSaveAsSummary}
+                                    savingSummary={this.state.savingSummary}
                                 />
                             </div>
                         ) : (

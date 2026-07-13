@@ -162,6 +162,12 @@
     margin-right: 8px;
 }
 
+.summary-card-header-badges {
+    display: flex;
+    gap: var(--wk-sp-1);
+    align-items: center;
+}
+
 .summary-card-meta {
     display: flex;
     align-items: center;

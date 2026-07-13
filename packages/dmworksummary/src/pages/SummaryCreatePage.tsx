@@ -15,6 +15,7 @@ import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import * as api from "../api/summaryApi";
 import { getTopicTemplates } from "../api/summaryApi";
+import { getOriginChannelType } from "../utils/channelType";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
 import MemberSelectorModal from "../components/MemberSelectorModal";
@@ -54,6 +55,7 @@ interface SummaryCreatePageState {
     showScheduleConfig: boolean;
     submitting: boolean;
     agentSubmitting: boolean;
+    savingSummary: boolean;
     // Agent 多轮问答：气泡 UI + session_id。后端按 session_id 持久化记忆，同一会话复用即可续上下文。
     messages: ChatMessage[];
     sessionId: string;
@@ -79,6 +81,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         showScheduleConfig: false,
         submitting: false,
         agentSubmitting: false,
+        savingSummary: false,
         messages: [],
         sessionId: '',
         error: null,
@@ -301,6 +304,81 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }));
     };
 
+    /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。返回成功/失败。 */
+    handleSaveAsSummary = async (title: string): Promise<boolean> => {
+        const { sessionId, selectedChats, selectedMembers } = this.state;
+        const { t } = this.context;
+        
+        if (!sessionId) {
+            Toast.warning(t('summary.create.noOutputToSave'));
+            return false;
+        }
+
+        this.setState({ savingSummary: true });
+        try {
+            // origin_channel_id / origin_channel_type 不再由前端传入 —— 后端会从
+            // session 的 tool_calls 反查 agent 实际读过的第一个 channel_id 作为
+            // origin(见 handler/agent_summary.go)。整页入口 currentChannel 一定
+            // 是 undefined,弹窗入口也不再依赖 channel prop,统一走后端反查。
+            const params: api.CreateAgentSummaryParams = {
+                session_id: sessionId,
+                title,
+            };
+
+            if (selectedChats.length > 0) {
+                params.sources = selectedChats.map((c) => ({
+                    source_type: c.chat_type === "group" ? SourceType.GROUP_CHAT
+                               : c.chat_type === "thread" ? SourceType.THREAD
+                               : SourceType.DIRECT_MESSAGE,
+                    source_id: c.chat_id,
+                }));
+            }
+
+            if (selectedMembers.length > 0) {
+                params.participants = selectedMembers.map((m) => ({ 
+                    user_id: m.user_id,
+                    user_name: m.name,
+                }));
+            }
+
+            const result = await api.createAgentSummary(params);
+
+            Toast.success(t('summary.create.agentSummaryCreated'));
+
+            // dispatch 刷新事件。agent 整页入口下前端已不再持有具体 channel
+            // (origin 由后端从 tool_calls 反查),下游刷新监听按 taskId 走即可,
+            // channelId 传空串以保持事件字段结构不变、避免 undefined 引用崩溃。
+            const event = new CustomEvent('chat-summary-created', {
+                detail: { taskId: result.task_id, channelId: '' }
+            });
+            window.dispatchEvent(event);
+            
+            // 跳转到详情页
+            WKApp.routeRight.popToRoot();
+            WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
+            this.props.onCreated?.();
+            return true;
+        } catch (err: unknown) {
+            // 类型守卫:axios 错误
+            if (err && typeof err === 'object' && 'response' in err) {
+                const axiosErr = err as { response?: { data?: { code?: number } } };
+                const code = axiosErr.response?.data?.code;
+                // 40004: session 无产出
+                if (code === 40004) {
+                    Toast.error(t('summary.create.noOutputToSave'));
+                    return false;
+                }
+            }
+            // 其他错误
+            const message = err instanceof Error ? err.message : t('summary.common.createFailedRetry');
+            Toast.error(message);
+            return false;
+        } finally {
+            this.setState({ savingSummary: false });
+        }
+    };
+
+
     render() {
         const {
             topic,
@@ -338,6 +416,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 onSend={this.handleAgentSend}
                                 sending={agentSubmitting}
                                 welcome={translate("summary.create.agentChatWelcome")}
+                                onSaveAsSummary={this.handleSaveAsSummary}
+                                savingSummary={this.state.savingSummary}
                             />
                         </div>
                     ) : (
