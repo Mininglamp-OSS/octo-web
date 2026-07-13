@@ -79,7 +79,7 @@ export default function LoopPage() {
   // 新建回路 → 唤起 composer 独立页；成功后落到回路看板（新回路即在其中）。
   const openNewLoop = () => {
     WKApp.routeRight.push(
-      <NewLoopPage onCreated={() => { Toast.success(t("loop.toast.created")); openTab("issue"); }} />,
+      <NewLoopPage onCreated={() => { openTab("issue"); }} />,
     );
   };
 

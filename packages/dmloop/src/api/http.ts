@@ -79,24 +79,28 @@ client.interceptors.request.use((config) => {
 /* ---------- 结构化错误（供页面展示异常态） ---------- */
 export class LoopApiError extends Error {
   status?: number;
-  constructor(message: string, status?: number) {
+  code?: string; // 后端结构化错误码(如 quick-create 的 agent_unavailable / daemon_version_unsupported)
+  constructor(message: string, status?: number, code?: string) {
     super(message);
     this.name = "LoopApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
 function toApiError(err: unknown): LoopApiError {
   const e = err as {
-    response?: { status?: number; data?: { error?: string; message?: string } };
+    response?: { status?: number; data?: { error?: string; message?: string; code?: string; reason?: string } };
     message?: string;
   };
+  const data = e?.response?.data;
   const msg =
-    e?.response?.data?.error ||
-    e?.response?.data?.message ||
+    data?.error ||
+    data?.message ||
+    data?.reason || // 结构化 422(如 quick-create)只带 {code, reason},reason 是可读文案
     e?.message ||
     "Request failed";
-  return new LoopApiError(String(msg), e?.response?.status);
+  return new LoopApiError(String(msg), e?.response?.status, data?.code);
 }
 
 function clean(params?: Record<string, unknown>): Record<string, string> {
