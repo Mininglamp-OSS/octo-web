@@ -8,6 +8,7 @@ import { createChannelInfoCallback } from "./im-callbacks/channelInfo";
 import { createSyncConversationExtrasCallback } from "./im-callbacks/conversationExtras";
 import { createSyncConversationsCallback } from "./im-callbacks/conversations";
 import { createSyncMessageExtraCallback } from "./im-callbacks/messageExtras";
+import { createReminderDoneCallback } from "./im-callbacks/reminderDone";
 import { createSyncRemindersCallback } from "./im-callbacks/reminders";
 import { createSyncSubscribersCallback } from "./im-callbacks/subscribers";
 
@@ -95,9 +96,9 @@ export default class DataSourceModule implements IModule {
     }
 
     setReminderDoneCallback() {
-        WKSDK.shared().config.provider.reminderDoneCallback = async (ids: number[]) => {
-            return WKApp.apiClient.post("message/reminder/done", ids)
-        }
+        WKSDK.shared().config.provider.reminderDoneCallback = createReminderDoneCallback({
+            postReminderDone: (path, ids) => WKApp.apiClient.post(path, ids),
+        })
     }
 
     setMessageReadedCallback() {
