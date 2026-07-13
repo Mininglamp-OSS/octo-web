@@ -84,6 +84,7 @@
     "yjs": "13.6.21"
   },
   "devDependencies": {
+    "@file-viewer/vite-plugin": "2.1.27",
     "@storybook/addon-a11y": "^10.3.3",
     "@storybook/addon-docs": "^10.3.3",
     "@storybook/addon-mcp": "^0.4.2",

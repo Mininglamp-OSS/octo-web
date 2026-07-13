@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "@file-viewer/vite-plugin",
+  "rendererIds": [
+    "pdf",
+    "ofd",
+    "cad",
+    "typst",
+    "office-presentation",
+    "office-word-openxml",
+    "office-word-binary",
+    "open-document",
+    "spreadsheet-openxml",
+    "drawing",
+    "model",
+    "archive",
+    "email",
+    "epub",
+    "umd",
+    "code",
+    "markdown",
+    "image",
+    "audio",
+    "video",
+    "mindmap",
+    "geo",
+    "data-asset",
+    "eda"
+  ],
+  "copiedAt": "2026-07-13T10:19:43.307Z",
+  "assets": [
+    {
+      "rendererId": "pdf",
+      "id": "pdf-worker",
+      "to": "E:\\octo-web\\apps\\web\\public\\vendor\\pdf\\pdf.worker.mjs",
+      "copied": true
+    },
+    {
+      "rendererId": "pdf",
+      "id": "pdf-cmaps",
+      "to": "E:\\octo-web\\apps\\web\\public\\vendor\\pdf\\cmaps",
+      "copied": true
+    },
+    {
+      "rendererId": "pdf",
+      "id": "pdf-wasm",
+      "to": "E:\\octo-web\\apps\\web\\public\\vendor\\pdf\\wasm",
+      "copied": true
+    },
+    {
+      "rendererId": "pdf",
+      "id": "pdf-standard-fonts",
+      "to": "E:\\octo-web\\apps\\web\\public\\vendor\\pdf\\standard_fonts",
+      "copied": true
+    },
+    {
+      "rendererId": "pdf",
+      "id": "pdf-cjk-font-fallback",
+      "to": "E:\\octo-web\\apps\\web\\public\\vendor\\pdf\\fonts",
+      "copied": true
+    },
+    {
+      "rendererId": "office-presentation",
+      "id": "pptx-worker",
+      "to": "E:\\octo-web\\apps\\web\\public\\vendor\\pptx\\pptx.worker.js",
+      "copied": true
+    },
+    {
+      "rendererId": "office-word-openxml",
+      "id": "docx-worker",
+      "to": "E:\\octo-web\\apps\\web\\public\\vendor\\docx\\docx.worker.js",
+      "copied": true
+    },
+    {
+      "rendererId": "office-word-openxml",
+      "id": "docx-worker-jszip",
+      "to": "E:\\octo-web\\apps\\web\\public\\vendor\\docx\\jszip.min.js",
+      "copied": true
+    },
+    {
+      "rendererId": "cad",
+      "id": "cad-wasm-directory",
+      "to": "E:\\octo-web\\apps\\web\\public\\wasm\\cad",
+      "copied": true
+    },
+    {
+      "rendererId": "typst",
+      "id": "typst-compiler-wasm",
+      "to": "E:\\octo-web\\apps\\web\\public\\wasm\\typst\\typst_ts_web_compiler_bg.wasm",
+      "copied": true
+    },
+    {
+      "rendererId": "typst",
+      "id": "typst-renderer-wasm",
+      "to": "E:\\octo-web\\apps\\web\\public\\wasm\\typst\\typst_ts_renderer_bg.wasm",
+      "copied": true
+    },
+    {
+      "rendererId": "typst",
+      "id": "typst-font-assets",
+      "to": "E:\\octo-web\\apps\\web\\public\\wasm\\typst\\fonts",
+      "copied": true
+    },
+    {
+      "rendererId": "archive",
+      "id": "libarchive-worker",
+      "to": "E:\\octo-web\\apps\\web\\public\\vendor\\libarchive\\worker-bundle.js",
+      "copied": true
+    },
+    {
+      "rendererId": "archive",
+      "id": "libarchive-wasm",
+      "to": "E:\\octo-web\\apps\\web\\public\\vendor\\libarchive\\libarchive.wasm",
+      "copied": true
+    },
+    {
+      "rendererId": "data-asset",
+      "id": "data-sql-wasm",
+      "to": "E:\\octo-web\\apps\\web\\public\\wasm\\data\\sql-wasm.wasm",
+      "copied": true
+    }
+  ]
+}

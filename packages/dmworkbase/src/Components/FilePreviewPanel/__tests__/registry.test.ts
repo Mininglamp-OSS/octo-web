@@ -1,70 +1,34 @@
 import { describe, it, expect, vi } from "vitest";
 
-// Mock 所有渲染器组件，避免 Semi UI 在 vitest 环境报错
-vi.mock("../renderers/ExcelRenderer", () => ({ default: () => null }));
-vi.mock("../renderers/PdfRenderer", () => ({ default: () => null }));
-vi.mock("../renderers/MarkdownRenderer", () => ({ default: () => null }));
-vi.mock("../renderers/CodeRenderer", () => ({ default: () => null }));
-vi.mock("../renderers/TextRenderer", () => ({ default: () => null }));
-vi.mock("../renderers/HtmlRenderer", () => ({ default: () => null }));
-vi.mock("../renderers/FallbackRenderer", () => ({ default: () => null }));
-vi.mock("../renderers/JsonRenderer", () => ({ default: () => null }));
-vi.mock("../renderers/JsonlRenderer", () => ({ default: () => null }));
-vi.mock("../renderers/ImageRenderer", () => ({ default: () => null }));
-vi.mock("../renderers/VideoRenderer", () => ({ default: () => null }));
-vi.mock("../renderers/OfficeRenderer", () => ({
-  DocxRenderer: () => null,
-  PptxRenderer: () => null,
-}));
-vi.mock("../renderers/XlsxRenderer", () => ({ default: () => null }));
+vi.mock("../renderers/FileViewerRenderer", () => ({ default: () => null }));
 
 import fileRendererRegistry from "../registry";
 
-/**
- * 注册映射测试 — 锁定 extension → renderer 的映射关系，防止回归。
- *
- * PR #570 恢复了 xlsx/xls/xlsb/xlsm 的 ExcelRenderer 注册，
- * 此测试确保这些扩展名正确解析到 ExcelRenderer，且 canPreview 返回 true。
- */
-
-describe("fileRendererRegistry — 扩展名 → 渲染器映射", () => {
-  it("Excel 格式全部映射到 excel type", () => {
-    for (const ext of ["xlsx", "xls", "xlsb", "xlsm", "csv", "xltx"]) {
-      const item = fileRendererRegistry.getRenderer(ext);
-      expect(item).toBeDefined();
-      expect(item.type).toBe("excel");
-    }
-  });
-
-  it("canPreview 对 Excel 格式返回 true", () => {
-    for (const ext of ["xlsx", "xls", "xlsb", "xlsm", "csv", "xltx"]) {
+describe("FileRendererRegistry", () => {
+  it("routes supported formats to the unified file-viewer renderer", () => {
+    for (const ext of [
+      "pdf", "doc", "docx", "dot", "dotx", "rtf", "odt",
+      "xls", "xlsx", "xlsm", "xlsb", "xltx", "ods", "csv",
+      "pptx", "potx", "ppsx", "odp", "epub", "md", "txt", "png",
+    ]) {
       expect(fileRendererRegistry.canPreview(ext)).toBe(true);
+      expect(fileRendererRegistry.getRenderer(ext).renderer).toBeDefined();
     }
   });
 
-  it("大写扩展名也能正确解析", () => {
+  it("normalizes uppercase extensions", () => {
+    expect(fileRendererRegistry.canPreview("DOCX")).toBe(true);
+    expect(fileRendererRegistry.canPreview("PPTX")).toBe(true);
     expect(fileRendererRegistry.canPreview("XLSX")).toBe(true);
-    expect(fileRendererRegistry.canPreview("XLS")).toBe(true);
   });
 
-  it("非 Excel 格式映射到其他 type", () => {
-    expect(fileRendererRegistry.getRenderer("pdf").type).toBe("pdf");
-    expect(fileRendererRegistry.getRenderer("md").type).toBe("markdown");
-  });
-
-  it("Office OOXML 格式映射到对应渲染器", () => {
-    expect(fileRendererRegistry.getRenderer("docx").type).toBe("docx");
-    expect(fileRendererRegistry.getRenderer("dotx").type).toBe("docx");
-    expect(fileRendererRegistry.getRenderer("pptx").type).toBe("ppt");
-    expect(fileRendererRegistry.getRenderer("potx").type).toBe("ppt");
-    expect(fileRendererRegistry.canPreview("docx")).toBe(true);
-    expect(fileRendererRegistry.canPreview("dotx")).toBe(true);
-    expect(fileRendererRegistry.canPreview("pptx")).toBe(true);
-    expect(fileRendererRegistry.canPreview("potx")).toBe(true);
-  });
-
-  it("旧版 Office 二进制格式仍不支持预览", () => {
-    expect(fileRendererRegistry.canPreview("doc")).toBe(false);
+  it("keeps unsupported legacy PowerPoint unsupported", () => {
     expect(fileRendererRegistry.canPreview("ppt")).toBe(false);
+  });
+
+  it("uses the unified renderer for unknown files", () => {
+    const item = fileRendererRegistry.getRenderer("unknown-format");
+    expect(item.type).toBe("unknown");
+    expect(item.renderer).toBeDefined();
   });
 });

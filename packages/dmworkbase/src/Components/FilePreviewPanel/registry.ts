@@ -4,215 +4,78 @@ import {
   RendererRegistryItem,
   getExtension,
 } from "./types";
-import PdfRenderer from "./renderers/PdfRenderer";
-import MarkdownRenderer from "./renderers/MarkdownRenderer";
-import CodeRenderer from "./renderers/CodeRenderer";
-import TextRenderer from "./renderers/TextRenderer";
-import HtmlRenderer from "./renderers/HtmlRenderer";
-import FallbackRenderer from "./renderers/FallbackRenderer";
-import ExcelRenderer from "./renderers/ExcelRenderer";
-import JsonRenderer from "./renderers/JsonRenderer";
-import JsonlRenderer from "./renderers/JsonlRenderer";
-import ImageRenderer from "./renderers/ImageRenderer";
-import VideoRenderer from "./renderers/VideoRenderer";
-import { DocxRenderer, PptxRenderer } from "./renderers/OfficeRenderer";
-import XlsxRenderer from "./renderers/XlsxRenderer";
+import FileViewerRenderer from "./renderers/FileViewerRenderer";
 
-/**
- * 文件渲染器注册表
- * 策略模式核心：根据文件扩展名选择对应的渲染器
- * 音频在对话流内渲染，不进入面板。
- */
+/** Routes every registered preview format through file-viewer. */
 class FileRendererRegistry {
   private registry: Map<string, RendererRegistryItem> = new Map();
-  private fallback: FileRenderer = FallbackRenderer;
+  private fallback: FileRenderer = FileViewerRenderer;
 
   constructor() {
     this.registerDefaults();
   }
 
-  /** 注册默认渲染器 */
   private registerDefaults() {
-    // 图片
-    this.register({
-      type: "image",
-      extensions: ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg"],
-      renderer: ImageRenderer,
-      needsFetch: false,
-    });
+    const formats: Record<FileType, string[]> = {
+      image: ["gif", "jpg", "jpeg", "bmp", "tiff", "tif", "png", "svg", "webp", "avif", "ico", "heic", "heif", "jxl"],
+      pdf: ["pdf", "ofd"],
+      markdown: ["md", "markdown"],
+      code: ["js", "mjs", "cjs", "css", "java", "py", "html", "htm", "jsx", "ts", "tsx", "xml", "log", "vue", "yaml", "yml", "ini", "sh", "bash", "sql", "go", "rs", "php", "c", "cpp", "cc", "h", "hpp", "cs", "diff", "patch", "jsonc", "json5", "toml", "proto", "hcl", "tex", "rb", "swift", "kt"],
+      json: ["json"],
+      jsonl: ["jsonl", "ndjson"],
+      text: ["txt", "conf", "cfg"],
+      excel: ["xlsx", "xltx", "xlsm", "xlsb", "xls", "xlt", "xltm", "csv", "ods", "fods", "numbers"],
+      docx: ["docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt"],
+      ppt: ["pptx", "pptm", "potx", "potm", "ppsx", "ppsm", "odp"],
+      video: ["mp4", "webm", "m3u8"],
+      audio: ["mp3", "mpeg", "wav", "ogg", "oga", "opus", "m4a", "aac", "flac", "weba", "midi", "mid"],
+      epub: ["epub", "umd"],
+      unknown: [],
+    };
 
-    // 视频
-    this.register({
-      type: "video",
-      extensions: ["mp4", "m4v", "mov", "webm", "ogv", "ogg"],
-      renderer: VideoRenderer,
-      needsFetch: false,
-    });
-
-    // PDF
-    this.register({
-      type: "pdf",
-      extensions: ["pdf"],
-      renderer: PdfRenderer,
-      needsFetch: false,
-    });
-
-    // Markdown
-    this.register({
-      type: "markdown",
-      extensions: ["md", "markdown"],
-      renderer: MarkdownRenderer,
-      needsFetch: true,
-    });
-
-    // 代码
-    this.register({
-      type: "code",
-      extensions: [
-        "js",
-        "jsx",
-        "ts",
-        "tsx",
-        "css",
-        "scss",
-        "less",
-        "xml",
-        "yaml",
-        "yml",
-        "py",
-        "java",
-        "c",
-        "cpp",
-        "h",
-        "hpp",
-        "go",
-        "rs",
-        "rb",
-        "php",
-        "sh",
-        "bash",
-        "sql",
-        "vue",
-        "svelte",
-      ],
-      renderer: CodeRenderer,
-      needsFetch: true,
-    });
-
-    // JSON（格式化 + 树形视图）
-    this.register({
-      type: "json",
-      extensions: ["json"],
-      renderer: JsonRenderer,
-      needsFetch: true,
-    });
-
-    // JSONL（格式化 + 表格视图）
-    this.register({
-      type: "jsonl",
-      extensions: ["jsonl"],
-      renderer: JsonlRenderer,
-      needsFetch: true,
-    });
-
-    // HTML（渲染预览，非代码显示）
-    this.register({
-      type: "text",
-      extensions: ["html", "htm"],
-      renderer: HtmlRenderer,
-      needsFetch: true,
-    });
-
-    // 纯文本
-    this.register({
-      type: "text",
-      extensions: ["txt", "log", "ini", "conf", "cfg"],
-      renderer: TextRenderer,
-      needsFetch: true,
-    });
-
-    // Word OOXML 文档（Canvas 渲染）
-    this.register({
-      type: "docx",
-      extensions: ["docx", "dotx"],
-      renderer: DocxRenderer,
-      needsFetch: true,
-    });
-
-    // PowerPoint OOXML 演示文稿（Canvas 渲染）
-    this.register({
-      type: "ppt",
-      extensions: ["pptx", "potx"],
-      renderer: PptxRenderer,
-      needsFetch: true,
-    });
-
-    // OOXML Excel 工作簿（Canvas 渲染）
-    this.register({
-      type: "excel",
-      extensions: ["xlsx", "xlsm", "xltx"],
-      renderer: XlsxRenderer,
-      needsFetch: true,
-    });
-
-    // 传统 Excel / CSV（SheetJS 渲染）
-    this.register({
-      type: "excel",
-      extensions: ["xls", "xlsb", "csv"],
-      renderer: ExcelRenderer,
-      needsFetch: true,
-    });
-  }
-
-  /** 注册渲染器 */
-  register(item: RendererRegistryItem) {
-    for (const ext of item.extensions) {
-      this.registry.set(ext.toLowerCase(), item);
+    for (const [type, extensions] of Object.entries(formats) as [FileType, string[]][]) {
+      if (!extensions.length) continue;
+      this.register({
+        type,
+        extensions,
+        renderer: FileViewerRenderer,
+        needsFetch: false,
+      });
     }
   }
 
-  /** 根据扩展名获取渲染器 */
-  getRenderer(extension: string, fileName?: string): RendererRegistryItem {
-    const ext = getExtension(extension, fileName);
-    return (
-      this.registry.get(ext) || {
-        type: "unknown" as FileType,
-        extensions: [],
-        renderer: this.fallback,
-        needsFetch: false,
-      }
-    );
+  register(item: RendererRegistryItem) {
+    for (const ext of item.extensions) this.registry.set(ext.toLowerCase(), item);
   }
 
-  /** 设置兜底渲染器 */
+  getRenderer(extension: string, fileName?: string): RendererRegistryItem {
+    const ext = getExtension(extension, fileName);
+    return this.registry.get(ext) ?? {
+      type: "unknown" as FileType,
+      extensions: [],
+      renderer: this.fallback,
+      needsFetch: false,
+    };
+  }
+
   setFallback(renderer: FileRenderer) {
     this.fallback = renderer;
   }
 
-  /** 判断是否支持预览 */
   canPreview(extension: string, fileName?: string): boolean {
-    const ext = getExtension(extension, fileName);
-    return this.registry.has(ext);
+    return this.registry.has(getExtension(extension, fileName));
   }
 
-  /** 获取所有支持的扩展名 */
   getSupportedExtensions(): string[] {
     return Array.from(this.registry.keys());
   }
 
-  /** 根据文件类型获取所有扩展名 */
   getExtensionsByType(type: FileType): string[] {
-    const extensions: string[] = [];
-    for (const [ext, item] of this.registry.entries()) {
-      if (item.type === type) {
-        extensions.push(ext);
-      }
-    }
-    return extensions;
+    return Array.from(this.registry.entries())
+      .filter(([, item]) => item.type === type)
+      .map(([ext]) => ext);
   }
 }
 
-// 单例导出
 export const fileRendererRegistry = new FileRendererRegistry();
-
 export default fileRendererRegistry;

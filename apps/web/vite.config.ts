@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tsconfigPaths from "vite-tsconfig-paths";
 import commonjs from "vite-plugin-commonjs";
+import { fileViewerRenderers } from "@file-viewer/vite-plugin";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
@@ -48,8 +49,49 @@ export default defineConfig(({ mode }) => {
       },
       // TODO: remove after all require() calls are migrated to import (chore/migrate-require-to-import)
       commonjs(),
+      fileViewerRenderers({
+        copyAssets: true,
+        chunkStrategy: "renderer",
+      }),
       react(),
       tsconfigPaths({ root: "../../" }),
+      {
+        name: "fix-xmldom-cjs",
+        enforce: "pre",
+        buildStart() {
+          const { buildSync } = require("esbuild");
+          const fs = require("fs");
+          const path = require("path");
+          const root = process.cwd();
+          const outDir = path.join(root, "node_modules", ".vite");
+          if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+          const outFile = path.join(outDir, "xmldom-esm.js");
+          const xmldomPath = require.resolve("@xmldom/xmldom", { paths: [path.join(root, "../../")] });
+          buildSync({
+            entryPoints: [xmldomPath],
+            bundle: true,
+            format: "esm",
+            outfile: outFile,
+            logLevel: "silent",
+          });
+          // esbuild only emits `export default require_index();` for CJS.
+          // Append named exports so `import { DOMParser }` works.
+          let code = fs.readFileSync(outFile, "utf-8");
+          const lastExport = "export default require_index();";
+          const idx = code.lastIndexOf(lastExport);
+          if (idx !== -1) {
+            const named = "var __xmldom = require_index();\nexport default __xmldom;\nexport const DOMParser = __xmldom.DOMParser;\nexport const XMLSerializer = __xmldom.XMLSerializer;\nexport const DOMImplementation = __xmldom.DOMImplementation;\nexport const DOMException = __xmldom.DOMException;\nexport const Node = __xmldom.Node;\nexport const Element = __xmldom.Element;\nexport const Document = __xmldom.Document;\nexport const Attr = __xmldom.Attr;\nexport const Text = __xmldom.Text;\nexport const Comment = __xmldom.Comment;\nexport const MIME_TYPE = __xmldom.MIME_TYPE;\nexport const NAMESPACE = __xmldom.NAMESPACE;\n";
+            code = code.slice(0, idx) + named;
+            fs.writeFileSync(outFile, code, "utf-8");
+          }
+        },
+        resolveId(id) {
+          const path = require("path");
+          if (id === "@xmldom/xmldom" || (id.includes("@xmldom/xmldom/lib/index") && !id.includes("?") && !id.includes("xmldom-esm"))) {
+            return path.join(process.cwd(), "node_modules", ".vite", "xmldom-esm.js");
+          }
+        },
+      },
       {
         name: "exclude-test-files",
         // enforce: "pre" 让本插件的 resolveId 早于 commonjs() 等其它插件执行。
@@ -185,6 +227,11 @@ export default defineConfig(({ mode }) => {
       },
     },
     optimizeDeps: {
+      include: [
+        "@xmldom/xmldom",
+        "styled-exceljs",
+        "jszip",
+      ],
       exclude: [
         "vitest",
         "expect-type",

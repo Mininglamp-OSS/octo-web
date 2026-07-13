@@ -44,10 +44,7 @@ import FilePreviewHeader, {
   ConversationFile,
 } from "../FilePreviewPanel/FilePreviewHeader";
 import { FileListPanel } from "../FilePreviewPanel/FileListPanel";
-import { MarkdownRenderer } from "../FilePreviewPanel/renderers/MarkdownRenderer";
-import { HtmlRenderer } from "../FilePreviewPanel/renderers/HtmlRenderer";
-import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
-import { VideoRenderer } from "../FilePreviewPanel/renderers/VideoRenderer";
+import FileViewerRenderer from "../FilePreviewPanel/renderers/FileViewerRenderer";
 import { isChannelSearchEnabled } from "../ChannelSearch/feature";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
@@ -1931,62 +1928,15 @@ export default class ThreadPanel extends Component<
     const isImage = filePreview.category === "image";
     const isVideo = filePreview.category === "video";
     const isMarkdown = ["md", "markdown"].includes(ext);
-    const isHtml = ["html", "htm"].includes(ext);
-
     const handleError = (error: string) => {
       console.error("FilePreview error:", error);
     };
 
-    // 图片类型（根据 category 判断，因为图片 URL 可能没有扩展名）
-    if (isImage) {
-      return (
-        <div className="wk-thread-panel-file-preview">
-          <ImageRenderer file={filePreview} onError={handleError} />
-        </div>
-      );
-    }
-
-    if (isVideo) {
-      return (
-        <div className="wk-thread-panel-file-preview">
-          <VideoRenderer file={filePreview} onError={handleError} />
-        </div>
-      );
-    }
-
-    // Markdown 文件使用增强的 MarkdownRenderer
-    if (isMarkdown) {
-      return (
-        <div className="wk-thread-panel-file-preview">
-          <MarkdownRenderer
-            file={filePreview}
-            onError={handleError}
-            viewMode={fileViewMode}
-            onViewModeChange={(mode) => this.setState({ fileViewMode: mode })}
-            isTocOpen={isTocOpen}
-            onTocToggle={() => this.setState({ isTocOpen: !isTocOpen })}
-            onTocAvailableChange={this.handleTocAvailableChange}
-          />
-        </div>
-      );
-    }
-
-    // HTML 文件使用增强的 HtmlRenderer（支持预览/源码切换）
-    if (isHtml) {
-      return (
-        <div className="wk-thread-panel-file-preview">
-          <HtmlRenderer
-            file={filePreview}
-            onError={handleError}
-            viewMode={fileViewMode}
-            onViewModeChange={(mode) => this.setState({ fileViewMode: mode })}
-          />
-        </div>
-      );
-    }
-
-    // 其他文件类型使用注册表中的渲染器
-    const { renderer: Renderer } = fileRendererRegistry.getRenderer(ext);
+    return (
+      <div className="wk-thread-panel-file-preview">
+        <FileViewerRenderer file={filePreview} onError={handleError} />
+      </div>
+    );
 
     return (
       <div className="wk-thread-panel-file-preview">

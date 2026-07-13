@@ -65,6 +65,7 @@ export type FileType =
   | "ppt"
   | "video"
   | "audio"
+  | "epub"
   | "unknown";
 
 /** 渲染器注册项 */
