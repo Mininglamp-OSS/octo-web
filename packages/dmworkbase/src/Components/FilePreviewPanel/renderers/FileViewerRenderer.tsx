@@ -35,6 +35,11 @@ const FileViewerRenderer: React.FC<BaseRendererProps> = ({ file, onError }) => {
           theme: "system",
           styleIsolation: "scoped",
           toolbar: { position: "bottom-right" },
+          spreadsheet: {
+            worker: "main",
+            resizableColumns: false,
+            resizableRows: false,
+          },
         }}
         onEvent={handleEvent}
       />
