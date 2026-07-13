@@ -265,7 +265,7 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
       gStatuses: [], gPriorities: [], gProjectIds: [], noProject: false, dateRange: undefined,
     });
 
-  // 「筛选」面板：把原工具栏散落的下拉收进一个面板（对齐 multica 的筛选框）。维度按视图切换单选/多选。
+  // 「筛选」面板：把原工具栏散落的下拉收进一个面板（对齐产品设计 的筛选框）。维度按视图切换单选/多选。
   const filterPanel = (
     <div className="loop-fields loop-filter-panel">
       <div className="loop-filter-panel__head">

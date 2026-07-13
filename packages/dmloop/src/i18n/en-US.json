@@ -112,7 +112,7 @@
     "addComputerBrowser": "1. Browser authorization (this machine has a browser):",
     "addComputerHeadless": "2. Headless (no browser / remote / CI):",
     "headlessTokenPlaceholder": "<click Copy to generate>",
-    "headlessNoBackend": "The administrator has not configured a public backend URL (MULTICA_PUBLIC_URL); headless command unavailable",
+    "headlessNoBackend": "The administrator has not configured a public backend URL; headless command unavailable",
     "headlessFailed": "Failed to generate headless command, please retry",
     "headlessCopyManual": "Command generated below, but auto-copy failed — please copy it manually"
   },
