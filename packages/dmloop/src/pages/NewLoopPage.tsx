@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { Select, Button, Toast, Spin } from "@douyinfe/semi-ui";
-import { ArrowLeft, Paperclip, CornerDownLeft } from "lucide-react";
+import { ArrowLeft, Paperclip, CornerDownLeft, UserPlus } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { AssigneeType, Project } from "../api/types";
 import { quickCreateIssue } from "../api/issueApi";
 import { listProjects } from "../api/projectApi";
 import { uploadAttachment } from "../api/attachmentApi";
 import AssigneePicker from "../ui/AssigneePicker";
+import CreateIssueModal from "../ui/CreateIssueModal";
 import AutoGrowTextarea from "../ui/AutoGrowTextarea";
 import "./loop.css";
 import "../ui/loopControls.css";
@@ -21,6 +22,9 @@ export interface NewLoopPageProps {
  * 派给 agent/squad 恒走 quickCreateIssue(POST /issues/quick-create,建单前查 runtime 在线 + daemon
  * 版本,离线/过旧当场 422,返回 task_id 由 agent 异步建单)。指派器只给 AI(agent/squad),故须选一个
  * AI 队友才能派单——无指派时按钮置灰(无 AI 的回路没人跑,不是本页的意图)。
+ * 需指派给「人」时走顶部「手动建单」切换,唤起 CreateIssueModal(title + member/agent/squad 三态 +
+ * 状态/优先级,createIssue 同步建单不派单)——对齐上游 quick-create(AI)/manual(可指人)双模式,
+ * 上游亦在框内切换而非入口菜单(create-mode-store)。
  * 渲染在右主栏（routeRight.push），返回 pop。
  */
 export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
@@ -33,6 +37,7 @@ export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
   const [assigneeName, setAssigneeName] = useState<string | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
 
   useEffect(() => {
     listProjects().then(setProjects).catch(() => setProjects([]));
@@ -110,6 +115,10 @@ export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
       <div className="loop-newloop__bar-top">
         <Button icon={<ArrowLeft size={16} />} theme="borderless" onClick={back}>
           {t("loop.detail.back")}
+        </Button>
+        {/* 指派给「人」→ 切到手动建单(CreateIssueModal 支持 member/agent/squad),对齐上游框内切换。 */}
+        <Button icon={<UserPlus size={14} />} theme="borderless" onClick={() => setManualOpen(true)} style={{ marginLeft: "auto" }}>
+          {t("loop.newLoop.manualSwitch")}
         </Button>
       </div>
 
@@ -189,6 +198,15 @@ export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
       </div>
 
       {submitting && <div className="loop-newloop__overlay"><Spin /></div>}
+
+      {/* 手动建单(可指派给人):顶层建单,无 parentIssueId;成功后复用同一 onCreated 回落看板。
+          成功 toast 归此处的调用方(对齐 AI 派单路 + IssueDetailPage 约定:CreateIssueModal 自身不弹,
+          由调用方弹「已创建」;单弹一次,不与派单路重复)。 */}
+      <CreateIssueModal
+        visible={manualOpen}
+        onClose={() => setManualOpen(false)}
+        onCreated={() => { setManualOpen(false); Toast.success({ content: t("loop.toast.created"), duration: 3 }); onCreated?.(); }}
+      />
     </div>
   );
 }
