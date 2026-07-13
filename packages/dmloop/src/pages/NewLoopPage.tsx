@@ -3,7 +3,7 @@ import { Select, Button, Toast, Spin } from "@douyinfe/semi-ui";
 import { ArrowLeft, Paperclip, CornerDownLeft } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { AssigneeType, Project } from "../api/types";
-import { createIssue } from "../api/issueApi";
+import { quickCreateIssue } from "../api/issueApi";
 import { listProjects } from "../api/projectApi";
 import { uploadAttachment } from "../api/attachmentApi";
 import AssigneePicker from "../ui/AssigneePicker";
@@ -16,15 +16,11 @@ export interface NewLoopPageProps {
   onCreated?: () => void;
 }
 
-// 从 prompt 派生标题：取首个非空行、裁到 ~80 字（其余保留在描述里）。
-function deriveTitle(prompt: string): string {
-  const line = prompt.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
-  return line.length > 80 ? line.slice(0, 80) : line;
-}
-
 /**
  * 新建回路独立页（对齐 Figma「把活交给 AI 队友」）：一句话 prompt + 项目/附件 + 指派 AI 队友 → 派单。
- * 映射到现有 createIssue（title 由 prompt 派生，description=prompt，assignee=agent/squad，status=todo 触发派单）。
+ * 派给 agent/squad 恒走 quickCreateIssue(POST /issues/quick-create,建单前查 runtime 在线 + daemon
+ * 版本,离线/过旧当场 422,返回 task_id 由 agent 异步建单)。指派器只给 AI(agent/squad),故须选一个
+ * AI 队友才能派单——无指派时按钮置灰(无 AI 的回路没人跑,不是本页的意图)。
  * 渲染在右主栏（routeRight.push），返回 pop。
  */
 export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
@@ -54,10 +50,13 @@ export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
 
   const submit = async () => {
     const text = prompt.trim();
-    if (!text || submitting) return;
+    // 需 prompt + 指派 AI 队友(agent/squad)。本页只派单,无指派不可提交(按钮已置灰,这里双保险)。
+    if (!text || !assigneeId || submitting) return;
     setSubmitting(true);
     try {
-      // 附件先上传拿 id（issue 尚不存在），再随 createIssue 绑定。单个失败只提示、不阻断建单。
+      // 附件先上传拿 id（issue 尚不存在），再随派单绑定。
+      // 派单流的附件是 agent 的上下文:任一上传失败就整体中止派单(不静默用残缺上下文派单——
+      // 异步 fire-and-forget,用户导航走后无法补救),提示重试。全成功才继续。
       let attachmentIds: string[] | undefined;
       if (pendingFiles.length) {
         const ids: string[] = [];
@@ -65,24 +64,32 @@ export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
         for (const f of pendingFiles) {
           try { ids.push((await uploadAttachment(f)).id); } catch { failed++; }
         }
-        if (failed) Toast.error(t("loop.toast.attachFailed", { values: { count: failed } }));
+        if (failed) {
+          Toast.error({ content: t("loop.newLoop.attachFailedAbort", { values: { count: failed } }), duration: 3 });
+          return; // finally 会复位 submitting;不派单,用户可重试
+        }
         if (ids.length) attachmentIds = ids;
       }
-      await createIssue({
-        title: deriveTitle(text),
-        description: text,
-        status: "todo",
-        priority: "none",
-        assignee_id: assigneeId,
-        assignee_type: assigneeType,
+      // 一句话派单 → quick-create:建单前查 runtime 在线 + daemon 版本,离线/过旧当场 422 反馈,
+      // 返回 task_id(异步:agent 稍后建单并跑)。assignee 恒为 agent/squad(指派器只给 AI)。
+      await quickCreateIssue({
+        ...(assigneeType === "squad" ? { squad_id: assigneeId } : { agent_id: assigneeId }),
+        prompt: text,
         project_id: projectId,
         attachment_ids: attachmentIds,
       });
-      // 创建成功后由调用方负责导航(pop 回列表 / 切到回路看板)——此处不再自行 back(),
-      // 避免与调用方的 replaceToRoot 叠加导致把新根也 pop 掉、右栏变空。
+      // 单一 toast 归属此处(异步派单的准确措辞);duration 显式设 3s 保证自动消失。
+      Toast.success({ content: t("loop.newLoop.dispatched"), duration: 3 });
+      // 成功后由调用方负责导航(切回回路看板)——此处不再自行 back(),避免叠加把新根 pop 掉。
       onCreated?.();
     } catch (e) {
-      Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
+      // quick-create 结构化 422:LoopApiError.code 映射成友好提示(即时失败反馈)。
+      const err = e as { code?: string; message?: string };
+      const msg =
+        err.code === "agent_unavailable" ? t("loop.newLoop.agentUnavailable")
+        : err.code === "daemon_version_unsupported" ? t("loop.newLoop.daemonUnsupported")
+        : (err.message ?? t("loop.toast.saveFailed"));
+      Toast.error({ content: msg, duration: 3 });
     } finally {
       setSubmitting(false);
     }
@@ -150,7 +157,7 @@ export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
                   onChange={(id, type, name) => { setAssigneeId(id); setAssigneeType(type); setAssigneeName(name); }}
                 />
               </div>
-              <Button theme="solid" loading={submitting} disabled={!prompt.trim()} onClick={submit} icon={<CornerDownLeft size={14} />} iconPosition="right">
+              <Button theme="solid" loading={submitting} disabled={!prompt.trim() || !assigneeId} onClick={submit} icon={<CornerDownLeft size={14} />} iconPosition="right">
                 {t("loop.newLoop.dispatch")}
               </Button>
             </div>
