@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Typography, Spin, Tag, Banner, Button, Toast } from "@douyinfe/semi-ui";
 import { Box, Check, Circle, Code2, Copy, Cpu, Monitor, Plus, Terminal } from "lucide-react";
 import { copyToClipboard, useI18n, WKModal } from "@octo/base";
 import type { RuntimeDevice, RuntimeMode } from "../api/types";
 import { listRuntimes } from "../api/runtimeApi";
 import { issueHeadlessCliToken, getDaemonServerUrl } from "../api/authApi";
+import { headlessCommand } from "./headlessCommand";
 import "./runtime.css";
 
 const { Title } = Typography;
@@ -33,12 +34,6 @@ function currentOrigin(): string {
 // （daemon 会据此推导 fleet 地址）。
 function addComputerCommand(): string {
   return `octo-daemon --server-url ${currentOrigin()}`;
-}
-
-// headless 免浏览器命令:login --token 直连后端 daemon_server_url,
-// 随后 daemon start。PAT 在用户点击时才签发。
-function headlessCommand(token: string, backendUrl: string): string {
-  return `octo-daemon login --token ${token} --server-url ${backendUrl} && octo-daemon daemon start`;
 }
 
 interface Device {
@@ -127,6 +122,9 @@ export default function RuntimePage() {
   const [headlessCommandText, setHeadlessCommandText] = useState("");
   const [headlessLoading, setHeadlessLoading] = useState(false);
   const [headlessCopied, setHeadlessCopied] = useState(false);
+  // 同步重入守卫：React state 是异步提交的，挡不住同一 tick 内的连点；
+  // 用 ref 在签发前就拦住并发点击，保证一次会话只签发一个 PAT。
+  const mintingRef = useRef(false);
 
   useEffect(() => {
     getDaemonServerUrl().then(setDaemonServerUrl).catch(() => setDaemonServerUrl(""));
@@ -187,6 +185,8 @@ export default function RuntimePage() {
       Toast.warning(t("loop.runtime.headlessNoBackend"));
       return;
     }
+    if (mintingRef.current) return;
+    mintingRef.current = true;
     setHeadlessLoading(true);
     try {
       let cmd = headlessCommandText;
@@ -206,8 +206,17 @@ export default function RuntimePage() {
     } catch {
       Toast.error(t("loop.runtime.headlessFailed"));
     } finally {
+      mintingRef.current = false;
       setHeadlessLoading(false);
     }
+  };
+
+  // 关闭「添加电脑」弹窗时清除已签发的真实命令/凭证，避免重开弹窗再次把
+  // 上一次的 PAT 渲染出来。
+  const closeAddDialog = () => {
+    setAddOpen(false);
+    setHeadlessCommandText("");
+    setHeadlessCopied(false);
   };
 
   return (
@@ -281,11 +290,11 @@ export default function RuntimePage() {
       </div>
       <WKModal
         visible={addOpen}
-        onCancel={() => setAddOpen(false)}
+        onCancel={closeAddDialog}
         title={t("loop.runtime.addComputerTitle")}
         size="lg"
         footer={(
-          <Button theme="borderless" type="tertiary" onClick={() => setAddOpen(false)}>
+          <Button theme="borderless" type="tertiary" onClick={closeAddDialog}>
             {t("loop.action.cancel")}
           </Button>
         )}
