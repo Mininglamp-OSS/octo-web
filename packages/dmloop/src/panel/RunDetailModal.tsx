@@ -142,6 +142,9 @@ export default function RunDetailModal({
   const [liveRun, setLiveRun] = useState<TaskRun | null>(run);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  // run 连续 miss 达阈值判定"已消失"——与终态停轮询区分:终态是 run 仍在、只是跑完了;
+  // gone 是 run 从列表里没了(被删/清理),此时不能静默冻在陈旧的 running,要给用户提示。
+  const [gone, setGone] = useState(false);
   const lastSeqRef = useRef(0);
   // listRuns 内部吞掉 task-runs 的 HTTP 失败返回 []([] 既可能是"run 消失"也可能是"瞬时网络失败",
   // 无法区分)。连续 miss 计数:容忍偶发 [](下轮即恢复),连续多次才判定 run 真消失并停轮询——
@@ -151,11 +154,12 @@ export default function RunDetailModal({
 
   // 打开时全量拉;运行中的 run 则每 2s 增量轮询 + 刷新状态,终态即停(无 WS,退化轮询)。
   useEffect(() => {
-    if (!visible || !run) { setMessages([]); setLiveRun(null); lastSeqRef.current = 0; missRef.current = 0; return; }
+    if (!visible || !run) { setMessages([]); setLiveRun(null); lastSeqRef.current = 0; missRef.current = 0; setGone(false); return; }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     lastSeqRef.current = 0;
     missRef.current = 0;
+    setGone(false);
     setLiveRun(run);
 
     const apply = (batch: RunMessage[], incremental: boolean) => {
@@ -177,7 +181,7 @@ export default function RunDetailModal({
           const fresh = (await listRuns(run.issue_id)).find((r) => r.id === run.id);
           if (cancelled) return;
           if (fresh) { setLiveRun(fresh); stillActive = isActiveRun(fresh.status); missRef.current = 0; }
-          else { missRef.current += 1; stillActive = missRef.current < MAX_MISSES; } // 连续 miss 达阈值才停(容忍瞬时 [])
+          else { missRef.current += 1; stillActive = missRef.current < MAX_MISSES; if (!stillActive) setGone(true); } // 连续 miss 达阈值:判定 run 已消失,停轮询并提示
         } catch { /* ensureDirectory 等抛错:保持轮询 */ }
         if (!cancelled && stillActive) poll();
         // 终止前再做一次增量抓取:run 完成时的最后一批消息(result/error)常在上面抓取返回后、
@@ -226,7 +230,9 @@ export default function RunDetailModal({
     }).catch(() => {});
   };
 
-  const statusBadge = !shown ? null : active ? (
+  const statusBadge = !shown ? null : gone ? (
+    <span className="loop-tr__status loop-tr__status--fail"><XCircle size={12} />{t("loop.run.gone")}</span>
+  ) : active ? (
     <span className="loop-tr__status loop-tr__status--running"><Loader2 size={12} className="loop-spin" />{t("loop.taskStatus.running")}</span>
   ) : shown.status === "completed" ? (
     <span className="loop-tr__status loop-tr__status--ok"><CheckCircle2 size={12} />{t("loop.taskStatus.completed")}</span>
