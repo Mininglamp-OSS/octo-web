@@ -1,6 +1,5 @@
 import { Convert, IModule, WKApp, hasSpacePrefix, ChannelTypeCommunityTopic } from "@octo/base"
-import { Channel, ChannelTypePerson, WKSDK, Message } from "wukongimjssdk";
-import { MessageTask } from "wukongimjssdk";
+import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import { ConversationProvider } from "./conversation";
 import { ChannelDataSource, CommonDataSource } from "./datasource";
 import { MediaMessageUploadTask } from "./task";
@@ -8,6 +7,7 @@ import { createChannelInfoCallback } from "./im-callbacks/channelInfo";
 import { createSyncConversationExtrasCallback } from "./im-callbacks/conversationExtras";
 import { createSyncConversationsCallback } from "./im-callbacks/conversations";
 import { createMessageReadedCallback } from "./im-callbacks/messageReaded";
+import { createMessageUploadTaskCallback } from "./im-callbacks/messageUploadTask";
 import { createSyncMessageExtraCallback } from "./im-callbacks/messageExtras";
 import { createReminderDoneCallback } from "./im-callbacks/reminderDone";
 import { createSyncRemindersCallback } from "./im-callbacks/reminders";
@@ -66,10 +66,9 @@ export default class DataSourceModule implements IModule {
     }
 
     setMessageUploadTaskCallback() {
-        // 消息上传任务
-        WKSDK.shared().config.provider.messageUploadTaskCallback = (message: Message): MessageTask => {
-            return new MediaMessageUploadTask(message)
-        }
+        WKSDK.shared().config.provider.messageUploadTaskCallback = createMessageUploadTaskCallback({
+            createMessageUploadTask: (message) => new MediaMessageUploadTask(message),
+        })
     }
 
     setSyncConversationExtrasCallback() {
