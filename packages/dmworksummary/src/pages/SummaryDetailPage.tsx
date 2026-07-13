@@ -17,6 +17,7 @@ import WKApp from "@octo/base/src/App";
 import { splitSummaryText } from "../utils/splitMessage";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
+import { RefineSection } from "../components/RefineSection";
 import OverflowTooltip from "../components/OverflowTooltip";
 import type {
     SummaryDetail,
@@ -2038,6 +2039,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {detail.status === TaskStatus.COMPLETED && detail.summary_mode !== SummaryMode.BY_PERSON && (
                                     this.renderCompleted()
                                 )}
+
+                                <RefineSection
+                                    detail={detail}
+                                    onRefineSuccess={(newContent, newVersion, citations) => {
+                                        this.setState({
+                                            detail: {
+                                                ...detail,
+                                                result: detail.result ? {
+                                                    ...detail.result,
+                                                    content: newContent,
+                                                    version: newVersion,
+                                                    citations,
+                                                } : null,
+                                            },
+                                        });
+                                    }}
+                                />
 
                                 <SelectedSourcesPanel sources={detail.sources} />
                             </>
