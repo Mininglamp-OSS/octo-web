@@ -71,12 +71,7 @@ export type MittEvents = {
    * 不会自动 remount, 接收方需要主动 reload。
    */
   'wk:nav-menu-activated': { menuId: string };
-  /**
-   * dmloop 派单(quick-create)后的看板补刷协议。派单是异步的(agent 稍后建 issue,dmloop 暂无 WS 推送):
-   * NewLoopPage 派单成功发 `wk:loop-issues-dispatched`;常驻的 LoopPage 据此有界补发 `wk:loop-issues-refresh`,
-   * 当前挂载的看板(IssuePage)订阅后重取,使新回路自动出现——统一覆盖看板内/侧栏两个建单入口。
-   */
-  'wk:loop-issues-dispatched': void;
+  /** dmloop 看板实时刷新信号:WS 客户端(dmloop/api/ws.ts)收到 issue/task 事件时发出,看板订阅后静默重取。 */
   'wk:loop-issues-refresh': void;
   /**
    * 打开「密钥 / Secrets」管理面板（YUJ-3539）。由聊天反向跳转（bot 消息里的

@@ -7,6 +7,7 @@ import {
   getSquad, updateSquad, deleteSquad, addSquadMember, removeSquadMember, updateSquadMemberRole, getSquadMemberStatus,
 } from "../api/squadApi";
 import { listAssigneeCandidates } from "../api/issueApi";
+import { loopWs } from "../api/ws";
 import { confirmDelete } from "../ui/confirmDelete";
 import { formatRelativeTime } from "../ui/time";
 import AgentDetailPage from "./AgentDetailPage";
@@ -63,10 +64,10 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
   }, [squadId]);
   useEffect(load, [load]);
   useEffect(() => { listAssigneeCandidates().then((cs) => setCands(cs.filter((c) => c.type !== "squad"))).catch(() => setCands([])); }, []);
-  // 成员状态非实时推送：面板打开期间每 30s 轮询一次，作为 staleTime 式兜底。
+  // 成员在线状态由 WS agent:status 驱动;断连期间的变化在重连后下个心跳自愈。
   useEffect(() => {
-    const id = window.setInterval(() => { getSquadMemberStatus(squadId).then(setStatusList).catch(() => undefined); }, 30000);
-    return () => window.clearInterval(id);
+    const refetch = () => { getSquadMemberStatus(squadId).then(setStatusList).catch(() => undefined); };
+    return loopWs.on("agent:status", refetch);
   }, [squadId]);
 
   const statusById = useMemo(() => {

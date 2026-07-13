@@ -12,13 +12,15 @@ import {
   ChevronRight,
   Clock,
 } from "lucide-react";
-import { useI18n } from "@octo/base";
+import { useI18n, WKApp } from "@octo/base";
 import type { TaskRun, RunMessage } from "../api/types";
 import { listRunMessages, listRuns } from "../api/runsApi";
+import { loopWs } from "../api/ws";
 import { isActiveRun } from "../ui/meta";
 import { formatDurationMs } from "../ui/time";
 
-const POLL_MS = 2000;
+// 终态后再补一次增量抓取的延迟(收尾 result/error 消息常在 status 翻转后才写入,#610)。
+const TAIL_FETCH_MS = 2000;
 
 type EventColor = "agent" | "thinking" | "tool" | "result" | "error";
 
@@ -152,55 +154,86 @@ export default function RunDetailModal({
   const missRef = useRef(0);
   const MAX_MISSES = 3;
 
-  // 打开时全量拉;运行中的 run 则每 2s 增量轮询 + 刷新状态,终态即停(无 WS,退化轮询)。
+  // 打开全量拉;运行中订阅 WS 事件驱动增量 + 状态,终态即停。
   useEffect(() => {
     if (!visible || !run) { setMessages([]); setLiveRun(null); lastSeqRef.current = 0; missRef.current = 0; setGone(false); return; }
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let finalTimer: ReturnType<typeof setTimeout> | undefined;
+    let unsub: Array<() => void> = [];
+    const stopListening = () => { unsub.forEach((f) => f()); unsub = []; };
     lastSeqRef.current = 0;
     missRef.current = 0;
     setGone(false);
     setLiveRun(run);
+    setMessages([]); // 切 run 时清空,后续一律 append+dedup(避免整表替换盖掉并发到达的增量)
 
-    const apply = (batch: RunMessage[], incremental: boolean) => {
-      if (batch.length) lastSeqRef.current = Math.max(lastSeqRef.current, ...batch.map((m) => m.seq));
-      if (!incremental) { setMessages(batch); return; }
+    const apply = (batch: RunMessage[]) => {
       if (!batch.length) return;
+      lastSeqRef.current = Math.max(lastSeqRef.current, ...batch.map((m) => m.seq));
       setMessages((prev) => {
         const seen = new Set(prev.map((m) => m.seq));
         return [...prev, ...batch.filter((m) => !seen.has(m.seq))];
       });
     };
 
-    const poll = () => {
-      timer = setTimeout(async () => {
-        if (cancelled) return;
-        await listRunMessages(run.id, lastSeqRef.current).then((b) => { if (!cancelled) apply(b ?? [], true); }).catch(() => {});
-        let stillActive = true;
+    // 增量抓取 + 状态检查。in-flight 守卫:突发事件不并发重叠,进行中再来的合并成一次尾随重跑。
+    // 事件为 workspace 级未按 run 过滤,抓本 run 自己的消息即可。
+    let ticking = false;
+    let pending = false;
+    const tick = async () => {
+      if (cancelled) return;
+      if (ticking) { pending = true; return; }
+      ticking = true;
+      try {
+        await listRunMessages(run.id, lastSeqRef.current).then((b) => { if (!cancelled) apply(b ?? []); }).catch(() => {});
         try {
           const fresh = (await listRuns(run.issue_id)).find((r) => r.id === run.id);
           if (cancelled) return;
-          if (fresh) { setLiveRun(fresh); stillActive = isActiveRun(fresh.status); missRef.current = 0; }
-          else { missRef.current += 1; stillActive = missRef.current < MAX_MISSES; if (!stillActive) setGone(true); } // 连续 miss 达阈值:判定 run 已消失,停轮询并提示
-        } catch { /* ensureDirectory 等抛错:保持轮询 */ }
-        if (!cancelled && stillActive) poll();
-        // 终止前再做一次增量抓取:run 完成时的最后一批消息(result/error)常在上面抓取返回后、
-        // status 翻转前才写入,不补一次会永久丢失最关键的收尾消息(#610 评审)。
-        else if (!cancelled) await listRunMessages(run.id, lastSeqRef.current).then((b) => { if (!cancelled) apply(b ?? [], true); }).catch(() => {});
-      }, POLL_MS);
+          if (fresh) {
+            setLiveRun(fresh);
+            missRef.current = 0;
+            if (!isActiveRun(fresh.status)) {
+              // 终态:停订阅,再延迟补一次增量——收尾 result/error 消息常在 status 翻转后才写入(#610)。
+              stopListening();
+              finalTimer = setTimeout(() => {
+                listRunMessages(run.id, lastSeqRef.current).then((b) => { if (!cancelled) apply(b ?? []); }).catch(() => {});
+              }, TAIL_FETCH_MS);
+            }
+          } else {
+            missRef.current += 1;
+            if (missRef.current >= MAX_MISSES) { setGone(true); stopListening(); } // 连续 miss:run 已消失,停并提示
+          }
+        } catch { /* ensureDirectory 等抛错:忽略,下个事件再试 */ }
+      } finally {
+        ticking = false;
+        if (pending && !cancelled) { pending = false; void tick(); }
+      }
     };
+
+    // 先订阅再 fetch:监听器必须在初始 fetch 之前挂——否则 fetch 那一 round-trip 内到达的终态事件
+    // 会因无监听器丢失(终态不复发 → tick 永不触发 → 弹窗永远卡在"运行中")。仅运行中 run 订阅。
+    if (isActiveRun(run.status)) {
+      const trigger = () => { void tick(); };
+      WKApp.mittBus.on("wk:loop-issues-refresh", trigger); // 域级:含 issue:deleted / 终态 / 重连
+      unsub = [
+        () => WKApp.mittBus.off("wk:loop-issues-refresh", trigger),
+        loopWs.on("activity:created", trigger), // transcript 增量
+        loopWs.on("task:progress", trigger),
+      ];
+    }
 
     setLoading(true);
     listRunMessages(run.id)
-      .then((m) => { if (!cancelled) apply(m ?? [], false); })
+      .then((m) => { if (!cancelled) apply(m ?? []); })
       .catch(() => { if (!cancelled) setMessages([]); })
       .finally(() => {
         if (cancelled) return;
         setLoading(false);
-        if (isActiveRun(run.status)) poll();
+        // reconcile:补齐 fetch 窗口内到达的事件,并用 listRuns 查最新状态(mount 时 run.status 可能已陈旧)。
+        if (isActiveRun(run.status)) void tick();
       });
 
-    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+    return () => { cancelled = true; stopListening(); if (finalTimer) clearTimeout(finalTimer); };
   }, [visible, run]);
 
   const shown = liveRun ?? run;

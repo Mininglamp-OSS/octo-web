@@ -85,10 +85,7 @@ export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
       });
       // 单一 toast 归属此处(异步派单的准确措辞);duration 显式设 3s 保证自动消失。
       Toast.success({ content: t("loop.newLoop.dispatched"), duration: 3 });
-      // 派单是异步的(agent 稍后建 issue),通知常驻 LoopPage 有界补刷看板,使新回路自动出现(无需手动 reload)。
-      // 见 LoopPage 的 wk:loop-issues-dispatched 处理;覆盖看板内/侧栏两个入口。
-      WKApp.mittBus.emit("wk:loop-issues-dispatched");
-      // 成功后由调用方负责导航(切回回路看板)——此处不再自行 back(),避免叠加把新根 pop 掉。
+      // 看板刷新由 WS 驱动,此处只导航回看板。
       onCreated?.();
     } catch (e) {
       // quick-create 结构化 422:LoopApiError.code 映射成友好提示(即时失败反馈)。

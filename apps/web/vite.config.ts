@@ -147,7 +147,17 @@ export default defineConfig(({ mode }) => {
             ? (path: string) => path.replace(/^\/matter/, "")
             : undefined,
         },
-        // Loop (fleet) service API — 真实 multica-server/fleet 联调。
+        // dmloop 实时 WS:直连后端 /ws(loop proxy 不处理 upgrade)。须在 /fleet/api 规则之前。
+        // 生产需网关把 /fleet/ws 的 WebSocket upgrade 转发到后端 /ws。
+        "/fleet/ws": {
+          target: env.VITE_FLEET_WS_URL || "ws://127.0.0.1:8080",
+          // changeOrigin:false 保留原 Host 与 Origin 同源,过后端 checkOrigin;置 true 会 403。
+          changeOrigin: false,
+          secure: false,
+          ws: true,
+          rewrite: (path: string) => path.replace(/^\/fleet\/ws/, "/ws"),
+        },
+        // Loop (fleet) service API — 真实后端 fleet 服务联调。
         // dev fleet 在 127.0.0.1:8091 直接提供完整 /fleet/api/v1/... 路径（不 strip）。
         // 必须放在下面通用 /fleet/api/ 规则之前（vite first-match）。
         "/fleet/api/v1": {
