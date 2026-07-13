@@ -33,6 +33,8 @@ export type MittEvents = {
   "wk:toggle-matter-detail-panel": { channelId: string; channelType: number };
   "wk:toggle-summary-panel": { channelId: string; channelType: number; summaryPanelView: 'history' | 'new'; forceOpen?: boolean };
   "wk:open-summary-modal": { channelId: string; channelType: number };
+  /** 主聊天框头部搜索入口点击：请求打开该频道的会话内搜索面板（与信息栏「查找聊天内容」同一效果）。 */
+  "wk:open-channel-search": { channelId: string; channelType: number };
   /** 打开多选→添加到事项的弹出菜单（由 dmworktodo 模块接管渲染） */
   "wk:open-matter-link-menu": { anchor: HTMLElement; channelId: string; channelType: number; messages?: Array<{ messageSeq?: number; messageID?: string; fromUID?: string; fromUName?: string; content?: string; timestamp?: number; attachments?: any[] }> };
   "wk:switch-sidebar-tab": string;
