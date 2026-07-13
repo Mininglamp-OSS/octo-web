@@ -84,6 +84,22 @@ OIDC 按钮和本地账号密码登录共存于同一页面，用户自由选择
 - 友好的时间格式（今天 HH:mm / 昨天 HH:mm / MM-dd HH:mm / yyyy-MM-dd HH:mm）
 - 空状态遮罩提示
 
+### Markdown 渲染
+
+AI Agent 的回复以 Markdown 格式呈现，由原生 `MarkdownView` 控件渲染（无 WebView 依赖）：
+
+- 支持代码块（`` ``` ``）、标题（`#`）、粗体（`**text**`）、内联代码（`` `code` ``）、列表
+- 代码块使用平台原生等宽字体（Windows: Cascadia Code，Apple: Menlo）
+- 主题切换时自动重新渲染（监听 `RequestedThemeChanged` 事件）
+- 未闭合代码块容错处理（不跳过末尾行）
+- 正则表达式预编译为 `static readonly`，避免重复编译开销
+
+### 拖拽上传
+
+- 聊天区域支持拖拽文件 / 图片直接上传（`DropGestureRecognizer`）
+- 拖拽悬停时显示视觉反馈（`IsDragOver` 状态）
+- 支持多文件批量上传，单个文件失败不影响其余（`continue` 而非 `return`）
+
 ### 流式回复渲染
 
 AI Agent 的回复以流式方式实时呈现：
@@ -103,7 +119,12 @@ AI Agent 的回复以流式方式实时呈现：
 ### 系统托盘集成
 
 - `ITrayService` 抽象接口，跨平台兼容（非 Windows 平台为 no-op）
-- Windows 平台通过 `WindowsTrayService` 实现（Win32 NotifyIcon scaffold）
+- Windows 平台通过 `WindowsTrayService` 完整实现 Win32 P/Invoke：
+  - `Shell_NotifyIconW` 管理托盘图标（添加 / 删除 / 修改）
+  - 消息专用窗口（`HWND_MESSAGE`）接收托盘回调
+  - `TrackPopupMenu` 右键菜单（显示窗口 / 退出）
+  - 实现 `IDisposable`，确保原生资源正确释放
+  - `InitializeAsync` 返回可等待的 `Task`（`TaskCompletionSource`）
 - 窗口关闭时可最小化到托盘而非退出
 - 托盘右键菜单：显示窗口 / 退出
 
@@ -118,7 +139,8 @@ AI Agent 的回复以流式方式实时呈现：
 
 - 默认窗口 1180×760，最小 880×560
 - 窗口位置和尺寸持久化（基于 `Preferences`）
-- 动态标题栏显示当前服务端地址
+- 拖拽调整大小时防抖保存（500ms `CancellationTokenSource`，避免写入风暴）
+- 动态标题栏显示当前用户名（`OCTO — <user>`）
 
 ## 项目结构
 
@@ -133,7 +155,9 @@ apps/octo-maui/
     ├── Pages/                   # XAML 页面
     │   ├── ServerConfigPage     #   引导式服务端配置
     │   ├── LoginPage            #   登录（OIDC + 账号密码）
-    │   └── ChatPage             #   聊天主界面
+    │   └── ChatPage             #   聊天主界面（含拖拽上传）
+    ├── Controls/                # 自定义控件
+    │   └── MarkdownView         #   Markdown 渲染器（代码块/标题/粗体/内联代码）
     ├── ViewModels/              # MVVM ViewModel
     │   ├── ViewModelBase        #   INotifyPropertyChanged + Command 基类
     │   ├── ServerConfigViewModel#   分步验证 + 历史记录 + 能力预览
@@ -164,11 +188,14 @@ apps/octo-maui/
 采用 MVVM 模式，手写 `ViewModelBase`（无外部 MVVM 工具包依赖，零隐藏魔法）：
 
 - **Pages** 是纯 XAML + code-behind，通过 `BindingContext` 绑定到 ViewModel
-- **ViewModels** 通过 `ViewModelBase` 实现 `INotifyPropertyChanged`，用字典存储
-  属性值，`CreateCommand` 辅助创建命令
+- **ViewModels** 通过 `ViewModelBase` 实现 `INotifyPropertyChanged`，用
+  `ConcurrentDictionary` 线程安全存储属性值，`CreateCommand` 辅助创建命令
+  （含 `Func<Task>` 重载，避免 async-void）
 - **Services** 通过 `MauiProgram` 依赖注入容器注册，在构造函数中注入
 - **Models** 对应 `octo-server` 的 REST 数据结构
 - **三层路由**：未配置服务端 → 服务端配置页；已配置未登录 → 登录页；已登录 → 聊天页
+- **资源释放**：`ChatViewModel` 和 `WindowsTrayService` 实现 `IDisposable`，
+  页面离开时取消订阅 WebSocket 事件，防止 Transient ViewModel + Singleton Service 内存泄漏
 
 ### 关键设计：ProbeAsync（探测不保存）
 
@@ -206,17 +233,43 @@ apps/octo-maui/
 - ✅ 本地账号密码登录
 - ✅ 企业 OIDC / SSO 登录（authcode 轮询）
 - ✅ 聊天界面（消息列表 + 频道侧边栏 + WebSocket）
-- ✅ 主题系统（浅色 / 深色 / 跟随系统）
-- ✅ 窗口管理（位置持久化 + 最小尺寸限制）
+- ✅ 主题系统（浅色 / 深色 / 跟随系统 + MarkdownView 主题响应）
+- ✅ 窗口管理（位置持久化 + 最小尺寸限制 + 防抖保存）
 - ✅ 流式回复渲染（stream_start / stream_chunk / stream_end + 打字指示器）
+- ✅ Markdown / 代码块渲染（MarkdownView 控件 + 主题响应 + 未闭合代码块容错）
 - ✅ 文件 / 图片上传（multipart/form-data + FilePicker + 图片预览 + 文件卡片）
-- ✅ 系统托盘集成（ITrayService 接口 + Windows 平台 scaffold）
+- ✅ 拖拽上传支持（DropGestureRecognizer + 多文件批量上传 + 失败继续）
+- ✅ 系统托盘集成（Win32 Shell_NotifyIconW 完整实现 + 右键菜单 + IDisposable）
 - ✅ 自动更新（GET /v1/common/version + semver 比较 + 启动时弹窗提示）
 
+### 质量改进（第二轮严格审阅）
+
+基于编码、编译、兼容性和安全四个维度的严格审阅，修复 25 个问题：
+
+**线程安全 / 编译**：
+- `ApiService`: `Interlocked.Exchange` 原子替换 HttpClient，channelId URL 编码
+- `WebSocketService`: await receiveLoop 后再 Dispose socket，buffer 增至 64KB
+- `ChatViewModel`: 实现 `IDisposable` 取消订阅事件，Token null 检查
+- `App.xaml.cs`: 移除 null-forgiving `!`，`AuthStateChanged` 防重复订阅
+- `MauiProgram`: 默认 BaseUrl 改为 `https://`，环境变量过 `NormalizeUrl` 验证
+- `WindowsTrayService`: 实现 `IDisposable`，`InitializeAsync` 返回可等待 Task
+
+**编码规范**：
+- `AuthService`: `OperationCanceledException` 重抛，移除无意义 `await Task.CompletedTask`
+- `AppShell`: fire-and-forget 改顺序 await，`Navigate` 改为 `async Task`
+- `ViewModelBase`: `ConcurrentDictionary` 线程安全属性存储
+
+**兼容性**：
+- `MarkdownView`: 监听 `RequestedThemeChanged` 重新渲染，代码块未闭合容错
+- `ApiService`: `AllowInsecureSsl` 选项支持自签名证书（内部部署）
+
+**安全**：
+- Token 从 `Preferences` 迁移到 `SecureStorage`（DPAPI / Keychain / KeyStore）
+- WebSocket 移除 URL query string 中的 token，仅用 Authorization header
+- `NormalizeUrl` 拒绝非 localhost 的 cleartext HTTP
+
 待优化：
-- ⬜ Windows 托盘 Win32 NotifyIcon 完整实现（当前为 scaffold）
-- ⬜ 流式回复的 Markdown / 代码块渲染
-- ⬜ 拖拽上传支持
+（暂无 — 所有已知待优化项均已完成）
 
 ## 许可
 
