@@ -4,6 +4,7 @@ import Provider, { IProviderListener } from "../../Service/Provider"
 import { Switch, Toast } from "@douyinfe/semi-ui"
 import { OboGrant, OboScope, PersonaEditVM } from "./vm"
 import { I18nContext } from "../../i18n"
+import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton"
 
 /**
  * PersonaEdit — 单个 grant 的编辑页（mode + global toggle + scope 列表 + 删除）。
@@ -76,6 +77,26 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
         saving: false,
     }
     private confirmTimer?: ReturnType<typeof setTimeout>
+    private promptRef = React.createRef<HTMLTextAreaElement>()
+
+    private handleVoiceTranscribed = (
+        text: string,
+        mode: ReplaceMode,
+        savedRange?: SelectionRange
+    ) => {
+        if (mode === "all") {
+            this.setState({ prompt: text })
+        } else if (mode === "selection" && savedRange) {
+            this.setState((prev) => ({
+                prompt: prev.prompt.slice(0, savedRange.from) + text + prev.prompt.slice(savedRange.to),
+            }))
+        } else {
+            this.setState((prev) => {
+                const pos = savedRange?.from ?? prev.prompt.length
+                return { prompt: prev.prompt.slice(0, pos) + text + prev.prompt.slice(pos) }
+            })
+        }
+    }
 
     componentWillUnmount() {
         if (this.confirmTimer) clearTimeout(this.confirmTimer)
@@ -180,16 +201,27 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                     <div className="wk-persona-edit-row-title">
                                         {t("base.persona.edit.promptLabel")}
                                     </div>
-                                    <textarea
-                                        className="wk-persona-edit-prompt"
-                                        placeholder={t("base.persona.edit.promptPlaceholder")}
-                                        value={this.state.prompt}
-                                        onChange={(e) =>
-                                            this.setState({ prompt: e.target.value })
-                                        }
-                                        rows={4}
-                                        data-testid="persona-edit-prompt"
-                                    />
+                                    <div style={{ position: "relative" }}>
+                                        <textarea
+                                            ref={this.promptRef}
+                                            className="wk-persona-edit-prompt"
+                                            placeholder={t("base.persona.edit.promptPlaceholder")}
+                                            value={this.state.prompt}
+                                            onChange={(e) =>
+                                                this.setState({ prompt: e.target.value })
+                                            }
+                                            rows={4}
+                                            data-testid="persona-edit-prompt"
+                                        />
+                                        <VoiceInputButton
+                                            inputRef={this.promptRef}
+                                            onTranscribed={this.handleVoiceTranscribed}
+                                            getCurrentText={() => this.state.prompt}
+                                            showModeMenu
+                                            size="sm"
+                                            className="wk-vib--textarea-corner"
+                                        />
+                                    </div>
                                 </div>
                                 <div className="wk-persona-edit-row">
                                     <div className="wk-persona-edit-row-title">

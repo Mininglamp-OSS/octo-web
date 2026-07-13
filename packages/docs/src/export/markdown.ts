@@ -244,8 +244,12 @@ function escapeLeadingBlockMarkers(text: string): string {
 
 function serializeList(node: MdNode, ordered: boolean, ctx: Ctx, depth: number): string {
   const items = node.content ?? []
+  // Ordered lists may start at a value other than 1 (ProseMirror `start` attr); honour it so the
+  // rendered markers match the editor instead of always counting from 1.
+  const rawStart = node.attrs?.start
+  const start = ordered && typeof rawStart === 'number' && rawStart >= 0 ? Math.floor(rawStart) : 1
   return items
-    .map((item, idx) => serializeListItem(item, ordered, idx, ctx, depth))
+    .map((item, idx) => serializeListItem(item, ordered, start + idx, ctx, depth))
     // Drop empty items so an item with no content never emits a bare dangling marker (`- `).
     .filter((s) => s !== '')
     .join('\n')
@@ -254,14 +258,14 @@ function serializeList(node: MdNode, ordered: boolean, ctx: Ctx, depth: number):
 function serializeListItem(
   item: MdNode,
   ordered: boolean,
-  idx: number,
+  num: number,
   ctx: Ctx,
   depth: number,
 ): string {
   const indent = '  '.repeat(depth)
   let marker: string
   if (item.type === 'taskItem') marker = item.attrs?.checked ? '- [x] ' : '- [ ] '
-  else marker = ordered ? `${idx + 1}. ` : '- '
+  else marker = ordered ? `${num}. ` : '- '
 
   const blocks = item.content ?? []
   let line = indent + marker
@@ -289,6 +293,19 @@ function serializeListItem(
 function cellText(cell: MdNode, ctx: Ctx): string {
   // A cell holds block content (usually paragraphs); flatten to single-line inline.
   return serializeBlocks(cell.content ?? [], ctx).replace(/\n+/g, ' ').trim()
+}
+
+/**
+ * Neutralise bare angle brackets before a cell body is embedded inline in the
+ * raw-HTML table fallback. Unlike the callout/details fallbacks (which wrap
+ * inner content in a blank-line markdown island that is re-parsed as Markdown),
+ * the table fallback interpolates cell text directly into `<td>`/`<th>`, so a
+ * literal `<`/`>` in the text would reach the rendered HTML verbatim. Escaping
+ * just `<`/`>` keeps intended inline Markdown (`**`, `[x](y)`) intact while
+ * closing the injection surface for defence-in-depth.
+ */
+function escapeHtmlText(value: string): string {
+  return value.replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 function hasMergedCells(node: MdNode): boolean {
@@ -329,7 +346,7 @@ function serializeTableHtml(node: MdNode, ctx: Ctx): string {
       const rowspan = Number(cell.attrs?.rowspan ?? 1)
       const attrs =
         (colspan > 1 ? ` colspan="${colspan}"` : '') + (rowspan > 1 ? ` rowspan="${rowspan}"` : '')
-      out.push(`<${tag}${attrs}>${cellText(cell, ctx)}</${tag}>`)
+      out.push(`<${tag}${attrs}>${escapeHtmlText(cellText(cell, ctx))}</${tag}>`)
     }
     out.push('</tr>')
   }
@@ -451,9 +468,18 @@ function applyMarks(text: string, marks: Array<{ type: string; attrs?: Record<st
       case 'underline':
         out = `<u>${out}</u>`
         break
-      case 'highlight':
-        out = `<mark>${out}</mark>`
+      case 'highlight': {
+        // Highlight carries its background colour in the `color` attr (extension-highlight,
+        // multicolor). Emit it as an inline style so the highlight colour survives the export;
+        // escape it inside the `style="..."` attribute so a crafted value can't break out. A
+        // colourless highlight degrades to a bare <mark> (default yellow in most renderers).
+        const hl = mark.attrs?.color
+        out =
+          typeof hl === 'string' && hl
+            ? `<mark style="background-color:${escapeHtmlAttr(hl)}">${out}</mark>`
+            : `<mark>${out}</mark>`
         break
+      }
       case 'textStyle': {
         const color = mark.attrs?.color
         // Color lands inside a `style="..."` attribute — escape it so it can't break out of the

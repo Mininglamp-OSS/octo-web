@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import type { Role } from '../auth/roles.ts'
 import { canManage } from '../auth/roles.ts'
-import { t } from '../octoweb/index.ts'
+import { t, getCurrentUid } from '../octoweb/index.ts'
 import {
   listMembers,
   addOrUpdateMember,
@@ -136,6 +136,10 @@ export function MemberPanel({
         <MemberPicker
           space={space}
           existingUids={new Set(members.map((m) => m.uid))}
+          // Never offer the current user or the doc owner as add candidates: you can't add
+          // yourself, and the owner (synthetic — lives in doc_meta, not doc_member, so it's absent
+          // from `members`) is always already on the doc. Hiding beats showing them disabled.
+          hideUids={new Set([getCurrentUid(), ...(resolvedOwner ? [resolvedOwner] : [])].filter(Boolean))}
           onAdd={onAdd}
           busy={adding}
         />

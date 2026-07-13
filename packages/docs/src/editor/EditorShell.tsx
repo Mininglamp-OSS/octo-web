@@ -3,6 +3,7 @@ import { useCollabEditor } from '../collab/useCollabEditor.ts'
 import type { CollabEditorOptions } from '../collab/createCollabEditor.ts'
 import { canManage } from '../auth/roles.ts'
 import { Toolbar, EditorBubbleMenu } from './Toolbar.tsx'
+import { TableBubbleMenu } from './TableControls.tsx'
 import { Outline } from './Outline.tsx'
 import { StatusBar } from './StatusBar.tsx'
 import { PresenceBar } from './PresenceBar.tsx'
@@ -15,6 +16,7 @@ import { useCommentHighlights } from '../comments/useCommentHighlights.ts'
 import { useDocDelete } from './useDocDelete.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { exportDocToMarkdown, type MdNode } from '../export/markdown.ts'
+import { exportDocPdf } from '../pages/docsApi.ts'
 import { emojiGlyph } from './emoji.ts'
 import { colorFromId } from '../awareness/presence.ts'
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
@@ -33,6 +35,7 @@ import {
   DeleteIcon,
   type DocMoreMenuItem,
 } from './DocMoreMenu.tsx'
+import { ConfirmModal } from './ConfirmModal.tsx'
 import './styles.css'
 
 /** Which right-side drawer panel is open (mutually exclusive); null = drawer closed. */
@@ -103,7 +106,7 @@ export function exportDownloadName(title: string | null | undefined): string {
  * users it is click-to-edit: Enter / blur commits via PATCH /docs/{docId}; Esc cancels.
  * Read-only users see a plain heading.
  */
-function DocTitle({
+export function DocTitle({
   docId,
   initialTitle,
   canEdit,
@@ -216,7 +219,9 @@ function DocTitle({
           void commit()
         }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') {
+          // Ignore Enter that only confirms an IME composition (e.g. English typed via a
+          // Chinese IME): committing mid-composition duplicates the text ("test" → "testtest").
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
             e.preventDefault()
             void commit() // commit directly; doneRef stops the trailing blur re-commit
           } else if (e.key === 'Escape') {
@@ -422,8 +427,68 @@ export function EditorShell(props: EditorShellProps) {
       document.body.appendChild(a)
       a.click()
       a.remove()
-      URL.revokeObjectURL(url)
-    } catch {
+      // Defer revoke so Safari/iOS can start the download for larger blobs
+      // (matches the PDF branch).
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch (err) {
+      console.error('[docs] Markdown export failed:', err)
+      setExportError(t('docs.toolbar.exportError'))
+    } finally {
+      setExporting(false)
+    }
+  }, [instance, docId, currentTitle, exporting])
+
+  const onExportDocx = useCallback(async () => {
+    const ed = instance?.editor
+    if (!ed || exporting) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      // Lazy-load the DOCX exporter so `docx` + `mathjax-full` (multi-MB, DOCX-only)
+      // stay out of the eager editor bundle that loads on every document open.
+      const { exportDocToDocx } = await import('../export/docx/index.ts')
+      const blob = await exportDocToDocx(docId, ed.getJSON() as unknown as MdNode, { emojiGlyph })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${exportDownloadName(currentTitle)}.docx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      // Defer revoke so Safari/iOS can start the download for larger blobs
+      // (matches the PDF branch).
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch (err) {
+      console.error('[docs] DOCX export failed:', err)
+      setExportError(t('docs.toolbar.exportError'))
+    } finally {
+      setExporting(false)
+    }
+  }, [instance, docId, currentTitle, exporting])
+
+  const onExportPdf = useCallback(async () => {
+    const ed = instance?.editor
+    if (!ed || exporting) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      // Server-side PDF render via Typst (小吴's decision to go backend). The
+      // backend renders its own persisted copy of the doc with Typst, so the
+      // output has real CJK, rendered math, emoji, selectable text and smart
+      // pagination — one-click download with no print dialog. Returns the PDF
+      // bytes directly.
+      const bytes = await exportDocPdf(docId)
+      const blob = new Blob([bytes], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${exportDownloadName(currentTitle)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch (err) {
+      console.error('[docs] PDF export failed:', err)
       setExportError(t('docs.toolbar.exportError'))
     } finally {
       setExporting(false)
@@ -513,10 +578,33 @@ export function EditorShell(props: EditorShellProps) {
     },
     {
       key: 'export',
-      label: t('docs.toolbar.exportMarkdown'),
+      label: t('docs.toolbar.export'),
       icon: ExportIcon,
       disabled: exporting,
-      onClick: () => void onExportMarkdown(),
+      onClick: () => {},
+      children: [
+        {
+          key: 'export-markdown',
+          label: t('docs.toolbar.exportMarkdown'),
+          icon: ExportIcon,
+          disabled: exporting,
+          onClick: () => void onExportMarkdown(),
+        },
+        {
+          key: 'export-docx',
+          label: t('docs.toolbar.exportDocx'),
+          icon: ExportIcon,
+          disabled: exporting,
+          onClick: () => void onExportDocx(),
+        },
+        {
+          key: 'export-pdf',
+          label: t('docs.toolbar.exportPdf'),
+          icon: ExportIcon,
+          disabled: exporting,
+          onClick: () => void onExportPdf(),
+        },
+      ],
     },
   )
   const deleteItem: DocMoreMenuItem | undefined = manage
@@ -557,7 +645,7 @@ export function EditorShell(props: EditorShellProps) {
         />
         <div className="octo-doc-header-right">
           {headerRight}
-          <PresenceBar provider={instance.provider} connState={connState} synced={ready} />
+          <PresenceBar provider={instance.provider} connState={connState} synced={ready} names={names} />
           {/* Comments are reader+ (everyone with access — "can see → can comment"). */}
           <button
             type="button"
@@ -582,6 +670,8 @@ export function EditorShell(props: EditorShellProps) {
               ⤴ {t('docs.forward.entry')}
             </button>
           )}
+          {/* Export moved into the header ≡ (more) menu as an expandable submenu
+              (Markdown / Word / PDF); the standalone dropdown was removed to avoid duplication. */}
           {manage && (
             <button
               type="button"
@@ -608,34 +698,18 @@ export function EditorShell(props: EditorShellProps) {
         </div>
       </header>
 
-      {/* Delete confirm + error banner (reuses the list's confirm/error pattern). */}
-      {del.confirming && (
-        <div
-          className="octo-docs-delete-confirm octo-doc-delete-confirm"
-          role="alertdialog"
-          aria-label={t('docs.doc.deleteConfirmTitle')}
-        >
-          <p className="octo-docs-delete-confirm-text">{t('docs.doc.deleteConfirm')}</p>
-          <div className="octo-docs-delete-confirm-actions">
-            <button
-              type="button"
-              className="octo-tb-btn"
-              disabled={del.deleting}
-              onClick={del.cancel}
-            >
-              {t('docs.doc.deleteCancel')}
-            </button>
-            <button
-              type="button"
-              className="octo-tb-btn octo-docs-delete-confirm-go"
-              disabled={del.deleting}
-              onClick={() => void del.confirm()}
-            >
-              {t('docs.doc.delete')}
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Delete confirm — a centered modal (shared ConfirmModal), matching the sheet's delete. */}
+      <ConfirmModal
+        open={del.confirming}
+        title={t('docs.doc.deleteConfirmTitle')}
+        message={t('docs.doc.deleteConfirm')}
+        confirmLabel={t('docs.doc.delete')}
+        cancelLabel={t('docs.doc.deleteCancel')}
+        danger
+        busy={del.deleting}
+        onConfirm={() => void del.confirm()}
+        onCancel={del.cancel}
+      />
       {del.error && (
         <p className="octo-member-error" role="alert">
           {del.error}
@@ -647,38 +721,49 @@ export function EditorShell(props: EditorShellProps) {
         </p>
       )}
 
-      <Toolbar editor={editor} />
+      {/* Body: the header above stays fixed; the toolbar + prose + status bar scroll inside
+          .octo-doc-scroll, and the right-side drawer is pinned to THIS region — so it starts
+          below the header (never covering the header buttons) and never scrolls away. Mirrors
+          the sheet's header-then-fixed-region layout. */}
+      <div className="octo-doc-body">
+        <div className="octo-doc-scroll">
+          <Toolbar editor={editor} />
 
-      <div className="octo-editor-region">
-        <EditorBubbleMenu editor={editor} />
-        <CommentBubble editor={editor} onCreate={comments.createRoot} />
-        <Outline editor={editor} />
-        <div className="octo-editor-main">
-          <EditorContent editor={editor} className="octo-prose" />
+          <div className="octo-editor-region">
+            <EditorBubbleMenu editor={editor} />
+            <TableBubbleMenu editor={editor} />
+            <CommentBubble editor={editor} onCreate={comments.createRoot} />
+            <Outline editor={editor} />
+            <div className="octo-editor-main">
+              <EditorContent editor={editor} className="octo-prose" />
+            </div>
+          </div>
+
+          <StatusBar editor={editor} provider={instance.provider} />
         </div>
+
+        {/* History + Comments live in the right-side drawer; Members opens a dedicated modal (#A4).
+            The drawer is pinned to .octo-doc-body (below the header) so it neither covers the
+            header buttons nor scrolls with the document. */}
+        {(activePanel === 'history' || activePanel === 'comments') && (
+          <aside className="octo-doc-drawer" role="complementary">
+            {activePanel === 'history' && role && (
+              <VersionPanel docId={docId} role={role} editor={editor} names={names} onClose={closePanel} />
+            )}
+            {activePanel === 'comments' && role && (
+              <CommentPanel
+                role={role}
+                editor={editor}
+                comments={comments}
+                activeCommentId={activeCommentId}
+                onSelectComment={setActiveCommentId}
+                names={names}
+                onClose={closePanel}
+              />
+            )}
+          </aside>
+        )}
       </div>
-
-      <StatusBar editor={editor} provider={instance.provider} />
-
-      {/* History + Comments live in the right-side drawer; Members opens a dedicated modal (#A4). */}
-      {(activePanel === 'history' || activePanel === 'comments') && (
-        <aside className="octo-doc-drawer" role="complementary">
-          {activePanel === 'history' && role && (
-            <VersionPanel docId={docId} role={role} editor={editor} names={names} onClose={closePanel} />
-          )}
-          {activePanel === 'comments' && role && (
-            <CommentPanel
-              role={role}
-              editor={editor}
-              comments={comments}
-              activeCommentId={activeCommentId}
-              onSelectComment={setActiveCommentId}
-              names={names}
-              onClose={closePanel}
-            />
-          )}
-        </aside>
-      )}
 
       {/* #A4: "Manage members" opens a dedicated modal dialog (overlay), not an inline drawer. */}
       {activePanel === 'members' && manage && (

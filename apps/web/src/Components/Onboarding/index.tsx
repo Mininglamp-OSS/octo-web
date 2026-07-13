@@ -1,0 +1,587 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Building2,
+  Check,
+  ExternalLink,
+  Github,
+  Sparkles,
+  X,
+} from "lucide-react";
+import { useI18n } from "@octo/base";
+import {
+  defaultOnboardingConfig,
+  markOnboardingSeen,
+  resolveOnboardingSections,
+  shouldShowOnboarding,
+  type OnboardingConfig,
+  type ResolvedOnboardingSection,
+} from "./content";
+import { OnboardingIntro } from "./Intro";
+import { OnboardingHoverButton } from "./HoverButton";
+import { runOnboardingViewTransition } from "./viewTransition";
+import "./index.css";
+
+const COMPLETION_CELEBRATION_MS = 1180;
+const COMPLETION_REDUCED_MOTION_MS = 120;
+const CELEBRATION_COLORS = [
+  "#7C3AED",
+  "#06B6D4",
+  "#F59E0B",
+  "#10B981",
+  "#F8FAFC",
+] as const;
+const CELEBRATION_PARTICLES = Array.from({ length: 46 }, (_, index) => {
+  const lane = index % 23;
+  const ring = Math.floor(index / 23);
+  const angle = (-168 + lane * 7.2) * (Math.PI / 180);
+  const distance = ring === 0 ? 110 + (lane % 4) * 12 : 154 + (lane % 5) * 14;
+
+  return {
+    id: index,
+    tx: `${Math.round(Math.cos(angle) * distance)}px`,
+    ty: `${Math.round(Math.sin(angle) * distance)}px`,
+    rotate: `${ring === 0 ? 140 + lane * 17 : -120 - lane * 13}deg`,
+    delay: `${ring * 44 + lane * 11}ms`,
+    color: CELEBRATION_COLORS[lane % CELEBRATION_COLORS.length],
+  };
+});
+
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "textarea:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+type OnboardingSectionId = ResolvedOnboardingSection["id"];
+
+type OnboardingProps = {
+  config?: OnboardingConfig;
+  forceVisible?: boolean;
+  onDismiss?: () => void;
+  skipIntro?: boolean;
+};
+
+function isExternalLinkSection(section: ResolvedOnboardingSection) {
+  return section.action?.type === "external-link";
+}
+
+function isAiAvatarSection(section: ResolvedOnboardingSection) {
+  return section.id === "ai-avatar";
+}
+
+function isIntroPreviewMode() {
+  return new URLSearchParams(window.location.search).get("intro") === "1";
+}
+
+function getCompletionCloseDelay() {
+  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")
+    .matches;
+
+  return reduceMotion
+    ? COMPLETION_REDUCED_MOTION_MS
+    : COMPLETION_CELEBRATION_MS;
+}
+
+function getElementCenter(element: HTMLElement | null) {
+  if (element) {
+    const rect = element.getBoundingClientRect();
+
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+  }
+
+  return {
+    x: window.innerWidth / 2,
+    y: window.innerHeight / 2,
+  };
+}
+
+function getCompletionOrigin(
+  event?: React.MouseEvent<HTMLButtonElement>,
+  fallbackElement?: HTMLButtonElement | null
+) {
+  if (event && (event.clientX > 0 || event.clientY > 0)) {
+    return {
+      x: event.clientX,
+      y: event.clientY,
+    };
+  }
+
+  return getElementCenter(event?.currentTarget || fallbackElement || null);
+}
+
+function getFocusableElements(container: HTMLElement) {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+  ).filter((element) => {
+    if (element.getAttribute("aria-hidden") === "true") return false;
+    if (element.hasAttribute("disabled")) return false;
+    return element.offsetParent !== null || element === document.activeElement;
+  });
+}
+
+function focusElement(element: HTMLElement | null) {
+  element?.focus({ preventScroll: true });
+}
+
+function ImageVisual({ section }: { section: ResolvedOnboardingSection }) {
+  return (
+    <img
+      className={`wk-onboarding-image${
+        section.imageFit === "contain" ? " is-contain" : ""
+      }`}
+      src={section.image}
+      alt={section.visualTitle}
+    />
+  );
+}
+
+function IdentitySetupVisual() {
+  const { t } = useI18n();
+  const previewName = t("app.onboarding.sections.aiAvatar.previewName");
+  const avatarText = Array.from(previewName).slice(0, 2).join("");
+
+  return (
+    <div className="wk-onboarding-identity-stage">
+      <div className="wk-onboarding-identity-grid" aria-hidden="true" />
+      <div className="wk-onboarding-identity-compose">
+        <div className="wk-onboarding-longxia-avatar" aria-hidden="true">
+          <span>{avatarText}</span>
+          <i />
+        </div>
+        <div className="wk-onboarding-name-field">
+          <span className="wk-onboarding-name-label">
+            {t("app.onboarding.sections.aiAvatar.nameLabel")}
+          </span>
+        </div>
+        <div className="wk-onboarding-mention-preview">
+          <span className="wk-onboarding-mention-token">@{previewName}</span>
+          <strong>{t("app.onboarding.sections.aiAvatar.previewHint")}</strong>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export const Onboarding: React.FC<OnboardingProps> = ({
+  config = defaultOnboardingConfig,
+  forceVisible = false,
+  onDismiss,
+  skipIntro = false,
+}) => {
+  const { locale, t } = useI18n();
+  const introPreviewMode = useMemo(() => isIntroPreviewMode(), []);
+  const onboardingSections = useMemo(
+    () => resolveOnboardingSections(config, t),
+    [config, t]
+  );
+  const [activeId, setActiveId] =
+    useState<OnboardingSectionId>("workspace-map");
+  const [completionOrigin, setCompletionOrigin] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [visible, setVisible] = useState(() => {
+    if (forceVisible) return true;
+    return shouldShowOnboarding(config, window.localStorage);
+  });
+  const [showIntro, setShowIntro] = useState(() => {
+    if (skipIntro) return false;
+    if (introPreviewMode) return true;
+    return !!config.intro.enabled;
+  });
+  const [introLeaving, setIntroLeaving] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const finishButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const completionStartedRef = useRef(false);
+  const completionTimerRef = useRef<number | null>(null);
+  const introFallbackTimerRef = useRef<number | null>(null);
+  const focusTimerRef = useRef<number | null>(null);
+
+  const activeSection =
+    onboardingSections.find((section) => section.id === activeId) ||
+    onboardingSections[0];
+  const isFinalSection =
+    activeSection?.id === onboardingSections[onboardingSections.length - 1]?.id;
+
+  useEffect(() => {
+    return () => {
+      if (completionTimerRef.current !== null) {
+        window.clearTimeout(completionTimerRef.current);
+      }
+      if (introFallbackTimerRef.current !== null) {
+        window.clearTimeout(introFallbackTimerRef.current);
+      }
+      if (focusTimerRef.current !== null) {
+        window.clearTimeout(focusTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!visible || forceVisible) return;
+    try {
+      markOnboardingSeen(window.localStorage);
+    } catch {
+      // Some hardened browsers throw on localStorage writes; onboarding still closes normally.
+    }
+  }, [forceVisible, visible]);
+
+  const persistDismissed = () => {
+    try {
+      markOnboardingSeen(window.localStorage);
+    } catch {
+      // Best-effort persistence only.
+    }
+  };
+
+  const hideOnboarding = () => {
+    setVisible(false);
+    onDismiss?.();
+  };
+
+  const dismissOnEscape = () => {
+    if (isCompleting) return;
+    persistDismissed();
+    hideOnboarding();
+  };
+
+  const handleClose = () => {
+    if (isCompleting) return;
+
+    if (isFinalSection) {
+      handleFinish();
+      return;
+    }
+
+    persistDismissed();
+    hideOnboarding();
+  };
+
+  const handleFinish = (event?: React.MouseEvent<HTMLButtonElement>) => {
+    if (completionStartedRef.current) return;
+
+    completionStartedRef.current = true;
+    setCompletionOrigin(getCompletionOrigin(event, finishButtonRef.current));
+    persistDismissed();
+    setIsCompleting(true);
+    completionTimerRef.current = window.setTimeout(() => {
+      completionTimerRef.current = null;
+      hideOnboarding();
+    }, getCompletionCloseDelay());
+  };
+
+  const handleIntroContinue = () => {
+    if (introLeaving) return;
+
+    const transitioned = runOnboardingViewTransition({
+      duration: 1240,
+      onTransition: () => {
+        setShowIntro(false);
+        setIntroLeaving(false);
+      },
+    });
+    if (transitioned) return;
+
+    setIntroLeaving(true);
+    introFallbackTimerRef.current = window.setTimeout(() => {
+      introFallbackTimerRef.current = null;
+      setShowIntro(false);
+      setIntroLeaving(false);
+    }, 620);
+  };
+
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      dismissOnEscape();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const focusableElements = getFocusableElements(dialog);
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      focusElement(dialog);
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const activeElement = document.activeElement;
+
+    if (event.shiftKey) {
+      if (activeElement === firstElement || !dialog.contains(activeElement)) {
+        event.preventDefault();
+        focusElement(lastElement);
+      }
+      return;
+    }
+
+    if (activeElement === lastElement) {
+      event.preventDefault();
+      focusElement(firstElement);
+    }
+  };
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      previousFocusRef.current = activeElement;
+    }
+
+    return () => {
+      const previousFocus = previousFocusRef.current;
+      previousFocusRef.current = null;
+      if (previousFocus?.isConnected) {
+        focusElement(previousFocus);
+      }
+    };
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    if (focusTimerRef.current !== null) {
+      window.clearTimeout(focusTimerRef.current);
+    }
+
+    focusTimerRef.current = window.setTimeout(() => {
+      focusTimerRef.current = null;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      focusElement(getFocusableElements(dialog)[0] || dialog);
+    }, 0);
+  }, [showIntro, visible]);
+
+  if (!visible) {
+    return null;
+  }
+
+  if (!activeSection) {
+    return null;
+  }
+
+  if (showIntro) {
+    return (
+      <div
+        ref={dialogRef}
+        className={`wk-onboarding-overlay wk-onboarding-overlay-intro${
+          introLeaving ? " is-intro-leaving" : ""
+        }`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("app.onboarding.dialog.introAria")}
+        tabIndex={-1}
+        onKeyDown={handleDialogKeyDown}
+      >
+        <OnboardingIntro onContinue={handleIntroContinue} />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={dialogRef}
+      className={`wk-onboarding-overlay wk-onboarding-overlay-panel${
+        isCompleting ? " is-completing" : ""
+      }`}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="wk-onboarding-title"
+      tabIndex={-1}
+      onKeyDown={handleDialogKeyDown}
+    >
+      {isCompleting ? (
+        <div
+          className="wk-onboarding-celebration"
+          aria-hidden="true"
+          style={
+            completionOrigin
+              ? ({
+                  "--wk-celebration-x": `${completionOrigin.x}px`,
+                  "--wk-celebration-y": `${completionOrigin.y}px`,
+                } as React.CSSProperties)
+              : undefined
+          }
+        >
+          {CELEBRATION_PARTICLES.map((particle) => (
+            <span
+              key={particle.id}
+              style={
+                {
+                  "--wk-particle-tx": particle.tx,
+                  "--wk-particle-ty": particle.ty,
+                  "--wk-particle-rotate": particle.rotate,
+                  "--wk-particle-delay": particle.delay,
+                  "--wk-particle-color": particle.color,
+                } as React.CSSProperties
+              }
+            />
+          ))}
+        </div>
+      ) : null}
+      <span className="wk-onboarding-sr-only" role="status" aria-live="polite">
+        {isCompleting
+          ? t("app.onboarding.sections.aiAvatar.completionStatus")
+          : ""}
+      </span>
+      <section className="wk-onboarding-panel">
+        <aside
+          className="wk-onboarding-nav"
+          aria-label={t("app.onboarding.dialog.sectionsAria")}
+        >
+          <div className="wk-onboarding-brand">
+            <strong>{t("app.onboarding.nav.welcome")}</strong>
+          </div>
+          <nav className="wk-onboarding-nav-list">
+            {onboardingSections.map((section, index) => (
+              <React.Fragment key={section.id}>
+                {section.id === "ai-avatar" ? (
+                  <div
+                    className="wk-onboarding-nav-divider"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  className={section.id === activeSection.id ? "is-active" : ""}
+                  onClick={() => setActiveId(section.id)}
+                >
+                  <span className="wk-onboarding-nav-index">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="wk-onboarding-nav-label">
+                    {section.label}
+                  </span>
+                </button>
+              </React.Fragment>
+            ))}
+          </nav>
+          <div className="wk-onboarding-resource-links">
+            <a
+              className="wk-onboarding-open-source"
+              href={config.links.openSourceUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Github size={15} aria-hidden="true" />
+              {t("app.onboarding.links.openSource")}
+            </a>
+            <a
+              className="wk-onboarding-open-source"
+              href={
+                locale === "en-US"
+                  ? config.links.aboutMininglampUrl.enUS
+                  : config.links.aboutMininglampUrl.zhCN
+              }
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Building2 size={15} aria-hidden="true" />
+              {t("app.onboarding.links.aboutMininglamp")}
+            </a>
+          </div>
+        </aside>
+
+        <main className="wk-onboarding-content">
+          <button
+            className="wk-onboarding-close"
+            type="button"
+            onClick={handleClose}
+            aria-label={t("app.onboarding.actions.closeAria")}
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+
+          <h1 className="wk-onboarding-title" id="wk-onboarding-title">
+            {activeSection.title}
+          </h1>
+
+          <div
+            className={`wk-onboarding-media-frame${
+              isAiAvatarSection(activeSection) ? " is-identity" : ""
+            }`}
+            aria-label={activeSection.visualTitle}
+          >
+            {isAiAvatarSection(activeSection) ? (
+              <IdentitySetupVisual />
+            ) : (
+              <ImageVisual section={activeSection} />
+            )}
+          </div>
+
+          <p className="wk-onboarding-description">
+            {activeSection.description}
+          </p>
+
+          {isExternalLinkSection(activeSection) &&
+          activeSection.action?.type === "external-link" ? (
+            <div className="wk-onboarding-extension-row">
+              <a
+                className="wk-onboarding-hover-button is-brand wk-onboarding-extension-action"
+                href={activeSection.action.href}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={t(activeSection.action.ariaLabelKey)}
+              >
+                <span
+                  className="wk-onboarding-hover-button-fill"
+                  aria-hidden="true"
+                />
+                <span className="wk-onboarding-hover-button-idle">
+                  <span className="wk-onboarding-hover-button-text">
+                    {t(activeSection.action.labelKey)}
+                  </span>
+                  <ExternalLink size={15} aria-hidden="true" />
+                </span>
+              </a>
+            </div>
+          ) : null}
+
+          {isAiAvatarSection(activeSection) &&
+          activeSection.action?.type === "finish" ? (
+            <div className="wk-onboarding-finish-row">
+              <OnboardingHoverButton
+                ref={finishButtonRef}
+                className={`wk-onboarding-finish-button${
+                  isCompleting ? " is-complete" : ""
+                }`}
+                text={
+                  isCompleting
+                    ? t(activeSection.action.completedLabelKey)
+                    : t(activeSection.action.labelKey)
+                }
+                icon={
+                  isCompleting ? (
+                    <Check size={15} aria-hidden="true" />
+                  ) : (
+                    <Sparkles size={15} aria-hidden="true" />
+                  )
+                }
+                variant="brand"
+                onClick={handleFinish}
+                disabled={isCompleting}
+              />
+            </div>
+          ) : null}
+        </main>
+      </section>
+    </div>
+  );
+};

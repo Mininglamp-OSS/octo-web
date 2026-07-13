@@ -10,11 +10,12 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Editor } from '@tiptap/core'
 import type { Role } from '../auth/roles.ts'
 import { canComment, canEdit, canManage } from '../auth/roles.ts'
-import { getCurrentUid, t } from '../octoweb/index.ts'
+import { getCurrentUid, t, VoiceInputButton } from '../octoweb/index.ts'
 import { formatRelative, formatAbsolute } from '../versions/format.ts'
 import { decodeRelPos, resolveAnchorRange, getYBinding } from './anchor.ts'
 import type { Comment, CommentThread } from './api.ts'
 import type { UseDocComments } from './useDocComments.ts'
+import { applyVoiceTranscription } from './voiceText.ts'
 
 /** Re-render on editor doc/selection changes so orphan status + scroll targets stay current. */
 function useEditorTick(editor: Editor): void {
@@ -55,6 +56,7 @@ function CommentBody({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(comment.body)
   const [busy, setBusy] = useState(false)
+  const draftRef = useRef<HTMLTextAreaElement>(null)
 
   const isAuthor = comment.authorUid === currentUid
   const canHardDelete = !isAuthor && canManage(role)
@@ -90,12 +92,25 @@ function CommentBody({
       </div>
       {editing ? (
         <div className="octo-comment-compose">
-          <textarea
-            className="octo-comment-input"
-            value={draft}
-            autoFocus
-            onChange={(e) => setDraft(e.target.value)}
-          />
+          <div style={{ position: 'relative' }}>
+            <textarea
+              ref={draftRef}
+              className="octo-comment-input"
+              value={draft}
+              autoFocus
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <VoiceInputButton
+              inputRef={draftRef}
+              onTranscribed={(text, mode, savedRange) =>
+                setDraft((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
+              }
+              getCurrentText={() => draft}
+              showModeMenu
+              size="sm"
+              className="wk-vib--textarea-corner"
+            />
+          </div>
           <div className="octo-comment-compose-actions">
             <button
               type="button"
@@ -161,6 +176,7 @@ function Thread({
   const [replyOpen, setReplyOpen] = useState(false)
   const [replyBody, setReplyBody] = useState('')
   const [busy, setBusy] = useState(false)
+  const replyRef = useRef<HTMLTextAreaElement>(null)
 
   const ready = getYBinding(editor) != null
   const range = anchorRange(editor, thread)
@@ -232,13 +248,26 @@ function Thread({
 
       {replyOpen && (
         <div className="octo-comment-compose">
-          <textarea
-            className="octo-comment-input"
-            placeholder={t('docs.comment.replyPlaceholder')}
-            value={replyBody}
-            autoFocus
-            onChange={(e) => setReplyBody(e.target.value)}
-          />
+          <div style={{ position: 'relative' }}>
+            <textarea
+              ref={replyRef}
+              className="octo-comment-input"
+              placeholder={t('docs.comment.replyPlaceholder')}
+              value={replyBody}
+              autoFocus
+              onChange={(e) => setReplyBody(e.target.value)}
+            />
+            <VoiceInputButton
+              inputRef={replyRef}
+              onTranscribed={(text, mode, savedRange) =>
+                setReplyBody((prev) => applyVoiceTranscription(prev, text, mode, savedRange))
+              }
+              getCurrentText={() => replyBody}
+              showModeMenu
+              size="sm"
+              className="wk-vib--textarea-corner"
+            />
+          </div>
           <div className="octo-comment-compose-actions">
             <button
               type="button"

@@ -12,8 +12,14 @@ export interface DocListItem {
   title: string
   ownerId: string
   role: Role
-  docType?: string
   updatedAt?: string
+  /**
+   * Document kind: `'doc'` (Tiptap rich text, the default) or `'board'` (Excalidraw whiteboard).
+   * Optional because older records and backends that predate the whiteboard feature omit it; a
+   * missing value is treated as a plain document. The list mixes both kinds and distinguishes
+   * them by icon (frontend-design §4.1 / §5.1).
+   */
+  docType?: string
 }
 
 export interface ListDocsResult {
@@ -29,6 +35,8 @@ export interface CreateDocResult {
   folderId: string
   ownerId: string
   role: Role
+  /** Echoed back when the backend persists the requested `docType` (else absent). */
+  docType?: string
 }
 
 export interface ListDocsParams {
@@ -68,7 +76,6 @@ export interface DocMeta {
   title: string
   ownerId?: string
   role?: Role
-  docType?: string
   updatedAt?: string
   /**
    * Creation timestamp (RFC3339), returned by the per-doc GET. Consumed by the header "more"
@@ -84,6 +91,8 @@ export interface DocMeta {
    * current space + default folder (same addressing the in-shell list uses).
    */
   documentName?: string
+  /** `'doc'` | `'board'` — see DocListItem.docType. Absent on backends that don't persist it. */
+  docType?: string
 }
 
 /**
@@ -149,6 +158,27 @@ export async function updateDocTitle(docId: string, title: string): Promise<DocM
  */
 export async function deleteDoc(docId: string): Promise<void> {
   await apiClient().delete(`/docs/${docId}`)
+}
+
+/**
+ * POST /api/v1/docs/{docId}/export/pdf — server-side (Typst) PDF render.
+ * Returns the PDF bytes as an ArrayBuffer.
+ *
+ * Goes through the shared host apiClient with `responseType: 'arraybuffer'` so
+ * the binary PDF body is not decoded as UTF-8 text (which would turn every
+ * non-ASCII byte into U+FFFD and corrupt the file). Using the host client keeps
+ * this on the same axios instance as the rest of the app, so the global request
+ * interceptor (token + X-Space-Id) and `/api/v1/` baseURL apply — docs does not
+ * depend on axios directly. A longer per-request timeout covers big documents
+ * that the shared 20s default would otherwise cut off mid-success.
+ */
+export async function exportDocPdf(docId: string): Promise<ArrayBuffer> {
+  const { data } = await apiClient().post<ArrayBuffer>(
+    `/docs/${docId}/export/pdf`,
+    undefined,
+    { responseType: 'arraybuffer', timeout: 120_000 },
+  )
+  return data
 }
 
 /**

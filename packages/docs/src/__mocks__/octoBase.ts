@@ -89,3 +89,13 @@ export class SpaceService {
     return []
   }
 }
+
+// VoiceInputButton stub (#571): the real component is a hooks-based functional component that
+// pulls the full voice/recording stack (WKApp, semi-ui, media APIs) into jsdom. Docs tests only
+// need it to render nothing so the comment composers mount cleanly; behaviour is covered by the
+// dmworkbase VoiceInputButton tests.
+export function VoiceInputButton() {
+  return null
+}
+export type ReplaceMode = 'all' | 'selection' | 'insert'
+export type SelectionRange = { from: number; to: number }

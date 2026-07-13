@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig/base.json",
+  "compilerOptions": {
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["src"],
+  "exclude": ["node_modules"]
+}

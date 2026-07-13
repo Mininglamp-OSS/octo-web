@@ -120,6 +120,7 @@ vi.mock("../../../Service/Const", () => ({
         smallVideo: 5,
         file: 8,
         richText: 14,
+        interactiveCard: 17,
         rtcData: 9994,
     },
     OrderFactor: 10000,
@@ -170,6 +171,7 @@ const VOICE = 4
 const SMALL_VIDEO = 5
 const FILE = 8
 const RICH_TEXT = 14
+const INTERACTIVE_CARD = 17
 
 function humanMessage(contentType: number, timestamp: number, fromUID: string = "alice") {
     const messageSeq = seqCounter++
@@ -199,6 +201,7 @@ describe("ConversationVM fold session file attachment", () => {
         { name: "smallVideo", contentType: SMALL_VIDEO },
         { name: "file", contentType: FILE },
         { name: "richText", contentType: RICH_TEXT },
+        { name: "interactiveCard", contentType: INTERACTIVE_CARD },
     ])("does not fold a bot $name message (contentType=$contentType) into a fold session", ({ contentType }) => {
         const vm = new ConversationVM(channel)
         const messages = [
@@ -332,6 +335,47 @@ describe("ConversationVM fold session file attachment", () => {
         expect((items[0] as any).session.count).toBe(2)
         expect(items[1].type).toBe("message")
         expect((items[1] as any).message.contentType).toBe(IMAGE)
+        expect(items[2].type).toBe("foldSession")
+        expect((items[2] as any).session.count).toBe(2)
+    })
+
+    // --- Interactive card (type-17) must stay interactive: never folded ---
+
+    it("keeps an interactive card standalone when followed by a bot command-result message", () => {
+        const vm = new ConversationVM(channel)
+        // Mirrors the reported bug: a card ("确认部署?") + a command-result text
+        // were folded together into "收起2条讨论", hiding the card's buttons.
+        const messages = [
+            botMessage(INTERACTIVE_CARD, 100),
+            botMessage(TEXT, 110),
+        ]
+
+        const items = vm.buildRenderItems(messages)
+
+        expect(items.every((item) => item.type === "message")).toBe(true)
+        expect(items.map((item) => (item as any).message.contentType)).toEqual([
+            INTERACTIVE_CARD,
+            TEXT,
+        ])
+    })
+
+    it("breaks a fold group when an interactive card sits between bot text messages", () => {
+        const vm = new ConversationVM(channel)
+        const messages = [
+            botMessage(TEXT, 100),
+            botMessage(TEXT, 110),
+            botMessage(INTERACTIVE_CARD, 120),
+            botMessage(TEXT, 130),
+            botMessage(TEXT, 140),
+        ]
+
+        const items = vm.buildRenderItems(messages)
+
+        expect(items.length).toBe(3)
+        expect(items[0].type).toBe("foldSession")
+        expect((items[0] as any).session.count).toBe(2)
+        expect(items[1].type).toBe("message")
+        expect((items[1] as any).message.contentType).toBe(INTERACTIVE_CARD)
         expect(items[2].type).toBe("foldSession")
         expect((items[2] as any).session.count).toBe(2)
     })

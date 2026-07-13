@@ -51,6 +51,10 @@ import {
 import { SystemCell } from "./Messages/System";
 import { TextCell } from "./Messages/Text";
 import { RichTextCell, RichTextContent } from "./Messages/RichText";
+import {
+  InteractiveCardCell,
+  InteractiveCardContent,
+} from "./Messages/InteractiveCard";
 import { TimeCell } from "./Messages/Time";
 import { UnknownCell } from "./Messages/Unknown";
 import { UnsupportCell, UnsupportContent } from "./Messages/Unsupport";
@@ -109,6 +113,7 @@ import {
 } from "./Utils/clipboard";
 import { shouldSkipMessageForSpace } from "./Service/SpaceService";
 import { t, I18nText } from "./i18n";
+import { GROUP_NAME_MAX_LENGTH, THREAD_NAME_MAX_LENGTH } from "./Service/nameLimits";
 import {
   ThreadCreatedCell,
   ThreadCreatedContent,
@@ -260,6 +265,8 @@ export default class BaseModule implements IModule {
             return TextCell;
           case MessageContentTypeConst.richText: // 富文本（图文混排）
             return RichTextCell;
+          case MessageContentTypeConst.interactiveCard: // 互动卡片（Adaptive Cards octo/v1）
+            return InteractiveCardCell;
           case MessageContentType.image: // 图片消息
             return ImageCell;
           case MessageContentTypeConst.card: // 名片
@@ -313,6 +320,10 @@ export default class BaseModule implements IModule {
     ); // 文件
 
     WKSDK.shared().register(MessageContentTypeConst.card, () => new Card()); // 名片
+    WKSDK.shared().register(
+      MessageContentTypeConst.interactiveCard,
+      () => new InteractiveCardContent()
+    ); // 互动卡片（Adaptive Cards octo/v1）
     WKSDK.shared().register(
       MessageContentTypeConst.gif,
       () => new GifContent()
@@ -1029,6 +1040,7 @@ export default class BaseModule implements IModule {
                     type="text"
                     placeholder={t("base.module.createThread.namePlaceholder")}
                     defaultValue={defaultName}
+                    maxLength={THREAD_NAME_MAX_LENGTH}
                     style={{
                       width: "100%",
                       padding: "10px 12px",
@@ -1050,6 +1062,10 @@ export default class BaseModule implements IModule {
               onOk: async () => {
                 if (!threadName || threadName.trim() === "") {
                   Toast.error(t("base.module.createThread.nameRequired"));
+                  return;
+                }
+                if (threadName.length > THREAD_NAME_MAX_LENGTH) {
+                  Toast.warning(t("base.threadCreate.nameMaxLength"));
                   return;
                 }
                 try {
@@ -1646,7 +1662,7 @@ export default class BaseModule implements IModule {
                         });
                     },
                     t("base.module.channelSettings.groupNamePlaceholder"),
-                    20
+                    GROUP_NAME_MAX_LENGTH
                   );
                 },
               },
@@ -2352,7 +2368,7 @@ export default class BaseModule implements IModule {
                     data.refresh();
                   },
                   t("base.module.thread.name"),
-                  50
+                  THREAD_NAME_MAX_LENGTH
                 );
               },
             },

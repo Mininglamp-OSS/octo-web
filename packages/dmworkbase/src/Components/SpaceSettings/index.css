@@ -55,6 +55,34 @@ body[theme-mode=dark] .wk-spacesettings-label {
     color: #ccc;
 }
 
+.wk-spacesettings-textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    border: 1px solid var(--wk-border-default);
+    border-radius: var(--wk-r-sm);
+    background: var(--wk-bg-surface);
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-md);
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+}
+
+.wk-spacesettings-textarea:focus {
+    border-color: var(--wk-color-accent);
+}
+
+.wk-spacesettings-textarea:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.wk-spacesettings-textarea::placeholder {
+    color: var(--wk-text-secondary);
+}
+
 .wk-spacesettings-btn {
     width: 100%;
     padding: 8px 16px;

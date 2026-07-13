@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
 
-const { mockGet, mockPost, mockDelete, mockRequestUse, mockResponseUse } = vi.hoisted(() => ({
+const { mockGet, mockPost, mockPut, mockDelete, mockRequestUse, mockResponseUse } = vi.hoisted(() => ({
     mockGet: vi.fn(),
     mockPost: vi.fn(),
+    mockPut: vi.fn(),
     mockDelete: vi.fn(),
     mockRequestUse: vi.fn(),
     mockResponseUse: vi.fn(),
@@ -14,7 +15,7 @@ vi.mock('axios', () => ({
         create: () => ({
             get: mockGet,
             post: mockPost,
-            put: vi.fn(),
+            put: mockPut,
             delete: mockDelete,
             interceptors: {
                 request: { use: mockRequestUse },
@@ -25,7 +26,16 @@ vi.mock('axios', () => ({
     },
 }));
 
-import { getTopicTemplates, getTemplates, listSummaries, removeMember } from '../summaryApi';
+import {
+    createCustomTopicTemplate,
+    deleteCustomTopicTemplate,
+    getTopicTemplates,
+    getTopicTemplatesConfig,
+    getTemplates,
+    listSummaries,
+    removeMember,
+    updateCustomTopicTemplate,
+} from '../summaryApi';
 
 describe('summaryApi interceptors', () => {
   it('injects language, token, and space headers', async () => {
@@ -99,8 +109,10 @@ describe('summaryApi', () => {
             mockGet.mockResolvedValue({ data: { data: { templates } } });
 
             const result = await getTopicTemplates();
+            const config = await getTopicTemplatesConfig();
 
             expect(result).toEqual(templates);
+            expect(config).toEqual({ templates, custom_template_limit: 30 });
         });
 
         it('returns empty array when templates is missing', async () => {
@@ -117,6 +129,26 @@ describe('summaryApi', () => {
             const result = await getTopicTemplates();
 
             expect(result).toEqual([]);
+        });
+
+        it('reads custom_template_limit when present', async () => {
+            const templates = [
+                { id: 'custom_a', label: 'A', icon: 'FileText', description: '', type: 'fixed', pattern: 'x', is_custom: true },
+            ];
+            mockGet.mockResolvedValue({ data: { data: { templates, custom_template_limit: 50 } } });
+
+            const result = await getTopicTemplatesConfig();
+
+            expect(result).toEqual({ templates, custom_template_limit: 50 });
+        });
+
+
+        it('preserves custom_template_limit 0 when returned by backend', async () => {
+            mockGet.mockResolvedValue({ data: { data: { templates: [], custom_template_limit: 0 } } });
+
+            const result = await getTopicTemplatesConfig();
+
+            expect(result).toEqual({ templates: [], custom_template_limit: 0 });
         });
     });
 
@@ -142,6 +174,59 @@ describe('summaryApi', () => {
             const result = await getTemplates();
 
             expect(result).toEqual([]);
+        });
+    });
+
+    describe('custom topic templates', () => {
+        it('creates a custom template', async () => {
+            const template = {
+                id: 'custom_1',
+                label: '风险复盘',
+                icon: 'FileText',
+                description: '按风险整理',
+                type: 'fixed',
+                pattern: '按风险点总结',
+                is_custom: true,
+            };
+            mockPost.mockResolvedValueOnce({ data: { data: { template } } });
+
+            const result = await createCustomTopicTemplate({
+                label: '风险复盘',
+                description: '按风险整理',
+            });
+
+            expect(mockPost).toHaveBeenCalledWith('/summary/api/v1/summary-templates/my', {
+                label: '风险复盘',
+                description: '按风险整理',
+            });
+            expect(result).toEqual(template);
+        });
+
+        it('updates and deletes a custom template with encoded id', async () => {
+            const template = {
+                id: 'custom_a/b',
+                label: '风险复盘',
+                icon: 'FileText',
+                description: '',
+                type: 'fixed',
+                pattern: '按风险点总结',
+                is_custom: true,
+            };
+            mockPut.mockResolvedValueOnce({ data: { data: { template } } });
+            mockDelete.mockResolvedValueOnce({ data: { data: {} } });
+
+            const result = await updateCustomTopicTemplate('custom_a/b', {
+                label: '风险复盘',
+                description: '按风险点总结',
+            });
+            await deleteCustomTopicTemplate('custom_a/b');
+
+            expect(mockPut).toHaveBeenCalledWith('/summary/api/v1/summary-templates/my/custom_a%2Fb', {
+                label: '风险复盘',
+                description: '按风险点总结',
+            });
+            expect(mockDelete).toHaveBeenCalledWith('/summary/api/v1/summary-templates/my/custom_a%2Fb');
+            expect(result).toEqual(template);
         });
     });
 

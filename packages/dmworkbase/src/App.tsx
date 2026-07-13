@@ -9,6 +9,9 @@ export type MittEvents = {
   "emoji-manifest-updated": undefined;
   /** 收藏他人贴纸成功后广播,已加载过「我的贴纸」的 EmojiPanel 据此重拉列表 */
   "stickers-updated": undefined;
+  /** App 回前台(visibilitychange/focus):打开中的会话据此重同步成员列表,
+   * 修复合盖/息屏久后 WS 断连期间成员变更 CMD 丢失导致 @ 搜不到新成员(octo-web#567) */
+  "wk:app-foreground": undefined;
   "wk:pending-thread": {
     groupNo: string;
     thread: import("./Service/Thread").Thread | null;
@@ -212,6 +215,21 @@ export {
 } from "./Service/OidcConfig";
 export type { OidcProviderConfig } from "./Service/OidcConfig";
 
+// StickerUploadLimits 解析同理抽到 ./Service/StickerUploadConfig：独立 leaf 文件,
+// 不拖 App.tsx 的重依赖链路, EmojiToolbar 的 vitest 可以直接测 parse 的边界情况。
+import {
+  DEFAULT_STICKER_UPLOAD_LIMITS,
+  parseStickerUploadLimits,
+  stickerUploadLimitsEqual,
+  type StickerUploadLimits,
+} from "./Service/StickerUploadConfig";
+export {
+  DEFAULT_STICKER_UPLOAD_LIMITS,
+  parseStickerUploadLimits,
+  stickerUploadLimitsEqual,
+} from "./Service/StickerUploadConfig";
+export type { StickerUploadLimits } from "./Service/StickerUploadConfig";
+
 export class WKRemoteConfig {
   revokeSecond: number = 2 * 60; // 撤回时间
   threadOn: boolean = false; // 子区功能开关，默认关闭
@@ -233,6 +251,20 @@ export class WKRemoteConfig {
    * 校验仍由后端负责，前端不能据此推断用户是否具备上传能力。
    */
   stickerCustomEnabled: boolean = false;
+  /**
+   * 自定义贴纸上传的操作端可调上限（最大体积 KB / 最长边 px / 允许的扩展名），后端
+   * 字段 sticker_upload_limits，与 SystemSettings.StickerUpload{MaxSizeKB,
+   * MaxDimension,AllowedFormats} 同源（octo-server #544/#547）。
+   *
+   * 纯客户端预校验用：EmojiPanel 在用户选完文件后据此本地立即校验，避免大图/非法
+   * 格式先跑完一次 HTTP 上传才被服务端拒绝。服务端 modules/file 侧仍对每次 sticker
+   * upload 请求做同一份 stickerLimits 快照兜底，这份缓存过期或被绕过都不影响安全
+   * 边界，前端不能据此推断上传一定会成功。
+   *
+   * 默认值 = 字段缺失/appconfig 请求失败时的回退值，与 PR #544 之前的历史硬编码
+   * （1024 KB / 512 px / gif,png,jpg,jpeg,webp）严格等价，行为无回归。
+   */
+  stickerUploadLimits: StickerUploadLimits = { ...DEFAULT_STICKER_UPLOAD_LIMITS };
   /**
    * Docs 协作文档模块展示开关。后端字段 docs_on 为 true 时，前端在侧边栏 NavRail
    * 展示 Docs 入口；false 或字段缺失时隐藏。
@@ -361,6 +393,7 @@ export class WKRemoteConfig {
       const previousSuppressLoginMigrationNotice =
         this.suppressLoginMigrationNotice;
       const previousStickerCustomEnabled = this.stickerCustomEnabled;
+      const previousStickerUploadLimits = this.stickerUploadLimits;
       const previousDocsOn = this.docsOn;
       const previousDmloopOn = this.dmloopOn;
       const previousDmpersonalOn = this.dmpersonalOn;
@@ -377,6 +410,9 @@ export class WKRemoteConfig {
       this.stickerCustomEnabled = parseRemoteBool(
         result["sticker_custom_enabled"]
       );
+      this.stickerUploadLimits = parseStickerUploadLimits(
+        result["sticker_upload_limits"]
+      );
       this.docsOn = parseRemoteBool(result["docs_on"]);
       this.dmloopOn = parseRemoteBool(result["dmloop_on"]);
       this.dmpersonalOn = parseRemoteBool(result["dmpersonal_on"]);
@@ -389,6 +425,10 @@ export class WKRemoteConfig {
         previousSuppressLoginMigrationNotice !==
           this.suppressLoginMigrationNotice ||
         previousStickerCustomEnabled !== this.stickerCustomEnabled ||
+        !stickerUploadLimitsEqual(
+          previousStickerUploadLimits,
+          this.stickerUploadLimits
+        ) ||
         previousDocsOn !== this.docsOn ||
         previousDmloopOn !== this.dmloopOn ||
         previousDmpersonalOn !== this.dmpersonalOn
@@ -839,6 +879,10 @@ export default class WKApp extends ProviderListener {
 
     const refresh = () => {
       this.refreshRemoteConfigOnForeground();
+      // 回前台时通知当前会话重同步成员列表。合盖/息屏久后 WS 可能已断、
+      // 断连期间的成员变更 CMD 已丢失，仅靠 remoteConfig 刷新不会补成员，
+      // 导致 @ 提及弹窗搜不到新龙虾/成员（octo-web#567）。
+      WKApp.mittBus.emit("wk:app-foreground");
     };
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {

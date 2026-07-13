@@ -163,25 +163,79 @@
   "templates": {
     "project_progress": {
       "label": "Summarize project progress",
-      "description": "Summarize progress with your team",
-      "pattern": "Summarize the progress of {project_name}",
-      "placeholder": "Enter project name"
+      "description": "Summarize current project progress by completed work, in-progress work, risks/blockers, and next steps",
+      "pattern": "Summarize current project progress by completed work, in-progress work, risks/blockers, and next steps"
     },
     "task_tracking": {
       "label": "Track task progress",
-      "description": "Invite colleagues to summarize task status",
-      "pattern": "Summarize the status of {task_name}",
-      "placeholder": "Enter task name"
+      "description": "Summarize task completion by task, owner, current status, and follow-up items",
+      "pattern": "Summarize task completion by task, owner, current status, and follow-up items"
     },
     "weekly_report": {
       "label": "Summarize team weekly report",
-      "description": "Summarize the team's weekly work",
-      "pattern": "Summarize the weekly work report"
+      "description": "Summarize the team’s weekly work by member, key progress, deliverables, risks, and next-week plan",
+      "pattern": "Summarize the team’s weekly work by member, key progress, deliverables, risks, and next-week plan"
     },
     "chat_content": {
       "label": "Summarize chat content",
-      "description": "Summarize what's happening in a chat",
-      "pattern": "Summarize key content in this chat"
+      "description": "Summarize key chat content, conclusions, follow-up items, and issues that need attention",
+      "pattern": "Summarize key chat content, conclusions, follow-up items, and issues that need attention"
+    },
+    "custom": {
+      "edit": "Edit",
+      "editTitle": "Edit template",
+      "editHint": "Add scope, structure, detail level, bullet style, and other requirements into the summary content. They will be included next time you use this template.",
+      "saveSuccess": "Template saved",
+      "saveFailed": "Failed to save template",
+      "reset": "Reset to default",
+      "resetSuccess": "Default template restored",
+      "resetFailed": "Failed to reset template",
+      "myTemplatesTitle": "My templates",
+      "new": "New template",
+      "emptyTitle": "No custom templates yet",
+      "emptyDesc": "Save your recurring summary requirements and reuse them in one click.",
+      "createTitle": "Create custom template",
+      "editCustomTitle": "Edit custom template",
+      "nameLabel": "Template name",
+      "namePlaceholder": "For example: Risk review",
+      "descriptionLabel": "Summary content",
+      "descriptionPlaceholder": "For example: summarize task progress and owners",
+      "createSuccess": "Custom template created",
+      "createFailed": "Failed to create custom template",
+      "delete": "Delete template",
+      "deleteSuccess": "Custom template deleted",
+      "deleteFailed": "Failed to delete custom template",
+      "deleteConfirmTitle": "Delete custom template?",
+      "deleteConfirmContent": "Delete template \"{{name}}\"? This cannot be undone.",
+      "promptIntro": "",
+      "promptTopic": "Summary topic",
+      "promptContext": "Content focus",
+      "applied": "Template applied: {{name}}",
+      "reselect": "Choose another template",
+      "myTemplatesTitleWithCount": "My templates {{count}}/{{limit}}",
+      "moreTemplates": "More templates",
+      "moreTemplatesTitle": "More summary templates",
+      "limitReached": "Template limit reached. Delete an old template to create a new one."
+    },
+    "personal_weekly_report": {
+      "label": "Create personal weekly report",
+      "description": "Summarize my recent weekly work by key progress, completed items, risks/blockers, and next-week plan",
+      "pattern": "Summarize my recent weekly work by key progress, completed items, risks/blockers, and next-week plan"
+    },
+    "okr_alignment": {
+      "label": "Align OKR progress",
+      "description": "Summarize current progress from the chat and compare it with goals/OKRs, including completed work, gaps, risks, and next steps",
+      "pattern": "Summarize current progress from the chat and compare it with goals/OKRs, including completed work, gaps, risks, and next steps"
+    },
+    "todo_extraction": {
+      "label": "Extract action items",
+      "description": "Extract follow-up action items from the chat by item, owner, due date, current status, and context",
+      "pattern": "Extract follow-up action items from the chat by item, owner, due date, current status, and context"
+    },
+    "feedback_triage": {
+      "label": "Categorize user feedback",
+      "description": "Organize user feedback, bugs, experience issues, and improvement suggestions by issue type, impact, priority, and recommended action",
+      "pattern": "Organize user feedback, bugs, experience issues, and improvement suggestions by issue type, impact, priority, and recommended action"
     }
   },
   "chatSelector": {
@@ -298,6 +352,11 @@
     "forwardedToMatter": "Forwarded to \"{{title}}\"",
     "processingTitle": "Generating summary...",
     "processingDesc": "This may take a little while. Please wait.",
+    "workflowUnderstandQuestion": "Understand the summary request",
+    "workflowFindRelevantChats": "Find relevant chats",
+    "workflowFilterUsefulContent": "Filter useful content",
+    "workflowAnalyzeChatContent": "Analyze chat content",
+    "workflowGenerateSummary": "Generate summary",
     "failedTitle": "Summary generation failed",
     "taskNo": "Task ID: {{taskNo}}",
     "createdAt": "Created: {{time}}",

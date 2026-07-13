@@ -9,6 +9,30 @@ type TranslateFn = (key: string, options?: { values?: Record<string, unknown>; d
 /** 解析期接受两态：前端兜底 LocalTopicTemplate（含 *Key）或后端明文 TopicTemplate。 */
 export type ResolvableTemplate = LocalTopicTemplate | TopicTemplate;
 
+export interface CustomTemplateSelectionLabels {
+    topic: string;
+    context: string;
+}
+
+export function getTemplateEditableFields(template: TopicTemplate): {
+    label: string;
+    description: string;
+} {
+    return {
+        label: template.label,
+        description: template.description,
+    };
+}
+
+export function deriveSummaryTitle(topic: string): string {
+    const trimmed = topic.trim();
+    const lines = trimmed.split('\n').map((line) => line.trim()).filter(Boolean);
+    const contentLine = lines.find((line) => /^(内容重点|总结内容|Content focus|Summary content)\s*[:：]/i.test(line));
+    const source = contentLine || lines[0] || trimmed;
+    const match = source.match(/^(内容重点|总结内容|总结主题|主题|Content focus|Summary content|Summary topic|Topic)\s*[:：]\s*(.+)$/i);
+    return (match?.[2] || source).trim();
+}
+
 /** 以 `labelKey` 是否存在判别是否为前端兜底（需解析 i18n key）类型。 */
 function isLocalTemplate(template: ResolvableTemplate): template is LocalTopicTemplate {
     return typeof (template as LocalTopicTemplate).labelKey === 'string';
@@ -51,7 +75,33 @@ export function resolveTemplate(template: ResolvableTemplate, t: TranslateFn): T
 export function computeTemplateSelection(template: TopicTemplate): {
     text: string;
     range: [number, number] | null;
+};
+export function computeTemplateSelection(
+    template: TopicTemplate,
+    customLabels: CustomTemplateSelectionLabels,
+): {
+    text: string;
+    range: [number, number] | null;
+};
+export function computeTemplateSelection(
+    template: TopicTemplate,
+    customLabels?: CustomTemplateSelectionLabels,
+): {
+    text: string;
+    range: [number, number] | null;
 } {
+    if (customLabels) {
+        const parts = [
+            template.label ? `${customLabels.topic}: ${template.label}` : '',
+            template.description ? `${customLabels.context}: ${template.description}` : '',
+        ];
+        return { text: parts.filter(Boolean).join('\n'), range: null };
+    }
+
+    if (template.is_custom) {
+        return { text: [template.label, template.description].filter(Boolean).join('\n'), range: null };
+    }
+
     const pattern = template.pattern;
     const placeholders = template.placeholders ?? [];
 

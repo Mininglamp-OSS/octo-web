@@ -25,6 +25,39 @@
   --wk-color-accent: var(--wk-purple-500); /* Figma: Thread 链接、AI 标签 */
   --wk-color-accent-hover: var(--wk-purple-600);
 
+  /* ── Onboarding intro fixed palette（对齐 onboarding-clean，固定深色视觉） ── */
+  --wk-onboarding-overlay-bg: rgba(235, 239, 247, 0.34);
+  --wk-onboarding-overlay-enter-bg: rgba(235, 239, 247, 0.22);
+  --wk-onboarding-overlay-leaving-bg: rgba(235, 239, 247, 0.36);
+  --wk-onboarding-intro-bg: #020205;
+  --wk-onboarding-intro-bg-top: #050507;
+  --wk-onboarding-intro-bg-bottom: #07070b;
+  --wk-onboarding-intro-before-glow: rgba(218, 211, 255, 0.045);
+  --wk-onboarding-intro-before-purple: rgba(124, 58, 237, 0.04);
+  --wk-onboarding-intro-before-blue: rgba(94, 101, 255, 0.018);
+  --wk-onboarding-silk-canvas-bg: #030208;
+  --wk-onboarding-selection-bg: #21113a;
+  --wk-onboarding-selection-text: #d8b4fe;
+  --wk-onboarding-cursor-ring-interactive-border: rgba(196, 181, 253, 0.46);
+  --wk-onboarding-silk-kicker-color: rgba(216, 205, 255, 0.68);
+  --wk-onboarding-narrative-index-color: rgba(255, 255, 255, 0.028);
+  --wk-onboarding-narrative-count-color: rgba(238, 242, 255, 0.72);
+  --wk-onboarding-narrative-progress-bg: rgba(216, 205, 255, 0.22);
+  --wk-onboarding-narrative-line-mid: #c4b5fd;
+  --wk-onboarding-narrative-line-end: #7c3aed;
+  --wk-onboarding-visual-dark-start: #090a14;
+  --wk-onboarding-visual-dark-mid: #17122a;
+  --wk-onboarding-visual-dark-end: #0b1020;
+  --wk-onboarding-online: #10b981;
+  --wk-onboarding-button-bg: #ffffff;
+  --wk-onboarding-button-fg: #0a0d14;
+  --wk-onboarding-button-fill: #7c3aed;
+  --wk-onboarding-button-active-fg: #ffffff;
+  --wk-onboarding-input-focus-border: rgba(124, 58, 237, 0.48);
+  --wk-onboarding-mention-bg: rgba(124, 58, 237, 0.12);
+  --wk-onboarding-mention-selection-bg: rgba(124, 58, 237, 0.22);
+  --wk-onboarding-hover-border-color: rgba(167, 139, 250, 0.3);
+
   /* ── Status & Fixed（Figma 色值） ── */
   --wk-color-online: var(--wk-green-dark); /* Figma: #52C41A 在线状态绿 */
   --wk-color-white: #ffffff; /* 固定白色（不跟主题走） */
@@ -198,6 +231,19 @@
   --wk-bg-selected: var(--wk-purple-alpha-06); /* 选中态背景 */
   --wk-bg-navrail: var(--wk-neutral-50); /* Figma: 侧边栏与列表同色 #F5F6F7 */
   --wk-bg-selection-header: #faf9ff;
+  --wk-onboarding-panel-bg: rgba(255, 255, 255, 0.98);
+  --wk-onboarding-panel-border: rgba(203, 211, 224, 0.92);
+  --wk-onboarding-nav-bg: rgba(248, 250, 252, 0.94);
+  --wk-onboarding-panel-active-bg: rgba(255, 255, 255, 0.98);
+  --wk-onboarding-input-bg: rgba(255, 255, 255, 0.92);
+  --wk-onboarding-identity-stage-bg:
+    radial-gradient(circle at 44% 24%, rgba(124, 58, 237, 0.13), transparent 29%),
+    radial-gradient(circle at 60% 80%, rgba(6, 182, 212, 0.1), transparent 34%),
+    linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.98));
+  --wk-onboarding-avatar-bg:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.9), rgba(243, 244, 246, 0.84)),
+    var(--wk-bg-surface);
+  --wk-onboarding-hover-button-light-bg: rgba(255, 255, 255, 0.92);
 
   /* 文字（Figma 色值） */
   --wk-text-primary: var(--wk-neutral-800); /* Figma: #1F2329 标题/组织名 */
@@ -285,6 +331,43 @@ body[theme-mode="dark"] {
     in srgb,
     var(--wk-brand-accent) 14%,
     var(--wk-bg-base)
+  );
+  --wk-onboarding-panel-bg: color-mix(
+    in srgb,
+    var(--wk-bg-surface) 98%,
+    transparent
+  );
+  --wk-onboarding-panel-border: var(--wk-border-default);
+  --wk-onboarding-nav-bg: color-mix(
+    in srgb,
+    var(--wk-bg-base) 94%,
+    transparent
+  );
+  --wk-onboarding-panel-active-bg: color-mix(
+    in srgb,
+    var(--wk-bg-elevated) 98%,
+    transparent
+  );
+  --wk-onboarding-input-bg: color-mix(
+    in srgb,
+    var(--wk-bg-elevated) 92%,
+    transparent
+  );
+  --wk-onboarding-identity-stage-bg:
+    radial-gradient(circle at 44% 24%, rgba(124, 58, 237, 0.13), transparent 29%),
+    radial-gradient(circle at 60% 80%, rgba(6, 182, 212, 0.1), transparent 34%),
+    linear-gradient(135deg, var(--wk-bg-elevated), var(--wk-bg-surface));
+  --wk-onboarding-avatar-bg:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--wk-bg-elevated) 90%, transparent),
+      color-mix(in srgb, var(--wk-bg-surface) 84%, transparent)
+    ),
+    var(--wk-bg-surface);
+  --wk-onboarding-hover-button-light-bg: color-mix(
+    in srgb,
+    var(--wk-bg-elevated) 92%,
+    transparent
   );
 
   /* 文字 */

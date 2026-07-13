@@ -37,6 +37,26 @@
 .wk-bot-detail-empty {
     color: #999;
 }
+.wk-bot-detail-textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: var(--wk-sp-2) var(--wk-sp-3);
+    border: 1px solid var(--wk-border-default);
+    border-radius: var(--wk-r-sm);
+    background: var(--wk-bg-surface);
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-md);
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+}
+.wk-bot-detail-textarea:focus {
+    border-color: var(--wk-color-accent);
+}
+.wk-bot-detail-textarea::placeholder {
+    color: var(--wk-text-secondary);
+}
 .wk-bot-detail-label {
     font-size: 12px;
     color: #999;

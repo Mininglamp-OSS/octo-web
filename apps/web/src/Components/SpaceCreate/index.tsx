@@ -1,6 +1,7 @@
 import React, { Component } from "react";
-import { Input, TextArea, Toast } from "@douyinfe/semi-ui";
+import { Input, Toast } from "@douyinfe/semi-ui";
 import { I18nContext, SpaceService, WKModal, extractErrorMsg, t } from "@octo/base";
+import VoiceInputButton, { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import "./index.css";
 
 export interface SpaceCreateProps {
@@ -19,6 +20,33 @@ interface SpaceCreateState {
 export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreateState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
+
+    private descriptionRef = React.createRef<HTMLTextAreaElement>();
+
+    private handleVoiceTranscribed = (
+        text: string,
+        mode: ReplaceMode,
+        savedRange?: SelectionRange
+    ) => {
+        if (mode === "all") {
+            this.setState({ description: text.slice(0, 200) });
+        } else if (mode === "selection" && savedRange) {
+            this.setState((prev) => {
+                const before = prev.description.slice(0, savedRange.from);
+                const after = prev.description.slice(savedRange.to);
+                const budget = Math.max(0, 200 - before.length - after.length);
+                return { description: before + text.slice(0, budget) + after };
+            });
+        } else {
+            this.setState((prev) => {
+                const pos = savedRange?.from ?? prev.description.length;
+                const before = prev.description.slice(0, pos);
+                const after = prev.description.slice(pos);
+                const budget = Math.max(0, 200 - before.length - after.length);
+                return { description: before + text.slice(0, budget) + after };
+            });
+        }
+    };
 
     constructor(props: SpaceCreateProps) {
         super(props);
@@ -94,13 +122,25 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                         </div>
                         <div className="wk-spacecreate-field">
                             <label className="wk-spacecreate-label">{t("app.spaceCreate.descriptionLabel")}</label>
-                            <TextArea
-                                placeholder={t("app.spaceCreate.descriptionPlaceholder")}
-                                value={description}
-                                onChange={(v) => this.setState({ description: v })}
-                                maxCount={200}
-                                autosize={{ minRows: 3, maxRows: 5 }}
-                            />
+                            <div style={{ position: "relative" }}>
+                                <textarea
+                                    ref={this.descriptionRef}
+                                    className="wk-spacecreate-textarea"
+                                    placeholder={t("app.spaceCreate.descriptionPlaceholder")}
+                                    value={description}
+                                    onChange={(e) => this.setState({ description: e.target.value.slice(0, 200) })}
+                                    maxLength={200}
+                                    rows={3}
+                                />
+                                <VoiceInputButton
+                                    inputRef={this.descriptionRef}
+                                    onTranscribed={this.handleVoiceTranscribed}
+                                    getCurrentText={() => this.state.description}
+                                    showModeMenu
+                                    size="sm"
+                                    className="wk-vib--textarea-corner"
+                                />
+                            </div>
                         </div>
                         <div className="wk-spacecreate-actions">
                             <button className="wk-spacecreate-btn wk-spacecreate-btn-cancel" onClick={this.handleClose}>

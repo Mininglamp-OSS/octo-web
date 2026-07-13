@@ -1890,6 +1890,9 @@ export default class ChatPage extends Component<any, ChatPageState> {
                           vm.showGlobalSearch = false;
                         });
                       }}
+                      hideModal={() => {
+                        vm.showGlobalSearch = false;
+                      }}
                     />
                   </ErrorBoundary>
                 </div>

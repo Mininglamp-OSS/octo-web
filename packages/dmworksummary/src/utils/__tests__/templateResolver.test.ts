@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveTemplate, computeTemplateSelection } from '../templateResolver';
+import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle } from '../templateResolver';
 import { TOPIC_TEMPLATES } from '../../constants/templates';
 import type { TopicTemplate } from '../../types/summary';
 
@@ -54,8 +54,8 @@ describe('resolveTemplate', () => {
             t,
         );
         expect(project.label).toBe('Summarize project progress');
-        expect(project.pattern).toBe('Summarize the progress of {project_name}');
-        expect(project.placeholders?.[0].label).toBe('Enter project name');
+        expect(project.pattern).toBe('Summarize current project progress by completed work, in-progress work, risks/blockers, and next steps');
+        expect(project.placeholders).toBeUndefined();
     });
 
     it('passes through already-cleartext backend templates unchanged', () => {
@@ -73,27 +73,56 @@ describe('resolveTemplate', () => {
     });
 });
 
-describe('computeTemplateSelection', () => {
-    it('locates the placeholder token in the zh-CN pattern → [3, 9]', () => {
+
+describe('getTemplateEditableFields', () => {
+    it('uses label and description for editing instead of the parameterized pattern', () => {
         const t = makeT('zh-CN');
         const resolved = resolveTemplate(
-            TOPIC_TEMPLATES.find((x) => x.id === 'project_progress')!,
+            TOPIC_TEMPLATES.find((x) => x.id === 'task_tracking')!,
             t,
         );
-        const { text, range } = computeTemplateSelection(resolved);
-        expect(text).toBe('总结 输入项目名称 的项目进展');
-        expect(range).toEqual([3, 9]);
+
+        expect(getTemplateEditableFields(resolved)).toEqual({
+            label: '跟踪任务进度',
+            description: '总结任务完成情况，按任务、负责人、当前状态、待办事项整理',
+        });
+        expect(getTemplateEditableFields(resolved).description).not.toContain('{task_name}');
+    });
+});
+
+
+describe('deriveSummaryTitle', () => {
+    it('prefers the content focus line even when it is not first', () => {
+        expect(deriveSummaryTitle('总结主题: 风险复盘\n内容重点: 按风险点整理')).toBe('按风险点整理');
     });
 
-    it('locates the placeholder token in the en-US pattern → [26, 44]', () => {
-        const t = makeT('en-US');
-        const resolved = resolveTemplate(
-            TOPIC_TEMPLATES.find((x) => x.id === 'project_progress')!,
-            t,
-        );
-        const { text, range } = computeTemplateSelection(resolved);
-        expect(text).toBe('Summarize the progress of Enter project name');
-        expect(range).toEqual([26, 44]);
+    it('supports fullwidth separators', () => {
+        expect(deriveSummaryTitle('总结主题：任务划分\n内容重点：总结任务进度')).toBe('总结任务进度');
+    });
+
+    it('falls back to the first non-empty line without a known label', () => {
+        expect(deriveSummaryTitle('  总结最近一周的工作  \n内容可以详细一点')).toBe('总结最近一周的工作');
+    });
+
+    it('returns an empty string for empty input', () => {
+        expect(deriveSummaryTitle('   ')).toBe('');
+    });
+});
+
+describe('computeTemplateSelection', () => {
+    it('locates the placeholder token for legacy parameterized templates', () => {
+        const legacy: TopicTemplate = {
+            id: 'legacy_project_progress',
+            label: '汇总项目进展',
+            icon: 'FileText',
+            description: '与团队成员一起总结进展',
+            type: 'parameterized',
+            pattern: '总结 {project_name} 的项目进展',
+            placeholders: [{ key: 'project_name', label: '输入项目名称', position: [3, 9] }],
+        };
+        const { text, range } = computeTemplateSelection(legacy);
+        expect(text).toBe('总结 输入项目名称 的项目进展');
+        expect(range).toEqual([3, 9]);
     });
 
     it('returns null range for fixed templates and replaces no token', () => {
@@ -103,7 +132,7 @@ describe('computeTemplateSelection', () => {
             t,
         );
         const { text, range } = computeTemplateSelection(resolved);
-        expect(text).toBe('总结每周的工作周报');
+        expect(text).toBe('总结团队成员每周工作，按成员、重点进展、成果产出、风险问题、下周计划整理');
         expect(range).toBeNull();
     });
 
@@ -123,5 +152,25 @@ describe('computeTemplateSelection', () => {
         const { text, range } = computeTemplateSelection(multi);
         expect(text).toBe('AA 和 BB');
         expect(range).toEqual([0, 2]);
+    });
+
+    it('combines template label and description into the topic text', () => {
+        const custom: TopicTemplate = {
+            id: 'custom_task',
+            label: '任务划分总结',
+            icon: 'FileText',
+            description: '每个任务都是谁负责，什么进度',
+            type: 'fixed',
+            pattern: '表格形式',
+            is_custom: true,
+        };
+
+        const { text, range } = computeTemplateSelection(custom, {
+            topic: '总结主题',
+            context: '内容重点',
+        });
+
+        expect(text).toBe('总结主题: 任务划分总结\n内容重点: 每个任务都是谁负责，什么进度');
+        expect(range).toBeNull();
     });
 });

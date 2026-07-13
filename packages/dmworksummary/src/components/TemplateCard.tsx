@@ -12,43 +12,59 @@ const ICON_MAP: Record<string, React.FC<{ size?: number }>> = {
 interface TemplateCardProps {
     template: TopicTemplate;
     onClick: (template: TopicTemplate) => void;
+    onEdit?: (template: TopicTemplate) => void;
+    onDelete?: (template: TopicTemplate) => void;
+    editLabel?: string;
+    deleteLabel?: string;
 }
 
-const TemplateCard: React.FC<TemplateCardProps> = ({ template, onClick }) => {
-    const IconComponent = ICON_MAP[template.icon];
+const TemplateCard: React.FC<TemplateCardProps> = ({ template, onClick, onEdit, onDelete, editLabel, deleteLabel }) => {
+    const IconComponent = ICON_MAP[template.icon] ?? FileText;
 
     return (
         <div
-            className="chat-summary-template-card"
+            className={`chat-summary-template-card${template.is_custom ? ' chat-summary-template-card-custom' : ''}`}
             onClick={() => onClick(template)}
-            style={{
-                flex: '1 1 0',
-                minWidth: 0,
-                padding: '12px',
-                border: '1px solid var(--wk-border-default, #E5E6EB)',
-                borderRadius: 8,
-                cursor: 'pointer',
-                backgroundColor: 'var(--wk-bg-surface, #fff)',
-                transition: 'background-color 0.15s, border-color 0.15s',
-            }}
-            onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#F0F7FF';
-                e.currentTarget.style.borderColor = 'var(--wk-color-primary, #3370FF)';
-            }}
-            onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'var(--wk-bg-surface, #fff)';
-                e.currentTarget.style.borderColor = 'var(--wk-border-default, #E5E6EB)';
-            }}
         >
-            <div style={{ marginBottom: 8, color: 'var(--wk-text-secondary, #646A73)' }}>
-                {IconComponent ? <IconComponent size={20} /> : null}
+            <div className="chat-summary-template-card-icon">
+                <IconComponent size={20} />
             </div>
-            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, color: 'var(--wk-text-primary, #1C1F23)' }}>
+            <div className="chat-summary-template-card-title">
                 {template.label}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--wk-text-tertiary, #8F959E)', lineHeight: '16px' }}>
+            <div className="chat-summary-template-card-desc">
                 {template.description}
             </div>
+            {(onEdit || onDelete) && (
+                <div className="chat-summary-template-actions">
+                    {onEdit && (
+                        <button
+                            type="button"
+                            className="chat-summary-template-edit"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onEdit(template);
+                            }}
+                            aria-label={editLabel}
+                        >
+                            {editLabel}
+                        </button>
+                    )}
+                    {onDelete && (
+                        <button
+                            type="button"
+                            className="chat-summary-template-delete"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(template);
+                            }}
+                            aria-label={deleteLabel}
+                        >
+                            {deleteLabel}
+                        </button>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

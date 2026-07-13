@@ -4,6 +4,7 @@ import { X } from "lucide-react"
 import ThreadIcon from "../Icons/ThreadIcon"
 import WKApp from "../../App"
 import { I18nContext, t } from "../../i18n"
+import { THREAD_NAME_MAX_LENGTH } from "../../Service/nameLimits"
 import "./index.css"
 
 export interface ThreadCreateProps {
@@ -49,7 +50,7 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
       return
     }
 
-    if (name.length > 50) {
+    if (name.length > THREAD_NAME_MAX_LENGTH) {
       Toast.warning(t("base.threadCreate.nameMaxLength"))
       return
     }
@@ -94,7 +95,7 @@ export class ThreadCreate extends Component<ThreadCreateProps, ThreadCreateState
             value={name}
             onChange={this.handleNameChange}
             onKeyDown={this.handleKeyDown}
-            maxLength={50}
+            maxLength={THREAD_NAME_MAX_LENGTH}
             autoFocus
           />
         </div>

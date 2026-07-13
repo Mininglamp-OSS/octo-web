@@ -41,6 +41,19 @@ vi.mock('../editor/EditorShell.tsx', () => ({
   ),
 }))
 
+// Replace the whiteboard session host (Excalidraw + Yjs + Hocuspocus) with a marker so the
+// board-open path is testable in jsdom without mounting the heavy canvas / opening a WebSocket —
+// exactly like the editor marker above. The marker echoes the docId + space it was addressed with.
+vi.mock('../board/BoardSession.tsx', () => ({
+  BoardSession: (props: { docId: string; space?: string; folder?: string }) => (
+    <div data-testid="board-session">
+      <span data-testid="board-doc">{props.docId}</span>
+      <span data-testid="board-space">{props.space}</span>
+      <span data-testid="board-folder">{props.folder}</span>
+    </div>
+  ),
+}))
+
 // useMemberNames pages the space-member seam; stub it to a stable empty map so these tests stay
 // focused on the preflight gate and chrome.
 vi.mock('../members/useMemberNames.ts', () => ({
@@ -334,6 +347,33 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     expect(copied).not.toContain('?')
   })
 
+  it('XIN-513: Copy link keeps the doc space `?sp` but strips the session `?sid`', async () => {
+    // The standalone page was opened from a share link carrying `?sp=` (the doc's real space, XIN-501)
+    // and the live URL may also carry the sharer's own `?sid=`. The copied canonical link must
+    // preserve `?sp` — the next recipient's preflight needs it to address the doc's space — while
+    // dropping the session-scoped `?sid`.
+    window.history.pushState({}, '', '/d/d_ok?sid=sharer-secret&sp=105d4a60d0fc4d55a5cfc3c2d0501361')
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_ok" />)
+
+    await waitFor(() => expect(screen.getByTestId('lead-copy-link')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('lead-copy-link'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+    const copied = writeText.mock.calls[0][0] as string
+    expect(copied).toBe(`${window.location.origin}/d/d_ok?sp=105d4a60d0fc4d55a5cfc3c2d0501361`)
+    expect(copied).not.toContain('sid')
+  })
+
   it('AC-6: after copying, a menu-external "Link copied" toast appears (visible even though the menu row closes)', async () => {
     // Reviewer's blocker (XIN-386): the old in-row "Link copied" label was dead — selecting the row
     // closes the ≡ menu, so the panel that hosted the label unmounts and the user never sees it.
@@ -368,6 +408,87 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     // The dead in-row "copied" label is gone: the menu row label stays the action name, never flips.
     expect(screen.getByTestId('lead-copy-link').textContent).toContain('docs.standalone.copyLink')
     expect(screen.getByTestId('lead-copy-link').textContent).not.toContain('docs.standalone.linkCopied')
+  })
+})
+
+// Cross-node board-kind (XIN-530, boss real-device): a board created on node A and opened via a
+// shared `/d/:docId` link on node B (a FRESH session — the board-kind localStorage registry is
+// empty there) must render as a BOARD, not a rich-text document. The standalone page has no local
+// registry to lean on, so kind can only come from the AUTHORITATIVE backend `docType` the preflight
+// (GET /api/v1/docs/{id}) already carries. Before the fix the page ignored that field and always
+// mounted EditorShell, so every cross-node board opened as a document.
+describe('StandaloneDocPage — board-kind resolved from authoritative docType (XIN-530)', () => {
+  it('opens the whiteboard when the preflight docType is board (empty local registry, cross-node)', async () => {
+    // Fresh session: no board-kind registry record for this docId (node B never saw it). The only
+    // signal is the backend docType from the preflight — it must drive the shell choice.
+    expect(window.localStorage.getItem('octo.board.ids.')).toBeNull()
+
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/b_shared') {
+        return {
+          data: { docId: 'b_shared', title: 'Shared Board', ownerId: 'u_owner', docType: 'board' },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="b_shared" />)
+
+    // The whiteboard session mounts — NOT the rich-text editor.
+    await waitFor(() => expect(screen.getByTestId('board-session')).toBeTruthy())
+    expect(screen.getByTestId('board-doc').textContent).toBe('b_shared')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
+  it('still opens the rich-text editor when the preflight docType is doc (or absent)', async () => {
+    // Regression guard: a plain document (or a legacy backend that omits docType) must keep opening
+    // in the Tiptap editor — the board branch must not swallow the default doc path.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_plain') {
+        return { data: { docId: 'd_plain', title: 'Plain Doc', ownerId: 'u_owner', docType: 'doc' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_plain" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(screen.getByTestId('editor-doc').textContent).toBe('d_plain')
+    expect(screen.queryByTestId('board-session')).toBeNull()
+  })
+
+  it('addresses the board to the authoritative whiteboard space/folder/board from the preflight documentName (non-default folder)', async () => {
+    // XIN-634 P1-a: a board that lives in a NON-default folder. The preflight documentName is the
+    // authoritative whiteboard key octo:{space}:{folder}:wb:{board}; the addressing memo must honor
+    // parsed.space/folder/board symmetrically with the document branch. Before the fix a whiteboard
+    // key fell through to { space: preflightSpace, folder: DEFAULT_DOC_FOLDER, board: docId }, so the
+    // standalone share link derived a DIFFERENT room than the REST preflight authorized (wrong collab
+    // token / WS room / uid-scoped cache) for any board outside the default folder.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/b_infolder') {
+        return {
+          data: {
+            docId: 'b_infolder',
+            title: 'Board In Folder',
+            ownerId: 'u_owner',
+            docType: 'board',
+            documentName: 'octo:s_auth:f_team:wb:board_xyz',
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="b_infolder" />)
+
+    await waitFor(() => expect(screen.getByTestId('board-session')).toBeTruthy())
+    // Board segment comes from parsed.board, NOT the URL docId; folder/space from the parsed key.
+    expect(screen.getByTestId('board-doc').textContent).toBe('board_xyz')
+    expect(screen.getByTestId('board-folder').textContent).toBe('f_team')
+    expect(screen.getByTestId('board-folder').textContent).not.toBe('f_default')
+    expect(screen.getByTestId('board-space').textContent).toBe('s_auth')
   })
 })
 

@@ -33,6 +33,7 @@ export default class GlobalSearchVM extends ProviderListener {
         return [
             { tab: t("base.globalSearch.tab.contacts"), itemKey: 'contacts' },
             { tab: t("base.globalSearch.tab.groups"), itemKey: 'groups' },
+            { tab: t("base.globalSearch.tab.chat"), itemKey: 'messages' },
             { tab: t("base.globalSearch.tab.files"), itemKey: 'files' },
         ];
     }

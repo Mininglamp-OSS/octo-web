@@ -11,13 +11,13 @@ import { requestAccess, AccessRequestConflictError } from './api.ts'
 
 type State = 'idle' | 'submitting' | 'submitted' | 'error'
 
-export function RequestAccessButton({ docId }: { docId: string }) {
+export function RequestAccessButton({ docId, spaceId }: { docId: string; spaceId?: string }) {
   const [state, setState] = useState<State>('idle')
 
   const onRequest = useCallback(async () => {
     setState('submitting')
     try {
-      await requestAccess(docId)
+      await requestAccess(docId, { spaceId })
       setState('submitted')
     } catch (e) {
       // A 409 means we already have a pending request — treat as submitted, not an error.
@@ -27,7 +27,7 @@ export function RequestAccessButton({ docId }: { docId: string }) {
       }
       setState('error')
     }
-  }, [docId])
+  }, [docId, spaceId])
 
   if (state === 'submitted') {
     return <p className="octo-access-request-submitted">{t('docs.forward.accessRequested')}</p>

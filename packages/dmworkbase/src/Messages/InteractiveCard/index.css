@@ -1,0 +1,610 @@
+/*
+ * InteractiveCard(=17) 互动卡片样式。
+ * 前缀 wk-interactive-card-*，与 type=7 名片(wk-message-card-*) 完全独立。
+ *
+ * 渲染分两块：
+ *   - 外层容器 / plain / hint / SDK 挂载点 / 交互态 —— 本文件的 wk-interactive-card-* 类；
+ *   - 卡片本体由官方 AdaptiveCards SDK 渲染（ac-* 类）。SDK 默认样式表未引入，
+ *     故按钮/输入需自备基线样式（见文末 ac-* 段），颜色/间距/字体由 HostConfig 走 --wk-* token。
+ * 一律用设计 token，自动适配亮/暗主题；不硬编码颜色。
+ */
+
+.wk-interactive-card {
+  align-self: flex-start;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1, 4px);
+  /* 随内容自适应，[300px, 480px] 区间：短卡（提示/欢迎/单行状态）不再被定宽
+     撑成右侧大片留白的空面板；富内容卡（表格等）仍可长到 480px。300px 下限
+     对齐名片(300px)，避免卡过窄导致表格/长值被挤到截断。对齐 File / 名片
+     「盒子随内容」的既有消息语言。 */
+  width: fit-content;
+  min-width: min(300px, 100%);
+  max-width: min(480px, 100%);
+}
+
+.wk-interactive-card > .wk-interactive-card-sdk,
+.wk-interactive-card > .wk-interactive-card-plain {
+  width: 100%;
+}
+
+/* 兜底纯文本（不可信发送者 / fallback / 协商失败） */
+.wk-interactive-card-plain {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: var(--wk-leading-normal, 1.5);
+  color: var(--wk-text-primary, inherit);
+}
+
+.wk-interactive-card-hint {
+  margin-top: var(--wk-sp-1, 4px);
+  font-size: var(--wk-text-size-sm, 12px);
+  color: var(--wk-text-secondary);
+}
+
+/* 受限 markdown 容器（cardMarkdown 输出，SDK onProcessMarkdown 复用）：紧凑列表/段落间距 */
+.wk-interactive-card-md p {
+  margin: 0;
+}
+
+.wk-interactive-card-md ul,
+.wk-interactive-card-md ol {
+  margin: var(--wk-sp-0-5, 2px) 0;
+  padding-left: var(--wk-sp-5, 20px);
+}
+
+.wk-interactive-card-md a {
+  color: var(--wk-text-accent, var(--wk-brand-primary));
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.wk-interactive-card-md a:hover {
+  text-decoration: underline;
+}
+
+/* ── SDK 挂载容器 + 交互态（octo/v2） ──
+ * 静止态对齐 App 既有「盒子型」消息（File / 名片）：hairline 描边、无阴影、
+ * 8px 圆角、无左竖条——卡片读作「有结构的消息」而非「悬浮的 widget」。
+ * hover 轻微抬起（描边加深 + shadow-sm），与 .wk-message-file--clickable:hover
+ * 同一反馈层级，补齐卡片此前缺失的 body 级 hover（不透明卡片会挡住行级
+ * .wk-msg-row:hover 高亮）。
+ * 左竖条曾是全 App 独一份的信号，且打磨过的 --agent-progress 布局已弃用它，
+ * 故默认去除（agent-progress 保留自有形态，见下方 --agent-progress 段）。 */
+.wk-interactive-card-sdk {
+  position: relative;
+  min-width: 0;
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  overflow: hidden;
+  transition: border-color var(--wk-dur-fast, 0.15s) var(--wk-ease, ease),
+    box-shadow var(--wk-dur-fast, 0.15s) var(--wk-ease, ease);
+}
+
+/* 非 agent-progress 卡的 hover 抬起；agent-progress 有自己的 glow 形态，排除在外。 */
+.wk-interactive-card-sdk:not(.wk-interactive-card-sdk--agent-progress):hover {
+  border-color: var(--wk-border-default);
+  box-shadow: var(--wk-shadow-sm);
+}
+
+.wk-interactive-card-sdk > .ac-adaptiveCard {
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.wk-interactive-card-sdk > .ac-adaptiveCard > :first-child {
+  margin-top: 0;
+}
+
+.wk-interactive-card-sdk > .ac-adaptiveCard > :last-child {
+  margin-bottom: 0;
+}
+
+.wk-interactive-card-sdk--agent-progress {
+  border-color: var(--wk-border-glow);
+  box-shadow: none;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > .ac-columnSet:first-child {
+  align-items: center;
+  padding-bottom: var(--wk-sp-3, 12px);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > .ac-columnSet:first-child
+  > .ac-container:last-child {
+  display: flex;
+  justify-content: flex-end;
+  min-width: max-content;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > .ac-columnSet:first-child
+  .ac-pushButton {
+  min-height: 30px;
+  padding: 0 var(--wk-sp-3, 12px);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border-color: var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > .ac-columnSet:first-child
+  .ac-pushButton:hover {
+  color: var(--wk-text-accent, var(--wk-brand-primary));
+  background: var(--wk-bg-elevated);
+  border-color: var(--wk-border-glow);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail {
+  position: relative;
+  margin-left: var(--wk-sp-3, 12px);
+  border-radius: 0;
+  overflow: visible;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail::before {
+  content: "";
+  display: none;
+  position: absolute;
+  top: var(--wk-sp-3, 12px);
+  bottom: var(--wk-sp-3, 12px);
+  left: var(--wk-sp-1, 4px);
+  width: 1px;
+  background: var(--wk-border-glow);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail:has(> .ac-columnSet)::before {
+  display: block;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-container,
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet {
+  margin-left: var(--wk-sp-7, 28px);
+}
+
+.wk-interactive-card-progress-step--status {
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
+  background: var(--wk-color-danger-bg);
+  border: 1px solid var(--wk-color-danger-border, var(--wk-border-subtle));
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-interactive-card-progress-step--status .ac-richTextBlock {
+  padding: var(--wk-sp-0-5, 2px) 0;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-richTextBlock {
+  position: relative;
+  padding: var(--wk-sp-1, 4px) 0 var(--wk-sp-2, 8px);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet {
+  column-gap: var(--wk-sp-3, 12px);
+  padding: var(--wk-sp-1, 4px) 0 var(--wk-sp-3, 12px);
+  overflow: visible;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet:last-child {
+  padding-bottom: 0;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet
+  > .ac-container:first-child {
+  width: var(--wk-sp-4, 16px);
+  min-width: var(--wk-sp-4, 16px);
+  margin-left: calc(var(--wk-sp-8, 32px) * -1);
+  padding-top: var(--wk-sp-0-5, 2px);
+  background: var(--wk-bg-surface);
+  text-align: center;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet
+  > .ac-container:first-child
+  .ac-textBlock,
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet
+  > .ac-container:first-child
+  .ac-textRun {
+  color: var(--wk-text-accent, var(--wk-brand-primary));
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-leading-snug);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet
+  > .ac-container:last-child
+  > .ac-container {
+  margin-top: var(--wk-sp-2, 8px);
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
+  background: var(--wk-bg-elevated);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet
+  > .ac-container:last-child
+  > .ac-container
+  .ac-richTextBlock {
+  padding: 0;
+}
+
+.wk-interactive-card-sdk--agent-progress
+  > .ac-adaptiveCard
+  > #timeline_detail
+  > .ac-columnSet
+  > .ac-container:last-child
+  > .ac-container
+  .ac-textRun {
+  line-height: var(--wk-leading-snug);
+}
+
+/* 提交中：整卡置灰、禁点，等新帧或 10s 超时恢复 */
+.wk-interactive-card-sdk--submitting {
+  pointer-events: none;
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* webhook 卡展示-only：输入控件置灰不可交互（OpenUrl 链接仍可用） */
+.wk-interactive-card-sdk--readonly input,
+.wk-interactive-card-sdk--readonly select,
+.wk-interactive-card-sdk--readonly textarea {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.wk-interactive-card-error {
+  margin-top: var(--wk-sp-1, 4px);
+  font-size: 12px;
+  color: var(--wk-color-danger, var(--wk-text-secondary));
+}
+
+/* ── SDK(AdaptiveCards) 输出基线样式 ──
+ * SDK 未引入默认样式表，按钮/输入本无样式；此处用 --wk-* token 补基线，待真机微调。
+ * 颜色/间距/字体等由 HostConfig 就地注入（inline），此处只补 SDK 未覆盖的控件外观。 */
+.wk-interactive-card-sdk .ac-textBlock,
+.wk-interactive-card-sdk .ac-textRun {
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.wk-interactive-card-sdk .ac-textBlock {
+  color: var(--wk-text-primary);
+}
+
+.wk-interactive-card-sdk .ac-container {
+  box-sizing: border-box;
+  border-radius: var(--wk-r-sm);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.wk-interactive-card-sdk .ac-columnSet {
+  box-sizing: border-box;
+  border-radius: var(--wk-r-sm);
+  column-gap: var(--wk-sp-4, 16px);
+  min-width: 0;
+}
+
+.wk-interactive-card-sdk .ac-columnSet > .ac-container {
+  min-width: 0;
+  border: 0;
+}
+
+.wk-interactive-card-sdk .ac-container .ac-container .ac-richTextBlock {
+  padding: var(--wk-sp-0-5, 2px) 0;
+}
+
+.wk-interactive-card-sdk .ac-richTextBlock {
+  box-sizing: border-box;
+  padding: var(--wk-sp-1, 4px) 0;
+  color: var(--wk-text-primary);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.wk-interactive-card-sdk .ac-richTextBlock .ac-textRun {
+  line-height: var(--wk-leading-normal);
+}
+
+.wk-interactive-card-sdk
+  > .ac-adaptiveCard
+  > .ac-richTextBlock
+  + .ac-richTextBlock {
+  border-top: 1px solid var(--wk-border-subtle);
+}
+
+.wk-interactive-card-sdk .ac-factset {
+  width: auto;
+  max-width: 100%;
+  border-spacing: 0 var(--wk-sp-1, 4px);
+  table-layout: auto;
+}
+
+.wk-interactive-card-sdk .ac-fact-title,
+.wk-interactive-card-sdk .ac-fact-value {
+  padding: var(--wk-sp-0-5, 2px) 0;
+  vertical-align: top;
+}
+
+.wk-interactive-card-sdk .ac-fact-title {
+  width: 1%;
+  padding-right: var(--wk-sp-3, 12px);
+  color: var(--wk-text-secondary);
+  font-weight: var(--wk-font-medium);
+  white-space: nowrap;
+}
+
+.wk-interactive-card-sdk .ac-fact-value {
+  color: var(--wk-text-primary);
+  font-weight: var(--wk-font-regular);
+  overflow-wrap: anywhere;
+}
+
+.wk-interactive-card-sdk .ac-factset tr + tr .ac-fact-title,
+.wk-interactive-card-sdk .ac-factset tr + tr .ac-fact-value {
+  border-top: 0;
+}
+
+.wk-interactive-card-table-frame {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+}
+
+.wk-interactive-card-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 34px;
+  padding: 0 var(--wk-sp-5, 20px);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  background: var(--wk-bg-surface);
+}
+
+.wk-interactive-card-table-copy {
+  padding: 0;
+  font-size: var(--wk-text-size-base, 13px);
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-leading-snug);
+  color: var(--wk-text-secondary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.wk-interactive-card-table-copy:hover {
+  color: var(--wk-text-accent, var(--wk-brand-primary));
+}
+
+.wk-interactive-card-table-copy:focus-visible {
+  outline: none;
+  color: var(--wk-text-accent, var(--wk-brand-primary));
+  box-shadow: 0 1px 0 var(--wk-border-glow);
+}
+
+.wk-interactive-card-table-frame table:not(.ac-factset),
+.wk-interactive-card-sdk table:not(.ac-factset) {
+  width: 100%;
+  overflow: hidden;
+  border-spacing: 0;
+  table-layout: fixed;
+  background: var(--wk-bg-surface);
+}
+
+.wk-interactive-card-table-frame table:not(.ac-factset) td,
+.wk-interactive-card-table-frame table:not(.ac-factset) th,
+.wk-interactive-card-sdk table:not(.ac-factset) td,
+.wk-interactive-card-sdk table:not(.ac-factset) th {
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-5, 20px);
+  color: var(--wk-text-primary);
+  line-height: var(--wk-leading-snug);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  border-right: 1px solid var(--wk-border-subtle);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.wk-interactive-card-table-frame table:not(.ac-factset) tr:first-child td,
+.wk-interactive-card-table-frame table:not(.ac-factset) tr:first-child th,
+.wk-interactive-card-sdk table:not(.ac-factset) tr:first-child td,
+.wk-interactive-card-sdk table:not(.ac-factset) tr:first-child th {
+  background: var(--wk-bg-elevated);
+}
+
+.wk-interactive-card-table-frame
+  table:not(.ac-factset)
+  tr:first-child
+  .ac-textBlock,
+.wk-interactive-card-table-frame
+  table:not(.ac-factset)
+  tr:first-child
+  .ac-textRun,
+.wk-interactive-card-sdk table:not(.ac-factset) tr:first-child .ac-textBlock,
+.wk-interactive-card-sdk table:not(.ac-factset) tr:first-child .ac-textRun {
+  color: var(--wk-text-secondary);
+  font-weight: var(--wk-font-medium);
+}
+
+.wk-interactive-card-table-frame table:not(.ac-factset) tr:last-child td,
+.wk-interactive-card-table-frame table:not(.ac-factset) tr:last-child th,
+.wk-interactive-card-sdk table:not(.ac-factset) tr:last-child td,
+.wk-interactive-card-sdk table:not(.ac-factset) tr:last-child th {
+  border-bottom: none;
+}
+
+.wk-interactive-card-table-frame table:not(.ac-factset) td:last-child,
+.wk-interactive-card-table-frame table:not(.ac-factset) th:last-child,
+.wk-interactive-card-sdk table:not(.ac-factset) td:last-child,
+.wk-interactive-card-sdk table:not(.ac-factset) th:last-child {
+  border-right: none;
+}
+
+/* AC 3.x Table 在当前渲染路径下落成 flex div 结构，而非 HTML table。 */
+.wk-interactive-card-table-frame > div:not([class]) > div {
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-interactive-card-table-frame > div:not([class]) > div:first-child {
+  background: var(--wk-bg-elevated);
+}
+
+.wk-interactive-card-table-frame > div:not([class]) > div:last-child {
+  border-bottom: none;
+}
+
+.wk-interactive-card-table-frame > div:not([class]) > div > .ac-container {
+  border-right: 1px solid var(--wk-border-subtle);
+  border-radius: 0;
+}
+
+.wk-interactive-card-table-frame > div:not([class]) > div > .ac-container,
+.wk-interactive-card-table-frame
+  > div:not([class])
+  > div
+  > .ac-container
+  .ac-textBlock,
+.wk-interactive-card-table-frame
+  > div:not([class])
+  > div
+  > .ac-container
+  .ac-textRun {
+  line-height: var(--wk-leading-snug);
+}
+
+.wk-interactive-card-table-frame > div:not([class]) > div > .ac-container {
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-5, 20px);
+}
+
+.wk-interactive-card-table-frame
+  > div:not([class])
+  > div
+  > .ac-container:last-child {
+  border-right: none;
+}
+
+.wk-interactive-card-table-frame
+  > div:not([class])
+  > div:first-child
+  .ac-textBlock,
+.wk-interactive-card-table-frame
+  > div:not([class])
+  > div:first-child
+  .ac-textRun {
+  color: var(--wk-text-secondary);
+  font-weight: var(--wk-font-medium);
+}
+
+.wk-interactive-card-sdk .ac-image {
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-interactive-card-sdk .ac-imageSet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wk-sp-2, 8px);
+}
+
+.wk-interactive-card-sdk .ac-pushButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 var(--wk-sp-3, 12px);
+  font-size: var(--wk-text-size-base, 13px);
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-leading-snug);
+  color: var(--wk-text-accent, var(--wk-brand-primary));
+  background: var(--wk-bg-selected);
+  border: 1px solid transparent;
+  border-radius: var(--wk-r-full);
+  box-shadow: none;
+  cursor: pointer;
+  transition: background var(--wk-dur-fast) var(--wk-ease),
+    border-color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-interactive-card-sdk .ac-pushButton:hover {
+  background: var(--wk-accent-tint-12);
+  border-color: var(--wk-border-glow);
+}
+
+.wk-interactive-card-sdk .ac-pushButton:focus-visible {
+  outline: none;
+  border-color: var(--wk-border-glow);
+  box-shadow: 0 0 0 var(--wk-sp-0-5, 2px) var(--wk-border-glow);
+}
+
+.wk-interactive-card-sdk .ac-textInput,
+.wk-interactive-card-sdk .ac-numberInput,
+.wk-interactive-card-sdk .ac-dateInput,
+.wk-interactive-card-sdk .ac-timeInput,
+.wk-interactive-card-sdk .ac-choiceSetInput-compact {
+  min-height: 30px;
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
+  font-size: var(--wk-text-size-base, 13px);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface, transparent);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm, 4px);
+  box-sizing: border-box;
+}
+
+.wk-interactive-card-sdk .ac-textInput:focus-visible,
+.wk-interactive-card-sdk .ac-numberInput:focus-visible,
+.wk-interactive-card-sdk .ac-dateInput:focus-visible,
+.wk-interactive-card-sdk .ac-timeInput:focus-visible,
+.wk-interactive-card-sdk .ac-choiceSetInput-compact:focus-visible {
+  outline: none;
+  border-color: var(--wk-brand-primary);
+  box-shadow: 0 0 0 var(--wk-sp-0-5, 2px) var(--wk-border-glow);
+}

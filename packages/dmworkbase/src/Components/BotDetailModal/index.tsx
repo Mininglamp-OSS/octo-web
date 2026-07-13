@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { Button, Spin, Toast, Input, TextArea } from "@douyinfe/semi-ui";
+import { Button, Spin, Toast, Input } from "@douyinfe/semi-ui";
 import { IconEdit } from "@douyinfe/semi-icons";
 import axios from "axios";
 import WKModal from "../WKModal";
@@ -15,6 +15,7 @@ import BotManageModal from "../BotManage";
 import AgentCardService from "../../Service/AgentCardService";
 import { I18nContext, t } from "../../i18n";
 import { canvasToPngFile, isAvatarFileTooLarge, isGifImageFile } from "../avatarUpload";
+import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton";
 import "./index.css";
 
 interface BotDetailModalProps {
@@ -61,6 +62,32 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
     private $fileInput: HTMLInputElement | null = null;
     private avatarEdit: WKAvatarEditor | null = null;
     private mounted = false;
+    private descriptionRef = React.createRef<HTMLTextAreaElement>();
+
+    private handleDescriptionVoiceTranscribed = (
+        text: string,
+        mode: ReplaceMode,
+        savedRange?: SelectionRange
+    ) => {
+        if (mode === "all") {
+            this.setState({ descriptionDraft: text.slice(0, 200) });
+        } else if (mode === "selection" && savedRange) {
+            this.setState((prev) => {
+                const before = prev.descriptionDraft.slice(0, savedRange.from);
+                const after = prev.descriptionDraft.slice(savedRange.to);
+                const budget = Math.max(0, 200 - before.length - after.length);
+                return { descriptionDraft: before + text.slice(0, budget) + after };
+            });
+        } else {
+            this.setState((prev) => {
+                const pos = savedRange?.from ?? prev.descriptionDraft.length;
+                const before = prev.descriptionDraft.slice(0, pos);
+                const after = prev.descriptionDraft.slice(pos);
+                const budget = Math.max(0, 200 - before.length - after.length);
+                return { descriptionDraft: before + text.slice(0, budget) + after };
+            });
+        }
+    };
 
     state: BotDetailModalState = {
         loading: true,
@@ -686,14 +713,25 @@ export default class BotDetailModal extends Component<BotDetailModalProps, BotDe
                             </div>
                             {isOwner && editingDescription ? (
                                 <div>
-                                    <TextArea
-                                        value={descriptionDraft}
-                                        onChange={(v) => this.setState({ descriptionDraft: v })}
-                                        placeholder={t("base.botDetail.descriptionPlaceholder")}
-                                        maxCount={200}
-                                        autosize={{ minRows: 3, maxRows: 6 }}
-                                        style={{ marginBottom: 8 }}
-                                    />
+                                    <div style={{ position: "relative", marginBottom: 8 }}>
+                                        <textarea
+                                            ref={this.descriptionRef}
+                                            className="wk-bot-detail-textarea"
+                                            value={descriptionDraft}
+                                            onChange={(e) => this.setState({ descriptionDraft: e.target.value.slice(0, 200) })}
+                                            placeholder={t("base.botDetail.descriptionPlaceholder")}
+                                            maxLength={200}
+                                            rows={3}
+                                        />
+                                        <VoiceInputButton
+                                            inputRef={this.descriptionRef}
+                                            onTranscribed={this.handleDescriptionVoiceTranscribed}
+                                            getCurrentText={() => this.state.descriptionDraft}
+                                            showModeMenu
+                                            size="sm"
+                                            className="wk-vib--textarea-corner"
+                                        />
+                                    </div>
                                     <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                                         <Button
                                             size="small"

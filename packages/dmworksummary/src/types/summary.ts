@@ -112,8 +112,16 @@ export interface SummaryResult {
 }
 
 /** 个人总结结果（BY_PERSON 模式） */
+export type WorkflowStage =
+    | "understand_question"
+    | "find_relevant_chats"
+    | "filter_useful_content"
+    | "analyze_chat_content"
+    | "generate_summary";
+
 export interface PersonalResult {
     worker_status: 0 | 1 | 2 | 3;
+    workflow_stage?: WorkflowStage | "";
     content: string;
     citations?: CitationItem[];
     submitted_at: string | null;
@@ -435,6 +443,20 @@ export interface TopicTemplate {
     type: 'fixed' | 'parameterized';
     pattern: string;
     placeholders?: TopicTemplatePlaceholder[];
+    is_custom?: boolean;
+    is_overridden?: boolean;
+    sort_order?: number;
+}
+
+export interface CustomTopicTemplatePayload {
+    label: string;
+    description: string;
+    pattern?: string;
+}
+
+export interface TopicTemplatesResponse {
+    templates: TopicTemplate[];
+    custom_template_limit: number;
 }
 
 /** 前端兜底主题模板占位符（存 i18n key，渲染期解析为明文） */

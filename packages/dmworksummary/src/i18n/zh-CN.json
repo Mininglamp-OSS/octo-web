@@ -163,25 +163,79 @@
   "templates": {
     "project_progress": {
       "label": "汇总项目进展",
-      "description": "与团队成员一起总结进展",
-      "pattern": "总结 {project_name} 的项目进展",
-      "placeholder": "输入项目名称"
+      "description": "总结项目当前进展，按已完成、进行中、风险阻塞、下一步计划整理",
+      "pattern": "总结项目当前进展，按已完成、进行中、风险阻塞、下一步计划整理"
     },
     "task_tracking": {
       "label": "跟踪任务进度",
-      "description": "邀请同事汇总任务完成情况",
-      "pattern": "总结 {task_name} 的完成情况",
-      "placeholder": "输入任务名称"
+      "description": "总结任务完成情况，按任务、负责人、当前状态、待办事项整理",
+      "pattern": "总结任务完成情况，按任务、负责人、当前状态、待办事项整理"
     },
     "weekly_report": {
       "label": "总结团队周报",
-      "description": "总结团队成员每周的工作",
-      "pattern": "总结每周的工作周报"
+      "description": "总结团队成员每周工作，按成员、重点进展、成果产出、风险问题、下周计划整理",
+      "pattern": "总结团队成员每周工作，按成员、重点进展、成果产出、风险问题、下周计划整理"
     },
     "chat_content": {
       "label": "总结聊天内容",
-      "description": "总结指定聊天中的事情进展",
-      "pattern": "总结本群中的关键内容"
+      "description": "总结聊天中的关键内容、核心结论、待办事项和需要关注的问题",
+      "pattern": "总结聊天中的关键内容、核心结论、待办事项和需要关注的问题"
+    },
+    "custom": {
+      "edit": "编辑",
+      "editTitle": "编辑模板",
+      "editHint": "可把总结范围、结构、详细程度、分点方式等要求写进总结内容；下次点击该模板会自动带上。",
+      "saveSuccess": "模板已保存",
+      "saveFailed": "模板保存失败",
+      "reset": "恢复默认",
+      "resetSuccess": "已恢复默认模板",
+      "resetFailed": "恢复默认失败",
+      "myTemplatesTitle": "我的模板",
+      "new": "新建模板",
+      "emptyTitle": "还没有自定义模板",
+      "emptyDesc": "把常用总结要求保存下来，下次一键套用。",
+      "createTitle": "新建自定义模板",
+      "editCustomTitle": "编辑自定义模板",
+      "nameLabel": "模板名称",
+      "namePlaceholder": "例如：风险复盘",
+      "descriptionLabel": "总结内容",
+      "descriptionPlaceholder": "例如：总结任务的进度和负责人",
+      "createSuccess": "自定义模板已创建",
+      "createFailed": "创建自定义模板失败",
+      "delete": "删除模板",
+      "deleteSuccess": "自定义模板已删除",
+      "deleteFailed": "删除自定义模板失败",
+      "deleteConfirmTitle": "删除自定义模板？",
+      "deleteConfirmContent": "确认删除模板「{{name}}」吗？删除后不可恢复。",
+      "promptIntro": "",
+      "promptTopic": "总结主题",
+      "promptContext": "内容重点",
+      "applied": "已套用模板：{{name}}",
+      "reselect": "重新选择模板",
+      "myTemplatesTitleWithCount": "我的模板 {{count}}/{{limit}}",
+      "moreTemplates": "更多模板",
+      "moreTemplatesTitle": "更多总结模板",
+      "limitReached": "已达到模板数量上限，删除旧模板后可继续新建"
+    },
+    "personal_weekly_report": {
+      "label": "生成个人工作周报",
+      "description": "总结我最近一周的主要工作，按重点进展、完成事项、风险阻塞、下周计划分点整理",
+      "pattern": "总结我最近一周的主要工作，按重点进展、完成事项、风险阻塞、下周计划分点整理"
+    },
+    "okr_alignment": {
+      "label": "OKR 进展对齐",
+      "description": "根据聊天内容总结当前进展，并对照目标/OKR 分析已完成、未完成、风险差距和下一步动作",
+      "pattern": "根据聊天内容总结当前进展，并对照目标/OKR 分析已完成、未完成、风险差距和下一步动作"
+    },
+    "todo_extraction": {
+      "label": "提取待办事项",
+      "description": "从聊天内容中提取需要跟进的待办事项，按事项、负责人、截止时间、当前状态、上下文说明整理",
+      "pattern": "从聊天内容中提取需要跟进的待办事项，按事项、负责人、截止时间、当前状态、上下文说明整理"
+    },
+    "feedback_triage": {
+      "label": "归类用户反馈",
+      "description": "整理聊天中的用户反馈、Bug、体验问题和改进建议，按问题类型、影响范围、优先级、建议动作分类",
+      "pattern": "整理聊天中的用户反馈、Bug、体验问题和改进建议，按问题类型、影响范围、优先级、建议动作分类"
     }
   },
   "chatSelector": {
@@ -298,6 +352,11 @@
     "forwardedToMatter": "已转发到「{{title}}」",
     "processingTitle": "正在生成总结...",
     "processingDesc": "这可能需要一些时间，请耐心等待",
+    "workflowUnderstandQuestion": "理解总结问题",
+    "workflowFindRelevantChats": "查找相关聊天",
+    "workflowFilterUsefulContent": "筛选有效内容",
+    "workflowAnalyzeChatContent": "分析聊天内容",
+    "workflowGenerateSummary": "生成总结",
     "failedTitle": "总结生成失败",
     "taskNo": "任务编号：{{taskNo}}",
     "createdAt": "创建时间：{{time}}",

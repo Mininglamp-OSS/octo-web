@@ -80,11 +80,13 @@ describe('buildDocLink — standalone `/d/:docId` share form (bypasses the host 
     expect(link).toContain('sp=105d4a60d0fc4d55a5cfc3c2d0501361')
   })
 
-  it('keeps `?sp` DISTINCT from the token-bucket `?sid` (they are different identifiers)', () => {
+  it('never carries the token-bucket `?sid`, even when a currentSpaceId is persisted (XIN-513)', () => {
+    // The link no longer mints `?sid` — an already-logged-in recipient's session is recovered from
+    // storage independently of the URL. Only the doc's real space rides along, on `?sp`.
     try {
       window.localStorage.setItem('currentSpaceId', 'sp_current')
       const link = buildDocLink({ docId: 'd_1', space: '105d4a60d0fc4d55a5cfc3c2d0501361' })
-      expect(link).toContain('sid=sp_current')
+      expect(link).not.toContain('sid=')
       expect(link).toContain('sp=105d4a60d0fc4d55a5cfc3c2d0501361')
     } finally {
       window.localStorage.removeItem('currentSpaceId')
@@ -99,11 +101,10 @@ describe('buildDocLink — standalone `/d/:docId` share form (bypasses the host 
     expect(buildDocLink({ docId: 'd_2' })).toContain('/d/d_2')
   })
 
-  it('carries the current space sid so the receiver loads their sid-scoped token (#511 problem 2)', () => {
-    // No sid in the (jsdom) URL — fall back to the persisted currentSpaceId.
+  it('never appends `?sid`, so a sid-less link works with only a docId (XIN-513)', () => {
     try {
       window.localStorage.setItem('currentSpaceId', 'sp_current')
-      expect(buildDocLink({ docId: 'd_3' })).toContain('sid=sp_current')
+      expect(buildDocLink({ docId: 'd_3' })).not.toContain('sid=')
     } finally {
       window.localStorage.removeItem('currentSpaceId')
     }

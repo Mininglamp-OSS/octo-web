@@ -58,6 +58,14 @@ body[theme-mode="dark"] .wk-thread-panel {
   font-size: 14px;
   font-weight: 600;
   color: var(--wk-text-primary);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.wk-thread-panel-header-title > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wk-thread-panel-header-icon {

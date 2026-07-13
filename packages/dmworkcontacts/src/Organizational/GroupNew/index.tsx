@@ -17,6 +17,7 @@ import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import "./index.css";
 import { SuperGroup } from "@octo/base/src/Utils/const";
+import { GROUP_NAME_MAX_LENGTH } from "@octo/base/src/Service/nameLimits";
 import { buildPrivateChatGroupMemberUids } from "./memberUids";
 
 export enum OrganizationalGroupNewAction {
@@ -767,10 +768,13 @@ export class OrganizationalGroupNew extends Component<
             </div>
             <Input
               value={groupName}
-              maxLength={20}
+              maxLength={GROUP_NAME_MAX_LENGTH}
               placeholder={t("contacts.groupCreate.namePlaceholder")}
               onChange={(value) => this.setState({ groupName: value })}
             />
+            <div className={`group-create-input-count ${groupName.length > GROUP_NAME_MAX_LENGTH ? "group-create-input-count--exceeded" : ""}`}>
+              {groupName.length} / {GROUP_NAME_MAX_LENGTH}
+            </div>
           </div>
 
           <div className="group-create-field">

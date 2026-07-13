@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { Button, TextArea, Spin } from "@douyinfe/semi-ui";
+import { Button, Spin } from "@douyinfe/semi-ui";
 import { Toast } from "@douyinfe/semi-ui";
 import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";
@@ -8,6 +8,7 @@ import { parseThreadChannelId } from "../../Service/Thread";
 import { I18nContext } from "../../i18n";
 import { wkConfirm } from "../WKModal";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
+import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton";
 import "./index.css";
 
 export interface GroupMdEditorProps {
@@ -47,6 +48,30 @@ export class GroupMdEditor extends Component<
 > {
   static contextType = I18nContext;
   declare context: React.ContextType<typeof I18nContext>;
+
+  private textareaRef = React.createRef<HTMLTextAreaElement>();
+
+  private handleVoiceTranscribed = (
+    text: string,
+    mode: ReplaceMode,
+    savedRange?: SelectionRange
+  ) => {
+    if (mode === "all") {
+      this.setState({ content: text });
+    } else if (mode === "selection" && savedRange) {
+      this.setState((prev) => ({
+        content:
+          prev.content.slice(0, savedRange.from) +
+          text +
+          prev.content.slice(savedRange.to),
+      }));
+    } else {
+      this.setState((prev) => {
+        const pos = savedRange?.from ?? prev.content.length;
+        return { content: prev.content.slice(0, pos) + text + prev.content.slice(pos) };
+      });
+    }
+  };
 
   constructor(props: GroupMdEditorProps) {
     super(props);
@@ -249,13 +274,25 @@ export class GroupMdEditor extends Component<
 
         {mode === "edit" && canEdit ? (
           <div className="wk-groupmd-edit-area">
-            <TextArea
-              value={content}
-              onChange={(value) => this.setState({ content: value })}
-              placeholder={t("base.groupMd.placeholder")}
-              autosize={{ minRows: 15 }}
-              style={{ fontFamily: "monospace" }}
-            />
+            <div style={{ position: "relative" }}>
+              <textarea
+                ref={this.textareaRef}
+                className="wk-groupmd-textarea"
+                value={content}
+                onChange={(e) => this.setState({ content: e.target.value })}
+                placeholder={t("base.groupMd.placeholder")}
+                rows={15}
+                style={{ fontFamily: "monospace" }}
+              />
+              <VoiceInputButton
+                inputRef={this.textareaRef}
+                onTranscribed={this.handleVoiceTranscribed}
+                getCurrentText={() => this.state.content}
+                showModeMenu
+                size="md"
+                className="wk-vib--textarea-corner"
+              />
+            </div>
           </div>
         ) : (
           <div className="wk-groupmd-preview">

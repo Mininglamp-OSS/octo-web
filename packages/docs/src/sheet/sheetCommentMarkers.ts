@@ -43,10 +43,14 @@ interface UniverApiLike {
 
 /** Univer op dispatched on any selection/scroll-affecting change. */
 const SET_SELECTIONS_OP = 'sheet.operation.set-selections'
+/** Univer op dispatched when the active worksheet changes (sheet tab switch). */
+const SET_WORKSHEET_ACTIVE_OP = 'sheet.operation.set-worksheet-active'
 
 export interface MarkedCell {
   row: number
   col: number
+  /** Logical sheet id the comment is anchored to (badge only drawn while that sheet is active). */
+  sheetId: string
   /** Resolved comments get a green badge; unresolved get orange. */
   resolved?: boolean
 }
@@ -68,7 +72,13 @@ export class SheetCommentMarkers {
   constructor(
     private readonly univerAPI: UniverApiLike,
     private readonly container: HTMLElement,
-    private readonly onClick?: (row: number, col: number) => void,
+    private readonly onClick?: (row: number, col: number, sheetId: string) => void,
+    /**
+     * Resolves the active LOGICAL sheet id. Badges whose `sheetId` differs are not drawn, so a
+     * comment on Sheet2 never paints a badge over Sheet1. When omitted, all cells are drawn
+     * (single-sheet callers / tests).
+     */
+    private readonly activeSheetId?: () => string,
   ) {
     // Mount on the STABLE ancestor (the SheetView container), same as the cursor overlay:
     // the Univer host div churns under React StrictMode, so anything drawn into it can end
@@ -93,7 +103,9 @@ export class SheetCommentMarkers {
     // on every command is cheap and keeps badges glued (e.g. while stretching a column).
     this.disposers.push(
       this.univerAPI.onCommandExecuted((cmd) => {
-        if (cmd.id === SET_SELECTIONS_OP) this.render()
+        // Selection and sheet-tab switches redraw immediately (a switch must swap the visible
+        // badge set at once); everything else coalesces to the next frame.
+        if (cmd.id === SET_SELECTIONS_OP || cmd.id === SET_WORKSHEET_ACTIVE_OP) this.render()
         else this.scheduleRender()
       }),
     )
@@ -240,11 +252,15 @@ export class SheetCommentMarkers {
     }
   }
 
-  private getOrCreate(key: string, row: number, col: number): HTMLDivElement {
+  private getOrCreate(key: string, row: number, col: number, sheetId: string): HTMLDivElement {
     let el = this.badges.get(key)
+    // Keep the badge's sheet id current: badges are cached by `row:col` and reused, so on a
+    // sheet switch a reused element must not fire the click with a stale sheet id.
+    if (el) el.dataset.sheetId = sheetId
     if (!el) {
       el = document.createElement('div')
       el.className = 'octo-sheet-comment-badge'
+      el.dataset.sheetId = sheetId
       // A ~14px clickable hit-area anchored to the cell's top-right corner; the visible
       // mark is the orange corner triangle drawn as a child. The layer stays
       // pointer-events:none, but the badge opts back IN so clicking it opens the thread.
@@ -274,7 +290,9 @@ export class SheetCommentMarkers {
         el.addEventListener('mousedown', (e) => e.stopPropagation())
         el.addEventListener('click', (e) => {
           e.stopPropagation()
-          this.onClick?.(row, col)
+          // Read the badge's live sheet id (kept current each draw) so a marker click on the
+          // active sheet focuses that sheet's thread — never a same-cell thread on another sheet.
+          this.onClick?.(row, col, el!.dataset.sheetId ?? '')
         })
       }
       this.layer.appendChild(el)
@@ -325,7 +343,11 @@ export class SheetCommentMarkers {
       // fall back to no-scroll positioning
     }
     const seen = new Set<string>()
-    for (const { row, col, resolved } of this.cells) {
+    // Only draw badges for cells anchored to the CURRENTLY-ACTIVE logical sheet — a comment on
+    // Sheet2 must not paint a badge over Sheet1. When no resolver is wired, draw everything.
+    const active = this.activeSheetId?.()
+    for (const { row, col, resolved, sheetId } of this.cells) {
+      if (active != null && sheetId !== active) continue
       const key = `${row}:${col}`
       let rect: DOMRect
       try {
@@ -334,7 +356,7 @@ export class SheetCommentMarkers {
         continue
       }
       if (!rect || rect.width <= 0 || rect.height <= 0) continue
-      const el = this.getOrCreate(key, row, col)
+      const el = this.getOrCreate(key, row, col, sheetId)
       // Recolor each render so a badge flips green the moment its comment is resolved.
       const tri = el.firstElementChild as HTMLElement | null
       if (tri) tri.style.borderTopColor = resolved ? BADGE_RESOLVED : BADGE_OPEN

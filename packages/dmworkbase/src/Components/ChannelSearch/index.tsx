@@ -1806,4 +1806,10 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
 };
 
 export default ChannelSearchPanel;
-export { ChannelSearchPanel };
+export {
+  ChannelSearchPanel,
+  MixedResultItem,
+  FileResultItem,
+  MediaResultGrid,
+  SearchEmpty as ChannelSearchEmpty,
+};

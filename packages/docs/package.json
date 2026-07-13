@@ -7,11 +7,15 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "dev:standalone": "vite --config vite.dev.config.ts",
+    "build:standalone": "vite build --config vite.dev.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
     "@hocuspocus/provider": "2.15.2",
     "@octo/base": "workspace:*",
+    "@octo/whiteboard-schema": "workspace:*",
     "@tiptap/core": "3.22.2",
     "@tiptap/extension-bubble-menu": "3.22.2",
     "@tiptap/extension-character-count": "3.22.2",
@@ -46,14 +50,19 @@
     "@tiptap/y-tiptap": "^3.0.5",
     "@univerjs/core": "0.25.1",
     "@univerjs/preset-sheets-core": "0.25.1",
+    "@univerjs/preset-sheets-drawing": "0.25.1",
     "exceljs": "^4.4.0",
     "highlight.js": "^11.11.1",
+    "jszip": "^3.10.1",
     "lowlight": "^3.3.0",
     "xlsx-js-style": "^1.2.0",
     "y-indexeddb": "9.0.12",
     "y-prosemirror": "1.2.15",
     "y-protocols": "1.0.6",
-    "yjs": "13.6.21"
+    "yjs": "13.6.21",
+    "docx": "^9.7.1",
+    "mathjax-full": "^3.2.2",
+    "xml-js": "^1.6.11"
   },
   "peerDependencies": {
     "react": "^18.3.1",

@@ -33,6 +33,27 @@ vi.mock('../editor/EditorShell.tsx', () => ({
   ),
 }))
 
+// Replace the whiteboard shell (which lazy-loads the heavy Excalidraw chunk + a canvas) with a
+// marker so the board-create / board-open flows are testable in jsdom without Excalidraw.
+vi.mock('../board/BoardShell.tsx', () => ({
+  BoardShell: (props: { docId: string }) => (
+    <div data-testid="board-shell">
+      <span data-testid="board-doc">{props.docId}</span>
+    </div>
+  ),
+}))
+
+// Replace the collaborative spreadsheet shell (Univer + Yjs) with a marker so the sheet-open
+// flows are testable in jsdom without mounting the heavy Univer runtime. The marker surfaces the
+// docId it was addressed with, exactly like the editor / board markers above.
+vi.mock('../sheet/SheetView.tsx', () => ({
+  SheetView: (props: { docId: string }) => (
+    <div data-testid="sheet-view">
+      <span data-testid="sheet-doc">{props.docId}</span>
+    </div>
+  ),
+}))
+
 const TARGET_KEY = 'octo.docs.target'
 
 let assignSpy: ReturnType<typeof vi.fn>
@@ -41,6 +62,7 @@ const realLocation = window.location
 
 beforeEach(() => {
   window.sessionStorage.clear()
+  window.localStorage.clear()
   // jsdom's window.location.assign is non-configurable and throws "Not implemented" on call.
   // Swap in a minimal stub exposing only what DocsHome touches (search + assign) so the
   // open / back navigations are observable without a real page load.
@@ -234,10 +256,68 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(String(replaceStateSpy.mock.calls.at(-1)![2])).toContain('doc=d_new')
   })
 
+  it('creates a board via the New dropdown and opens it in the board shell', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = (method, url, body) => {
+      calls.push({ method, url, body })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      if (method === 'post' && url === '/docs') {
+        return {
+          data: {
+            docId: 'b_new',
+            documentName: 'doc:b_new',
+            title: '',
+            spaceId: 'demo',
+            folderId: 'f_default',
+            ownerId: 'u_self',
+            role: 'admin',
+            docType: 'board',
+          },
+          status: 201,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+
+    // Open the split "New" dropdown and choose "New board".
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newBoard'))
+
+    // The board (not the rich-text editor) opens inline.
+    await waitFor(() => expect(screen.getByTestId('board-shell')).toBeTruthy())
+    expect(screen.getByTestId('board-doc').textContent).toBe('b_new')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+
+    // createDoc was sent with the board kind through the docType seam.
+    const create = calls.find((c) => c.method === 'post' && c.url === '/docs')
+    expect((create?.body as { docType?: string })?.docType).toBe('board')
+
+    // A new board defaults to the board-specific title, not the document fallback.
+    expect((create?.body as { title?: string })?.title).toBe('docs.board.untitled')
+
+    // Selection persisted with its kind so a refresh re-opens the board shell.
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'b_new',
+      docType: 'board',
+    })
+  })
+
   it('opens an existing document inline in the right pane and marks it active', async () => {
     const wk = createMockWKApp()
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
+      // List rows from a backend that doesn't echo docType (the common legacy case). The
+      // per-doc GET (/docs/d_a) resolves the authoritative kind — here a plain document.
+      if (method === 'get' && url === '/docs/d_a') {
+        return { data: { docId: 'd_a', title: 'Doc A', role: 'admin', docType: 'doc' }, status: 200 }
+      }
       if (method === 'get' && url.startsWith('/docs')) {
         return {
           data: {
@@ -255,8 +335,8 @@ describe('DocsHome navigation (split-pane)', () => {
 
     fireEvent.click(screen.getByText('Doc A'))
 
-    // Editor mounts inline; list (Doc A) stays resident.
-    expect(screen.getByTestId('editor-shell')).toBeTruthy()
+    // Unknown kind -> resolved via getDoc (async) -> rich-text editor mounts inline; list stays.
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
     expect(screen.getByTestId('editor-doc').textContent).toBe('d_a')
     expect(screen.getByText('Doc A')).toBeTruthy()
     expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({ doc: 'd_a' })
@@ -287,27 +367,36 @@ describe('DocsHome navigation (split-pane)', () => {
     fireEvent.click(screen.getByText('Doc A'))
 
     // The entry is wired into the editor via onOpenInNewPage (it now lives in the header ≡ menu,
-    // no longer a resident headerRight button).
-    const entry = screen.getByTestId('editor-open-new-page')
+    // no longer a resident headerRight button). The list item carries no docType, so the editor
+    // mounts only after the async open resolves — wait for it before reaching for the entry.
+    const entry = await waitFor(() => screen.getByTestId('editor-open-new-page'))
     fireEvent.click(entry)
 
-    // It opens the clean standalone deep-link in a new tab — no in-app navigation.
-    expect(openSpy).toHaveBeenCalledWith('/d/d_a', '_blank', 'noopener,noreferrer')
+    // It opens the clean standalone deep-link in a new tab — no in-app navigation. The link carries
+    // the doc's real space as `?sp` (XIN-519 blocker 1); with no active space the shell falls back to
+    // the default doc space ('demo'). No `?sid` — the opener's session is recovered from storage.
+    expect(openSpy).toHaveBeenCalledWith('/d/d_a?sp=demo', '_blank', 'noopener,noreferrer')
     expect(assignSpy).not.toHaveBeenCalled()
   })
 
-  it('AC-1 (XIN-420): a multi-session user opens the standalone link carrying the current session sid', async () => {
+  it('XIN-513/519: the standalone link opens with `?sp` (doc space) but no `?sid`, even when the in-shell URL carries a sid', async () => {
     const openSpy = vi.fn()
     Object.defineProperty(window, 'open', { configurable: true, writable: true, value: openSpy })
-    // Multi-session in-shell URL: the host's RouteManager re-push collapses the docs route to
-    // `/docs?sid=…`, so the active session's sid rides on window.location. Give the stub a real
-    // origin too — withReturnSid rebuilds the target against it.
+    // In-shell URL carries the active session's sid (the host's RouteManager re-push collapses the
+    // docs route to `/docs?sid=…`). The opened standalone link must NOT copy that sid forward: an
+    // already-logged-in user's session is recovered from storage independently of the URL (XIN-513),
+    // so a sid-less `/d/:docId` opens the document directly. It MUST, however, carry `?sp` (the doc's
+    // real space) so the recipient's standalone preflight can address the doc's own space — dropping
+    // it (XIN-519 blocker 1) sent the login-return path into the cross-space not_found terminal.
     Object.defineProperty(window, 'location', {
       configurable: true,
       writable: true,
       value: { origin: 'https://app.example.com', search: '?sid=s_active', assign: assignSpy },
     })
     const wk = createMockWKApp()
+    // Give the shell an active space so DocsHome's space (spaceRef) resolves to a real doc space id,
+    // which the opened standalone link must carry as `?sp`.
+    wk.shared.currentSpaceId = '105d4a60d0fc4d55a5cfc3c2d0501361'
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url.startsWith('/docs')) {
@@ -325,12 +414,17 @@ describe('DocsHome navigation (split-pane)', () => {
     render(<DocsHome />)
     await waitFor(() => expect(screen.getByText('Doc A')).toBeTruthy())
     fireEvent.click(screen.getByText('Doc A'))
-    fireEvent.click(screen.getByTestId('editor-open-new-page'))
+    // The list item carries no docType, so the editor mounts only after the async open resolves.
+    fireEvent.click(await waitFor(() => screen.getByTestId('editor-open-new-page')))
 
-    // The new tab must carry the active sid so its sid-keyed load() hits the right bucket. Without
-    // it a multi-session user's new tab reads the empty-sid bucket, misses, and (since XIN-392's
-    // strict findUniqueStoredSession refuses to guess) bounces to login instead of the document.
-    expect(openSpy).toHaveBeenCalledWith('/d/d_a?sid=s_active', '_blank', 'noopener,noreferrer')
+    // The standalone link carries `?sp` (the doc's real space) so the recipient's preflight addresses
+    // the doc's own space — but NO `?sid`; the opener's session is recovered from storage (XIN-513).
+    // (The multi-session wrong-space-session recovery edge is tracked separately as octo-web #551.)
+    expect(openSpy).toHaveBeenCalledWith(
+      '/d/d_a?sp=105d4a60d0fc4d55a5cfc3c2d0501361',
+      '_blank',
+      'noopener,noreferrer',
+    )
     expect(assignSpy).not.toHaveBeenCalled()
   })
 
@@ -342,6 +436,11 @@ describe('DocsHome navigation (split-pane)', () => {
     const wk = createMockWKApp()
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
+      // Unknown-kind deep-link: the per-doc GET resolves the authoritative kind (here a plain
+      // doc) before a shell is chosen, exactly as the list-open path does.
+      if (method === 'get' && url === '/docs/d_persist') {
+        return { data: { docId: 'd_persist', title: 'Persisted', role: 'admin', docType: 'doc' }, status: 200 }
+      }
       if (method === 'get' && url.startsWith('/docs')) {
         return { data: { total: 0, items: [] }, status: 200 }
       }
@@ -349,8 +448,69 @@ describe('DocsHome navigation (split-pane)', () => {
     }
 
     render(<DocsHome />)
-    expect(screen.getByTestId('editor-shell')).toBeTruthy()
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
     expect(screen.getByTestId('editor-doc').textContent).toBe('d_persist')
+  })
+
+  it('opens the whiteboard inline from a direct deep-link whose kind is only known to the backend (owner direct-open, XIN-132)', async () => {
+    // The owner direct-open bug: a direct `/docs?doc=<board>` deep-link resolved kind from the
+    // local registry ONLY and never fetched doc metadata, so an owner opening a whiteboard link
+    // (registry empty in that session) fell back to the rich-text editor (canvas=0). The fix
+    // resolves the authoritative docType via getDoc — the board shell must open, not the editor.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 'b_direct' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url === '/docs/b_direct') {
+        return { data: { docId: 'b_direct', title: 'Board', role: 'admin', docType: 'board' }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    // Whiteboard shell mounts after the authoritative kind lookup — NOT the rich-text editor.
+    await waitFor(() => expect(screen.getByTestId('board-shell')).toBeTruthy())
+    expect(screen.getByTestId('board-doc').textContent).toBe('b_direct')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // The kind was fetched because neither the registry nor a stored docType could assert it.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/b_direct')).toBe(true)
+    // The resolved kind is mirrored so the host's query-wiping re-render re-opens the board.
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'b_direct',
+      docType: 'board',
+    })
+  })
+
+  it('opens a board deep-link directly when this client already knows it is a board (no round-trip)', async () => {
+    // The owner on the SAME browser that created the board: the local registry asserts the kind,
+    // so the whiteboard opens immediately with no per-doc lookup (the fast path is preserved).
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 'b_known', docType: 'board' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    expect(screen.getByTestId('board-shell')).toBeTruthy()
+    expect(screen.getByTestId('board-doc').textContent).toBe('b_known')
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/b_known')).toBe(false)
   })
 
   it('back-to-list unmounts the editor and clears the persisted target (no full navigation)', async () => {
@@ -358,6 +518,9 @@ describe('DocsHome navigation (split-pane)', () => {
     const wk = createMockWKApp()
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_persist') {
+        return { data: { docId: 'd_persist', title: 'Persisted', role: 'admin', docType: 'doc' }, status: 200 }
+      }
       if (method === 'get' && url.startsWith('/docs')) {
         return { data: { total: 0, items: [] }, status: 200 }
       }
@@ -365,6 +528,8 @@ describe('DocsHome navigation (split-pane)', () => {
     }
 
     render(<DocsHome />)
+    // The unknown-kind deep-link resolves to the editor via getDoc, then the back control appears.
+    await waitFor(() => expect(screen.getByTestId('editor-back')).toBeTruthy())
     fireEvent.click(screen.getByTestId('editor-back'))
 
     // Editor unmounts (right pane empty), persisted target cleared, no full navigation.
@@ -474,8 +639,8 @@ describe('DocsHome — a Space switch reconciles the open selection back to the 
     }
 
     render(<DocsHome />)
-    // The editor for the doc opened under space-a is mounted.
-    expect(screen.getByTestId('editor-shell')).toBeTruthy()
+    // The editor for the doc opened under space-a is mounted (the async open resolves post-render).
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
     expect(screen.getByTestId('editor-doc').textContent).toBe('d_open')
 
     // Host switches Space: mutate currentSpaceId then broadcast.
@@ -507,7 +672,8 @@ describe('DocsHome — a Space switch reconciles the open selection back to the 
     }
 
     render(<DocsHome />)
-    expect(screen.getByTestId('editor-shell')).toBeTruthy()
+    // Wait for the async open to mount the editor before broadcasting the redundant event.
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
 
     // A redundant broadcast for the SAME Space must not yank the open doc back to the list.
     wk.mockMittBus.emitSpaceChanged({ space_id: 'space-a' })
@@ -577,6 +743,9 @@ describe('DocsHome — production (routeRight) editor has no header back button 
     ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_persist') {
+        return { data: { docId: 'd_persist', title: 'Persisted', role: 'admin', docType: 'doc' }, status: 200 }
+      }
       if (method === 'get' && url.startsWith('/docs')) {
         return { data: { total: 0, items: [] }, status: 200 }
       }
@@ -584,13 +753,326 @@ describe('DocsHome — production (routeRight) editor has no header back button 
     }
 
     render(<DocsHome />)
-    // Mount effect pushes the editor element for the persisted doc into the right pane.
-    await waitFor(() => expect(replaceToRoot).toHaveBeenCalled())
+    // The unknown-kind deep-link resolves via getDoc, then the editor element is pushed into the
+    // right pane. Wait for that specific push (the earlier empty-state push isn't the editor).
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string } } | undefined
+      expect(last?.props?.docId).toBe('d_persist')
+    })
     const pushed = replaceToRoot.mock.calls.at(-1)![0] as {
       props: { docId: string; onBack?: unknown; onExit?: unknown }
     }
     expect(pushed.props.docId).toBe('d_persist')
     expect(pushed.props.onBack).toBeUndefined()
     expect(typeof pushed.props.onExit).toBe('function')
+  })
+})
+
+// Opening a list item must pick the right shell for EVERY member, not just the board's creator.
+// The M2 routing bug: board-kind detection fell back to a creator-local localStorage registry, so
+// a NON-creator (whose registry is empty) opening a shared board whose list row carried no
+// docType landed in the rich-text editor (canvas=0). Fix: when the kind is unknown, openDoc
+// resolves the authoritative docType from the per-doc GET (/docs/{id}) before choosing a shell.
+describe('DocsHome — list-open shell selection by docType (XIN-58)', () => {
+  // Build a DocsHome wired to a single list item + a per-doc GET, recording every request so a
+  // test can assert whether the authoritative kind lookup (GET /docs/{id}) was made.
+  function renderWithDoc(opts: {
+    listDocType?: string // docType the list API echoes for the row (undefined = omitted)
+    metaDocType?: string // docType the per-doc GET returns (undefined = omitted/legacy)
+    metaThrows?: boolean // simulate the per-doc GET failing
+  }): { calls: Array<{ method: string; url: string }> } {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url === '/docs/d_x') {
+        if (opts.metaThrows) throw new Error('per-doc GET failed')
+        return {
+          data: { docId: 'd_x', title: 'Shared X', role: 'admin', docType: opts.metaDocType },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              { docId: 'd_x', title: 'Shared X', ownerId: 'u_owner', role: 'admin', docType: opts.listDocType },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    return { calls }
+  }
+
+  it('docType=board from the list opens the board shell directly (no per-doc lookup)', async () => {
+    const { calls } = renderWithDoc({ listDocType: 'board' })
+    await waitFor(() => expect(screen.getByText('Shared X')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Shared X'))
+
+    await waitFor(() => expect(screen.getByTestId('board-shell')).toBeTruthy())
+    expect(screen.getByTestId('board-doc').textContent).toBe('d_x')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // The kind was already known — no authoritative round-trip needed.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/d_x')).toBe(false)
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'd_x',
+      docType: 'board',
+    })
+  })
+
+  it('docType=doc from the list opens the rich-text editor directly (no per-doc lookup)', async () => {
+    const { calls } = renderWithDoc({ listDocType: 'doc' })
+    await waitFor(() => expect(screen.getByText('Shared X')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Shared X'))
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(screen.getByTestId('editor-doc').textContent).toBe('d_x')
+    expect(screen.queryByTestId('board-shell')).toBeNull()
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/d_x')).toBe(false)
+  })
+
+  it('unknown kind (list omits docType, non-creator) resolves a board via getDoc → board shell', async () => {
+    // The core regression: registry is empty (non-creator) and the list row has no docType, yet
+    // the per-doc GET says board — so the board shell must open, NOT the rich-text editor.
+    const { calls } = renderWithDoc({ listDocType: undefined, metaDocType: 'board' })
+    await waitFor(() => expect(screen.getByText('Shared X')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Shared X'))
+
+    await waitFor(() => expect(screen.getByTestId('board-shell')).toBeTruthy())
+    expect(screen.getByTestId('board-doc').textContent).toBe('d_x')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // The authoritative kind was fetched because the list row didn't carry it.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/d_x')).toBe(true)
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'd_x',
+      docType: 'board',
+    })
+  })
+
+  it('unknown kind resolving to a non-board (or a failed lookup) opens the rich-text editor', async () => {
+    // getDoc that doesn't confirm a board → safe default to the editor (legacy docs).
+    const { calls } = renderWithDoc({ listDocType: undefined, metaThrows: true })
+    await waitFor(() => expect(screen.getByText('Shared X')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Shared X'))
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(screen.getByTestId('editor-doc').textContent).toBe('d_x')
+    expect(screen.queryByTestId('board-shell')).toBeNull()
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/d_x')).toBe(true)
+  })
+})
+
+// Regression: the XIN-517 re-rebase against upstream #537 (Univer sheet-collab) collapsed the
+// spreadsheet OPEN path — openDoc squashed a resolved `'sheet'` down to `'doc'` before
+// buildRightPane dispatched, so every entry point to a sheet (create / Excel import / existing
+// list row / deep-link) mounted the Tiptap editor instead of Univer SheetView. openDoc now
+// preserves `'sheet'` all the way through, mirroring base #537's behavior. These lock the sheet
+// path per-entry-point without regressing the board / doc paths above.
+describe('DocsHome — sheet open path restored (XIN-520)', () => {
+  it('creates a sheet via the New dropdown and opens it in the Univer sheet view (not the editor)', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = (method, url, body) => {
+      calls.push({ method, url, body })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      if (method === 'post' && url === '/docs') {
+        return {
+          data: {
+            docId: 's_new',
+            documentName: 'doc:s_new',
+            title: '',
+            spaceId: 'demo',
+            folderId: 'f_default',
+            ownerId: 'u_self',
+            role: 'admin',
+            docType: 'sheet',
+          },
+          status: 201,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+
+    // Open the split "New" dropdown and choose "New sheet".
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.sheet.new', { exact: false }))
+
+    // The Univer sheet view (not the rich-text editor) opens inline.
+    await waitFor(() => expect(screen.getByTestId('sheet-view')).toBeTruthy())
+    expect(screen.getByTestId('sheet-doc').textContent).toBe('s_new')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+
+    // createDoc was sent with the sheet kind through the docType seam.
+    const create = calls.find((c) => c.method === 'post' && c.url === '/docs')
+    expect((create?.body as { docType?: string })?.docType).toBe('sheet')
+
+    // Selection persisted with its kind so a refresh re-opens the sheet view.
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 's_new',
+      docType: 'sheet',
+    })
+  })
+
+  it('opens an existing sheet row directly in the sheet view (no per-doc lookup)', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              { docId: 's_row', title: 'Budget', ownerId: 'u_owner', role: 'admin', docType: 'sheet' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Budget')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Budget'))
+
+    await waitFor(() => expect(screen.getByTestId('sheet-view')).toBeTruthy())
+    expect(screen.getByTestId('sheet-doc').textContent).toBe('s_row')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // The list row already carried docType='sheet' — no authoritative round-trip needed.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/s_row')).toBe(false)
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 's_row',
+      docType: 'sheet',
+    })
+  })
+
+  it('opens a sheet from a `?doc=<sheetId>` deep-link whose kind only the backend knows', async () => {
+    // Unknown-kind deep-link (registry empty, no stored docType): the per-doc GET resolves
+    // docType='sheet', so the Univer sheet view must open — NOT the rich-text editor.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 's_direct' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url === '/docs/s_direct') {
+        return { data: { docId: 's_direct', title: 'Shared sheet', role: 'admin', docType: 'sheet' }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByTestId('sheet-view')).toBeTruthy())
+    expect(screen.getByTestId('sheet-doc').textContent).toBe('s_direct')
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // The kind was fetched because neither the registry nor a stored docType could assert it.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/s_direct')).toBe(true)
+    // The resolved kind is mirrored so the host's query-wiping re-render re-opens the sheet.
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 's_direct',
+      docType: 'sheet',
+    })
+  })
+})
+
+// Regression (XIN-528): an in-flight unknown-kind open must NOT reopen the previous Space's doc.
+// openDoc's unknown-kind branch fires getDoc(docId) and commits in the .then(); the only staleness
+// guard used to be `latestOpenRef.current === docId`. A Space switch runs backToList (the
+// onSpaceChanged reconciler) which cleared the pane but did NOT reset latestOpenRef, so a getDoc
+// that resolved AFTER the switch still passed the guard and commitOpen ran for the old-Space doc —
+// setting selectedDoc + persistDocTarget({space: oldSpace}) + pushing the old doc into the right
+// pane while the list had already moved to the new Space. This is the async twin of the synchronous
+// cross-Space carry the PR fixes elsewhere. The fix: backToList resets latestOpenRef.current=null
+// AND openDoc's guard is Space-scoped, so a resolve after a switch is discarded.
+describe('DocsHome — in-flight unknown-kind open is discarded after a Space switch (XIN-528)', () => {
+  it('does not commit the old-Space doc when getDoc resolves after backToList', async () => {
+    const wk = createMockWKApp()
+    wk.shared.currentSpaceId = 'space-a'
+    const replaceToRoot = vi.fn()
+    // Production (resident-list) path so we can observe what the reconciler pushes into the pane.
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    setWKApp(wk)
+
+    // Hold the unknown-kind per-doc GET in flight so the test can switch Space BEFORE it resolves.
+    let resolveMeta: (() => void) | undefined
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_a') {
+        return new Promise((resolve) => {
+          resolveMeta = () =>
+            resolve({
+              data: { docId: 'd_a', title: 'Space A Doc', role: 'admin', docType: 'board' },
+              status: 200,
+            })
+        })
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        const spaceId = new URLSearchParams(url.split('?')[1] ?? '').get('spaceId') ?? ''
+        // Only the initial Space lists the unknown-kind row; the new Space is empty.
+        if (spaceId === 'space-a') {
+          return {
+            data: {
+              total: 1,
+              items: [{ docId: 'd_a', title: 'Space A Doc', ownerId: 'u_owner', role: 'admin' }],
+            },
+            status: 200,
+          }
+        }
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Space A Doc')).toBeTruthy())
+
+    // Open the unknown-kind row → openDoc fires getDoc('/docs/d_a'), held in flight below.
+    fireEvent.click(screen.getByText('Space A Doc'))
+    await waitFor(() => expect(resolveMeta).toBeTruthy())
+
+    // Host switches Space WHILE the getDoc is still pending: mutate currentSpaceId then broadcast.
+    // backToList runs, clearing the pane and (with the fix) invalidating the pending open token.
+    wk.shared.currentSpaceId = 'space-b'
+    wk.mockMittBus.emitSpaceChanged({ space_id: 'space-b' })
+
+    // Now let the stale getDoc resolve LAST. Without the fix, commitOpen would run for d_a.
+    resolveMeta!()
+    // Give the resolved promise a chance to (wrongly) commit before asserting.
+    await new Promise((r) => setTimeout(r, 20))
+
+    // The old-Space doc must NOT open: no board shell for d_a, no selection, and the persisted
+    // target must not have been (re)written to the old Space's doc (backToList cleared it).
+    expect(screen.queryByTestId('board-shell')).toBeNull()
+    expect(screen.queryByTestId('board-doc')).toBeNull()
+    expect(window.sessionStorage.getItem(TARGET_KEY)).toBeNull()
+    // The last thing pushed into the right pane is the empty state (backToList), never the d_a doc.
+    const lastPush = replaceToRoot.mock.calls.at(-1)?.[0] as
+      | { props?: { docId?: string } }
+      | undefined
+    expect(lastPush?.props?.docId).toBeUndefined()
   })
 })

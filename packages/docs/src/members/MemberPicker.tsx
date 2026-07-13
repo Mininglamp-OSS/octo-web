@@ -21,6 +21,7 @@ function initial(name: string): string {
 export function MemberPicker({
   space,
   existingUids,
+  hideUids,
   onAdd,
   busy,
 }: {
@@ -28,6 +29,9 @@ export function MemberPicker({
   space?: string
   /** uids already on the document (rendered disabled / "already added", pinned to the top). */
   existingUids: Set<string>
+  /** uids to omit from the candidate list ENTIRELY (not shown at all) — the current user and the
+   *  doc owner, who can never be "added" and shouldn't appear as candidates. */
+  hideUids?: Set<string>
   /** Add the chosen members (one or many) with the chosen role. */
   onAdd: (uids: string[], role: Role) => Promise<void> | void
   /** True while a parent add/refresh is in flight (disables the Add button). */
@@ -56,14 +60,16 @@ export function MemberPicker({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
+    // Drop hidden uids (self / owner) from the roster entirely before filtering/sorting.
+    const roster = hideUids?.size ? members.filter((m) => !hideUids.has(m.uid)) : members
     const base = q
-      ? members.filter(
+      ? roster.filter(
           (m) => m.name.toLowerCase().includes(q) || m.uid.toLowerCase().includes(q),
         )
-      : members
+      : roster
     // Already-added members pinned at the top (#A3).
     return sortPickerMembers(base, existingUids)
-  }, [members, query, existingUids])
+  }, [members, query, existingUids, hideUids])
 
   // Drop selections that have been added elsewhere (e.g. after a successful add + refresh).
   useEffect(() => {

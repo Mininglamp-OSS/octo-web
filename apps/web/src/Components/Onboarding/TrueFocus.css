@@ -1,0 +1,130 @@
+.wk-true-focus {
+    position: relative;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    padding: 14px 8px;
+    color: color-mix(in srgb, var(--wk-neutral-0) 92%, transparent);
+    user-select: none;
+}
+
+.wk-true-focus-word {
+    position: relative;
+    border-radius: 10px;
+    color: color-mix(in srgb, var(--wk-neutral-0) 54%, transparent);
+    font-size: 44px;
+    font-weight: var(--wk-font-bold);
+    line-height: 1.05;
+    letter-spacing: 0;
+    text-shadow:
+        0 8px 24px color-mix(in srgb, var(--wk-neutral-950) 44%, transparent),
+        0 0 26px color-mix(in srgb, var(--wk-color-accent) 16%, transparent);
+    transition:
+        filter var(--wk-ease),
+        color var(--wk-ease),
+        text-shadow var(--wk-ease);
+}
+
+.wk-true-focus-word[data-cursor-interactive="true"] {
+    cursor: pointer;
+    outline: none;
+}
+
+.wk-true-focus-word[data-cursor-interactive="true"]:focus-visible {
+    outline: 2px solid var(--wk-brand-primary);
+    outline-offset: 8px;
+}
+
+.wk-true-focus-word.is-active {
+    color: var(--wk-neutral-0);
+    text-shadow:
+        0 2px 0 color-mix(in srgb, var(--wk-neutral-950) 58%, transparent),
+        0 12px 30px color-mix(in srgb, var(--wk-neutral-950) 72%, transparent),
+        0 0 46px color-mix(in srgb, var(--wk-color-accent) 28%, transparent);
+}
+
+.wk-true-focus-initial {
+    color: color-mix(in srgb, var(--wk-color-accent) 68%, var(--wk-neutral-0));
+    text-shadow:
+        0 1px 0 color-mix(in srgb, var(--wk-neutral-950) 52%, transparent),
+        0 8px 20px color-mix(in srgb, var(--wk-neutral-950) 56%, transparent),
+        0 0 32px color-mix(in srgb, var(--wk-color-accent) 34%, transparent);
+}
+
+.wk-true-focus-word.is-active .wk-true-focus-initial {
+    color: color-mix(in srgb, var(--wk-color-accent) 46%, var(--wk-neutral-0));
+    text-shadow:
+        0 1px 0 color-mix(in srgb, var(--wk-neutral-950) 56%, transparent),
+        0 8px 22px color-mix(in srgb, var(--wk-neutral-950) 58%, transparent),
+        0 0 40px color-mix(in srgb, var(--wk-color-accent) 42%, transparent);
+}
+
+.wk-true-focus-frame {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: var(--wk-focus-width);
+    height: var(--wk-focus-height);
+    pointer-events: none;
+    transform: translate(var(--wk-focus-x), var(--wk-focus-y));
+    transition:
+        transform var(--wk-ease),
+        width var(--wk-ease),
+        height var(--wk-ease),
+        opacity var(--wk-ease);
+}
+
+.wk-true-focus-corner {
+    position: absolute;
+    width: 17px;
+    height: 17px;
+    border: 2px solid var(
+        --wk-focus-border,
+        color-mix(in srgb, var(--wk-color-accent) 68%, var(--wk-neutral-0))
+    );
+    border-radius: 3px;
+    filter: drop-shadow(0 0 8px var(
+        --wk-focus-glow,
+        color-mix(in srgb, var(--wk-color-accent) 46%, transparent)
+    ));
+}
+
+.wk-true-focus-corner.is-top-left {
+    top: -10px;
+    left: -10px;
+    border-right: 0;
+    border-bottom: 0;
+}
+
+.wk-true-focus-corner.is-top-right {
+    top: -10px;
+    right: -10px;
+    border-left: 0;
+    border-bottom: 0;
+}
+
+.wk-true-focus-corner.is-bottom-left {
+    bottom: -10px;
+    left: -10px;
+    border-top: 0;
+    border-right: 0;
+}
+
+.wk-true-focus-corner.is-bottom-right {
+    right: -10px;
+    bottom: -10px;
+    border-top: 0;
+    border-left: 0;
+}
+
+@media (max-width: 820px) {
+    .wk-true-focus {
+        gap: 20px;
+    }
+
+    .wk-true-focus-word {
+        font-size: 36px;
+    }
+}

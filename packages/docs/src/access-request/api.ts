@@ -36,10 +36,16 @@ export class AccessRequestConflictError extends Error {
  * Submit an access request for a doc the caller cannot open (screen 4c apply).
  * 200/201 → submitted; 409 → already requested (surfaced as AccessRequestConflictError so the
  * button can show "Request submitted" without treating it as a failure).
+ *
+ * `spaceId` MUST be passed on the standalone `/d/:docId` surface: that page mounts before the app
+ * shell restores `currentSpaceId`, so the global interceptor injects no `X-Space-Id` and the
+ * backend's by-space middleware rejects a bare request (same fix getDoc uses). In-shell callers can
+ * omit it — the interceptor supplies the header there.
  */
-export async function requestAccess(docId: string): Promise<void> {
+export async function requestAccess(docId: string, opts?: { spaceId?: string }): Promise<void> {
+  const config = opts?.spaceId ? { headers: { 'X-Space-Id': opts.spaceId } } : undefined
   try {
-    await apiClient().post(`/docs/${docId}/access-requests`)
+    await apiClient().post(`/docs/${docId}/access-requests`, undefined, config)
   } catch (e) {
     if ((e as ApiError).response?.status === 409) throw new AccessRequestConflictError()
     throw e

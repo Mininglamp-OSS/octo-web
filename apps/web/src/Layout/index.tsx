@@ -32,11 +32,15 @@ interface AppLayoutState {
  * returning 401 for everyone. No-op when a token is already present or none is stored (a genuinely
  * anonymous visitor). The scan itself lives in recoverSession.ts (pure + unit-tested).
  *
- * `persist` distinguishes the two callers (XIN-392 P1-2):
- *   - standalone (`persist: true`): also writes the session back to the current empty-sid bucket so
- *     the page's Back → /docs full reload stays authenticated (XIN-390). Because that write mirrors
- *     the identity into the cross-tab localStorage whitelist, adoptStoredSession only persists when
- *     EXACTLY ONE session is stored — a multi-session user's identity is never guessed-and-pinned.
+ * `persist` distinguishes the two callers (XIN-392 P1-2 / XIN-519 blocker 2):
+ *   - standalone (`persist: true`): recover a signed-in user's session on the sid-less cold load.
+ *     One stored bucket → adopt and persist it back to the empty-sid slot so the page's Back → /docs
+ *     full reload stays authenticated (XIN-390). Several buckets that all belong to the SAME identity
+ *     (same uid — one person signed in across e.g. two spaces, the real-device multi-space case) →
+ *     adopt the first IN MEMORY ONLY, so the link opens the doc instead of bouncing to login, without
+ *     pinning a multi-bucket pick into the cross-tab slot. Buckets spanning DIFFERENT identities stay
+ *     ambiguous → fall through to login (never guess a person). The doc's own space rides on `?sp`
+ *     (preflight addressing), not on bucket selection.
  *   - invite (`persist: false`): adopts the first stored session IN MEMORY ONLY and never persists,
  *     which is the invite branch's original pre-#512 behavior (it must not start persisting just
  *     because both branches now share this helper).

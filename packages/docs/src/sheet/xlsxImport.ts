@@ -29,14 +29,30 @@ export interface MergeRange {
   endColumn: number
 }
 
-/** The full parsed payload for a new imported sheet: the cell grid + merged ranges. */
-export interface SheetImport {
+/**
+ * A parsed FLOATING image (standard xlsx drawing), anchored to a top-left cell. `source` is a
+ * self-contained base64 data URL (the binary rides along — no external host). Cell images (WPS
+ * DISPIMG) are NOT handled here: that's a proprietary format ExcelJS can't read.
+ */
+export interface ParsedDrawing {
+  source: string
+  col: number
+  row: number
+}
+
+/** One parsed worksheet: its name + cell grid + merged ranges + floating images. */
+export interface ParsedSheet {
+  name: string
   matrix: ImportCell[][]
   merges: MergeRange[]
-  /** True when the source exceeded MAX_IMPORT_ROWS/COLS and the grid was clamped. */
+  drawings?: ParsedDrawing[]
+}
+
+/** The full parsed payload for an imported workbook: every VISIBLE worksheet. */
+export interface SheetImport {
+  sheets: ParsedSheet[]
+  /** True when any sheet exceeded MAX_IMPORT_ROWS/COLS and was clamped. */
   truncated?: boolean
-  /** Number of extra worksheets that were NOT imported (only the first sheet is read). */
-  droppedSheetCount?: number
 }
 
 /** Distinguishes "couldn't parse the file at all" from "parsed OK, with caveats". */
@@ -146,6 +162,31 @@ function isDate(v: unknown): v is Date {
   return Object.prototype.toString.call(v) === '[object Date]'
 }
 
+/** Chunked base64 encode of raw bytes (avoids the arg-count blowup of a single String.fromCharCode). */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)))
+  }
+  return btoa(binary)
+}
+
+/** ExcelJS media entry → a self-contained base64 data URL, or null if it has no usable binary. */
+function mediaToDataUrl(media: { extension?: string; buffer?: unknown; base64?: string } | undefined): string | null {
+  if (!media) return null
+  const ext = media.extension === 'jpeg' ? 'jpeg' : media.extension === 'gif' ? 'gif' : 'png'
+  if (typeof media.base64 === 'string' && media.base64) {
+    return media.base64.startsWith('data:') ? media.base64 : `data:image/${ext};base64,${media.base64}`
+  }
+  // ExcelJS' Buffer polyfill is a Uint8Array subclass, so subarray/length work directly.
+  const buf = media.buffer
+  if (buf && typeof (buf as Uint8Array).length === 'number') {
+    return `data:image/${ext};base64,${bytesToBase64(buf as Uint8Array)}`
+  }
+  return null
+}
+
 /** Map an ExcelJS cell to a Univer ICellData (value / formula + resolved style). */
 function exceljsCellToUniver(cell: XlsxCell): ImportCell {
   // Skip a merged slave cell (keep only the master) so a merged title isn't repeated.
@@ -167,13 +208,22 @@ function exceljsCellToUniver(cell: XlsxCell): ImportCell {
     } else if (typeof val === 'object') {
       const o = val as { formula?: string; result?: unknown }
       if (typeof o.formula === 'string') {
-        out.f = o.formula.startsWith('=') ? o.formula : `=${o.formula}`
-        const r = o.result
-        if (isDate(r)) {
-          out.v = dateToSerial(r)
-          isDateValue = true
-        } else if (r != null && typeof r !== 'object') out.v = r
-        else if (cell.text != null) out.v = cell.text
+        // WPS "cell images" serialize as a =DISPIMG("ID_…",n) formula. Univer has no DISPIMG
+        // function, so writing it as a formula renders the literal text in the cell. We can't
+        // extract the WPS-proprietary image binary here (it's not standard-xlsx drawing data), so
+        // blank the cell rather than pollute it with the formula string. (#1 — full cell-image
+        // import would need parsing WPS's xl/cellimages.xml, deferred.)
+        if (/DISPIMG/i.test(o.formula)) {
+          // leave out.v / out.f unset — the cell carries no importable content
+        } else {
+          out.f = o.formula.startsWith('=') ? o.formula : `=${o.formula}`
+          const r = o.result
+          if (isDate(r)) {
+            out.v = dateToSerial(r)
+            isDateValue = true
+          } else if (r != null && typeof r !== 'object') out.v = r
+          else if (cell.text != null) out.v = cell.text
+        }
       } else {
         // rich text / hyperlink / error / shared string → its plain display text (never the object)
         out.v = cell.text != null ? cell.text : ''
@@ -249,40 +299,43 @@ export async function parseXlsxToMatrix(data: ArrayBuffer): Promise<ParseXlsxRes
     }
     const wb = new (WorkbookCtor as new () => {
       xlsx: { load: (b: ArrayBuffer) => Promise<unknown> }
+      getImage?: (id: number) => { extension?: string; base64?: string; buffer?: Uint8Array } | undefined
       worksheets: Array<{
+        name?: string
+        state?: string
         rowCount: number
         columnCount: number
         getCell: (r: number, c: number) => XlsxCell
+        getImages?: () => Array<{ imageId: string; range?: { tl?: { nativeCol?: number; nativeRow?: number } } }>
         model?: { merges?: string[] }
       }>
     })()
     await wb.xlsx.load(data)
-    // Only the first non-empty worksheet is imported today; count the rest so the caller
-    // can surface a "only sheet 1 was imported" warning rather than dropping them silently.
-    const droppedSheetCount = Math.max(0, wb.worksheets.length - 1)
-    const ws = wb.worksheets[0]
-    if (!ws) return { ok: false, reason: 'empty' }
-    // ExcelJS reports the LARGEST used row/col, which a single far-flung cell can inflate
-    // to ~1M×16k. Clamp to the collaborative grid bounds so a malicious/accidental sparse
-    // file can't build a giant dense matrix and OOM the tab.
-    const rawRows = ws.rowCount
-    const rawCols = ws.columnCount
-    if (rawRows <= 0 || rawCols <= 0) return { ok: false, reason: 'empty' }
-    const rows = Math.min(rawRows, MAX_IMPORT_ROWS)
-    const cols = Math.min(rawCols, MAX_IMPORT_COLS)
-    const truncated = rawRows > MAX_IMPORT_ROWS || rawCols > MAX_IMPORT_COLS
-    const matrix: ImportCell[][] = []
-    for (let r = 1; r <= rows; r++) {
-      const row: ImportCell[] = []
-      for (let c = 1; c <= cols; c++) row.push(exceljsCellToUniver(ws.getCell(r, c)))
-      matrix.push(row)
-    }
-    const merges: MergeRange[] = []
-    for (const rng of ws.model?.merges ?? []) {
-      const m = parseA1Range(rng)
-      if (m && (m.endRow > m.startRow || m.endColumn > m.startColumn)) {
-        // Drop/clamp merges that fall outside the clamped grid so they don't dangle.
-        if (m.startRow < rows && m.startColumn < cols) {
+    // Import EVERY visible worksheet (each becomes a sheet tab in the workbook). Hidden /
+    // very-hidden sheets are skipped — not user content, and previously the source of the
+    // bogus "multiple worksheets" notice on single-sheet files. ExcelJS reports the LARGEST
+    // used row/col, which a single far-flung cell can inflate to ~1M×16k, so clamp each
+    // sheet to the collaborative grid bounds (never build a giant dense matrix / OOM).
+    const sheets: ParsedSheet[] = []
+    let truncated = false
+    wb.worksheets.forEach((ws, i) => {
+      if (ws.state && ws.state !== 'visible') return
+      const rawRows = ws.rowCount
+      const rawCols = ws.columnCount
+      if (rawRows <= 0 || rawCols <= 0) return
+      const rows = Math.min(rawRows, MAX_IMPORT_ROWS)
+      const cols = Math.min(rawCols, MAX_IMPORT_COLS)
+      if (rawRows > MAX_IMPORT_ROWS || rawCols > MAX_IMPORT_COLS) truncated = true
+      const matrix: ImportCell[][] = []
+      for (let r = 1; r <= rows; r++) {
+        const row: ImportCell[] = []
+        for (let c = 1; c <= cols; c++) row.push(exceljsCellToUniver(ws.getCell(r, c)))
+        matrix.push(row)
+      }
+      const merges: MergeRange[] = []
+      for (const rng of ws.model?.merges ?? []) {
+        const m = parseA1Range(rng)
+        if (m && (m.endRow > m.startRow || m.endColumn > m.startColumn) && m.startRow < rows && m.startColumn < cols) {
           merges.push({
             startRow: m.startRow,
             startColumn: m.startColumn,
@@ -291,8 +344,30 @@ export async function parseXlsxToMatrix(data: ArrayBuffer): Promise<ParseXlsxRes
           })
         }
       }
-    }
-    return { ok: true, data: { matrix, merges, truncated, droppedSheetCount } }
+      // Floating images (standard xlsx drawings): ExcelJS exposes them per-sheet with an
+      // imageId into the workbook media. Convert each to a base64 data URL anchored at its
+      // top-left cell. Wrapped defensively — a missing/odd image layer must not fail the import.
+      const drawings: ParsedDrawing[] = []
+      try {
+        for (const im of ws.getImages?.() ?? []) {
+          const media = wb.getImage?.(Number(im.imageId))
+          const source = media ? mediaToDataUrl(media) : null
+          if (!source) continue
+          const col = im.range?.tl?.nativeCol ?? 0
+          const row = im.range?.tl?.nativeRow ?? 0
+          // Anchor against the DECLARED grid (1000×100), NOT the used-cell range: a floating image
+          // is usually parked in empty space below/beside the data, so `row/col >= used rows/cols`
+          // is normal and must NOT drop it. Only reject anchors outside the whole sheet.
+          if (col < 0 || row < 0 || col >= MAX_IMPORT_COLS || row >= MAX_IMPORT_ROWS) continue
+          drawings.push({ source, col, row })
+        }
+      } catch {
+        // image layer unreadable — import cells/merges without images
+      }
+      sheets.push({ name: ws.name ?? `Sheet${i + 1}`, matrix, merges, drawings })
+    })
+    if (sheets.length === 0) return { ok: false, reason: 'empty' }
+    return { ok: true, data: { sheets, truncated } }
   } catch (err) {
     // Surface the real cause instead of collapsing every failure into a bare null — a
     // corrupt file and an ExcelJS bug are otherwise indistinguishable to the caller.

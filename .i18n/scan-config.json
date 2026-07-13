@@ -21,8 +21,16 @@
       "reason": "RichText(=14) plain-generation image placeholder. This [图片] literal is a cross-platform wire-format token that must byte-match octo-lib RichTextImagePlaceholder (common/richtext.go) so server/mobile/web produce identical plain text; it is protocol data, not translatable UI copy."
     },
     {
+      "path": "packages/docs/src/export/docx/styles.ts",
+      "reason": "DOCX export font-family constants (微软雅黑). These are Word/WPS font identifiers that must byte-match the actual Windows font name so exported documents render Chinese text correctly; they are font resource names, not translatable UI copy."
+    },
+    {
       "path": "packages/dmworkbase/src/Components/ChannelSearch/ChannelSearch.stories.mock.ts",
       "reason": "Channel search Storybook fixture data with sample sender names, message bodies, filenames, and match reasons; not UI copy."
+    },
+    {
+      "path": "packages/docs/src/board/excalidrawDebrand.ts",
+      "reason": "Whiteboard de-brand helper. Its only CJK literal is BOARD_BRAND ('画布'), the fixed product word that replaces the upstream Excalidraw brand token at runtime; it is intentionally locale-invariant (a brand replacement, not translatable UI copy) and the docs package has no i18n namespace to key it against."
     }
   ]
 }

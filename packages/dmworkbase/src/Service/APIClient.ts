@@ -130,11 +130,15 @@ export default class APIClient {
        return this.wrapResult<T>(axios.get(path, {
         params: config?.param,
         headers: config?.headers,
+        responseType: config?.responseType,
+        timeout: config?.timeout,
     }), config)
     }
     post(path: string, data?: any, config?: RequestConfig) {
         return this.wrapResult(axios.post(path, data, {
             headers: config?.headers,
+            responseType: config?.responseType,
+            timeout: config?.timeout,
         }), config)
     }
 
@@ -202,6 +206,18 @@ export class RequestConfig {
      * 保持既有无显式头行为。
      */
     headers?: Record<string, string>
+    /**
+     * Per-request axios responseType passthrough. Defaults to axios' `'json'`.
+     * `'arraybuffer'` is required for binary endpoints (e.g. server-side PDF
+     * export) so the response body is not decoded as UTF-8 text — every
+     * non-ASCII byte would otherwise become U+FFFD and corrupt the file.
+     */
+    responseType?: 'json' | 'arraybuffer' | 'blob' | 'text'
+    /**
+     * Per-request timeout in ms, overriding the shared 20s default. Long
+     * server-side renders (large document export) need a higher ceiling.
+     */
+    timeout?: number
 }
 
 export interface APIResp {

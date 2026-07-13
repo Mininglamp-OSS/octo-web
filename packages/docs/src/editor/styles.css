@@ -6,6 +6,8 @@
   --octo-accent: #3370ff;
   --octo-border: #e5e6eb;
   --octo-hover: #f2f3f5;
+  /* Shared elevation for overlay-anchored cards (preview/diff modal + destructive confirm). */
+  --octo-modal-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -37,10 +39,32 @@
   width: 100%;
   height: 100%;
   box-sizing: border-box;
+  /* Header-then-fixed-region column (mirrors the sheet): the header stays put at the top, and the
+     scroll + drawer live in .octo-doc-body below it. This keeps the .octo-doc-drawer (an absolute
+     child of .octo-doc-body) BELOW the header — so it never covers the header buttons — and pinned
+     to the pane instead of scrolling away with the document. */
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Region below the fixed header: establishes the positioning context + bounded height for both
+   the inner scroll container and the pinned drawer. */
+.octo-doc-body {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 0;
+}
+
+/* Inner scroll container (P7/B1): the scroll viewport for the sticky toolbar + prose + status bar
+   (the header is a fixed sibling ABOVE this, no longer scrolls). NO top padding, so the sticky
+   toolbar (top:0) pins flush to the top of the scroll viewport; horizontal + bottom padding live
+   here. The drawer is a SIBLING of this element inside .octo-doc-body, so it is unaffected. */
+.octo-doc-scroll {
+  height: 100%;
   overflow-y: auto;
-  /* P7/B1: the scroll container must have NO top padding, otherwise that padding strip sits
-     ABOVE the sticky toolbar (top:0) and document content scrolls up through it. The top
-     breathing space is moved onto the header instead; horizontal + bottom padding stay here. */
+  box-sizing: border-box;
   padding: 0 32px 24px;
 }
 
@@ -49,9 +73,10 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  /* The top breathing room lives here now (the scroll container's top padding was removed so the
-     sticky toolbar can pin flush to the true top of the scroll viewport). */
-  padding-top: 24px;
+  /* Fixed at the top of the editor column (no longer inside the scroll container), so it needs its
+     own horizontal padding — the scroll container's padding used to cover it. */
+  flex: 0 0 auto;
+  padding: 24px 32px 0;
 }
 .octo-doc-header-right {
   display: flex;
@@ -361,6 +386,59 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
+/* Table editing UI (#595). The floating table toolbar reuses .octo-bubble-menu; it only needs to
+   keep its buttons on one line and align the separators vertically. */
+.octo-table-bubble {
+  align-items: center;
+}
+.octo-table-bubble .octo-tb-sep {
+  align-self: stretch;
+}
+/* While the caret is inside a table cell this toolbar floats over the table (placement: top). Its
+   frame would otherwise sit on top of the column-resize hot zone and swallow the hover/mousedown
+   the resize plugin listens for on the editor DOM, so `.column-resize-handle` never appears and the
+   column can't be dragged (#595 C1). pointer-events is inherited, so making the floating wrapper
+   transparent lets those events fall through to the table underneath; only the buttons re-capture
+   the pointer so they stay clickable. */
+.octo-table-bubble-portal {
+  pointer-events: none;
+}
+.octo-table-bubble-portal .octo-tb-btn {
+  pointer-events: auto;
+}
+
+/* Grid picker for inserting a table at a chosen size (replaces the fixed 3×3). Floats under the
+   toolbar button via the shared .octo-color-control / .octo-color-popover pattern. */
+.octo-table-picker {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.octo-table-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 16px);
+  grid-auto-rows: 16px;
+  gap: 3px;
+}
+.octo-table-grid-cell {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--octo-border);
+  border-radius: 2px;
+  background: var(--octo-bg);
+  cursor: pointer;
+}
+.octo-table-grid-cell.is-on {
+  background: var(--octo-accent);
+  border-color: var(--octo-accent);
+}
+.octo-table-grid-label {
+  text-align: center;
+  font-size: 12px;
+  color: var(--octo-muted, #8a919e);
+}
+
 .octo-editor-region {
   position: relative;
   margin-top: 0;
@@ -502,6 +580,46 @@
   line-height: 1.6;
   font-size: 15px;
 }
+.octo-prose .ProseMirror h1,
+.octo-prose .ProseMirror h2,
+.octo-prose .ProseMirror h3,
+.octo-prose .ProseMirror h4,
+.octo-prose .ProseMirror h5,
+.octo-prose .ProseMirror h6 {
+  margin: var(--wk-sp-5) 0 var(--wk-sp-2);
+  font-family: var(--wk-font-sans);
+  letter-spacing: 0;
+}
+.octo-prose .ProseMirror h1 {
+  font-size: var(--wk-text-size-4xl);
+  font-weight: var(--wk-font-bold);
+  line-height: var(--wk-leading-tight);
+}
+.octo-prose .ProseMirror h2 {
+  font-size: var(--wk-text-size-3xl);
+  font-weight: var(--wk-font-bold);
+  line-height: var(--wk-leading-snug);
+}
+.octo-prose .ProseMirror h3 {
+  font-size: var(--wk-text-size-xl);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-snug);
+}
+.octo-prose .ProseMirror h4 {
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-normal);
+}
+.octo-prose .ProseMirror h5 {
+  font-size: var(--wk-text-size-base);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-normal);
+}
+.octo-prose .ProseMirror h6 {
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-normal);
+}
 .octo-prose .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   color: var(--octo-muted);
@@ -621,6 +739,28 @@
 .octo-prose ul[data-type='taskList'] li[data-checked='true'] > div {
   color: var(--octo-fg-3, #86909c);
   text-decoration: line-through;
+}
+
+/* Restore bullet markers and indentation for plain bullet lists inside the editor.
+   The app-wide reset (App.css `ul { list-style-type: none; padding-inline-start: 0 }`)
+   strips the disc marker, which made the bullet-list button look like it did nothing.
+   Scope this to the editor prose so the app's other lists stay unaffected; the
+   `[data-type='taskList']` exclusion keeps the checkbox list untouched. Specificity
+   here (0,2,1) beats the global reset (0,0,1) with no `!important`. */
+.octo-prose .ProseMirror ul:not([data-type='taskList']) {
+  list-style: disc;
+  padding-left: 1.5em;
+}
+.octo-prose .ProseMirror ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+}
+/* Nested bullet levels get distinct markers, matching common editor conventions. */
+.octo-prose .ProseMirror ul:not([data-type='taskList']) ul {
+  list-style: circle;
+}
+.octo-prose .ProseMirror ul:not([data-type='taskList']) ul ul {
+  list-style: square;
 }
 
 /* Remote collaboration carets (collaboration-caret; v3 default render uses
@@ -921,7 +1061,7 @@
   color: var(--octo-fg, #1f2329);
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 12px;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--octo-modal-shadow);
   padding: 20px 24px;
   box-sizing: border-box;
 }
@@ -1228,6 +1368,56 @@
   max-width: 420px;
 }
 
+/* ── Centered confirm dialog (ConfirmModal): shared by document + sheet delete so both pop the
+   SAME card in the MIDDLE of the screen — replacing the sheet's native window.confirm and the
+   document's inline top banner. align-items:center centers it vertically (the members modal uses
+   flex-start because it's a tall panel; a confirm is short, so it sits dead-center). ── */
+.octo-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.4);
+}
+.octo-confirm-modal {
+  width: 100%;
+  max-width: 400px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 12px;
+  box-shadow: var(--octo-modal-shadow);
+  padding: 20px 24px;
+  box-sizing: border-box;
+}
+.octo-confirm-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-confirm-message {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.octo-confirm-go-danger {
+  color: #fff;
+  background: #eb5757;
+}
+.octo-confirm-go-danger:hover:not(:disabled) {
+  background: #d64545;
+}
+
 /* Header "more" (≡) menu (#512 title-bar tidy-up). A relatively-positioned anchor holds the ≡
    trigger and an absolutely-positioned dropdown so the panel opens flush under the icon at the
    far right of the header. */
@@ -1344,6 +1534,28 @@
 }
 .octo-doc-more-item:disabled:hover {
   background: transparent;
+}
+/* Submenu parent (export): caret at the far right, rotates when open. Children indent under it. */
+.octo-doc-more-caret {
+  flex: 0 0 auto;
+  margin-left: auto;
+  fill: none;
+  stroke: #646a73;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.15s ease;
+}
+.octo-doc-more-item.is-open .octo-doc-more-caret {
+  transform: rotate(90deg);
+}
+.octo-doc-more-sublist {
+  background: #fafbfc;
+}
+.octo-doc-more-sublist .octo-doc-more-item {
+  padding-left: 44px;
+  height: 38px;
+  font-size: 13px;
 }
 .octo-doc-more-icon {
   flex: 0 0 auto;
@@ -1514,12 +1726,28 @@
   justify-content: flex-end;
   gap: 6px;
 }
-.octo-version-confirm {
-  margin-top: 12px;
-  padding: 12px;
+/* Destructive-action confirm box (restore / delete). The VersionHistoryPanel shell — the single
+   confirm renderer the doc / sheet / board ends now share — renders it inside the shared
+   .octo-modal-overlay (fixed, viewport-centered), the same overlay the preview/diff modal uses
+   (decision #2), so it is always visible and clickable regardless of how far the version list has
+   scrolled. Before this, it sat at the end of the panel's content flow with only box-model styling
+   and no positioning, so on long scrolled lists it fell below the fold and users could not see the
+   confirm they had just triggered. The modal-card chrome (white bg + shadow) is scoped under
+   .octo-modal-overlay so it only applies to the overlay-anchored card and never leaks onto any path
+   that might still render this class inline in the content flow. */
+.octo-modal-overlay .octo-version-confirm {
+  width: 100%;
+  max-width: 420px;
+  padding: 16px 20px;
   border: 1px solid var(--octo-border, #e5e6eb);
-  border-radius: 8px;
-  background: var(--octo-accent-weak, #f2f3f5);
+  border-radius: 12px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  box-shadow: var(--octo-modal-shadow);
+  box-sizing: border-box;
+}
+.octo-version-confirm > p:first-child {
+  margin-top: 0;
 }
 .octo-version-confirm-detail {
   color: var(--octo-muted, #86909c);
@@ -2000,6 +2228,76 @@
   font-size: 15px;
   line-height: 1;
   font-weight: 600;
+}
+
+/* ── New entry: split / dropdown button (whiteboard v1, frontend-design §4.1) ──
+   Primary action (left) creates a document; the caret (right) opens a small menu to choose
+   Document / Board, with a reserved disabled Sheet row. Built on the existing .octo-docs-list-new
+   primary-button styling so it stays visually consistent with the old single button. */
+.octo-docs-new-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+/* Seam the two halves: square the inner edges, keep a hairline divider between them. */
+.octo-docs-new-primary {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.octo-docs-new-caret {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding-left: 6px;
+  padding-right: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
+}
+.octo-docs-new-caret svg {
+  display: block;
+}
+.octo-docs-new-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 1000;
+  min-width: 180px;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+}
+.octo-docs-new-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--octo-fg, #1f2329);
+  cursor: pointer;
+}
+.octo-docs-new-menu-item:hover:not(:disabled) {
+  background: var(--octo-hover-bg, #f2f3f5);
+}
+.octo-docs-new-menu-item:disabled {
+  color: var(--octo-fg-3, #86909c);
+  cursor: default;
+}
+.octo-docs-new-menu-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--octo-fg-3, #86909c);
+}
+.octo-docs-new-menu-soon {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--octo-fg-3, #86909c);
 }
 .octo-docs-list-items {
   list-style: none;
@@ -2623,10 +2921,21 @@
   background: var(--octo-accent, #3370ff);
 }
 
-/* Sheet toolbar: left-align the Univer ribbon tabs (开始 / 公式 …) instead of
-   centering them. Univer centers the ribbon via `justify-center` on the
-   overflow-x-auto flex row; we scope the override to our own sheet container so
-   nothing outside the spreadsheet is affected. */
-.octo-sheet-container .univer-justify-center.univer-overflow-x-auto {
+/* Sheet toolbar: left-align the Univer ribbon toolbar (the icon row) instead of
+   centering it. In classic ribbon mode Univer adds `univer-justify-center` to the
+   inner flex row carrying `data-u-comp="ribbon-toolbar"`; we override that. We key
+   off the stable `data-u-comp` attribute (not the hashed utility classes, which the
+   old `.univer-overflow-x-auto` selector guessed wrong — that class isn't on this
+   row, so the rule never applied). Scoped to our own sheet container. */
+.octo-sheet-container [data-u-comp="ribbon-toolbar"] {
   justify-content: flex-start !important;
 }
+
+/* Sheet toolbar: also left-align the tab row (开始 / 插入 / 公式). That row is a
+   SEPARATE container from the icon toolbar above — the ClassicMenu `role="tablist"`
+   flex inside `data-u-comp="ribbon-header-menu"`, which also defaults to
+   `univer-justify-center`. Overriding only ribbon-toolbar left the tabs centered. */
+.octo-sheet-container [data-u-comp="ribbon-header-menu"] [role="tablist"] {
+  justify-content: flex-start !important;
+}
+

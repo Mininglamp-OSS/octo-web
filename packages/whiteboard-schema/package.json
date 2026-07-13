@@ -1,0 +1,14 @@
+{
+  "name": "@octo/whiteboard-schema",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Frozen shared whiteboard (Excalidraw) Y.Doc layout constants + normalizeElement rule set for Octo whiteboard v1. Vendored verbatim from boris-clark/octo-whiteboard-schema@v0.2.0 so the FE binding (XIN-25), BE authoritative repair, and Agent path share ONE rule set. Yjs-free / framework-free.",
+  "license": "MIT",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "sideEffects": false,
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

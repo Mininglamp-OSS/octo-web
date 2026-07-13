@@ -165,8 +165,25 @@ body[theme-mode=dark] .wk-emojipanel-tab-item-selected {
 }
 
 /* ===== 我的贴纸（用户自定义贴纸）===== */
+/* 固定 5 列网格 + gap，替代原来的 flex-wrap。flex 下 74px 格子 + 12px gap 在面板出现滚动条
+   时（可用宽度少 ~15px）会时而挤成一排 5 个、时而回落到 4 个，随贴纸数量抖动。改用 grid 5 列
+   + 1fr 让列宽自适应，稳定一排 5 个，格子之间恒定留 12px（--wk-sp-3），不再贴在一起。 */
 .wk-emojipanel-content-sticker ul {
     align-content: flex-start;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--wk-sp-3);
+}
+/* grid 化后格子撑满列宽（原来是固定 74px），用 aspect-ratio 保持正方。 */
+.wk-emojipanel-content-sticker ul .wk-sticker-item,
+.wk-emojipanel-content-sticker ul .wk-sticker-add {
+    width: auto;
+    height: auto;
+    aspect-ratio: 1 / 1;
+}
+/* 空态提示铺满整行（否则在 grid 里只占 1 列）。 */
+.wk-emojipanel-content-sticker ul .wk-sticker-empty {
+    grid-column: 1 / -1;
 }
 
 .wk-sticker-item,
@@ -191,11 +208,16 @@ body[theme-mode=dark] .wk-emojipanel-tab-item-selected {
     box-shadow: 0 4px 10px rgba(0, 0, 0, .12);
 }
 
-/* sticker thumbnails are 60px — override the 28px emoji-img rule via higher specificity */
+/* sticker thumbnails are 60px — override the 28px emoji-img rule via higher specificity。
+   max-width/height:100% 是给 grid 化后的兜底：格子随窄面板收缩到 <72px 时内容盒会小于
+   60px，固定 60px 的媒体会被 .wk-sticker-item{overflow:hidden} 裁掉；封顶到内容盒后随格子
+   缩、object-fit 保持比例、永不裁。正常宽度下内容盒 ≥60px，媒体仍是 60px，观感不变。 */
 .wk-emojipanel-content ul li.wk-sticker-item img,
 .wk-emojipanel-content ul li.wk-sticker-item tgs-player {
     width: 60px;
     height: 60px;
+    max-width: 100%;
+    max-height: 100%;
     object-fit: contain;
     margin: 0;
 }
@@ -274,6 +296,60 @@ body[theme-mode=dark] .wk-emojipanel-tab-item-selected {
 }
 .wk-emojipanel-tab-item-selected svg {
     color: var(--wk-brand-primary);
+}
+
+/* hover「原位弹大」预览：portal 到 <body>、position:fixed，盖过面板（面板 z-index:999）。
+   pointer-events:none 让它不拦截鼠标——既不打断「点击即发送」，也保证网格的 mouseleave
+   能正常触发去隐藏预览。尺寸/坐标由行内 style 给（computeStickerPreviewGeometry）。 */
+.wk-sticker-preview {
+    position: fixed;
+    z-index: 1002;
+    box-sizing: border-box;
+    padding: var(--wk-sp-3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--wk-r-lg);
+    /* 背景与阴影都用主题感知的语义 token（--wk-color-item / --wk-shadow-lg 在
+       body[theme-mode=dark] 下各自有暗色变体），所以不再需要单独的暗色覆盖块。 */
+    background: var(--wk-color-item);
+    box-shadow: var(--wk-shadow-lg);
+    pointer-events: none;
+    animation: wkStickerPreviewIn .12s ease;
+}
+.wk-sticker-preview img,
+.wk-sticker-preview tgs-player {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+/* 指向源格子的小三角：朝向由 is-above/is-below 决定，水平位置由行内 left 给（对齐格子中心）。
+   用 --wk-color-item 填充、与卡片同色，像卡片探出的尾巴；主题感知，暗色下自动跟着变。 */
+.wk-sticker-preview-caret {
+    position: absolute;
+    width: 0;
+    height: 0;
+    transform: translateX(-50%);
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+}
+.wk-sticker-preview-caret.is-above {
+    bottom: -8px;
+    border-top: 9px solid var(--wk-color-item);
+}
+.wk-sticker-preview-caret.is-below {
+    top: -8px;
+    border-bottom: 9px solid var(--wk-color-item);
+}
+@keyframes wkStickerPreviewIn {
+    from { opacity: 0; transform: scale(.85); }
+    to { opacity: 1; transform: scale(1); }
+}
+/* 尊重「减少动态」偏好：关掉浮入动画，直接显示。 */
+@media (prefers-reduced-motion: reduce) {
+    .wk-sticker-preview {
+        animation: none;
+    }
 }
 
 /* dark mode */

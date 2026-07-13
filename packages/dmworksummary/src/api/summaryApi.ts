@@ -7,6 +7,7 @@ import type {
     ChatCandidate,
     CreateSummaryParams,
     CreateScheduleParams,
+    CustomTopicTemplatePayload,
     InferResult,
     ListSummariesParams,
     ListSummariesResponse,
@@ -19,6 +20,7 @@ import type {
     SummaryDetail,
     SummaryTemplate,
     TopicTemplate,
+    TopicTemplatesResponse,
     UpdateScheduleParams,
 } from '../types/summary';
 import { SummaryMode } from '../types/summary';
@@ -289,9 +291,47 @@ export async function getTemplates(): Promise<SummaryTemplate[]> {
     }));
 }
 
+export async function getTopicTemplatesConfig(): Promise<TopicTemplatesResponse> {
+    const data = await get<Partial<TopicTemplatesResponse>>('/summary-templates');
+    return {
+        templates: data?.templates || [],
+        custom_template_limit: data?.custom_template_limit ?? 30,
+    };
+}
+
 export async function getTopicTemplates(): Promise<TopicTemplate[]> {
-    const data = await get<{ templates: TopicTemplate[] }>('/summary-templates');
-    return data?.templates || [];
+    const data = await getTopicTemplatesConfig();
+    return data.templates;
+}
+
+export async function updateMyTopicTemplate(
+    templateId: string,
+    payload: CustomTopicTemplatePayload,
+): Promise<TopicTemplate> {
+    const data = await put<{ template: TopicTemplate }>(`/summary-templates/${encodeURIComponent(templateId)}/my`, payload);
+    return data.template;
+}
+
+export async function resetMyTopicTemplate(templateId: string): Promise<TopicTemplate> {
+    const data = await del<{ template: TopicTemplate }>(`/summary-templates/${encodeURIComponent(templateId)}/my`);
+    return data.template;
+}
+
+export async function createCustomTopicTemplate(payload: CustomTopicTemplatePayload): Promise<TopicTemplate> {
+    const data = await post<{ template: TopicTemplate }>('/summary-templates/my', payload);
+    return data.template;
+}
+
+export async function updateCustomTopicTemplate(
+    templateId: string,
+    payload: CustomTopicTemplatePayload,
+): Promise<TopicTemplate> {
+    const data = await put<{ template: TopicTemplate }>(`/summary-templates/my/${encodeURIComponent(templateId)}`, payload);
+    return data.template;
+}
+
+export async function deleteCustomTopicTemplate(templateId: string): Promise<void> {
+    return del(`/summary-templates/my/${encodeURIComponent(templateId)}`);
 }
 
 export async function inferScope(topic: string): Promise<InferResult> {

@@ -3,6 +3,7 @@ import {
   findStoredSession,
   findStoredSessions,
   findUniqueStoredSession,
+  findSameIdentityStoredSession,
   findSidForToken,
   adoptStoredSession,
   sidsForToken,
@@ -276,6 +277,99 @@ describe('adoptStoredSession — persist gating never pins a guessed identity (X
     const afterBackReload = new FakeLoginInfo(store, '')
     afterBackReload.load()
     expect(afterBackReload.token).toBe('octo-session-xyz')
+  })
+})
+
+describe('findSameIdentityStoredSession — one person, several buckets (XIN-519 blocker 2, decision B)', () => {
+  it('returns the first bucket when several buckets all share one non-empty uid', () => {
+    // The real-device multi-space case: one account signed in across two spaces leaves two random-sid
+    // buckets, both with the SAME uid.
+    const storage = makeStorage({
+      tokeni1mw4h: 'tok-space-a',
+      uidi1mw4h: 'u_same',
+      namei1mw4h: 'Ada',
+      tokenx519b: 'tok-space-b',
+      uidx519b: 'u_same',
+      namex519b: 'Ada',
+    })
+    expect(findSameIdentityStoredSession(storage)).toEqual({
+      token: 'tok-space-a',
+      uid: 'u_same',
+      name: 'Ada',
+    })
+  })
+
+  it('returns null when several buckets span DIFFERENT uids (genuinely ambiguous identity)', () => {
+    const storage = makeStorage({
+      tokenA: 'tok-a',
+      uidA: 'u_a',
+      tokenB: 'tok-b',
+      uidB: 'u_b',
+    })
+    expect(findSameIdentityStoredSession(storage)).toBeNull()
+  })
+
+  it('returns null for a single bucket (that is the unique-session case) and for none', () => {
+    expect(
+      findSameIdentityStoredSession(makeStorage({ tokenabc: 'only', uidabc: 'u_1' })),
+    ).toBeNull()
+    expect(findSameIdentityStoredSession(makeStorage({ currentSpaceId: 's_1' }))).toBeNull()
+  })
+
+  it('returns null when the shared uid is empty (cannot confirm same identity)', () => {
+    // Two token buckets, neither with a uid sibling: we cannot assert they are the same person, so we
+    // do NOT recover (falls through to login) rather than guess.
+    const storage = makeStorage({ tokenA: 'tok-a', tokenB: 'tok-b' })
+    expect(findSameIdentityStoredSession(storage)).toBeNull()
+  })
+})
+
+describe('adoptStoredSession — same-identity multi-bucket recovery, in memory only (XIN-519 blocker 2)', () => {
+  it('persist:true with several SAME-uid buckets adopts the first in memory but does NOT persist it', () => {
+    // One person, two spaces → two random-sid buckets, same uid. A sid-less /d/:docId cold load must
+    // recover (not bounce to login), but must NOT pin the pick into the cross-tab empty-sid slot.
+    const store = new Map<string, string>([
+      ['tokeni1mw4h', 'tok-space-a'],
+      ['uidi1mw4h', 'u_same'],
+      ['namei1mw4h', 'Ada'],
+      ['tokenx519b', 'tok-space-b'],
+      ['uidx519b', 'u_same'],
+      ['namex519b', 'Ada'],
+    ])
+    const onDeepLink = new FakeLoginInfo(store, '')
+    onDeepLink.load()
+    expect(onDeepLink.token).toBe('') // sid-less load misses → would bounce to login without recovery
+
+    expect(adoptStoredSession(onDeepLink, storageOver(store), { persist: true })).toBe(true)
+    expect(onDeepLink.token).toBe('tok-space-a') // recovered in memory → the doc opens
+    expect(onDeepLink.uid).toBe('u_same')
+
+    // NOT persisted: the empty-sid slot stays empty, so no multi-bucket pick is mirrored cross-tab.
+    expect(store.has('token')).toBe(false)
+    // A Back → /docs reload re-runs the same same-identity recovery, so the user stays authenticated
+    // across it without ever having pinned an identity into the shared slot.
+    const afterBackReload = new FakeLoginInfo(store, '')
+    afterBackReload.load()
+    expect(afterBackReload.token).toBe('') // empty-sid slot untouched
+    expect(adoptStoredSession(afterBackReload, storageOver(store), { persist: true })).toBe(true)
+    expect(afterBackReload.token).toBe('tok-space-a')
+    // Original per-sid buckets are left exactly as they were.
+    expect(store.get('tokeni1mw4h')).toBe('tok-space-a')
+    expect(store.get('tokenx519b')).toBe('tok-space-b')
+  })
+
+  it('persist:true with several DIFFERENT-uid buckets still falls through to login (XIN-392 intact)', () => {
+    const store = new Map<string, string>([
+      ['tokenA', 'tok-a'],
+      ['uidA', 'u_a'],
+      ['tokenB', 'tok-b'],
+      ['uidB', 'u_b'],
+    ])
+    const onDeepLink = new FakeLoginInfo(store, '')
+    onDeepLink.load()
+    expect(adoptStoredSession(onDeepLink, storageOver(store), { persist: true })).toBe(false)
+    expect(onDeepLink.token).toBe('')
+    expect(store.has('token')).toBe(false)
   })
 })
 

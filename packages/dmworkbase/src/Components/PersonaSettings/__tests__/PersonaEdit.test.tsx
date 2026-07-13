@@ -62,6 +62,14 @@ vi.mock("@douyinfe/semi-ui", () => ({
     },
 }))
 
+// VoiceInputButton 是 hooks-based 函数组件，会在本套 React 17 + RTL/react-dom 18
+// 混搭 env 里触发 invalid hook call（详见 PersonaCreate 顶部注释）。它与 persona
+// 表单逻辑无关，用一个 no-op stub 替换，保持测试聚焦在 prompt/active 行为上。
+vi.mock("../../VoiceInputButton", () => ({
+    default: () => null,
+    __esModule: true,
+}))
+
 // 在所有 mock 之后再 import 被测组件 + VM。
 import PersonaEdit from "../PersonaEdit"
 import { OboGrant, OboScope } from "../vm"

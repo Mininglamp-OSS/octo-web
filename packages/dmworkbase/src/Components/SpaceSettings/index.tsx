@@ -1,9 +1,10 @@
 import React, { Component } from "react";
-import { Input, TextArea, Toast, Button } from "@douyinfe/semi-ui";
+import { Input, Toast, Button } from "@douyinfe/semi-ui";
 import { IconCopy, IconLink } from "@douyinfe/semi-icons";
 import { Space, SpaceService } from "../../Service/SpaceService";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
+import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton";
 import "./index.css";
 
 export interface SpaceSettingsProps {
@@ -24,6 +25,33 @@ interface SpaceSettingsState {
 export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSettingsState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
+
+    private descriptionRef = React.createRef<HTMLTextAreaElement>();
+
+    private handleVoiceTranscribed = (
+        text: string,
+        mode: ReplaceMode,
+        savedRange?: SelectionRange
+    ) => {
+        if (mode === "all") {
+            this.setState({ description: text.slice(0, 200) });
+        } else if (mode === "selection" && savedRange) {
+            this.setState((prev) => {
+                const before = prev.description.slice(0, savedRange.from);
+                const after = prev.description.slice(savedRange.to);
+                const budget = Math.max(0, 200 - before.length - after.length);
+                return { description: before + text.slice(0, budget) + after };
+            });
+        } else {
+            this.setState((prev) => {
+                const pos = savedRange?.from ?? prev.description.length;
+                const before = prev.description.slice(0, pos);
+                const after = prev.description.slice(pos);
+                const budget = Math.max(0, 200 - before.length - after.length);
+                return { description: before + text.slice(0, budget) + after };
+            });
+        }
+    };
 
     constructor(props: SpaceSettingsProps) {
         super(props);
@@ -155,13 +183,27 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
                     </div>
                     <div className="wk-spacesettings-field">
                         <label className="wk-spacesettings-label">{t("base.spaceSettings.description")}</label>
-                        <TextArea
-                            value={description}
-                            onChange={(v) => this.setState({ description: v })}
-                            maxCount={200}
-                            autosize={{ minRows: 3, maxRows: 5 }}
-                            disabled={!isOwner}
-                        />
+                        <div style={{ position: "relative" }}>
+                            <textarea
+                                ref={this.descriptionRef}
+                                className="wk-spacesettings-textarea"
+                                value={description}
+                                onChange={(e) => this.setState({ description: e.target.value.slice(0, 200) })}
+                                maxLength={200}
+                                rows={3}
+                                disabled={!isOwner}
+                            />
+                            {isOwner && (
+                                <VoiceInputButton
+                                    inputRef={this.descriptionRef}
+                                    onTranscribed={this.handleVoiceTranscribed}
+                                    getCurrentText={() => this.state.description}
+                                    showModeMenu
+                                    size="sm"
+                                    className="wk-vib--textarea-corner"
+                                />
+                            )}
+                        </div>
                     </div>
                     {isOwner && (
                         <button

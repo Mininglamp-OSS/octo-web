@@ -12,6 +12,11 @@ import { HistorySplitContent } from "../../Messages/HistorySplit";
 import { MessageListener, MessageStatusListener } from "wukongimjssdk";
 import { SendackPacket, Setting } from "wukongimjssdk";
 import MergeforwardContent from "../../Messages/Mergeforward";
+import {
+    InteractiveCardContent,
+    InteractiveCardForwardBlockedError,
+    isInteractiveCardForwardable,
+} from "../../Messages/InteractiveCard/InteractiveCardContent";
 import { TypingListener, TypingManager } from "../../Service/TypingManager";
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
 import { SYSTEM_BOTS } from "../../Service/SpaceService";
@@ -98,7 +103,8 @@ export default class ConversationVM extends ProviderListener {
     typingListener!: TypingListener // 输入中监听
     messageListener!: MessageListener // 消息监听
     connectStatusListener!: ConnectStatusListener // 连接状态监听（重连补刷当前会话）
-    private lastReconnectRefreshAt: number = 0 // 重连补刷去抖时间戳
+    private lastReconnectRefreshAt: number = 0 // 重连补刷（离线消息）去抖时间戳
+    private lastSubscriberResyncAt: number = 0 // 成员重同步去抖时间戳（独立于消息补刷，避免前台成员刷压制重连消息补拉，octo-web#568 review）
     cmdListener!: MessageListener // cmd消息监听
     messageStatusListener!: MessageStatusListener // 消息状态监听
     conversationListener!: ConversationListener // 会话监听
@@ -290,16 +296,19 @@ export default class ConversationVM extends ProviderListener {
         return channelInfo?.orgData?.robot === 1
     }
 
-    // 是否为带附件的消息（图片/GIF/小视频/文件/富文本）。
-    // 这类消息是用户需要直接看到的交付物，不应被折叠进 FoldSessionCard。
+    // 不可折叠的独立交付物：带附件的消息（图片/GIF/小视频/文件/富文本）
+    // 以及互动卡片（interactiveCard=17）。
+    // 这类消息是用户需要直接看到、直接操作的交付物，不应被折叠进 FoldSessionCard
+    // ——尤其互动卡片带按钮/输入，一旦被折叠就无法交互。
     // 注意：语音（voice=4）可以折叠，故不在此列。
-    private hasFileAttachment(message: MessageWrap): boolean {
+    private isUnfoldableDeliverable(message: MessageWrap): boolean {
         switch (message.contentType) {
             case MessageContentTypeConst.image:
             case MessageContentTypeConst.gif:
             case MessageContentTypeConst.smallVideo:
             case MessageContentTypeConst.file:
             case MessageContentTypeConst.richText:
+            case MessageContentTypeConst.interactiveCard:
                 return true
             default:
                 return false
@@ -405,9 +414,9 @@ export default class ConversationVM extends ProviderListener {
 
         for (const message of sourceMessages) {
             if (this.isBotMessage(message)) {
-                // 带附件的 bot 消息作为折叠分组的边界：先 flush 当前分组，再独立渲染，
-                // 保证图片/文件等交付物始终可见，无需展开折叠卡片。
-                if (this.hasFileAttachment(message)) {
+                // 带附件的 bot 消息 / 互动卡片作为折叠分组的边界：先 flush 当前分组，再独立渲染，
+                // 保证图片/文件/卡片等交付物始终可见，无需展开折叠卡片。
+                if (this.isUnfoldableDeliverable(message)) {
                     flushPendingSession(false)
                     renderItems.push({ type: "message", message })
                     continue
@@ -610,9 +619,22 @@ export default class ConversationVM extends ProviderListener {
             const msg = messageWrap.message
             // 如果消息被编辑过，用编辑后内容替换 content，保证合并转发预览和内容正确
             if (msg.remoteExtra?.isEdit && msg.remoteExtra?.contentEdit) {
-                return Object.assign(Object.create(Object.getPrototypeOf(msg)), msg, {
+                const edited = Object.assign(Object.create(Object.getPrototypeOf(msg)), msg, {
                     content: msg.remoteExtra.contentEdit
                 })
+                if (
+                    edited.content instanceof InteractiveCardContent &&
+                    !isInteractiveCardForwardable(edited.content)
+                ) {
+                    throw new InteractiveCardForwardBlockedError()
+                }
+                return edited
+            }
+            if (
+                msg.content instanceof InteractiveCardContent &&
+                !isInteractiveCardForwardable(msg.content)
+            ) {
+                throw new InteractiveCardForwardBlockedError()
             }
             return msg
         })
@@ -1009,8 +1031,18 @@ export default class ConversationVM extends ProviderListener {
             }
             this.lastReconnectRefreshAt = now
             this.requestMessagesOfFirstPage(0)
+            // 断连期间的成员变更 CMD（加/减成员，含龙虾）随 WS 丢失，SDK 重连
+            // 只 reSubscribe 不补拉，subscriberChangeListener 因此不会被触发，
+            // 导致 subscribers 停在断连前旧快照 → @ 提及弹窗搜不到新成员。
+            // 成员重同步自带独立节流（lastSubscriberResyncAt），不与上方消息补拉
+            // 共用时间戳，修复 octo-web#567/#568。
+            this.resyncSubscribers()
         }
         WKSDK.shared().connectManager.addConnectStatusListener(this.connectStatusListener)
+
+        // 回前台补刷：合盖/息屏久后回到页面，WS 可能已断且成员变更事件已丢失。
+        // App.tsx 的 visibilitychange/focus 只刷 remoteConfig，不碰成员，这里补上。
+        WKApp.mittBus.on("wk:app-foreground", this._foregroundResyncHandler)
 
         const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
         if (conversation) {
@@ -1088,6 +1120,7 @@ export default class ConversationVM extends ProviderListener {
 
         WKApp.mittBus.off("task-upload-failed", this._taskUploadFailedHandler)
         WKApp.mittBus.off("emoji-manifest-updated", this._emojiManifestUpdatedHandler)
+        WKApp.mittBus.off("wk:app-foreground", this._foregroundResyncHandler)
     }
 
     // 加载频道信息完成
@@ -1266,6 +1299,70 @@ export default class ConversationVM extends ProviderListener {
             this._resolveSubscribersReady()
         }
         this.notifyListener()
+    }
+
+    // 回前台重刷处理器：App.tsx 回前台时全局 emit，这里直接重同步当前会话成员。
+    // 节流已下沉到 resyncSubscribers 内（lastSubscriberResyncAt），不再共用重连的
+    // lastReconnectRefreshAt，避免前台成员刷抢先设时间戳后压制重连的消息补拉（octo-web#568 review）。
+    private _foregroundResyncHandler = () => {
+        this.resyncSubscribers()
+    }
+
+    // 主动重同步当前会话成员列表（重连 / 回前台调用）。
+    // 断连期间的成员变更 CMD 随 WS 丢失、SDK 重连不补拉，subscriberChangeListener
+    // 因此不会触发，subscribers 停在旧快照 → @ 弹窗搜不到新成员（octo-web#567）。
+    // 自带 5s 节流（lastSubscriberResyncAt），与重连的消息补拉节流相互独立。
+    // 复用进频道时的加载分支：超级群（含子区的超级群父群）拉第一页，普通群走服务端全量同步。
+    async resyncSubscribers() {
+        const now = Date.now()
+        if (now - this.lastSubscriberResyncAt < 5000) {
+            return
+        }
+        this.lastSubscriberResyncAt = now
+        try {
+            if (this.channel.channelType === ChannelTypeCommunityTopic) {
+                // 子区用父群成员。需镜像进频道时的分支：父群是超级群时只拉第一页，
+                // 否则会对几千人的超级群父群每次重连/回前台都全量同步（octo-web#568 review）。
+                const parentGroupNo = this.channelInfo?.orgData?.parentGroupNo
+                if (!parentGroupNo) {
+                    return
+                }
+                const parentChannel = new Channel(parentGroupNo, ChannelTypeGroup)
+                const parentChannelInfo = WKSDK.shared().channelManager.getChannelInfo(parentChannel)
+                const isSuperGroup = parentChannelInfo?.orgData?.group_type == SuperGroup
+                if (isSuperGroup) {
+                    // 超级群父群：只拉第一页（与进频道时一致）
+                    this.subscribers = await WKApp.dataSource.channelDataSource.subscribers(parentChannel, {
+                        limit: 100,
+                        page: 1,
+                    })
+                } else {
+                    // 普通父群：全量同步后取缓存
+                    await WKSDK.shared().channelManager.syncSubscribes(parentChannel)
+                    this.subscribers = WKSDK.shared().channelManager.getSubscribes(parentChannel) || []
+                }
+                this._resolveSubscribersReady()
+                this.notifyListener()
+                return
+            }
+            if (this.channel.channelType !== ChannelTypeGroup) {
+                return
+            }
+            if (this.channelInfo?.orgData?.group_type == SuperGroup) {
+                // 超级群只拉第一页（与进频道时一致）
+                this.subscribers = await this.getFirstPageMembers()
+                this._resolveSubscribersReady()
+                WKSDK.shared().channelManager.subscribeCacheMap.set(this.channel.getChannelKey(), this.subscribers)
+                WKSDK.shared().channelManager.notifySubscribeChangeListeners(this.channel)
+                this.notifyListener()
+            } else {
+                // 普通群走服务端全量同步，完成后 subscriberChangeListener 回调刷新
+                await WKSDK.shared().channelManager.syncSubscribes(this.channel)
+                this.reloadSubscribers()
+            }
+        } catch (e) {
+            console.warn("[ConversationVM] resyncSubscribers failed", e)
+        }
     }
 
     // 通过uid获取订阅者对象

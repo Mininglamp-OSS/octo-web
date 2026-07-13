@@ -43,7 +43,23 @@ server {
         # kept env-configurable so we never hardcode a host or open http: wide. It MUST match
         # the backend presign host and the frontend VITE_DOCS_ASSET_HOSTS value. Empty by
         # default (no extra source) for environments that serve assets over https.
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: ${DOCS_ASSET_CSP_ORIGIN}; font-src 'self' data:; connect-src 'self' ws: wss: http: https: blob:; media-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'self';" always;
+        #
+        # font-src: Excalidraw (whiteboard) loads its hand-drawn font faces (.woff2) from its
+        # default asset host https://esm.sh when window.EXCALIDRAW_ASSET_PATH is not overridden
+        # (e.g. https://esm.sh/@excalidraw/excalidraw@<ver>/dist/prod/fonts/...). Without it the
+        # browser blocks the @font-face fetch and the console fills with CSP font-src errors.
+        #
+        # SECURITY NOTE (P2 #8, XIN-517): allowing esm.sh here is a scoped third-party origin —
+        # limited to font-src only (never script/connect), so it cannot execute code or exfiltrate
+        # data, but it is still a supply-chain surface. The preferred hardening is to SELF-HOST the
+        # Excalidraw font assets and point window.EXCALIDRAW_ASSET_PATH at a same-origin path, then
+        # drop esm.sh from font-src entirely. That requires copying @excalidraw/excalidraw's
+        # dist/prod/fonts into the served bundle at build time (a new vite static-copy step in
+        # apps/web) and cannot be validated while the whiteboard build/test env is frozen — shipping
+        # it blind risks a silent production font break with no fallback once esm.sh is removed. Per
+        # the boss escape hatch, esm.sh is retained for now; self-hosting is tracked as the
+        # follow-up to remove this allowance.
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: ${DOCS_ASSET_CSP_ORIGIN}; font-src 'self' data: https://esm.sh; connect-src 'self' ws: wss: http: https: blob:; media-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'self';" always;
         # HSTS - uncomment when full HTTPS chain is confirmed
         # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 

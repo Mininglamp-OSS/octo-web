@@ -20,6 +20,7 @@ export interface NavSettingsPanelProps {
     lastVersionInfo?: { appVersion: string; updateDesc: string };
     /** 是否显示「空间管理」入口（仅 owner/admin 可见） */
     canManageSpace?: boolean;
+    onOpenOnboarding?: () => void;
     onToggleSetting: () => void;
     onSetShowNewVersion: (v: boolean) => void;
     onSetShowAppVersion: (v: boolean) => void;
@@ -92,6 +93,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
             showAppUpdateOperation,
             lastVersionInfo,
             canManageSpace = false,
+            onOpenOnboarding,
             onToggleSetting,
             onSetShowNewVersion,
             onSetShowAppVersion,
@@ -159,6 +161,14 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                     }}>
                         {t("base.navRail.settingsPanel.changelog")}
                     </li>
+                    {onOpenOnboarding && (
+                        <li onClick={() => {
+                            onToggleSetting();
+                            onOpenOnboarding();
+                        }}>
+                            {t("base.navRail.settingsPanel.onboarding")}
+                        </li>
+                    )}
                     {canManageSpace && (
                         <li onClick={() => {
                             onToggleSetting();

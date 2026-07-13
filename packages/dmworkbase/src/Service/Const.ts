@@ -61,6 +61,7 @@ export class MessageContentTypeConst {
   static lottieEmojiSticker: number = 13 // lottie emoji 贴图
   static richText: number = 14 // 富文本（图文混排）
   static joinOrganization: number = 16 // 加入组织
+  static interactiveCard: number = 17 // 互动卡片（Adaptive Cards octo/v1，与 type=7 名片无关）
   static addMembers: number = 1002 // 添加群成员
   static removeMembers: number = 1003 // 删除群成员
   static channelUpdate: number = 1005 // 频道更新
