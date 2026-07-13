@@ -10,38 +10,6 @@ export const LOOP_API_BASE =
 
 const client = axios.create({ baseURL: LOOP_API_BASE, withCredentials: true });
 
-/* ---------- CSRF（fleet 采用 double-submit：cookie multica_csrf === header X-CSRF-Token） ---------- */
-const CSRF_COOKIE = "multica_csrf";
-
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const m = document.cookie.split("; ").find((c) => c.startsWith(name + "="));
-  return m ? decodeURIComponent(m.split("=").slice(1).join("=")) : null;
-}
-
-function randomToken(): string {
-  try {
-    const a = new Uint8Array(16);
-    crypto.getRandomValues(a);
-    return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
-  } catch {
-    return Math.random().toString(36).slice(2) + Date.now().toString(36);
-  }
-}
-
-/**
- * 保证存在 multica_csrf cookie 并返回其值；double-submit 只校验 cookie===header，
- * 服务端登录时也会下发该 cookie，这里在缺失时前端补一个，二者一致即通过。
- */
-function ensureCsrfToken(): string {
-  let tok = readCookie(CSRF_COOKIE);
-  if (!tok && typeof document !== "undefined") {
-    tok = randomToken();
-    document.cookie = `${CSRF_COOKIE}=${tok}; path=/; SameSite=Lax`;
-  }
-  return tok ?? "";
-}
-
 /* ---------- workspace 上下文 ---------- */
 // 顶部下拉选中的 workspace：slug 用于 header，id 用于路径参数（如 members）。
 let _workspaceSlug = "";
@@ -58,7 +26,7 @@ export function setWorkspaceContext(slug: string, id: string): void {
   _workspaceId = id || "";
 }
 
-// 统一注入 x-workspace-slug + 鉴权 header + CSRF token。
+// 统一注入 x-workspace-slug + 鉴权 header。
 client.interceptors.request.use((config) => {
   config.headers = config.headers ?? {};
   if (_workspaceSlug) config.headers["x-workspace-slug"] = _workspaceSlug;
@@ -69,10 +37,6 @@ client.interceptors.request.use((config) => {
   if (token) config.headers["token"] = token;
   const spaceId = WKApp.shared.currentSpaceId;
   if (spaceId) config.headers["X-Space-Id"] = spaceId;
-  const method = (config.method ?? "get").toLowerCase();
-  if (method !== "get" && method !== "head") {
-    config.headers["X-CSRF-Token"] = ensureCsrfToken();
-  }
   return config;
 });
 
