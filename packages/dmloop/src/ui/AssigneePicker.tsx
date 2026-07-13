@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Dropdown, Avatar } from "@douyinfe/semi-ui";
 import { ChevronDown, User, Bot, Users, CircleSlash } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
@@ -26,11 +26,20 @@ export interface AssigneePickerProps {
 export default function AssigneePicker({ value, valueName, onChange, size = "default", types }: AssigneePickerProps) {
   const { t } = useI18n();
   const [cands, setCands] = useState<AssigneeCandidate[]>([]);
+  // 请求序号:挂载 + 每次开框都会重取候选,多个 in-flight 时只让最新一次落地
+  // (镜像 SettingsPage 的 seqRef 守卫);旧请求后到不得覆盖新候选。
+  const seqRef = useRef(0);
 
   // 挂载先取一次;每次开框再取 —— afterDirectoryMutation 只清共享缓存,挂载中的 picker
   // 不会自动重读,故开框时刷新以反映其间的成员/agent/squad 增删。
-  const loadCands = () => { listAssigneeCandidates().then(setCands).catch(() => setCands([])); };
-  useEffect(() => { loadCands(); }, []);
+  const loadCands = () => {
+    const my = ++seqRef.current;
+    listAssigneeCandidates()
+      .then((list) => { if (my === seqRef.current) setCands(list); })
+      .catch(() => { if (my === seqRef.current) setCands([]); });
+  };
+  // 卸载时自增序号,使在途响应全部作废(避免卸载后 setState)。
+  useEffect(() => { loadCands(); return () => { seqRef.current++; }; }, []);
 
   const current = cands.find((c) => c.id === value);
   const allGroups: { type: AssigneeType; label: string }[] = [
