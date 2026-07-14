@@ -76,7 +76,7 @@ function pageSkills(items: Skill[], query: SkillListQuery): PagedResult<Skill> {
   };
 }
 
-export function getCategories(): Promise<Category[]> {
+export function getCategories(_opts?: { signal?: AbortSignal }): Promise<Category[]> {
   const counted = CATEGORY_SEEDS.map((category) => ({
     ...category,
     skillCount:
@@ -87,11 +87,11 @@ export function getCategories(): Promise<Category[]> {
   return withDelay(counted);
 }
 
-export function getSkills(query: SkillListQuery = {}): Promise<PagedResult<Skill>> {
+export function getSkills(query: SkillListQuery = {}, _opts?: { signal?: AbortSignal }): Promise<PagedResult<Skill>> {
   return withDelay(pageSkills(applySkillQuery(query), query));
 }
 
-export function getMySkills(query: SkillListQuery = {}): Promise<PagedResult<Skill>> {
+export function getMySkills(query: SkillListQuery = {}, _opts?: { signal?: AbortSignal }): Promise<PagedResult<Skill>> {
   return getSkills({ ...query, mine: true });
 }
 

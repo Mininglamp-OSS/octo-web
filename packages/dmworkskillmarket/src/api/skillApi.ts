@@ -1,6 +1,8 @@
 import * as mockApi from "./skillApiMock";
 import * as realApi from "./skillApiReal";
 
+export type { RequestOptions } from "./skillApiReal";
+
 const env = (import.meta as { env?: Record<string, string | boolean | undefined> }).env;
 const processEnv = typeof process === "undefined" ? undefined : process.env;
 const useMock = env?.VITE_USE_MOCK === "true" || processEnv?.VITE_USE_MOCK === "true";

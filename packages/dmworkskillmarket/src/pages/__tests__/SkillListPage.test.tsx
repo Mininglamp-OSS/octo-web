@@ -73,7 +73,10 @@ describe("SkillListPage", () => {
       await vi.runOnlyPendingTimersAsync();
     });
 
-    expect(api.getSkills).toHaveBeenCalledWith({ q: "ci", categoryId: "all", cursor: undefined, limit: 20 });
+    expect(api.getSkills).toHaveBeenCalledWith(
+      { q: "ci", categoryId: "all", cursor: undefined, limit: 20 },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("confirms deletion and removes the skill through the API", async () => {

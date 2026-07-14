@@ -180,13 +180,17 @@ function mapPagedResult(raw: RawPagedResult<RawSkill>): PagedResult<Skill> {
 
 // ─── Public API (same signatures as mock skillApi.ts) ──────────────────────
 
-export function getCategories(): Promise<Category[]> {
-  return request<RawCategory[]>("/skill/categories").then((items) =>
+export interface RequestOptions {
+  signal?: AbortSignal;
+}
+
+export function getCategories(opts?: RequestOptions): Promise<Category[]> {
+  return request<RawCategory[]>("/skill/categories", opts?.signal ? { signal: opts.signal } : undefined).then((items) =>
     items.map(mapCategory),
   );
 }
 
-export function getSkills(query: SkillListQuery = {}): Promise<PagedResult<Skill>> {
+export function getSkills(query: SkillListQuery = {}, opts?: RequestOptions): Promise<PagedResult<Skill>> {
   const params = new URLSearchParams();
   if (query.q) params.set("q", query.q);
   if (query.categoryId && query.categoryId !== "all")
@@ -194,19 +198,19 @@ export function getSkills(query: SkillListQuery = {}): Promise<PagedResult<Skill
   if (query.cursor) params.set("cursor", query.cursor);
   if (query.limit) params.set("limit", String(query.limit));
   const qs = params.toString();
-  return request<RawPagedResult<RawSkill>>(`/skill${qs ? `?${qs}` : ""}`).then(
+  return request<RawPagedResult<RawSkill>>(`/skill${qs ? `?${qs}` : ""}`, opts?.signal ? { signal: opts.signal } : undefined).then(
     mapPagedResult,
   );
 }
 
-export function getMySkills(query: SkillListQuery = {}): Promise<PagedResult<Skill>> {
+export function getMySkills(query: SkillListQuery = {}, opts?: RequestOptions): Promise<PagedResult<Skill>> {
   const params = new URLSearchParams();
   if (query.q) params.set("q", query.q);
   if (query.cursor) params.set("cursor", query.cursor);
   if (query.limit) params.set("limit", String(query.limit));
   const qs = params.toString();
   return request<RawPagedResult<RawSkill>>(
-    `/skill/mine${qs ? `?${qs}` : ""}`,
+    `/skill/mine${qs ? `?${qs}` : ""}`, opts?.signal ? { signal: opts.signal } : undefined,
   ).then(mapPagedResult);
 }
 

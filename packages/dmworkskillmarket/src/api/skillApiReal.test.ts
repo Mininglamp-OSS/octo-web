@@ -625,4 +625,66 @@ describe("skillApiReal", () => {
     expect(skill.fileUrl).toBe("");
     expect(skill.fileSize).toBe(0);
   });
+
+  it("getCategories passes signal to fetch and aborts correctly", async () => {
+    const controller = new AbortController();
+    mockFetch.mockImplementation(() => {
+      return new Promise((_, reject) => {
+        controller.signal.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        });
+      });
+    });
+
+    const promise = getCategories({ signal: controller.signal });
+    controller.abort();
+
+    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
+  it("getSkills passes signal to fetch", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ items: [], next_cursor: null }),
+    );
+
+    const controller = new AbortController();
+    await getSkills({ q: "test" }, { signal: controller.signal });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
+  it("getMySkills passes signal to fetch", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ items: [], next_cursor: null }),
+    );
+
+    const controller = new AbortController();
+    await getMySkills({}, { signal: controller.signal });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
+  it("pre-aborted signal causes immediate AbortError", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    mockFetch.mockImplementation((_url: string, init?: RequestInit) => {
+      if (init?.signal?.aborted) {
+        return Promise.reject(new DOMException("The operation was aborted.", "AbortError"));
+      }
+      return jsonResponse([]);
+    });
+
+    await expect(getCategories({ signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+  });
 });

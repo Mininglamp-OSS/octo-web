@@ -48,11 +48,12 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
       }
       setError(null);
       try {
+        const signal = controller.signal;
         const [categoryItems, page] = await Promise.all([
-          getCategories(),
+          getCategories({ signal }),
           options.mine
-            ? getMySkills({ q: debouncedQuery, categoryId, cursor: nextCursor ?? undefined, limit: 20 })
-            : getSkills({ q: debouncedQuery, categoryId, cursor: nextCursor ?? undefined, limit: 20 }),
+            ? getMySkills({ q: debouncedQuery, categoryId, cursor: nextCursor ?? undefined, limit: 20 }, { signal })
+            : getSkills({ q: debouncedQuery, categoryId, cursor: nextCursor ?? undefined, limit: 20 }, { signal }),
         ]);
         if (controller.signal.aborted) return;
         setCategories(categoryItems);
