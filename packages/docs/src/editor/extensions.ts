@@ -80,19 +80,24 @@ const lowlight = createDocsLowlight()
 // Exported so the paste-gate can be exercised through the real ProseMirror plugin (not by
 // calling the sanitizer directly) in fontFamilyPaste.test.ts.
 export const LiveFontFamily = FontFamily.extend({
-  // Harden the `fontFamily` textStyle attribute so an EMPTY resolved family never writes an
-  // empty `fontFamily` key into the shared Y.Doc. The flag-off paste gate (transformPastedHTML
-  // below) strips the family from a `font` shorthand — `font: 14px Georgia` becomes
-  // `font-size: 14px` — but the surviving span still parses through FontFamily.parseHTML, and
-  // `element.style.fontFamily` on that span resolves to "" (empty string). Upstream's parseHTML
-  // returns that "" verbatim, and Tiptap treats it as a real attr value → the textStyle mark is
-  // stored as `fontFamily=""`. That empty key still "reaches" the Y.Doc, violating the strict
-  // flag-off invariant the three human reviewers gate on ("no fontFamily reaches Y.Doc via paste
-  // when flag off") even though renderHTML emits nothing for it. Normalizing an empty /
-  // whitespace-only resolution to null lets the attr default out entirely, so NO fontFamily key
-  // is ever serialized. This is universally correct (an empty font-family is never a meaningful
-  // value) and independent of the flag: a real family (flag on, or a stored font) is non-empty
-  // and passes through untouched, so the toolbar write path and round-trip stay intact.
+  // Harden the `fontFamily` textStyle attribute on the parse (write-from-HTML) path. Two jobs:
+  //
+  //  1. FLAG-OFF BACKSTOP. transformPastedHTML below strips font-family from pasted HTML, but
+  //     that textual pass keys on what it can see in the string. The authoritative gate is
+  //     here: parseHTML reads the *browser-resolved* `element.style.fontFamily`, so whatever
+  //     the CSSOM resolved a family to — including comment/escape/whitespace-encoded property
+  //     names that a purely textual strip might not model — is visible at this point. With the
+  //     write flag off we normalize that resolved family to null (the schema default), so NO
+  //     fontFamily value can reach the shared Y.Doc from any HTML parse, by construction. This
+  //     is a WRITE gate, not a read gate: collaborative round-trip loads from the Y.Doc (not
+  //     HTML parseHTML), and with the flag off no font is ever written to begin with, so there
+  //     is nothing legitimate to strip on read. When the flag is on this is a pass-through.
+  //  2. EMPTY→NULL (flag-on, universally correct). When the flag is on, a `font` shorthand whose
+  //     family the sanitizer removed (`font: 14px Georgia` → `font-size: 14px`) still parses
+  //     through here with `element.style.fontFamily === ""`; upstream would store that "" as a
+  //     real `fontFamily=""` key. An empty family is never meaningful, so we default it out to
+  //     null. A real family (flag on, or a stored font) is non-empty and passes through
+  //     untouched, so the toolbar write path and round-trip stay intact.
   addGlobalAttributes() {
     return (this.parent?.() ?? []).map((group) =>
       group.attributes && 'fontFamily' in group.attributes
@@ -103,6 +108,7 @@ export const LiveFontFamily = FontFamily.extend({
               fontFamily: {
                 ...group.attributes.fontFamily,
                 parseHTML: (element: HTMLElement) => {
+                  if (!FONT_FAMILY_ENABLED) return null // flag-off backstop: nothing reaches the Y.Doc
                   const family = (element.style.fontFamily ?? '').trim()
                   return family === '' ? null : family
                 },

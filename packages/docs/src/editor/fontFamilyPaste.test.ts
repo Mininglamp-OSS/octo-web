@@ -96,6 +96,50 @@ describe('stripPastedFontFamily — flag-off paste sanitizer', () => {
     expect(out).toContain('x')
   })
 
+  // RC (yujiawei variant, OctoBoooot real-Chrome byte-verified @ d7f0edae): a CSS COMMENT in the
+  // property NAME defeated the old raw-name string compare (`prop === 'font-family'`) while the
+  // CSSOM strips the comment and still resolves the family → leak with the flag off. The gate now
+  // decides on the resolved property (comment stripped in name normalization), so it is covered.
+  it('strips a font-family whose name carries a trailing CSS comment (font-family/**/:)', () => {
+    const out = stripPastedFontFamily('<span style="font-family/**/:Georgia">x</span>')
+    expect(out).not.toMatch(/font-family/i)
+    expect(out).not.toMatch(/georgia/i)
+    expect(out).toContain('x')
+  })
+
+  it('strips a font-family whose name carries a leading CSS comment (/**/font-family:)', () => {
+    const out = stripPastedFontFamily('<span style="/**/font-family:Georgia">x</span>')
+    expect(out).not.toMatch(/font-family/i)
+    expect(out).not.toMatch(/georgia/i)
+    expect(out).toContain('x')
+  })
+
+  it('strips a `font` shorthand whose name carries a CSS comment, keeping font-size', () => {
+    const out = stripPastedFontFamily('<span style="color: red; font/**/:14px Georgia">x</span>')
+    expect(out).not.toMatch(/georgia/i)
+    expect(out).toMatch(/color:\s*red/i)
+    expect(out).toMatch(/font-size:\s*14px/i)
+  })
+
+  // RC (Jerry-Xin standing 🔴 from a6ac93f): a CSS ESCAPE in the property NAME likewise defeated
+  // the raw-name compare while a browser's CSSOM decodes the escape and resolves the family. The
+  // name normalization decodes identifier escapes (`\-` → '-', `\66 ` → 'f') so the resolved
+  // property is `font-family` and the declaration is dropped. (Note: jsdom's cssstyle does NOT
+  // decode escapes in property names, so this variant's leak is real-browser-only and cannot be
+  // reproduced through the CSSOM/Y.Doc path in this test env — it is closed here by construction
+  // at the string level, and by the flag-off parseHTML backstop at runtime.)
+  it('strips a font-family whose hyphen is CSS-escaped (font\\-family:)', () => {
+    const out = stripPastedFontFamily('<span style="font\\-family:Georgia">x</span>')
+    expect(out).not.toMatch(/georgia/i)
+    expect(out).toContain('x')
+  })
+
+  it('strips a font-family whose leading char is CSS hex-escaped (\\66 ont-family:)', () => {
+    const out = stripPastedFontFamily('<span style="\\66 ont-family:Georgia">x</span>')
+    expect(out).not.toMatch(/georgia/i)
+    expect(out).toContain('x')
+  })
+
   // RC (yujiawei P1 @ 58e999d0): ReDoS regression on the default flag-off paste path. The old
   // FONT_SIZE_LENGTH pattern (`\d+\.?\d*`) backtracked O(n²) on a long all-digit token, freezing
   // the main thread (~11s at 80k, ~73s at 200k). The unambiguous pattern + length cap keep it
@@ -328,6 +372,51 @@ describe('strict flag-off Y.Doc invariant — no fontFamily value from a pasted 
     const { xml } = await pasteIntoYDocFragment(shorthand, true)
     expect(xml).toMatch(/fontFamily="Georgia"/)
     expect(xml).toMatch(/fontSize="14px"/)
+  })
+})
+
+// CSS-comment bypass, driven end-to-end through the REAL y-prosemirror binding. jsdom's CSSOM
+// (like a real browser) strips a comment in the property name and resolves the family, so the old
+// raw-name string compare leaked these into the shared Y.Doc with the flag off. Both boundary
+// variants the RC calls out — `font-family/**/:` and `/**/font-family:` — plus the `font/**/:`
+// shorthand are asserted to write NO fontFamily value flag-off, and to still write it flag-on
+// (proving the fix is a write gate, not a read gate).
+describe('flag-off Y.Doc invariant — CSS-comment property-name bypass', () => {
+  const commentTrailing = '<span style="font-family/**/:Georgia, serif">styled</span>'
+  const commentLeading = '<span style="/**/font-family:Georgia, serif">styled</span>'
+  const commentShorthand = '<span style="font/**/:14px Georgia">styled</span>'
+
+  it('flag OFF: a trailing-comment font-family name writes NO fontFamily value into the Y.Doc', async () => {
+    const { xml, markAttrs } = await pasteIntoYDocFragment(commentTrailing, false)
+    expect(xml).not.toContain('fontFamily=""')
+    expect(xml).not.toMatch(/fontFamily="(?!null")[^"]/i)
+    for (const attrs of markAttrs) {
+      expect(attrs.fontFamily, `fontFamily should be null, got ${JSON.stringify(attrs.fontFamily)}`).toBeNull()
+    }
+  })
+
+  it('flag OFF: a leading-comment font-family name writes NO fontFamily value into the Y.Doc', async () => {
+    const { xml, markAttrs } = await pasteIntoYDocFragment(commentLeading, false)
+    expect(xml).not.toContain('fontFamily=""')
+    expect(xml).not.toMatch(/fontFamily="(?!null")[^"]/i)
+    for (const attrs of markAttrs) {
+      expect(attrs.fontFamily, `fontFamily should be null, got ${JSON.stringify(attrs.fontFamily)}`).toBeNull()
+    }
+  })
+
+  it('flag OFF: a comment-in-name `font` shorthand leaks no family but keeps its size', async () => {
+    const { xml, markAttrs } = await pasteIntoYDocFragment(commentShorthand, false)
+    expect(xml).not.toMatch(/fontFamily="(?!null")[^"]/i)
+    expect(xml).not.toContain('fontFamily=""')
+    expect(xml).toMatch(/fontSize="14px"/)
+    for (const attrs of markAttrs) {
+      expect(attrs.fontFamily).toBeNull()
+    }
+  })
+
+  it('flag ON: the trailing-comment font-family still resolves and reaches the Y.Doc (not a read gate)', async () => {
+    const { xml } = await pasteIntoYDocFragment(commentTrailing, true)
+    expect(xml).toMatch(/fontFamily="Georgia, serif"/)
   })
 })
 
