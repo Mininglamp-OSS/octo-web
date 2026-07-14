@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConnectStatus } from "wukongimjssdk";
 import {
+  addImConnectStatusListener,
   createImConnectStatusListener,
+  getImConnectStatus,
+  isImConnected,
+  reconnectImWhenNotConnected,
   registerImConnectStatusListener,
+  removeImConnectStatusListener,
 } from "./connectStatus";
 
 function createDeps() {
@@ -74,5 +79,57 @@ describe("createImConnectStatusListener", () => {
     listener(ConnectStatus.Connected);
 
     expect(deps.resetTyping).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads current connect status from the SDK connect manager", () => {
+    const sdk = {
+      connectManager: {
+        status: ConnectStatus.Connected,
+        addConnectStatusListener: vi.fn(),
+        removeConnectStatusListener: vi.fn(),
+        connect: vi.fn(),
+      },
+    };
+
+    expect(getImConnectStatus(sdk)).toBe(ConnectStatus.Connected);
+    expect(isImConnected(sdk)).toBe(true);
+  });
+
+  it("adds and removes connect status listeners through the SDK connect manager", () => {
+    const sdk = {
+      connectManager: {
+        status: ConnectStatus.Disconnect,
+        addConnectStatusListener: vi.fn(),
+        removeConnectStatusListener: vi.fn(),
+        connect: vi.fn(),
+      },
+    };
+    const listener = vi.fn();
+
+    addImConnectStatusListener(sdk, listener);
+    removeImConnectStatusListener(sdk, listener);
+
+    expect(sdk.connectManager.addConnectStatusListener).toHaveBeenCalledWith(
+      listener
+    );
+    expect(sdk.connectManager.removeConnectStatusListener).toHaveBeenCalledWith(
+      listener
+    );
+  });
+
+  it("reconnects only when the provided status is not connected", () => {
+    const sdk = {
+      connectManager: {
+        status: ConnectStatus.Disconnect,
+        addConnectStatusListener: vi.fn(),
+        removeConnectStatusListener: vi.fn(),
+        connect: vi.fn(),
+      },
+    };
+
+    reconnectImWhenNotConnected(sdk, ConnectStatus.Disconnect);
+    reconnectImWhenNotConnected(sdk, ConnectStatus.Connected);
+
+    expect(sdk.connectManager.connect).toHaveBeenCalledTimes(1);
   });
 });
