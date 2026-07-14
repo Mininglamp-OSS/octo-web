@@ -9,7 +9,8 @@ import { t } from "../i18n"
 // URLs are foreign-origin; sending the token there causes 403/400 (unexpected
 // header conflicts with the pre-signed signature).  This mirrors the pattern
 // used in packages/dmworkdatasource/src/task.ts and datasource.ts (uploadSticker).
-const noInterceptorAxios = axios.create({ timeout: 10 * 60 * 1000 }) // 10 min ceiling
+/** @internal — exported only for token-isolation tests; do not use in production code. */
+export const noInterceptorAxios = axios.create({ timeout: 10 * 60 * 1000 }) // 10 min ceiling
 
 /**
  * Return true iff uploadURL should receive the Octo session token, i.e. it
