@@ -1117,7 +1117,8 @@ export function Toolbar({ editor }: { editor: Editor }) {
 
   // Format painter (XIN-963): armed state holds the inline marks captured from the source
   // selection. `null` = disarmed. Clicking the button captures the current selection's marks and
-  // arms; the next non-empty selection made in the editor paints them once, then disarms. A ref
+  // arms; the next completed mouseup in the editor ends the session (single-shot) — a non-empty
+  // selection is painted once, an empty click is abandoned — and either way disarms. A ref
   // mirrors the state so the editor mouseup listener always reads the latest value without
   // re-subscribing on every arm/disarm.
   const [painterMarks, setPainterMarks] = useState<readonly Mark[] | null>(null)
@@ -1137,8 +1138,13 @@ export function Toolbar({ editor }: { editor: Editor }) {
     const onMouseUp = () => {
       const marks = painterMarksRef.current
       if (!marks) return
-      if (editor.state.selection.empty) return
-      applyPaintMarks(editor, marks)
+      // Single-shot (XIN-1000): the first completed mouseup ends this painter session no matter
+      // where it lands. A non-empty target is painted; an empty (collapsed) click abandons the
+      // paint. Either way we disarm — leaving the painter armed after a stray click would let a
+      // later, unrelated selection be silently repainted with the stale captured marks.
+      if (!editor.state.selection.empty) {
+        applyPaintMarks(editor, marks)
+      }
       setPainterMarks(null)
     }
     // Deferred to the next tick so ProseMirror has committed the selection for this mouseup.

@@ -636,4 +636,33 @@ describe('Toolbar — format painter (XIN-963)', () => {
     expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(false)
     e.destroy()
   })
+
+  // XIN-1000 (P0): the painter is single-shot. A mouseup that lands on an empty (collapsed)
+  // selection must still end the session and disarm — otherwise the painter stays armed and a
+  // later, unrelated selection is silently repainted with the stale captured marks (data loss).
+  it('disarms after an empty-selection click and does not repaint a later unrelated selection', async () => {
+    const e = new Editor({
+      extensions: [StarterKit.configure({ undoRedo: false }), Highlight.configure({ multicolor: true }), TextStyle, Color, Link],
+      content: '<p><strong>bold</strong></p><p>plain</p><p>other</p>',
+    })
+    render(<Toolbar editor={e} />)
+    // Arm from the bold source ("bold" = para 1 positions 1..5).
+    e.commands.setTextSelection({ from: 1, to: 5 })
+    fireEvent.click(titleBtn('docs.toolbar.formatPainter'))
+    expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(true)
+    // First gesture lands on an empty (collapsed) caret — no target was selected.
+    e.commands.setTextSelection(9)
+    fireEvent.mouseUp(e.view.dom)
+    await new Promise((r) => setTimeout(r, 0))
+    // Painter must have disarmed on that click (single-shot), not stay armed.
+    expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(false)
+    // Now the user makes an unrelated selection ("other" = para 3) and finishes it.
+    e.commands.setTextSelection({ from: 14, to: 19 })
+    fireEvent.mouseUp(e.view.dom)
+    await new Promise((r) => setTimeout(r, 0))
+    // That selection must NOT have been painted — bold was never applied to it.
+    e.commands.setTextSelection({ from: 14, to: 19 })
+    expect(e.isActive('bold')).toBe(false)
+    e.destroy()
+  })
 })
