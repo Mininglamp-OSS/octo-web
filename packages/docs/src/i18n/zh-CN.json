@@ -120,6 +120,8 @@
     "spaceBefore": "段前距",
     "spaceAfter": "段后距",
     "spacingCustom": "自定义",
+    "indentIncrease": "增加缩进",
+    "indentDecrease": "减少缩进",
     "code": "行内代码",
     "list": "列表",
     "bulletList": "无序列表",

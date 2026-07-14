@@ -9,6 +9,7 @@
 import { resolveAttachments, type ResolvedAttachment } from '../attachments/api.ts'
 import { sanitizeLinkHref, sanitizeBookmarkUrl } from '../editor/sanitize.ts'
 import { t } from '../octoweb/index.ts'
+import { clampIndent, INDENT_STEP_EM } from '../editor/ParagraphIndent.ts'
 
 /** ProseMirror-JSON node (the bits the serializer reads). */
 export interface MdNode {
@@ -197,14 +198,23 @@ function clampLevel(level: unknown): number {
   return Math.min(6, Math.max(1, n))
 }
 
-/** Wrap a block in an aligned HTML tag when textAlign is set to a non-default value. */
+/**
+ * Wrap a block in an HTML tag when it carries a non-default textAlign (v5) and/or a non-zero
+ * indent (v18) so both survive HTML export. Align rides on the `align` attribute (unchanged
+ * form for compatibility); indent rides on an inline `margin-left` style matching the editor's
+ * render. A block with neither is emitted as-is, so plain paragraphs stay plain Markdown.
+ */
 function wrapAlign(inner: string, node: MdNode): string {
   const align = node.attrs?.textAlign
-  if (typeof align === 'string' && align && align !== 'left') {
-    const tag = node.type === 'heading' ? 'div' : 'p'
-    return `<${tag} align="${escapeHtmlAttr(align)}">${inner}</${tag}>`
-  }
-  return inner
+  const hasAlign = typeof align === 'string' && align && align !== 'left'
+  const indent = clampIndent(node.attrs?.indent)
+  if (!hasAlign && indent <= 0) return inner
+  const tag = node.type === 'heading' ? 'div' : 'p'
+  const attrs = [
+    hasAlign ? ` align="${escapeHtmlAttr(align)}"` : '',
+    indent > 0 ? ` style="margin-left:${indent * INDENT_STEP_EM}em"` : '',
+  ].join('')
+  return `<${tag}${attrs}>${inner}</${tag}>`
 }
 
 function prefixLines(text: string, prefix: string): string {

@@ -50,6 +50,17 @@ const IconAlignJustify = () => (
     <path d="M3 5h18v2H3V5zm0 4h18v2H3V9zm0 4h18v2H3v-2zm0 4h18v2H3v-2z" />
   </svg>
 )
+// Indent buttons (SCHEMA_VERSION 18): lines with a right/left chevron marking the indent direction.
+const IconIndentIncrease = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M3 5h18v2H3V5zm8 4h10v2H11V9zm0 4h10v2H11v-2zm-8 4h18v2H3v-2zm.4-8.8L7 12l-3.6 2.8V6.2z" />
+  </svg>
+)
+const IconIndentDecrease = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M3 5h18v2H3V5zm8 4h10v2H11V9zm0 4h10v2H11v-2zm-8 4h18v2H3v-2zM6.6 6.2v7.6L3 11l3.6-2.8z" />
+  </svg>
+)
 
 // Toolbar item ⑧ (batch 7): list group + quote/code as icon buttons, link as a chain icon.
 // 16×16, fill: currentColor via .octo-tb-icon.
@@ -852,6 +863,31 @@ function ParagraphSpacingSelect({ editor, edge }: { editor: Editor; edge: 'befor
   )
 }
 
+/** Indent buttons (SCHEMA_VERSION 18): increase / decrease indent on the active heading + paragraph.
+ * List items keep their own Tab/Shift-Tab sink/lift behavior (owned by the list extensions). The
+ * decrease button is disabled at indent 0 so the boundary is visible as well as a command no-op. */
+function IndentControls({ editor }: { editor: Editor }) {
+  const current = Math.max(
+    Number(editor.getAttributes('paragraph').indent) || 0,
+    Number(editor.getAttributes('heading').indent) || 0,
+  )
+  return (
+    <>
+      <Btn
+        label={<IconIndentDecrease />}
+        title={t('docs.toolbar.indentDecrease')}
+        disabled={current <= 0}
+        onClick={() => editor.chain().focus().decreaseIndent().run()}
+      />
+      <Btn
+        label={<IconIndentIncrease />}
+        title={t('docs.toolbar.indentIncrease')}
+        onClick={() => editor.chain().focus().increaseIndent().run()}
+      />
+    </>
+  )
+}
+
 /** Emoji picker (SCHEMA_VERSION 9): a scrollable grid that inserts via the emoji node's setEmoji.
  * Search filters the full curated set; the grid renders an initial window and grows on scroll so
  * the ~1900-glyph set never mounts eagerly. */
@@ -1337,6 +1373,7 @@ export function Toolbar({ editor }: { editor: Editor }) {
       {LINE_SPACING_ENABLED && <LineHeightSelect editor={editor} />}
       {LINE_SPACING_ENABLED && <ParagraphSpacingSelect editor={editor} edge="before" />}
       {LINE_SPACING_ENABLED && <ParagraphSpacingSelect editor={editor} edge="after" />}
+      <IndentControls editor={editor} />
       <span className="octo-tb-sep" />
       <ListMenu editor={editor} />
       <Btn label={<IconQuote />} title={t('docs.toolbar.quote')} active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} />

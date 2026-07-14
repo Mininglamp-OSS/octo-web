@@ -120,6 +120,8 @@
     "spaceBefore": "Space before",
     "spaceAfter": "Space after",
     "spacingCustom": "Custom",
+    "indentIncrease": "Increase indent",
+    "indentDecrease": "Decrease indent",
     "code": "Inline code",
     "list": "List",
     "bulletList": "Bullet list",
