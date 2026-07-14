@@ -583,7 +583,9 @@ describe('Toolbar — custom line-height input (SCHEMA_VERSION 17, focus-steal R
   // on every keystroke: typing bounced the caret back into the editor (only the first char
   // landed) and an in-progress value like "1." was rejected by sanitizeLineHeight and snapped
   // back to empty — so a custom multiplier could not be typed at all. It is now a commit-on-
-  // blur/Enter field with a local draft. These tests pin that behaviour.
+  // blur/Enter field with a local draft. These tests pin that behaviour. The field now renders
+  // only while "custom" is the active option, so each test reveals it first (via revealCustom or
+  // by seeding a non-preset value into the block).
   let lhEditor: Editor | null = null
   let holder: HTMLDivElement | null = null
 
@@ -596,6 +598,12 @@ describe('Toolbar — custom line-height input (SCHEMA_VERSION 17, focus-steal R
       content,
     })
     render(<Toolbar editor={lhEditor} />)
+    return document.querySelector('select.octo-line-height') as HTMLSelectElement
+  }
+
+  // Pick "custom" from the dropdown to reveal the input, then hand it back.
+  function revealCustom(select: HTMLSelectElement) {
+    fireEvent.change(select, { target: { value: 'custom' } })
     return document.querySelector('input.octo-line-height-custom') as HTMLInputElement
   }
 
@@ -615,7 +623,7 @@ describe('Toolbar — custom line-height input (SCHEMA_VERSION 17, focus-steal R
   })
 
   it('keeps focus in the field and does not commit while typing a multi-char value', () => {
-    const input = mount()
+    const input = revealCustom(mount())
     input.focus()
     expect(document.activeElement).toBe(input)
 
@@ -638,7 +646,7 @@ describe('Toolbar — custom line-height input (SCHEMA_VERSION 17, focus-steal R
   })
 
   it('commits the typed value to the editor on Enter', () => {
-    const input = mount()
+    const input = revealCustom(mount())
     input.focus()
     fireEvent.change(input, { target: { value: '1.15' } })
     fireEvent.keyDown(input, { key: 'Enter' })
@@ -646,7 +654,7 @@ describe('Toolbar — custom line-height input (SCHEMA_VERSION 17, focus-steal R
   })
 
   it('commits the typed value to the editor on blur', () => {
-    const input = mount()
+    const input = revealCustom(mount())
     input.focus()
     fireEvent.change(input, { target: { value: '1.75' } })
     fireEvent.blur(input)
@@ -654,32 +662,33 @@ describe('Toolbar — custom line-height input (SCHEMA_VERSION 17, focus-steal R
   })
 
   it('reverts an invalid/partial value to the last committed value on commit', () => {
-    const input = mount()
+    const input = revealCustom(mount())
     input.focus()
     // Commit a good value first.
-    fireEvent.change(input, { target: { value: '1.5' } })
+    fireEvent.change(input, { target: { value: '1.7' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(lineHeightOf(lhEditor!)).toBe('1.5')
+    expect(lineHeightOf(lhEditor!)).toBe('1.7')
 
-    // Now type a partial value and commit it — it fails sanitize, so the field restores 1.5
+    // Now type a partial value and commit it — it fails sanitize, so the field restores 1.7
     // and the editor keeps the previous multiplier (no bogus value written).
     fireEvent.change(input, { target: { value: '2.' } })
     expect(input.value).toBe('2.') // stays while typing…
     fireEvent.blur(input) // …but on commit it reverts.
-    expect(input.value).toBe('1.5')
-    expect(lineHeightOf(lhEditor!)).toBe('1.5')
+    expect(input.value).toBe('1.7')
+    expect(lineHeightOf(lhEditor!)).toBe('1.7')
   })
 
   it('seeds the custom field from the block the caret is in (round-trip on mount)', () => {
-    // A block already carrying a custom multiplier shows it in the field when the toolbar mounts.
-    mount('<p style="line-height: 1.15">seed</p>')
+    // A block already carrying a non-preset multiplier shows the field seeded with it on mount —
+    // no need to pick "custom" first, because a non-preset value is inherently "custom".
+    mount('<p style="line-height: 1.3">seed</p>')
     const input = document.querySelector('input.octo-line-height-custom') as HTMLInputElement
-    expect(input.value).toBe('1.15')
+    expect(input).not.toBeNull()
+    expect(input.value).toBe('1.3')
   })
 
   it('picking a preset from the dropdown writes the multiplier to the editor', () => {
-    const input = mount()
-    const select = input.parentElement!.querySelector('select.octo-line-height') as HTMLSelectElement
+    const select = mount()
     fireEvent.change(select, { target: { value: '2' } })
     expect(lineHeightOf(lhEditor!)).toBe('2')
   })
@@ -725,6 +734,8 @@ describe('Toolbar — line-spacing dropdown display sync (XIN-1039 #1)', () => {
 
   it('updates the dropdown when a custom multiplier is committed via the input', () => {
     const select = mount()
+    // Reveal the custom input by picking "custom", then commit an off-preset value through it.
+    fireEvent.change(select, { target: { value: 'custom' } })
     const input = document.querySelector('input.octo-line-height-custom') as HTMLInputElement
     input.focus()
     fireEvent.change(input, { target: { value: '1.75' } })
@@ -732,6 +743,86 @@ describe('Toolbar — line-spacing dropdown display sync (XIN-1039 #1)', () => {
     // 1.75 is off the preset list, so the dropdown must fall to the "custom" sentinel — not "".
     expect(lhEditor!.getAttributes('paragraph').lineHeight).toBe('1.75')
     expect(select.value).toBe('custom')
+  })
+})
+
+describe('Toolbar — custom line-height input conditional visibility (XIN-1055)', () => {
+  // The custom multiplier input used to be permanently mounted next to the dropdown, which read as
+  // a confusing always-there box. It must now appear ONLY while "custom" is the active option —
+  // when the user picks "custom" from the dropdown, or when the caret sits in a block already
+  // carrying a non-preset value — and be truly absent (not just hidden) otherwise, so it occupies
+  // no layout space.
+  let lhEditor: Editor | null = null
+  let holder: HTMLDivElement | null = null
+
+  function mount(content = '<p>hello</p>') {
+    holder = document.createElement('div')
+    document.body.appendChild(holder)
+    lhEditor = new Editor({
+      element: holder,
+      extensions: [StarterKit.configure({ undoRedo: false }), LineHeight],
+      content,
+    })
+    render(<Toolbar editor={lhEditor} />)
+    return document.querySelector('select.octo-line-height') as HTMLSelectElement
+  }
+
+  const input = () => document.querySelector('input.octo-line-height-custom') as HTMLInputElement | null
+
+  afterEach(() => {
+    lhEditor?.destroy()
+    lhEditor = null
+    holder?.remove()
+    holder = null
+  })
+
+  it('does not render the custom input on a default-spacing block', () => {
+    mount()
+    expect(input()).toBeNull()
+  })
+
+  it('does not render the custom input while a preset is selected', () => {
+    const select = mount()
+    fireEvent.change(select, { target: { value: '1.5' } })
+    expect(select.value).toBe('1.5')
+    expect(input()).toBeNull()
+  })
+
+  it('reveals the custom input when "custom" is picked from the dropdown', () => {
+    const select = mount()
+    expect(input()).toBeNull()
+    fireEvent.change(select, { target: { value: 'custom' } })
+    expect(select.value).toBe('custom')
+    expect(input()).not.toBeNull()
+  })
+
+  it('hides the custom input again when switching from custom back to a preset', () => {
+    const select = mount()
+    // Enter custom, commit an off-preset value so the input is genuinely showing a custom value.
+    fireEvent.change(select, { target: { value: 'custom' } })
+    const field = input()!
+    field.focus()
+    fireEvent.change(field, { target: { value: '1.3' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    expect(lhEditor!.getAttributes('paragraph').lineHeight).toBe('1.3')
+    expect(input()).not.toBeNull()
+
+    // Switch back to a preset: the input must disappear and the preset must apply.
+    fireEvent.change(select, { target: { value: '2' } })
+    expect(lhEditor!.getAttributes('paragraph').lineHeight).toBe('2')
+    expect(select.value).toBe('2')
+    expect(input()).toBeNull()
+  })
+
+  it('shows the input seeded with the value when the caret is in a block already on a custom multiplier (#1 sync, not regressed)', () => {
+    // Continuation of the XIN-1039 #1 display-sync guarantee: a block whose line-height is off the
+    // preset list must surface as "custom" in the dropdown AND reveal the input carrying that value
+    // — without the user having to pick "custom" first.
+    const select = mount('<p style="line-height: 1.3">seed</p>')
+    expect(select.value).toBe('custom')
+    const field = input()
+    expect(field).not.toBeNull()
+    expect(field!.value).toBe('1.3')
   })
 })
 
