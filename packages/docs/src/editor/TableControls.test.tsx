@@ -8,7 +8,7 @@ import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { CellSelection } from '@tiptap/pm/tables'
 import { TextSelection } from '@tiptap/pm/state'
-import { shouldShowTableBubble, TableGridPicker, TableBubbleMenu } from './TableControls.tsx'
+import { shouldShowTableBubble, TableGridPicker, TableBubbleMenu, clampToolbarAnchorRect } from './TableControls.tsx'
 
 // #595 — table add/delete row/column UI. The critical acceptance point is that the controls work on
 // tables that ALREADY EXIST in a document (parsed from stored HTML), not only freshly inserted
@@ -173,6 +173,45 @@ describe('TableBubbleMenu — does not block the column-resize hot zone (#595 C1
     expect(buttons.length).toBeGreaterThan(0)
     e.destroy()
     host.remove()
+  })
+})
+
+describe('clampToolbarAnchorRect — keep the toolbar anchor inside the viewport (#625 off-screen)', () => {
+  const VIEWPORT = { width: 1200, height: 1000 }
+
+  it('leaves a fully-visible table at its real top edge (no TC-P0-001 regression)', () => {
+    // A normal table sitting mid-viewport: the band stays at the real top so the toolbar still
+    // floats above the table exactly as before.
+    const r = clampToolbarAnchorRect({ top: 300, bottom: 520, left: 200, right: 900 }, VIEWPORT)
+    expect(r.top).toBe(300)
+    expect(r.height).toBe(0)
+    expect(r.left).toBe(200)
+    expect(r.right).toBe(900)
+  })
+
+  it('clamps a long table scrolled past the top back inside the viewport', () => {
+    // The failing case: 34-row table scrolled so its top is far above the viewport and its bottom
+    // is below it. Previously the toolbar landed at ~1051 (below a 1000px viewport); now the anchor
+    // band is clamped to TOOLBAR_SAFE_TOP so the controls render near the top of the screen.
+    const r = clampToolbarAnchorRect({ top: -1248, bottom: 1052, left: 200, right: 900 }, VIEWPORT)
+    expect(r.top).toBe(64)
+    expect(r.bottom).toBe(64)
+    // and well within the viewport
+    expect(r.top).toBeGreaterThan(0)
+    expect(r.bottom).toBeLessThan(VIEWPORT.height)
+  })
+
+  it('never drops the band below the viewport bottom', () => {
+    const r = clampToolbarAnchorRect({ top: 5000, bottom: 6000, left: 100, right: 400 }, VIEWPORT)
+    expect(r.top).toBe(VIEWPORT.height - 8)
+    expect(r.top).toBeLessThan(VIEWPORT.height)
+  })
+
+  it('clamps the horizontal extent of a wide / off-screen table into the viewport', () => {
+    const r = clampToolbarAnchorRect({ top: 300, bottom: 520, left: -500, right: 3000 }, VIEWPORT)
+    expect(r.left).toBe(0)
+    expect(r.right).toBe(VIEWPORT.width)
+    expect(r.width).toBe(VIEWPORT.width)
   })
 })
 
