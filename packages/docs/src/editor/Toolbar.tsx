@@ -1117,10 +1117,9 @@ export function Toolbar({ editor }: { editor: Editor }) {
 
   // Format painter (XIN-963): armed state holds the inline marks captured from the source
   // selection. `null` = disarmed. Clicking the button captures the current selection's marks and
-  // arms; the next completed mouseup in the editor ends the session (single-shot) — a non-empty
-  // selection is painted once, an empty click is abandoned — and either way disarms. A ref
-  // mirrors the state so the editor mouseup listener always reads the latest value without
-  // re-subscribing on every arm/disarm.
+  // arms; the next completed selection gesture in the editor paints them once, then disarms
+  // (single-shot). A ref mirrors the state so the editor mouseup listener always reads the latest
+  // value without re-subscribing on every arm/disarm.
   const [painterMarks, setPainterMarks] = useState<readonly Mark[] | null>(null)
   const painterMarksRef = useRef<readonly Mark[] | null>(null)
   painterMarksRef.current = painterMarks
@@ -1135,22 +1134,58 @@ export function Toolbar({ editor }: { editor: Editor }) {
   useEffect(() => {
     if (!painterMarks) return
     const dom = editor.view.dom
-    const onMouseUp = () => {
+    // Coalescing window for multi-click gestures (XIN-1016). A double-click (select word) or
+    // triple-click (select paragraph) fires 2–3 mouseups in quick succession; the FIRST beat lands
+    // on a collapsed caret (empty selection) and only a later beat expands it to the word/paragraph.
+    // Slightly larger than the platform double-click interval so the whole gesture is treated as
+    // one target rather than acted on beat-by-beat.
+    const MULTI_CLICK_MS = 300
+    let settleTimer: ReturnType<typeof setTimeout> | null = null
+    const clearSettle = () => {
+      if (settleTimer !== null) {
+        clearTimeout(settleTimer)
+        settleTimer = null
+      }
+    }
+    // Act on the settled selection: paint a real target, disarm either way (single-shot).
+    const settle = () => {
+      settleTimer = null
       const marks = painterMarksRef.current
       if (!marks) return
-      // Single-shot (XIN-1000): the first completed mouseup ends this painter session no matter
-      // where it lands. A non-empty target is painted; an empty (collapsed) click abandons the
-      // paint. Either way we disarm — leaving the painter armed after a stray click would let a
-      // later, unrelated selection be silently repainted with the stale captured marks.
-      if (!editor.state.selection.empty) {
-        applyPaintMarks(editor, marks)
-      }
+      if (!editor.state.selection.empty) applyPaintMarks(editor, marks)
       setPainterMarks(null)
     }
-    // Deferred to the next tick so ProseMirror has committed the selection for this mouseup.
-    const handler = () => setTimeout(onMouseUp, 0)
+    const onMouseUp = (detail: number) => {
+      const marks = painterMarksRef.current
+      if (!marks) return
+      if (detail <= 1 && !editor.state.selection.empty) {
+        // A drag-select: a single, deliberate gesture that already produced a range. No multi-click
+        // beats are coming, so paint immediately and end the session.
+        clearSettle()
+        applyPaintMarks(editor, marks)
+        setPainterMarks(null)
+        return
+      }
+      // Otherwise the gesture is not yet settled: either an empty first beat / stray misclick
+      // (detail 1, collapsed), or a multi-click beat (detail ≥ 2) whose selection a further beat may
+      // still extend (double → triple). Debounce and act once on the final selection — a genuine
+      // misclick settles empty and disarms without repainting (XIN-1000, XIN-981 unaffected), while
+      // double/triple-click settles on the word/paragraph it selected and paints it (XIN-1016).
+      clearSettle()
+      settleTimer = setTimeout(settle, MULTI_CLICK_MS)
+    }
+    // Deferred to the next tick so ProseMirror has committed the selection for this mouseup. Read
+    // `detail` (the running click count) synchronously — the event object is recycled after the
+    // handler returns.
+    const handler = (ev: MouseEvent) => {
+      const { detail } = ev
+      setTimeout(() => onMouseUp(detail), 0)
+    }
     dom.addEventListener('mouseup', handler)
-    return () => dom.removeEventListener('mouseup', handler)
+    return () => {
+      clearSettle()
+      dom.removeEventListener('mouseup', handler)
+    }
   }, [editor, painterMarks])
 
 
