@@ -1,0 +1,148 @@
+import type {
+  Category,
+  NewSkillForm,
+  PagedResult,
+  Skill,
+  SkillListQuery,
+  UpdateSkillForm,
+} from "../types/skill";
+import {
+  CATEGORY_SEEDS,
+  CURRENT_SPACE_ID,
+  CURRENT_USER_ID,
+  CURRENT_USER_NAME,
+  createInitialSkills,
+} from "./mockData";
+
+let skills = createInitialSkills();
+
+function withDelay<T>(value: T): Promise<T> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(() => resolve(value), 220);
+  });
+}
+
+function withDelayReject(error: Error): Promise<never> {
+  return new Promise((_, reject) => {
+    globalThis.setTimeout(() => reject(error), 220);
+  });
+}
+
+function cloneSkill(skill: Skill): Skill {
+  return { ...skill, tags: [...skill.tags] };
+}
+
+function normalizeQuery(query?: string): string {
+  return (query ?? "").trim().toLowerCase();
+}
+
+function matchesQuery(skill: Skill, q: string): boolean {
+  if (!q) return true;
+  return [
+    skill.name,
+    skill.description,
+    skill.ownerName,
+    skill.visibility,
+    skill.categoryId,
+    ...skill.tags,
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(q);
+}
+
+function applySkillQuery(query: SkillListQuery): Skill[] {
+  const q = normalizeQuery(query.q);
+  return skills
+    .filter((skill) => !query.mine || skill.ownerId === CURRENT_USER_ID)
+    .filter((skill) => !query.categoryId || query.categoryId === "all" || skill.categoryId === query.categoryId)
+    .filter((skill) => matchesQuery(skill, q))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function pageSkills(items: Skill[], query: SkillListQuery): PagedResult<Skill> {
+  const limit = query.limit ?? 20;
+  const offset = Number(query.cursor ?? 0);
+  const page = items.slice(offset, offset + limit).map(cloneSkill);
+  const nextOffset = offset + page.length;
+  return {
+    items: page,
+    nextCursor: nextOffset < items.length ? String(nextOffset) : null,
+  };
+}
+
+export function getCategories(): Promise<Category[]> {
+  const counted = CATEGORY_SEEDS.map((category) => ({
+    ...category,
+    skillCount:
+      category.id === "all"
+        ? skills.length
+        : skills.filter((skill) => skill.categoryId === category.id).length,
+  }));
+  return withDelay(counted);
+}
+
+export function getSkills(query: SkillListQuery = {}): Promise<PagedResult<Skill>> {
+  return withDelay(pageSkills(applySkillQuery(query), query));
+}
+
+export function getMySkills(query: SkillListQuery = {}): Promise<PagedResult<Skill>> {
+  return getSkills({ ...query, mine: true });
+}
+
+export function getSkill(id: string): Promise<Skill> {
+  const skill = skills.find((item) => item.id === id);
+  if (!skill) return withDelayReject(new Error("Skill not found"));
+  return withDelay(cloneSkill(skill));
+}
+
+export function createSkill(form: NewSkillForm): Promise<Skill> {
+  const now = new Date().toISOString();
+  const baseId = form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "new-skill";
+  let id = baseId;
+  let suffix = 2;
+  while (skills.some((skill) => skill.id === id)) {
+    id = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+  const skill: Skill = {
+    id,
+    name: form.name.trim(),
+    description: form.description.trim(),
+    categoryId: form.categoryId,
+    tags: [...form.tags],
+    ownerId: CURRENT_USER_ID,
+    ownerName: CURRENT_USER_NAME,
+    spaceId: CURRENT_SPACE_ID,
+    visibility: form.visibility,
+    version: "1.0.0",
+    readmeContent: form.readmeContent,
+    fileName: form.fileName,
+    fileUrl: `mock://skills/${id}.zip`,
+    fileSize: form.fileSize,
+    createdAt: now,
+    updatedAt: now,
+  };
+  skills = [skill, ...skills];
+  return withDelay(cloneSkill(skill));
+}
+
+export function updateSkill(id: string, form: UpdateSkillForm): Promise<Skill> {
+  const skill = skills.find((item) => item.id === id);
+  if (!skill) return withDelayReject(new Error("Skill not found"));
+  const updated: Skill = {
+    ...skill,
+    ...form,
+    tags: form.tags ? [...form.tags] : [...skill.tags],
+    updatedAt: new Date().toISOString(),
+  };
+  skills = skills.map((item) => (item.id === id ? updated : item));
+  return withDelay(cloneSkill(updated));
+}
+
+export function deleteSkill(id: string): Promise<void> {
+  const exists = skills.some((item) => item.id === id);
+  if (!exists) return withDelayReject(new Error("Skill not found"));
+  skills = skills.filter((item) => item.id !== id);
+  return withDelay(undefined);
+}

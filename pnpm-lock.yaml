@@ -161,6 +161,9 @@ importers:
       '@dmwork/mcp':
         specifier: workspace:*
         version: link:../../packages/dmworkmcp
+      '@dmwork/skillmarket':
+        specifier: workspace:*
+        version: link:../../packages/dmworkskillmarket
       '@dmwork/summary':
         specifier: workspace:*
         version: link:../../packages/dmworksummary
@@ -720,6 +723,40 @@ importers:
       classnames:
         specifier: ^2.3.1
         version: 2.5.1
+    devDependencies:
+      '@testing-library/jest-dom':
+        specifier: ^6.9.1
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: ^13.4.0
+        version: 13.4.0(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      react:
+        specifier: ^17.0.2
+        version: 17.0.2
+      react-dom:
+        specifier: ^17.0.2
+        version: 17.0.2(react@17.0.2)
+
+  packages/dmworkskillmarket:
+    dependencies:
+      '@octo/base':
+        specifier: workspace:*
+        version: link:../dmworkbase
+      classnames:
+        specifier: ^2.3.1
+        version: 2.5.1
+      lucide-react:
+        specifier: ^0.577.0
+        version: 0.577.0(react@17.0.2)
+      react-markdown:
+        specifier: '8'
+        version: 8.0.7(@types/react@19.2.14)(react@17.0.2)
+      rehype-sanitize:
+        specifier: ^6.0.0
+        version: 6.0.0
+      remark-gfm:
+        specifier: '3'
+        version: 3.0.1
     devDependencies:
       '@testing-library/jest-dom':
         specifier: ^6.9.1
