@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Modal, Select, Tag } from "@douyinfe/semi-ui";
+import { Modal, Select } from "@douyinfe/semi-ui";
 import { useI18n } from "@octo/base";
 import type { IssueStatus, IssuePriority, Project } from "../api/types";
 import { createIssue } from "../api/issueApi";
 import { listProjects } from "../api/projectApi";
 import AssigneePicker from "./AssigneePicker";
+import LoopTag from "./LoopTag";
 import {
   ISSUE_STATUS_ORDER,
   ISSUE_STATUS_COLOR,
@@ -101,7 +102,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
             <Select value={status} onChange={(v) => setStatus(v as IssueStatus)} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} size="small">
               {ISSUE_STATUS_ORDER.map((s) => (
                 <Select.Option key={s} value={s}>
-                  <Tag color={ISSUE_STATUS_COLOR[s]} size="small">{t(`loop.status.${s}`)}</Tag>
+                  <LoopTag tone={ISSUE_STATUS_COLOR[s]}>{t(`loop.status.${s}`)}</LoopTag>
                 </Select.Option>
               ))}
             </Select>
@@ -111,7 +112,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
             <Select value={priority} onChange={(v) => setPriority(v as IssuePriority)} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }} size="small">
               {PRIORITY_ORDER.map((p) => (
                 <Select.Option key={p} value={p}>
-                  <Tag color={PRIORITY_COLOR[p]} size="small">{t(`loop.priority.${p}`)}</Tag>
+                  <LoopTag tone={PRIORITY_COLOR[p]}>{t(`loop.priority.${p}`)}</LoopTag>
                 </Select.Option>
               ))}
             </Select>

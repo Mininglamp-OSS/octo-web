@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Select, Button, Toast, Spin } from "@douyinfe/semi-ui";
+import LoopButton from "../ui/LoopButton";
 import { ArrowLeft, Paperclip, CornerDownLeft, UserPlus } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { AssigneeType, Project } from "../api/types";
@@ -169,9 +170,9 @@ export default function NewLoopPage({ onCreated }: NewLoopPageProps) {
                   onChange={(id, type, name) => { setAssigneeId(id); setAssigneeType(type); setAssigneeName(name); }}
                 />
               </div>
-              <Button theme="solid" loading={submitting} disabled={!prompt.trim() || !assigneeId} onClick={submit} icon={<CornerDownLeft size={14} />} iconPosition="right">
+              <LoopButton loading={submitting} disabled={!prompt.trim() || !assigneeId} onClick={submit} icon={<CornerDownLeft size={14} />} iconPosition="right">
                 {t("loop.newLoop.dispatch")}
-              </Button>
+              </LoopButton>
             </div>
           </div>
           {pendingFiles.length > 0 && (

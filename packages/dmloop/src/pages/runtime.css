@@ -36,14 +36,6 @@
   line-height: 1.5;
 }
 
-.loop-runtime-hero__action.semi-button {
-  border-radius: var(--wk-r-sm);
-  background: var(--wk-text-primary);
-  color: var(--wk-text-inverse);
-  font-size: var(--wk-text-size-sm);
-  font-weight: 600;
-}
-
 .loop-runtime-list {
   display: flex;
   flex-direction: column;

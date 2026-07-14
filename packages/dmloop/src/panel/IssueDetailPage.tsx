@@ -4,7 +4,6 @@ import {
   Select,
   Button,
   Avatar,
-  Tag,
   Spin,
   Toast,
   Dropdown,
@@ -92,6 +91,8 @@ import {
   RUN_STATUS_HEX_FALLBACK,
   isActiveRun,
 } from "../ui/meta";
+import LoopTag from "../ui/LoopTag";
+import LoopButton from "../ui/LoopButton";
 import "./issueDetail.css";
 
 const { Text } = Typography;
@@ -228,7 +229,7 @@ function ThreadReply({
                 }}
               />
             </label>
-            <Button theme="solid" size="small" icon={<Send size={14} />} onClick={submit} loading={busy} disabled={!draft.trim() && files.length === 0} aria-label={sendLabel} />
+            <LoopButton size="sm" icon={<Send size={14} />} onClick={submit} loading={busy} disabled={!draft.trim() && files.length === 0} aria-label={sendLabel} />
           </>
         }
       />
@@ -1049,7 +1050,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                       <Paperclip size={16} />
                       <input type="file" multiple hidden disabled={submitting} onChange={(e) => { addPendingFiles(e.target.files); e.target.value = ""; }} />
                     </label>
-                    <Button theme="solid" size="small" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!commentDraft.trim() && pendingFiles.length === 0} aria-label={t("loop.comment.send")} />
+                    <LoopButton size="sm" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!commentDraft.trim() && pendingFiles.length === 0} aria-label={t("loop.comment.send")} />
                   </>
                 }
               />
@@ -1090,7 +1091,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                       <Dropdown.Menu>
                         {ISSUE_STATUS_ORDER.map((s) => (
                           <Dropdown.Item key={s} active={issue.status === s} onClick={() => requestStatus(issue, s, (extra) => patch({ status: s, ...extra }))}>
-                            <Tag color={ISSUE_STATUS_COLOR[s]} size="small">{t(`loop.status.${s}`)}</Tag>
+                            <LoopTag tone={ISSUE_STATUS_COLOR[s]}>{t(`loop.status.${s}`)}</LoopTag>
                           </Dropdown.Item>
                         ))}
                       </Dropdown.Menu>
@@ -1114,7 +1115,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                       <Dropdown.Menu>
                         {PRIORITY_ORDER.map((p) => (
                           <Dropdown.Item key={p} active={issue.priority === p} onClick={() => patch({ priority: p })}>
-                            <Tag color={PRIORITY_COLOR[p]} size="small">{t(`loop.priority.${p}`)}</Tag>
+                            <LoopTag tone={PRIORITY_COLOR[p]}>{t(`loop.priority.${p}`)}</LoopTag>
                           </Dropdown.Item>
                         ))}
                       </Dropdown.Menu>

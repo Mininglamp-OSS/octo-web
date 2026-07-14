@@ -21,8 +21,9 @@ import type {
   AgentStatus,
   AssigneeType,
 } from "../api/types";
+import type { LoopTagTone } from "./LoopTag";
 
-/** Semi Tag color 名（受限于 Semi 调色板）。 */
+/** Semi 调色板色名（仅供 Semi Avatar / 未迁移的 Semi 控件使用）。 */
 type TagColor =
   | "grey"
   | "blue"
@@ -54,7 +55,7 @@ export const ISSUE_STATUS_ORDER: IssueStatus[] = [
   "cancelled",
 ];
 
-export const ISSUE_STATUS_COLOR: Record<IssueStatus, TagColor> = {
+export const ISSUE_STATUS_COLOR: Record<IssueStatus, LoopTagTone> = {
   backlog: "grey",
   todo: "blue",
   in_progress: "amber",
@@ -110,7 +111,7 @@ export const PRIORITY_HEX: Record<IssuePriority, string> = {
   none: "#c9cdd4",
 };
 
-export const PRIORITY_COLOR: Record<IssuePriority, TagColor> = {
+export const PRIORITY_COLOR: Record<IssuePriority, LoopTagTone> = {
   urgent: "red",
   high: "orange",
   medium: "amber",
@@ -126,7 +127,7 @@ export const PROJECT_STATUS_ORDER: ProjectStatus[] = [
   "cancelled",
 ];
 
-export const PROJECT_STATUS_COLOR: Record<ProjectStatus, TagColor> = {
+export const PROJECT_STATUS_COLOR: Record<ProjectStatus, LoopTagTone> = {
   planned: "blue",
   in_progress: "amber",
   paused: "grey",

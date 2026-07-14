@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Button, Input, Switch, Spin, Toast, Modal, Typography } from "@douyinfe/semi-ui";
+import LoopButton from "../ui/LoopButton";
 import { Plus, Trash2, Copy } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { WebhookSubscription } from "../api/types";
@@ -114,9 +115,9 @@ export default function ProjectWebhooksSection({ projectId }: { projectId: strin
           placeholder={t("loop.webhook.urlPlaceholder")}
           onEnterPress={add}
         />
-        <Button theme="solid" icon={<Plus size={14} />} loading={busy} onClick={add}>
+        <LoopButton icon={<Plus size={14} />} loading={busy} onClick={add}>
           {t("loop.webhook.add")}
-        </Button>
+        </LoopButton>
       </div>
 
       <Modal

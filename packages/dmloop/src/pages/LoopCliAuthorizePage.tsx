@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Avatar, Button, Toast, Typography } from "@douyinfe/semi-ui";
+import { Avatar, Toast, Typography } from "@douyinfe/semi-ui";
+import LoopButton from "../ui/LoopButton";
 import { Laptop, ShieldCheck } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Workspace } from "../api/types";
@@ -129,10 +130,7 @@ export default function LoopCliAuthorizePage({
 
         {error && <div className="loop-cli-auth__error">{error}</div>}
 
-        <Button
-          theme="solid"
-          type="primary"
-          size="large"
+        <LoopButton
           block
           icon={<ShieldCheck size={16} />}
           loading={authorizing}
@@ -140,7 +138,7 @@ export default function LoopCliAuthorizePage({
           onClick={authorize}
         >
           {t("loop.cliAuthorize.authorize")}
-        </Button>
+        </LoopButton>
       </div>
     </div>
   );

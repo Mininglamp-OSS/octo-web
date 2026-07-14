@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Typography, Dropdown, Avatar, Modal, Toast, Button } from "@douyinfe/semi-ui";
+import { Typography, Dropdown, Avatar, Modal, Toast } from "@douyinfe/semi-ui";
+import LoopButton from "../ui/LoopButton";
 import {
   ClipboardList, Briefcase, Bot, Users, Settings,
   ChevronDown, Check, Plus, SquarePen, FolderPlus,
@@ -244,7 +245,7 @@ export default function LoopPage() {
 
       {!hasWs && loaded ? (
         <div className="loop-sidebar__new">
-          <Button theme="solid" block icon={<FolderPlus size={14} />} onClick={openCreateWs}>{t("loop.workspace.create")}</Button>
+          <LoopButton block icon={<FolderPlus size={14} />} onClick={openCreateWs}>{t("loop.workspace.create")}</LoopButton>
         </div>
       ) : (
         <>

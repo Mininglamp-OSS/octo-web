@@ -9,6 +9,7 @@ import {
   Checkbox,
   Dropdown,
 } from "@douyinfe/semi-ui";
+import LoopButton from "../ui/LoopButton";
 import { Search, Plus, LayoutGrid, List as ListIcon, Users, ClipboardList, ArrowUp, ArrowDown, SlidersHorizontal, Filter } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
@@ -421,9 +422,9 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
               {t("loop.action.show")}
             </button>
           </Dropdown>
-          <Button theme="solid" icon={<Plus size={14} />} onClick={openNewLoop}>
+          <LoopButton icon={<Plus size={14} />} onClick={openNewLoop}>
             {t("loop.action.newIssue")}
-          </Button>
+          </LoopButton>
         </div>
       </div>
 
@@ -437,9 +438,9 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
             <ClipboardList size={40} className="loop-empty__icon" />
             <div className="loop-empty__title">{t("loop.empty.issueTitle")}</div>
             <div className="loop-empty__desc">{t("loop.empty.issueDesc")}</div>
-            <Button theme="solid" icon={<Plus size={14} />} onClick={openNewLoop} style={{ marginTop: 12 }}>
+            <LoopButton icon={<Plus size={14} />} onClick={openNewLoop} style={{ marginTop: 12 }}>
               {t("loop.action.newIssue")}
-            </Button>
+            </LoopButton>
           </div>
         ) : view === "board" ? (
           <IssueBoard issues={issues} onOpen={openDetail} onChanged={onMutated} running={running} />

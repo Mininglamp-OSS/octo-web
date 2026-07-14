@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Modal, Button, TextArea, Spin, Typography, Toast } from "@douyinfe/semi-ui";
+import LoopButton from "./LoopButton";
 import { useI18n } from "@octo/base";
 import type { AssigneeType, IssueStatus, Issue } from "../api/types";
 import { previewIssueTrigger } from "../api/issueApi";
@@ -156,14 +157,14 @@ function RunConfirmModal({ pending, onClose }: { pending: RunConfirmRequest | nu
       <Button theme="borderless" disabled={submitting} onClick={() => run({ suppress_run: true })}>
         {t("loop.run.suppress")}
       </Button>
-      <Button theme="solid" loading={submitting} onClick={() => run({ handoff_note: note.trim() || undefined })}>
+      <LoopButton loading={submitting} onClick={() => run({ handoff_note: note.trim() || undefined })}>
         {t("loop.run.start")}
-      </Button>
+      </LoopButton>
     </>
   ) : (
-    <Button theme="solid" loading={submitting} onClick={() => run({})}>
+    <LoopButton loading={submitting} onClick={() => run({})}>
       {t("loop.run.apply")}
-    </Button>
+    </LoopButton>
   );
 
   return (

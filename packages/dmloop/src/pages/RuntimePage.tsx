@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Typography, Spin, Tag, Banner, Button, Toast } from "@douyinfe/semi-ui";
+import { Typography, Spin, Banner, Button, Toast } from "@douyinfe/semi-ui";
 import { Box, Check, Circle, Code2, Copy, Cpu, Monitor, Plus, Terminal } from "lucide-react";
 import { copyToClipboard, useI18n, WKModal } from "@octo/base";
 import type { RuntimeDevice, RuntimeMode } from "../api/types";
 import { listRuntimes } from "../api/runtimeApi";
+import LoopTag from "../ui/LoopTag";
+import LoopButton from "../ui/LoopButton";
 import { issueHeadlessCliToken, getDaemonServerUrl } from "../api/authApi";
 import { headlessCommand } from "./headlessCommand";
 import { deviceVersion, runtimeVersion } from "./runtimeVersion";
@@ -214,9 +216,9 @@ export default function RuntimePage() {
           </div>
           <div className="loop-runtime-hero__subtitle">{t("loop.runtime.subtitle")}</div>
         </div>
-        <Button className="loop-runtime-hero__action" theme="solid" type="tertiary" icon={<Plus size={13} />} onClick={() => setAddOpen(true)}>
+        <LoopButton icon={<Plus size={13} />} onClick={() => setAddOpen(true)}>
           {t("loop.runtime.add")}
-        </Button>
+        </LoopButton>
       </div>
       <div className="loop-page__body" style={{ padding: 0 }}>
         {error ? (
@@ -242,7 +244,7 @@ export default function RuntimePage() {
                     </span>
                   </div>
                   <div className="loop-runtime-machine__meta">
-                    {version !== "-" && <Tag size="small" color="grey">{version}</Tag>}
+                    {version !== "-" && <LoopTag tone="grey">{version}</LoopTag>}
                     <span>{shortDaemon(device.runtimes[0]?.daemon_id)}</span>
                     <span>{t("loop.runtime.allSpace")}</span>
                     <strong>{t("loop.runtime.runtimeCount", { values: { count: device.runtimes.length } })}</strong>
@@ -256,7 +258,7 @@ export default function RuntimePage() {
                           {providerIcon(runtime.provider)}
                         </span>
                         <strong>{providerName(runtime.provider)}</strong>
-                        <Tag size="small" color="grey">{t("loop.runtime.builtIn")}</Tag>
+                        <LoopTag tone="grey">{t("loop.runtime.builtIn")}</LoopTag>
                       </div>
                       <div className={`loop-runtime-status is-${runtime.status}`} role="cell">
                         <Circle size={6} fill="currentColor" />

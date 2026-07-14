@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Spin, Switch, Tag, Typography, Toast, Select, Modal } from "@douyinfe/semi-ui";
+import { Button, Spin, Switch, Typography, Toast, Select, Modal } from "@douyinfe/semi-ui";
 import { ChevronRight, Plus, Pencil, Trash2, Play, Clock, Save } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Autopilot, AutopilotTrigger, AutopilotRun, AutopilotStatus, AutopilotAssigneeType, AssigneeType } from "../api/types";
@@ -16,6 +16,8 @@ import { listProjectOptions } from "../api/directory";
 import { confirmDelete } from "../ui/confirmDelete";
 import AssigneePicker from "../ui/AssigneePicker";
 import AutoGrowTextarea from "../ui/AutoGrowTextarea";
+import LoopTag from "../ui/LoopTag";
+import LoopButton from "../ui/LoopButton";
 import { AUTOPILOT_RUN_DOT, AUTOPILOT_RUN_DOT_FALLBACK } from "../ui/meta";
 import { formatRelativeTime, formatDurationMs } from "../ui/time";
 import { parseCron, describeSchedule, formatNextRunAt } from "../ui/autopilotSchedule";
@@ -210,7 +212,7 @@ export default function AutopilotDetailPage({ autopilotId, onChanged }: { autopi
         <span className="loop-apd__crumb-cur">{autopilot.title}</span>
         <div className="loop-apd__header-spacer" />
         <Switch checked={!paused} size="small" onChange={(on) => patchAutopilot({ status: on ? "active" : "paused" })} disabled={autopilot.status === "archived"} />
-        <Tag color={STATUS_TAG[autopilot.status]} size="small">{t(`loop.automation.statusLabel.${autopilot.status}`)}</Tag>
+        <LoopTag tone={STATUS_TAG[autopilot.status]}>{t(`loop.automation.statusLabel.${autopilot.status}`)}</LoopTag>
       </div>
 
       <div className="loop-apd__body">
@@ -219,9 +221,9 @@ export default function AutopilotDetailPage({ autopilotId, onChanged }: { autopi
           <div className="loop-apd__block">
             <div className="loop-apd__block-head">
               <span className="loop-apd__block-title">{t("loop.automation.taskDesc")}</span>
-              <Button theme="solid" size="small" icon={<Save size={14} />} disabled={!descDirty} loading={savingDesc} onClick={saveDesc}>
+              <LoopButton size="sm" icon={<Save size={14} />} disabled={!descDirty} loading={savingDesc} onClick={saveDesc}>
                 {t("loop.action.save")}
-              </Button>
+              </LoopButton>
             </div>
             <AutoGrowTextarea
               className="loop-field-textarea loop-field-textarea--lg loop-field-textarea--auto"
@@ -350,7 +352,7 @@ export default function AutopilotDetailPage({ autopilotId, onChanged }: { autopi
             <div className="loop-apd__prop-value">{formatNextRunAt(nextRun) || "—"}</div>
           </div>
           <div className="loop-apd__actions">
-            <Button theme="solid" block icon={<Play size={14} />} disabled={autopilot.status !== "active"} onClick={runNow}>{t("loop.automation.runNow")}</Button>
+            <LoopButton block icon={<Play size={14} />} disabled={autopilot.status !== "active"} onClick={runNow}>{t("loop.automation.runNow")}</LoopButton>
             <Button block type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={removeAutopilot}>{t("loop.action.delete")}</Button>
           </div>
         </aside>

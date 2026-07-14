@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Typography, Input, Button, Select, Avatar, Spin, Modal, Toast, Banner } from "@douyinfe/semi-ui";
+import LoopButton from "../ui/LoopButton";
 import { Search, Plus, Trash2, Bot, RotateCcw } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Agent, AgentVisibility, RuntimeDevice } from "../api/types";
@@ -104,7 +105,7 @@ export default function AgentPage() {
         <Title heading={4}>{t("loop.nav.agent")}</Title>
         <div className="loop-page__spacer" />
         <Input className="loop-search" prefix={<Search size={14} />} placeholder={t("loop.search.agent")} value={keyword} onChange={setKeyword} showClear style={{ width: 220 }} />
-        <Button theme="solid" icon={<Plus size={14} />} onClick={openCreate}>{t("loop.action.newAgent")}</Button>
+        <LoopButton icon={<Plus size={14} />} onClick={openCreate}>{t("loop.action.newAgent")}</LoopButton>
       </div>
 
       <div className="loop-agent-toolbar">
@@ -126,7 +127,7 @@ export default function AgentPage() {
               <Bot size={40} className="loop-empty__icon" />
               <div className="loop-empty__title">{scope === "archived" ? t("loop.agent.archivedEmpty") : t("loop.empty.agentTitle")}</div>
               {scope !== "archived" && <div className="loop-empty__desc">{t("loop.empty.agentDesc")}</div>}
-              {scope !== "archived" && <Button theme="solid" icon={<Plus size={14} />} onClick={openCreate} style={{ marginTop: 12 }}>{t("loop.action.newAgent")}</Button>}
+              {scope !== "archived" && <LoopButton icon={<Plus size={14} />} onClick={openCreate} style={{ marginTop: 12 }}>{t("loop.action.newAgent")}</LoopButton>}
             </div>
           ) : (
             <div className="loop-agent-list">

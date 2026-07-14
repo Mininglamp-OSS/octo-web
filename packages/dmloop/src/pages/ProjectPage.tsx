@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Typography, Input, Button, Tag, Spin, Modal, Toast } from "@douyinfe/semi-ui";
+import { Typography, Input, Button, Spin, Modal, Toast } from "@douyinfe/semi-ui";
 import { Search, Plus, Trash2, Briefcase, List, LayoutGrid, ListChecks } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { Project } from "../api/types";
 import { listProjects, createProject, deleteProject } from "../api/projectApi";
 import ProjectDetailPage from "../panel/ProjectDetailPage";
 import { PROJECT_STATUS_COLOR } from "../ui/meta";
+import LoopTag from "../ui/LoopTag";
+import LoopButton from "../ui/LoopButton";
 import { confirmDelete } from "../ui/confirmDelete";
 import { formatRelativeTime } from "../ui/time";
 import { readView, writeView } from "../ui/viewMode";
@@ -93,7 +95,7 @@ export default function ProjectPage() {
           <span className="loop-project-list__icon">{p.icon || "📁"}</span>
           <span className="loop-project-list__name">{p.title}</span>
           <div className="loop-project-list__meta">
-            <Tag color={PROJECT_STATUS_COLOR[p.status]} size="small">{t(`loop.projectStatus.${p.status}`)}</Tag>
+            <LoopTag tone={PROJECT_STATUS_COLOR[p.status]}>{t(`loop.projectStatus.${p.status}`)}</LoopTag>
             <span className="loop-project-list__count"><ListChecks size={13} />{p.done_count}/{p.issue_count}</span>
             <span className="loop-project-list__lead">{p.lead_name ?? t("loop.assignee.unassigned")}</span>
             <span className="loop-project-list__time">{formatRelativeTime(p.updated_at ?? p.created_at, format)}</span>
@@ -145,7 +147,7 @@ export default function ProjectPage() {
         <Title heading={4}>{t("loop.nav.project")}</Title>
         <Text type="tertiary" style={{ fontSize: 13 }}>{rows.length}</Text>
         <div className="loop-page__spacer" />
-        <Button theme="solid" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>{t("loop.action.newProject")}</Button>
+        <LoopButton icon={<Plus size={14} />} onClick={() => setCreateOpen(true)}>{t("loop.action.newProject")}</LoopButton>
       </div>
       <div className="loop-project-toolbar">
         <Input className="loop-search" prefix={<Search size={14} />} placeholder={t("loop.search.project")} value={keyword} onChange={setKeyword} showClear style={{ width: 240 }} />
@@ -166,7 +168,7 @@ export default function ProjectPage() {
               <Briefcase size={40} className="loop-empty__icon" />
               <div className="loop-empty__title">{t("loop.empty.projectTitle")}</div>
               <div className="loop-empty__desc">{t("loop.empty.projectDesc")}</div>
-              <Button theme="solid" icon={<Plus size={14} />} onClick={() => setCreateOpen(true)} style={{ marginTop: 12 }}>{t("loop.action.newProject")}</Button>
+              <LoopButton icon={<Plus size={14} />} onClick={() => setCreateOpen(true)} style={{ marginTop: 12 }}>{t("loop.action.newProject")}</LoopButton>
             </div>
           ) : filtered.length === 0 ? (
             <div className="loop-empty">

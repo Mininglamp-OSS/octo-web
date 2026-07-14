@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Typography, Input, Button, Spin, Toast, Banner, Tooltip } from "@douyinfe/semi-ui";
+import LoopButton from "../ui/LoopButton";
 import { ArrowLeft, BookOpen, Clock3, ExternalLink, Save, Trash2, Plus, Users } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type { I18nFormatter } from "@octo/base";
@@ -193,7 +194,7 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
         <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.detail.skillTitle")}</Text>
         <div style={{ flex: 1 }} />
         <Button theme="borderless" type="danger" icon={<Trash2 size={14} />} onClick={remove}>{t("loop.action.delete")}</Button>
-        <Button theme="solid" icon={<Save size={14} />} disabled={!dirty} onClick={save}>{t("loop.action.save")}</Button>
+        <LoopButton icon={<Save size={14} />} disabled={!dirty} onClick={save}>{t("loop.action.save")}</LoopButton>
       </div>
 
       <div className="loop-skill-body">
@@ -260,7 +261,7 @@ export default function SkillDetailPage({ skillId, onChanged }: { skillId: strin
                 />
                 {addError && <div className="loop-skill-files__adderr">{addError}</div>}
                 <div className="loop-skill-files__addbtns">
-                  <Button size="small" theme="solid" onClick={submitNewFile}>{t("loop.skill.detail.addFile.add")}</Button>
+                  <LoopButton size="sm" onClick={submitNewFile}>{t("loop.skill.detail.addFile.add")}</LoopButton>
                   <Button size="small" theme="borderless" onClick={cancelNewFile}>{t("loop.action.cancel")}</Button>
                 </div>
               </div>
