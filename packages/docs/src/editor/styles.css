@@ -64,6 +64,11 @@
 .octo-doc-scroll {
   height: 100%;
   overflow-y: auto;
+  /* The document itself should never scroll horizontally — tables carry their own inner
+     horizontal scroll. Without this, overflow-y:auto promotes the other axis to `auto`,
+     which combined with the sticky toolbar's negative bleed margins turns this into a
+     silent horizontal scroll container and pushes the right-side toolbar buttons out of view. */
+  overflow-x: hidden;
   box-sizing: border-box;
   padding: 0 32px 24px;
 }
@@ -494,6 +499,24 @@
   text-align: center;
   font-size: 12px;
   color: var(--octo-muted, #8a919e);
+}
+
+/* Math insert popover (XIN-1048 #3): stack a kind-specific title above the LaTeX input +
+   insert button so inline vs block formula dialogs are visually distinguishable. */
+.octo-math-popover {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.octo-math-popover-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--octo-muted, #8a919e);
+}
+.octo-math-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .octo-editor-region {
@@ -2512,6 +2535,8 @@
 /* Emoji toolbar picker grid (v9). */
 .octo-emoji-popover {
   position: absolute;
+  top: 100%;
+  left: 0;
   z-index: 1000;
   margin-top: 6px;
   display: flex;

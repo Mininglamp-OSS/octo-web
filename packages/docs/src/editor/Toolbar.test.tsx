@@ -898,3 +898,49 @@ describe('Toolbar — format painter (XIN-963)', () => {
     }
   })
 })
+
+// XIN-1048 #3: the inline and block formula popovers shared one MathControl and rendered an
+// identical body, so the two dialogs were indistinguishable once open. Each popover now carries a
+// kind-specific title (the existing mathInline / mathBlock i18n keys) at the top.
+describe('Toolbar — math popover kind title (XIN-1048 #3)', () => {
+  it('titles the inline-formula popover with the inline key', () => {
+    render(<Toolbar editor={editor!} />)
+    fireEvent.click(titleBtn('docs.toolbar.mathInline'))
+    const popover = document.querySelector('.octo-math-popover') as HTMLElement
+    expect(popover).toBeTruthy()
+    const title = popover.querySelector('.octo-math-popover-title')
+    expect(title?.textContent).toBe('docs.toolbar.mathInline')
+  })
+
+  it('titles the block-formula popover with the block key', () => {
+    render(<Toolbar editor={editor!} />)
+    fireEvent.click(titleBtn('docs.toolbar.mathBlock'))
+    const popover = document.querySelector('.octo-math-popover') as HTMLElement
+    expect(popover).toBeTruthy()
+    const title = popover.querySelector('.octo-math-popover-title')
+    expect(title?.textContent).toBe('docs.toolbar.mathBlock')
+  })
+
+  it('gives the inline and block popovers different titles', () => {
+    render(<Toolbar editor={editor!} />)
+    fireEvent.click(titleBtn('docs.toolbar.mathInline'))
+    const inlineTitle = document.querySelector('.octo-math-popover-title')?.textContent
+    fireEvent.click(titleBtn('docs.toolbar.mathInline')) // close
+    fireEvent.click(titleBtn('docs.toolbar.mathBlock'))
+    const blockTitle = document.querySelector('.octo-math-popover-title')?.textContent
+    expect(inlineTitle).not.toBe(blockTitle)
+  })
+})
+
+// XIN-1048 #7b: the font-family selector now sits BEFORE the font-size selector in the toolbar
+// (family → size), matching the requested control order. FONT_FAMILY_ENABLED defaults on in tests.
+describe('Toolbar — font family precedes font size (XIN-1048 #7b)', () => {
+  it('renders the font-family select before the font-size select in document order', () => {
+    const { container } = render(<Toolbar editor={editor!} />)
+    const family = container.querySelector('.octo-font-family') as HTMLElement
+    const size = container.querySelector('.octo-font-size') as HTMLElement
+    expect(family).toBeTruthy()
+    expect(size).toBeTruthy()
+    expect(family.compareDocumentPosition(size) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})

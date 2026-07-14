@@ -1141,25 +1141,30 @@ function MathControl({ editor, kind }: { editor: Editor; kind: 'inline' | 'block
       />
       {open && (
         <span className="octo-color-popover octo-math-popover">
-          <input
-            className="octo-find-input"
-            autoFocus
-            value={latex}
-            placeholder={t('docs.toolbar.mathPlaceholder')}
-            onMouseDown={(e) => e.stopPropagation()}
-            onChange={(e) => setLatex(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                confirm()
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                setOpen(false)
-                setLatex('')
-              }
-            }}
-          />
-          <Btn label={t('docs.toolbar.insert')} onClick={confirm} />
+          <span className="octo-math-popover-title">
+            {t(kind === 'inline' ? 'docs.toolbar.mathInline' : 'docs.toolbar.mathBlock')}
+          </span>
+          <span className="octo-math-popover-row">
+            <input
+              className="octo-find-input"
+              autoFocus
+              value={latex}
+              placeholder={t('docs.toolbar.mathPlaceholder')}
+              onMouseDown={(e) => e.stopPropagation()}
+              onChange={(e) => setLatex(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  confirm()
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setOpen(false)
+                  setLatex('')
+                }
+              }}
+            />
+            <Btn label={t('docs.toolbar.insert')} onClick={confirm} />
+          </span>
         </span>
       )}
     </span>
@@ -1330,8 +1335,8 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <Btn label={<IconStrike />} title={t('docs.toolbar.strike')} active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
       <Btn label="x²" title={t('docs.toolbar.superscript')} active={editor.isActive('superscript')} onClick={() => editor.chain().focus().toggleSuperscript().run()} />
       <Btn label="x₂" title={t('docs.toolbar.subscript')} active={editor.isActive('subscript')} onClick={() => editor.chain().focus().toggleSubscript().run()} />
-      <FontSizeSelect editor={editor} />
       {FONT_FAMILY_ENABLED && <FontFamilySelect editor={editor} />}
+      <FontSizeSelect editor={editor} />
       <span className="octo-tb-sep" />
       <AlignControls editor={editor} />
       {LINE_SPACING_ENABLED && <LineHeightSelect editor={editor} />}

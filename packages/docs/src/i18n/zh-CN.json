@@ -99,7 +99,7 @@
     "fontSize": "字号",
     "fontSizeDefault": "默认",
     "fontFamily": "字体",
-    "fontFamilyDefault": "默认",
+    "fontFamilyDefault": "默认字体",
     "font": {
       "yahei": "微软雅黑",
       "simsun": "宋体",

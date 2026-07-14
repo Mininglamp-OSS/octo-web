@@ -99,7 +99,7 @@
     "fontSize": "Font size",
     "fontSizeDefault": "Default",
     "fontFamily": "Font",
-    "fontFamilyDefault": "Default",
+    "fontFamilyDefault": "Default font",
     "font": {
       "yahei": "Microsoft YaHei",
       "simsun": "SimSun",
