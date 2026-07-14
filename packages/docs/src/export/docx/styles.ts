@@ -216,6 +216,33 @@ export function createParagraphStyles(): IParagraphStyleOptions[] {
       run: { size: 2, color: 'FFFFFF', vanish: true },
       paragraph: { spacing: { before: 0, after: 0 } },
     },
+    {
+      // Invisible boundary markers wrapping a blockquote's content. Like the
+      // details markers, the importer uses a Start/End stack to rebuild the
+      // quote and keep nested blocks (lists, nested quotes) inside it.
+      id: 'BlockQuoteStart',
+      name: 'Block Quote Start',
+      basedOn: 'Normal',
+      run: { size: 2, color: 'FFFFFF', vanish: true },
+      paragraph: { spacing: { before: 0, after: 0 } },
+    },
+    {
+      id: 'BlockQuoteEnd',
+      name: 'Block Quote End',
+      basedOn: 'Normal',
+      run: { size: 2, color: 'FFFFFF', vanish: true },
+      paragraph: { spacing: { before: 0, after: 0 } },
+    },
+    {
+      // Invisible boundary after a code block, so the importer breaks the run of
+      // per-line CodeBlock paragraphs at block boundaries instead of merging two
+      // adjacent code blocks into one.
+      id: 'CodeBlockEnd',
+      name: 'Code Block End',
+      basedOn: 'Normal',
+      run: { size: 2, color: 'FFFFFF', vanish: true },
+      paragraph: { spacing: { before: 0, after: 0 } },
+    },
   ]
 }
 

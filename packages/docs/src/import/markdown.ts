@@ -51,7 +51,73 @@ function md(): MarkdownIt {
   if (mdInstance) return mdInstance
   mdInstance = new MarkdownIt('commonmark', { html: true, linkify: false, breaks: false })
     .enable(['table', 'strikethrough'])
+  // Tokenize `$…$` / `$$…$$` math BEFORE markdown-it's escape rule runs, so that
+  // LaTeX backslash sequences survive verbatim. Without this the inline text
+  // pass collapses `\\` (a matrix/cases/substack row break) to `\` and eats
+  // other `\x` escapes, corrupting every multi-line formula. The tokens carry
+  // the RAW source; mapInline maps math_inline/math_block below.
+  mdInstance.inline.ruler.before('escape', 'math_dollar', mathInlineRule)
   return mdInstance
+}
+
+/**
+ * markdown-it inline rule for dollar-delimited math. Recognises `$$…$$` (inline
+ * display) and `$…$`, applying CommonMark/pandoc-ish boundary rules so ordinary
+ * currency (`$5`, `$5 到 $9`) is not swallowed: the opening `$` must not be
+ * followed by whitespace, and the closing `$` must not be preceded by whitespace
+ * nor (for single `$`) directly followed by a digit. Content is taken verbatim
+ * from the source so LaTeX escapes (`\\`, `\{`, …) are preserved.
+ */
+function mathInlineRule(state: unknown, silent: boolean): boolean {
+  const s = state as {
+    src: string
+    pos: number
+    posMax: number
+    push: (type: string, tag: string, nesting: number) => { content: string; markup: string }
+  }
+  const src = s.src
+  let pos = s.pos
+  if (src.charCodeAt(pos) !== 0x24 /* $ */) return false
+
+  const isDisplay = src.charCodeAt(pos + 1) === 0x24
+  const open = isDisplay ? 2 : 1
+  const start = pos + open
+  if (start >= s.posMax) return false
+  // Opening boundary: no whitespace right after the opener.
+  if (/\s/.test(src[start] ?? '')) return false
+
+  // Find the matching closer within the current inline span.
+  const closer = isDisplay ? '$$' : '$'
+  let end = -1
+  for (let i = start; i < s.posMax; i++) {
+    if (isDisplay) {
+      if (src.charCodeAt(i) === 0x24 && src.charCodeAt(i + 1) === 0x24) {
+        end = i
+        break
+      }
+    } else if (src.charCodeAt(i) === 0x24) {
+      end = i
+      break
+    }
+  }
+  if (end < 0 || end === start) return false
+
+  const content = src.slice(start, end)
+  // Closing boundary for single `$`: no trailing whitespace before it, and not a
+  // bare currency range (closer not directly followed by a digit).
+  if (!isDisplay) {
+    if (/\s$/.test(content)) return false
+    if (/[0-9]/.test(src[end + 1] ?? '')) return false
+  }
+  if (!content.trim()) return false
+
+  if (!silent) {
+    const token = s.push(isDisplay ? 'math_block' : 'math_inline', 'math', 0)
+    token.content = content
+    token.markup = closer
+  }
+  s.pos = end + open
+  return true
 }
 
 /**
@@ -545,7 +611,12 @@ function mapInline(inlineTok: Token, ctx: Ctx): PmNode[] {
         break
       }
       case 'math_inline':
-        out.push(withMarks({ type: 'text', text: c.content }, markStack)) // fallback; real inlineMath below
+        // Real inline math from the dollar-math inline rule (raw LaTeX preserved).
+        out.push({ type: 'inlineMath', attrs: { latex: c.content.trim() } })
+        break
+      case 'math_block':
+        // `$$…$$` written inline still maps to a blockMath node (matches export).
+        out.push({ type: 'blockMath', attrs: { latex: c.content.trim() } })
         break
       default:
         // Detect inline `$…$` math and `:emoji:` inside plain runs is done at text level;

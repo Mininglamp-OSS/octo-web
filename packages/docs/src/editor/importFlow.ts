@@ -152,8 +152,9 @@ export async function runMarkdownImport(
   // unknown shortcodes stay literal text rather than becoming blank emoji nodes).
   const parsed = parseMarkdownToPmDoc(text, { emojiName: emojiGlyph })
 
-  // 3. Determine title
-  const title = parsed.title || stripExtension(fileName) || 'Imported document'
+  // 3. Determine title. Use the file name (matching the .docx import), so the sidebar label is
+  // always the imported file's name rather than the document's first heading.
+  const title = stripExtension(fileName) || 'Imported document'
 
   // 4. Create new doc
   const created = await createDoc({ title, spaceId, folderId })

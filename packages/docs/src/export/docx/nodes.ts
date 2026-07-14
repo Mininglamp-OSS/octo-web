@@ -11,6 +11,7 @@ import {
   HeadingLevel,
   LevelFormat,
   AlignmentType,
+  BorderStyle,
   ExternalHyperlink,
   UnderlineType,
   type ILevelsOptions,
@@ -282,10 +283,21 @@ function convertTaskList(node: MdNode, ctx: DocxContext, depth: number): FileChi
   return result
 }
 
-/** Convert a blockquote. */
+/** Convert a blockquote.
+ *
+ * A blockquote can contain arbitrary blocks (paragraphs, lists, nested quotes,
+ * code, …). Tagging only the direct child paragraphs with the `BlockQuote`
+ * pStyle loses everything else — a nested list would export as ordinary list
+ * paragraphs and escape the quote on re-import. So we bracket the whole content
+ * with invisible `BlockQuoteStart`/`BlockQuoteEnd` marker paragraphs (mirroring
+ * the details pattern) and convert inner blocks normally; the importer rebuilds
+ * the quote (and any nesting) from the marker stack. Direct paragraphs still
+ * carry the `BlockQuote` pStyle so Word renders them with the quote look. */
 function convertBlockquote(node: MdNode, ctx: DocxContext): FileChild[] {
   const children = node.content ?? []
   const result: FileChild[] = []
+
+  result.push(new Paragraph({ style: 'BlockQuoteStart', children: [] }))
 
   for (const child of children) {
     if (child.type === 'paragraph') {
@@ -298,11 +310,13 @@ function convertBlockquote(node: MdNode, ctx: DocxContext): FileChild[] {
         }),
       )
     } else {
-      // Nested blocks in blockquote
-      const converted = convertBlock(child, ctx, 0)
-      result.push(...converted)
+      // Nested blocks (lists, nested blockquotes, code, …) convert normally and
+      // stay inside the Start/End frame so the importer keeps them in the quote.
+      result.push(...convertBlock(child, ctx, 0))
     }
   }
+
+  result.push(new Paragraph({ style: 'BlockQuoteEnd', children: [] }))
 
   return result
 }
@@ -312,7 +326,7 @@ function convertCodeBlock(node: MdNode): FileChild[] {
   const code = (node.content ?? []).map((c) => c.text ?? '').join('')
   const lines = code.split('\n')
 
-  return lines.map(
+  const out: FileChild[] = lines.map(
     (line) =>
       new Paragraph({
         children: line
@@ -329,20 +343,26 @@ function convertCodeBlock(node: MdNode): FileChild[] {
         shading: { fill: 'F5F5F5' },
       }),
   )
+  // Boundary marker so the importer does not merge this code block with an
+  // immediately-following one (both export as consecutive CodeBlock paragraphs,
+  // one per line, with no other separator between distinct blocks).
+  out.push(new Paragraph({ style: 'CodeBlockEnd', children: [] }))
+  return out
 }
 
 /** Convert a horizontal rule. */
 function convertHorizontalRule(): Paragraph {
+  // A thematic break is an empty paragraph carrying only a bottom border
+  // (`w:pBdr`). Word renders that as a full-width horizontal rule, and the
+  // importer round-trips it back to a `horizontalRule` node. (The previous
+  // representation — a centered run of 50 ‘─’ glyphs — rendered as a short,
+  // mid-page dash line and imported as a literal text paragraph.)
   return new Paragraph({
-    children: [
-      new TextRun({
-        text: '─'.repeat(50),
-        color: 'CCCCCC',
-        size: 16,
-      }),
-    ],
+    children: [],
+    border: {
+      bottom: { style: BorderStyle.SINGLE, size: 6, space: 1, color: 'CCCCCC' },
+    },
     spacing: { before: 120, after: 120 },
-    alignment: AlignmentType.CENTER,
   })
 }
 
