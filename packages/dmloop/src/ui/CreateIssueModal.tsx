@@ -4,6 +4,7 @@ import { ChevronRight, X, Paperclip } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { IssueStatus, IssuePriority, AssigneeType } from "../api/types";
 import { createIssue, listAssigneeCandidates } from "../api/issueApi";
+import { listProjectOptions } from "../api/directory";
 import { uploadAttachment } from "../api/attachmentApi";
 import { currentWorkspaceName } from "../api/http";
 import AssigneePicker from "./AssigneePicker";
@@ -53,6 +54,8 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
   const [desc, setDesc] = useState("");
   const [status, setStatus] = useState<IssueStatus>("todo");
   const [priority, setPriority] = useState<IssuePriority>("none");
+  const [projectId, setProjectId] = useState<string>("");
+  const [projects, setProjects] = useState<Array<{ id: string; title: string }>>([]);
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [assigneeType, setAssigneeType] = useState<AssigneeType | null>(null);
   const [assigneeName, setAssigneeName] = useState<string | null>(null);
@@ -61,10 +64,11 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
 
   useEffect(() => {
     if (!visible) return;
-    setTitle(""); setDesc(""); setStatus("todo"); setPriority("none"); setPendingFiles([]);
+    setTitle(""); setDesc(""); setStatus("todo"); setPriority("none"); setProjectId(""); setPendingFiles([]);
     setAssigneeId(null); setAssigneeType(null); setAssigneeName(null);
-    // 默认指派:优先复用上次选择(若仍是有效候选),否则落到我的第一个 AI队友(agent)。
     let alive = true;
+    listProjectOptions().then((ps) => { if (alive) setProjects(ps); }).catch(() => { if (alive) setProjects([]); });
+    // 默认指派:优先复用上次选择(若仍是有效候选),否则落到我的第一个 AI队友(agent)。
     listAssigneeCandidates()
       .then((cands) => {
         if (!alive) return;
@@ -108,6 +112,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
         priority,
         assignee_id: assigneeId,
         assignee_type: assigneeType,
+        project_id: projectId || null,
         parent_issue_id: parentIssueId,
         attachment_ids: attachmentIds,
       });
@@ -130,6 +135,10 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
     const Icon = PRIORITY_ICON[p];
     return { value: p, label: t(`loop.priority.${p}`), icon: <Icon size={14} style={{ color: PRIORITY_HEX[p] }} /> };
   });
+  const projectOptions: LoopPropertyPillOption<string>[] = [
+    { value: "", label: t("loop.field.noProject") },
+    ...projects.map((p) => ({ value: p.id, label: p.title })),
+  ];
 
   const wsName = currentWorkspaceName();
 
@@ -189,6 +198,7 @@ export default function CreateIssueModal({ visible, onClose, onCreated, parentIs
             valueName={assigneeName}
             onChange={(id, type, name) => { setAssigneeId(id); setAssigneeType(type); setAssigneeName(name); }}
           />
+          <LoopPropertyPill value={projectId} options={projectOptions} onChange={setProjectId} ariaLabel={t("loop.field.project")} />
         </div>
 
         {pendingFiles.length > 0 && (

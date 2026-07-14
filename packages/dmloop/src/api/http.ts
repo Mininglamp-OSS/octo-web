@@ -66,7 +66,7 @@ client.interceptors.request.use((config) => {
 /* ---------- 结构化错误（供页面展示异常态） ---------- */
 export class LoopApiError extends Error {
   status?: number;
-  code?: string; // 后端结构化错误码(如 quick-create 的 agent_unavailable / daemon_version_unsupported)
+  code?: string; // 后端结构化错误码(如 quick-create 的 agent_unavailable)
   constructor(message: string, status?: number, code?: string) {
     super(message);
     this.name = "LoopApiError";

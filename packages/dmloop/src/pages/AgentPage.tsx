@@ -3,7 +3,7 @@ import { Typography, Input, Button, Select, Avatar, Spin, Modal, Toast, Banner }
 import LoopButton from "../ui/LoopButton";
 import { Search, Plus, Trash2, Bot, RotateCcw } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
-import type { Agent, AgentVisibility, RuntimeDevice } from "../api/types";
+import type { Agent, RuntimeDevice } from "../api/types";
 import { listAgents, createAgent, archiveAgent, restoreAgent, listRuntimesForAgent } from "../api/agentApi";
 import { listAssigneeCandidates } from "../api/issueApi";
 import AgentDetailPage from "../panel/AgentDetailPage";
@@ -29,7 +29,6 @@ export default function AgentPage() {
   const [nName, setNName] = useState("");
   const [nDesc, setNDesc] = useState("");
   const [nModel, setNModel] = useState("");
-  const [nVis, setNVis] = useState<AgentVisibility>("workspace");
   const [nRuntimeId, setNRuntimeId] = useState<string | undefined>();
   const [runtimes, setRuntimes] = useState<RuntimeDevice[]>([]);
 
@@ -77,7 +76,7 @@ export default function AgentPage() {
     if (!nName.trim()) { Toast.warning(t("loop.validate.nameRequired")); return; }
     if (!nRuntimeId) { Toast.warning(t("loop.agent.runtimeRequired")); return; }
     try {
-      await createAgent({ name: nName.trim(), description: nDesc, runtime_id: nRuntimeId, model: nModel || undefined, visibility: nVis });
+      await createAgent({ name: nName.trim(), description: nDesc, runtime_id: nRuntimeId, model: nModel || undefined, visibility: "workspace" });
       setCreateOpen(false); setNName(""); setNDesc("");
       Toast.success(t("loop.toast.created")); reload();
     } catch (e) { Toast.error((e as Error)?.message ?? "create failed"); }
@@ -177,13 +176,6 @@ export default function AgentPage() {
           <div className="loop-fields__row">
             <div className="loop-fields__label">{t("loop.agent.model")}</div>
             <input className="loop-field" value={nModel} onChange={(e) => setNModel(e.target.value)} placeholder="claude-opus-4 / codex-latest…" />
-          </div>
-          <div className="loop-fields__row">
-            <div className="loop-fields__label">{t("loop.agent.visibility")}</div>
-            <Select value={nVis} onChange={(v) => setNVis(v as AgentVisibility)} dropdownClassName="loop-fields__dropdown" style={{ width: "100%" }}>
-              <Select.Option value="workspace">{t("loop.agent.visWorkspace")}</Select.Option>
-              <Select.Option value="private">{t("loop.agent.visPrivate")}</Select.Option>
-            </Select>
           </div>
         </div>
       </Modal>

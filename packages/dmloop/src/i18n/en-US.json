@@ -675,7 +675,6 @@
     "dispatch": "Dispatch",
     "dispatched": "Dispatched",
     "agentUnavailable": "That AI teammate is offline right now, so it can't be dispatched — wait for it to come online, or pick one that's online.",
-    "daemonUnsupported": "That AI teammate's runtime is too old to dispatch safely — please upgrade its runtime and try again.",
     "attachFailedAbort": "{{count}} attachment(s) failed to upload, so dispatch was cancelled — attachments are the AI's context; please retry.",
     "manualSwitch": "Create manually · assign to a person",
     "examplesTitle": "Start from an example",

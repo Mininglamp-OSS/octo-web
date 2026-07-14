@@ -675,7 +675,6 @@
     "dispatch": "派单",
     "dispatched": "已派单",
     "agentUnavailable": "AI 队友当前不在线，无法派单——请等它上线，或换一个在线的队友。",
-    "daemonUnsupported": "AI 队友的运行环境版本过低，无法安全派单——请先升级它的运行时后重试。",
     "attachFailedAbort": "有 {{count}} 个附件上传失败，已取消派单——附件是 AI 的上下文，请重试。",
     "manualSwitch": "手动建单 · 指派给人",
     "examplesTitle": "从一个例子开始",
