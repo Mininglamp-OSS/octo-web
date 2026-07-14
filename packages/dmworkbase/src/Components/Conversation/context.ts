@@ -22,6 +22,12 @@ export default interface ConversationContext {
 
   insertText(text: string): void;
 
+  /**
+   * 恢复草稿：将 @[uid:label] 格式字符串解析为编辑器结构，完整保留 mention 节点
+   * 用于撤回消息的「重新编辑」功能
+   */
+  restoreDraft(text: string): void;
+
   editOn(): boolean; // 编辑模式是否开启
   setEditOn(edit: boolean): void; // 是否开启编辑
   getCheckedMessageCount(): number;

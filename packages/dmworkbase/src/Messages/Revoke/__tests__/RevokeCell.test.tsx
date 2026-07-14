@@ -51,7 +51,7 @@ vi.mock("../../i18n", () => ({
     },
 }))
 
-import { RevokeCell } from "../index"
+import { RevokeCell, rebuildDraftText } from "../index"
 
 function makeMessage(overrides: Record<string, any> = {}) {
     return {
@@ -168,6 +168,92 @@ describe("RevokeCell — handleReEdit text resolution", () => {
         })
         act(() => { (container.querySelector(".wk-revoke-reedit-btn") as HTMLElement).click() })
         expect(restoreDraft).toHaveBeenCalledWith("这是原始消息内容")
+        ReactDOM.unmountComponentAtNode(container)
+        container.remove()
+    })
+})
+
+describe("rebuildDraftText — mention entity reconstruction", () => {
+    it("returns plain text unchanged when no entities", () => {
+        expect(rebuildDraftText("hello world", [])).toBe("hello world")
+    })
+
+    it("reconstructs a single @mention entity as @[uid:label]", () => {
+        // "hi @张三 你好"  entity: uid="uid-abc", offset=3, length=3
+        const result = rebuildDraftText("hi @张三 你好", [
+            { uid: "uid-abc", offset: 3, length: 3 },
+        ])
+        expect(result).toBe("hi @[uid-abc:@张三] 你好")
+    })
+
+    it("handles multiple @mention entities in order", () => {
+        // "@张三 和 @李四 在一起"  entities: 张三 at 0, 李四 at 6
+        const result = rebuildDraftText("@张三 和 @李四 在一起", [
+            { uid: "uid-1", offset: 0, length: 3 },
+            { uid: "uid-2", offset: 6, length: 3 },
+        ])
+        expect(result).toBe("@[uid-1:@张三] 和 @[uid-2:@李四] 在一起")
+    })
+
+    it("sorts entities by offset before processing", () => {
+        // same as above but entities passed in reverse order
+        const result = rebuildDraftText("@张三 和 @李四 在一起", [
+            { uid: "uid-2", offset: 6, length: 3 },
+            { uid: "uid-1", offset: 0, length: 3 },
+        ])
+        expect(result).toBe("@[uid-1:@张三] 和 @[uid-2:@李四] 在一起")
+    })
+})
+
+describe("RevokeCell — handleReEdit with mention.entities", () => {
+    it("reconstructs mention nodes when recalled message has entities (defect B)", () => {
+        const restoreDraft = vi.fn()
+        // 发送的消息: text="hi @张三", entities: [{uid: "uid-zhangsan", offset: 3, length: 3}]
+        const msg = makeMessage({
+            content: {
+                text: "hi @张三",
+                contentType: 1,
+                mention: {
+                    entities: [{ uid: "uid-zhangsan", offset: 3, length: 3 }],
+                },
+            },
+        })
+        const container = document.createElement("div")
+        document.body.appendChild(container)
+        act(() => {
+            ReactDOM.render(
+                React.createElement(RevokeCell as any, { message: msg, context: { restoreDraft } }),
+                container
+            )
+        })
+        act(() => { (container.querySelector(".wk-revoke-reedit-btn") as HTMLElement).click() })
+        // restoreDraft 必须收到 @[uid:label] 格式，而不是纯 "hi @张三"
+        // 这样 parseDraftToContent 才能还原出 mention 节点，resend 时 uid 绑定不丢失
+        expect(restoreDraft).toHaveBeenCalledWith("hi @[uid-zhangsan:@张三]")
+        expect(restoreDraft).not.toHaveBeenCalledWith("hi @张三")
+        ReactDOM.unmountComponentAtNode(container)
+        container.remove()
+    })
+
+    it("falls back to plain text when entities is empty (no mentions)", () => {
+        const restoreDraft = vi.fn()
+        const msg = makeMessage({
+            content: {
+                text: "普通消息无mention",
+                contentType: 1,
+                mention: { entities: [] },
+            },
+        })
+        const container = document.createElement("div")
+        document.body.appendChild(container)
+        act(() => {
+            ReactDOM.render(
+                React.createElement(RevokeCell as any, { message: msg, context: { restoreDraft } }),
+                container
+            )
+        })
+        act(() => { (container.querySelector(".wk-revoke-reedit-btn") as HTMLElement).click() })
+        expect(restoreDraft).toHaveBeenCalledWith("普通消息无mention")
         ReactDOM.unmountComponentAtNode(container)
         container.remove()
     })

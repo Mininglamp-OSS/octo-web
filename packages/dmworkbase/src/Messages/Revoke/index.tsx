@@ -6,6 +6,36 @@ import React from 'react'
 import "./index.css"
 import { ChannelInfoListener } from "wukongimjssdk"
 import { I18nContext, t } from "../../i18n"
+import ConversationContext from "../../Components/Conversation/context"
+
+/**
+ * 从纲文 text + mention entities ({uid, offset, length}[]) 重建 @[uid:label] 草稿序列化格式。
+ * restoreDraft → parseDraftToContent 仅能识别 @[uid:label] 模式，而发送消息里存的是
+ * 纯显示文本（如 "hi @张三"）+ entities。此函数将二者合并为 draft 字符串。
+ */
+export function rebuildDraftText(
+    text: string,
+    entities: Array<{ uid: string; offset: number; length: number }>
+): string {
+    if (!entities || entities.length === 0) return text
+
+    // 按 offset 排序，防止乱序
+    const sorted = [...entities].sort((a, b) => a.offset - b.offset)
+    let result = ''
+    let cursor = 0
+    for (const entity of sorted) {
+        const { uid, offset, length } = entity
+        if (offset < cursor || offset + length > text.length) continue
+        // 追加 offset 前的纯文本
+        result += text.slice(cursor, offset)
+        // 追加 @[uid:label] 标记，label 从原文本中提取
+        const label = text.slice(offset, offset + length)
+        result += `@[${uid}:${label}]`
+        cursor = offset + length
+    }
+    result += text.slice(cursor)
+    return result
+}
 
 
 export class RevokeCell extends MessageCell {
@@ -83,11 +113,12 @@ export class RevokeCell extends MessageCell {
      *
      * 注意：
      * 1. 如果消息被编辑过（remoteExtra.isEdit），展示的是编辑后的最终版本（contentEdit），与其他地方的逻辑一致
-     * 2. 使用 restoreDraft 而非 insertText，确保 @mention / emoji 的结构得到正确解析
+     * 2. 使用 restoreDraft，并将 content.mention.entities 重建为 @[uid:label] 草稿格式，
+     *    确保 @mention 节点在恢复后仍可路由（而非退化为惰性文本）
      */
     private handleReEdit = () => {
         const { message } = this.props
-        const conversationContext = (this.props as any).context
+        const conversationContext = (this.props as any).context as ConversationContext
         if (!conversationContext?.restoreDraft) return
 
         // 与 Model.tsx parseMention 和 Messages/Text getRenderMessageText 一致：
@@ -99,9 +130,15 @@ export class RevokeCell extends MessageCell {
         } else {
             textContent = message.content as MessageText
         }
-        const originalText = textContent?.text ?? ''
-        if (!originalText) return
-        conversationContext.restoreDraft(originalText)
+        const rawText = textContent?.text ?? ''
+        if (!rawText) return
+
+        // 从 mention.entities ({uid, offset, length}[]) 重建 @[uid:label] 草稿序列化格式
+        // 以便 restoreDraft → parseDraftToContent 能正确还原 mention 节点
+        const entities: Array<{ uid: string; offset: number; length: number }> =
+            (textContent as any)?.mention?.entities ?? []
+        const draftText = rebuildDraftText(rawText, entities)
+        conversationContext.restoreDraft(draftText)
     }
 
     render() {
