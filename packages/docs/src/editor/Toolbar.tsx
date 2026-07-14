@@ -13,7 +13,7 @@ import { sanitizeLinkHref } from './sanitize.ts'
 import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { TableGridPicker } from './TableControls.tsx'
 import { t } from '../octoweb/index.ts'
-import { FONT_FAMILY_ENABLED } from '../config.ts'
+import { FONT_FAMILY_ENABLED, LINE_SPACING_ENABLED } from '../config.ts'
 import { FONT_FAMILIES } from './fontFamilies.ts'
 
 // Inline SVG toolbar icons (C2–C4): crisp, correct glyphs for underline / strikethrough /
@@ -1190,9 +1190,9 @@ export function Toolbar({ editor }: { editor: Editor }) {
       {FONT_FAMILY_ENABLED && <FontFamilySelect editor={editor} />}
       <span className="octo-tb-sep" />
       <AlignControls editor={editor} />
-      <LineHeightSelect editor={editor} />
-      <ParagraphSpacingSelect editor={editor} edge="before" />
-      <ParagraphSpacingSelect editor={editor} edge="after" />
+      {LINE_SPACING_ENABLED && <LineHeightSelect editor={editor} />}
+      {LINE_SPACING_ENABLED && <ParagraphSpacingSelect editor={editor} edge="before" />}
+      {LINE_SPACING_ENABLED && <ParagraphSpacingSelect editor={editor} edge="after" />}
       <span className="octo-tb-sep" />
       <ListMenu editor={editor} />
       <Btn label={<IconQuote />} title={t('docs.toolbar.quote')} active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} />
