@@ -3,7 +3,7 @@ import { useCollabEditor } from '../collab/useCollabEditor.ts'
 import type { CollabEditorOptions } from '../collab/createCollabEditor.ts'
 import { canManage } from '../auth/roles.ts'
 import { Toolbar, EditorBubbleMenu } from './Toolbar.tsx'
-import { TableBubbleMenu } from './TableControls.tsx'
+import { TableContextMenu } from './TableControls.tsx'
 import { Outline } from './Outline.tsx'
 import { StatusBar } from './StatusBar.tsx'
 import { PresenceBar } from './PresenceBar.tsx'
@@ -731,7 +731,7 @@ export function EditorShell(props: EditorShellProps) {
 
           <div className="octo-editor-region">
             <EditorBubbleMenu editor={editor} />
-            <TableBubbleMenu editor={editor} />
+            <TableContextMenu editor={editor} />
             <CommentBubble editor={editor} onCreate={comments.createRoot} />
             <Outline editor={editor} />
             <div className="octo-editor-main">

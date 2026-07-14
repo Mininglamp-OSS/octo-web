@@ -429,19 +429,33 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
-/* Table editing UI (#595). The floating table toolbar reuses .octo-bubble-menu; it only needs to
-   keep its buttons on one line and align the separators vertically. */
-.octo-table-bubble {
-  align-items: center;
+/* Table editing UI (#595, right-click menu XIN-1052). The right-click table menu reuses
+   .octo-bubble-menu for its frame; it lays the actions out as a vertical list anchored at the
+   pointer (position/left/top set inline), sitting above the editor content. */
+.octo-table-context-menu {
+  position: fixed;
+  z-index: 1000;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 168px;
 }
-.octo-table-bubble .octo-tb-sep {
+.octo-table-context-menu .octo-tb-sep {
+  height: 1px;
   align-self: stretch;
+  background: var(--octo-border);
+  margin: 2px 0;
 }
-/* Delete controls carry a text caption (#621-2) so it's clear which row / column / table the
-   action removes. Lay the icon and caption out inline; icon-only buttons are unaffected. */
-.octo-table-bubble .octo-tb-btn {
+/* Each action reads as a full-width row: icon on the left, its caption next to it, so the user
+   sees exactly which row / column / table the action affects. */
+.octo-table-context-menu .octo-tb-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  text-align: left;
 }
 .octo-tb-btn--labeled {
   gap: 4px;
@@ -450,18 +464,6 @@
   font-size: 12px;
   line-height: 1;
   white-space: nowrap;
-}
-/* While the caret is inside a table cell this toolbar floats over the table (placement: top). Its
-   frame would otherwise sit on top of the column-resize hot zone and swallow the hover/mousedown
-   the resize plugin listens for on the editor DOM, so `.column-resize-handle` never appears and the
-   column can't be dragged (#595 C1). pointer-events is inherited, so making the floating wrapper
-   transparent lets those events fall through to the table underneath; only the buttons re-capture
-   the pointer so they stay clickable. */
-.octo-table-bubble-portal {
-  pointer-events: none;
-}
-.octo-table-bubble-portal .octo-tb-btn {
-  pointer-events: auto;
 }
 
 /* Grid picker for inserting a table at a chosen size (replaces the fixed 3×3). Floats under the
