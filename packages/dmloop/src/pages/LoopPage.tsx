@@ -10,7 +10,7 @@ import type { Workspace } from "../api/types";
 import { listWorkspaces, createWorkspace } from "../api/workspaceApi";
 import { setWorkspaceContext, currentWorkspaceId } from "../api/http";
 import { invalidateDirectory } from "../api/directory";
-import { invalidateRuntimeMap } from "../api/agentApi";
+import { invalidateRuntimeMap, invalidateAgentStatus } from "../api/agentApi";
 import { slugSuffix, withRandomSuffix } from "../ui/slug";
 import IssuePage from "./IssuePage";
 import NewLoopPage from "./NewLoopPage";
@@ -23,6 +23,13 @@ import "./loop.css";
 import "../ui/loopControls.css";
 
 const { Title, Text } = Typography;
+
+// 切换工作区时统一重置所有工作区级缓存(目录/运行时/agent 状态),避免残留上个工作区数据。
+function resetWorkspaceCaches() {
+  invalidateDirectory();
+  invalidateRuntimeMap();
+  invalidateAgentStatus();
+}
 
 type TabKey = "myloop" | "issue" | "project" | "automation" | "agent" | "squad" | "settings";
 
@@ -100,8 +107,7 @@ export default function LoopPage() {
     if (ws) {
       setWorkspaceContext(ws.slug, ws.id);
       setWsId(ws.id);
-      invalidateDirectory();
-      invalidateRuntimeMap();
+      resetWorkspaceCaches();
       WKApp.routeRight.replaceToRoot(renderTab(tab, ws));
     } else {
       setWorkspaceContext("", "");
@@ -166,8 +172,7 @@ export default function LoopPage() {
   const switchWorkspace = (w: Workspace) => {
     setWorkspaceContext(w.slug, w.id);
     setWsId(w.id);
-    invalidateDirectory();
-    invalidateRuntimeMap();
+    resetWorkspaceCaches();
     WKApp.routeRight.replaceToRoot(renderTab(tab, w));
   };
 
