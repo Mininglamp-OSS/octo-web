@@ -53,7 +53,13 @@
 //        Byte-aligned with the backend fontFamily attr under this shared version. The FontFamily
 //        extension is always registered so the attr round-trips faithfully; the toolbar entry that
 //        SETS it is gated behind FONT_FAMILY_ENABLED (default off) for the phased rollout.
-export const SCHEMA_VERSION = 16
+//   v17 — SCHEMA-SPEC §1: add the line-spacing ATTRIBUTES `lineHeight` (+ optional `spaceBefore`/
+//        `spaceAfter`) to the `heading` and `paragraph` nodes (not new nodes/marks) via the
+//        self-built `LineHeight` extension, replicating the v5 `textAlign` approach. All three
+//        default to null and ride on a single inline style declaration → line-height (unitless)
+//        + margin-top/margin-bottom (px|em), sanitised at both parse and render. Byte-aligned
+//        with the backend toDOM (see LineHeight.ts for the canonical style serialization).
+export const SCHEMA_VERSION = 17
 
 // Node names present in the schema at the current SCHEMA_VERSION. Mirrors the
 // backend stub's node set (SCHEMA-SPEC); kept here so the set is auditable against
@@ -93,9 +99,10 @@ export const SCHEMA_NODES = [
 // backend stub's mark set (SCHEMA-SPEC §3); kept here so the set is auditable
 // against the spec without importing the editor extensions.
 //
-// NOTE: v5 `textAlign`, v7 `fontSize` and v16 `fontFamily` are ATTRIBUTES (textAlign on
-// heading/paragraph, fontSize + fontFamily on the textStyle mark), not new nodes/marks, so they
-// add no entry here — only a version bump. They still round-trip through the Y.Doc as node/mark attrs.
+// NOTE: v5 `textAlign`, v7 `fontSize`, v16 `fontFamily`, and v17 `lineHeight`/`spaceBefore`/
+// `spaceAfter` are ATTRIBUTES (textAlign + line-spacing on heading/paragraph, fontSize + fontFamily
+// on the textStyle mark), not new nodes/marks, so they add no entry here — only a version bump.
+// They still round-trip through the Y.Doc as node/mark attrs.
 export const SCHEMA_MARKS = [
   'bold',
   'italic',

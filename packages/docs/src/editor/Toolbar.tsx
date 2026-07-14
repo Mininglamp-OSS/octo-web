@@ -613,6 +613,63 @@ function AlignControls({ editor }: { editor: Editor }) {
   )
 }
 
+/** Line-height presets (unitless multiplier) offered by the toolbar dropdown (SCHEMA_VERSION 17). */
+const LINE_HEIGHTS = ['1', '1.15', '1.5', '2'] as const
+
+/**
+ * Line-spacing dropdown (SCHEMA_VERSION 17): sets the `lineHeight` attr on the current
+ * heading/paragraph block (or clears it). The presets cover the common multipliers; the
+ * adjacent number input takes a custom value. Reads the current value from whichever of the
+ * two block types is active, so the control reflects the caret's block.
+ */
+function LineHeightSelect({ editor }: { editor: Editor }) {
+  useEditorTick(editor)
+  const current =
+    (editor.getAttributes('paragraph').lineHeight as string | undefined) ??
+    (editor.getAttributes('heading').lineHeight as string | undefined) ??
+    ''
+  const isPreset = (LINE_HEIGHTS as readonly string[]).includes(current)
+  return (
+    <span className="octo-line-height-control">
+      <select
+        className="octo-line-height"
+        title={t('docs.toolbar.lineHeight')}
+        value={isPreset ? current : current ? 'custom' : ''}
+        onMouseDown={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          const v = e.target.value
+          if (!v) editor.chain().focus().unsetLineHeight().run()
+          else if (v !== 'custom') editor.chain().focus().setLineHeight(v).run()
+          // 'custom' leaves the value untouched — the number input drives custom multipliers.
+        }}
+      >
+        <option value="">{t('docs.toolbar.lineHeightDefault')}</option>
+        {LINE_HEIGHTS.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+        <option value="custom">{t('docs.toolbar.lineHeightCustom')}</option>
+      </select>
+      <input
+        type="number"
+        className="octo-line-height-custom"
+        title={t('docs.toolbar.lineHeightCustom')}
+        min="0.5"
+        max="10"
+        step="0.05"
+        value={current}
+        onMouseDown={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          const v = e.target.value.trim()
+          if (!v) editor.chain().focus().unsetLineHeight().run()
+          else editor.chain().focus().setLineHeight(v).run()
+        }}
+      />
+    </span>
+  )
+}
+
 /** Emoji picker (SCHEMA_VERSION 9): a scrollable grid that inserts via the emoji node's setEmoji.
  * Search filters the full curated set; the grid renders an initial window and grows on scroll so
  * the ~1900-glyph set never mounts eagerly. */
@@ -1021,6 +1078,7 @@ export function Toolbar({ editor }: { editor: Editor }) {
       {FONT_FAMILY_ENABLED && <FontFamilySelect editor={editor} />}
       <span className="octo-tb-sep" />
       <AlignControls editor={editor} />
+      <LineHeightSelect editor={editor} />
       <span className="octo-tb-sep" />
       <ListMenu editor={editor} />
       <Btn label={<IconQuote />} title={t('docs.toolbar.quote')} active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} />

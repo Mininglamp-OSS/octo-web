@@ -43,7 +43,7 @@ function sniffImageType(buffer: ArrayBuffer): 'jpg' | 'png' | 'gif' | 'bmp' | nu
 }
 import { convertTable } from './tables.ts'
 import { getImageBuffer, getImageDimensions } from './images.ts'
-import { FONT_CODE, mapTextAlign } from './styles.ts'
+import { FONT_CODE, mapTextAlign, mapSpacing } from './styles.ts'
 import type { MdNode, DocxContext } from './types.ts'
 
 /** Map heading level 1-6 to docx HeadingLevel enum. */
@@ -171,17 +171,24 @@ function convertBlock(node: MdNode, ctx: DocxContext, listDepth: number): FileCh
 function convertParagraph(node: MdNode, ctx: DocxContext): Paragraph {
   const runs = convertInlineContent(node.content ?? [], ctx.emojiGlyph)
   const align = mapTextAlign(node.attrs?.textAlign)
-  return new Paragraph({ children: runs, ...(align ? { alignment: align } : {}) })
+  const spacing = mapSpacing(node.attrs)
+  return new Paragraph({
+    children: runs,
+    ...(align ? { alignment: align } : {}),
+    ...(spacing ? { spacing } : {}),
+  })
 }
 
 /** Convert a heading node. */
 function convertHeading(node: MdNode, ctx: DocxContext): Paragraph {
   const runs = convertInlineContent(node.content ?? [], ctx.emojiGlyph)
   const align = mapTextAlign(node.attrs?.textAlign)
+  const spacing = mapSpacing(node.attrs)
   return new Paragraph({
     children: runs,
     heading: toHeadingLevel(node.attrs?.level),
     ...(align ? { alignment: align } : {}),
+    ...(spacing ? { spacing } : {}),
   })
 }
 

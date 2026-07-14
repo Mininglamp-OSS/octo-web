@@ -21,6 +21,7 @@ import Highlight from '@tiptap/extension-highlight'
 import { TextStyle, FontSize, FontFamily } from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
 import TextAlign from '@tiptap/extension-text-align'
+import { LineHeight } from './LineHeight.ts'
 import Underline from '@tiptap/extension-underline'
 import Superscript from '@tiptap/extension-superscript'
 import Subscript from '@tiptap/extension-subscript'
@@ -196,6 +197,12 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // heading + paragraph nodes (not a new node/mark) → style="text-align:…". Configured for
     // exactly those two types so lists/tables/etc. keep their own layout.
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    // SCHEMA-SPEC §1 (SCHEMA_VERSION 17): line spacing. Self-built global attrs lineHeight +
+    // spaceBefore/spaceAfter on heading + paragraph (no official Tiptap line-height extension),
+    // replicating TextAlign → merged into a single style="…" declaration. MUST be registered
+    // AFTER TextAlign so the canonical style property order (text-align; line-height; margin-top;
+    // margin-bottom) holds for byte-alignment with the backend toDOM. Two-sided sanitise.
+    LineHeight,
     // SCHEMA-SPEC §3 (SCHEMA_VERSION 6): underline mark. StarterKit's bundled Underline is
     // disabled above; this standalone install is the single `underline` mark (same pattern as
     // the sanitised Link).
@@ -309,6 +316,8 @@ export function buildPreviewExtensions(docId: string): Extensions {
     FontSize,
     FontFamily,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    // Mirror the live editor's v17 line-spacing attrs so a historical version renders faithfully.
+    LineHeight,
     Underline,
     Superscript,
     Subscript,

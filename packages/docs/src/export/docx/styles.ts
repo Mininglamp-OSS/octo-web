@@ -6,8 +6,10 @@
 import {
   type IStylesOptions,
   type IParagraphStyleOptions,
+  type ISpacingProperties,
   HeadingLevel,
   AlignmentType,
+  LineRuleType,
 } from 'docx'
 
 /** Default font for body text. */
@@ -214,4 +216,50 @@ export function mapTextAlign(align: unknown): (typeof AlignmentType)[keyof typeo
     default:
       return undefined
   }
+}
+
+// px → twips (1440 twips per inch, 96px per CSS inch → 15 twips/px) and a base
+// em size of 16px, so the block-spacing lengths (px|em) map to Word's twip units.
+const TWIPS_PER_PX = 15
+const PX_PER_EM = 16
+
+/** Convert a sanitised "<n>px|em" spacing length to whole twips, or undefined. */
+function spacingToTwips(raw: unknown): number | undefined {
+  if (typeof raw !== 'string') return undefined
+  const m = /^(\d+(?:\.\d+)?)(px|em)$/.exec(raw.trim())
+  if (!m) return undefined
+  const px = parseFloat(m[1]) * (m[2] === 'em' ? PX_PER_EM : 1)
+  return Math.round(px * TWIPS_PER_PX)
+}
+
+/**
+ * Map the v17 line-spacing node attrs (lineHeight unitless + spaceBefore/spaceAfter
+ * px|em) onto a docx `spacing` object, or undefined when none apply. line-height is a
+ * unitless multiplier → Word's line value is in 240ths of a line with lineRule AUTO
+ * (e.g. 1.5 → 360). before/after are the block margins in twips.
+ */
+export function mapSpacing(attrs: Record<string, unknown> | undefined): ISpacingProperties | undefined {
+  if (!attrs) return undefined
+  const spacing: {
+    line?: number
+    lineRule?: (typeof LineRuleType)[keyof typeof LineRuleType]
+    before?: number
+    after?: number
+  } = {}
+
+  const lh = attrs.lineHeight
+  if (typeof lh === 'string' && /^\d+(?:\.\d+)?$/.test(lh.trim())) {
+    const n = Number(lh)
+    if (Number.isFinite(n) && n > 0) {
+      spacing.line = Math.round(n * 240)
+      spacing.lineRule = LineRuleType.AUTO
+    }
+  }
+
+  const before = spacingToTwips(attrs.spaceBefore)
+  if (before !== undefined) spacing.before = before
+  const after = spacingToTwips(attrs.spaceAfter)
+  if (after !== undefined) spacing.after = after
+
+  return Object.keys(spacing).length ? spacing : undefined
 }
