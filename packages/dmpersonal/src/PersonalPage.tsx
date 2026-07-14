@@ -38,11 +38,15 @@ export default function PersonalPage() {
   const tabRef = useRef<PersonalTabKey>("runtime");
   tabRef.current = tab;
   const mountedRef = useRef(true);
+  // 请求代号:resolveAndPaint 由导航事件驱动,快速切换可能并发多个 listWorkspaces;
+  // 每次进入自增,回来时若代号已过期就丢弃,保证"最后一次点击胜出"、不被慢的旧响应覆盖。
+  const resolveSeqRef = useRef(0);
 
   // 解析当前 workspace 归属并铺右栏。每次调用都重新 listWorkspaces —— 本页常驻不重挂,
   // 且 workspace 可能在别处(如 Loop)被创建/删除,machine↔workspace 模式必须每次重判,
   // 不能沿用挂载时缓存的判断(#729 评审:否则建了 workspace 仍卡在 machine 模式)。
   const resolveAndPaint = (showLoading: boolean) => {
+    const seq = ++resolveSeqRef.current;
     if (showLoading) {
       WKApp.routeRight.replaceToRoot(
         <PersonalWorkspaceState icon={<Loader2 size={36} />} title={t("personal.workspace.loading")} />,
@@ -50,8 +54,11 @@ export default function PersonalPage() {
     }
     workspaceApi.listWorkspaces()
       .then((workspaces) => {
-        if (!mountedRef.current) return;
-        const selection = resolveWorkspaceSelection(workspaces, currentWorkspaceId());
+        if (!mountedRef.current || seq !== resolveSeqRef.current) return;
+        // 优先用本页自己存的 workspace,仅当它不存在(如在别处被删)时才回落到共享全局。
+        // 直接读 currentWorkspaceId() 会让 Personal 跟随 Loop 最后选中的 workspace(#619 污染)。
+        const targetId = selectedWsRef.current?.id ?? currentWorkspaceId();
+        const selection = resolveWorkspaceSelection(workspaces, targetId);
         if (selection.mode === "machine") {
           // 0 workspace:机器级模式。清空 workspace 作用域(不发 x-workspace-slug),
           // 运行时列表走 /machine-runtimes;Skills 需 workspace,禁用。
@@ -75,7 +82,7 @@ export default function PersonalPage() {
         WKApp.routeRight.replaceToRoot(renderTab(tabRef.current));
       })
       .catch((error) => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || seq !== resolveSeqRef.current) return;
         const message = error?.message ? String(error.message) : t("personal.workspace.loadFailed");
         setWorkspaceError(message);
         setWorkspaceReady(false);
@@ -123,7 +130,8 @@ export default function PersonalPage() {
   useEffect(() => {
     const onNavMenuActivated = ({ menuId }: { menuId: string }) => {
       if (menuId !== "dmpersonal") return;
-      resolveRef.current(false);
+      // showLoading=true:框架会先 popToRoot 清空右栏,重解析是异步的,先铺加载态避免空白闪一下。
+      resolveRef.current(true);
     };
     WKApp.mittBus.on("wk:nav-menu-activated", onNavMenuActivated);
     return () => WKApp.mittBus.off("wk:nav-menu-activated", onNavMenuActivated);
