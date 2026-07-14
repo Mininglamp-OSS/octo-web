@@ -204,9 +204,7 @@ public sealed class ApiService : IApiService
     /// <inheritdoc />
     public async Task<LoginResult> LoginWithAuthCodeAsync(string authCode, CancellationToken ct = default)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Post, "/v1/user/login_authcode");
-        req.Content = JsonContent.Create(new { auth_code = authCode });
-        using var resp = await _http.SendAsync(req, ct);
+        using var resp = await _http.PostAsync($"/v1/user/login_authcode/{Uri.EscapeDataString(authCode)}", content: null, ct);
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<LoginResult>(Json, ct)
                    ?? throw new InvalidOperationException("Empty authcode login response.");

@@ -84,10 +84,10 @@ public interface IApiService
 
     /// <summary>
     /// Exchange a QR-login auth code for a session
-    /// (<c>POST /v1/user/login_authcode</c> with <c>{auth_code}</c> in body).
-    /// Mirrors <c>requestLogin</c> in <c>login_vm.tsx</c>. Called once the QR
-    /// status reaches <c>authed</c> and <see cref="QrLoginStatus.AuthCode"/>
-    /// is populated.
+    /// (<c>POST /v1/user/login_authcode/{authCode}</c>). Mirrors
+    /// <c>requestLogin</c> in <c>login_vm.tsx</c>. Called once the QR status
+    /// reaches <c>authed</c> and <see cref="QrLoginStatus.AuthCode"/> is
+    /// populated.
     /// </summary>
     Task<LoginResult> LoginWithAuthCodeAsync(string authCode, CancellationToken ct = default);
 
