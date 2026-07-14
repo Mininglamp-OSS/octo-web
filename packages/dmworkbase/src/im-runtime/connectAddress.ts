@@ -4,6 +4,14 @@ export interface ImConnectAddressManagerDeps {
   getConnectAddrs: () => Promise<string[]>;
 }
 
+export interface ImConnectAddressProviderSdk {
+  config: {
+    provider: {
+      connectAddrCallback?: (callback: ConnectAddrCallback) => Promise<void> | void;
+    };
+  };
+}
+
 export class ImConnectAddressManager {
   private wsaddrs = new Array<string>();
   private addrUsed = false;
@@ -28,4 +36,11 @@ export class ImConnectAddressManager {
       this.addrUsed = false;
     }
   }
+}
+
+export function registerImConnectAddressProvider(
+  sdk: ImConnectAddressProviderSdk,
+  connectAddrCallback: (callback: ConnectAddrCallback) => Promise<void> | void
+) {
+  sdk.config.provider.connectAddrCallback = connectAddrCallback;
 }

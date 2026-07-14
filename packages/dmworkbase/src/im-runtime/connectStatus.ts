@@ -6,6 +6,17 @@ export interface ImConnectStatusListenerDeps {
   rotateConnectAddress: () => void;
 }
 
+export type ImConnectStatusListener = (
+  status: ConnectStatus,
+  reasonCode?: number
+) => void;
+
+export interface ImConnectStatusSdk {
+  connectManager: {
+    addConnectStatusListener: (listener: ImConnectStatusListener) => void;
+  };
+}
+
 export function createImConnectStatusListener(
   deps: ImConnectStatusListenerDeps
 ) {
@@ -20,4 +31,13 @@ export function createImConnectStatusListener(
       deps.rotateConnectAddress();
     }
   };
+}
+
+export function registerImConnectStatusListener(
+  sdk: ImConnectStatusSdk,
+  deps: ImConnectStatusListenerDeps
+) {
+  sdk.connectManager.addConnectStatusListener(
+    createImConnectStatusListener(deps)
+  );
 }

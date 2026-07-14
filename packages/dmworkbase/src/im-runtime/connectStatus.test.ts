@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConnectStatus } from "wukongimjssdk";
-import { createImConnectStatusListener } from "./connectStatus";
+import {
+  createImConnectStatusListener,
+  registerImConnectStatusListener,
+} from "./connectStatus";
 
 function createDeps() {
   return {
@@ -53,5 +56,23 @@ describe("createImConnectStatusListener", () => {
     expect(deps.rotateConnectAddress).toHaveBeenCalledTimes(1);
     expect(deps.logout).not.toHaveBeenCalled();
     expect(deps.resetTyping).not.toHaveBeenCalled();
+  });
+
+  it("registers a connect status listener on the SDK connect manager", () => {
+    const deps = createDeps();
+    const sdk = {
+      connectManager: {
+        addConnectStatusListener: vi.fn(),
+      },
+    };
+
+    registerImConnectStatusListener(sdk, deps);
+
+    expect(sdk.connectManager.addConnectStatusListener).toHaveBeenCalledTimes(1);
+
+    const listener = sdk.connectManager.addConnectStatusListener.mock.calls[0][0];
+    listener(ConnectStatus.Connected);
+
+    expect(deps.resetTyping).toHaveBeenCalledTimes(1);
   });
 });

@@ -153,9 +153,12 @@ import StorageService from "./Service/StorageService";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { TypingManager } from "./Service/TypingManager";
 import { syncClientMsgDeviceId } from "./im-runtime/clientMsgDevice";
-import { ImConnectAddressManager } from "./im-runtime/connectAddress";
+import {
+  ImConnectAddressManager,
+  registerImConnectAddressProvider,
+} from "./im-runtime/connectAddress";
 import { connectImClient } from "./im-runtime/connectClient";
-import { createImConnectStatusListener } from "./im-runtime/connectStatus";
+import { registerImConnectStatusListener } from "./im-runtime/connectStatus";
 import {
   clearAuthStorage,
   consumeOidcPostLogoutCleanup,
@@ -814,8 +817,10 @@ export default class WKApp extends ProviderListener {
     // 暗黑模式已关闭，强制亮色
     WKApp.config.themeMode = ThemeMode.light;
 
-    WKSDK.shared().config.provider.connectAddrCallback =
-      this.imConnectAddressManager.connectAddrCallback;
+    registerImConnectAddressProvider(
+      WKSDK.shared(),
+      this.imConnectAddressManager.connectAddrCallback
+    );
 
     WKApp.endpoints.addOnLogin(() => {
       this.startMain();
@@ -825,14 +830,12 @@ export default class WKApp extends ProviderListener {
       this.startMain();
     }
 
-    WKSDK.shared().connectManager.addConnectStatusListener(
-      createImConnectStatusListener({
-        logout: () => WKApp.shared.logout(),
-        resetTyping: () => TypingManager.shared.resetAll(),
-        rotateConnectAddress: () =>
-          this.imConnectAddressManager.rotateAfterDisconnect(),
-      })
-    );
+    registerImConnectStatusListener(WKSDK.shared(), {
+      logout: () => WKApp.shared.logout(),
+      resetTyping: () => TypingManager.shared.resetAll(),
+      rotateConnectAddress: () =>
+        this.imConnectAddressManager.rotateAfterDisconnect(),
+    });
 
     // 通知设置
     const notificationIsClose = StorageService.shared.getItem(
