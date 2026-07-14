@@ -80,15 +80,28 @@ export class RevokeCell extends MessageCell {
 
     /**
      * 点击「重新编辑」：将原文夹回输入框
+     *
+     * 注意：
+     * 1. 如果消息被编辑过（remoteExtra.isEdit），展示的是编辑后的最终版本（contentEdit），与其他地方的逻辑一致
+     * 2. 使用 restoreDraft 而非 insertText，确保 @mention / emoji 的结构得到正确解析
      */
     private handleReEdit = () => {
         const { message } = this.props
         const conversationContext = (this.props as any).context
-        if (!conversationContext?.insertText) return
-        const textContent = message.content as MessageText
+        if (!conversationContext?.restoreDraft) return
+
+        // 与 Model.tsx parseMention 和 Messages/Text getRenderMessageText 一致：
+        // 如果消息被编辑过，取 contentEdit；否则取原始 content
+        const remoteExtra = (message.message as any)?.remoteExtra
+        let textContent: MessageText
+        if (remoteExtra?.isEdit && remoteExtra?.contentEdit) {
+            textContent = remoteExtra.contentEdit as MessageText
+        } else {
+            textContent = message.content as MessageText
+        }
         const originalText = textContent?.text ?? ''
         if (!originalText) return
-        conversationContext.insertText(originalText)
+        conversationContext.restoreDraft(originalText)
     }
 
     render() {

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import React from "react"
+import ReactDOM from "react-dom"
 import { renderToStaticMarkup } from "react-dom/server"
+import { act } from "react-dom/test-utils"
 import { describe, it, expect, vi } from "vitest"
 
 // ── Minimal SDK stubs ─────────────────────────────────────────────────────────
@@ -55,10 +57,11 @@ function makeMessage(overrides: Record<string, any> = {}) {
     return {
         revoker: "user-self",
         fromUID: "user-self",
-        contentType: 1, // MessageContentType.text
+        contentType: 1,
         content: { text: "这是原始消息内容", contentType: 1 },
         from: null,
         remoteExtra: {},
+        message: { remoteExtra: {} },
         ...overrides,
     }
 }
@@ -66,6 +69,7 @@ function makeMessage(overrides: Record<string, any> = {}) {
 function renderCell(message: any, contextOverrides: any = {}) {
     const ctx = {
         insertText: vi.fn(),
+        restoreDraft: vi.fn(),
         ...contextOverrides,
     }
     // RevokeCell is a class component; render via renderToStaticMarkup
@@ -91,7 +95,7 @@ describe("RevokeCell — re-edit button", () => {
     })
 
     it("does NOT show re-edit button for non-text messages (e.g. image)", () => {
-        const html = renderCell(makeMessage({ contentType: 2 })) // image
+        const html = renderCell(makeMessage({ contentType: 2 }))
         expect(html).not.toContain("重新编辑")
     })
 
@@ -103,5 +107,68 @@ describe("RevokeCell — re-edit button", () => {
     it("always shows the revoke tip text", () => {
         const html = renderCell(makeMessage())
         expect(html).toContain("你撤回了一条消息")
+    })
+})
+
+describe("RevokeCell — handleReEdit text resolution", () => {
+    it("uses restoreDraft (not insertText) to preserve mention/emoji structure", () => {
+        const restoreDraft = vi.fn()
+        const insertText = vi.fn()
+        const container = document.createElement("div")
+        document.body.appendChild(container)
+        const ctx = { restoreDraft, insertText }
+        act(() => {
+            ReactDOM.render(
+                React.createElement(RevokeCell as any, { message: makeMessage(), context: ctx }),
+                container
+            )
+        })
+        const btn = container.querySelector(".wk-revoke-reedit-btn") as HTMLElement
+        act(() => { btn.click() })
+        expect(restoreDraft).toHaveBeenCalledWith("这是原始消息内容")
+        expect(insertText).not.toHaveBeenCalled()
+        ReactDOM.unmountComponentAtNode(container)
+        container.remove()
+    })
+
+    it("uses contentEdit text when message was edited before recall (isEdit=true)", () => {
+        const restoreDraft = vi.fn()
+        const msg = makeMessage({
+            message: {
+                remoteExtra: {
+                    isEdit: true,
+                    contentEdit: { text: "编辑后的最终版本", contentType: 1 },
+                },
+            },
+        })
+        const container = document.createElement("div")
+        document.body.appendChild(container)
+        act(() => {
+            ReactDOM.render(
+                React.createElement(RevokeCell as any, { message: msg, context: { restoreDraft } }),
+                container
+            )
+        })
+        act(() => { (container.querySelector(".wk-revoke-reedit-btn") as HTMLElement).click() })
+        expect(restoreDraft).toHaveBeenCalledWith("编辑后的最终版本")
+        ReactDOM.unmountComponentAtNode(container)
+        container.remove()
+    })
+
+    it("falls back to content.text when isEdit=false", () => {
+        const restoreDraft = vi.fn()
+        const msg = makeMessage({ message: { remoteExtra: { isEdit: false } } })
+        const container = document.createElement("div")
+        document.body.appendChild(container)
+        act(() => {
+            ReactDOM.render(
+                React.createElement(RevokeCell as any, { message: msg, context: { restoreDraft } }),
+                container
+            )
+        })
+        act(() => { (container.querySelector(".wk-revoke-reedit-btn") as HTMLElement).click() })
+        expect(restoreDraft).toHaveBeenCalledWith("这是原始消息内容")
+        ReactDOM.unmountComponentAtNode(container)
+        container.remove()
     })
 })
