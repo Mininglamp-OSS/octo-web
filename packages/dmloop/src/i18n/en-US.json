@@ -189,6 +189,7 @@
     "none": "No workspace",
     "nameRequired": "Workspace name is required",
     "slugRequired": "Slug is required",
+    "slugTaken": "That slug is already taken, please try another",
     "emptyTitle": "No workspace yet",
     "emptyDesc": "Create a workspace to start using Loop."
   },

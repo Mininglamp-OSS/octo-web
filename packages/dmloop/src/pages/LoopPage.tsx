@@ -5,12 +5,13 @@ import {
   ChevronDown, Check, Plus, SquarePen, FolderPlus,
   Zap, CircleUserRound,
 } from "lucide-react";
-import { useI18n, WKApp } from "@octo/base";
+import { useI18n, WKApp, getPinyin } from "@octo/base";
 import type { Workspace } from "../api/types";
 import { listWorkspaces, createWorkspace } from "../api/workspaceApi";
 import { setWorkspaceContext, currentWorkspaceId } from "../api/http";
 import { invalidateDirectory } from "../api/directory";
 import { invalidateRuntimeMap } from "../api/agentApi";
+import { slugSuffix, withRandomSuffix } from "../ui/slug";
 import IssuePage from "./IssuePage";
 import NewLoopPage from "./NewLoopPage";
 import ProjectPage from "./ProjectPage";
@@ -41,10 +42,6 @@ const WORKSPACE_TABS: { key: TabKey; icon: React.ReactNode }[] = [
 ];
 const SETTINGS_TAB: { key: TabKey; icon: React.ReactNode } = { key: "settings", icon: <Settings size={16} /> };
 
-function slugify(s: string): string {
-  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-}
-
 export default function LoopPage() {
   const { t } = useI18n();
   const [tab, setTab] = useState<TabKey>("issue");
@@ -55,6 +52,7 @@ export default function LoopPage() {
   const [wsName, setWsName] = useState("");
   const [wsSlug, setWsSlug] = useState("");
   const [wsSlugTouched, setWsSlugTouched] = useState(false);
+  const [wsSlugSuffix, setWsSlugSuffix] = useState("");
   const [wsBusy, setWsBusy] = useState(false);
 
   const findWs = (list: Workspace[], id: string) => list.find((w) => w.id === id) ?? null;
@@ -174,22 +172,35 @@ export default function LoopPage() {
   };
 
   const openCreateWs = () => {
-    setWsName(""); setWsSlug(""); setWsSlugTouched(false); setWsModalOpen(true);
+    setWsName(""); setWsSlug(""); setWsSlugTouched(false); setWsSlugSuffix(slugSuffix()); setWsModalOpen(true);
   };
   const doCreateWs = async () => {
-    if (!wsName.trim()) { Toast.warning(t("loop.workspace.nameRequired")); return; }
-    const slug = (wsSlug.trim() || slugify(wsName));
+    const name = wsName.trim();
+    if (!name) { Toast.warning(t("loop.workspace.nameRequired")); return; }
+    const autoSlug = !wsSlugTouched;
+    let slug = wsSlug.trim() || withRandomSuffix(getPinyin(name), wsSlugSuffix);
     if (!slug) { Toast.warning(t("loop.workspace.slugRequired")); return; }
     setWsBusy(true);
     try {
-      const created = await createWorkspace({ name: wsName.trim(), slug });
-      setWsModalOpen(false);
-      const list = await reloadWorkspaces();
-      // 立即切换到新建 workspace 并刷新
-      applyWorkspace(findWs(list, created.id) ?? created, list);
-      setTab("issue");
-      WKApp.routeRight.replaceToRoot(<IssuePage />);
-      Toast.success(t("loop.workspace.created"));
+      // auto slug re-rolls its random suffix on the backend's 409 (slug is
+      // globally unique) so the happy path needs no manual input; a user-typed
+      // slug is surfaced as taken, never silently changed.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const created = await createWorkspace({ name, slug });
+          setWsModalOpen(false);
+          const list = await reloadWorkspaces();
+          applyWorkspace(findWs(list, created.id) ?? created, list);
+          setTab("issue");
+          WKApp.routeRight.replaceToRoot(<IssuePage />);
+          Toast.success(t("loop.workspace.created"));
+          return;
+        } catch (e) {
+          if ((e as { status?: number })?.status !== 409) throw e;
+          if (!autoSlug || attempt === 2) { Toast.error(t("loop.workspace.slugTaken")); return; }
+          slug = withRandomSuffix(getPinyin(name), slugSuffix());
+        }
+      }
     } catch (e) { Toast.error((e as Error)?.message ?? "create failed"); }
     finally { setWsBusy(false); }
   };
@@ -272,7 +283,7 @@ export default function LoopPage() {
         <div className="loop-fields">
           <div className="loop-fields__row">
             <div className="loop-fields__label">{t("loop.settings.wsName")}</div>
-            <input autoFocus className="loop-field" value={wsName} onChange={(e) => { setWsName(e.target.value); if (!wsSlugTouched) setWsSlug(slugify(e.target.value)); }} placeholder={t("loop.workspace.namePlaceholder")} />
+            <input autoFocus className="loop-field" value={wsName} onChange={(e) => { setWsName(e.target.value); if (!wsSlugTouched) setWsSlug(e.target.value.trim() ? withRandomSuffix(getPinyin(e.target.value), wsSlugSuffix) : ""); }} placeholder={t("loop.workspace.namePlaceholder")} />
           </div>
           <div className="loop-fields__row">
             <div className="loop-fields__label">{t("loop.settings.wsSlug")}</div>

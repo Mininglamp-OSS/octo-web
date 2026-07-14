@@ -189,6 +189,7 @@
     "none": "无工作区",
     "nameRequired": "请填写工作区名称",
     "slugRequired": "请填写 slug",
+    "slugTaken": "该 slug 已被占用，请换一个",
     "emptyTitle": "还没有工作区",
     "emptyDesc": "创建一个工作区开始使用回路。"
   },
