@@ -161,8 +161,9 @@ async function pasteThroughEditor(
     editor.state.doc.descendants((node) => {
       const mark = node.marks.find((m) => m.type.name === 'textStyle')
       if (mark) {
-        // '' (an empty resolved fontFamily, e.g. a span that only kept font-size) means no font
-        // was chosen — normalize it to null so the assertion tracks a real family, not a shell.
+        // LiveFontFamily normalizes an empty resolved family to null (schema default), so a span
+        // that only kept font-size no longer carries a `fontFamily=""` shell. The `|| null` here
+        // is belt-and-suspenders — it keeps this helper tracking a real family, not an empty one.
         family = family || ((mark.attrs.fontFamily as string | null) || null)
         size = size || ((mark.attrs.fontSize as string | null) || null)
       }
@@ -219,3 +220,115 @@ describe('paste write path — LiveFontFamily plugin + FONT_FAMILY_ENABLED gatin
     expect(family).toBe('Georgia, serif')
   })
 })
+
+// Strict Y.Doc invariant (three human reviewers gate on it): with the flag off, a pasted `font`
+// shorthand must write NO fontFamily VALUE into the shared Y.Doc. The sanitizer strips the family
+// from `font: 14px Georgia` (→ `font-size: 14px`), but the surviving span still parses through
+// FontFamily.parseHTML, whose upstream reads element.style.fontFamily, resolves "" (empty string)
+// and stores it as `fontFamily=""` on the textStyle mark — an empty-but-written key that still
+// "reaches" the Y.Doc and trips the invariant. (fontFamily is registered UNCONDITIONALLY so the
+// schema always round-trips stored fonts, so the attr's schema DEFAULT — null — is present on
+// every textStyle mark regardless of the flag, exactly as it is for a plain flag-off `font-size`
+// paste; the invariant is about a WRITTEN value, not the schema default.) These tests drive the
+// paste end-to-end through the REAL Collaboration binding (y-prosemirror) and assert on the
+// serialized Y.Doc fragment: they fail on `fontFamily=""` and pass only when the attr sits at its
+// default, indistinguishable from a paste that never carried a font.
+async function pasteIntoYDocFragment(
+  html: string,
+  flagOn: boolean,
+): Promise<{ xml: string; markAttrs: Array<Record<string, unknown>> }> {
+  vi.resetModules()
+  vi.stubEnv('VITE_DOCS_FONT_FAMILY', flagOn ? 'true' : 'false')
+
+  const [{ Editor }, starterKitMod, textStyleMod, collabMod, ext, Y] = await Promise.all([
+    import('@tiptap/core'),
+    import('@tiptap/starter-kit'),
+    import('@tiptap/extension-text-style'),
+    import('@tiptap/extension-collaboration'),
+    import('./extensions.ts'),
+    import('yjs'),
+  ])
+  const StarterKit = starterKitMod.default
+  const { TextStyle, FontSize } = textStyleMod
+  const Collaboration = collabMod.default
+  const { LiveFontFamily } = ext
+  const ydoc = new Y.Doc()
+
+  const editor = new Editor({
+    element: document.createElement('div'),
+    extensions: [
+      StarterKit.configure({ undoRedo: false, codeBlock: false }),
+      TextStyle,
+      FontSize,
+      LiveFontFamily,
+      // The real collaborative binding: y-prosemirror mirrors the ProseMirror doc into this
+      // Y.Doc, so whatever value survives on the textStyle mark is exactly what reaches the Y.Doc.
+      Collaboration.configure({ document: ydoc, field: 'default' }),
+    ],
+  })
+
+  try {
+    const gate = editor.view.state.plugins.find(
+      (p) => typeof p.props?.transformPastedHTML === 'function',
+    )
+    const transformed = gate!.props.transformPastedHTML!.call(gate!, html, editor.view) ?? html
+    editor.commands.setContent(transformed)
+
+    // Raw (un-normalized) textStyle attrs, so an empty-string fontFamily is NOT hidden.
+    const markAttrs: Array<Record<string, unknown>> = []
+    editor.state.doc.descendants((node) => {
+      const mark = node.marks.find((m) => m.type.name === 'textStyle')
+      if (mark) markAttrs.push({ ...mark.attrs })
+    })
+    return { xml: ydoc.getXmlFragment('default').toString(), markAttrs }
+  } finally {
+    editor.destroy()
+  }
+}
+
+describe('strict flag-off Y.Doc invariant — no fontFamily value from a pasted `font` shorthand', () => {
+  const shorthand = '<span style="font: 14px Georgia">styled</span>'
+
+  it('flag OFF: the shorthand paste writes NO fontFamily value into the Y.Doc (not even an empty one)', async () => {
+    const { xml, markAttrs } = await pasteIntoYDocFragment(shorthand, false)
+    // The bug signature — an empty, but WRITTEN, fontFamily — must be gone from the Y.Doc …
+    expect(xml).not.toContain('fontFamily=""')
+    // … and no real family may leak either.
+    expect(xml).not.toMatch(/fontFamily="(?!null")[^"]/i)
+    // font-size must survive (we gate the family out, not the size).
+    expect(xml).toMatch(/fontSize="14px"/)
+    // The textStyle mark must carry fontFamily at its schema DEFAULT (null), never a string — an
+    // empty string "" is the bug, a family name is a leak; only null means "no font was written".
+    for (const attrs of markAttrs) {
+      expect(attrs.fontFamily, `fontFamily should be null, got ${JSON.stringify(attrs.fontFamily)}`).toBeNull()
+    }
+  })
+
+  it('flag OFF: the shorthand paste is indistinguishable in the Y.Doc from a plain `font-size` paste', async () => {
+    // Proves the family truly never reached the Y.Doc: the shorthand (family stripped, size kept)
+    // serializes to exactly the same fragment as a paste that only ever carried a font-size, so
+    // the fontFamily attr sits at its unconditional-registration default in both — nothing extra.
+    const { xml: fromShorthand } = await pasteIntoYDocFragment(shorthand, false)
+    const { xml: fromPlainSize } = await pasteIntoYDocFragment(
+      '<span style="font-size: 14px">styled</span>',
+      false,
+    )
+    expect(fromShorthand).toBe(fromPlainSize)
+  })
+
+  // A malicious/degenerate shorthand with no parseable font-size (the ReDoS-style sample shape)
+  // is dropped whole by the sanitizer, so it leaves no textStyle mark and no fontFamily at all.
+  it('flag OFF: a shorthand with no parseable size leaves no textStyle mark (no fontFamily)', async () => {
+    const { xml, markAttrs } = await pasteIntoYDocFragment('<span style="font: Georgia">styled</span>', false)
+    expect(xml).not.toMatch(/fontFamily/i)
+    expect(markAttrs).toHaveLength(0)
+  })
+
+  it('flag ON: the same shorthand DOES write the family into the Y.Doc (round-trip intact)', async () => {
+    const { xml } = await pasteIntoYDocFragment(shorthand, true)
+    expect(xml).toMatch(/fontFamily="Georgia"/)
+    expect(xml).toMatch(/fontSize="14px"/)
+  })
+})
+
+

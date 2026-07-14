@@ -80,6 +80,38 @@ const lowlight = createDocsLowlight()
 // Exported so the paste-gate can be exercised through the real ProseMirror plugin (not by
 // calling the sanitizer directly) in fontFamilyPaste.test.ts.
 export const LiveFontFamily = FontFamily.extend({
+  // Harden the `fontFamily` textStyle attribute so an EMPTY resolved family never writes an
+  // empty `fontFamily` key into the shared Y.Doc. The flag-off paste gate (transformPastedHTML
+  // below) strips the family from a `font` shorthand — `font: 14px Georgia` becomes
+  // `font-size: 14px` — but the surviving span still parses through FontFamily.parseHTML, and
+  // `element.style.fontFamily` on that span resolves to "" (empty string). Upstream's parseHTML
+  // returns that "" verbatim, and Tiptap treats it as a real attr value → the textStyle mark is
+  // stored as `fontFamily=""`. That empty key still "reaches" the Y.Doc, violating the strict
+  // flag-off invariant the three human reviewers gate on ("no fontFamily reaches Y.Doc via paste
+  // when flag off") even though renderHTML emits nothing for it. Normalizing an empty /
+  // whitespace-only resolution to null lets the attr default out entirely, so NO fontFamily key
+  // is ever serialized. This is universally correct (an empty font-family is never a meaningful
+  // value) and independent of the flag: a real family (flag on, or a stored font) is non-empty
+  // and passes through untouched, so the toolbar write path and round-trip stay intact.
+  addGlobalAttributes() {
+    return (this.parent?.() ?? []).map((group) =>
+      group.attributes && 'fontFamily' in group.attributes
+        ? {
+            ...group,
+            attributes: {
+              ...group.attributes,
+              fontFamily: {
+                ...group.attributes.fontFamily,
+                parseHTML: (element: HTMLElement) => {
+                  const family = (element.style.fontFamily ?? '').trim()
+                  return family === '' ? null : family
+                },
+              },
+            },
+          }
+        : group,
+    )
+  },
   addProseMirrorPlugins() {
     return [
       ...(this.parent?.() ?? []),
