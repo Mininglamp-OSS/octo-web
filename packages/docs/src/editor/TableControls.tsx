@@ -111,14 +111,33 @@ function TbBtn({
  * point, `posAtCoords` mapped that to a document position, and this moves the selection there so the
  * position-relative table commands (addRow / deleteColumn / …) act on the cell that was clicked
  * rather than wherever the caret happened to be. `pos` is clamped into the document so an
- * out-of-range value from `posAtCoords` can never throw. Returns `editor.isActive('table')` — the
- * gate the caller uses to decide whether to open a table menu (and suppress the native one) at all.
+ * out-of-range value from `posAtCoords` can never throw.
+ *
+ * The table test is done on the *resolved* position WITHOUT dispatching anything, so a right-click
+ * on ordinary (non-table) text is a complete no-op: the selection is only moved when `pos` really
+ * lands inside a table cell. That keeps a right-click outside a table from collapsing the user's
+ * existing selection, so the browser's native context menu / Copy still act on the selected text.
+ * Returns whether the click was inside a table — the gate the caller uses to decide whether to open
+ * a table menu (and suppress the native one) at all.
  */
 export function moveSelectionIntoCell(editor: Editor, pos: number): boolean {
-  const { doc, tr } = editor.state
+  const { doc } = editor.state
   const safe = Math.max(0, Math.min(pos, doc.content.size))
-  editor.view.dispatch(tr.setSelection(TextSelection.near(doc.resolve(safe))))
-  return editor.isActive('table')
+  const $pos = doc.resolve(safe)
+
+  // Walk the resolved position's ancestors to see whether it sits inside a table, without touching
+  // the current selection. Mirrors editor.isActive('table') but for an arbitrary position.
+  let inTable = false
+  for (let depth = $pos.depth; depth > 0; depth--) {
+    if ($pos.node(depth).type.name === 'table') {
+      inTable = true
+      break
+    }
+  }
+  if (!inTable) return false
+
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near($pos)))
+  return true
 }
 
 /**

@@ -89,6 +89,27 @@ describe('moveSelectionIntoCell — gate + selection move for the right-clicked 
     e.destroy()
   })
 
+  it('leaves an existing selection untouched when the pointer is outside any table', () => {
+    // Regression: a right-click on ordinary (non-table) text must be a complete no-op — it must
+    // NOT collapse the user's current selection, so the browser's native context menu / Copy keeps
+    // operating on the still-selected text. Previously the selection was moved before the
+    // isActive('table') gate, which collapsed any selection on every out-of-table right-click.
+    const e = tableEditor(HISTORICAL_DOC)
+    // Select a range inside the leading "before" paragraph (text occupies positions 1..7).
+    e.commands.setTextSelection({ from: 2, to: 5 })
+    expect(e.state.selection.empty).toBe(false)
+
+    const paragraphPos = 3 // right-click lands inside that same paragraph, outside the table
+    expect(moveSelectionIntoCell(e, paragraphPos)).toBe(false)
+
+    // Selection is preserved exactly — not collapsed, not moved.
+    expect(e.state.selection.from).toBe(2)
+    expect(e.state.selection.to).toBe(5)
+    expect(e.state.selection.empty).toBe(false)
+    expect(e.isActive('table')).toBe(false)
+    e.destroy()
+  })
+
   it('is safe against out-of-range positions', () => {
     const e = tableEditor(HISTORICAL_DOC)
     expect(() => moveSelectionIntoCell(e, 1e9)).not.toThrow()
