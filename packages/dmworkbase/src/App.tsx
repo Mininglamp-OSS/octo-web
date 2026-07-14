@@ -131,12 +131,10 @@ import SectionManager, { Row, Section } from "./Service/Section";
 import { EndpointCategory, ChannelTypeCommunityTopic } from "./Service/Const";
 import { parseThreadChannelId } from "./Service/Thread";
 import { DataSource } from "./Service/DataSource/DataSource";
-import { ConnectAddrCallback } from "wukongimjssdk";
 
 import "animate.css";
 import "./App.css";
 import RouteContext from "./Service/Context";
-import { ConnectStatus } from "wukongimjssdk";
 import { GroupStatusDisband } from "./Utils/groupDisband";
 
 // 解散群的默认灰色头像（内联 SVG data-URI，避免新增二进制资源）。
@@ -154,6 +152,8 @@ import { WKBaseContext } from "./Components/WKBase";
 import StorageService from "./Service/StorageService";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { TypingManager } from "./Service/TypingManager";
+import { ImConnectAddressManager } from "./im-runtime/connectAddress";
+import { createImConnectStatusListener } from "./im-runtime/connectStatus";
 import {
   clearAuthStorage,
   consumeOidcPostLogoutCleanup,
@@ -764,8 +764,9 @@ export default class WKApp extends ProviderListener {
 
   private _notificationIsClose: boolean = false; // 通知是否关闭
 
-  private wsaddrs = new Array<string>(); // ws的连接地址
-  private addrUsed = false; // 地址是否被使用
+  private imConnectAddressManager = new ImConnectAddressManager({
+    getConnectAddrs: () => WKApp.dataSource.commonDataSource.imConnectAddrs(),
+  });
 
   isPC = false; // 是否是PC端
   deviceId: string = ""; // 设备ID
@@ -811,17 +812,8 @@ export default class WKApp extends ProviderListener {
     // 暗黑模式已关闭，强制亮色
     WKApp.config.themeMode = ThemeMode.light;
 
-    WKSDK.shared().config.provider.connectAddrCallback = async (
-      callback: ConnectAddrCallback
-    ) => {
-      if (!this.wsaddrs || this.wsaddrs.length === 0) {
-        this.wsaddrs = await WKApp.dataSource.commonDataSource.imConnectAddrs();
-      }
-      if (this.wsaddrs.length > 0) {
-        this.addrUsed = true;
-        callback(this.wsaddrs[0]);
-      }
-    };
+    WKSDK.shared().config.provider.connectAddrCallback =
+      this.imConnectAddressManager.connectAddrCallback;
 
     WKApp.endpoints.addOnLogin(() => {
       this.startMain();
@@ -832,27 +824,12 @@ export default class WKApp extends ProviderListener {
     }
 
     WKSDK.shared().connectManager.addConnectStatusListener(
-      (status: ConnectStatus, reasonCode?: number) => {
-        if (status === ConnectStatus.ConnectKick) {
-          WKApp.shared.logout();
-        } else if (reasonCode === 2) {
-          // 认证失败！
-          WKApp.shared.logout();
-        } else if (status === ConnectStatus.Connected) {
-          // 第二层防御：重连成功后清除所有残留 typing。
-          // SDK 重连只 reSubscribe，不补拉离线消息/CMD，断连期间 bot 回复经
-          // HTTP sync 落库不触发清除路径 → typing 永不清。放全局单例 listener
-          // （生命周期最长），不放 Chat/vm.ts（随页面卸载注销）。
-          TypingManager.shared.resetAll();
-        } else if (status === ConnectStatus.Disconnect) {
-          if (this.addrUsed && this.wsaddrs.length > 1) {
-            const oldwsAddr = this.wsaddrs[0];
-            this.wsaddrs.splice(0, 1);
-            this.wsaddrs.push(oldwsAddr);
-            this.addrUsed = false;
-          }
-        }
-      }
+      createImConnectStatusListener({
+        logout: () => WKApp.shared.logout(),
+        resetTyping: () => TypingManager.shared.resetAll(),
+        rotateConnectAddress: () =>
+          this.imConnectAddressManager.rotateAfterDisconnect(),
+      })
     );
 
     // 通知设置
