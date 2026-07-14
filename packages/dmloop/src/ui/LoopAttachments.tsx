@@ -4,6 +4,7 @@ import { useI18n } from "@octo/base";
 import type { Attachment } from "../api/types";
 import { fetchAttachmentBlob } from "../api/attachmentApi";
 import { loadObjectUrl } from "./objectUrl";
+import { canPreviewInline } from "./attachmentPreview";
 
 /**
  * Attachment renderer for the loop timeline. Loads bytes through the
@@ -29,7 +30,7 @@ function AuthedImage({ att }: { att: Attachment }) {
     return loadObjectUrl(att.id, {
       onLoad: setUrl,
       onError: () => setFailed(true),
-    }, { fetchBlob: fetchAttachmentBlob });
+    }, { fetchBlob: fetchAttachmentBlob, isInlineSafe: canPreviewInline });
   }, [att.id]);
 
   if (failed) {
@@ -104,7 +105,7 @@ export default function LoopAttachments({
   return (
     <div className="loop-atts">
       {attachments.map((a) =>
-        a.content_type.startsWith("image/") ? (
+        canPreviewInline(a.content_type) ? (
           <AuthedImage key={a.id} att={a} />
         ) : (
           <AuthedDownload key={a.id} att={a} />

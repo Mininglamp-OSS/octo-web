@@ -113,4 +113,44 @@ describe("loadObjectUrl", () => {
     await Promise.resolve();
     expect(onError).not.toHaveBeenCalled();
   });
+
+  // Security guard: a blob whose MIME is not inline-safe (e.g. SVG) must never
+  // become an object URL — onError fires so the caller falls back to download.
+  it("rejects an inline-unsafe blob without creating a URL", async () => {
+    const onLoad = vi.fn();
+    const onError = vi.fn();
+    const create = vi.fn();
+    loadObjectUrl(
+      "att-1",
+      { onLoad, onError },
+      {
+        fetchBlob: () => Promise.resolve(new Blob(["<svg/>"], { type: "image/svg+xml" })),
+        isInlineSafe: (m) => m === "image/png",
+        createObjectURL: create,
+        revokeObjectURL: vi.fn(),
+      },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onLoad).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("delivers an inline-safe blob through the guard", async () => {
+    const onLoad = vi.fn();
+    loadObjectUrl(
+      "att-1",
+      { onLoad, onError: vi.fn() },
+      {
+        fetchBlob: () => Promise.resolve(new Blob(["x"], { type: "image/png" })),
+        isInlineSafe: (m) => m === "image/png",
+        createObjectURL: () => "blob:safe",
+        revokeObjectURL: vi.fn(),
+      },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onLoad).toHaveBeenCalledWith("blob:safe");
+  });
 });
