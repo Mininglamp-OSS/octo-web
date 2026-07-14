@@ -27,70 +27,55 @@ export default function PersonalPage() {
   const { t } = useI18n();
   const [tab, setTab] = useState<PersonalTabKey>("runtime");
   const [workspaceReady, setWorkspaceReady] = useState(false);
-  const [workspaceEmpty, setWorkspaceEmpty] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
-  // machine 模式(0 workspace):只有 runtime 走机器级端点;skill 仍按 workspace 管理,
-  // 无 workspace 时不可用。用 state 驱动 tab 禁用渲染,用 ref 供挂载/导航副作用读取。
+  // machine 模式(0 workspace)标记:machine 模式禁用 Skills、清空 workspace 作用域。
+  // 用 state 驱动 tab 禁用渲染,用 ref 供导航激活副作用同步读取。
   const [machineMode, setMachineMode] = useState(false);
   // Loop 与 Personal 共享 @octo/loop 里的模块级 workspace 全局。存下本页选定的 workspace,
   // 以便在 tab 切换 / 导航再激活时重新断言,避免被 Loop 的选择污染(#619 评审)。
   const selectedWsRef = useRef<{ slug: string; id: string } | null>(null);
-  // machine 模式(0 workspace)标记:nav 重激活 / tab 切换时据此清空 workspace 作用域并重铺,
-  // 而不是像 workspace 模式那样重设 slug。避免 selectedWsRef 为 null 时右栏被清空不重铺。
   const machineModeRef = useRef(false);
   const tabRef = useRef<PersonalTabKey>("runtime");
   tabRef.current = tab;
+  const mountedRef = useRef(true);
 
-  const openTab = (key: PersonalTabKey) => {
-    if (!workspaceReady) return;
-    if (machineModeRef.current && key === "skill") return; // skill 需 workspace,机器级模式禁用
-    const ws = selectedWsRef.current;
-    if (machineModeRef.current) {
-      setWorkspaceContext("", ""); // 机器级模式:清空作用域,列表走 /machine-runtimes
-    } else if (ws) {
-      setWorkspaceContext(ws.slug, ws.id); // 铺视图前先把全局上下文拨回本页的 workspace
+  // 解析当前 workspace 归属并铺右栏。每次调用都重新 listWorkspaces —— 本页常驻不重挂,
+  // 且 workspace 可能在别处(如 Loop)被创建/删除,machine↔workspace 模式必须每次重判,
+  // 不能沿用挂载时缓存的判断(#729 评审:否则建了 workspace 仍卡在 machine 模式)。
+  const resolveAndPaint = (showLoading: boolean) => {
+    if (showLoading) {
+      WKApp.routeRight.replaceToRoot(
+        <PersonalWorkspaceState icon={<Loader2 size={36} />} title={t("personal.workspace.loading")} />,
+      );
     }
-    setTab(key);
-    WKApp.routeRight.replaceToRoot(renderTab(key));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-
-    WKApp.routeRight.replaceToRoot(
-      <PersonalWorkspaceState icon={<Loader2 size={36} />} title={t("personal.workspace.loading")} />,
-    );
-
     workspaceApi.listWorkspaces()
       .then((workspaces) => {
-        if (cancelled) return;
+        if (!mountedRef.current) return;
         const selection = resolveWorkspaceSelection(workspaces, currentWorkspaceId());
-
         if (selection.mode === "machine") {
           // 0 workspace:机器级模式。清空 workspace 作用域(不发 x-workspace-slug),
-          // 运行时列表转而走 /machine-runtimes;不显示「请先加入 workspace」。
+          // 运行时列表走 /machine-runtimes;Skills 需 workspace,禁用。
           machineModeRef.current = true;
           setMachineMode(true);
           selectedWsRef.current = null;
           setWorkspaceContext("", "");
-          setWorkspaceReady(true);
-          setWorkspaceEmpty(false);
-          setWorkspaceError(null);
-          WKApp.routeRight.replaceToRoot(renderTab(tabRef.current));
-          return;
+          // machine 模式禁用 Skills:若当前正停在 Skills tab,回落到 runtime。
+          if (tabRef.current === "skill") {
+            tabRef.current = "runtime";
+            setTab("runtime");
+          }
+        } else {
+          machineModeRef.current = false;
+          setMachineMode(false);
+          selectedWsRef.current = { slug: selection.slug, id: selection.id };
+          setWorkspaceContext(selection.slug, selection.id);
         }
-
-        machineModeRef.current = false;
-        setMachineMode(false);
-        selectedWsRef.current = { slug: selection.slug, id: selection.id };
-        setWorkspaceContext(selection.slug, selection.id);
         setWorkspaceReady(true);
-        setWorkspaceEmpty(false);
         setWorkspaceError(null);
         WKApp.routeRight.replaceToRoot(renderTab(tabRef.current));
       })
       .catch((error) => {
-        if (cancelled) return;
+        if (!mountedRef.current) return;
         const message = error?.message ? String(error.message) : t("personal.workspace.loadFailed");
         setWorkspaceError(message);
         setWorkspaceReady(false);
@@ -102,30 +87,43 @@ export default function PersonalPage() {
           />,
         );
       });
+  };
+  // 始终指向最新的 resolveAndPaint,供 []-依赖的副作用调用(避免陈旧闭包,同时不让
+  // 副作用因 t 变化而重挂——对齐 LoopPage 的 mount-once 行为,切语言不闪回加载态)。
+  const resolveRef = useRef(resolveAndPaint);
+  resolveRef.current = resolveAndPaint;
 
+  const openTab = (key: PersonalTabKey) => {
+    if (!workspaceReady) return;
+    if (machineModeRef.current && key === "skill") return; // skill 需 workspace,机器级模式禁用
+    const ws = selectedWsRef.current;
+    if (machineModeRef.current) {
+      setWorkspaceContext("", "");
+    } else if (ws) {
+      setWorkspaceContext(ws.slug, ws.id);
+    }
+    setTab(key);
+    WKApp.routeRight.replaceToRoot(renderTab(key));
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    resolveRef.current(true);
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
     };
     // 只在挂载时跑一次(对齐 LoopPage):依赖 [t] 会让切语言时重跑,闪回加载态、丢失当前 tab/弹框。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 顶部一级导航「Personal」被再次点击时,onMenuClick 会先 popToRoot 清空右栏,且本页常驻不重挂
-  // (挂载副作用不会重跑)。这里监听激活事件:重新断言 workspace 上下文并铺回当前 tab,
-  // 修复「切回后右栏空白」与「用别处 workspace 的上下文拉数据」两个问题(#619 评审)。
+  // (挂载副作用不会重跑)。这里监听激活事件:重新解析 workspace 归属(machine↔workspace 可能已变)
+  // 并铺回当前 tab,修复「切回后右栏空白」「用别处 workspace 上下文拉数据」以及「建 workspace 后
+  // 仍卡在机器级模式」(#729 评审)。
   useEffect(() => {
     const onNavMenuActivated = ({ menuId }: { menuId: string }) => {
       if (menuId !== "dmpersonal") return;
-      // 用 ref 判就绪(避免 [] 依赖下的陈旧闭包):machine 模式已就绪但无 selectedWs;
-      // workspace 模式以 selectedWsRef 非空为就绪标志。两者皆未定=加载中,挂载副作用会自铺。
-      if (machineModeRef.current) {
-        setWorkspaceContext("", "");
-      } else {
-        const ws = selectedWsRef.current;
-        if (!ws) return;
-        setWorkspaceContext(ws.slug, ws.id);
-      }
-      WKApp.routeRight.replaceToRoot(renderTab(tabRef.current));
+      resolveRef.current(false);
     };
     WKApp.mittBus.on("wk:nav-menu-activated", onNavMenuActivated);
     return () => WKApp.mittBus.off("wk:nav-menu-activated", onNavMenuActivated);
@@ -147,10 +145,8 @@ export default function PersonalPage() {
           </button>
         ))}
       </nav>
-      {(workspaceEmpty || workspaceError) && (
-        <div className="dmpersonal-sidebar__hint">
-          {workspaceError || t("personal.workspace.requiredTitle")}
-        </div>
+      {workspaceError && (
+        <div className="dmpersonal-sidebar__hint">{workspaceError}</div>
       )}
     </div>
   );
