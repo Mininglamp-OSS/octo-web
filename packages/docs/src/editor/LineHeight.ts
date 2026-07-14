@@ -38,7 +38,14 @@ export const LINE_HEIGHT_TYPES = ['heading', 'paragraph'] as const
 /** Unitless line-height multiplier: a bare positive number such as "1", "1.15", "1.5", "2". */
 const LINE_HEIGHT_RE = /^\d+(\.\d+)?$/
 /** Block spacing length: a non-negative number followed by px or em (no other units). */
-const SPACING_RE = /^\d+(\.\d+)?(px|em)$/
+const SPACING_RE = /^(\d+(?:\.\d+)?)(px|em)$/
+/**
+ * Upper bound on a spacing magnitude (the px|em number), byte-aligned with the backend
+ * schema sanitizer (`n >= 0 && n <= 1000`). Out-of-range values are rejected to null —
+ * the same reject (not clamp) semantics — so parse/render, docx export, and the backend
+ * schema all agree on the boundary.
+ */
+export const SPACING_MAX = 1000
 
 /**
  * Sanitise a line-height value to a bare unitless multiplier string, or null.
@@ -56,12 +63,15 @@ export function sanitizeLineHeight(raw: unknown): string | null {
 
 /**
  * Sanitise a block-spacing value (spaceBefore/spaceAfter) to a "<number>px|em"
- * string, or null. Same two-sided sanitise pattern as the link/bookmark URLs.
+ * string, or null. Same two-sided sanitise pattern as the link/bookmark URLs, and
+ * the magnitude is bounded at SPACING_MAX to match the backend schema sanitizer.
  */
 export function sanitizeSpacing(raw: unknown): string | null {
   if (typeof raw !== 'string') return null
-  const v = raw.trim()
-  return SPACING_RE.test(v) ? v : null
+  const m = SPACING_RE.exec(raw.trim())
+  if (!m) return null
+  const n = Number(m[1])
+  return Number.isFinite(n) && n >= 0 && n <= SPACING_MAX ? `${m[1]}${m[2]}` : null
 }
 
 declare module '@tiptap/core' {

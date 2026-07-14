@@ -36,4 +36,21 @@ describe('mapSpacing (docx line spacing, SCHEMA_VERSION 17)', () => {
     expect(mapSpacing({ spaceBefore: '12pt', spaceAfter: '2rem' })).toBeUndefined()
     expect(mapSpacing({ textAlign: 'center' })).toBeUndefined()
   })
+
+  // <=1000 cap parity with the backend schema sanitizer: over-cap spacing is
+  // dropped (rejected, not clamped), matching the FE sanitizeSpacing whitelist.
+  it('accepts spacing at the 1000 cap', () => {
+    expect(mapSpacing({ spaceBefore: '1000px' })).toEqual({ before: 15000 })
+    expect(mapSpacing({ spaceAfter: '1000px' })).toEqual({ after: 15000 })
+  })
+
+  it('drops spacing whose magnitude exceeds 1000', () => {
+    expect(mapSpacing({ spaceBefore: '1001px' })).toBeUndefined()
+    expect(mapSpacing({ spaceAfter: '2000em' })).toBeUndefined()
+    // an over-cap margin is dropped while an in-range line-height survives.
+    expect(mapSpacing({ lineHeight: '1.5', spaceBefore: '1200px' })).toEqual({
+      line: 360,
+      lineRule: LineRuleType.AUTO,
+    })
+  })
 })

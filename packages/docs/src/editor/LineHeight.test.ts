@@ -52,6 +52,17 @@ describe('sanitizeSpacing', () => {
     }
     expect(sanitizeSpacing(12)).toBe(null)
   })
+  // <=1000 cap parity with the backend schema sanitizer: values whose magnitude
+  // exceeds 1000 are rejected to null (same reject — not clamp — semantics).
+  it('accepts values at the 1000 cap', () => {
+    expect(sanitizeSpacing('1000px')).toBe('1000px')
+    expect(sanitizeSpacing('1000em')).toBe('1000em')
+  })
+  it('rejects values whose magnitude exceeds 1000', () => {
+    for (const v of ['1001px', '1000.5px', '1200em', '5000px']) {
+      expect(sanitizeSpacing(v)).toBe(null)
+    }
+  })
 })
 
 describe('LineHeight extension — schema shape + backend byte-alignment (SCHEMA_VERSION 17)', () => {
