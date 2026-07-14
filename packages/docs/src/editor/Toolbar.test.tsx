@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { render, screen, fireEvent, cleanup, within, act } from '@testing-library/react'
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import TaskList from '@tiptap/extension-task-list'
@@ -747,5 +747,154 @@ describe('Toolbar — paragraph spacing controls (SCHEMA_VERSION 17)', () => {
     // 1.5em is not on the px preset list, so the select falls to the "custom" sentinel — the value
     // is preserved on the node, not silently cleared.
     expect(sel(c, 'docs.toolbar.spaceBefore').value).toBe('custom')
+  })
+})
+
+describe('Toolbar — format painter (XIN-963)', () => {
+  it('renders the format-painter button next to clear-format', () => {
+    render(<Toolbar editor={editor!} />)
+    expect(titleBtn('docs.toolbar.formatPainter')).toBeTruthy()
+    expect(titleBtn('docs.toolbar.clearFormat')).toBeTruthy()
+  })
+
+  it('arms (is-active) on click and disarms on a second click', () => {
+    render(<Toolbar editor={editor!} />)
+    const btn = titleBtn('docs.toolbar.formatPainter')
+    expect(btn.classList.contains('is-active')).toBe(false)
+    fireEvent.click(btn)
+    expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(true)
+    fireEvent.click(titleBtn('docs.toolbar.formatPainter'))
+    expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(false)
+  })
+
+  it('paints the source format onto the target selection end-to-end (arm → select → mouseup)', async () => {
+    const e = new Editor({
+      extensions: [StarterKit.configure({ undoRedo: false }), Highlight.configure({ multicolor: true }), TextStyle, Color, Link],
+      content: '<p><strong>bold</strong></p><p>plain</p>',
+    })
+    render(<Toolbar editor={e} />)
+    // Arm from the bold source ("bold" = para 1 positions 1..5).
+    e.commands.setTextSelection({ from: 1, to: 5 })
+    fireEvent.click(titleBtn('docs.toolbar.formatPainter'))
+    expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(true)
+    // Select the target ("plain" = para 2) and finish the gesture with a mouseup on the editor.
+    e.commands.setTextSelection({ from: 7, to: 12 })
+    fireEvent.mouseUp(e.view.dom)
+    await new Promise((r) => setTimeout(r, 0))
+    // Target is now bold, and the painter disarmed.
+    e.commands.setTextSelection({ from: 7, to: 12 })
+    expect(e.isActive('bold')).toBe(true)
+    expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(false)
+    e.destroy()
+  })
+
+  // XIN-1000 (P0): the painter is single-shot. A stray click that lands on an empty (collapsed)
+  // selection must still end the session and disarm — otherwise the painter stays armed and a
+  // later, unrelated selection is silently repainted with the stale captured marks (data loss).
+  // XIN-1016: the disarm is now deferred past the multi-click window (so a double/triple-click's
+  // empty first beat is not mistaken for a misclick), so a genuine misclick disarms once that
+  // window elapses. Fake timers advance the coalescing window without real wall-clock waits.
+  it('disarms after an empty-selection click and does not repaint a later unrelated selection', () => {
+    vi.useFakeTimers()
+    try {
+      const e = new Editor({
+        extensions: [StarterKit.configure({ undoRedo: false }), Highlight.configure({ multicolor: true }), TextStyle, Color, Link],
+        content: '<p><strong>bold</strong></p><p>plain</p><p>other</p>',
+      })
+      render(<Toolbar editor={e} />)
+      // Arm from the bold source ("bold" = para 1 positions 1..5).
+      e.commands.setTextSelection({ from: 1, to: 5 })
+      fireEvent.click(titleBtn('docs.toolbar.formatPainter'))
+      expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(true)
+      // First gesture lands on an empty (collapsed) caret — no target was selected. A single beat
+      // with no follow-up click is a stray misclick.
+      e.commands.setTextSelection(9)
+      fireEvent.mouseUp(e.view.dom, { detail: 1 })
+      // Once the multi-click window has elapsed with the selection still empty, the painter disarms.
+      act(() => vi.advanceTimersByTime(400))
+      expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(false)
+      // Now the user makes an unrelated selection ("other" = para 3) and finishes it.
+      e.commands.setTextSelection({ from: 14, to: 19 })
+      fireEvent.mouseUp(e.view.dom, { detail: 1 })
+      act(() => vi.advanceTimersByTime(400))
+      // That selection must NOT have been painted — bold was never applied to it.
+      e.commands.setTextSelection({ from: 14, to: 19 })
+      expect(e.isActive('bold')).toBe(false)
+      e.destroy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // XIN-1016 (P0): the XIN-1000 single-shot disarm over-corrected and broke double-click-to-paint.
+  // A double click selects a word, but it fires two mouseups: the first lands on a collapsed caret
+  // (word not yet selected) and only the second expands to the word. Disarming on that empty first
+  // beat killed the paint. The word the double click selects must still be painted.
+  it('paints the word a double-click selects (empty first beat must not disarm)', () => {
+    vi.useFakeTimers()
+    try {
+      const e = new Editor({
+        extensions: [StarterKit.configure({ undoRedo: false }), Highlight.configure({ multicolor: true }), TextStyle, Color, Link],
+        content: '<p><strong>bold</strong></p><p>plain</p>',
+      })
+      render(<Toolbar editor={e} />)
+      // Arm from the bold source ("bold" = para 1 positions 1..5).
+      e.commands.setTextSelection({ from: 1, to: 5 })
+      fireEvent.click(titleBtn('docs.toolbar.formatPainter'))
+      expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(true)
+      // Beat 1: the browser collapses the caret at the click point — selection is still empty. Its
+      // deferred handler runs (advance the 0ms tick) before the second beat arrives.
+      e.commands.setTextSelection(8)
+      fireEvent.mouseUp(e.view.dom, { detail: 1 })
+      act(() => vi.advanceTimersByTime(0))
+      // Beat 2: the double click expands the selection to the word ("plain" = para 2, 7..12).
+      e.commands.setTextSelection({ from: 7, to: 12 })
+      fireEvent.mouseUp(e.view.dom, { detail: 2 })
+      act(() => vi.advanceTimersByTime(400))
+      // The word must now carry the source format, and the painter is spent (single-shot).
+      e.commands.setTextSelection({ from: 7, to: 12 })
+      expect(e.isActive('bold')).toBe(true)
+      expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(false)
+      e.destroy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // XIN-1016 (P0): a triple click selects a paragraph via three mouseups (caret → word →
+  // paragraph). The painter must settle on the final paragraph selection and paint it, not act on
+  // the intermediate empty/word beats.
+  it('paints the paragraph a triple-click selects', () => {
+    vi.useFakeTimers()
+    try {
+      const e = new Editor({
+        extensions: [StarterKit.configure({ undoRedo: false }), Highlight.configure({ multicolor: true }), TextStyle, Color, Link],
+        content: '<p><strong>bold</strong></p><p>plain words here</p>',
+      })
+      render(<Toolbar editor={e} />)
+      // Arm from the bold source ("bold" = para 1 positions 1..5).
+      e.commands.setTextSelection({ from: 1, to: 5 })
+      fireEvent.click(titleBtn('docs.toolbar.formatPainter'))
+      expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(true)
+      // Beat 1: caret collapses inside para 2 (empty).
+      e.commands.setTextSelection(8)
+      fireEvent.mouseUp(e.view.dom, { detail: 1 })
+      act(() => vi.advanceTimersByTime(0))
+      // Beat 2: expands to the word.
+      e.commands.setTextSelection({ from: 7, to: 12 })
+      fireEvent.mouseUp(e.view.dom, { detail: 2 })
+      act(() => vi.advanceTimersByTime(0))
+      // Beat 3: expands to the whole paragraph ("plain words here" = 7..23).
+      e.commands.setTextSelection({ from: 7, to: 23 })
+      fireEvent.mouseUp(e.view.dom, { detail: 3 })
+      act(() => vi.advanceTimersByTime(400))
+      // The full paragraph must now carry the source format, and the painter is spent.
+      e.commands.setTextSelection({ from: 7, to: 23 })
+      expect(e.isActive('bold')).toBe(true)
+      expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(false)
+      e.destroy()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

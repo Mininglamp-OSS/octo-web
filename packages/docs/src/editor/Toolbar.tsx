@@ -12,9 +12,11 @@ import { promptAndInsertMath } from './mathInsert.ts'
 import { sanitizeLinkHref } from './sanitize.ts'
 import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { TableGridPicker } from './TableControls.tsx'
+import { capturePaintMarks, applyPaintMarks } from './formatPainter.ts'
 import { t } from '../octoweb/index.ts'
 import { FONT_FAMILY_ENABLED, LINE_SPACING_ENABLED } from '../config.ts'
 import { FONT_FAMILIES } from './fontFamilies.ts'
+import type { Mark } from '@tiptap/pm/model'
 
 // Inline SVG toolbar icons (C2–C4): crisp, correct glyphs for underline / strikethrough /
 // alignment, replacing the ambiguous text placeholders. 16×16, fill: currentColor (via .octo-tb-icon).
@@ -109,6 +111,14 @@ const IconUnlink = () => (
 const IconEraser = () => (
   <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
     <path d="M15.1 3.7 21.4 10a2 2 0 0 1 0 2.8l-7 7H17v1.7h-7.4a2 2 0 0 1-1.4-.6L3.7 16.6a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 0 1 2.8 0zM8.3 14.2l-3.2 3.2 2.9 2.9h1.7l2.8-2.8-4.2-3.3z" />
+  </svg>
+)
+
+// Format painter (XIN-963): a paint-roller glyph — the classic "copy formatting" affordance used
+// by Word / Feishu / Google Docs. Filled via .octo-tb-icon to match the other toolbar icons.
+const IconFormatPainter = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 4h13a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm14 3h1.5a1.5 1.5 0 0 1 1.5 1.5V12a1 1 0 0 1-1 1h-6a1 1 0 0 0-1 1v1.2a2 2 0 0 1 1 1.8v4a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-4a2 2 0 0 1 1-1.8V14a3 3 0 0 1 3-3h5V9h-1V7z" />
   </svg>
 )
 
@@ -1165,6 +1175,80 @@ export function Toolbar({ editor }: { editor: Editor }) {
   const [findOpen, setFindOpen] = useState(false)
   const linkRef = useRef<HTMLSpanElement>(null)
 
+  // Format painter (XIN-963): armed state holds the inline marks captured from the source
+  // selection. `null` = disarmed. Clicking the button captures the current selection's marks and
+  // arms; the next completed selection gesture in the editor paints them once, then disarms
+  // (single-shot). A ref mirrors the state so the editor mouseup listener always reads the latest
+  // value without re-subscribing on every arm/disarm.
+  const [painterMarks, setPainterMarks] = useState<readonly Mark[] | null>(null)
+  const painterMarksRef = useRef<readonly Mark[] | null>(null)
+  painterMarksRef.current = painterMarks
+
+  function toggleFormatPainter() {
+    setPainterMarks((prev) => (prev ? null : capturePaintMarks(editor.state)))
+  }
+
+  // While armed, paint onto the target selection when the user finishes selecting it (mouseup).
+  // Using mouseup — not selectionUpdate — avoids re-applying on every intermediate range during a
+  // drag; the paint happens once, on the completed gesture, then the painter disarms.
+  useEffect(() => {
+    if (!painterMarks) return
+    const dom = editor.view.dom
+    // Coalescing window for multi-click gestures (XIN-1016). A double-click (select word) or
+    // triple-click (select paragraph) fires 2–3 mouseups in quick succession; the FIRST beat lands
+    // on a collapsed caret (empty selection) and only a later beat expands it to the word/paragraph.
+    // Slightly larger than the platform double-click interval so the whole gesture is treated as
+    // one target rather than acted on beat-by-beat.
+    const MULTI_CLICK_MS = 300
+    let settleTimer: ReturnType<typeof setTimeout> | null = null
+    const clearSettle = () => {
+      if (settleTimer !== null) {
+        clearTimeout(settleTimer)
+        settleTimer = null
+      }
+    }
+    // Act on the settled selection: paint a real target, disarm either way (single-shot).
+    const settle = () => {
+      settleTimer = null
+      const marks = painterMarksRef.current
+      if (!marks) return
+      if (!editor.state.selection.empty) applyPaintMarks(editor, marks)
+      setPainterMarks(null)
+    }
+    const onMouseUp = (detail: number) => {
+      const marks = painterMarksRef.current
+      if (!marks) return
+      if (detail <= 1 && !editor.state.selection.empty) {
+        // A drag-select: a single, deliberate gesture that already produced a range. No multi-click
+        // beats are coming, so paint immediately and end the session.
+        clearSettle()
+        applyPaintMarks(editor, marks)
+        setPainterMarks(null)
+        return
+      }
+      // Otherwise the gesture is not yet settled: either an empty first beat / stray misclick
+      // (detail 1, collapsed), or a multi-click beat (detail ≥ 2) whose selection a further beat may
+      // still extend (double → triple). Debounce and act once on the final selection — a genuine
+      // misclick settles empty and disarms without repainting (XIN-1000, XIN-981 unaffected), while
+      // double/triple-click settles on the word/paragraph it selected and paints it (XIN-1016).
+      clearSettle()
+      settleTimer = setTimeout(settle, MULTI_CLICK_MS)
+    }
+    // Deferred to the next tick so ProseMirror has committed the selection for this mouseup. Read
+    // `detail` (the running click count) synchronously — the event object is recycled after the
+    // handler returns.
+    const handler = (ev: MouseEvent) => {
+      const { detail } = ev
+      setTimeout(() => onMouseUp(detail), 0)
+    }
+    dom.addEventListener('mouseup', handler)
+    return () => {
+      clearSettle()
+      dom.removeEventListener('mouseup', handler)
+    }
+  }, [editor, painterMarks])
+
+
   // C7: open the link popup, pre-filling the text from the current selection and the URL from any
   // link already under the cursor.
   function openLink() {
@@ -1323,6 +1407,12 @@ export function Toolbar({ editor }: { editor: Editor }) {
         )}
       </span>
       <span className="octo-tb-sep" />
+      <Btn
+        label={<IconFormatPainter />}
+        title={t('docs.toolbar.formatPainter')}
+        active={painterMarks !== null}
+        onClick={toggleFormatPainter}
+      />
       <Btn
         label={<IconEraser />}
         title={t('docs.toolbar.clearFormat')}
