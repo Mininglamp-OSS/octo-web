@@ -598,3 +598,42 @@ describe('Toolbar — paragraph spacing controls (SCHEMA_VERSION 17)', () => {
     expect(sel(c, 'docs.toolbar.spaceBefore').value).toBe('custom')
   })
 })
+
+describe('Toolbar — format painter (XIN-963)', () => {
+  it('renders the format-painter button next to clear-format', () => {
+    render(<Toolbar editor={editor!} />)
+    expect(titleBtn('docs.toolbar.formatPainter')).toBeTruthy()
+    expect(titleBtn('docs.toolbar.clearFormat')).toBeTruthy()
+  })
+
+  it('arms (is-active) on click and disarms on a second click', () => {
+    render(<Toolbar editor={editor!} />)
+    const btn = titleBtn('docs.toolbar.formatPainter')
+    expect(btn.classList.contains('is-active')).toBe(false)
+    fireEvent.click(btn)
+    expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(true)
+    fireEvent.click(titleBtn('docs.toolbar.formatPainter'))
+    expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(false)
+  })
+
+  it('paints the source format onto the target selection end-to-end (arm → select → mouseup)', async () => {
+    const e = new Editor({
+      extensions: [StarterKit.configure({ undoRedo: false }), Highlight.configure({ multicolor: true }), TextStyle, Color, Link],
+      content: '<p><strong>bold</strong></p><p>plain</p>',
+    })
+    render(<Toolbar editor={e} />)
+    // Arm from the bold source ("bold" = para 1 positions 1..5).
+    e.commands.setTextSelection({ from: 1, to: 5 })
+    fireEvent.click(titleBtn('docs.toolbar.formatPainter'))
+    expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(true)
+    // Select the target ("plain" = para 2) and finish the gesture with a mouseup on the editor.
+    e.commands.setTextSelection({ from: 7, to: 12 })
+    fireEvent.mouseUp(e.view.dom)
+    await new Promise((r) => setTimeout(r, 0))
+    // Target is now bold, and the painter disarmed.
+    e.commands.setTextSelection({ from: 7, to: 12 })
+    expect(e.isActive('bold')).toBe(true)
+    expect(titleBtn('docs.toolbar.formatPainter').classList.contains('is-active')).toBe(false)
+    e.destroy()
+  })
+})

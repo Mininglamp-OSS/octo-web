@@ -127,6 +127,7 @@
     "codeBlock": "Code block",
     "divider": "Divider",
     "clearFormat": "Clear formatting",
+    "formatPainter": "Format painter",
     "blockType": "Text style",
     "bodyText": "Body text",
     "find": "Find & replace",

@@ -127,6 +127,7 @@
     "codeBlock": "代码块",
     "divider": "分割线",
     "clearFormat": "清除格式",
+    "formatPainter": "格式刷",
     "blockType": "文本样式",
     "bodyText": "正文",
     "find": "查找替换",
