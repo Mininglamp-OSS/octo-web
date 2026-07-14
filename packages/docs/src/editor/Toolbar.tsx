@@ -360,7 +360,14 @@ function HighlightControl({ editor }: { editor: Editor }) {
           <Btn
             label="✕"
             onClick={() => {
-              editor.chain().focus().unsetHighlight().run()
+              // Clear the highlight the caret sits in. unsetHighlight() alone only clears a
+              // non-empty selection range — with a collapsed caret inside a highlight (the common
+              // "click into highlighted text, then hit ✕" flow) it clears stored marks only and
+              // leaves the surrounding <mark> in the document. extendMarkRange('highlight') first
+              // grows the selection to span the whole highlight under the caret (a no-op when a
+              // range is already selected), so unsetHighlight() reliably removes the mark. Same
+              // idiom TipTap uses for link clearing (extendMarkRange('link').unsetLink()).
+              editor.chain().focus().extendMarkRange('highlight').unsetHighlight().run()
               setOpen(false)
             }}
           />

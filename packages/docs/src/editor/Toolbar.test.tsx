@@ -548,6 +548,26 @@ describe('Toolbar — highlight palette + custom picker', () => {
     const clear = within(popover).getByText('✕')
     fireEvent.click(clear)
     expect(editor!.getAttributes('highlight').color).toBeUndefined()
+    // The <mark> must actually leave the document, not just the caret attributes.
+    expect(editor!.getHTML()).not.toContain('<mark')
+  })
+
+  // Regression (XIN-1022): clicking into highlighted text leaves a COLLAPSED caret inside the
+  // <mark>. unsetHighlight() on its own clears only stored marks in that case, so the <mark>
+  // stayed in the document and the ✕ button looked dead. The ✕ now extends the selection over the
+  // whole highlight first (extendMarkRange), so the mark is truly removed from a collapsed caret.
+  it('clears the highlight from a collapsed caret inside the mark (✕ removes the <mark>)', () => {
+    // Highlight "hello", then drop a collapsed caret in the middle of it — no range selected.
+    editor!.chain().focus().selectAll().setHighlight({ color: '#fff3a3' }).run()
+    editor!.chain().focus().setTextSelection(3).run()
+    expect(editor!.state.selection.empty).toBe(true)
+    expect(editor!.getHTML()).toContain('<mark')
+
+    const popover = openHighlightPopover()
+    fireEvent.click(within(popover).getByText('✕'))
+
+    expect(editor!.getHTML()).not.toContain('<mark')
+    expect(editor!.getAttributes('highlight').color).toBeUndefined()
   })
 
   it('leaves the text-colour palette untouched (still 10 swatches, this scope is highlight only)', () => {
