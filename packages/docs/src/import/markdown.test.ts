@@ -255,8 +255,9 @@ describe('parseMarkdownToPmDoc — inline marks', () => {
 describe('parseMarkdownToPmDoc — images', () => {
   it('imports network images', () => {
     const r = parse('![alt](https://example.com/img.png)')
-    const p = firstBlock(r)
-    const img = p.content!.find(n => n.type === 'image')
+    // An image is a BLOCK node: it must be a top-level block, NOT wrapped in a paragraph
+    // (a block node inside a paragraph's inline content is schema-invalid and gets dropped).
+    const img = r.doc.content!.find(n => n.type === 'image')
     expect(img).toBeDefined()
     expect(img!.attrs?.src).toBe('https://example.com/img.png')
     expect(img!.attrs?.alt).toBe('alt')
@@ -274,6 +275,75 @@ describe('parseMarkdownToPmDoc — images', () => {
   it('degrades data: images to text placeholder', () => {
     const r = parse('![x](data:image/png;base64,abc)')
     expect(r.warnings.length).toBeGreaterThan(0)
+  })
+
+  it('recovers the durable attachId from a signed export URL (survives signature expiry)', () => {
+    const url =
+      'http://localhost:28080/file/d_pdf_test_full/att_13a2f15faef2f55111bbfc69/222.png' +
+      '?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=600&X-Amz-Signature=deadbeef'
+    const r = parse(`![测试 PNG](${url})`)
+    const img = r.doc.content!.find(n => n.type === 'image')
+    expect(img).toBeDefined()
+    expect(img!.attrs?.attachId).toBe('att_13a2f15faef2f55111bbfc69')
+    expect(img!.attrs?.src).toBe(url)
+    expect(r.warnings.length).toBe(0)
+  })
+
+  it('leaves attachId unset for a plain external image URL', () => {
+    const r = parse('![a](https://example.com/pic.png)')
+    const img = r.doc.content!.find(n => n.type === 'image')
+    expect(img!.attrs?.attachId).toBeUndefined()
+  })
+
+  it('puts a block image inside a table cell as a block child, not wrapped in a paragraph', () => {
+    // The exact regression: `| ![](url) |` used to wrap the block image in the cell's
+    // paragraph (schema-invalid) so the image loaded bytes but never rendered.
+    const md = [
+      '| 说明 | 图 |',
+      '| --- | --- |',
+      '| 单元格文字 | ![p](https://example.com/x.png) |',
+    ].join('\n')
+    const r = parse(md)
+    const table = r.doc.content!.find(n => n.type === 'table')!
+    // body row -> second cell -> should contain a block-level image node directly.
+    const bodyRow = table.content!.find(row => row.content!.some(c => c.type === 'tableCell'))!
+    const imgCell = bodyRow.content!.find(c => c.content!.some(b => b.type === 'image'))
+    expect(imgCell).toBeDefined()
+    const img = imgCell!.content!.find(b => b.type === 'image')!
+    expect(img.attrs?.src).toBe('https://example.com/x.png')
+    // The image must NOT be nested inside a paragraph in the cell.
+    const para = imgCell!.content!.find(b => b.type === 'paragraph')
+    expect(para?.content?.some(n => n.type === 'image')).not.toBe(true)
+  })
+
+  it('keeps text and a block image as separate blocks in the same cell', () => {
+    const md = [
+      '| c |',
+      '| --- |',
+      '| hi ![p](https://example.com/y.png) |',
+    ].join('\n')
+    const r = parse(md)
+    const table = r.doc.content!.find(n => n.type === 'table')!
+    const bodyRow = table.content!.find(row => row.content!.some(c => c.type === 'tableCell'))!
+    const cell = bodyRow.content!.find(c => c.type === 'tableCell')!
+    // Expect a paragraph ("hi") AND a standalone image block.
+    expect(cell.content!.some(b => b.type === 'paragraph')).toBe(true)
+    expect(cell.content!.some(b => b.type === 'image')).toBe(true)
+  })
+
+  it('does not emit an empty text node for an empty <pre> in a table cell (white-screen guard)', () => {
+    // Empty <pre></pre> inside a cell used to produce content:[{type:'text',text:''}],
+    // an empty text node that makes setContent throw -> whole page goes blank.
+    const md = '<table><tr><td><pre></pre></td><td>x</td></tr></table>'
+    const r = parse(md)
+    const table = r.doc.content!.find(n => n.type === 'table')!
+    const bodyRow = table.content!.find(row => row.content!.some(c => c.type === 'tableCell'))!
+    const cb = bodyRow.content!
+      .flatMap(c => c.content ?? [])
+      .find(b => b.type === 'codeBlock')!
+    expect(cb).toBeDefined()
+    // Empty code block must NOT carry an empty text node.
+    expect(cb.content).toBeUndefined()
   })
 })
 
@@ -394,6 +464,34 @@ describe('parseMarkdownToPmDoc — HTML blocks', () => {
     expect(body.content!.map(n => n.type)).toEqual(['heading', 'bulletList'])
   })
 
+  it('parses NESTED details (inner collapse stays a details node, not literal text)', () => {
+    // Regression: the assembler stopped at the FIRST </details>, so a nested inner details had
+    // its `<details>`/`<summary>`/`</details>` leak through as plain text and the outer close
+    // was orphaned. Depth-balanced matching keeps the inner details as a real details node.
+    const md =
+      '<details>\n<summary>外层折叠</summary>\n\n' +
+      '<details>\n<summary>内层折叠</summary>\n\n' +
+      '内层内容\n\n' +
+      '</details>\n\n' +
+      '</details>'
+    const r = parse(md)
+    const outer = firstBlock(r)
+    expect(outer.type).toBe('details')
+    const outerBody = outer.content!.find(n => n.type === 'detailsContent')!
+    // The outer body must contain the inner details as a real node — not literal `<details>` text.
+    const inner = outerBody.content!.find(n => n.type === 'details')
+    expect(inner).toBeDefined()
+    const innerSummary = inner!.content!.find(n => n.type === 'detailsSummary')!
+    const text = (node: PmNode): string =>
+      node.type === 'text' ? (node.text ?? '') : (node.content ?? []).map(text).join('')
+    expect(text(innerSummary)).toBe('内层折叠')
+    // No orphaned literal HTML tags anywhere in the result.
+    const flat = JSON.stringify(r.doc)
+    expect(flat).not.toContain('&lt;details&gt;')
+    expect(flat).not.toContain('<details>')
+    expect(flat).not.toContain('</details>')
+  })
+
   it('parses HTML tables with colspan/rowspan', () => {
     const html = '<table>\n<tr><th colspan="2">Header</th></tr>\n<tr><td>A</td><td>B</td></tr>\n</table>'
     const r = parse(html)
@@ -431,11 +529,37 @@ describe('parseMarkdownToPmDoc — inline HTML marks', () => {
     expect(p.content![0].marks).toContainEqual({ type: 'textStyle', attrs: { color: 'red' } })
   })
 
-  it('drops unsafe CSS color values', () => {
+  it('parses <span style="font-size:..."> as textStyle (export inverse)', () => {
+    const r = parse('<span style="font-size:24px">big</span>')
+    const p = firstBlock(r)
+    expect(p.content![0].marks).toContainEqual({ type: 'textStyle', attrs: { fontSize: '24px' } })
+  })
+
+  it('parses a combined color + font-size span into one textStyle mark', () => {
+    const r = parse('<span style="color:red;font-size:18px">both</span>')
+    const p = firstBlock(r)
+    expect(p.content![0].marks).toContainEqual({
+      type: 'textStyle',
+      attrs: { color: 'red', fontSize: '18px' },
+    })
+  })
+
+  it('drops an unsafe font-size value but keeps the text', () => {
+    const r = parse('<span style="font-size:24px;position:fixed">x</span>')
+    const p = firstBlock(r)
+    // The bogus `position:fixed` declaration is ignored; the safe font-size still applies.
+    expect(p.content![0].marks).toContainEqual({ type: 'textStyle', attrs: { fontSize: '24px' } })
+    expect(textContent(p)).toBe('x')
+  })
+
+  it('ignores non-whitelisted declarations while keeping the safe color', () => {
+    // Per-declaration parsing neutralizes the injected `position:fixed` (dropped as a
+    // non-whitelisted property) while preserving the legitimate color. The dangerous
+    // declaration never reaches the DOM — marks only ever carry color/fontSize.
     const r = parse('<span style="color:red;position:fixed">evil</span>')
     const p = firstBlock(r)
-    // textStyle mark should NOT be applied with the injected value
-    const ts = p.content![0].marks?.find(m => m.type === 'textStyle')
-    expect(ts).toBeUndefined()
+    const ts = p.content![0].marks?.find((m) => m.type === 'textStyle')
+    expect(ts).toEqual({ type: 'textStyle', attrs: { color: 'red' } })
+    expect((ts?.attrs as Record<string, unknown> | undefined)?.position).toBeUndefined()
   })
 })

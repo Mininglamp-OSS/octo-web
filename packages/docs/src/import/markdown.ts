@@ -136,10 +136,12 @@ function mapBlockTokens(tokens: Token[], ctx: Ctx): PmNode[] {
           break
         }
         const { inline, next } = takeInline(tokens, i, ctx)
-        // A paragraph whose sole content is a single image → keep as paragraph wrapping the image
-        // (matches export, which emits block images inside their own paragraph on import).
-        if (inline.length > 0) out.push({ type: 'paragraph', content: inline })
-        else out.push({ type: 'paragraph' })
+        // A paragraph's inline run may contain BLOCK image nodes (our image node is
+        // group 'block', not inline). A block node inside a paragraph's inline content is
+        // schema-invalid — ProseMirror drops/normalizes it, so the image silently vanishes
+        // even though its bytes load. Split the run into valid blocks: standalone images
+        // become their own block, contiguous true-inline nodes stay in a paragraph.
+        for (const b of blocksFromInline(inline)) out.push(b)
         i = next
         break
       }
@@ -189,7 +191,12 @@ function mapBlockTokens(tokens: Token[], ctx: Ctx): PmNode[] {
       case 'html_block': {
         // markdown-it splits multi-line HTML blocks at blank lines, so a callout/details
         // becomes: html_block(open) → paragraph(s) → html_block(close). Reassemble them.
-        const blockMap: BlockMapper = (markdown) => mapBlockTokens(md().parse(markdown, {}), ctx)
+        // The re-parse of a callout/details BODY runs on a NEW substring, so it needs a ctx
+        // whose sourceLines match THAT substring (nested details reassembly slices sourceLines
+        // by the substring's own `.map` ranges; sharing the outer sourceLines would slice the
+        // wrong lines and leak the inner `<details>`/`<summary>` tags as literal text).
+        const blockMap: BlockMapper = (markdown) =>
+          mapBlockTokens(md().parse(markdown, {}), { ...ctx, sourceLines: markdown.split('\n') })
         const assembled = tryAssembleHtmlBlock(tokens, i, ctx)
         if (assembled) {
           const nodes = parseHtmlBlock(assembled.html, (t) => mapInlineHtmlText(t, ctx), ctx.warnings, blockMap)
@@ -233,11 +240,25 @@ function tryAssembleHtmlBlock(
   if (!isCalloutOpen && !isDetailsOpen) return null
 
   const closeTag = isCalloutOpen ? '</div>' : '</details>'
+  // Regexes to recognise a nested opener of the SAME kind, so we can depth-balance and stop at
+  // the opener's OWN closing tag rather than the first inner one. markdown-it emits each nested
+  // `<details>`/`<div data-callout>` opener as its own html_block token (they start on their own
+  // line), so counting opener vs closer html_block tokens gives correct nesting depth.
+  const openRe = isCalloutOpen ? /^<div\s+data-callout/i : /^<details>/i
 
-  // Scan forward for the matching closing html_block
+  // Scan forward for the matching closing html_block, balancing nested openers of the same kind.
+  let depth = 1
   for (let j = openIdx + 1; j < tokens.length; j++) {
     const t = tokens[j]
-    if (t.type === 'html_block' && t.content.trim() === closeTag) {
+    if (t.type !== 'html_block') continue
+    const content = t.content.trim()
+    if (openRe.test(content)) {
+      depth++
+      continue
+    }
+    if (content === closeTag) {
+      depth--
+      if (depth > 0) continue
       // Slice the raw body Markdown from the source (open block end → close block start).
       const openEnd = openTok.map ? openTok.map[1] : null
       const closeStart = t.map ? t.map[0] : null
@@ -303,6 +324,39 @@ function takeInline(tokens: Token[], openIdx: number, ctx: Ctx): { inline: PmNod
   const closeIdx = openIdx + 2
   const inline = inlineTok && inlineTok.type === 'inline' ? mapInline(inlineTok, ctx) : []
   return { inline, next: closeIdx + 1 }
+}
+
+/**
+ * Split a flat inline-node run (from mapInline) into schema-valid BLOCK nodes.
+ *
+ * Our `image` node is group 'block' (not inline), so it must never sit inside a paragraph's
+ * inline content — ProseMirror treats a block child in an inline position as invalid and
+ * drops/normalizes it away, which is exactly why imported images (top-level and inside table
+ * cells) load their bytes but never render. This lifts every block image out to its own block
+ * node and keeps contiguous true-inline nodes (text, hardBreak, inlineMath, emoji…) grouped
+ * into paragraphs, preserving order. Trailing/leading whitespace-only paragraphs are dropped
+ * when an image is present so a lone `![](url)` cell doesn't gain an empty paragraph.
+ */
+function blocksFromInline(inline: PmNode[]): PmNode[] {
+  const out: PmNode[] = []
+  let run: PmNode[] = []
+  const flush = () => {
+    if (run.length === 0) return
+    // Drop a run that is only whitespace text (e.g. the spaces around a block image).
+    const meaningful = run.some((n) => n.type !== 'text' || (n.text ?? '').trim() !== '')
+    if (meaningful) out.push({ type: 'paragraph', content: run })
+    run = []
+  }
+  for (const n of inline) {
+    if (n.type === 'image') {
+      flush()
+      out.push(n) // block-level image: its own block node
+    } else {
+      run.push(n)
+    }
+  }
+  flush()
+  return out
 }
 
 // ── Lists ────────────────────────────────────────────────────────────────────
@@ -424,9 +478,14 @@ function mapTable(inner: Token[], ctx: Ctx): PmNode {
           const cellEnd = matchClose(inner, j, inner[j].type, closeType)
           const inlineTok = inner.slice(j + 1, cellEnd).find((x) => x.type === 'inline')
           const cellInline = inlineTok ? mapInline(inlineTok, ctx) : []
+          // A cell may hold block images too (e.g. `| ![](url) |`). Wrapping a block image in
+          // the cell's paragraph is schema-invalid and the image silently vanishes, so split
+          // the inline run into proper block children (image blocks + paragraphs). tableCell
+          // content is block+, so an empty cell still needs one paragraph.
+          const cellBlocks = blocksFromInline(cellInline)
           cells.push({
             type: isHeader ? 'tableHeader' : 'tableCell',
-            content: [{ type: 'paragraph', content: cellInline }],
+            content: cellBlocks.length ? cellBlocks : [{ type: 'paragraph' }],
           })
           j = cellEnd + 1
         } else j++
@@ -531,9 +590,25 @@ function mapImage(tok: Token, ctx: Ctx): PmNode | null {
     return { type: 'text', text: `[图片: ${alt || src || '未命名'} 未导入]` }
   }
   const attrs: Record<string, unknown> = { src: safe }
+  // Recover the durable attachId from our own storage URL scheme
+  // (`.../file/<docId>/att_<id>/<name>?<signature>`). The signed `src` is short-lived
+  // (`X-Amz-Expires`), so on a same-system round-trip we MUST keep the attachId or the image
+  // silently vanishes once the signature expires. The editor re-resolves a fresh URL from it.
+  const attachId = extractAttachId(src)
+  if (attachId) attrs.attachId = attachId
   if (alt) attrs.alt = alt
   if (title) attrs.title = title
   return { type: 'image', attrs }
+}
+
+/**
+ * Pull the durable attachId out of an export storage URL. Our exporter emits image src as a
+ * signed URL whose path contains an `att_<hex>` segment (`/file/<docId>/att_<id>/<file>`).
+ * Returns the `att_...` id when present, else null (external images keep only their src).
+ */
+function extractAttachId(src: string): string | null {
+  const m = /\/(att_[A-Za-z0-9]+)(?:\/|\?|$)/.exec(src)
+  return m ? m[1] : null
 }
 
 /**

@@ -185,6 +185,37 @@ export function createParagraphStyles(): IParagraphStyleOptions[] {
         shading: { fill: 'D4EDDA' },
       },
     },
+    {
+      // Summary line of a collapsible <details> block. The importer keys on this
+      // pStyle id to rebuild the detailsSummary node.
+      id: 'DetailsSummary',
+      name: 'Details Summary',
+      basedOn: 'Normal',
+      run: {
+        bold: true,
+      },
+      paragraph: {
+        spacing: { before: 80, after: 40 },
+      },
+    },
+    {
+      // Invisible boundary markers wrapping a <details> block's content. The
+      // importer uses a stack of Start/End markers to reconstruct arbitrarily
+      // nested details. Rendered tiny + light so they are visually unobtrusive
+      // in Word (they carry no user text).
+      id: 'DetailsStart',
+      name: 'Details Start',
+      basedOn: 'Normal',
+      run: { size: 2, color: 'FFFFFF', vanish: true },
+      paragraph: { spacing: { before: 0, after: 0 } },
+    },
+    {
+      id: 'DetailsEnd',
+      name: 'Details End',
+      basedOn: 'Normal',
+      run: { size: 2, color: 'FFFFFF', vanish: true },
+      paragraph: { spacing: { before: 0, after: 0 } },
+    },
   ]
 }
 

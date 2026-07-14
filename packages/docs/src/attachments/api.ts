@@ -161,3 +161,74 @@ export async function uploadImage(docId: string, file: File): Promise<UploadedIm
   }
   return { attachId: presign.attachId, src }
 }
+
+/** A source attachment to copy into the target doc (its owning doc + durable attachId). */
+export interface CopySourceRef {
+  docId: string
+  attachId: string
+}
+
+/** One successful copy: source ref → new doc-scoped attachId + a freshly signed display URL. */
+export interface CopyMapping {
+  sourceDocId: string
+  sourceAttachId: string
+  attachId: string
+  url: string
+  mime: string
+  sizeBytes: number
+  fileName: string
+}
+
+export interface CopyResult {
+  mappings: CopyMapping[]
+  notCopied: Array<{ sourceDocId: string; sourceAttachId: string; reason: string }>
+}
+
+/**
+ * POST /docs/{docId}/attachments/copy — server-to-server copy of already-stored attachments
+ * into `docId`. Used by Markdown/PDF import to re-host images that reference another doc: the
+ * backend copies the bytes store-to-store (no signed-URL download in the browser, so it never
+ * expires) and enforces read permission on each source. Only attachments our service already
+ * stores are eligible — a foreign/external image has no source ref and is never sent here.
+ */
+export async function copyAttachments(
+  docId: string,
+  sources: CopySourceRef[],
+): Promise<CopyResult> {
+  const { data } = await apiClient().post<CopyResult>(
+    `/docs/${docId}/attachments/copy`,
+    { sources },
+  )
+  return { mappings: data.mappings ?? [], notCopied: data.notCopied ?? [] }
+}
+
+/** One successful external-image ingest: original URL → new doc-scoped attachId + display URL. */
+export interface IngestMapping {
+  sourceUrl: string
+  attachId: string
+  url: string
+  mime: string
+  sizeBytes: number
+}
+
+export interface IngestResult {
+  mappings: IngestMapping[]
+  notIngested: Array<{ sourceUrl: string; reason: string }>
+}
+
+/**
+ * POST /docs/{docId}/attachments/ingest — download EXTERNAL image URLs server-side (SSRF-guarded)
+ * and store them under `docId`. Used by Markdown/PDF import to re-host images that are not our
+ * own attachments, so the document does not break if the external host later disappears. On any
+ * failure the caller keeps the original URL (best-effort).
+ */
+export async function ingestAttachments(
+  docId: string,
+  urls: string[],
+): Promise<IngestResult> {
+  const { data } = await apiClient().post<IngestResult>(
+    `/docs/${docId}/attachments/ingest`,
+    { urls },
+  )
+  return { mappings: data.mappings ?? [], notIngested: data.notIngested ?? [] }
+}

@@ -544,39 +544,43 @@ function convertBlockMath(node: MdNode): Paragraph {
   })
 }
 
-/** Convert a details/collapsible node. */
+/** Convert a details/collapsible node into a boundary-delimited block sequence.
+ *
+ * Word has no native collapsible block, so we bracket the summary + content
+ * with invisible `DetailsStart`/`DetailsEnd` marker paragraphs and tag the
+ * summary line with the `DetailsSummary` pStyle. The importer maintains a stack
+ * of these markers, which reconstructs arbitrarily nested details (a nested
+ * details node simply recurses here and emits its own Start/End pair). */
 function convertDetails(node: MdNode, ctx: DocxContext): FileChild[] {
   const children = node.content ?? []
   const summaryNode = children.find((c) => c.type === 'detailsSummary')
   const contentNode = children.find((c) => c.type === 'detailsContent')
   const result: FileChild[] = []
 
-  // Summary as a bold paragraph with toggle indicator
-  if (summaryNode) {
-    const runs = convertInlineContent(summaryNode.content ?? [], ctx.emojiGlyph)
-    result.push(
-      new Paragraph({
-        children: [new TextRun({ text: '▸ ', bold: true }), ...runs],
-        spacing: { before: 80, after: 40 },
-      }),
-    )
-  }
+  // Opening boundary marker (empty, invisible).
+  result.push(new Paragraph({ style: 'DetailsStart', children: [] }))
 
-  // Content indented
+  // Summary line, tagged so the importer maps it to detailsSummary.
+  const summaryRuns = summaryNode
+    ? convertInlineContent(summaryNode.content ?? [], ctx.emojiGlyph)
+    : []
+  result.push(
+    new Paragraph({
+      style: 'DetailsSummary',
+      children: [new TextRun({ text: '▸ ', bold: true }), ...summaryRuns],
+    }),
+  )
+
+  // Content blocks, converted normally so nested details / lists / code blocks
+  // round-trip. A nested details recurses through convertBlock → convertDetails
+  // and emits its own Start/End markers, so the importer's stack rebuilds depth.
   const contentChildren = contentNode?.content ?? children.filter((c) => c.type !== 'detailsSummary')
   for (const child of contentChildren) {
-    if (child.type === 'paragraph') {
-      const runs = convertInlineContent(child.content ?? [], ctx.emojiGlyph)
-      result.push(
-        new Paragraph({
-          children: runs,
-          indent: { left: 360 },
-        }),
-      )
-    } else {
-      result.push(...convertBlock(child, ctx, 0))
-    }
+    result.push(...convertBlock(child, ctx, 0))
   }
+
+  // Closing boundary marker.
+  result.push(new Paragraph({ style: 'DetailsEnd', children: [] }))
 
   return result
 }

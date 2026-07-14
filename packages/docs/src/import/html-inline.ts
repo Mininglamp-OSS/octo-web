@@ -92,6 +92,22 @@ export function isSafeCssColor(raw: string | null | undefined): string | null {
   return null
 }
 
+/**
+ * Validate a CSS font-size value so it can be safely placed on a textStyle mark.
+ * Accepts a number followed by a known length/relative unit (px, pt, em, rem, %),
+ * mirroring what the exporter emits (`font-size:24px`). Rejects anything with extra
+ * declarations, functions, or characters that could break out of the attribute.
+ * Returns the normalized value (trimmed original) or null when unsafe.
+ */
+export function isSafeFontSize(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const v = raw.trim()
+  if (!v) return null
+  // number (int or decimal) + unit; no semicolons/colons/parens or other declarations.
+  if (/^\d+(?:\.\d+)?(?:px|pt|em|rem|%)$/i.test(v)) return v
+  return null
+}
+
 // ── Inline HTML parsing ───────────────────────────────────────────────────────
 
 export interface InlineHtmlResult {
@@ -130,12 +146,30 @@ export function parseInlineHtml(
   if (/^<sup>$/i.test(trimmed)) { markStack.push({ type: 'superscript' }); return { textNode: null } }
   if (/^<\/sup>$/i.test(trimmed)) { popMark(markStack, 'superscript'); return { textNode: null } }
 
-  // <span style="color:VALUE">
-  const spanMatch = /^<span\s+style="color:\s*([^"]+)"\s*>$/i.exec(trimmed)
-  if (spanMatch) {
-    const color = isSafeCssColor(spanMatch[1])
-    if (color) markStack.push({ type: 'textStyle', attrs: { color } })
-    // If color is unsafe, we still push nothing — the </span> close will be a no-op
+  // <span style="..."> — the exporter emits color and/or font-size declarations inside a
+  // single style attribute (e.g. `color:red;font-size:24px`). Parse each declaration and
+  // build one textStyle mark carrying whichever safe attrs are present, so color-only,
+  // font-size-only, and combined spans all round-trip (previously only pure color matched,
+  // so font-size was silently dropped — and a combined span lost its color too).
+  const spanOpen = /^<span\s+style="([^"]*)"\s*>$/i.exec(trimmed)
+  if (spanOpen) {
+    const attrs: Record<string, unknown> = {}
+    for (const decl of spanOpen[1].split(';')) {
+      const idx = decl.indexOf(':')
+      if (idx < 0) continue
+      const prop = decl.slice(0, idx).trim().toLowerCase()
+      const value = decl.slice(idx + 1).trim()
+      if (prop === 'color') {
+        const color = isSafeCssColor(value)
+        if (color) attrs.color = color
+      } else if (prop === 'font-size') {
+        const fontSize = isSafeFontSize(value)
+        if (fontSize) attrs.fontSize = fontSize
+      }
+    }
+    // Always push a mark for the open tag so the matching </span> pops the right one, even
+    // when every declaration was unsafe/unknown (mark carries no attrs in that case).
+    markStack.push(Object.keys(attrs).length > 0 ? { type: 'textStyle', attrs } : { type: 'textStyle' })
     return { textNode: null }
   }
   if (/^<\/span>$/i.test(trimmed)) { popMark(markStack, 'textStyle'); return { textNode: null } }
@@ -211,7 +245,7 @@ export function parseHtmlBlock(
     return [{
       type: 'details',
       content: [
-        { type: 'detailsSummary', content: summaryNodes.length ? summaryNodes : [{ type: 'text', text: '' }] },
+        { type: 'detailsSummary', content: summaryNodes.length ? summaryNodes : [] },
         { type: 'detailsContent', content: innerBlocks.length ? innerBlocks : [{ type: 'paragraph' }] },
       ],
     }]
@@ -238,14 +272,155 @@ function wrapInlineAsParagraph(inline: PmNode[]): PmNode[] {
   return inline.length ? [{ type: 'paragraph', content: inline }] : []
 }
 
+/**
+ * Parse an exporter HTML-fallback `<table>` into a PM table node. Uses the DOM (DOMParser is
+ * available in the browser and in the jsdom test env) rather than regex, so it correctly handles
+ * NESTED tables and block cell content (images, lists, paragraphs) that the exporter emits when a
+ * cell can't fit a single GFM pipe cell. A cell's children are mapped recursively to PM blocks;
+ * a cell that is only inline content collapses to a single paragraph (matching a plain cell).
+ */
 function parseHtmlTable(
+  html: string,
+  inlineMap: InlineMapper,
+  warnings: string[],
+): PmNode | null {
+  if (typeof DOMParser === 'undefined') return parseHtmlTableRegex(html, inlineMap, warnings)
+  let root: Element | null
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    root = doc.querySelector('table')
+  } catch {
+    return parseHtmlTableRegex(html, inlineMap, warnings)
+  }
+  if (!root) return null
+  const table = domTableToNode(root, inlineMap, warnings)
+  return table && (table.content?.length ?? 0) > 0 ? table : null
+}
+
+/** Convert a DOM <table> element to a PM table node (recurses for nested tables). */
+function domTableToNode(tableEl: Element, inlineMap: InlineMapper, warnings: string[]): PmNode {
+  const rows: PmNode[] = []
+  // Only DIRECT rows of THIS table (skip rows that belong to a nested table in a cell).
+  const trEls: Element[] = []
+  for (const section of Array.from(tableEl.children)) {
+    const tag = section.tagName.toLowerCase()
+    if (tag === 'tr') trEls.push(section)
+    else if (tag === 'thead' || tag === 'tbody' || tag === 'tfoot') {
+      for (const tr of Array.from(section.children)) if (tr.tagName.toLowerCase() === 'tr') trEls.push(tr)
+    }
+  }
+  for (const tr of trEls) {
+    const cells: PmNode[] = []
+    for (const cellEl of Array.from(tr.children)) {
+      const tag = cellEl.tagName.toLowerCase()
+      if (tag !== 'td' && tag !== 'th') continue
+      const colspan = Math.max(1, parseInt(cellEl.getAttribute('colspan') ?? '1', 10) || 1)
+      const rowspan = Math.max(1, parseInt(cellEl.getAttribute('rowspan') ?? '1', 10) || 1)
+      const blocks = domCellToBlocks(cellEl, inlineMap, warnings)
+      const cell: PmNode = {
+        type: tag === 'th' ? 'tableHeader' : 'tableCell',
+        content: blocks.length ? blocks : [{ type: 'paragraph' }],
+      }
+      if (colspan > 1 || rowspan > 1) {
+        cell.attrs = {}
+        if (colspan > 1) cell.attrs.colspan = colspan
+        if (rowspan > 1) cell.attrs.rowspan = rowspan
+      }
+      cells.push(cell)
+    }
+    if (cells.length) rows.push({ type: 'tableRow', content: cells })
+  }
+  return { type: 'table', content: rows }
+}
+
+/** Map a <td>/<th>'s children to PM block nodes. Bare inline content becomes one paragraph. */
+function domCellToBlocks(cellEl: Element, inlineMap: InlineMapper, warnings: string[]): PmNode[] {
+  const out: PmNode[] = []
+  let inlineRun = ''
+  const flushInline = () => {
+    const text = inlineRun.trim()
+    inlineRun = ''
+    if (!text) return
+    const inline = inlineMap(text, warnings)
+    if (inline.length) out.push({ type: 'paragraph', content: inline })
+  }
+  for (const child of Array.from(cellEl.childNodes)) {
+    if (child.nodeType === 3 /* text */) {
+      inlineRun += (child.textContent ?? '')
+      continue
+    }
+    if (child.nodeType !== 1) continue
+    const el = child as Element
+    const tag = el.tagName.toLowerCase()
+    if (tag === 'table') {
+      flushInline()
+      out.push(domTableToNode(el, inlineMap, warnings))
+    } else if (tag === 'img') {
+      flushInline()
+      const img = domImgToNode(el)
+      if (img) out.push(img)
+    } else if (tag === 'p') {
+      flushInline()
+      const inline = inlineMap((el.innerHTML || '').trim(), warnings)
+      out.push(inline.length ? { type: 'paragraph', content: inline } : { type: 'paragraph' })
+    } else if (tag === 'ul' || tag === 'ol') {
+      flushInline()
+      out.push(domListToNode(el, tag === 'ol', inlineMap, warnings))
+    } else if (/^h[1-6]$/.test(tag)) {
+      flushInline()
+      out.push({ type: 'heading', attrs: { level: Number(tag[1]) }, content: inlineMap((el.innerHTML || '').trim(), warnings) })
+    } else if (tag === 'pre') {
+      flushInline()
+      const code = el.textContent ?? ''
+      const codeBlock: PmNode = { type: 'codeBlock', attrs: {} }
+      if (code) codeBlock.content = [{ type: 'text', text: code }]
+      out.push(codeBlock)
+    } else if (tag === 'blockquote') {
+      flushInline()
+      const inner = domCellToBlocks(el, inlineMap, warnings)
+      out.push({ type: 'blockquote', content: inner.length ? inner : [{ type: 'paragraph' }] })
+    } else if (tag === 'hr') {
+      flushInline()
+      out.push({ type: 'horizontalRule' })
+    } else {
+      // Unknown inline-ish element: fold its HTML into the inline run.
+      inlineRun += el.outerHTML
+    }
+  }
+  flushInline()
+  return out
+}
+
+function domImgToNode(el: Element): PmNode | null {
+  const src = el.getAttribute('src') ?? ''
+  if (!/^https?:\/\//i.test(src.trim())) return null
+  const safe = isSafeHref(src)
+  if (!safe) return null
+  const attrs: Record<string, unknown> = { src: safe }
+  const m = /\/(att_[A-Za-z0-9]+)(?:\/|\?|$)/.exec(src)
+  if (m) attrs.attachId = m[1]
+  const alt = el.getAttribute('alt')
+  if (alt) attrs.alt = alt
+  return { type: 'image', attrs }
+}
+
+function domListToNode(el: Element, ordered: boolean, inlineMap: InlineMapper, warnings: string[]): PmNode {
+  const items: PmNode[] = []
+  for (const liEl of Array.from(el.children)) {
+    if (liEl.tagName.toLowerCase() !== 'li') continue
+    const blocks = domCellToBlocks(liEl, inlineMap, warnings)
+    items.push({ type: 'listItem', content: blocks.length ? blocks : [{ type: 'paragraph' }] })
+  }
+  return { type: ordered ? 'orderedList' : 'bulletList', content: items }
+}
+
+/** Legacy regex fallback for environments without DOMParser (kept for flat exporter tables). */
+function parseHtmlTableRegex(
   html: string,
   inlineMap: InlineMapper,
   _warnings: string[],
 ): PmNode | null {
   const rows: PmNode[] = []
-  // Simple regex-based row/cell extraction. Sufficient for the exporter's clean output;
-  // not a general HTML parser (which would be overkill for this controlled input).
   const trRe = /<tr>([\s\S]*?)<\/tr>/gi
   let trMatch: RegExpExecArray | null
   while ((trMatch = trRe.exec(html))) {
@@ -263,7 +438,7 @@ function parseHtmlTable(
       const cellInline = content ? inlineMap(content, []) : []
       const cell: PmNode = {
         type: tag === 'th' ? 'tableHeader' : 'tableCell',
-        content: [{ type: 'paragraph', content: cellInline.length ? cellInline : [{ type: 'text', text: '' }] }],
+        content: cellInline.length ? [{ type: 'paragraph', content: cellInline }] : [{ type: 'paragraph' }],
       }
       if (colspan > 1 || rowspan > 1) {
         cell.attrs = {}

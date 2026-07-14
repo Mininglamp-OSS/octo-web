@@ -115,9 +115,38 @@ function escAttr(s: string): string {
   return escXml(s).replace(/"/g, '&quot;')
 }
 
-/** A plain math run carrying literal text. */
+/**
+ * Current math text color (a 6-hex RRGGBB string) while converting inside an
+ * `<mstyle mathcolor>` subtree, or null. OMML has no subtree color wrapper, so
+ * we thread it down and stamp each run's `<m:rPr>`, which is how Word carries
+ * math run color. A stack supports nested/overriding color scopes.
+ */
+const colorStack: string[] = []
+function currentColor(): string | null {
+  return colorStack.length ? colorStack[colorStack.length - 1]! : null
+}
+
+/** Normalize a MathML color (name or #hex) to a 6-hex RRGGBB, or null. */
+function normalizeColor(raw: string | undefined): string | null {
+  if (!raw) return null
+  const v = raw.trim().toLowerCase()
+  const NAMES: Record<string, string> = {
+    red: 'FF0000', blue: '0000FF', green: '008000', black: '000000',
+    white: 'FFFFFF', yellow: 'FFFF00', orange: 'FFA500', purple: '800080',
+    gray: '808080', grey: '808080', cyan: '00FFFF', magenta: 'FF00FF',
+  }
+  if (NAMES[v]) return NAMES[v]
+  const hex = v.replace(/^#/, '')
+  if (/^[0-9a-f]{6}$/.test(hex)) return hex.toUpperCase()
+  if (/^[0-9a-f]{3}$/.test(hex)) return hex.split('').map((c) => c + c).join('').toUpperCase()
+  return null
+}
+
+/** A plain math run carrying literal text (with the active color, if any). */
 function run(text: string): string {
-  return `<m:r><m:t xml:space="preserve">${escXml(text)}</m:t></m:r>`
+  const color = currentColor()
+  const rPr = color ? `<m:rPr><w:color w:val="${color}"/></m:rPr>` : ''
+  return `<m:r>${rPr}<m:t xml:space="preserve">${escXml(text)}</m:t></m:r>`
 }
 
 function sSup(base: Element, sup: Element): string {
@@ -587,11 +616,22 @@ function convertNode(node: Element): string {
       return ''
     // Grouping / styling wrappers are transparent in OMML.
     case 'mrow':
-    case 'mstyle':
     case 'mpadded':
     case 'menclose':
     case 'mphantom':
       return convertSequence(kids)
+    case 'mstyle': {
+      // `\color{…}` / `\textcolor{…}{…}` compile to `<mstyle mathcolor>`. OMML
+      // carries color per run, so push the color while converting the subtree.
+      const color = normalizeColor(node.attributes?.mathcolor as string | undefined)
+      if (!color) return convertSequence(kids)
+      colorStack.push(color)
+      try {
+        return convertSequence(kids)
+      } finally {
+        colorStack.pop()
+      }
+    }
     case 'msup':
       return sSup(kids[0], kids[1])
     case 'msub':

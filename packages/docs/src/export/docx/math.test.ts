@@ -62,6 +62,27 @@ describe('latexToMathComponent (unit)', () => {
     expect(latexToMathComponent('   ', false)).toBeNull()
   })
 
+  // Regression: these previously errored in MathJax (color package missing /
+  // non-standard command) and degraded to raw LaTeX text runs, which imported
+  // back as red literal LaTeX. They must now produce real OMML components.
+  it('converts \\color / \\textcolor to a real math component (not text fallback)', () => {
+    expect(latexToMathComponent('\\color{red} E = mc^2', true)).not.toBeNull()
+    expect(latexToMathComponent('\\textcolor{blue}{\\frac{1}{2}} + F = ma', true)).not.toBeNull()
+  })
+
+  it('converts \\hdots (mapped to \\dots) to a real math component', () => {
+    expect(latexToMathComponent('a_1 \\le a_2 \\le \\hdots \\le a_n', true)).not.toBeNull()
+  })
+
+  it('converts a piecewise cases / matrix to a real math component', () => {
+    expect(
+      latexToMathComponent(
+        'f(x)=\\left\\{\\begin{matrix} x^{2} & x \\geq 0 \\\\ -x & x<0 \\end{matrix}\\right.',
+        true,
+      ),
+    ).not.toBeNull()
+  })
+
   it('produced component serializes to an <m:oMath> element', () => {
     // A component placed in a paragraph must serialize as real OMML markup.
     const comp = latexToMathComponent('E = mc^2', true)!

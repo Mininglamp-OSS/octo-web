@@ -34,7 +34,7 @@ export interface DocTarget {
  * import machinery (parse + float-image support) is complete and left intact; only the entry
  * button is gated. Flip this to `true` to restore the "导入" button.
  */
-const IMPORT_ENABLED = false
+const IMPORT_ENABLED = true
 
 /**
  * A dropdown menu rendered in a body portal at fixed coords, so it is never clipped by an

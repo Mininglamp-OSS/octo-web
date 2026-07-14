@@ -8,6 +8,7 @@
 import { parseMarkdownToPmDoc } from '../import/markdown.ts'
 import { parsePdfToPmDoc, PDF_NO_TEXT_LAYER } from '../import/pdf.ts'
 import { createDoc, importDocx } from '../pages/docsApi.ts'
+import { copyAttachments, ingestAttachments, type CopySourceRef } from '../attachments/api.ts'
 import { emojiGlyph } from './emoji.ts'
 
 const IMPORT_KEY_PREFIX = 'octo-import-pm-'
@@ -140,6 +141,13 @@ export async function runMarkdownImport(
   // 1. File picker
   const { text, fileName } = await pickMdFile()
 
+  // 1b. Extension guard. `input.accept` is only a UI hint (the OS dialog still lets the user pick
+  // "all files"), so reject anything that is not a Markdown file here — this import path is for
+  // Markdown only, not arbitrary .txt/plain text.
+  if (!/\.(md|markdown)$/i.test(fileName)) {
+    throw new Error('仅支持导入 Markdown 文件（.md / .markdown）')
+  }
+
   // 2. Parse (emojiName resolves `:shortcode:` against the editor's bundled GitHub emoji set;
   // unknown shortcodes stay literal text rather than becoming blank emoji nodes).
   const parsed = parseMarkdownToPmDoc(text, { emojiName: emojiGlyph })
@@ -150,15 +158,171 @@ export async function runMarkdownImport(
   // 4. Create new doc
   const created = await createDoc({ title, spaceId, folderId })
 
+  // 4b. Migrate imported images into the NEW doc. The parsed image nodes still point at the
+  // SOURCE doc's attachId + a short-lived signed URL. The editor resolves an image's URL with
+  // the CURRENT doc's id (getReadUrl(thisDoc, attachId)), so a foreign attachId never resolves
+  // and the image renders blank once the signed src expires. Re-upload each image under the new
+  // doc so it gets a doc-scoped attachId the editor can re-sign. Best-effort: an image that
+  // can't be fetched/re-uploaded degrades to a warning instead of blocking the whole import.
+  const migrateWarnings = await migrateImportedImages(created.docId, parsed.doc)
+
   // 5. Stash content + warnings for EditorShell to pick up after navigation
   stashImportContent(created.docId, parsed.doc)
-  stashImportWarnings(created.docId, parsed.warnings)
+  stashImportWarnings(created.docId, [...parsed.warnings, ...migrateWarnings])
 
   return {
     docId: created.docId,
     title,
-    warnings: parsed.warnings,
+    warnings: [...parsed.warnings, ...migrateWarnings],
   }
+}
+
+/**
+ * Re-host every image that our own service already stores under `newDocId`, using a server-side
+ * store-to-store copy. The parsed image nodes still point at the SOURCE doc's attachId + a
+ * short-lived signed URL; the editor resolves an image's URL with the CURRENT doc's id
+ * (getReadUrl(thisDoc, attachId)), so a foreign attachId never resolves and the image renders
+ * blank once the signed src expires. We ask the backend to copy the bytes store-to-store (it
+ * never depends on the expiring signed URL) and rewrite each node's attachId/src to the new
+ * doc-scoped values.
+ *
+ * Re-host every image an imported document references so it survives under the new doc:
+ *   - OUR-SERVICE images (src path `/file/<docId>/att_<id>/`) are copied store-to-store by the
+ *     backend (`copyAttachments`) — never depends on the expiring signed URL.
+ *   - EXTERNAL images (any other http(s) URL) are downloaded + stored server-side
+ *     (`ingestAttachments`, SSRF-guarded) so the doc does not break if the host later 404s; if
+ *     ingest fails the node KEEPS its original URL (best-effort) so it still shows while reachable.
+ * Both rewrite each node's attachId/src to the new doc-scoped values. Non-http(s) srcs (already
+ * degraded to text markers upstream) are ignored. Returns non-fatal warnings. Exported for tests.
+ */
+export async function migrateImportedImages(newDocId: string, doc: unknown): Promise<string[]> {
+  const images: Array<Record<string, unknown>> = []
+  collectImageNodes(doc, images)
+  if (images.length === 0) return []
+
+  // Split image nodes into our-service (by source ref) vs external (by URL), de-duped. We keep
+  // the NODE objects (not just attrs) so a failed external image can be transformed into a link.
+  const byRef = new Map<string, { ref: CopySourceRef; nodes: Array<Record<string, unknown>> }>()
+  const byUrl = new Map<string, Array<Record<string, unknown>>>()
+  for (const node of images) {
+    const attrs = (node.attrs ?? {}) as Record<string, unknown>
+    const src = typeof attrs.src === 'string' ? attrs.src : ''
+    if (!/^https?:\/\//i.test(src)) continue // local/data/relative: already degraded upstream
+    const ref = parseServiceImageRef(src)
+    if (ref) {
+      const key = `${ref.docId}\u0000${ref.attachId}`
+      const entry = byRef.get(key)
+      if (entry) entry.nodes.push(node)
+      else byRef.set(key, { ref, nodes: [node] })
+    } else {
+      const list = byUrl.get(src)
+      if (list) list.push(node)
+      else byUrl.set(src, [node])
+    }
+  }
+
+  const warnings: string[] = []
+
+  // 1) Our-service images → server-to-server copy.
+  if (byRef.size > 0) {
+    try {
+      const result = await copyAttachments(newDocId, [...byRef.values()].map((e) => e.ref))
+      for (const m of result.mappings) {
+        const entry = byRef.get(`${m.sourceDocId}\u0000${m.sourceAttachId}`)
+        if (!entry) continue
+        for (const node of entry.nodes) {
+          const attrs = (node.attrs ?? {}) as Record<string, unknown>
+          attrs.attachId = m.attachId
+          if (m.url) attrs.src = m.url
+          node.attrs = attrs
+        }
+      }
+      for (const nc of result.notCopied) warnings.push(`图片未能迁移到新文档（${nc.reason}）`)
+    } catch {
+      warnings.push('部分图片未能迁移到新文档')
+    }
+  }
+
+  // 2) External images → server-side download + store. On success rewrite to the stored
+  //    attachment; on failure REPLACE the broken image node with a clickable link to the
+  //    original URL (no red "Image unavailable" box), plus one top-level warning.
+  if (byUrl.size > 0) {
+    const succeeded = new Set<string>()
+    try {
+      const result = await ingestAttachments(newDocId, [...byUrl.keys()])
+      for (const m of result.mappings) {
+        succeeded.add(m.sourceUrl)
+        const nodes = byUrl.get(m.sourceUrl)
+        if (!nodes) continue
+        for (const node of nodes) {
+          const attrs = (node.attrs ?? {}) as Record<string, unknown>
+          attrs.attachId = m.attachId
+          if (m.url) attrs.src = m.url
+          node.attrs = attrs
+        }
+      }
+    } catch {
+      // Request-level failure: nothing succeeded; every external image falls through to link.
+    }
+    // Any external image not successfully ingested → turn into a clickable link so it never
+    // renders a broken-image box. The document keeps a live reference to the original URL.
+    let anyFailed = false
+    for (const [url, nodes] of byUrl) {
+      if (succeeded.has(url)) continue
+      anyFailed = true
+      for (const node of nodes) imageNodeToLink(node, url)
+    }
+    if (anyFailed) warnings.push('部分外部图片未能保存到文档，已改为链接')
+  }
+
+  return warnings
+}
+
+/**
+ * Transform a (block) image node in place into a paragraph containing a clickable link to the
+ * original URL. Used when an external image can't be downloaded: instead of a broken-image box
+ * the reader gets a live link. The link text is the image alt, else the URL.
+ */
+function imageNodeToLink(node: Record<string, unknown>, url: string): void {
+  const attrs = (node.attrs ?? {}) as Record<string, unknown>
+  const alt = typeof attrs.alt === 'string' && attrs.alt.trim() !== '' ? attrs.alt : url
+  node.type = 'paragraph'
+  node.attrs = {}
+  node.content = [
+    {
+      type: 'text',
+      text: alt,
+      marks: [{ type: 'link', attrs: { href: url } }],
+    },
+  ]
+}
+
+/**
+ * Parse a service storage URL into its source ref. Our exporter emits image src as a signed URL
+ * whose path is `/file/<docId>/att_<id>/<name>?<signature>`. Returns { docId, attachId } when the
+ * path matches that shape, else null (external image → not migrated). Requires BOTH the doc id
+ * segment and the `att_` id so a random URL that merely contains `att_` is not misread.
+ */
+function parseServiceImageRef(src: string): CopySourceRef | null {
+  if (!/^https?:\/\//i.test(src)) return null
+  let pathname: string
+  try {
+    pathname = new URL(src).pathname
+  } catch {
+    return null
+  }
+  const m = /\/file\/([^/]+)\/(att_[A-Za-z0-9]+)(?:\/|$)/.exec(pathname)
+  if (!m) return null
+  return { docId: decodeURIComponent(m[1]!), attachId: m[2]! }
+}
+
+/** Depth-first collect every image node's attrs object (mutated in place by the migrator). */
+/** Depth-first collect every image NODE object (mutated in place by the migrator). */
+function collectImageNodes(node: unknown, out: Array<Record<string, unknown>>): void {
+  if (typeof node !== 'object' || node === null) return
+  const n = node as Record<string, unknown>
+  if (n.type === 'image') out.push(n)
+  if (Array.isArray(n.content)) for (const c of n.content) collectImageNodes(c, out)
 }
 
 /**
@@ -253,7 +417,7 @@ function pickMdFile(): Promise<PickedFile> {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = '.md,.markdown,.txt,.text'
+    input.accept = '.md,.markdown'
     input.style.display = 'none'
 
     input.onchange = () => {
