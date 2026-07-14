@@ -4,6 +4,7 @@ import {
   addImConnectStatusListener,
   createImConnectStatusListener,
   getImConnectStatus,
+  handleImReconnectRefresh,
   isImConnected,
   reconnectImWhenNotConnected,
   registerImConnectStatusListener,
@@ -131,5 +132,61 @@ describe("createImConnectStatusListener", () => {
     reconnectImWhenNotConnected(sdk, ConnectStatus.Connected);
 
     expect(sdk.connectManager.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips reconnect refresh when the status is not connected", () => {
+    const refreshMessages = vi.fn();
+    const resyncSubscribers = vi.fn();
+
+    const refreshed = handleImReconnectRefresh(ConnectStatus.Disconnect, {
+      getLastRefreshAt: () => 0,
+      setLastRefreshAt: vi.fn(),
+      refreshMessages,
+      resyncSubscribers,
+      now: () => 6000,
+    });
+
+    expect(refreshed).toBe(false);
+    expect(refreshMessages).not.toHaveBeenCalled();
+    expect(resyncSubscribers).not.toHaveBeenCalled();
+  });
+
+  it("refreshes messages and subscribers after reconnect when debounce allows it", () => {
+    let lastRefreshAt = 0;
+    const refreshMessages = vi.fn();
+    const resyncSubscribers = vi.fn();
+
+    const refreshed = handleImReconnectRefresh(ConnectStatus.Connected, {
+      getLastRefreshAt: () => lastRefreshAt,
+      setLastRefreshAt: (time) => {
+        lastRefreshAt = time;
+      },
+      refreshMessages,
+      resyncSubscribers,
+      now: () => 6000,
+    });
+
+    expect(refreshed).toBe(true);
+    expect(lastRefreshAt).toBe(6000);
+    expect(refreshMessages).toHaveBeenCalledTimes(1);
+    expect(resyncSubscribers).toHaveBeenCalledTimes(1);
+  });
+
+  it("debounces reconnect refreshes", () => {
+    let lastRefreshAt = 2000;
+    const refreshMessages = vi.fn();
+
+    const refreshed = handleImReconnectRefresh(ConnectStatus.Connected, {
+      getLastRefreshAt: () => lastRefreshAt,
+      setLastRefreshAt: (time) => {
+        lastRefreshAt = time;
+      },
+      refreshMessages,
+      now: () => 6000,
+    });
+
+    expect(refreshed).toBe(false);
+    expect(lastRefreshAt).toBe(2000);
+    expect(refreshMessages).not.toHaveBeenCalled();
   });
 });
