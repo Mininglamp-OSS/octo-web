@@ -419,11 +419,142 @@ describe('Toolbar — text colour palette + custom picker (#719)', () => {
     expect(editor!.getAttributes('textStyle').color).toBeUndefined()
   })
 
-  it('leaves the highlight palette untouched (still 5 swatches, this scope is font-colour only)', () => {
+  it('leaves the highlight palette untouched by the text-colour scope (highlight has its own presets)', () => {
+    // #719 (font colour) did not alter the highlight palette; the highlight expansion is a
+    // separate follow-up and is covered by its own describe block below. Here we only assert the
+    // text-colour popover does not leak swatches into the highlight control.
     render(<Toolbar editor={editor!} />)
     fireEvent.click(titleBtn('docs.toolbar.highlight'))
     const highlightSwatches = document.querySelectorAll('button[title^="Highlight #"]')
-    expect(highlightSwatches).toHaveLength(5)
+    expect(highlightSwatches).toHaveLength(10)
+  })
+})
+
+// octo-web highlight follow-up (same plan as #719): expanded highlight (text-background) palette
+// + native custom highlight picker. The highlight popover now offers ~10 light presets and a
+// native <input type="color"> entry for arbitrary hex, while clear (unsetHighlight) and the
+// popover-open active logic stay untouched, mirroring the text-colour control.
+describe('Toolbar — highlight palette + custom picker', () => {
+  function openHighlightPopover(): HTMLElement {
+    render(<Toolbar editor={editor!} />)
+    fireEvent.click(titleBtn('docs.toolbar.highlight'))
+    const popover = document.querySelector('.octo-highlight-color-popover') as HTMLElement
+    if (!popover) throw new Error('highlight popover did not open')
+    return popover
+  }
+
+  it('offers the ~10 common light preset swatches, in order', () => {
+    const popover = openHighlightPopover()
+    const swatches = within(popover).getAllByTitle(/^Highlight #/)
+    expect(swatches).toHaveLength(10)
+    const colours = swatches.map((s) => (s.getAttribute('title') || '').replace('Highlight ', ''))
+    expect(colours).toEqual([
+      '#fff3a3',
+      '#ffe0a3',
+      '#ffd6cc',
+      '#ffd6e7',
+      '#e7d6ff',
+      '#d6ddff',
+      '#cfe2ff',
+      '#c9f0ef',
+      '#cdeccd',
+      '#e6e9ed',
+    ])
+  })
+
+  it('applies a preset swatch highlight to the selection', () => {
+    editor!.chain().focus().selectAll().run()
+    const popover = openHighlightPopover()
+    const swatch = within(popover).getByTitle('Highlight #cfe2ff')
+    fireEvent.click(swatch)
+    expect(editor!.getAttributes('highlight').color).toBe('#cfe2ff')
+  })
+
+  it('exposes a native colour input that commits an arbitrary hex highlight on change', () => {
+    editor!.chain().focus().selectAll().run()
+    const popover = openHighlightPopover()
+    const input = popover.querySelector('input[type="color"]') as HTMLInputElement
+    expect(input).toBeTruthy()
+    // Commit happens on `change` (picker closed / value settled), not on the raw `input`
+    // stream that fires continuously while the OS hue wheel is dragged.
+    fireEvent.change(input, { target: { value: '#123456' } })
+    expect(editor!.getAttributes('highlight').color).toBe('#123456')
+  })
+
+  it('leaves the popover open during a drag (input) and commits + closes on change', () => {
+    editor!.chain().focus().selectAll().run()
+    const popover = openHighlightPopover()
+    const input = popover.querySelector('input[type="color"]') as HTMLInputElement
+
+    // Dragging fires `input` repeatedly. RC1: we intentionally do NOT commit per tick (that
+    // flooded undo/Yjs); the popover simply stays open so the user can keep nudging the hue.
+    fireEvent.input(input, { target: { value: '#112233' } })
+    expect(editor!.getAttributes('highlight').color).toBeUndefined()
+    expect(document.querySelector('.octo-highlight-color-popover')).toBeTruthy()
+
+    // Committing the pick fires `change`: the final colour is applied and the popover collapses,
+    // matching a preset-swatch click.
+    fireEvent.change(input, { target: { value: '#abcdef' } })
+    expect(editor!.getAttributes('highlight').color).toBe('#abcdef')
+    expect(document.querySelector('.octo-highlight-color-popover')).toBeNull()
+  })
+
+  // RC1: dragging the native hue wheel fires `input` continuously. Committing on every `input`
+  // pushed one ProseMirror transaction per event — tens of undo records and a Yjs update flood
+  // per single pick. The picker now previews via the OS dialog and commits exactly once on
+  // `change`, so one pick == one undo step == one collaboration update.
+  it('does not commit while dragging (raw input events) — a pick is a single undo step', () => {
+    // A history-enabled editor (StarterKit default) so we can assert the undo depth of one pick.
+    const e = new Editor({
+      extensions: [StarterKit, TaskList, TaskItem, Highlight.configure({ multicolor: true }), TextStyle, Color, Link, FindReplace],
+      content: '<p>hello</p>',
+    })
+    e.chain().focus().selectAll().run()
+    render(<Toolbar editor={e} />)
+    fireEvent.click(titleBtn('docs.toolbar.highlight'))
+    const input = document.querySelector('.octo-highlight-color-popover input[type="color"]') as HTMLInputElement
+    expect(input).toBeTruthy()
+
+    let docChanges = 0
+    e.on('transaction', ({ transaction }) => {
+      if (transaction.docChanged) docChanges++
+    })
+
+    // Simulate a drag across the hue wheel: a stream of intermediate `input` events.
+    fireEvent.input(input, { target: { value: '#111111' } })
+    fireEvent.input(input, { target: { value: '#222222' } })
+    fireEvent.input(input, { target: { value: '#333333' } })
+    // Nothing is committed to the document (and undo history is untouched) during the drag.
+    expect(e.getAttributes('highlight').color).toBeUndefined()
+    expect(docChanges).toBe(0)
+
+    // Releasing the picker fires `change` once → exactly one document-changing transaction.
+    fireEvent.change(input, { target: { value: '#345678' } })
+    expect(e.getAttributes('highlight').color).toBe('#345678')
+    expect(docChanges).toBe(1)
+
+    // And a single undo fully reverts the pick — proof it is one undo record, not many.
+    expect(e.can().undo()).toBe(true)
+    e.chain().undo().run()
+    expect(e.getAttributes('highlight').color).toBeUndefined()
+
+    e.destroy()
+  })
+
+  it('still clears the highlight via the ✕ button (unsetHighlight preserved)', () => {
+    editor!.chain().focus().selectAll().setHighlight({ color: '#fff3a3' }).run()
+    expect(editor!.getAttributes('highlight').color).toBe('#fff3a3')
+    const popover = openHighlightPopover()
+    const clear = within(popover).getByText('✕')
+    fireEvent.click(clear)
+    expect(editor!.getAttributes('highlight').color).toBeUndefined()
+  })
+
+  it('leaves the text-colour palette untouched (still 10 swatches, this scope is highlight only)', () => {
+    render(<Toolbar editor={editor!} />)
+    fireEvent.click(titleBtn('docs.toolbar.textColor'))
+    const textSwatches = document.querySelectorAll('button[title^="Text #"]')
+    expect(textSwatches).toHaveLength(10)
   })
 })
 
