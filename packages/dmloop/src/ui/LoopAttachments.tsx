@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Paperclip } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { Attachment } from "../api/types";
-import { fetchAttachmentBlob } from "../api/attachmentApi";
-import { loadObjectUrl } from "./objectUrl";
 import { canPreviewInline } from "./attachmentPreview";
+import { useAuthedAttachmentUrl, triggerAuthedDownload } from "./useAuthedAttachment";
 
 /**
  * Attachment renderer for the loop timeline. Loads bytes through the
@@ -15,26 +14,13 @@ import { canPreviewInline } from "./attachmentPreview";
  * the loop API — so a native element request (which can't carry the loop
  * `token`/`X-Space-Id` headers) 404s and the image breaks. Fetching the Blob
  * via the client and wrapping it in an object URL loads it with auth against
- * the correct backend. The object URL is revoked on unmount / id change so a
- * long timeline doesn't leak blobs (lifecycle isolated in loadObjectUrl).
+ * the correct backend (lifecycle isolated in useAuthedAttachmentUrl).
  */
 function AuthedImage({ att }: { att: Attachment }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    setUrl(null);
-    setFailed(false);
-    // loadObjectUrl returns the disposer; running it on cleanup revokes the URL
-    // (or drops a still-pending load) so unmount / id change can't leak blobs.
-    return loadObjectUrl(att.id, {
-      onLoad: setUrl,
-      onError: () => setFailed(true),
-    }, { fetchBlob: fetchAttachmentBlob, isInlineSafe: canPreviewInline });
-  }, [att.id]);
+  const { url, failed } = useAuthedAttachmentUrl(att.id);
 
   if (failed) {
-    // Fall back to a plain download link so the attachment is still reachable.
+    // Fall back to a click-to-download link so the attachment is still reachable.
     return <AuthedDownload att={att} />;
   }
   if (!url) {
@@ -52,8 +38,8 @@ function AuthedImage({ att }: { att: Attachment }) {
 /**
  * Non-image attachment: an icon + filename that downloads on click. Same auth
  * reasoning as AuthedImage — we can't point an <a href> at the auth-only
- * endpoint, so we fetch the Blob on click, then trigger a download from an
- * object URL and revoke it.
+ * endpoint, so we fetch the Blob on click (triggerAuthedDownload) and trigger a
+ * download from an object URL.
  */
 function AuthedDownload({ att }: { att: Attachment }) {
   const { t } = useI18n();
@@ -63,27 +49,13 @@ function AuthedDownload({ att }: { att: Attachment }) {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
-    try {
-      const blob = await fetchAttachmentBlob(att.id);
-      const objUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objUrl;
-      a.download = att.filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // Revoke after the click has had a chance to start the download.
-      setTimeout(() => URL.revokeObjectURL(objUrl), 10_000);
-    } catch {
-      /* swallowed: a failed download shows no toast here to stay unobtrusive */
-    } finally {
-      setBusy(false);
-    }
+    await triggerAuthedDownload(att.id, att.filename);
+    setBusy(false);
   };
 
   return (
     <a
-      href={att.download_url}
+      href="#"
       onClick={onClick}
       className="loop-att"
       aria-busy={busy}

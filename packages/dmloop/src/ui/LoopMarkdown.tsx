@@ -1,10 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import ReactMarkdown, { uriTransformer } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { fetchAttachmentBlob } from "../api/attachmentApi";
-import { loadObjectUrl } from "./objectUrl";
-import { canPreviewInline } from "./attachmentPreview";
 import { attachmentIdFromSrc } from "./attachmentSrc";
+import { useAuthedAttachmentUrl, triggerAuthedDownload } from "./useAuthedAttachment";
 import "./markdown.css";
 
 // react-markdown@8 默认只放行 http/https/mailto/tel，会把 mention:// 改写成 javascript:void(0)。
@@ -16,29 +14,30 @@ const transformLinkUri = (href: string) =>
  * Inline markdown image whose src points at a loop attachment. Same problem as
  * the attachment card: the download endpoint is auth-only, so a native <img src>
  * carries no auth and 404/401s. Load the bytes through the authenticated client
- * and wrap them in an object URL, gated by the same inline-safe MIME whitelist
+ * (shared useAuthedAttachmentUrl), gated by the same inline-safe MIME whitelist
  * (an SVG attachment is never inlined — it would run in the document origin).
- * On any failure (unsafe MIME, fetch error) fall back to a download link.
+ * On failure (unsafe MIME or fetch error) fall back to a click-to-download that
+ * also goes through the authed client — a native <a href> to the auth-only
+ * endpoint would itself dead-link under octo-web.
  */
-function MarkdownAttachmentImage({ id, src, alt }: { id: string; src: string; alt: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    setUrl(null);
-    setFailed(false);
-    return loadObjectUrl(id, {
-      onLoad: setUrl,
-      onError: () => setFailed(true),
-    }, { fetchBlob: fetchAttachmentBlob, isInlineSafe: canPreviewInline });
-  }, [id]);
+function MarkdownAttachmentImage({ id, filename, alt }: { id: string; filename: string; alt: string }) {
+  const { url, failed } = useAuthedAttachmentUrl(id);
+  const [busy, setBusy] = useState(false);
 
   if (failed) {
-    // Not inline-safe (e.g. SVG) or failed to load → downloadable link, never
-    // a navigable same-origin blob preview.
+    // Not inline-safe (e.g. SVG) or fetch failed → click-to-download through the
+    // authed client. NOT a native <a href={src} download>: src is the auth-only
+    // endpoint and would dead-link under octo-web.
+    const onClick = async (e: React.MouseEvent) => {
+      e.preventDefault();
+      if (busy) return;
+      setBusy(true);
+      await triggerAuthedDownload(id, filename);
+      setBusy(false);
+    };
     return (
-      <a href={src} target="_blank" rel="noreferrer" download>
-        {alt || src}
+      <a href="#" onClick={onClick} aria-busy={busy}>
+        {alt || filename}
       </a>
     );
   }
@@ -68,7 +67,11 @@ export default function LoopMarkdown({ content }: { content: string }) {
             // MarkdownAttachmentImage); external / data: images load natively.
             const id = attachmentIdFromSrc(src);
             if (id) {
-              return <MarkdownAttachmentImage id={id} src={src ?? ""} alt={alt ?? ""} />;
+              // Prefer the markdown alt text as the download name; the URL's
+              // last path segment is "download"/"content" (or a query), never a
+              // real filename, so fall back to a stable generic instead.
+              const name = alt || "attachment";
+              return <MarkdownAttachmentImage id={id} filename={name} alt={alt ?? ""} />;
             }
             return <img src={src} alt={alt} {...props} />;
           },
