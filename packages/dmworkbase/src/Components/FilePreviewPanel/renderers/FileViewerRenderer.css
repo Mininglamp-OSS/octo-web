@@ -10,3 +10,15 @@
   width: 100%;
   min-height: 100%;
 }
+
+/* Britecharts line paths omit fill="none". Reset the SVG default black fill
+   so line charts do not render as filled triangles in the document preview. */
+.wk-file-preview-file-viewer .bb-chart-line .bb-line {
+  fill: none;
+}
+
+.wk-file-preview-file-viewer .bb-axis line,
+.wk-file-preview-file-viewer .bb-axis path,
+.wk-file-preview-file-viewer .bb-grid line {
+  fill: none;
+}

@@ -142,6 +142,34 @@ export default defineConfig(({ mode }) => {
         },
       },
       {
+        // Patch @file-viewer/pptx chart.js: billboard.js falls back to
+        // appending a new <div class="bb"> to document.body when the
+        // `bindto` selector (#chartID) doesn't match any element in the DOM.
+        // This happens because PPT slides use lazy loading — the chart
+        // placeholder isn't in the DOM yet when renderPptxPostProcessing runs.
+        // Guard bb.generate() so charts are only rendered when their
+        // placeholder element already exists.
+        name: "fix-pptx-chart-bindto",
+        enforce: "pre",
+        buildStart() {
+          const fs = require("fs");
+          const path = require("path");
+          const chartPath = path.join(
+            process.cwd(),
+            "../../node_modules/.pnpm/@file-viewer+renderer-presentation@2.1.27/node_modules/@file-viewer/pptx/dist/chart.js",
+          );
+          if (!fs.existsSync(chartPath)) return;
+          let code = fs.readFileSync(chartPath, "utf-8");
+          const target = "bb.generate(chart);";
+          const replacement =
+            "if (document.querySelector(chart.bindto)) { bb.generate(chart); }";
+          if (!code.includes(replacement) && code.includes(target)) {
+            code = code.replace(target, replacement);
+            fs.writeFileSync(chartPath, code, "utf-8");
+          }
+        },
+      },
+      {
         name: "exclude-test-files",
         // enforce: "pre" 让本插件的 resolveId 早于 commonjs() 等其它插件执行。
         // filehelper.ts 里 require(`./${fileIcon}`) 会被 vite-plugin-commonjs 展开
