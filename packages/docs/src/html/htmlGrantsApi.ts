@@ -22,10 +22,11 @@ function grantHeaders(base: Record<string, string>): Record<string, string> {
 }
 
 // Backend route is /v1/docs/{slug}/grants (+ /{uid} for DELETE). The web nginx
-// rewrites the same-origin /docs/... prefix to /v1/docs/... and forwards the
-// token header, exactly like the /comments location.
+// exposes it under a dedicated top-level /grants/{slug} prefix (NOT /docs/... —
+// that collides with the SPA's own /docs route) and rewrites it to the doc's
+// /v1/docs/{slug}/grants, forwarding the token header — same scheme as /comments.
 function grantsUrl(slug: string): string {
-  return `${resolveOctoDocBase()}/docs/${encodeURIComponent(slug)}/grants`
+  return `${resolveOctoDocBase()}/grants/${encodeURIComponent(slug)}`
 }
 
 /** One grant row, matching the rich-doc Member shape MemberPanel expects. */
