@@ -80,7 +80,10 @@ export class MediaMessageUploadTask extends MessageTask {
         // datasource.ts uploadSticker.
         const locationHref = typeof window !== "undefined" ? window.location.href : ""
         const apiBaseURL = WKApp.apiClient.config.apiURL
-        const useSameOriginAxios = !locationHref ||
+        // Mirror datasource.ts uploadSticker exactly: !!locationHref && shouldAttachUploadToken.
+        // When locationHref is empty (non-browser / origin undetermined), default to
+        // noInterceptorAxios (fail-closed: withhold the token rather than leak it).
+        const useSameOriginAxios = !!locationHref &&
             shouldAttachUploadToken(credentials.uploadUrl, apiBaseURL, locationHref)
         const client = useSameOriginAxios ? axios : noInterceptorAxios
         const resp = await client.put(credentials.uploadUrl, file, {

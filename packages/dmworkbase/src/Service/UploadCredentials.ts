@@ -20,13 +20,15 @@ const noInterceptorAxios = axios.create({ timeout: 10 * 60 * 1000 }) // 10 min c
 function shouldAttachToken(uploadURL: string, apiBaseURL: string): boolean {
     try {
         const locationHref = typeof window !== "undefined" ? window.location.href : ""
-        if (!locationHref) return true // non-browser: conservative, keep token
+        // Mirror datasource.ts: when origin is undetermined, default fail-closed
+        // (withhold the token) rather than fail-open (leak it to a foreign host).
+        if (!locationHref) return false
         const docOrigin = new URL(locationHref).origin
         const apiOrigin = new URL(apiBaseURL || locationHref, locationHref).origin
         const target = new URL(uploadURL, locationHref).origin
         return target === apiOrigin || target === docOrigin
     } catch {
-        return true // URL-parse failure: conservative, keep token
+        return false // URL-parse failure: fail-closed, withhold token
     }
 }
 

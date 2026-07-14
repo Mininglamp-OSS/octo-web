@@ -361,5 +361,23 @@ describe('MediaMessageUploadTask', () => {
       expect(axios.put).toHaveBeenCalledOnce()
       expect(mockNoInterceptorAxiosPut).not.toHaveBeenCalled()
     })
+
+    it('empty locationHref (non-browser): fail-closed — noInterceptorAxios, no token leaked', async () => {
+      // Mirror datasource.ts: !!locationHref && shouldAttachUploadToken
+      // When locationHref is empty, shouldAttachUploadToken is never reached;
+      // the overall expression is false → noInterceptorAxios (fail-closed).
+      // Here we simulate that by having mockShouldAttach return based on href.
+      mockShouldAttach.mockImplementation((_url: string, _api: string, href: string) => !!href)
+      const creds = makeCredentials({ uploadUrl: 'https://bucket.cos.ap-shanghai.myqcloud.com/file.jpg' })
+      mockApiGet.mockResolvedValue(creds)
+      mockNoInterceptorAxiosPut.mockResolvedValue({ status: 200, data: {} })
+
+      const task = createTask()
+      await task.start()
+
+      // noInterceptorAxios must be used — token withheld (fail-closed)
+      expect(mockNoInterceptorAxiosPut).toHaveBeenCalledOnce()
+      expect(axios.put).not.toHaveBeenCalled()
+    })
   })
 })
