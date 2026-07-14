@@ -437,6 +437,11 @@
       "deleted": "文档已删除。"
     }
   },
+  "header": {
+    "creator": "创建者",
+    "comingSoon": "该功能即将上线",
+    "membersComingSoon": "成员管理即将上线"
+  },
   "forward": {
     "entry": "转发到聊天",
     "modalTitle": "转发到聊天",

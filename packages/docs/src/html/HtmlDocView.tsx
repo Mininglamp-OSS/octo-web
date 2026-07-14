@@ -17,7 +17,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
-import { t } from '../octoweb/index.ts'
+import { t, getWKApp } from '../octoweb/index.ts'
 import { HtmlDocCommentPanel } from './HtmlDocCommentPanel.tsx'
 import { buildAnchorFromSelection } from './htmlDocAnchor.ts'
 import type { Anchor } from './htmlDocComments.ts'
@@ -115,7 +115,31 @@ type LoadState =
   | { status: 'loading' }
   | { status: 'error'; url?: string; reason?: string }
   | { status: 'empty' }
-  | { status: 'ready'; html: string }
+  | { status: 'ready'; html: string; meta: OctoDocMeta | null }
+
+// Minimal metadata the render page injects as window.__ODOC__ (see doc-side render).
+// Used to populate the header (title/creator/version). Fields the backend does not yet
+// expose (human title, creator display name) are absent and fall back gracefully.
+interface OctoDocMeta {
+  slug?: string
+  title?: string
+  version?: number
+  identity?: { login?: string; name?: string } | null
+  creator_uid?: string
+  creator_name?: string
+}
+
+// Pull the __ODOC__ blob the render page inlines. Best-effort: a parse miss just means
+// no header metadata (header still renders with slug fallback).
+function parseOdocMeta(html: string): OctoDocMeta | null {
+  const m = html.match(/__ODOC__\s*=\s*(\{[\s\S]*?\});/)
+  if (!m) return null
+  try {
+    return JSON.parse(m[1]) as OctoDocMeta
+  } catch {
+    return null
+  }
+}
 
 export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: HtmlDocViewProps) {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
@@ -126,14 +150,28 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
   // content. Overlay state only — the content itself is never mutated / made editable.
   const [pendingAnchor, setPendingAnchor] = useState<Anchor | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  // Header UI state. Members/forward/more backends are not wired yet; these drive a
+  // transient "coming soon" hint so the buttons render and are clearly present.
+  const [membersOpen, setMembersOpen] = useState(false)
+  const [headerNotice, setHeaderNotice] = useState<'forward' | 'more' | null>(null)
+  const meta = state.status === 'ready' ? state.meta : null
+  // Title: backend does not expose a human title yet → fall back to slug. Creator: prefer a
+  // display name, else the creator/login uid.
+  const headerTitle = meta?.title || effectiveSlug
+  const headerCreator =
+    meta?.creator_name || meta?.identity?.name || meta?.creator_uid || meta?.identity?.login || '—'
 
   useEffect(() => {
     const seq = ++reqSeq.current
     setState({ status: 'loading' })
     const url = buildOctoDocUrl(effectiveSlug, version)
-    // Raw fetch (see file header): octo-doc is a separate backend; carry cookies so a
-    // logged-in octo-doc session still authorizes the read.
-    fetch(url, { credentials: 'include', headers: { Accept: 'text/html' } })
+    // Raw fetch (see file header): octo-doc is a separate backend; carry cookies AND the octo
+    // session token so octo-doc can verify identity (author=creator) — cookies alone don't
+    // cross to octo-doc; octo verifies via the `token` header (not Authorization).
+    const headers: Record<string, string> = { Accept: 'text/html' }
+    const octoToken = getWKApp().loginInfo?.token
+    if (octoToken) headers.token = octoToken
+    fetch(url, { credentials: 'include', headers })
       .then(async (res) => {
         if (seq !== reqSeq.current) return
         if (!res.ok) {
@@ -152,7 +190,7 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
         if (seq !== reqSeq.current) return
         setState(
           html.trim()
-            ? { status: 'ready', html: sanitizeDocHtml(html) }
+            ? { status: 'ready', html: sanitizeDocHtml(html), meta: parseOdocMeta(html) }
             : { status: 'empty' },
         )
       })
@@ -191,8 +229,68 @@ export function HtmlDocView({ docId, space, role, slug, version = 'latest' }: Ht
     return () => document.removeEventListener('selectionchange', onSelectionChange)
   }, [state.status])
 
+  // Auto-dismiss the transient header "coming soon" hint.
+  useEffect(() => {
+    if (!headerNotice) return
+    const id = window.setTimeout(() => setHeaderNotice(null), 2500)
+    return () => window.clearTimeout(id)
+  }, [headerNotice])
+
   return (
     <div className="octo-doc octo-doc--editor octo-theme octo-html-doc" data-testid="html-doc-view">
+      {/* Header parity with rich docs (BoardShell/EditorShell octo-doc-header): title, creator,
+          forward-to-chat, members, and a more menu. HTML docs are read-only so title is static.
+          Members/menu are wired as buttons now; their backends (doc_grants) land in a later pass —
+          see the group discussion. Fields the render page doesn't yet expose (human title,
+          creator display name) fall back to slug / login uid. */}
+      <header className="octo-doc-header octo-html-doc-header">
+        <div className="octo-doc-title octo-html-doc-title" title={headerTitle}>
+          {headerTitle}
+        </div>
+        <div className="octo-doc-header-right">
+          <span className="octo-html-doc-creator" title={t('docs.header.creator')}>
+            {t('docs.header.creator')}: {headerCreator}
+          </span>
+          <button
+            type="button"
+            className="octo-tb-btn octo-doc-forward-btn"
+            title={t('docs.forward.entry')}
+            onClick={() => setHeaderNotice('forward')}
+          >
+            ⤴ {t('docs.forward.entry')}
+          </button>
+          <button
+            type="button"
+            className={membersOpen ? 'octo-tb-btn is-active' : 'octo-tb-btn'}
+            aria-pressed={membersOpen}
+            title={t('docs.toolbar.members')}
+            onClick={() => setMembersOpen((v) => !v)}
+          >
+            {t('docs.toolbar.members')}
+          </button>
+          <button
+            type="button"
+            className="octo-tb-btn octo-html-doc-more"
+            aria-label={t('docs.toolbar.more')}
+            title={t('docs.toolbar.more')}
+            onClick={() => setHeaderNotice('more')}
+          >
+            ≡
+          </button>
+        </div>
+      </header>
+      {/* Members/forward/more backends are not wired yet — surface a transient hint so the
+          buttons are visibly present (老板 asked to show the header first). */}
+      {headerNotice && (
+        <div className="octo-html-doc-state" role="status">
+          {t('docs.header.comingSoon')}
+        </div>
+      )}
+      {membersOpen && (
+        <div className="octo-html-doc-state" role="status">
+          {t('docs.header.membersComingSoon')}
+        </div>
+      )}
       {state.status === 'loading' && (
         <div className="octo-html-doc-state" role="status">
           {t('docs.state.loading')}

@@ -11,6 +11,15 @@
 // That module is NOT reusable here.
 
 import { resolveOctoDocBase } from './HtmlDocView.tsx'
+import { getWKApp } from '../octoweb/index.ts'
+
+// octo-doc verifies identity via the `token` header (octo convention, not Authorization).
+// Comment read/write need it so the caller is resolved to a creator/reader; without it the
+// request is anonymous and octo-doc 404s/denies it. Same scheme as the render fetch.
+function octoDocHeaders(base: Record<string, string>): Record<string, string> {
+  const tok = getWKApp().loginInfo?.token
+  return tok ? { ...base, token: tok } : base
+}
 
 /**
  * A text-range anchor: the human selected free text with no stable element id nearby.
@@ -83,7 +92,7 @@ export async function listComments(
   const params = new URLSearchParams({ slug, version })
   const res = await fetch(`${commentsUrl()}?${params.toString()}`, {
     credentials: 'include',
-    headers: { Accept: 'application/json' },
+    headers: octoDocHeaders({ Accept: 'application/json' }),
   })
   if (!res.ok) throw new Error(`octo-doc listComments failed: ${res.status}`)
   const data = (await res.json()) as Partial<ListCommentsResponse> | null
@@ -124,7 +133,7 @@ export async function createComment(
   const res = await fetch(commentsUrl(), {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: octoDocHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
     body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(`octo-doc createComment failed: ${res.status}`)

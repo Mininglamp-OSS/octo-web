@@ -437,6 +437,11 @@
       "deleted": "Document deleted."
     }
   },
+  "header": {
+    "creator": "Creator",
+    "comingSoon": "This feature is coming soon",
+    "membersComingSoon": "Member management is coming soon"
+  },
   "forward": {
     "entry": "Forward to chat",
     "modalTitle": "Forward to chat",
