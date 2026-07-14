@@ -105,65 +105,85 @@ function TbBtn({
   )
 }
 
-// Vertical space (px) reserved above the anchor band so the toolbar — placed above the anchor with
-// `placement: 'top'` — always has room to render inside the viewport. Covers the ~40px control row
-// plus the 8px placement offset with margin to spare.
-const TOOLBAR_SAFE_TOP = 64
+// Vertical clearance (px) the floating toolbar needs to sit ABOVE a table without colliding with
+// the fixed editor toolbar: the ~32px control row plus the 8px placement offset, with margin. Used
+// only to decide whether the table sits far enough below the fixed `.octo-toolbar` for the toolbar
+// to keep floating above it, or whether it must instead drop BELOW the fixed toolbar.
+const TOOLBAR_CLEARANCE = 48
 
 /**
- * Clamp a table's rect into the visual viewport and collapse it to a thin anchor band near its
- * visible top (#625 off-screen fix). This is the pure core of {@link tableReferenceElement},
- * split out so it can be unit-tested without a real layout.
+ * Clamp a table's rect into the visual viewport and collapse it to an anchor band, keyed to the
+ * bottom of the fixed editor toolbar (`.octo-toolbar`), so the floating table toolbar never renders
+ * behind — and gets its clicks swallowed by — that fixed toolbar (#625 off-screen fix + #716
+ * follow-up). Pure core of {@link tableReferenceElement}, split out so it can be unit-tested
+ * without a real layout.
  *
- * Why: the toolbar anchors to the table's OUTER edge and floats above it with `placement: 'top'`.
- * For a long table scrolled so its top leaves the viewport (`rect.top` a large negative), the raw
- * rect's top is off-screen above and its bottom is far below the viewport; Floating-UI's default
- * `flip` then re-anchors to that off-screen bottom edge and the controls land below the viewport
- * (observed: toolbar top ~1051 vs a 1000px viewport), completely unreachable. `shift` doesn't save
- * it because its default boundary is the tall scroll container, not the visual viewport.
+ * The toolbar anchors to the table's OUTER edge and floats above it with `placement: 'top'`. Two
+ * boundaries have to hold at once:
  *
- * Fix: build the reference from a zero-height band whose `top` is the table's top edge CLAMPED into
- * `[TOOLBAR_SAFE_TOP, viewport.height - 8]`, with the horizontal extent clamped into the viewport.
- * A thin band near the top means both `top` and any flipped `bottom` placement resolve to a y just
- * inside the viewport, so the controls stay reachable regardless of flip/shift boundary quirks. In
- * the normal, fully-visible case the table top already sits below `TOOLBAR_SAFE_TOP`, so the band
- * stays at the real top edge and the toolbar floats above the table exactly as before — no
- * TC-P0-001 regression.
+ *  - **Long table scrolled past the top (XIN-939 / #625).** `rect.top` is a large negative and the
+ *    bottom is far below the viewport; Floating-UI's default `flip` would re-anchor to that
+ *    off-screen bottom edge and push the controls below the viewport, unreachable.
+ *  - **Table jammed under the fixed toolbar (#716 follow-up).** A table at the very top of the doc
+ *    sits right beneath the fixed `.octo-toolbar`; floating the controls ABOVE it lands them in the
+ *    band the fixed toolbar occupies, which is opaque and higher in the stack, so it covers the
+ *    controls and intercepts their pointer events.
+ *
+ * Fix: when the table's top is far enough below the fixed toolbar (with {@link TOOLBAR_CLEARANCE}
+ * room to float above), keep a zero-height band at the real top edge — the normal, fully-visible
+ * case is untouched (no #625 / TC-P0-001 regression). Otherwise anchor to the toolbar strip
+ * `[0 .. toolbarBottom]`: `placement: 'top'` then overflows the viewport top, Floating-UI's `flip`
+ * drops the controls to BOTTOM, and they land just below the fixed toolbar in the clear — reachable
+ * and never behind the fixed toolbar, for both the off-screen and top-of-doc cases.
+ *
+ * `toolbarBottom` is the fixed toolbar's bottom edge in viewport coordinates (0 when there is no
+ * toolbar, e.g. a read-only view), clamped defensively into the viewport.
  */
 export function clampToolbarAnchorRect(
   rect: { top: number; bottom: number; left: number; right: number },
   viewport: { width: number; height: number },
+  toolbarBottom = 0,
 ): DOMRect {
   const left = Math.max(0, Math.min(rect.left, viewport.width))
   const right = Math.min(viewport.width, Math.max(rect.right, left))
   const width = Math.max(0, right - left)
-  // Keep the band at least TOOLBAR_SAFE_TOP from the viewport top (room for the toolbar above it)
-  // and never below the viewport bottom, following the real top edge in between.
-  const top = Math.max(TOOLBAR_SAFE_TOP, Math.min(rect.top, viewport.height - 8))
-  return {
-    x: left,
-    y: top,
-    left,
-    top,
-    right: left + width,
-    bottom: top,
-    width,
-    height: 0,
-    toJSON() {
-      return this
-    },
-  } as DOMRect
+  const safeTop = Math.max(0, Math.min(toolbarBottom, viewport.height - 8))
+  const build = (top: number, bottom: number): DOMRect =>
+    ({
+      x: left,
+      y: top,
+      left,
+      top,
+      right: left + width,
+      bottom,
+      width,
+      height: Math.max(0, bottom - top),
+      toJSON() {
+        return this
+      },
+    } as DOMRect)
+  // Table sits clear below the fixed toolbar with room for the controls to float above it: keep a
+  // zero-height band at the real top edge so the toolbar floats above the table exactly as before.
+  if (rect.top - TOOLBAR_CLEARANCE >= safeTop) {
+    const top = Math.min(rect.top, viewport.height - 8)
+    return build(top, top)
+  }
+  // Table jammed under / above the fixed toolbar (top-of-doc or scrolled off the top): anchor to
+  // the toolbar strip so `placement: 'top'` overflows the viewport top and flips to BOTTOM, landing
+  // the controls just below the fixed toolbar's bottom edge — clickable, never behind it.
+  return build(0, safeTop)
 }
 
 /**
  * Reference rect for the floating table toolbar (#625). Anchors to the OUTER edge of the table
  * (its scroll wrapper when present) rather than the caret's cell, so the toolbar — placed above
  * with `placement: 'top'` — floats in the block margin above the whole table instead of landing on
- * top of the text rows above the caret. The rect is clamped into the visual viewport (see
- * {@link clampToolbarAnchorRect}) so a long table scrolled past the top of the viewport keeps the
- * controls reachable instead of pushing them off-screen. Returns a Floating-UI virtual element
- * (computed lazily so scrolling/resizing stays accurate), or null when the caret is not inside a
- * table, in which case the BubbleMenu falls back to its default cursor-based positioning.
+ * top of the text rows above the caret. The rect is clamped relative to the fixed editor toolbar
+ * (see {@link clampToolbarAnchorRect}) so a long table scrolled past the top of the viewport keeps
+ * the controls reachable and a table at the top of the doc keeps them clear of the fixed
+ * `.octo-toolbar`. Returns a Floating-UI virtual element (computed lazily so scrolling/resizing
+ * stays accurate), or null when the caret is not inside a table, in which case the BubbleMenu falls
+ * back to its default cursor-based positioning.
  */
 function tableReferenceElement(editor: Editor): { getBoundingClientRect: () => DOMRect; getClientRects: () => DOMRect[] } | null {
   const { $from } = editor.state.selection
@@ -174,11 +194,21 @@ function tableReferenceElement(editor: Editor): { getBoundingClientRect: () => D
         // Prefer the ProseMirror `.tableWrapper` scroll box so a horizontally scrolled wide table
         // still anchors to the visible table region.
         const anchor = (dom.closest('.tableWrapper') as HTMLElement | null) ?? dom
+        // Bottom edge of the fixed editor toolbar, measured live so a taller toolbar (e.g. the find
+        // bar expands `.octo-toolbar-wrap`) is always accounted for. Scoped to this editor's shell
+        // so an unrelated toolbar elsewhere on the page is never picked up.
+        const shell = (editor.view.dom.closest('.octo-doc--editor') as HTMLElement | null) ?? undefined
+        const toolbarBottom = () => {
+          const toolbarEl = (shell ?? document).querySelector('.octo-toolbar') as HTMLElement | null
+          const fixed = (toolbarEl?.closest('.octo-toolbar-wrap') as HTMLElement | null) ?? toolbarEl
+          return fixed ? fixed.getBoundingClientRect().bottom : 0
+        }
         const band = () =>
-          clampToolbarAnchorRect(anchor.getBoundingClientRect(), {
-            width: window.innerWidth,
-            height: window.innerHeight,
-          })
+          clampToolbarAnchorRect(
+            anchor.getBoundingClientRect(),
+            { width: window.innerWidth, height: window.innerHeight },
+            toolbarBottom(),
+          )
         return {
           getBoundingClientRect: band,
           getClientRects: () => [band()],
