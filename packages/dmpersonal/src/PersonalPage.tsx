@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { AlertCircle, Cpu, FolderPlus, Loader2, Sparkles } from "lucide-react";
-import { currentWorkspaceId, RuntimePage, setWorkspaceContext, SkillPage, workspaceApi } from "@octo/loop";
+import { AlertCircle, Cpu, Loader2, Sparkles } from "lucide-react";
+import { currentWorkspaceId, resolveWorkspaceSelection, RuntimePage, setWorkspaceContext, SkillPage, workspaceApi } from "@octo/loop";
 import { useI18n, WKApp } from "@octo/base";
 import "@octo/loop/src/pages/loop.css";
 import "./personal.css";
@@ -32,13 +32,20 @@ export default function PersonalPage() {
   // Loop 与 Personal 共享 @octo/loop 里的模块级 workspace 全局。存下本页选定的 workspace,
   // 以便在 tab 切换 / 导航再激活时重新断言,避免被 Loop 的选择污染(#619 评审)。
   const selectedWsRef = useRef<{ slug: string; id: string } | null>(null);
+  // machine 模式(0 workspace)标记:nav 重激活 / tab 切换时据此清空 workspace 作用域并重铺,
+  // 而不是像 workspace 模式那样重设 slug。避免 selectedWsRef 为 null 时右栏被清空不重铺。
+  const machineModeRef = useRef(false);
   const tabRef = useRef<PersonalTabKey>("runtime");
   tabRef.current = tab;
 
   const openTab = (key: PersonalTabKey) => {
     if (!workspaceReady) return;
     const ws = selectedWsRef.current;
-    if (ws) setWorkspaceContext(ws.slug, ws.id); // 铺视图前先把全局上下文拨回本页的 workspace
+    if (machineModeRef.current) {
+      setWorkspaceContext("", ""); // 机器级模式:清空作用域,列表走 /machine-runtimes
+    } else if (ws) {
+      setWorkspaceContext(ws.slug, ws.id); // 铺视图前先把全局上下文拨回本页的 workspace
+    }
     setTab(key);
     WKApp.routeRight.replaceToRoot(renderTab(key));
   };
@@ -53,24 +60,24 @@ export default function PersonalPage() {
     workspaceApi.listWorkspaces()
       .then((workspaces) => {
         if (cancelled) return;
-        const selected = workspaces.find((workspace) => workspace.id === currentWorkspaceId()) ?? workspaces[0] ?? null;
+        const selection = resolveWorkspaceSelection(workspaces, currentWorkspaceId());
 
-        if (!selected) {
+        if (selection.mode === "machine") {
+          // 0 workspace:机器级模式。清空 workspace 作用域(不发 x-workspace-slug),
+          // 运行时列表转而走 /machine-runtimes;不显示「请先加入 workspace」。
+          machineModeRef.current = true;
           selectedWsRef.current = null;
-          setWorkspaceEmpty(true);
-          setWorkspaceReady(false);
-          WKApp.routeRight.replaceToRoot(
-            <PersonalWorkspaceState
-              icon={<FolderPlus size={40} />}
-              title={t("personal.workspace.requiredTitle")}
-              desc={t("personal.workspace.requiredDesc")}
-            />,
-          );
+          setWorkspaceContext("", "");
+          setWorkspaceReady(true);
+          setWorkspaceEmpty(false);
+          setWorkspaceError(null);
+          WKApp.routeRight.replaceToRoot(renderTab(tabRef.current));
           return;
         }
 
-        selectedWsRef.current = { slug: selected.slug, id: selected.id };
-        setWorkspaceContext(selected.slug, selected.id);
+        machineModeRef.current = false;
+        selectedWsRef.current = { slug: selection.slug, id: selection.id };
+        setWorkspaceContext(selection.slug, selection.id);
         setWorkspaceReady(true);
         setWorkspaceEmpty(false);
         setWorkspaceError(null);
@@ -103,9 +110,15 @@ export default function PersonalPage() {
   useEffect(() => {
     const onNavMenuActivated = ({ menuId }: { menuId: string }) => {
       if (menuId !== "dmpersonal") return;
-      const ws = selectedWsRef.current;
-      if (!ws) return; // 尚未就绪:挂载副作用会在加载完成后自行铺视图
-      setWorkspaceContext(ws.slug, ws.id);
+      // 用 ref 判就绪(避免 [] 依赖下的陈旧闭包):machine 模式已就绪但无 selectedWs;
+      // workspace 模式以 selectedWsRef 非空为就绪标志。两者皆未定=加载中,挂载副作用会自铺。
+      if (machineModeRef.current) {
+        setWorkspaceContext("", "");
+      } else {
+        const ws = selectedWsRef.current;
+        if (!ws) return;
+        setWorkspaceContext(ws.slug, ws.id);
+      }
       WKApp.routeRight.replaceToRoot(renderTab(tabRef.current));
     };
     WKApp.mittBus.on("wk:nav-menu-activated", onNavMenuActivated);
