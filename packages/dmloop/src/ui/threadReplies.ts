@@ -1,8 +1,25 @@
 import type { IssueComment } from "../api/types";
 
 /**
+ * Index replies by parent_id once. A page that renders many thread roots can
+ * build this map a single time and pass it to collectThreadReplies for each
+ * root, instead of rescanning every comment per root (was O(roots × comments)).
+ */
+export function buildRepliesByParent(comments: IssueComment[]): Map<string, IssueComment[]> {
+  const byParent = new Map<string, IssueComment[]>();
+  for (const c of comments) {
+    if (!c.parent_id) continue;
+    const list = byParent.get(c.parent_id) ?? [];
+    list.push(c);
+    byParent.set(c.parent_id, list);
+  }
+  return byParent;
+}
+
+/**
  * Collect every descendant reply of a thread root, flattened in chronological
- * order (created_at ASC, id tie-break).
+ * order (created_at ASC, id tie-break). Takes the parent→children index from
+ * buildRepliesByParent so callers build it once and reuse it across roots.
  *
  * A thread is not always two levels deep: an agent reply is stored with its
  * `parent_id` pointing at the specific comment that triggered it (a member's
@@ -15,20 +32,12 @@ import type { IssueComment } from "../api/types";
  */
 export function collectThreadReplies(
   rootId: string,
-  comments: IssueComment[],
+  repliesByParent: Map<string, IssueComment[]>,
 ): IssueComment[] {
-  const childrenByParent = new Map<string, IssueComment[]>();
-  for (const c of comments) {
-    if (!c.parent_id) continue;
-    const list = childrenByParent.get(c.parent_id) ?? [];
-    list.push(c);
-    childrenByParent.set(c.parent_id, list);
-  }
-
   const out: IssueComment[] = [];
   const seen = new Set<string>();
   const walk = (id: string) => {
-    for (const child of childrenByParent.get(id) ?? []) {
+    for (const child of repliesByParent.get(id) ?? []) {
       // Guard against a parent_id cycle (self- or mutual reference): a bad
       // write must not spin the render into an infinite loop.
       if (seen.has(child.id)) continue;

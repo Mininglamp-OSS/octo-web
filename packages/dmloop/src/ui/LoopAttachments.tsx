@@ -3,6 +3,7 @@ import { Paperclip } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { Attachment } from "../api/types";
 import { canPreviewInline } from "./attachmentPreview";
+import { isPublicAbsoluteUrl } from "./attachmentSrc";
 import { useAuthedAttachmentUrl, triggerAuthedDownload } from "./useAuthedAttachment";
 
 /**
@@ -31,6 +32,21 @@ function AuthedImage({ att }: { att: Attachment }) {
   return (
     <a href={url} target="_blank" rel="noreferrer" className="loop-att loop-att--img">
       <img src={url} alt={att.filename} />
+    </a>
+  );
+}
+
+/**
+ * A public (cross-origin absolute) download_url is a signed CDN link — publicly
+ * readable, so load it as a native <img src>: no auth is needed, and a
+ * cross-origin blob XHR would hit CORS. Only reached when the backend serves
+ * signed CDN URLs; the default site-relative (auth-only) download_url keeps the
+ * AuthedImage blob path.
+ */
+function NativeImage({ att }: { att: Attachment }) {
+  return (
+    <a href={att.download_url} target="_blank" rel="noreferrer" className="loop-att loop-att--img">
+      <img src={att.download_url} alt={att.filename} />
     </a>
   );
 }
@@ -77,10 +93,12 @@ export default function LoopAttachments({
   return (
     <div className="loop-atts">
       {attachments.map((a) =>
-        canPreviewInline(a.content_type) ? (
-          <AuthedImage key={a.id} att={a} />
-        ) : (
+        !canPreviewInline(a.content_type) ? (
           <AuthedDownload key={a.id} att={a} />
+        ) : isPublicAbsoluteUrl(a.download_url) ? (
+          <NativeImage key={a.id} att={a} />
+        ) : (
+          <AuthedImage key={a.id} att={a} />
         ),
       )}
     </div>

@@ -19,3 +19,32 @@ export function attachmentIdFromSrc(src: string | null | undefined): string | nu
   const m = ATTACHMENT_PATH_RE.exec(src);
   return m ? m[1]! : null;
 }
+
+/**
+ * Whether `src` is a public, cross-origin absolute URL. The backend only emits
+ * an absolute `download_url` when it is a signed public CDN link (CFSigner is
+ * configured); such a URL is publicly readable and loads natively — no auth
+ * blob fetch is needed, and a cross-origin XHR blob fetch would hit CORS. A
+ * site-relative `download_url` (the default, auth-only endpoint) is same-origin
+ * → false, so the current deployment always takes the authed blob path.
+ *
+ * Only `http:`/`https:` count: a `javascript:` / `data:` / `blob:` URL is
+ * rejected so a hostile `download_url` can never become a native `<a href>` /
+ * `<img src>` (defense in depth — download_url is backend-issued, not user text).
+ *
+ * `appOrigin` is injectable for tests; it defaults to the current window origin
+ * and returns false when the origin can't be determined (safe: keep authed path).
+ */
+export function isPublicAbsoluteUrl(
+  src: string | null | undefined,
+  appOrigin: string = typeof window !== "undefined" ? window.location.origin : "",
+): boolean {
+  if (!src || !appOrigin) return false;
+  try {
+    const u = new URL(src, appOrigin);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+    return u.origin !== appOrigin;
+  } catch {
+    return false;
+  }
+}

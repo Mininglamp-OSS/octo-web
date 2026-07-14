@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { collectThreadReplies } from "../threadReplies";
+import { buildRepliesByParent, collectThreadReplies } from "../threadReplies";
 import type { IssueComment } from "../../api/types";
 
 function comment(
@@ -25,7 +25,7 @@ describe("collectThreadReplies", () => {
       comment("r1", "2026-07-14T10:01:00Z", "root"),
       comment("r2", "2026-07-14T10:02:00Z", "root"),
     ];
-    expect(collectThreadReplies("root", comments).map((c) => c.id)).toEqual([
+    expect(collectThreadReplies("root", buildRepliesByParent(comments)).map((c) => c.id)).toEqual([
       "r1",
       "r2",
     ]);
@@ -42,7 +42,7 @@ describe("collectThreadReplies", () => {
       comment("m2", "2026-07-14T10:42:27Z", "root"),
       comment("a2", "2026-07-14T10:43:10Z", "m2"), // agent reply to m2
     ];
-    expect(collectThreadReplies("root", comments).map((c) => c.id)).toEqual([
+    expect(collectThreadReplies("root", buildRepliesByParent(comments)).map((c) => c.id)).toEqual([
       "m1",
       "m2",
       "a1",
@@ -58,7 +58,7 @@ describe("collectThreadReplies", () => {
       comment("a1", "2026-07-14T10:05:00Z", "m1"), // slow answer
       comment("m2", "2026-07-14T10:02:00Z", "root"),
     ];
-    expect(collectThreadReplies("root", comments).map((c) => c.id)).toEqual([
+    expect(collectThreadReplies("root", buildRepliesByParent(comments)).map((c) => c.id)).toEqual([
       "m1",
       "m2",
       "a1",
@@ -72,6 +72,22 @@ describe("collectThreadReplies", () => {
       comment("y", "2026-07-14T10:02:00Z", "x"),
     ];
     // Cycle is unreachable from root → simply excluded, no hang.
-    expect(collectThreadReplies("root", comments)).toEqual([]);
+    expect(collectThreadReplies("root", buildRepliesByParent(comments))).toEqual([]);
+  });
+});
+
+describe("buildRepliesByParent", () => {
+  it("groups replies under their parent_id and skips roots", () => {
+    const comments = [
+      comment("root", "2026-07-14T10:00:00Z", null),
+      comment("r1", "2026-07-14T10:01:00Z", "root"),
+      comment("a1", "2026-07-14T10:02:00Z", "r1"),
+      comment("r2", "2026-07-14T10:03:00Z", "root"),
+    ];
+    const byParent = buildRepliesByParent(comments);
+    expect(byParent.get("root")!.map((c) => c.id)).toEqual(["r1", "r2"]);
+    expect(byParent.get("r1")!.map((c) => c.id)).toEqual(["a1"]);
+    // Roots (no parent_id) are never keyed.
+    expect(byParent.has("a1")).toBe(false);
   });
 });

@@ -75,7 +75,7 @@ import LoopMarkdown from "../ui/LoopMarkdown";
 import AutoGrowTextarea from "../ui/AutoGrowTextarea";
 import CommentComposer, { type CommentComposerHandle } from "../ui/CommentComposer";
 import { useCommentTriggerPreview } from "../ui/useCommentTriggerPreview";
-import { collectThreadReplies } from "../ui/threadReplies";
+import { buildRepliesByParent, collectThreadReplies } from "../ui/threadReplies";
 import LoopAttachments from "../ui/LoopAttachments";
 import { confirmDelete } from "../ui/confirmDelete";
 import RunDetailModal from "./RunDetailModal";
@@ -717,7 +717,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   // direct children: an agent reply nests under the member comment that
   // triggered it (a grandchild of the root), so direct-children-only would drop
   // every agent answer from the thread. See collectThreadReplies.
-  const repliesOf = (id: string) => collectThreadReplies(id, comments);
+  const repliesByParent = buildRepliesByParent(comments);
+  const repliesOf = (id: string) => collectThreadReplies(id, repliesByParent);
   const childrenDone = children.filter((c) => c.status === "done").length;
   // issue 附件区只显 issue 级(comment_id 为空);评论附件归各评论下,避免重复。
   const issueAtts = (issue.attachments ?? []).filter((a) => !a.comment_id);
