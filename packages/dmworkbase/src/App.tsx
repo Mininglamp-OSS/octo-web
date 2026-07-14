@@ -153,6 +153,7 @@ import StorageService from "./Service/StorageService";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { TypingManager } from "./Service/TypingManager";
 import { ImConnectAddressManager } from "./im-runtime/connectAddress";
+import { connectImClient } from "./im-runtime/connectClient";
 import { createImConnectStatusListener } from "./im-runtime/connectStatus";
 import {
   clearAuthStorage,
@@ -982,9 +983,10 @@ export default class WKApp extends ProviderListener {
   }
 
   connectIM() {
-    WKSDK.shared().config.uid = WKApp.loginInfo.uid;
-    WKSDK.shared().config.token = WKApp.loginInfo.token;
-    WKSDK.shared().connect();
+    connectImClient({
+      sdk: WKSDK.shared(),
+      loginInfo: WKApp.loginInfo,
+    });
   }
 
   registerModule(module: IModule) {
