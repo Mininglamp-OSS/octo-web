@@ -170,21 +170,29 @@ export function deleteSkill(id: string): Promise<void> {
 
 /** Step 1: Get a pre-signed upload URL from the backend. */
 export function initUpload(fileName: string, fileSize: number): Promise<UploadInitResult> {
-  return request<{ upload_id: string; upload_url: string }>("/skill/upload/init", {
+  return request<{ upload_id: string; presigned_url: string; method: string; headers: Record<string, string>; expires_in: number }>("/skill/upload/init", {
     method: "POST",
     body: JSON.stringify({ file_name: fileName, file_size: fileSize }),
   }).then((raw) => ({
     uploadId: raw.upload_id,
-    uploadUrl: raw.upload_url,
+    presignedUrl: raw.presigned_url,
+    method: raw.method,
+    headers: raw.headers ?? {},
+    expiresIn: raw.expires_in,
   }));
 }
 
 /** Step 2: Upload the file to the pre-signed URL (PUT). */
-export async function uploadFile(uploadUrl: string, file: File, onProgress?: (percent: number) => void): Promise<void> {
+export async function uploadFile(presignedUrl: string, file: File, headers?: Record<string, string>, onProgress?: (percent: number) => void): Promise<void> {
   // Use XMLHttpRequest for progress support
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", uploadUrl);
+    xhr.open("PUT", presignedUrl);
+    if (headers) {
+      for (const [key, value] of Object.entries(headers)) {
+        xhr.setRequestHeader(key, value);
+      }
+    }
     xhr.upload.addEventListener("progress", (event) => {
       if (event.lengthComputable && onProgress) {
         onProgress(Math.round((event.loaded / event.total) * 100));
@@ -216,36 +224,41 @@ export function triggerParse(uploadId: string): Promise<TriggerParseResult> {
 export function pollParse(taskId: string): Promise<ParseStatusResult> {
   return request<{
     status: string;
-    result_name?: string;
-    result_description?: string;
-    result_tags?: string[];
-    result_version?: string;
-    result_readme?: string;
-    file_name?: string;
-    file_size?: number;
-    file_sha256?: string;
-    error_code?: string;
-    error_message?: string;
+    task_id: string;
+    result?: {
+      name: string;
+      description?: string;
+      version: string;
+      tags: string[];
+      readme_content?: string;
+      file_name: string;
+      file_size: number;
+      file_sha256: string;
+    };
+    error?: {
+      code: string;
+      message: string;
+    };
   }>(`/skill/parse/${encodeURIComponent(taskId)}`).then((raw) => {
     const result: ParseStatusResult = {
       status: raw.status as ParseStatusResult["status"],
     };
-    if (raw.status === "success") {
+    if (raw.status === "success" && raw.result) {
       result.result = {
-        name: raw.result_name ?? "",
-        description: raw.result_description ?? "",
-        tags: raw.result_tags ?? [],
-        version: raw.result_version ?? "1.0.0",
-        readmeContent: raw.result_readme ?? "",
-        fileName: raw.file_name ?? "",
-        fileSize: raw.file_size ?? 0,
-        fileSha256: raw.file_sha256 ?? "",
+        name: raw.result.name,
+        description: raw.result.description ?? "",
+        tags: raw.result.tags ?? [],
+        version: raw.result.version ?? "1.0.0",
+        readmeContent: raw.result.readme_content ?? "",
+        fileName: raw.result.file_name ?? "",
+        fileSize: raw.result.file_size ?? 0,
+        fileSha256: raw.result.file_sha256 ?? "",
       };
     }
-    if (raw.status === "failed") {
+    if (raw.status === "failed" && raw.error) {
       result.error = {
-        code: raw.error_code ?? "unknown",
-        message: raw.error_message ?? "解析失败",
+        code: raw.error.code ?? "unknown",
+        message: raw.error.message ?? "解析失败",
       };
     }
     return result;
@@ -254,7 +267,7 @@ export function pollParse(taskId: string): Promise<ParseStatusResult> {
 
 /** Reupload init for an existing skill. */
 export function initReupload(skillId: string, fileName: string, fileSize: number): Promise<UploadInitResult> {
-  return request<{ upload_id: string; upload_url: string }>(
+  return request<{ upload_id: string; presigned_url: string; method: string; headers: Record<string, string>; expires_in: number }>(
     `/skill/${encodeURIComponent(skillId)}/reupload/init`,
     {
       method: "POST",
@@ -262,6 +275,9 @@ export function initReupload(skillId: string, fileName: string, fileSize: number
     },
   ).then((raw) => ({
     uploadId: raw.upload_id,
-    uploadUrl: raw.upload_url,
+    presignedUrl: raw.presigned_url,
+    method: raw.method,
+    headers: raw.headers ?? {},
+    expiresIn: raw.expires_in,
   }));
 }

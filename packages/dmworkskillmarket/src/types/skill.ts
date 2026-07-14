@@ -80,7 +80,10 @@ export interface UpdateSkillForm {
 /** Response from POST /api/v1/skill/upload/init */
 export interface UploadInitResult {
   uploadId: string;
-  uploadUrl: string;
+  presignedUrl: string;
+  method: string;
+  headers: Record<string, string>;
+  expiresIn: number;
 }
 
 /** Response from POST /api/v1/skill/upload/:uploadId/parse */

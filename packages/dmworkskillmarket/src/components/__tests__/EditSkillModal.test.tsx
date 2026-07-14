@@ -35,12 +35,32 @@ vi.mock("../../api/skillApi");
 describe("EditSkillModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(Math, "random").mockReturnValue(0.1);
     vi.mocked(api.updateSkill).mockResolvedValue(skill);
+    vi.mocked(api.initReupload).mockResolvedValue({
+      uploadId: "reupload-456",
+      presignedUrl: "http://localhost/upload/456",
+      method: "PUT",
+      headers: { "Content-Type": "application/zip" },
+      expiresIn: 3600,
+    });
+    vi.mocked(api.uploadFile).mockResolvedValue(undefined);
+    vi.mocked(api.triggerParse).mockResolvedValue({ taskId: "task-456" });
+    vi.mocked(api.pollParse).mockResolvedValue({
+      status: "success",
+      result: {
+        name: "updated-skill",
+        description: "updated-skill 提供可复用的自动化工作流。",
+        tags: ["自动化", "Skill", "协作"],
+        version: "1.2.0",
+        readmeContent: "# updated-skill",
+        fileName: "updated-skill.zip",
+        fileSize: 3,
+        fileSha256: "def456",
+      },
+    });
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -84,60 +104,57 @@ describe("EditSkillModal", () => {
   });
 
   it("can re-upload a zip package and save the new file metadata", async () => {
-    vi.useFakeTimers();
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 
     fireEvent.click(screen.getByText("重新上传 zip 包"));
-    fireEvent.change(screen.getByLabelText("选择新的 Skill zip 文件"), {
-      target: { files: [new File(["zip"], "updated-skill.zip", { type: "application/zip" })] },
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("选择新的 Skill zip 文件"), {
+        target: { files: [new File(["zip"], "updated-skill.zip", { type: "application/zip" })] },
+      });
     });
 
-    expect(screen.getByText("上传进度")).toBeInTheDocument();
-    await act(async () => {
-      vi.advanceTimersByTime(2000);
-      await vi.runOnlyPendingTimersAsync();
-    });
-    expect(screen.getByText("解析中...")).toBeInTheDocument();
-    await act(async () => {
-      vi.advanceTimersByTime(1500);
-      await vi.runOnlyPendingTimersAsync();
+    // Wait for the upload/parse flow to complete
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("updated-skill")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("updated-skill.zip")).toBeInTheDocument();
+    expect(api.initReupload).toHaveBeenCalledWith("meeting-note-cleaner", "updated-skill.zip", 3);
+    expect(api.uploadFile).toHaveBeenCalled();
+    expect(api.triggerParse).toHaveBeenCalledWith("reupload-456");
+    expect(api.pollParse).toHaveBeenCalledWith("task-456");
+
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
-    await act(async () => {
-      await Promise.resolve();
+    await waitFor(() => {
+      expect(api.updateSkill).toHaveBeenCalledWith("meeting-note-cleaner", expect.objectContaining({
+        parseTaskId: "task-456",
+        name: "updated-skill",
+        version: "1.2.0",
+      }));
     });
-
-    expect(api.updateSkill).toHaveBeenCalledWith("meeting-note-cleaner", expect.objectContaining({
-      fileName: "updated-skill.zip",
-      fileSize: 3,
-      version: expect.stringMatching(/^1\.\d\.0$/),
-      readmeContent: expect.stringContaining("updated-skill"),
-    }));
   });
 
   it("does not save file metadata when re-upload parsing fails", async () => {
-    vi.useFakeTimers();
-    vi.mocked(Math.random).mockReturnValue(0.95);
+    vi.mocked(api.pollParse).mockResolvedValue({
+      status: "failed",
+      error: { code: "parse.no_skill_md", message: "zip 包中未找到 SKILL.md" },
+    });
+
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 
     fireEvent.click(screen.getByText("重新上传 zip 包"));
-    fireEvent.change(screen.getByLabelText("选择新的 Skill zip 文件"), {
-      target: { files: [new File(["bad"], "broken-skill.zip", { type: "application/zip" })] },
-    });
 
     await act(async () => {
-      vi.advanceTimersByTime(2000);
-      await vi.runOnlyPendingTimersAsync();
-    });
-    await act(async () => {
-      vi.advanceTimersByTime(1500);
-      await vi.runOnlyPendingTimersAsync();
+      fireEvent.change(screen.getByLabelText("选择新的 Skill zip 文件"), {
+        target: { files: [new File(["bad"], "broken-skill.zip", { type: "application/zip" })] },
+      });
     });
 
-    expect(screen.getByText(/zip 包中未找到 SKILL.md|文件格式不正确|压缩包已损坏/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("zip 包中未找到 SKILL.md")).toBeInTheDocument();
+    });
+
     expect(screen.getByText("meeting-note-cleaner.zip")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     expect(api.updateSkill).not.toHaveBeenCalled();

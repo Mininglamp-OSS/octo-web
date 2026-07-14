@@ -119,11 +119,11 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
 
     try {
       // Step 1: Init upload
-      const { uploadId, uploadUrl } = await initUpload(nextFile.name, nextFile.size);
+      const { uploadId, presignedUrl, headers } = await initUpload(nextFile.name, nextFile.size);
       if (abortRef.current) return;
 
       // Step 2: Upload the file
-      await uploadFile(uploadUrl, nextFile, (percent) => {
+      await uploadFile(presignedUrl, nextFile, headers, (percent) => {
         if (!abortRef.current) setProgress(percent);
       });
       if (abortRef.current) return;

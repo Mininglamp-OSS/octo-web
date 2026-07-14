@@ -1,5 +1,5 @@
 import React from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import NewSkillModal from "../NewSkillModal";
 import * as api from "../../api/skillApi";
@@ -19,10 +19,30 @@ function zipFile(name = "skill-pack.zip", size = 1024 * 1024) {
 
 describe("NewSkillModal", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     vi.clearAllMocks();
-    vi.spyOn(Math, "random").mockReturnValue(0.1);
     vi.mocked(api.createSkill).mockResolvedValue({} as never);
+    vi.mocked(api.initUpload).mockResolvedValue({
+      uploadId: "upload-123",
+      presignedUrl: "http://localhost/upload/123",
+      method: "PUT",
+      headers: { "Content-Type": "application/zip" },
+      expiresIn: 3600,
+    });
+    vi.mocked(api.uploadFile).mockResolvedValue(undefined);
+    vi.mocked(api.triggerParse).mockResolvedValue({ taskId: "task-123" });
+    vi.mocked(api.pollParse).mockResolvedValue({
+      status: "success",
+      result: {
+        name: "skill-pack",
+        description: "skill-pack 提供可复用的自动化工作流。",
+        tags: ["自动化", "Skill"],
+        version: "1.0.0",
+        readmeContent: "# skill-pack",
+        fileName: "skill-pack.zip",
+        fileSize: 1024,
+        fileSha256: "abc123",
+      },
+    });
   });
 
   it("validates zip files before upload starts", () => {
@@ -41,41 +61,33 @@ describe("NewSkillModal", () => {
     const onClose = vi.fn();
     render(<NewSkillModal visible categories={categories} onClose={onClose} onCreated={onCreated} />);
 
-    fireEvent.change(screen.getByLabelText("选择 Skill zip 文件"), {
-      target: { files: [zipFile()] },
-    });
-
-    expect(screen.getByText("上传进度")).toBeInTheDocument();
-
     await act(async () => {
-      vi.advanceTimersByTime(2000);
-      await vi.runOnlyPendingTimersAsync();
+      fireEvent.change(screen.getByLabelText("选择 Skill zip 文件"), {
+        target: { files: [zipFile()] },
+      });
     });
 
-    expect(screen.getByText("解析中...")).toBeInTheDocument();
-
-    await act(async () => {
-      vi.advanceTimersByTime(1500);
-      await vi.runOnlyPendingTimersAsync();
+    // Wait for the async upload/parse flow to complete
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("skill-pack")).toBeInTheDocument();
     });
 
-    expect(screen.getByDisplayValue("skill-pack")).toBeInTheDocument();
     expect(screen.getByText("skill-pack.zip")).toBeInTheDocument();
+    expect(api.initUpload).toHaveBeenCalledWith("skill-pack.zip", expect.any(Number));
+    expect(api.uploadFile).toHaveBeenCalled();
+    expect(api.triggerParse).toHaveBeenCalledWith("upload-123");
+    expect(api.pollParse).toHaveBeenCalledWith("task-123");
 
     fireEvent.change(screen.getByLabelText("分类"), { target: { value: "office" } });
     fireEvent.click(screen.getByRole("button", { name: "创建" }));
 
-    await act(async () => {
-      vi.advanceTimersByTime(1000);
-      await vi.runOnlyPendingTimersAsync();
-      await Promise.resolve();
+    await waitFor(() => {
+      expect(api.createSkill).toHaveBeenCalledWith(expect.objectContaining({
+        name: "skill-pack",
+        categoryId: "office",
+        parseTaskId: "task-123",
+      }));
     });
-
-    expect(api.createSkill).toHaveBeenCalledWith(expect.objectContaining({
-      name: "skill-pack",
-      categoryId: "office",
-      fileName: "skill-pack.zip",
-    }));
     expect(onCreated).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   });
@@ -83,18 +95,14 @@ describe("NewSkillModal", () => {
   it("disables create until required fields are filled", async () => {
     render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText("选择 Skill zip 文件"), {
-      target: { files: [zipFile()] },
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("选择 Skill zip 文件"), {
+        target: { files: [zipFile()] },
+      });
     });
 
-    await act(async () => {
-      vi.advanceTimersByTime(2000);
-      await vi.runOnlyPendingTimersAsync();
-    });
-
-    await act(async () => {
-      vi.advanceTimersByTime(1500);
-      await vi.runOnlyPendingTimersAsync();
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("skill-pack")).toBeInTheDocument();
     });
 
     expect(screen.getByRole("button", { name: "创建" })).toBeDisabled();
@@ -104,13 +112,19 @@ describe("NewSkillModal", () => {
     expect(screen.getByRole("button", { name: "创建" })).not.toBeDisabled();
   });
 
-  it("shows a leave confirmation while upload work is in progress", () => {
+  it("shows a leave confirmation while upload work is in progress", async () => {
+    // Make initUpload hang (never resolves) to simulate in-progress upload
+    vi.mocked(api.initUpload).mockReturnValue(new Promise(() => {}));
+
     const onClose = vi.fn();
     render(<NewSkillModal visible categories={categories} onClose={onClose} onCreated={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText("选择 Skill zip 文件"), {
-      target: { files: [zipFile()] },
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("选择 Skill zip 文件"), {
+        target: { files: [zipFile()] },
+      });
     });
+
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
 
     expect(screen.getByText("确定离开？Skill 包正在上传/解析中，离开后当前进度将丢失，需要重新上传。")).toBeInTheDocument();
