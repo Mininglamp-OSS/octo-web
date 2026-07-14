@@ -17,6 +17,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { TextSelection } from '@tiptap/pm/state'
+import { CellSelection } from '@tiptap/pm/tables'
 import type { Editor } from '@tiptap/core'
 import { t } from '../octoweb/index.ts'
 
@@ -117,24 +118,46 @@ function TbBtn({
  * on ordinary (non-table) text is a complete no-op: the selection is only moved when `pos` really
  * lands inside a table cell. That keeps a right-click outside a table from collapsing the user's
  * existing selection, so the browser's native context menu / Copy still act on the selected text.
+ *
+ * When a multi-cell {@link CellSelection} is already active and the right-clicked cell is one of the
+ * selected cells, the selection is left intact so a range operation (delete column / delete row)
+ * still spans every selected cell instead of collapsing to the single clicked one. The selection is
+ * only moved when the click lands on a cell OUTSIDE the current selection.
+ *
  * Returns whether the click was inside a table — the gate the caller uses to decide whether to open
  * a table menu (and suppress the native one) at all.
  */
 export function moveSelectionIntoCell(editor: Editor, pos: number): boolean {
-  const { doc } = editor.state
+  const { doc, selection } = editor.state
   const safe = Math.max(0, Math.min(pos, doc.content.size))
   const $pos = doc.resolve(safe)
 
   // Walk the resolved position's ancestors to see whether it sits inside a table, without touching
-  // the current selection. Mirrors editor.isActive('table') but for an arbitrary position.
+  // the current selection. Mirrors editor.isActive('table') but for an arbitrary position. Also
+  // capture the position of the enclosing cell so we can test CellSelection membership below.
   let inTable = false
+  let cellPos: number | null = null
   for (let depth = $pos.depth; depth > 0; depth--) {
-    if ($pos.node(depth).type.name === 'table') {
+    const name = $pos.node(depth).type.name
+    if (cellPos === null && (name === 'tableCell' || name === 'tableHeader')) {
+      cellPos = $pos.before(depth)
+    }
+    if (name === 'table') {
       inTable = true
       break
     }
   }
   if (!inTable) return false
+
+  // Preserve an existing multi-cell selection when the click lands inside it, so delete-column /
+  // delete-row keep acting on the whole selected range rather than collapsing to one cell.
+  if (selection instanceof CellSelection && cellPos !== null) {
+    let insideSelection = false
+    selection.forEachCell((_cell, p) => {
+      if (p === cellPos) insideSelection = true
+    })
+    if (insideSelection) return true
+  }
 
   editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near($pos)))
   return true
@@ -174,6 +197,9 @@ export function TableContextMenu({ editor }: { editor: Editor }) {
   useEffect(() => {
     const dom = editor.view.dom
     const onContextMenu = (e: MouseEvent) => {
+      // Read-only editors must never edit a table: leave the native browser menu fully intact —
+      // no preventDefault, no selection move, no custom menu. Table mutations are meaningless there.
+      if (!editor.isEditable) return
       const coords = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
       if (!coords) return
       if (!moveSelectionIntoCell(editor, coords.pos)) return

@@ -6,6 +6,7 @@ import { Table } from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
+import { CellSelection } from '@tiptap/pm/tables'
 import {
   TableGridPicker,
   TableContextMenu,
@@ -19,9 +20,10 @@ import {
 // right-clicked cell so the position-relative commands act on it, and the same commands work on
 // tables that ALREADY EXIST in a document (parsed from stored HTML), not only freshly inserted ones.
 
-function tableEditor(content: string, element?: HTMLElement) {
+function tableEditor(content: string, element?: HTMLElement, editable = true) {
   return new Editor({
     element,
+    editable,
     extensions: [
       StarterKit.configure({ undoRedo: false }),
       Table.configure({ resizable: false }),
@@ -31,6 +33,25 @@ function tableEditor(content: string, element?: HTMLElement) {
     ],
     content,
   })
+}
+
+// A 2-row × 3-column table, used for the multi-column CellSelection regression so deleting the two
+// selected columns still leaves one column behind (a 2×2 table would collapse entirely).
+const MULTI_COL_DOC =
+  '<table><tbody>' +
+  '<tr><td>a</td><td>b</td><td>c</td></tr>' +
+  '<tr><td>d</td><td>e</td><td>f</td></tr>' +
+  '</tbody></table>'
+
+/** Positions (pointing AT the cell node, i.e. the value forEachCell / $pos.before report) of every
+ *  table cell in document order. */
+function cellPositions(e: Editor): number[] {
+  const positions: number[] = []
+  e.state.doc.descendants((node, p) => {
+    if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') positions.push(p)
+    return true
+  })
+  return positions
 }
 
 // A 2-row × 2-column table sitting between two paragraphs, as it would arrive from stored content.
@@ -116,6 +137,49 @@ describe('moveSelectionIntoCell — gate + selection move for the right-clicked 
     expect(() => moveSelectionIntoCell(e, -5)).not.toThrow()
     e.destroy()
   })
+
+  it('keeps a multi-cell CellSelection when the right-click lands inside it, so delete-column removes every selected column', () => {
+    // Regression (P1): a user framed a multi-column CellSelection then right-clicked a cell already
+    // inside it. moveSelectionIntoCell used to collapse the selection to that single cell, so
+    // "delete column" only removed the clicked column instead of the whole multi-column selection.
+    const e = tableEditor(MULTI_COL_DOC)
+    const cells = cellPositions(e) // [a, b, c, d, e, f] as positions pointing at each cell
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 3 })
+
+    // Select columns 0 and 1 (cells a,b,d,e): anchor at cell a (0,0), head at cell e (1,1).
+    const sel = CellSelection.create(e.state.doc, cells[0], cells[4])
+    e.view.dispatch(e.state.tr.setSelection(sel))
+    expect(e.state.selection instanceof CellSelection).toBe(true)
+
+    // Right-click a text position inside cell "b" — which is inside the current selection.
+    const insidePos = cells[1] + 2 // step into the cell, then into its paragraph's text
+    expect(moveSelectionIntoCell(e, insidePos)).toBe(true)
+
+    // Selection is preserved (not collapsed to the single clicked cell)...
+    expect(e.state.selection instanceof CellSelection).toBe(true)
+    // ...so delete-column removes BOTH selected columns, leaving the third behind.
+    e.chain().focus().deleteColumn().run()
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 1 })
+    e.destroy()
+  })
+
+  it('moves the selection when the right-click lands on a cell outside the current CellSelection', () => {
+    // The complement of the case above: right-clicking a cell that is NOT part of the multi-cell
+    // selection collapses to that cell, matching the single-cell behaviour authors expect.
+    const e = tableEditor(MULTI_COL_DOC)
+    const cells = cellPositions(e)
+    // Select columns 0 and 1 (cells a,b,d,e).
+    e.view.dispatch(e.state.tr.setSelection(CellSelection.create(e.state.doc, cells[0], cells[4])))
+
+    // Right-click cell "c" (column 2), outside the selection.
+    const outsidePos = cells[2] + 2
+    expect(moveSelectionIntoCell(e, outsidePos)).toBe(true)
+    // Selection collapsed to the clicked cell, so delete-column removes only that one column.
+    expect(e.state.selection instanceof CellSelection).toBe(false)
+    e.chain().focus().deleteColumn().run()
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 2 })
+    e.destroy()
+  })
 })
 
 describe('table commands operate on a pre-existing (historical) table', () => {
@@ -195,6 +259,28 @@ describe('TableContextMenu — right-click inside a cell opens the menu (XIN-105
     render(<TableContextMenu editor={e} />)
 
     const evt = createEvent.contextMenu(e.view.dom, { clientX: 10, clientY: 10 })
+    fireEvent(e.view.dom, evt)
+
+    expect(evt.defaultPrevented).toBe(false)
+    expect(document.querySelector('.octo-table-context-menu')).toBeNull()
+    e.destroy()
+    host.remove()
+  })
+
+  it('leaves the native menu fully intact on a read-only editor, even inside a table cell', () => {
+    // Regression (P1): a reader (editable === false) right-clicking a table used to still get the
+    // native menu suppressed and the custom table menu opened, letting them "edit" a read-only doc.
+    // A read-only editor must pass the native browser menu through untouched — no preventDefault,
+    // no selection move, no custom menu.
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = tableEditor(HISTORICAL_DOC, host, false)
+    expect(e.isEditable).toBe(false)
+    // Point posAtCoords at a real cell; the handler must bail on the isEditable gate before it runs.
+    e.view.posAtCoords = () => ({ pos: firstCellTextPos(e), inside: -1 })
+    render(<TableContextMenu editor={e} />)
+
+    const evt = createEvent.contextMenu(e.view.dom, { clientX: 120, clientY: 90 })
     fireEvent(e.view.dom, evt)
 
     expect(evt.defaultPrevented).toBe(false)
