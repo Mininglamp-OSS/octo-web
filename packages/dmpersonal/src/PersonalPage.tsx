@@ -29,6 +29,9 @@ export default function PersonalPage() {
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [workspaceEmpty, setWorkspaceEmpty] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  // machine 模式(0 workspace):只有 runtime 走机器级端点;skill 仍按 workspace 管理,
+  // 无 workspace 时不可用。用 state 驱动 tab 禁用渲染,用 ref 供挂载/导航副作用读取。
+  const [machineMode, setMachineMode] = useState(false);
   // Loop 与 Personal 共享 @octo/loop 里的模块级 workspace 全局。存下本页选定的 workspace,
   // 以便在 tab 切换 / 导航再激活时重新断言,避免被 Loop 的选择污染(#619 评审)。
   const selectedWsRef = useRef<{ slug: string; id: string } | null>(null);
@@ -40,6 +43,7 @@ export default function PersonalPage() {
 
   const openTab = (key: PersonalTabKey) => {
     if (!workspaceReady) return;
+    if (machineModeRef.current && key === "skill") return; // skill 需 workspace,机器级模式禁用
     const ws = selectedWsRef.current;
     if (machineModeRef.current) {
       setWorkspaceContext("", ""); // 机器级模式:清空作用域,列表走 /machine-runtimes
@@ -66,6 +70,7 @@ export default function PersonalPage() {
           // 0 workspace:机器级模式。清空 workspace 作用域(不发 x-workspace-slug),
           // 运行时列表转而走 /machine-runtimes;不显示「请先加入 workspace」。
           machineModeRef.current = true;
+          setMachineMode(true);
           selectedWsRef.current = null;
           setWorkspaceContext("", "");
           setWorkspaceReady(true);
@@ -76,6 +81,7 @@ export default function PersonalPage() {
         }
 
         machineModeRef.current = false;
+        setMachineMode(false);
         selectedWsRef.current = { slug: selection.slug, id: selection.id };
         setWorkspaceContext(selection.slug, selection.id);
         setWorkspaceReady(true);
@@ -133,7 +139,7 @@ export default function PersonalPage() {
           <button
             key={item.key}
             className={`dmpersonal-sidebar__item ${tab === item.key ? "is-active" : ""}`}
-            disabled={!workspaceReady}
+            disabled={!workspaceReady || (machineMode && item.key === "skill")}
             onClick={() => openTab(item.key)}
           >
             {item.icon}
