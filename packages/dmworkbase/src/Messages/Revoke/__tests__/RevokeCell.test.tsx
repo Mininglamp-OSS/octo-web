@@ -155,6 +155,40 @@ describe("RevokeCell — handleReEdit text resolution", () => {
         container.remove()
     })
 
+    it("isEdit=true: uses contentEdit text but reads entities from ORIGINAL content (not contentEdit)", () => {
+        // contentEdit 不携带 mention metadata，entities 必须来自原始 content
+        const restoreDraft = vi.fn()
+        const msg = makeMessage({
+            content: {
+                text: "原始 hi @张三",
+                contentType: 1,
+                mention: { entities: [{ uid: "uid-zs", offset: 10, length: 3 }] },
+            },
+            message: {
+                remoteExtra: {
+                    isEdit: true,
+                    // contentEdit 只有文本，没有 entities
+                    contentEdit: { text: "编辑后 hi @张三", contentType: 1 },
+                },
+            },
+        })
+        const container = document.createElement("div")
+        document.body.appendChild(container)
+        act(() => {
+            ReactDOM.render(
+                React.createElement(RevokeCell as any, { message: msg, context: { restoreDraft } }),
+                container
+            )
+        })
+        act(() => { (container.querySelector(".wk-revoke-reedit-btn") as HTMLElement).click() })
+        // text 来自 contentEdit，entities 来自原始 content.mention.entities
+        // offset=10, length=3 对应 "编辑后 hi @张三" 中的 "张三"(offset+1=11)
+        const call = restoreDraft.mock.calls[0][0] as string
+        expect(call).toContain("@[uid-zs:")
+        ReactDOM.unmountComponentAtNode(container)
+        container.remove()
+    })
+
     it("falls back to content.text when isEdit=false", () => {
         const restoreDraft = vi.fn()
         const msg = makeMessage({ message: { remoteExtra: { isEdit: false } } })

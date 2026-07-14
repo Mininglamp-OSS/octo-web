@@ -113,8 +113,10 @@ export class RevokeCell extends MessageCell {
      * 点击「重新编辑」：将原文夹回输入框
      *
      * 注意：
-     * 1. 如果消息被编辑过（remoteExtra.isEdit），展示的是编辑后的最终版本（contentEdit），与其他地方的逻辑一致
-     * 2. 使用 restoreDraft，并将 content.mention.entities 重建为 @[uid:label] 草稿格式，
+     * 1. 如果消息被编辑过（remoteExtra.isEdit），展示的是编辑后的最终文本（contentEdit.text）——与其他地方的逻辑一致
+     * 2. entities 始终从原始 content 读取，与 Model.tsx:parseMention 一致：
+     *    编辑发送路径只序列化文本，contentEdit 不携带 mention metadata
+     * 3. 使用 restoreDraft，将 entities 重建为 @[uid:label] 草稿格式，
      *    确保 @mention 节点在恢复后仍可路由（而非退化为惰性文本）
      */
     private handleReEdit = () => {
@@ -122,25 +124,26 @@ export class RevokeCell extends MessageCell {
         const conversationContext = this.props.context as ConversationContext
         if (!conversationContext?.restoreDraft) return
 
-        // 与 Model.tsx parseMention 和 Messages/Text getRenderMessageText 一致：
-        // 如果消息被编辑过，取 contentEdit；否则取原始 content
         const remoteExtra = (message.message as any)?.remoteExtra
-        let textContent: MessageText
+
+        // text: 如果编辑过取 contentEdit；否则取原始 content
+        // 与 Model.tsx parseMention 和 Messages/Text getRenderMessageText 一致
+        let rawText: string
         if (remoteExtra?.isEdit && remoteExtra?.contentEdit) {
-            textContent = remoteExtra.contentEdit as MessageText
+            rawText = (remoteExtra.contentEdit as MessageText)?.text ?? ''
         } else {
-            textContent = message.content as MessageText
+            rawText = (message.content as MessageText)?.text ?? ''
         }
-        const rawText = textContent?.text ?? ''
         if (!rawText) return
 
-        // 镜像 Model.tsx:parseMentionWithEntities 的健壮读取路径：
-        // 先读 top-level mention.entities，再 fallback 到 contentObj.mention.entities
-        // 两种位置都可能存在 entities，错过任何一种都会导致 mention 退化为惰性文本
+        // entities: 始终从原始 content 读取——与 Model.tsx:parseMention 一致
+        // contentEdit 不携带 mention metadata，编辑发送路径只序列化文本
+        const originalContent = message.content as any
         const entities: Array<{ uid: string; offset: number; length: number }> =
-            (textContent as any)?.mention?.entities ??
-            (textContent as any)?.contentObj?.mention?.entities ??
+            originalContent?.mention?.entities ??
+            originalContent?.contentObj?.mention?.entities ??
             []
+
         const draftText = rebuildDraftText(rawText, entities)
         conversationContext.restoreDraft(draftText)
     }
