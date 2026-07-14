@@ -863,14 +863,38 @@ function ParagraphSpacingSelect({ editor, edge }: { editor: Editor; edge: 'befor
   )
 }
 
+/** Current indent level at the selection (max of the active paragraph / heading), tracked so the
+ * indent buttons re-render whenever it changes.
+ *
+ * useEditorTick keys its re-render snapshot only off the selection (from:to), but increaseIndent /
+ * decreaseIndent rewrite a node ATTRIBUTE and leave the caret put — so a selection-only
+ * subscription leaves the decrease button's disabled state stale: it stayed greyed after an
+ * increase (the level went 0→1 but the button never re-enabled) and stayed lit after a
+ * decrease-to-0. Keying the snapshot off the level itself — the same fix useFindState applies for
+ * the find counter — re-renders the buttons exactly when the indent level actually changes. */
+function useIndentLevel(editor: Editor): number {
+  return useSyncExternalStore(
+    (cb) => {
+      editor.on('transaction', cb)
+      editor.on('selectionUpdate', cb)
+      return () => {
+        editor.off('transaction', cb)
+        editor.off('selectionUpdate', cb)
+      }
+    },
+    () =>
+      Math.max(
+        Number(editor.getAttributes('paragraph').indent) || 0,
+        Number(editor.getAttributes('heading').indent) || 0,
+      ),
+  )
+}
+
 /** Indent buttons (SCHEMA_VERSION 18): increase / decrease indent on the active heading + paragraph.
  * List items keep their own Tab/Shift-Tab sink/lift behavior (owned by the list extensions). The
  * decrease button is disabled at indent 0 so the boundary is visible as well as a command no-op. */
 function IndentControls({ editor }: { editor: Editor }) {
-  const current = Math.max(
-    Number(editor.getAttributes('paragraph').indent) || 0,
-    Number(editor.getAttributes('heading').indent) || 0,
-  )
+  const current = useIndentLevel(editor)
   return (
     <>
       <Btn
