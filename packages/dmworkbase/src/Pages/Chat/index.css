@@ -626,6 +626,15 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
    侧边面板布局（子区 + 文件预览共用）
    ============================================ */
 
+/* ThreadPanel 打开时，确保 ChannelSetting 被完全隐藏到屏幕外，
+   即使 file-viewer 内容撑破容器宽度也不会露出。 */
+.wk-chat-content-right.wk-chat-threadpanel-open:not(.wk-chat-channelsetting-open)
+  .wk-chat-channelsetting {
+  margin-right: 0 !important;
+  right: calc(0px - var(--wk-wdith-chat-channelsetting)) !important;
+  pointer-events: none;
+}
+
 /* 子区打开时，设置面板贴在子区左侧（overlay 在消息区上，不占子区空间） */
 .wk-chat-content-right.wk-chat-threadpanel-open.wk-chat-channelsetting-open
   .wk-chat-channelsetting {
