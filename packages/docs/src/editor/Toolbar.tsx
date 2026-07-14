@@ -85,24 +85,40 @@ const IconCode = () => (
     <path d="M8.7 17.3 3.4 12l5.3-5.3 1.3 1.4L5.9 12l4.1 4.1-1.3 1.2zm6.6 0L14 16.1l4.1-4.1-4.1-4.1 1.3-1.4L20.6 12l-5.3 5.3zM13.9 5.2l1.9.5-3.9 13.1-1.9-.5 3.9-13.1z" />
   </svg>
 )
-// Link: two interlocking pill-shaped rings linked at ~45° (classic chain-link, boss reference).
-// Filled rings via the evenodd fill-rule (outer capsule minus an inner capsule = hollow ring);
-// the whole pair is rotated 45° so the links sit on the diagonal.
+// Link (XIN-1051): the standard chain-link glyph (lucide `link`) — two diagonal, interlocking
+// hooked curves. Stroke line-art, not filled: uses .octo-tb-icon-stroke (fill:none;
+// stroke:currentColor) with round caps/joins so it reads as a recognizable link icon at 16px
+// rather than the old two-capsule filled blob. Aligned with IconUnlink below.
 const IconLink = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <g transform="rotate(45 12 12)" fillRule="evenodd">
-      <path d="M4 8.6h9a3.4 3.4 0 0 1 0 6.8H4a3.4 3.4 0 0 1 0-6.8zm0 1.6a1.8 1.8 0 0 0 0 3.6h9a1.8 1.8 0 0 0 0-3.6H4z" />
-      <path d="M11 8.6h9a3.4 3.4 0 0 1 0 6.8h-9a3.4 3.4 0 0 1 0-6.8zm0 1.6a1.8 1.8 0 0 0 0 3.6h9a1.8 1.8 0 0 0 0-3.6h-9z" />
-    </g>
+  <svg
+    className="octo-tb-icon-stroke"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
   </svg>
 )
-// Unlink: the same two rings pulled apart with a gap between them (broken chain).
+// Unlink (XIN-1051): the same chain pulled apart (lucide `unlink`) — the two hooked curves with a
+// break plus the four short "snap" ticks. Same stroke style as IconLink so the pair reads as a set.
 const IconUnlink = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <g transform="rotate(45 12 12)" fillRule="evenodd">
-      <path d="M3 8.6h6.5a3.4 3.4 0 0 1 0 6.8H3a3.4 3.4 0 0 1 0-6.8zm0 1.6a1.8 1.8 0 0 0 0 3.6h6.5a1.8 1.8 0 0 0 0-3.6H3z" />
-      <path d="M14.5 8.6H21a3.4 3.4 0 0 1 0 6.8h-6.5a3.4 3.4 0 0 1 0-6.8zm0 1.6a1.8 1.8 0 0 0 0 3.6H21a1.8 1.8 0 0 0 0-3.6h-6.5z" />
-    </g>
+  <svg
+    className="octo-tb-icon-stroke"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="m18.84 12.25 1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71" />
+    <path d="m5.17 11.75-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71" />
+    <line x1="8" x2="8" y1="2" y2="5" />
+    <line x1="2" x2="5" y1="8" y2="8" />
+    <line x1="16" x2="16" y1="19" y2="22" />
+    <line x1="19" x2="22" y1="16" y2="16" />
   </svg>
 )
 
@@ -1172,8 +1188,20 @@ export function Toolbar({ editor }: { editor: Editor }) {
   const [linkOpen, setLinkOpen] = useState(false)
   const [linkText, setLinkText] = useState('')
   const [linkValue, setLinkValue] = useState('')
+  // Inline validation message for the URL field (empty / unsafe URL). `null` = no error.
+  // XIN-1051: an empty or invalid URL must surface here instead of silently discarding the
+  // popover (the old confirmLink closed on a falsy href, so a mistyped URL just vanished).
+  const [linkError, setLinkError] = useState<string | null>(null)
   const [findOpen, setFindOpen] = useState(false)
   const linkRef = useRef<HTMLSpanElement>(null)
+  // XIN-1051 focus isolation: refs to the two popover inputs so opening the popover can move
+  // keyboard focus INTO the panel (URL field when a selection is being linked, text field for a
+  // brand-new link). Without this the caret stays in the editor and Enter is handled by
+  // ProseMirror — the link is lost and the keystroke lands as a newline in the body.
+  const linkTextRef = useRef<HTMLInputElement>(null)
+  const linkUrlRef = useRef<HTMLInputElement>(null)
+  // Whether the popover was opened over a non-empty selection — decides the initial focus target.
+  const linkHadSelectionRef = useRef(false)
 
   // Format painter (XIN-963): armed state holds the inline marks captured from the source
   // selection. `null` = disarmed. Clicking the button captures the current selection's marks and
@@ -1256,8 +1284,11 @@ export function Toolbar({ editor }: { editor: Editor }) {
       const next = !v
       if (next) {
         const { from, to } = editor.state.selection
-        setLinkText(from !== to ? editor.state.doc.textBetween(from, to, ' ') : '')
+        const hasSelection = from !== to
+        linkHadSelectionRef.current = hasSelection
+        setLinkText(hasSelection ? editor.state.doc.textBetween(from, to, ' ') : '')
         setLinkValue((editor.getAttributes('link').href as string) || '')
+        setLinkError(null)
       }
       return next
     })
@@ -1267,21 +1298,57 @@ export function Toolbar({ editor }: { editor: Editor }) {
     setLinkOpen(false)
     setLinkText('')
     setLinkValue('')
+    setLinkError(null)
+  }
+
+  // XIN-1051 focus isolation: when the popover opens, pull keyboard focus into it so Enter/Escape
+  // are handled by the input (see the per-input onKeyDown guards) and never fall through to the
+  // editor's contenteditable. With a selection the text is already known, so focus the URL field;
+  // for a brand-new link focus the text field first. Runs only on the open transition.
+  useEffect(() => {
+    if (!linkOpen) return
+    const target = linkHadSelectionRef.current ? linkUrlRef.current : linkTextRef.current
+    // Focus after paint so the input is mounted; select existing content for quick replace.
+    const id = requestAnimationFrame(() => {
+      target?.focus()
+      target?.select()
+    })
+    return () => cancelAnimationFrame(id)
+  }, [linkOpen])
+
+  // XIN-1051: a bare host/domain with no scheme ("google.com") would otherwise resolve relative to
+  // the current origin and become a same-origin path link, not the external URL the user meant.
+  // Prepend https:// when there is no explicit scheme (and it is not protocol-relative) so the
+  // value sanitizes into a proper absolute link.
+  function normalizeLinkInput(raw: string): string {
+    const v = raw.trim()
+    if (!v || v.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(v)) return v
+    return `https://${v}`
   }
 
   // C7: insert a link at the cursor (or apply it to the selection). With no selection a brand-new
   // linked label is inserted at the caret; with a selection whose text is unchanged the link is
   // applied to it (preserving any other marks); if the text was edited it replaces the selection.
-  // sanitizeLinkHref enforces the scheme whitelist (§3.7) — an unsafe or empty URL inserts nothing.
+  // sanitizeLinkHref enforces the scheme whitelist (§3.7). XIN-1051: an empty or unsafe URL no
+  // longer silently closes the popover — it surfaces an inline error and keeps the user's input,
+  // so a mistyped URL is never lost and a stray Enter can't discard the panel.
   function confirmLink() {
-    const href = sanitizeLinkHref(linkValue.trim())
-    if (!href) {
-      closeLink()
+    const raw = linkValue.trim()
+    if (!raw) {
+      setLinkError(t('docs.toolbar.linkErrorEmpty'))
+      linkUrlRef.current?.focus()
       return
     }
+    const href = sanitizeLinkHref(normalizeLinkInput(raw))
+    if (!href) {
+      setLinkError(t('docs.toolbar.linkErrorInvalid'))
+      linkUrlRef.current?.focus()
+      return
+    }
+    setLinkError(null)
     const { from, to } = editor.state.selection
     const selText = from !== to ? editor.state.doc.textBetween(from, to, ' ') : ''
-    const text = linkText.trim() || linkValue.trim()
+    const text = linkText.trim() || raw
     if (selText && text === selText.trim()) {
       // Unchanged selection → just apply the link mark, keeping bold/italic/etc.
       editor.chain().focus().setLink({ href }).run()
@@ -1369,6 +1436,7 @@ export function Toolbar({ editor }: { editor: Editor }) {
           <span className="octo-color-popover octo-link-popover" role="dialog">
             <input
               className="octo-link-field"
+              ref={linkTextRef}
               value={linkText}
               onChange={(e) => setLinkText(e.target.value)}
               placeholder={t('docs.toolbar.linkText')}
@@ -1376,30 +1444,43 @@ export function Toolbar({ editor }: { editor: Editor }) {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
+                  e.stopPropagation()
                   confirmLink()
                 } else if (e.key === 'Escape') {
                   e.preventDefault()
+                  e.stopPropagation()
                   closeLink()
                 }
               }}
             />
             <input
-              className="octo-link-field"
+              className={'octo-link-field' + (linkError ? ' is-invalid' : '')}
+              ref={linkUrlRef}
               value={linkValue}
-              autoFocus
-              onChange={(e) => setLinkValue(e.target.value)}
+              aria-invalid={linkError ? true : undefined}
+              onChange={(e) => {
+                setLinkValue(e.target.value)
+                if (linkError) setLinkError(null)
+              }}
               placeholder={t('docs.toolbar.linkPlaceholder')}
               onMouseDown={(e) => e.stopPropagation()}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
+                  e.stopPropagation()
                   confirmLink()
                 } else if (e.key === 'Escape') {
                   e.preventDefault()
+                  e.stopPropagation()
                   closeLink()
                 }
               }}
             />
+            {linkError && (
+              <span className="octo-link-error" role="alert">
+                {linkError}
+              </span>
+            )}
             <div className="octo-link-popover-actions">
               <Btn label={t('docs.toolbar.linkSet')} onClick={confirmLink} />
             </div>

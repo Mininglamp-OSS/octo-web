@@ -153,6 +153,8 @@
     "linkText": "链接文字",
     "linkPlaceholder": "https://…",
     "linkSet": "确定",
+    "linkErrorEmpty": "请输入链接地址",
+    "linkErrorInvalid": "请输入有效的链接地址（http、https 或 mailto）",
     "insert": "插入",
     "undo": "撤销",
     "redo": "重做",

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, cleanup, within, act } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within, act, waitFor } from '@testing-library/react'
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import TaskList from '@tiptap/extension-task-list'
@@ -105,7 +105,8 @@ describe('Toolbar — batch 7 quote/code/link/highlight/colour tooltips', () => 
   it('renders the link button as an icon button', () => {
     render(<Toolbar editor={editor!} />)
     const link = titleBtn('docs.toolbar.link')
-    expect(link.querySelector('svg.octo-tb-icon')).toBeTruthy()
+    // XIN-1051: the link glyph is now a stroke-style chain icon (lucide `link`), not a filled one.
+    expect(link.querySelector('svg.octo-tb-icon-stroke')).toBeTruthy()
     expect(link.textContent?.trim()).toBe('')
   })
 })
@@ -133,6 +134,138 @@ describe('Toolbar — batch 7 floating link popover (item 5)', () => {
     expect(field).toBeTruthy()
     fireEvent.keyDown(field, { key: 'Escape' })
     expect(document.querySelector('.octo-link-popover')).toBeNull()
+  })
+})
+
+// XIN-1051 regression: the link popover used to lose the link / type a newline into the body when
+// Enter was pressed, and silently discarded the popover on an empty/invalid URL. These cover the
+// three paths from the acceptance criteria — existing selection, no selection, brand-new link — plus
+// the empty/invalid-URL inline-error behaviour and the focus isolation that keeps Enter off the
+// editor. The `t()` stub returns keys unchanged, so error text is asserted on its i18n key.
+describe('Toolbar — XIN-1051 link popover enter / focus regression', () => {
+  function urlField(): HTMLInputElement {
+    return screen.getByPlaceholderText('docs.toolbar.linkPlaceholder') as HTMLInputElement
+  }
+  function textField(): HTMLInputElement {
+    return screen.getByPlaceholderText('docs.toolbar.linkText') as HTMLInputElement
+  }
+
+  it('path 1 — existing selection: Enter applies the link to the selection and closes the popover', () => {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().selectAll().run() // select "hello"
+    fireEvent.click(titleBtn('docs.toolbar.link'))
+    const url = urlField()
+    fireEvent.change(url, { target: { value: 'https://example.com' } })
+    fireEvent.keyDown(url, { key: 'Enter' })
+
+    expect(document.querySelector('.octo-link-popover')).toBeNull()
+    const html = editor!.getHTML()
+    expect(html).toContain('example.com')
+    expect(html).toContain('>hello</a>')
+    // No newline leaked into the body: still exactly one paragraph.
+    expect(editor!.state.doc.childCount).toBe(1)
+  })
+
+  it('path 2 — no selection: Enter inserts a new linked label at the caret and closes', () => {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().setTextSelection(6).run() // caret after "hello", no selection
+    fireEvent.click(titleBtn('docs.toolbar.link'))
+    fireEvent.change(textField(), { target: { value: 'Example' } })
+    const url = urlField()
+    fireEvent.change(url, { target: { value: 'https://example.com' } })
+    fireEvent.keyDown(url, { key: 'Enter' })
+
+    expect(document.querySelector('.octo-link-popover')).toBeNull()
+    const html = editor!.getHTML()
+    expect(html).toContain('>Example</a>')
+    expect(html).toContain('hello') // original text untouched
+    expect(editor!.state.doc.childCount).toBe(1)
+  })
+
+  it('path 3 — brand-new link: Enter in the text field also confirms (no body newline)', () => {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().setTextSelection(6).run()
+    fireEvent.click(titleBtn('docs.toolbar.link'))
+    fireEvent.change(textField(), { target: { value: 'Docs' } })
+    fireEvent.change(urlField(), { target: { value: 'https://example.com' } })
+    // Confirm from the TEXT field's Enter handler (both inputs must guard Enter).
+    fireEvent.keyDown(textField(), { key: 'Enter' })
+
+    expect(document.querySelector('.octo-link-popover')).toBeNull()
+    expect(editor!.getHTML()).toContain('>Docs</a>')
+    expect(editor!.state.doc.childCount).toBe(1)
+  })
+
+  it('empty URL: Enter keeps the popover open with an inline error and never discards input or types into the body', () => {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().setTextSelection(6).run()
+    fireEvent.click(titleBtn('docs.toolbar.link'))
+    fireEvent.change(textField(), { target: { value: 'Keep me' } })
+    const before = editor!.getHTML()
+    fireEvent.keyDown(urlField(), { key: 'Enter' })
+
+    // Popover stays open (the old code silently closed it) and shows the inline error…
+    expect(document.querySelector('.octo-link-popover')).toBeTruthy()
+    expect(screen.getByText('docs.toolbar.linkErrorEmpty')).toBeTruthy()
+    // …the typed text is preserved, no link is created, and the body is unchanged (no newline).
+    expect(textField().value).toBe('Keep me')
+    expect(editor!.getHTML()).toBe(before)
+    expect(editor!.getHTML()).not.toContain('</a>')
+  })
+
+  it('invalid URL: Enter surfaces an inline error and inserts nothing', () => {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().selectAll().run()
+    fireEvent.click(titleBtn('docs.toolbar.link'))
+    const before = editor!.getHTML()
+    fireEvent.change(urlField(), { target: { value: 'javascript:alert(1)' } })
+    fireEvent.keyDown(urlField(), { key: 'Enter' })
+
+    expect(document.querySelector('.octo-link-popover')).toBeTruthy()
+    expect(screen.getByText('docs.toolbar.linkErrorInvalid')).toBeTruthy()
+    expect(editor!.getHTML()).toBe(before)
+    expect(editor!.getHTML()).not.toContain('</a>')
+  })
+
+  it('a scheme-less host (e.g. "example.com") is linked as https, not a same-origin path', () => {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().selectAll().run()
+    fireEvent.click(titleBtn('docs.toolbar.link'))
+    fireEvent.change(urlField(), { target: { value: 'example.com' } })
+    fireEvent.keyDown(urlField(), { key: 'Enter' })
+
+    expect(editor!.getHTML()).toContain('href="https://example.com')
+  })
+
+  it('editing the URL after an error clears the inline error', () => {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().selectAll().run()
+    fireEvent.click(titleBtn('docs.toolbar.link'))
+    fireEvent.keyDown(urlField(), { key: 'Enter' }) // empty → error
+    expect(screen.getByText('docs.toolbar.linkErrorEmpty')).toBeTruthy()
+    fireEvent.change(urlField(), { target: { value: 'h' } })
+    expect(document.querySelector('.octo-link-error')).toBeNull()
+  })
+
+  it('Escape from the URL field still closes the popover', () => {
+    render(<Toolbar editor={editor!} />)
+    fireEvent.click(titleBtn('docs.toolbar.link'))
+    fireEvent.keyDown(urlField(), { key: 'Escape' })
+    expect(document.querySelector('.octo-link-popover')).toBeNull()
+  })
+
+  it('focus isolation: opening over a selection moves focus into the URL field', async () => {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().selectAll().run()
+    fireEvent.click(titleBtn('docs.toolbar.link'))
+    await waitFor(() => expect(document.activeElement).toBe(urlField()))
+  })
+
+  it('focus isolation: opening a brand-new link (no selection) focuses the text field', async () => {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().setTextSelection(6).run()
+    fireEvent.click(titleBtn('docs.toolbar.link'))
+    await waitFor(() => expect(document.activeElement).toBe(textField()))
   })
 })
 

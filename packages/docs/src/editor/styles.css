@@ -417,6 +417,20 @@
   display: flex;
   justify-content: flex-end;
 }
+/* XIN-1051: inline validation for an empty / unsafe URL. The field gets a red border and a small
+   message sits between the fields and the Set action, so a mistyped URL is corrected in place
+   instead of the popover silently discarding it. */
+.octo-link-field.is-invalid {
+  border-color: #eb5757;
+}
+.octo-link-field.is-invalid:focus {
+  border-color: #eb5757;
+}
+.octo-link-error {
+  color: #eb5757;
+  font-size: 12px;
+  line-height: 1.3;
+}
 
 .octo-bubble-menu,
 .octo-floating-menu {

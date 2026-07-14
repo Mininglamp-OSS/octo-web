@@ -153,6 +153,8 @@
     "linkText": "Link text",
     "linkPlaceholder": "https://…",
     "linkSet": "Set",
+    "linkErrorEmpty": "Enter a URL",
+    "linkErrorInvalid": "Enter a valid URL (http, https or mailto)",
     "insert": "Insert",
     "undo": "Undo",
     "redo": "Redo",
