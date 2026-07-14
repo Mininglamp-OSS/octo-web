@@ -6,6 +6,11 @@
 // top-level `import { WKApp, i18n } from '@octo/base'` in octoweb/index.ts and provide a
 // sane fallback if a test forgets to call setWKApp.
 
+// buildDocLink is a pure, dependency-free util (only reads window.location.origin), so the stub
+// re-exports the REAL implementation from base — docs tests exercise the same canonical builder as
+// production rather than a divergent copy.
+export { buildDocLink, type DocLinkTarget } from '../../../dmworkbase/src/Utils/docLink.ts'
+
 export const WKApp = {
   shared: {
     registerModule(module: { id(): string; init(): void }) {
