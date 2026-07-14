@@ -28,8 +28,9 @@ export function rebuildDraftText(
         if (offset < cursor || offset + length > text.length) continue
         // 追加 offset 前的纯文本
         result += text.slice(cursor, offset)
-        // 追加 @[uid:label] 标记，label 从原文本中提取
-        const label = text.slice(offset, offset + length)
+        // 追加 @[uid:label] 标记，label 从原文本中提取（跳过 offset 处的 '@' 字符）
+        // entity 的 offset 指向 '@' 本身，length 包含 '@'；draft 序列化中 label 不含 '@'
+        const label = text.slice(offset + 1, offset + length)
         result += `@[${uid}:${label}]`
         cursor = offset + length
     }

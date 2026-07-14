@@ -183,7 +183,7 @@ describe("rebuildDraftText — mention entity reconstruction", () => {
         const result = rebuildDraftText("hi @张三 你好", [
             { uid: "uid-abc", offset: 3, length: 3 },
         ])
-        expect(result).toBe("hi @[uid-abc:@张三] 你好")
+        expect(result).toBe("hi @[uid-abc:张三] 你好")
     })
 
     it("handles multiple @mention entities in order", () => {
@@ -192,7 +192,7 @@ describe("rebuildDraftText — mention entity reconstruction", () => {
             { uid: "uid-1", offset: 0, length: 3 },
             { uid: "uid-2", offset: 6, length: 3 },
         ])
-        expect(result).toBe("@[uid-1:@张三] 和 @[uid-2:@李四] 在一起")
+        expect(result).toBe("@[uid-1:张三] 和 @[uid-2:李四] 在一起")
     })
 
     it("sorts entities by offset before processing", () => {
@@ -201,7 +201,7 @@ describe("rebuildDraftText — mention entity reconstruction", () => {
             { uid: "uid-2", offset: 6, length: 3 },
             { uid: "uid-1", offset: 0, length: 3 },
         ])
-        expect(result).toBe("@[uid-1:@张三] 和 @[uid-2:@李四] 在一起")
+        expect(result).toBe("@[uid-1:张三] 和 @[uid-2:李四] 在一起")
     })
 })
 
@@ -229,7 +229,7 @@ describe("RevokeCell — handleReEdit with mention.entities", () => {
         act(() => { (container.querySelector(".wk-revoke-reedit-btn") as HTMLElement).click() })
         // restoreDraft 必须收到 @[uid:label] 格式，而不是纯 "hi @张三"
         // 这样 parseDraftToContent 才能还原出 mention 节点，resend 时 uid 绑定不丢失
-        expect(restoreDraft).toHaveBeenCalledWith("hi @[uid-zhangsan:@张三]")
+        expect(restoreDraft).toHaveBeenCalledWith("hi @[uid-zhangsan:张三]")
         expect(restoreDraft).not.toHaveBeenCalledWith("hi @张三")
         ReactDOM.unmountComponentAtNode(container)
         container.remove()
