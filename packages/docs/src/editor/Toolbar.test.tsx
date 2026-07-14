@@ -338,31 +338,75 @@ describe('Toolbar — text colour palette + custom picker (#719)', () => {
     expect(editor!.getAttributes('textStyle').color).toBe('#3370ff')
   })
 
-  it('exposes a native colour input that applies an arbitrary hex to the selection', () => {
+  it('exposes a native colour input that commits an arbitrary hex on change', () => {
     editor!.chain().focus().selectAll().run()
     const popover = openTextColorPopover()
     const input = popover.querySelector('input[type="color"]') as HTMLInputElement
     expect(input).toBeTruthy()
-    fireEvent.input(input, { target: { value: '#123456' } })
+    // Commit happens on `change` (picker closed / value settled), not on the raw `input`
+    // stream that fires continuously while the OS hue wheel is dragged.
+    fireEvent.change(input, { target: { value: '#123456' } })
     expect(editor!.getAttributes('textStyle').color).toBe('#123456')
   })
 
-  it('keeps the popover open while dragging the hue wheel (input) but closes it on commit (change)', () => {
+  it('leaves the popover open during a drag (input) and commits + closes on change', () => {
     editor!.chain().focus().selectAll().run()
     const popover = openTextColorPopover()
     const input = popover.querySelector('input[type="color"]') as HTMLInputElement
 
-    // Dragging fires `input` repeatedly: colour tracks live, popover stays open so the
-    // user can keep nudging the hue.
+    // Dragging fires `input` repeatedly. RC1: we intentionally do NOT commit per tick (that
+    // flooded undo/Yjs); the popover simply stays open so the user can keep nudging the hue.
     fireEvent.input(input, { target: { value: '#112233' } })
-    expect(editor!.getAttributes('textStyle').color).toBe('#112233')
+    expect(editor!.getAttributes('textStyle').color).toBeUndefined()
     expect(document.querySelector('.octo-text-color-popover')).toBeTruthy()
 
-    // Committing the pick fires `change`: final colour applied and the popover collapses,
+    // Committing the pick fires `change`: the final colour is applied and the popover collapses,
     // matching a preset-swatch click.
     fireEvent.change(input, { target: { value: '#abcdef' } })
     expect(editor!.getAttributes('textStyle').color).toBe('#abcdef')
     expect(document.querySelector('.octo-text-color-popover')).toBeNull()
+  })
+
+  // RC1: dragging the native hue wheel fires `input` continuously. Committing on every `input`
+  // pushed one ProseMirror transaction per event — tens of undo records and a Yjs update flood
+  // per single pick. The picker now previews via the OS dialog and commits exactly once on
+  // `change`, so one pick == one undo step == one collaboration update.
+  it('does not commit while dragging (raw input events) — a pick is a single undo step', () => {
+    // A history-enabled editor (StarterKit default) so we can assert the undo depth of one pick.
+    const e = new Editor({
+      extensions: [StarterKit, TaskList, TaskItem, Highlight.configure({ multicolor: true }), TextStyle, Color, Link, FindReplace],
+      content: '<p>hello</p>',
+    })
+    e.chain().focus().selectAll().run()
+    render(<Toolbar editor={e} />)
+    fireEvent.click(titleBtn('docs.toolbar.textColor'))
+    const input = document.querySelector('.octo-text-color-popover input[type="color"]') as HTMLInputElement
+    expect(input).toBeTruthy()
+
+    let docChanges = 0
+    e.on('transaction', ({ transaction }) => {
+      if (transaction.docChanged) docChanges++
+    })
+
+    // Simulate a drag across the hue wheel: a stream of intermediate `input` events.
+    fireEvent.input(input, { target: { value: '#111111' } })
+    fireEvent.input(input, { target: { value: '#222222' } })
+    fireEvent.input(input, { target: { value: '#333333' } })
+    // Nothing is committed to the document (and undo history is untouched) during the drag.
+    expect(e.getAttributes('textStyle').color).toBeUndefined()
+    expect(docChanges).toBe(0)
+
+    // Releasing the picker fires `change` once → exactly one document-changing transaction.
+    fireEvent.change(input, { target: { value: '#345678' } })
+    expect(e.getAttributes('textStyle').color).toBe('#345678')
+    expect(docChanges).toBe(1)
+
+    // And a single undo fully reverts the pick — proof it is one undo record, not many.
+    expect(e.can().undo()).toBe(true)
+    e.chain().undo().run()
+    expect(e.getAttributes('textStyle').color).toBeUndefined()
+
+    e.destroy()
   })
 
   it('still clears the colour via the ✕ button (unsetColor preserved)', () => {

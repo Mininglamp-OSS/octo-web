@@ -336,21 +336,22 @@ function TextColorControl({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
   // Native <input type="color"> distinguishes drag from commit only at the DOM level: `input`
   // streams while the hue wheel moves, `change` fires once the pick is committed. React folds
-  // both onto its synthetic onChange (native `input`), so we bind the raw events via a ref to
-  // apply live on `input` but collapse the popover only on `change`.
+  // both onto its synthetic onChange (native `input`), so we bind the raw `change` event via a ref.
+  // RC1: commit the colour once, on `change` only — never on the `input` stream. Applying per
+  // `input` tick ran one ProseMirror transaction each, so a single pick piled up dozens of undo
+  // records and flooded collaborators with a Yjs update per intermediate hue. The OS colour dialog
+  // previews the hue live in its own UI while dragging, so committing on `change` keeps one pick =
+  // one undo record + one Yjs update, and the popover collapses on commit like a preset swatch.
   const customRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     const input = customRef.current
     if (!input) return
-    const apply = () => editor.chain().focus().setColor(input.value).run()
     const onCommit = () => {
-      apply()
+      editor.chain().focus().setColor(input.value).run()
       setOpen(false)
     }
-    input.addEventListener('input', apply)
     input.addEventListener('change', onCommit)
     return () => {
-      input.removeEventListener('input', apply)
       input.removeEventListener('change', onCommit)
     }
   }, [editor, open])
@@ -382,8 +383,8 @@ function TextColorControl({ editor }: { editor: Editor }) {
           />
           {/* Custom colour (plan A): native picker, zero new deps. It emits standard #rrggbb,
               so setColor stays lossless through Yjs and the DOCX/Markdown exporters. The picker
-              stays open while dragging the hue wheel (live `input`) and collapses on commit
-              (`change`) — see the ref-bound listeners above. */}
+              stays open while dragging the hue wheel and commits once on `change`, collapsing the
+              popover — see the ref-bound listener above. */}
           <label
             className="octo-swatch octo-color-custom"
             title={t('docs.toolbar.customColor')}
