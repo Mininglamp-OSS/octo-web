@@ -74,7 +74,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     description !== skill?.description ||
     categoryId !== skill?.categoryId ||
     visibility !== skill?.visibility ||
-    tags.join(",") !== skill?.tags.join(",") ||
+    JSON.stringify(tags) !== JSON.stringify(skill?.tags) ||
     Boolean(uploadedFile)
   );
 
