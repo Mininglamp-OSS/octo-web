@@ -116,6 +116,11 @@ import { shouldSkipMessageForSpace } from "./Service/SpaceService";
 import { t, I18nText } from "./i18n";
 import { GROUP_NAME_MAX_LENGTH, THREAD_NAME_MAX_LENGTH } from "./Service/nameLimits";
 import {
+  DEFAULT_DOCUMENT_VIEWER,
+  DEMO_DOCUMENT_ACCESS,
+  documentRepository,
+} from "./Pages/Documents/service";
+import {
   ThreadCreatedCell,
   ThreadCreatedContent,
 } from "./Messages/ThreadCreated";
@@ -865,6 +870,146 @@ export default class BaseModule implements IModule {
         };
       },
       1100
+    );
+
+    WKApp.endpoints.registerMessageContextMenus(
+      "contextmenus.archiveFileToDocuments",
+      (message) => {
+        if (message.contentType !== MessageContentTypeConst.file) {
+          return null;
+        }
+
+        return {
+          title: t("base.module.contextMenus.archiveFileToDocuments"),
+          onClick: async () => {
+            const uid = WKApp.loginInfo.uid || "";
+            if (!uid) {
+              Toast.warning(
+                t("base.module.contextMenus.archiveFileToDocumentsLoginRequired")
+              );
+              return;
+            }
+
+            const content = message.content as FileContent;
+            const viewer = {
+              ...DEFAULT_DOCUMENT_VIEWER,
+              uid,
+              name: WKApp.loginInfo.name || uid,
+              accessibleChannelIds: DEMO_DOCUMENT_ACCESS.accessibleChannelIds,
+              accessibleSpaceNames: DEMO_DOCUMENT_ACCESS.accessibleSpaceNames,
+            };
+            const documentState = await documentRepository.load(viewer);
+            let selectedSpaceName = documentState.spaces[0]?.name || "";
+
+            wkConfirm({
+              title: t("base.module.contextMenus.archiveFileToDocumentsTitle"),
+              okText: t("base.module.contextMenus.archiveFileToDocumentsOk"),
+              cancelText: t("base.common.cancel"),
+              content: (
+                <div>
+                  <div
+                    style={{
+                      marginBottom: "8px",
+                      fontSize: "14px",
+                      color: "var(--wk-text-secondary)",
+                    }}
+                  >
+                    {content.name || t("base.module.contextMenus.unnamedFile")}
+                  </div>
+                  <select
+                    defaultValue={selectedSpaceName}
+                    onChange={(event) => {
+                      selectedSpaceName = event.currentTarget.value;
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      background: "var(--wk-bg-base)",
+                      border: "1px solid var(--wk-border-default)",
+                      borderRadius: "6px",
+                      color: "var(--wk-text-primary)",
+                      outline: "none",
+                    }}
+                  >
+                    {documentState.spaces.map((space) => (
+                      <option key={space.id} value={space.name}>
+                        {space.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ),
+              onOk: async () => {
+                if (!selectedSpaceName) {
+                  Toast.warning(
+                    t(
+                      "base.module.contextMenus.archiveFileToDocumentsSelectSpace"
+                    )
+                  );
+                  return;
+                }
+
+                const channelInfo = WKSDK.shared().channelManager.getChannelInfo(
+                  message.channel
+                );
+                const senderInfo = WKSDK.shared().channelManager.getChannelInfo(
+                  new Channel(message.fromUID, ChannelTypePerson)
+                );
+                const sourceName = channelInfo?.title || message.channel.channelID;
+                const sourceType =
+                  message.channel.channelType === ChannelTypePerson
+                    ? "direct"
+                    : message.channel.channelType === ChannelTypeGroup
+                      ? "group"
+                      : "app";
+                const sourceSenderName =
+                  senderInfo?.title || message.fromUID || viewer.name;
+                const sourceSentAt = message.timestamp
+                  ? new Date(message.timestamp * 1000).toLocaleString()
+                  : new Date().toLocaleString();
+
+                await documentRepository.archiveMessageFile(
+                  {
+                    id: `MSG-${
+                      message.messageID ||
+                      message.clientMsgNo ||
+                      `${message.channel.channelID}-${content.name}`
+                    }`,
+                    name:
+                      content.name ||
+                      t("base.module.contextMenus.unnamedFile"),
+                    extension: content.extension || "",
+                    size: content.size || 0,
+                    url: content.url || content.remoteUrl || "",
+                    sourceName,
+                    sourceChannelId: message.channel.channelID,
+                    sourceChannelType: message.channel.channelType,
+                    sourceType,
+                    sourceMessageId: message.messageID || message.clientMsgNo || "",
+                    sourceMessageSeq: message.messageSeq || 0,
+                    sourceSenderUid: message.fromUID || viewer.uid,
+                    sourceSenderName,
+                    sourceSentAt,
+                    sourcePreviewText:
+                      content.name ||
+                      t("base.module.contextMenus.unnamedFile"),
+                    uploader: sourceSenderName,
+                    uploaderUid: message.fromUID || viewer.uid,
+                  },
+                  selectedSpaceName,
+                  viewer
+                );
+                Toast.success(
+                  t("base.module.contextMenus.archiveFileToDocumentsSuccess", {
+                    values: { space: selectedSpaceName },
+                  })
+                );
+              },
+            });
+          },
+        };
+      },
+      1125
     );
 
     // 「添加到我的贴纸」：仅位图贴纸消息显示（tgs/Lottie/空 url 一律隐藏）。

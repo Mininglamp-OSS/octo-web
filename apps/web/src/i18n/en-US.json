@@ -146,5 +146,6 @@
   "spaceGate.logout": "Log out",
   "spaceGate.subtitle": "Join a team or create a new workspace",
   "spaceGate.welcome": "Welcome to {{appName}}!",
-  "toast.realnameVerified": "Real-name verification completed"
+  "toast.realnameVerified": "Real-name verification completed",
+  "nav.documents": "Documents"
 }

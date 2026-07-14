@@ -1,4 +1,4 @@
-import { ChatPage, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, t } from '@octo/base';
+import { ChatPage, DocumentsPage, DocumentsWorkspace, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, t } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
 import React, { useEffect } from 'react';
 // lucide icons replaced with filled SVGs per Figma
@@ -8,6 +8,7 @@ import { WKSDK, ChannelTypePerson } from 'wukongimjssdk';
 import { setFaviconBadge, clearFaviconBadge } from '../utils/faviconBadge';
 import { ChatIcon } from '../Components/Icons/ChatIcon';
 import { ContactsIcon } from '../Components/Icons/ContactsIcon';
+import { DocumentsIcon } from '../Components/Icons/DocumentsIcon';
 import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
@@ -146,6 +147,18 @@ async function registerMenus() {
     return m
   }, 4000)
 
+  WKApp.menus.register("documents", (_context) => {
+    const m = new Menus("documents", "/documents", t("app.nav.documents"), <DocumentsIcon />, <DocumentsIcon />)
+    m.onPress = () => {
+      WKApp.routeLeft.popToRoot()
+      const page = WKApp.route.get("/documents/workspace")
+      if (page && React.isValidElement(page)) {
+        WKApp.routeRight.replaceToRoot(page)
+      }
+    }
+    return m
+  }, 4500)
+
   WKApp.menus.register("summary", (_context) => {
     const m = new Menus("summary", "/summary", t("app.nav.summary"), <SummaryIcon />, <SummaryIcon />)
     if (_summaryBadgeCount > 0) {
@@ -167,6 +180,14 @@ async function registerMenus() {
 
   WKApp.route.register("/contacts", () => {
     return <ContactsList></ContactsList>
+  })
+
+  WKApp.route.register("/documents", () => {
+    return <DocumentsPage></DocumentsPage>
+  })
+
+  WKApp.route.register("/documents/workspace", () => {
+    return <DocumentsWorkspace></DocumentsWorkspace>
   })
 
 }
