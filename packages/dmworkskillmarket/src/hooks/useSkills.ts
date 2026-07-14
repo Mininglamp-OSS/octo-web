@@ -31,12 +31,15 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const requestSeq = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   const fetchPage = useCallback(
     async (nextCursor?: string | null) => {
-      const seq = requestSeq.current + 1;
-      requestSeq.current = seq;
+      // Cancel any in-flight request
+      if (abortRef.current) abortRef.current.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       const isMore = Boolean(nextCursor);
       if (isMore) {
         setLoadingMore(true);
@@ -51,15 +54,16 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
             ? getMySkills({ q: debouncedQuery, categoryId, cursor: nextCursor ?? undefined, limit: 20 })
             : getSkills({ q: debouncedQuery, categoryId, cursor: nextCursor ?? undefined, limit: 20 }),
         ]);
-        if (requestSeq.current !== seq) return;
+        if (controller.signal.aborted) return;
         setCategories(categoryItems);
         setSkills((current: Skill[]) => (isMore ? [...current, ...page.items] : page.items));
         setCursor(page.nextCursor);
       } catch (err) {
-        if (requestSeq.current !== seq) return;
+        if (controller.signal.aborted) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "加载失败");
       } finally {
-        if (requestSeq.current === seq) {
+        if (!controller.signal.aborted) {
           setLoading(false);
           setLoadingMore(false);
         }
@@ -77,6 +81,9 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
 
   useEffect(() => {
     void fetchPage(null);
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
   }, [fetchPage]);
 
   const setQuery = useCallback((value: string) => {

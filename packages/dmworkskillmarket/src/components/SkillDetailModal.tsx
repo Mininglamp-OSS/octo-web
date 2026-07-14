@@ -52,7 +52,13 @@ export default function SkillDetailModal({
         if (alive) setSkill(item);
       })
       .catch((err) => {
-        if (alive) setError(err instanceof Error ? err.message : "加载失败");
+        if (!alive) return;
+        const status = (err as { status?: number }).status;
+        if (status === 404) {
+          setError("Skill 不存在或已被删除");
+        } else {
+          setError(err instanceof Error ? err.message : "加载失败");
+        }
       })
       .finally(() => {
         if (alive) setLoading(false);

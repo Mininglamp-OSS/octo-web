@@ -76,11 +76,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers: { ...getAuthHeaders(), ...(init?.headers as Record<string, string> | undefined) },
     });
   } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw err; // Let AbortError propagate without wrapping
+    }
     const message = err instanceof Error ? err.message : "Network error";
     throw normalizeError({ code: "network_error", message, details: err });
   }
 
   if (res.status === 204) return undefined as unknown as T;
+
+  // Handle 401 — redirect to login
+  if (res.status === 401) {
+    const loginPath = (WKApp.loginInfo as Record<string, unknown>)?.loginUrl as string | undefined ?? "/login";
+    if (typeof window !== "undefined") window.location.href = loginPath;
+    throw normalizeError({ code: "unauthorized", message: "登录已过期，请重新登录", status: 401 });
+  }
+
+  // Handle 413 — file too large
+  if (res.status === 413) {
+    throw normalizeError({ code: "file_too_large", message: "文件过大，请压缩后重试", status: 413 });
+  }
 
   const body = (await parseJson(res)) as Partial<ApiResponse<T>> | null;
   const ok = typeof res.ok === "boolean" ? res.ok : res.status >= 200 && res.status < 300;
@@ -121,22 +136,35 @@ function mapCategory(raw: RawCategory, index: number): Category {
   };
 }
 
+/** Safely coerce tags to string[]. Backend may return a JSON-encoded string. */
+function normalizeTags(tags: unknown): string[] {
+  if (Array.isArray(tags)) return tags.filter((t): t is string => typeof t === "string");
+  if (typeof tags === "string") {
+    try {
+      const parsed = JSON.parse(tags);
+      if (Array.isArray(parsed)) return parsed.filter((t): t is string => typeof t === "string");
+    } catch { /* not valid JSON, treat as a single tag */ }
+    return tags.trim() ? [tags.trim()] : [];
+  }
+  return [];
+}
+
 function mapSkill(raw: RawSkill): Skill {
   return {
     id: raw.id,
     name: raw.name,
-    description: raw.description,
+    description: raw.description ?? "",
     categoryId: raw.category_id,
-    tags: raw.tags ?? [],
+    tags: normalizeTags(raw.tags),
     ownerId: raw.owner_id,
-    ownerName: raw.owner_name,
+    ownerName: raw.owner_name ?? "",
     spaceId: raw.space_id,
-    visibility: raw.visibility,
-    version: raw.version,
-    readmeContent: raw.readme_content,
-    fileName: raw.file_name,
-    fileUrl: raw.file_url,
-    fileSize: raw.file_size,
+    visibility: raw.visibility ?? "space",
+    version: raw.version ?? "1.0.0",
+    readmeContent: raw.readme_content ?? "",
+    fileName: raw.file_name ?? "",
+    fileUrl: raw.file_url ?? "",
+    fileSize: raw.file_size ?? 0,
     fileSha256: raw.file_sha256,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
@@ -312,7 +340,7 @@ function mapParseStatus(raw: RawParseStatusResult): ParseStatusResult {
     result.result = {
       name: raw.result.name,
       description: raw.result.description ?? "",
-      tags: raw.result.tags ?? [],
+      tags: normalizeTags(raw.result.tags),
       version: raw.result.version ?? "1.0.0",
       readmeContent: raw.result.readme_content ?? "",
       fileName: raw.result.file_name ?? "",

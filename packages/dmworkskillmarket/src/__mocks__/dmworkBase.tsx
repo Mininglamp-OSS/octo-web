@@ -75,6 +75,7 @@ export const WKApp = {
   loginInfo: {
     token: "test-token",
     uid: "test-uid",
+    loginUrl: "/login",
   },
   shared: {
     currentSpaceId: "space-123",

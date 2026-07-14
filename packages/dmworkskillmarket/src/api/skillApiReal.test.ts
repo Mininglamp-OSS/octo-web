@@ -489,4 +489,140 @@ describe("skillApiReal", () => {
       "/market/api/v1/skill/skill%2Fwith%20space/download",
     );
   });
+
+  it("normalizes tags when backend returns a JSON-encoded string", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({
+        id: "test-skill",
+        name: "Test",
+        description: "desc",
+        category_id: "other",
+        tags: '["CI","debug"]',
+        owner_id: "u1",
+        owner_name: "User",
+        space_id: "s1",
+        visibility: "public",
+        version: "1.0.0",
+        readme_content: "# Test",
+        file_name: "test.zip",
+        file_url: "/files/test.zip",
+        file_size: 512,
+        file_sha256: "def456",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-02T00:00:00Z",
+      }),
+    );
+
+    const skill = await getSkill("test-skill");
+
+    expect(skill.tags).toEqual(["CI", "debug"]);
+  });
+
+  it("normalizes tags when backend returns null or undefined", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({
+        id: "test-skill",
+        name: "Test",
+        description: "desc",
+        category_id: "other",
+        tags: null,
+        owner_id: "u1",
+        owner_name: "User",
+        space_id: "s1",
+        visibility: "public",
+        version: "1.0.0",
+        readme_content: "# Test",
+        file_name: "test.zip",
+        file_url: "/files/test.zip",
+        file_size: 512,
+        file_sha256: "def456",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-02T00:00:00Z",
+      }),
+    );
+
+    const skill = await getSkill("test-skill");
+
+    expect(skill.tags).toEqual([]);
+  });
+
+  it("handles 401 by throwing with unauthorized code", async () => {
+    mockFetch.mockReturnValueOnce(
+      Promise.resolve({
+        status: 401,
+        json: () => Promise.resolve({ code: "unauthorized", message: "token expired" }),
+      }),
+    );
+
+    // Mock window.location
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: { href: "" },
+    });
+
+    await expect(getCategories()).rejects.toMatchObject({
+      name: "SkillMarketApiError",
+      code: "unauthorized",
+      message: "登录已过期，请重新登录",
+      status: 401,
+    });
+
+    expect(window.location.href).toBe("/login");
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: originalLocation,
+    });
+  });
+
+  it("handles 413 with a clear file-too-large message", async () => {
+    mockFetch.mockReturnValueOnce(
+      Promise.resolve({
+        status: 413,
+        json: () => Promise.resolve({}),
+      }),
+    );
+
+    await expect(getSkill("big-file")).rejects.toMatchObject({
+      name: "SkillMarketApiError",
+      code: "file_too_large",
+      message: "文件过大，请压缩后重试",
+      status: 413,
+    });
+  });
+
+  it("defaults missing skill fields to safe values", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({
+        id: "minimal-skill",
+        name: "Minimal",
+        description: null,
+        category_id: "other",
+        tags: [],
+        owner_id: "u1",
+        owner_name: null,
+        space_id: "s1",
+        visibility: null,
+        version: null,
+        readme_content: null,
+        file_name: null,
+        file_url: null,
+        file_size: null,
+        file_sha256: "abc",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-02T00:00:00Z",
+      }),
+    );
+
+    const skill = await getSkill("minimal-skill");
+
+    expect(skill.description).toBe("");
+    expect(skill.ownerName).toBe("");
+    expect(skill.visibility).toBe("space");
+    expect(skill.version).toBe("1.0.0");
+    expect(skill.readmeContent).toBe("");
+    expect(skill.fileName).toBe("");
+    expect(skill.fileUrl).toBe("");
+    expect(skill.fileSize).toBe(0);
+  });
 });
