@@ -134,10 +134,13 @@ export class RevokeCell extends MessageCell {
         const rawText = textContent?.text ?? ''
         if (!rawText) return
 
-        // 从 mention.entities ({uid, offset, length}[]) 重建 @[uid:label] 草稿序列化格式
-        // 以便 restoreDraft → parseDraftToContent 能正确还原 mention 节点
+        // 镜像 Model.tsx:parseMentionWithEntities 的健壮读取路径：
+        // 先读 top-level mention.entities，再 fallback 到 contentObj.mention.entities
+        // 两种位置都可能存在 entities，错过任何一种都会导致 mention 退化为惰性文本
         const entities: Array<{ uid: string; offset: number; length: number }> =
-            (textContent as any)?.mention?.entities ?? []
+            (textContent as any)?.mention?.entities ??
+            (textContent as any)?.contentObj?.mention?.entities ??
+            []
         const draftText = rebuildDraftText(rawText, entities)
         conversationContext.restoreDraft(draftText)
     }

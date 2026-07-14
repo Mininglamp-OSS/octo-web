@@ -171,6 +171,36 @@ describe("RevokeCell — handleReEdit text resolution", () => {
         ReactDOM.unmountComponentAtNode(container)
         container.remove()
     })
+
+    it("reads entities from contentObj.mention.entities when top-level mention.entities is absent", () => {
+        // 模拟存在于 contentObj 路径的 entities（部分消息类型用这个格式存储）
+        const restoreDraft = vi.fn()
+        const msg = makeMessage({
+            content: {
+                text: "hi @张三",
+                contentType: 1,
+                // top-level mention.entities 不存在
+                contentObj: {
+                    mention: {
+                        entities: [{ uid: "uid-zhangsan", offset: 3, length: 3 }],
+                    },
+                },
+            },
+        })
+        const container = document.createElement("div")
+        document.body.appendChild(container)
+        act(() => {
+            ReactDOM.render(
+                React.createElement(RevokeCell as any, { message: msg, context: { restoreDraft } }),
+                container
+            )
+        })
+        act(() => { (container.querySelector(".wk-revoke-reedit-btn") as HTMLElement).click() })
+        // entities 应该从 contentObj 路径读到，正确重建 @[uid:label]
+        expect(restoreDraft).toHaveBeenCalledWith("hi @[uid-zhangsan:张三]")
+        ReactDOM.unmountComponentAtNode(container)
+        container.remove()
+    })
 })
 
 describe("rebuildDraftText — mention entity reconstruction", () => {
