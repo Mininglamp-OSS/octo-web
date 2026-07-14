@@ -98,15 +98,19 @@ export default class ConnectionStatus extends Component<ConnectionStatusProps, C
                     this.connectedTime = Date.now()
                     nextState.connectedSince = this.connectedTime
                 }
-                this.setState(nextState as any)
+                this.setState(nextState)
             }
         } catch {
-            this.connectedTime = 0
-            this.setState({
-                status: ConnectStatus.Disconnect,
-                latency: null,
-                connectedSince: null,
-            })
+            if (!isImConnected(WKSDK.shared())) {
+                this.connectedTime = 0
+                this.setState({
+                    status: ConnectStatus.Disconnect,
+                    latency: null,
+                    connectedSince: null,
+                })
+            } else {
+                this.setState({ latency: null })
+            }
         }
     }
 
