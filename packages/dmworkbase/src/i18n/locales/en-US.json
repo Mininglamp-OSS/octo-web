@@ -1013,6 +1013,7 @@
   "revoke.revokedMemberMessageByYou": "You recalled a message from \"{{member}}\"",
   "revoke.revokedMessage": "{{name}} recalled a message",
   "revoke.you": "You",
+  "revoke.reEdit": "Re-edit",
   "video.digest": "[Short video]",
   "video.uploadFailedRetry": "Upload failed. Click to retry",
   "aiMessageCard.assistant": "AI assistant",
