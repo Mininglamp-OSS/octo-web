@@ -13,6 +13,8 @@ import { sanitizeLinkHref } from './sanitize.ts'
 import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { TableGridPicker } from './TableControls.tsx'
 import { t } from '../octoweb/index.ts'
+import { FONT_FAMILY_ENABLED } from '../config.ts'
+import { FONT_FAMILIES } from './fontFamilies.ts'
 
 // Inline SVG toolbar icons (C2–C4): crisp, correct glyphs for underline / strikethrough /
 // alignment, replacing the ambiguous text placeholders. 16×16, fill: currentColor (via .octo-tb-icon).
@@ -274,7 +276,22 @@ export function shouldShowFloatingMenu(args: {
 }
 
 const HIGHLIGHT_COLORS = ['#fff3a3', '#ffd6cc', '#cdeccd', '#cfe2ff', '#e7d6ff'] as const
-const TEXT_COLORS = ['#e03131', '#1971c2', '#2f9e44', '#f08c00', '#9c36b5'] as const
+// Common font colours (octo-web #719, plan A): near-black default, secondary grey, then the
+// warm→cool spread. Values are standard #rrggbb hex so DOCX export (normalizeDocxColor) keeps
+// them lossless. This scope covers font colour only — HIGHLIGHT_COLORS above is intentionally
+// left unchanged.
+const TEXT_COLORS = [
+  '#1f2329',
+  '#8a919e',
+  '#e03131',
+  '#f08c00',
+  '#f2b705',
+  '#2f9e44',
+  '#0ca678',
+  '#1971c2',
+  '#3370ff',
+  '#9c36b5',
+] as const
 
 /** Text-highlight control (SCHEMA-SPEC §3): palette of background colours + clear. */
 function HighlightControl({ editor }: { editor: Editor }) {
@@ -319,11 +336,32 @@ function HighlightControl({ editor }: { editor: Editor }) {
 /** Text-colour control (SCHEMA-SPEC §3): palette of font colours + clear. */
 function TextColorControl({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
+  // Native <input type="color"> distinguishes drag from commit only at the DOM level: `input`
+  // streams while the hue wheel moves, `change` fires once the pick is committed. React folds
+  // both onto its synthetic onChange (native `input`), so we bind the raw `change` event via a ref.
+  // RC1: commit the colour once, on `change` only — never on the `input` stream. Applying per
+  // `input` tick ran one ProseMirror transaction each, so a single pick piled up dozens of undo
+  // records and flooded collaborators with a Yjs update per intermediate hue. The OS colour dialog
+  // previews the hue live in its own UI while dragging, so committing on `change` keeps one pick =
+  // one undo record + one Yjs update, and the popover collapses on commit like a preset swatch.
+  const customRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const input = customRef.current
+    if (!input) return
+    const onCommit = () => {
+      editor.chain().focus().setColor(input.value).run()
+      setOpen(false)
+    }
+    input.addEventListener('change', onCommit)
+    return () => {
+      input.removeEventListener('change', onCommit)
+    }
+  }, [editor, open])
   return (
     <span className="octo-color-control">
       <Btn label="A̲" title={t('docs.toolbar.textColor')} active={open} onClick={() => setOpen((v) => !v)} />
       {open && (
-        <span className="octo-color-popover">
+        <span className="octo-color-popover octo-text-color-popover">
           {TEXT_COLORS.map((c) => (
             <button
               key={c}
@@ -345,6 +383,22 @@ function TextColorControl({ editor }: { editor: Editor }) {
               setOpen(false)
             }}
           />
+          {/* Custom colour (plan A): native picker, zero new deps. It emits standard #rrggbb,
+              so setColor stays lossless through Yjs and the DOCX/Markdown exporters. The picker
+              stays open while dragging the hue wheel and commits once on `change`, collapsing the
+              popover — see the ref-bound listener above. */}
+          <label
+            className="octo-swatch octo-color-custom"
+            title={t('docs.toolbar.customColor')}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <input
+              ref={customRef}
+              type="color"
+              className="octo-color-custom-input"
+              aria-label={t('docs.toolbar.customColor')}
+            />
+          </label>
         </span>
       )}
     </span>
@@ -467,6 +521,37 @@ function FontSizeSelect({ editor }: { editor: Editor }) {
       {FONT_SIZES.map((s) => (
         <option key={s} value={s}>
           {s}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/**
+ * Font-family dropdown (SCHEMA_VERSION 16): sets the textStyle `fontFamily` attr, or clears it.
+ * Mirrors FontSizeSelect. Rendered ONLY when FONT_FAMILY_ENABLED is on (feature flag, default
+ * off) — the caller gates it, so when off the selector is absent from the DOM entirely and the
+ * user cannot set a font (see config.ts for the phased-rollout rationale).
+ */
+function FontFamilySelect({ editor }: { editor: Editor }) {
+  useEditorTick(editor)
+  const current = (editor.getAttributes('textStyle').fontFamily as string) || ''
+  return (
+    <select
+      className="octo-font-family"
+      title={t('docs.toolbar.fontFamily')}
+      value={current}
+      onMouseDown={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        const v = e.target.value
+        if (!v) editor.chain().focus().unsetFontFamily().run()
+        else editor.chain().focus().setFontFamily(v).run()
+      }}
+    >
+      <option value="">{t('docs.toolbar.fontFamilyDefault')}</option>
+      {FONT_FAMILIES.map((f) => (
+        <option key={f.labelKey} value={f.value} style={{ fontFamily: f.value }}>
+          {t(f.labelKey)}
         </option>
       ))}
     </select>
@@ -933,6 +1018,7 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <Btn label="x²" title={t('docs.toolbar.superscript')} active={editor.isActive('superscript')} onClick={() => editor.chain().focus().toggleSuperscript().run()} />
       <Btn label="x₂" title={t('docs.toolbar.subscript')} active={editor.isActive('subscript')} onClick={() => editor.chain().focus().toggleSubscript().run()} />
       <FontSizeSelect editor={editor} />
+      {FONT_FAMILY_ENABLED && <FontFamilySelect editor={editor} />}
       <span className="octo-tb-sep" />
       <AlignControls editor={editor} />
       <span className="octo-tb-sep" />

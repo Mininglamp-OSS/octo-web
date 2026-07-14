@@ -134,10 +134,15 @@ export function cleanGlobalFilters(
   if (filters.senderUids.length > 0) {
     next.sender_ids = filters.senderUids.slice(0, 50);
   }
-  // member_uid = self is a no-op per §6.4. UI already hides self, but tolerate
-  // callers that leak self by dropping the field here.
-  if (filters.memberUid && filters.memberUid !== selfUid) {
-    next.member_uid = filters.memberUid;
+  // member_uids: drop self (§6.4 no-op) and dedup. Empty array → omit the
+  // field entirely so the server sees «no member filter» rather than an
+  // explicit empty list. Wire field is `member_uids` (plural), replacing the
+  // legacy single-value `member_uid` under YUJ-30 bug 5.
+  const memberUids = Array.from(
+    new Set(filters.memberUids.filter((uid) => uid && uid !== selfUid))
+  );
+  if (memberUids.length > 0) {
+    next.member_uids = memberUids;
   }
   if (filters.channels.length > 0) {
     next.channel_ids = filters.channels.map((c) => ({
@@ -176,7 +181,7 @@ export function cleanGlobalFilters(
 export function hasEffectiveGlobalFilters(filters: GlobalSearchFilters) {
   return (
     filters.senderUids.length > 0 ||
-    !!filters.memberUid ||
+    filters.memberUids.length > 0 ||
     filters.channels.length > 0 ||
     filters.channelTypes.length > 0 ||
     filters.contentTypes.length > 0 ||
@@ -189,18 +194,19 @@ export function hasEffectiveGlobalFilters(filters: GlobalSearchFilters) {
   );
 }
 
-// Messages tab needs keyword or a real filter (backend rejects fully-empty
-// searches). Files tab supports empty-keyword browse. Do NOT reuse
-// ChannelSearch's shouldRunSearch: it inspects `tab !== "all" && tab !==
-// "message"` and our tab name is "messages" (plural) → it would let empty
-// searches through and get a 400.
+// Both tabs now fire even without a keyword / filter (bug 3, YUJ-30). The
+// backend `_search_global_messages` accepts empty keyword — aligning with the
+// per-channel `_search_all` browse behavior — and the batched-allowlist path
+// (§6.2) keeps browse-mode cost bounded (ms-level per user's allowlist). Do
+// NOT reuse ChannelSearch's shouldRunSearch: it inspects `tab !== "all" &&
+// tab !== "message"` and our tab name is "messages" (plural), so it would
+// short-circuit the wrong branch.
 export function shouldRunGlobalSearch(
-  tab: GlobalContentTab,
-  keyword: string,
-  filters: GlobalSearchFilters
+  _tab: GlobalContentTab,
+  _keyword: string,
+  _filters: GlobalSearchFilters
 ) {
-  if (tab === "files") return true;
-  return keyword.trim().length > 0 || hasEffectiveGlobalFilters(filters);
+  return true;
 }
 
 export function toGlobalRequestBody(

@@ -347,7 +347,7 @@ function convertHorizontalRule(): Paragraph {
 }
 
 /** Convert an image node. */
-function convertImage(node: MdNode, ctx: DocxContext): FileChild[] {
+export function convertImage(node: MdNode, ctx: DocxContext): FileChild[] {
   const buffer = getImageBuffer(node, ctx)
   const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt : ''
 
@@ -366,7 +366,7 @@ function convertImage(node: MdNode, ctx: DocxContext): FileChild[] {
     ]
   }
 
-  const dims = getImageDimensions(node, buffer)
+  const dims = getImageDimensions(node, buffer, ctx.maxImageWidthPx)
   // Image uses `align` attr (left/center/right), not `textAlign`
   const align = mapTextAlign(node.attrs?.align)
 

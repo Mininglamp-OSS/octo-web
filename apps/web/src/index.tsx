@@ -12,6 +12,8 @@ import { MatterModule } from '@octo/todo';
 import { SummaryModule } from '@dmwork/summary';
 import { AppBotModule } from '@dmwork/appbot';
 import { DocsModule } from '@octo/docs';
+import { LoopModule } from '@octo/loop';
+import { PersonalModule } from '@octo/personal';
 import { version as pkgVersion } from '../package.json';
 import appEnUS from './i18n/en-US.json';
 import appZhCN from './i18n/zh-CN.json';
@@ -73,6 +75,8 @@ WKApp.shared.registerModule(new MatterModule()); // Matter module
 WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块
 WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块
 WKApp.shared.registerModule(new DocsModule()); // Docs module
+WKApp.shared.registerModule(new LoopModule()); // Loop 面板（Issue/Skill/Project/Agent/Squad/Runtime）
+WKApp.shared.registerModule(new PersonalModule()); // 我的（Runtimes/Skills）
 
 WKApp.shared.startup() // app启动
 

@@ -6,6 +6,8 @@
   --octo-accent: #3370ff;
   --octo-border: #e5e6eb;
   --octo-hover: #f2f3f5;
+  /* Shared elevation for overlay-anchored cards (preview/diff modal + destructive confirm). */
+  --octo-modal-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -291,6 +293,49 @@
 .octo-swatch:hover {
   outline: 2px solid var(--octo-accent);
 }
+/* Custom-colour entry (#719): a rainbow swatch that wraps the native <input type="color">.
+   The input fills the swatch but stays invisible so the OS colour dialog opens on click while
+   the toolbar keeps its own visual language (works in both light and dark themes). */
+.octo-color-custom {
+  position: relative;
+  overflow: hidden;
+  /* RC2: the rainbow ring is a deliberate palette — it signals "pick any colour", so it must show
+     the actual hue spectrum and cannot be expressed with semantic theme tokens. Declared as an
+     intentional exception to the hardcoded-colour policy (stylelint.ci.config.mjs → color-no-hex);
+     these are literal spectrum stops, not themeable UI colours. */
+  /* stylelint-disable color-no-hex */
+  background: conic-gradient(
+    from 0deg,
+    #e03131,
+    #f08c00,
+    #f2b705,
+    #2f9e44,
+    #0ca678,
+    #1971c2,
+    #3370ff,
+    #9c36b5,
+    #e03131
+  );
+  /* stylelint-enable color-no-hex */
+}
+/* RC3: the native colour <input> is fully transparent, so keyboard focus was invisible. Surface a
+   visible focus ring on the wrapping swatch (via :focus-within) using the accent token so it
+   follows the light/dark theme, matching the hover affordance above. */
+.octo-color-custom:focus-within {
+  outline: 2px solid var(--octo-accent);
+  outline-offset: 1px;
+}
+.octo-color-custom-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}
 .octo-code-lang {
   border: 1px solid var(--octo-border);
   border-radius: 6px;
@@ -391,6 +436,20 @@
 }
 .octo-table-bubble .octo-tb-sep {
   align-self: stretch;
+}
+/* Delete controls carry a text caption (#621-2) so it's clear which row / column / table the
+   action removes. Lay the icon and caption out inline; icon-only buttons are unaffected. */
+.octo-table-bubble .octo-tb-btn {
+  display: inline-flex;
+  align-items: center;
+}
+.octo-tb-btn--labeled {
+  gap: 4px;
+}
+.octo-tb-btn-label {
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
 }
 /* While the caret is inside a table cell this toolbar floats over the table (placement: top). Its
    frame would otherwise sit on top of the column-resize hot zone and swallow the hover/mousedown
@@ -577,6 +636,46 @@
   min-height: 320px;
   line-height: 1.6;
   font-size: 15px;
+}
+.octo-prose .ProseMirror h1,
+.octo-prose .ProseMirror h2,
+.octo-prose .ProseMirror h3,
+.octo-prose .ProseMirror h4,
+.octo-prose .ProseMirror h5,
+.octo-prose .ProseMirror h6 {
+  margin: var(--wk-sp-5) 0 var(--wk-sp-2);
+  font-family: var(--wk-font-sans);
+  letter-spacing: 0;
+}
+.octo-prose .ProseMirror h1 {
+  font-size: var(--wk-text-size-4xl);
+  font-weight: var(--wk-font-bold);
+  line-height: var(--wk-leading-tight);
+}
+.octo-prose .ProseMirror h2 {
+  font-size: var(--wk-text-size-3xl);
+  font-weight: var(--wk-font-bold);
+  line-height: var(--wk-leading-snug);
+}
+.octo-prose .ProseMirror h3 {
+  font-size: var(--wk-text-size-xl);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-snug);
+}
+.octo-prose .ProseMirror h4 {
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-normal);
+}
+.octo-prose .ProseMirror h5 {
+  font-size: var(--wk-text-size-base);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-normal);
+}
+.octo-prose .ProseMirror h6 {
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--wk-leading-normal);
 }
 .octo-prose .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
@@ -1019,7 +1118,7 @@
   color: var(--octo-fg, #1f2329);
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 12px;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--octo-modal-shadow);
   padding: 20px 24px;
   box-sizing: border-box;
 }
@@ -1347,7 +1446,7 @@
   color: var(--octo-fg, #1f2329);
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 12px;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--octo-modal-shadow);
   padding: 20px 24px;
   box-sizing: border-box;
 }
@@ -1684,12 +1783,28 @@
   justify-content: flex-end;
   gap: 6px;
 }
-.octo-version-confirm {
-  margin-top: 12px;
-  padding: 12px;
+/* Destructive-action confirm box (restore / delete). The VersionHistoryPanel shell — the single
+   confirm renderer the doc / sheet / board ends now share — renders it inside the shared
+   .octo-modal-overlay (fixed, viewport-centered), the same overlay the preview/diff modal uses
+   (decision #2), so it is always visible and clickable regardless of how far the version list has
+   scrolled. Before this, it sat at the end of the panel's content flow with only box-model styling
+   and no positioning, so on long scrolled lists it fell below the fold and users could not see the
+   confirm they had just triggered. The modal-card chrome (white bg + shadow) is scoped under
+   .octo-modal-overlay so it only applies to the overlay-anchored card and never leaks onto any path
+   that might still render this class inline in the content flow. */
+.octo-modal-overlay .octo-version-confirm {
+  width: 100%;
+  max-width: 420px;
+  padding: 16px 20px;
   border: 1px solid var(--octo-border, #e5e6eb);
-  border-radius: 8px;
-  background: var(--octo-accent-weak, #f2f3f5);
+  border-radius: 12px;
+  background: var(--octo-bg, #fff);
+  color: var(--octo-fg, #1f2329);
+  box-shadow: var(--octo-modal-shadow);
+  box-sizing: border-box;
+}
+.octo-version-confirm > p:first-child {
+  margin-top: 0;
 }
 .octo-version-confirm-detail {
   color: var(--octo-muted, #86909c);
@@ -2353,6 +2468,18 @@
   cursor: pointer;
 }
 
+.octo-font-family {
+  height: 26px;
+  max-width: 120px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
 /* Shared dependency-free suggestion popup (mention @ + emoji :). Mirrors the slash menu. */
 .octo-suggest-menu {
   z-index: 1000;
@@ -2383,11 +2510,6 @@
 .octo-suggest-item.is-selected,
 .octo-suggest-item:hover {
   background: var(--octo-hover, #f2f3f5);
-}
-.octo-suggest-empty {
-  padding: 6px 10px;
-  color: var(--octo-fg-3, #86909c);
-  font-size: 12px;
 }
 .octo-emoji-menu .octo-suggest-item {
   font-size: 15px;

@@ -34,6 +34,13 @@ export interface DocxContext {
   dynamicNumbering: Array<{ reference: string; start: number; level: number }>
   /** Monotonic counter handing each ordered list its own numbering instance (independent counting). */
   orderedListInstance: number
+  /**
+   * Optional upper bound (px) on rendered image width for the current context.
+   * Set when converting content inside a table cell so images shrink to fit the
+   * cell (which can be much narrower than the page when tables are nested),
+   * instead of overflowing at the page-wide MAX_IMAGE_WIDTH cap.
+   */
+  maxImageWidthPx?: number
 }
 
 /** Represents a collected image reference that needs to be fetched. */

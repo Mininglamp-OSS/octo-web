@@ -8,7 +8,7 @@ import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { CellSelection } from '@tiptap/pm/tables'
 import { TextSelection } from '@tiptap/pm/state'
-import { shouldShowTableBubble, TableGridPicker, TableBubbleMenu } from './TableControls.tsx'
+import { shouldShowTableBubble, TableGridPicker, TableBubbleMenu, clampToolbarAnchorRect } from './TableControls.tsx'
 
 // #595 — table add/delete row/column UI. The critical acceptance point is that the controls work on
 // tables that ALREADY EXIST in a document (parsed from stored HTML), not only freshly inserted
@@ -173,6 +173,63 @@ describe('TableBubbleMenu — does not block the column-resize hot zone (#595 C1
     expect(buttons.length).toBeGreaterThan(0)
     e.destroy()
     host.remove()
+  })
+})
+
+describe('clampToolbarAnchorRect — keep the toolbar clear of the fixed toolbar (#625 off-screen + #716)', () => {
+  const VIEWPORT = { width: 1200, height: 1000 }
+  // Bottom edge of the fixed editor toolbar in viewport coords, as tableReferenceElement measures it.
+  const TOOLBAR_BOTTOM = 64
+
+  it('leaves a fully-visible table at its real top edge (no TC-P0-001 regression)', () => {
+    // A normal table sitting mid-viewport, well below the fixed toolbar: the band stays a
+    // zero-height anchor at the real top so the toolbar still floats above the table as before.
+    const r = clampToolbarAnchorRect({ top: 300, bottom: 520, left: 200, right: 900 }, VIEWPORT, TOOLBAR_BOTTOM)
+    expect(r.top).toBe(300)
+    expect(r.height).toBe(0)
+    expect(r.left).toBe(200)
+    expect(r.right).toBe(900)
+  })
+
+  it('anchors a long table scrolled past the top to the toolbar strip so it flips below (XIN-939)', () => {
+    // The XIN-939 case: 34-row table scrolled so its top is far above the viewport and its bottom
+    // is below it. The band becomes the toolbar strip [0 .. toolbarBottom]; placement:'top' then
+    // overflows the viewport top and Floating-UI flips the controls to just below the fixed toolbar
+    // (top === 0 is what forces that flip; bottom === toolbarBottom is where they land).
+    const r = clampToolbarAnchorRect({ top: -1248, bottom: 1052, left: 200, right: 900 }, VIEWPORT, TOOLBAR_BOTTOM)
+    expect(r.top).toBe(0)
+    expect(r.bottom).toBe(TOOLBAR_BOTTOM)
+    expect(r.left).toBe(200)
+    expect(r.right).toBe(900)
+  })
+
+  it('anchors a table jammed under the fixed toolbar to the strip so it flips below it (#716)', () => {
+    // The #716 follow-up: a table at the very top of the doc sits right beneath a tall fixed
+    // toolbar (bottom 180). Floating above would land the controls behind the fixed toolbar; the
+    // strip band flips them to just below it instead.
+    const tallToolbar = 180
+    const r = clampToolbarAnchorRect({ top: 185, bottom: 405, left: 200, right: 900 }, VIEWPORT, tallToolbar)
+    expect(r.top).toBe(0)
+    expect(r.bottom).toBe(tallToolbar)
+  })
+
+  it('never drops the band below the viewport bottom', () => {
+    const r = clampToolbarAnchorRect({ top: 5000, bottom: 6000, left: 100, right: 400 }, VIEWPORT, TOOLBAR_BOTTOM)
+    expect(r.top).toBe(VIEWPORT.height - 8)
+    expect(r.top).toBeLessThan(VIEWPORT.height)
+  })
+
+  it('clamps the horizontal extent of a wide / off-screen table into the viewport', () => {
+    const r = clampToolbarAnchorRect({ top: 300, bottom: 520, left: -500, right: 3000 }, VIEWPORT, TOOLBAR_BOTTOM)
+    expect(r.left).toBe(0)
+    expect(r.right).toBe(VIEWPORT.width)
+    expect(r.width).toBe(VIEWPORT.width)
+  })
+
+  it('with no fixed toolbar (toolbarBottom defaults to 0) keeps a fully-visible table at its top', () => {
+    const r = clampToolbarAnchorRect({ top: 300, bottom: 520, left: 200, right: 900 }, VIEWPORT)
+    expect(r.top).toBe(300)
+    expect(r.height).toBe(0)
   })
 })
 

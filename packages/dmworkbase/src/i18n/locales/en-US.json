@@ -855,7 +855,7 @@
   "globalSearch.chatHistoryWith": "Chat history with \"{{name}}\"",
   "globalSearch.searchFailedRetry": "Search failed. Please try again later.",
   "globalSearch.searchDisabled": "Search is currently unavailable.",
-  "globalSearch.filter.channels": "In conversation",
+  "globalSearch.filter.channels": "In group or thread",
   "globalSearch.filter.apply": "Apply",
   "globalSearch.filter.memberUid": "Includes member",
   "globalSearch.filter.channelTypes": "Chat type",

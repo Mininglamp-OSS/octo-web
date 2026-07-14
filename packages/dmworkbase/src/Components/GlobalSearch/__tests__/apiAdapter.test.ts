@@ -263,22 +263,26 @@ describe("cleanGlobalFilters", () => {
     expect((out.sender_ids as string[])[49]).toBe("u49");
   });
 
-  it("drops member_uid when it equals selfUid", () => {
-    const withSelf = cleanGlobalFilters(
-      baseFilters({ memberUid: "self" }),
+  it("drops self from member_uids and emits the plural wire field", () => {
+    // YUJ-30 bug 5: `member_uid`(single) → `member_uids`(list). Self is
+    // still a no-op per §6.4, and dedup keeps the wire payload tight.
+    const withSelfOnly = cleanGlobalFilters(
+      baseFilters({ memberUids: ["self"] }),
       "messages",
       "project",
       "self"
     );
-    expect(withSelf.member_uid).toBeUndefined();
+    expect(withSelfOnly.member_uids).toBeUndefined();
+    expect(withSelfOnly.member_uid).toBeUndefined();
 
-    const withOther = cleanGlobalFilters(
-      baseFilters({ memberUid: "peer" }),
+    const mixed = cleanGlobalFilters(
+      baseFilters({ memberUids: ["self", "peer", "peer", "friend"] }),
       "messages",
       "project",
       "self"
     );
-    expect(withOther.member_uid).toBe("peer");
+    expect(mixed.member_uids).toEqual(["peer", "friend"]);
+    expect(mixed.member_uid).toBeUndefined();
   });
 
   it("drops content_types 2/5 in messages tab when keyword is present", () => {
@@ -352,7 +356,7 @@ describe("hasEffectiveGlobalFilters", () => {
       hasEffectiveGlobalFilters(baseFilters({ senderUids: ["u1"] }))
     ).toBe(true);
     expect(
-      hasEffectiveGlobalFilters(baseFilters({ memberUid: "u1" }))
+      hasEffectiveGlobalFilters(baseFilters({ memberUids: ["u1"] }))
     ).toBe(true);
     expect(
       hasEffectiveGlobalFilters(
@@ -379,17 +383,15 @@ describe("shouldRunGlobalSearch", () => {
     expect(shouldRunGlobalSearch("files", "kw", baseFilters())).toBe(true);
   });
 
-  it("messages tab needs keyword OR a real filter", () => {
-    // Empty keyword + no filters → do not fire (backend rejects).
-    expect(shouldRunGlobalSearch("messages", "", baseFilters())).toBe(false);
-    expect(shouldRunGlobalSearch("messages", "   ", baseFilters())).toBe(false);
-
-    // Keyword alone.
+  it("messages tab always runs after YUJ-30 bug 3 (empty keyword browse allowed)", () => {
+    // Bug 3: backend `_search_global_messages` now accepts empty keyword,
+    // aligning with per-channel `_search_all` browse behavior — the FE
+    // gate must not swallow the request anymore.
+    expect(shouldRunGlobalSearch("messages", "", baseFilters())).toBe(true);
+    expect(shouldRunGlobalSearch("messages", "   ", baseFilters())).toBe(true);
     expect(shouldRunGlobalSearch("messages", "hello", baseFilters())).toBe(
       true
     );
-
-    // Filter alone (no keyword).
     expect(
       shouldRunGlobalSearch(
         "messages",

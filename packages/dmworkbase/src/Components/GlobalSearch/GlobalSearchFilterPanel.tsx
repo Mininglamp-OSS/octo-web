@@ -283,7 +283,16 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
             )
           : [
               ...cur.channels,
-              { channelId: opt.channelId, channelType: opt.channelType },
+              {
+                channelId: opt.channelId,
+                channelType: opt.channelType,
+                // Persist display fields so the chip keeps showing the channel
+                // name after the panel is closed and reopened (bug 1). The
+                // channelCatalog ref is per-panel-instance and rebuilds
+                // empty on remount, so the ref itself has to carry the name.
+                name: opt.name,
+                avatarUrl: opt.avatarUrl,
+              },
             ],
       };
     });
@@ -387,14 +396,23 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
     }));
   };
 
-  const setMemberUid = (uid?: string) => {
+  const toggleMember = (uid: string) => {
     if (uid === selfUid) return;
-    setDraft((cur) => ({ ...cur, memberUid: uid || undefined }));
+    setDraft((cur) => {
+      const has = cur.memberUids.includes(uid);
+      return {
+        ...cur,
+        memberUids: has
+          ? cur.memberUids.filter((x) => x !== uid)
+          : [...cur.memberUids, uid],
+      };
+    });
   };
 
   const clearAll = () => {
     setDraft({
       senderUids: [],
+      memberUids: [],
       channels: [],
       channelTypes: [],
       contentTypes: [],
@@ -474,10 +492,13 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       draft.channels.map((c) => {
         const key = channelKey(c);
         const known = channelCatalog.current.get(key);
+        // Prefer the persisted ref name (bug 1: survives panel reopen). Fall
+        // back to the freshly-loaded catalog entry, then to the raw channelId
+        // as a last resort for refs that predate the name-persistence change.
         return {
           id: key,
-          name: known?.name ?? c.channelId,
-          avatarUrl: known?.avatarUrl,
+          name: c.name ?? known?.name ?? c.channelId,
+          avatarUrl: c.avatarUrl ?? known?.avatarUrl,
         };
       }),
     [draft.channels]
@@ -496,17 +517,19 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       })),
     [memberOptions]
   );
-  const memberSelected = useMemo<FilterSearchOption[]>(() => {
-    if (!draft.memberUid) return [];
-    const s = dataSource.getSender(draft.memberUid);
-    return [{ id: draft.memberUid, name: s.name, avatarUrl: s.avatarUrl }];
-  }, [draft.memberUid, dataSource]);
-  const memberIsSelected = useCallback(
-    (id: string) => draft.memberUid === id,
-    [draft.memberUid]
+  const memberSelected = useMemo<FilterSearchOption[]>(
+    () =>
+      draft.memberUids.map((uid) => {
+        const s = dataSource.getSender(uid);
+        return { id: uid, name: s.name, avatarUrl: s.avatarUrl };
+      }),
+    [draft.memberUids, dataSource]
   );
-  const toggleMemberById = (id: string) =>
-    setMemberUid(draft.memberUid === id ? undefined : id);
+  const memberIsSelected = useCallback(
+    (id: string) => draft.memberUids.includes(id),
+    [draft.memberUids]
+  );
+  const toggleMemberById = (id: string) => toggleMember(id);
 
   return (
     <div
@@ -530,22 +553,23 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       />
 
       {/*
-        「所在群聊」narrowing (channel_ids). v1 scope, YUJ-15:
+        「所在群聊或子区」narrowing (channel_ids). YUJ-30 bug 2 + YUJ-15:
 
         The candidate pool exposed here is populated by
         dataSource.searchChannels — currently backed by conversation history
-        + groupSaveList, so a thread (channelType=5) does NOT get its own
-        selectable chip. This is intentional for v1: adding a per-thread
-        picker needs a thread-list source keyed by group + a UX pass on
-        thread hierarchy, both out of scope.
+        + groupSaveList, filtered to groups (channelType=2) + threads (5).
+        Private conversations (channelType=1, DM) are excluded from the pool
+        as of YUJ-30 bug 2: the picker is scoped to groups and threads only
+        (label: 「所在群聊或子区」).
 
-        This does NOT silently drop thread coverage. Thread hits still
-        surface in the result stream when the caller selects the 群聊 chip
-        below — that maps to channel_types=[2,5] on the wire (§6, `GLOBAL_
-        CHANNEL_TYPES_GROUP`), which the backend fail-open expands to every
-        active thread under the caller's joined groups. In short: v1 pool =
-        groups only for narrowing, thread hits = fail-open via [2,5]. See
-        packages/dmworkbase/src/Components/GlobalSearch/dataSource.ts
+        v1 (YUJ-15) — full group-scoped thread picker is deferred. Threads
+        that already show up in a recent conversation get their own row here;
+        others don't. Under the YUJ-30 unified rule, picking a *group* now
+        expands server-side to «group + all its threads» (backend
+        resolveGlobalScope + expandGroupWithThreads), so thread hits are no
+        longer contingent on the fail-open [2,5] channel_types path.
+
+        See packages/dmworkbase/src/Components/GlobalSearch/dataSource.ts
         (loadReadableChannelOptions) for the pool source.
       */}
       <FilterSearchSelect

@@ -33,6 +33,8 @@ export type MittEvents = {
   "wk:toggle-matter-detail-panel": { channelId: string; channelType: number };
   "wk:toggle-summary-panel": { channelId: string; channelType: number; summaryPanelView: 'history' | 'new'; forceOpen?: boolean };
   "wk:open-summary-modal": { channelId: string; channelType: number };
+  /** 主聊天框头部搜索入口点击：请求打开该频道的会话内搜索面板（与信息栏「查找聊天内容」同一效果）。 */
+  "wk:open-channel-search": { channelId: string; channelType: number };
   /** 打开多选→添加到事项的弹出菜单（由 dmworktodo 模块接管渲染） */
   "wk:open-matter-link-menu": { anchor: HTMLElement; channelId: string; channelType: number; messages?: Array<{ messageSeq?: number; messageID?: string; fromUID?: string; fromUName?: string; content?: string; timestamp?: number; attachments?: any[] }> };
   "wk:switch-sidebar-tab": string;
@@ -69,6 +71,13 @@ export type MittEvents = {
    * 不会自动 remount, 接收方需要主动 reload。
    */
   'wk:nav-menu-activated': { menuId: string };
+  /**
+   * dmloop 派单(quick-create)后的看板补刷协议。派单是异步的(agent 稍后建 issue,dmloop 暂无 WS 推送):
+   * NewLoopPage 派单成功发 `wk:loop-issues-dispatched`;常驻的 LoopPage 据此有界补发 `wk:loop-issues-refresh`,
+   * 当前挂载的看板(IssuePage)订阅后重取,使新回路自动出现——统一覆盖看板内/侧栏两个建单入口。
+   */
+  'wk:loop-issues-dispatched': void;
+  'wk:loop-issues-refresh': void;
   /**
    * 打开「密钥 / Secrets」管理面板（YUJ-3539）。由聊天反向跳转（bot 消息里的
    * 「去添加密钥」按钮）或输入框防手滑提示触发；payload 可携带预填名字 / 明文，
@@ -122,12 +131,10 @@ import SectionManager, { Row, Section } from "./Service/Section";
 import { EndpointCategory, ChannelTypeCommunityTopic } from "./Service/Const";
 import { parseThreadChannelId } from "./Service/Thread";
 import { DataSource } from "./Service/DataSource/DataSource";
-import { ConnectAddrCallback } from "wukongimjssdk";
 
 import "animate.css";
 import "./App.css";
 import RouteContext from "./Service/Context";
-import { ConnectStatus } from "wukongimjssdk";
 import { GroupStatusDisband } from "./Utils/groupDisband";
 
 // 解散群的默认灰色头像（内联 SVG data-URI，避免新增二进制资源）。
@@ -145,6 +152,13 @@ import { WKBaseContext } from "./Components/WKBase";
 import StorageService from "./Service/StorageService";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { TypingManager } from "./Service/TypingManager";
+import { syncClientMsgDeviceId } from "./im-runtime/clientMsgDevice";
+import {
+  ImConnectAddressManager,
+  registerImConnectAddressProvider,
+} from "./im-runtime/connectAddress";
+import { connectImClient } from "./im-runtime/connectClient";
+import { registerImConnectStatusListener } from "./im-runtime/connectStatus";
 import {
   clearAuthStorage,
   consumeOidcPostLogoutCleanup,
@@ -271,6 +285,22 @@ export class WKRemoteConfig {
    */
   docsOn: boolean = false;
   /**
+   * Loop(回路)模块展示开关。后端字段 dmloop_on 为 true 时，前端在侧边栏 NavRail
+   * 展示「回路」(LoopModule) 入口；false 或字段缺失时隐藏。
+   *
+   * 默认 false(fail-safe): loop 依赖后端服务 + fleet 代理 + daemon 运行时一整套未就绪前保持隐藏——
+   * feature 分支合入 main 也不对用户暴露；运维在依赖部署就绪后再下发 dmloop_on=true 放量。
+   * 镜像 docs_on(system_setting dmloop.enabled),纯 UI 展示门,不承担鉴权:/fleet/api 相关接口的
+   * 权限校验仍由后端负责。
+   */
+  dmloopOn: boolean = false;
+  /**
+   * 「我的 / 运行时」(PersonalModule) 模块展示开关。后端字段 dmpersonal_on 为 true 时展示入口。
+   * 与 dmloop_on 分开:「我的」后续会重新设计、脱离 loop 独立演进,故独立门控(可分阶段放量)。
+   * 默认 false(fail-safe),运维就绪后下发 dmpersonal_on=true。纯 UI 展示门,不承担鉴权。
+   */
+  dmpersonalOn: boolean = false;
+  /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
    * 顶层 oidc_account_url / oidc_reset_password_url 是后端兼容老前端用的,新前端只读这里。
@@ -372,6 +402,8 @@ export class WKRemoteConfig {
       const previousStickerCustomEnabled = this.stickerCustomEnabled;
       const previousStickerUploadLimits = this.stickerUploadLimits;
       const previousDocsOn = this.docsOn;
+      const previousDmloopOn = this.dmloopOn;
+      const previousDmpersonalOn = this.dmpersonalOn;
       this.requestSuccess = true;
       this.revokeSecond = result["revoke_second"];
       this.threadOn = !!result["thread_on"];
@@ -389,6 +421,8 @@ export class WKRemoteConfig {
         result["sticker_upload_limits"]
       );
       this.docsOn = parseRemoteBool(result["docs_on"]);
+      this.dmloopOn = parseRemoteBool(result["dmloop_on"]);
+      this.dmpersonalOn = parseRemoteBool(result["dmpersonal_on"]);
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
@@ -402,7 +436,9 @@ export class WKRemoteConfig {
           previousStickerUploadLimits,
           this.stickerUploadLimits
         ) ||
-        previousDocsOn !== this.docsOn
+        previousDocsOn !== this.docsOn ||
+        previousDmloopOn !== this.dmloopOn ||
+        previousDmpersonalOn !== this.dmpersonalOn
       ) {
         this.notifyConfigChangeListeners();
       }
@@ -733,8 +769,9 @@ export default class WKApp extends ProviderListener {
 
   private _notificationIsClose: boolean = false; // 通知是否关闭
 
-  private wsaddrs = new Array<string>(); // ws的连接地址
-  private addrUsed = false; // 地址是否被使用
+  private imConnectAddressManager = new ImConnectAddressManager({
+    getConnectAddrs: () => WKApp.dataSource.commonDataSource.imConnectAddrs(),
+  });
 
   isPC = false; // 是否是PC端
   deviceId: string = ""; // 设备ID
@@ -780,17 +817,10 @@ export default class WKApp extends ProviderListener {
     // 暗黑模式已关闭，强制亮色
     WKApp.config.themeMode = ThemeMode.light;
 
-    WKSDK.shared().config.provider.connectAddrCallback = async (
-      callback: ConnectAddrCallback
-    ) => {
-      if (!this.wsaddrs || this.wsaddrs.length === 0) {
-        this.wsaddrs = await WKApp.dataSource.commonDataSource.imConnectAddrs();
-      }
-      if (this.wsaddrs.length > 0) {
-        this.addrUsed = true;
-        callback(this.wsaddrs[0]);
-      }
-    };
+    registerImConnectAddressProvider(
+      WKSDK.shared(),
+      this.imConnectAddressManager.connectAddrCallback
+    );
 
     WKApp.endpoints.addOnLogin(() => {
       this.startMain();
@@ -800,29 +830,12 @@ export default class WKApp extends ProviderListener {
       this.startMain();
     }
 
-    WKSDK.shared().connectManager.addConnectStatusListener(
-      (status: ConnectStatus, reasonCode?: number) => {
-        if (status === ConnectStatus.ConnectKick) {
-          WKApp.shared.logout();
-        } else if (reasonCode === 2) {
-          // 认证失败！
-          WKApp.shared.logout();
-        } else if (status === ConnectStatus.Connected) {
-          // 第二层防御：重连成功后清除所有残留 typing。
-          // SDK 重连只 reSubscribe，不补拉离线消息/CMD，断连期间 bot 回复经
-          // HTTP sync 落库不触发清除路径 → typing 永不清。放全局单例 listener
-          // （生命周期最长），不放 Chat/vm.ts（随页面卸载注销）。
-          TypingManager.shared.resetAll();
-        } else if (status === ConnectStatus.Disconnect) {
-          if (this.addrUsed && this.wsaddrs.length > 1) {
-            const oldwsAddr = this.wsaddrs[0];
-            this.wsaddrs.splice(0, 1);
-            this.wsaddrs.push(oldwsAddr);
-            this.addrUsed = false;
-          }
-        }
-      }
-    );
+    registerImConnectStatusListener(WKSDK.shared(), {
+      logout: () => WKApp.shared.logout(),
+      resetTyping: () => TypingManager.shared.resetAll(),
+      rotateConnectAddress: () =>
+        this.imConnectAddressManager.rotateAfterDisconnect(),
+    });
 
     // 通知设置
     const notificationIsClose = StorageService.shared.getItem(
@@ -954,29 +967,23 @@ export default class WKApp extends ProviderListener {
     WKApp.dataSource.contactsSync(); // 同步通讯录
     ProhibitwordsService.shared.sync(); // 同步敏感词
 
-    WKApp.apiClient
-      .get(`/user/devices/${WKApp.shared.deviceId}`)
-      .then((res) => {
-        if (res.id) {
-          WKSDK.shared().config.clientMsgDeviceId = res.id;
-        }
-      })
-      .catch((err) => {
-        // 设备记录不存在（status===400）或其它读取失败时，仅记录告警以消除
-        // unhandled promise rejection；不写 clientMsgDeviceId，保持原值降级运行。
-        // 服务端暂无设备注册端点，此处不做注册，仅兜底。
-        const notFound = err?.status === 400;
-        console.warn(
-          `[startMain] fetch device record failed${notFound ? " (device not found)" : ""}`,
-          { deviceId: WKApp.shared.deviceId, status: err?.status, code: err?.code }
-        );
-      });
+    // 设备记录不存在（status===400）或其它读取失败时，仅记录告警以消除
+    // unhandled promise rejection；不写 clientMsgDeviceId，保持原值降级运行。
+    // 服务端暂无设备注册端点，此处不做注册，仅兜底。
+    syncClientMsgDeviceId({
+      deviceId: WKApp.shared.deviceId,
+      fetchDevice: (path) => WKApp.apiClient.get(path),
+      setClientMsgDeviceId: (id) => {
+        WKSDK.shared().config.clientMsgDeviceId = id;
+      },
+    });
   }
 
   connectIM() {
-    WKSDK.shared().config.uid = WKApp.loginInfo.uid;
-    WKSDK.shared().config.token = WKApp.loginInfo.token;
-    WKSDK.shared().connect();
+    connectImClient({
+      sdk: WKSDK.shared(),
+      loginInfo: WKApp.loginInfo,
+    });
   }
 
   registerModule(module: IModule) {

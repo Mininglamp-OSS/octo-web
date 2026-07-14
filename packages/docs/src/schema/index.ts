@@ -48,7 +48,12 @@
 //        EXACTLY url/title/description/image/siteName/fetchedAt; round-trips via data-url/
 //        data-title/data-description/data-image/data-site-name/data-fetched-at). Inserting a URL
 //        calls POST /docs/{docId}/link-card for OG metadata; only http/https URLs become cards.
-export const SCHEMA_VERSION = 15
+//   v16 — SCHEMA-SPEC §6: add a `fontFamily` ATTRIBUTE to the `textStyle` mark (FontFamily ships in
+//        @tiptap/extension-text-style; no standalone font-family at 3.22.2) → <span style="font-family:…">.
+//        Byte-aligned with the backend fontFamily attr under this shared version. The FontFamily
+//        extension is always registered so the attr round-trips faithfully; the toolbar entry that
+//        SETS it is gated behind FONT_FAMILY_ENABLED (default off) for the phased rollout.
+export const SCHEMA_VERSION = 16
 
 // Node names present in the schema at the current SCHEMA_VERSION. Mirrors the
 // backend stub's node set (SCHEMA-SPEC); kept here so the set is auditable against
@@ -88,9 +93,9 @@ export const SCHEMA_NODES = [
 // backend stub's mark set (SCHEMA-SPEC §3); kept here so the set is auditable
 // against the spec without importing the editor extensions.
 //
-// NOTE: v5 `textAlign` and v7 `fontSize` are ATTRIBUTES (textAlign on heading/paragraph,
-// fontSize on the textStyle mark), not new nodes/marks, so they add no entry here — only a
-// version bump. They still round-trip through the Y.Doc as node/mark attrs.
+// NOTE: v5 `textAlign`, v7 `fontSize` and v16 `fontFamily` are ATTRIBUTES (textAlign on
+// heading/paragraph, fontSize + fontFamily on the textStyle mark), not new nodes/marks, so they
+// add no entry here — only a version bump. They still round-trip through the Y.Doc as node/mark attrs.
 export const SCHEMA_MARKS = [
   'bold',
   'italic',
@@ -98,7 +103,7 @@ export const SCHEMA_MARKS = [
   'code',
   'link',
   'highlight', // v3 — <mark style="background-color:…">
-  'textStyle', // v3 — <span style="color:…"> (carries the color attr; v7 adds the fontSize attr)
+  'textStyle', // v3 — <span style="color:…"> (carries the color attr; v7 adds fontSize, v16 adds fontFamily)
   'underline', // v6 — <u> / text-decoration:underline
   'superscript', // v8 — <sup>
   'subscript', // v8 — <sub>

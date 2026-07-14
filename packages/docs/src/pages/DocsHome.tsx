@@ -345,12 +345,37 @@ function DocsList({
     const seq = ++reloadSeq.current
     setLoading(true)
     setError(null)
-    listDocs({ spaceId: space || undefined, folderId: folder || undefined, sort: 'updatedAt:desc' })
-      .then((res) => {
+    // The backend paginates (default pageSize 20, max 100) and reports `total`.
+    // The sidebar must show every document, not just the first page, so fetch
+    // all pages and concatenate. pageSize is pinned to the backend maximum (100)
+    // to minimize round-trips; the loop stops once we have collected `total`
+    // items (or a short page comes back, guarding against a stalled total).
+    const fetchAll = async (): Promise<DocListItem[]> => {
+      const PAGE_SIZE = 100
+      const all: DocListItem[] = []
+      let page = 1
+      for (;;) {
+        const res = await listDocs({
+          spaceId: space || undefined,
+          folderId: folder || undefined,
+          sort: 'updatedAt:desc',
+          page,
+          pageSize: PAGE_SIZE,
+        })
+        const batch = res?.items ?? []
+        all.push(...batch)
+        const total = res?.total ?? all.length
+        if (batch.length < PAGE_SIZE || all.length >= total) break
+        page += 1
+      }
+      return all
+    }
+    fetchAll()
+      .then((items) => {
         // A newer reload has superseded this one (e.g. the Space changed again while this
         // request was in flight) — drop the stale response so it can't overwrite the current list.
         if (seq !== reloadSeq.current) return
-        setItems(res?.items ?? [])
+        setItems(items)
       })
       .catch((err) => {
         if (seq !== reloadSeq.current) return

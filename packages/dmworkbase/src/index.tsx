@@ -41,6 +41,7 @@ export *  from './Utils/filehelper'
 export { NotificationUtil, notificationUtil } from './Utils/NotificationUtil'
 export * from './Utils/NotificationUtil'
 export * from './Utils/clipboard'
+export * from './Utils/docLink'
 
 export { default as MessageBase } from "./Messages/Base"
 export  * from "./Messages/Image"

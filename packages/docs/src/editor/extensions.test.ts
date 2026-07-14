@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { getSchema } from '@tiptap/core'
+import { DOMParser as PMDOMParser, DOMSerializer } from '@tiptap/pm/model'
 import { createDocsLowlight, buildPreviewExtensions } from './extensions.ts'
 import { SCHEMA_NODES, SCHEMA_MARKS } from '../schema/index.ts'
 
@@ -85,5 +86,40 @@ describe('editor schema mirrors the schema audit lists', () => {
 
   it('adds the v7 fontSize attr to the textStyle mark (attr, not a mark)', () => {
     expect(schema.marks.textStyle.spec.attrs?.fontSize).toBeDefined()
+  })
+
+  it('adds the v16 fontFamily attr to the textStyle mark (attr, not a mark)', () => {
+    // Registered unconditionally in buildPreviewExtensions so the schema always round-trips the
+    // attr; the toolbar entry that SETS it is what the FONT_FAMILY_ENABLED flag gates, not this.
+    expect(schema.marks.textStyle.spec.attrs?.fontFamily).toBeDefined()
+  })
+
+  it('round-trips a fontFamily style through parseDOM/toDOM (v16)', () => {
+    // The Y.Doc preserves whatever the ProseMirror schema parses+renders, so proving the DOM
+    // round-trip here proves the collaborative round-trip: a <span style="font-family:…"> parses
+    // into the textStyle fontFamily attr and renders back out to a font-family style.
+    const stack = 'SimSun, serif'
+    const dom = new window.DOMParser().parseFromString(
+      `<p><span style="font-family: ${stack}">hi</span></p>`,
+      'text/html',
+    )
+    const doc = PMDOMParser.fromSchema(schema).parse(dom.body)
+    // The parsed text carries a textStyle mark whose fontFamily attr holds the stack.
+    let parsedFamily: unknown
+    doc.descendants((node) => {
+      const mark = node.marks.find((m) => m.type.name === 'textStyle')
+      if (mark) parsedFamily = mark.attrs.fontFamily
+    })
+    expect(typeof parsedFamily).toBe('string')
+    expect(parsedFamily).toContain('SimSun')
+
+    // Serializing back out emits the font-family style again (no strip).
+    const out = DOMSerializer.fromSchema(schema).serializeFragment(doc.content, {
+      document: window.document,
+    })
+    const holder = window.document.createElement('div')
+    holder.appendChild(out)
+    expect(holder.innerHTML).toContain('font-family')
+    expect(holder.innerHTML).toContain('SimSun')
   })
 })

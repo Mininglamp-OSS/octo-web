@@ -1,0 +1,296 @@
+.loop-runtime-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--wk-sp-4);
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--wk-sp-8) var(--wk-sp-4) var(--wk-sp-4);
+}
+
+.loop-runtime-hero__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wk-sp-2);
+}
+
+.loop-runtime-hero__title h4 {
+  margin: 0;
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-3xl);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.loop-runtime-hero__title span {
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-md);
+  font-weight: 500;
+}
+
+.loop-runtime-hero__subtitle {
+  margin-top: var(--wk-sp-1);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 1.5;
+}
+
+.loop-runtime-hero__action.semi-button {
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-text-primary);
+  color: var(--wk-text-inverse);
+  font-size: var(--wk-text-size-sm);
+  font-weight: 600;
+}
+
+.loop-runtime-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+  width: 100%;
+  max-width: 1280px;
+  min-width: 920px;
+  margin: 0 auto;
+  padding: 0 var(--wk-sp-4) var(--wk-sp-12);
+  overflow: auto;
+}
+
+.loop-runtime-machine {
+  overflow: hidden;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  box-shadow: var(--wk-shadow-sm);
+}
+
+.loop-runtime-machine__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-5);
+  min-height: 40px;
+  padding: var(--wk-sp-2) var(--wk-sp-4);
+  border-bottom: 1px solid var(--semi-color-border);
+  background: var(--wk-bg-surface);
+}
+
+.loop-runtime-machine__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  min-width: 0;
+}
+
+.loop-runtime-machine__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+}
+
+.loop-runtime-machine__identity strong {
+  overflow: hidden;
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-base);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-runtime-machine__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--wk-sp-4);
+  min-width: 0;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+  white-space: nowrap;
+}
+
+.loop-runtime-machine__meta strong {
+  color: var(--wk-text-secondary);
+  font-weight: 600;
+}
+
+.loop-runtime-rows {
+  background: var(--wk-bg-surface);
+}
+
+.loop-runtime-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 2.2fr) minmax(120px, 0.8fr) minmax(260px, 1.6fr) 88px;
+  align-items: center;
+  min-height: 44px;
+  border-bottom: 1px solid color-mix(in srgb, var(--semi-color-border), transparent 45%);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+}
+
+.loop-runtime-row:last-child {
+  border-bottom: none;
+}
+
+.loop-runtime-row:hover {
+  background: var(--wk-bg-hover);
+}
+
+.loop-runtime-row > div,
+.loop-runtime-row > time {
+  min-width: 0;
+  padding: 0 var(--wk-sp-4);
+}
+
+.loop-runtime-row__name,
+.loop-runtime-status {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  min-width: 0;
+}
+
+.loop-runtime-row__name strong {
+  overflow: hidden;
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-base);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-runtime-row__provider {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--wk-r-xs);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-tiny);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.loop-runtime-row__provider.is-claude {
+  background: var(--semi-color-success-light-default);
+  color: var(--semi-color-success);
+}
+
+.loop-runtime-row__provider.is-codex {
+  background: var(--semi-color-info-light-default);
+  color: var(--semi-color-info);
+}
+
+.loop-runtime-row__provider.is-hermes {
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
+  border-radius: var(--wk-r-full);
+}
+
+.loop-runtime-row__provider.is-openclaw {
+  background: var(--semi-color-warning-light-default);
+  color: var(--semi-color-warning);
+}
+
+.loop-runtime-row__provider.is-opencode {
+  background: var(--wk-text-primary);
+  color: var(--wk-text-inverse);
+}
+
+.loop-runtime-status {
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+}
+
+.loop-runtime-status.is-online {
+  color: var(--semi-color-success);
+}
+
+.loop-runtime-status.is-offline {
+  color: var(--wk-text-disabled);
+}
+
+.loop-runtime-row__version {
+  overflow: hidden;
+  color: var(--wk-text-tertiary);
+  font: var(--wk-text-mono-sm);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-runtime-row__seen {
+  overflow: hidden;
+  color: var(--wk-text-disabled);
+  font: var(--wk-text-mono-sm);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-runtime-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+}
+
+.loop-runtime-add p {
+  margin: 0;
+  color: var(--wk-text-secondary);
+  font: var(--wk-text-caption);
+}
+
+.loop-runtime-add__command {
+  margin: 0;
+  padding: var(--wk-sp-4);
+  overflow: auto;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
+  font: var(--wk-text-code);
+  white-space: pre;
+}
+
+.loop-runtime-add__row {
+  position: relative;
+}
+
+/* 复制按钮浮于命令框内右侧、纵向居中，框预留右内边距避免文字被遮挡；
+   长命令横向滚动时按钮相对框固定，不随内容滚走。 */
+.loop-runtime-add__row .loop-runtime-add__command {
+  padding-right: 88px;
+}
+
+.loop-runtime-add__copy {
+  position: absolute;
+  top: 50%;
+  right: var(--wk-sp-3);
+  transform: translateY(-50%);
+  min-width: 64px;
+  justify-content: center;
+}
+
+.loop-runtime-add__hint {
+  color: var(--wk-text-tertiary);
+}
+
+@media (max-width: 960px) {
+  .loop-runtime-hero {
+    padding-right: var(--wk-sp-4);
+    padding-left: var(--wk-sp-4);
+  }
+
+  .loop-runtime-list {
+    padding-right: var(--wk-sp-4);
+    padding-left: var(--wk-sp-4);
+  }
+}

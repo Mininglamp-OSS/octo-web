@@ -9,11 +9,25 @@ export type GlobalContentTab = "messages" | "files";
 export interface GlobalSearchChannelRef {
   channelId: string;
   channelType: number;
+  // Persisted alongside the ref so a picked chip renders the channel's display
+  // name on reopen, even after the filter panel has been unmounted and the
+  // in-memory catalog rebuilt. Without this, `channelCatalog` starts empty on
+  // reopen and the fallback code shows the raw channelId until a candidate
+  // fetch happens to re-hydrate the same entry. Mirrors how ChannelSearch
+  // resolves sender chips from the dataSource-level senderCache.
+  name?: string;
+  avatarUrl?: string;
 }
 
 export interface GlobalSearchFilters {
   senderUids: string[];
-  memberUid?: string;
+  // YUJ-30 bug 5: multi-select. Semantics (AND / intersection): a channel
+  // matches only when *every* listed member is in it. DMs remain valid only
+  // for a single-member selection (a DM has no notion of «all N members co-
+  // present»); the backend drops DM candidates once memberUids.length > 1.
+  // Self-uid is still ignored server-side (§6.4). The legacy single-value
+  // `memberUid` field is gone — call sites migrate to memberUids.
+  memberUids: string[];
   channels: GlobalSearchChannelRef[];
   channelTypes: number[];
   contentTypes: number[];
@@ -73,6 +87,7 @@ export interface GlobalSearchPanelState {
 
 export const defaultGlobalSearchFilters = (): GlobalSearchFilters => ({
   senderUids: [],
+  memberUids: [],
   channels: [],
   channelTypes: [],
   contentTypes: [],

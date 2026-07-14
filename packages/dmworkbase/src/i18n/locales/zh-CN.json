@@ -855,7 +855,7 @@
   "globalSearch.chatHistoryWith": "与“{{name}}”的聊天记录",
   "globalSearch.searchFailedRetry": "搜索失败，请稍后重试",
   "globalSearch.searchDisabled": "搜索暂不可用",
-  "globalSearch.filter.channels": "所在群聊",
+  "globalSearch.filter.channels": "所在群聊或子区",
   "globalSearch.filter.apply": "确定",
   "globalSearch.filter.memberUid": "包含成员",
   "globalSearch.filter.channelTypes": "聊天类型",
