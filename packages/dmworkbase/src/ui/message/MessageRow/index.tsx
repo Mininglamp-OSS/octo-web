@@ -186,6 +186,8 @@ export default function MessageRow({
         </div>
       )}
       
+      {/* avatar + content 包在一起做镜像，checkbox 不参与反转 */}
+      <div className="wk-msg-row-body-wrap">
       {/* 头像（所有消息都在左侧） */}
       <div className="wk-msg-row-avatar">
         {showAvatar && (
@@ -250,6 +252,7 @@ export default function MessageRow({
           {children}
         </div>
       </div>
+      </div>{/* /wk-msg-row-body-wrap */}
     </div>
   )
 }

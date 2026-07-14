@@ -52,6 +52,11 @@
  * 发送方气泡：圆角靠右（右侧靠近头像一侧为直角）
  */
 
+/* send single: 全圆角（对称气泡不需要缺角） */
+.wk-msg-bubble--send.wk-msg-bubble--single {
+  border-radius: var(--wk-r-lg);
+}
+
 /* send first: 右下直 */
 .wk-msg-bubble--send.wk-msg-bubble--first {
   border-radius: var(--wk-r-lg) var(--wk-r-lg) var(--wk-r-xs) var(--wk-r-lg);

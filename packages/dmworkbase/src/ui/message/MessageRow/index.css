@@ -48,9 +48,9 @@
 }
 
 /**
- * 发送方消息：flex-direction 反转，头像靠右，气泡靠右对齐
+ * 发送方消息：只对 avatar+content 的 wrapper 做镜像，checkbox 不参与反转
  */
-.wk-msg-row--send {
+.wk-msg-row--send .wk-msg-row-body-wrap {
   flex-direction: row-reverse;
 }
 
@@ -62,18 +62,23 @@
 }
 
 /**
- * 发送方：隐藏自己的名字（自己知道自己是谁）
+ * 发送方：隐藏整个发送者身份组（名字/实名徽章/@Space 后缀作为整体隐藏）
+ */
+.wk-msg-row--send .wk-msg-row-sender,
+.wk-msg-row--send .wk-msg-row-sender-space,
+.wk-msg-row--send .wk-realname-badge {
+  display: none;
+}
+
+/**
+ * 发送方：header 右对齐（消息编辑标签 + 时间戳靠右）
  */
 .wk-msg-row--send .wk-msg-row-header {
   flex-direction: row-reverse;
 }
 
-.wk-msg-row--send .wk-msg-row-sender {
-  display: none;
-}
-
 /**
- * 发送方：连续消息 hover 时时间戳靠右对齐
+ * 发送方：连续消息 hover 时间戳靠右对齐
  */
 .wk-msg-row--send .wk-msg-row-avatar-placeholder {
   display: flex;
@@ -110,6 +115,16 @@
   flex-shrink: 0;
   width: 24px;
   cursor: pointer;
+}
+
+/**
+ * avatar + content 包裹层（checkbox 独立在外，不受发送方镜像影响）
+ */
+.wk-msg-row-body-wrap {
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  min-width: 0;
 }
 
 /**
