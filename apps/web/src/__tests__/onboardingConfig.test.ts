@@ -20,7 +20,9 @@ class MemoryStorage implements Pick<Storage, "getItem" | "setItem"> {
   }
 }
 
-function makeConfig(overrides: Partial<OnboardingConfig> = {}): OnboardingConfig {
+function makeConfig(
+  overrides: Partial<OnboardingConfig> = {}
+): OnboardingConfig {
   return {
     ...defaultOnboardingConfig,
     version: "test-v1",
@@ -39,9 +41,9 @@ describe("onboarding config visibility", () => {
     markOnboardingSeen(store);
 
     expect(shouldShowOnboarding(config, store)).toBe(false);
-    expect(
-      shouldShowOnboarding({ ...config, version: "test-v2" }, store)
-    ).toBe(false);
+    expect(shouldShowOnboarding({ ...config, version: "test-v2" }, store)).toBe(
+      false
+    );
   });
 
   it("uses one storage key even when uid is missing", () => {
@@ -97,15 +99,36 @@ describe("resolveOnboardingSections", () => {
       "visual.valid": "Visual title",
     };
 
-    const sections = resolveOnboardingSections(config, (key) => translations[key] ?? "");
+    const sections = resolveOnboardingSections(
+      config,
+      (key) => translations[key] ?? ""
+    );
 
     expect(sections).toHaveLength(1);
     expect(sections[0]).toMatchObject({
-      id: "workspace-map",
+      id: "workspace",
       label: "Label",
       title: "Title",
       description: "Description",
       visualTitle: "Visual title",
     });
+  });
+
+  it("keeps the white directory sections in their intended order", () => {
+    expect(
+      defaultOnboardingConfig.sections.map((section) => section.id)
+    ).toEqual([
+      "workspace",
+      "subspaces",
+      "favorites",
+      "group-md",
+      "smart-summary",
+      "webhook",
+      "browser-extension",
+      "create-bot",
+    ]);
+    expect(defaultOnboardingConfig.sections.at(-1)?.action?.type).toBe(
+      "finish"
+    );
   });
 });

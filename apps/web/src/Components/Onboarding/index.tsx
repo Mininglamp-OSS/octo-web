@@ -68,8 +68,17 @@ function isExternalLinkSection(section: ResolvedOnboardingSection) {
   return section.action?.type === "external-link";
 }
 
-function isAiAvatarSection(section: ResolvedOnboardingSection) {
-  return section.id === "ai-avatar";
+function isFinishSection(section: ResolvedOnboardingSection) {
+  return section.action?.type === "finish";
+}
+
+function getDescriptionParts(description: string) {
+  const [lead, ...support] = description
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return { lead, support };
 }
 
 function isIntroPreviewMode() {
@@ -77,8 +86,9 @@ function isIntroPreviewMode() {
 }
 
 function getCompletionCloseDelay() {
-  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")
-    .matches;
+  const reduceMotion = window.matchMedia?.(
+    "(prefers-reduced-motion: reduce)"
+  ).matches;
 
   return reduceMotion
     ? COMPLETION_REDUCED_MOTION_MS
@@ -141,33 +151,6 @@ function ImageVisual({ section }: { section: ResolvedOnboardingSection }) {
   );
 }
 
-function IdentitySetupVisual() {
-  const { t } = useI18n();
-  const previewName = t("app.onboarding.sections.aiAvatar.previewName");
-  const avatarText = Array.from(previewName).slice(0, 2).join("");
-
-  return (
-    <div className="wk-onboarding-identity-stage">
-      <div className="wk-onboarding-identity-grid" aria-hidden="true" />
-      <div className="wk-onboarding-identity-compose">
-        <div className="wk-onboarding-longxia-avatar" aria-hidden="true">
-          <span>{avatarText}</span>
-          <i />
-        </div>
-        <div className="wk-onboarding-name-field">
-          <span className="wk-onboarding-name-label">
-            {t("app.onboarding.sections.aiAvatar.nameLabel")}
-          </span>
-        </div>
-        <div className="wk-onboarding-mention-preview">
-          <span className="wk-onboarding-mention-token">@{previewName}</span>
-          <strong>{t("app.onboarding.sections.aiAvatar.previewHint")}</strong>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export const Onboarding: React.FC<OnboardingProps> = ({
   config = defaultOnboardingConfig,
   forceVisible = false,
@@ -180,8 +163,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     () => resolveOnboardingSections(config, t),
     [config, t]
   );
-  const [activeId, setActiveId] =
-    useState<OnboardingSectionId>("workspace-map");
+  const [activeId, setActiveId] = useState<OnboardingSectionId>("workspace");
   const [completionOrigin, setCompletionOrigin] = useState<{
     x: number;
     y: number;
@@ -210,6 +192,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     onboardingSections[0];
   const isFinalSection =
     activeSection?.id === onboardingSections[onboardingSections.length - 1]?.id;
+  const descriptionParts = activeSection
+    ? getDescriptionParts(activeSection.description)
+    : null;
 
   useEffect(() => {
     return () => {
@@ -295,6 +280,28 @@ export const Onboarding: React.FC<OnboardingProps> = ({
       introFallbackTimerRef.current = null;
       setShowIntro(false);
       setIntroLeaving(false);
+    }, 620);
+  };
+
+  const handleIntroSkip = () => {
+    if (introLeaving) return;
+
+    const closeIntro = () => {
+      persistDismissed();
+      hideOnboarding();
+      setIntroLeaving(false);
+    };
+
+    const transitioned = runOnboardingViewTransition({
+      duration: 1240,
+      onTransition: closeIntro,
+    });
+    if (transitioned) return;
+
+    setIntroLeaving(true);
+    introFallbackTimerRef.current = window.setTimeout(() => {
+      introFallbackTimerRef.current = null;
+      closeIntro();
     }, 620);
   };
 
@@ -390,7 +397,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({
         tabIndex={-1}
         onKeyDown={handleDialogKeyDown}
       >
-        <OnboardingIntro onContinue={handleIntroContinue} />
+        <OnboardingIntro
+          onContinue={handleIntroContinue}
+          onSkip={handleIntroSkip}
+        />
       </div>
     );
   }
@@ -437,9 +447,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
         </div>
       ) : null}
       <span className="wk-onboarding-sr-only" role="status" aria-live="polite">
-        {isCompleting
-          ? t("app.onboarding.sections.aiAvatar.completionStatus")
-          : ""}
+        {isCompleting ? t("app.onboarding.actions.completed") : ""}
       </span>
       <section className="wk-onboarding-panel">
         <aside
@@ -452,7 +460,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
           <nav className="wk-onboarding-nav-list">
             {onboardingSections.map((section, index) => (
               <React.Fragment key={section.id}>
-                {section.id === "ai-avatar" ? (
+                {isFinishSection(section) ? (
                   <div
                     className="wk-onboarding-nav-divider"
                     aria-hidden="true"
@@ -514,20 +522,28 @@ export const Onboarding: React.FC<OnboardingProps> = ({
           </h1>
 
           <div
-            className={`wk-onboarding-media-frame${
-              isAiAvatarSection(activeSection) ? " is-identity" : ""
-            }`}
+            className="wk-onboarding-media-frame"
             aria-label={activeSection.visualTitle}
           >
-            {isAiAvatarSection(activeSection) ? (
-              <IdentitySetupVisual />
-            ) : (
-              <ImageVisual section={activeSection} />
-            )}
+            <ImageVisual section={activeSection} />
           </div>
 
-          <p className="wk-onboarding-description">
-            {activeSection.description}
+          <p className={`wk-onboarding-description is-${activeSection.id}`}>
+            <strong className="wk-onboarding-description-lead">
+              {descriptionParts?.lead}
+            </strong>
+            {descriptionParts?.support.length ? (
+              <span className="wk-onboarding-description-support">
+                {descriptionParts.support.map((paragraph) => (
+                  <span
+                    className="wk-onboarding-description-support-line"
+                    key={paragraph}
+                  >
+                    {paragraph}
+                  </span>
+                ))}
+              </span>
+            ) : null}
           </p>
 
           {isExternalLinkSection(activeSection) &&
@@ -554,7 +570,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
             </div>
           ) : null}
 
-          {isAiAvatarSection(activeSection) &&
+          {isFinishSection(activeSection) &&
           activeSection.action?.type === "finish" ? (
             <div className="wk-onboarding-finish-row">
               <OnboardingHoverButton

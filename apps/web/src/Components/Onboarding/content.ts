@@ -1,5 +1,5 @@
-const workspaceMapImage = new URL(
-  "./assets/onboarding-workspace-map.png",
+const workspaceImage = new URL(
+  "./assets/onboarding-workspace.png",
   import.meta.url
 ).href;
 const subspacesImage = new URL(
@@ -24,8 +24,8 @@ const browserExtensionImage = new URL(
 ).href;
 const webhookImage = new URL("./assets/onboarding-webhook.png", import.meta.url)
   .href;
-const aiAvatarImage = new URL(
-  "./assets/octo-logo-white-symbol.png",
+const createBotImage = new URL(
+  "./assets/onboarding-create-bot.png",
   import.meta.url
 ).href;
 
@@ -33,14 +33,14 @@ export const ONBOARDING_STORAGE_NAMESPACE = "octo:onboarding:seen";
 export const ONBOARDING_SEEN_STORAGE_KEY = ONBOARDING_STORAGE_NAMESPACE;
 
 export type OnboardingSectionId =
-  | "workspace-map"
+  | "workspace"
   | "subspaces"
   | "favorites"
   | "group-md"
   | "smart-summary"
   | "webhook"
   | "browser-extension"
-  | "ai-avatar";
+  | "create-bot";
 
 export type OnboardingAction =
   | {
@@ -107,12 +107,12 @@ export const defaultOnboardingConfig: OnboardingConfig = {
   },
   sections: [
     {
-      id: "workspace-map",
+      id: "workspace",
       labelKey: "app.onboarding.sections.workspace.label",
       titleKey: "app.onboarding.sections.workspace.title",
       descriptionKey: "app.onboarding.sections.workspace.description",
       visualTitleKey: "app.onboarding.sections.workspace.visualTitle",
-      image: workspaceMapImage,
+      image: workspaceImage,
     },
     {
       id: "subspaces",
@@ -169,17 +169,16 @@ export const defaultOnboardingConfig: OnboardingConfig = {
       },
     },
     {
-      id: "ai-avatar",
-      labelKey: "app.onboarding.sections.aiAvatar.label",
-      titleKey: "app.onboarding.sections.aiAvatar.title",
-      descriptionKey: "app.onboarding.sections.aiAvatar.description",
-      visualTitleKey: "app.onboarding.sections.aiAvatar.visualTitle",
-      image: aiAvatarImage,
-      imageFit: "contain",
+      id: "create-bot",
+      labelKey: "app.onboarding.sections.createBot.label",
+      titleKey: "app.onboarding.sections.createBot.title",
+      descriptionKey: "app.onboarding.sections.createBot.description",
+      visualTitleKey: "app.onboarding.sections.createBot.visualTitle",
+      image: createBotImage,
       action: {
         type: "finish",
         labelKey: "app.onboarding.actions.finish",
-        completedLabelKey: "app.onboarding.actions.finished",
+        completedLabelKey: "app.onboarding.actions.completed",
       },
     },
   ],
@@ -197,9 +196,7 @@ export function shouldShowOnboarding(
   return store.getItem(getOnboardingSeenStorageKey()) !== "seen";
 }
 
-export function markOnboardingSeen(
-  store: Pick<Storage, "setItem">
-) {
+export function markOnboardingSeen(store: Pick<Storage, "setItem">) {
   store.setItem(getOnboardingSeenStorageKey(), "seen");
 }
 
