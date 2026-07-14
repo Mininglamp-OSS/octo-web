@@ -47,3 +47,22 @@
 .wk-msg-bubble--last {
   border-radius: var(--wk-r-xs) var(--wk-r-lg) var(--wk-r-lg) var(--wk-r-lg);
 }
+
+/**
+ * 发送方气泡：圆角靠右（右侧靠近头像一侧为直角）
+ */
+
+/* send first: 右下直 */
+.wk-msg-bubble--send.wk-msg-bubble--first {
+  border-radius: var(--wk-r-lg) var(--wk-r-lg) var(--wk-r-xs) var(--wk-r-lg);
+}
+
+/* send middle: 左圆右直 */
+.wk-msg-bubble--send.wk-msg-bubble--middle {
+  border-radius: var(--wk-r-lg) var(--wk-r-xs) var(--wk-r-xs) var(--wk-r-lg);
+}
+
+/* send last: 右上直 */
+.wk-msg-bubble--send.wk-msg-bubble--last {
+  border-radius: var(--wk-r-lg) var(--wk-r-xs) var(--wk-r-lg) var(--wk-r-lg);
+}

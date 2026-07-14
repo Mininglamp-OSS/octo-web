@@ -48,10 +48,36 @@
 }
 
 /**
- * 发送方消息（和接收方一样左对齐，只是可能没有头像）
+ * 发送方消息：flex-direction 反转，头像靠右，气泡靠右对齐
  */
 .wk-msg-row--send {
-  /* 发送方和接收方布局相同，都是左对齐 */
+  flex-direction: row-reverse;
+}
+
+/**
+ * 发送方：内容区文本靠右
+ */
+.wk-msg-row--send .wk-msg-row-content {
+  align-items: flex-end;
+}
+
+/**
+ * 发送方：隐藏自己的名字（自己知道自己是谁）
+ */
+.wk-msg-row--send .wk-msg-row-header {
+  flex-direction: row-reverse;
+}
+
+.wk-msg-row--send .wk-msg-row-sender {
+  display: none;
+}
+
+/**
+ * 发送方：连续消息 hover 时时间戳靠右对齐
+ */
+.wk-msg-row--send .wk-msg-row-avatar-placeholder {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /**
