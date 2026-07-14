@@ -327,6 +327,7 @@
   "attach": {
     "title": "附件",
     "add": "添加附件",
+    "download": "下载 {{name}}",
     "empty": "暂无附件"
   },
   "toast": {

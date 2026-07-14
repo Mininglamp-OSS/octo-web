@@ -103,6 +103,23 @@ export async function httpGet<T>(
   }
 }
 
+// Fetch a binary resource (e.g. an attachment) through the SAME authenticated
+// client as every other loop request. The attachment download endpoint is
+// auth-only and is meant to be loaded as a native <img>/<video> src — but a
+// native element request cannot carry the `token` / `X-Space-Id` headers this
+// client injects, and under octo-web the document origin proxies `/api/*` to a
+// different backend than the loop API, so a raw `download_url` src 404s. Going
+// through the client (which rewrites to the loop backend and injects auth) and
+// handing the caller a Blob to wrap in an object URL fixes both.
+export async function httpGetBlob(path: string): Promise<Blob> {
+  try {
+    const resp = await client.get(path, { responseType: "blob" });
+    return resp.data as Blob;
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
 export async function httpPost<T>(path: string, body?: unknown): Promise<T> {
   try {
     const resp = await client.post<T>(path, body);

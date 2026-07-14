@@ -76,6 +76,8 @@ import LoopMarkdown from "../ui/LoopMarkdown";
 import AutoGrowTextarea from "../ui/AutoGrowTextarea";
 import CommentComposer, { type CommentComposerHandle } from "../ui/CommentComposer";
 import { useCommentTriggerPreview } from "../ui/useCommentTriggerPreview";
+import { collectThreadReplies } from "../ui/threadReplies";
+import LoopAttachments from "../ui/LoopAttachments";
 import { confirmDelete } from "../ui/confirmDelete";
 import RunDetailModal from "./RunDetailModal";
 import CreateIssueModal from "../ui/CreateIssueModal";
@@ -489,26 +491,12 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     }
   };
 
-  // 附件渲染(评论/issue 共用):图片内联缩略,其它为带图标的下载链接(用短时 download_url)。
-  const renderAttachments = (atts: Attachment[] | null | undefined) => {
-    if (!atts?.length) return null;
-    return (
-      <div className="loop-atts">
-        {atts.map((a) =>
-          a.content_type.startsWith("image/") ? (
-            <a key={a.id} href={a.download_url} target="_blank" rel="noreferrer" className="loop-att loop-att--img">
-              <img src={a.download_url} alt={a.filename} />
-            </a>
-          ) : (
-            <a key={a.id} href={a.download_url} target="_blank" rel="noreferrer" className="loop-att">
-              <Paperclip size={12} />
-              <span>{a.filename}</span>
-            </a>
-          ),
-        )}
-      </div>
-    );
-  };
+  // 附件渲染(评论/issue 共用):图片内联缩略,其它为带图标的下载链接。
+  // 走 LoopAttachments:带鉴权取字节转 object URL —— download_url 是 auth-only,
+  // 原生 <img src> 带不上 token,且 octo-web 下 /api 代理到别的后端会 404(裂图)。
+  const renderAttachments = (atts: Attachment[] | null | undefined) => (
+    <LoopAttachments attachments={atts} />
+  );
 
   const submitComment = async () => {
     const content = commentDraft.trim();
@@ -724,7 +712,11 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   }
 
   const roots = comments.filter((c) => !c.parent_id);
-  const repliesOf = (id: string) => comments.filter((c) => c.parent_id === id);
+  // Every descendant of a thread root, flattened chronologically. Not just
+  // direct children: an agent reply nests under the member comment that
+  // triggered it (a grandchild of the root), so direct-children-only would drop
+  // every agent answer from the thread. See collectThreadReplies.
+  const repliesOf = (id: string) => collectThreadReplies(id, comments);
   const childrenDone = children.filter((c) => c.status === "done").length;
   // issue 附件区只显 issue 级(comment_id 为空);评论附件归各评论下,避免重复。
   const issueAtts = (issue.attachments ?? []).filter((a) => !a.comment_id);
