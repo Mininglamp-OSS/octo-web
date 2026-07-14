@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import axios from "axios"
 import { Channel, ChannelTypePerson } from "wukongimjssdk"
 import APIClient from "../APIClient"
-import { precheckUploadCredentials } from "../UploadCredentials"
+import { precheckUploadCredentials, uploadChatMedia } from "../UploadCredentials"
 import { i18n } from "../../i18n"
 
 /**
@@ -108,5 +108,60 @@ describe("precheckUploadCredentials", () => {
             expect(typeof msg).toBe("string")
             expect(msg!.length).toBeGreaterThan(0)
         }
+    })
+})
+
+// ---------------------------------------------------------------------------
+// uploadChatMedia — token isolation
+// ---------------------------------------------------------------------------
+describe("uploadChatMedia — token isolation (COS pre-signed URL)", () => {
+    const fakeChannel = new Channel("u-test", ChannelTypePerson)
+    const fakeFile = (name = "photo.jpg", type = "image/jpeg", size = 1024): File =>
+        new File([new Uint8Array(size)], name, { type })
+
+    const makeCreds = (uploadUrl: string) => ({
+        uploadUrl,
+        downloadUrl: "https://cdn.example.com/file.jpg",
+        contentType: "image/jpeg",
+    })
+
+    beforeEach(() => {
+        i18n.setLocale("zh-CN", { notify: false, persist: false })
+        APIClient.shared.config.apiURL = "https://api.example.com/"
+    })
+
+    it("uses noInterceptorAxios (no token) for foreign-origin COS upload URL", async () => {
+        // Arrange: APIClient.get returns COS pre-signed credentials
+        const cosUrl = "https://bucket.cos.ap-shanghai.myqcloud.com/1/u-test/abc.jpg"
+        const getStub = vi.spyOn(APIClient.shared, "get").mockResolvedValue(makeCreds(cosUrl))
+
+        // Capture all axios.put calls at the global level
+        const globalPutSpy = vi.spyOn(axios, "put").mockResolvedValue({ status: 200, data: {} })
+
+        const result = await uploadChatMedia(fakeFile(), fakeChannel, "jpg")
+
+        // Global axios.put must NOT have been called (token would leak to COS)
+        expect(globalPutSpy).not.toHaveBeenCalled()
+        // Result must be the downloadUrl from credentials
+        expect(result).toBe("https://cdn.example.com/file.jpg")
+
+        getStub.mockRestore()
+        globalPutSpy.mockRestore()
+    })
+
+    it("uses global axios (with token) for same-origin upload URL", async () => {
+        // jsdom sets window.location.href to 'http://localhost/'
+        // Use a same-origin upload URL relative to the API base
+        const sameOriginUrl = "https://api.example.com/upload/1/u-test/abc.jpg"
+        const getStub = vi.spyOn(APIClient.shared, "get").mockResolvedValue(makeCreds(sameOriginUrl))
+        const globalPutSpy = vi.spyOn(axios, "put").mockResolvedValue({ status: 200, data: {} })
+
+        await uploadChatMedia(fakeFile(), fakeChannel, "jpg")
+
+        // Same-origin: global axios carries the session token — correct
+        expect(globalPutSpy).toHaveBeenCalledOnce()
+
+        getStub.mockRestore()
+        globalPutSpy.mockRestore()
     })
 })
