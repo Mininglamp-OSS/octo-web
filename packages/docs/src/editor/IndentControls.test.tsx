@@ -6,13 +6,17 @@ import { Toolbar } from './Toolbar.tsx'
 import { ParagraphIndent, INDENT_MAX_LEVEL } from './ParagraphIndent.ts'
 
 // SCHEMA_VERSION 18 toolbar wiring for the indent group. Beyond the command-boundary unit
-// tests in ParagraphIndent.test.ts, this guards the two things the command tests can't see:
-// (1) the decrease button is disabled at level 0 (the "greyed by default" behaviour, which is
-// intentional — nothing to un-indent), and (2) it RE-ENABLES after an increase. (2) is the
-// real regression risk: the toolbar re-renders via useEditorTick, whose snapshot keys off the
-// selection (from:to). increaseIndent only rewrites a node attribute and leaves the caret put,
-// so a naive selection-only subscription could leave the button stale — the same class of bug
-// the find-counter (useFindState) had to work around.
+// tests in ParagraphIndent.test.ts, this guards the toolbar reactivity across the FULL indent
+// matrix — the things the command tests can't see:
+// (1) at level 0, decrease is disabled (nothing to un-indent) while increase is enabled;
+// (2) decrease RE-ENABLES after an increase (the reported bug: the button stayed greyed after an
+//     increase because the toolbar only re-rendered on selection changes, and increaseIndent
+//     rewrites a node attribute while leaving the caret put — same class as the find-counter bug);
+// (3) at INDENT_MAX_LEVEL, increase is disabled (the clamp ceiling) and re-enables after a
+//     decrease — symmetric with (1);
+// (4) at every level in between BOTH buttons are clickable and each click steps one level.
+// Both boundaries key off useIndentLevel, so a naive selection-only subscription regresses all of
+// (2)–(4) at once.
 
 let editor: Editor | null = null
 
@@ -78,5 +82,58 @@ describe('Toolbar — indent decrease button disabled state (SCHEMA_VERSION 18)'
       expect(editor!.getAttributes('paragraph').indent).toBe(i)
       expect(btn(DECREASE).disabled).toBe(false)
     }
+  })
+
+  it('increase disables at INDENT_MAX_LEVEL and re-enables after a decrease (symmetric with decrease at 0)', () => {
+    render(<Toolbar editor={editor!} />)
+    // At level 0 increase is enabled (decrease disabled — the other boundary).
+    expect(btn(INCREASE).disabled).toBe(false)
+
+    // Climb to the ceiling; increase must stay enabled until we actually reach INDENT_MAX_LEVEL.
+    for (let i = 1; i <= INDENT_MAX_LEVEL; i++) {
+      act(() => {
+        fireEvent.click(btn(INCREASE))
+      })
+      expect(editor!.getAttributes('paragraph').indent).toBe(i)
+      // Enabled for every level BELOW the ceiling; disabled exactly at the ceiling.
+      expect(btn(INCREASE).disabled).toBe(i >= INDENT_MAX_LEVEL)
+    }
+    expect(editor!.getAttributes('paragraph').indent).toBe(INDENT_MAX_LEVEL)
+    expect(btn(INCREASE).disabled).toBe(true)
+
+    // Clicking the disabled-at-max increase is a no-op — the level does not exceed the clamp.
+    act(() => {
+      fireEvent.click(btn(INCREASE))
+    })
+    expect(editor!.getAttributes('paragraph').indent).toBe(INDENT_MAX_LEVEL)
+
+    // One decrease pulls us off the ceiling → increase re-enables on the same render tick.
+    act(() => {
+      fireEvent.click(btn(DECREASE))
+    })
+    expect(editor!.getAttributes('paragraph').indent).toBe(INDENT_MAX_LEVEL - 1)
+    expect(btn(INCREASE).disabled).toBe(false)
+  })
+
+  it('mid-range levels keep BOTH buttons clickable (full matrix: 0 → max, both enabled in between)', () => {
+    render(<Toolbar editor={editor!} />)
+    // Move to a middle level (2) where neither boundary applies.
+    act(() => {
+      fireEvent.click(btn(INCREASE))
+    })
+    act(() => {
+      fireEvent.click(btn(INCREASE))
+    })
+    expect(editor!.getAttributes('paragraph').indent).toBe(2)
+    expect(btn(INCREASE).disabled).toBe(false)
+    expect(btn(DECREASE).disabled).toBe(false)
+
+    // Decrease actually steps down one level (not a no-op) and both stay enabled at level 1.
+    act(() => {
+      fireEvent.click(btn(DECREASE))
+    })
+    expect(editor!.getAttributes('paragraph').indent).toBe(1)
+    expect(btn(INCREASE).disabled).toBe(false)
+    expect(btn(DECREASE).disabled).toBe(false)
   })
 })

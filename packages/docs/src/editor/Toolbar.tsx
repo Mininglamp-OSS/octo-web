@@ -11,6 +11,7 @@ import { pickerEmojis } from './emoji.ts'
 import { promptAndInsertMath } from './mathInsert.ts'
 import { sanitizeLinkHref } from './sanitize.ts'
 import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
+import { INDENT_MAX_LEVEL } from './ParagraphIndent.ts'
 import { TableGridPicker } from './TableControls.tsx'
 import { capturePaintMarks, applyPaintMarks } from './formatPainter.ts'
 import { t } from '../octoweb/index.ts'
@@ -891,8 +892,11 @@ function useIndentLevel(editor: Editor): number {
 }
 
 /** Indent buttons (SCHEMA_VERSION 18): increase / decrease indent on the active heading + paragraph.
- * List items keep their own Tab/Shift-Tab sink/lift behavior (owned by the list extensions). The
- * decrease button is disabled at indent 0 so the boundary is visible as well as a command no-op. */
+ * List items keep their own Tab/Shift-Tab sink/lift behavior (owned by the list extensions). Both
+ * buttons key their disabled state off the current selection's indent level (useIndentLevel) so
+ * they mirror the command boundaries and re-render as the level changes: decrease is disabled at 0
+ * (nothing left to un-indent) and increase is disabled at INDENT_MAX_LEVEL (the clamp ceiling), so
+ * each boundary is visible as well as a command no-op — symmetric in both directions. */
 function IndentControls({ editor }: { editor: Editor }) {
   const current = useIndentLevel(editor)
   return (
@@ -906,6 +910,7 @@ function IndentControls({ editor }: { editor: Editor }) {
       <Btn
         label={<IconIndentIncrease />}
         title={t('docs.toolbar.indentIncrease')}
+        disabled={current >= INDENT_MAX_LEVEL}
         onClick={() => editor.chain().focus().increaseIndent().run()}
       />
     </>
