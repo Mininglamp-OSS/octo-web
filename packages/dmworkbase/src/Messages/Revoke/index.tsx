@@ -118,7 +118,7 @@ export class RevokeCell extends MessageCell {
      */
     private handleReEdit = () => {
         const { message } = this.props
-        const conversationContext = (this.props as any).context as ConversationContext
+        const conversationContext = this.props.context as ConversationContext
         if (!conversationContext?.restoreDraft) return
 
         // 与 Model.tsx parseMention 和 Messages/Text getRenderMessageText 一致：
