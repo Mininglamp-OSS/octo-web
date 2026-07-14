@@ -1283,7 +1283,8 @@ export class ChatContentPage extends Component<
           </div>
         </div>
 
-        <div className={classNames("wk-chat-channelsetting")}>
+        {!showThreadPanel && !previewFile && !showMatterPanel && (
+          <div className={classNames("wk-chat-channelsetting")}>
           <ErrorBoundary moduleName={t("base.chatPage.channelSettings")}>
             <ChannelSetting
               conversationContext={this.conversationContext}
@@ -1301,7 +1302,8 @@ export class ChatContentPage extends Component<
               }}
             ></ChannelSetting>
           </ErrorBoundary>
-        </div>
+          </div>
+        )}
 
         {showChannelSearch && (
           <div className="wk-chat-channel-search-panel">
