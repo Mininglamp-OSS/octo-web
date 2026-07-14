@@ -632,6 +632,7 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
   .wk-chat-channelsetting {
   margin-right: 0 !important;
   right: calc(0px - var(--wk-wdith-chat-channelsetting)) !important;
+  display: none;
   pointer-events: none;
 }
 
