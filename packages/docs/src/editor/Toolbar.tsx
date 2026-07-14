@@ -14,6 +14,7 @@ import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { TableGridPicker } from './TableControls.tsx'
 import { t } from '../octoweb/index.ts'
 import { FONT_FAMILY_ENABLED } from '../config.ts'
+import { FONT_FAMILIES } from './fontFamilies.ts'
 
 // Inline SVG toolbar icons (C2–C4): crisp, correct glyphs for underline / strikethrough /
 // alignment, replacing the ambiguous text placeholders. 16×16, fill: currentColor (via .octo-tb-icon).
@@ -355,24 +356,6 @@ function TextColorControl({ editor }: { editor: Editor }) {
 /** Font-size presets (px) offered by the toolbar dropdown (SCHEMA_VERSION 7). */
 const FONT_SIZES = ['12', '14', '16', '18', '24', '32'] as const
 
-/**
- * Font-family presets offered by the toolbar dropdown (SCHEMA_VERSION 16). `value` is written
- * verbatim into the textStyle `fontFamily` attr → `style="font-family:…"`, so each carries a
- * generic fallback so the glyphs still render if the primary face is absent. `label` is the face
- * name (a proper noun, shown as-is like the raw px numbers of FONT_SIZES — not translated). The
- * empty-value "Default" option (i18n) clears the attr and inherits the document font.
- */
-const FONT_FAMILIES = [
-  { label: '微软雅黑', value: '"Microsoft YaHei", "微软雅黑", sans-serif' },
-  { label: '宋体', value: 'SimSun, "宋体", serif' },
-  { label: '黑体', value: 'SimHei, "黑体", sans-serif' },
-  { label: '楷体', value: 'KaiTi, "楷体", serif' },
-  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
-  { label: 'Times New Roman', value: '"Times New Roman", Times, serif' },
-  { label: 'Georgia', value: 'Georgia, serif' },
-  { label: 'Courier New', value: '"Courier New", Courier, monospace' },
-] as const
-
 /** Text-alignment options (SCHEMA_VERSION 5) — value passed to setTextAlign, icon per direction (C4). */
 const ALIGNMENTS = [
   { value: 'left', icon: <IconAlignLeft />, key: 'alignLeft' },
@@ -515,8 +498,8 @@ function FontFamilySelect({ editor }: { editor: Editor }) {
     >
       <option value="">{t('docs.toolbar.fontFamilyDefault')}</option>
       {FONT_FAMILIES.map((f) => (
-        <option key={f.label} value={f.value} style={{ fontFamily: f.value }}>
-          {f.label}
+        <option key={f.labelKey} value={f.value} style={{ fontFamily: f.value }}>
+          {t(f.labelKey)}
         </option>
       ))}
     </select>

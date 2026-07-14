@@ -98,6 +98,16 @@
     "fontSizeDefault": "默认",
     "fontFamily": "字体",
     "fontFamilyDefault": "默认",
+    "font": {
+      "yahei": "微软雅黑",
+      "simsun": "宋体",
+      "simhei": "黑体",
+      "kaiti": "楷体",
+      "arial": "Arial",
+      "timesNewRoman": "Times New Roman",
+      "georgia": "Georgia",
+      "courierNew": "Courier New"
+    },
     "alignLeft": "左对齐",
     "alignCenter": "居中对齐",
     "alignRight": "右对齐",

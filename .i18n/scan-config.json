@@ -31,6 +31,10 @@
     {
       "path": "packages/docs/src/board/excalidrawDebrand.ts",
       "reason": "Whiteboard de-brand helper. Its only CJK literal is BOARD_BRAND ('画布'), the fixed product word that replaces the upstream Excalidraw brand token at runtime; it is intentionally locale-invariant (a brand replacement, not translatable UI copy) and the docs package has no i18n namespace to key it against."
+    },
+    {
+      "path": "packages/docs/src/editor/fontFamilies.ts",
+      "reason": "Toolbar font-family presets. The only CJK literals are the localized family-name aliases inside the CSS font-family values (e.g. \"微软雅黑\", \"宋体\") that must byte-match the native font name so browsers matching a font by its Chinese name still render it; they are font resource identifiers, not translatable UI copy (mirrors export/docx/styles.ts). The user-facing display name is localized separately via the labelKey i18n keys resolved with t()."
     }
   ]
 }

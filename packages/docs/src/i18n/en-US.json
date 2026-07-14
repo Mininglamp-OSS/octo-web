@@ -98,6 +98,16 @@
     "fontSizeDefault": "Default",
     "fontFamily": "Font",
     "fontFamilyDefault": "Default",
+    "font": {
+      "yahei": "Microsoft YaHei",
+      "simsun": "SimSun",
+      "simhei": "SimHei",
+      "kaiti": "KaiTi",
+      "arial": "Arial",
+      "timesNewRoman": "Times New Roman",
+      "georgia": "Georgia",
+      "courierNew": "Courier New"
+    },
     "alignLeft": "Align left",
     "alignCenter": "Align center",
     "alignRight": "Align right",
