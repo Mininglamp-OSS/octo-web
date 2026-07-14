@@ -16,11 +16,13 @@ public sealed class ServerConfigService : IServerConfigService
 
     private readonly ApiOptions _options;
     private readonly IApiService _api;
+    private readonly IAuthService _auth;
 
-    public ServerConfigService(ApiOptions options, IApiService api)
+    public ServerConfigService(ApiOptions options, IApiService api, IAuthService auth)
     {
         _options = options;
         _api = api;
+        _auth = auth;
     }
 
     /// <inheritdoc />
@@ -85,6 +87,8 @@ public sealed class ServerConfigService : IServerConfigService
         _api.UpdateBaseUrl(normalized);
         try { Preferences.Default.Set(PrefKey, normalized); }
         catch { /* ignore preference save errors */ }
+
+        await _auth.LogoutAsync();
 
         RaiseChanged();
 
