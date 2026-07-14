@@ -113,17 +113,18 @@ export const TOKEN_REFRESH_LEEWAY_MS = 30_000
 /**
  * Feature flag for the body-font (fontFamily) toolbar entry (SCHEMA_VERSION 16).
  *
- * DEFAULT OFF. This gates ONLY the toolbar's font-family selector — the entry the user
- * uses to *set* a font. The FontFamily extension itself is always registered (extensions.ts),
- * so the schema knows the `fontFamily` textStyle attr and round-trips it faithfully; that is
- * what makes the phased rollout safe. Keeping the entry OFF until every client has this bundle
- * (version convergence) prevents the "旧客户端编辑带字体文档静默 strip 丢数据" hazard: a font set by
- * a flag-on client would be silently dropped when an older bundle (no fontFamily attr in its
- * schema) opens and edits the same doc. The boss flips this on via VITE_DOCS_FONT_FAMILY=true
- * after client versions converge —放量 is not part of this ticket. When off, the selector is not
- * rendered at all (invisible/unusable) and there is no toolbar regression.
+ * DEFAULT ON (boss decision 2026-07-14). This gates ONLY the toolbar's font-family selector —
+ * the entry the user uses to *set* a font. The FontFamily extension itself is always registered
+ * (extensions.ts), so the schema knows the `fontFamily` textStyle attr and round-trips it
+ * faithfully; that is what made the phased rollout safe. Client versions have now converged
+ * (#700 shipped to every bundle), so the selector is shown by default: an unset
+ * VITE_DOCS_FONT_FAMILY resolves to ON. The flag is retained purely as an emergency kill switch —
+ * an explicit `VITE_DOCS_FONT_FAMILY=false` build still hides the selector (rollback intact),
+ * which is what defends against the "旧客户端编辑带字体文档静默 strip 丢数据" hazard should a
+ * regression surface. When off, the selector is not rendered at all (invisible/unusable) and
+ * there is no toolbar regression.
  */
-export const FONT_FAMILY_ENABLED = envOr(import.meta.env?.VITE_DOCS_FONT_FAMILY, '') === 'true'
+export const FONT_FAMILY_ENABLED = envOr(import.meta.env?.VITE_DOCS_FONT_FAMILY, 'true') === 'true'
 
 // ── Default document addressing (frontend-design §7.2) ───────────────────────
 //
