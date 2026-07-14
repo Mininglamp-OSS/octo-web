@@ -653,6 +653,7 @@ export default class ChatSummaryNewModal extends Component<
                     value={scheduleConfig ?? { unit: 'week', every: 1, time: '09:00' }}
                     onConfirm={(cfg) => this.setState({ scheduleConfig: cfg, showScheduleConfig: false })}
                     onCancel={() => this.setState({ showScheduleConfig: false })}
+                    showGenerationInstruction={false}
                 />
 
                 <Modal
