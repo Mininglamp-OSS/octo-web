@@ -13,6 +13,21 @@ const FileViewerRenderer: React.FC<BaseRendererProps> = ({ file, onError }) => {
     return <FileTooLarge fileName={file.name} fileSize={file.size} fileUrl={file.url} />;
   }
 
+  // WPS Office extensions are internally Microsoft Office formats.
+  // Remap to the equivalent Office extension so file-viewer selects
+  // the correct renderer (it dispatches by filename extension).
+  const WPS_EXT_MAP: Record<string, string> = {
+    wps: "docx",
+    et: "xlsx",
+    dps: "pptx",
+  };
+  const dot = file.name.lastIndexOf(".");
+  const ext = dot > 0 ? file.name.substring(dot + 1).toLowerCase() : "";
+  const mappedExt = WPS_EXT_MAP[ext];
+  const viewerFilename = mappedExt
+    ? file.name.substring(0, dot + 1) + mappedExt
+    : file.name;
+
   const handleEvent = (event: ViewerEvent) => {
     if (event.type === "error") {
       const message = event.error instanceof Error
@@ -26,8 +41,8 @@ const FileViewerRenderer: React.FC<BaseRendererProps> = ({ file, onError }) => {
     <div className="wk-file-preview-file-viewer">
       <FileViewer
         url={file.url}
-        filename={file.name}
-        name={file.name}
+        filename={viewerFilename}
+        name={viewerFilename}
         size={file.size}
         options={{
           preset: [officePreset, allPreset],

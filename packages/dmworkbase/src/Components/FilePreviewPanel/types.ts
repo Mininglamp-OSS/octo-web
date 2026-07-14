@@ -60,6 +60,7 @@ export type FileType =
   | "json"
   | "jsonl"
   | "text"
+  | "archive"
   | "excel"
   | "docx"
   | "ppt"

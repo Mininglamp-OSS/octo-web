@@ -103,41 +103,73 @@ export default defineConfig(({ mode }) => {
           const outDir = path.join(root, "public", "vendor", "xlsx");
           if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
           const outFile = path.join(outDir, "sheet.worker.js");
-          const workerEntry = path.join(
-            root, "../../node_modules/.pnpm/@file-viewer+renderer-spreadsheet@2.1.27/node_modules/@file-viewer/renderer-spreadsheet/dist/spreadsheet/worker/sheetjs/sheet.worker.js"
-          );
+          const ssDir = path.join(root, "../../node_modules/.pnpm/@file-viewer+renderer-spreadsheet@2.1.27/node_modules/@file-viewer/renderer-spreadsheet/dist/spreadsheet");
+          const workerEntry = path.join(ssDir, "worker/sheetjs/sheet.worker.js");
           // Create a minimal stream shim so styled-exceljs doesn't crash on
           // `require('stream')` in the browser Worker environment.
           const shimDir = path.join(root, "node_modules", ".vite", "shims");
           if (!fs.existsSync(shimDir)) fs.mkdirSync(shimDir, { recursive: true });
           const streamShim = path.join(shimDir, "stream-shim.js");
           fs.writeFileSync(streamShim, [
-            "// Minimal stream shim for browser Worker environment",
+            "// Minimal stream shim for browser environment",
             "export class Readable { constructor() {} pipe() { return this; } on() { return this; } destroy() {} }",
             "export class Writable { constructor() {} write() { return true; } end() {} on() { return this; } destroy() {} }",
             "export class Transform { constructor() {} pipe() { return this; } on() { return this; } write() { return true; } end() {} destroy() {} }",
             "export class PassThrough { constructor() {} pipe() { return this; } on() { return this; } write() { return true; } end() {} destroy() {} }",
             "export default { Readable, Writable, Transform, PassThrough };",
           ].join("\n"));
+          const esbuildOpts = {
+            bundle: true,
+            format: "esm",
+            platform: "browser",
+            logLevel: "silent",
+            alias: { stream: streamShim },
+            define: {
+              "process.env.NODE_ENV": JSON.stringify("production"),
+              "process.browser": "true",
+              "global": "self",
+            },
+          };
+          // 1. Bundle the Worker entry → public/vendor/xlsx/sheet.worker.js
           try {
-            buildSync({
-              entryPoints: [workerEntry],
-              bundle: true,
-              format: "esm",
-              outfile: outFile,
-              platform: "browser",
-              logLevel: "silent",
-              alias: {
-                stream: streamShim,
-              },
-              define: {
-                "process.env.NODE_ENV": JSON.stringify("production"),
-                "process.browser": "true",
-                "global": "self",
-              },
-            });
+            buildSync({ ...esbuildOpts, entryPoints: [workerEntry], outfile: outFile });
           } catch (e) {
             console.warn("[vite] spreadsheet worker bundle failed:", e?.message);
+          }
+          // 2. Bundle the main-thread parser → node_modules/.vite/spreadsheet-parser.js
+          //    The AutoFallbackSpreadsheetWorker falls back to a dynamic
+          //    `import('./spreadsheet/worker/sheetjs/parser.js')` on the main
+          //    thread when the Worker is unavailable (e.g. CSV files). The raw
+          //    parser.js imports styled-exceljs (CJS, depends on Node `stream`),
+          //    which Vite cannot serve to the browser. Pre-bundle it so the
+          //    fallback path works.
+          const parserEntry = path.join(ssDir, "worker/sheetjs/parser.js");
+          const parserOut = path.join(root, "node_modules", ".vite", "spreadsheet-parser.js");
+          try {
+            buildSync({ ...esbuildOpts, entryPoints: [parserEntry], outfile: parserOut });
+          } catch (e) {
+            console.warn("[vite] spreadsheet parser bundle failed:", e?.message);
+          }
+        },
+        transform(code, id) {
+          if (id.includes("@file-viewer+renderer-spreadsheet@2.1.27")) {
+            let patched = code.replace(
+              /import\((['"])(?:\.\/)?spreadsheet\/worker\/sheetjs\/parser\.js\1\)/g,
+              'import("/node_modules/.vite/spreadsheet-parser.js")',
+            );
+            if (id.includes("/dist/spreadsheet/view.js")) {
+              // Keep the row-number column fixed, but allow data columns to
+              // share the remaining viewport width. The upstream renderer
+              // disables width filling for both columns, which leaves narrow
+              // CSV sheets stranded on the left side of a wide preview.
+              patched = patched.replace(
+                /widthFillDisable: true,\s*renderType: 'both'/,
+                "widthFillDisable: false,\n            renderType: 'both'",
+              );
+            }
+            if (patched !== code) {
+              return { code: patched, map: null };
+            }
           }
         },
       },
