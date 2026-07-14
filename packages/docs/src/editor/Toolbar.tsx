@@ -274,7 +274,22 @@ export function shouldShowFloatingMenu(args: {
 }
 
 const HIGHLIGHT_COLORS = ['#fff3a3', '#ffd6cc', '#cdeccd', '#cfe2ff', '#e7d6ff'] as const
-const TEXT_COLORS = ['#e03131', '#1971c2', '#2f9e44', '#f08c00', '#9c36b5'] as const
+// Common font colours (octo-web #719, plan A): near-black default, secondary grey, then the
+// warm→cool spread. Values are standard #rrggbb hex so DOCX export (normalizeDocxColor) keeps
+// them lossless. This scope covers font colour only — HIGHLIGHT_COLORS above is intentionally
+// left unchanged.
+const TEXT_COLORS = [
+  '#1f2329',
+  '#8a919e',
+  '#e03131',
+  '#f08c00',
+  '#f2b705',
+  '#2f9e44',
+  '#0ca678',
+  '#1971c2',
+  '#3370ff',
+  '#9c36b5',
+] as const
 
 /** Text-highlight control (SCHEMA-SPEC §3): palette of background colours + clear. */
 function HighlightControl({ editor }: { editor: Editor }) {
@@ -323,7 +338,7 @@ function TextColorControl({ editor }: { editor: Editor }) {
     <span className="octo-color-control">
       <Btn label="A̲" title={t('docs.toolbar.textColor')} active={open} onClick={() => setOpen((v) => !v)} />
       {open && (
-        <span className="octo-color-popover">
+        <span className="octo-color-popover octo-text-color-popover">
           {TEXT_COLORS.map((c) => (
             <button
               key={c}
@@ -345,6 +360,23 @@ function TextColorControl({ editor }: { editor: Editor }) {
               setOpen(false)
             }}
           />
+          {/* Custom colour (plan A): native picker, zero new deps. It emits standard #rrggbb,
+              so setColor stays lossless through Yjs and the DOCX/Markdown exporters. Kept open
+              on pick so the user can nudge the hue via the same swatch. */}
+          <label
+            className="octo-swatch octo-color-custom"
+            title={t('docs.toolbar.customColor')}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <input
+              type="color"
+              className="octo-color-custom-input"
+              aria-label={t('docs.toolbar.customColor')}
+              onInput={(e) => {
+                editor.chain().focus().setColor((e.target as HTMLInputElement).value).run()
+              }}
+            />
+          </label>
         </span>
       )}
     </span>

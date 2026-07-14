@@ -296,3 +296,70 @@ describe('Toolbar — undo/redo are stroke icon buttons (batch 8)', () => {
     e.destroy()
   })
 })
+
+// octo-web #719 (plan A): expanded font-colour palette + native custom colour picker.
+// The text-colour popover now offers ~10 common presets and a native <input type="color">
+// entry for arbitrary hex colours, while highlight, clear, and the popover-open active logic
+// stay untouched.
+describe('Toolbar — text colour palette + custom picker (#719)', () => {
+  function openTextColorPopover(): HTMLElement {
+    render(<Toolbar editor={editor!} />)
+    fireEvent.click(titleBtn('docs.toolbar.textColor'))
+    const popover = document.querySelector('.octo-text-color-popover') as HTMLElement
+    if (!popover) throw new Error('text colour popover did not open')
+    return popover
+  }
+
+  it('offers the ~10 common preset swatches from plan A', () => {
+    const popover = openTextColorPopover()
+    const swatches = within(popover).getAllByTitle(/^Text #/)
+    expect(swatches).toHaveLength(10)
+    const colours = swatches.map((s) => (s.getAttribute('title') || '').replace('Text ', ''))
+    // The plan's exact palette, in order.
+    expect(colours).toEqual([
+      '#1f2329',
+      '#8a919e',
+      '#e03131',
+      '#f08c00',
+      '#f2b705',
+      '#2f9e44',
+      '#0ca678',
+      '#1971c2',
+      '#3370ff',
+      '#9c36b5',
+    ])
+  })
+
+  it('applies a preset swatch colour to the selection', () => {
+    editor!.chain().focus().selectAll().run()
+    const popover = openTextColorPopover()
+    const swatch = within(popover).getByTitle('Text #3370ff')
+    fireEvent.click(swatch)
+    expect(editor!.getAttributes('textStyle').color).toBe('#3370ff')
+  })
+
+  it('exposes a native colour input that applies an arbitrary hex to the selection', () => {
+    editor!.chain().focus().selectAll().run()
+    const popover = openTextColorPopover()
+    const input = popover.querySelector('input[type="color"]') as HTMLInputElement
+    expect(input).toBeTruthy()
+    fireEvent.input(input, { target: { value: '#123456' } })
+    expect(editor!.getAttributes('textStyle').color).toBe('#123456')
+  })
+
+  it('still clears the colour via the ✕ button (unsetColor preserved)', () => {
+    editor!.chain().focus().selectAll().setColor('#e03131').run()
+    expect(editor!.getAttributes('textStyle').color).toBe('#e03131')
+    const popover = openTextColorPopover()
+    const clear = within(popover).getByText('✕')
+    fireEvent.click(clear)
+    expect(editor!.getAttributes('textStyle').color).toBeUndefined()
+  })
+
+  it('leaves the highlight palette untouched (still 5 swatches, this scope is font-colour only)', () => {
+    render(<Toolbar editor={editor!} />)
+    fireEvent.click(titleBtn('docs.toolbar.highlight'))
+    const highlightSwatches = document.querySelectorAll('button[title^="Highlight #"]')
+    expect(highlightSwatches).toHaveLength(5)
+  })
+})

@@ -293,6 +293,36 @@
 .octo-swatch:hover {
   outline: 2px solid var(--octo-accent);
 }
+/* Custom-colour entry (#719): a rainbow swatch that wraps the native <input type="color">.
+   The input fills the swatch but stays invisible so the OS colour dialog opens on click while
+   the toolbar keeps its own visual language (works in both light and dark themes). */
+.octo-color-custom {
+  position: relative;
+  overflow: hidden;
+  background: conic-gradient(
+    from 0deg,
+    #e03131,
+    #f08c00,
+    #f2b705,
+    #2f9e44,
+    #0ca678,
+    #1971c2,
+    #3370ff,
+    #9c36b5,
+    #e03131
+  );
+}
+.octo-color-custom-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}
 .octo-code-lang {
   border: 1px solid var(--octo-border);
   border-radius: 6px;

@@ -114,6 +114,7 @@
     "find": "Find & replace",
     "highlight": "Highlight",
     "textColor": "Text color",
+    "customColor": "Custom color",
     "table": "Table",
     "image": "Image",
     "file": "File",
