@@ -27,3 +27,5 @@ export {
   setWorkspaceContext,
   LoopApiError,
 } from "./api/http";
+export { resolveWorkspaceSelection, runtimeListPath } from "./api/workspaceSelection";
+export type { WorkspaceSelection } from "./api/workspaceSelection";
