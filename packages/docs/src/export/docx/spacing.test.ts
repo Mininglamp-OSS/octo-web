@@ -53,4 +53,20 @@ describe('mapSpacing (docx line spacing, SCHEMA_VERSION 17)', () => {
       lineRule: LineRuleType.AUTO,
     })
   })
+
+  // line-height cap parity: the docx lineHeight export now routes through sanitizeLineHeight
+  // (0 < lh <= 10) exactly as spacing routes through sanitizeSpacing (<=1000). Previously the
+  // lineHeight branch had no upper bound, so the boundary was asymmetric/half-closed.
+  it('accepts line-height at the 10 cap and rejects over-cap / injection values', () => {
+    expect(mapSpacing({ lineHeight: '10' })).toEqual({ line: 2400, lineRule: LineRuleType.AUTO })
+    expect(mapSpacing({ lineHeight: '11' })).toBeUndefined()
+    expect(mapSpacing({ lineHeight: '10.5' })).toBeUndefined()
+    expect(mapSpacing({ lineHeight: '999' })).toBeUndefined()
+    // CSS-injection / bad-unit attempts are rejected too (sanitizeLineHeight whitelist).
+    expect(mapSpacing({ lineHeight: '1;color:red' })).toBeUndefined()
+    expect(mapSpacing({ lineHeight: '1.5px' })).toBeUndefined()
+    // an over-cap line-height is dropped while an in-range margin survives (symmetry with the
+    // over-cap-spacing case above).
+    expect(mapSpacing({ lineHeight: '20', spaceBefore: '12px' })).toEqual({ before: 180 })
+  })
 })

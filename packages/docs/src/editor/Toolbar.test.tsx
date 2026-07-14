@@ -14,6 +14,7 @@ import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { Toolbar } from './Toolbar.tsx'
 import { getFindState, FindReplace } from './findReplace.ts'
+import { LineHeight } from './LineHeight.ts'
 
 // Batch 7 toolbar changes: list dropdown, quote/code/link as icon buttons (with tooltips),
 // highlight + text-colour tooltips, and a floating link popover (not an inline toolbar widget).
@@ -423,5 +424,177 @@ describe('Toolbar — text colour palette + custom picker (#719)', () => {
     fireEvent.click(titleBtn('docs.toolbar.highlight'))
     const highlightSwatches = document.querySelectorAll('button[title^="Highlight #"]')
     expect(highlightSwatches).toHaveLength(5)
+  })
+})
+
+describe('Toolbar — custom line-height input (SCHEMA_VERSION 17, focus-steal RC fix)', () => {
+  // The custom multiplier input used to be a controlled field that called editor.chain().focus()
+  // on every keystroke: typing bounced the caret back into the editor (only the first char
+  // landed) and an in-progress value like "1." was rejected by sanitizeLineHeight and snapped
+  // back to empty — so a custom multiplier could not be typed at all. It is now a commit-on-
+  // blur/Enter field with a local draft. These tests pin that behaviour.
+  let lhEditor: Editor | null = null
+  let holder: HTMLDivElement | null = null
+
+  function mount(content = '<p>hello</p>') {
+    holder = document.createElement('div')
+    document.body.appendChild(holder)
+    lhEditor = new Editor({
+      element: holder, // attached to the document so focus is observable
+      extensions: [StarterKit.configure({ undoRedo: false }), LineHeight],
+      content,
+    })
+    render(<Toolbar editor={lhEditor} />)
+    return document.querySelector('input.octo-line-height-custom') as HTMLInputElement
+  }
+
+  function lineHeightOf(e: Editor): string {
+    return (
+      (e.getAttributes('paragraph').lineHeight as string | undefined) ??
+      (e.getAttributes('heading').lineHeight as string | undefined) ??
+      ''
+    )
+  }
+
+  afterEach(() => {
+    lhEditor?.destroy()
+    lhEditor = null
+    holder?.remove()
+    holder = null
+  })
+
+  it('keeps focus in the field and does not commit while typing a multi-char value', () => {
+    const input = mount()
+    input.focus()
+    expect(document.activeElement).toBe(input)
+
+    // Type character-by-character. Focus must stay on the input (no .focus() steal to the editor)
+    // and nothing is committed to the editor mid-type.
+    fireEvent.change(input, { target: { value: '1' } })
+    expect(document.activeElement).toBe(input)
+    expect(lineHeightOf(lhEditor!)).toBe('')
+
+    fireEvent.change(input, { target: { value: '1.' } })
+    // A partial value stays in the field — it is NOT snapped back to the committed (empty) value.
+    expect(input.value).toBe('1.')
+    expect(document.activeElement).toBe(input)
+    expect(lineHeightOf(lhEditor!)).toBe('')
+
+    fireEvent.change(input, { target: { value: '1.1' } })
+    fireEvent.change(input, { target: { value: '1.15' } })
+    expect(input.value).toBe('1.15')
+    expect(lineHeightOf(lhEditor!)).toBe('')
+  })
+
+  it('commits the typed value to the editor on Enter', () => {
+    const input = mount()
+    input.focus()
+    fireEvent.change(input, { target: { value: '1.15' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(lineHeightOf(lhEditor!)).toBe('1.15')
+  })
+
+  it('commits the typed value to the editor on blur', () => {
+    const input = mount()
+    input.focus()
+    fireEvent.change(input, { target: { value: '1.75' } })
+    fireEvent.blur(input)
+    expect(lineHeightOf(lhEditor!)).toBe('1.75')
+  })
+
+  it('reverts an invalid/partial value to the last committed value on commit', () => {
+    const input = mount()
+    input.focus()
+    // Commit a good value first.
+    fireEvent.change(input, { target: { value: '1.5' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(lineHeightOf(lhEditor!)).toBe('1.5')
+
+    // Now type a partial value and commit it — it fails sanitize, so the field restores 1.5
+    // and the editor keeps the previous multiplier (no bogus value written).
+    fireEvent.change(input, { target: { value: '2.' } })
+    expect(input.value).toBe('2.') // stays while typing…
+    fireEvent.blur(input) // …but on commit it reverts.
+    expect(input.value).toBe('1.5')
+    expect(lineHeightOf(lhEditor!)).toBe('1.5')
+  })
+
+  it('seeds the custom field from the block the caret is in (round-trip on mount)', () => {
+    // A block already carrying a custom multiplier shows it in the field when the toolbar mounts.
+    mount('<p style="line-height: 1.15">seed</p>')
+    const input = document.querySelector('input.octo-line-height-custom') as HTMLInputElement
+    expect(input.value).toBe('1.15')
+  })
+
+  it('picking a preset from the dropdown writes the multiplier to the editor', () => {
+    const input = mount()
+    const select = input.parentElement!.querySelector('select.octo-line-height') as HTMLSelectElement
+    fireEvent.change(select, { target: { value: '2' } })
+    expect(lineHeightOf(lhEditor!)).toBe('2')
+  })
+})
+
+describe('Toolbar — paragraph spacing controls (SCHEMA_VERSION 17)', () => {
+  // The schema/commands/docx/i18n all carried spaceBefore/spaceAfter, but the toolbar exposed no
+  // UI to set them. These are the space-before / space-after dropdowns that close that gap.
+  let spEditor: Editor | null = null
+
+  afterEach(() => {
+    spEditor?.destroy()
+    spEditor = null
+  })
+
+  function mountSpacing(content = '<p>hello</p>') {
+    spEditor = new Editor({
+      extensions: [StarterKit.configure({ undoRedo: false }), LineHeight],
+      content,
+    })
+    // Return the scoped container so queries don't pick up any other rendered toolbar.
+    return render(<Toolbar editor={spEditor} />).container
+  }
+
+  function sel(container: HTMLElement, title: string): HTMLSelectElement {
+    const el = container.querySelector<HTMLSelectElement>(`select[title="${title}"]`)
+    if (!el) throw new Error(`no toolbar select with title="${title}"`)
+    return el
+  }
+
+  it('renders both a space-before and a space-after dropdown', () => {
+    const c = mountSpacing()
+    expect(sel(c, 'docs.toolbar.spaceBefore')).toBeTruthy()
+    expect(sel(c, 'docs.toolbar.spaceAfter')).toBeTruthy()
+  })
+
+  it('sets margin-top (spaceBefore) on the current block', () => {
+    const c = mountSpacing()
+    fireEvent.change(sel(c, 'docs.toolbar.spaceBefore'), { target: { value: '12px' } })
+    expect(spEditor!.getAttributes('paragraph').spaceBefore).toBe('12px')
+  })
+
+  it('sets margin-bottom (spaceAfter) independently of spaceBefore', () => {
+    const c = mountSpacing()
+    fireEvent.change(sel(c, 'docs.toolbar.spaceAfter'), { target: { value: '8px' } })
+    expect(spEditor!.getAttributes('paragraph').spaceAfter).toBe('8px')
+    expect(spEditor!.getAttributes('paragraph').spaceBefore ?? null).toBeNull()
+  })
+
+  it('clears the spacing attr when the default option is chosen', () => {
+    const c = mountSpacing('<p style="margin-top: 16px">x</p>')
+    expect(spEditor!.getAttributes('paragraph').spaceBefore).toBe('16px')
+    fireEvent.change(sel(c, 'docs.toolbar.spaceBefore'), { target: { value: '' } })
+    expect(spEditor!.getAttributes('paragraph').spaceBefore ?? null).toBeNull()
+  })
+
+  it('reflects a preset block value on mount (round-trip)', () => {
+    const c = mountSpacing('<p style="margin-bottom: 8px">x</p>')
+    expect(sel(c, 'docs.toolbar.spaceAfter').value).toBe('8px')
+  })
+
+  it('shows a non-preset (round-tripped) value as a Custom option instead of resetting it', () => {
+    const c = mountSpacing('<p style="margin-top: 1.5em">hi</p>')
+    expect(spEditor!.getAttributes('paragraph').spaceBefore).toBe('1.5em')
+    // 1.5em is not on the px preset list, so the select falls to the "custom" sentinel — the value
+    // is preserved on the node, not silently cleared.
+    expect(sel(c, 'docs.toolbar.spaceBefore').value).toBe('custom')
   })
 })
