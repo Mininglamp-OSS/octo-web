@@ -11,6 +11,7 @@ import {
   AlignmentType,
   LineRuleType,
 } from 'docx'
+import { sanitizeSpacing } from '../../editor/LineHeight.ts'
 
 /** Default font for body text. */
 export const FONT_BODY = '微软雅黑'
@@ -225,8 +226,12 @@ const PX_PER_EM = 16
 
 /** Convert a sanitised "<n>px|em" spacing length to whole twips, or undefined. */
 function spacingToTwips(raw: unknown): number | undefined {
-  if (typeof raw !== 'string') return undefined
-  const m = /^(\d+(?:\.\d+)?)(px|em)$/.exec(raw.trim())
+  // Reuse the editor's sanitizeSpacing so the docx path enforces the exact same
+  // whitelist AND <=1000 cap as parse/render and the backend schema sanitizer; an
+  // out-of-range value is rejected (undefined), never clamped.
+  const v = sanitizeSpacing(raw)
+  if (v === null) return undefined
+  const m = /^(\d+(?:\.\d+)?)(px|em)$/.exec(v)
   if (!m) return undefined
   const px = parseFloat(m[1]) * (m[2] === 'em' ? PX_PER_EM : 1)
   return Math.round(px * TWIPS_PER_PX)
