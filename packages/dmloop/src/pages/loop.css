@@ -1601,32 +1601,53 @@
 .loop-project-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+}
+
+/* 表格网格：名称 / 状态 / 优先级 / 进度 / 负责人 / 创建时间 / 删除。表头与行共用列轨。 */
+.loop-ptable__head,
+.loop-project-list__row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 116px 116px 84px 150px 96px 28px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+}
+
+.loop-ptable__head {
+  height: 34px;
+  color: var(--semi-color-text-2, #8a8f99);
+  font-size: 12px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--semi-color-border, #e8e9eb);
+}
+.loop-ptable__head > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .loop-project-list__row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 44px;
-  padding: 7px 12px;
+  min-height: 46px;
   border-radius: 6px;
   cursor: pointer;
   transition: background-color 120ms ease;
 }
-
 .loop-project-list__row:hover {
   background: var(--semi-color-fill-0, #f5f6f8);
 }
 
+.loop-project-list__namecell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
 .loop-project-list__icon {
-  flex: 0 0 auto;
+  flex: none;
   font-size: 15px;
   line-height: 1;
 }
-
 .loop-project-list__name {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1636,45 +1657,81 @@
   color: var(--semi-color-text-0, #1c1f23);
 }
 
-.loop-project-list__meta {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 16px;
-  color: var(--semi-color-text-2, #8a8f99);
+.loop-project-list__cell {
+  min-width: 0;
+  color: var(--semi-color-text-1, #4e5969);
   font-size: 12px;
 }
-
+.loop-project-list__cell--muted { color: var(--semi-color-text-2, #8a8f99); }
 .loop-project-list__count {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   white-space: nowrap;
 }
-
 .loop-project-list__lead {
-  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.loop-project-list__time {
-  width: 72px;
-  text-align: right;
-  white-space: nowrap;
-}
+.loop-project-list__time { white-space: nowrap; }
 
 .loop-project-list__del {
+  justify-self: end;
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease;
 }
-
 .loop-project-list__row:hover .loop-project-list__del {
   opacity: 1;
   pointer-events: auto;
 }
+
+/* 项目状态徽标：进行中/已完成实心强调，其余中性灰软标签 */
+.loop-pstatus {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity 120ms ease, border-color 120ms ease;
+}
+.loop-pstatus--muted {
+  background: var(--loop-tag-grey-bg, #f1f2f4);
+  color: var(--loop-tag-grey-fg, #5d626f);
+  border-color: var(--loop-tag-grey-bd, #dddfe3);
+}
+.loop-pstatus--muted:hover { border-color: var(--semi-color-text-3, #c9cdd4); }
+.loop-pstatus--solid { color: #fff; }
+.loop-pstatus--solid:hover { opacity: 0.88; }
+.loop-pstatus__opt { display: inline-flex; align-items: center; gap: 8px; }
+.loop-pstatus__dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+.loop-pstatus__check { margin-left: auto; color: var(--semi-color-text-2, #8a8f99); }
+
+/* 项目优先级徽标：图标 + 文案的 ghost chip */
+.loop-pprio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--semi-color-text-1, #4e5969);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.loop-pprio:hover { background: var(--semi-color-fill-0, #f5f6f8); }
 
 /* ===== 项目：卡片形态 ===== */
 .loop-project-cards {

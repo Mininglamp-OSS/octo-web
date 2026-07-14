@@ -247,7 +247,9 @@
     "dueDate": "Due date",
     "parent": "Parent issue",
     "noParent": "No parent",
-    "stage": "Stage"
+    "stage": "Stage",
+    "progress": "Progress",
+    "createdAt": "Created"
   },
   "status": {
     "backlog": "Backlog",

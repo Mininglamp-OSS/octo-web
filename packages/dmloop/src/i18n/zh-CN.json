@@ -247,7 +247,9 @@
     "dueDate": "截止日期",
     "parent": "父 Issue",
     "noParent": "无父 Issue",
-    "stage": "阶段"
+    "stage": "阶段",
+    "progress": "进度",
+    "createdAt": "创建时间"
   },
   "status": {
     "backlog": "待规划",

@@ -127,12 +127,15 @@ export const PROJECT_STATUS_ORDER: ProjectStatus[] = [
   "cancelled",
 ];
 
-export const PROJECT_STATUS_COLOR: Record<ProjectStatus, LoopTagTone> = {
-  planned: "blue",
-  in_progress: "amber",
-  paused: "grey",
-  completed: "green",
-  cancelled: "grey",
+// 项目状态徽标样式（对标 multica PROJECT_STATUS_CONFIG）：进行中/已完成为实心强调色
+// （amber / info-blue，白字，突出「活跃」态）；规划中/已暂停/已取消为中性灰软标签。
+// dot 为下拉项前的圆点色（取消用红点区分，与 multica 一致）。
+export const PROJECT_STATUS_STYLE: Record<ProjectStatus, { solid: boolean; bg: string; dot: string }> = {
+  planned: { solid: false, bg: "", dot: "#8a8f99" },
+  in_progress: { solid: true, bg: "var(--semi-color-warning, #f5a623)", dot: "var(--semi-color-warning, #f5a623)" },
+  paused: { solid: false, bg: "", dot: "#8a8f99" },
+  completed: { solid: true, bg: "var(--semi-color-info, #2f6fed)", dot: "var(--semi-color-info, #2f6fed)" },
+  cancelled: { solid: false, bg: "", dot: "var(--semi-color-danger, #f5222d)" },
 };
 
 export const AGENT_STATUS_COLOR: Record<AgentStatus, TagColor> = {
