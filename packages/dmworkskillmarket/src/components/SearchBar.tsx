@@ -17,7 +17,7 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(function SearchBa
 
   useEffect(() => {
     if (!autoFocus) return;
-    const input = rootRef.current?.querySelector("input");
+    const input = rootRef.current?.querySelector("input") ?? null;
     input?.focus();
     if (typeof ref === "function") {
       ref(input);
