@@ -363,21 +363,36 @@ describe('MediaMessageUploadTask', () => {
     })
 
     it('empty locationHref (non-browser): fail-closed — noInterceptorAxios, no token leaked', async () => {
-      // Mirror datasource.ts: !!locationHref && shouldAttachUploadToken
-      // When locationHref is empty, shouldAttachUploadToken is never reached;
-      // the overall expression is false → noInterceptorAxios (fail-closed).
-      // Here we simulate that by having mockShouldAttach return based on href.
-      mockShouldAttach.mockImplementation((_url: string, _api: string, href: string) => !!href)
-      const creds = makeCredentials({ uploadUrl: 'https://bucket.cos.ap-shanghai.myqcloud.com/file.jpg' })
-      mockApiGet.mockResolvedValue(creds)
-      mockNoInterceptorAxiosPut.mockResolvedValue({ status: 200, data: {} })
+      // Production code: !!locationHref && shouldAttachUploadToken(url, api, locationHref)
+      // When locationHref is empty the &&-short-circuit fires before shouldAttachUploadToken
+      // is called — useSameOriginAxios=false → noInterceptorAxios (fail-closed).
+      // jsdom sets window.location.href = 'http://localhost/' (truthy) by default, so we
+      // must stub it to empty to actually exercise the short-circuit branch.
+      const originalLocation = window.location
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        writable: true,
+        value: { href: '' },
+      })
+      try {
+        const creds = makeCredentials({ uploadUrl: 'https://bucket.cos.ap-shanghai.myqcloud.com/file.jpg' })
+        mockApiGet.mockResolvedValue(creds)
+        mockNoInterceptorAxiosPut.mockResolvedValue({ status: 200, data: {} })
 
-      const task = createTask()
-      await task.start()
+        const task = createTask()
+        await task.start()
 
-      // noInterceptorAxios must be used — token withheld (fail-closed)
-      expect(mockNoInterceptorAxiosPut).toHaveBeenCalledOnce()
-      expect(axios.put).not.toHaveBeenCalled()
+        // With empty locationHref the !!locationHref guard fires — noInterceptorAxios
+        // must be chosen (fail-closed: token withheld regardless of upload URL)
+        expect(mockNoInterceptorAxiosPut).toHaveBeenCalledOnce()
+        expect(axios.put).not.toHaveBeenCalled()
+      } finally {
+        Object.defineProperty(window, 'location', {
+          configurable: true,
+          writable: true,
+          value: originalLocation,
+        })
+      }
     })
   })
 })
