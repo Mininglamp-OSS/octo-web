@@ -112,33 +112,24 @@ export class RevokeCell extends MessageCell {
     /**
      * 点击「重新编辑」：将原文夹回输入框
      *
-     * 注意：
-     * 1. 如果消息被编辑过（remoteExtra.isEdit），展示的是编辑后的最终文本（contentEdit.text）——与其他地方的逻辑一致
-     * 2. entities 始终从原始 content 读取，与 Model.tsx:parseMention 一致：
-     *    编辑发送路径只序列化文本，contentEdit 不携带 mention metadata
-     * 3. 使用 restoreDraft，将 entities 重建为 @[uid:label] 草稿格式，
-     *    确保 @mention 节点在恢复后仍可路由（而非退化为惰性文本）
+     * text 与 entities 必须来自同一来源，否则 offset 错位会导致 mention 标签截断错误。
+     *
+     * 处理策略：
+     * - 如果消息被编辑过（isEdit）：用原始 text + 原始 entities
+     *   contentEdit 只序列化文本，不携带 entities；而编辑内容改变后原始 offset 已对应不上新文本。
+     *   确保 text+entities 始终来自同一版本，用户看到的是编辑前的原始内容（可见、可预期）。
+     * - 如果消息未编辑：用原始 text + 原始 entities，与上面相同。
      */
     private handleReEdit = () => {
         const { message } = this.props
         const conversationContext = this.props.context as ConversationContext
         if (!conversationContext?.restoreDraft) return
 
-        const remoteExtra = (message.message as any)?.remoteExtra
-
-        // text: 如果编辑过取 contentEdit；否则取原始 content
-        // 与 Model.tsx parseMention 和 Messages/Text getRenderMessageText 一致
-        let rawText: string
-        if (remoteExtra?.isEdit && remoteExtra?.contentEdit) {
-            rawText = (remoteExtra.contentEdit as MessageText)?.text ?? ''
-        } else {
-            rawText = (message.content as MessageText)?.text ?? ''
-        }
+        // text 和 entities 始终来自原始 content，保证两者 offset 一致
+        const originalContent = message.content as any
+        const rawText: string = originalContent?.text ?? ''
         if (!rawText) return
 
-        // entities: 始终从原始 content 读取——与 Model.tsx:parseMention 一致
-        // contentEdit 不携带 mention metadata，编辑发送路径只序列化文本
-        const originalContent = message.content as any
         const entities: Array<{ uid: string; offset: number; length: number }> =
             originalContent?.mention?.entities ??
             originalContent?.contentObj?.mention?.entities ??

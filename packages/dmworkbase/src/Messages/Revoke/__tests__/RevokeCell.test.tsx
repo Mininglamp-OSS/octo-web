@@ -131,13 +131,16 @@ describe("RevokeCell — handleReEdit text resolution", () => {
         container.remove()
     })
 
-    it("uses contentEdit text when message was edited before recall (isEdit=true)", () => {
+    it("isEdit=true: restores ORIGINAL text (not contentEdit) to keep text+entities consistent", () => {
+        // contentEdit 不携带 entities，混用会导致 offset 错位。
+        // 因此对于 isEdit 消息，恢复的是原始内容（不是编辑后的）
         const restoreDraft = vi.fn()
         const msg = makeMessage({
+            content: { text: "原始内容", contentType: 1 },
             message: {
                 remoteExtra: {
                     isEdit: true,
-                    contentEdit: { text: "编辑后的最终版本", contentType: 1 },
+                    contentEdit: { text: "编辑后的内容", contentType: 1 },
                 },
             },
         })
@@ -150,25 +153,24 @@ describe("RevokeCell — handleReEdit text resolution", () => {
             )
         })
         act(() => { (container.querySelector(".wk-revoke-reedit-btn") as HTMLElement).click() })
-        expect(restoreDraft).toHaveBeenCalledWith("编辑后的最终版本")
+        // 应返回原始内容，不是 contentEdit
+        expect(restoreDraft).toHaveBeenCalledWith("原始内容")
         ReactDOM.unmountComponentAtNode(container)
         container.remove()
     })
 
-    it("isEdit=true: uses contentEdit text but reads entities from ORIGINAL content (not contentEdit)", () => {
-        // contentEdit 不携带 mention metadata，entities 必须来自原始 content
+    it("isEdit=true with mention: text and entities both from original content, no offset corruption", () => {
         const restoreDraft = vi.fn()
         const msg = makeMessage({
             content: {
-                text: "原始 hi @张三",
+                text: "hi @张三",
                 contentType: 1,
-                mention: { entities: [{ uid: "uid-zs", offset: 10, length: 3 }] },
+                mention: { entities: [{ uid: "uid-zs", offset: 3, length: 3 }] },
             },
             message: {
                 remoteExtra: {
                     isEdit: true,
-                    // contentEdit 只有文本，没有 entities
-                    contentEdit: { text: "编辑后 hi @张三", contentType: 1 },
+                    contentEdit: { text: "编辑前缀 hi @张三", contentType: 1 },
                 },
             },
         })
@@ -181,10 +183,8 @@ describe("RevokeCell — handleReEdit text resolution", () => {
             )
         })
         act(() => { (container.querySelector(".wk-revoke-reedit-btn") as HTMLElement).click() })
-        // text 来自 contentEdit，entities 来自原始 content.mention.entities
-        // offset=10, length=3 对应 "编辑后 hi @张三" 中的 "张三"(offset+1=11)
-        const call = restoreDraft.mock.calls[0][0] as string
-        expect(call).toContain("@[uid-zs:")
+        // text=="hi @张三", entities offset=3, label=text.slice(4,6)=="张三" => @[uid-zs:张三]
+        expect(restoreDraft).toHaveBeenCalledWith("hi @[uid-zs:张三]")
         ReactDOM.unmountComponentAtNode(container)
         container.remove()
     })
