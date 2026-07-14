@@ -836,6 +836,19 @@ export function DocsHome() {
     () => initialKnownKind,
   )
 
+  // Live mirror of selectedDocId for callbacks pushed imperatively into the host route pane. The
+  // editor/sheet/board shells are pushed via routeRight.replaceToRoot in commitOpen — a ONE-TIME
+  // element snapshot that bakes in whatever `onDocDeleted` closure existed at push time. Because
+  // that push runs synchronously right after setSelectedDocId(X) (before the state re-render), the
+  // baked-in closure still sees the PRE-open selectedDocId (null on first open, the previous doc on
+  // a switch). onDocDeleted must therefore compare against this ref — the always-current id — not
+  // the closed-over state, or the `docId === selectedDocId` guard never matches and the deleted
+  // doc's shell is left resident in the right pane (XIN-1050).
+  const selectedDocIdRef = useRef<string | null>(selectedDocId)
+  useEffect(() => {
+    selectedDocIdRef.current = selectedDocId
+  }, [selectedDocId])
+
   // The host's right (main) route pane. When present (production), the editor is pushed there
   // so it fills the main content area while the list stays in the left route slot — the same
   // full-width list+detail layout Matter/Summary use. When absent (tests / standalone), we
@@ -921,13 +934,18 @@ export function DocsHome() {
   // Called after a successful delete (now from the editor detail page, Problem 4). If the deleted
   // doc is the one open in the right pane, return to the empty/list state (which also resets the
   // editor's drawer, #5 C4); always bump the reload token so the resident list refreshes.
+  // We read selectedDocIdRef (the live id), NOT the closed-over selectedDocId: this callback is
+  // baked into the shell snapshot pushed by commitOpen before the open's state update commits, so
+  // the closure's selectedDocId is stale (pre-open). Reading the ref makes the guard match the
+  // actually-open doc across doc/sheet/board (XIN-1050).
   const onDocDeleted = useCallback(
     (docId: string) => {
-      if (docId === selectedDocId) backToList()
+      if (docId === selectedDocIdRef.current) backToList()
       setListReloadToken((n) => n + 1)
     },
-    [selectedDocId, backToList],
+    [backToList],
   )
+
 
   // "Open in new page" (AC-1): open the current doc as a standalone full-window `/d/:docId` link
   // in a new browser tab — the clean, shareable cold-load entry that lives outside the app shell.
