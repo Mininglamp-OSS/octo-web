@@ -7,6 +7,7 @@ import TableRow from '@tiptap/extension-table-row'
 import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import { CellSelection } from '@tiptap/pm/tables'
+import { TextSelection } from '@tiptap/pm/state'
 import {
   TableGridPicker,
   TableContextMenu,
@@ -320,6 +321,141 @@ describe('TableContextMenu — right-click inside a cell opens the menu (XIN-105
 
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(document.querySelector('.octo-table-context-menu')).toBeNull()
+    e.destroy()
+    host.remove()
+  })
+})
+
+// Multi-cell delete through the REAL right-click flow, reproducing the behaviour a browser (not
+// jsdom) produces. When a user frames a multi-column/row CellSelection and then right-clicks a cell
+// inside it, the browser processes the native right-click AFTER our contextmenu handler returns: it
+// moves the caret into the clicked cell and fires `selectionchange`, which ProseMirror syncs back
+// into a single-cell TextSelection — collapsing the framed rectangle before the user can click a
+// menu item. The previous unit tests called moveSelectionIntoCell directly and asserted on the
+// still-intact selection, so they never exercised this collapse and stayed green while the real
+// browser deleted only the one clicked column ("select N, only 1 goes"). These tests drive the full
+// contextmenu -> collapse -> menu-click path and assert the whole framed range is removed.
+describe('TableContextMenu — multi-cell delete survives the browser right-click selection collapse', () => {
+  // 2 rows × 4 columns, so deleting a 2- or 3-column selection still leaves a table behind.
+  const WIDE_DOC =
+    '<table><tbody>' +
+    '<tr><td>a</td><td>b</td><td>c</td><td>d</td></tr>' +
+    '<tr><td>e</td><td>f</td><td>g</td><td>h</td></tr>' +
+    '</tbody></table>'
+  // 4 rows × 2 columns, for the delete-row counterpart.
+  const TALL_DOC =
+    '<table><tbody>' +
+    '<tr><td>a</td><td>b</td></tr>' +
+    '<tr><td>c</td><td>d</td></tr>' +
+    '<tr><td>e</td><td>f</td></tr>' +
+    '<tr><td>g</td><td>h</td></tr>' +
+    '</tbody></table>'
+
+  /**
+   * Open the context menu over a framed CellSelection (anchor..head cells), then reproduce the
+   * browser collapsing that selection to the single clicked cell before the menu item is clicked.
+   * Returns the editor mounted in a live DOM host, ready for a menu-item click.
+   */
+  function openMenuOverSelectionThenCollapse(
+    doc: string,
+    anchorCellIdx: number,
+    headCellIdx: number,
+    clickedCellIdx: number,
+  ): { e: Editor; host: HTMLElement } {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = tableEditor(doc, host)
+    const cells = cellPositions(e)
+    e.view.dispatch(
+      e.state.tr.setSelection(CellSelection.create(e.state.doc, cells[anchorCellIdx], cells[headCellIdx])),
+    )
+    expect(e.state.selection instanceof CellSelection).toBe(true)
+
+    // Right-click a text position inside a cell that is part of the framed selection.
+    const clickPos = cells[clickedCellIdx] + 2
+    e.view.posAtCoords = () => ({ pos: clickPos, inside: -1 })
+    render(<TableContextMenu editor={e} />)
+    fireEvent(e.view.dom, createEvent.contextMenu(e.view.dom, { clientX: 60, clientY: 40 }))
+    expect(document.querySelector('.octo-table-context-menu')).toBeTruthy()
+
+    // The browser now moves the caret into the clicked cell and ProseMirror collapses the
+    // CellSelection to a single-cell TextSelection — exactly what jsdom never does on its own.
+    e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, clickPos)))
+    expect(e.state.selection instanceof CellSelection).toBe(false)
+
+    return { e, host }
+  }
+
+  it('deletes both framed columns (select 2 of 4 -> 2 remain), not just the clicked one', () => {
+    // Columns 1 and 2 = cells b(1), c(2), f(5), g(6). Right-click cell c, inside the selection.
+    const { e, host } = openMenuOverSelectionThenCollapse(WIDE_DOC, 1, 6, 2)
+    fireEvent.click(screen.getByTitle('docs.table.deleteColumn'))
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 2 })
+    e.destroy()
+    host.remove()
+  })
+
+  it('deletes N framed columns (select 3 of 4 -> 1 remains)', () => {
+    // Columns 0..2 = cells a(0), b(1), c(2), e(4), f(5), g(6). Right-click cell b, inside it.
+    const { e, host } = openMenuOverSelectionThenCollapse(WIDE_DOC, 0, 6, 1)
+    fireEvent.click(screen.getByTitle('docs.table.deleteColumn'))
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 1 })
+    e.destroy()
+    host.remove()
+  })
+
+  it('deletes both framed rows (select 2 of 4 -> 2 remain) via delete row', () => {
+    // Rows 1 and 2 = cells c(2), d(3), e(4), f(5). Right-click cell d, inside the selection.
+    const { e, host } = openMenuOverSelectionThenCollapse(TALL_DOC, 2, 5, 3)
+    fireEvent.click(screen.getByTitle('docs.table.deleteRow'))
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 2 })
+    e.destroy()
+    host.remove()
+  })
+
+  it('still collapses to the single clicked cell when the right-click lands outside the framed selection', () => {
+    // Complement: a single-cell right-click must NOT be treated as a range. Frame columns 0-1, then
+    // right-click cell d (column 3), outside the selection: only that one column is removed.
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = tableEditor(WIDE_DOC, host)
+    const cells = cellPositions(e)
+    e.view.dispatch(e.state.tr.setSelection(CellSelection.create(e.state.doc, cells[0], cells[5])))
+    const clickPos = cells[3] + 2 // cell d, column 3, outside the selection
+    e.view.posAtCoords = () => ({ pos: clickPos, inside: -1 })
+    render(<TableContextMenu editor={e} />)
+    fireEvent(e.view.dom, createEvent.contextMenu(e.view.dom, { clientX: 60, clientY: 40 }))
+    e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, clickPos)))
+
+    fireEvent.click(screen.getByTitle('docs.table.deleteColumn'))
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 3 })
+    e.destroy()
+    host.remove()
+  })
+})
+
+describe('TableContextMenu — read-only editor never mutates a table', () => {
+  it('right-clicking a table cell in a read-only editor leaves the table unchanged (native menu passes through)', () => {
+    // Runnable read-only pass-through evidence: on a reader (editable === false) the handler must
+    // bail before touching the selection or opening the menu, so no table command can ever run and
+    // the document is untouched. Complements the "native menu intact" assertion above with a direct
+    // mutation check.
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const e = tableEditor(HISTORICAL_DOC, host, false)
+    expect(e.isEditable).toBe(false)
+    const before = e.getHTML()
+    e.view.posAtCoords = () => ({ pos: firstCellTextPos(e), inside: -1 })
+    render(<TableContextMenu editor={e} />)
+
+    const evt = createEvent.contextMenu(e.view.dom, { clientX: 120, clientY: 90 })
+    fireEvent(e.view.dom, evt)
+
+    // No custom menu, native menu left intact, and the table is byte-for-byte unchanged.
+    expect(evt.defaultPrevented).toBe(false)
+    expect(document.querySelector('.octo-table-context-menu')).toBeNull()
+    expect(tableDims(e)).toEqual({ rows: 2, cols: 2 })
+    expect(e.getHTML()).toBe(before)
     e.destroy()
     host.remove()
   })

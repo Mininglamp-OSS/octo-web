@@ -191,6 +191,10 @@ export function TableContextMenu({ editor }: { editor: Editor }) {
   // Viewport-coord anchor point where the user right-clicked; null while the menu is closed.
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  // Cell positions (anchor/head) of a multi-cell CellSelection captured at right-click time, or
+  // null when the click was on a single cell. See the snapshot in onContextMenu below for why this
+  // has to be remembered rather than re-read from the live selection when a menu item is clicked.
+  const cellRangeRef = useRef<{ anchor: number; head: number } | null>(null)
 
   // Attach the contextmenu listener to this editor's DOM. Right-click inside a cell opens the menu
   // at the pointer and preventDefault()s the native menu; anywhere else is left untouched.
@@ -204,6 +208,19 @@ export function TableContextMenu({ editor }: { editor: Editor }) {
       if (!coords) return
       if (!moveSelectionIntoCell(editor, coords.pos)) return
       e.preventDefault()
+      // Snapshot a multi-cell CellSelection NOW, while it is still intact. After this handler
+      // returns the browser processes the native right-click: it moves the caret to the clicked
+      // cell and fires `selectionchange`, which ProseMirror syncs back into a single-cell
+      // TextSelection — collapsing the multi-column/row rectangle before the user gets to click a
+      // menu item. If deleteColumn/deleteRow then read the live selection they would only see the
+      // one clicked cell and remove a single column/row (the real-browser "delete N, only 1 goes"
+      // bug; jsdom never fires that selectionchange, which is why the old unit tests were green).
+      // Remembering the cell range here lets us re-establish it right before the command runs.
+      const sel = editor.state.selection
+      cellRangeRef.current =
+        sel instanceof CellSelection
+          ? { anchor: sel.$anchorCell.pos, head: sel.$headCell.pos }
+          : null
       setPoint({ x: e.clientX, y: e.clientY })
     }
     dom.addEventListener('contextmenu', onContextMenu)
@@ -244,10 +261,27 @@ export function TableContextMenu({ editor }: { editor: Editor }) {
 
   if (!point) return null
 
-  // Run a table command then close. The selection already sits in the right-clicked cell, so
-  // .focus() keeps it there and the command acts on that cell.
+  // Run a table command then close. When the menu was opened over a multi-cell selection we first
+  // re-establish that CellSelection (the browser's right-click caret move will have collapsed it to
+  // a single cell in the meantime — see the snapshot in onContextMenu), so range operations such as
+  // deleteColumn / deleteRow act on every selected column/row instead of just the clicked one. No
+  // document edit happens between opening the menu and this click, so the captured cell positions
+  // are still valid; CellSelection.create is guarded in case a position is somehow stale.
   const run = (fn: () => void) => {
+    const range = cellRangeRef.current
+    if (range) {
+      try {
+        editor.view.dispatch(
+          editor.state.tr.setSelection(
+            CellSelection.create(editor.state.doc, range.anchor, range.head),
+          ),
+        )
+      } catch {
+        // Stale range (e.g. the table changed out from under us) — fall back to the live selection.
+      }
+    }
     fn()
+    cellRangeRef.current = null
     setPoint(null)
   }
 
