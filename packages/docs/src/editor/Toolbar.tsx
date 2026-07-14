@@ -334,6 +334,26 @@ function HighlightControl({ editor }: { editor: Editor }) {
 /** Text-colour control (SCHEMA-SPEC §3): palette of font colours + clear. */
 function TextColorControl({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
+  // Native <input type="color"> distinguishes drag from commit only at the DOM level: `input`
+  // streams while the hue wheel moves, `change` fires once the pick is committed. React folds
+  // both onto its synthetic onChange (native `input`), so we bind the raw events via a ref to
+  // apply live on `input` but collapse the popover only on `change`.
+  const customRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const input = customRef.current
+    if (!input) return
+    const apply = () => editor.chain().focus().setColor(input.value).run()
+    const onCommit = () => {
+      apply()
+      setOpen(false)
+    }
+    input.addEventListener('input', apply)
+    input.addEventListener('change', onCommit)
+    return () => {
+      input.removeEventListener('input', apply)
+      input.removeEventListener('change', onCommit)
+    }
+  }, [editor, open])
   return (
     <span className="octo-color-control">
       <Btn label="A̲" title={t('docs.toolbar.textColor')} active={open} onClick={() => setOpen((v) => !v)} />
@@ -361,20 +381,19 @@ function TextColorControl({ editor }: { editor: Editor }) {
             }}
           />
           {/* Custom colour (plan A): native picker, zero new deps. It emits standard #rrggbb,
-              so setColor stays lossless through Yjs and the DOCX/Markdown exporters. Kept open
-              on pick so the user can nudge the hue via the same swatch. */}
+              so setColor stays lossless through Yjs and the DOCX/Markdown exporters. The picker
+              stays open while dragging the hue wheel (live `input`) and collapses on commit
+              (`change`) — see the ref-bound listeners above. */}
           <label
             className="octo-swatch octo-color-custom"
             title={t('docs.toolbar.customColor')}
             onMouseDown={(e) => e.preventDefault()}
           >
             <input
+              ref={customRef}
               type="color"
               className="octo-color-custom-input"
               aria-label={t('docs.toolbar.customColor')}
-              onInput={(e) => {
-                editor.chain().focus().setColor((e.target as HTMLInputElement).value).run()
-              }}
             />
           </label>
         </span>

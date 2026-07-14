@@ -347,6 +347,24 @@ describe('Toolbar — text colour palette + custom picker (#719)', () => {
     expect(editor!.getAttributes('textStyle').color).toBe('#123456')
   })
 
+  it('keeps the popover open while dragging the hue wheel (input) but closes it on commit (change)', () => {
+    editor!.chain().focus().selectAll().run()
+    const popover = openTextColorPopover()
+    const input = popover.querySelector('input[type="color"]') as HTMLInputElement
+
+    // Dragging fires `input` repeatedly: colour tracks live, popover stays open so the
+    // user can keep nudging the hue.
+    fireEvent.input(input, { target: { value: '#112233' } })
+    expect(editor!.getAttributes('textStyle').color).toBe('#112233')
+    expect(document.querySelector('.octo-text-color-popover')).toBeTruthy()
+
+    // Committing the pick fires `change`: final colour applied and the popover collapses,
+    // matching a preset-swatch click.
+    fireEvent.change(input, { target: { value: '#abcdef' } })
+    expect(editor!.getAttributes('textStyle').color).toBe('#abcdef')
+    expect(document.querySelector('.octo-text-color-popover')).toBeNull()
+  })
+
   it('still clears the colour via the ✕ button (unsetColor preserved)', () => {
     editor!.chain().focus().selectAll().setColor('#e03131').run()
     expect(editor!.getAttributes('textStyle').color).toBe('#e03131')
