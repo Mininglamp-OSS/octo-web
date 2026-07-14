@@ -102,4 +102,33 @@ describe('formatPainter — applyPaintMarks', () => {
     editor!.commands.setTextSelection(12)
     expect(applyPaintMarks(editor!, marks)).toBe(false)
   })
+
+  it('paint inline code onto linked target preserves link', () => {
+    // Source is inline `code`; the `code` mark declares `excludes: '_'`, so adding it to a range
+    // makes ProseMirror strip every other mark on that range — including a `link` — and the
+    // exclusion is mutual, so code and link cannot share text. Painting a code source onto a
+    // target that contains linked text must NOT delete the target's href (data loss). The link
+    // portion keeps its href (and does not receive code); any plain portion still gets code.
+    editor!.commands.setContent(
+      '<p><code>snippet</code></p>' +
+        '<p><a href="https://example.com">ab</a>cd</p>',
+    )
+    // Capture the code mark from the source ("snippet", para 1: 1..8).
+    selectText(editor!, 1, 8)
+    const marks = capturePaintMarks(editor!.state)
+    expect(marks.map((m) => m.type.name)).toContain('code')
+    // Paint across the whole target "abcd" (para 2: 10..14) — "ab" is linked, "cd" is plain.
+    selectText(editor!, 10, 14)
+    const applied = applyPaintMarks(editor!, marks)
+    expect(applied).toBe(true)
+    // Linked portion "ab": href survives and code was skipped there (would have destroyed it).
+    selectText(editor!, 10, 12)
+    expect(editor!.isActive('link')).toBe(true)
+    expect(editor!.getAttributes('link').href).toBe('https://example.com')
+    expect(editor!.isActive('code')).toBe(false)
+    // Plain portion "cd": code is applied normally, no link.
+    selectText(editor!, 12, 14)
+    expect(editor!.isActive('code')).toBe(true)
+    expect(editor!.isActive('link')).toBe(false)
+  })
 })

@@ -85,12 +85,46 @@ export function applyPaintMarks(editor: Editor, marks: readonly Mark[]): boolean
     .chain()
     .focus()
     .command(({ tr, state }) => {
+      // Find the target's `link` spans up front. The `code` mark declares `excludes: '_'`
+      // (@tiptap/extension-code), so ProseMirror will not let `code` and `link` share a range:
+      // adding `code` strips the link, and the exclusion is mutual, so a link can't be re-applied
+      // on top of code either. The painter must never touch the target's links, so any captured
+      // mark whose type excludes `link` (e.g. `code`) is applied only to the *non-linked* portions
+      // of the range — the linked text keeps its href and simply does not receive that mark.
+      const linkType = state.schema.marks.link
+      const linkSpans: { from: number; to: number }[] = []
+      if (linkType) {
+        state.doc.nodesBetween(from, to, (node, pos) => {
+          if (!node.isText && !node.isInline) return true
+          if (node.marks.some((m) => m.type === linkType)) {
+            const spanFrom = Math.max(from, pos)
+            const spanTo = Math.min(to, pos + node.nodeSize)
+            if (spanTo > spanFrom) linkSpans.push({ from: spanFrom, to: spanTo })
+          }
+          return true
+        })
+      }
+
+      // The sub-ranges of [from, to] that carry no link — the complement of linkSpans.
+      const unlinkedSpans: { from: number; to: number }[] = []
+      let cursor = from
+      for (const span of linkSpans.sort((a, b) => a.from - b.from)) {
+        if (span.from > cursor) unlinkedSpans.push({ from: cursor, to: span.from })
+        cursor = Math.max(cursor, span.to)
+      }
+      if (cursor < to) unlinkedSpans.push({ from: cursor, to })
+
       for (const name of PAINTABLE_MARK_NAMES) {
         const markType = state.schema.marks[name]
         if (markType) tr.removeMark(from, to, markType)
       }
       for (const mark of marks) {
-        tr.addMark(from, to, mark)
+        // A mark that excludes `link` (code) would strip the href; confine it to unlinked spans.
+        if (linkType && linkSpans.length > 0 && mark.type.excludes(linkType)) {
+          for (const span of unlinkedSpans) tr.addMark(span.from, span.to, mark)
+        } else {
+          tr.addMark(from, to, mark)
+        }
       }
       return true
     })
