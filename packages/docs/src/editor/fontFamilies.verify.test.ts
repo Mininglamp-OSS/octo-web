@@ -42,7 +42,7 @@ describe('FONT_FAMILIES i18n refactor (XIN-936)', () => {
   })
 
   it('applies a selected value to the textStyle fontFamily attr and serializes it to the DOM', () => {
-    const schema = getSchema(buildPreviewExtensions())
+    const schema = getSchema(buildPreviewExtensions('doc-test'))
     const simhei = FONT_FAMILIES.find((f) => f.labelKey === 'docs.toolbar.font.simhei')!.value
     const textStyle = schema.marks.textStyle.create({ fontFamily: simhei })
     const doc = schema.node('doc', null, [

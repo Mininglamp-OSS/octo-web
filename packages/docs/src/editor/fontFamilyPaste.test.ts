@@ -75,6 +75,39 @@ describe('stripPastedFontFamily — flag-off paste sanitizer', () => {
     const out = stripPastedFontFamily(html)
     expect(out).toMatch(/font-size:\s*18px/i)
   })
+
+  // RC (Jerry-Xin / OctoBoooot / yujiawei @ 58e999d0): the old raw-HTML fast-path guard
+  // (`/font(-family)?\s*:/i.test(html)`) tested the clipboard string BEFORE the parser
+  // entity-decodes it. An entity-encoded colon carries no literal `font-family:` in the raw
+  // string, so the guard early-returned unchanged — but after parse `element.style.fontFamily`
+  // resolves to the family and leaks into the shared Y.Doc with the flag off. The strip now
+  // always walks the parsed DOM (getAttribute('style') is entity-decoded), so it is covered.
+  it('strips a font-family hidden behind an entity-encoded colon (&#58;)', () => {
+    const out = stripPastedFontFamily('<span style="font-family&#58;Georgia">x</span>')
+    expect(out).not.toMatch(/font-family/i)
+    expect(out).not.toMatch(/georgia/i)
+    expect(out).toContain('x')
+  })
+
+  it('strips a `font` shorthand family hidden behind a hex entity colon (&#x3a;)', () => {
+    const out = stripPastedFontFamily('<span style="font&#x3a;14px Arial">x</span>')
+    expect(out).not.toMatch(/arial/i)
+    expect(out).toMatch(/font-size:\s*14px/i)
+    expect(out).toContain('x')
+  })
+
+  // RC (yujiawei P1 @ 58e999d0): ReDoS regression on the default flag-off paste path. The old
+  // FONT_SIZE_LENGTH pattern (`\d+\.?\d*`) backtracked O(n²) on a long all-digit token, freezing
+  // the main thread (~11s at 80k, ~73s at 200k). The unambiguous pattern + length cap keep it
+  // instant. Bound is generous (real font-size tokens are tiny); pre-fix this took tens of seconds.
+  it('does not backtrack (ReDoS) on a huge digit run in a `font` shorthand', () => {
+    const huge = '<span style="font: ' + '1'.repeat(200000) + 'zz Arial">x</span>'
+    const start = performance.now()
+    const out = stripPastedFontFamily(huge)
+    const elapsed = performance.now() - start
+    expect(elapsed).toBeLessThan(1000)
+    expect(out).not.toMatch(/arial/i)
+  })
 })
 
 // End-to-end through the REAL paste path. Rather than call stripPastedFontFamily directly, this
@@ -170,5 +203,19 @@ describe('paste write path — LiveFontFamily plugin + FONT_FAMILY_ENABLED gatin
     const { family, size } = await pasteThroughEditor(shorthand, false)
     expect(family).toBe(null)
     expect(size).toBe('14px')
+  })
+
+  // RC @ 58e999d0: an entity-encoded colon must not let a pasted font-family slip past the gate
+  // into the shared Y.Doc while the flag is off. Driven end-to-end through the real plugin.
+  const entityLonghand = '<span style="font-family&#58;Georgia, serif">styled</span>'
+
+  it('flag OFF: an entity-colon font-family never reaches the doc', async () => {
+    const { family } = await pasteThroughEditor(entityLonghand, false)
+    expect(family).toBe(null)
+  })
+
+  it('flag ON: the same entity-colon font-family resolves and survives (parser decodes it)', async () => {
+    const { family } = await pasteThroughEditor(entityLonghand, true)
+    expect(family).toBe('Georgia, serif')
   })
 })

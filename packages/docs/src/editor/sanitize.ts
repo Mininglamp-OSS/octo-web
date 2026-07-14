@@ -105,9 +105,14 @@ export function renderLinkAttrs(href: string): { href: string | null; rel?: stri
  * this and pasted fonts are preserved.
  */
 export function stripPastedFontFamily(html: string): string {
-  // Guard matches both `font-family:` and the `font:` shorthand (any case), but not
-  // sibling longhands like `font-size:`/`font-weight:` or the plain word "font" in text.
-  if (typeof document === 'undefined' || !/font(-family)?\s*:/i.test(html)) return html
+  // Only skip when there is no DOM to parse (SSR). We must NOT gate on a raw-HTML regex
+  // fast-path: the parser entity-decodes the clipboard string, so `font-family&#58;Georgia`
+  // (entity colon — likewise `&#x3a;`, `font&#45;family`, `f&#111;nt-family`) carries no
+  // literal `font-family:` in the raw string and would slip past such a guard, yet
+  // `element.style.fontFamily` still resolves to the family and leaks into the shared Y.Doc
+  // with the flag off. The per-element walk below reads `getAttribute('style')`, which the
+  // parser has already fully entity-decoded, so running it unconditionally is entity-safe.
+  if (typeof document === 'undefined') return html
   try {
     const parsed = new DOMParser().parseFromString(html, 'text/html')
     parsed.querySelectorAll('[style]').forEach((el) => {
@@ -143,7 +148,12 @@ export function stripPastedFontFamily(html: string): string {
 // font-family: only the size and the (slash-prefixed) line-height. Size keywords per
 // the <font-size> grammar; anything with a unit or `%` is a length/percentage size.
 const FONT_SIZE_KEYWORD = /^(xx-small|x-small|small|medium|large|x-large|xx-large|smaller|larger)$/i
-const FONT_SIZE_LENGTH = /^[+-]?(\d+\.?\d*|\.\d+)(px|pt|pc|em|rem|ex|ch|cap|ic|lh|rlh|vw|vh|vi|vb|vmin|vmax|cm|mm|in|q|%)$/i
+// The number sub-pattern is written unambiguously — `\d+(?:\.\d+)?|\.\d+`, NOT the
+// `\d+\.?\d*` form. The latter lets `\d+` and `\d*` both consume the same digit run, so a
+// long all-digit token followed by a failing unit forces O(n²) backtracking (a pasted
+// `font: 111…111zz` freezes the main thread for seconds — reachable on the default flag-off
+// paste path). The unambiguous form has a single parse and is linear.
+const FONT_SIZE_LENGTH = /^[+-]?(\d+(?:\.\d+)?|\.\d+)(px|pt|pc|em|rem|ex|ch|cap|ic|lh|rlh|vw|vh|vi|vb|vmin|vmax|cm|mm|in|q|%)$/i
 // `font: caption|icon|…` sets a *system* font — no explicit family text and no reusable
 // size — so it is dropped wholesale.
 const SYSTEM_FONT_KEYWORDS = new Set(['caption', 'icon', 'menu', 'message-box', 'small-caption', 'status-bar'])
@@ -167,6 +177,10 @@ function keptFromFontShorthand(value: string): string | null {
   let fontSize: string | null = null
   let lineHeight: string | null = null
   for (let i = 0; i < tokens.length; i++) {
+    // A real font-size token is a handful of chars; cap length before the regex so no
+    // pathological token can ever drive super-linear matching (defense-in-depth alongside
+    // the unambiguous FONT_SIZE_LENGTH pattern).
+    if (tokens[i].length > 32) continue
     if (FONT_SIZE_KEYWORD.test(tokens[i]) || FONT_SIZE_LENGTH.test(tokens[i])) {
       fontSize = tokens[i]
       if (tokens[i + 1] === '/' && tokens[i + 2]) lineHeight = tokens[i + 2]
