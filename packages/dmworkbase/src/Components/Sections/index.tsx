@@ -21,8 +21,10 @@ export default class Sections extends Component<SectionsProps> {
                         <div className="wk-channelsetting-section-rows">
                             {
                                 section.rows?.map((row, j) => {
+                                    const Cell = row.cell
+                                    const { key: cellKey, ...cellProps } = row.properties ?? {}
                                     return <div key={j} className="wk-section-row">
-                                        <row.cell  {...row.properties}></row.cell>
+                                        <Cell key={cellKey} {...cellProps}></Cell>
                                     </div>
                                 })
                             }

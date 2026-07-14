@@ -575,7 +575,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
       );
     const wrap =
       (Tag: string) =>
-      ({ node, children, ...props }: any) =>
+      ({ node, children, ordered, checked, index, siblingCount, ...props }: any) =>
         React.createElement(Tag, props, process(children));
     return {
       ...baseComponents,
