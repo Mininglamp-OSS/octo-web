@@ -12,8 +12,19 @@ const client = axios.create({ baseURL: LOOP_API_BASE, withCredentials: true });
 
 /* ---------- workspace 上下文 ---------- */
 // 顶部下拉选中的 workspace：slug 用于 header，id 用于路径参数（如 members）。
-let _workspaceSlug = "";
-let _workspaceId = "";
+// 持久化到 sessionStorage：整页刷新后内存变量会归零、LoopPage 恢复时恒回落 list[0]，
+// 故刷新前 seed 回上次选中的 workspace。仅当前标签页（符合 issue 预期）。
+const WS_CTX_KEY = "loop.workspace.ctx";
+function readWorkspaceCtx(): { slug: string; id: string } {
+  try {
+    const p = JSON.parse(sessionStorage.getItem(WS_CTX_KEY) ?? "null");
+    if (p && typeof p.slug === "string" && typeof p.id === "string") return p;
+  } catch { /* ignore */ }
+  return { slug: "", id: "" };
+}
+const _initCtx = readWorkspaceCtx();
+let _workspaceSlug = _initCtx.slug;
+let _workspaceId = _initCtx.id;
 
 export function currentWorkspaceSlug(): string {
   return _workspaceSlug;
@@ -24,6 +35,10 @@ export function currentWorkspaceId(): string {
 export function setWorkspaceContext(slug: string, id: string): void {
   _workspaceSlug = slug || "";
   _workspaceId = id || "";
+  try {
+    if (_workspaceId) sessionStorage.setItem(WS_CTX_KEY, JSON.stringify({ slug: _workspaceSlug, id: _workspaceId }));
+    else sessionStorage.removeItem(WS_CTX_KEY);
+  } catch { /* ignore */ }
 }
 
 // 统一注入 x-workspace-slug + 鉴权 header。

@@ -30,6 +30,7 @@ import IssueGroupBoard from "../panel/IssueGroupBoard";
 import IssueList from "../panel/IssueList";
 import IssueDetailPage from "../panel/IssueDetailPage";
 import NewLoopPage from "./NewLoopPage";
+import { readView, writeView } from "../ui/viewMode";
 
 type ViewMode = "board" | "grouped" | "list";
 
@@ -67,16 +68,18 @@ const PAGE_SIZE = 50;
 interface IssuePageProps {
   defaultScope?: IssueScope;
   defaultView?: ViewMode;
+  // 视图偏好持久化 key（按页区分：回路 / 我的回路各存各的，缺省则不持久化）。
+  viewKey?: string;
 }
 
-export default function IssuePage({ defaultScope, defaultView }: IssuePageProps = {}) {
+export default function IssuePage({ defaultScope, defaultView, viewKey }: IssuePageProps = {}) {
   const { t } = useI18n();
   const [issues, setIssues] = useState<Issue[]>([]);
   const [groups, setGroups] = useState<IssueGroup[]>([]);
   const [running, setRunning] = useState<ReadonlySet<string>>(new Set());
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<ViewMode>(defaultView ?? "board");
+  const [view, setView] = useState<ViewMode>(() => viewKey ? readView(viewKey, ["board", "grouped", "list"], defaultView ?? "board") : (defaultView ?? "board"));
   const [scope, setScope] = useState<IssueScope>(defaultScope ?? "all");
   const [f, setF] = useState<Filters>({ keyword: "", gStatuses: [], gPriorities: [], gProjectIds: [], noProject: false, sortBy: "position", sortDir: "desc", dateField: "created_at" });
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
@@ -214,7 +217,7 @@ export default function IssuePage({ defaultScope, defaultView }: IssuePageProps 
 
   // 改任一筛选/搜索都回到第一页，避免停在越界的 offset（此规则只此一处表达）。
   const update = (p: Partial<Filters>) => { setF((prev) => ({ ...prev, ...p })); setPage(0); };
-  const switchView = (v: ViewMode) => { setView(v); setPage(0); };
+  const switchView = (v: ViewMode) => { setView(v); setPage(0); if (viewKey) writeView(viewKey, v); };
 
   // 点击 Issue → 跳转独立详情页（push 到右主栏，返回可 pop）。
   // key=id:issueId 变化即整体重挂载 → 详情页所有异步状态从零开始,结构性杜绝跨 issue 陈旧写入

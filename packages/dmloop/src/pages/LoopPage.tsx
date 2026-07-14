@@ -62,14 +62,14 @@ export default function LoopPage() {
     // 重挂子页面 → useEffect 重新以新的 x-workspace-slug 拉取数据，避免残留旧 workspace 数据。
     const k = `${key}:${ws?.id ?? "none"}`;
     switch (key) {
-      case "myloop": return <IssuePage key={k} defaultView="grouped" defaultScope="involves" />;
-      case "issue": return <IssuePage key={k} />;
+      case "myloop": return <IssuePage key={k} viewKey="loop.view.myloop" defaultView="grouped" defaultScope="involves" />;
+      case "issue": return <IssuePage key={k} viewKey="loop.view.issue" />;
       case "project": return <ProjectPage key={k} />;
       case "automation": return <AutomationPage key={k} />;
       case "agent": return <AgentPage key={k} />;
       case "squad": return <SquadPage key={k} />;
       case "settings": return <SettingsPage key={k} workspace={ws} onUpdated={() => reloadWorkspaces()} />;
-      default: return <IssuePage key={k} />;
+      default: return <IssuePage key={k} viewKey="loop.view.issue" />;
     }
   };
 
@@ -192,7 +192,7 @@ export default function LoopPage() {
           const list = await reloadWorkspaces();
           applyWorkspace(findWs(list, created.id) ?? created, list);
           setTab("issue");
-          WKApp.routeRight.replaceToRoot(<IssuePage />);
+          WKApp.routeRight.replaceToRoot(<IssuePage viewKey="loop.view.issue" />);
           Toast.success(t("loop.workspace.created"));
           return;
         } catch (e) {
