@@ -449,25 +449,25 @@ describe('Toolbar — highlight palette + custom picker', () => {
     expect(swatches).toHaveLength(10)
     const colours = swatches.map((s) => (s.getAttribute('title') || '').replace('Highlight ', ''))
     expect(colours).toEqual([
-      '#fff3a3',
-      '#ffe0a3',
-      '#ffd6cc',
-      '#ffd6e7',
-      '#e7d6ff',
-      '#d6ddff',
-      '#cfe2ff',
-      '#c9f0ef',
-      '#cdeccd',
-      '#e6e9ed',
+      '#d2d3d4',
+      '#e8e9ec',
+      '#f9d6d6',
+      '#fce8cc',
+      '#fcf1cd',
+      '#d5ecda',
+      '#ceede4',
+      '#d1e3f3',
+      '#d6e2ff',
+      '#ebd7f0',
     ])
   })
 
   it('applies a preset swatch highlight to the selection', () => {
     editor!.chain().focus().selectAll().run()
     const popover = openHighlightPopover()
-    const swatch = within(popover).getByTitle('Highlight #cfe2ff')
+    const swatch = within(popover).getByTitle('Highlight #d1e3f3')
     fireEvent.click(swatch)
-    expect(editor!.getAttributes('highlight').color).toBe('#cfe2ff')
+    expect(editor!.getAttributes('highlight').color).toBe('#d1e3f3')
   })
 
   it('exposes a native colour input that commits an arbitrary hex highlight on change', () => {

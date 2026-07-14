@@ -13,6 +13,7 @@ import { sanitizeLinkHref } from './sanitize.ts'
 import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { TableGridPicker } from './TableControls.tsx'
 import { capturePaintMarks, applyPaintMarks } from './formatPainter.ts'
+import { HIGHLIGHT_COLORS, TEXT_COLORS } from './colorPalette.ts'
 import { t } from '../octoweb/index.ts'
 import { FONT_FAMILY_ENABLED, LINE_SPACING_ENABLED } from '../config.ts'
 import { FONT_FAMILIES } from './fontFamilies.ts'
@@ -285,39 +286,11 @@ export function shouldShowFloatingMenu(args: {
   return isRootDepth && isEmptyTextBlock
 }
 
-// Common highlight (text-background) colours (octo-web follow-up to #719, same plan): a set of
-// light / pastel tints spread warm→cool so dark foreground text stays readable on every swatch.
-// The original five (yellow, peach, green, blue, purple) are preserved and kept in place; the new
-// entries fill out the spectrum (amber, pink, indigo, cyan, neutral grey). Values are standard
-// #rrggbb hex so DOCX/Markdown export keeps them lossless, mirroring TEXT_COLORS below.
-const HIGHLIGHT_COLORS = [
-  '#fff3a3',
-  '#ffe0a3',
-  '#ffd6cc',
-  '#ffd6e7',
-  '#e7d6ff',
-  '#d6ddff',
-  '#cfe2ff',
-  '#c9f0ef',
-  '#cdeccd',
-  '#e6e9ed',
-] as const
-// Common font colours (octo-web #719, plan A): near-black default, secondary grey, then the
-// warm→cool spread. Values are standard #rrggbb hex so DOCX export (normalizeDocxColor) keeps
-// them lossless. This scope covers font colour only — HIGHLIGHT_COLORS above is intentionally
-// left unchanged.
-const TEXT_COLORS = [
-  '#1f2329',
-  '#8a919e',
-  '#e03131',
-  '#f08c00',
-  '#f2b705',
-  '#2f9e44',
-  '#0ca678',
-  '#1971c2',
-  '#3370ff',
-  '#9c36b5',
-] as const
+// The highlight (text-background) and font-colour presets are DERIVED from one shared hue base
+// (PALETTE_HUES) in ./colorPalette.ts: TEXT_COLORS are the saturated hues, HIGHLIGHT_COLORS are the
+// same hues at the same index tinted light so dark text stays readable on top. Same count, same hue
+// order, same column ↦ same colour family across both pickers. Values stay #rrggbb so they survive
+// Yjs collaboration and the DOCX/Markdown exporters losslessly.
 
 /** Text-highlight control (SCHEMA-SPEC §3): palette of background colours + clear. */
 function HighlightControl({ editor }: { editor: Editor }) {
