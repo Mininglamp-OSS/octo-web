@@ -190,6 +190,31 @@ function useEditorTick(editor: Editor): void {
 }
 
 /**
+ * Like useEditorTick but also re-renders when the value returned by `read(editor)` changes —
+ * not only when the selection moves. A setLineHeight / setSpaceBefore transaction rewrites a
+ * block attribute while leaving the caret put, so the selection-keyed snapshot of useEditorTick
+ * does NOT change and React skips the re-render; a controlled <select> is then restored to its
+ * stale `value` prop, so the dropdown kept showing the old label after a value was picked
+ * (line-spacing display desync, XIN-1039 #1). Keying the snapshot off the displayed value itself
+ * makes the control re-render exactly when that value changes — the same fix shape as useFindState
+ * below. Returns the freshly read value so the caller renders from it directly.
+ */
+function useEditorValueTick(editor: Editor, read: (editor: Editor) => string): string {
+  useSyncExternalStore(
+    (cb) => {
+      editor.on('transaction', cb)
+      editor.on('selectionUpdate', cb)
+      return () => {
+        editor.off('transaction', cb)
+        editor.off('selectionUpdate', cb)
+      }
+    },
+    () => `${editor.state.selection.from}:${editor.state.selection.to}:${read(editor)}`,
+  )
+  return read(editor)
+}
+
+/**
  * Subscribe a component to the find/replace plugin state, returning the live FindReplaceState.
  *
  * The plain useEditorTick snapshot keys only off the selection (from:to), so a setFindQuery
@@ -772,8 +797,7 @@ function LineHeightCustomInput({ editor }: { editor: Editor }) {
  * two block types is active, so the control reflects the caret's block.
  */
 function LineHeightSelect({ editor }: { editor: Editor }) {
-  useEditorTick(editor)
-  const current = currentLineHeight(editor)
+  const current = useEditorValueTick(editor, currentLineHeight)
   const isPreset = (LINE_HEIGHTS as readonly string[]).includes(current)
   return (
     <span className="octo-line-height-control">
@@ -814,12 +838,14 @@ const PARAGRAPH_SPACINGS = ['0px', '4px', '8px', '12px', '16px', '24px'] as cons
  * (e.g. an em length pasted in) still shows as "Custom" so it isn't silently reset.
  */
 function ParagraphSpacingSelect({ editor, edge }: { editor: Editor; edge: 'before' | 'after' }) {
-  useEditorTick(editor)
   const attr = edge === 'before' ? 'spaceBefore' : 'spaceAfter'
-  const current =
-    (editor.getAttributes('paragraph')[attr] as string | undefined) ??
-    (editor.getAttributes('heading')[attr] as string | undefined) ??
-    ''
+  const current = useEditorValueTick(
+    editor,
+    (e) =>
+      (e.getAttributes('paragraph')[attr] as string | undefined) ??
+      (e.getAttributes('heading')[attr] as string | undefined) ??
+      '',
+  )
   const isPreset = (PARAGRAPH_SPACINGS as readonly string[]).includes(current)
   const titleKey = edge === 'before' ? 'docs.toolbar.spaceBefore' : 'docs.toolbar.spaceAfter'
   return (

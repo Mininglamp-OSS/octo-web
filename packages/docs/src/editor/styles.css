@@ -183,6 +183,31 @@
   opacity: 0.4;
   cursor: default;
 }
+
+/* Line-spacing controls (SCHEMA_VERSION 17). The custom line-height field holds only a short
+   numeric multiplier (e.g. "1.5"), so it is sized to a few characters — an unstyled text input
+   renders at the browser default width (~20 chars) and read as an oversized box next to the
+   dropdown (XIN-1039 #3). */
+.octo-line-height-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.octo-line-height-custom {
+  width: 4.5ch;
+  box-sizing: content-box;
+  border: 1px solid var(--octo-border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 13px;
+  background: var(--octo-bg);
+  color: var(--octo-fg);
+}
+.octo-line-height-custom:focus {
+  outline: none;
+  border-color: var(--octo-accent);
+}
+
 /* (Legacy inline link-input styles removed in batch 7 — the link editor is now a floating panel,
    see .octo-link-popover / .octo-link-field below near the colour-popover styles.) */
 

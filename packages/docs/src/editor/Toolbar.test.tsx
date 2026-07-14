@@ -685,6 +685,56 @@ describe('Toolbar — custom line-height input (SCHEMA_VERSION 17, focus-steal R
   })
 })
 
+describe('Toolbar — line-spacing dropdown display sync (XIN-1039 #1)', () => {
+  // Regression: picking a value from the line-spacing dropdown changed the block's line-height
+  // but the dropdown kept showing the old label. setLineHeight is an attribute-only transaction
+  // that leaves the caret put, so a selection-keyed re-render never fired; React then restored
+  // the controlled <select> to its stale `value` prop. The control must re-render off the
+  // line-height value itself so the display follows the selection.
+  let lhEditor: Editor | null = null
+  let holder: HTMLDivElement | null = null
+
+  function mount(content = '<p>hello</p>') {
+    holder = document.createElement('div')
+    document.body.appendChild(holder)
+    lhEditor = new Editor({
+      element: holder,
+      extensions: [StarterKit.configure({ undoRedo: false }), LineHeight],
+      content,
+    })
+    render(<Toolbar editor={lhEditor} />)
+    return document.querySelector('select.octo-line-height') as HTMLSelectElement
+  }
+
+  afterEach(() => {
+    lhEditor?.destroy()
+    lhEditor = null
+    holder?.remove()
+    holder = null
+  })
+
+  it('reflects the picked preset in the dropdown display, not just the document', () => {
+    const select = mount()
+    expect(select.value).toBe('') // starts on the "Default spacing" option
+
+    fireEvent.change(select, { target: { value: '2' } })
+    // Both the document AND the control must show 2 — the control used to snap back to "".
+    expect(lhEditor!.getAttributes('paragraph').lineHeight).toBe('2')
+    expect(select.value).toBe('2')
+  })
+
+  it('updates the dropdown when a custom multiplier is committed via the input', () => {
+    const select = mount()
+    const input = document.querySelector('input.octo-line-height-custom') as HTMLInputElement
+    input.focus()
+    fireEvent.change(input, { target: { value: '1.75' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    // 1.75 is off the preset list, so the dropdown must fall to the "custom" sentinel — not "".
+    expect(lhEditor!.getAttributes('paragraph').lineHeight).toBe('1.75')
+    expect(select.value).toBe('custom')
+  })
+})
+
 describe('Toolbar — paragraph spacing controls (SCHEMA_VERSION 17)', () => {
   // The schema/commands/docx/i18n all carried spaceBefore/spaceAfter, but the toolbar exposed no
   // UI to set them. These are the space-before / space-after dropdowns that close that gap.
