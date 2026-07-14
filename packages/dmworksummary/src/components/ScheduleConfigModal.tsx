@@ -15,6 +15,8 @@ interface Props {
     onDisable?: () => void;
     /** 「关闭定时」请求中的 loading 态 */
     disabling?: boolean;
+    /** 是否展示定时生成要求；创建新定时任务入口不展示，已有结果的定时设置展示 */
+    showGenerationInstruction?: boolean;
 }
 
 interface State {
@@ -72,7 +74,7 @@ export default class ScheduleConfigModal extends Component<Props, State> {
     }
 
     render() {
-        const { visible, onCancel } = this.props;
+        const { visible, onCancel, showGenerationInstruction = true } = this.props;
         const { local } = this.state;
         const { t } = this.context;
 
@@ -222,7 +224,7 @@ export default class ScheduleConfigModal extends Component<Props, State> {
                 )}
 
                 {/* 时间：在 HH:MM 跑 */}
-                <div style={{ ...rowStyle, marginBottom: 0 }}>
+                <div style={rowStyle}>
                     <span style={labelStyle}>{t("summary.schedule.config.time")}</span>
                     <div style={inlineStyle}>
                         <span style={prefixStyle}>{t("summary.schedule.config.atPrefix")}</span>
@@ -234,6 +236,24 @@ export default class ScheduleConfigModal extends Component<Props, State> {
                         />
                     </div>
                 </div>
+
+                {showGenerationInstruction && (
+                    <div style={{ ...rowStyle, alignItems: "flex-start", marginBottom: 0 }}>
+                        <span style={{ ...labelStyle, paddingTop: 8 }}>{t("summary.detail.scheduleInstructionTitle")}</span>
+                        <div style={{ flex: 1 }}>
+                            <textarea
+                                className="summary-schedule-config-instruction-textarea"
+                                value={local.generationInstruction || ""}
+                                maxLength={8000}
+                                placeholder={t("summary.detail.scheduleInstructionPlaceholder")}
+                                onChange={(e) => this.updateLocal({ generationInstruction: e.target.value.slice(0, 8000) })}
+                            />
+                            <div className="summary-schedule-config-instruction-hint">
+                                {t("summary.detail.scheduleInstructionModalDesc")}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </Modal>
         );
     }

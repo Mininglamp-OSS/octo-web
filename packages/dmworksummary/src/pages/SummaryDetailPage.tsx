@@ -68,6 +68,7 @@ interface SummaryDetailPageState {
     scheduleDisabling: boolean;
     showScheduleConfig: boolean;
     scheduleConfig: ScheduleConfig | null;
+    pendingScheduleInstruction: string;
     lastKnownStatus?: number;
     expandedReports: Record<string, boolean>;
     isEditing: boolean;
@@ -187,6 +188,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         versionDetailLoading: false,
         versionDetail: null,
         versionDetailIsPersonal: false,
+        pendingScheduleInstruction: "",
         confirmingSchedule: false,
         workflowDisplayIndex: -1,
         workflowGateContent: false,
@@ -240,6 +242,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 versionDetail: null,
                 restoringVersionId: null,
                 restoringPersonalVersionId: null,
+                pendingScheduleInstruction: "",
             });
             this.loadDetail();
         }
@@ -870,6 +873,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     });
                     if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.refineSuccess"));
+                    this.appendLocalScheduleInstruction(trimmed);
+                    this.reloadScheduleAfterInstructionChange(requestTaskId);
                     this.setState((prev) => {
                         const nextPersonal = prev.personalResult ? {
                             ...prev.personalResult,
@@ -903,6 +908,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     const refined = await api.refineSummary(requestTaskId, { feedback: trimmed, base_result_id: baseResultId });
                     if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.refineSuccess"));
+                    this.appendLocalScheduleInstruction(trimmed);
+                    this.reloadScheduleAfterInstructionChange(requestTaskId);
                     this.setState((prev) => {
                         if (!prev.detail?.result) return { showRegenerateModal: false, refineLoadingTarget: null } as Pick<SummaryDetailPageState, "showRegenerateModal" | "refineLoadingTarget">;
                         return {
@@ -935,6 +942,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     await api.regenerateSummary(requestTaskId, { topic: trimmed });
                     if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.regenerateStarted"));
+                    this.resetLocalScheduleInstruction(trimmed);
                     this.setState((prev) => prev.detail ? {
                         showRegenerateModal: false,
                         detail: {
@@ -948,6 +956,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     await api.regeneratePersonalSummary(requestTaskId, { topic: trimmed });
                     if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.regenerateStarted"));
+                    this.resetLocalScheduleInstruction(trimmed);
                     this.setState((prev) => ({
                         showRegenerateModal: false,
                         detail: prev.detail ? {
@@ -977,6 +986,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     await api.regenerateSummary(requestTaskId, { topic: trimmed });
                     if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.regenerateStarted"));
+                    this.resetLocalScheduleInstruction(trimmed);
                     this.setState({ showRegenerateModal: false });
                     this.loadDetail();
                 }
@@ -1087,13 +1097,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 原有周期/时刻，方便用户「重新启用」时不用从零填。保存逻辑（handleScheduleSave）
         // 会检测原记录是否 inactive 并走重新启用路径。
         if (scheduleItem) {
+            const scheduleConfig = scheduleItemToConfig(scheduleItem);
             this.setState({
-                scheduleConfig: scheduleItemToConfig(scheduleItem),
+                scheduleConfig: {
+                    ...scheduleConfig,
+                    generationInstruction: this.scheduleInstructionForConfig(scheduleItem.generation_instruction),
+                },
                 showScheduleConfig: true,
             });
         } else {
             this.setState({
-                scheduleConfig: { unit: "week", every: 1, time: "09:00" },
+                scheduleConfig: {
+                    unit: "week",
+                    every: 1,
+                    time: "09:00",
+                    generationInstruction: this.defaultScheduleInstruction(),
+                },
                 showScheduleConfig: true,
             });
         }
@@ -1211,6 +1230,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             scheduleParticipants.length > 0 ? { participants: scheduleParticipants } : {};
         const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time, confirm_policy } =
             scheduleToParams({ ...config, confirm_policy: confirmPolicy });
+        const generation_instruction = (config.generationInstruction || "").trim();
 
         try {
             if (scheduleItem) {
@@ -1232,6 +1252,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     day_of_week,
                     day_of_month,
                     run_time,
+                    generation_instruction,
                     scope: 'task',
                     task_id: detail.task_id,
                     ...participantsParam,
@@ -1259,6 +1280,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 // 由下方 catch 的 Toast.error 透出 err.message。
                 const newSchedule = await api.createSchedule({
                     title: detail.title,
+                    generation_instruction,
                     summary_mode: detail.summary_mode,
                     cron_expr,
                     interval_days,
@@ -1295,6 +1317,114 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             Toast.error(err.message || t("summary.common.saveFailed"));
         }
     };
+
+    private scheduleInstructionVersionSource() {
+        const { versions, personalVersions } = this.state;
+        const byResultId = new Map<number, SummaryVersionItem>();
+        [...versions, ...personalVersions].forEach((version) => {
+            byResultId.set(version.result_id, version);
+        });
+        return Array.from(byResultId.values());
+    }
+
+    private defaultScheduleInstruction() {
+        const pending = this.state.pendingScheduleInstruction.trim();
+        if (pending) return pending;
+
+        const { detail } = this.state;
+        const versionSource = this.scheduleInstructionVersionSource();
+        let base = detail?.title || "";
+        const refinements: string[] = [];
+        versionSource
+            .slice()
+            .sort((a, b) => a.version - b.version)
+            .forEach((version) => {
+                const note = (version.operation_note || "").trim();
+                if (["generate", "regenerate", "scheduled_generate"].includes(version.operation_type)) {
+                    base = note || base;
+                    refinements.length = 0;
+                    return;
+                }
+                if (version.operation_type === "refine" && note) {
+                    refinements.push(note);
+                }
+            });
+        return [base.trim(), ...refinements].filter(Boolean).join("\n");
+    }
+
+    private scheduleInstructionForConfig(existingInstruction?: string) {
+        const existing = (existingInstruction || "").trim();
+        if (!existing) return this.defaultScheduleInstruction();
+
+        const missingRefinements = this.refinementNotesSinceLastReset()
+            .filter((note) => !existing.includes(note));
+        if (missingRefinements.length === 0) return existing;
+        return [existing, ...missingRefinements].filter(Boolean).join("\n");
+    }
+
+    private refinementNotesSinceLastReset() {
+        const versionSource = this.scheduleInstructionVersionSource();
+        const refinements: string[] = [];
+        versionSource
+            .slice()
+            .sort((a, b) => a.version - b.version)
+            .forEach((version) => {
+                if (["generate", "regenerate", "scheduled_generate"].includes(version.operation_type || "generate")) {
+                    refinements.length = 0;
+                    return;
+                }
+                const note = (version.operation_note || "").trim();
+                if (version.operation_type === "refine" && note) {
+                    refinements.push(note);
+                }
+            });
+        return refinements;
+    }
+
+    private appendLocalScheduleInstruction(feedback: string) {
+        const addition = feedback.trim();
+        if (!addition) return;
+        this.setState((prev) => {
+            const current = prev.scheduleItem
+                ? (prev.scheduleItem.generation_instruction || "").trim()
+                : (prev.pendingScheduleInstruction || prev.detail?.title || "").trim();
+            const nextInstruction = current ? `${current}\n${addition}` : addition;
+            return {
+                pendingScheduleInstruction: nextInstruction,
+                scheduleItem: prev.scheduleItem ? {
+                    ...prev.scheduleItem,
+                    generation_instruction: nextInstruction,
+                } : prev.scheduleItem,
+                scheduleConfig: prev.scheduleConfig ? {
+                    ...prev.scheduleConfig,
+                    generationInstruction: nextInstruction,
+                } : prev.scheduleConfig,
+            } as Pick<SummaryDetailPageState, "pendingScheduleInstruction" | "scheduleItem" | "scheduleConfig">;
+        });
+    }
+
+    private resetLocalScheduleInstruction(instruction: string) {
+        const next = instruction.trim();
+        if (!next) return;
+        this.setState((prev) => ({
+            pendingScheduleInstruction: next,
+            scheduleItem: prev.scheduleItem ? {
+                ...prev.scheduleItem,
+                title: next,
+                generation_instruction: next,
+            } : prev.scheduleItem,
+            scheduleConfig: prev.scheduleConfig ? {
+                ...prev.scheduleConfig,
+                generationInstruction: next,
+            } : prev.scheduleConfig,
+        } as Pick<SummaryDetailPageState, "pendingScheduleInstruction" | "scheduleItem" | "scheduleConfig">));
+    }
+
+    private reloadScheduleAfterInstructionChange(requestTaskId: number | null) {
+        const scheduleId = this.state.scheduleItem?.schedule_id;
+        if (!scheduleId || this.taskId !== requestTaskId) return;
+        this.loadSchedule(scheduleId);
+    }
 
     // 任务1：「关闭定时」——停用（可恢复），不走 delete。
     // 调 toggleSchedule(..., false) 把 is_active 置 0，成功后刷新详情页定时状态。
@@ -1608,6 +1738,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 <div className="summary-version-strip-title">
                     <IconHistory size="small" />
                     <span>{t("summary.detail.recentVersions")}</span>
+                    <span className="summary-version-strip-hint">{t("summary.detail.recentVersionsLimitHint")}</span>
                 </div>
                 <div className="summary-version-list">
                     {versions.slice(0, 3).map((version) => {
@@ -1620,6 +1751,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                             {t("summary.common.version", { values: { version: version.version } })}
                                         </span>
                                         {isCurrent && <Tag size="small" color="blue">{t("summary.detail.currentVersion")}</Tag>}
+                                        {version.operation_type === "scheduled_generate" && (
+                                            <Tag size="small" color="green">{t("summary.detail.versionScheduledTaskTag")}</Tag>
+                                        )}
                                         <span className="summary-version-operation">{this.formatVersionOperation(version)}</span>
                                     </div>
                                     <div className="summary-version-note">{this.formatVersionOperationNote(version)}</div>
@@ -1665,6 +1799,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 <div className="summary-version-strip-title">
                     <IconHistory size="small" />
                     <span>{t("summary.detail.recentVersions")}</span>
+                    <span className="summary-version-strip-hint">{t("summary.detail.recentVersionsLimitHint")}</span>
                 </div>
                 <div className="summary-version-list">
                     {personalVersions.slice(0, 3).map((version) => {
@@ -1677,6 +1812,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                             {t("summary.common.version", { values: { version: version.version } })}
                                         </span>
                                         {isCurrent && <Tag size="small" color="blue">{t("summary.detail.currentVersion")}</Tag>}
+                                        {version.operation_type === "scheduled_generate" && (
+                                            <Tag size="small" color="green">{t("summary.detail.versionScheduledTaskTag")}</Tag>
+                                        )}
                                         <span className="summary-version-operation">{this.formatVersionOperation(version)}</span>
                                     </div>
                                     <div className="summary-version-note">{this.formatVersionOperationNote(version)}</div>
@@ -2015,16 +2153,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </div>
                         {/* need5：多人协作→定时按钮放团队框右侧、编辑按钮左边，顺序 [定时][编辑]，均仅 creator。 */}
                         {this.isMultiCollab() && this.renderScheduleButton()}
-                        {canEditTeam && detail.status === TaskStatus.COMPLETED && (
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                icon={<IconHistory />}
-                                onClick={this.handleRegenerate}
-                            >
-                                {t("summary.detail.adjustTeamSummary")}
-                            </Button>
-                        )}
                         {/* need4：团队编辑按钮仅 creator（can_edit_team），非 creator 不渲染。 */}
                         {canEditTeam && detail.status === TaskStatus.COMPLETED && (
                             <Button

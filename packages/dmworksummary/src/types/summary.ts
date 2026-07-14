@@ -281,6 +281,7 @@ export interface ScheduleParticipantConfig {
 export interface ScheduleItem {
     schedule_id: number;
     title: string;
+    generation_instruction?: string;
     summary_mode: SummaryModeType;
     cron_expr: string;
     interval_days?: number;
@@ -313,6 +314,7 @@ export interface ScheduleItem {
 
 export interface CreateScheduleParams {
     title: string;
+    generation_instruction?: string;
     summary_mode: SummaryModeType;
     cron_expr: string;
     interval_days?: number;
@@ -342,6 +344,7 @@ export interface CreateScheduleParams {
 
 export interface UpdateScheduleParams {
     title?: string;
+    generation_instruction?: string;
     summary_mode?: SummaryModeType;
     cron_expr?: string;
     interval_days?: number;
@@ -436,6 +439,7 @@ export interface ScheduleConfig {
     time: string;         // "HH:MM" — 运行时刻，始终保留
     dayOfWeek?: number;   // 周模式：1=周一 .. 7=周日，0/undefined=不限
     dayOfMonth?: number;  // 月模式：1..31，0/undefined=不限
+    generationInstruction?: string; // 定时任务后续生成时参考的要求
     /**
      * 非阻塞1：原始遗留 cron 表达式（仅当回填的定时是遗留 cron 时存在）。
      * 新表单仅支持 interval(天/周/月)，无法精确回填 cron。带此标记时弹窗会
