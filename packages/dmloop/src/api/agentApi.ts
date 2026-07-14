@@ -38,6 +38,30 @@ export async function getAgent(id: string): Promise<Agent> {
   return (await enrich([a]))[0];
 }
 
+// 共享的 agent 在线状态缓存（id → status）：供 @提及菜单画在线点,避免每个评论/回复编辑器
+// 各自拉一次 /agents（一个 issue 有 N 条评论就 N 次）。仿 runtimeMap。
+let _agentStatus: Map<string, string> | null = null;
+let _agentStatusPromise: Promise<Map<string, string>> | null = null;
+export function agentStatusMap(): Promise<Map<string, string>> {
+  if (_agentStatus) return Promise.resolve(_agentStatus);
+  if (!_agentStatusPromise) {
+    _agentStatusPromise = listAgents()
+      .then((agents) => {
+        _agentStatus = new Map(agents.map((a) => [a.id, a.status]));
+        return _agentStatus;
+      })
+      .catch(() => {
+        _agentStatusPromise = null; // allow retry after a transient failure
+        return new Map<string, string>();
+      });
+  }
+  return _agentStatusPromise;
+}
+export function invalidateAgentStatus(): void {
+  _agentStatus = null;
+  _agentStatusPromise = null;
+}
+
 export function createAgent(req: CreateAgentReq): Promise<Agent> {
   return httpPost<Agent>("/agents", req).then(afterDirectoryMutation);
 }

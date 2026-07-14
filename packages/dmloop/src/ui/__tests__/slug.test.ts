@@ -10,6 +10,13 @@ describe("normalizeBase", () => {
   it("caps at 34 chars to leave room for the suffix", () => {
     expect(normalizeBase("a".repeat(60)).length).toBe(34);
   });
+  it("never ends in a dash even when truncation lands on one", () => {
+    // 33 alnum + separator: slice(34) lands exactly on the "-" → must be re-stripped,
+    // otherwise withRandomSuffix would produce "base--suffix" (invalid).
+    const base = normalizeBase("a".repeat(33) + " secondword");
+    expect(base.endsWith("-")).toBe(false);
+    expect(SLUG_RE.test(`${base}-x7f2`)).toBe(true);
+  });
   it("is empty for input with no ASCII alphanumerics", () => {
     expect(normalizeBase("前端团队")).toBe("");
   });

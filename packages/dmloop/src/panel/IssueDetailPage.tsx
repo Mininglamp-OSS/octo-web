@@ -11,6 +11,7 @@ import {
   Modal,
   DatePicker,
   InputNumber,
+  Tooltip,
 } from "@douyinfe/semi-ui";
 import {
   ArrowLeft,
@@ -26,7 +27,6 @@ import {
   BellOff,
   Paperclip,
   FileText,
-  AtSign,
   Plus,
   ChevronRight,
   ChevronDown,
@@ -56,7 +56,6 @@ import {
   listIssues,
   addComment,
   deleteComment,
-  previewCommentTriggers,
 } from "../api/issueApi";
 import {
   listSubscribers,
@@ -75,6 +74,8 @@ import { useRunConfirm } from "../ui/RunConfirmModal";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
 import LoopMarkdown from "../ui/LoopMarkdown";
 import AutoGrowTextarea from "../ui/AutoGrowTextarea";
+import CommentComposer, { type CommentComposerHandle } from "../ui/CommentComposer";
+import { useCommentTriggerPreview } from "../ui/useCommentTriggerPreview";
 import { confirmDelete } from "../ui/confirmDelete";
 import RunDetailModal from "./RunDetailModal";
 import CreateIssueModal from "../ui/CreateIssueModal";
@@ -95,62 +96,142 @@ import "./issueDetail.css";
 
 const { Text } = Typography;
 
-// 线程回复输入：常驻在每张评论卡底部(对标产品设计),各自独立 draft/附件(不共享全局状态),
-// 提交成功后清空。回评一律归到该线程根评论;附件在评论创建后绑到 commentId(见 replyToThread)。
+// 触发提示 chip(放评论框卡片内左下角):单个 agent → 头像 + 「发送后开始工作」;多个 → 头像叠 +
+// 「发送后 N 个智能体开始工作」。点击切换本次跳过(变暗)。new-comment 与 reply 共用。
+function WakeChips({ agents, suppressed, onToggle }: {
+  agents: CommentTriggerAgent[];
+  suppressed: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  const { t } = useI18n();
+  if (agents.length === 0) return null;
+  if (agents.length === 1) {
+    const a = agents[0];
+    const off = suppressed.has(a.id);
+    return (
+      <Tooltip content={off ? t("loop.comment.triggerClickRestore") : t("loop.comment.triggerClickSkip")} position="top">
+        <button type="button" className={`loop-wake-chip${off ? " is-off" : ""}`} aria-pressed={off} onClick={() => onToggle(a.id)}>
+          <Avatar size="extra-extra-small" color="light-blue">{a.name.slice(0, 1).toUpperCase()}</Avatar>
+          <span>{off ? t("loop.comment.triggerWontStart") : t("loop.comment.triggerWillStart")}</span>
+        </button>
+      </Tooltip>
+    );
+  }
+  const active = agents.filter((a) => !suppressed.has(a.id)).length;
+  return (
+    <>
+      <span className="loop-wake-stack">
+        {agents.map((a) => {
+          const off = suppressed.has(a.id);
+          return (
+            <Tooltip key={a.id} content={`${a.name} · ${off ? t("loop.comment.triggerClickRestore") : t("loop.comment.triggerClickSkip")}`} position="top">
+              <button type="button" className={`loop-wake-ava${off ? " is-off" : ""}`} aria-pressed={off} onClick={() => onToggle(a.id)}>
+                <Avatar size="extra-extra-small" color="light-blue">{a.name.slice(0, 1).toUpperCase()}</Avatar>
+              </button>
+            </Tooltip>
+          );
+        })}
+      </span>
+      <span className="loop-wake-text">
+        {active === 0 ? t("loop.comment.triggerNoneStart") : t("loop.comment.triggerWillStartCount", { values: { count: active } })}
+      </span>
+    </>
+  );
+}
+
+// 线程回复输入:懒挂载——默认只显示占位入口,点击才挂 tiptap 编辑器(避免一个 issue 的 N 条评论
+// 各常驻一个富编辑器)。回评归到线程根评论;@ agent 同样预览「发送后开始工作」并可本次跳过。
 function ThreadReply({
   onSubmit,
   placeholder,
   sendLabel,
+  candidates,
+  issueId,
+  parentId,
 }: {
-  // 返回 null:评论未创建(保留草稿+全部文件供重试);返回 File[]:评论已建,
-  // 数组为附件上传失败的文件(空=全部成功)——评论已存在故清空草稿、仅回填失败附件。
-  onSubmit: (content: string, files: File[]) => Promise<File[] | null>;
+  // 返回 null:评论未创建(保留草稿+文件供重试);返回 File[]:已建,数组=上传失败的附件(空=全成功)。
+  onSubmit: (content: string, files: File[], suppressIds: string[]) => Promise<File[] | null>;
   placeholder: string;
   sendLabel: string;
+  candidates: AssigneeCandidate[];
+  issueId: string;
+  parentId: string;
 }) {
   const { t } = useI18n();
+  const [active, setActive] = useState(false);
   const [draft, setDraft] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [suppressed, setSuppressed] = useState<Set<string>>(new Set());
+  const composerRef = useRef<CommentComposerHandle>(null);
+  const triggerAgents = useCommentTriggerPreview(issueId, draft, parentId);
+
+  // keep suppressed pruned to the current wake set (a removed-then-re-added agent
+  // shouldn't carry its old skip intent).
+  useEffect(() => {
+    setSuppressed((prev) => {
+      const next = new Set([...prev].filter((id) => triggerAgents.some((a) => a.id === id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [triggerAgents]);
+
+  const toggleSuppress = (id: string) =>
+    setSuppressed((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
   const submit = async () => {
     const c = draft.trim();
     if ((!c && files.length === 0) || busy) return;
     setBusy(true);
-    const res = await onSubmit(c, files);
+    const suppressIds = triggerAgents.filter((a) => suppressed.has(a.id)).map((a) => a.id);
+    const res = await onSubmit(c, files, suppressIds);
     setBusy(false);
-    if (res === null) return; // 评论未创建:保留草稿与文件
+    if (res === null) return; // 未创建:保留草稿与文件
     setDraft("");
-    setFiles(res); // 评论已创建:仅保留失败附件(空数组=清空)
+    composerRef.current?.clear();
+    setFiles(res);
+    setSuppressed(new Set());
   };
+
+  if (!active) {
+    return (
+      <div className="loop-cmt__reply">
+        <button type="button" className="loop-cmt__reply-stub" onClick={() => setActive(true)}>{placeholder}</button>
+      </div>
+    );
+  }
+
   return (
     <div className="loop-cmt__reply">
-      <div className="loop-cmt__reply-row">
-        <input
-          className="loop-field"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={placeholder}
-          disabled={busy}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) submit(); }}
-        />
-        <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
-          <Paperclip size={16} />
-          <input
-            type="file"
-            multiple
-            hidden
-            disabled={busy}
-            onChange={(e) => {
-              // 先同步捕获选中文件再清空 value：若在异步 setFiles 里读 e.target.files,
-              // value 已被重置、FileList 清空,会丢掉多选文件(只剩一个/为空)。
-              const picked = Array.from(e.target.files ?? []);
-              e.target.value = "";
-              if (picked.length) setFiles((p) => [...p, ...picked]);
-            }}
-          />
-        </label>
-        <Button theme="solid" icon={<Send size={14} />} onClick={submit} loading={busy} disabled={!draft.trim() && files.length === 0} aria-label={sendLabel} />
-      </div>
+      <CommentComposer
+        ref={composerRef}
+        candidates={candidates}
+        placeholder={placeholder}
+        onChange={setDraft}
+        onSubmit={submit}
+        submitOnEnter
+        autoFocus
+        disabled={busy}
+        footerLeft={<WakeChips agents={triggerAgents} suppressed={suppressed} onToggle={toggleSuppress} />}
+        footerRight={
+          <>
+            <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
+              <Paperclip size={16} />
+              <input
+                type="file"
+                multiple
+                hidden
+                disabled={busy}
+                onChange={(e) => {
+                  const picked = Array.from(e.target.files ?? []);
+                  e.target.value = "";
+                  if (picked.length) setFiles((p) => [...p, ...picked]);
+                }}
+              />
+            </label>
+            <Button theme="solid" size="small" icon={<Send size={14} />} onClick={submit} loading={busy} disabled={!draft.trim() && files.length === 0} aria-label={sendLabel} />
+          </>
+        }
+      />
       {files.length > 0 && (
         <div className="loop-filechips">
           {files.map((f, i) => (
@@ -212,7 +293,8 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   const [titleDraft, setTitleDraft] = useState("");
   const [descDraft, setDescDraft] = useState("");
   const [commentDraft, setCommentDraft] = useState("");
-  const [triggerAgents, setTriggerAgents] = useState<CommentTriggerAgent[]>([]); // 这条评论会唤醒的 agent
+  const mainComposerRef = useRef<CommentComposerHandle>(null);
+  const triggerAgents = useCommentTriggerPreview(issueId, commentDraft, null); // 这条评论会唤醒的 agent
   const [suppressed, setSuppressed] = useState<Set<string>>(new Set()); // 被用户跳过的 agent id
   const [busyRunId, setBusyRunId] = useState<string | null>(null); // 正在重跑的 task,防双击
   const [pendingFiles, setPendingFiles] = useState<File[]>([]); // 评论输入区:待随评论提交的本地文件(发送时才上传)
@@ -374,15 +456,6 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     );
   };
 
-  // @提及:选中候选(成员/AI队友/AI小队)→ 往草稿插入 mention markdown。
-  // 后端 util.MentionRe 认 [@Label](mention://<type>/<id>);插入草稿后 previewCommentTriggers 会反映"将唤醒"。
-  const insertMention = (c: AssigneeCandidate) => {
-    // label 剥掉 []:名字里的方括号会破坏 markdown 链接语法 [label](url);id 才是真引用,label 仅显示。
-    const label = c.name.replace(/[[\]]/g, "");
-    const token = `[@${label}](mention://${c.type}/${c.id})`;
-    setCommentDraft((d) => (d && !d.endsWith(" ") ? d + " " : d) + token + " ");
-  };
-
   // 评论附件:本地持有 File,发送时才带 commentId 上传绑定(见 submitComment),
   // 避免像 issue-first 那样在评论发出前就产生 issue 级孤儿附件。取消/离开=什么都没上传。
   const addPendingFiles = (files: FileList | null) => {
@@ -455,7 +528,7 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       }
       // 评论已创建 → 立即清理输入态,避免后续附件上传失败时用户重复提交同一条评论。
       setCommentDraft("");
-      setTriggerAgents([]);
+      mainComposerRef.current?.clear();
       setSuppressed(new Set());
       setPendingFiles([]);
       // 把待发文件带 commentId 绑到已建评论;单个失败只记录、不回滚评论。
@@ -483,20 +556,13 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
     }
   };
 
-  // 新建评论输入时防抖预览"会唤醒哪些 agent"。
+  // 预览更新时把 suppressed 裁剪到当前触发集,避免"移除又重提及"的 agent 带着旧的跳过意图。
   useEffect(() => {
-    const content = commentDraft.trim();
-    // 预览更新时把 suppressed 裁剪到当前触发集,避免"移除又重提及"的 agent 带着旧的跳过意图。
-    const prune = (ids: string[]) => setSuppressed((s) => new Set([...s].filter((id) => ids.includes(id))));
-    if (!content) { setTriggerAgents([]); prune([]); return; }
-    let cancelled = false;
-    const h = setTimeout(() => {
-      previewCommentTriggers(issueId, content, null)
-        .then((a) => { if (cancelled) return; setTriggerAgents(a); prune(a.map((x) => x.id)); })
-        .catch(() => { if (cancelled) return; setTriggerAgents([]); prune([]); });
-    }, 400);
-    return () => { cancelled = true; clearTimeout(h); };
-  }, [commentDraft, issueId]);
+    setSuppressed((s) => {
+      const next = new Set([...s].filter((id) => triggerAgents.some((a) => a.id === id)));
+      return next.size === s.size ? s : next;
+    });
+  }, [triggerAgents]);
 
   const toggleSuppress = (id: string) =>
     setSuppressed((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -504,11 +570,11 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
   // 线程回复:回评归到根评论(parent=rootId)。附件在评论创建后带 commentId 绑定(逐个隔离)。
   // 返回 null:评论未创建(输入框保留草稿+全部文件);返回失败附件列表:评论已建,
   // 仅这些附件上传失败——与 submitComment 一致地回填失败文件而非静默丢弃(#668 评审)。
-  const replyToThread = async (rootId: string, content: string, files: File[]): Promise<File[] | null> => {
+  const replyToThread = async (rootId: string, content: string, files: File[], suppressIds: string[]): Promise<File[] | null> => {
     const token = reqRef.current;
     let comment: IssueComment;
     try {
-      comment = await addComment(issueId, content, rootId, []);
+      comment = await addComment(issueId, content, rootId, suppressIds);
     } catch (e) {
       Toast.error((e as Error)?.message ?? t("loop.toast.saveFailed"));
       return null;
@@ -713,9 +779,12 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
       {renderRow(root, true, root.id)}
       {repliesOf(root.id).map((r) => renderRow(r, false, root.id))}
       <ThreadReply
-        onSubmit={(content, files) => replyToThread(root.id, content, files)}
+        onSubmit={(content, files, suppressIds) => replyToThread(root.id, content, files, suppressIds)}
         placeholder={t("loop.comment.replyPlaceholder")}
         sendLabel={t("loop.comment.send")}
+        candidates={cands}
+        issueId={issueId}
+        parentId={root.id}
       />
     </div>
   );
@@ -967,34 +1036,23 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
 
             {/* 新建评论：独立区块(分割线 + 多行 textarea),明确区别于上方逐条回复 */}
             <div className="loop-idp__newcomment">
-              <div className="loop-idp__newcomment-title">{t("loop.comment.newTitle")}</div>
-              <AutoGrowTextarea
-                className="loop-field-textarea loop-field-textarea--auto loop-idp__newcomment-input"
-                value={commentDraft}
-                onChange={setCommentDraft}
+              <CommentComposer
+                ref={mainComposerRef}
+                candidates={cands}
                 placeholder={t("loop.comment.placeholder")}
-                onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submitComment(); }}
+                onChange={setCommentDraft}
+                onSubmit={submitComment}
+                footerLeft={<WakeChips agents={triggerAgents} suppressed={suppressed} onToggle={toggleSuppress} />}
+                footerRight={
+                  <>
+                    <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
+                      <Paperclip size={16} />
+                      <input type="file" multiple hidden disabled={submitting} onChange={(e) => { addPendingFiles(e.target.files); e.target.value = ""; }} />
+                    </label>
+                    <Button theme="solid" size="small" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!commentDraft.trim() && pendingFiles.length === 0} aria-label={t("loop.comment.send")} />
+                  </>
+                }
               />
-              {triggerAgents.length > 0 && (
-                <div className="loop-idp__wake">
-                  <Text type="tertiary" style={{ fontSize: 12 }}>{t("loop.comment.willWake")}</Text>
-                  {triggerAgents.map((a) => {
-                    const off = suppressed.has(a.id);
-                    return (
-                      <Tag
-                        key={a.id}
-                        size="small"
-                        color={off ? "grey" : "light-blue"}
-                        style={{ cursor: "pointer", opacity: off ? 0.55 : 1, textDecoration: off ? "line-through" : "none" }}
-                        onClick={() => toggleSuppress(a.id)}
-                      >
-                        {a.name}
-                      </Tag>
-                    );
-                  })}
-                  <Text type="tertiary" style={{ fontSize: 11 }}>{t("loop.comment.tapToSuppress")}</Text>
-                </div>
-              )}
               {pendingFiles.length > 0 && (
                 <div className="loop-filechips">
                   {pendingFiles.map((f, i) => (
@@ -1008,45 +1066,6 @@ export default function IssueDetailPage({ issueId, onChanged }: IssueDetailPageP
                   ))}
                 </div>
               )}
-              <div className="loop-idp__newcomment-bar">
-                <Dropdown
-                  trigger="click"
-                  clickToHide
-                  position="topRight"
-                  render={
-                    <Dropdown.Menu>
-                      {(["member", "agent", "squad"] as const).map((type) => {
-                        const items = cands.filter((c) => c.type === type);
-                        if (!items.length) return null;
-                        return (
-                          <React.Fragment key={type}>
-                            <Dropdown.Title>{t(`loop.assignee.${type}`)}</Dropdown.Title>
-                            {items.map((c) => (
-                              <Dropdown.Item key={c.id} onClick={() => insertMention(c)}>{c.name}</Dropdown.Item>
-                            ))}
-                          </React.Fragment>
-                        );
-                      })}
-                    </Dropdown.Menu>
-                  }
-                >
-                  <Button theme="borderless" icon={<AtSign size={16} />} aria-label={t("loop.mention.add")} />
-                </Dropdown>
-                <label className="loop-attach-btn" aria-label={t("loop.attach.add")}>
-                  <Paperclip size={16} />
-                  <input
-                    type="file"
-                    multiple
-                    hidden
-                    disabled={submitting}
-                    onChange={(e) => { addPendingFiles(e.target.files); e.target.value = ""; }}
-                  />
-                </label>
-                <span style={{ flex: 1 }} />
-                <Button theme="solid" icon={<Send size={14} />} onClick={submitComment} loading={submitting} disabled={!commentDraft.trim() && pendingFiles.length === 0}>
-                  {t("loop.comment.send")}
-                </Button>
-              </div>
             </div>
           </div>
         </div>

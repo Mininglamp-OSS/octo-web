@@ -344,10 +344,31 @@ importers:
         version: 2.93.0(react@17.0.2)
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
-        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+        version: 2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
+      '@tiptap/core':
+        specifier: 3.22.2
+        version: 3.22.2(@tiptap/pm@3.22.2)
+      '@tiptap/extension-mention':
+        specifier: ^3.22.2
+        version: 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))
+      '@tiptap/extension-placeholder':
+        specifier: ^3.22.4
+        version: 3.22.4(@tiptap/extensions@3.22.4(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))
+      '@tiptap/pm':
+        specifier: ^3.22.2
+        version: 3.22.2
+      '@tiptap/react':
+        specifier: ^3.22.2
+        version: 3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@tiptap/starter-kit':
+        specifier: ^3.22.2
+        version: 3.22.2
+      '@tiptap/suggestion':
+        specifier: 3.22.2
+        version: 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
       axios:
         specifier: ^1.18.1
         version: 1.18.1
@@ -621,7 +642,7 @@ importers:
         version: 2.93.0
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
-        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+        version: 2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
@@ -667,7 +688,7 @@ importers:
         version: 2.93.0(react@17.0.2)
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
-        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+        version: 2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
@@ -707,7 +728,7 @@ importers:
         version: 2.93.0(react@17.0.2)
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
-        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+        version: 2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
@@ -759,7 +780,7 @@ importers:
         version: 2.93.0(react@17.0.2)
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
-        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+        version: 2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
@@ -12098,6 +12119,53 @@ snapshots:
 
   '@douyinfe/semi-theme-default@2.93.0': {}
 
+  '@douyinfe/semi-ui@2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
+    dependencies:
+      '@dnd-kit/core': 6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@dnd-kit/sortable': 7.0.2(@dnd-kit/core@6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2))(react@17.0.2)
+      '@dnd-kit/utilities': 3.2.2(react@17.0.2)
+      '@douyinfe/semi-animation': 2.93.0
+      '@douyinfe/semi-animation-react': 2.93.0
+      '@douyinfe/semi-foundation': 2.93.0
+      '@douyinfe/semi-icons': 2.93.0(react@17.0.2)
+      '@douyinfe/semi-illustrations': 2.93.0(react@17.0.2)
+      '@douyinfe/semi-theme-default': 2.93.0
+      '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
+      '@tiptap/extension-document': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-hard-break': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-image': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-mention': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))
+      '@tiptap/extension-paragraph': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-text': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-text-align': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-text-style': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extensions': 3.22.4(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
+      '@tiptap/pm': 3.22.2
+      '@tiptap/react': 3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@tiptap/starter-kit': 3.22.2
+      async-validator: 3.5.2
+      classnames: 2.5.1
+      copy-text-to-clipboard: 2.2.0
+      date-fns: 2.30.0
+      date-fns-tz: 1.3.8(date-fns@2.30.0)
+      fast-copy: 3.0.2
+      jsonc-parser: 3.3.1
+      lodash: 4.18.1
+      prop-types: 15.8.1
+      prosemirror-state: 1.4.4
+      react: 17.0.2
+      react-dom: 17.0.2(react@17.0.2)
+      react-resizable: 3.1.3(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      react-window: 1.8.11(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      scroll-into-view-if-needed: 2.2.31
+      utility-types: 3.11.0
+    transitivePeerDependencies:
+      - '@floating-ui/dom'
+      - '@tiptap/suggestion'
+      - '@types/react'
+      - '@types/react-dom'
+      - supports-color
+
   '@douyinfe/semi-ui@2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
     dependencies:
       '@dnd-kit/core': 6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
@@ -12167,7 +12235,7 @@ snapshots:
       '@tiptap/extension-text-style': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
       '@tiptap/extensions': 3.22.4(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
       '@tiptap/pm': 3.22.2
-      '@tiptap/react': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@tiptap/react': 3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@tiptap/starter-kit': 3.22.2
       async-validator: 3.5.2
       classnames: 2.5.1
@@ -12183,100 +12251,6 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
       react-resizable: 3.1.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-window: 1.8.11(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      scroll-into-view-if-needed: 2.2.31
-      utility-types: 3.11.0
-    transitivePeerDependencies:
-      - '@floating-ui/dom'
-      - '@tiptap/suggestion'
-      - '@types/react'
-      - '@types/react-dom'
-      - supports-color
-
-  '@douyinfe/semi-ui@2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
-    dependencies:
-      '@dnd-kit/core': 6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      '@dnd-kit/sortable': 7.0.2(@dnd-kit/core@6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2))(react@17.0.2)
-      '@dnd-kit/utilities': 3.2.2(react@17.0.2)
-      '@douyinfe/semi-animation': 2.93.0
-      '@douyinfe/semi-animation-react': 2.93.0
-      '@douyinfe/semi-foundation': 2.93.0
-      '@douyinfe/semi-icons': 2.93.0(react@17.0.2)
-      '@douyinfe/semi-illustrations': 2.93.0(react@17.0.2)
-      '@douyinfe/semi-theme-default': 2.93.0
-      '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
-      '@tiptap/extension-document': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-hard-break': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-image': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-mention': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))
-      '@tiptap/extension-paragraph': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-text': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-text-align': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-text-style': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extensions': 3.22.4(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
-      '@tiptap/pm': 3.22.2
-      '@tiptap/react': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      '@tiptap/starter-kit': 3.22.2
-      async-validator: 3.5.2
-      classnames: 2.5.1
-      copy-text-to-clipboard: 2.2.0
-      date-fns: 2.30.0
-      date-fns-tz: 1.3.8(date-fns@2.30.0)
-      fast-copy: 3.0.2
-      jsonc-parser: 3.3.1
-      lodash: 4.18.1
-      prop-types: 15.8.1
-      prosemirror-state: 1.4.4
-      react: 17.0.2
-      react-dom: 17.0.2(react@17.0.2)
-      react-resizable: 3.1.3(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      react-window: 1.8.11(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      scroll-into-view-if-needed: 2.2.31
-      utility-types: 3.11.0
-    transitivePeerDependencies:
-      - '@floating-ui/dom'
-      - '@tiptap/suggestion'
-      - '@types/react'
-      - '@types/react-dom'
-      - supports-color
-
-  '@douyinfe/semi-ui@2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
-    dependencies:
-      '@dnd-kit/core': 6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      '@dnd-kit/sortable': 7.0.2(@dnd-kit/core@6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2))(react@17.0.2)
-      '@dnd-kit/utilities': 3.2.2(react@17.0.2)
-      '@douyinfe/semi-animation': 2.93.0
-      '@douyinfe/semi-animation-react': 2.93.0
-      '@douyinfe/semi-foundation': 2.93.0
-      '@douyinfe/semi-icons': 2.93.0(react@17.0.2)
-      '@douyinfe/semi-illustrations': 2.93.0(react@17.0.2)
-      '@douyinfe/semi-theme-default': 2.93.0
-      '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
-      '@tiptap/extension-document': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-hard-break': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-image': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-mention': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))
-      '@tiptap/extension-paragraph': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-text': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-text-align': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-text-style': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extensions': 3.22.4(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
-      '@tiptap/pm': 3.22.2
-      '@tiptap/react': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      '@tiptap/starter-kit': 3.22.2
-      async-validator: 3.5.2
-      classnames: 2.5.1
-      copy-text-to-clipboard: 2.2.0
-      date-fns: 2.30.0
-      date-fns-tz: 1.3.8(date-fns@2.30.0)
-      fast-copy: 3.0.2
-      jsonc-parser: 3.3.1
-      lodash: 4.18.1
-      prop-types: 15.8.1
-      prosemirror-state: 1.4.4
-      react: 17.0.2
-      react-dom: 17.0.2(react@17.0.2)
-      react-resizable: 3.1.3(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      react-window: 1.8.11(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       scroll-into-view-if-needed: 2.2.31
       utility-types: 3.11.0
     transitivePeerDependencies:
@@ -14562,41 +14536,7 @@ snapshots:
     transitivePeerDependencies:
       - '@floating-ui/dom'
 
-  '@tiptap/react@3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
-    dependencies:
-      '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
-      '@tiptap/pm': 3.22.2
-      '@types/react': 19.2.14
-      '@types/react-dom': 19.2.3(@types/react@19.2.14)
-      '@types/use-sync-external-store': 0.0.6
-      fast-equals: 5.4.0
-      react: 17.0.2
-      react-dom: 17.0.2(react@17.0.2)
-      use-sync-external-store: 1.6.0(react@17.0.2)
-    optionalDependencies:
-      '@tiptap/extension-bubble-menu': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
-      '@tiptap/extension-floating-menu': 3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
-    transitivePeerDependencies:
-      - '@floating-ui/dom'
-
-  '@tiptap/react@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
-      '@tiptap/pm': 3.22.2
-      '@types/react': 18.3.28
-      '@types/react-dom': 18.3.7(@types/react@18.3.28)
-      '@types/use-sync-external-store': 0.0.6
-      fast-equals: 5.4.0
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-      use-sync-external-store: 1.6.0(react@18.3.1)
-    optionalDependencies:
-      '@tiptap/extension-bubble-menu': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
-      '@tiptap/extension-floating-menu': 3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
-    transitivePeerDependencies:
-      - '@floating-ui/dom'
-
-  '@tiptap/react@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
+  '@tiptap/react@3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
     dependencies:
       '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
       '@tiptap/pm': 3.22.2
@@ -14613,7 +14553,7 @@ snapshots:
     transitivePeerDependencies:
       - '@floating-ui/dom'
 
-  '@tiptap/react@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
+  '@tiptap/react@3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
     dependencies:
       '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
       '@tiptap/pm': 3.22.2
