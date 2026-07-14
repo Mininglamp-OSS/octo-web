@@ -13,3 +13,16 @@ export function shellQuote(value: string): string {
 export function headlessCommand(token: string, backendUrl: string): string {
   return `octo-daemon login --token ${shellQuote(token)} --server-url ${shellQuote(backendUrl)} && octo-daemon daemon start`;
 }
+
+// 「添加电脑」统一安装指令的三段命令构造（交给 AI 队友自动执行）。
+// 安装脚本：以 node 执行发布库里的 install.js，负责下载/安装 octo-daemon 二进制。
+export const INSTALL_SCRIPT_CMD =
+  "curl -fsSL https://codex.mlamp.cn/0000109/octo-daemon-publish/-/raw/main/install.js | node";
+
+// 配置权限（登录认证）：用一次性 PAT 直连后端 daemon_server_url。token/url 均加引号防注入。
+export function authCommand(token: string, backendUrl: string): string {
+  return `octo-daemon login --token ${shellQuote(token)} --server-url ${shellQuote(backendUrl)}`;
+}
+
+// 启动 / 重启守护进程使配置生效。用 restart 而非 start：已存在 octo-daemon 时也能强制重启生效。
+export const START_CMD = "octo-daemon daemon restart";
