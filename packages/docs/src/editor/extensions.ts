@@ -21,6 +21,7 @@ import Highlight from '@tiptap/extension-highlight'
 import { TextStyle, FontSize } from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
 import TextAlign from '@tiptap/extension-text-align'
+import { LineHeight } from './LineHeight.ts'
 import Underline from '@tiptap/extension-underline'
 import Superscript from '@tiptap/extension-superscript'
 import Subscript from '@tiptap/extension-subscript'
@@ -120,6 +121,12 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     // heading + paragraph nodes (not a new node/mark) → style="text-align:…". Configured for
     // exactly those two types so lists/tables/etc. keep their own layout.
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    // SCHEMA-SPEC §17 (SCHEMA_VERSION 17): block spacing. Global `lineHeight` /
+    // `spaceBefore` / `spaceAfter` attrs on heading + paragraph (not new nodes/marks),
+    // same shape as v5 textAlign. MUST be registered AFTER TextAlign so the four attrs
+    // merge into ONE inline style string in the canonical order [text-align, line-height,
+    // margin-top, margin-bottom] — byte-aligned to docs-backend #67's setBlockAttrs.
+    LineHeight,
     // SCHEMA-SPEC §3 (SCHEMA_VERSION 6): underline mark. StarterKit's bundled Underline is
     // disabled above; this standalone install is the single `underline` mark (same pattern as
     // the sanitised Link).
@@ -227,9 +234,13 @@ export function buildPreviewExtensions(docId: string): Extensions {
     TextStyle,
     Color,
     // Mirror the live editor's schema-touching marks/attrs so a historical version renders
-    // faithfully (SCHEMA_VERSION 5–8): font size + alignment + underline + super/sub-script.
+    // faithfully (SCHEMA_VERSION 5–8 + v17): font size + alignment + block spacing + underline
+    // + super/sub-script.
     FontSize,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    // Mirror the v17 block-spacing attrs so a historical version renders faithfully
+    // (registered after TextAlign to keep the canonical merged-style order).
+    LineHeight,
     Underline,
     Superscript,
     Subscript,

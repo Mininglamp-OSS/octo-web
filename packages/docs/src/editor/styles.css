@@ -2411,6 +2411,18 @@
   cursor: pointer;
 }
 
+/* Line-spacing dropdown (SCHEMA_VERSION 17) — matches the font-size selector. */
+.octo-line-height {
+  height: 26px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
 /* Shared dependency-free suggestion popup (mention @ + emoji :). Mirrors the slash menu. */
 .octo-suggest-menu {
   z-index: 1000;

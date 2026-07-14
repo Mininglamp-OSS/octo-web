@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { SCHEMA_VERSION, SCHEMA_NODES, SCHEMA_MARKS, COLLAB_FIELD } from './index.ts'
 
 // These assertions track docs/schema/SCHEMA-SPEC.md (single source of truth).
-// SCHEMA_VERSION 15 is the latest landed; the schema is cumulative, so every earlier
+// SCHEMA_VERSION 17 is the latest landed; the schema is cumulative, so every earlier
 // addition (v2 image, v3 highlight/textStyle, v4 tables, v5 textAlign attr, v6 underline,
 // v7 fontSize attr, v8 super/subscript, v9 emoji, v10 mention, v11 details, v12 callout,
-// v13 math, v14 fileAttachment, v15 bookmark) is carried forward.
+// v13 math, v14 fileAttachment, v15 bookmark, v17 block-spacing attrs) is carried forward.
+// v16 is reserved by #59 (not yet on main) and left as a monotonic gap.
 //
 // FOLLOW-UP (design §2.5): these are name-membership assertions only. The golden
 // schema round-trip regression — encode a fixture doc to a Yjs update, decode it back,
@@ -14,8 +15,8 @@ import { SCHEMA_VERSION, SCHEMA_NODES, SCHEMA_MARKS, COLLAB_FIELD } from './inde
 // separate phase. It is intentionally not built here: the v3 binding now runs through
 // @tiptap/y-tiptap, so the golden mechanism must be authored against that binding.
 describe('docs schema stub (mirrors SCHEMA-SPEC.md)', () => {
-  it('is at SCHEMA_VERSION 15', () => {
-    expect(SCHEMA_VERSION).toBe(15)
+  it('is at SCHEMA_VERSION 17', () => {
+    expect(SCHEMA_VERSION).toBe(17)
   })
 
   it('carries the v1 baseline marks', () => {
@@ -76,11 +77,15 @@ describe('docs schema stub (mirrors SCHEMA-SPEC.md)', () => {
     expect(SCHEMA_NODES).toContain('bookmark')
   })
 
-  it('keeps the v5/v7 attr-only additions OUT of the node/mark lists (they are attrs)', () => {
-    // textAlign rides on heading/paragraph; fontSize rides on the textStyle mark.
+  it('keeps the v5/v7/v17 attr-only additions OUT of the node/mark lists (they are attrs)', () => {
+    // textAlign + block spacing ride on heading/paragraph; fontSize rides on the textStyle mark.
     expect(SCHEMA_NODES).not.toContain('textAlign')
     expect(SCHEMA_MARKS).not.toContain('textAlign')
     expect(SCHEMA_MARKS).not.toContain('fontSize')
+    for (const attr of ['lineHeight', 'spaceBefore', 'spaceAfter']) {
+      expect(SCHEMA_NODES).not.toContain(attr)
+      expect(SCHEMA_MARKS).not.toContain(attr)
+    }
   })
 
   it('keeps the v1 baseline nodes', () => {
