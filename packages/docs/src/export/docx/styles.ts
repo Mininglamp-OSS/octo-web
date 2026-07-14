@@ -11,7 +11,7 @@ import {
   AlignmentType,
   LineRuleType,
 } from 'docx'
-import { sanitizeSpacing } from '../../editor/LineHeight.ts'
+import { sanitizeLineHeight, sanitizeSpacing } from '../../editor/LineHeight.ts'
 
 /** Default font for body text. */
 export const FONT_BODY = '微软雅黑'
@@ -252,13 +252,13 @@ export function mapSpacing(attrs: Record<string, unknown> | undefined): ISpacing
     after?: number
   } = {}
 
-  const lh = attrs.lineHeight
-  if (typeof lh === 'string' && /^\d+(?:\.\d+)?$/.test(lh.trim())) {
-    const n = Number(lh)
-    if (Number.isFinite(n) && n > 0) {
-      spacing.line = Math.round(n * 240)
-      spacing.lineRule = LineRuleType.AUTO
-    }
+  const lh = sanitizeLineHeight(attrs.lineHeight)
+  if (lh !== null) {
+    // sanitizeLineHeight enforces the same 0 < lh <= 10 whitelist as parse/render, so the docx
+    // lineHeight path is capped identically to the spacing path (sanitizeSpacing, <=1000) — the
+    // two are symmetric; an out-of-range multiplier is rejected (undefined), never clamped.
+    spacing.line = Math.round(Number(lh) * 240)
+    spacing.lineRule = LineRuleType.AUTO
   }
 
   const before = spacingToTwips(attrs.spaceBefore)

@@ -616,6 +616,85 @@ function AlignControls({ editor }: { editor: Editor }) {
 /** Line-height presets (unitless multiplier) offered by the toolbar dropdown (SCHEMA_VERSION 17). */
 const LINE_HEIGHTS = ['1', '1.15', '1.5', '2'] as const
 
+/** Read the active line-height off whichever of the two block types the caret sits in. */
+function currentLineHeight(editor: Editor): string {
+  return (
+    (editor.getAttributes('paragraph').lineHeight as string | undefined) ??
+    (editor.getAttributes('heading').lineHeight as string | undefined) ??
+    ''
+  )
+}
+
+/**
+ * Custom line-height input (SCHEMA_VERSION 17).
+ *
+ * The field is a COMMIT-on-blur/Enter control, not a live-preview one — the earlier controlled
+ * input re-`.focus()`-ed the editor on every keystroke (bouncing the caret out of this field so
+ * only the first character landed) and, being bound to the sanitised committed value, snapped an
+ * in-progress entry like "1." back to empty because a partial value fails sanitizeLineHeight. So
+ * instead we keep a local draft: typing only updates the draft (no editor focus, no snap-back),
+ * and the value is pushed to the editor once, on blur or Enter. An invalid draft on commit is
+ * reverted to the last committed value rather than written.
+ */
+function LineHeightCustomInput({ editor }: { editor: Editor }) {
+  const committed = currentLineHeight(editor)
+  const [draft, setDraft] = useState(committed)
+
+  // Adopt the committed value into the draft when it changes underneath us (caret moved to
+  // another block, a preset was picked, or our own commit landed) — done as a render-phase
+  // adjustment keyed off the last-seen committed value rather than a useEffect, so it happens
+  // synchronously and never clobbers a fresh keystroke that arrives in the same flush. Typing
+  // does NOT change `committed`, so an in-progress value like "1." is free to sit in the field
+  // without being reset (the old snap-back), and nothing commits until blur/Enter.
+  const seenCommitted = useRef(committed)
+  if (committed !== seenCommitted.current) {
+    seenCommitted.current = committed
+    setDraft(committed)
+  }
+
+  // Commit the draft to the editor. Runs on blur and Enter only — never per keystroke, so the
+  // caret is never yanked back into the editor mid-type. A value rejected by sanitizeLineHeight
+  // is reverted to the last committed value rather than written.
+  function commit() {
+    const v = draft.trim()
+    if (v === committed) return
+    if (!v) {
+      editor.chain().focus().unsetLineHeight().run()
+      seenCommitted.current = ''
+      return
+    }
+    if (editor.chain().focus().setLineHeight(v).run()) {
+      // We wrote this value ourselves — record it so the next render doesn't mistake our own
+      // commit for an external change and reseed over a fresh keystroke. (The toolbar doesn't
+      // re-render on attribute-only transactions, so the editor's new value is first observed on
+      // the following render, which may already carry the user's next keystroke.)
+      seenCommitted.current = v
+    } else {
+      setDraft(committed)
+    }
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      className="octo-line-height-custom"
+      title={t('docs.toolbar.lineHeightCustom')}
+      placeholder="1.5"
+      value={draft}
+      onMouseDown={(e) => e.stopPropagation()}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          commit()
+        }
+      }}
+    />
+  )
+}
+
 /**
  * Line-spacing dropdown (SCHEMA_VERSION 17): sets the `lineHeight` attr on the current
  * heading/paragraph block (or clears it). The presets cover the common multipliers; the
@@ -624,10 +703,7 @@ const LINE_HEIGHTS = ['1', '1.15', '1.5', '2'] as const
  */
 function LineHeightSelect({ editor }: { editor: Editor }) {
   useEditorTick(editor)
-  const current =
-    (editor.getAttributes('paragraph').lineHeight as string | undefined) ??
-    (editor.getAttributes('heading').lineHeight as string | undefined) ??
-    ''
+  const current = currentLineHeight(editor)
   const isPreset = (LINE_HEIGHTS as readonly string[]).includes(current)
   return (
     <span className="octo-line-height-control">
@@ -651,22 +727,58 @@ function LineHeightSelect({ editor }: { editor: Editor }) {
         ))}
         <option value="custom">{t('docs.toolbar.lineHeightCustom')}</option>
       </select>
-      <input
-        type="number"
-        className="octo-line-height-custom"
-        title={t('docs.toolbar.lineHeightCustom')}
-        min="0.5"
-        max="10"
-        step="0.05"
-        value={current}
-        onMouseDown={(e) => e.stopPropagation()}
-        onChange={(e) => {
-          const v = e.target.value.trim()
-          if (!v) editor.chain().focus().unsetLineHeight().run()
-          else editor.chain().focus().setLineHeight(v).run()
-        }}
-      />
+      <LineHeightCustomInput editor={editor} />
     </span>
+  )
+}
+
+/** Paragraph-spacing presets (px) offered by the space-before / space-after dropdowns (v17). */
+const PARAGRAPH_SPACINGS = ['0px', '4px', '8px', '12px', '16px', '24px'] as const
+
+/**
+ * Paragraph space-before / space-after dropdown (SCHEMA_VERSION 17). The schema, commands
+ * (setSpaceBefore/setSpaceAfter), docx export and i18n already carry these block-margin attrs;
+ * this exposes them in the toolbar so a user can set them (previously they only round-tripped
+ * from pasted content). One data-driven component per edge — `before` drives margin-top, `after`
+ * margin-bottom — sitting in the same line-spacing control group. A value off the preset list
+ * (e.g. an em length pasted in) still shows as "Custom" so it isn't silently reset.
+ */
+function ParagraphSpacingSelect({ editor, edge }: { editor: Editor; edge: 'before' | 'after' }) {
+  useEditorTick(editor)
+  const attr = edge === 'before' ? 'spaceBefore' : 'spaceAfter'
+  const current =
+    (editor.getAttributes('paragraph')[attr] as string | undefined) ??
+    (editor.getAttributes('heading')[attr] as string | undefined) ??
+    ''
+  const isPreset = (PARAGRAPH_SPACINGS as readonly string[]).includes(current)
+  const titleKey = edge === 'before' ? 'docs.toolbar.spaceBefore' : 'docs.toolbar.spaceAfter'
+  return (
+    <select
+      className={edge === 'before' ? 'octo-space-before' : 'octo-space-after'}
+      title={t(titleKey)}
+      value={isPreset ? current : current ? 'custom' : ''}
+      onMouseDown={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        const v = e.target.value
+        if (v === 'custom') return // a non-preset pasted value stays as-is
+        const chain = editor.chain().focus()
+        if (edge === 'before') {
+          if (!v) chain.unsetSpaceBefore().run()
+          else chain.setSpaceBefore(v).run()
+        } else {
+          if (!v) chain.unsetSpaceAfter().run()
+          else chain.setSpaceAfter(v).run()
+        }
+      }}
+    >
+      <option value="">{t(titleKey)}</option>
+      {PARAGRAPH_SPACINGS.map((s) => (
+        <option key={s} value={s}>
+          {s}
+        </option>
+      ))}
+      {!isPreset && current ? <option value="custom">{t('docs.toolbar.spacingCustom')}</option> : null}
+    </select>
   )
 }
 
@@ -1079,6 +1191,8 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <span className="octo-tb-sep" />
       <AlignControls editor={editor} />
       <LineHeightSelect editor={editor} />
+      <ParagraphSpacingSelect editor={editor} edge="before" />
+      <ParagraphSpacingSelect editor={editor} edge="after" />
       <span className="octo-tb-sep" />
       <ListMenu editor={editor} />
       <Btn label={<IconQuote />} title={t('docs.toolbar.quote')} active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} />
