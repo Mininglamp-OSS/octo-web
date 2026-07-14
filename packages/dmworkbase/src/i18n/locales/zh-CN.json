@@ -1013,6 +1013,7 @@
   "revoke.revokedMemberMessageByYou": "你撤回了成员“{{member}}”的一条消息",
   "revoke.revokedMessage": "{{name}}撤回了一条消息",
   "revoke.you": "你",
+  "revoke.reEdit": "重新编辑",
   "video.digest": "[小视频]",
   "video.uploadFailedRetry": "上传失败，点击重试",
   "aiMessageCard.assistant": "AI助手",
