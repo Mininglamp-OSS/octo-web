@@ -1316,14 +1316,23 @@ export function Toolbar({ editor }: { editor: Editor }) {
     return () => cancelAnimationFrame(id)
   }, [linkOpen])
 
-  // XIN-1051: a bare host/domain with no scheme ("google.com") would otherwise resolve relative to
-  // the current origin and become a same-origin path link, not the external URL the user meant.
-  // Prepend https:// when there is no explicit scheme (and it is not protocol-relative) so the
-  // value sanitizes into a proper absolute link.
-  function normalizeLinkInput(raw: string): string {
+  // XIN-1051 / XIN-1073: resolve the raw popover input into a safe, absolute href — or null when it
+  // is not a usable link, so confirmLink can surface the inline error instead of inserting junk.
+  //   - explicit scheme ("https://x", "mailto:a@b") / protocol-relative ("//cdn/x") → hand straight
+  //     to sanitizeLinkHref so the §3.7 scheme whitelist still rejects javascript:/data:/ftp: etc.
+  //   - scheme-less: a bare host/domain ("google.com") would resolve relative to the origin and
+  //     become a same-origin path, so we prepend https:// — but ONLY when it actually looks like a
+  //     host (a dotted label, or "localhost"). A bare word like "abc" is NOT a URL: without this
+  //     guard https:// was blindly prepended and sanitizeLinkHref returned https://abc/, so the
+  //     popover accepted the junk and closed with no error (the 4a real-machine defect). Such input
+  //     now resolves to null → inline error, popover stays open, user's text is preserved.
+  function resolveLinkHref(raw: string): string | null {
     const v = raw.trim()
-    if (!v || v.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(v)) return v
-    return `https://${v}`
+    if (!v) return null
+    if (v.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(v)) return sanitizeLinkHref(v)
+    const host = v.split(/[/?#]/, 1)[0]
+    const looksLikeHost = host === 'localhost' || /[^.\s]\.[^.\s]/.test(host)
+    return looksLikeHost ? sanitizeLinkHref(`https://${v}`) : null
   }
 
   // C7: insert a link at the cursor (or apply it to the selection). With no selection a brand-new
@@ -1339,7 +1348,7 @@ export function Toolbar({ editor }: { editor: Editor }) {
       linkUrlRef.current?.focus()
       return
     }
-    const href = sanitizeLinkHref(normalizeLinkInput(raw))
+    const href = resolveLinkHref(raw)
     if (!href) {
       setLinkError(t('docs.toolbar.linkErrorInvalid'))
       linkUrlRef.current?.focus()

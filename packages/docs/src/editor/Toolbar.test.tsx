@@ -227,6 +227,42 @@ describe('Toolbar — XIN-1051 link popover enter / focus regression', () => {
     expect(editor!.getHTML()).not.toContain('</a>')
   })
 
+  // XIN-1073 (real-machine 4a): a bare, scheme-less word ("abc", "test") is NOT a URL. The old
+  // code blindly prefixed https:// so sanitizeLinkHref returned https://abc/ — the popover accepted
+  // the junk, closed, and lost the input with no error. It must now behave like any other invalid
+  // URL: inline error, popover stays open, input preserved, nothing inserted.
+  it('scheme-less bare word (no dot): Enter shows the inline error, keeps the popover + input, inserts nothing', () => {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().selectAll().run() // select "hello"
+    fireEvent.click(titleBtn('docs.toolbar.link'))
+    const before = editor!.getHTML()
+    fireEvent.change(urlField(), { target: { value: 'abc' } })
+    fireEvent.keyDown(urlField(), { key: 'Enter' })
+
+    expect(document.querySelector('.octo-link-popover')).toBeTruthy()
+    expect(screen.getByText('docs.toolbar.linkErrorInvalid')).toBeTruthy()
+    expect(urlField().value).toBe('abc') // typed value preserved for correction
+    expect(editor!.getHTML()).toBe(before) // no https://abc/ link created
+    expect(editor!.getHTML()).not.toContain('</a>')
+    expect(editor!.getHTML()).not.toContain('abc')
+  })
+
+  it('scheme-less bare word: retyping a valid host clears the error and links on the next Enter', () => {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().selectAll().run()
+    fireEvent.click(titleBtn('docs.toolbar.link'))
+    fireEvent.change(urlField(), { target: { value: 'abc' } })
+    fireEvent.keyDown(urlField(), { key: 'Enter' })
+    expect(screen.getByText('docs.toolbar.linkErrorInvalid')).toBeTruthy()
+
+    // Correcting the input clears the error, and a valid host now links + closes.
+    fireEvent.change(urlField(), { target: { value: 'abc.com' } })
+    expect(document.querySelector('.octo-link-error')).toBeNull()
+    fireEvent.keyDown(urlField(), { key: 'Enter' })
+    expect(document.querySelector('.octo-link-popover')).toBeNull()
+    expect(editor!.getHTML()).toContain('href="https://abc.com')
+  })
+
   it('a scheme-less host (e.g. "example.com") is linked as https, not a same-origin path', () => {
     render(<Toolbar editor={editor!} />)
     editor!.chain().focus().selectAll().run()
