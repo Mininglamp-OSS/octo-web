@@ -56,6 +56,7 @@ const FOCUSABLE_SELECTOR = [
 ].join(",");
 
 type OnboardingSectionId = ResolvedOnboardingSection["id"];
+const preloadedOnboardingImages = new Map<string, HTMLImageElement>();
 
 type OnboardingProps = {
   config?: OnboardingConfig;
@@ -139,6 +140,26 @@ function focusElement(element: HTMLElement | null) {
   element?.focus({ preventScroll: true });
 }
 
+function preloadOnboardingImages(
+  sections: ResolvedOnboardingSection[],
+  currentImageSrc: string
+) {
+  sections.forEach((section) => {
+    if (
+      section.image === currentImageSrc ||
+      preloadedOnboardingImages.has(section.image)
+    ) {
+      return;
+    }
+
+    const image = new Image();
+    image.decoding = "async";
+    image.src = section.image;
+    preloadedOnboardingImages.set(section.image, image);
+    void image.decode?.().catch(() => undefined);
+  });
+}
+
 function ImageVisual({ section }: { section: ResolvedOnboardingSection }) {
   return (
     <img
@@ -147,6 +168,7 @@ function ImageVisual({ section }: { section: ResolvedOnboardingSection }) {
       }`}
       src={section.image}
       alt={section.visualTitle}
+      decoding="async"
     />
   );
 }
@@ -218,6 +240,16 @@ export const Onboarding: React.FC<OnboardingProps> = ({
       // Some hardened browsers throw on localStorage writes; onboarding still closes normally.
     }
   }, [forceVisible, visible]);
+
+  useEffect(() => {
+    if (!visible || showIntro || !activeSection) return;
+
+    const preloadTimer = window.setTimeout(() => {
+      preloadOnboardingImages(onboardingSections, activeSection.image);
+    }, 0);
+
+    return () => window.clearTimeout(preloadTimer);
+  }, [activeSection, onboardingSections, showIntro, visible]);
 
   const persistDismissed = () => {
     try {

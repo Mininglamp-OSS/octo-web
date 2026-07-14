@@ -1,8 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getOnboardingSeenStorageKey } from "./content";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  defaultOnboardingConfig,
+  getOnboardingSeenStorageKey,
+} from "./content";
 import { Onboarding } from ".";
 
 const { runOnboardingViewTransition } = vi.hoisted(() => ({
@@ -22,7 +25,7 @@ const translations: Record<string, string> = {
   "app.onboarding.sections.createBot.label": "Create your Bot",
   "app.onboarding.sections.createBot.title": "Create your Bot",
   "app.onboarding.sections.createBot.description":
-    "Go to BotFather, create your first Bot, and start experiencing Octo.",
+    "Create your first Bot in BotFather and start using Octo.",
   "app.onboarding.sections.createBot.visualTitle":
     "Cursor hovering over the BotFather entry",
   "app.onboarding.actions.finish": "Finish",
@@ -71,6 +74,11 @@ describe("Onboarding", () => {
     window.history.pushState({}, "", "/");
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
   it("dismisses and persists the onboarding when the intro is skipped", () => {
     const onDismiss = vi.fn();
 
@@ -99,6 +107,41 @@ describe("Onboarding", () => {
     );
   });
 
+  it("preloads the remaining directory images after the first image renders", () => {
+    vi.useFakeTimers();
+    const preloadedSources: string[] = [];
+
+    class MockImage {
+      decoding = "auto";
+
+      set src(value: string) {
+        preloadedSources.push(value);
+      }
+
+      decode() {
+        return Promise.resolve();
+      }
+    }
+
+    vi.stubGlobal("Image", MockImage);
+
+    const config = {
+      ...defaultOnboardingConfig,
+      intro: { enabled: false },
+      sections: defaultOnboardingConfig.sections
+        .slice(0, 2)
+        .map((section, index) => ({
+          ...section,
+          image: `https://example.test/onboarding-${index + 1}.png`,
+        })),
+    };
+
+    render(<Onboarding forceVisible config={config} />);
+    act(() => vi.runOnlyPendingTimers());
+
+    expect(preloadedSources).toEqual(["https://example.test/onboarding-2.png"]);
+  });
+
   it("uses the BotFather image page as the final directory section", () => {
     render(<Onboarding forceVisible skipIntro />);
 
@@ -114,7 +157,7 @@ describe("Onboarding", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Go to BotFather, create your first Bot, and start experiencing Octo."
+        "Create your first Bot in BotFather and start using Octo."
       )
     ).toHaveClass("wk-onboarding-description-lead");
     expect(screen.getByRole("button", { name: "Finish" })).toBeInTheDocument();
