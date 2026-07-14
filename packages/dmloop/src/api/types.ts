@@ -188,17 +188,6 @@ export interface CreateIssueReq {
   // 新建时绑定已上传附件(上传返回的 id 列表)。
   attachment_ids?: string[];
 }
-// 一句话派单(POST /issues/quick-create):把 prompt 交给 agent/squad,后端异步建单+派单,返 { task_id }。
-// agent_id / squad_id 恰好给一个(后端 XOR 校验)。与 createIssue 的区别:建单前查 runtime 在线 +
-// daemon 版本,离线/过旧当场返 422(agent_unavailable / daemon_version_unsupported)。
-export interface QuickCreateReq {
-  agent_id?: string;
-  squad_id?: string;
-  prompt: string;
-  project_id?: string | null;
-  parent_issue_id?: string | null;
-  attachment_ids?: string[];
-}
 export interface UpdateIssueReq {
   title?: string;
   description?: string | null;

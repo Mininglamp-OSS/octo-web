@@ -15,16 +15,19 @@ const client = axios.create({ baseURL: LOOP_API_BASE, withCredentials: true });
 // 持久化到 sessionStorage：整页刷新后内存变量会归零、LoopPage 恢复时恒回落 list[0]，
 // 故刷新前 seed 回上次选中的 workspace。仅当前标签页（符合 issue 预期）。
 const WS_CTX_KEY = "loop.workspace.ctx";
-function readWorkspaceCtx(): { slug: string; id: string } {
+function readWorkspaceCtx(): { slug: string; id: string; name: string } {
   try {
     const p = JSON.parse(sessionStorage.getItem(WS_CTX_KEY) ?? "null");
-    if (p && typeof p.slug === "string" && typeof p.id === "string") return p;
+    if (p && typeof p.slug === "string" && typeof p.id === "string") {
+      return { slug: p.slug, id: p.id, name: typeof p.name === "string" ? p.name : "" };
+    }
   } catch { /* ignore */ }
-  return { slug: "", id: "" };
+  return { slug: "", id: "", name: "" };
 }
 const _initCtx = readWorkspaceCtx();
 let _workspaceSlug = _initCtx.slug;
 let _workspaceId = _initCtx.id;
+let _workspaceName = _initCtx.name;
 
 export function currentWorkspaceSlug(): string {
   return _workspaceSlug;
@@ -32,11 +35,16 @@ export function currentWorkspaceSlug(): string {
 export function currentWorkspaceId(): string {
   return _workspaceId;
 }
-export function setWorkspaceContext(slug: string, id: string): void {
+export function currentWorkspaceName(): string {
+  return _workspaceName;
+}
+export function setWorkspaceContext(slug: string, id: string, name?: string): void {
   _workspaceSlug = slug || "";
   _workspaceId = id || "";
+  // name 可选：清空上下文(id 为空)时一并清；否则给了就更新、没给保留上次(避免误清面包屑名)。
+  _workspaceName = _workspaceId ? (name ?? _workspaceName) : "";
   try {
-    if (_workspaceId) sessionStorage.setItem(WS_CTX_KEY, JSON.stringify({ slug: _workspaceSlug, id: _workspaceId }));
+    if (_workspaceId) sessionStorage.setItem(WS_CTX_KEY, JSON.stringify({ slug: _workspaceSlug, id: _workspaceId, name: _workspaceName }));
     else sessionStorage.removeItem(WS_CTX_KEY);
   } catch { /* ignore */ }
 }

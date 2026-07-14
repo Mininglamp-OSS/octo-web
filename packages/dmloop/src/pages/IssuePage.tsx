@@ -8,6 +8,7 @@ import {
   DatePicker,
   Checkbox,
   Dropdown,
+  Toast,
 } from "@douyinfe/semi-ui";
 import LoopButton from "../ui/LoopButton";
 import { Search, Plus, LayoutGrid, List as ListIcon, Users, ClipboardList, ArrowUp, ArrowDown, SlidersHorizontal, Filter } from "lucide-react";
@@ -30,7 +31,7 @@ import IssueBoard from "../panel/IssueBoard";
 import IssueGroupBoard from "../panel/IssueGroupBoard";
 import IssueList from "../panel/IssueList";
 import IssueDetailPage from "../panel/IssueDetailPage";
-import NewLoopPage from "./NewLoopPage";
+import CreateIssueModal from "../ui/CreateIssueModal";
 import { readView, writeView } from "../ui/viewMode";
 
 type ViewMode = "board" | "grouped" | "list";
@@ -206,12 +207,9 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
 
   // 变更后刷新:既重取列表,又刷新运行中快照(指派/状态变更可能起/停 agent run)。
   const onMutated = useCallback(() => { reload(); refreshRunning(); }, [reload, refreshRunning]);
-
-  // 派单(quick-create)是异步的:agent 稍后才建 issue(dmloop 无 WS 推送,见记忆 dmloop-no-realtime-defer-ws)。
-  // NewLoopPage 派单成功发 `wk:loop-issues-dispatched`,常驻的 LoopPage 据此有界补发 `wk:loop-issues-refresh`,
-  // 看板收到即重取——一套机制覆盖"看板内新建"与"侧栏新建"两个入口(定时器归 LoopPage,见那里)。
-  // 走 ref 读最新 onMutated:延迟刷新须用当前筛选/视图,否则会用陈旧入参覆盖(reload 的 seq 守卫只防乱序)。
-  // ponytail: 真正的修法是 WS 实时推送(已记后期做),此为 stopgap;派单低频,几次补刷可接受。
+  // 订阅 `wk:loop-issues-refresh` 重取列表:由 LoopPage 在「点击 loop 导航」与「新建回路成功」时补发,
+  // 覆盖"已停在 issue tab(同 key 不重挂)"的场景。走 ref 读最新 onMutated:刷新须用当前筛选/视图,
+  // 否则会用陈旧入参覆盖(reload 的 seq 守卫只防乱序)。
   const onMutatedRef = useRef(onMutated);
   useEffect(() => { onMutatedRef.current = onMutated; }, [onMutated]);
   useEffect(() => {
@@ -231,14 +229,10 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     WKApp.routeRight.push(<IssueDetailPage key={id} issueId={id} onChanged={onMutated} />);
   };
 
-  // 新建回路 → 唤起独立 composer 页（非弹窗，对齐 Figma）。创建成功后 pop 回列表并刷新。
-  const openNewLoop = () => {
-    WKApp.routeRight.push(
-      <NewLoopPage
-        onCreated={() => { onMutated(); WKApp.routeRight.pop(); }}
-      />,
-    );
-  };
+  const [createOpen, setCreateOpen] = useState(false);
+
+  // 新建回路 → 唤起统一建单弹窗（对齐 multica，不再拉起独立 AI 页）。创建成功后刷新列表。
+  const openNewLoop = () => setCreateOpen(true);
 
   const isEmpty = view === "grouped" ? groups.every((g) => g.issues.length === 0) : total === 0;
 
@@ -462,6 +456,11 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
           </>
         )}
       </div>
+      <CreateIssueModal
+        visible={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={() => { setCreateOpen(false); onMutated(); Toast.success(t("loop.toast.created")); }}
+      />
     </div>
   );
 }

@@ -329,6 +329,9 @@
     "add": "添加附件",
     "empty": "暂无附件"
   },
+  "createIssue": {
+    "runHint": "创建后 {{name}} 会立即开始工作"
+  },
   "toast": {
     "created": "已创建",
     "saved": "已保存",

@@ -265,14 +265,14 @@
  * 命名 --loop-tag-* 为新增 token，非 Semi 覆盖；集中在此单一来源，改一处全站生效。
  * ========================================================================== */
 :root {
-  --loop-tag-grey-bg: #E9EAED;   --loop-tag-grey-fg: #5D626F;   --loop-tag-grey-bd: #D2D5DA;
-  --loop-tag-blue-bg: #CCD7E6;   --loop-tag-blue-fg: #3E6598;   --loop-tag-blue-bd: #B2C2D7;
-  --loop-tag-green-bg: #C9E3D7;  --loop-tag-green-fg: #337154;  --loop-tag-green-bd: #AFD4C3;
-  --loop-tag-amber-bg: #E8DCC4;  --loop-tag-amber-fg: #896D34;  --loop-tag-amber-bd: #DBC9A3;
-  --loop-tag-orange-bg: #E9D4C4; --loop-tag-orange-fg: #9B653B; --loop-tag-orange-bd: #DDBEA7;
-  --loop-tag-red-bg: #E9CCC9;    --loop-tag-red-fg: #B14E43;    --loop-tag-red-bd: #E0B7B3;
-  --loop-tag-violet-bg: #D6CCE6; --loop-tag-violet-fg: #7B56B3; --loop-tag-violet-bd: #C3B5D9;
-  --loop-tag-purple-bg: #DFCDE5; --loop-tag-purple-fg: #9852AD; --loop-tag-purple-bd: #D0B5D9;
+  --loop-tag-grey-bg: #F1F2F4;   --loop-tag-grey-fg: #5D626F;   --loop-tag-grey-bd: #DDDFE3;
+  --loop-tag-blue-bg: #E4EAF2;   --loop-tag-blue-fg: #3E6598;   --loop-tag-blue-bd: #CDD7E4;
+  --loop-tag-green-bg: #E1EFE9;  --loop-tag-green-fg: #337154;  --loop-tag-green-bd: #CBE2D7;
+  --loop-tag-amber-bg: #F2ECDE;  --loop-tag-amber-fg: #896D34;  --loop-tag-amber-bd: #E7DDC5;
+  --loop-tag-orange-bg: #F4EAE1; --loop-tag-orange-fg: #9B653B; --loop-tag-orange-bd: #E9D8C9;
+  --loop-tag-red-bg: #F5E7E5;    --loop-tag-red-fg: #B14E43;    --loop-tag-red-bd: #ECD3D0;
+  --loop-tag-violet-bg: #ECE7F3; --loop-tag-violet-fg: #7B56B3; --loop-tag-violet-bd: #D9D1E6;
+  --loop-tag-purple-bg: #F0E7F3; --loop-tag-purple-fg: #9852AD; --loop-tag-purple-bd: #E1D1E6;
 }
 
 /* 标签公共外形（语义标签 loop-tag 与用户色标签 loop-label-chip 共用，避免重复声明） */
@@ -373,4 +373,31 @@
 
 .loop-btn__spin { animation: loop-btn-spin 0.7s linear infinite; }
 @keyframes loop-btn-spin { to { transform: rotate(360deg); } }
+
+/* ==========================================================================
+ * Loop 属性 pill（loop-pill）—— 对齐 multica 建单工具栏的圆角属性选择器
+ * 圆角描边 + 图标 + 文案 + caret，点开走 Semi Dropdown（loop 皮肤）。
+ * ========================================================================== */
+.loop-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--semi-color-border, #e8e9eb);
+  border-radius: 999px;
+  background: var(--semi-color-bg-0, #fff);
+  color: var(--semi-color-text-0, #1c1f23);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.loop-pill:hover {
+  background: var(--semi-color-fill-0, #f5f6f8);
+  border-color: var(--semi-color-text-3, #c9cdd4);
+}
+.loop-pill__caret { color: var(--semi-color-text-2, #a4a9b3); }
+.loop-pill__opt { display: inline-flex; align-items: center; gap: 8px; }
 

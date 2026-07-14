@@ -329,6 +329,9 @@
     "add": "Add attachment",
     "empty": "No attachments"
   },
+  "createIssue": {
+    "runHint": "{{name}} will start working right after creation."
+  },
   "toast": {
     "created": "Created",
     "saved": "Saved",
