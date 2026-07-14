@@ -138,7 +138,7 @@ describe("uploadChatMedia — token isolation (COS pre-signed URL)", () => {
         i18n.setLocale("zh-CN", { notify: false, persist: false })
         APIClient.shared.config.apiURL = "https://api.example.com/"
 
-        mockNoInterceptorPut = vi.fn()
+        mockNoInterceptorPut = vi.fn().mockResolvedValue({ status: 200, data: {} })
         // Spy on axios.create so the next module-load captures our stub instance.
         createSpy = vi.spyOn(axios, "create").mockReturnValue(
             { put: mockNoInterceptorPut } as any
