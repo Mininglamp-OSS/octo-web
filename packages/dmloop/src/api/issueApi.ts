@@ -47,8 +47,6 @@ export function listIssues(params?: ListParams): Promise<{ issues: Issue[]; tota
     date_field: params?.date_field,
     date_start: params?.date_start,
     date_end: params?.date_end,
-    sort: params?.sort_by,
-    direction: params?.sort_direction,
     limit: params?.limit,
     offset: params?.offset,
   });
