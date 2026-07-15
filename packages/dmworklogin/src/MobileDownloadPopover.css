@@ -1,0 +1,53 @@
+.wk-login-mobile-download-popover-shell {
+  width: calc(var(--wk-sp-12) * 5);
+  box-sizing: border-box;
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  box-shadow: var(--wk-shadow-lg);
+}
+
+.wk-login-mobile-download-popover {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  color: var(--wk-text-primary);
+  text-align: center;
+}
+
+.wk-login-mobile-popover-qr {
+  display: flex;
+  width: calc(var(--wk-sp-12) * 2 + var(--wk-sp-6));
+  aspect-ratio: 1;
+  margin-bottom: var(--wk-sp-1);
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  padding: var(--wk-sp-2);
+  overflow: hidden;
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-color-white);
+}
+
+.wk-login-mobile-popover-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.wk-login-mobile-download-popover-title {
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-md);
+  line-height: var(--wk-leading-normal);
+}
+
+.wk-login-android-popover-manual-download {
+  width: 100%;
+  justify-content: center;
+  flex-shrink: 0;
+}

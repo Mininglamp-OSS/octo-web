@@ -50,6 +50,7 @@ icons.iconset
 .debug-screenshots/
 scripts/debug.js
 debug-storybook.log
+/.storybook-static-mobile-download-check/
 
 .mcp.json
 .gstack/

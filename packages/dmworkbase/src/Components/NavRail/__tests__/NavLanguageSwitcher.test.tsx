@@ -33,6 +33,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
 }));
 
 vi.mock("@douyinfe/semi-icons", () => ({
+  IconGlobeStroke: () => React.createElement("span", { "data-testid": "icon-globe-stroke" }),
   IconLanguage: () => React.createElement("span", { "data-testid": "icon-language" }),
   IconTick: () => React.createElement("span", { "data-testid": "icon-tick" }),
 }));
@@ -84,6 +85,13 @@ function clickLanguageMenuItem(label: string) {
 }
 
 describe("NavLanguageSwitcher", () => {
+  it("uses a globe icon for the product language selector", () => {
+    renderSwitcher();
+
+    expect(container.querySelector('[data-testid="icon-globe-stroke"]')).toBeTruthy();
+    expect(container.querySelector('[data-testid="icon-language"]')).toBeNull();
+  });
+
   it("syncs signed-in language changes to backend after local switch", () => {
     renderSwitcher();
 

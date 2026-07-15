@@ -243,14 +243,6 @@ export class WKRemoteConfig {
   messagesSearchOn: boolean = false; // 会话内聊天记录搜索开关，默认关闭
   disableUserCreateSpace: boolean = false; // 是否关闭普通用户创建 Space 入口
   /**
-   * 是否关闭 Web 登录页的前端临时迁移提示。
-   *
-   * 后端字段 suppress_login_migration_notice 为 true 时表示后端/其他端已接管提示，
-   * Web 端不再展示这套 Aegis 迁移说明。字段缺失或 false 时默认展示，是本轮
-   * Octo -> Aegis 迁移期的产品决策。
-   */
-  suppressLoginMigrationNotice: boolean = false;
-  /**
    * 自定义贴纸管理入口开关。后端字段 sticker_custom_enabled 为 true 时，前端展示
    * 「我的贴纸」tab 及上传/删除入口；false 或字段缺失时隐藏。
    *
@@ -397,8 +389,6 @@ export class WKRemoteConfig {
       const wasSuccessful = this.requestSuccess;
       const previousDisableUserCreateSpace = this.disableUserCreateSpace;
       const previousMessagesSearchOn = this.messagesSearchOn;
-      const previousSuppressLoginMigrationNotice =
-        this.suppressLoginMigrationNotice;
       const previousStickerCustomEnabled = this.stickerCustomEnabled;
       const previousStickerUploadLimits = this.stickerUploadLimits;
       const previousDocsOn = this.docsOn;
@@ -410,9 +400,6 @@ export class WKRemoteConfig {
       this.messagesSearchOn = parseRemoteBool(result["messages_search_on"]);
       this.disableUserCreateSpace = parseRemoteBool(
         result["disable_user_create_space"]
-      );
-      this.suppressLoginMigrationNotice = parseRemoteBool(
-        result["suppress_login_migration_notice"]
       );
       this.stickerCustomEnabled = parseRemoteBool(
         result["sticker_custom_enabled"]
@@ -429,8 +416,6 @@ export class WKRemoteConfig {
       if (
         previousDisableUserCreateSpace !== this.disableUserCreateSpace ||
         previousMessagesSearchOn !== this.messagesSearchOn ||
-        previousSuppressLoginMigrationNotice !==
-          this.suppressLoginMigrationNotice ||
         previousStickerCustomEnabled !== this.stickerCustomEnabled ||
         !stickerUploadLimitsEqual(
           previousStickerUploadLimits,

@@ -1,41 +1,71 @@
 import React from "react";
+import { IconGithubLogo } from "@douyinfe/semi-icons";
 import { Popover } from "@douyinfe/semi-ui";
+import { WKButton } from "@octo/base";
 import { QRCodeSVG } from "qrcode.react";
 import { loginT as t } from "./i18n";
 import "./MobileDownloadPopover.css";
 
-// TestFlight 是公开固定 URL，不需要走 updater 接口
-export const IOS_DOWNLOAD_URL = "https://testflight.apple.com/join/uPrdCcy3";
+export const ANDROID_APK_PATH = "/download/dmwork.apk";
+export const ANDROID_RELEASES_URL =
+  "https://github.com/Mininglamp-OSS/octo-android/releases/latest";
+
+export function resolveAndroidApkUrl(
+  origin = typeof window === "undefined" ? "" : window.location.origin
+) {
+  if (!origin) return ANDROID_APK_PATH;
+  return new URL(ANDROID_APK_PATH, `${origin.replace(/\/$/, "")}/`).toString();
+}
+
+export function openAndroidReleases() {
+  if (typeof window === "undefined") return;
+  const nextWindow = window.open(
+    ANDROID_RELEASES_URL,
+    "_blank",
+    "noopener,noreferrer"
+  );
+  if (nextWindow) nextWindow.opener = null;
+}
 
 type PopoverHoverProps = Pick<
   React.HTMLAttributes<HTMLDivElement>,
   "onMouseEnter" | "onMouseLeave"
 >;
 
-export const IOSDownloadPopoverContent: React.FC<PopoverHoverProps> = (
+export const AndroidDownloadPopoverContent: React.FC<PopoverHoverProps> = (
   hoverProps
 ) => (
   <div
     className="wk-login-mobile-download-popover"
     role="dialog"
-    aria-label={t("download.iosQrTitle")}
+    aria-label={t("download.androidQrTitle")}
     {...hoverProps}
   >
     <div
       className="wk-login-mobile-popover-qr"
       role="img"
-      aria-label={t("download.iosQrLabel")}
+      aria-label={t("download.androidQrTitle")}
     >
-      <QRCodeSVG value={IOS_DOWNLOAD_URL} size={104} />
+      <QRCodeSVG value={resolveAndroidApkUrl()} size={104} />
     </div>
     <strong className="wk-login-mobile-download-popover-title">
-      {t("download.iosQrTitle")}
+      {t("download.androidQrTitle")}
     </strong>
+    <WKButton
+      type="button"
+      className="wk-login-android-popover-manual-download"
+      variant="ghost"
+      size="sm"
+      icon={<IconGithubLogo aria-hidden="true" />}
+      aria-label={t("download.openGithubReleases")}
+      onClick={openAndroidReleases}
+    >
+      {t("download.githubManualDownload")}
+    </WKButton>
   </div>
 );
 
-// iOS 安装入口：按钮只控制二维码浮窗，TestFlight 地址仅用于生成二维码
-export const IOSDownloadButton: React.FC = () => {
+export const AndroidDownloadButton: React.FC = () => {
   const [hoverVisible, setHoverVisible] = React.useState(false);
   const [clickPinned, setClickPinned] = React.useState(false);
   const hoverCloseTimer = React.useRef<ReturnType<typeof setTimeout>>();
@@ -69,7 +99,7 @@ export const IOSDownloadButton: React.FC = () => {
   return (
     <Popover
       content={
-        <IOSDownloadPopoverContent
+        <AndroidDownloadPopoverContent
           onMouseEnter={showOnHover}
           onMouseLeave={hideAfterHover}
         />
@@ -95,7 +125,7 @@ export const IOSDownloadButton: React.FC = () => {
         className="wk-login-download-btn"
         aria-haspopup="dialog"
         aria-expanded={visible}
-        aria-label={t("download.iosHoverHint")}
+        aria-label={t("download.androidHoverHint")}
         onMouseEnter={showOnHover}
         onMouseLeave={hideAfterHover}
         onClick={() => setClickPinned((pinned) => !pinned)}
@@ -113,12 +143,12 @@ export const IOSDownloadButton: React.FC = () => {
           fill="currentColor"
           aria-hidden="true"
         >
-          <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
+          <path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84 1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48A7.4 7.4 0 0 0 12 1c-1.1 0-2.15.23-3.12.63L7.4.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71L8 2.17A6.83 6.83 0 0 0 6 7h12c0-1.99-.97-3.75-2.47-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z" />
         </svg>
-        <span>{t("download.ios")}</span>
+        <span>{t("download.android")}</span>
       </button>
     </Popover>
   );
 };
 
-export default IOSDownloadButton;
+export default AndroidDownloadButton;

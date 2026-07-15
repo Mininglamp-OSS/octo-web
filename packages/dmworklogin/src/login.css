@@ -19,8 +19,8 @@
     --wk-sso-accent: var(--wk-color-theme, #5b5be5);
     --wk-sso-accent-soft: color-mix(in srgb, var(--wk-sso-accent) 80%, white);
     --wk-sso-accent-strong: color-mix(in srgb, var(--wk-sso-accent) 85%, black);
-    --wk-sso-accent-shadow: color-mix(in srgb, var(--wk-sso-accent) 32%, transparent);
-    --wk-sso-accent-shadow-hover: color-mix(in srgb, var(--wk-sso-accent) 42%, transparent);
+    --wk-sso-accent-shadow: color-mix(in srgb, var(--wk-sso-accent) 20%, transparent);
+    --wk-sso-accent-shadow-hover: color-mix(in srgb, var(--wk-sso-accent) 26%, transparent);
     --wk-sso-accent-translucent: color-mix(in srgb, var(--wk-sso-accent) 45%, transparent);
     --wk-sso-accent-dot-ring: color-mix(in srgb, var(--wk-sso-accent) 18%, transparent);
 
@@ -83,13 +83,20 @@
     z-index: 2;
 }
 
+.wk-login-brand-logo-image {
+    display: block;
+    width: calc(var(--wk-sp-12) * 3 + var(--wk-sp-6));
+    height: auto;
+}
+
 .wk-login-brand-inner {
-    max-width: 440px;
+    max-width: 100%;
     width: 100%;
     position: relative;
     z-index: 1;
     margin-left: auto;
     margin-right: auto;
+    text-align: left;
 }
 
 .wk-login-brand-logo {
@@ -111,19 +118,52 @@
     margin-bottom: -18px;
 }
 
+.wk-login-brand-copy {
+    position: relative;
+    width: max-content;
+    max-width: 100%;
+    padding-left: var(--wk-sp-4);
+    margin-left: auto;
+    margin-right: auto;
+    margin-bottom: calc(var(--wk-sp-8) + var(--wk-sp-1));
+}
+
+.wk-login-brand-copy::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--wk-sp-1);
+    border-radius: var(--wk-r-full);
+    background: var(--wk-text-inverse);
+    opacity: 0.8;
+}
+
 .wk-login-brand-headline {
-    font-size: 40px;
+    font-size: clamp(
+        var(--wk-text-size-4xl),
+        4vw,
+        calc(var(--wk-text-size-4xl) + var(--wk-sp-3))
+    );
     font-weight: 700;
     color: var(--wk-text-inverse, #fff);
     line-height: 1.25;
     margin-bottom: 12px;
+    white-space: nowrap;
+    text-shadow:
+        calc(var(--wk-sp-1) / 2)
+        calc(var(--wk-sp-1) / 2)
+        var(--wk-sp-1)
+        color-mix(in srgb, var(--wk-text-primary) 18%, transparent);
 }
 
 .wk-login-brand-subline {
-    font-size: 15px;
-    color: rgba(255, 255, 255, 0.82);
+    font-size: var(--wk-text-size-xl);
+    font-weight: 500;
+    color: color-mix(in srgb, var(--wk-text-inverse) 88%, transparent);
     line-height: 1.65;
-    margin-bottom: 36px;
+    margin-bottom: 0;
 }
 
 .wk-login-brand-features {
@@ -288,86 +328,21 @@
     z-index: 4;
 }
 
-.wk-login-language-button {
-    width: 32px;
-    height: 32px;
-    border: none;
-    border-radius: 8px;
+.wk-login-language-select {
+    width: calc(var(--wk-sp-12) + var(--wk-sp-8));
+    height: var(--wk-sp-8);
+    border-radius: var(--wk-r-full);
     background: transparent;
     color: var(--semi-color-text-2, #8a8fa8);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
+    font-weight: 600;
+    text-align: center;
     transition: background 120ms ease, color 120ms ease;
 }
 
-.wk-login-language-button:hover,
-.wk-login-language-button:focus-visible,
-.wk-login-language-button--open {
-    background: var(--semi-color-fill-0, #f5f6fa);
+.wk-login-language-select:hover,
+.wk-login-language-select:focus-within {
+    background: var(--semi-color-fill-1);
     color: var(--semi-color-text-0, #1a1a2e);
-    outline: none;
-}
-
-.wk-login-language-button .semi-icon {
-    display: inline-flex;
-    font-size: 18px;
-}
-
-.wk-login-language-mask {
-    position: fixed;
-    inset: 0;
-    z-index: 30;
-}
-
-.wk-login-language-menu {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    width: 132px;
-    padding: 4px;
-    border: 1px solid var(--semi-color-border, #e4e6ef);
-    border-radius: 10px;
-    background: var(--semi-color-bg-0, #fff);
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
-    z-index: 31;
-}
-
-.wk-login-language-menu-item {
-    width: 100%;
-    min-height: 32px;
-    padding: 0 8px;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--semi-color-text-0, #1a1a2e);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 13px;
-    line-height: 20px;
-    letter-spacing: 0;
-}
-
-.wk-login-language-menu-item:hover,
-.wk-login-language-menu-item--active {
-    background: var(--semi-color-fill-0, #f5f6fa);
-}
-
-.wk-login-language-menu-item .semi-icon {
-    flex-shrink: 0;
-    color: var(--wk-color-theme, #1C1C23);
-    font-size: 14px;
-}
-
-.wk-login-language-menu-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 /* ---- Panel footer (bottom-center copyright + legal) ---- */
@@ -377,9 +352,10 @@
     right: 0;
     bottom: 28px;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: var(--wk-sp-1);
     font-size: 12px;
     color: var(--semi-color-text-2, #9aa0b6);
 }
@@ -859,10 +835,7 @@
 .wk-login-content-download-divider {
     display: flex;
     align-items: center;
-    gap: 12px;
     margin: 36px 0 18px;
-    color: var(--semi-color-text-2, #9aa0b6);
-    font-size: 12px;
 }
 .wk-login-content-download-divider::before,
 .wk-login-content-download-divider::after {
@@ -871,11 +844,6 @@
     height: 1px;
     background: var(--semi-color-border, #eef0f5);
 }
-.wk-login-content-download-divider span {
-    flex-shrink: 0;
-    line-height: 1;
-}
-
 /* ---- Download button ---- */
 .wk-login-content-download {
     display: flex;
@@ -892,11 +860,12 @@
     justify-content: center;
     gap: 6px;
     width: 184px;
+    height: var(--wk-sp-10);
     box-sizing: border-box;
     padding: 8px 18px;
     background: transparent;
-    color: var(--wk-color-theme, #1C1C23) !important;
-    border: 1.5px solid var(--wk-color-theme, #1C1C23);
+    color: var(--wk-color-theme);
+    border: 1.5px solid var(--wk-color-theme);
     border-radius: 20px;
     font-size: 13px;
     text-decoration: none;
@@ -1138,13 +1107,13 @@
     border: none;
     background: linear-gradient(135deg, var(--wk-sso-accent-soft) 0%, var(--wk-sso-accent) 100%);
     color: var(--semi-color-white, #fff);
-    box-shadow: 0 8px 24px var(--wk-sso-accent-shadow);
+    box-shadow: 0 var(--wk-sp-1) calc(var(--wk-sp-3) + var(--wk-sp-0-5)) var(--wk-sso-accent-shadow);
     transition: all 0.2s;
 }
 .wk-login-panel .wk-login-content-sso-primary.semi-button:hover,
 .wk-login-panel .wk-login-content-sso-primary.semi-button:focus {
     background: linear-gradient(135deg, var(--wk-sso-accent) 0%, var(--wk-sso-accent-strong) 100%);
-    box-shadow: 0 10px 28px var(--wk-sso-accent-shadow-hover);
+    box-shadow: 0 var(--wk-sp-1-5) calc(var(--wk-sp-4) + var(--wk-sp-0-5)) var(--wk-sso-accent-shadow-hover);
     transform: translateY(-1px);
 }
 .wk-login-panel .wk-login-content-sso-primary.semi-button .semi-button-content,
@@ -1162,389 +1131,17 @@
     color: var(--semi-color-white, #fff);
 }
 
-/* 主按钮下方信任锚: 主题色小字 + shield 图标, 强化企业身份信号.
-   IdP 名用 <strong> 加重, 与 "企业级安全" 一起构成 trust 标签. */
-.wk-login-content-sso-meta {
-    margin-top: 14px;
+.wk-login-content-sso-register-entry {
+    margin-top: var(--wk-sp-5);
     text-align: center;
-    color: var(--wk-sso-accent);
-    font-size: 13px;
-    line-height: 1.6;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    cursor: help;
-    user-select: none;
-}
-.wk-login-content-sso-meta-icon {
-    color: var(--wk-sso-accent);
-    flex-shrink: 0;
-    margin-right: 2px;
-}
-.wk-login-content-sso-meta-brand {
-    color: var(--wk-sso-accent);
-    font-weight: 600;
-}
-.wk-login-content-sso-meta-sep {
-    color: var(--wk-sso-accent-translucent);
-    margin: 0 2px;
-}
-.wk-login-content-sso-notice-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--wk-sso-accent);
-    font: inherit;
-    line-height: inherit;
-    cursor: pointer;
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    transition: opacity 120ms ease;
-}
-.wk-login-content-sso-notice-link:hover,
-.wk-login-content-sso-notice-link:focus-visible {
-    opacity: 0.78;
-    outline: none;
-}
-.wk-login-content-sso-notice-link .semi-icon {
-    display: inline-flex;
-    font-size: 13px;
 }
 
-/* ---- Login migration notice modal ---- */
-.wk-login-migration-modal {
-    --wk-sso-accent: var(--wk-color-theme, #5b5be5);
-    --wk-sso-accent-strong: color-mix(in srgb, var(--wk-sso-accent) 84%, black);
-    --wk-sso-accent-shadow: color-mix(in srgb, var(--wk-sso-accent) 28%, transparent);
-}
-
-.wk-login-migration-modal .semi-modal-wrap {
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px 16px;
-    box-sizing: border-box;
-}
-
-.wk-login-migration-modal .semi-modal {
-    top: auto;
-    margin: 0;
-    max-width: calc(100vw - 32px);
-}
-
-.wk-login-migration-modal .semi-modal-body {
-    padding: 0 18px 12px;
-    scrollbar-gutter: stable;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-}
-
-.wk-login-migration-modal .semi-modal-content {
-    padding: 0;
-    border-radius: 14px;
-    box-shadow: 0 20px 56px rgba(20, 24, 40, 0.2);
-    max-height: min(820px, calc(100vh - 40px));
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.wk-login-migration-modal .semi-modal-header {
-    margin: 0;
-    padding: 16px 18px 6px;
-    flex-shrink: 0;
-}
-
-.wk-login-migration-modal .semi-modal-title {
-    font-size: 17px;
-    font-weight: 700;
-}
-
-.wk-login-migration-modal .semi-modal-footer {
-    margin: 0;
-}
-
-.wk-login-migration {
-    color: var(--semi-color-text-1, #4f566b);
-    font-size: 14px;
-    line-height: 1.58;
-}
-
-.wk-login-migration-summary {
-    position: relative;
-    padding: 10px 12px 11px;
-    border: 1px solid color-mix(in srgb, var(--wk-sso-accent) 13%, transparent);
-    border-radius: 10px;
-    background: linear-gradient(
-        135deg,
-        color-mix(in srgb, var(--wk-sso-accent) 6%, white) 0%,
-        var(--semi-color-bg-0, #fff) 64%,
-        color-mix(in srgb, var(--wk-sso-accent) 3%, white) 100%
-    );
-    color: var(--semi-color-text-1, #4f566b);
-    overflow: hidden;
-}
-
-.wk-login-migration-summary::before {
-    content: "";
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 3px;
-    background: linear-gradient(180deg, var(--wk-sso-accent) 0%, var(--wk-sso-accent-strong) 100%);
-}
-
-.wk-login-migration-kicker {
-    margin-bottom: 3px;
-    color: var(--wk-sso-accent);
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.wk-login-migration-title {
-    margin-bottom: 4px;
-    color: var(--semi-color-text-0, #1a1a2e);
-    font-size: 16px;
-    font-weight: 700;
-    line-height: 1.42;
-}
-
-.wk-login-migration-subtitle {
-    color: var(--semi-color-text-1, #4f566b);
-    font-size: 13px;
-    line-height: 1.55;
-}
-
-.wk-login-migration-important,
-.wk-login-migration-warning {
-    margin-top: 8px;
-    padding: 8px 9px;
-    border-radius: 8px;
-    color: var(--semi-color-text-1, #4f566b);
-}
-
-.wk-login-migration-important {
-    display: flex;
-    gap: 8px;
-    border: 1px solid rgba(255, 153, 0, 0.18);
-    background: rgba(255, 153, 0, 0.045);
-}
-
-.wk-login-migration-important .semi-icon {
-    margin-top: 3px;
-    color: #9a5a00;
-    flex-shrink: 0;
-}
-
-.wk-login-migration-important strong {
-    margin-right: 4px;
-    color: var(--semi-color-text-0, #1a1a2e);
-}
-
-.wk-login-migration-section-title {
-    margin-top: 12px;
-    margin-bottom: 8px;
-    color: var(--semi-color-text-0, #1a1a2e);
-    font-weight: 600;
-}
-
-.wk-login-migration-flow {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid var(--semi-color-border, #eef0f5);
-    border-radius: 10px;
-    background: var(--semi-color-bg-0, #fff);
-    overflow: hidden;
-}
-
-.wk-login-migration-step {
-    position: relative;
-    min-width: 0;
-    display: grid;
-    grid-template-columns: 24px minmax(0, 1fr);
-    gap: 9px;
-    padding: 10px 11px;
-    border-bottom: 1px solid var(--semi-color-border, #eef0f5);
-}
-
-.wk-login-migration-step:last-child {
-    border-bottom: none;
-}
-
-.wk-login-migration-step-index {
-    width: 22px;
-    height: 22px;
-    margin-top: 1px;
-    border-radius: 7px;
-    background: color-mix(in srgb, var(--wk-sso-accent) 10%, white);
-    color: var(--wk-sso-accent);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 700;
-}
-
-.wk-login-migration-step strong {
-    display: block;
-    color: var(--semi-color-text-0, #1a1a2e);
-    font-size: 13px;
-}
-
-.wk-login-migration-step p {
-    margin: 4px 0 0;
-    color: var(--semi-color-text-1, #4f566b);
-    font-size: 13px;
-}
-
-.wk-login-migration-inline-link {
-    display: inline-block;
-    margin-top: 4px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--wk-sso-accent);
-    font: inherit;
-    cursor: pointer;
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    overflow-wrap: anywhere;
-    text-align: left;
-}
-
-.wk-login-migration-inline-link:hover,
-.wk-login-migration-inline-link:focus-visible {
-    opacity: 0.78;
-    outline: none;
-}
-
-.wk-login-migration-step-hint {
-    margin-top: 4px;
+.wk-login-content-sso-flow-hint {
+    margin-top: var(--wk-sp-2);
+    text-align: center;
     color: var(--semi-color-text-2, #8a8fa8);
-    font-size: 12px;
-}
-
-.wk-login-migration-cases {
-    display: grid;
-    gap: 0;
-    margin-top: 8px;
-    border-top: 1px solid var(--semi-color-border, #eef0f5);
-}
-
-.wk-login-migration-case {
-    min-width: 0;
-    display: grid;
-    grid-template-columns: 78px minmax(0, 1fr);
-    gap: 8px;
-    align-items: flex-start;
-    padding: 8px 0 0;
-}
-
-.wk-login-migration-case-tag {
-    width: auto;
-    padding: 0;
-    border-radius: 0;
-    font-size: 12px;
-    font-weight: 600;
-    text-align: left;
-}
-
-.wk-login-migration-case strong {
-    display: inline;
-    margin-right: 4px;
-    color: var(--semi-color-text-0, #1a1a2e);
-    font-size: 13px;
-}
-
-.wk-login-migration-case span:not(.wk-login-migration-case-tag) {
-    display: inline;
-    margin-top: 0;
-    color: var(--semi-color-text-1, #4f566b);
-    font-size: 13px;
-}
-
-.wk-login-migration-case--success {
-    background: transparent;
-    border: none;
-}
-
-.wk-login-migration-case--success .wk-login-migration-case-tag {
-    color: #167248;
-    background: transparent;
-}
-
-.wk-login-migration-case--warning {
-    background: transparent;
-    border: none;
-}
-
-.wk-login-migration-case--warning .wk-login-migration-case-tag {
-    color: #855600;
-    background: transparent;
-}
-
-.wk-login-migration-warning {
-    display: flex;
-    gap: 8px;
-    border: 1px solid rgba(220, 68, 70, 0.18);
-    background: rgba(220, 68, 70, 0.045);
-}
-
-.wk-login-migration-warning strong {
-    flex-shrink: 0;
-    color: #b72e2f;
-}
-
-.wk-login-migration-warning span {
-    min-width: 0;
-}
-
-.wk-login-migration-modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    padding: 10px 18px 14px;
-    border-top: 1px solid var(--semi-color-border, #eef0f5);
-    background: var(--semi-color-bg-0, #fff);
-    flex-shrink: 0;
-}
-
-@media (max-width: 480px) {
-    .wk-login-migration-modal .semi-modal-wrap {
-        padding: 16px;
-    }
-
-    .wk-login-migration-modal .semi-modal {
-        width: calc(100vw - 32px) !important;
-        max-width: calc(100vw - 32px);
-    }
-
-    .wk-login-migration-cases {
-        grid-template-columns: 1fr;
-    }
-
-    .wk-login-migration-step {
-        grid-template-columns: 28px minmax(0, 1fr);
-    }
-
-    .wk-login-migration-warning {
-        flex-direction: column;
-        gap: 4px;
-    }
-
-    .wk-login-migration-modal-footer {
-        flex-direction: column;
-        padding: 10px 18px 14px;
-    }
-
-    .wk-login-migration-modal-footer .semi-button {
-        width: 100%;
-    }
+    font-size: var(--wk-text-size-sm);
+    line-height: 1.5;
 }
 
 /* 默认折叠态: 单行小字链接, 紧贴信任锚下方, 不被下载按钮夹在中间 (P1 反馈).

@@ -1,4 +1,4 @@
-import { IconLanguage, IconTick } from "@douyinfe/semi-icons";
+import { IconGlobeStroke, IconTick } from "@douyinfe/semi-icons";
 import React from "react";
 import WKApp from "../../App";
 import { updateUserLanguagePreference } from "../../Service/UserLanguageService";
@@ -62,7 +62,7 @@ export default function NavLanguageSwitcher() {
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <IconLanguage aria-hidden="true" />
+        <IconGlobeStroke aria-hidden="true" />
       </button>
 
       {open && (

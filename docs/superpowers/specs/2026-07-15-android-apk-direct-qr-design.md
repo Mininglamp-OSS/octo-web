@@ -1,6 +1,8 @@
-# Android APK 直接下载二维码设计
+# Android APK 直链回退决策补充
 
 日期：2026-07-15
+
+本文只补充 2026-07-14 Android / iOS 统一二维码浮窗设计中的 APK 地址决策；组件结构、交互与视觉规范以 7 月 14 日文档为准。
 
 ## 背景
 
@@ -50,6 +52,14 @@ https://github.com/Mininglamp-OSS/octo-android/releases/latest
 - GitHub 按钮继续安全地在新标签页打开，但目标调整为最新 Release 页面。
 - 复用现有国际化文案和 `MobileDownloadPopover.css`，不新增用户可见文案，不改变布局。
 
+## Android 与 iOS 弹窗一致性
+
+- Android 与 iOS 使用同一个二维码框样式，不再分别维护占位框和无边框二维码容器。
+- 二维码框统一为 120px（`calc(var(--wk-sp-12) * 2 + var(--wk-sp-6))`），避免 iOS 二维码在 240px 宽弹窗中过度抢占视觉空间。
+- 两个平台统一使用固定白色二维码底、边框、圆角和内边距，保证明暗主题下均可扫描。
+- 标题字号、二维码与标题间距继续复用共享样式。
+- Android 因为保留 GitHub 备用按钮，弹窗高度可以高于 iOS；二维码和标题区域必须保持一致。
+
 ## 测试与验收
 
 自动化测试覆盖：
@@ -68,7 +78,7 @@ pnpm --filter @octo/web build
 git diff --check
 ```
 
-手工验收：桌面浏览器悬浮 Android 按钮显示二维码，手机扫码后访问当前部署域名下的 `/download/dmwork.apk`；点击 GitHub 按钮打开最新 Release 页面。
+手工验收：桌面浏览器悬浮、触屏或键盘点击 Android 按钮均可显示二维码，手机扫码后访问当前部署域名下的 `/download/dmwork.apk`；点击 GitHub 按钮打开最新 Release 页面。
 
 ## 后续正规方案
 

@@ -1,11 +1,10 @@
 import React, { Component, useState, useEffect, useRef } from "react";
-import { IconInfoCircle, IconLanguage, IconTick } from '@douyinfe/semi-icons';
-import { Button, Modal, Spin, Toast } from '@douyinfe/semi-ui';
+import { Button, Select, Spin, Toast } from '@douyinfe/semi-ui';
 // 不引入特定渠道 icon (Mail / Phone 都不准确, Aegis 同时支持邮箱和手机号).
 // 主按钮纯文字, 避免锁定到任意一种登录方式让用户产生 "我没邮箱不能登" 的误判.
 import './login.css'
 import { QRCodeSVG } from 'qrcode.react';
-import { WKApp, Provider, apiFetchJson, useI18n } from "@octo/base"
+import { WKApp, Provider, useI18n } from "@octo/base"
 import type { Locale } from "@octo/base"
 import { LoginStatus, LoginType, LoginVM } from "./login_vm";
 import classNames from "classnames";
@@ -13,38 +12,20 @@ import { PasswordStrengthIndicator } from "./PasswordStrengthIndicator";
 import { validatePassword } from "./passwordStrength";
 import { getSSOProviders } from "./oidc";
 import type { SSOProvider } from "./oidc";
+import { AndroidDownloadButton } from "./AndroidDownloadButton";
 import { IOSDownloadButton } from "./IOSDownloadButton";
 import { loginT as t, serverErrorKeyFromMessage } from "./i18n";
 import { resolveAegisRegisterUrl } from "./loginMigrationNoticeUrl";
+import loginLogo from "./assets/login-logo.png";
 
 const ENTERPRISE_SSO_ENABLED =
     import.meta.env.VITE_ENABLE_ENTERPRISE_SSO === 'true'
-const LOGIN_MIGRATION_NOTICE_ACK_KEY = 'octo-login-migration-notice-v1-ack'
-// 当前登录迁移只面向 Octo -> Aegis 统一认证切换, 默认展示是产品决策。
-// register URL 从当前 provider 的 accountUrl 派生, 避免把 test/prod 用户带到
-// 错误的 IdP 环境。如果后续接入新的 OIDC provider 或非 Aegis 登录方式, 文案 /
-// provider gate 应改为由 appconfig 下发, 避免把 Aegis 迁移说明展示给无关部署。
+// Register URL 从当前 provider 的 accountUrl 派生，避免把 test/prod 用户带到
+// 错误的 IdP 环境。若后续接入新的 OIDC provider 或非 Aegis 登录方式，入口配置
+// 应改为由 appconfig 下发。
 
 function getNextLocale(locale: Locale): Locale {
     return locale === "zh-CN" ? "en-US" : "zh-CN";
-}
-
-function hasAcknowledgedMigrationNotice(): boolean {
-    if (typeof window === 'undefined') return false
-    try {
-        return window.localStorage.getItem(LOGIN_MIGRATION_NOTICE_ACK_KEY) === '1'
-    } catch {
-        return false
-    }
-}
-
-function acknowledgeMigrationNotice() {
-    if (typeof window === 'undefined') return
-    try {
-        window.localStorage.setItem(LOGIN_MIGRATION_NOTICE_ACK_KEY, '1')
-    } catch {
-        /* noop */
-    }
 }
 
 function openAegisRegister(registerUrl: string | undefined) {
@@ -55,58 +36,34 @@ function openAegisRegister(registerUrl: string | undefined) {
 }
 
 const LoginLanguageSwitcher: React.FC = () => {
-    const [open, setOpen] = useState(false)
     const { locale, setLocale, t } = useI18n()
     const nextLocale = getNextLocale(locale)
     const title = t(nextLocale === "en-US"
         ? "base.navRail.language.switchToEnglish"
         : "base.navRail.language.switchToChinese")
-    const locales: Array<{ locale: Locale; labelKey: string }> = [
-        { locale: "zh-CN", labelKey: "base.navRail.language.name.zh" },
-        { locale: "en-US", labelKey: "base.navRail.language.name.en" },
+    const locales = [
+        { value: "zh-CN", label: t("login.languageShortZh"), showTick: false },
+        { value: "en-US", label: t("login.languageShortEn"), showTick: false },
     ]
 
-    const handleSelect = (next: Locale) => {
+    const handleSelect = (next: unknown) => {
+        if (next !== "zh-CN" && next !== "en-US") return
         setLocale(next)
-        setOpen(false)
     }
 
     return (
-        <div className="wk-login-language">
-            <button
-                type="button"
-                className={`wk-login-language-button${open ? " wk-login-language-button--open" : ""}`}
-                title={title}
-                aria-label={title}
-                aria-haspopup="menu"
-                aria-expanded={open}
-                onClick={() => setOpen((value) => !value)}
-            >
-                <IconLanguage aria-hidden="true" />
-            </button>
-            {open && (
-                <>
-                    <div className="wk-login-language-mask" onClick={() => setOpen(false)} />
-                    <div className="wk-login-language-menu" role="menu">
-                        {locales.map((item) => {
-                            const active = item.locale === locale
-                            return (
-                                <button
-                                    key={item.locale}
-                                    type="button"
-                                    className={`wk-login-language-menu-item${active ? " wk-login-language-menu-item--active" : ""}`}
-                                    role="menuitemradio"
-                                    aria-checked={active}
-                                    onClick={() => handleSelect(item.locale)}
-                                >
-                                    <span className="wk-login-language-menu-label">{t(item.labelKey)}</span>
-                                    {active && <IconTick aria-hidden="true" />}
-                                </button>
-                            )
-                        })}
-                    </div>
-                </>
-            )}
+        <div className="wk-login-language" title={title}>
+            <Select
+                className="wk-login-language-select"
+                size="small"
+                showArrow
+                value={locale}
+                optionList={locales}
+                dropdownMatchSelectWidth={false}
+                position="bottomRight"
+                inputProps={{ 'aria-label': title }}
+                onChange={handleSelect}
+            />
         </div>
     )
 }
@@ -166,133 +123,13 @@ const OidcResumingOverlay: React.FC<{ vm: LoginVM }> = ({ vm }) => {
     )
 }
 
-const LoginMigrationNoticeModal: React.FC<{
-    visible: boolean
-    registerUrl?: string
-    onCancel: () => void
-    onContinueLogin: () => void
-}> = ({ visible, registerUrl, onCancel, onContinueLogin }) => {
-    return (
-        <Modal
-            className="wk-login-migration-modal"
-            title={t('migration.title')}
-            visible={visible}
-            onCancel={onCancel}
-            width={560}
-            footer={
-                <div className="wk-login-migration-modal-footer">
-                    {registerUrl && (
-                        <Button onClick={() => openAegisRegister(registerUrl)}>
-                            {t('migration.registerAegis')}
-                        </Button>
-                    )}
-                    <Button theme="solid" type="primary" onClick={onContinueLogin}>
-                        {t('migration.continueLogin')}
-                    </Button>
-                </div>
-            }
-        >
-            <div className="wk-login-migration">
-                <div className="wk-login-migration-summary">
-                    <div className="wk-login-migration-kicker">{t('migration.kicker')}</div>
-                    <div className="wk-login-migration-title">{t('migration.summaryTitle')}</div>
-                    <div className="wk-login-migration-subtitle">{t('migration.summaryBody')}</div>
-                </div>
-                <div className="wk-login-migration-important">
-                    <IconInfoCircle aria-hidden="true" />
-                    <div>
-                        <strong>{t('migration.importantTitle')}</strong>
-                        <span>{t('migration.importantBody')}</span>
-                    </div>
-                </div>
-                <div className="wk-login-migration-section-title">
-                    {t('migration.stepsTitle')}
-                </div>
-                <div className="wk-login-migration-flow">
-                    <div className="wk-login-migration-step">
-                        <div className="wk-login-migration-step-index">1</div>
-                        <div>
-                            <strong>{t('migration.step1Label')}</strong>
-                            <p>{t('migration.step1')}</p>
-                            {registerUrl && (
-                                <button
-                                    type="button"
-                                    className="wk-login-migration-inline-link"
-                                    onClick={() => openAegisRegister(registerUrl)}
-                                >
-                                    {registerUrl}
-                                </button>
-                            )}
-                            <div className="wk-login-migration-step-hint">{t('migration.step1Hint')}</div>
-                        </div>
-                    </div>
-                    <div className="wk-login-migration-step">
-                        <div className="wk-login-migration-step-index">2</div>
-                        <div>
-                            <strong>{t('migration.step2Label')}</strong>
-                            <p>{t('migration.step2')}</p>
-                        </div>
-                    </div>
-                    <div className="wk-login-migration-step">
-                        <div className="wk-login-migration-step-index">3</div>
-                        <div>
-                            <strong>{t('migration.step3Label')}</strong>
-                            <p>{t('migration.step3')}</p>
-                            <div className="wk-login-migration-cases">
-                                <div className="wk-login-migration-case wk-login-migration-case--success">
-                                    <span className="wk-login-migration-case-tag">{t('migration.sameEmailBadge')}</span>
-                                    <div>
-                                        <strong>{t('migration.sameEmailLabel')}</strong>
-                                        <span>{t('migration.sameEmail')}</span>
-                                    </div>
-                                </div>
-                                <div className="wk-login-migration-case wk-login-migration-case--warning">
-                                    <span className="wk-login-migration-case-tag">{t('migration.differentEmailBadge')}</span>
-                                    <div>
-                                        <strong>{t('migration.differentEmailLabel')}</strong>
-                                        <span>{t('migration.differentEmail')}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="wk-login-migration-warning">
-                    <strong>{t('migration.bindWarningTitle')}</strong>
-                    <span>{t('migration.bindWarning')}</span>
-                </div>
-            </div>
-        </Modal>
-    )
-}
-
 const SsoLoginPanel: React.FC<{
     vm: LoginVM
     ssoProvider: SSOProvider
     startSsoLogin: () => void
     handleLogin: () => void
-    showMigrationNotice: boolean
-}> = ({ vm, ssoProvider, startSsoLogin, handleLogin, showMigrationNotice }) => {
-    const [migrationNoticeVisible, setMigrationNoticeVisible] = useState(false)
+}> = ({ vm, ssoProvider, startSsoLogin, handleLogin }) => {
     const aegisRegisterUrl = resolveAegisRegisterUrl(ssoProvider.accountUrl)
-
-    const closeMigrationNotice = () => {
-        setMigrationNoticeVisible(false)
-    }
-
-    const handleSsoLoginClick = () => {
-        if (!showMigrationNotice || hasAcknowledgedMigrationNotice()) {
-            startSsoLogin()
-            return
-        }
-        setMigrationNoticeVisible(true)
-    }
-
-    const handleContinueLogin = () => {
-        acknowledgeMigrationNotice()
-        setMigrationNoticeVisible(false)
-        startSsoLogin()
-    }
 
     return (
         <div className="wk-login-content-form">
@@ -300,7 +137,7 @@ const SsoLoginPanel: React.FC<{
                 className="wk-login-content-sso-primary"
                 loading={vm.oidcLoading}
                 disabled={vm.oidcLoading || vm.oidcResuming}
-                onClick={handleSsoLoginClick}
+                onClick={startSsoLogin}
             >
                 <span className="wk-login-content-sso-primary-inner">
                     <svg className="wk-login-content-sso-primary-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -310,41 +147,21 @@ const SsoLoginPanel: React.FC<{
                     <span>{t('login.ssoButton')}</span>
                 </span>
             </Button>
-            {/* 主按钮下方信任锚: shield 图标 + "身份认证由 X 提供 · 企业级安全".
-                紫色文案 + IdP 名加粗, 强化"这是企业统一身份, 不是普通登录"的
-                视觉信号; 鼠标悬停 trust 段弹出 IdP 完整解释 (借浏览器 title). */}
-            <div
-                className="wk-login-content-sso-meta"
-                title={t('login.ssoMetaBrandTitle', { values: { provider: ssoProvider.name } })}
-            >
-                <svg className="wk-login-content-sso-meta-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M12 2 4 5v6c0 5 3.5 9.4 8 11 4.5-1.6 8-6 8-11V5l-8-3z" />
-                </svg>
-                <span>{t('login.ssoMetaPrefix')}</span>
-                <strong className="wk-login-content-sso-meta-brand">{ssoProvider.name}</strong>
-                <span>{t('login.ssoMetaSuffix')}</span>
-                <span className="wk-login-content-sso-meta-sep">·</span>
-                <span>{t('login.ssoMetaTrust')}</span>
-                {showMigrationNotice && (
-                    <>
-                        <span className="wk-login-content-sso-meta-sep">·</span>
-                        <button
-                            type="button"
-                            className="wk-login-content-sso-notice-link"
-                            onClick={() => setMigrationNoticeVisible(true)}
-                        >
-                            <IconInfoCircle aria-hidden="true" />
-                            <span>{t('migration.link')}</span>
-                        </button>
-                    </>
-                )}
+            {aegisRegisterUrl && (
+                <div className="wk-login-content-sso-register-entry">
+                    <Button
+                        theme="borderless"
+                        size="small"
+                        disabled={vm.oidcLoading || vm.oidcResuming}
+                        onClick={() => openAegisRegister(aegisRegisterUrl)}
+                    >
+                        {t('login.noAccountRegister')}
+                    </Button>
+                </div>
+            )}
+            <div className="wk-login-content-sso-flow-hint">
+                {t('login.ssoFlowHint')}
             </div>
-            <LoginMigrationNoticeModal
-                visible={showMigrationNotice && migrationNoticeVisible}
-                registerUrl={aegisRegisterUrl}
-                onCancel={closeMigrationNotice}
-                onContinueLogin={handleContinueLogin}
-            />
             {/* TODO(legacy-login-flag): 暂时隐藏本地密码登录入口, 等
                 后端 PR 在 /v1/common/appconfig 暴露 legacy_password_login_off
                 (或类似字段) 后, 改成读 WKApp.remoteConfig 字段动态切换.
@@ -356,11 +173,8 @@ const SsoLoginPanel: React.FC<{
                     handleLogin={handleLogin}
                 />
             )}
-            {/* 下载入口前的分隔线: 两侧细线 + 中间文案,
-                从"主登录区"过渡到"也提供移动版"的次级 CTA. */}
-            <div className="wk-login-content-download-divider">
-                <span>{t('download.mobile')}</span>
-            </div>
+            {/* 下载入口前保留无文案分隔线，将主登录区与平台入口分开。 */}
+            <div className="wk-login-content-download-divider" aria-hidden="true" />
             <div className="wk-login-content-download">
                 <AndroidDownloadButton />
                 <IOSDownloadButton />
@@ -453,29 +267,6 @@ const LegacyPasswordSection: React.FC<{
                 </div>
             </div>
         </>
-    )
-}
-
-// Android APK 下载按钮：动态从接口获取最新下载链接
-const AndroidDownloadButton: React.FC = () => {
-    const [apkUrl, setApkUrl] = useState<string>("/download/dmwork.apk")
-
-    useEffect(() => {
-        const baseURL = WKApp.apiClient.config.apiURL || ""
-        apiFetchJson<{ url?: string }>(`${baseURL}common/updater/android/1.0`)
-            .then(data => {
-                if (data?.url) setApkUrl(data.url)
-            })
-            .catch(() => { /* 保持默认链接 */ })
-    }, [])
-
-    return (
-        <a href={apkUrl} className="wk-login-download-btn" download>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48C14.15 1.23 13.1 1 12 1c-1.1 0-2.15.23-3.12.63L7.4.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.31 1.31C6.97 3.26 6 5.01 6 7h12c0-1.99-.97-3.75-2.47-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z" />
-            </svg>
-            <span>{t('download.android')}</span>
-        </a>
     )
 }
 
@@ -638,25 +429,26 @@ class Login extends Component<any, LoginState> {
                 <div className="wk-login-brand">
                     {/* Logo fixed top-left */}
                     <div className="wk-login-brand-logo-top">
-                        <img src={`/logo.png`} alt="logo" height={56} style={{ width: 'auto', display: 'inline-block', marginBottom: -10, borderRadius: 10 }} />
-                        <span className="wk-login-brand-logo-name">{WKApp.config.appName || 'Octo'}</span>
+                        <img className="wk-login-brand-logo-image" src={loginLogo} alt="Octo" />
                     </div>
                     <div className="wk-login-brand-inner">
-                        <div className="wk-login-brand-headline">
-                            {t('welcome.headline').split('\n').map((line, index) => (
-                                <React.Fragment key={line}>
-                                    {index > 0 && <br />}
-                                    {line}
-                                </React.Fragment>
-                            ))}
-                        </div>
-                        <div className="wk-login-brand-subline">
-                            {t('welcome.subline').split('\n').map((line, index) => (
-                                <React.Fragment key={line}>
-                                    {index > 0 && <br />}
-                                    {line}
-                                </React.Fragment>
-                            ))}
+                        <div className="wk-login-brand-copy">
+                            <div className="wk-login-brand-headline">
+                                {t('welcome.headline').split('\n').map((line, index) => (
+                                    <React.Fragment key={line}>
+                                        {index > 0 && <br />}
+                                        {line}
+                                    </React.Fragment>
+                                ))}
+                            </div>
+                            <div className="wk-login-brand-subline">
+                                {t('welcome.subline').split('\n').map((line, index) => (
+                                    <React.Fragment key={line}>
+                                        {index > 0 && <br />}
+                                        {line}
+                                    </React.Fragment>
+                                ))}
+                            </div>
                         </div>
                         {/* 3 个功能点已下线 (P1 反馈): 登录页不是营销页, 把 hero 留给左侧
                             chat 卡片预览即可. */}
@@ -714,29 +506,16 @@ class Login extends Component<any, LoginState> {
                         )}
                         <div className="wk-login-content-phonelogin" style={{ "display": vm.loginType === LoginType.phone ? "block" : "none" }}>
                             <div className="wk-login-content-slogan">{t('login.welcome')}</div>
-                            {/* hero 到 CTA 之间两行过渡. SSO 启用时显式说明渠道 + 新用户行为,
-                                两行小字避免用户在主按钮前还需要猜 "点了会发生什么". */}
-                            <div className="wk-login-content-slogan-sub">
-                                {ENTERPRISE_SSO_ENABLED && hasSsoProvider ? (
-                                    <>
-                                        <div>{t('login.ssoSub', { values: { provider: ssoProvider!.name, appName: WKApp.config.appName || 'Octo' } })}</div>
-                                        <div>{t('login.ssoAutoCreate')}</div>
-                                    </>
-                                ) : (
-                                    t('login.defaultSub')
-                                )}
-                            </div>
+                            {(!ENTERPRISE_SSO_ENABLED || !hasSsoProvider) && (
+                                <div className="wk-login-content-slogan-sub">{t('login.defaultSub')}</div>
+                            )}
                             {ENTERPRISE_SSO_ENABLED && hasSsoProvider ? (
-                                // SSO 启用：OIDC provider 作为主 CTA. Aegis 等 IdP 品牌名
-                                // 作为信任锚点放在主按钮下面小字 + tooltip, 而不是塞进主
-                                // 按钮文案 — 平衡"外部用户认知零负担"与"老用户/警觉用户能
-                                // 在跳转前预读 IdP 名字防钓鱼"两个诉求.
+                                // SSO 启用：统一认证作为主 CTA，注册入口和流程提示保持次级。
                                 <SsoLoginPanel
                                     vm={vm}
                                     ssoProvider={ssoProvider!}
                                     startSsoLogin={startSsoLogin}
                                     handleLogin={handleLogin}
-                                    showMigrationNotice={!WKApp.remoteConfig.suppressLoginMigrationNotice}
                                 />
                             ) : (
                                 // 未启用 SSO：保持原有布局（含本地注册入口）
@@ -769,12 +548,8 @@ class Login extends Component<any, LoginState> {
                                             {t('login.forgotPassword')}
                                         </div>
                                     </div>
-                                    {/* 与 SSO 分支一致: 下载入口前一条带文案的分隔线,
-                                        把"主登录区"和"也提供移动版"次级 CTA 分开,
-                                        避免按钮区 → 链接行 → 下载按钮 全部贴在一起. */}
-                                    <div className="wk-login-content-download-divider">
-                                        <span>{t('download.mobile')}</span>
-                                    </div>
+                                    {/* 与 SSO 分支一致，保留无文案分隔线。 */}
+                                    <div className="wk-login-content-download-divider" aria-hidden="true" />
                                     <div className="wk-login-content-download">
                                         <AndroidDownloadButton />
                                         <IOSDownloadButton />
@@ -1022,6 +797,14 @@ class Login extends Component<any, LoginState> {
                     {/* 右下底栏: 版权, 固定在 panel 底部居中. */}
                     <div className="wk-login-panel-footer">
                         <span>© {new Date().getFullYear()} {WKApp.config.appName || 'Octo'}</span>
+                        <span>
+                            {t('login.designedBy')}{' '}
+                            <a
+                                href="https://www.mininglamp.com/"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >Mininglamp</a>
+                        </span>
                     </div>
                 </div>{/* end wk-login-panel */}
             </div>
