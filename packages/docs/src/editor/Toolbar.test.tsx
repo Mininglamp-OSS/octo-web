@@ -787,6 +787,74 @@ describe('Toolbar — highlight palette + custom picker', () => {
   })
 })
 
+// XIN-1095 re-review (Jerry-Xin CHANGES_REQUESTED): the highlight popover's inline hex entry carried
+// two user-visible bugs the font-colour path did not.
+//  (1) maxLength={7} on the raw field truncated a pasted hex that arrived with surrounding whitespace
+//      (" #1971c2" / "#1971c2 ") BEFORE the Enter handler could trim it, so a valid paste was wrongly
+//      rejected. normalizeHexColor already trims + validates, so the raw field must not cap length.
+//  (2) it committed with toggleHighlight, so re-entering the colour already on the selection REMOVED
+//      the highlight instead of confirming it. It now uses setHighlight, matching the native
+//      highlight picker (setHighlight on the <input type="color"> change).
+describe('Toolbar — highlight inline hex input (XIN-1095 re-review)', () => {
+  function openHighlightHex(): HTMLInputElement {
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().selectAll().run()
+    fireEvent.click(titleBtn('docs.toolbar.highlight'))
+    const input = document.querySelector<HTMLInputElement>('.octo-highlight-color-popover .octo-color-hex')
+    if (!input) throw new Error('no hex input in the highlight popover')
+    return input
+  }
+
+  it('applies a typed hex highlight to the selection and collapses the popover', () => {
+    const input = openHighlightHex()
+    fireEvent.change(input, { target: { value: '#d1e3f3' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(editor!.getAttributes('highlight').color).toBe('#d1e3f3')
+    // A valid pick collapses the popover, like the preset swatches.
+    expect(document.querySelector('.octo-highlight-color-popover')).toBeNull()
+  })
+
+  // Fix 2 regression: re-entering the SAME colour already on the selection must KEEP the highlight
+  // (setHighlight = apply/confirm), not clear it. This assertion is red on the old toggleHighlight
+  // path (which removes the mark for a same-colour toggle) and green on setHighlight.
+  it('does not clear the highlight when the same colour is re-entered', () => {
+    // Seed the selection with a highlight first…
+    editor!.chain().focus().selectAll().setHighlight({ color: '#d1e3f3' }).run()
+    expect(editor!.getAttributes('highlight').color).toBe('#d1e3f3')
+
+    // …then type the identical hex through the inline field.
+    render(<Toolbar editor={editor!} />)
+    editor!.chain().focus().selectAll().run()
+    fireEvent.click(titleBtn('docs.toolbar.highlight'))
+    const input = document.querySelector<HTMLInputElement>('.octo-highlight-color-popover .octo-color-hex')!
+    fireEvent.change(input, { target: { value: '#d1e3f3' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    // The highlight is still applied — the same-colour entry confirmed it, it did not toggle it off.
+    expect(editor!.getAttributes('highlight').color).toBe('#d1e3f3')
+    expect(editor!.getHTML()).toContain('<mark')
+  })
+
+  // Fix 1 regression: the raw field must not carry a truncating length cap. maxLength={7} clipped a
+  // pasted value with surrounding whitespace before the Enter handler could trim it.
+  it('does not cap the raw input length (so a pasted hex with whitespace is not truncated)', () => {
+    const input = openHighlightHex()
+    // No maxlength attribute → the DOM reports the "no limit" sentinel (-1).
+    expect(input.getAttribute('maxlength')).toBeNull()
+    expect(input.maxLength).toBe(-1)
+  })
+
+  // …and a whitespace-padded hex is trimmed + accepted end-to-end (the reviewer's " #1971c2" paste).
+  it('accepts a whitespace-padded hex and applies the trimmed colour', () => {
+    const input = openHighlightHex()
+    fireEvent.change(input, { target: { value: '  #1971c2  ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(editor!.getAttributes('highlight').color).toBe('#1971c2')
+    // The value parsed, so it was never flagged invalid.
+    expect(input.className).not.toContain('octo-color-hex-invalid')
+  })
+})
+
 describe('Toolbar — custom line-height input (SCHEMA_VERSION 17, focus-steal RC fix)', () => {
   // The custom multiplier input used to be a controlled field that called editor.chain().focus()
   // on every keystroke: typing bounced the caret back into the editor (only the first char

@@ -368,7 +368,10 @@ function HexColorInput({ onCommit }: { onCommit: (hex: string) => void }) {
       aria-invalid={invalid || undefined}
       value={value}
       spellCheck={false}
-      maxLength={7}
+      // No maxLength on the raw input: normalizeHexColor trims and sanitises on Enter, so a paste
+      // that carries leading/trailing whitespace (e.g. " #1971c2") must not be clipped to 7 chars
+      // before it is trimmed — that would wrongly reject an otherwise valid hex. Bad input is still
+      // caught (and flagged via aria-invalid) by the parse, never by a length cap on the raw value.
       onChange={(e) => {
         setValue(e.target.value)
         if (invalid) setInvalid(false)
@@ -469,7 +472,12 @@ function HighlightControl({ editor }: { editor: Editor }) {
           </label>
           <HexColorInput
             onCommit={(hex) => {
-              editor.chain().focus().toggleHighlight({ color: hex }).run()
+              // setHighlight (not toggleHighlight): the hex field is an explicit "apply this
+              // colour" action like the native picker above (Toolbar's setHighlight at the custom
+              // <input type="color"> commit). toggleHighlight would REMOVE the highlight when the
+              // selection already carries the same colour, so re-entering an identical hex must
+              // still leave it applied, not clear it.
+              editor.chain().focus().setHighlight({ color: hex }).run()
               setOpen(false)
             }}
           />
