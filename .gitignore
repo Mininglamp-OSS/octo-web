@@ -71,6 +71,7 @@ package-lock.json
 .vscode/settings.json
 **/settings.local.json
 docs/superpowers/plans/
+docs/superpowers/specs/
 # Review output files
 /cc-*.json
 grp_out.txt
