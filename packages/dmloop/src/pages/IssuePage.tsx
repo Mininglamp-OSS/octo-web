@@ -25,6 +25,7 @@ import type {
 } from "../api/types";
 import { ISSUE_SORT_FIELDS, ISSUE_DATE_FIELDS } from "../api/types";
 import { listIssues, searchIssues, listGroupedIssues, listMyGroupedIssues, getAgentTaskSnapshot } from "../api/issueApi";
+import { groupIssuesByAssignee } from "../api/issueGrouping";
 import { listProjectOptions } from "../api/directory";
 import { listLabels } from "../api/labelApi";
 import { useAssigneeCandidates } from "../ui/useAssigneeCandidates";
@@ -150,8 +151,18 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
       date_end: endExclusive ? endExclusive.toISOString() : undefined,
     };
 
-    // 分组板:走 /issues/grouped(按负责人);grouped 不吃关键词/排序,故在分组视图隐藏。
+    // 分组板:走 /issues/grouped(按负责人)。
     if (view === "grouped") {
+      const gkw = f.keyword.trim();
+      // 关键词(仅主看板,非「我的回路」)→ 全文搜索平铺结果,前端按负责人分组呈现。搜索端点
+      // 独立语义(不吃 scope/其它筛选,上限 50),故与常规分组拉取分道;「我的回路」隐藏关键词、不入此路。
+      if (gkw && !isMyLoop) {
+        searchIssues(gkw, { limit: 50 })
+          .then(({ issues }) => { if (my === seq.current) setGroups(groupIssuesByAssignee(issues)); })
+          .catch(onErr)
+          .finally(() => { if (my === seq.current) setLoading(false); });
+        return;
+      }
       // 「与我相关」(仅「我的回路」页)= 指派给我 ∪ 我创建 ∪ 间接关联的并集扇出;需当前成员
       // 后端 id,未解析出则清空并等待(不回退成无 scope 全量)。myMemberId 在依赖里,解析后自动重取。
       if (scope === "involves") {
@@ -269,20 +280,23 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
 
   const title = defaultScope === "involves" ? t("loop.nav.myloop") : t("loop.nav.issue");
 
-  // 关键词走全文搜索端点(独立语义,后端不吃其它筛选/排序)。搜索激活时禁用面板内其它筛选,
-  // 避免它们「看起来生效、实际被忽略」的误导(grouped 视图隐藏关键词,故 searching 恒 false)。
-  const searching = view !== "grouped" && !!f.keyword.trim();
+  // 关键词走全文搜索端点(独立语义,不吃其它筛选/排序)。搜索激活时禁用面板内其它筛选/scope,
+  // 避免它们「看起来生效、实际被忽略」的误导。主看板三视图均支持;「我的回路」无关键词(搜索不吃 involves)。
+  const searching = !isMyLoop && !!f.keyword.trim();
 
-  // 「筛选」按钮上的激活计数(每个非空维度记 1;keyword 仅在其生效的视图计)。
+  // 「筛选」按钮上的激活计数(每个生效维度记 1)。搜索激活时只有 keyword 生效——其它维度被
+  // 搜索端点忽略且面板已禁用,故不计,免得徽章高亮却对结果无影响(与 scope tab 搜索时去激活一致)。
   const activeFilters =
-    (f.statuses.length ? 1 : 0) +
-    (f.priorities.length ? 1 : 0) +
-    (f.assigneeIds.length || noAssigneeActive ? 1 : 0) +
-    (f.creatorIds.length ? 1 : 0) +
-    (f.projectIds.length || f.noProject ? 1 : 0) +
-    (f.labelIds.length ? 1 : 0) +
-    (f.dateRange ? 1 : 0) +
-    (view !== "grouped" && f.keyword.trim() ? 1 : 0);
+    (searching
+      ? 0
+      : (f.statuses.length ? 1 : 0) +
+        (f.priorities.length ? 1 : 0) +
+        (f.assigneeIds.length || noAssigneeActive ? 1 : 0) +
+        (f.creatorIds.length ? 1 : 0) +
+        (f.projectIds.length || f.noProject ? 1 : 0) +
+        (f.labelIds.length ? 1 : 0) +
+        (f.dateRange ? 1 : 0)) +
+    (!isMyLoop && f.keyword.trim() ? 1 : 0);
 
   const clearFilters = () =>
     update({
@@ -316,11 +330,15 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
       </div>
       {filterSelect(t("loop.filter.status"), f.statuses, (v) => update({ statuses: v as IssueStatus[] }), statusOpts, { maxTagCount: 2 })}
       {filterSelect(t("loop.filter.priority"), f.priorities, (v) => update({ priorities: v as IssuePriority[] }), priorityOpts, { maxTagCount: 2 })}
-      {filterSelect(t("loop.filter.assignee"), f.assigneeIds, (v) => update({ assigneeIds: v }), cands.map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)), { filter: true })}
-      <div className="loop-fields__row">
-        <Checkbox className="loop-nofilter" checked={noAssigneeActive} onChange={(e) => update({ noAssignee: !!e.target.checked })} disabled={searching || scope !== "all"}>{t("loop.filter.noAssignee")}</Checkbox>
-      </div>
-      {filterSelect(t("loop.filter.creator"), f.creatorIds, (v) => update({ creatorIds: v }), cands.filter((c) => c.type === "member").map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)), { filter: true })}
+      {/* 「谁」类筛选(负责人/无负责人/创建者)在「我的回路」隐藏——该页本就锁定「与我相关」,
+          按他人负责人/创建者筛与语义矛盾,且会污染并集扇出(见 listMyGroupedIssues)。 */}
+      {!isMyLoop && filterSelect(t("loop.filter.assignee"), f.assigneeIds, (v) => update({ assigneeIds: v }), cands.map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)), { filter: true })}
+      {!isMyLoop && (
+        <div className="loop-fields__row">
+          <Checkbox className="loop-nofilter" checked={noAssigneeActive} onChange={(e) => update({ noAssignee: !!e.target.checked })} disabled={searching || scope !== "all"}>{t("loop.filter.noAssignee")}</Checkbox>
+        </div>
+      )}
+      {!isMyLoop && filterSelect(t("loop.filter.creator"), f.creatorIds, (v) => update({ creatorIds: v }), cands.filter((c) => c.type === "member").map((c) => (<Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)), { filter: true })}
       {projects.length > 0 && filterSelect(t("loop.filter.project"), f.projectIds, (v) => update({ projectIds: v }), projectOpts, { filter: true })}
       <div className="loop-fields__row">
         <Checkbox className="loop-nofilter" checked={f.noProject} onChange={(e) => update({ noProject: !!e.target.checked })} disabled={searching}>{t("loop.filter.noProject")}</Checkbox>
@@ -335,8 +353,8 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
           <DatePicker type="dateRange" density="compact" disabled={searching} value={f.dateRange} onChange={(d) => update({ dateRange: Array.isArray(d) && d.length === 2 && d[0] && d[1] ? (d as Date[]) : undefined })} placeholder={t("loop.filter.dateRange")} zIndex={FIELD_POPUP.zIndex} style={{ flex: 1 }} />
         </div>
       </div>
-      {/* 关键词走全文搜索(独立语义,不与 grouped 组合),故分组视图隐藏。 */}
-      {view !== "grouped" && (
+      {/* 关键词走全文搜索(平铺,分组视图前端按负责人再分组呈现)。「我的回路」不支持(搜索不吃 involves)。 */}
+      {!isMyLoop && (
         <div className="loop-fields__row">
           <div className="loop-fields__label">{t("loop.search.issue")}</div>
           <Input className="loop-search" prefix={<Search size={14} />} placeholder={t("loop.search.issue")} value={f.keyword} onChange={(v) => update({ keyword: v })} showClear style={{ width: "100%" }} />

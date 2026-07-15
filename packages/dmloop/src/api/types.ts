@@ -62,13 +62,8 @@ export interface ListParams {
   // 客户端关键词过滤:projectApi/skillApi/squadApi/agentApi/runtimeApi 共用此字段。
   // issue 列表不再用它(关键词走 searchIssues → /issues/search),但其它 list 端点仍需,勿删。
   keyword?: string;
-  status?: IssueStatus;
-  priority?: IssuePriority;
-  assignee_id?: string;
-  creator_id?: string;
-  project_id?: string;
-  // 统一多选筛选(后端数组参,与看板/列表/分组共用)。空数组 = 不发。数组与同维单值
-  // 互斥使用:issue 列表发数组,单值字段留给其它复用 ListParams 的 list 端点。
+  // 统一多选筛选(后端数组参,与看板/列表/分组共用)。空数组 = 不发。issue 列表只用这套数组,
+  // 不再有同维单值(已移除,避免单/复数同发的歧义)。
   statuses?: IssueStatus[];
   priorities?: IssuePriority[];
   assignee_ids?: string[];

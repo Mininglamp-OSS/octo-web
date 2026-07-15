@@ -43,11 +43,6 @@ async function fetchIssues(path: string, query: Record<string, unknown>): Promis
 
 export function listIssues(params?: ListParams): Promise<{ issues: Issue[]; total: number }> {
   return fetchIssues("/issues", {
-    status: params?.status,
-    priority: params?.priority,
-    assignee_id: params?.assignee_id,
-    creator_id: params?.creator_id,
-    project_id: params?.project_id,
     ...arrayFilterQuery(params ?? {}),
     date_field: params?.date_field,
     date_start: params?.date_start,
@@ -132,9 +127,16 @@ export async function listGroupedIssues(params: GroupedParams): Promise<IssueGro
 // (assignee_type, assignee_id) 合并分组、按 issue id 去重,total 取去重后条数。
 // 对齐后端「我的 issue」三过滤并集语义(assignee_types 对本 scope 无意义,剥离)。
 export async function listMyGroupedIssues(userId: string, params: GroupedParams): Promise<IssueGroup[]> {
-  // 剥离所有「用户关系」过滤:三 leg 各自设一个,base 保留任何一个都会污染另两 leg
-  // (如下拉 creator 会被 creator leg 覆盖、却在其余 leg 变成意外 AND)。assignee_types 同样无意义。
-  const base: GroupedParams = { ...params, assignee_types: undefined, assignee_id: undefined, creator_id: undefined, involves_user_id: undefined };
+  // 剥离所有「用户关系」过滤(单值 + 复数):三 leg 各自设一个,base 保留任何一个都会污染另两 leg
+  // (如 creator 下拉会在其余 leg 变成意外 AND)。复数 assignee_ids/creator_ids 同理必须剥,
+  // 否则 My Loop 面板选的负责人/创建者会 AND 进三腿、破坏并集语义。assignee_types 对本 scope 无意义。
+  const base: GroupedParams = {
+    ...params,
+    assignee_types: undefined,
+    assignee_id: undefined, assignee_ids: undefined,
+    creator_id: undefined, creator_ids: undefined,
+    involves_user_id: undefined,
+  };
   const variants: GroupedParams[] = [
     { ...base, assignee_id: userId },
     { ...base, creator_id: userId },
