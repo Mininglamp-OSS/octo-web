@@ -53,6 +53,7 @@ import SpaceCreate from "../../Components/SpaceCreate";
 import { Space, SpaceService } from "../../Service/SpaceService";
 import NavSignalBadge from "../../Components/NavRail/NavSignalBadge";
 import ThreadPanel from "../../Components/ThreadPanel";
+import { buildDocLink } from "../../Utils/docLink";
 import {
   Thread,
   ThreadStatus,
@@ -281,6 +282,11 @@ export interface ChatContentPageState {
   previewReturnChannelSearch: boolean;
   /** 当前正在右侧预览的 Webhook Fleet 任务链接。 */
   webhookIssuePreviewTarget: WebhookIssuePreviewTarget | null;
+  /**
+   * 聊天内点击文档链接 `/d/<docId>?sp=` 时内联打开的文档目标（WS-17）。非空时在复用的右侧面板槽位
+   * 内挂载文档编辑器侧边栏；与子区/文件预览/事项/总结/搜索面板互斥。
+   */
+  previewDoc: { docId: string; space?: string } | null;
 }
 export class ChatContentPage extends Component<
   ChatContentPageProps,
@@ -320,6 +326,7 @@ export class ChatContentPage extends Component<
       channelSearchPreviewFile: null,
       previewReturnChannelSearch: false,
       webhookIssuePreviewTarget: null,
+      previewDoc: null,
     };
   }
 
@@ -421,7 +428,35 @@ export class ChatContentPage extends Component<
       previewHadThreadShell: fromChannelSearch
         ? false
         : this.state.showThreadPanel,
+      previewDoc: null, // WS-17: 打开文件预览时关掉文档侧边栏，保持右侧面板互斥
     });
+  };
+
+  /**
+   * Open a document inline in the right-side sidebar (WS-17). Bound to `WKApp.openDocPreview` while
+   * this page is mounted so a `/d/<docId>?sp=` link clicked in a conversation opens the live editor
+   * here instead of a new page. Mutually exclusive with the other right-side panels — opening it
+   * closes file preview / thread / matter / summary / channel-search, mirroring how those close each
+   * other, so two panels never fight for the same slot.
+   */
+  private _openDocPreview = (docId: string, space?: string) => {
+    if (!docId) return;
+    this.setState({
+      previewDoc: { docId, space },
+      previewFile: null,
+      activePreviewMessageId: null,
+      showThreadPanel: false,
+      activeThread: null,
+      showChannelSetting: false,
+      showChannelSearch: false,
+      showMatterPanel: false,
+      showMatterDetailPanel: false,
+      showSummaryPanel: false,
+    });
+  };
+
+  private _closeDocPreview = () => {
+    this.setState({ previewDoc: null });
   };
 
   private getChannelSearchDataSource(
@@ -565,6 +600,10 @@ export class ChatContentPage extends Component<
 
     // 监听文件预览事件
     WKApp.mittBus.on("wk:file-preview", this._onFilePreview);
+
+    // WS-17: 暴露"聊天内文档链接侧边栏内联打开"的入口，仅在聊天页挂载期间可用。
+    // 文档链接点击助手 (Utils/docLinkNavigation) 据此判断是否内联打开；未挂载时链接照常开整页。
+    WKApp.openDocPreview = this._openDocPreview;
 
     this.channelInfoListener = (channelInfo: ChannelInfo) => {
       // 监听当前频道或父群组的变化
@@ -942,6 +981,11 @@ export class ChatContentPage extends Component<
 
   componentWillUnmount() {
     WKApp.mittBus.off("wk:file-preview", this._onFilePreview);
+    // WS-17: 撤下本页注册的文档侧边栏入口，避免卸载后仍指向已销毁的实例；仅在仍是本实例时清除，
+    // 防止竞态下清掉后一个已挂载页面注册的入口。
+    if (WKApp.openDocPreview === this._openDocPreview) {
+      WKApp.openDocPreview = undefined;
+    }
     if (this._onPendingThread) {
       WKApp.mittBus.off("wk:pending-thread", this._onPendingThread);
     }
@@ -1069,6 +1113,7 @@ export class ChatContentPage extends Component<
       showChannelSearch,
       channelSearchPreviewFile,
       webhookIssuePreviewTarget,
+      previewDoc,
     } = this.state;
     // 子区页面不显示讨论串按钮
     const isThreadChannel = channel.channelType === ChannelTypeCommunityTopic;
@@ -1083,7 +1128,7 @@ export class ChatContentPage extends Component<
           "wk-chat-content-right",
           showChannelSetting ? "wk-chat-channelsetting-open" : "",
           showChannelSearch ? "wk-chat-channel-search-open" : "",
-          showThreadPanel || previewFile || showMatterPanel
+          showThreadPanel || previewFile || showMatterPanel || previewDoc
             ? "wk-chat-threadpanel-open"
             : "",
           showMatterDetailPanel ? "wk-chat-matter-detail-panel-open" : "",
@@ -1550,6 +1595,36 @@ export class ChatContentPage extends Component<
             />
           </ErrorBoundary>
         )}
+
+        {/* WS-17: 聊天内点击文档链接时，在复用的右侧面板槽位里内联打开文档编辑器（侧边栏）。
+            与其它面板互斥（仅在无其它面板打开时渲染），内容由 docs 模块注册的 chatDocPreviewPane
+            端点提供；未注册（endpoint 缺失）时安全降级为空。 */}
+        {previewDoc &&
+          !showThreadPanel &&
+          !previewFile &&
+          !showMatterPanel &&
+          !showMatterDetailPanel &&
+          !showSummaryPanel &&
+          !showChannelSearch &&
+          !showChannelSetting && (
+            <div className="wk-thread-panel wk-doc-preview-panel">
+              <div className="wk-thread-panel-main">
+                {WKApp.endpoints.chatDocPreviewPane({
+                  docId: previewDoc.docId,
+                  space: previewDoc.space,
+                  onClose: this._closeDocPreview,
+                  onExpandFullPage: () => {
+                    // 展开为整页：打开现有整页文档路由 `/d/<docId>?sp=`，按辉哥定的在新标签页打开。
+                    const url = buildDocLink({
+                      docId: previewDoc.docId,
+                      space: previewDoc.space,
+                    });
+                    window.open(url, "_blank", "noopener,noreferrer");
+                  },
+                })}
+              </div>
+            </div>
+          )}
       </div>
     );
   }

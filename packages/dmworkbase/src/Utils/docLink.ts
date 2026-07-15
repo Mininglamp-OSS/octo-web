@@ -72,3 +72,39 @@ export function buildDocLink({ docId, space }: DocLinkTarget): string {
   const query = docSpace ? `?sp=${encodeURIComponent(docSpace)}` : ''
   return `${origin()}${path}${query}`
 }
+
+/** A parsed in-app document share link — the inverse of {@link buildDocLink}. */
+export interface ParsedDocLink {
+  docId: string
+  /** The doc's own space carried by `?sp=`, or undefined when the link omits it. */
+  space?: string
+}
+
+/** `/d/<docId>` — docId is a single documentName segment (A-Z a-z 0-9 _ -), optional trailing slash. */
+const DOC_LINK_PATH_RE = /^\/d\/([A-Za-z0-9_-]+)\/?$/
+
+/**
+ * Parse a same-origin in-app document share link (`<origin>/d/<docId>?sp=<spaceId>`) into
+ * `{ docId, space }`, or return null when `href` is not such a link. The inverse of
+ * {@link buildDocLink}, used to decide whether an in-chat link click should open the doc inline in
+ * the sidebar (WS-17) instead of following the anchor to a new page.
+ *
+ * SAME-ORIGIN ONLY: a link whose origin differs from the current one (an external site that merely
+ * happens to use a `/d/…` path) is rejected, so interception never hijacks a foreign URL — it stays
+ * a plain outbound link. Relative hrefs resolve against the current origin and are accepted.
+ */
+export function parseDocLink(href: string | undefined): ParsedDocLink | null {
+  if (typeof href !== 'string' || href.length === 0) return null
+  if (typeof window === 'undefined' || !window.location?.origin) return null
+  let url: URL
+  try {
+    url = new URL(href, window.location.origin)
+  } catch {
+    return null
+  }
+  if (url.origin !== window.location.origin) return null
+  const m = DOC_LINK_PATH_RE.exec(url.pathname)
+  if (!m) return null
+  const space = (url.searchParams.get('sp') || '').trim()
+  return { docId: m[1], space: space || undefined }
+}

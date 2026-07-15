@@ -104,6 +104,37 @@ export function onNavMenuActivated(menuId: string, cb: () => void): () => void {
   return () => bus.off('wk:nav-menu-activated', handler)
 }
 
+/**
+ * Register the docs pane the host chat renders inside its reused right-side panel when a `/d/:docId`
+ * link is clicked in chat (WS-17). Mirrors the `chatSummaryPanel` endpoint contract (dmworksummary):
+ * dmworkbase declares the `chatDocPreviewPane` endpoint category + invoke method, and the docs module
+ * — which is allowed to depend on `@octo/base` — registers the implementation here. The host invokes
+ * it with `{ docId, space, onClose, onExpandFullPage }` and renders whatever ReactNode we return.
+ *
+ * No-op when a test override is set (unit tests have no host endpoint registry) or the host exposes no
+ * endpoints surface, so this stays a safe production-only side effect.
+ */
+export function registerChatDocPreviewPane(
+  render: (opts: {
+    docId: string
+    space?: string
+    onClose: () => void
+    onExpandFullPage: () => void
+  }) => import('react').ReactNode,
+): void {
+  if (override) return
+  const endpoints = (
+    WKApp as unknown as {
+      endpoints?: {
+        registerChatDocPreviewPane?: (sid: string, cb: (param: unknown) => import('react').ReactNode) => void
+      }
+    }
+  ).endpoints
+  endpoints?.registerChatDocPreviewPane?.('docsdocpreviewpane', (param) =>
+    render(param as { docId: string; space?: string; onClose: () => void; onExpandFullPage: () => void }),
+  )
+}
+
 /** Page size for a single member page (getSpaceMembers default). */
 const SPACE_MEMBERS_PAGE_SIZE = 50
 /** Safety cap on page count so a pathological space can't loop unbounded. */

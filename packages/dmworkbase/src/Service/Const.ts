@@ -29,6 +29,7 @@ export class EndpointCategory {
   static chatMatterDetailPanel = "chatMatterDetailPanel" // 事项详情面板 (v0.7)
   static chatSummaryPanel = "chatSummaryPanel"
   static chatWebhookIssuePreview = "chatWebhookIssuePreview"
+  static chatDocPreviewPane = "chatDocPreviewPane" // 聊天内文档链接侧边栏内联编辑面板 (WS-17)
 }
 
 

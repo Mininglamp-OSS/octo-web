@@ -692,6 +692,13 @@ export default class WKApp extends ProviderListener {
   // Callback to switch the active sidebar menu by id (set by Main page)
   static switchToMenuById?: (menuId: string) => void;
   static openSummaryDetail?: (taskId: number | string, spaceId?: string) => void;
+  /**
+   * Open a document inline in the chat's right-side sidebar (WS-17). Set by ChatContentPage while it
+   * is mounted and cleared on unmount, so it is present only when the sidebar host exists; a doc-link
+   * click helper (Utils/docLinkNavigation) calls it to open `/d/<docId>?sp=` inline instead of a new
+   * page, and falls back to opening the standalone page when it is absent.
+   */
+  static openDocPreview?: (docId: string, space?: string) => void;
   static searchChatCandidates?: (params: { keyword?: string; chat_type?: string; space_id?: string }) => Promise<any[]>;
   // Id of the currently active sidebar menu (kept in sync by Main page)
   static currentMenuId?: string;

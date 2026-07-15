@@ -12,9 +12,10 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react'
-import { getWKApp, i18n, t, Menus } from './octoweb/index.ts'
+import { getWKApp, i18n, t, Menus, registerChatDocPreviewPane } from './octoweb/index.ts'
 import type { IModule } from './octoweb/index.ts'
 import { InviteAcceptPage } from './invite/InviteAcceptPage.tsx'
+import { DocPreviewPane } from './pages/DocPreviewPane.tsx'
 import { captureDocTargetDeepLink } from './config.ts'
 import zhCN from './i18n/zh-CN.json'
 import enUS from './i18n/en-US.json'
@@ -278,6 +279,18 @@ export class DocsModule implements IModule {
     // `/docs` renders the invite-accept page when a pending invite token exists, else docs home.
     wk.route.register('/docs', () => docsRouteElement)
     wk.route.register('/docs/invite/:token', () => <InviteAcceptRoute />)
+
+    // In-chat sidebar document pane (WS-17). Register the pane the host chat renders when a
+    // `/d/:docId` link is clicked inside a conversation — the live editor inline for preview + edit
+    // + comment, without opening a new page. No-op under test overrides / hosts without endpoints.
+    registerChatDocPreviewPane(({ docId, space, onClose, onExpandFullPage }) => (
+      <DocPreviewPane
+        docId={docId}
+        space={space ?? ''}
+        onClose={onClose}
+        onExpandFullPage={onExpandFullPage}
+      />
+    ))
 
     // Register the Docs entry in the octo-web NavRail (sidebar). Without this the
     // /docs route is registered but unreachable: the main view is menu-driven

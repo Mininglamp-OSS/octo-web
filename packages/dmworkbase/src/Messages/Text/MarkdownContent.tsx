@@ -14,6 +14,7 @@ import "katex/dist/katex.min.css";
 import "./markdown.css";
 import WKApp from "../../App";
 import { isSafeUrl } from "../../Utils/security";
+import { tryOpenDocLinkInSidebar } from "../../Utils/docLinkNavigation";
 import { linkifySafeUrls } from "../../Utils/linkify";
 import { downloadFile } from "../../Utils/download";
 import { t } from "../../i18n";
@@ -303,6 +304,32 @@ function segmentText(
   return segments;
 }
 
+/**
+ * Intercept a plain left-click on an in-chat link (WS-17). When the href is a same-origin document
+ * share link (`/d/<docId>?sp=`) and the chat doc sidebar host is mounted, open the document inline in
+ * the sidebar instead of navigating away. Modifier / middle clicks (cmd/ctrl/shift/alt, or a
+ * non-primary button) are left alone so "open in new tab" keeps working, and any non-doc link falls
+ * through to the anchor's default `target="_blank"` behavior.
+ */
+function handleMarkdownLinkClick(
+  e: React.MouseEvent<HTMLAnchorElement>,
+  href: string | undefined,
+): void {
+  if (
+    e.defaultPrevented ||
+    e.button !== 0 ||
+    e.metaKey ||
+    e.ctrlKey ||
+    e.shiftKey ||
+    e.altKey
+  ) {
+    return;
+  }
+  if (tryOpenDocLinkInSidebar(href)) {
+    e.preventDefault();
+  }
+}
+
 const baseComponents: any = {
   a: ({ href, children, ...props }: any) => {
     // AC-13b (feature #511): middle-ellipsize the DISPLAY text only when it is itself a long bare
@@ -316,13 +343,26 @@ const baseComponents: any = {
           : null;
     if (text != null && shouldEllipsizeLinkText(text, href)) {
       return (
-        <a href={href} target="_blank" rel="noopener noreferrer" title={text} {...props}>
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={text}
+          {...props}
+          onClick={(e) => handleMarkdownLinkClick(e, href)}
+        >
           {middleEllipsizeUrl(text)}
         </a>
       );
     }
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        {...props}
+        onClick={(e) => handleMarkdownLinkClick(e, href)}
+      >
         {children}
       </a>
     );
