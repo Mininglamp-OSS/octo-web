@@ -182,6 +182,34 @@ describe('recent feed resilience (not-yet-deployed backend degrades to empty)', 
   })
 })
 
+// XIN-1188: the multi-select type filter serializes as repeated `?type=` params (never CSV),
+// mirroring the `creator` convention, on BOTH the recent and mine list calls.
+describe('type filter serialization (repeated ?type=, both lists)', () => {
+  it('listRecentDocs appends one ?type= per selected kind (OR), alongside creator', async () => {
+    api.responder = () => ({ data: { total: 0, items: [], nextCursor: null }, status: 200 })
+    await listRecentDocs({ types: ['doc', 'sheet'], creators: ['u_a'] })
+    const url = api.calls.at(-1)!.url
+    expect(url).toContain('type=doc')
+    expect(url).toContain('type=sheet')
+    expect(url).toContain('creator=u_a')
+    expect(url).not.toContain('type=doc%2Csheet') // not CSV
+  })
+
+  it('listDocs (mine) appends one ?type= per selected kind', async () => {
+    api.responder = () => ({ data: { total: 0, items: [] }, status: 200 })
+    await listDocs({ owner: 'me', types: ['board'] })
+    const url = api.calls.at(-1)!.url
+    expect(url).toContain('type=board')
+    expect(url).toContain('owner=me')
+  })
+
+  it('omits the type param entirely when none is selected (backward compatible)', async () => {
+    api.responder = () => ({ data: { total: 0, items: [], nextCursor: null }, status: 200 })
+    await listRecentDocs({})
+    expect(api.calls.at(-1)!.url).not.toContain('type=')
+  })
+})
+
 // Delete outcome classification (contract C3 final) — moved to the editor detail page but the
 // 200/404/403/409 mapping is unchanged (Problem 4).
 describe('classifyDeleteStatus / deleteErrorKey', () => {

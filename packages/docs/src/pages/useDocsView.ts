@@ -18,6 +18,7 @@ import {
   listRecentCreators,
   type CreatorOption,
   type DocListItem,
+  type DocType,
 } from './docsApi.ts'
 
 export type DocsViewKind = 'recent' | 'mine'
@@ -27,10 +28,11 @@ export type DocsViewPhase = 'loading' | 'ready' | 'error'
 
 /**
  * Empty-state variant (frontend-design §5.3). `null` = not empty. A/B distinguish "view has no data"
- * (看 vs 建, dual CTA i18n keys); C/D/E distinguish "conditions matched nothing" (search / filter /
- * both). Decided from the (q, creators) that produced the empty result — never stale state.
+ * (看 vs 建, dual CTA i18n keys); C/D/E/F distinguish "conditions matched nothing" (search / creator
+ * / both / type). Decided from the (q, creators, types) that produced the empty result — never stale
+ * state. `E` is the combined bucket for ANY 2+ active conditions and shows every matching clear.
  */
-export type DocsEmptyKind = null | 'A' | 'B' | 'C' | 'D' | 'E'
+export type DocsEmptyKind = null | 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
 
 /** Footer status for the infinite-scroll appends (independent of the first-page phase). */
 export type DocsMoreStatus = 'idle' | 'loadingMore' | 'error' | 'end'
@@ -43,6 +45,8 @@ export interface DocsView {
   q: string
   /** Selected creator uids (recent only; always empty for mine). */
   creators: string[]
+  /** Selected document kinds — multi-select OR filter (both tabs; frontend-design §5.2). */
+  types: DocType[]
   /** Facet candidates for the creator filter (recent only), server-resolved `{uid,name}`. */
   creatorOptions: CreatorOption[]
   items: DocListItem[]
@@ -61,6 +65,10 @@ export interface DocsView {
   toggleCreator: (uid: string) => void
   /** Clear all selected creators (empty-state D/E "clear filter" CTA + chips "clear all"). */
   clearCreators: () => void
+  /** Toggle a document kind in the OR filter (both tabs). */
+  toggleType: (ty: DocType) => void
+  /** Clear all selected types (empty-state F/E "clear type" CTA + chips "clear all"). */
+  clearTypes: () => void
   /** Append the next page (IntersectionObserver sentinel / load-more retry). */
   loadMore: () => void
   /** Retry a failed first-page load. */
@@ -74,13 +82,18 @@ function deriveEmpty(
   itemsLen: number,
   q: string,
   creators: string[],
+  types: DocType[],
 ): DocsEmptyKind {
   if (itemsLen > 0) return null
   const hasQ = q.trim().length > 0
   const hasCreators = creators.length > 0
-  if (hasQ && hasCreators) return 'E'
-  if (hasCreators) return 'D'
+  const hasTypes = types.length > 0
+  const active = (hasQ ? 1 : 0) + (hasCreators ? 1 : 0) + (hasTypes ? 1 : 0)
+  // 2+ active conditions collapse to the combined bucket, which renders every matching clear CTA.
+  if (active >= 2) return 'E'
   if (hasQ) return 'C'
+  if (hasCreators) return 'D'
+  if (hasTypes) return 'F'
   return kind === 'recent' ? 'A' : 'B'
 }
 
@@ -97,6 +110,7 @@ export function useDocsView(
 ): DocsView {
   const [q, setQ] = useState('')
   const [creators, setCreators] = useState<string[]>([])
+  const [types, setTypes] = useState<DocType[]>([])
   const [creatorOptions, setCreatorOptions] = useState<CreatorOption[]>([])
   const [items, setItems] = useState<DocListItem[]>([])
   const [total, setTotal] = useState(0)
@@ -126,7 +140,7 @@ export function useDocsView(
   const loadingMoreRef = useRef(false)
 
   const fetchFirst = useCallback(
-    (nextQ: string, nextCreators: string[]) => {
+    (nextQ: string, nextCreators: string[], nextTypes: DocType[]) => {
       const seq = ++seqRef.current
       cursorRef.current = null
       pageRef.current = 1
@@ -145,7 +159,7 @@ export function useDocsView(
         hasMoreRef.current = more
         setHasMore(more)
         setMoreStatus(more ? 'idle' : 'end')
-        setEmpty(deriveEmpty(kind, fetched.length, nextQ, nextCreators))
+        setEmpty(deriveEmpty(kind, fetched.length, nextQ, nextCreators, nextTypes))
         setPhase('ready')
         setResultSetId((n) => n + 1)
       }
@@ -157,14 +171,14 @@ export function useDocsView(
 
       if (kind === 'recent') {
         // Refresh the creator candidates for this new result set (candidates track `q`, but are
-        // independent of the selected creators and pagination — §3.5). Fire in parallel; drop if
-        // superseded. name resolution failures just yield fewer / uid-labelled options.
+        // independent of the selected creators/types and pagination — §3.5). Fire in parallel; drop
+        // if superseded. name resolution failures just yield fewer / uid-labelled options.
         void listRecentCreators(nextQ)
           .then((opts) => {
             if (seq === seqRef.current) setCreatorOptions(opts)
           })
           .catch(() => {})
-        listRecentDocs({ q: nextQ, creators: nextCreators, cursor: null, pageSize: PAGE_SIZE })
+        listRecentDocs({ q: nextQ, creators: nextCreators, types: nextTypes, cursor: null, pageSize: PAGE_SIZE })
           .then((res) => {
             cursorRef.current = res.nextCursor
             done(res.items, res.total, !!res.nextCursor && res.items.length > 0)
@@ -177,6 +191,7 @@ export function useDocsView(
           sort: 'updatedAt:desc',
           owner: 'me',
           q: nextQ,
+          types: nextTypes,
           page: 1,
           pageSize: PAGE_SIZE,
         })
@@ -217,7 +232,7 @@ export function useDocsView(
     }
 
     if (kind === 'recent') {
-      listRecentDocs({ q, creators, cursor: cursorRef.current, pageSize: PAGE_SIZE })
+      listRecentDocs({ q, creators, types, cursor: cursorRef.current, pageSize: PAGE_SIZE })
         .then((res) => {
           if (seq !== seqRef.current) return
           cursorRef.current = res.nextCursor
@@ -232,6 +247,7 @@ export function useDocsView(
         sort: 'updatedAt:desc',
         owner: 'me',
         q,
+        types,
         page: nextPage,
         pageSize: PAGE_SIZE,
       })
@@ -245,20 +261,20 @@ export function useDocsView(
         })
         .catch(fail)
     }
-  }, [kind, q, creators, space, folder])
+  }, [kind, q, creators, types, space, folder])
 
   const setQuery = useCallback(
     (next: string) => {
       setQ(next)
-      fetchFirst(next, creators)
+      fetchFirst(next, creators, types)
     },
-    [creators, fetchFirst],
+    [creators, types, fetchFirst],
   )
 
   const clearQuery = useCallback(() => {
     setQ('')
-    fetchFirst('', creators)
-  }, [creators, fetchFirst])
+    fetchFirst('', creators, types)
+  }, [creators, types, fetchFirst])
 
   const toggleCreator = useCallback(
     (uid: string) => {
@@ -266,31 +282,46 @@ export function useDocsView(
         ? creators.filter((u) => u !== uid)
         : [...creators, uid]
       setCreators(next)
-      fetchFirst(q, next)
+      fetchFirst(q, next, types)
     },
-    [creators, q, fetchFirst],
+    [creators, q, types, fetchFirst],
   )
 
   const clearCreators = useCallback(() => {
     setCreators([])
-    fetchFirst(q, [])
-  }, [q, fetchFirst])
+    fetchFirst(q, [], types)
+  }, [q, types, fetchFirst])
+
+  const toggleType = useCallback(
+    (ty: DocType) => {
+      const next = types.includes(ty) ? types.filter((x) => x !== ty) : [...types, ty]
+      setTypes(next)
+      fetchFirst(q, creators, next)
+    },
+    [types, q, creators, fetchFirst],
+  )
+
+  const clearTypes = useCallback(() => {
+    setTypes([])
+    fetchFirst(q, creators, [])
+  }, [q, creators, fetchFirst])
 
   const retry = useCallback(() => {
-    fetchFirst(q, creators)
-  }, [q, creators, fetchFirst])
+    fetchFirst(q, creators, types)
+  }, [q, creators, types, fetchFirst])
 
   const reload = useCallback(() => {
-    fetchFirst(q, creators)
+    fetchFirst(q, creators, types)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, creators, fetchFirst])
+  }, [q, creators, types, fetchFirst])
 
   // Initial load + refetch when the space/folder changes (a Space switch reconciles here) or the
-  // parent bumps reloadToken (rename/delete). Search/creator changes go through their own setters,
-  // which preserve per-view state; this effect intentionally leaves q/creators untouched so a Space
-  // switch keeps the tab's remembered search + filter and re-sends them (AC-2.3.2).
+  // parent bumps reloadToken (rename/delete). Search/creator/type changes go through their own
+  // setters, which preserve per-view state; this effect intentionally leaves q/creators/types
+  // untouched so a Space switch keeps the tab's remembered search + filters and re-sends them
+  // (AC-2.3.2).
   useEffect(() => {
-    fetchFirst(q, creators)
+    fetchFirst(q, creators, types)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [space, folder, reloadToken])
 
@@ -298,6 +329,7 @@ export function useDocsView(
     kind,
     q,
     creators,
+    types,
     creatorOptions,
     items,
     total,
@@ -310,6 +342,8 @@ export function useDocsView(
     clearQuery,
     toggleCreator,
     clearCreators,
+    toggleType,
+    clearTypes,
     loadMore,
     retry,
     reload,

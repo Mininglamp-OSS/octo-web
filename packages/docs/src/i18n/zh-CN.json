@@ -11,6 +11,7 @@
     "comingSoon": "即将上线",
     "kindDoc": "文档",
     "kindBoard": "画板",
+    "kindSheet": "表格",
     "back": "全部文档",
     "updatedAt": "更新于",
     "viewedAt": "查看于",
@@ -542,6 +543,7 @@
   },
   "filter": {
     "creator": "创建者",
+    "type": "类型",
     "clearAll": "清除全部",
     "noCreators": "暂无创建者"
   },
@@ -554,6 +556,8 @@
     "searchNoneCta": "清空搜索",
     "filterNone": "所选创建者下没有你查看过的文档",
     "filterNoneCta": "清除过滤",
+    "typeNone": "所选类型下没有文档",
+    "typeNoneCta": "清除类型",
     "combinedNone": "无匹配结果"
   }
 }

@@ -11,6 +11,7 @@
     "comingSoon": "Coming soon",
     "kindDoc": "Document",
     "kindBoard": "Board",
+    "kindSheet": "Spreadsheet",
     "back": "All documents",
     "updatedAt": "Updated",
     "viewedAt": "Viewed",
@@ -542,6 +543,7 @@
   },
   "filter": {
     "creator": "Creator",
+    "type": "Type",
     "clearAll": "Clear all",
     "noCreators": "No creators"
   },
@@ -554,6 +556,8 @@
     "searchNoneCta": "Clear search",
     "filterNone": "No documents you've viewed from the selected creators",
     "filterNoneCta": "Clear filter",
+    "typeNone": "No documents of the selected type",
+    "typeNoneCta": "Clear type",
     "combinedNone": "No matching results"
   }
 }

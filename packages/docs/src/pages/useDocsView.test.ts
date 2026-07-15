@@ -10,8 +10,9 @@ vi.mock('./docsApi.ts', () => ({
 }))
 
 import { useDocsView } from './useDocsView.ts'
-import { listRecentDocs, listRecentCreators } from './docsApi.ts'
+import { listDocs, listRecentDocs, listRecentCreators } from './docsApi.ts'
 
+const listMock = listDocs as unknown as ReturnType<typeof vi.fn>
 const recentMock = listRecentDocs as unknown as ReturnType<typeof vi.fn>
 const creatorsMock = listRecentCreators as unknown as ReturnType<typeof vi.fn>
 
@@ -26,6 +27,7 @@ function deferred<T>() {
 const row = (docId: string): DocListItem => ({ docId, title: docId, ownerId: 'u', role: 'admin' })
 
 beforeEach(() => {
+  listMock.mockReset()
   recentMock.mockReset()
   creatorsMock.mockReset()
   creatorsMock.mockResolvedValue([])
@@ -82,5 +84,69 @@ describe('useDocsView — loadMore in-flight guard (synchronous ref, XIN-1132 re
     })
     await waitFor(() => expect(result.current.items.map((i) => i.docId)).toEqual(['d1', 'd2', 'd3']))
     expect(recentMock).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('useDocsView — type filter (XIN-1188, multi-select OR, both tabs)', () => {
+  it('toggleType refetches the recent feed with the selected types (OR) and remembers them', async () => {
+    recentMock.mockResolvedValue({ total: 0, items: [], nextCursor: null })
+    const { result } = renderHook(() => useDocsView('recent', 'space', 'folder', 0))
+    await waitFor(() => expect(result.current.phase).toBe('ready'))
+
+    await act(async () => {
+      result.current.toggleType('doc')
+    })
+    await act(async () => {
+      result.current.toggleType('sheet')
+    })
+    expect(result.current.types).toEqual(['doc', 'sheet'])
+    // last request narrowed on both kinds (OR, AND-ed with the — here empty — q/creators).
+    expect(recentMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ types: ['doc', 'sheet'] }),
+    )
+
+    await act(async () => {
+      result.current.clearTypes()
+    })
+    expect(result.current.types).toEqual([])
+    expect(recentMock).toHaveBeenLastCalledWith(expect.objectContaining({ types: [] }))
+  })
+
+  it('the mine tab also carries the type filter through to listDocs', async () => {
+    listMock.mockResolvedValue({ total: 0, items: [] })
+    const { result } = renderHook(() => useDocsView('mine', 'space', 'folder', 0))
+    await waitFor(() => expect(result.current.phase).toBe('ready'))
+
+    await act(async () => {
+      result.current.toggleType('board')
+    })
+    expect(listMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ owner: 'me', types: ['board'] }),
+    )
+  })
+
+  it('an empty result under a type filter derives the F empty-state (clear-type CTA)', async () => {
+    recentMock.mockResolvedValue({ total: 0, items: [], nextCursor: null })
+    const { result } = renderHook(() => useDocsView('recent', 'space', 'folder', 0))
+    await waitFor(() => expect(result.current.empty).toBe('A')) // no conditions yet
+
+    await act(async () => {
+      result.current.toggleType('sheet')
+    })
+    await waitFor(() => expect(result.current.empty).toBe('F'))
+  })
+
+  it('type + search together derive the combined E empty-state', async () => {
+    recentMock.mockResolvedValue({ total: 0, items: [], nextCursor: null })
+    const { result } = renderHook(() => useDocsView('recent', 'space', 'folder', 0))
+    await waitFor(() => expect(result.current.phase).toBe('ready'))
+
+    await act(async () => {
+      result.current.setQuery('budget')
+    })
+    await act(async () => {
+      result.current.toggleType('sheet')
+    })
+    await waitFor(() => expect(result.current.empty).toBe('E'))
   })
 })

@@ -21,6 +21,7 @@ import { PortalMenu } from './PortalMenu.tsx'
 import { DocsTabs } from './DocsTabs.tsx'
 import { SearchBox } from './SearchBox.tsx'
 import { CreatorFilter, CreatorChips, creatorName } from './CreatorFilter.tsx'
+import { TypeFilter, TypeChips } from './TypeFilter.tsx'
 import { InfiniteList } from './InfiniteList.tsx'
 import { useDocsView, type DocsViewKind } from './useDocsView.ts'
 
@@ -283,24 +284,47 @@ function BoardRowIcon(): React.ReactElement {
 }
 
 /**
- * Layered empty states A–E (frontend-design §5.3). Each variant carries its OWN i18n title + CTA
- * keys — A ("看", browse) and B ("建", create) are deliberately NOT merged (product MF1). C/D/E cover
- * "conditions matched nothing" and offer the matching clear affordance(s); E shows BOTH clears.
+ * Sheet row glyph — a grid to mark spreadsheets, visually distinct from the plain-doc and board
+ * glyphs so a `docType==='sheet'` row is never mistaken for a document (XIN-1188 icon three-way).
+ */
+function SheetRowIcon(): React.ReactElement {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="2" y="2.5" width="12" height="11" rx="1" stroke="currentColor" strokeWidth="1" fill="none" />
+      <path d="M2 6.5h12M2 10h12M6 2.5v11M10 2.5v11" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  )
+}
+
+/**
+ * Layered empty states A–F (frontend-design §5.3). Each variant carries its OWN i18n title + CTA
+ * keys — A ("看", browse) and B ("建", create) are deliberately NOT merged (product MF1). C/D/F cover
+ * a single "condition matched nothing" (search / creator / type) and offer that one clear
+ * affordance; E is the combined bucket for ANY 2+ active conditions and renders each matching clear
+ * (search / creator / type) conditionally on the active flags.
  */
 function DocsEmptyState({
   kind,
   query,
+  hasQuery,
+  hasCreators,
+  hasTypes,
   onCreate,
   onBrowseMine,
   onClearSearch,
   onClearFilter,
+  onClearTypes,
 }: {
-  kind: 'A' | 'B' | 'C' | 'D' | 'E'
+  kind: 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
   query: string
+  hasQuery: boolean
+  hasCreators: boolean
+  hasTypes: boolean
   onCreate: () => void
   onBrowseMine: () => void
   onClearSearch: () => void
   onClearFilter: () => void
+  onClearTypes: () => void
 }): React.ReactElement {
   const kw = query.trim()
   return (
@@ -339,16 +363,33 @@ function DocsEmptyState({
           </button>
         </>
       )}
+      {kind === 'F' && (
+        <>
+          <p className="octo-docs-empty-title">{t('docs.empty.typeNone')}</p>
+          <button type="button" className="octo-docs-empty-cta" onClick={onClearTypes}>
+            {t('docs.empty.typeNoneCta')}
+          </button>
+        </>
+      )}
       {kind === 'E' && (
         <>
           <p className="octo-docs-empty-title">{t('docs.empty.combinedNone')}</p>
           <div className="octo-docs-empty-actions">
-            <button type="button" className="octo-docs-empty-cta" onClick={onClearSearch}>
-              {t('docs.empty.searchNoneCta')}
-            </button>
-            <button type="button" className="octo-docs-empty-cta" onClick={onClearFilter}>
-              {t('docs.empty.filterNoneCta')}
-            </button>
+            {hasQuery && (
+              <button type="button" className="octo-docs-empty-cta" onClick={onClearSearch}>
+                {t('docs.empty.searchNoneCta')}
+              </button>
+            )}
+            {hasCreators && (
+              <button type="button" className="octo-docs-empty-cta" onClick={onClearFilter}>
+                {t('docs.empty.filterNoneCta')}
+              </button>
+            )}
+            {hasTypes && (
+              <button type="button" className="octo-docs-empty-cta" onClick={onClearTypes}>
+                {t('docs.empty.typeNoneCta')}
+              </button>
+            )}
           </div>
         </>
       )}
@@ -557,6 +598,21 @@ function DocsList({
         : d.docType === 'doc'
           ? 'doc'
           : undefined
+    // Row-icon kind (visual only, always concrete): a known board, then an explicit sheet, else a
+    // plain doc — the three-way distinction so a spreadsheet never renders as a document icon
+    // (XIN-1188). Independent of `knownKind` above, which stays `undefined` for an unresolved
+    // shared row so openDoc can still resolve the authoritative shell via getDoc.
+    const iconKind: 'board' | 'sheet' | 'doc' = board
+      ? 'board'
+      : d.docType === 'sheet'
+        ? 'sheet'
+        : 'doc'
+    const kindLabel =
+      iconKind === 'board'
+        ? t('docs.list.kindBoard')
+        : iconKind === 'sheet'
+          ? t('docs.list.kindSheet')
+          : t('docs.list.kindDoc')
     // Recent rows show the creator inline + when the doc was VIEWED; mine rows keep the "updated"
     // sub-line (frontend-design §2.1 / §5.1).
     const creator =
@@ -583,10 +639,16 @@ function DocsList({
         >
           <span
             className="octo-docs-list-row-icon"
-            aria-label={board ? t('docs.list.kindBoard') : t('docs.list.kindDoc')}
-            title={board ? t('docs.list.kindBoard') : t('docs.list.kindDoc')}
+            aria-label={kindLabel}
+            title={kindLabel}
           >
-            {board ? <BoardRowIcon /> : <DocRowIcon />}
+            {iconKind === 'board' ? (
+              <BoardRowIcon />
+            ) : iconKind === 'sheet' ? (
+              <SheetRowIcon />
+            ) : (
+              <DocRowIcon />
+            )}
           </span>
           <span className="octo-docs-list-row-text">
             <span
@@ -762,6 +824,9 @@ function DocsList({
             nameFallback={nameFallback}
           />
         )}
+        {/* Type filter lives on BOTH tabs (creator is recent-only). Uses the active view's per-tab
+            types state so each tab remembers its own selection across switches. */}
+        <TypeFilter selected={view.types} onToggle={view.toggleType} />
       </div>
       {activeView === 'recent' && (
         <CreatorChips
@@ -772,6 +837,7 @@ function DocsList({
           nameFallback={nameFallback}
         />
       )}
+      <TypeChips selected={view.types} onToggle={view.toggleType} onClearAll={view.clearTypes} />
       {createError && <p className="octo-docs-list-state octo-error">{createError}</p>}
       {view.phase === 'loading' && (
         <p className="octo-docs-list-state">{t('docs.state.loading')}</p>
@@ -788,10 +854,14 @@ function DocsList({
         <DocsEmptyState
           kind={view.empty}
           query={view.q}
+          hasQuery={view.q.trim().length > 0}
+          hasCreators={view.creators.length > 0}
+          hasTypes={view.types.length > 0}
           onCreate={() => void onCreate()}
           onBrowseMine={() => onTab('mine')}
           onClearSearch={view.clearQuery}
           onClearFilter={view.clearCreators}
+          onClearTypes={view.clearTypes}
         />
       )}
       {view.phase === 'ready' && !view.empty && (

@@ -1389,3 +1389,65 @@ describe('DocsHome — pin order survives the search → pin → clear-search re
     expect(rowTitles()).toEqual(['FEAT spec', 'Alpha', 'Beta'])
   })
 })
+
+// XIN-1188: the list distinguishes doc / sheet / board rows by icon (three-way), and the type
+// filter control is present on BOTH tabs (creator is recent-only).
+describe('DocsHome — type distinction + filter (XIN-1188)', () => {
+  const recentRows = [
+    { docId: 'd_doc', title: 'A Doc', ownerId: 'u_o', role: 'admin', docType: 'doc', viewedAt: '2026-07-15T06:00:00.000Z' },
+    { docId: 'd_sheet', title: 'A Sheet', ownerId: 'u_o', role: 'admin', docType: 'sheet', viewedAt: '2026-07-15T05:00:00.000Z' },
+    { docId: 'd_board', title: 'A Board', ownerId: 'u_o', role: 'admin', docType: 'board', viewedAt: '2026-07-15T04:00:00.000Z' },
+  ]
+
+  function mountList() {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        return { data: { total: recentRows.length, items: recentRows, nextCursor: null }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        // mine tab (owner=me)
+        return { data: { total: 1, items: [recentRows[0]] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    return wk
+  }
+
+  it('renders three distinct row-kind icons/labels (sheet is NOT shown as a document)', async () => {
+    mountList()
+    await waitFor(() => expect(screen.getByText('A Sheet')).toBeTruthy())
+    // Each kind carries its own aria-label/title on the row icon.
+    expect(screen.getByLabelText('docs.list.kindDoc')).toBeTruthy()
+    expect(screen.getByLabelText('docs.list.kindSheet')).toBeTruthy()
+    expect(screen.getByLabelText('docs.list.kindBoard')).toBeTruthy()
+  })
+
+  it('shows the type filter on both tabs and drives a multi-select OR request', async () => {
+    const wk = mountList()
+    await waitFor(() => expect(screen.getByText('A Sheet')).toBeTruthy())
+
+    // Type filter present on the recent tab.
+    const typeBtn = screen.getByText('docs.filter.type')
+    expect(typeBtn).toBeTruthy()
+
+    // Open the dropdown and select "sheet" → the next recent request narrows on type=sheet.
+    fireEvent.click(typeBtn)
+    fireEvent.click(screen.getByText('docs.list.kindSheet'))
+    await waitFor(() => {
+      const lastRecent = wk.apiClient.calls
+        .filter((c) => c.method === 'get' && c.url.startsWith('/docs/recent?'))
+        .at(-1)
+      expect(lastRecent?.url).toContain('type=sheet')
+    })
+
+    // Switch to the mine tab — the type filter is still rendered there.
+    fireEvent.click(screen.getByText('docs.tab.mine'))
+    await waitFor(() => expect(screen.getByText('docs.filter.type')).toBeTruthy())
+  })
+})

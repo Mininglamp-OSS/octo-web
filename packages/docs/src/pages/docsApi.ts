@@ -7,6 +7,16 @@
 import { apiClient } from '../octoweb/index.ts'
 import type { Role } from '../auth/roles.ts'
 
+/**
+ * Document kind enum — the wire contract for `doc_type`, authored in lockstep with the backend
+ * (octo-docs-backend `DOC_TYPES` in src/db/docType.ts and the `doc_meta.doc_type` column). The three
+ * values are the single source of truth on BOTH sides: the list distinguishes them by row icon and
+ * the type filter narrows the recent/mine feeds on them (`?type=doc&type=sheet`). Never mock a value
+ * that the backend does not persist — a drifting enum is exactly the assumed-wire trap FEAT-B avoids.
+ */
+export const DOC_TYPES = ['doc', 'sheet', 'board'] as const
+export type DocType = (typeof DOC_TYPES)[number]
+
 export interface DocListItem {
   docId: string
   title: string
@@ -21,10 +31,10 @@ export interface DocListItem {
    */
   viewedAt?: string
   /**
-   * Document kind: `'doc'` (Tiptap rich text, the default) or `'board'` (Excalidraw whiteboard).
-   * Optional because older records and backends that predate the whiteboard feature omit it; a
-   * missing value is treated as a plain document. The list mixes both kinds and distinguishes
-   * them by icon (frontend-design §4.1 / §5.1).
+   * Document kind — one of {@link DocType}: `'doc'` (Tiptap rich text, the default), `'sheet'`
+   * (Univer spreadsheet), or `'board'` (Excalidraw whiteboard). Optional because older records and
+   * backends that predate a given kind omit it; a missing value is treated as a plain document. The
+   * list mixes all kinds and distinguishes them by icon (frontend-design §4.1 / §5.1).
    */
   docType?: string
 }
@@ -69,6 +79,13 @@ export interface ListDocsParams {
    * legacy "owned or member" listing.
    */
   owner?: 'me'
+  /**
+   * Selected document kinds — multi-value OR filter serialized as repeated `?type=doc&type=sheet`
+   * (same repeated-param convention as `creator`, never CSV; frontend-design §5.2 / XIN-1188). The
+   * server narrows on `doc_type` BEFORE pagination and treats an absent param as "no type filter",
+   * so it is fully backward compatible. Empty = no type filter.
+   */
+  types?: DocType[]
 }
 
 /** GET /api/v1/docs — list docs the caller owns or is a member of (or, with `owner=me`, owns). */
@@ -82,6 +99,9 @@ export async function listDocs(params: ListDocsParams = {}): Promise<ListDocsRes
   if (params.owner) q.set('owner', params.owner)
   const term = (params.q ?? '').trim()
   if (term) q.set('q', term)
+  for (const ty of params.types ?? []) {
+    if (ty) q.append('type', ty)
+  }
   const qs = q.toString()
   const { data } = await apiClient().get<ListDocsResult>(`/docs${qs ? `?${qs}` : ''}`)
   return { total: data?.total ?? (data?.items?.length ?? 0), items: data?.items ?? [] }
@@ -95,6 +115,12 @@ export interface RecentDocsParams {
    * carries this (frontend-design §3.2 / XIN-1098 §4.2). Empty = no creator filter.
    */
   creators?: string[]
+  /**
+   * Selected document kinds — multi-value OR filter serialized as repeated `?type=doc&type=sheet`
+   * (same convention as `creators`; frontend-design §5.2 / XIN-1188). Narrowed server-side on
+   * `doc_type` before keyset pagination; absent param = no type filter (backward compatible).
+   */
+  types?: DocType[]
   /**
    * Keyset cursor for the NEXT page (opaque, from the previous response's `nextCursor`). First page
    * omits it. Recent pagination is keyset-only — there is NO offset fallback (XIN-1098 §4.3).
@@ -123,6 +149,9 @@ export async function listRecentDocs(params: RecentDocsParams = {}): Promise<Rec
   if (term) q.set('q', term)
   for (const uid of params.creators ?? []) {
     if (uid) q.append('creator', uid)
+  }
+  for (const ty of params.types ?? []) {
+    if (ty) q.append('type', ty)
   }
   if (params.cursor) q.set('cursor', params.cursor)
   if (params.pageSize) q.set('pageSize', String(params.pageSize))
