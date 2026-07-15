@@ -9,6 +9,7 @@ import {
 const members = [
   { uid: "u1", name: "Alice" },
   { uid: "bot1", name: "BuildBot", orgData: { robot: 1 } },
+  { uid: "u2", name: "张三" },
 ];
 
 const baseArgs = {
@@ -30,6 +31,7 @@ describe("buildMentionDropdownItems", () => {
       MENTION_UID_AIS,
       "u1",
       "bot1",
+      "u2",
     ]);
   });
 
@@ -40,7 +42,7 @@ describe("buildMentionDropdownItems", () => {
       includeBroadcastMentions: false,
     });
 
-    expect(items.map((item) => item.uid)).toEqual(["u1", "bot1"]);
+    expect(items.map((item) => item.uid)).toEqual(["u1", "bot1", "u2"]);
   });
 
   it("keeps broadcast mentions hidden while filtering members", () => {
@@ -51,6 +53,18 @@ describe("buildMentionDropdownItems", () => {
 
     expect(items.map((item) => item.uid)).toEqual(["u1"]);
   });
+
+  it.each(["zhangsan", "ZHANGSAN", "san", "zs"])(
+    "matches Chinese member names with the pinyin query %s",
+    (query) => {
+      const items = buildMentionDropdownItems({
+        ...baseArgs,
+        query,
+      });
+
+      expect(items.map((item) => item.uid)).toEqual(["u2"]);
+    },
+  );
 });
 
 describe("mentionUidStateFromRobot", () => {

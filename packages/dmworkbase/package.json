@@ -45,6 +45,7 @@
     "lucide-react": "^0.577.0",
     "mitt": "^3.0.1",
     "moment": "^2.29.3",
+    "pinyin-pro": "^3.28.0",
     "qrcode.react": "^4.2.0",
     "react": "^17.0.2",
     "react-avatar-editor": "^13.0.0",
