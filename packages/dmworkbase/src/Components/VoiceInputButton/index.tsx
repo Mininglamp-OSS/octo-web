@@ -52,20 +52,6 @@ export default function VoiceInputButton({
   const pendingModeRef = useRef<VoiceMode>("append_only");
   const { spaceSetting, loaded, voiceConfig } = useSpaceFeedbackSetting();
 
-  // Voice trigger key (ShiftLeft / ShiftRight), toggled by 7 rapid presses
-  const { voiceTriggerKey } = useVoiceTriggerKey(
-    (newKey: VoiceTriggerKey) => {
-      const msgKey =
-        newKey === "ShiftRight"
-          ? "base.voiceInput.triggerKey.switchedToRight"
-          : "base.voiceInput.triggerKey.switchedToLeft";
-      Toast.info(t(msgKey));
-    },
-    { isVoiceEnabled }
-  );
-  const voiceTriggerKeyRef = useRef(voiceTriggerKey);
-  voiceTriggerKeyRef.current = voiceTriggerKey;
-
   const {
     isRecording,
     isTranscribing,
@@ -87,6 +73,21 @@ export default function VoiceInputButton({
   isOnlineRef.current = isOnline;
   const localAvailableRef = useRef(localAvailable);
   localAvailableRef.current = localAvailable;
+
+  // Voice trigger key (ShiftLeft / ShiftRight), toggled by 7 rapid presses.
+  // Must be called AFTER useTextareaVoice so isVoiceEnabled is already declared.
+  const { voiceTriggerKey } = useVoiceTriggerKey(
+    (newKey: VoiceTriggerKey) => {
+      const msgKey =
+        newKey === "ShiftRight"
+          ? "base.voiceInput.triggerKey.switchedToRight"
+          : "base.voiceInput.triggerKey.switchedToLeft";
+      Toast.info(t(msgKey));
+    },
+    { isVoiceEnabled }
+  );
+  const voiceTriggerKeyRef = useRef(voiceTriggerKey);
+  voiceTriggerKeyRef.current = voiceTriggerKey;
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);

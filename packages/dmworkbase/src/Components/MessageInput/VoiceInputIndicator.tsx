@@ -66,20 +66,6 @@ export default function VoiceInputIndicator({
   const [showFeedbackNotice, setShowFeedbackNotice] = useState(false);
   const { spaceSetting, loaded, voiceConfig } = useSpaceFeedbackSetting();
 
-  // Voice trigger key (ShiftLeft / ShiftRight), toggled by 7 rapid presses
-  const { voiceTriggerKey } = useVoiceTriggerKey(
-    (newKey: VoiceTriggerKey) => {
-      const msgKey =
-        newKey === "ShiftRight"
-          ? "base.voiceInput.triggerKey.switchedToRight"
-          : "base.voiceInput.triggerKey.switchedToLeft";
-      Toast.info(t(msgKey));
-    },
-    { isVoiceEnabled, checkIsInputActive }
-  );
-  const voiceTriggerKeyRef = useRef(voiceTriggerKey);
-  voiceTriggerKeyRef.current = voiceTriggerKey;
-
   // Long-press ShiftLeft state
   const shiftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const preparingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -207,6 +193,21 @@ export default function VoiceInputIndicator({
     }
     setIsPreparing(false);
   };
+
+  // Voice trigger key (ShiftLeft / ShiftRight), toggled by 7 rapid presses.
+  // Must be called AFTER useVoiceInput so isVoiceEnabled is already declared.
+  const { voiceTriggerKey } = useVoiceTriggerKey(
+    (newKey: VoiceTriggerKey) => {
+      const msgKey =
+        newKey === "ShiftRight"
+          ? "base.voiceInput.triggerKey.switchedToRight"
+          : "base.voiceInput.triggerKey.switchedToLeft";
+      Toast.info(t(msgKey));
+    },
+    { isVoiceEnabled, checkIsInputActive }
+  );
+  const voiceTriggerKeyRef = useRef(voiceTriggerKey);
+  voiceTriggerKeyRef.current = voiceTriggerKey;
 
   // Handle transition from preparing/pending -> actual recording or auto-cancel.
   useEffect(() => {
