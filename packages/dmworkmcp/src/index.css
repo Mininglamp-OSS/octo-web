@@ -997,3 +997,52 @@
   justify-content: space-between;
   gap: var(--wk-sp-2);
 }
+
+/* ── Market page: 全部 / 我的 mode toggle ─────────────────────────────────
+   Same segmented-button visual language as the create-form `wk-mcp-segments`
+   but scoped to the page-level "mode" toolbar row, so the market page and
+   the create modal share one system-of-parts. */
+.wk-mcp__mode {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+  gap: 2px;
+  margin: 0 0 var(--wk-sp-4);
+}
+
+.wk-mcp__mode-item {
+  padding: 6px var(--wk-sp-4);
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--wk-r-md) - 2px);
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-secondary);
+  cursor: pointer;
+  transition: background var(--wk-dur-fast) var(--wk-ease),
+              color var(--wk-dur-fast) var(--wk-ease);
+  white-space: nowrap;
+}
+
+.wk-mcp__mode-item:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp__mode-item--active,
+.wk-mcp__mode-item--active:hover {
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  font-weight: var(--wk-font-medium);
+  box-shadow: 0 1px 2px var(--wk-black-alpha-05);
+}
+
+/* ── Infinite scroll footer note (loading spinner / reached end / hint) ── */
+.wk-mcp__footnote {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-4) 0 var(--wk-sp-2);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+}

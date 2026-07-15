@@ -9,6 +9,18 @@
   "common": {
     "loadFailed": "Failed to load"
   },
+  "errors": {
+    "nameTaken": "This name is already taken",
+    "secretLeaked": "Please remove the real token and use the placeholder before submitting",
+    "forbidden": "You are not allowed to modify this MCP",
+    "notFound": "MCP not found or has been removed",
+    "invalidVisibility": "Visibility must be Public or Only me",
+    "invalidTransport": "Transport is not supported",
+    "invalidRequest": "Request payload is invalid",
+    "unauthorized": "Session expired, please sign in again",
+    "forbiddenSpace": "You are not a member of this space",
+    "internal": "Server is busy, please try again later"
+  },
   "category": {
     "all": "All",
     "dev": "Dev tools",
@@ -21,7 +33,13 @@
     "desc": "Browse and connect MCP servers to extend your agent's tools.",
     "create": "New MCP",
     "searchPlaceholder": "Search by name / summary",
-    "empty": "No matching MCP servers"
+    "empty": "No matching MCP servers",
+    "loadMore": "Scroll down to load more",
+    "reachedEnd": "You've reached the end",
+    "mode": {
+      "all": "All",
+      "mine": "Mine"
+    }
   },
   "card": {
     "toolCount": "Tools: {{count}}",

@@ -77,9 +77,28 @@ function buildCategories(): McpCategory[] {
 async function fetchMcpListMock(
   params: ListMcpParams
 ): Promise<ListMcpResponse> {
+  return fetchMcpListMockFiltered(params, MOCK_MCP_LIST);
+}
+
+/** Mock counterpart of /mcps/mine — restricts to items whose `creatorName`
+ *  matches the current login name. Mock has no real owner_uid, but new
+ *  creates stamp the login name (see buildDetailFromCreate), so this
+ *  faithfully echoes "MCPs I created in this session". */
+async function fetchMcpMineMock(
+  params: ListMcpParams
+): Promise<ListMcpResponse> {
+  const me = WKApp.loginInfo?.name || "";
+  const mine = MOCK_MCP_LIST.filter((item) => item.creatorName === me);
+  return fetchMcpListMockFiltered(params, mine);
+}
+
+async function fetchMcpListMockFiltered(
+  params: ListMcpParams,
+  source: McpListItem[]
+): Promise<ListMcpResponse> {
   const keyword = (params.keyword ?? "").trim().toLowerCase();
   const category = params.category ?? "all";
-  const items = MOCK_MCP_LIST.filter((item) => {
+  const filtered = source.filter((item) => {
     const matchCategory = category === "all" || item.category === category;
     const matchKeyword =
       !keyword ||
@@ -87,7 +106,14 @@ async function fetchMcpListMock(
       item.slogan.toLowerCase().includes(keyword);
     return matchCategory && matchKeyword;
   });
-  return delay({ items, total: items.length, categories: buildCategories() });
+  const offset = params.offset && params.offset > 0 ? params.offset : 0;
+  const limit = params.limit && params.limit > 0 ? params.limit : filtered.length;
+  const items = filtered.slice(offset, offset + limit);
+  return delay({
+    items,
+    total: filtered.length,
+    categories: buildCategories(),
+  });
 }
 
 async function fetchMcpDetailMock(id: string): Promise<McpDetail> {
@@ -247,20 +273,46 @@ mcpAxios.interceptors.response.use(
 
 /**
  * Marketplace error envelope is `{err:{code,message,details}}` (mcp-v1.md §2) —
- * distinct from the summary/matter `{code,message,data}` shape. Surface the
- * human-readable `message` for a toast; callers switch on `code` if they need
- * to. Falls back to the axios error string when the body is missing.
+ * distinct from the summary/matter `{code,message,data}` shape. When we
+ * recognize the wire `code` we surface a localized copy so a Chinese UI
+ * doesn't show the backend's English `message`; unknown codes fall through to
+ * the wire message. Falls back to the axios error string when the body is
+ * missing.
  */
 function extractErrorMessage(err: unknown): string {
   const axiosErr = err as {
     response?: { data?: { err?: { message?: string; code?: string } } };
   };
   const wire = axiosErr?.response?.data?.err;
+  const code = wire?.code;
+  const localized = code ? localizedForCode(code) : "";
   const raw =
+    localized ||
     wire?.message ||
-    wire?.code ||
+    code ||
     (err instanceof Error ? err.message : "Request failed");
   return raw.length > 200 ? raw.slice(0, 200) + "…" : raw;
+}
+
+/** Map a `err.marketplace.*` code to a localized string via i18n. Returns
+ *  empty string if the code is unknown; caller falls back to the wire
+ *  message. Keeping the mapping table here keeps the i18n keys colocated
+ *  with the codes and greppable. */
+function localizedForCode(code: string): string {
+  const KNOWN: Record<string, string> = {
+    "err.marketplace.mcp.name_taken": "mcp.errors.nameTaken",
+    "err.marketplace.mcp.secret_leaked": "mcp.errors.secretLeaked",
+    "err.marketplace.mcp.forbidden": "mcp.errors.forbidden",
+    "err.marketplace.mcp.not_found": "mcp.errors.notFound",
+    "err.marketplace.mcp.invalid_visibility": "mcp.errors.invalidVisibility",
+    "err.marketplace.mcp.invalid_transport": "mcp.errors.invalidTransport",
+    "err.marketplace.mcp.invalid_request": "mcp.errors.invalidRequest",
+    "err.marketplace.auth.unauthorized": "mcp.errors.unauthorized",
+    "err.marketplace.auth.forbidden_space": "mcp.errors.forbiddenSpace",
+    "err.marketplace.internal": "mcp.errors.internal",
+  };
+  const key = KNOWN[code];
+  return key ? t(key) : "";
 }
 
 /**
@@ -314,12 +366,29 @@ interface McpListResponseWire {
 async function fetchMcpListReal(
   params: ListMcpParams
 ): Promise<ListMcpResponse> {
+  return fetchMcpListPath("/mcps", params);
+}
+
+/** GET /mcps/mine — same shape, restricted to owner=caller (mcp-v1.md §4.3). */
+async function fetchMcpMineReal(
+  params: ListMcpParams
+): Promise<ListMcpResponse> {
+  return fetchMcpListPath("/mcps/mine", params);
+}
+
+/** Shared list-body handling: build query, hit path, enrich labels. */
+async function fetchMcpListPath(
+  path: string,
+  params: ListMcpParams
+): Promise<ListMcpResponse> {
   const query: Record<string, unknown> = {};
   const keyword = params.keyword?.trim();
   if (keyword) query.keyword = keyword;
   // `all` disables the filter server-side; send it verbatim per §0.
   query.category = params.category ?? CATEGORY_KEY_ALL;
-  const resp = await get<McpListResponseWire>("/mcps", query);
+  if (params.limit && params.limit > 0) query.limit = params.limit;
+  if (params.offset && params.offset > 0) query.offset = params.offset;
+  const resp = await get<McpListResponseWire>(path, query);
   const categories: McpCategory[] = (resp.categories ?? []).map((c) => ({
     key: c.key,
     label: categoryLabel(c.key),
@@ -360,6 +429,13 @@ export function fetchMcpList(
   params: ListMcpParams = {}
 ): Promise<ListMcpResponse> {
   return USE_MOCK ? fetchMcpListMock(params) : fetchMcpListReal(params);
+}
+
+/** GET /mcps/mine — restricted to the caller's own records. */
+export function fetchMcpMine(
+  params: ListMcpParams = {}
+): Promise<ListMcpResponse> {
+  return USE_MOCK ? fetchMcpMineMock(params) : fetchMcpMineReal(params);
 }
 
 export function fetchMcpDetail(id: string): Promise<McpDetail> {

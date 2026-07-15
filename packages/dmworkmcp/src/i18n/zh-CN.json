@@ -9,6 +9,18 @@
   "common": {
     "loadFailed": "加载失败"
   },
+  "errors": {
+    "nameTaken": "此名称已被占用",
+    "secretLeaked": "请勿提交真实密钥，把它替换成占位符再试",
+    "forbidden": "无权操作该 MCP",
+    "notFound": "MCP 不存在或已被删除",
+    "invalidVisibility": "可见范围只能是「公开」或「仅自己」",
+    "invalidTransport": "传输方式不支持",
+    "invalidRequest": "请求参数不合法",
+    "unauthorized": "登录已过期，请重新登录",
+    "forbiddenSpace": "当前空间无权访问",
+    "internal": "服务器繁忙，请稍后重试"
+  },
   "category": {
     "all": "全部",
     "dev": "开发工具",
@@ -21,7 +33,13 @@
     "desc": "浏览并接入 MCP 服务，为你的智能体扩展工具能力。",
     "create": "新建 MCP",
     "searchPlaceholder": "搜索 MCP 名称 / 简介",
-    "empty": "没有匹配的 MCP 服务"
+    "empty": "没有匹配的 MCP 服务",
+    "loadMore": "向下滚动加载更多",
+    "reachedEnd": "已经到底了",
+    "mode": {
+      "all": "全部",
+      "mine": "我的"
+    }
   },
   "card": {
     "toolCount": "工具数量: {{count}} 个",
