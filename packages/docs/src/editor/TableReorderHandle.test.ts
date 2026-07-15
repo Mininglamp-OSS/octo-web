@@ -16,7 +16,7 @@ import {
 } from '@tiptap/pm/tables'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import type { Transaction } from '@tiptap/pm/state'
-import { TableReorderHandle, tableReorderPluginKey, resolveDragSource, tableStructureSignature } from './TableReorderHandle.ts'
+import { TableReorderHandle, tableReorderPluginKey, resolveDragSource, tableStructureSignature, signatureOfTable, countTableSignature, draggedTableConflict } from './TableReorderHandle.ts'
 
 // octo-docs-backend#76: table row/column reorder. The drag handle UI is DOM/pointer-driven and
 // needs real layout (jsdom reports zero rects), so these tests exercise the reorder MOVE that a
@@ -518,4 +518,140 @@ describe('plan-B concurrency guard — table structure signature', () => {
     const after = tableStructureSignature(editor.state.doc, cellPos)
     expect(after).toBe(baseline)
   })
+})
+
+// octo-docs-backend#76 FAIL-2 (XIN-1206): the plan-B guard's scope was too wide — it re-fingerprinted
+// the dragged table via a single remapped `cellPos`, so an edit ELSEWHERE in the doc false-aborted
+// the reorder. Under real collaboration y-prosemirror applies a remote update as one coarse
+// ReplaceStep, which collapses the remapped `cellPos` to a boundary (it stops resolving to a cell)
+// even when the dragged table is untouched — the old `signature === null → conflict` branch then
+// fired on prose / other-table edits. The fix keys conflict detection off the dragged table's
+// structure signature and how many tables carry it (`countTableSignature` / `draggedTableConflict`),
+// which is position-independent, so only a change to the DRAGGED table drops the count.
+describe('plan-B guard scope — same-table only (FAIL-2)', () => {
+  const TWO_TABLES =
+    '<table><tbody>' +
+    '<tr><td><p>A1</p></td><td><p>A2</p></td></tr>' +
+    '<tr><td><p>A3</p></td><td><p>A4</p></td></tr>' +
+    '</tbody></table>' +
+    '<p>between</p>' +
+    '<table><tbody>' +
+    '<tr><td><p>B1</p></td><td><p>B2</p></td></tr>' +
+    '</tbody></table>'
+
+  /** nth (0-based) table node + its doc position. */
+  function nthTable(editor: Editor, n: number): { node: PMNode; pos: number } {
+    const found: { node: PMNode; pos: number }[] = []
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'table') {
+        found.push({ node, pos })
+        return false
+      }
+      return true
+    })
+    if (!found[n]) throw new Error(`no table #${n}`)
+    return found[n]
+  }
+  function cellPosInTable(editor: Editor, tableIndex: number, row: number, col: number): number {
+    const { node, pos } = nthTable(editor, tableIndex)
+    const map = TableMap.get(node)
+    return pos + 1 + map.map[row * map.width + col]
+  }
+
+  it('signatureOfTable fingerprints a node directly and equals the cellPos-based signature', () => {
+    editor = makeEditor(TWO_TABLES)
+    const { node } = nthTable(editor, 0)
+    const viaNode = signatureOfTable(node)
+    const viaCell = tableStructureSignature(editor.state.doc, cellPosInTable(editor, 0, 0, 0))
+    expect(viaNode).not.toBeNull()
+    expect(viaNode).toBe(viaCell)
+    // A prose node has no table signature.
+    let para: PMNode | null = null
+    editor.state.doc.descendants((n) => {
+      if (!para && n.type.name === 'paragraph') para = n
+      return true
+    })
+    expect(signatureOfTable(para as unknown as PMNode)).toBeNull()
+  })
+
+  it('countTableSignature counts only tables that carry the signature', () => {
+    editor = makeEditor(TWO_TABLES)
+    const sigA = signatureOfTable(nthTable(editor, 0).node)!
+    const sigB = signatureOfTable(nthTable(editor, 1).node)!
+    expect(sigA).not.toBe(sigB)
+    expect(countTableSignature(editor.state.doc, sigA)).toBe(1)
+    expect(countTableSignature(editor.state.doc, sigB)).toBe(1)
+    expect(countTableSignature(editor.state.doc, 'nonexistent')).toBe(0)
+  })
+
+  it('two identical tables → count is 2, and a change to one drops it to 1 (conflict)', () => {
+    editor = makeEditor(
+      '<table><tbody><tr><td><p>x</p></td><td><p>y</p></td></tr></tbody></table>' +
+        '<table><tbody><tr><td><p>x</p></td><td><p>y</p></td></tr></tbody></table>',
+    )
+    const sig = signatureOfTable(nthTable(editor, 0).node)!
+    expect(countTableSignature(editor.state.doc, sig)).toBe(2)
+    // Dragging one of the twins: baseline count 2. A reorder of the FIRST table (columns swap)
+    // drops the count of the drag-start signature to 1 → the guard still detects the same-table race
+    // even when an identical twin exists elsewhere.
+    selectCell(editor, 0, 0)
+    moveTableColumn({ from: 0, to: 1 })(editor.state, editor.view.dispatch)
+    expect(draggedTableConflict(editor.state.doc, sig, 2)).toBe(true)
+  })
+
+  it('does NOT flag a conflict when a DIFFERENT table is edited (FAIL-2 false-abort gone)', () => {
+    editor = makeEditor(TWO_TABLES)
+    const baselineSig = signatureOfTable(nthTable(editor, 0).node)! // dragging table #0
+    const baselineCount = countTableSignature(editor.state.doc, baselineSig)
+
+    // Edit a cell in the OTHER table (#1) — a same-doc structural/content change, but not to the
+    // dragged table.
+    selectCell2(editor, 1, 0, 0)
+    editor.view.dispatch(editor.state.tr.insertText('CHANGED'))
+
+    // The dragged table's signature is still present exactly once → no conflict, reorder allowed.
+    expect(draggedTableConflict(editor.state.doc, baselineSig, baselineCount)).toBe(false)
+  })
+
+  it('does NOT flag a conflict when prose OUTSIDE any table is edited', () => {
+    editor = makeEditor('<p>lead</p>' + TWO_TABLES)
+    const baselineSig = signatureOfTable(nthTable(editor, 0).node)!
+    const baselineCount = countTableSignature(editor.state.doc, baselineSig)
+    editor.view.dispatch(editor.state.tr.insertText('typed', 2)) // inside the leading paragraph
+    expect(draggedTableConflict(editor.state.doc, baselineSig, baselineCount)).toBe(false)
+  })
+
+  it('DOES flag a conflict when the dragged table itself is structurally changed', () => {
+    editor = makeEditor(TWO_TABLES)
+    const baselineSig = signatureOfTable(nthTable(editor, 0).node)! // dragging table #0
+    const baselineCount = countTableSignature(editor.state.doc, baselineSig)
+
+    // A concurrent reorder of the DRAGGED table (#0): row swap.
+    selectCell2(editor, 0, 1, 0)
+    moveTableRow({ from: 1, to: 0 })(editor.state, editor.view.dispatch)
+    expect(draggedTableConflict(editor.state.doc, baselineSig, baselineCount)).toBe(true)
+  })
+
+  it('DOES flag a conflict when the dragged table is deleted', () => {
+    editor = makeEditor(TWO_TABLES)
+    const baselineSig = signatureOfTable(nthTable(editor, 0).node)!
+    const baselineCount = countTableSignature(editor.state.doc, baselineSig)
+    const { pos, node } = nthTable(editor, 0)
+    editor.view.dispatch(editor.state.tr.delete(pos, pos + node.nodeSize))
+    expect(draggedTableConflict(editor.state.doc, baselineSig, baselineCount)).toBe(true)
+  })
+
+  it('a null baseline disables the guard (never a blind abort)', () => {
+    editor = makeEditor(TWO_TABLES)
+    expect(draggedTableConflict(editor.state.doc, null, 0)).toBe(false)
+  })
+
+  /** selectCell for an arbitrary table index (the file-level selectCell targets the first table). */
+  function selectCell2(editor: Editor, tableIndex: number, row: number, col: number): void {
+    const { node, pos } = nthTable(editor, tableIndex)
+    const map = TableMap.get(node)
+    const cellRel = map.map[row * map.width + col]
+    const $inside = editor.state.doc.resolve(pos + 1 + cellRel + 1)
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near($inside)))
+  }
 })

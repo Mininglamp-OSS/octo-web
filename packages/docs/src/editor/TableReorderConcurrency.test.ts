@@ -36,7 +36,7 @@ import {
   tableEditingKey,
 } from '@tiptap/pm/tables'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { tableStructureSignature } from './TableReorderHandle.ts'
+import { tableStructureSignature, signatureOfTable, countTableSignature, draggedTableConflict } from './TableReorderHandle.ts'
 
 // Same collab field name the editor wires in production (schema/index.ts COLLAB_FIELD).
 const FIELD = 'default'
@@ -341,5 +341,119 @@ describe('table reorder — plan B conflict-abort guard eliminates silent corrup
     selectCell(edA, 2, 0)
     moveTableRow({ from: 2, to: 0 })(edA.state, edA.view.dispatch)
     expect(grid(edA).map((row) => row[0])).toEqual(['r3c1', 'r1c1', 'r2c1'])
+  })
+})
+
+// octo-docs-backend#76 FAIL-2 (XIN-1206): the plan-B guard must fire ONLY for a concurrent change to
+// the DRAGGED table. The original guard re-fingerprinted a single remapped `cellPos`; under real
+// collaboration y-prosemirror applies a remote update as one coarse ReplaceStep, so mapping that
+// anchor forward collapses it to the replace boundary — it stops resolving to a cell even when the
+// dragged table is untouched, and the old `signature === null → conflict` branch then FALSE-ABORTED
+// on edits to prose or to a different table (observed as: "editing text outside the table cancels my
+// reorder"). These tests exercise the exact dual-Y.Doc merge and drive conflict detection through the
+// position-independent `countTableSignature` / `draggedTableConflict` the guard now uses.
+describe('table reorder — plan B guard scope: same-table only (#76 FAIL-2)', () => {
+  const TWO_TABLES =
+    '<p>lead</p>' +
+    '<table><tbody>' +
+    '<tr><td><p>A1</p></td><td><p>A2</p></td></tr>' +
+    '<tr><td><p>A3</p></td><td><p>A4</p></td></tr>' +
+    '</tbody></table>' +
+    '<p>between</p>' +
+    '<table><tbody>' +
+    '<tr><td><p>B1</p></td><td><p>B2</p></td></tr>' +
+    '</tbody></table>'
+
+  function nthTable(editor: Editor, n: number): { node: PMNode; pos: number } {
+    const found: { node: PMNode; pos: number }[] = []
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'table') {
+        found.push({ node, pos })
+        return false
+      }
+      return true
+    })
+    if (!found[n]) throw new Error(`no table #${n}`)
+    return found[n]
+  }
+  function cellInsideOf(editor: Editor, tableIndex: number, row: number, col: number): number {
+    const { node, pos } = nthTable(editor, tableIndex)
+    const map = TableMap.get(node)
+    return pos + 1 + map.map[row * map.width + col] + 1 // inside the cell
+  }
+
+  // Diagnostic: prove the anchor-drift that broke the OLD approach is real in this harness. After a
+  // remote edit merges, the dragged cell's remapped position no longer fingerprints the table.
+  it('remapped cellPos drifts under a coarse remote ReplaceStep (root cause of the false abort)', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TWO_TABLES)
+    track(edA, edB)
+    let cellPos = cellPosOf(edA, 0, 0) // dragging table #0
+    const baseline = tableStructureSignature(edA.state.doc, cellPos)
+    expect(baseline).not.toBeNull()
+
+    const onTr = ({ transaction }: { transaction: { docChanged: boolean; mapping: { map(p: number): number } } }) => {
+      if (transaction.docChanged) cellPos = transaction.mapping.map(cellPos)
+    }
+    edA.on('transaction', onTr)
+    // Peer B edits prose OUTSIDE any table.
+    edB.view.dispatch(edB.state.tr.insertText('typed', 2))
+    mergeConcurrent(docA, docB, base)
+    edA.off('transaction', onTr)
+
+    // OLD behaviour: the remapped anchor's signature is now null → old guard would abort. This is the
+    // FAIL-2 false positive we are eliminating.
+    expect(tableStructureSignature(edA.state.doc, cellPos)).toBeNull()
+    // NEW behaviour: the dragged table's signature is still present in the doc → no conflict.
+    const baselineCount = countTableSignature(edA.state.doc, baseline!) // recount post-merge
+    expect(baselineCount).toBeGreaterThanOrEqual(1)
+    expect(draggedTableConflict(edA.state.doc, baseline, baselineCount)).toBe(false)
+  })
+
+  it('reorder ⟂ remote edit of a DIFFERENT table → guard stays clear (no false abort)', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TWO_TABLES)
+    track(edA, edB)
+    const baselineSig = signatureOfTable(nthTable(edA, 0).node) // dragging table #0
+    const baselineCount = countTableSignature(edA.state.doc, baselineSig!)
+    expect(baselineSig).not.toBeNull()
+
+    // Peer B edits the OTHER table's cell text.
+    const insideB = cellInsideOf(edB, 1, 0, 0)
+    edB.view.dispatch(edB.state.tr.insertText('CHANGED', insideB))
+    mergeConcurrent(docA, docB, base)
+
+    // Dragged table #0 unchanged → its signature still present → reorder allowed.
+    expect(draggedTableConflict(edA.state.doc, baselineSig, baselineCount)).toBe(false)
+    expect(xml(docA)).toBe(xml(docB))
+  })
+
+  it('reorder ⟂ remote edit of prose OUTSIDE any table → guard stays clear', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TWO_TABLES)
+    track(edA, edB)
+    const baselineSig = signatureOfTable(nthTable(edA, 0).node)
+    const baselineCount = countTableSignature(edA.state.doc, baselineSig!)
+
+    edB.view.dispatch(edB.state.tr.insertText('hello', 2)) // prose before the tables
+    mergeConcurrent(docA, docB, base)
+
+    expect(draggedTableConflict(edA.state.doc, baselineSig, baselineCount)).toBe(false)
+    expect(xml(docA)).toBe(xml(docB))
+  })
+
+  it('reorder ⟂ remote structural change to the DRAGGED table → guard fires (data-safety kept)', () => {
+    const { docA, edA, docB, edB, base } = forkedPeers(TWO_TABLES)
+    track(edA, edB)
+    const baselineSig = signatureOfTable(nthTable(edA, 0).node) // dragging table #0
+    const baselineCount = countTableSignature(edA.state.doc, baselineSig!)
+
+    // Peer B reorders the SAME table #0 (row swap).
+    const { pos } = nthTable(edB, 0)
+    const mapB = TableMap.get(nthTable(edB, 0).node)
+    const $inB = edB.state.doc.resolve(pos + 1 + mapB.map[1 * mapB.width + 0] + 1)
+    edB.view.dispatch(edB.state.tr.setSelection(TextSelection.near($inB)))
+    moveTableRow({ from: 1, to: 0 })(edB.state, edB.view.dispatch)
+    mergeConcurrent(docA, docB, base)
+
+    // The drag-start signature no longer matches any table → conflict → local reorder aborts.
+    expect(draggedTableConflict(edA.state.doc, baselineSig, baselineCount)).toBe(true)
   })
 })
