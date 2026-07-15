@@ -1,23 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Box,
-  ChartColumn,
-  ChevronDown,
-  Cloud,
-  Eye,
-  Film,
-  FolderKanban,
-  Gamepad2,
-  LayoutGrid,
-  Megaphone,
-  Monitor,
-  MoreHorizontal,
-  PenLine,
-  Server,
-  ShieldCheck,
-  Smartphone,
-  Terminal,
-} from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { Category } from "../types/skill";
 
 interface CategoryChipsProps {
@@ -27,30 +9,6 @@ interface CategoryChipsProps {
 }
 
 const MEDIUM_VISIBLE_LIMIT = 4;
-
-const iconMap = {
-  Box,
-  ChartColumn,
-  Cloud,
-  Eye,
-  Film,
-  FolderKanban,
-  Gamepad2,
-  LayoutGrid,
-  Megaphone,
-  Monitor,
-  MoreHorizontal,
-  PenLine,
-  Server,
-  ShieldCheck,
-  Smartphone,
-  Terminal,
-};
-
-function CategoryIcon({ iconKey }: { iconKey: string }) {
-  const Icon = iconMap[iconKey as keyof typeof iconMap] ?? Box;
-  return <Icon size={14} aria-hidden="true" />;
-}
 
 export default function CategoryChips({ categories, activeId, onChange }: CategoryChipsProps) {
   const [moreOpen, setMoreOpen] = useState(false);
@@ -110,11 +68,9 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
         }
         aria-pressed={category.id === activeId}
         onClick={() => choose(category.id)}
-        title={`${category.name} · ${category.skillCount} 个 Skill`}
+        title={category.name}
       >
-        <CategoryIcon iconKey={category.iconKey} />
         <span className="skill-market-category-label">{category.name}</span>
-        <span className="skill-market-category-count">{category.skillCount}</span>
       </button>
     );
   }
@@ -137,7 +93,6 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
             aria-haspopup="menu"
             onClick={() => setMoreOpen((open) => !open)}
           >
-            <MoreHorizontal size={14} aria-hidden="true" />
             <span className="skill-market-category-label">更多</span>
             <ChevronDown size={13} aria-hidden="true" />
           </button>
@@ -151,9 +106,7 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
                   className={category.id === activeId ? "is-active" : undefined}
                   onClick={() => choose(category.id)}
                 >
-                  <CategoryIcon iconKey={category.iconKey} />
                   <span>{category.name}</span>
-                  <span>{category.skillCount}</span>
                 </button>
               ))}
               {mobileOnlyMenuItems.map((category) => (
@@ -168,9 +121,7 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
                   }
                   onClick={() => choose(category.id)}
                 >
-                  <CategoryIcon iconKey={category.iconKey} />
                   <span>{category.name}</span>
-                  <span>{category.skillCount}</span>
                 </button>
               ))}
             </div>

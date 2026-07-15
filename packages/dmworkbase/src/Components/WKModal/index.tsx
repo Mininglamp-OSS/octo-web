@@ -50,6 +50,8 @@ export interface WKModalProps {
   style?: React.CSSProperties
   /** 透传给 Semi Modal body 的 style */
   bodyStyle?: React.CSSProperties
+  /** 自定义 z-index 层级 */
+  zIndex?: number
   /** 自定义 header ReactNode（完全替换默认 header） */
   header?: React.ReactNode
   className?: string
@@ -107,6 +109,7 @@ const WKModal: React.FC<WKModalProps> = ({
   options,
   style,
   bodyStyle,
+  zIndex,
   header: customHeader,
   className,
   children,
@@ -133,6 +136,7 @@ const WKModal: React.FC<WKModalProps> = ({
       mask={mask}
       closeOnEsc={closeOnEsc}
       centered
+      zIndex={zIndex}
       className={cls}
       modalContentClass="wk-modal-content"
       style={style}

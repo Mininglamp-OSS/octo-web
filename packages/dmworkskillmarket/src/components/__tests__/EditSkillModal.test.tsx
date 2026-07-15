@@ -14,6 +14,8 @@ const categories: Category[] = [
 const skill: Skill = {
   id: "meeting-note-cleaner",
   name: "meeting-note-cleaner",
+  displayName: "会议纪要整理",
+  iconUrl: "",
   description: "将会议纪要整理为决策、待办、风险和引用资料。",
   categoryId: "office",
   tags: ["纪要", "协作"],
@@ -70,16 +72,16 @@ describe("EditSkillModal", () => {
     render(<EditSkillModal skill={skill} categories={categories} onClose={onClose} onUpdated={onUpdated} />);
 
     expect(screen.getByDisplayValue("meeting-note-cleaner")).toBeInTheDocument();
-    expect(screen.getByDisplayValue(skill.description)).toBeInTheDocument();
+    expect(screen.getByDisplayValue("会议纪要整理")).toBeInTheDocument();
     expect(screen.getByText("meeting-note-cleaner.zip")).toBeInTheDocument();
     expect(screen.getByText("重新上传 zip 包")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("描述"), { target: { value: "更新后的说明" } });
+    fireEvent.change(screen.getByPlaceholderText("请输入展示名称，最多20个字符"), { target: { value: "更新展示名" } });
     fireEvent.change(screen.getByLabelText("分类"), { target: { value: "dev-tools" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(api.updateSkill).toHaveBeenCalledWith("meeting-note-cleaner", expect.objectContaining({
-      description: "更新后的说明",
+      displayName: "更新展示名",
       categoryId: "dev-tools",
       name: "meeting-note-cleaner",
     })));
@@ -91,7 +93,7 @@ describe("EditSkillModal", () => {
     const onClose = vi.fn();
     render(<EditSkillModal skill={skill} categories={categories} onClose={onClose} onUpdated={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText("描述"), { target: { value: "更新后的说明" } });
+    fireEvent.change(screen.getByPlaceholderText("请输入展示名称，最多20个字符"), { target: { value: "新名称" } });
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
 
     expect(screen.getByText("确定离开？尚未完成编辑，已上传的文件和填写的信息将丢失。")).toBeInTheDocument();

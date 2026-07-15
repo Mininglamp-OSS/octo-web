@@ -240,6 +240,7 @@ describe("skillApiReal", () => {
     await createSkill({
       parseTaskId: "task-1",
       name: "New Skill",
+      displayName: "test",
       description: "desc",
       categoryId: "dev-tools",
       tags: ["tag"],
@@ -256,11 +257,13 @@ describe("skillApiReal", () => {
         body: JSON.stringify({
           parse_task_id: "task-1",
           name: "New Skill",
+          display_name: "test",
           description: "desc",
           category_id: "dev-tools",
           tags: ["tag"],
           visibility: "space",
           version: "1.0.0",
+          icon_url: "",
         }),
       }),
     );

@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, CheckCircle2, FileArchive, Loader2, XCircle } from "lucide-react";
+import { AlertCircle, Box, CheckCircle2, FileArchive, ImagePlus, Loader2, XCircle } from "lucide-react";
 import { WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, Skill, Visibility } from "../types/skill";
-import { updateSkill, initReupload, uploadFile, triggerParse, pollParse } from "../api/skillApi";
+import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse } from "../api/skillApi";
 import { formatFileSize } from "../utils/format";
+import IconCropModal from "./IconCropModal";
 
 interface EditSkillModalProps {
   skill: Skill | null;
@@ -30,6 +31,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortRef = useRef(false);
   const [name, setName] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("dev-tools");
   const [tags, setTags] = useState<string[]>([]);
@@ -40,6 +42,9 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
   const [progress, setProgress] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [parseTaskId, setParseTaskId] = useState<string | null>(null);
+  const [iconPreview, setIconPreview] = useState<string | null>(null);
+  const [iconBlob, setIconBlob] = useState<Blob | null>(null);
+  const [iconCropFile, setIconCropFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -53,6 +58,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     }
     abortRef.current = true;
     setName(skill.name);
+    setDisplayName(skill.displayName ?? "");
     setDescription(skill.description);
     setCategoryId(skill.categoryId);
     setTags(skill.tags);
@@ -63,6 +69,9 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     setProgress(0);
     setUploadedFile(null);
     setParseTaskId(null);
+    setIconPreview(skill.iconUrl || null);
+    setIconBlob(null);
+    setIconCropFile(null);
     setError(null);
     setConfirmClose(false);
     setTimeout(() => { abortRef.current = false; }, 0);
@@ -71,11 +80,12 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
   const busy = uploadStage === "uploading" || uploadStage === "parsing";
   const dirty = Boolean(skill) && (
     name !== skill?.name ||
-    description !== skill?.description ||
+    displayName !== (skill?.displayName ?? "") ||
     categoryId !== skill?.categoryId ||
     visibility !== skill?.visibility ||
     JSON.stringify(tags) !== JSON.stringify(skill?.tags) ||
-    Boolean(uploadedFile)
+    Boolean(uploadedFile) ||
+    Boolean(iconBlob)
   );
 
   function requestClose() {
@@ -181,21 +191,27 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
 
   async function submit() {
     if (!skill) return;
-    if (!name.trim() || !description.trim() || !categoryId) {
-      setError("请填写名称、描述和分类");
+    if (!name.trim() || !displayName.trim() || !categoryId) {
+      setError("请填写展示名称和分类");
       return;
     }
     setSaving(true);
     setError(null);
     try {
+      let iconUrl: string | undefined;
+      if (iconBlob) {
+        iconUrl = await uploadIcon(iconBlob);
+      }
       const updated = await updateSkill(skill.id, {
         ...(parseTaskId ? { parseTaskId } : {}),
         name,
+        displayName,
         description,
         categoryId,
         tags,
         visibility,
         version,
+        ...(iconUrl !== undefined ? { iconUrl } : {}),
       });
       onUpdated(updated);
       onClose();
@@ -221,7 +237,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
               variant="primary"
               onClick={() => void submit()}
               loading={saving}
-              disabled={busy || uploadStage === "error" || !name.trim() || !description.trim()}
+              disabled={busy || uploadStage === "error" || !name.trim() || !displayName.trim()}
             >
               保存
             </WKButton>
@@ -274,70 +290,101 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
           {uploadStage === "error" && (
             <WKButton variant="secondary" onClick={() => fileInputRef.current?.click()}>重新选择文件</WKButton>
           )}
-          <label>
-            <span>名称</span>
-            <WKInput value={name} onChange={setName} placeholder="skill-name" />
-          </label>
-          <label>
-            <span>描述</span>
-            <textarea aria-label="描述" value={description} onChange={(event) => setDescription(event.target.value)} />
-          </label>
+
+          <h3 className="skill-market-form__section-title">基本信息</h3>
+
+          <div className="skill-market-form__icon-row">
+            <label className="skill-market-icon-upload" title="上传图标">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml"
+                onChange={(event) => {
+                  const f = event.target.files?.[0];
+                  if (f) setIconCropFile(f);
+                  event.target.value = "";
+                }}
+              />
+              {iconPreview ? (
+                <img src={iconPreview} alt="icon" />
+              ) : (
+                <Box size={24} />
+              )}
+            </label>
+            <label className="skill-market-field-readonly">
+              <span>英文名</span>
+              <span className="skill-market-field-readonly__value">{name}</span>
+            </label>
+            <label>
+              <span>展示名称<i className="skill-market-required">*</i></span>
+              <WKInput value={displayName} onChange={(v) => setDisplayName(v.slice(0, 20))} placeholder="请输入展示名称，最多20个字符" maxLength={20} />
+            </label>
+          </div>
           <div className="skill-market-form__row">
             <label>
-              <span>分类</span>
+              <span>分类<i className="skill-market-required">*</i></span>
               <select aria-label="分类" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
                 {selectableCategories.map((category) => (
                   <option key={category.id} value={category.id}>{category.name}</option>
                 ))}
               </select>
             </label>
-            <fieldset className="skill-market-radio-group">
-              <legend>可见性</legend>
-              {[
-                ["public", "公开"],
-                ["space", "Space 内"],
-                ["private", "私有"],
-              ].map(([value, label]) => (
-                <label key={value}>
-                  <input
-                    type="radio"
-                    checked={visibility === value}
-                    onChange={() => setVisibility(value as Visibility)}
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </fieldset>
+            <label>
+              <span>标签</span>
+              <div className="skill-market-tag-input">
+                {tags.map((tag) => (
+                  <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
+                    {tag}
+                    <XCircle size={12} />
+                  </button>
+                ))}
+                <input
+                  value={tagDraft}
+                  onChange={(event) => setTagDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addTag();
+                    }
+                  }}
+                  onBlur={addTag}
+                  placeholder="输入标签后回车"
+                />
+              </div>
+            </label>
           </div>
-          <label>
-            <span>标签</span>
-            <div className="skill-market-tag-input">
-              {tags.map((tag) => (
-                <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
-                  {tag}
-                  <XCircle size={12} />
-                </button>
-              ))}
-              <input
-                value={tagDraft}
-                onChange={(event) => setTagDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    addTag();
-                  }
-                }}
-                onBlur={addTag}
-                placeholder="输入标签后回车"
-              />
-            </div>
-          </label>
+          <fieldset className="skill-market-radio-group">
+            <legend>可见性<i className="skill-market-required">*</i></legend>
+            {[
+              ["space", "公开", "Space 内所有成员可见"],
+              ["private", "非公开", "仅自己可见"],
+            ].map(([value, label, hint]) => (
+              <label key={value}>
+                <input
+                  type="radio"
+                  checked={visibility === value}
+                  onChange={() => setVisibility(value as Visibility)}
+                />
+                <span>{label}</span>
+                <small className="skill-market-radio-hint">{hint}</small>
+              </label>
+            ))}
+          </fieldset>
           <div className="skill-market-doc-note">
             <CheckCircle2 size={15} />
             <span>由 SKILL.md 自动解析，如需修改请重新上传 zip 包</span>
           </div>
         </div>
       </WKModal>
+      <IconCropModal
+        visible={!!iconCropFile}
+        file={iconCropFile}
+        onCancel={() => setIconCropFile(null)}
+        onConfirm={(blob) => {
+          setIconPreview(URL.createObjectURL(blob));
+          setIconBlob(blob);
+          setIconCropFile(null);
+        }}
+      />
       <WKModal
         visible={confirmClose}
         onCancel={() => setConfirmClose(false)}

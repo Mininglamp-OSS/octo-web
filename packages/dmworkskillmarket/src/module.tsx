@@ -4,7 +4,6 @@ import type { IModule } from "@octo/base";
 import { i18n, Menus, t as translate, WKApp } from "@octo/base";
 import SkillMarketSidebar from "./components/SkillMarketSidebar";
 import SkillListPage from "./pages/SkillListPage";
-import MyCreatedPage from "./pages/MyCreatedPage";
 import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
 import "./index.css";
@@ -31,8 +30,6 @@ export class SkillMarketModule implements IModule {
     });
 
     WKApp.route.register("/skill-market", () => <SkillMarketSidebar />);
-    WKApp.route.register("/skill-market/skills", () => <SkillListPage />);
-    WKApp.route.register("/skill-market/mine", () => <MyCreatedPage />);
 
     WKApp.menus.register(
       "skill-market",
@@ -53,12 +50,4 @@ export class SkillMarketModule implements IModule {
       5004,
     );
   }
-}
-
-const hot = (import.meta as ImportMeta & { hot?: { dispose: (callback: () => void) => void } }).hot;
-
-if (hot) {
-  hot.dispose(() => {
-    /* menu and route registration are id-keyed in the host app */
-  });
 }

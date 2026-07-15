@@ -4,6 +4,7 @@ import type {
   PagedResult,
   Skill,
   SkillListQuery,
+  SkillVersion,
   UpdateSkillForm,
 } from "../types/skill";
 import {
@@ -113,6 +114,7 @@ export function createSkill(form: NewSkillForm): Promise<Skill> {
   const skill: Skill = {
     id,
     name: form.name.trim(),
+    displayName: form.displayName ?? "",
     description: form.description.trim(),
     categoryId: form.categoryId,
     tags: [...form.tags],
@@ -122,6 +124,7 @@ export function createSkill(form: NewSkillForm): Promise<Skill> {
     visibility: form.visibility,
     version: form.version ?? "1.0.0",
     readmeContent: form.readmeContent,
+    iconUrl: form.iconUrl ?? "",
     fileName: form.fileName,
     fileUrl: `mock://skills/${id}.zip`,
     fileSize: form.fileSize,
@@ -151,4 +154,8 @@ export function deleteSkill(id: string): Promise<void> {
   if (!exists) return withDelayReject(new Error("Skill not found"));
   skills = skills.filter((item) => item.id !== id);
   return withDelay(undefined);
+}
+
+export function listVersions(_skillId: string): Promise<SkillVersion[]> {
+  return withDelay([]);
 }

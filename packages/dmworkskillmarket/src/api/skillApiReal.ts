@@ -14,8 +14,10 @@ import type {
   RawCategory,
   RawPagedResult,
   RawSkill,
+  RawSkillVersion,
   Skill,
   SkillListQuery,
+  SkillVersion,
   TriggerParseResult,
   UpdateSkillForm,
   UploadInitResult,
@@ -153,6 +155,7 @@ function mapSkill(raw: RawSkill): Skill {
   return {
     id: raw.id,
     name: raw.name,
+    displayName: raw.display_name ?? "",
     description: raw.description ?? "",
     categoryId: raw.category_id,
     tags: normalizeTags(raw.tags),
@@ -162,6 +165,7 @@ function mapSkill(raw: RawSkill): Skill {
     visibility: raw.visibility ?? "space",
     version: raw.version ?? "1.0.0",
     readmeContent: raw.readme_content ?? "",
+    iconUrl: raw.icon_url ?? "",
     fileName: raw.file_name ?? "",
     fileUrl: raw.file_url ?? "",
     fileSize: raw.file_size ?? 0,
@@ -224,11 +228,13 @@ export function createSkill(form: NewSkillForm): Promise<Skill> {
     body: JSON.stringify({
       parse_task_id: form.parseTaskId,
       name: form.name,
+      display_name: form.displayName,
       description: form.description,
       category_id: form.categoryId,
       tags: form.tags,
       visibility: form.visibility,
       version: form.version,
+      icon_url: form.iconUrl ?? "",
     }),
   }).then(mapSkill);
 }
@@ -237,11 +243,14 @@ export function updateSkill(id: string, form: UpdateSkillForm): Promise<Skill> {
   const body: Record<string, unknown> = {};
   if (form.parseTaskId !== undefined) body.parse_task_id = form.parseTaskId;
   if (form.name !== undefined) body.name = form.name;
+  if (form.displayName !== undefined) body.display_name = form.displayName;
   if (form.description !== undefined) body.description = form.description;
   if (form.categoryId !== undefined) body.category_id = form.categoryId;
   if (form.tags !== undefined) body.tags = form.tags;
   if (form.visibility !== undefined) body.visibility = form.visibility;
   if (form.version !== undefined) body.version = form.version;
+  if (form.changelog !== undefined) body.changelog = form.changelog;
+  if (form.iconUrl !== undefined) body.icon_url = form.iconUrl;
 
   return request<RawSkill>(`/skill/${encodeURIComponent(id)}`, {
     method: "PUT",
@@ -306,6 +315,27 @@ export async function uploadFile(presignedUrl: string, file: File, headers?: Rec
     xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
     xhr.send(file);
   });
+}
+
+/** Upload an icon blob to OSS via the presigned icon upload flow. Returns the object_key to store as icon_url. */
+export async function uploadIcon(blob: Blob): Promise<string> {
+  const fileName = `icon-${Date.now()}.png`;
+
+  // Step 1: Get presigned URL via icon-specific endpoint
+  const initResp = await request<{ object_key: string; presigned_url: string; headers: Record<string, string> }>(
+    "/skill/upload/icon",
+    {
+      method: "POST",
+      body: JSON.stringify({ file_name: fileName, file_size: blob.size }),
+    },
+  );
+
+  // Step 2: Upload the file to presigned URL
+  const file = new File([blob], fileName, { type: "image/png" });
+  await uploadFile(initResp.presigned_url, file, initResp.headers);
+
+  // Return the object_key — backend stores this and resolves to download URL when returning skills
+  return initResp.object_key;
 }
 
 /** Step 3: Trigger server-side parsing of the uploaded zip. */
@@ -397,4 +427,23 @@ export function initReupload(skillId: string, fileName: string, fileSize: number
     headers: raw.headers ?? {},
     expiresIn: raw.expires_in,
   }));
+}
+
+function mapVersion(raw: RawSkillVersion): SkillVersion {
+  return {
+    id: raw.id,
+    skillId: raw.skill_id,
+    version: raw.version,
+    changelog: raw.changelog ?? "",
+    storage: raw.storage ?? {},
+    changedBy: raw.changed_by ?? "",
+    createdAt: raw.created_at,
+  };
+}
+
+/** Fetch version history for a skill. */
+export function listVersions(skillId: string): Promise<SkillVersion[]> {
+  return request<{ items: RawSkillVersion[] }>(`/skill/${encodeURIComponent(skillId)}/versions`).then(
+    (data) => (data.items ?? []).map(mapVersion),
+  );
 }

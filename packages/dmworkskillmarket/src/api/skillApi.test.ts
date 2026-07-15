@@ -75,6 +75,7 @@ describe("skillApi mock contract", () => {
   it("creates, updates, loads, and deletes a skill in the mock store", async () => {
     const created = await createSkill({
       name: "workflow-note-builder",
+      displayName: "test",
       description: "将工作流记录整理成可复用 Skill 说明。",
       categoryId: "office",
       tags: ["协作", "文档"],

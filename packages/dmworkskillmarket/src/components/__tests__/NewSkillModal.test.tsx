@@ -69,7 +69,7 @@ describe("NewSkillModal", () => {
 
     // Wait for the async upload/parse flow to complete
     await waitFor(() => {
-      expect(screen.getByDisplayValue("skill-pack")).toBeInTheDocument();
+      expect(screen.getByText("skill-pack")).toBeInTheDocument();
     });
 
     expect(screen.getByText("skill-pack.zip")).toBeInTheDocument();
@@ -78,12 +78,14 @@ describe("NewSkillModal", () => {
     expect(api.triggerParse).toHaveBeenCalledWith("upload-123");
     expect(api.pollParse).toHaveBeenCalledWith("task-123");
 
+    fireEvent.change(screen.getByPlaceholderText("请输入展示名称，最多20个字符"), { target: { value: "快速Todo" } });
     fireEvent.change(screen.getByLabelText("分类"), { target: { value: "office" } });
     fireEvent.click(screen.getByRole("button", { name: "创建" }));
 
     await waitFor(() => {
       expect(api.createSkill).toHaveBeenCalledWith(expect.objectContaining({
         name: "skill-pack",
+        displayName: "快速Todo",
         categoryId: "office",
         parseTaskId: "task-123",
       }));
@@ -102,11 +104,12 @@ describe("NewSkillModal", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue("skill-pack")).toBeInTheDocument();
+      expect(screen.getByText("skill-pack")).toBeInTheDocument();
     });
 
     expect(screen.getByRole("button", { name: "创建" })).toBeDisabled();
 
+    fireEvent.change(screen.getByPlaceholderText("请输入展示名称，最多20个字符"), { target: { value: "测试名" } });
     fireEvent.change(screen.getByLabelText("分类"), { target: { value: "office" } });
 
     expect(screen.getByRole("button", { name: "创建" })).not.toBeDisabled();

@@ -1,29 +1,32 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertCircle, PackageOpen, Plus, RefreshCw } from "lucide-react";
-import { WKApp, WKButton } from "@octo/base";
+import { WKButton } from "@octo/base";
 import type { Skill } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
 import CategoryChips from "../components/CategoryChips";
 import DeleteConfirmModal from "../components/DeleteConfirmModal";
 import EditSkillModal from "../components/EditSkillModal";
+import InstallPromptModal from "../components/InstallPromptModal";
 import NewSkillModal from "../components/NewSkillModal";
 import SearchBar from "../components/SearchBar";
 import SkillCard from "../components/SkillCard";
 import SkillCardSkeleton from "../components/SkillCardSkeleton";
 import SkillDetailModal from "../components/SkillDetailModal";
 
-interface SkillListPageProps {
-  mine?: boolean;
-}
+type TabId = "skills" | "mine";
 
 const TOAST_DURATION = 3000;
 
-export default function SkillListPage({ mine = false }: SkillListPageProps) {
+export default function SkillListPage() {
+  const [tab, setTab] = useState<TabId>("skills");
+  const mine = tab === "mine";
   const list = useSkills({ mine });
   const [createVisible, setCreateVisible] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Skill | null>(null);
   const [deleting, setDeleting] = useState<Skill | null>(null);
+  const [installSkillId, setInstallSkillId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [detailRefreshKey, setDetailRefreshKey] = useState(0);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -57,10 +60,9 @@ export default function SkillListPage({ mine = false }: SkillListPageProps) {
     return () => observer.disconnect();
   }, [list]);
 
-  const title = mine ? "我创建" : "Skills";
-  const desc = mine
-    ? "管理当前用户创建的 Skill，支持编辑、删除和查看详情。"
-    : "浏览团队 Skill 市场，按分类和关键词快速找到可复用能力。";
+  function switchTab(next: TabId) {
+    setTab(next);
+  }
 
   function handleDeleted() {
     setDetailId(null);
@@ -73,10 +75,6 @@ export default function SkillListPage({ mine = false }: SkillListPageProps) {
   function handleCreated() {
     showToast("创建成功");
     list.refresh();
-    if (!mine) {
-      window.location.hash = "mine";
-      WKApp.routeRight.replaceToRoot(<SkillListPage mine />);
-    }
   }
 
   function handleUpdated() {
@@ -85,49 +83,45 @@ export default function SkillListPage({ mine = false }: SkillListPageProps) {
     setDetailRefreshKey((current) => current + 1);
   }
 
-  function clearFilters() {
-    list.setQuery("");
-    list.setCategoryId("all");
-    searchInputRef.current?.focus();
+  function handleVersionPublished() {
+    list.refresh();
+    setDetailRefreshKey((current) => current + 1);
   }
-
-  function clearSearch() {
-    list.setQuery("");
-    searchInputRef.current?.focus();
-  }
-
-  const hasQuery = list.query.trim().length > 0;
-  const hasCategoryFilter = !mine && list.categoryId !== "all";
-  const emptyTitle = hasCategoryFilter && !hasQuery ? "该分类暂无 Skill" : "没有找到匹配的 Skill";
-  const emptyDescription = hasCategoryFilter && !hasQuery
-    ? "可以切换到其他分类，或新建一个 Skill。"
-    : "换个关键词或分类后再试，也可以清空筛选条件";
 
   return (
     <div className="skill-market-page">
       <header className="skill-market-topbar">
-        <div>
-          <h1>{title}</h1>
-          <p>{desc}</p>
-        </div>
+        <nav className="skill-market-tabs" aria-label="Skill 市场导航">
+          <button
+            type="button"
+            className={tab === "skills" ? "is-active" : ""}
+            onClick={() => switchTab("skills")}
+          >
+            Skills
+          </button>
+          <button
+            type="button"
+            className={tab === "mine" ? "is-active" : ""}
+            onClick={() => switchTab("mine")}
+          >
+            我的
+          </button>
+        </nav>
         <div className="skill-market-topbar__actions">
-          <WKButton variant="secondary" icon={<RefreshCw size={15} />} onClick={list.refresh}>
-            刷新
-          </WKButton>
           <WKButton variant="primary" icon={<Plus size={15} />} onClick={() => setCreateVisible(true)}>
-            新建 Skill
+            上架
           </WKButton>
+          <SearchBar
+            ref={searchInputRef}
+            value={list.query}
+            onChange={list.setQuery}
+            placeholder="搜索"
+            autoFocus
+          />
         </div>
       </header>
 
       <section className={mine ? "skill-market-toolbar skill-market-toolbar--mine" : "skill-market-toolbar"}>
-        <SearchBar
-          ref={searchInputRef}
-          value={list.query}
-          onChange={list.setQuery}
-          placeholder="搜索"
-          autoFocus
-        />
         {!mine && (
           <CategoryChips
             categories={list.categories}
@@ -138,12 +132,6 @@ export default function SkillListPage({ mine = false }: SkillListPageProps) {
       </section>
 
       <main className="skill-market-content">
-        {toast && (
-          <div className="skill-market-toast" role="status">
-            {toast}
-            <button type="button" onClick={() => setToast(null)} aria-label="关闭提示">×</button>
-          </div>
-        )}
         {list.loading && (
           <div className="skill-market-grid" aria-label="Skill 加载中">
             {Array.from({ length: 6 }).map((_, index) => (
@@ -163,18 +151,8 @@ export default function SkillListPage({ mine = false }: SkillListPageProps) {
         )}
         {!list.loading && !list.error && list.skills.length === 0 && (
           <div className="skill-market-state">
-            <PackageOpen size={32} />
-            <strong>{emptyTitle}</strong>
-            <span>{emptyDescription}</span>
-            {hasQuery ? (
-              <WKButton variant="secondary" onClick={clearSearch}>
-                清空搜索
-              </WKButton>
-            ) : (
-              <WKButton variant="secondary" onClick={clearFilters}>
-                清空筛选
-              </WKButton>
-            )}
+            <PackageOpen size={56} />
+            <strong>暂无数据</strong>
           </div>
         )}
         {!list.loading && !list.error && list.skills.length > 0 && (
@@ -187,6 +165,7 @@ export default function SkillListPage({ mine = false }: SkillListPageProps) {
                 onOpen={(item) => setDetailId(item.id)}
                 onEdit={mine ? setEditing : undefined}
                 onDelete={mine ? setDeleting : undefined}
+                onInstall={(item) => setInstallSkillId(item.id)}
               />
             ))}
           </div>
@@ -197,7 +176,7 @@ export default function SkillListPage({ mine = false }: SkillListPageProps) {
               <RefreshCw size={13} />
               继续加载...
             </span>
-          ) : list.hasMore ? "滚动加载更多" : "已加载全部"}
+          ) : null}
         </div>
       </main>
 
@@ -208,6 +187,7 @@ export default function SkillListPage({ mine = false }: SkillListPageProps) {
         onClose={() => setDetailId(null)}
         onEdit={mine ? setEditing : undefined}
         onDelete={mine ? setDeleting : undefined}
+        onPublishVersion={handleVersionPublished}
         onFeedback={showToast}
       />
       <NewSkillModal
@@ -222,11 +202,22 @@ export default function SkillListPage({ mine = false }: SkillListPageProps) {
         onClose={() => setEditing(null)}
         onUpdated={handleUpdated}
       />
+      <InstallPromptModal
+        skillId={installSkillId}
+        onClose={() => setInstallSkillId(null)}
+      />
       <DeleteConfirmModal
         skill={deleting}
         onClose={() => setDeleting(null)}
         onDeleted={handleDeleted}
       />
+      {toast && createPortal(
+        <div className="skill-market-toast" role="status">
+          {toast}
+          <button type="button" onClick={() => setToast(null)} aria-label="关闭提示">×</button>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

@@ -13,6 +13,8 @@ const categories: Category[] = [
 const skill: Skill = {
   id: "meeting-note-cleaner",
   name: "meeting-note-cleaner",
+  displayName: "会议纪要整理",
+  iconUrl: "",
   description: "将会议纪要整理为决策、待办、风险和引用资料。",
   categoryId: "office",
   tags: ["纪要", "协作"],
@@ -31,6 +33,10 @@ const skill: Skill = {
 
 vi.mock("../../api/skillApi");
 
+async function switchToMineTab() {
+  fireEvent.click(screen.getByRole("button", { name: "我的" }));
+}
+
 describe("SkillListPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -46,11 +52,11 @@ describe("SkillListPage", () => {
     vi.useRealTimers();
   });
 
-  it("hides category chips on the my-created page and shows owner actions", async () => {
-    render(<SkillListPage mine />);
+  it("hides category chips on the mine tab and shows owner actions", async () => {
+    render(<SkillListPage />);
+    await switchToMineTab();
 
     expect(screen.queryByLabelText("Skill 分类")).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText("搜索")).toHaveFocus();
     expect(await screen.findByText("meeting-note-cleaner")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "编辑 meeting-note-cleaner" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "删除 meeting-note-cleaner" })).toBeInTheDocument();
@@ -80,7 +86,8 @@ describe("SkillListPage", () => {
   });
 
   it("confirms deletion and removes the skill through the API", async () => {
-    render(<SkillListPage mine />);
+    render(<SkillListPage />);
+    await switchToMineTab();
 
     fireEvent.click(await screen.findByRole("button", { name: "删除 meeting-note-cleaner" }));
     expect(screen.getByText("确定删除「meeting-note-cleaner」？")).toBeInTheDocument();
@@ -90,7 +97,8 @@ describe("SkillListPage", () => {
   });
 
   it("closes the detail modal when deleting a skill from within it", async () => {
-    render(<SkillListPage mine />);
+    render(<SkillListPage />);
+    await switchToMineTab();
 
     fireEvent.click(await screen.findByRole("button", { name: "meeting-note-cleaner @我" }));
     expect(await screen.findByText(skill.description)).toBeInTheDocument();
@@ -121,6 +129,7 @@ describe("SkillListPage", () => {
   it("refreshes an open detail modal after saving from detail edit", async () => {
     const updatedSkill: Skill = {
       ...skill,
+      displayName: "更新后的展示名",
       description: "更新后的详情说明",
       updatedAt: "2026-07-14T08:00:00.000Z",
     };
@@ -129,17 +138,18 @@ describe("SkillListPage", () => {
       .mockResolvedValueOnce(skill)
       .mockResolvedValueOnce(updatedSkill);
 
-    render(<SkillListPage mine />);
+    render(<SkillListPage />);
+    await switchToMineTab();
 
     fireEvent.click(await screen.findByRole("button", { name: "meeting-note-cleaner @我" }));
     expect(await screen.findByText(skill.description)).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "编辑 meeting-note-cleaner" })[1]);
-    fireEvent.change(screen.getByLabelText("描述"), { target: { value: updatedSkill.description } });
+    fireEvent.change(screen.getByPlaceholderText("请输入展示名称，最多20个字符"), { target: { value: updatedSkill.displayName } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(api.updateSkill).toHaveBeenCalledWith("meeting-note-cleaner", expect.objectContaining({
-      description: updatedSkill.description,
+      displayName: updatedSkill.displayName,
     })));
     expect(await screen.findByText(updatedSkill.description)).toBeInTheDocument();
     expect(api.getSkill).toHaveBeenCalledTimes(2);
@@ -171,23 +181,13 @@ describe("SkillListPage", () => {
     expect(screen.getByText("可以切换到其他分类，或新建一个 Skill。")).toBeInTheDocument();
   });
 
-  it("shows detail feedback for download and copy actions", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
+  it("shows detail download action", async () => {
     vi.mocked(api.downloadSkill).mockReturnValue(undefined);
 
     render(<SkillListPage />);
 
     fireEvent.click(await screen.findByRole("button", { name: "meeting-note-cleaner @我" }));
-    fireEvent.click(await screen.findByRole("button", { name: "复制下载链接" }));
-    expect(writeText).toHaveBeenCalledWith(skill.fileUrl);
-    expect(await screen.findAllByText("已复制")).toHaveLength(2);
-
-    fireEvent.click(screen.getByRole("button", { name: "下载 Skill 包" }));
+    fireEvent.click(await screen.findByRole("button", { name: "下载 Skill 包" }));
     expect(api.downloadSkill).toHaveBeenCalledWith(skill.id);
-    expect(await screen.findByText("浏览器已打开下载链接")).toBeInTheDocument();
   });
 });

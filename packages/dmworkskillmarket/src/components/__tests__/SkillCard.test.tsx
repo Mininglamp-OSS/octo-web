@@ -11,6 +11,8 @@ const categories: Category[] = [
 const skill: Skill = {
   id: "ci-helper",
   name: "ci-helper",
+  displayName: "test",
+  iconUrl: "",
   description: "分析 CI 失败日志并定位到可能负责的模块、命令和最近提交。",
   categoryId: "dev-tools",
   tags: ["CI", "调试", "日志", "发布"],

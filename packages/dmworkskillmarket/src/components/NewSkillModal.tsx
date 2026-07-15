@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, CheckCircle2, FileArchive, Loader2, UploadCloud, XCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } from "lucide-react";
 import { WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, NewSkillForm, Visibility } from "../types/skill";
-import { createSkill, initUpload, uploadFile, triggerParse, pollParse } from "../api/skillApi";
+import { createSkill, initUpload, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
 import { formatFileSize } from "../utils/format";
+import IconCropModal from "./IconCropModal";
 
 interface NewSkillModalProps {
   visible: boolean;
@@ -44,19 +45,23 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
   const [file, setFile] = useState<File | null>(null);
   const [parseTaskId, setParseTaskId] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagDraft, setTagDraft] = useState("");
   const [visibility, setVisibility] = useState<Visibility>("space");
   const [version, setVersion] = useState("1.0.0");
+  const [iconPreview, setIconPreview] = useState<string | null>(null);
+  const [iconBlob, setIconBlob] = useState<Blob | null>(null);
+  const [iconCropFile, setIconCropFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState<"busy" | "dirty" | null>(null);
 
   const busy = stage === "uploading" || stage === "parsing";
-  const dirty = Boolean(file || name.trim() || description.trim() || tags.length || categoryId);
-  const canCreate = Boolean(parseTaskId && name.trim() && description.trim() && categoryId && !saving);
+  const dirty = Boolean(file || name.trim() || displayName.trim() || tags.length || categoryId);
+  const canCreate = Boolean(parseTaskId && name.trim() && displayName.trim() && categoryId && !saving);
 
   useEffect(() => () => { abortRef.current = true; }, []);
 
@@ -71,12 +76,15 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     setFile(null);
     setParseTaskId(null);
     setName("");
+    setDisplayName("");
     setDescription("");
     setCategoryId("");
     setTags([]);
     setTagDraft("");
     setVisibility("space");
     setVersion("1.0.0");
+    setIconPreview(null);
+    setIconBlob(null);
     setSaving(false);
     setError(null);
     setConfirmClose(null);
@@ -187,29 +195,36 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
   }
 
   async function submit() {
-    if (!name.trim() || !description.trim() || !categoryId) {
-      setError("请填写名称、描述和分类");
+    if (!name.trim() || !displayName.trim() || !categoryId) {
+      setError("请填写展示名称和分类");
       return;
     }
     if (!parseTaskId) {
       setError("请先上传并解析 Skill 压缩包");
       return;
     }
-    const form: NewSkillForm = {
-      parseTaskId,
-      name,
-      description,
-      categoryId,
-      tags,
-      visibility,
-      version,
-      readmeContent: createReadme(name, description, version),
-      fileName: file?.name ?? "",
-      fileSize: file?.size ?? 0,
-    };
     setSaving(true);
     setError(null);
     try {
+      let iconUrl = "";
+      if (iconBlob) {
+        const iconUploadId = await uploadIcon(iconBlob);
+        iconUrl = iconUploadId;
+      }
+      const form: NewSkillForm = {
+        parseTaskId,
+        name,
+        displayName,
+        description,
+        categoryId,
+        tags,
+        visibility,
+        version,
+        readmeContent: createReadme(name, description, version),
+        iconUrl,
+        fileName: file?.name ?? "",
+        fileSize: file?.size ?? 0,
+      };
       await createSkill(form);
       reset();
       onCreated();
@@ -247,41 +262,59 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
           )}
           {stage !== "form" ? (
             <section className="skill-market-upload-panel">
-              <label
-                className="skill-market-upload-dropzone"
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  const dropped = event.dataTransfer.files?.[0];
-                  if (dropped) startUpload(dropped);
-                }}
-              >
-                <input
-                  aria-label="选择 Skill zip 文件"
-                  type="file"
-                  accept=".zip"
-                  onChange={handleFileChange}
-                />
-                <UploadCloud size={28} />
-                <strong>上传 Skill 压缩包（.zip，≤20MB）</strong>
-                <span>zip 内需包含 SKILL.md 文件</span>
-              </label>
+              {(stage === "idle" || stage === "error") && (
+                <label
+                  className="skill-market-upload-dropzone"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const dropped = event.dataTransfer.files?.[0];
+                    if (dropped) startUpload(dropped);
+                  }}
+                >
+                  <input
+                    aria-label="选择 Skill zip 文件"
+                    type="file"
+                    accept=".zip"
+                    onChange={handleFileChange}
+                  />
+                  <UploadCloud size={28} />
+                  <strong>上传 Skill 压缩包（.zip，≤20MB）</strong>
+                  <span>zip 内需包含 SKILL.md 文件</span>
+                </label>
+              )}
               {stage === "uploading" && (
-                <div className="skill-market-upload-status">
-                  <div className="skill-market-upload-status__line">
-                    <span>上传进度</span>
-                    <strong>{progress}%</strong>
+                <div className="skill-market-upload-progress">
+                  <FileArchive size={18} />
+                  <div className="skill-market-upload-progress__info">
+                    <strong>{file?.name}</strong>
+                    <span>{file ? formatFileSize(file.size) : ""}</span>
                   </div>
-                  <div className="skill-market-progress" aria-label="上传进度条">
-                    <span style={{ width: `${progress}%` }} />
+                  <div className="skill-market-upload-status">
+                    <div className="skill-market-upload-status__line">
+                      <span>上传中</span>
+                      <strong>{progress}%</strong>
+                    </div>
+                    <div className="skill-market-progress" aria-label="上传进度条">
+                      <span style={{ width: `${progress}%` }} />
+                    </div>
                   </div>
                 </div>
               )}
               {stage === "parsing" && (
-                <div className="skill-market-upload-status is-parsing">
-                  <Loader2 size={16} />
-                  <span>解析中...</span>
-                </div>
+                <>
+                  <div className="skill-market-upload-progress">
+                    <FileArchive size={18} />
+                    <div className="skill-market-upload-progress__info">
+                      <strong>{file?.name}</strong>
+                      <span>{file ? formatFileSize(file.size) : ""}</span>
+                    </div>
+                  </div>
+                  <div className="skill-market-parsing-center">
+                    <Loader2 size={32} className="skill-market-spin" />
+                    <span>解析中...</span>
+                  </div>
+                </>
               )}
               {stage === "error" && (
                 <WKButton variant="secondary" onClick={() => setStage("idle")}>重新选择文件</WKButton>
@@ -297,17 +330,38 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
                 </div>
                 <button type="button" onClick={() => setStage("idle")}>重新上传</button>
               </div>
-              <label>
-                <span>名称</span>
-                <WKInput value={name} onChange={setName} placeholder="skill-name" />
-              </label>
-              <label>
-                <span>描述</span>
-                <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="说明这个 Skill 解决什么问题" />
-              </label>
+
+              <h3 className="skill-market-form__section-title">基本信息</h3>
+
+              <div className="skill-market-form__icon-row">
+                <label className="skill-market-icon-upload" title="上传图标">
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/svg+xml"
+                    onChange={(event) => {
+                      const f = event.target.files?.[0];
+                      if (f) setIconCropFile(f);
+                      event.target.value = "";
+                    }}
+                  />
+                  {iconPreview ? (
+                    <img src={iconPreview} alt="icon" />
+                  ) : (
+                    <ImagePlus size={24} />
+                  )}
+                </label>
+                <label className="skill-market-field-readonly">
+                  <span>英文名</span>
+                  <span className="skill-market-field-readonly__value">{name}</span>
+                </label>
+                <label>
+                  <span>展示名称<i className="skill-market-required">*</i></span>
+                  <WKInput value={displayName} onChange={(v) => setDisplayName(v.slice(0, 20))} placeholder="请输入展示名称，最多20个字符" maxLength={20} />
+                </label>
+              </div>
               <div className="skill-market-form__row">
                 <label>
-                  <span>分类</span>
+                  <span>分类<i className="skill-market-required">*</i></span>
                   <select aria-label="分类" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
                     <option value="">请选择分类</option>
                     {selectableCategories.map((category) => (
@@ -315,47 +369,47 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
                     ))}
                   </select>
                 </label>
-                <fieldset className="skill-market-radio-group">
-                  <legend>可见性</legend>
-                  {[
-                    ["public", "公开"],
-                    ["space", "Space 内"],
-                    ["private", "私有"],
-                  ].map(([value, label]) => (
-                    <label key={value}>
-                      <input
-                        type="radio"
-                        checked={visibility === value}
-                        onChange={() => setVisibility(value as Visibility)}
-                      />
-                      <span>{label}</span>
-                    </label>
-                  ))}
-                </fieldset>
+                <label>
+                  <span>标签</span>
+                  <div className="skill-market-tag-input">
+                    {tags.map((tag) => (
+                      <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
+                        {tag}
+                        <XCircle size={12} />
+                      </button>
+                    ))}
+                    <input
+                      value={tagDraft}
+                      onChange={(event) => setTagDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addTag();
+                        }
+                      }}
+                      onBlur={addTag}
+                      placeholder="输入标签后回车"
+                    />
+                  </div>
+                </label>
               </div>
-              <label>
-                <span>标签</span>
-                <div className="skill-market-tag-input">
-                  {tags.map((tag) => (
-                    <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
-                      {tag}
-                      <XCircle size={12} />
-                    </button>
-                  ))}
-                  <input
-                    value={tagDraft}
-                    onChange={(event) => setTagDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        addTag();
-                      }
-                    }}
-                    onBlur={addTag}
-                    placeholder="输入标签后回车"
-                  />
-                </div>
-              </label>
+              <fieldset className="skill-market-radio-group">
+                <legend>可见性<i className="skill-market-required">*</i></legend>
+                {[
+                  ["space", "公开", "Space 内所有成员可见"],
+                  ["private", "非公开", "仅自己可见"],
+                ].map(([value, label, hint]) => (
+                  <label key={value}>
+                    <input
+                      type="radio"
+                      checked={visibility === value}
+                      onChange={() => setVisibility(value as Visibility)}
+                    />
+                    <span>{label}</span>
+                    <small className="skill-market-radio-hint">{hint}</small>
+                  </label>
+                ))}
+              </fieldset>
               <div className="skill-market-doc-note">
                 <CheckCircle2 size={15} />
                 <span>由 SKILL.md 自动解析，如需修改请重新上传 zip 包</span>
@@ -364,6 +418,16 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
           )}
         </div>
       </WKModal>
+      <IconCropModal
+        visible={!!iconCropFile}
+        file={iconCropFile}
+        onCancel={() => setIconCropFile(null)}
+        onConfirm={(blob) => {
+          setIconPreview(URL.createObjectURL(blob));
+          setIconBlob(blob);
+          setIconCropFile(null);
+        }}
+      />
       <ConfirmLeaveModal
         mode={confirmClose}
         onKeep={() => setConfirmClose(null)}

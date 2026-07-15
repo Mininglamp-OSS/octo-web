@@ -13,6 +13,7 @@ export interface Category {
 export interface Skill {
   id: string;
   name: string;
+  displayName: string;
   description: string;
   categoryId: string;
   tags: string[];
@@ -22,6 +23,7 @@ export interface Skill {
   visibility: Visibility;
   version: string;
   readmeContent: string;
+  iconUrl: string;
   fileName: string;
   fileUrl: string;
   fileSize: number;
@@ -52,12 +54,14 @@ export interface ApiResponse<T> {
 export interface NewSkillForm {
   parseTaskId?: string;
   name: string;
+  displayName: string;
   description: string;
   categoryId: string;
   tags: string[];
   visibility: Visibility;
   version?: string;
   readmeContent: string;
+  iconUrl?: string;
   fileName: string;
   fileSize: number;
 }
@@ -65,12 +69,15 @@ export interface NewSkillForm {
 export interface UpdateSkillForm {
   parseTaskId?: string;
   name?: string;
+  displayName?: string;
   description?: string;
   categoryId?: string;
   tags?: string[];
   visibility?: Visibility;
   version?: string;
+  changelog?: string;
   readmeContent?: string;
+  iconUrl?: string;
   fileName?: string;
   fileSize?: number;
 }
@@ -126,6 +133,7 @@ export interface RawCategory {
 export interface RawSkill {
   id: string;
   name: string;
+  display_name: string;
   description: string;
   category_id: string;
   tags: string[];
@@ -135,6 +143,7 @@ export interface RawSkill {
   visibility: Visibility;
   version: string;
   readme_content: string;
+  icon_url: string;
   file_name: string;
   file_url: string;
   file_size: number;
@@ -147,4 +156,32 @@ export interface RawSkill {
 export interface RawPagedResult<T> {
   items: T[];
   next_cursor: string | null;
+}
+
+// ─── Version history types ──────────────────────────────────────────────────
+
+export interface VersionStorage {
+  type: string;
+  object_key?: string;
+  readme_key?: string;
+}
+
+export interface SkillVersion {
+  id: string;
+  skillId: string;
+  version: string;
+  changelog: string;
+  storage: VersionStorage;
+  changedBy: string;
+  createdAt: string;
+}
+
+export interface RawSkillVersion {
+  id: string;
+  skill_id: string;
+  version: string;
+  changelog: string;
+  storage: VersionStorage;
+  changed_by: string;
+  created_at: string;
 }

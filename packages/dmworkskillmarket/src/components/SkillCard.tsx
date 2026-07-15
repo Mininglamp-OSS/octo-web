@@ -1,6 +1,7 @@
-import React from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import React, { useState } from "react";
+import { Pencil, Terminal, Trash2 } from "lucide-react";
 import type { Category, Skill } from "../types/skill";
+import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 
 interface SkillCardProps {
   skill: Skill;
@@ -8,10 +9,12 @@ interface SkillCardProps {
   onOpen: (skill: Skill) => void;
   onEdit?: (skill: Skill) => void;
   onDelete?: (skill: Skill) => void;
+  onInstall?: (skill: Skill) => void;
 }
 
-export default function SkillCard({ skill, categories: _categories, onOpen, onEdit, onDelete }: SkillCardProps) {
+export default function SkillCard({ skill, categories: _categories, onOpen, onEdit, onDelete, onInstall }: SkillCardProps) {
   void _categories;
+  const [imgError, setImgError] = useState(false);
   const visibleTags = skill.tags.slice(0, 3);
   const hiddenTagCount = Math.max(0, skill.tags.length - visibleTags.length);
   const isOwnerCard = Boolean(onEdit || onDelete);
@@ -36,44 +39,55 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
       onClick={() => onOpen(skill)}
       onKeyDown={handleKeyDown}
     >
-      <div className="skill-market-card__header">
-        <div className="skill-market-card__title-row">
-          <h3>{skill.name}</h3>
-          <span className="skill-market-card__owner">@{skill.ownerName}</span>
+      <div className="skill-market-card__top">
+        <span className="skill-market-card__icon">
+          {skill.iconUrl && !imgError ? (
+            <img src={skill.iconUrl} alt="" onError={() => setImgError(true)} />
+          ) : (
+            <span
+              className="skill-market-card__icon-default"
+              style={{ background: getSkillAvatarColor(skill.name) }}
+            >
+              {getSkillAvatarText(skill.name)}
+            </span>
+          )}
+        </span>
+        <div className="skill-market-card__info">
+          <h3>{skill.displayName || skill.name}</h3>
+          <div className="skill-market-card__tags">
+            {visibleTags.map((tag) => (
+              <span key={tag}>{tag}</span>
+            ))}
+            {hiddenTagCount > 0 && <span>+{hiddenTagCount}</span>}
+          </div>
         </div>
+        <span className="skill-market-card__owner">@{skill.ownerName}</span>
         {(onEdit || onDelete) && (
           <div className="skill-market-card__actions" onClick={(event) => event.stopPropagation()}>
             {onEdit && (
-              <button
-                type="button"
-                aria-label={`编辑 ${skill.name}`}
-                title="编辑"
-                onClick={() => onEdit(skill)}
-              >
+              <button type="button" aria-label={`编辑 ${skill.name}`} title="编辑" onClick={() => onEdit(skill)}>
                 <Pencil size={15} />
               </button>
             )}
             {onDelete && (
-              <button
-                type="button"
-                className="is-danger"
-                aria-label={`删除 ${skill.name}`}
-                title="删除"
-                onClick={() => onDelete(skill)}
-              >
+              <button type="button" className="is-danger" aria-label={`删除 ${skill.name}`} title="删除" onClick={() => onDelete(skill)}>
                 <Trash2 size={15} />
               </button>
             )}
           </div>
         )}
       </div>
-      <div className="skill-market-card__tags">
-        {visibleTags.map((tag) => (
-          <span key={tag}>{tag}</span>
-        ))}
-        {hiddenTagCount > 0 && <span>+{hiddenTagCount}</span>}
-      </div>
       <p className="skill-market-card__desc">{skill.description}</p>
+      <div className="skill-market-card__footer" onClick={(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          className="skill-market-card__install"
+          onClick={() => onInstall?.(skill)}
+        >
+          <Terminal size={13} />
+          Agent 安装
+        </button>
+      </div>
     </article>
   );
 }

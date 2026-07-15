@@ -153,6 +153,7 @@ export function createInitialSkills(): Skill[] {
     return {
       id: seed.id,
       name: seed.id,
+      displayName: seed.description.slice(0, 20),
       description: seed.description,
       categoryId: seed.categoryId,
       tags: seed.tags,
@@ -165,6 +166,7 @@ export function createInitialSkills(): Skill[] {
       fileName: `${seed.id}.zip`,
       fileUrl: `mock://skills/${seed.id}.zip`,
       fileSize: 1024 * (96 + index * 17),
+      iconUrl: "",
       createdAt: `2026-06-${createdDay}T08:00:00.000Z`,
       updatedAt: `2026-07-${updatedDay}T10:00:00.000Z`,
     };
