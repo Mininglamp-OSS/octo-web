@@ -67,13 +67,16 @@ export default function VoiceInputIndicator({
   const { spaceSetting, loaded, voiceConfig } = useSpaceFeedbackSetting();
 
   // Voice trigger key (ShiftLeft / ShiftRight), toggled by 7 rapid presses
-  const { voiceTriggerKey } = useVoiceTriggerKey((newKey: VoiceTriggerKey) => {
-    const msgKey =
-      newKey === "ShiftRight"
-        ? "base.voiceInput.triggerKey.switchedToRight"
-        : "base.voiceInput.triggerKey.switchedToLeft";
-    Toast.info(t(msgKey));
-  });
+  const { voiceTriggerKey } = useVoiceTriggerKey(
+    (newKey: VoiceTriggerKey) => {
+      const msgKey =
+        newKey === "ShiftRight"
+          ? "base.voiceInput.triggerKey.switchedToRight"
+          : "base.voiceInput.triggerKey.switchedToLeft";
+      Toast.info(t(msgKey));
+    },
+    { isVoiceEnabled, checkIsInputActive }
+  );
   const voiceTriggerKeyRef = useRef(voiceTriggerKey);
   voiceTriggerKeyRef.current = voiceTriggerKey;
 
