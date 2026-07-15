@@ -34,6 +34,22 @@ import type { Node as PMNode } from '@tiptap/pm/model'
 
 export const tableReorderPluginKey = new PluginKey('octoTableReorder')
 
+// Opt-in runtime tracing for diagnosing the drag wiring (octo-docs-backend#76). The reorder is
+// DOM/pointer-driven, so a jsdom unit test cannot exercise the wiring that connects a real drag to
+// moveTableRow / moveTableColumn — this hook captures that path in a real browser. It is inert and
+// zero-cost unless a page explicitly opts in with `window.__tableReorderDebug = []` before
+// dragging, so it is safe to leave in place: each drag phase then pushes a structured record you
+// can read back to confirm dragstart / drop / command dispatch actually fired.
+interface ReorderDebugEvent {
+  phase: 'begin' | 'move' | 'drop' | 'dispatch'
+  [key: string]: unknown
+}
+function reorderDebug(event: ReorderDebugEvent): void {
+  if (typeof window === 'undefined') return
+  const sink = (window as unknown as { __tableReorderDebug?: ReorderDebugEvent[] }).__tableReorderDebug
+  if (Array.isArray(sink)) sink.push(event)
+}
+
 // Thickness (px) of the grab bar that sits in the gutter above a column / left of a row. Kept
 // slim so it hugs the table edge and stays clear of the column-resize handle (interior, right
 // edge of each cell) and the block drag handle (further out in the left gutter).
@@ -80,6 +96,7 @@ interface DragState {
   kind: 'row' | 'col'
   index: number
   tableStart: number
+  tablePos: number
   cellPos: number
 }
 
@@ -179,7 +196,10 @@ export const TableReorderHandle = Extension.create({
     // source row/column — a pure selection change (no doc edit, so y-prosemirror ignores it) —
     // then dispatch the single-transaction move on the updated state.
     const runMove = (view: EditorView) => {
-      if (!drag || dropIndex == null || dropIndex === drag.index) return
+      if (!drag || dropIndex == null || dropIndex === drag.index) {
+        reorderDebug({ phase: 'drop', dispatched: false, reason: 'no valid target', drag, dropIndex })
+        return
+      }
       const { doc } = view.state
       if (drag.cellPos + 1 > doc.content.size) return
       let $inside
@@ -193,7 +213,8 @@ export const TableReorderHandle = Extension.create({
         drag.kind === 'col'
           ? moveTableColumn({ from: drag.index, to: dropIndex })
           : moveTableRow({ from: drag.index, to: dropIndex })
-      command(view.state, view.dispatch)
+      const dispatched = command(view.state, view.dispatch)
+      reorderDebug({ phase: 'dispatch', kind: drag.kind, from: drag.index, to: dropIndex, dispatched })
       view.focus()
     }
 
@@ -213,13 +234,44 @@ export const TableReorderHandle = Extension.create({
     const onDocMove = (event: MouseEvent) => {
       if (!drag || !activeView) return
       event.preventDefault()
-      const ctx = cellContextAt(activeView, event.clientX, event.clientY)
+      // The grab handles sit in the gutter OUTSIDE the table (left of a row, above a column), and
+      // a drag naturally travels along that gutter — so the raw pointer point is usually not over
+      // any table cell and posAtCoords resolves nothing. Probe the drop target with the pointer
+      // clamped into the table's interior instead: for a row drag the pointer's Y still selects the
+      // row (X is pulled inside), for a column drag its X still selects the column. Without this the
+      // drop target is never found and the move is a silent no-op (octo-docs-backend#76 rework).
+      let probeX = event.clientX
+      let probeY = event.clientY
+      const tableDom = activeView.nodeDOM(drag.tablePos)
+      if (tableDom instanceof HTMLElement) {
+        const t = tableDom.getBoundingClientRect()
+        probeX = Math.min(Math.max(probeX, t.left + 1), t.right - 1)
+        probeY = Math.min(Math.max(probeY, t.top + 1), t.bottom - 1)
+      }
+      const ctx = cellContextAt(activeView, probeX, probeY)
       if (!ctx || ctx.tableStart !== drag.tableStart) {
+        reorderDebug({
+          phase: 'move',
+          x: event.clientX,
+          y: event.clientY,
+          probeX,
+          probeY,
+          resolved: false,
+          reason: !ctx ? 'no cell under pointer' : 'different table',
+        })
         dropIndex = null
         hideIndicator()
         return
       }
       showIndicator(activeView, ctx)
+      reorderDebug({
+        phase: 'move',
+        x: event.clientX,
+        y: event.clientY,
+        resolved: true,
+        hovered: drag.kind === 'col' ? ctx.rect.left : ctx.rect.top,
+        dropIndex,
+      })
     }
     const onDocUp = () => {
       if (activeView) endDrag(activeView)
@@ -232,8 +284,10 @@ export const TableReorderHandle = Extension.create({
         kind,
         index: kind === 'col' ? hover.rect.left : hover.rect.top,
         tableStart: hover.tableStart,
+        tablePos: hover.tablePos,
         cellPos: hover.cellPos,
       }
+      reorderDebug({ phase: 'begin', kind, index: drag.index })
       dropIndex = null
       activeView = view
       document.body.classList.add('octo-table-reordering')
