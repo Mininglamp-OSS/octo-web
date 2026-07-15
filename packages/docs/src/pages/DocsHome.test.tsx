@@ -1311,3 +1311,81 @@ describe('DocsHome — browser Back returns to the list, never about:blank (XIN-
     expect(assignSpy).not.toHaveBeenCalled()
   })
 })
+
+describe('DocsHome — pin order survives the search → pin → clear-search re-render (XIN-1185)', () => {
+  // Reproduces the exact tester path reported against FEAT-B: 我的文档 → search "FEAT" → right-click
+  // pin the matching doc → clear the search. The suspicion was that the post-clear re-fetch drops the
+  // pin ordering. The client-side pin is React/localStorage state on DocsHome, and `displayItems`
+  // re-applies a stable pinned-first sort over EVERY mine result set — including the fresh list the
+  // cleared search re-fetches — so a doc pinned while filtered must float to the first row afterward.
+  const item = (docId: string, title: string, updatedAt: string) => ({
+    docId,
+    title,
+    ownerId: 'u_self',
+    role: 'admin' as const,
+    updatedAt,
+  })
+  // Server order for the unfiltered "mine" list is updatedAt:desc, so FEAT spec is NOT first here.
+  const FULL = [
+    item('d_alpha', 'Alpha', '2026-07-10T00:00:00Z'),
+    item('d_feat', 'FEAT spec', '2026-07-09T00:00:00Z'),
+    item('d_beta', 'Beta', '2026-07-08T00:00:00Z'),
+  ]
+
+  const rowTitles = () =>
+    Array.from(document.querySelectorAll('.octo-docs-list-row-title')).map(
+      (el) => el.textContent ?? '',
+    )
+
+  it('floats a doc pinned while a search is active to the top after the search is cleared', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        return { data: { total: 0, items: [], nextCursor: null }, status: 200 }
+      }
+      if (method === 'get' && url.includes('owner=me')) {
+        // The "search FEAT" request narrows the list to the single matching doc.
+        if (url.includes('q=FEAT')) {
+          return { data: { total: 1, items: [FULL[1]] }, status: 200 }
+        }
+        return { data: { total: FULL.length, items: FULL }, status: 200 }
+      }
+      return { data: { total: 0, items: [] }, status: 200 }
+    }
+
+    render(<DocsHome />)
+
+    // 我的文档 tab.
+    fireEvent.click(screen.getByText('docs.tab.mine'))
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeTruthy())
+    // Baseline: server order, FEAT spec is not first.
+    expect(rowTitles()[0]).toBe('Alpha')
+
+    // search "FEAT" (SearchBox debounces ~300ms before emitting the query).
+    fireEvent.change(screen.getByPlaceholderText('docs.search.placeholder'), {
+      target: { value: 'FEAT' },
+    })
+    await waitFor(() => {
+      const titles = rowTitles()
+      expect(titles).toEqual(['FEAT spec'])
+    })
+
+    // right-click the matching row → pin it.
+    fireEvent.contextMenu(screen.getByText('FEAT spec').closest('button')!)
+    fireEvent.click(screen.getByText('docs.sheet.pin'))
+    // Pin persisted to localStorage (the durable client-side pin store).
+    expect(JSON.parse(window.localStorage.getItem('octo.docs.pinned') || '[]')).toContain('d_feat')
+
+    // clear the search → the full list is re-fetched and re-rendered.
+    fireEvent.click(screen.getByLabelText('docs.empty.searchNoneCta'))
+    await waitFor(() => expect(screen.getByText('Alpha')).toBeTruthy())
+
+    // The pinned doc floats to the FIRST row over the server's updatedAt:desc order; the rest keep
+    // their server order beneath it (stable sort).
+    expect(rowTitles()).toEqual(['FEAT spec', 'Alpha', 'Beta'])
+  })
+})
