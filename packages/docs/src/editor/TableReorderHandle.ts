@@ -397,17 +397,48 @@ export const TableReorderHandle = Extension.create({
       view.focus()
     }
 
-    const endDrag = (view: EditorView) => {
+    // Tear down every document/window listener a drag installs. Kept in one place so endDrag (a
+    // completed drop), cancelDrag (an interrupted drag) and the plugin destroy all detach the SAME
+    // set — a listener left attached after the drag ends would keep firing against stale state.
+    const removeDragListeners = () => {
       document.removeEventListener('mousemove', onDocMove, true)
       document.removeEventListener('mouseup', onDocUp, true)
-      document.body.classList.remove('octo-table-reordering')
-      runMove(view)
+      document.removeEventListener('pointercancel', onDocCancel, true)
+      document.removeEventListener('keydown', onDocKey, true)
+      window.removeEventListener('blur', onWindowBlur)
+    }
+
+    // Clear all drag bookkeeping and restore the resting UI. Critically this un-freezes handle
+    // placement: the resting-handle mousemove handler early-returns while `drag` is non-null, so
+    // leaving `drag` set (or the body class) after a drag ends would strand the grab cursor and stop
+    // the handles from ever tracking the pointer again — the "handles unavailable" failure mode.
+    const resetDragState = () => {
       drag = null
       dropIndex = null
       dragBaseline = null
       concurrentEdit = false
+      document.body.classList.remove('octo-table-reordering')
       hideIndicator()
       hideHandles()
+    }
+
+    const endDrag = (view: EditorView) => {
+      removeDragListeners()
+      runMove(view)
+      resetDragState()
+    }
+
+    // Abort an in-flight drag WITHOUT committing a move. Used when the drag is interrupted rather
+    // than completed with a real drop — the window loses focus (alt-tab), the OS cancels the pointer
+    // (touch/pen), or the user presses Escape. Without this, a missed mouseup leaves `drag` set and
+    // the `octo-table-reordering` body class stuck until the next stray mouseup, wedging the reorder
+    // UI (stuck grab cursor + frozen handles). Aborting is a pure early return — no dispatch, no doc
+    // change — so it can never corrupt content.
+    const cancelDrag = () => {
+      if (!drag) return
+      reorderDebug({ phase: 'drop', dispatched: false, reason: 'drag interrupted — cancelled' })
+      removeDragListeners()
+      resetDragState()
     }
 
     // Bound once so add/removeEventListener pair up; `activeView` is set on drag start.
@@ -459,8 +490,18 @@ export const TableReorderHandle = Extension.create({
     const onDocUp = () => {
       if (activeView) endDrag(activeView)
     }
+    // Interruption handlers: an interrupted drag must abort cleanly, never commit a move.
+    const onDocCancel = () => cancelDrag()
+    const onWindowBlur = () => cancelDrag()
+    const onDocKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') cancelDrag()
+    }
 
     const beginDrag = (view: EditorView, kind: 'row' | 'col', event: MouseEvent) => {
+      // Only a primary (left) button starts a reorder. A right/middle-click on the grab handle must
+      // not begin a drag — it would fight the context menu and, with no matching left mouseup, could
+      // strand the drag state (octo-docs-backend#76 review).
+      if (event.button !== 0) return
       if (!view.editable || !hover) return
       event.preventDefault()
       drag = {
@@ -479,6 +520,9 @@ export const TableReorderHandle = Extension.create({
       document.body.classList.add('octo-table-reordering')
       document.addEventListener('mousemove', onDocMove, true)
       document.addEventListener('mouseup', onDocUp, true)
+      document.addEventListener('pointercancel', onDocCancel, true)
+      document.addEventListener('keydown', onDocKey, true)
+      window.addEventListener('blur', onWindowBlur)
     }
 
     return [
@@ -546,8 +590,7 @@ export const TableReorderHandle = Extension.create({
 
           return {
             destroy() {
-              document.removeEventListener('mousemove', onDocMove, true)
-              document.removeEventListener('mouseup', onDocUp, true)
+              removeDragListeners()
               document.body.classList.remove('octo-table-reordering')
               rowHandle?.removeEventListener('mousedown', onRowDown)
               colHandle?.removeEventListener('mousedown', onColDown)
