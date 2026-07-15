@@ -1,6 +1,7 @@
-import { Button, Spin, Toast } from "@douyinfe/semi-ui";
-import { Channel, ChannelTypePerson } from "wukongimjssdk";
-import React, { Component, HTMLProps, ReactNode } from "react";
+import { Input, Spin, Toast } from "@douyinfe/semi-ui";
+import { IconEdit } from "@douyinfe/semi-icons";
+import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
+import React, { Component, HTMLProps } from "react";
 import { UserRelation } from "../../Service/Const";
 import WKApp, { FriendApply } from "../../App";
 import Provider, { IProviderListener } from "../../Service/Provider";
@@ -11,10 +12,12 @@ import "./index.css"
 import { UserInfoRouteData, UserInfoVM } from "./vm";
 import FriendApplyUI from "../FriendApply";
 import RouteContext, { FinishButtonContext } from "../../Service/Context";
-import AiBadge from "../AiBadge";
-import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
 import { I18nContext } from "../../i18n";
 import WKAvatarPreviewImage from "../WKAvatarPreviewImage";
+import WKButton from "../WKButton";
+import UserInfoHeader from "./UserInfoHeader";
+import UserInfoFooter from "./UserInfoFooter";
+import { UserInfoMetaItem } from "./UserInfoMetaList";
 
 
 export interface UserInfoProps extends HTMLProps<any> {
@@ -25,10 +28,177 @@ export interface UserInfoProps extends HTMLProps<any> {
     onClose?: () => void
 }
 
-export default class UserInfo extends Component<UserInfoProps> {
+interface UserInfoState {
+    editingRemark: boolean;
+    remarkDraft: string;
+    savingRemark: boolean;
+}
+
+export default class UserInfo extends Component<UserInfoProps, UserInfoState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
+    private mounted = false;
 
+    state: UserInfoState = {
+        editingRemark: false,
+        remarkDraft: "",
+        savingRemark: false,
+    };
+
+    componentDidMount() {
+        this.mounted = true;
+    }
+
+    componentDidUpdate(prevProps: UserInfoProps) {
+        if (prevProps.uid !== this.props.uid) {
+            this.setState({
+                editingRemark: false,
+                remarkDraft: "",
+                savingRemark: false,
+            });
+        }
+    }
+
+    componentWillUnmount() {
+        this.mounted = false;
+    }
+
+    getRemark(vm: UserInfoVM) {
+        return vm.channelInfo?.orgData?.remark || "";
+    }
+
+    startEditRemark = (vm: UserInfoVM) => {
+        this.setState({
+            editingRemark: true,
+            remarkDraft: this.getRemark(vm),
+        });
+    };
+
+    cancelEditRemark = () => {
+        this.setState({
+            editingRemark: false,
+            remarkDraft: "",
+        });
+    };
+
+    saveRemark = async (vm: UserInfoVM) => {
+        const { t } = this.context;
+        const requestedUid = vm.uid;
+        const isCurrent = () => this.mounted && this.props.uid === requestedUid;
+        const remark = this.state.remarkDraft.trim();
+        this.setState({ savingRemark: true });
+        try {
+            await WKApp.dataSource.commonDataSource.userRemark(requestedUid, remark);
+            if (!isCurrent()) return;
+            if (vm.channelInfo) {
+                vm.channelInfo.orgData = {
+                    ...vm.channelInfo.orgData,
+                    remark,
+                    displayName: remark || vm.channelInfo.title,
+                };
+            }
+            vm.notifyListener();
+            Toast.success(t("base.userInfo.remarkUpdated"));
+            this.setState({
+                editingRemark: false,
+                remarkDraft: "",
+            });
+            Promise.resolve(
+                WKSDK.shared().channelManager.fetchChannelInfo(new Channel(requestedUid, ChannelTypePerson))
+            ).catch((error: unknown) => {
+                console.warn("[UserInfo] refresh channel after remark failed:", error);
+            });
+            Promise.resolve(vm.reloadChannelInfo()).catch((error: unknown) => {
+                console.warn("[UserInfo] reload profile after remark failed:", error);
+            });
+        } catch (err: any) {
+            if (isCurrent()) {
+                Toast.error(err?.msg || t("base.userInfo.remarkUpdateFailed"));
+            }
+        } finally {
+            if (isCurrent()) {
+                this.setState({ savingRemark: false });
+            }
+        }
+    };
+
+    getVisibleSections(vm: UserInfoVM, context: RouteContext<UserInfoRouteData>) {
+        const remarkTitle = this.context.t("base.module.userInfo.remark");
+        return vm.sections(context)
+            .map((section) => {
+                const rows = section.rows?.filter((row) => {
+                    return row.properties?.key !== "userinfo.remark" && row.properties?.title !== remarkTitle;
+                });
+                return new Section({
+                    title: section.title,
+                    rows,
+                    subtitle: section.subtitle,
+                });
+            })
+            .filter((section) => {
+                return (section.rows && section.rows.length > 0) || !!section.title || !!section.subtitle;
+            });
+    }
+
+    renderRemarkEditor(vm: UserInfoVM) {
+        const { t } = this.context;
+        if (vm.isSelf()) {
+            return null;
+        }
+
+        const { editingRemark, remarkDraft, savingRemark } = this.state;
+        const remark = this.getRemark(vm);
+        return <div className="wk-userinfo-remark-section">
+            <div className="wk-userinfo-remark-row">
+                <div className="wk-userinfo-remark-main">
+                    <div className="wk-userinfo-remark-label">{t("base.userInfo.remark")}</div>
+                    {
+                        editingRemark ? <div className="wk-userinfo-remark-editor">
+                            <Input
+                                value={remarkDraft}
+                                onChange={(value) => this.setState({ remarkDraft: value })}
+                                placeholder={t("base.userInfo.remarkPlaceholder")}
+                                maxLength={30}
+                            />
+                            <div className="wk-userinfo-remark-actions">
+                                <WKButton
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    disabled={savingRemark}
+                                    onClick={this.cancelEditRemark}
+                                >
+                                    {t("base.common.cancel")}
+                                </WKButton>
+                                <WKButton
+                                    type="button"
+                                    variant="primary"
+                                    size="sm"
+                                    loading={savingRemark}
+                                    onClick={() => this.saveRemark(vm)}
+                                >
+                                    {t("base.common.save")}
+                                </WKButton>
+                            </div>
+                        </div> : <div className="wk-userinfo-remark-value">
+                            {remark || <span className="wk-userinfo-remark-empty">{t("base.common.notSet")}</span>}
+                        </div>
+                    }
+                </div>
+                {!editingRemark && (
+                    <button
+                        type="button"
+                        className="wk-userinfo-remark-edit"
+                        onClick={() => this.startEditRemark(vm)}
+                        aria-label={t("base.userInfo.editRemark")}
+                        title={t("base.userInfo.editRemark")}
+                    >
+                        <IconEdit />
+                    </button>
+                )}
+            </div>
+        </div>
+    }
 
     getBottomPanel(vm: UserInfoVM, context: RouteContext<any>) {
         if (vm.isSelf()) {
@@ -45,11 +215,7 @@ export default class UserInfo extends Component<UserInfoProps> {
         const isExternalToViewer = vm.isExternalToViewer()
         const { t } = this.context
         if (isExternalToViewer) {
-            return <div className="wk-userInfo-footer">
-                <div className="wk-userinfo-footer-external-hint">
-                    {t("base.userInfo.externalOnlyGroup")}
-                </div>
-            </div>
+            return <UserInfoFooter hint={t("base.userInfo.externalOnlyGroup")} />
         }
 
         let content = <></>
@@ -59,19 +225,19 @@ export default class UserInfo extends Component<UserInfoProps> {
         const isFriend = vm.relation() === UserRelation.friend;
         if (spaceId && (!isBot || isFriend)) {
             // 非 Bot 成员或已加好友的 Bot：直接发消息
-            content = <Button theme='solid' type="primary" onClick={() => {
+            content = <WKButton type="button" variant="primary" onClick={() => {
                 WKApp.shared.baseContext.hideUserInfo()
                 // WuKongIM DM 只认裸 uid
                 WKApp.endpoints.showConversation(new Channel(vm.uid, ChannelTypePerson))
-            }}>{t("base.userInfo.sendMessage")}</Button>
+            }}>{t("base.userInfo.sendMessage")}</WKButton>
         } else if (isFriend) {
-            content = <Button theme='solid' type="primary" onClick={() => {
+            content = <WKButton type="button" variant="primary" onClick={() => {
                 WKApp.shared.baseContext.hideUserInfo()
                 WKApp.endpoints.showConversation(new Channel(vm.uid, ChannelTypePerson))
-            }}>{t("base.userInfo.sendMessage")}</Button>
+            }}>{t("base.userInfo.sendMessage")}</WKButton>
         } else if (isBot) {
             // Bot 未加好友：走好友申请流程（BotFather 通知创建者审核）
-            content = <Button theme='solid' type="primary" onClick={() => {
+            content = <WKButton type="button" variant="primary" onClick={() => {
                 let msg = t("base.userInfo.botApplyMessage", {
                     values: { name: vm.displayName() },
                 })
@@ -106,12 +272,12 @@ export default class UserInfo extends Component<UserInfoProps> {
                         finishButtonContext.loading(false)
                     }
                 })
-            }}>{t("base.userInfo.addFriend")}</Button>
+            }}>{t("base.userInfo.addFriend")}</WKButton>
         } else {
             if (!vm.vercode || vm.vercode === "") { // 没有验证码，不显示添加好友按钮
                 return undefined
             }
-            content = <Button onClick={() => {
+            content = <WKButton type="button" variant="secondary" onClick={() => {
                 // 好友申请默认文案里的自我介绍走 selfDisplayName()，
                 // 已实名用户用 "我是..." + real_name，对端更容易识别。
                 const myDisplayName = WKApp.loginInfo.selfDisplayName()
@@ -156,14 +322,10 @@ export default class UserInfo extends Component<UserInfoProps> {
                         finishButtonContext.loading(false)
                     }
                 })
-            }} >{t("base.userInfo.addFriend")}</Button>
+            }} >{t("base.userInfo.addFriend")}</WKButton>
         }
 
-        return <div className="wk-userInfo-footer">
-            <div className="wk-userinfo-footer-sendbutton">
-                {content}
-            </div>
-        </div>
+        return <UserInfoFooter action={content} />
     }
 
     render() {
@@ -178,60 +340,52 @@ export default class UserInfo extends Component<UserInfoProps> {
                     onClose()
                 }
             }} render={(context) => {
-                return <div className="wk-userinfo">
+                const bottomPanel = this.getBottomPanel(vm, context)
+                const sections = vm.channelInfo ? this.getVisibleSections(vm, context) : []
+                const metaItems: UserInfoMetaItem[] = []
+                if (vm.showNickname()) {
+                    metaItems.push({
+                        label: t("base.userInfo.nickname"),
+                        value: vm.channelInfo?.title,
+                    })
+                }
+                if (vm.showChannelNickname()) {
+                    metaItems.push({
+                        label: t("base.userInfo.groupNickname"),
+                        value: vm.fromSubscriberOfUser?.remark,
+                    })
+                }
+                if (vm.shouldShowShort()) {
+                    metaItems.push({
+                        label: t("base.userInfo.shortNo", {
+                            values: { appName: WKApp.config.appName },
+                        }),
+                        value: vm.channelInfo?.orgData.short_no || "",
+                    })
+                }
+
+                return <div className={`wk-userinfo ${bottomPanel ? "wk-userinfo--with-footer" : ""}`}>
                     <div className="wk-userinfo-content">
                         {
                             !vm.channelInfo ? <div className="wk-userinfo-loading">
                                 <Spin></Spin>
                             </div> : (<>
-                                <div className="wk-userinfo-header">
-                                    <div className="wk-userinfo-user">
-                                        <div className="wk-userinfo-user-avatar">
-                                            <WKAvatarPreviewImage channel={new Channel(uid, ChannelTypePerson)} />
-                                        </div>
-                                        <div className="wk-userinfo-user-info">
-                                            <div className="wk-userinfo-user-info-name">
-                                                {vm.displayName()}
-                                                {vm.channelInfo?.orgData?.robot === 1 && <AiBadge />}
-                                                {vm.isRealnameVerified() && <RealnameVerifiedBadge />}
-                                            </div>
-                                            <div className="wk-userinfo-user-info-others">
-                                                <ul>
-                                                    {
-                                                        vm.showNickname() ? <li>
-                                                            {t("base.userInfo.nickname")} {vm.channelInfo?.title}
-                                                        </li> : undefined
-                                                    }
-                                                    {
-                                                        vm.showChannelNickname() ? <li>
-                                                            {t("base.userInfo.groupNickname")} {vm.fromSubscriberOfUser?.remark}
-                                                        </li> : undefined
-                                                    }
-                                                    {
-                                                        vm.shouldShowShort() ? <li>
-                                                            {t("base.userInfo.shortNo", {
-                                                                values: { appName: WKApp.config.appName },
-                                                            })} {vm.channelInfo?.orgData.short_no || ''}
-                                                        </li> : undefined
-                                                    }
-
-
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                <UserInfoHeader
+                                    avatar={<WKAvatarPreviewImage channel={new Channel(uid, ChannelTypePerson)} />}
+                                    displayName={vm.displayName()}
+                                    isBot={vm.channelInfo?.orgData?.robot === 1}
+                                    isRealnameVerified={vm.isRealnameVerified()}
+                                    metaItems={metaItems}
+                                />
+                                {this.renderRemarkEditor(vm)}
                                 <div className="wk-userinfo-sections">
-                                    <Sections sections={vm.sections(context)}></Sections>
+                                    <Sections sections={sections}></Sections>
                                 </div>
                             </>)
                         }
-
-                        <br></br>
-                        <br></br>
                     </div>
                     {
-                        this.getBottomPanel(vm, context)
+                        bottomPanel
                     }
 
                 </div>

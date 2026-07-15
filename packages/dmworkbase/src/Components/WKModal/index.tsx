@@ -48,6 +48,8 @@ export interface WKModalProps {
   }
   /** 透传给 Semi Modal 的 style */
   style?: React.CSSProperties
+  /** 透传给 Semi Modal 的 zIndex，用于嵌套或兄弟弹窗需要明确压层的场景 */
+  zIndex?: number
   /** 透传给 Semi Modal body 的 style */
   bodyStyle?: React.CSSProperties
   /** 自定义 header ReactNode（完全替换默认 header） */
@@ -106,6 +108,7 @@ const WKModal: React.FC<WKModalProps> = ({
   footerConfig,
   options,
   style,
+  zIndex,
   bodyStyle,
   header: customHeader,
   className,
@@ -136,6 +139,7 @@ const WKModal: React.FC<WKModalProps> = ({
       className={cls}
       modalContentClass="wk-modal-content"
       style={style}
+      zIndex={zIndex}
     >
       <div className="wk-modal-shell">
         {closable && (

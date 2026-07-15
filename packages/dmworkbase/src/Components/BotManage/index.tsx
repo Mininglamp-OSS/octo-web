@@ -62,6 +62,7 @@ export default class BotManageModal extends Component<BotManageModalProps> {
                 visible={visible}
                 onCancel={onClose}
                 className="wk-bot-manage-modal"
+                zIndex={1100}
                 options={{ closable: false }}
             >
                 <Provider
