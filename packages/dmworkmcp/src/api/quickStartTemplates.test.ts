@@ -120,6 +120,30 @@ describe("buildQuickStartTabs — JSON snippet", () => {
     const keys = Object.keys(JSON.parse(content(qs, "json")).mcpServers);
     expect(keys).toEqual(["weather"]);
   });
+
+  it("json key: sanitizes a dirty manual slug (Chinese/upper/space/underscore)", () => {
+    const qs: McpQuickStart = {
+      transport: "streamable-http",
+      serverName: "获取天气 MCP",
+      slug: "My Weather_服务 MCP",
+      url: "https://x",
+      authType: "none",
+    };
+    const keys = Object.keys(JSON.parse(content(qs, "json")).mcpServers);
+    expect(keys).toEqual(["my-weather-mcp"]);
+  });
+
+  it("json key: falls back to safe default when a manual slug slugifies to empty", () => {
+    const qs: McpQuickStart = {
+      transport: "streamable-http",
+      serverName: "获取天气 MCP",
+      slug: "服务器",
+      url: "https://x",
+      authType: "none",
+    };
+    const keys = Object.keys(JSON.parse(content(qs, "json")).mcpServers);
+    expect(keys).toEqual(["mcp-server"]);
+  });
 });
 
 describe("buildQuickStartTabs — prompt", () => {

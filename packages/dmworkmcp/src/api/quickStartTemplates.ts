@@ -52,9 +52,11 @@ function jsonTypeField(qs: McpQuickStart): "sse" | "streamable_http" | null {
 }
 
 /** The `mcpServers` JSON key — an ASCII slug, never the Chinese display name.
- *  Uses the explicit `slug` when present, else derives one from `serverName`. */
+ *  A manually-supplied slug is run through the same slugify as the auto one, so
+ *  Chinese / uppercase / spaces / underscores can never leak into the JSON key. */
 function serverKey(qs: McpQuickStart): string {
-  return qs.slug?.trim() ? qs.slug.trim() : slugifyServerName(qs.serverName);
+  const source = qs.slug?.trim() ? qs.slug : qs.serverName;
+  return slugifyServerName(source);
 }
 
 /** Build the JSON `mcpServers` snippet — Cursor / Claude Desktop shape. */

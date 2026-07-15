@@ -429,9 +429,18 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     }));
   };
 
+  /** Sanitize the manual slug as the user types so the field can never hold a
+   *  value that would be rejected/rewritten later: lowercase, spaces → `-`, and
+   *  only `[a-z0-9-]` survive. Empty is allowed (submit falls back to the name /
+   *  safe default); we keep in-progress trailing `-` so typing feels natural. */
   const handleSlugChange = (v: string) => {
     setSlugTouched(true);
-    update("slug", v);
+    const cleaned = v
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "")
+      .replace(/-+/g, "-");
+    update("slug", cleaned);
   };
 
   /** Close = also wipe local form state so re-opening always starts fresh
@@ -521,32 +530,63 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
 
   // ── Submit ─────────────────────────────────────────────────────────────
 
-  /** Transport-aware required-field check (LSC-80 #3). `args` stays optional.
-   *  Returns an i18n message key on the first failure, else null. */
-  const firstValidationError = (): string | null => {
-    if (!form.name.trim()) return "mcp.create.nameRequired";
+  /** Transport-aware required-field check (LSC-80 #3) + per-item length limits
+   *  for the free-text args / headers fields whose granularity a plain
+   *  `maxLength` can't express (LSC-80 #2). `args` stays optional.
+   *  Returns an i18n message key (+ interpolation values) on the first failure,
+   *  else null. */
+  const firstValidationError = (): {
+    key: string;
+    values?: Record<string, number>;
+  } | null => {
+    if (!form.name.trim()) return { key: "mcp.create.nameRequired" };
     if (isRemote(form.transport)) {
-      if (!(form.url ?? "").trim()) return "mcp.create.urlRequired";
+      if (!(form.url ?? "").trim()) return { key: "mcp.create.urlRequired" };
+      // Per-header key / value length (parsed from the raw `key: value` lines).
+      const headers = parseKV(headersRaw, ":");
+      for (const [k, v] of Object.entries(headers)) {
+        if (k.length > MAXLEN.headerKey)
+          return {
+            key: "mcp.create.headerKeyTooLong",
+            values: { max: MAXLEN.headerKey },
+          };
+        if (v.length > MAXLEN.headerValue)
+          return {
+            key: "mcp.create.headerValueTooLong",
+            values: { max: MAXLEN.headerValue },
+          };
+      }
     } else {
       // stdio → command required (args optional, per user confirmation).
-      if (!(form.command ?? "").trim()) return "mcp.create.commandRequired";
+      if (!(form.command ?? "").trim())
+        return { key: "mcp.create.commandRequired" };
+      // Per-arg length (args are whitespace-split tokens).
+      const args = argsRaw.trim() ? argsRaw.trim().split(/\s+/) : [];
+      if (args.some((a) => a.length > MAXLEN.arg))
+        return { key: "mcp.create.argTooLong", values: { max: MAXLEN.arg } };
     }
     return null;
   };
 
   const handleSubmit = async () => {
-    const errKey = firstValidationError();
-    if (errKey) {
-      Toast.warning(t(errKey));
+    const err = firstValidationError();
+    if (err) {
+      Toast.warning(
+        t(err.key, err.values ? { values: err.values } : undefined)
+      );
       // Connection fields live on step 1; jump there so the user sees the gap.
-      if (errKey !== "mcp.create.nameRequired") setStep(1);
+      if (err.key !== "mcp.create.nameRequired") setStep(1);
       else setStep(0);
       return;
     }
     const payload: CreateMcpParams = {
       ...form,
-      // Slug is the JSON `mcpServers` key; guarantee a non-empty ASCII value.
-      slug: (form.slug ?? "").trim() || slugifyServerName(form.name),
+      // Slug is the JSON `mcpServers` key; a manual override is run through the
+      // same slugify as the auto value so Chinese / uppercase / spaces /
+      // underscores can never leak into the key. Falls back to the safe default.
+      slug: slugifyServerName(
+        (form.slug ?? "").trim() ? form.slug! : form.name
+      ),
       args: argsRaw.trim() ? argsRaw.trim().split(/\s+/) : [],
       // Substitute the shared sentinel for any blank token-like env / header so
       // an empty secret is accepted instead of tripping `secret_leaked` on the

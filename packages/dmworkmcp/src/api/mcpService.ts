@@ -211,7 +211,7 @@ function buildDetailFromCreate(id: string, params: CreateMcpParams): McpDetail {
   const quickStart: McpQuickStart = {
     transport: params.transport,
     serverName: params.name.trim(),
-    slug: params.slug?.trim() || slugifyServerName(params.name),
+    slug: slugifyServerName(params.slug?.trim() ? params.slug : params.name),
     url: params.url || undefined,
     authType: params.authType,
     headers:
@@ -380,12 +380,12 @@ async function post<T>(path: string, data?: unknown): Promise<T> {
 }
 
 /** multipart POST — used by the icon upload endpoint which takes FormData
- *  instead of a JSON body. Lets axios set the multipart boundary itself. */
+ *  instead of a JSON body. Do NOT set Content-Type manually: axios/XHR must
+ *  generate the `multipart/form-data; boundary=...` header itself, otherwise
+ *  the backend cannot parse the parts (same pattern as dmloop attachmentApi). */
 async function postForm<T>(path: string, form: FormData): Promise<T> {
   try {
-    const resp = await mcpAxios.post(`${BASE}${path}`, form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    const resp = await mcpAxios.post(`${BASE}${path}`, form);
     return resp.data as T;
   } catch (err) {
     if (axios.isCancel(err)) throw err;
