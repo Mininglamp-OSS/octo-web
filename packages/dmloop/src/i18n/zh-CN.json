@@ -154,15 +154,6 @@
     "created_at": "创建时间",
     "updated_at": "更新时间"
   },
-  "sort": {
-    "direction": "升/降序",
-    "position": "手动排序",
-    "priority": "优先级",
-    "title": "标题",
-    "created_at": "创建时间",
-    "start_date": "开始日期",
-    "due_date": "截止日期"
-  },
   "action": {
     "newIssue": "新建回路",
     "newSkill": "新建技能",

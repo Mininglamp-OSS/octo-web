@@ -49,10 +49,6 @@ export interface Invitation {
   created_at?: string;
 }
 
-// 后端 /issues sort 白名单(单一来源,派生类型 + 供 UI 枚举)。
-export const ISSUE_SORT_FIELDS = ["position", "priority", "title", "created_at", "start_date", "due_date"] as const;
-export type IssueSortField = (typeof ISSUE_SORT_FIELDS)[number];
-
 // 时间范围筛选可选字段(后端仅接受这两列)。
 export const ISSUE_DATE_FIELDS = ["created_at", "updated_at"] as const;
 export type IssueDateField = (typeof ISSUE_DATE_FIELDS)[number];
@@ -78,10 +74,6 @@ export interface ListParams {
   date_field?: IssueDateField;
   date_start?: string;
   date_end?: string;
-  // 后端白名单 sort：position(默认)|priority|title|created_at|start_date|due_date。
-  // direction 仅在 sort_by != position 时被后端采纳(asc|desc)。
-  sort_by?: IssueSortField;
-  sort_direction?: "asc" | "desc";
   limit?: number;
   offset?: number;
 }

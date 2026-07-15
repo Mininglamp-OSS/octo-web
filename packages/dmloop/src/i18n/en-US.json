@@ -154,15 +154,6 @@
     "created_at": "Created",
     "updated_at": "Updated"
   },
-  "sort": {
-    "direction": "Asc/desc",
-    "position": "Manual",
-    "priority": "Priority",
-    "title": "Title",
-    "created_at": "Created",
-    "start_date": "Start date",
-    "due_date": "Due date"
-  },
   "action": {
     "newIssue": "New Loop",
     "newSkill": "New Skill",

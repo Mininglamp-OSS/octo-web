@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Input,
-  Button,
   Spin,
   Select,
   Pagination,
@@ -11,7 +10,7 @@ import {
   Toast,
 } from "@douyinfe/semi-ui";
 import LoopButton from "../ui/LoopButton";
-import { Search, Plus, LayoutGrid, List as ListIcon, Users, ClipboardList, ArrowUp, ArrowDown, SlidersHorizontal, Filter } from "lucide-react";
+import { Search, Plus, LayoutGrid, List as ListIcon, Users, ClipboardList, SlidersHorizontal, Filter } from "lucide-react";
 import { useI18n, WKApp } from "@octo/base";
 import type {
   Issue,
@@ -19,11 +18,10 @@ import type {
   IssueScope,
   IssueStatus,
   IssuePriority,
-  IssueSortField,
   IssueDateField,
   IssueLabel,
 } from "../api/types";
-import { ISSUE_SORT_FIELDS, ISSUE_DATE_FIELDS } from "../api/types";
+import { ISSUE_DATE_FIELDS } from "../api/types";
 import { listIssues, searchIssues, listGroupedIssues, listMyGroupedIssues, getAgentTaskSnapshot } from "../api/issueApi";
 import { groupIssuesByAssignee } from "../api/issueGrouping";
 import { listProjectOptions } from "../api/directory";
@@ -61,8 +59,6 @@ interface Filters {
   labelIds: string[];
   dateField: IssueDateField; // 时间范围筛选的列(created_at|updated_at)
   dateRange?: Date[];        // [start, end];为空则不按时间筛选
-  sortBy: IssueSortField;
-  sortDir: "asc" | "desc";
 }
 
 const PAGE_SIZE = 50;
@@ -91,7 +87,7 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewMode>(() => isMyLoop ? "grouped" : (viewKey ? readView(viewKey, ["board", "grouped", "list"], defaultView ?? "board") : (defaultView ?? "board")));
   const [scope, setScope] = useState<IssueScope>(defaultScope ?? "all");
-  const [f, setF] = useState<Filters>({ keyword: "", statuses: [], priorities: [], assigneeIds: [], noAssignee: false, creatorIds: [], projectIds: [], noProject: false, labelIds: [], sortBy: "position", sortDir: "desc", dateField: "created_at" });
+  const [f, setF] = useState<Filters>({ keyword: "", statuses: [], priorities: [], assigneeIds: [], noAssignee: false, creatorIds: [], projectIds: [], noProject: false, labelIds: [], dateField: "created_at" });
   const [page, setPage] = useState(0); // 0-based，仅列表视图分页
   // 「无负责人」仅在 scope=全部 时有效(与 assignee_types 组合恒空)。单一来源:发送/勾选态/计数共用,防漂移。
   const noAssigneeActive = scope === "all" && f.noAssignee;
@@ -192,9 +188,6 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
       : listIssues({
           ...common,
           assignee_types: scopeToAssigneeTypes(scope),
-          // 排序仅用于列表视图;看板按 status 分列 + 100 上限,叠加全局排序会把某状态整列截没,故看板固定后端默认(position)。
-          sort_by: paged ? f.sortBy : undefined,
-          sort_direction: paged ? f.sortDir : undefined,
           // ponytail: 看板不分页——按 status 分列需全量，取后端上限 100；超量请用筛选或列表视图。
           limit: paged ? PAGE_SIZE : 100,
           offset: paged ? page * PAGE_SIZE : 0,
@@ -247,8 +240,7 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
 
   // 改任一筛选/搜索都回到第一页，避免停在越界的 offset（此规则只此一处表达）。
   const update = (p: Partial<Filters>) => { setF((prev) => ({ ...prev, ...p })); setPage(0); };
-  // 切视图后关闭「显示」面板;但列表视图会露出「升/降序」子选项,保持面板打开让用户接着选。
-  const switchView = (v: ViewMode) => { setView(v); setPage(0); if (viewKey) writeView(viewKey, v); if (v !== "list") setShowOpen(false); };
+  const switchView = (v: ViewMode) => { setView(v); setPage(0); if (viewKey) writeView(viewKey, v); setShowOpen(false); };
 
   // 点击 Issue → 跳转独立详情页（push 到右主栏，返回可 pop）。
   // key=id:issueId 变化即整体重挂载 → 详情页所有异步状态从零开始,结构性杜绝跨 issue 陈旧写入
@@ -363,7 +355,6 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
     </div>
   );
 
-  // 「显示」面板：视图切换 + 列表排序。
   const showPanel = (
     <div className="loop-fields loop-show-panel">
       <div className="loop-filter-panel__head"><span>{t("loop.action.show")}</span></div>
@@ -378,17 +369,6 @@ export default function IssuePage({ defaultScope, defaultView, viewKey }: IssueP
           ))}
         </div>
       </div>
-      {view === "list" && (
-        <div className="loop-fields__row">
-          <div className="loop-fields__label">{t("loop.sort.direction")}</div>
-          <div className="loop-fields__inline">
-            <Select value={f.sortBy} onChange={(v) => update({ sortBy: v as IssueSortField })} disabled={searching} {...FIELD_POPUP} style={{ flex: 1 }}>
-              {ISSUE_SORT_FIELDS.map((s) => (<Select.Option key={s} value={s}>{t(`loop.sort.${s}`)}</Select.Option>))}
-            </Select>
-            <Button theme="borderless" disabled={searching || f.sortBy === "position"} icon={f.sortDir === "asc" ? <ArrowUp size={14} /> : <ArrowDown size={14} />} aria-label={t("loop.sort.direction")} onClick={() => update({ sortDir: f.sortDir === "asc" ? "desc" : "asc" })} />
-          </div>
-        </div>
-      )}
     </div>
   );
 
