@@ -272,7 +272,9 @@
     "idle": "Idle",
     "working": "Working",
     "offline": "Offline",
-    "error": "Error"
+    "error": "Error",
+    "unstable": "Unstable",
+    "archived": "Archived"
   },
   "assignee": {
     "member": "Member",
@@ -505,8 +507,6 @@
     "connectorsMustBeObject": "Connector config must be a JSON object",
     "connectorsEmpty": "No connector config yet.",
     "clear": "Clear",
-    "statusOnline": "Online",
-    "statusOffline": "Offline",
     "taskCount": "{{count}} tasks",
     "runsUnit": "runs · last 30 days",
     "successAvg": "{{pct}}% success · avg {{avg}}",

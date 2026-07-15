@@ -62,16 +62,23 @@ function toIssueItem(i: Issue): LoopMentionItem {
   };
 }
 
-/** Agent online-status → avatar dot color (working/idle = up, offline = grey, error = red). */
+/**
+ * Agent status → mention-avatar dot color. Returns the shared `--dot-*` CSS variables
+ * (defined in loop.css) so this path can never drift from `.loop-status-dot`. Color-only:
+ * the 7px mention dot stays solid by design (no hollow ring / pulse), only agent statuses
+ * apply (squad-only unstable/archived never reach here), and a missing/loading status
+ * returns undefined so no dot renders until the async status map fills.
+ */
 function agentDotColor(status: string | undefined): string | undefined {
   switch (status) {
-    case "working":
     case "idle":
-      return "var(--semi-color-success, #23a55a)";
+      return "var(--dot-idle)";
+    case "working":
+      return "var(--dot-working)";
     case "error":
-      return "var(--semi-color-danger, #f5222d)";
+      return "var(--dot-error)";
     case "offline":
-      return "#b8bcc8";
+      return "var(--dot-offline)";
     default:
       return undefined;
   }

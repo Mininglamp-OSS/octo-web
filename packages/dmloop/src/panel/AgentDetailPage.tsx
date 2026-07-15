@@ -7,7 +7,8 @@ import type { Agent, AgentTask, AgentContribution, Issue } from "../api/types";
 import { getAgent, updateAgent, listAgentTasks, getAgentContributions, archiveAgent, setAgentSkills } from "../api/agentApi";
 import { getIssue } from "../api/issueApi";
 import { listSkills } from "../api/skillApi";
-import { isActiveRun, isTerminalRun } from "../ui/meta";
+import { isActiveRun, isTerminalRun, normalizeAgentStatus } from "../ui/meta";
+import { StatusDot } from "../ui/StatusDot";
 import { formatRelativeTime, formatDurationMs } from "../ui/time";
 import { confirmDelete } from "../ui/confirmDelete";
 import LoopMarkdown from "../ui/LoopMarkdown";
@@ -250,7 +251,6 @@ export default function AgentDetailPage({
 
   const skills = agent.skills ?? [];
   const activeCount = tasks.filter((x) => isActiveRun(x.status)).length;
-  const online = agent.status !== "offline" && agent.status !== "error";
   const thinking = agent.thinking_level ? t(`loop.agent.thinkingLevel.${agent.thinking_level}`) : "—";
   const visibility = t(agent.visibility === "private" ? "loop.agent.visPrivate" : "loop.agent.visWorkspace");
 
@@ -261,9 +261,9 @@ export default function AgentDetailPage({
         <button className="loop-adp__crumb" onClick={back}>{t("loop.nav.agent")}</button>
         <ChevronRight size={13} className="loop-adp__crumb-sep" />
         <span className="loop-adp__crumb-cur">{agent.name}</span>
-        <span className="loop-adp__pill" data-online={online}>
-          <i className="loop-adp__pill-dot" />
-          {`${online ? t("loop.agent.statusOnline") : t("loop.agent.statusOffline")} · ${t("loop.agent.taskCount", { values: { count: activeCount } })}`}
+        <span className="loop-adp__pill">
+          <StatusDot status={agent.status} decorative />
+          {`${t(`loop.agentStatus.${normalizeAgentStatus(agent.status)}`)} · ${t("loop.agent.taskCount", { values: { count: activeCount } })}`}
         </span>
         <div className="loop-adp__header-spacer" />
         <Button theme="outline" size="small" icon={<Archive size={14} />} onClick={doArchive}>{t("loop.agent.archive")}</Button>
@@ -445,7 +445,7 @@ export default function AgentDetailPage({
             <div className="loop-adp__identity">
               <div className="loop-adp__ins-avatar">
                 <span>{agent.name.slice(0, 1).toUpperCase()}</span>
-                <i className="loop-adp__ins-dot" data-online={online} />
+                <StatusDot status={agent.status} className="loop-adp__ins-dot" />
               </div>
               <div className="loop-adp__ins-name">{agent.name}</div>
               {agent.description && <div className="loop-adp__ins-desc">{agent.description}</div>}

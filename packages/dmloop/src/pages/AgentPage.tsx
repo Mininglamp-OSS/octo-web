@@ -9,6 +9,7 @@ import { listAssigneeCandidates } from "../api/issueApi";
 import AgentDetailPage from "../panel/AgentDetailPage";
 import { confirmDelete } from "../ui/confirmDelete";
 import { avatarColor } from "../ui/meta";
+import { StatusDot } from "../ui/StatusDot";
 import { formatRelativeTime } from "../ui/time";
 
 type Scope = "mine" | "all" | "archived";
@@ -132,7 +133,7 @@ export default function AgentPage() {
                 <button key={a.id} className={`loop-agent-row ${a.archived_at ? "is-archived" : ""}`} onClick={() => openDetail(a.id)}>
                   <span className="loop-agent-row__avatar">
                     <Avatar size="extra-small" shape="square" color={avatarColor(a.name)}>{a.name.slice(0, 1).toUpperCase()}</Avatar>
-                    <i className="loop-agent-row__dot" data-status={a.status} />
+                    <StatusDot status={a.status} className="loop-agent-row__dot" />
                   </span>
                   <span className="loop-agent-row__name">{a.name}</span>
                   <span className="loop-agent-row__desc">{a.description}</span>

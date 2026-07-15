@@ -272,7 +272,9 @@
     "idle": "空闲",
     "working": "工作中",
     "offline": "离线",
-    "error": "异常"
+    "error": "异常",
+    "unstable": "不稳定",
+    "archived": "已归档"
   },
   "assignee": {
     "member": "成员",
@@ -505,8 +507,6 @@
     "connectorsMustBeObject": "连接器配置必须是 JSON 对象",
     "connectorsEmpty": "还没有连接器配置。",
     "clear": "清空",
-    "statusOnline": "在线",
-    "statusOffline": "离线",
     "taskCount": "{{count}} 个任务",
     "runsUnit": "次运行 · 近 30 天",
     "successAvg": "{{pct}}% 成功 · 平均 {{avg}}",

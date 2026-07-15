@@ -9,6 +9,7 @@ import {
 } from "../api/squadApi";
 import { listAssigneeCandidates } from "../api/issueApi";
 import { confirmDelete } from "../ui/confirmDelete";
+import { StatusDot } from "../ui/StatusDot";
 import { formatRelativeTime } from "../ui/time";
 import AgentDetailPage from "./AgentDetailPage";
 import IssueDetailPage from "./IssueDetailPage";
@@ -230,7 +231,9 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
                   <div key={memberKey(m)} className="loop-sqd__mem">
                     <span className="loop-sqd__mem-ava">
                       <Avatar size="small" color="light-blue" src={m.member_avatar ?? undefined}>{(m.member_name ?? "?").slice(0, 1)}</Avatar>
-                      {m.member_type === "agent" && <i className="loop-sqd__mem-dot" data-status={sv ?? "offline"} />}
+                      {/* Decorative only when the status-line text below states the status word
+                          (sv present, no issue shown instead); otherwise this dot is the sole status. */}
+                      {m.member_type === "agent" && <StatusDot status={sv ?? "offline"} className="loop-sqd__mem-dot" decorative={!!sv && !issue} />}
                     </span>
                     <div className="loop-sqd__mem-main">
                       <div className="loop-sqd__mem-line">
@@ -254,7 +257,7 @@ export default function SquadDetailPage({ squadId, onChanged }: { squadId: strin
                       )}
                       {m.member_type === "agent" && sv && (
                         <span className="loop-sqd__mem-status">
-                          <i className="loop-sqd__mem-dot" data-status={sv} />
+                          <StatusDot status={sv} className="loop-sqd__mem-dot" decorative />
                           {issue
                             ? <button className="loop-sqd__mem-issue" onClick={() => openIssue(issue.issue_id)}>
                                 <span className="loop-sqd__mem-ident">{issue.identifier}</span>

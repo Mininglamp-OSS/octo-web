@@ -51,14 +51,6 @@
   color: var(--semi-color-text-1, #555b61);
 }
 
-.loop-adp__pill-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--semi-color-tertiary, #b8bcc8);
-}
-.loop-adp__pill[data-online="true"] .loop-adp__pill-dot { background: #52c41a; }
-
 .loop-adp__header-spacer { flex: 1; }
 
 /* ---- 主体：主区 + 右侧 Inspector ---- */
@@ -434,13 +426,7 @@
   position: absolute;
   right: -1px;
   bottom: -1px;
-  width: 8px;
-  height: 8px;
-  border-radius: 4px;
-  border: 1px solid var(--semi-color-bg-0, #fff);
-  background: var(--semi-color-tertiary, #b8bcc8);
 }
-.loop-adp__ins-dot[data-online="true"] { background: #52c41a; }
 
 .loop-adp__ins-name { font-size: 16px; font-weight: 700; color: var(--semi-color-text-0, #1f2329); word-break: break-word; }
 .loop-adp__ins-desc { font-size: 12.5px; line-height: 18.75px; color: var(--semi-color-text-2, #6b7075); word-break: break-word; }

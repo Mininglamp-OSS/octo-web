@@ -807,18 +807,42 @@
 .loop-agent-row:hover { background: var(--semi-color-fill-0, #f5f6f8); }
 
 .loop-agent-row__avatar { position: relative; flex: 0 0 auto; display: inline-flex; }
-.loop-agent-row__dot {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
+.loop-agent-row__dot { position: absolute; right: -1px; bottom: -1px; }
+
+/* Shared agent/member status dot — single source for color, shape, and motion.
+   Status colors live in the --dot-* variables so the mention-avatar path
+   (mentionExtension.agentDotColor) can reference the exact same values. */
+:root {
+  --dot-idle: #52c41a;
+  --dot-working: #2f6fed;
+  --dot-offline: var(--semi-color-tertiary, #b8bcc8);
+  --dot-error: var(--semi-color-danger, #f5222d);
+}
+.loop-status-dot {
+  display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 4px;
   border: 1px solid var(--semi-color-bg-0, #fff);
-  background: var(--semi-color-tertiary, #b8bcc8);
+  background: var(--dot-offline);
+  box-sizing: border-box;
 }
-.loop-agent-row__dot[data-status="working"] { background: #52c41a; }
-.loop-agent-row__dot[data-status="error"] { background: var(--semi-color-danger, #f5222d); }
+.loop-status-dot[data-status="idle"] { background: var(--dot-idle); }
+.loop-status-dot[data-status="working"] { background: var(--dot-working); animation: loop-dot-pulse 1.6s ease-in-out infinite; }
+.loop-status-dot[data-status="error"] { background: var(--dot-error); }
+.loop-status-dot[data-status="unstable"] { background: var(--semi-color-warning, #d99e21); }
+.loop-status-dot[data-status="offline"],
+.loop-status-dot[data-status="archived"] {
+  background: var(--semi-color-bg-0, #fff);
+  box-shadow: inset 0 0 0 1.5px var(--dot-offline);
+}
+@keyframes loop-dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(47, 111, 237, 0.45); }
+  50% { box-shadow: 0 0 0 3px rgba(47, 111, 237, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loop-status-dot[data-status="working"] { animation: none; }
+}
 
 .loop-agent-row__name {
   flex: 0 0 auto;
@@ -2193,24 +2217,12 @@
 .loop-sqd__mem:last-child { border-bottom: none; }
 .loop-sqd__mem:hover { background: var(--semi-color-fill-0, #f5f6f8); }
 .loop-sqd__mem-ava { position: relative; flex: 0 0 auto; display: inline-flex; }
-.loop-sqd__mem-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 4px;
-  background: var(--semi-color-tertiary, #b8bcc8);
-  flex: 0 0 auto;
-}
+.loop-sqd__mem-dot { flex: 0 0 auto; }
 .loop-sqd__mem-ava .loop-sqd__mem-dot {
   position: absolute;
   right: -1px;
   bottom: -1px;
-  border: 1px solid var(--semi-color-bg-0, #fff);
 }
-.loop-sqd__mem-dot[data-status="working"] { background: var(--semi-color-success, #52c41a); }
-.loop-sqd__mem-dot[data-status="unstable"] { background: var(--semi-color-warning, #d99e21); }
-.loop-sqd__mem-dot[data-status="idle"],
-.loop-sqd__mem-dot[data-status="offline"],
-.loop-sqd__mem-dot[data-status="archived"] { background: var(--semi-color-tertiary, #b8bcc8); }
 
 .loop-sqd__mem-main { flex: 1; min-width: 0; }
 .loop-sqd__mem-line { display: flex; align-items: center; gap: 8px; }

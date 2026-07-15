@@ -18,7 +18,6 @@ import type {
   IssueStatus,
   IssuePriority,
   ProjectStatus,
-  AgentStatus,
   AssigneeType,
 } from "../api/types";
 import type { LoopTagTone } from "./LoopTag";
@@ -36,6 +35,13 @@ type TagColor =
   | "amber"
   | "teal"
   | "light-blue";
+
+// Status values with a `.loop-status-dot[data-status]` rule + a `loop.agentStatus.*` label.
+const KNOWN_DOT_STATUSES = new Set(["idle", "working", "offline", "error", "unstable", "archived"]);
+/** Clamp a possibly-unknown status to a known one so dots and labels never render a raw value. */
+export function normalizeAgentStatus(status?: string): string {
+  return status && KNOWN_DOT_STATUSES.has(status) ? status : "offline";
+}
 
 /** 依据名称稳定地挑一个 Semi 头像色，避免同一实体每次渲染换色（Agent/Squad 头像共用）。 */
 const AVATAR_COLORS = ["violet", "blue", "cyan", "teal", "green", "amber", "orange", "purple", "indigo", "pink"] as const;
@@ -136,13 +142,6 @@ export const PROJECT_STATUS_STYLE: Record<ProjectStatus, { solid: boolean; bg: s
   paused: { solid: false, bg: "", dot: "#8a8f99" },
   completed: { solid: true, bg: "var(--semi-color-info, #2f6fed)", dot: "var(--semi-color-info, #2f6fed)" },
   cancelled: { solid: false, bg: "", dot: "var(--semi-color-danger, #f5222d)" },
-};
-
-export const AGENT_STATUS_COLOR: Record<AgentStatus, TagColor> = {
-  idle: "grey",
-  working: "green",
-  offline: "grey",
-  error: "red",
 };
 
 export const ASSIGNEE_TYPE_COLOR: Record<AssigneeType, TagColor> = {
