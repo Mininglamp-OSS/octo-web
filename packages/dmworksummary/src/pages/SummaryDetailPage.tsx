@@ -1062,7 +1062,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             const detail = isPersonal
                 ? await api.getPersonalSummaryVersion(requestTaskId, requestResultId)
                 : await api.getSummaryVersion(requestTaskId, requestResultId);
-            if (this.taskId !== requestTaskId || detail.result_id !== requestResultId) return;
+            if (this.taskId !== requestTaskId) return;
+            if (detail.result_id !== requestResultId) {
+                this.setState({ showVersionDetailModal: false, versionDetailLoading: false, versionDetail: null });
+                return;
+            }
             this.setState({ versionDetail: detail, versionDetailLoading: false });
         } catch (err: any) {
             if (this.taskId !== requestTaskId) return;
@@ -1320,11 +1324,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     private scheduleInstructionVersionSource() {
         const { versions, personalVersions } = this.state;
-        const byResultId = new Map<number, SummaryVersionItem>();
-        [...versions, ...personalVersions].forEach((version) => {
-            byResultId.set(version.result_id, version);
-        });
-        return Array.from(byResultId.values());
+        return [...versions, ...personalVersions];
     }
 
     private defaultScheduleInstruction() {
@@ -1754,7 +1754,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                         {version.operation_type === "scheduled_generate" && (
                                             <Tag size="small" color="green">{t("summary.detail.versionScheduledTaskTag")}</Tag>
                                         )}
-                                        <span className="summary-version-operation">{this.formatVersionOperation(version)}</span>
+                                        {version.operation_type !== "scheduled_generate" && (
+                                            <span className="summary-version-operation">{this.formatVersionOperation(version)}</span>
+                                        )}
                                     </div>
                                     <div className="summary-version-note">{this.formatVersionOperationNote(version)}</div>
                                 </div>
@@ -1815,7 +1817,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                         {version.operation_type === "scheduled_generate" && (
                                             <Tag size="small" color="green">{t("summary.detail.versionScheduledTaskTag")}</Tag>
                                         )}
-                                        <span className="summary-version-operation">{this.formatVersionOperation(version)}</span>
+                                        {version.operation_type !== "scheduled_generate" && (
+                                            <span className="summary-version-operation">{this.formatVersionOperation(version)}</span>
+                                        )}
                                     </div>
                                     <div className="summary-version-note">{this.formatVersionOperationNote(version)}</div>
                                 </div>
@@ -1862,7 +1866,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 width="min(860px, calc(100vw - 48px))"
                 bodyStyle={{
                     maxHeight: "calc(100vh - 320px)",
-                    overflow: "hidden",
+                    overflowY: "auto",
                 }}
                 title={versionDetail
                     ? t("summary.detail.versionDetailTitle", { values: { version: versionDetail.version, operation } })
