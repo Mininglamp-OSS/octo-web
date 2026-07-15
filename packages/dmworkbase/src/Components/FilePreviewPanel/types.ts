@@ -74,8 +74,6 @@ export interface RendererRegistryItem {
   type: FileType;
   extensions: string[];
   renderer: FileRenderer;
-  /** 是否需要预加载内容 */
-  needsFetch?: boolean;
 }
 
 /** FilePreviewPanel Props */

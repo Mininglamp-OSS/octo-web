@@ -28,7 +28,7 @@ class FileRendererRegistry {
       excel: ["xlsx", "xltx", "xlsm", "xlsb", "xls", "xlt", "xltm", "csv", "ods", "fods", "numbers", "et"],
       docx: ["docx", "docm", "dotx", "dotm", "doc", "dot", "rtf", "odt", "wps"],
       ppt: ["pptx", "pptm", "potx", "potm", "ppsx", "ppsm", "odp", "dps"],
-      video: ["mp4", "webm", "m3u8"],
+      video: ["mp4", "webm", "m3u8", "m4v", "mov", "ogv"],
       audio: ["mp3", "mpeg", "wav", "ogg", "oga", "opus", "m4a", "aac", "flac", "weba", "midi", "mid"],
       epub: ["epub", "umd"],
       unknown: [],
