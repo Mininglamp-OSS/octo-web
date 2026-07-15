@@ -12,6 +12,7 @@ import WKApp from "../../App";
 import RouteContext from "../../Service/Context";
 import { GroupRole } from "../../Service/Const";
 import { Convert } from "../../Service/Convert";
+import UserService from "../../Service/UserService";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { isRealnameVerified, displayName as resolveDisplayName } from "../../Utils/displayName";
 
@@ -252,9 +253,7 @@ export class UserInfoVM extends ProviderListener {
   }
 
   async reloadChannelInfo() {
-    const res = await WKApp.apiClient.get(`users/${this.uid}`, {
-      param: { group_no: this.fromChannel?.channelID || '' },
-    });
+    const res = await UserService.getUserProfile(this.uid, this.fromChannel?.channelID);
     this.channelInfo = Convert.userToChannelInfo(res);
     if (!this.vercode || this.vercode === "") {
       if (res.vercode && res.vercode !== "") {

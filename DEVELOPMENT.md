@@ -13,6 +13,7 @@
 | 提交/分支管理 | 七 |
 | 做视觉审查 | 二、十二 |
 | 新增业务能力/调整模块边界 | 先读“模块边界与代码落点”，再按二、三、四、五判断实现方式 |
+| 新增/改造接口调用 | 先读“API Service 分层规则”，再按对应模块补测试 |
 
 不需要读全部，按任务找对应章节即可。
 
@@ -46,6 +47,62 @@
 - 是否修改了共享组件或基础服务？如果是，是否说明影响范围？
 - 是否把完整业务流程写进了通用组件目录？
 - 是否补了测试、Story 或必要文档？
+
+## API Service 分层规则
+
+新增接口调用或改造现有接口调用时，优先把 HTTP 边界收口到 `Service/`，不要让 UI 组件、页面组件或 VM 直接拼接口。
+
+### 基本原则
+
+- 新增接口默认放到 `packages/dmworkbase/src/Service/*Service.ts`，按业务实体命名，例如 `UserService`、`FollowService`。
+- Service 层负责拼 endpoint、query/body、响应 envelope 兼容和接口类型；组件/VM 负责页面状态、交互流程和错误展示。
+- Service 层使用 `APIClient.shared`；不要在 Service 层 import `WKApp`。需要登录态、space、路由等运行时上下文时，由调用方传入必要参数。
+- 新代码不要在 `Components/`、`Pages/`、`Messages/` 里直接调用 `WKApp.apiClient` 或 `APIClient.shared`。改造老代码时按模块逐步迁移，不要求一次性清空历史调用。
+- Service 方法命名用业务语义，不用 HTTP 动词堆叠；例如 `getUserProfile(uid, groupNo)` 比 `getUsersByUid()` 更清楚。
+- 类型优先放在对应 Service 文件里导出；多个模块共享且稳定后，再考虑移动到公共 types 文件。
+
+### 推荐写法
+
+```ts
+// Service/UserService.ts
+import APIClient from "./APIClient"
+
+export interface UserProfile {
+  uid?: string
+  name?: string
+  vercode?: string
+  [key: string]: any
+}
+
+const UserService = {
+  getUserProfile(uid: string, groupNo?: string): Promise<UserProfile> {
+    return APIClient.shared.get(`users/${uid}`, {
+      param: { group_no: groupNo || "" },
+    })
+  },
+}
+
+export default UserService
+```
+
+```ts
+// Components/UserInfo/vm.tsx
+const profile = await UserService.getUserProfile(uid, groupNo)
+```
+
+### 测试要求
+
+- 新增 Service 方法时，至少补 Service 单测，覆盖 endpoint、query/body 和关键响应兼容逻辑。
+- 如果改动会影响页面状态、缓存、重试、乐观更新或错误提示，还需要补 VM/组件测试。
+- 迁移已有接口时，保持接口路径、参数和错误语义不变；除非 PR 明确声明并验证行为变更。
+- PR 描述里写清楚影响范围：只改接口边界、还是同时改了业务行为。
+
+### 提交前自查
+
+- Service 是否只依赖 `APIClient.shared` 和纯工具函数？
+- 调用方是否只传必要参数，而不是把 `WKApp` 或整块全局状态传进 Service？
+- 是否避免把未上线、不可人工验证的功能作为唯一改造样板？
+- 是否有一条可人工验证的用户路径？
 
 ## 一、环境要求
 
