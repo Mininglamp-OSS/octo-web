@@ -143,9 +143,13 @@ export function useForwardModal(
   const [activeTab, setActiveTab] = useState<ChatSelectorTab>("recent")
   // 关注集合（复合 key）：来自 SidebarService follow 同步，供「关注」Tab 过滤。
   const [followedKeys, setFollowedKeys] = useState<Set<string>>(new Set())
-  // 最近集合（复合 key）：由本地最近会话（wrapsRef）派生，供「最近」Tab 过滤。
-  // 方案 (b) 下「最近」直接等价于最近会话，不依赖后端 recent 同步。
+  // 最近集合（复合 key）：来自 SidebarService recent 同步，供「最近」Tab 过滤。
+  // 与智能纪要选择器（ChatSelectorModal）对齐：取后端权威 recent 集合，而非本地
+  // 最近会话派生，保证两处「最近」数据源一致。
   const [recentKeys, setRecentKeys] = useState<Set<string>>(new Set())
+  // 最近排序（复合 key → 后端 timestamp）：供「最近」Tab 按 timestamp 降序排序，
+  // 语义与 ChatSelectorModal 的 recentOrder 完全一致。
+  const [recentOrder, setRecentOrder] = useState<Map<string, number>>(new Map())
   // 授权区状态：开关默认关闭（不勾选，需用户主动打开才走授权），角色默认 reader。
   // 仅在传入 grantOptions 时生效。
   const grantActive = !!grantOptions
@@ -215,11 +219,8 @@ export function useForwardModal(
     const spaceId = WKApp.shared.currentSpaceId
     // 已并入的群 ID（recents 群 + extraGroups 群），用于去重与子区挂回。
     const seenGroupIDs = new Set<string>()
-    // 最近集合：最近会话即「最近」Tab 的作用域，用复合 key 记录（含群/子区/私聊）。
-    const recentKeySet = new Set<string>()
     for (const wrap of wrapsRef.current) {
       channelMapRef.current.set(wrap.channel.channelID, wrap.channel)
-      recentKeySet.add(`${wrap.channel.channelType}::${wrap.channel.channelID}`)
       if (wrap.channel.channelType === ChannelTypeCommunityTopic) {
         threadWraps.push(wrap)
       } else {
@@ -322,7 +323,6 @@ export function useForwardModal(
     }
 
     setConversationItems(items)
-    setRecentKeys(recentKeySet)
   }, [])
 
   useEffect(() => {
@@ -403,11 +403,9 @@ export function useForwardModal(
   }, [rebuildConvItems])
 
   // 关注集合同步：与智能纪要选择器一致，走 SidebarService follow 同步。
-  // 数据源采用方案 (b)：转发列表主体仍复用本地会话 + group/my + 好友装配
-  // （保证零权限回归、无新后端依赖），仅「关注」Tab 需要额外的关注集合，故
-  // 这里只拉 follow（不拉 recent —— 转发「最近」直接映射本地最近会话/群列表）。
-  // deviceId 为空时后端 validateSidebarRequest 必拒，跳过注定失败的请求，
-  // 关注集合退化为空集（关注 Tab 显示空态）。
+  // 转发列表主体仍复用本地会话 + group/my + 好友装配（保证零权限回归），
+  // 「关注」Tab 用后端关注集合过滤。deviceId 为空时后端 validateSidebarRequest
+  // 必拒，跳过注定失败的请求，关注集合退化为空集（关注 Tab 显示空态）。
   useEffect(() => {
     const deviceUuid = WKApp.shared.deviceId || ""
     if (deviceUuid === "") {
@@ -426,6 +424,44 @@ export function useForwardModal(
       })
       .catch(() => {
         if (!cancelled) setFollowedKeys(new Set())
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // 最近集合同步：与智能纪要选择器（ChatSelectorModal）完全对齐，走
+  // SidebarService recent 同步取后端权威 recent 集合。resp.items 里每项以
+  // `${target_type}::${target_id}` 构造复合 key（与转发 item 的 key 同构），
+  // 填充 recentKeys（供「最近」Tab 过滤）并额外记录 timestamp 到 recentOrder
+  // （供「最近」Tab 按时间降序排序）。deviceId 为空时后端 validateSidebarRequest
+  // 必拒，跳过注定失败的请求，最近集合退化为空集（最近 Tab 显示空态）。
+  useEffect(() => {
+    const deviceUuid = WKApp.shared.deviceId || ""
+    if (deviceUuid === "") {
+      setRecentKeys(new Set())
+      setRecentOrder(new Map())
+      return
+    }
+    let cancelled = false
+    SidebarService.sync({ tab: "recent", device_uuid: deviceUuid })
+      .then((resp) => {
+        if (cancelled) return
+        const keys = new Set<string>()
+        const order = new Map<string, number>()
+        for (const item of resp?.items ?? []) {
+          const key = `${item.target_type}::${item.target_id}`
+          keys.add(key)
+          order.set(key, item.timestamp)
+        }
+        setRecentKeys(keys)
+        setRecentOrder(order)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRecentKeys(new Set())
+          setRecentOrder(new Map())
+        }
       })
     return () => {
       cancelled = true
@@ -483,6 +519,18 @@ export function useForwardModal(
     FORWARD_ITEM_ACCESSORS,
   )
 
+  // 「最近」Tab 按后端 timestamp 降序排序，与 ChatSelectorModal 的 recent 分支
+  // 语义一致（纯 timestamp 排序，不保「父群→子区」树序；缺失 timestamp 视为 0）。
+  // 其余 Tab 保持 filterChatSelectorItems 的原树序输出，不受影响。
+  const displayItems =
+    activeTab === "recent"
+      ? [...filtered].sort(
+          (a, b) =>
+            (recentOrder.get(FORWARD_ITEM_ACCESSORS.getKey(b)) ?? 0) -
+            (recentOrder.get(FORWARD_ITEM_ACCESSORS.getKey(a)) ?? 0),
+        )
+      : filtered
+
   const toggleSelect = useCallback((item: ForwardItem) => {
     setSelectedIDs((prev: string[]) =>
       prev.includes(item.channelID)
@@ -525,7 +573,7 @@ export function useForwardModal(
   }, [])
 
   return {
-    items: filtered,
+    items: displayItems,
     allItems,
     selectedIDs,
     selectedChannels,

@@ -51,8 +51,9 @@ const hoisted = vi.hoisted(() => {
         // 设备 UUID：空串时四 Tab 关注同步被跳过（validateSidebarRequest 必拒）。
         // 关注 Tab 用例按需赋非空值 + 配 sidebarSync 桩。
         deviceId: "" as string,
-        // SidebarService.sync 桩：默认返回空 follow 集合。关注 Tab 用例按需覆写。
-        sidebarSync: vi.fn(async (_req: any) => ({ items: [], version: 0, follow_version: 0 })),
+        // SidebarService.sync 桩：默认返回空 follow 集合。关注/最近 Tab 用例按需覆写。
+        // 显式注解 items 为 any[]，避免空数组推断为 never[] 导致后续 mock 返回具体项报 never 不兼容。
+        sidebarSync: vi.fn(async (_req: any): Promise<{ items: any[]; version: number; follow_version: number }> => ({ items: [], version: 0, follow_version: 0 })),
     }
 })
 
@@ -830,19 +831,95 @@ describe("useForwardModal — four-Tab selector (issue #661)", () => {
         return { channel: { channelID, channelType: 1 }, orgData: { displayName } }
     }
 
-    it("default tab is 'recent' and scopes to local recent conversations (directs from friends excluded)", async () => {
+    // sidebarSync 桩：按 tab 区分 follow / recent 返回。recent 用于驱动后端
+    // 权威最近集合（与 ChatSelectorModal 对齐）。
+    function stubSidebar(opts: {
+        follow?: Array<{ target_type: number; target_id: string; is_followed: boolean }>
+        recent?: Array<{ target_type: number; target_id: string; timestamp: number }>
+    }) {
+        hoisted.sidebarSync.mockImplementation(async (req: any) => {
+            if (req?.tab === "recent") {
+                return { items: opts.recent ?? [], version: 0, follow_version: 0 }
+            }
+            return { items: opts.follow ?? [], version: 0, follow_version: 0 }
+        })
+    }
+
+    it("default tab is 'recent' and scopes to the backend recent set (directs from friends excluded)", async () => {
+        hoisted.deviceId = "dev-uuid"
         hoisted.conversations = [makeConv("g1", CT_GROUP, "Group 1", { timestamp: 100 })]
         hoisted.searchFriends.mockResolvedValue([makeFriend("d1", "Alice")] as any)
+        // 后端 recent 权威集合：仅含群 g1（复合 key = 群类型 2 :: g1），不含好友 d1。
+        stubSidebar({ recent: [{ target_type: 2, target_id: "g1", timestamp: 100 }] })
 
         const view = await renderForward()
 
         expect(view.current.activeTab).toBe("recent")
         const ids = view.current.items.map((i) => i.channelID)
-        // 最近 = 本地最近会话 → 含群 g1；好友 d1 不在最近会话集合内 → 不出现在最近 Tab。
+        // 最近 = 后端 recent 集合（而非本地会话）→ 含群 g1；好友 d1 不在后端 recent 集合 → 不出现。
         expect(ids).toContain("g1")
         expect(ids).not.toContain("d1")
+        // 最近同步以 recent tab + 设备 UUID 发起。
+        expect(hoisted.sidebarSync).toHaveBeenCalledWith(
+            expect.objectContaining({ tab: "recent", device_uuid: "dev-uuid" }),
+        )
         // 但 allItems（已选头像区）仍是全量，含好友。
         expect(view.current.allItems.map((i) => i.channelID)).toContain("d1")
+
+        view.unmount()
+    })
+
+    it("recent tab is driven by the backend recent set, NOT local conversations, and does not surface a local conv absent from backend recent", async () => {
+        hoisted.deviceId = "dev-uuid"
+        // 本地会话含 g1 + g2，但后端 recent 只回 g2 → 最近 Tab 只应出 g2（本地不再当 recent 源）。
+        hoisted.conversations = [
+            makeConv("g1", CT_GROUP, "Group 1", { timestamp: 100 }),
+            makeConv("g2", CT_GROUP, "Group 2", { timestamp: 90 }),
+        ]
+        stubSidebar({ recent: [{ target_type: 2, target_id: "g2", timestamp: 50 }] })
+
+        const view = await renderForward()
+        const ids = view.current.items.map((i) => i.channelID)
+        expect(ids).toContain("g2")
+        // g1 是本地会话但不在后端 recent 集合 → 旧行为（本地派生）会误包含，新行为不包含。
+        expect(ids).not.toContain("g1")
+
+        view.unmount()
+    })
+
+    it("recent tab orders by backend timestamp descending (aligns with ChatSelectorModal recent semantics)", async () => {
+        hoisted.deviceId = "dev-uuid"
+        // 本地会话顺序（sortConversations）与后端 timestamp 降序不同，用以验证
+        // 最近 Tab 按后端 timestamp 降序而非本地顺序。
+        hoisted.conversations = [
+            makeConv("gA", CT_GROUP, "Group A", { timestamp: 100 }),
+            makeConv("gB", CT_GROUP, "Group B", { timestamp: 90 }),
+            makeConv("gC", CT_GROUP, "Group C", { timestamp: 80 }),
+        ]
+        // 后端 recent timestamp：gB(300) > gC(200) > gA(100) → 预期输出 gB, gC, gA。
+        stubSidebar({
+            recent: [
+                { target_type: 2, target_id: "gA", timestamp: 100 },
+                { target_type: 2, target_id: "gB", timestamp: 300 },
+                { target_type: 2, target_id: "gC", timestamp: 200 },
+            ],
+        })
+
+        const view = await renderForward()
+        const ids = view.current.items.map((i) => i.channelID)
+        expect(ids).toEqual(["gB", "gC", "gA"])
+
+        view.unmount()
+    })
+
+    it("recent tab is empty when deviceId is empty (doomed request guard, no local fallback)", async () => {
+        hoisted.deviceId = ""
+        hoisted.conversations = [makeConv("g1", CT_GROUP, "Group 1", { timestamp: 100 })]
+
+        const view = await renderForward()
+        expect(view.current.activeTab).toBe("recent")
+        // deviceId 为空 → 跳过 recent 同步，最近集合退化为空集，不回退本地会话。
+        expect(view.current.items.map((i) => i.channelID)).not.toContain("g1")
 
         view.unmount()
     })
