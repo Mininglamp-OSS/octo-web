@@ -52,6 +52,9 @@ interface SummaryDetailPageProps {
     taskId?: number;
 }
 
+// Matters 转发入口暂时隐藏，保留相关代码和弹窗，后续需要时打开此开关即可。
+const SHOW_FORWARD_TO_MATTER = false;
+
 type RegenerateMode = "refine" | "full";
 type RefineLoadingTarget = "personal" | "team" | "summary";
 
@@ -105,6 +108,12 @@ interface SummaryDetailPageState {
     workflowDisplayIndex: number;
     workflowGateContent: boolean;
     workflowRevealDone: boolean;
+    streaming: boolean;
+    streamingContent: string;
+    streamError: string | null;
+    teamStreaming: boolean;
+    teamStreamingContent: string;
+    teamStreamError: string | null;
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
@@ -193,6 +202,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         workflowDisplayIndex: -1,
         workflowGateContent: false,
         workflowRevealDone: false,
+        streaming: false,
+        streamingContent: "",
+        streamError: null,
+        teamStreaming: false,
+        teamStreamingContent: "",
+        teamStreamError: null,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -200,6 +215,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private fallbackStartTimeout: ReturnType<typeof setTimeout> | null = null;
     private workflowAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
     private workflowCompleteTimer: ReturnType<typeof setTimeout> | null = null;
+    private streamAbortController: AbortController | null = null;
+    private streamingTaskId: number | null = null;
+    private streamClosedTaskId: number | null = null;
+    private teamStreamAbortController: AbortController | null = null;
+    private teamStreamingTaskId: number | null = null;
+    private teamStreamClosedTaskId: number | null = null;
     private workflowTargetIndex = -1;
     private listPageActive = false;
     private lastEventTime = 0;
@@ -243,7 +264,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 restoringVersionId: null,
                 restoringPersonalVersionId: null,
                 pendingScheduleInstruction: "",
+                streamingContent: "",
+                streamError: null,
+                streaming: false,
+                teamStreamingContent: "",
+                teamStreamError: null,
+                teamStreaming: false,
             });
+            this.streamClosedTaskId = null;
+            this.teamStreamClosedTaskId = null;
             this.loadDetail();
         }
         if (prevState && prevState.showVersionDetailModal !== this.state.showVersionDetailModal) {
@@ -260,6 +289,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     private clearAllTimers() {
+        this.stopSummaryStream();
+        this.stopTeamSummaryStream();
         if (this.personalPollTimer) {
             clearInterval(this.personalPollTimer);
             this.personalPollTimer = null;
@@ -466,8 +497,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 detail.status === TaskStatus.WAITING_CONFIRM
             ) {
                 this.startFallbackPoll();
+                if (detail.summary_mode === SummaryMode.BY_PERSON && this.streamClosedTaskId !== detail.task_id) {
+                    this.startSummaryStream(detail.task_id);
+                }
+                const isMultiByPerson = detail.summary_mode === SummaryMode.BY_PERSON && ((detail.participants?.length || 0) > 1);
+                if (isMultiByPerson && this.teamStreamClosedTaskId !== detail.task_id) {
+                    this.startTeamSummaryStream(detail.task_id);
+                }
             } else {
                 this.stopFallbackPoll();
+                this.stopSummaryStream();
+                this.stopTeamSummaryStream();
+                this.setState({ teamStreaming: false, teamStreamingContent: "", teamStreamError: null });
             }
             // Load BY_PERSON data
             if (detail.summary_mode === SummaryMode.BY_PERSON) {
@@ -813,6 +854,157 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     }
 
+
+    private startSummaryStream(taskId: number) {
+        if (this.streamClosedTaskId === taskId) return;
+        if (this.streamingTaskId === taskId && this.streamAbortController) return;
+        this.stopSummaryStream();
+        const controller = new AbortController();
+        this.streamAbortController = controller;
+        this.streamingTaskId = taskId;
+        this.setState({ streaming: true, streamError: null, streamingContent: "" });
+        void api.streamSummary(taskId, {
+            scope: "personal",
+            signal: controller.signal,
+            onEvent: (event) => {
+                if (this.taskId !== taskId) return;
+                if (event.type === "start") {
+                    this.setState({ streamingContent: "", streamError: null });
+                    return;
+                }
+                if (event.type === "stage" && event.stage) {
+                    const idx = this.workflowStageIndex(event.stage);
+                    if (idx >= 0) this.setWorkflowStageDirectly(idx);
+                    return;
+                }
+                if (event.type === "delta") {
+                    if (event.content) {
+                        this.setState({ streamingContent: event.content });
+                    } else if (event.delta) {
+                        this.setState((prev) => ({ streamingContent: prev.streamingContent + event.delta }));
+                    }
+                    return;
+                }
+                if (event.type === "snapshot") {
+                    this.setState({ streamingContent: event.content || "" });
+                    return;
+                }
+                if (event.type === "done") {
+                    this.streamAbortController = null;
+                    this.streamingTaskId = null;
+                    this.streamClosedTaskId = taskId;
+                    this.setState({ streaming: false });
+                    this.loadDetail();
+                    return;
+                }
+                if (event.type === "error") {
+                    this.streamAbortController = null;
+                    this.streamingTaskId = null;
+                    this.streamClosedTaskId = taskId;
+                    this.setState({ streaming: false, streamError: event.message || null });
+                    this.loadDetail();
+                }
+            },
+        }).catch((err: any) => {
+            if (controller.signal.aborted || this.taskId !== taskId) return;
+            this.streamAbortController = null;
+            this.streamingTaskId = null;
+            this.streamClosedTaskId = taskId;
+            this.setState({ streaming: false, streamError: err?.message || null });
+            // Keep the existing polling path as the reliability fallback.
+            this.startFallbackPoll();
+        });
+    }
+
+    private stopSummaryStream() {
+        if (this.streamAbortController) {
+            this.streamAbortController.abort();
+            this.streamAbortController = null;
+        }
+        this.streamingTaskId = null;
+    }
+
+    private resetSummaryStreamForNewRun(taskId: number) {
+        this.stopSummaryStream();
+        this.streamClosedTaskId = null;
+        this.setState({ streaming: false, streamingContent: "", streamError: null });
+        if (this.taskId === taskId) {
+            this.startSummaryStream(taskId);
+        }
+    }
+
+    private startTeamSummaryStream(taskId: number) {
+        if (this.teamStreamClosedTaskId === taskId) return;
+        if (this.teamStreamingTaskId === taskId && this.teamStreamAbortController) return;
+        this.stopTeamSummaryStream();
+        const controller = new AbortController();
+        this.teamStreamAbortController = controller;
+        this.teamStreamingTaskId = taskId;
+        this.setState({ teamStreaming: true, teamStreamError: null, teamStreamingContent: "" });
+        void api.streamSummary(taskId, {
+            scope: "team",
+            signal: controller.signal,
+            onEvent: (event) => {
+                if (this.taskId !== taskId) return;
+                if (event.type === "start") {
+                    this.setState({ teamStreamingContent: "", teamStreamError: null });
+                    return;
+                }
+                if (event.type === "delta") {
+                    if (event.content) {
+                        this.setState({ teamStreamingContent: event.content });
+                    } else if (event.delta) {
+                        this.setState((prev) => ({ teamStreamingContent: prev.teamStreamingContent + event.delta }));
+                    }
+                    return;
+                }
+                if (event.type === "snapshot") {
+                    this.setState({ teamStreamingContent: event.content || "" });
+                    return;
+                }
+                if (event.type === "done") {
+                    this.teamStreamAbortController = null;
+                    this.teamStreamingTaskId = null;
+                    this.teamStreamClosedTaskId = taskId;
+                    this.setState({ teamStreaming: false });
+                    this.loadDetail();
+                    return;
+                }
+                if (event.type === "error") {
+                    this.teamStreamAbortController = null;
+                    this.teamStreamingTaskId = null;
+                    this.teamStreamClosedTaskId = taskId;
+                    this.setState({ teamStreaming: false, teamStreamError: event.message || null });
+                    this.loadDetail();
+                }
+            },
+        }).catch((err: any) => {
+            if (controller.signal.aborted || this.taskId !== taskId) return;
+            this.teamStreamAbortController = null;
+            this.teamStreamingTaskId = null;
+            this.teamStreamClosedTaskId = taskId;
+            this.setState({ teamStreaming: false, teamStreamError: err?.message || null });
+            this.startFallbackPoll();
+        });
+    }
+
+    private stopTeamSummaryStream() {
+        if (this.teamStreamAbortController) {
+            this.teamStreamAbortController.abort();
+            this.teamStreamAbortController = null;
+        }
+        this.teamStreamingTaskId = null;
+    }
+
+    private resetTeamSummaryStreamForNewRun(taskId: number) {
+        this.stopTeamSummaryStream();
+        this.teamStreamClosedTaskId = null;
+        this.setState({ teamStreaming: false, teamStreamingContent: "", teamStreamError: null });
+        if (this.taskId === taskId) {
+            this.startTeamSummaryStream(taskId);
+        }
+    }
+
     handleRegenerate = () => {
         const { detail } = this.state;
         if (this.taskId == null) return;
@@ -859,31 +1051,60 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             : this.state.regenerateTopic.trim();
         if (!trimmed) return;
         this.setState({ regenerateSubmitting: true });
+        let restoreRefineDraft: (() => void) | null = null;
         try {
             const operateOnTeamSummary = this.shouldOperateOnTeamSummary();
             if (regenerateMode === "refine") {
                 if (detail?.summary_mode === SummaryMode.BY_PERSON && !operateOnTeamSummary) {
                     const baseResultId = this.state.personalResult?.id;
                     if (!baseResultId) return;
+                    const previousPersonalResult = this.state.personalResult;
+                    const previousMembers = this.state.members;
+                    restoreRefineDraft = () => {
+                        if (this.taskId === requestTaskId) this.setState({ personalResult: previousPersonalResult, members: previousMembers });
+                    };
                     this.setState({ showRegenerateModal: false, refineLoadingTarget: "personal" });
-                    const refined = await api.refinePersonalSummary(requestTaskId, {
+                    let draft = "";
+                    let refined: api.SummaryStreamEvent | null = null;
+                    await api.streamRefinePersonalSummary(requestTaskId, {
                         feedback: trimmed,
                         base_result_id: baseResultId,
                         base_version: this.state.personalResult?.version,
+                    }, {
+                        onEvent: (event) => {
+                            if (this.taskId !== requestTaskId) return;
+                            if (event.type === "delta") {
+                                draft = event.content || (draft + (event.delta || ""));
+                                const myUid = WKApp.loginInfo.uid;
+                                this.setState((prev) => ({
+                                    personalResult: prev.personalResult ? { ...prev.personalResult, content: draft } : prev.personalResult,
+                                    members: prev.members.map((m) => m.user_id === myUid ? { ...m, content: draft } : m),
+                                } as Pick<SummaryDetailPageState, "personalResult" | "members">));
+                                return;
+                            }
+                            if (event.type === "error") {
+                                throw new Error(event.message || t("summary.common.operationFailed"));
+                            }
+                            if (event.type === "done") {
+                                refined = event;
+                            }
+                        },
                     });
                     if (this.taskId !== requestTaskId) return;
+                    if (!refined) throw new Error(t("summary.common.operationFailed"));
+                    restoreRefineDraft = null;
                     Toast.success(t("summary.detail.refineSuccess"));
                     this.appendLocalScheduleInstruction(trimmed);
                     this.reloadScheduleAfterInstructionChange(requestTaskId);
                     this.setState((prev) => {
                         const nextPersonal = prev.personalResult ? {
                             ...prev.personalResult,
-                            id: refined.result_id || prev.personalResult.id,
-                            version: refined.version,
-                            content: refined.content,
-                            citations: (refined.citations as any) || prev.personalResult.citations,
-                            msg_count: refined.msg_count ?? prev.personalResult.msg_count,
-                            generated_at: refined.generated_at || prev.personalResult.generated_at,
+                            id: refined!.result_id || prev.personalResult.id,
+                            version: refined!.version || prev.personalResult.version,
+                            content: refined!.content || draft,
+                            citations: (refined!.citations as any) || prev.personalResult.citations,
+                            msg_count: refined!.msg_count ?? prev.personalResult.msg_count,
+                            generated_at: refined!.generated_at || prev.personalResult.generated_at,
                         } : prev.personalResult;
                         const myUid = WKApp.loginInfo.uid;
                         return {
@@ -892,8 +1113,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             personalResult: nextPersonal,
                             members: prev.members.map((m) => m.user_id === myUid ? {
                                 ...m,
-                                content: refined.content,
-                                citations: (refined.citations as any) || m.citations,
+                                content: refined!.content || draft,
+                                citations: (refined!.citations as any) || m.citations,
                             } : m),
                         } as Pick<SummaryDetailPageState, "showRegenerateModal" | "refineLoadingTarget" | "personalResult" | "members">;
                     });
@@ -901,12 +1122,43 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 } else {
                     const baseResultId = detail?.result_id;
                     if (!baseResultId) return;
+                    const previousDetail = this.state.detail;
+                    restoreRefineDraft = () => {
+                        if (this.taskId === requestTaskId) this.setState({ detail: previousDetail });
+                    };
                     this.setState({
                         showRegenerateModal: false,
                         refineLoadingTarget: operateOnTeamSummary ? "team" : "summary",
                     });
-                    const refined = await api.refineSummary(requestTaskId, { feedback: trimmed, base_result_id: baseResultId });
+                    let draft = "";
+                    let refined: api.SummaryStreamEvent | null = null;
+                    await api.streamRefineSummary(requestTaskId, { feedback: trimmed, base_result_id: baseResultId }, {
+                        onEvent: (event) => {
+                            if (this.taskId !== requestTaskId) return;
+                            if (event.type === "delta") {
+                                draft = event.content || (draft + (event.delta || ""));
+                                this.setState((prev) => {
+                                    if (!prev.detail?.result) return null;
+                                    return {
+                                        detail: {
+                                            ...prev.detail,
+                                            result: { ...prev.detail.result, content: draft },
+                                        },
+                                    } as Pick<SummaryDetailPageState, "detail">;
+                                });
+                                return;
+                            }
+                            if (event.type === "error") {
+                                throw new Error(event.message || t("summary.common.operationFailed"));
+                            }
+                            if (event.type === "done") {
+                                refined = event;
+                            }
+                        },
+                    });
                     if (this.taskId !== requestTaskId) return;
+                    if (!refined) throw new Error(t("summary.common.operationFailed"));
+                    restoreRefineDraft = null;
                     Toast.success(t("summary.detail.refineSuccess"));
                     this.appendLocalScheduleInstruction(trimmed);
                     this.reloadScheduleAfterInstructionChange(requestTaskId);
@@ -917,20 +1169,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             refineLoadingTarget: null,
                             detail: {
                                 ...prev.detail,
-                                result_id: refined.result_id,
+                                result_id: refined!.result_id || prev.detail.result_id,
                                 result: {
                                     ...prev.detail.result,
-                                    content: refined.content,
-                                    version: refined.version,
-                                    citations: (refined.citations as any) || prev.detail.result.citations,
-                                    team_citations: (refined.team_citations as any) || prev.detail.result.team_citations,
-                                    total_msg_count: refined.total_msg_count ?? prev.detail.result.total_msg_count,
-                                    total_token_used: refined.total_token_used ?? prev.detail.result.total_token_used,
-                                    model_version: refined.model_version || prev.detail.result.model_version,
-                                    operation_type: refined.operation_type,
-                                    operation_note: refined.operation_note,
-                                    parent_result_id: refined.parent_result_id,
-                                    generated_at: refined.generated_at || prev.detail.result.generated_at,
+                                    content: refined!.content || draft,
+                                    version: refined!.version || prev.detail.result.version,
+                                    citations: (refined!.citations as any) || prev.detail.result.citations,
+                                    team_citations: (refined!.team_citations as any) || prev.detail.result.team_citations,
+                                    total_msg_count: refined!.total_msg_count ?? prev.detail.result.total_msg_count,
+                                    total_token_used: refined!.total_token_used ?? prev.detail.result.total_token_used,
+                                    model_version: refined!.model_version || prev.detail.result.model_version,
+                                    operation_type: refined!.operation_type,
+                                    operation_note: refined!.operation_note,
+                                    parent_result_id: refined!.parent_result_id,
+                                    generated_at: refined!.generated_at || prev.detail.result.generated_at,
                                 },
                             },
                         } as Pick<SummaryDetailPageState, "showRegenerateModal" | "refineLoadingTarget" | "detail">;
@@ -942,6 +1194,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     await api.regenerateSummary(requestTaskId, { topic: trimmed });
                     if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.regenerateStarted"));
+                    this.resetTeamSummaryStreamForNewRun(requestTaskId);
                     this.resetLocalScheduleInstruction(trimmed);
                     this.setState((prev) => prev.detail ? {
                         showRegenerateModal: false,
@@ -956,6 +1209,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     await api.regeneratePersonalSummary(requestTaskId, { topic: trimmed });
                     if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.regenerateStarted"));
+                    this.resetSummaryStreamForNewRun(requestTaskId);
                     this.resetLocalScheduleInstruction(trimmed);
                     this.setState((prev) => ({
                         showRegenerateModal: false,
@@ -986,6 +1240,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     await api.regenerateSummary(requestTaskId, { topic: trimmed });
                     if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.regenerateStarted"));
+                    if (detail?.summary_mode === SummaryMode.BY_PERSON) {
+                        this.resetSummaryStreamForNewRun(requestTaskId);
+                    }
                     this.resetLocalScheduleInstruction(trimmed);
                     this.setState({ showRegenerateModal: false });
                     this.loadDetail();
@@ -994,6 +1251,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (this.taskId !== requestTaskId) return;
             window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskId: requestTaskId } }));
         } catch (err: any) {
+            restoreRefineDraft?.();
             this.setState({ refineLoadingTarget: null });
             Toast.error(err.message || t("summary.common.operationFailed"));
         } finally {
@@ -1678,6 +1936,33 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 <div className="summary-detail-team-generating">
                     <Spin size="small" />
                     <span>{t(descKey)}</span>
+                </div>
+            </div>
+        );
+    }
+
+    renderStreamingContent() {
+        const content = this.state.streamingContent.trim();
+        if (!this.state.streaming || !content) return null;
+        return (
+            <div className="summary-detail-personal summary-detail-streaming">
+                <div className="summary-detail-content-box">
+                    <CitationText content={this.state.streamingContent} citations={[]} />
+                </div>
+            </div>
+        );
+    }
+
+    renderTeamStreamingContent() {
+        const content = this.state.teamStreamingContent.trim();
+        if (!this.state.teamStreaming || !content) return null;
+        return (
+            <div className="summary-detail-team summary-detail-streaming">
+                <div className="summary-detail-section-header">
+                    <span>{this.context.t("summary.detail.teamSummary")}</span>
+                </div>
+                <div className="summary-detail-content-box">
+                    <CitationText content={this.state.teamStreamingContent} citations={[]} members={this.state.members} />
                 </div>
             </div>
         );
@@ -2839,7 +3124,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.detail.forwardToChat")}
                             </Button>
                         )}
-                        {detail && detail.status === TaskStatus.COMPLETED && (
+                        {SHOW_FORWARD_TO_MATTER && detail && detail.status === TaskStatus.COMPLETED && (
                             <Button
                                 theme="borderless"
                                 icon={<IconSend />}
@@ -2942,20 +3227,23 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                         {/* need1：多人协作不再单独显示「我的总结」区块（自己内容改到参与者报告
                                             里我那条，need3）；单人 BY_PERSON 维持显示「我的总结」及其行内编辑。 */}
                                         {!this.isMultiCollab() && (
-                                            this.state.isEditing && this.state.personalResult && detail.result_id ? (
-                                                <div className="summary-detail-personal">
-                                                    <h3>{t("summary.detail.mySummaryPlain")}</h3>
-                                                    <SummaryEditor
-                                                        taskId={detail.task_id}
-                                                        baseResultId={detail.result_id}
-                                                        initialContent={this.state.personalResult.content || ""}
-                                                        onSave={this.handleEditSave}
-                                                        onCancel={this.handleEditCancel}
-                                                    />
-                                                </div>
-                                            ) : (
-                                                this.renderPersonalSummary()
-                                            )
+                                            <>
+                                                {this.shouldShowProcessingCard() && !this.personalReady && this.renderProcessing()}
+                                                {this.state.isEditing && this.state.personalResult && detail.result_id ? (
+                                                    <div className="summary-detail-personal">
+                                                        <h3>{t("summary.detail.mySummaryPlain")}</h3>
+                                                        <SummaryEditor
+                                                            taskId={detail.task_id}
+                                                            baseResultId={detail.result_id}
+                                                            initialContent={this.state.personalResult.content || ""}
+                                                            onSave={this.handleEditSave}
+                                                            onCancel={this.handleEditCancel}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    this.renderPersonalSummary()
+                                                )}
+                                            </>
                                         )}
                                         {/* 回归修复：多人协作页给「我自己」补回「提交给全部」轻量入口。
                                             不违反 need1（不恢复我的总结正文区），仅一句提示 + 提交按钮。
@@ -2963,17 +3251,28 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                         {this.isMultiCollabRegenerating() && this.shouldShowWorkflowCard() && this.renderProcessing()}
                                         {this.isMultiCollabRegenerating() && !this.shouldShowWorkflowCard() && this.renderTeamGeneratingStatus()}
                                         {this.renderMySubmitBar()}
-                                        {this.renderTeamSummary()}
+                                        {this.state.teamStreaming && this.state.teamStreamingContent.trim() ? (
+                                            <>
+                                                {this.renderTeamStreamingContent()}
+                                                {this.renderStreamingContent()}
+                                            </>
+                                        ) : (
+                                            <>
+                                                {this.renderStreamingContent()}
+                                                {this.renderTeamSummary()}
+                                            </>
+                                        )}
                                         {this.renderMemberStatus()}
                                         {this.renderParticipantReports()}
                                     </>
                                 )}
 
-                                {this.shouldShowProcessingCard() &&
-                                    !this.isMultiCollabRegenerating() &&
+                                {detail.summary_mode !== SummaryMode.BY_PERSON &&
+                                    this.shouldShowProcessingCard() &&
                                     !this.personalReady &&
                                     this.renderProcessing()
                                 }
+                                {detail.summary_mode !== SummaryMode.BY_PERSON && this.renderStreamingContent()}
 
                                 {detail.status === TaskStatus.FAILED && this.renderFailed()}
 
