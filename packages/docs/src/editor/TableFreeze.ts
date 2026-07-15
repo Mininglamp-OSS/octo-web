@@ -26,6 +26,7 @@ import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import type { EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
+import type { Node as PMNode } from '@tiptap/pm/model'
 import { TableMap, selectionCell } from '@tiptap/pm/tables'
 
 /** How many leading rows / columns of a table are frozen. `{ rows: 0, cols: 0 }` means unfrozen. */
@@ -127,16 +128,69 @@ export function clearFrozenCell(cell: HTMLElement): void {
 }
 
 /**
- * Apply sticky styling to the first `spec.rows` rows and `spec.cols` columns of `table`. Offsets are
- * measured from the live DOM so they follow column resizes. A frozen row's cells stick to the top; a
- * frozen column's cells stick to the left; a corner cell (both) stacks above either single axis.
+ * Per-visual-column widths for a table, measured from the live DOM against the span-aware grid.
+ *
+ * A `colspan` cell owns several grid columns (one DOM cell, N visual columns) and a `rowspan` cell
+ * is absent from the `<tr>`s it covers, so a plain `row.cells[i].offsetWidth` is NOT the width of
+ * visual column `i`. We walk the ProseMirror rows/cells in lockstep with the DOM cells — they render
+ * in the same order — and size each column from a `colspan=1` cell wherever one exists, falling back
+ * to splitting a spanning cell's width across the columns it is the only source for.
  */
-export function applyFrozenStyles(table: HTMLTableElement, spec: FreezeSpec): void {
-  const rows = Array.from(table.rows)
-  if (!rows.length) return
-  const frozenRows = Math.max(0, Math.min(spec.rows, rows.length))
-  const colCount = rows[0].cells.length
-  const frozenCols = Math.max(0, Math.min(spec.cols, colCount))
+function measureColumnWidths(domRows: HTMLTableRowElement[], node: PMNode, map: TableMap): number[] {
+  const widths = new Array<number>(map.width).fill(NaN)
+  const spanning: { left: number; right: number; width: number }[] = []
+
+  node.forEach((rowNode, rowOffset, rowIdx) => {
+    const domRow = domRows[rowIdx]
+    if (!domRow) return
+    const domCells = domRow.cells
+    let d = 0
+    rowNode.forEach((_cellNode, cellOffset) => {
+      const cell = domCells[d++]
+      if (!cell) return
+      const rect = map.findCell(rowOffset + 1 + cellOffset)
+      if (rect.right - rect.left === 1) {
+        if (Number.isNaN(widths[rect.left])) widths[rect.left] = cell.offsetWidth
+      } else {
+        spanning.push({ left: rect.left, right: rect.right, width: cell.offsetWidth })
+      }
+    })
+  })
+
+  // Columns only ever covered by spanning cells: split the spanning cell's width across the columns
+  // it alone touches, so cumulative left offsets stay monotonic.
+  for (const s of spanning) {
+    const unknown: number[] = []
+    let known = 0
+    for (let c = s.left; c < s.right; c++) {
+      if (Number.isNaN(widths[c])) unknown.push(c)
+      else known += widths[c]
+    }
+    if (unknown.length) {
+      const each = Math.max(0, (s.width - known) / unknown.length)
+      for (const c of unknown) widths[c] = each
+    }
+  }
+
+  for (let c = 0; c < widths.length; c++) if (Number.isNaN(widths[c])) widths[c] = 0
+  return widths
+}
+
+/**
+ * Apply sticky styling to the first `spec.rows` rows and `spec.cols` columns of `table`. Frozen-band
+ * membership and the sticky offsets are derived from the table's `TableMap` — the same span-aware
+ * grid model the freeze commands use — NOT from raw DOM cell indices, so merged cells stay aligned:
+ * a `colspan` cell occupies its full column range and a `rowspan` cell only lives in the row it
+ * starts in (the rows it covers have no DOM cell of their own). Offsets are still measured from the
+ * live DOM so they follow column resizes. A frozen row's cells stick to the top; a frozen column's
+ * cells stick to the left; a corner cell (both) stacks above either single axis.
+ */
+export function applyFrozenStyles(table: HTMLTableElement, node: PMNode, spec: FreezeSpec): void {
+  const domRows = Array.from(table.rows)
+  if (!domRows.length) return
+  const map = TableMap.get(node)
+  const frozenRows = Math.max(0, Math.min(spec.rows, map.height))
+  const frozenCols = Math.max(0, Math.min(spec.cols, map.width))
   const anyFrozen = frozenRows > 0 || frozenCols > 0
 
   // A frozen table switches to separate borders and is no longer its own scroll container — both
@@ -150,28 +204,34 @@ export function applyFrozenStyles(table: HTMLTableElement, spec: FreezeSpec): vo
   const wrapper = table.closest('.tableWrapper')
   if (wrapper) wrapper.classList.toggle('octo-has-frozen-rows', frozenRows > 0)
 
-  const rowTops = cumulativeOffsets(rows.slice(0, frozenRows).map((r) => r.offsetHeight))
-  const colLefts = cumulativeOffsets(
-    Array.from(rows[0].cells)
-      .slice(0, frozenCols)
-      .map((c) => c.offsetWidth),
-  )
+  // Each <tr> is exactly one visual row, so DOM row index == grid row index — top offsets come
+  // straight from the row boxes. Column widths must respect spans, so measure against the grid.
+  const rowTops = cumulativeOffsets(domRows.slice(0, frozenRows).map((r) => r.offsetHeight))
+  const colWidths = measureColumnWidths(domRows, node, map)
+  const colLefts = cumulativeOffsets(colWidths.slice(0, frozenCols))
 
-  rows.forEach((row, rIdx) => {
-    Array.from(row.cells).forEach((cell, cIdx) => {
-      const inFrozenRow = rIdx < frozenRows
-      const inFrozenCol = cIdx < frozenCols
+  node.forEach((rowNode, rowOffset, rowIdx) => {
+    const domRow = domRows[rowIdx]
+    if (!domRow) return
+    const domCells = domRow.cells
+    let d = 0
+    rowNode.forEach((_cellNode, cellOffset) => {
+      const cell = domCells[d++]
+      if (!cell) return
+      const rect = map.findCell(rowOffset + 1 + cellOffset)
+      const inFrozenRow = rect.top < frozenRows
+      const inFrozenCol = rect.left < frozenCols
       if (!inFrozenRow && !inFrozenCol) return
       cell.setAttribute(FROZEN_ATTR, '')
       cell.classList.add('octo-frozen-cell')
       cell.style.position = 'sticky'
       if (inFrozenRow) {
         cell.classList.add('octo-frozen-row-cell')
-        cell.style.top = `${rowTops[rIdx]}px`
+        cell.style.top = `${rowTops[rect.top]}px`
       }
       if (inFrozenCol) {
         cell.classList.add('octo-frozen-col-cell')
-        cell.style.left = `${colLefts[cIdx]}px`
+        cell.style.left = `${colLefts[rect.left]}px`
       }
       cell.style.zIndex = inFrozenRow && inFrozenCol ? '4' : inFrozenRow ? '3' : '2'
     })
@@ -217,6 +277,8 @@ class FreezeStyleView {
     if (!map || map.size === 0) return
     map.forEach((spec, pos) => {
       if (spec.rows <= 0 && spec.cols <= 0) return
+      const node = this.view.state.doc.nodeAt(pos)
+      if (!node || node.type.name !== 'table') return
       let dom: Node | null = null
       try {
         dom = this.view.nodeDOM(pos)
@@ -227,7 +289,7 @@ class FreezeStyleView {
       const table =
         dom instanceof HTMLTableElement ? dom : dom.querySelector<HTMLTableElement>('table')
       if (!table) return
-      applyFrozenStyles(table, spec)
+      applyFrozenStyles(table, node, spec)
     })
   }
 }
