@@ -19,6 +19,7 @@ import type { ReactNode } from 'react'
 import { TextSelection } from '@tiptap/pm/state'
 import { CellSelection } from '@tiptap/pm/tables'
 import type { Editor } from '@tiptap/core'
+import { Tooltip } from '@univerjs/design'
 import { t } from '../octoweb/index.ts'
 
 // Largest table the grid picker can size in one drag. Big enough for the common cases; authors who
@@ -383,16 +384,18 @@ export function TableGridPicker({ editor }: { editor: Editor }) {
 
   return (
     <span className="octo-color-control octo-table-picker-control" ref={ref}>
-      <button
-        type="button"
-        className={'octo-tb-btn' + (open ? ' is-active' : '')}
-        title={t('docs.toolbar.table')}
-        aria-label={t('docs.toolbar.table')}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <IconTable />
-      </button>
+      <Tooltip title={t('docs.toolbar.table')} asChild>
+        <button
+          type="button"
+          className={'octo-tb-btn' + (open ? ' is-active' : '')}
+          title={t('docs.toolbar.table')}
+          aria-label={t('docs.toolbar.table')}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <IconTable />
+        </button>
+      </Tooltip>
       {open && (
         <span className="octo-color-popover octo-table-picker" role="dialog">
           <span className="octo-table-grid" role="grid" aria-label={t('docs.table.pickerLabel')}>

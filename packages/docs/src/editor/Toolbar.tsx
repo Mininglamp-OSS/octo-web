@@ -2,56 +2,80 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import type { ReactNode, UIEvent } from 'react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import { CellSelection } from '@tiptap/pm/tables'
+import { NodeSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/core'
+// Univer's own design-system components (@univerjs/design, Apache-2.0) so the docs toolbar uses the
+// SAME controls as the sheet instead of bespoke ones. Its stylesheet is global but scoped to
+// `univer-*` classes, so it doesn't bleed into docs' own styles.
+import { Select, ConfigProvider, DropdownMenu, Tooltip, ColorPicker } from '@univerjs/design'
+import '@univerjs/design/lib/index.css'
+// The @univerjs/design locale bundles supply the ColorPicker's own button labels (更多 / 确定 /
+// 取消). The docs toolbar mounts its own <ConfigProvider>, so we hand it the bundle matching the
+// app's current language — otherwise those labels render blank (ConfigContext.locale is undefined).
+import designZhCN from '@univerjs/design/locale/zh-CN'
+import designEnUS from '@univerjs/design/locale/en-US'
+// Univer's own icon set (@univerjs/icons, MIT) — the SAME icons the sheet uses, so identical
+// functions read with identical glyphs across docs and sheet.
+import {
+  UndoIcon,
+  RedoIcon,
+  BoldIcon,
+  ItalicIcon,
+  UnderlineIcon,
+  StrikethroughIcon,
+  LeftJustifyingIcon,
+  HorizontallyIcon,
+  RightJustifyingIcon,
+  AlignTextBothIcon,
+  CodeIcon,
+  DividerIcon,
+  LinkIcon as UniverLinkIcon,
+  UnorderIcon,
+  OrderIcon,
+  TodoListDoubleIcon,
+  UnlinkIcon,
+  BrushIcon,
+  ClearFormatDoubleIcon,
+  AddImageIcon,
+  FolderIcon,
+  FlagIcon,
+  SearchIcon,
+  ArrowRightIcon,
+  PaintBucketDoubleIcon as HighlightingIcon,
+  FontColorDoubleIcon,
+  SuperscriptIcon,
+  SubscriptIcon,
+  FontSizeIncreaseIcon,
+  FontSizeReduceIcon,
+  CopyIcon,
+  WriteIcon,
+  DeleteIcon,
+} from '@univerjs/icons'
 import { pickAndUploadImage } from './imageUpload.ts'
 import { pickAndUploadFile } from './fileUpload.ts'
-import { promptAndInsertBookmark } from './bookmarkInsert.ts'
+import { insertBookmarkFromUrl } from './bookmarkInsert.ts'
 import { getFindState, revealMatchInView, expandAncestorDetails, type FindReplaceState } from './findReplace.ts'
 import { pickerEmojis } from './emoji.ts'
-import { promptAndInsertMath } from './mathInsert.ts'
 import { sanitizeLinkHref } from './sanitize.ts'
 import { CALLOUT_VARIANTS, type CalloutVariant } from './Callout.ts'
 import { INDENT_MAX_LEVEL } from './ParagraphIndent.ts'
 import { TableGridPicker } from './TableControls.tsx'
+import { FormulaControl } from './FormulaControl.tsx'
 import { capturePaintMarks, applyPaintMarks } from './formatPainter.ts'
-import { HIGHLIGHT_COLORS, TEXT_COLORS, normalizeHexColor } from './colorPalette.ts'
-import { t } from '../octoweb/index.ts'
+import { HIGHLIGHT_COLORS, TEXT_COLORS } from './colorPalette.ts'
+import { t, i18n } from '../octoweb/index.ts'
 import { FONT_FAMILY_ENABLED, LINE_SPACING_ENABLED } from '../config.ts'
 import { FONT_FAMILIES } from './fontFamilies.ts'
 import type { Mark } from '@tiptap/pm/model'
 
 // Inline SVG toolbar icons (C2–C4): crisp, correct glyphs for underline / strikethrough /
 // alignment, replacing the ambiguous text placeholders. 16×16, fill: currentColor (via .octo-tb-icon).
-const IconUnderline = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M12 17c3.31 0 6-2.69 6-6V3h-2.5v8c0 1.93-1.57 3.5-3.5 3.5S8.5 12.93 8.5 11V3H6v8c0 3.31 2.69 6 6 6zM5 19v2h14v-2H5z" />
-  </svg>
-)
-const IconStrike = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M3 12.2h18v1.6H3v-1.6zM10.7 9.5c-.3-.2-.6-.5-.8-.8-.2-.3-.3-.7-.3-1.1 0-.7.3-1.3.8-1.7.6-.4 1.3-.6 2.2-.6.9 0 1.7.2 2.2.7.5.4.8 1 .9 1.8h2.1c0-.8-.3-1.5-.7-2.2-.4-.6-1-1.1-1.8-1.5-.8-.3-1.6-.5-2.6-.5-1 0-1.9.2-2.7.5-.8.3-1.4.8-1.8 1.4-.4.6-.6 1.3-.6 2 0 .9.3 1.6.9 2.3h4zM13.9 15.2c.3.3.5.7.5 1.2 0 .7-.3 1.2-.8 1.6-.5.4-1.3.6-2.2.6-1 0-1.8-.2-2.4-.7-.6-.4-.9-1.1-.9-1.9H6c0 .9.2 1.6.7 2.3.5.7 1.1 1.2 2 1.5.8.4 1.8.5 2.8.5 1.5 0 2.7-.3 3.6-1 .9-.7 1.3-1.6 1.3-2.7 0-.6-.1-1.1-.4-1.6h-2.2c.1.1.1.2.1.3z" />
-  </svg>
-)
-const IconAlignLeft = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M3 5h18v2H3V5zm0 4h12v2H3V9zm0 4h18v2H3v-2zm0 4h12v2H3v-2z" />
-  </svg>
-)
-const IconAlignCenter = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M3 5h18v2H3V5zm3 4h12v2H6V9zm-3 4h18v2H3v-2zm3 4h12v2H6v-2z" />
-  </svg>
-)
-const IconAlignRight = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M3 5h18v2H3V5zm6 4h12v2H9V9zm-6 4h18v2H3v-2zm6 4h12v2H9v-2z" />
-  </svg>
-)
-const IconAlignJustify = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M3 5h18v2H3V5zm0 4h18v2H3V9zm0 4h18v2H3v-2zm0 4h18v2H3v-2z" />
-  </svg>
-)
+const IconUnderline = () => <UnderlineIcon className="octo-tb-icon" />
+const IconStrike = () => <StrikethroughIcon className="octo-tb-icon" />
+const IconAlignLeft = () => <LeftJustifyingIcon className="octo-tb-icon" />
+const IconAlignCenter = () => <HorizontallyIcon className="octo-tb-icon" />
+const IconAlignRight = () => <RightJustifyingIcon className="octo-tb-icon" />
+const IconAlignJustify = () => <AlignTextBothIcon className="octo-tb-icon" />
 // Indent buttons (SCHEMA_VERSION 18): lines with a right/left chevron marking the indent direction.
 const IconIndentIncrease = () => (
   <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -66,26 +90,10 @@ const IconIndentDecrease = () => (
 
 // Toolbar item ⑧ (batch 7): list group + quote/code as icon buttons, link as a chain icon.
 // 16×16, fill: currentColor via .octo-tb-icon.
-const IconList = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M4 6.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm0 5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm0 5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM9 7h11v2H9V7zm0 5h11v2H9v-2zm0 5h11v2H9v-2z" />
-  </svg>
-)
-const IconBulletList = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M4 6.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm0 5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zm0 5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM9 7h11v2H9V7zm0 5h11v2H9v-2zm0 5h11v2H9v-2z" />
-  </svg>
-)
-const IconOrderedList = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M9 7h11v2H9V7zm0 5h11v2H9v-2zm0 5h11v2H9v-2zM3.5 5.5h1.6v4.1h-1V6.4h-.6v-.9zm.1 6.2h1.9v.85L4.3 14.4h1.3v.9H3.4v-.85l1.2-1.85H3.6v-.9zm-.1 5.1h2v.85H4.6v.55h.9v.8h-.9v.55h.95v.85H3.5v-4.05z" />
-  </svg>
-)
-const IconTaskList = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M10 7h10v2H10V7zm0 8h10v2H10v-2zM3.3 8.1l1.2 1.2 2.4-2.4-.85-.85L4.5 7.6l-.35-.35-.85.85zm0 8l1.2 1.2 2.4-2.4-.85-.85-1.55 1.55-.35-.35-.85.85z" />
-  </svg>
-)
+const IconList = () => <UnorderIcon className="octo-tb-icon" />
+const IconBulletList = () => <UnorderIcon className="octo-tb-icon" />
+const IconOrderedList = () => <OrderIcon className="octo-tb-icon" />
+const IconTaskList = () => <TodoListDoubleIcon className="octo-tb-icon" />
 const IconQuote = () => (
   <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
     <path d="M7.2 7C5.4 7 4 8.4 4 10.2c0 1.7 1.3 3 3 3 .2 0 .4 0 .6-.1-.4 1.2-1.5 2.2-3 2.6l.6 1.3c2.7-.7 4.5-2.9 4.5-5.9V10.2C9.7 8.4 8.4 7 7.2 7zm9 0C14.4 7 13 8.4 13 10.2c0 1.7 1.3 3 3 3 .2 0 .4 0 .6-.1-.4 1.2-1.5 2.2-3 2.6l.6 1.3c2.7-.7 4.5-2.9 4.5-5.9V10.2C18.7 8.4 17.4 7 16.2 7z" />
@@ -93,91 +101,29 @@ const IconQuote = () => (
 )
 // codeBlock: a literal `</>` — left chevron, a centered forward slash, right chevron
 // (boss reference). Filled glyph via .octo-tb-icon to match the other toolbar icons.
-const IconCode = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M8.7 17.3 3.4 12l5.3-5.3 1.3 1.4L5.9 12l4.1 4.1-1.3 1.2zm6.6 0L14 16.1l4.1-4.1-4.1-4.1 1.3-1.4L20.6 12l-5.3 5.3zM13.9 5.2l1.9.5-3.9 13.1-1.9-.5 3.9-13.1z" />
-  </svg>
-)
+const IconCode = () => <CodeIcon className="octo-tb-icon" />
 // Link (XIN-1051): the standard chain-link glyph (lucide `link`) — two diagonal, interlocking
 // hooked curves. Stroke line-art, not filled: uses .octo-tb-icon-stroke (fill:none;
 // stroke:currentColor) with round caps/joins so it reads as a recognizable link icon at 16px
 // rather than the old two-capsule filled blob. Aligned with IconUnlink below.
-const IconLink = () => (
-  <svg
-    className="octo-tb-icon-stroke"
-    viewBox="0 0 24 24"
-    aria-hidden="true"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-  </svg>
-)
+const IconLink = () => <UniverLinkIcon className="octo-tb-icon" />
 // Unlink (XIN-1051): the same chain pulled apart (lucide `unlink`) — the two hooked curves with a
 // break plus the four short "snap" ticks. Same stroke style as IconLink so the pair reads as a set.
-const IconUnlink = () => (
-  <svg
-    className="octo-tb-icon-stroke"
-    viewBox="0 0 24 24"
-    aria-hidden="true"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="m18.84 12.25 1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71" />
-    <path d="m5.17 11.75-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71" />
-    <line x1="8" x2="8" y1="2" y2="5" />
-    <line x1="2" x2="5" y1="8" y2="8" />
-    <line x1="16" x2="16" y1="19" y2="22" />
-    <line x1="19" x2="22" y1="16" y2="16" />
-  </svg>
-)
+const IconUnlink = () => <UnlinkIcon className="octo-tb-icon" />
 
 // Clear-format: a tilted eraser/rubber sweeping over a baseline (boss reference). Filled glyph
 // via .octo-tb-icon to match the other toolbar icons.
-const IconEraser = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M15.1 3.7 21.4 10a2 2 0 0 1 0 2.8l-7 7H17v1.7h-7.4a2 2 0 0 1-1.4-.6L3.7 16.6a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 0 1 2.8 0zM8.3 14.2l-3.2 3.2 2.9 2.9h1.7l2.8-2.8-4.2-3.3z" />
-  </svg>
-)
+const IconEraser = () => <ClearFormatDoubleIcon className="octo-tb-icon" />
 
 // Format painter (XIN-963): a paint-roller glyph — the classic "copy formatting" affordance used
 // by Word / Feishu / Google Docs. Filled via .octo-tb-icon to match the other toolbar icons.
-const IconFormatPainter = () => (
-  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M4 4h13a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm14 3h1.5a1.5 1.5 0 0 1 1.5 1.5V12a1 1 0 0 1-1 1h-6a1 1 0 0 0-1 1v1.2a2 2 0 0 1 1 1.8v4a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-4a2 2 0 0 1 1-1.8V14a3 3 0 0 1 3-3h5V9h-1V7z" />
-  </svg>
-)
+const IconFormatPainter = () => <BrushIcon className="octo-tb-icon" />
 
 // Undo / redo: stroke-style curved-arrow glyphs (boss reference). NOT filled — they use
 // .octo-tb-icon-stroke (fill:none; stroke:currentColor) so they inherit the light-grey
 // #AAAAAA from the .octo-tb-undoredo wrapper. Redo is the horizontal mirror of Undo.
-const IconUndo = () => (
-  <svg className="octo-tb-icon-stroke" viewBox="0 0 24 24" aria-hidden="true">
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M9 7 4 12l5 5M4 12h11a5 5 0 0 1 0 10h-1"
-    />
-  </svg>
-)
-const IconRedo = () => (
-  <svg className="octo-tb-icon-stroke" viewBox="0 0 24 24" aria-hidden="true">
-    <path
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M15 7l5 5-5 5M20 12H9a5 5 0 0 0 0 10h1"
-    />
-  </svg>
-)
+const IconUndo = () => <UndoIcon className="octo-tb-icon" />
+const IconRedo = () => <RedoIcon className="octo-tb-icon" />
 
 // Languages offered in the code-block language selector. A curated subset of the
 // highlight.js `common` set registered in extensions.ts; "auto" (empty value)
@@ -283,17 +229,236 @@ function Btn({
   disabled?: boolean
   title?: string
 }) {
-  return (
+  const btn = (
     <button
       type="button"
       className={'octo-tb-btn' + (active ? ' is-active' : '')}
-      title={title}
+      aria-label={title}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       disabled={disabled}
     >
       {label}
     </button>
+  )
+  // Styled hover tooltip (matches the sheet's toolbar), instead of the plain native `title`.
+  return title ? (
+    <Tooltip title={title} asChild>
+      {btn}
+    </Tooltip>
+  ) : (
+    btn
+  )
+}
+
+/**
+ * Resolve a raw link input into a safe, absolute href — or null when it is not a usable link.
+ *   - explicit scheme ("https://x", "mailto:a@b") / protocol-relative ("//cdn/x") → hand straight to
+ *     sanitizeLinkHref so the §3.7 scheme whitelist still rejects javascript:/data:/ftp: etc.
+ *   - scheme-less: a bare host/domain ("google.com") would resolve relative to the origin and become
+ *     a same-origin path, so prepend https:// — but ONLY when it looks like a host (a dotted label,
+ *     or "localhost"). A bare word like "abc" is NOT a URL and resolves to null.
+ * Module-scoped so both the toolbar link popover and the link bubble (LinkBubbleMenu) share it.
+ */
+function resolveLinkHref(raw: string): string | null {
+  const v = raw.trim()
+  if (!v) return null
+  if (v.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(v)) return sanitizeLinkHref(v)
+  const host = v.split(/[/?#]/, 1)[0]
+  const looksLikeHost = host === 'localhost' || /[^.\s]\.[^.\s]/.test(host)
+  return looksLikeHost ? sanitizeLinkHref(`https://${v}`) : null
+}
+
+/**
+ * Link bubble (sheet-parity): when the caret sits in / a selection touches a link, a small card
+ * floats by it — 🔗 + the URL (click opens it in a new tab) + copy + edit + unlink — mirroring the
+ * sheet's link popup. The link is NOT edited inline: changing the href goes through this card's edit
+ * field. openOnClick is off in the live editor (extensions.ts) so a click lands the caret in the
+ * link and surfaces this card instead of navigating.
+ */
+export function LinkBubbleMenu({ editor }: { editor: Editor }) {
+  useEditorTick(editor)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const href = (editor.getAttributes('link').href as string) || ''
+
+  // Drop edit mode when the caret moves to a different link (or off links), so the card never
+  // reopens in a stale editing state. Render-phase reset keyed off the current href.
+  const seenHref = useRef(href)
+  if (href !== seenHref.current) {
+    seenHref.current = href
+    if (editing) setEditing(false)
+  }
+
+  function applyEdit() {
+    const resolved = resolveLinkHref(draft)
+    if (!resolved) return
+    editor.chain().focus().extendMarkRange('link').setLink({ href: resolved }).run()
+    setEditing(false)
+  }
+
+  return (
+    <BubbleMenu
+      editor={editor}
+      pluginKey="linkBubbleMenu"
+      shouldShow={({ editor: e }) =>
+        e.isActive('link') && e.isEditable && !(e.state.selection instanceof CellSelection)
+      }
+    >
+      <div className="octo-link-bubble">
+        {editing ? (
+          <>
+            <input
+              className="octo-link-bubble-input"
+              autoFocus
+              value={draft}
+              placeholder={t('docs.toolbar.linkPlaceholder')}
+              onMouseDown={(e) => e.stopPropagation()}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  applyEdit()
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setEditing(false)
+                }
+              }}
+            />
+            <Btn label={t('docs.toolbar.linkConfirm')} onClick={applyEdit} />
+          </>
+        ) : (
+          <>
+            <UniverLinkIcon className="octo-tb-icon octo-link-bubble-icon" />
+            <a
+              className="octo-link-bubble-url"
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={href}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              {href}
+            </a>
+            <Btn
+              label={<CopyIcon className="octo-tb-icon" />}
+              title={t('docs.toolbar.linkCopy')}
+              onClick={() => {
+                if (href && navigator.clipboard) void navigator.clipboard.writeText(href)
+              }}
+            />
+            <Btn
+              label={<WriteIcon className="octo-tb-icon" />}
+              title={t('docs.toolbar.linkEdit')}
+              onClick={() => {
+                setDraft(href)
+                setEditing(true)
+              }}
+            />
+            <Btn
+              label={<UnlinkIcon className="octo-tb-icon" />}
+              title={t('docs.toolbar.linkRemove')}
+              onClick={() => editor.chain().focus().extendMarkRange('link').unsetLink().run()}
+            />
+          </>
+        )}
+      </div>
+    </BubbleMenu>
+  )
+}
+
+/**
+ * Formula bubble (sheet-parity): when a math node (inline or block) is selected, a floating toolbar
+ * offers — like the sheet's — A⁻/A⁺ font size, a colour picker and Delete. Editing itself is IN-PLACE
+ * (click the formula → it becomes an editable MathLive field, see mathExtended.ts), so there's no
+ * edit button and the toolbar matches the sheet's (A⁻/A⁺ · colour · delete). Size/colour write the
+ * node's fontSize/color attrs; re-selecting the node after each change keeps the bubble anchored.
+ */
+export function MathBubbleMenu({ editor }: { editor: Editor }) {
+  useEditorTick(editor)
+  const [colorOpen, setColorOpen] = useState(false)
+
+  const mathNodeName = (): 'inlineMath' | 'blockMath' | null =>
+    editor.isActive('inlineMath') ? 'inlineMath' : editor.isActive('blockMath') ? 'blockMath' : null
+
+  // Update the selected formula's attrs WITHOUT touching editor focus or the DOM selection: a raw
+  // setNodeMarkup transaction, re-pinning the NodeSelection so the bubble stays anchored. Crucially
+  // it never calls editor.focus() / setNodeSelection-via-chain (which would blur the in-place MathLive
+  // field and kick it out of edit mode) — so adjusting size/colour works whether the formula is just
+  // selected OR being edited. The buttons' onMouseDown-preventDefault keeps the field focused.
+  function updateMathAttrs(patch: Record<string, unknown>) {
+    const pos = editor.state.selection.from
+    const node = editor.state.doc.nodeAt(pos)
+    if (!node || (node.type.name !== 'inlineMath' && node.type.name !== 'blockMath')) return
+    const tr = editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...patch })
+    tr.setSelection(NodeSelection.create(tr.doc, pos))
+    editor.view.dispatch(tr)
+  }
+
+  // A⁻/A⁺: step the node's fontSize (base 20px when unset), clamped 8–72, mirroring the sheet.
+  function stepSize(delta: number) {
+    const nm = mathNodeName()
+    if (!nm) return
+    const cur = parseInt(String(editor.getAttributes(nm).fontSize || '20'), 10) || 20
+    updateMathAttrs({ fontSize: `${Math.max(8, Math.min(72, cur + delta))}px` })
+  }
+
+  function setMathColor(color: string | null) {
+    updateMathAttrs({ color })
+    setColorOpen(false)
+  }
+
+  return (
+    <BubbleMenu
+      editor={editor}
+      pluginKey="mathBubbleMenu"
+      shouldShow={({ editor: e }) => (e.isActive('inlineMath') || e.isActive('blockMath')) && e.isEditable}
+    >
+      <div className="octo-bubble-menu octo-math-bubble">
+        <Btn label={<FontSizeReduceIcon className="octo-tb-icon" />} title={t('docs.toolbar.fontSizeReduce')} onClick={() => stepSize(-2)} />
+        <Btn label={<FontSizeIncreaseIcon className="octo-tb-icon" />} title={t('docs.toolbar.fontSizeIncrease')} onClick={() => stepSize(2)} />
+        <span className="octo-tb-sep" />
+        <span className="octo-color-control">
+          <Btn
+            label={
+              <span className="octo-math-color-label">
+                <FontColorDoubleIcon className="octo-tb-icon" extend={{ colorChannel1: (editor.getAttributes(mathNodeName() ?? 'inlineMath').color as string) || TEXT_COLORS[0] }} />
+                <span className="octo-tb-caret" aria-hidden="true">▾</span>
+              </span>
+            }
+            title={t('docs.toolbar.textColor')}
+            active={colorOpen}
+            onClick={() => setColorOpen((v) => !v)}
+          />
+          {colorOpen && (
+            <ConfigProvider mountContainer={getUniverPortal()} locale={designLocale()}>
+              <span className="octo-color-popover octo-color-popover--picker octo-theme">
+                <ColorPicker
+                  format="hex"
+                  value={(editor.getAttributes(mathNodeName() ?? 'inlineMath').color as string) || TEXT_COLORS[0]}
+                  onChange={(c) => setMathColor(c)}
+                />
+                <button
+                  type="button"
+                  className="octo-colorpicker-clear"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setMathColor(null)}
+                >
+                  <IconResetColor />
+                  {t('docs.toolbar.clearColor')}
+                </button>
+              </span>
+            </ConfigProvider>
+          )}
+        </span>
+        <span className="octo-tb-sep" />
+        <Btn
+          label={<DeleteIcon className="octo-tb-icon" />}
+          title={t('docs.toolbar.mathDelete')}
+          onClick={() => editor.chain().focus().deleteSelection().run()}
+        />
+      </div>
+    </BubbleMenu>
   )
 }
 
@@ -304,15 +469,20 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
     <BubbleMenu
       editor={editor}
       shouldShow={({ editor: e, from, to }) =>
-        from !== to && e.isEditable && !(e.state.selection instanceof CellSelection)
+        from !== to &&
+        e.isEditable &&
+        !e.isActive('link') &&
+        !e.isActive('inlineMath') &&
+        !e.isActive('blockMath') &&
+        !(e.state.selection instanceof CellSelection)
       }
     >
       <div className="octo-bubble-menu">
-        <Btn label="B" active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
-        <Btn label="I" active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
+        <Btn label={<BoldIcon className="octo-tb-icon" />} active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
+        <Btn label={<ItalicIcon className="octo-tb-icon" />} active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
         <Btn label={<IconUnderline />} title={t('docs.toolbar.underline')} active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
         <Btn label={<IconStrike />} title={t('docs.toolbar.strike')} active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
-        <Btn label="<>" active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()} />
+        <Btn label={<CodeIcon className="octo-tb-icon" />} active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()} />
       </div>
     </BubbleMenu>
   )
@@ -345,223 +515,147 @@ export function shouldShowFloatingMenu(args: {
 // order, same column ↦ same colour family across both pickers. Values stay #rrggbb so they survive
 // Yjs collaboration and the DOCX/Markdown exporters losslessly.
 
+/** The @univerjs/design locale bundle whose `design` sub-object drives the embedded ColorPicker's
+ * button labels (更多 / 确定 / 取消), matched to the app's current language. Read at render so a
+ * locale switch is reflected the next time the toolbar re-renders (it ticks on every selection). */
+function designLocale() {
+  const lang = (i18n.getLocale() || '').toLowerCase()
+  return (lang.startsWith('zh') ? designZhCN : designEnUS).design
+}
+
+/** "Reset colour" glyph for the picker's clear row — a swatch square with a diagonal slash, the same
+ * "no colour" affordance the sheet shows next to its 重置颜色 item. Stroke line-art (not filled), so
+ * it reads at 14px without .octo-tb-icon's fill. */
+const IconResetColor = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" className="octo-colorpicker-clear-icon">
+    <rect x="2.5" y="2.5" width="11" height="11" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+    <line x1="3.6" y1="12.4" x2="12.4" y2="3.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+  </svg>
+)
+
 /**
- * Inline hex entry shared by the font-colour and highlight popovers. It complements the preset
- * swatches and the native OS wheel (<input type="color">) with an OS-independent way to type or paste
- * an arbitrary #rrggbb — the "hex 输入" path in #719 — so a user can enter a brand hex directly instead
- * of hunting for it in the platform colour dialog. It commits ONCE, on Enter, and only when the value
- * parses to a valid 3-/6-digit hex (normalizeHexColor): one entry is one ProseMirror transaction, i.e.
- * one undo record and one Yjs update, the same commit-once discipline the native picker uses. Invalid
- * input is flagged via aria-invalid and never reaches the document; an empty value is a no-op. Typing
- * into the field blurs the editor but ProseMirror keeps the last selection, and the parent's onCommit
- * re-focuses via editor.chain().focus() before applying — the same idiom the link popover relies on.
+ * Split colour control shared by the text-colour and highlight buttons: the main button applies the
+ * last-used colour, the caret opens the sheet's own Univer ColorPicker (preset grid + custom spectrum
+ * + hex). ColorPicker.onChange fires exactly once per committed colour (a preset click or the custom
+ * panel's 确定 button); dragging the spectrum/hue only mutates the picker's internal state, so one
+ * pick = one editor transaction = one undo record + one Yjs update, matching the sheet.
+ *
+ * The popover closes on outside-click like the sheet's (and the docs link/list menus) — but a click
+ * inside the ColorPicker's own "更多颜色" dialog, which portals to #octo-univer-portal, must NOT count
+ * as outside: closing there would unmount the ColorPicker and take the dialog down with it.
  */
-function HexColorInput({ onCommit }: { onCommit: (hex: string) => void }) {
-  const [value, setValue] = useState('')
-  const [invalid, setInvalid] = useState(false)
+function ColorSplitControl({
+  title,
+  initialColor,
+  renderIcon,
+  onMainClick,
+  onPick,
+  onClear,
+}: {
+  title: string
+  initialColor: string
+  renderIcon: (color: string) => ReactNode
+  onMainClick: (color: string) => void
+  onPick: (color: string) => void
+  onClear: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [lastColor, setLastColor] = useState<string>(initialColor)
+  const ref = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (ref.current?.contains(target)) return
+      // The ColorPicker's "更多颜色" dialog mounts in the shared Univer portal, outside this control's
+      // subtree — treat clicks there as inside so the popover (and thus the dialog) isn't torn down.
+      const portal = document.getElementById('octo-univer-portal')
+      if (portal?.contains(target)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
   return (
-    <input
-      type="text"
-      className={`octo-color-hex${invalid ? ' octo-color-hex-invalid' : ''}`}
-      placeholder={t('docs.toolbar.hexPlaceholder')}
-      aria-label={t('docs.toolbar.hexInput')}
-      aria-invalid={invalid || undefined}
-      value={value}
-      spellCheck={false}
-      // No maxLength on the raw input: normalizeHexColor trims and sanitises on Enter, so a paste
-      // that carries leading/trailing whitespace (e.g. " #1971c2") must not be clipped to 7 chars
-      // before it is trimmed — that would wrongly reject an otherwise valid hex. Bad input is still
-      // caught (and flagged via aria-invalid) by the parse, never by a length cap on the raw value.
-      onChange={(e) => {
-        setValue(e.target.value)
-        if (invalid) setInvalid(false)
-      }}
-      onKeyDown={(e) => {
-        if (e.key !== 'Enter') return
-        e.preventDefault()
-        const raw = value.trim()
-        if (raw === '') return
-        const hex = normalizeHexColor(raw)
-        if (!hex) {
-          setInvalid(true)
-          return
-        }
-        onCommit(hex)
-      }}
+    <span className="octo-color-control octo-color-split" ref={ref}>
+      <Tooltip title={title}>
+        <button
+          type="button"
+          className="octo-tb-btn octo-color-main"
+          aria-label={title}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onMainClick(lastColor)}
+        >
+          {renderIcon(lastColor)}
+        </button>
+      </Tooltip>
+      <button
+        type="button"
+        className={'octo-tb-btn octo-color-caret-btn' + (open ? ' is-active' : '')}
+        aria-label={title}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="octo-tb-caret" aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <span className="octo-color-popover octo-color-popover--picker">
+          <ColorPicker
+            format="hex"
+            value={lastColor}
+            onChange={(c) => {
+              setLastColor(c)
+              onPick(c)
+              setOpen(false)
+            }}
+          />
+          <button
+            type="button"
+            className="octo-colorpicker-clear"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onClear()
+              setOpen(false)
+            }}
+          >
+            <IconResetColor />
+            {t('docs.toolbar.clearColor')}
+          </button>
+        </span>
+      )}
+    </span>
+  )
+}
+
+/** Text-highlight control (SCHEMA-SPEC §3): the shared {@link ColorSplitControl} driving highlight. */
+function HighlightControl({ editor }: { editor: Editor }) {
+  return (
+    <ColorSplitControl
+      title={t('docs.toolbar.highlight')}
+      initialColor={HIGHLIGHT_COLORS[0]}
+      renderIcon={(c) => <HighlightingIcon className="octo-tb-icon" extend={{ colorChannel1: c }} />}
+      onMainClick={(c) => editor.chain().focus().toggleHighlight({ color: c }).run()}
+      onPick={(c) => editor.chain().focus().setHighlight({ color: c }).run()}
+      // Clear the highlight the caret sits in. unsetHighlight() alone only clears a non-empty range —
+      // with a collapsed caret inside a highlight it clears stored marks only and leaves the <mark>.
+      // extendMarkRange('highlight') first grows the selection to span the whole highlight under the
+      // caret (a no-op when a range is already selected), so unsetHighlight() reliably removes it.
+      onClear={() => editor.chain().focus().extendMarkRange('highlight').unsetHighlight().run()}
     />
   )
 }
 
-/** Text-highlight control (SCHEMA-SPEC §3): palette of background colours + clear. */
-function HighlightControl({ editor }: { editor: Editor }) {
-  const [open, setOpen] = useState(false)
-  // Native <input type="color"> distinguishes drag from commit only at the DOM level: `input`
-  // streams while the hue wheel moves, `change` fires once the pick is committed. React folds
-  // both onto its synthetic onChange (native `input`), so we bind the raw `change` event via a ref.
-  // RC1: commit the highlight once, on `change` only — never on the `input` stream. Applying per
-  // `input` tick ran one ProseMirror transaction each, so a single pick piled up dozens of undo
-  // records and flooded collaborators with a Yjs update per intermediate hue. The OS colour dialog
-  // previews the hue live in its own UI while dragging, so committing on `change` keeps one pick =
-  // one undo record + one Yjs update, and the popover collapses on commit like a preset swatch.
-  const customRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    const input = customRef.current
-    if (!input) return
-    const onCommit = () => {
-      editor.chain().focus().setHighlight({ color: input.value }).run()
-      setOpen(false)
-    }
-    input.addEventListener('change', onCommit)
-    return () => {
-      input.removeEventListener('change', onCommit)
-    }
-  }, [editor, open])
-  return (
-    <span className="octo-color-control">
-      <Btn
-        label="🖍"
-        title={t('docs.toolbar.highlight')}
-        active={open}
-        onClick={() => setOpen((v) => !v)}
-      />
-      {open && (
-        <span className="octo-color-popover octo-highlight-color-popover">
-          {HIGHLIGHT_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className="octo-swatch"
-              style={{ backgroundColor: c }}
-              title={`Highlight ${c}`}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                editor.chain().focus().toggleHighlight({ color: c }).run()
-                setOpen(false)
-              }}
-            />
-          ))}
-          <Btn
-            label="✕"
-            onClick={() => {
-              // Clear the highlight the caret sits in. unsetHighlight() alone only clears a
-              // non-empty selection range — with a collapsed caret inside a highlight (the common
-              // "click into highlighted text, then hit ✕" flow) it clears stored marks only and
-              // leaves the surrounding <mark> in the document. extendMarkRange('highlight') first
-              // grows the selection to span the whole highlight under the caret (a no-op when a
-              // range is already selected), so unsetHighlight() reliably removes the mark. Same
-              // idiom TipTap uses for link clearing (extendMarkRange('link').unsetLink()).
-              editor.chain().focus().extendMarkRange('highlight').unsetHighlight().run()
-              setOpen(false)
-            }}
-          />
-          {/* Custom highlight (same approach as the text-colour picker): native picker, zero new
-              deps. It emits standard #rrggbb, so setHighlight stays lossless through Yjs and the
-              DOCX/Markdown exporters. The picker stays open while dragging the hue wheel and
-              commits once on `change`, collapsing the popover — see the ref-bound listener above. */}
-          <label
-            className="octo-swatch octo-color-custom"
-            title={t('docs.toolbar.customColor')}
-            onMouseDown={(e) => e.preventDefault()}
-          >
-            <input
-              ref={customRef}
-              type="color"
-              className="octo-color-custom-input"
-              aria-label={t('docs.toolbar.customColor')}
-            />
-          </label>
-          <HexColorInput
-            onCommit={(hex) => {
-              // setHighlight (not toggleHighlight): the hex field is an explicit "apply this
-              // colour" action like the native picker above (Toolbar's setHighlight at the custom
-              // <input type="color"> commit). toggleHighlight would REMOVE the highlight when the
-              // selection already carries the same colour, so re-entering an identical hex must
-              // still leave it applied, not clear it.
-              editor.chain().focus().setHighlight({ color: hex }).run()
-              setOpen(false)
-            }}
-          />
-        </span>
-      )}
-    </span>
-  )
-}
-
-/** Text-colour control (SCHEMA-SPEC §3): palette of font colours + clear. */
+/** Text-colour control (SCHEMA-SPEC §3): the shared {@link ColorSplitControl} driving font colour. */
 function TextColorControl({ editor }: { editor: Editor }) {
-  const [open, setOpen] = useState(false)
-  // Native <input type="color"> distinguishes drag from commit only at the DOM level: `input`
-  // streams while the hue wheel moves, `change` fires once the pick is committed. React folds
-  // both onto its synthetic onChange (native `input`), so we bind the raw `change` event via a ref.
-  // RC1: commit the colour once, on `change` only — never on the `input` stream. Applying per
-  // `input` tick ran one ProseMirror transaction each, so a single pick piled up dozens of undo
-  // records and flooded collaborators with a Yjs update per intermediate hue. The OS colour dialog
-  // previews the hue live in its own UI while dragging, so committing on `change` keeps one pick =
-  // one undo record + one Yjs update, and the popover collapses on commit like a preset swatch.
-  const customRef = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    const input = customRef.current
-    if (!input) return
-    const onCommit = () => {
-      editor.chain().focus().setColor(input.value).run()
-      setOpen(false)
-    }
-    input.addEventListener('change', onCommit)
-    return () => {
-      input.removeEventListener('change', onCommit)
-    }
-  }, [editor, open])
   return (
-    <span className="octo-color-control">
-      <Btn label="A̲" title={t('docs.toolbar.textColor')} active={open} onClick={() => setOpen((v) => !v)} />
-      {open && (
-        <span className="octo-color-popover octo-text-color-popover">
-          {TEXT_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className="octo-swatch"
-              style={{ backgroundColor: c }}
-              title={`Text ${c}`}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                editor.chain().focus().setColor(c).run()
-                setOpen(false)
-              }}
-            />
-          ))}
-          <Btn
-            label="✕"
-            onClick={() => {
-              editor.chain().focus().unsetColor().run()
-              setOpen(false)
-            }}
-          />
-          {/* Custom colour (plan A): native picker, zero new deps. It emits standard #rrggbb,
-              so setColor stays lossless through Yjs and the DOCX/Markdown exporters. The picker
-              stays open while dragging the hue wheel and commits once on `change`, collapsing the
-              popover — see the ref-bound listener above. */}
-          <label
-            className="octo-swatch octo-color-custom"
-            title={t('docs.toolbar.customColor')}
-            onMouseDown={(e) => e.preventDefault()}
-          >
-            <input
-              ref={customRef}
-              type="color"
-              className="octo-color-custom-input"
-              aria-label={t('docs.toolbar.customColor')}
-            />
-          </label>
-          <HexColorInput
-            onCommit={(hex) => {
-              editor.chain().focus().setColor(hex).run()
-              setOpen(false)
-            }}
-          />
-        </span>
-      )}
-    </span>
+    <ColorSplitControl
+      title={t('docs.toolbar.textColor')}
+      initialColor={TEXT_COLORS[0]}
+      renderIcon={(c) => <FontColorDoubleIcon className="octo-tb-icon" extend={{ colorChannel1: c }} />}
+      onMainClick={(c) => editor.chain().focus().setColor(c).run()}
+      onPick={(c) => editor.chain().focus().setColor(c).run()}
+      onClear={() => editor.chain().focus().unsetColor().run()}
+    />
   )
 }
 
@@ -665,56 +759,80 @@ function ListMenu({ editor }: { editor: Editor }) {
 function FontSizeSelect({ editor }: { editor: Editor }) {
   useEditorTick(editor)
   const current = ((editor.getAttributes('textStyle').fontSize as string) || '').replace('px', '')
+  const options = [
+    { label: '16', value: '' },
+    ...FONT_SIZES.map((s) => ({ label: String(s), value: String(s) })),
+  ]
   return (
-    <select
-      className="octo-font-size"
-      title={t('docs.toolbar.fontSize')}
-      value={current}
-      onMouseDown={(e) => e.stopPropagation()}
-      onChange={(e) => {
-        const v = e.target.value
-        if (!v) editor.chain().focus().unsetFontSize().run()
-        else editor.chain().focus().setFontSize(`${v}px`).run()
-      }}
-    >
-      <option value="">{t('docs.toolbar.fontSizeDefault')}</option>
-      {FONT_SIZES.map((s) => (
-        <option key={s} value={s}>
-          {s}
-        </option>
-      ))}
-    </select>
+    <Tooltip title={t('docs.toolbar.fontSize')}>
+    <span className="octo-tb-sel octo-tb-sel--size">
+      <Select
+        value={current}
+        options={options}
+        onChange={(v) => {
+          if (!v) editor.chain().focus().unsetFontSize().run()
+          else editor.chain().focus().setFontSize(`${v}px`).run()
+        }}
+      />
+    </span>
+    </Tooltip>
   )
 }
 
+/** A+ / A- font-size step buttons (matches the sheet's increase/decrease-font-size controls). Steps
+ * off the current size (default 16px when unset), clamped to 8–96px. */
+function FontSizeStepButtons({ editor }: { editor: Editor }) {
+  useEditorTick(editor)
+  const cur = parseInt(((editor.getAttributes('textStyle').fontSize as string) || '16').replace('px', ''), 10) || 16
+  const step = (delta: number) => {
+    const n = Math.max(8, Math.min(96, cur + delta))
+    editor.chain().focus().setFontSize(`${n}px`).run()
+  }
+  return (
+    <>
+      <Btn
+        label={<FontSizeIncreaseIcon className="octo-tb-icon" />}
+        title={t('docs.toolbar.fontSizeIncrease')}
+        onClick={() => step(2)}
+      />
+      <Btn
+        label={<FontSizeReduceIcon className="octo-tb-icon" />}
+        title={t('docs.toolbar.fontSizeReduce')}
+        onClick={() => step(-2)}
+      />
+    </>
+  )
+}
 /**
  * Font-family dropdown (SCHEMA_VERSION 16): sets the textStyle `fontFamily` attr, or clears it.
- * Mirrors FontSizeSelect. Rendered ONLY when FONT_FAMILY_ENABLED is on (feature flag, default
- * off) — the caller gates it, so when off the selector is absent from the DOM entirely and the
- * user cannot set a font (see config.ts for the phased-rollout rationale).
+ * Rendered only when FONT_FAMILY_ENABLED is on (feature flag); the caller gates it.
  */
 function FontFamilySelect({ editor }: { editor: Editor }) {
   useEditorTick(editor)
   const current = (editor.getAttributes('textStyle').fontFamily as string) || ''
+  // Univer's own Select (@univerjs/design) — same component family as the sheet, so docs matches it
+  // natively. Each option's label is a ReactNode, so the font name renders in its own face (WYSIWYG),
+  // like the sheet's picker.
+  const options = [
+    { label: t('docs.toolbar.font.arial'), value: '' },
+    ...FONT_FAMILIES.map((f) => ({
+      label: <span style={{ fontFamily: f.value }}>{t(f.labelKey)}</span>,
+      value: f.value,
+    })),
+  ]
   return (
-    <select
-      className="octo-font-family"
-      title={t('docs.toolbar.fontFamily')}
-      value={current}
-      onMouseDown={(e) => e.stopPropagation()}
-      onChange={(e) => {
-        const v = e.target.value
-        if (!v) editor.chain().focus().unsetFontFamily().run()
-        else editor.chain().focus().setFontFamily(v).run()
-      }}
-    >
-      <option value="">{t('docs.toolbar.fontFamilyDefault')}</option>
-      {FONT_FAMILIES.map((f) => (
-        <option key={f.labelKey} value={f.value} style={{ fontFamily: f.value }}>
-          {t(f.labelKey)}
-        </option>
-      ))}
-    </select>
+    <Tooltip title={t('docs.toolbar.fontFamily')}>
+    <span className="octo-tb-sel octo-tb-sel--font">
+      <Select
+        value={current}
+        options={options}
+        onChange={(v: string) => {
+          if (!v) editor.chain().focus().unsetFontFamily().run()
+          else editor.chain().focus().setFontFamily(v).run()
+        }}
+      />
+    </span>
+    </Tooltip>
   )
 }
 
@@ -729,47 +847,54 @@ function BlockTypeSelect({ editor }: { editor: Editor }) {
       break
     }
   }
+  const options = [
+    { label: t('docs.toolbar.bodyText'), value: 'p' },
+    ...[1, 2, 3, 4, 5, 6].map((l) => ({ label: t(`docs.toolbar.heading${l}`), value: `h${l}` })),
+  ]
   return (
-    <select
-      className="octo-block-type"
-      title={t('docs.toolbar.blockType')}
-      value={current}
-      onMouseDown={(e) => e.stopPropagation()}
-      onChange={(e) => {
-        const v = e.target.value
-        if (v === 'p') editor.chain().focus().setParagraph().run()
-        else
-          editor
-            .chain()
-            .focus()
-            .setHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 | 4 | 5 | 6 })
-            .run()
-      }}
-    >
-      <option value="p">{t('docs.toolbar.bodyText')}</option>
-      {[1, 2, 3, 4, 5, 6].map((l) => (
-        <option key={l} value={`h${l}`}>
-          {t(`docs.toolbar.heading${l}`)}
-        </option>
-      ))}
-    </select>
+    <Tooltip title={t('docs.toolbar.blockType')}>
+    <span className="octo-tb-sel octo-tb-sel--block">
+      <Select
+        value={current}
+        options={options}
+        onChange={(v) => {
+          if (v === 'p') editor.chain().focus().setParagraph().run()
+          else
+            editor
+              .chain()
+              .focus()
+              .setHeading({ level: Number(v.slice(1)) as 1 | 2 | 3 | 4 | 5 | 6 })
+              .run()
+        }}
+      />
+    </span>
+    </Tooltip>
   )
 }
 
 /** Text-alignment buttons (SCHEMA_VERSION 5): left/center/right/justify on heading + paragraph. */
 function AlignControls({ editor }: { editor: Editor }) {
+  useEditorTick(editor)
+  // One compact icon dropdown (matches the sheet's single align control): the trigger shows the
+  // current alignment's icon; the menu lists all four.
+  const active = ALIGNMENTS.find((a) => editor.isActive({ textAlign: a.value })) ?? ALIGNMENTS[0]
+  const options = ALIGNMENTS.map((a) => ({
+    label: (
+      <span className="octo-tb-align-opt">
+        {a.icon}
+        {t(`docs.toolbar.${a.key}`)}
+      </span>
+    ),
+    value: a.value,
+  }))
   return (
-    <>
-      {ALIGNMENTS.map((a) => (
-        <Btn
-          key={a.value}
-          label={a.icon}
-          title={t(`docs.toolbar.${a.key}`)}
-          active={editor.isActive({ textAlign: a.value })}
-          onClick={() => editor.chain().focus().setTextAlign(a.value).run()}
-        />
-      ))}
-    </>
+    <IconMenuSelect
+      icon={active.icon}
+      title={t(`docs.toolbar.${active.key}`)}
+      value={active.value}
+      options={options}
+      onSelect={(v) => editor.chain().focus().setTextAlign(v).run()}
+    />
   )
 }
 
@@ -876,6 +1001,54 @@ function LineHeightCustomInput({ editor, autoFocus = false }: { editor: Editor; 
  * Reads the current value from whichever of the two block types is active, so the control reflects
  * the caret's block.
  */
+// Compact line-spacing / paragraph-spacing glyphs (hand-drawn — @univerjs/icons 1.4 has no
+// line-spacing icon). Lines + a direction cue so each reads as "line spacing / space before / after".
+const IconLineSpacing = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M9 5h11v2H9V5zm0 6h11v2H9v-2zm0 6h11v2H9v-2zM5 4l3 3H6v10h2l-3 3-3-3h2V7H2l3-3z" />
+  </svg>
+)
+const IconSpaceBefore = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 3h16v2H4V3zm2 6h12v2H6V9zm0 4h12v2H6v-2zm0 4h12v2H6v-2z" />
+  </svg>
+)
+const IconSpaceAfter = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M6 3h12v2H6V3zm0 4h12v2H6V7zm0 4h12v2H6v-2zm-2 6h16v2H4v-2z" />
+  </svg>
+)
+
+/**
+ * Compact icon-triggered dropdown (matches the sheet's line-spacing / align controls): a fixed
+ * icon + caret button that opens a single-select (radio) menu, instead of a wide <Select> that
+ * shows the value as text — so it stays narrow and the ribbon doesn't overflow to a second row.
+ */
+function IconMenuSelect({
+  icon,
+  title,
+  value,
+  options,
+  onSelect,
+}: {
+  icon: ReactNode
+  title: string
+  value: string
+  options: { label: ReactNode; value: string }[]
+  onSelect: (v: string) => void
+}) {
+  return (
+    <Tooltip title={title}>
+      <DropdownMenu items={[{ type: 'radio' as const, value, options, onSelect }]}>
+        <button type="button" className="octo-tb-btn octo-tb-iconselect" aria-label={title}>
+          {icon}
+          <span className="octo-tb-caret" aria-hidden="true">▾</span>
+        </button>
+      </DropdownMenu>
+    </Tooltip>
+  )
+}
+
 function LineHeightSelect({ editor }: { editor: Editor }) {
   const current = useEditorValueTick(editor, currentLineHeight)
   const isPreset = (LINE_HEIGHTS as readonly string[]).includes(current)
@@ -897,16 +1070,17 @@ function LineHeightSelect({ editor }: { editor: Editor }) {
   const showCustom = hasCustomValue || customPicked
   return (
     <span className="octo-line-height-control">
-      <select
-        className="octo-line-height"
+      <IconMenuSelect
+        icon={<IconLineSpacing />}
         title={t('docs.toolbar.lineHeight')}
         value={showCustom ? 'custom' : isPreset ? current : ''}
-        onMouseDown={(e) => e.stopPropagation()}
-        onChange={(e) => {
-          const v = e.target.value
+        options={[
+          { label: t('docs.toolbar.lineHeightDefault'), value: '' },
+          ...LINE_HEIGHTS.map((s) => ({ label: s, value: s })),
+          { label: t('docs.toolbar.lineHeightCustom'), value: 'custom' },
+        ]}
+        onSelect={(v) => {
           if (v === 'custom') {
-            // Reveal the custom input; the block value stays untouched until a multiplier is
-            // committed via the input.
             setCustomPicked(true)
             return
           }
@@ -914,15 +1088,7 @@ function LineHeightSelect({ editor }: { editor: Editor }) {
           if (!v) editor.chain().focus().unsetLineHeight().run()
           else editor.chain().focus().setLineHeight(v).run()
         }}
-      >
-        <option value="">{t('docs.toolbar.lineHeightDefault')}</option>
-        {LINE_HEIGHTS.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-        <option value="custom">{t('docs.toolbar.lineHeightCustom')}</option>
-      </select>
+      />
       {showCustom && <LineHeightCustomInput editor={editor} autoFocus={customPicked} />}
     </span>
   )
@@ -950,14 +1116,19 @@ function ParagraphSpacingSelect({ editor, edge }: { editor: Editor; edge: 'befor
   )
   const isPreset = (PARAGRAPH_SPACINGS as readonly string[]).includes(current)
   const titleKey = edge === 'before' ? 'docs.toolbar.spaceBefore' : 'docs.toolbar.spaceAfter'
+  const value = isPreset ? current : current ? 'custom' : ''
+  const options = [
+    { label: t(titleKey), value: '' },
+    ...PARAGRAPH_SPACINGS.map((s) => ({ label: s, value: s })),
+    ...(!isPreset && current ? [{ label: t('docs.toolbar.spacingCustom'), value: 'custom' }] : []),
+  ]
   return (
-    <select
-      className={edge === 'before' ? 'octo-space-before' : 'octo-space-after'}
+    <IconMenuSelect
+      icon={edge === 'before' ? <IconSpaceBefore /> : <IconSpaceAfter />}
       title={t(titleKey)}
-      value={isPreset ? current : current ? 'custom' : ''}
-      onMouseDown={(e) => e.stopPropagation()}
-      onChange={(e) => {
-        const v = e.target.value
+      value={value}
+      options={options}
+      onSelect={(v) => {
         if (v === 'custom') return // a non-preset pasted value stays as-is
         const chain = editor.chain().focus()
         if (edge === 'before') {
@@ -968,15 +1139,7 @@ function ParagraphSpacingSelect({ editor, edge }: { editor: Editor; edge: 'befor
           else chain.setSpaceAfter(v).run()
         }
       }}
-    >
-      <option value="">{t(titleKey)}</option>
-      {PARAGRAPH_SPACINGS.map((s) => (
-        <option key={s} value={s}>
-          {s}
-        </option>
-      ))}
-      {!isPreset && current ? <option value="custom">{t('docs.toolbar.spacingCustom')}</option> : null}
-    </select>
+    />
   )
 }
 
@@ -1033,6 +1196,24 @@ function IndentControls({ editor }: { editor: Editor }) {
   )
 }
 
+/** Emoji toolbar glyph: a black-and-white outlined smiley (😊-style). Replaces @univerjs/icons'
+ * SmileDoubleIcon, whose two-tone paths all fill with currentColor under .octo-tb-icon and collapse
+ * into a solid black dot. Outline circle + two eyes + a smile arc, so it reads as a face at 16px. */
+const IconSmile = () => (
+  <svg className="octo-tb-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.7" />
+    <circle cx="9" cy="10" r="1.15" fill="currentColor" />
+    <circle cx="15" cy="10" r="1.15" fill="currentColor" />
+    <path
+      d="M8.2 14c.9 1.3 2.2 2 3.8 2s2.9-.7 3.8-2"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+    />
+  </svg>
+)
+
 /** Emoji picker (SCHEMA_VERSION 9): a scrollable grid that inserts via the emoji node's setEmoji.
  * Search filters the full curated set; the grid renders an initial window and grows on scroll so
  * the ~1900-glyph set never mounts eagerly. */
@@ -1064,7 +1245,7 @@ function EmojiControl({ editor }: { editor: Editor }) {
 
   return (
     <span className="octo-color-control">
-      <Btn label="😀" title={t('docs.toolbar.emoji')} active={open} onClick={() => setOpen((v) => !v)} />
+      <Btn label={<IconSmile />} title={t('docs.toolbar.emoji')} active={open} onClick={() => setOpen((v) => !v)} />
       {open && (
         <span className="octo-emoji-popover">
           <input
@@ -1298,53 +1479,72 @@ function FindBar({ editor, onClose }: { editor: Editor; onClose: () => void }) {
   )
 }
 
-/** Math insert control (C5): a small input popover that prompts for the LaTeX, then inserts inline
- * or block math with the user's formula (no more hardcoded 'a^2 + b^2 = c^2'). Empty → no insert. */
-function MathControl({ editor, kind }: { editor: Editor; kind: 'inline' | 'block' }) {
+/**
+ * Bookmark insert control: an inline URL popover (same anchored-popover pattern as the link
+ * popover), replacing the former native window.prompt so the ribbon matches the sheet's
+ * Univer dialogs. Enter or the insert button hands the raw URL to insertBookmarkFromUrl, which
+ * validates → fetches the link card → inserts the node; an invalid URL keeps the popover open and
+ * surfaces the shared error toast. Fetching disables the field so a double-submit can't fire twice.
+ */
+function BookmarkControl({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false)
-  const [latex, setLatex] = useState('')
-  function confirm() {
-    const v = latex.trim()
-    if (v) {
-      if (kind === 'inline') editor.chain().focus().insertInlineMath({ latex: v }).run()
-      else editor.chain().focus().insertBlockMath({ latex: v }).run()
+  const [url, setUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
-    setOpen(false)
-    setLatex('')
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+  async function confirm() {
+    const v = url.trim()
+    if (!v || busy) return
+    setBusy(true)
+    try {
+      const ok = await insertBookmarkFromUrl(editor, v)
+      if (ok) {
+        setOpen(false)
+        setUrl('')
+      }
+    } finally {
+      setBusy(false)
+    }
   }
   return (
-    <span className="octo-color-control">
+    <span className="octo-color-control" ref={ref}>
       <Btn
-        label={kind === 'inline' ? '∑' : '∑▤'}
-        title={t(kind === 'inline' ? 'docs.toolbar.mathInline' : 'docs.toolbar.mathBlock')}
+        label={<FlagIcon className="octo-tb-icon" />}
+        title={t('docs.toolbar.bookmark')}
         active={open}
         onClick={() => setOpen((v) => !v)}
       />
       {open && (
         <span className="octo-color-popover octo-math-popover">
-          <span className="octo-math-popover-title">
-            {t(kind === 'inline' ? 'docs.toolbar.mathInline' : 'docs.toolbar.mathBlock')}
-          </span>
+          <span className="octo-math-popover-title">{t('docs.toolbar.bookmark')}</span>
           <span className="octo-math-popover-row">
             <input
               className="octo-find-input"
               autoFocus
-              value={latex}
-              placeholder={t('docs.toolbar.mathPlaceholder')}
+              value={url}
+              disabled={busy}
+              placeholder={t('docs.bookmark.prompt')}
               onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => setLatex(e.target.value)}
+              onChange={(e) => setUrl(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
-                  confirm()
+                  void confirm()
                 } else if (e.key === 'Escape') {
                   e.preventDefault()
                   setOpen(false)
-                  setLatex('')
+                  setUrl('')
                 }
               }}
             />
-            <Btn label={t('docs.toolbar.insert')} onClick={confirm} />
+            <Btn label={t('docs.toolbar.insert')} disabled={busy} onClick={() => void confirm()} />
           </span>
         </span>
       )}
@@ -1353,6 +1553,24 @@ function MathControl({ editor, kind }: { editor: Editor; kind: 'inline' | 'block
 }
 
 /** Fixed top toolbar (frontend-design §3.1). */
+/**
+ * Dedicated, docs-scoped portal host for @univerjs/design popups. They mount OUTSIDE the app tree,
+ * where the Univer theme (which supplies their background color) isn't applied — so the popup surface
+ * would render transparent. Hosting them under a known element lets styles.css give the popup a solid
+ * background, scoped to `.octo-univer-portal` so the sheet's own Univer popups are untouched.
+ */
+function getUniverPortal(): HTMLElement | null {
+  if (typeof document === 'undefined') return null
+  let el = document.getElementById('octo-univer-portal')
+  if (!el) {
+    el = document.createElement('div')
+    el.id = 'octo-univer-portal'
+    el.className = 'octo-univer-portal octo-theme'
+    document.body.appendChild(el)
+  }
+  return el
+}
+
 export function Toolbar({ editor }: { editor: Editor }) {
   useEditorTick(editor)
   const [linkOpen, setLinkOpen] = useState(false)
@@ -1363,6 +1581,10 @@ export function Toolbar({ editor }: { editor: Editor }) {
   // popover (the old confirmLink closed on a falsy href, so a mistyped URL just vanished).
   const [linkError, setLinkError] = useState<string | null>(null)
   const [findOpen, setFindOpen] = useState(false)
+  // Toolbar function tabs (开始/插入) — group the controls like the sheet's ribbon so the row isn't
+  // one long undifferentiated strip. Utility controls (format painter / clear / find / undo-redo)
+  // stay visible on both tabs.
+  const [tab, setTab] = useState<'start' | 'insert'>('start')
   const linkRef = useRef<HTMLSpanElement>(null)
   // XIN-1051 focus isolation: refs to the two popover inputs so opening the popover can move
   // keyboard focus INTO the panel (URL field when a selection is being linked, text field for a
@@ -1486,25 +1708,6 @@ export function Toolbar({ editor }: { editor: Editor }) {
     return () => cancelAnimationFrame(id)
   }, [linkOpen])
 
-  // XIN-1051 / XIN-1073: resolve the raw popover input into a safe, absolute href — or null when it
-  // is not a usable link, so confirmLink can surface the inline error instead of inserting junk.
-  //   - explicit scheme ("https://x", "mailto:a@b") / protocol-relative ("//cdn/x") → hand straight
-  //     to sanitizeLinkHref so the §3.7 scheme whitelist still rejects javascript:/data:/ftp: etc.
-  //   - scheme-less: a bare host/domain ("google.com") would resolve relative to the origin and
-  //     become a same-origin path, so we prepend https:// — but ONLY when it actually looks like a
-  //     host (a dotted label, or "localhost"). A bare word like "abc" is NOT a URL: without this
-  //     guard https:// was blindly prepended and sanitizeLinkHref returned https://abc/, so the
-  //     popover accepted the junk and closed with no error (the 4a real-machine defect). Such input
-  //     now resolves to null → inline error, popover stays open, user's text is preserved.
-  function resolveLinkHref(raw: string): string | null {
-    const v = raw.trim()
-    if (!v) return null
-    if (v.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(v)) return sanitizeLinkHref(v)
-    const host = v.split(/[/?#]/, 1)[0]
-    const looksLikeHost = host === 'localhost' || /[^.\s]\.[^.\s]/.test(host)
-    return looksLikeHost ? sanitizeLinkHref(`https://${v}`) : null
-  }
-
   // C7: insert a link at the cursor (or apply it to the selection). With no selection a brand-new
   // linked label is inserted at the caret; with a selection whose text is unchanged the link is
   // applied to it (preserving any other marks); if the text was edited it replaces the selection.
@@ -1566,126 +1769,38 @@ export function Toolbar({ editor }: { editor: Editor }) {
   }, [editor])
 
   return (
-    <div className="octo-toolbar-wrap">
+    <ConfigProvider mountContainer={getUniverPortal()} locale={designLocale()}>
+    {/* octo-theme defines the --octo-bg/-fg/-border tokens the inline popovers (colour picker,
+        formula, bookmark, link) paint themselves with. Without it on an ancestor the tokens are
+        undefined and `background: var(--octo-bg)` collapses to transparent — the toolbar bar still
+        looks white over the white page, but a popover floating over body text shows straight through
+        (the recurring "transparent popover" regression). Scoping it here covers every toolbar popup. */}
+    <div className="octo-toolbar-wrap octo-theme">
+    <div className="octo-tb-tabs" role="tablist">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={tab === 'start'}
+        className={'octo-tb-tab' + (tab === 'start' ? ' is-active' : '')}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setTab('start')}
+      >
+        {t('docs.toolbar.tabStart')}
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={tab === 'insert'}
+        className={'octo-tb-tab' + (tab === 'insert' ? ' is-active' : '')}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setTab('insert')}
+      >
+        {t('docs.toolbar.tabInsert')}
+      </button>
+    </div>
     <div className="octo-toolbar">
-      <BlockTypeSelect editor={editor} />
-      <span className="octo-tb-sep" />
-      <Btn label="B" title={t('docs.toolbar.bold')} active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
-      <Btn label="I" title={t('docs.toolbar.italic')} active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
-      <Btn label={<IconUnderline />} title={t('docs.toolbar.underline')} active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
-      <Btn label={<IconStrike />} title={t('docs.toolbar.strike')} active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
-      <Btn label="x²" title={t('docs.toolbar.superscript')} active={editor.isActive('superscript')} onClick={() => editor.chain().focus().toggleSuperscript().run()} />
-      <Btn label="x₂" title={t('docs.toolbar.subscript')} active={editor.isActive('subscript')} onClick={() => editor.chain().focus().toggleSubscript().run()} />
-      {FONT_FAMILY_ENABLED && <FontFamilySelect editor={editor} />}
-      <FontSizeSelect editor={editor} />
-      <span className="octo-tb-sep" />
-      <AlignControls editor={editor} />
-      {LINE_SPACING_ENABLED && <LineHeightSelect editor={editor} />}
-      {LINE_SPACING_ENABLED && <ParagraphSpacingSelect editor={editor} edge="before" />}
-      {LINE_SPACING_ENABLED && <ParagraphSpacingSelect editor={editor} edge="after" />}
-      <IndentControls editor={editor} />
-      <span className="octo-tb-sep" />
-      <ListMenu editor={editor} />
-      <Btn label={<IconQuote />} title={t('docs.toolbar.quote')} active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} />
-      <Btn label={<IconCode />} title={t('docs.toolbar.codeBlock')} active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().toggleCodeBlock().run()} />
-      <Btn label="—" title={t('docs.toolbar.divider')} onClick={() => editor.chain().focus().setHorizontalRule().run()} />
-      <CodeLanguageSelect editor={editor} />
-      <span className="octo-tb-sep" />
-      <HighlightControl editor={editor} />
-      <TextColorControl editor={editor} />
-      <TableGridPicker editor={editor} />
-      <Btn label="Image" title={t('docs.toolbar.image')} onClick={() => void pickAndUploadImage(editor)} />
-      <Btn label="File" title={t('docs.toolbar.file')} onClick={() => void pickAndUploadFile(editor)} />
-      <Btn label="Bookmark" title={t('docs.toolbar.bookmark')} onClick={() => void promptAndInsertBookmark(editor)} />
-      <span className="octo-tb-sep" />
-      <EmojiControl editor={editor} />
-      <Btn label="@" title={t('docs.toolbar.mention')} onClick={() => editor.chain().focus().insertContent('@').run()} />
-      <Btn
-        label="▸"
-        title={t('docs.toolbar.details')}
-        active={editor.isActive('details')}
-        onClick={() => editor.chain().focus().setDetails().run()}
-      />
-      <CalloutControl editor={editor} />
-      <MathControl editor={editor} kind="inline" />
-      <MathControl editor={editor} kind="block" />
-      <span className="octo-tb-sep" />
-      <span className="octo-color-control octo-link-control" ref={linkRef}>
-        <Btn label={<IconLink />} title={t('docs.toolbar.link')} active={editor.isActive('link') || linkOpen} onClick={openLink} />
-        {linkOpen && (
-          <span className="octo-color-popover octo-link-popover" role="dialog">
-            <input
-              className="octo-link-field"
-              ref={linkTextRef}
-              value={linkText}
-              onChange={(e) => setLinkText(e.target.value)}
-              placeholder={t('docs.toolbar.linkText')}
-              onMouseDown={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  confirmLink()
-                } else if (e.key === 'Escape') {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  closeLink()
-                }
-              }}
-            />
-            <input
-              className={'octo-link-field' + (linkError ? ' is-invalid' : '')}
-              ref={linkUrlRef}
-              value={linkValue}
-              aria-invalid={linkError ? true : undefined}
-              onChange={(e) => {
-                setLinkValue(e.target.value)
-                if (linkError) setLinkError(null)
-              }}
-              placeholder={t('docs.toolbar.linkPlaceholder')}
-              onMouseDown={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  confirmLink()
-                } else if (e.key === 'Escape') {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  closeLink()
-                }
-              }}
-            />
-            {linkError && (
-              <span className="octo-link-error" role="alert">
-                {linkError}
-              </span>
-            )}
-            <div className="octo-link-popover-actions">
-              <Btn label={t('docs.toolbar.linkSet')} onClick={confirmLink} />
-            </div>
-          </span>
-        )}
-      </span>
-      <span className="octo-tb-sep" />
-      <Btn
-        label={<IconFormatPainter />}
-        title={t('docs.toolbar.formatPainter')}
-        active={painterMarks !== null}
-        onClick={toggleFormatPainter}
-      />
-      <Btn
-        label={<IconEraser />}
-        title={t('docs.toolbar.clearFormat')}
-        onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
-      />
-      <Btn
-        label="🔍"
-        title={t('docs.toolbar.find')}
-        active={findOpen}
-        onClick={() => setFindOpen((v) => !v)}
-      />
-      <span className="octo-tb-spacer" />
+      {tab === 'start' && (
+        <>
       <span className="octo-tb-undoredo">
         <Btn
           label={<IconUndo />}
@@ -1700,8 +1815,160 @@ export function Toolbar({ editor }: { editor: Editor }) {
           onClick={() => editor.chain().focus().redo().run()}
         />
       </span>
+      <Btn
+        label={<IconFormatPainter />}
+        title={t('docs.toolbar.formatPainter')}
+        active={painterMarks !== null}
+        onClick={toggleFormatPainter}
+      />
+      <Btn
+        label={<IconEraser />}
+        title={t('docs.toolbar.clearFormat')}
+        onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
+      />
+      <Btn
+        label={<SearchIcon className="octo-tb-icon" />}
+        title={t('docs.toolbar.find')}
+        active={findOpen}
+        onClick={() => setFindOpen((v) => !v)}
+      />
+      <span className="octo-tb-sep" />
+      <BlockTypeSelect editor={editor} />
+      {FONT_FAMILY_ENABLED && <FontFamilySelect editor={editor} />}
+      <FontSizeSelect editor={editor} />
+      <FontSizeStepButtons editor={editor} />
+      <span className="octo-tb-sep" />
+      <Btn label={<BoldIcon className="octo-tb-icon" />} title={t('docs.toolbar.bold')} active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} />
+      <Btn label={<ItalicIcon className="octo-tb-icon" />} title={t('docs.toolbar.italic')} active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} />
+      <Btn label={<IconUnderline />} title={t('docs.toolbar.underline')} active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()} />
+      <Btn label={<IconStrike />} title={t('docs.toolbar.strike')} active={editor.isActive('strike')} onClick={() => editor.chain().focus().toggleStrike().run()} />
+      <TextColorControl editor={editor} />
+      <HighlightControl editor={editor} />
+      <Btn label={<SuperscriptIcon className="octo-tb-icon" />} title={t('docs.toolbar.superscript')} active={editor.isActive('superscript')} onClick={() => editor.chain().focus().toggleSuperscript().run()} />
+      <Btn label={<SubscriptIcon className="octo-tb-icon" />} title={t('docs.toolbar.subscript')} active={editor.isActive('subscript')} onClick={() => editor.chain().focus().toggleSubscript().run()} />
+      <span className="octo-tb-sep" />
+      <AlignControls editor={editor} />
+      {LINE_SPACING_ENABLED && <LineHeightSelect editor={editor} />}
+      {LINE_SPACING_ENABLED && <ParagraphSpacingSelect editor={editor} edge="before" />}
+      {LINE_SPACING_ENABLED && <ParagraphSpacingSelect editor={editor} edge="after" />}
+      <IndentControls editor={editor} />
+      <span className="octo-tb-sep" />
+      <ListMenu editor={editor} />
+      <Btn label={<IconQuote />} title={t('docs.toolbar.quote')} active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} />
+      <Btn label={<IconCode />} title={t('docs.toolbar.codeBlock')} active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().toggleCodeBlock().run()} />
+      <Btn label={<DividerIcon className="octo-tb-icon" />} title={t('docs.toolbar.divider')} onClick={() => editor.chain().focus().setHorizontalRule().run()} />
+      <CodeLanguageSelect editor={editor} />
+        </>
+      )}
+      {tab === 'insert' && (
+        <>
+      <TableGridPicker editor={editor} />
+      <Btn label={<AddImageIcon className="octo-tb-icon" />} title={t('docs.toolbar.image')} onClick={() => void pickAndUploadImage(editor)} />
+      <Btn label={<FolderIcon className="octo-tb-icon" />} title={t('docs.toolbar.file')} onClick={() => void pickAndUploadFile(editor)} />
+      <BookmarkControl editor={editor} />
+      <span className="octo-tb-sep" />
+      <EmojiControl editor={editor} />
+      <Btn label="@" title={t('docs.toolbar.mention')} onClick={() => editor.chain().focus().insertContent('@').run()} />
+      <Btn
+        label={<ArrowRightIcon className="octo-tb-icon" />}
+        title={t('docs.toolbar.details')}
+        active={editor.isActive('details')}
+        onClick={() => editor.chain().focus().setDetails().run()}
+      />
+      <CalloutControl editor={editor} />
+      <FormulaControl editor={editor} kind="inline" />
+      <FormulaControl editor={editor} kind="block" />
+      <span className="octo-tb-sep" />
+      <span className="octo-color-control octo-link-control" ref={linkRef}>
+        <Btn label={<IconLink />} title={t('docs.toolbar.link')} active={editor.isActive('link') || linkOpen} onClick={openLink} />
+        {linkOpen && (
+          <span className="octo-color-popover octo-link-popover" role="dialog">
+            <label className="octo-link-group">
+              <span className="octo-link-label">{t('docs.toolbar.linkTextLabel')}</span>
+              <input
+                className="octo-link-field"
+                ref={linkTextRef}
+                value={linkText}
+                onChange={(e) => setLinkText(e.target.value)}
+                placeholder={t('docs.toolbar.linkTextPlaceholder')}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    confirmLink()
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    closeLink()
+                  }
+                }}
+              />
+            </label>
+            {/* Type field: mirrors the sheet's 类型 row for visual parity. docs links are always web
+                URLs (there is no cell/range target as in the sheet), so this is a static readout of
+                the only type rather than a dropdown of one — honest, not a fake selector. */}
+            <span className="octo-link-group">
+              <span className="octo-link-label">{t('docs.toolbar.linkType')}</span>
+              <span className="octo-link-type">{t('docs.toolbar.link')}</span>
+            </span>
+            <label className="octo-link-group">
+              <span className="octo-link-label">{t('docs.toolbar.linkUrlLabel')}</span>
+              <input
+                className={'octo-link-field' + (linkError ? ' is-invalid' : '')}
+                ref={linkUrlRef}
+                value={linkValue}
+                aria-invalid={linkError ? true : undefined}
+                onChange={(e) => {
+                  setLinkValue(e.target.value)
+                  if (linkError) setLinkError(null)
+                }}
+                placeholder={t('docs.toolbar.linkUrlPlaceholder')}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    confirmLink()
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    closeLink()
+                  }
+                }}
+              />
+            </label>
+            {linkError && (
+              <span className="octo-link-error" role="alert">
+                {linkError}
+              </span>
+            )}
+            <div className="octo-link-popover-actions">
+              <button
+                type="button"
+                className="octo-link-btn"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={closeLink}
+              >
+                {t('docs.toolbar.linkCancel')}
+              </button>
+              <button
+                type="button"
+                className="octo-link-btn octo-link-btn--primary"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={confirmLink}
+              >
+                {t('docs.toolbar.linkConfirm')}
+              </button>
+            </div>
+          </span>
+        )}
+      </span>
+        </>
+      )}
     </div>
     {findOpen && <FindBar editor={editor} onClose={() => setFindOpen(false)} />}
     </div>
+    </ConfigProvider>
   )
 }

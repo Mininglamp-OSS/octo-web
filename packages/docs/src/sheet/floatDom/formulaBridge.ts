@@ -52,3 +52,34 @@ export function setDrawingBlurHandler(fn: (() => void) | null): void {
 export function requestDrawingBlur(): void {
   blurHandler?.()
 }
+
+/**
+ * Resize a formula's drawing box to fit its rendered content (auto-fit). Called by MathFormula after
+ * the field renders / whenever the content size changes. Wired by CollabSheet to patch the drawing's
+ * transform width/height.
+ */
+let resizeHandler: ((id: string, w: number, h: number) => void) | null = null
+export function setFormulaResizeHandler(fn: ((id: string, w: number, h: number) => void) | null): void {
+  resizeHandler = fn
+}
+export function requestFormulaResize(id: string, w: number, h: number): void {
+  if (id) resizeHandler?.(id, w, h)
+}
+
+/** Merge a style patch (bold/italic/color/…) into a formula's drawing `data`. Wired by CollabSheet. */
+let styleHandler: ((id: string, patch: Record<string, unknown>) => void) | null = null
+export function setFormulaStyleHandler(fn: ((id: string, patch: Record<string, unknown>) => void) | null): void {
+  styleHandler = fn
+}
+export function requestFormulaStyle(id: string, patch: Record<string, unknown>): void {
+  if (id) styleHandler?.(id, patch)
+}
+
+/** Delete a formula drawing from the sheet. Wired by CollabSheet. */
+let deleteHandler: ((id: string) => void) | null = null
+export function setFormulaDeleteHandler(fn: ((id: string) => void) | null): void {
+  deleteHandler = fn
+}
+export function requestFormulaDelete(id: string): void {
+  if (id) deleteHandler?.(id)
+}

@@ -34,18 +34,17 @@ async function resolveCard(editor: Editor, url: string): Promise<LinkCard> {
 }
 
 /**
- * Toolbar / slash entry point: prompt for a URL, validate, fetch metadata, insert the card.
- * `range` (slash command) is deleted before inserting, mirroring the other items.
+ * Insert a bookmark card from an already-collected raw URL string: validate → fetch metadata →
+ * insert the node. Shared by the toolbar's inline URL popover and the slash-command flow, so neither
+ * path uses a native window.prompt (the sheet never does). `range` (slash command) is deleted before
+ * inserting, mirroring the other items. Returns true when a card was inserted, false when the URL was
+ * rejected — the caller (popover) uses this to keep itself open and surface the error inline.
  */
-export async function promptAndInsertBookmark(editor: Editor, range?: Range): Promise<void> {
-  const raw = typeof window !== 'undefined' && typeof window.prompt === 'function'
-    ? window.prompt(t('docs.bookmark.prompt'))
-    : null
-  if (raw == null) return // dismissed
+export async function insertBookmarkFromUrl(editor: Editor, raw: string, range?: Range): Promise<boolean> {
   const url = sanitizeBookmarkUrl(raw.trim())
   if (!url) {
     notifyBookmarkError(t('docs.bookmark.invalidUrl'))
-    return
+    return false
   }
   const status = beginBookmarkStatus(t('docs.bookmark.loading'))
   try {
@@ -53,9 +52,24 @@ export async function promptAndInsertBookmark(editor: Editor, range?: Range): Pr
     const chain = editor.chain().focus()
     if (range) chain.deleteRange(range)
     chain.setBookmark(card).run()
+    return true
   } finally {
     status.done()
   }
+}
+
+/**
+ * Slash-command entry point: still prompts via the native dialog for the `/bookmark` command path
+ * (a command palette has no anchored popover to host an inline field). The toolbar button uses the
+ * inline BookmarkControl popover instead — see Toolbar.tsx — so the ribbon no longer pops a system
+ * dialog. Both converge on insertBookmarkFromUrl for validation + insertion.
+ */
+export async function promptAndInsertBookmark(editor: Editor, range?: Range): Promise<void> {
+  const raw = typeof window !== 'undefined' && typeof window.prompt === 'function'
+    ? window.prompt(t('docs.bookmark.prompt'))
+    : null
+  if (raw == null) return // dismissed
+  await insertBookmarkFromUrl(editor, raw, range)
 }
 
 // --- transient, document-external status / error UI ---------------------------

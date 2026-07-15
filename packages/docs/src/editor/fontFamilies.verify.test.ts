@@ -25,7 +25,9 @@ function resolve(bundle: Record<string, unknown>, key: string): string | undefin
 describe('FONT_FAMILIES i18n refactor (XIN-936)', () => {
   it('keeps the CSS font-family values byte-identical to the SCHEMA_VERSION 16 spec', () => {
     const byKey = Object.fromEntries(FONT_FAMILIES.map((f) => [f.labelKey, f.value]))
-    expect(byKey['docs.toolbar.font.yahei']).toBe('"Microsoft YaHei", "微软雅黑", sans-serif')
+    // NOTE: "微软雅黑" (yahei) was removed from the picker — Chromium reserves that family name so it
+    // can't be @font-face-aliased on non-Windows; the sheet drops it for the same reason.
+    expect(byKey['docs.toolbar.font.yahei']).toBeUndefined()
     expect(byKey['docs.toolbar.font.simsun']).toBe('SimSun, "宋体", serif')
     expect(byKey['docs.toolbar.font.simhei']).toBe('SimHei, "黑体", sans-serif')
     expect(byKey['docs.toolbar.font.kaiti']).toBe('KaiTi, "楷体", serif')

@@ -20,7 +20,7 @@ import { IMenuManagerService, RibbonInsertGroup, MenuItemType, IFontService } fr
 import { createUniver } from './createUniver.ts'
 import { sanitizeLinkHref } from '../editor/sanitize.ts'
 import { MathFormula, OCTO_MATH_FORMULA_KEY } from './floatDom/MathFormula.tsx'
-import { setFormulaSaveHandler, setDrawingBlurHandler, requestFormulaPicker } from './floatDom/formulaBridge.ts'
+import { setFormulaSaveHandler, setDrawingBlurHandler, setFormulaResizeHandler, setFormulaStyleHandler, setFormulaDeleteHandler, requestFormulaPicker } from './floatDom/formulaBridge.ts'
 import { PiIcon, OCTO_FORMULA_PI_ICON_KEY } from './floatDom/PiIcon.tsx'
 
 /** The single merged formula ribbon entry: a π button that opens the React formula picker. */
@@ -140,7 +140,11 @@ export class CollabSheet {
    *  its DRAWING_DOM record (which the drawing Yjs sync then replicates). Null if unavailable. */
   private commandService: { executeCommand(id: string, params?: unknown): unknown } | null = null
   private sheetDrawingSvc: {
-    getDrawingByParam(p: { unitId: string; subUnitId: string; drawingId: string }): { data?: Record<string, unknown> } | null | undefined
+    getDrawingByParam(p: { unitId: string; subUnitId: string; drawingId: string }): {
+      data?: Record<string, unknown>
+      transform?: Record<string, unknown>
+      drawingType?: number
+    } | null | undefined
   } | null = null
   private cursors: SheetCursorOverlay | null = null
   private commentMarkers: SheetCommentMarkers | null = null
@@ -404,6 +408,9 @@ export class CollabSheet {
         MathFormula,
       )
       setFormulaSaveHandler((id, latex, fontSize) => this.updateFormula(id, latex, fontSize))
+      setFormulaResizeHandler((id, w, h) => this.resizeFormula(id, w, h))
+      setFormulaStyleHandler((id, patch) => this.styleFormula(id, patch))
+      setFormulaDeleteHandler((id) => this.deleteFormula(id))
     } catch {
       // formula feature unavailable — sheet still loads
     }
@@ -919,20 +926,89 @@ export class CollabSheet {
    * the drawing/services aren't resolvable).
    */
   updateFormula(id: string, latex: string, fontSize: number): void {
+    const ctx = this.resolveDrawing(id)
+    if (!ctx) return
+    try {
+      const updated = { ...ctx.drawing, data: { ...(ctx.drawing.data ?? {}), latex, id, fontSize } }
+      this.commandService!.executeCommand('sheet.command.set-sheet-image', { unitId: ctx.unitId, drawings: [updated] })
+    } catch {
+      // ignore — edit persistence is best-effort
+    }
+  }
+
+  /**
+   * Resolve a formula drawing on the active sheet plus the ids needed to command it. Shared by the
+   * inline-edit / resize / style / delete handlers so they all patch the SAME DRAWING_DOM record the
+   * Yjs sync replicates. Returns null (silent no-op) if the drawing or the Univer services aren't
+   * resolvable.
+   */
+  private resolveDrawing(id: string): {
+    unitId: string
+    subUnitId: string
+    drawing: { data?: Record<string, unknown>; transform?: Record<string, unknown>; drawingType?: number }
+  } | null {
     const wb = this.univerAPI.getActiveWorkbook() as unknown as {
       getId?: () => string
       getActiveSheet: () => { getSheetId?: () => string } | null
     } | null
     const unitId = wb?.getId?.()
     const subUnitId = wb?.getActiveSheet()?.getSheetId?.()
-    if (!unitId || !subUnitId || !this.sheetDrawingSvc || !this.commandService) return
+    if (!id || !unitId || !subUnitId || !this.sheetDrawingSvc || !this.commandService) return null
     try {
       const drawing = this.sheetDrawingSvc.getDrawingByParam({ unitId, subUnitId, drawingId: id })
-      if (!drawing) return
-      const updated = { ...drawing, data: { ...(drawing.data ?? {}), latex, id, fontSize } }
-      this.commandService.executeCommand('sheet.command.set-sheet-image', { unitId, drawings: [updated] })
+      if (!drawing) return null
+      return { unitId, subUnitId, drawing }
     } catch {
-      // ignore — edit persistence is best-effort
+      return null
+    }
+  }
+
+  /**
+   * Auto-fit: resize a formula's drawing box to hug its rendered content. Patches the drawing's
+   * transform width/height via SetSheetDrawingCommand (the same mutation the Yjs sync observes), so
+   * the new size persists + replicates. Best-effort.
+   */
+  resizeFormula(id: string, w: number, h: number): void {
+    const ctx = this.resolveDrawing(id)
+    if (!ctx || !(w > 0) || !(h > 0)) return
+    try {
+      const updated = { ...ctx.drawing, transform: { ...(ctx.drawing.transform ?? {}), width: w, height: h } }
+      this.commandService!.executeCommand('sheet.command.set-sheet-image', { unitId: ctx.unitId, drawings: [updated] })
+    } catch {
+      // ignore — resize is best-effort
+    }
+  }
+
+  /**
+   * Merge a style patch (e.g. `{ color }`) into a formula's drawing `data` via SetSheetDrawingCommand
+   * so the style persists + replicates (otherwise a colour pick is only local component state and is
+   * lost on reopen / for collaborators). Best-effort.
+   */
+  styleFormula(id: string, patch: Record<string, unknown>): void {
+    const ctx = this.resolveDrawing(id)
+    if (!ctx || !patch) return
+    try {
+      const updated = { ...ctx.drawing, data: { ...(ctx.drawing.data ?? {}), ...patch, id } }
+      this.commandService!.executeCommand('sheet.command.set-sheet-image', { unitId: ctx.unitId, drawings: [updated] })
+    } catch {
+      // ignore — style persistence is best-effort
+    }
+  }
+
+  /**
+   * Delete a formula drawing from the sheet via RemoveSheetDrawingCommand, which fires the drawing
+   * mutation the Yjs sync observes — so the removal persists + replicates. Best-effort.
+   */
+  deleteFormula(id: string): void {
+    const ctx = this.resolveDrawing(id)
+    if (!ctx) return
+    try {
+      this.commandService!.executeCommand('sheet.command.remove-sheet-image', {
+        unitId: ctx.unitId,
+        drawings: [{ unitId: ctx.unitId, subUnitId: ctx.subUnitId, drawingId: id, drawingType: ctx.drawing.drawingType }],
+      })
+    } catch {
+      // ignore — delete is best-effort
     }
   }
 
@@ -960,6 +1036,9 @@ export class CollabSheet {
     this.cursors?.dispose()
     this.commentMarkers?.dispose()
     setFormulaSaveHandler(null)
+    setFormulaResizeHandler(null)
+    setFormulaStyleHandler(null)
+    setFormulaDeleteHandler(null)
     setDrawingBlurHandler(null)
     this.binding.dispose()
     this.univer.dispose()
