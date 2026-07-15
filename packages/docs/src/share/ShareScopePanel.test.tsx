@@ -313,6 +313,66 @@ describe('ShareScopePanel — seed refresh on commit / reopen (B1)', () => {
     expect(radios()[0].checked).toBe(false)
   })
 
+  it('from the error/unknown state, switching to Anyone-in-Space fetches the true role first and does NOT downgrade edit→read', async () => {
+    // B1 (round 4): a board/sheet surface (no seed) whose real backend state is
+    // anyone_in_space/edit, but the mount GET /share failed. From the error state the admin clicks
+    // "Anyone in Space". Before the fix the panel PUT anyone_in_space with the STALE default role
+    // 'read', silently downgrading edit→read the admin never chose. The fix resolves the true role
+    // with a fresh GET before writing, so the PUT preserves edit.
+    let getCount = 0
+    let putBody: unknown
+    api.responder = (method, url, body) => {
+      if (method === 'get' && url.endsWith('/share')) {
+        getCount += 1
+        if (getCount === 1) throw { response: { status: 500 } } // mount read fails → error state
+        return { data: { shareScope: 'anyone_in_space', shareRole: 'edit' }, status: 200 } // true state
+      }
+      if (method === 'put') {
+        putBody = body
+        return {
+          data: {
+            shareScope: (body as { shareScope?: string }).shareScope,
+            shareRole: (body as { shareRole?: string }).shareRole ?? 'read',
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<ShareScopePanel docId="d_1" />)
+    await waitFor(() => expect(screen.getByText('docs.share.loadError')).toBeTruthy())
+
+    fireEvent.click(radios()[1])
+    // A fresh GET must precede the PUT, and the PUT must carry the real role (edit), not stale read.
+    await waitFor(() => expect(putBody).toEqual({ shareScope: 'anyone_in_space', shareRole: 'edit' }))
+    expect(getCount).toBe(2)
+    await waitFor(() => expect(roleSelect()?.value).toBe('edit'))
+    expect(radios()[1].checked).toBe(true)
+  })
+
+  it('from the error/unknown state, if the fresh read also fails, no PUT fires and the error state remains', async () => {
+    // Fix option 2 fallback: when the true role cannot be confirmed (fresh GET also fails), the panel
+    // must NOT write anyone_in_space with an unconfirmed role. No PUT is sent; the error state stays.
+    let putCount = 0
+    api.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/share')) throw { response: { status: 500 } }
+      if (method === 'put') {
+        putCount += 1
+        return { data: { shareScope: 'anyone_in_space', shareRole: 'read' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<ShareScopePanel docId="d_1" />)
+    await waitFor(() => expect(screen.getByText('docs.share.loadError')).toBeTruthy())
+
+    fireEvent.click(radios()[1])
+    await waitFor(() => expect(screen.getByText('docs.share.error')).toBeTruthy())
+    // No unconfirmed-role PUT was sent, and no radio flipped to a confident selection.
+    expect(putCount).toBe(0)
+    expect(radios()[1].checked).toBe(false)
+    expect(radios()[0].checked).toBe(false)
+  })
+
   it('fires exactly one PUT per change and a later seed refresh does not re-fire it', async () => {
     // Q3 hardening: a change-on-select control that mutates must not loop. One click → one PUT, and a
     // benign seed prop change afterwards (the caller refreshing its seed) must not trigger another.

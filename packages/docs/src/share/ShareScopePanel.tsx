@@ -158,9 +158,46 @@ export function ShareScopePanel({
     // re-assert a scope even from an unknown/error/stale display (the earlier `next === scope`
     // guard blocked re-asserting "Restricted" when the shown value was stale). Native radios only
     // fire onChange on a genuine change, so this never double-fires on the already-selected value.
-    // Switching to Anyone in Space keeps the current tier (defaults to Can read on first switch,
-    // since role state starts at read); Restricted lets the backend force-persist read.
+    //
+    // Switching to Anyone in Space normally keeps the current tier. But `role` is only trustworthy
+    // once an AUTHORITATIVE scope has been resolved (seed / successful GET / prior commit). In the
+    // error/unknown state (`status==='error'` / `scope===null` → `!authoritativeRef.current`) `role`
+    // is still just the mount default ('read'); committing anyone_in_space with it would silently
+    // downgrade a real anyone_in_space/edit → read that the admin never chose. So in that state we
+    // resolve the true role with a fresh GET /share first and only PUT once it is known — and if the
+    // GET also fails we keep the unknown state and do NOT write, so an unconfirmed role never reaches
+    // a PUT anyone_in_space. Restricted carries no role (the backend force-persists read), so it is
+    // safe to commit directly from any state.
+    if (next === 'anyone_in_space' && !authoritativeRef.current) {
+      void commitAnyoneAfterFreshRead()
+      return
+    }
     void commit(next, next === 'anyone_in_space' ? role : 'read')
+  }
+
+  // Anyone-in-Space commit from an unknown/error state: fetch the authoritative role first so a
+  // stale default 'read' can never silently downgrade a real anyone_in_space/edit. Only PUT once the
+  // true role is known; if the fresh read also fails, surface the error and leave the panel unknown
+  // (no PUT) rather than writing an unconfirmed role.
+  async function commitAnyoneAfterFreshRead() {
+    setError(null)
+    setSaving(true)
+    let fresh: ShareSettings
+    try {
+      fresh = await getShareSettings(docId)
+    } catch {
+      // Still unknown → refuse to write anyone_in_space with an unconfirmed role. Keep the
+      // error/unknown state so the admin can retry rather than silently persisting a downgrade.
+      setScope(null)
+      setStatus('error')
+      setError(t('docs.share.error'))
+      setSaving(false)
+      return
+    }
+    // True role resolved. If the backend is already anyone_in_space its tier is preserved (edit
+    // stays edit); if it is restricted the fresh role is read, so the first switch correctly starts
+    // at Can read. commit() manages `saving` in its finally, so leave it set through the handoff.
+    void commit('anyone_in_space', fresh.shareRole)
   }
 
   function onRoleChange(next: ShareRole) {
